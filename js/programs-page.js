@@ -63,7 +63,7 @@ async function initPage() {
     }
 
     AppState.currentUser = user;
-    document.getElementById('currentUser')?.textContent = user.name;
+    document.getElementById('currentUser').textContent = user.name;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
     // v20.8.0: Embedded mode — read-only (no edit/delete/add)
@@ -195,39 +195,39 @@ function openProductForm(productId = null) {
     if (productId) {
         const p = allProducts.find(x => x.id === productId);
         if (!p) return;
-        document.getElementById('pf-id')?.value = p.id;
-        document.getElementById('pf-code')?.value = p.code || '';
-        document.getElementById('pf-name')?.value = p.name || '';
-        document.getElementById('pf-label')?.value = p.label || '';
-        document.getElementById('pf-icon')?.value = p.icon || '';
-        document.getElementById('pf-category')?.value = p.category || 'quest';
-        document.getElementById('pf-duration')?.value = p.duration || 0;
-        document.getElementById('pf-price')?.value = p.price || 0;
-        document.getElementById('pf-hosts')?.value = p.hosts || 1;
-        document.getElementById('pf-age')?.value = p.ageRange || '';
-        document.getElementById('pf-kids')?.value = p.kidsCapacity || '';
-        document.getElementById('pf-description')?.value = p.description || '';
-        document.getElementById('pf-perchild')?.checked = !!p.isPerChild;
-        document.getElementById('pf-filler')?.checked = !!p.hasFiller;
-        document.getElementById('pf-active')?.checked = p.isActive !== false;
-        document.getElementById('pf-sort')?.value = p.sortOrder || 0;
+        document.getElementById('pf-id').value = p.id;
+        document.getElementById('pf-code').value = p.code || '';
+        document.getElementById('pf-name').value = p.name || '';
+        document.getElementById('pf-label').value = p.label || '';
+        document.getElementById('pf-icon').value = p.icon || '';
+        document.getElementById('pf-category').value = p.category || 'quest';
+        document.getElementById('pf-duration').value = p.duration || 0;
+        document.getElementById('pf-price').value = p.price || 0;
+        document.getElementById('pf-hosts').value = p.hosts || 1;
+        document.getElementById('pf-age').value = p.ageRange || '';
+        document.getElementById('pf-kids').value = p.kidsCapacity || '';
+        document.getElementById('pf-description').value = p.description || '';
+        document.getElementById('pf-perchild').checked = !!p.isPerChild;
+        document.getElementById('pf-filler').checked = !!p.hasFiller;
+        document.getElementById('pf-active').checked = p.isActive !== false;
+        document.getElementById('pf-sort').value = p.sortOrder || 0;
     } else {
-        document.getElementById('pf-id')?.value = '';
-        document.getElementById('pf-code')?.value = '';
-        document.getElementById('pf-name')?.value = '';
-        document.getElementById('pf-label')?.value = '';
-        document.getElementById('pf-icon')?.value = '';
-        document.getElementById('pf-category')?.value = currentCategory !== 'all' ? currentCategory : 'quest';
-        document.getElementById('pf-duration')?.value = 60;
-        document.getElementById('pf-price')?.value = 0;
-        document.getElementById('pf-hosts')?.value = 1;
-        document.getElementById('pf-age')?.value = '';
-        document.getElementById('pf-kids')?.value = '';
-        document.getElementById('pf-description')?.value = '';
-        document.getElementById('pf-perchild')?.checked = false;
-        document.getElementById('pf-filler')?.checked = false;
-        document.getElementById('pf-active')?.checked = true;
-        document.getElementById('pf-sort')?.value = 0;
+        document.getElementById('pf-id').value = '';
+        document.getElementById('pf-code').value = '';
+        document.getElementById('pf-name').value = '';
+        document.getElementById('pf-label').value = '';
+        document.getElementById('pf-icon').value = '';
+        document.getElementById('pf-category').value = currentCategory !== 'all' ? currentCategory : 'quest';
+        document.getElementById('pf-duration').value = 60;
+        document.getElementById('pf-price').value = 0;
+        document.getElementById('pf-hosts').value = 1;
+        document.getElementById('pf-age').value = '';
+        document.getElementById('pf-kids').value = '';
+        document.getElementById('pf-description').value = '';
+        document.getElementById('pf-perchild').checked = false;
+        document.getElementById('pf-filler').checked = false;
+        document.getElementById('pf-active').checked = true;
+        document.getElementById('pf-sort').value = 0;
     }
 
     form.scrollIntoView({ behavior: 'smooth' });

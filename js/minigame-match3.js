@@ -1270,7 +1270,7 @@ function renderGameUI() {
     const todayGames = gameStatus?.todayGames || 0;
     const bestScore = gameStatus?.bestScore || 0;
 
-    document.getElementById('mainApp')?.innerHTML = `
+    document.getElementById('mainApp').innerHTML = `
     <div class="game-page">
         <div class="game-topbar">
             <a href="/profile" class="game-back-link">← Назад</a>

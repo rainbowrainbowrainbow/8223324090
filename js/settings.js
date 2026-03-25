@@ -225,28 +225,28 @@ async function openProductForm(productId) {
             return;
         }
 
-        document.getElementById('pf-code')?.value = product.code || '';
-        document.getElementById('pf-label')?.value = product.label || '';
-        document.getElementById('pf-name')?.value = product.name || '';
-        document.getElementById('pf-icon')?.value = product.icon || '';
-        document.getElementById('pf-category')?.value = product.category || '';
-        document.getElementById('pf-duration')?.value = product.duration || 0;
-        document.getElementById('pf-price')?.value = product.price || 0;
-        document.getElementById('pf-hosts')?.value = product.hosts || 1;
-        document.getElementById('pf-age')?.value = product.ageRange || '';
-        document.getElementById('pf-kids')?.value = product.kidsCapacity || '';
-        document.getElementById('pf-description')?.value = product.description || '';
-        document.getElementById('pf-perchild')?.checked = product.isPerChild || false;
-        document.getElementById('pf-filler')?.checked = product.hasFiller || false;
-        document.getElementById('pf-active')?.checked = product.isActive !== false;
-        document.getElementById('pf-sort')?.value = product.sortOrder || 0;
+        document.getElementById('pf-code').value = product.code || '';
+        document.getElementById('pf-label').value = product.label || '';
+        document.getElementById('pf-name').value = product.name || '';
+        document.getElementById('pf-icon').value = product.icon || '';
+        document.getElementById('pf-category').value = product.category || '';
+        document.getElementById('pf-duration').value = product.duration || 0;
+        document.getElementById('pf-price').value = product.price || 0;
+        document.getElementById('pf-hosts').value = product.hosts || 1;
+        document.getElementById('pf-age').value = product.ageRange || '';
+        document.getElementById('pf-kids').value = product.kidsCapacity || '';
+        document.getElementById('pf-description').value = product.description || '';
+        document.getElementById('pf-perchild').checked = product.isPerChild || false;
+        document.getElementById('pf-filler').checked = product.hasFiller || false;
+        document.getElementById('pf-active').checked = product.isActive !== false;
+        document.getElementById('pf-sort').value = product.sortOrder || 0;
     } else {
         title.textContent = 'Нова програма';
-        document.getElementById('pf-active')?.checked = true;
-        document.getElementById('pf-hosts')?.value = 1;
-        document.getElementById('pf-duration')?.value = 60;
-        document.getElementById('pf-price')?.value = 0;
-        document.getElementById('pf-sort')?.value = 0;
+        document.getElementById('pf-active').checked = true;
+        document.getElementById('pf-hosts').value = 1;
+        document.getElementById('pf-duration').value = 60;
+        document.getElementById('pf-price').value = 0;
+        document.getElementById('pf-sort').value = 0;
     }
 
     modal.classList.remove('hidden');
@@ -418,9 +418,9 @@ async function editLineModal(lineId) {
     const line = lines.find(l => l.id === lineId);
     if (!line) return;
 
-    document.getElementById('editLineId')?.value = line.id;
-    document.getElementById('editLineName')?.value = line.name;
-    document.getElementById('editLineColor')?.value = line.color;
+    document.getElementById('editLineId').value = line.id;
+    document.getElementById('editLineName').value = line.name;
+    document.getElementById('editLineColor').value = line.color;
 
     populateAnimatorsSelect();
 
@@ -451,7 +451,7 @@ function saveAnimatorsList() {
 
 function showAnimatorsModal() {
     const animators = getSavedAnimators();
-    document.getElementById('animatorsList')?.value = animators.join('\n');
+    document.getElementById('animatorsList').value = animators.join('\n');
     document.getElementById('animatorsModal')?.classList.remove('hidden');
 }
 
@@ -639,7 +639,7 @@ async function fetchAndRenderThreads() {
         const data = await response.json();
         if (data.threads && data.threads.length > 0) {
             container.innerHTML = data.threads.map(t =>
-                `<div class="telegram-chat-item" onclick="document.getElementById('settingsTelegramThreadId')?.value='${t.thread_id}'">
+                `<div class="telegram-chat-item" onclick="document.getElementById('settingsTelegramThreadId').value = '${t.thread_id}'">
                     <strong>${escapeHtml(t.title || 'Тема #' + t.thread_id)}</strong> <span class="chat-id">ID: ${t.thread_id}</span>
                 </div>`
             ).join('');
@@ -654,7 +654,7 @@ async function fetchAndRenderThreads() {
 async function showTelegramSetup() {
     const chatId = await apiGetSetting('telegram_chat_id');
     const modal = document.getElementById('telegramModal');
-    document.getElementById('telegramChatId')?.value = chatId || '';
+    document.getElementById('telegramChatId').value = chatId || '';
     // v5.17: Load thread ID
     const threadId = await apiGetSetting('telegram_thread_id');
     const threadInput = document.getElementById('telegramThreadId');
@@ -1456,13 +1456,13 @@ async function editAfishaItem(id) {
     const titleEl = document.getElementById('afishaEditTitle');
     titleEl.textContent = isBirthday ? "🎂 Редагувати іменинника" : "✏️ Редагувати подію";
 
-    document.getElementById('afishaEditId')?.value = id;
-    document.getElementById('afishaEditType')?.value = item.type;
-    document.getElementById('afishaEditName')?.value = item.title;
-    document.getElementById('afishaEditDate')?.value = item.date;
-    document.getElementById('afishaEditTime')?.value = item.time;
-    document.getElementById('afishaEditDuration')?.value = item.duration || 60;
-    document.getElementById('afishaEditDescription')?.value = item.description || '';
+    document.getElementById('afishaEditId').value = id;
+    document.getElementById('afishaEditType').value = item.type;
+    document.getElementById('afishaEditName').value = item.title;
+    document.getElementById('afishaEditDate').value = item.date;
+    document.getElementById('afishaEditTime').value = item.time;
+    document.getElementById('afishaEditDuration').value = item.duration || 60;
+    document.getElementById('afishaEditDescription').value = item.description || '';
 
     // Hide duration for birthday
     const durGroup = document.getElementById('afishaEditDurationGroup');
@@ -1684,7 +1684,7 @@ async function autoPositionAfisha() {
             const h = Math.floor(min / 60);
             const m = min % 60;
             const timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-            document.getElementById('afishaTime')?.value = timeStr;
+            document.getElementById('afishaTime').value = timeStr;
             showNotification(`Вільний слот: ${timeStr}`, 'success');
             return;
         }
@@ -1827,8 +1827,8 @@ async function addAfishaTemplate() {
         });
         const data = await response.json();
         if (data.success) {
-            document.getElementById('afishaTplTitle')?.value = '';
-            document.getElementById('afishaTplDesc')?.value = '';
+            document.getElementById('afishaTplTitle').value = '';
+            document.getElementById('afishaTplDesc').value = '';
             showNotification('Шаблон створено!', 'success');
             await renderAfishaTemplates();
         }
@@ -2050,13 +2050,13 @@ async function editTask(id) {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
 
-    document.getElementById('taskEditId')?.value = id;
-    document.getElementById('taskEditTitle')?.value = task.title;
-    document.getElementById('taskEditDescription')?.value = task.description || '';
-    document.getElementById('taskEditDate')?.value = task.date || '';
-    document.getElementById('taskEditPriority')?.value = task.priority || 'normal';
-    document.getElementById('taskEditAssigned')?.value = task.assigned_to || '';
-    document.getElementById('taskEditCategory')?.value = task.category || 'admin';
+    document.getElementById('taskEditId').value = id;
+    document.getElementById('taskEditTitle').value = task.title;
+    document.getElementById('taskEditDescription').value = task.description || '';
+    document.getElementById('taskEditDate').value = task.date || '';
+    document.getElementById('taskEditPriority').value = task.priority || 'normal';
+    document.getElementById('taskEditAssigned').value = task.assigned_to || '';
+    document.getElementById('taskEditCategory').value = task.category || 'admin';
 
     document.getElementById('taskEditModal')?.classList.remove('hidden');
     document.getElementById('taskEditTitle')?.focus();
@@ -2130,8 +2130,8 @@ async function handleImprovementSubmit(e) {
     });
 
     if (result && result.success) {
-        document.getElementById('improvementTitle')?.value = '';
-        document.getElementById('improvementDescription')?.value = '';
+        document.getElementById('improvementTitle').value = '';
+        document.getElementById('improvementDescription').value = '';
         document.getElementById('improvementModal')?.classList.add('hidden');
         showNotification('Ідею надіслано в задачі!', 'success');
     } else {
@@ -2230,9 +2230,9 @@ function showAddAutomationRule() {
     const modal = document.getElementById('automationRuleModal');
     if (!modal) return;
     document.getElementById('automationRuleForm')?.reset();
-    document.getElementById('arDaysBefore')?.value = '3';
-    document.getElementById('arTaskTitle')?.value = '📋 Підготовка до {programName} на {date}';
-    document.getElementById('arContractorTemplate')?.value = '🔔 <b>Нове замовлення</b>\n\n📅 {date} о {time}\n🏠 {room}\n👶 Дітей: {kidsCount}';
+    document.getElementById('arDaysBefore').value = '3';
+    document.getElementById('arTaskTitle').value = '📋 Підготовка до {programName} на {date}';
+    document.getElementById('arContractorTemplate').value = '🔔 <b>Нове замовлення</b>\n\n📅 {date} о {time}\n🏠 {room}\n👶 Дітей: {kidsCount}';
     const wrap = document.getElementById('arContractorSelectWrap');
     if (wrap) wrap.classList.add('hidden');
     populateContractorSelect();
@@ -2364,8 +2364,8 @@ function showAddContractor() {
     const modal = document.getElementById('contractorModal');
     if (!modal) return;
     document.getElementById('contractorForm')?.reset();
-    document.getElementById('contractorEditId')?.value = '';
-    document.getElementById('contractorModalTitle')?.textContent = '🤝 Новий підрядник';
+    document.getElementById('contractorEditId').value = '';
+    document.getElementById('contractorModalTitle').textContent = '🤝 Новий підрядник';
     modal.classList.remove('hidden');
     document.getElementById('contractorName')?.focus();
 }
@@ -2375,14 +2375,14 @@ async function showEditContractor(id) {
     if (!c) return;
     const modal = document.getElementById('contractorModal');
     if (!modal) return;
-    document.getElementById('contractorEditId')?.value = id;
-    document.getElementById('contractorModalTitle')?.textContent = '✏️ Редагувати підрядника';
-    document.getElementById('contractorName')?.value = c.name || '';
-    document.getElementById('contractorSpecialty')?.value = (c.specialty || []).join(', ');
-    document.getElementById('contractorTelegramId')?.value = c.telegram_chat_id || '';
-    document.getElementById('contractorTelegramUser')?.value = c.telegram_username || '';
-    document.getElementById('contractorPhone')?.value = c.phone || '';
-    document.getElementById('contractorNotes')?.value = c.notes || '';
+    document.getElementById('contractorEditId').value = id;
+    document.getElementById('contractorModalTitle').textContent = '✏️ Редагувати підрядника';
+    document.getElementById('contractorName').value = c.name || '';
+    document.getElementById('contractorSpecialty').value = (c.specialty || []).join(', ');
+    document.getElementById('contractorTelegramId').value = c.telegram_chat_id || '';
+    document.getElementById('contractorTelegramUser').value = c.telegram_username || '';
+    document.getElementById('contractorPhone').value = c.phone || '';
+    document.getElementById('contractorNotes').value = c.notes || '';
     modal.classList.remove('hidden');
 }
 
@@ -2630,7 +2630,7 @@ function getCertStatusBadge(status) {
 function showCreateCertificateModal() {
     const modal = document.getElementById('certificateModal');
     if (!modal) return;
-    document.getElementById('certModalTitle')?.textContent = '📄 Видати сертифікат';
+    document.getElementById('certModalTitle').textContent = '📄 Видати сертифікат';
     document.getElementById('certificateForm')?.reset();
     // Reset display mode label
     const modeSelect = document.getElementById('certDisplayMode');
@@ -2639,12 +2639,12 @@ function showCreateCertificateModal() {
     // Reset type preset
     const presetSel = document.getElementById('certTypePreset');
     if (presetSel) presetSel.value = 'на одноразовий вхід';
-    document.getElementById('certTypeText')?.value = 'на одноразовий вхід';
+    document.getElementById('certTypeText').value = 'на одноразовий вхід';
     document.getElementById('certTypeText')?.classList.add('hidden');
     // Auto valid_until = today + 45 days (no editing)
     const d = new Date();
     d.setDate(d.getDate() + 45);
-    document.getElementById('certValidUntil')?.value = d.toISOString().split('T')[0];
+    document.getElementById('certValidUntil').value = d.toISOString().split('T')[0];
     const display = document.getElementById('certValidUntilDisplay');
     if (display) display.textContent = d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
     // Auto-select season
@@ -2657,12 +2657,12 @@ function showBatchCertificateModal() {
     if (!modal) return;
     document.getElementById('batchCertForm')?.reset();
     document.getElementById('batchCertResult')?.classList.add('hidden');
-    document.getElementById('batchCertSubmitBtn')?.disabled = false;
-    document.getElementById('batchCertSubmitBtn')?.textContent = '📦 Згенерувати';
+    document.getElementById('batchCertSubmitBtn').disabled = false;
+    document.getElementById('batchCertSubmitBtn').textContent = '📦 Згенерувати';
     // Auto valid_until = today + 45 days (no editing)
     const d = new Date();
     d.setDate(d.getDate() + 45);
-    document.getElementById('batchCertValidUntil')?.value = d.toISOString().split('T')[0];
+    document.getElementById('batchCertValidUntil').value = d.toISOString().split('T')[0];
     const display = document.getElementById('batchCertValidUntilDisplay');
     if (display) display.textContent = d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
     // Default selection

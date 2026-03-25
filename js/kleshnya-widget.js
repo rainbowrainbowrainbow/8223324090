@@ -175,7 +175,7 @@
             chip.className = 'kw-chip';
             chip.textContent = text;
             chip.addEventListener('click', () => {
-                document.getElementById('kwInput')?.value = text;
+                document.getElementById('kwInput').value = text;
                 sendMessage();
             });
             container.appendChild(chip);
@@ -208,8 +208,8 @@
         if (!text) return;
 
         input.value = '';
-        document.getElementById('kwSendBtn')?.disabled = true;
-        document.getElementById('kwSuggestions')?.innerHTML = '';
+        document.getElementById('kwSendBtn').disabled = true;
+        document.getElementById('kwSuggestions').innerHTML = '';
         addMessage('user', text, new Date().toISOString());
         showTyping();
 
@@ -230,7 +230,7 @@
             addMessage('assistant', '🦀 Помилка з\'єднання!', new Date().toISOString());
         }
 
-        document.getElementById('kwSendBtn')?.disabled = false;
+        document.getElementById('kwSendBtn').disabled = false;
         input.focus();
     }
 

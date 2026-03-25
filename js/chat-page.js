@@ -882,7 +882,7 @@
             if (!profile) return;
             _infoBtn.classList.remove('active');
             _pinBtn.classList.remove('active');
-            document.getElementById('chatInfoPanelTitle')?.textContent = 'Профіль';
+            document.getElementById('chatInfoPanelTitle').textContent = 'Профіль';
             var body = document.getElementById('chatInfoPanelBody');
             var isProfileBot = profile.username === 'openclaw';
             var isProfileGuardian = profile.username === 'guardian';
@@ -1043,7 +1043,7 @@
             } else {
                 _infoBtn.classList.remove('active');
                 _pinBtn.classList.add('active');
-                document.getElementById('chatInfoPanelTitle')?.textContent = 'Закріплені';
+                document.getElementById('chatInfoPanelTitle').textContent = 'Закріплені';
                 await _renderPinnedPanel();
                 _infoPanel.classList.add('open');
             }
@@ -1846,7 +1846,7 @@
             } else {
                 if (_pinBtn) _pinBtn.classList.remove('active');
                 _infoBtn.classList.add('active');
-                document.getElementById('chatInfoPanelTitle')?.textContent = _currentChannel ? _currentChannel.name : 'Канал';
+                document.getElementById('chatInfoPanelTitle').textContent = _currentChannel ? _currentChannel.name : 'Канал';
                 _renderInfoPanel();
                 _infoPanel.classList.add('open');
             }
@@ -1965,9 +1965,9 @@
                     });
                     _currentChannel.name = '#' + newName.trim();
                     _currentChannel.description = newDesc.trim();
-                    document.getElementById('chatHeaderName')?.textContent = '#' + newName.trim();
-                    document.getElementById('chatHeaderDesc')?.textContent = newDesc.trim();
-                    document.getElementById('chatInfoPanelTitle')?.textContent = '#' + newName.trim();
+                    document.getElementById('chatHeaderName').textContent = '#' + newName.trim();
+                    document.getElementById('chatHeaderDesc').textContent = newDesc.trim();
+                    document.getElementById('chatInfoPanelTitle').textContent = '#' + newName.trim();
                     _loadChannels();
                     if (typeof showNotification === 'function') showNotification('✅ Канал оновлено', 'success');
                 } catch(e) { if (typeof showNotification === 'function') showNotification('Помилка збереження', 'error'); }
@@ -2345,7 +2345,7 @@
                 is_shared: vis === 'shared',
                 channel_id: _currentChannel?.id || null
             });
-            document.getElementById('newNoteText')?.value = '';
+            document.getElementById('newNoteText').value = '';
             _loadNotes();
         } catch (e) { if (typeof showNotification === 'function') showNotification('Помилка', 'error'); }
     };
@@ -2583,8 +2583,8 @@
         _cancelReply();
 
         // Update header
-        document.getElementById('chatHeaderName')?.textContent = channel.name;
-        document.getElementById('chatHeaderDesc')?.textContent = channel.description || '';
+        document.getElementById('chatHeaderName').textContent = channel.name;
+        document.getElementById('chatHeaderDesc').textContent = channel.description || '';
 
         // Apply wallpaper
         _applyWallpaper();
@@ -6411,7 +6411,7 @@
 
         // Check if channel has pinned message
         if (channel && channel.pinnedMessage) {
-            document.getElementById('chatPinnedText')?.textContent = channel.pinnedMessage;
+            document.getElementById('chatPinnedText').textContent = channel.pinnedMessage;
             bar.classList.add('visible');
         } else {
             bar.classList.remove('visible');

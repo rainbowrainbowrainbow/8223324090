@@ -296,7 +296,7 @@ function handleError(context, error) {
 
 function showWarning(text) {
     const banner = document.getElementById('warningBanner');
-    document.getElementById('warningText')?.textContent = text;
+    document.getElementById('warningText').textContent = text;
     banner.classList.remove('hidden');
     banner.classList.add('danger');
 

@@ -263,8 +263,8 @@
             try {
                 await apiCall('POST', '/music/announcements', body);
                 modal?.classList.add('hidden');
-                document.getElementById('annTitle')?.value = '';
-                document.getElementById('annText')?.value = '';
+                document.getElementById('annTitle').value = '';
+                document.getElementById('annText').value = '';
                 loadAnnouncements();
             } catch (err) {
                 alert('Помилка: ' + (err.message || ''));
@@ -355,8 +355,8 @@
             try {
                 await apiCall('POST', '/music/projects', body);
                 modal?.classList.add('hidden');
-                document.getElementById('projName')?.value = '';
-                document.getElementById('projDesc')?.value = '';
+                document.getElementById('projName').value = '';
+                document.getElementById('projDesc').value = '';
                 loadProjects();
             } catch (err) {
                 alert('Помилка: ' + (err.message || ''));

@@ -153,7 +153,7 @@ async function initPage() {
     }
 
     AppState.currentUser = user;
-    document.getElementById('currentUser')?.textContent = user.name;
+    document.getElementById('currentUser').textContent = user.name;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     canManage = MANAGE_ROLES.includes(user.role);
@@ -221,11 +221,10 @@ async function loadToday() {
 function renderToday(data) {
     const today = new Date();
     const dayName = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П\'ятниця', 'Субота'][today.getDay()];
-    document.getElementById('todayDate')?.textContent =
-        `${dayName}, ${today.getDate()} ${MONTHS_UK[today.getMonth()]} ${today.getFullYear()}`;
+    document.getElementById('todayDate').textContent =         `${dayName}, ${today.getDate()} ${MONTHS_UK[today.getMonth()]} ${today.getFullYear()}`;
 
     const s = data.summary;
-    document.getElementById('todaySummary')?.innerHTML = `
+    document.getElementById('todaySummary').innerHTML = `
         <div class="hr-summary-card green"><div class="value">${s.present}</div><div class="label">На роботі</div></div>
         <div class="hr-summary-card yellow"><div class="value">${s.late}</div><div class="label">Запізнились</div></div>
         <div class="hr-summary-card red"><div class="value">${s.absent}</div><div class="label">Відсутні</div></div>
@@ -398,10 +397,10 @@ function openCorrectionModal(staffId) {
         showNotification('Немає запису для корекції', 'error');
         return;
     }
-    document.getElementById('corrRecordId')?.value = item.record.id;
-    document.getElementById('corrClockIn')?.value = item.record.clock_in ? fmtTimeFromISO(item.record.clock_in) : '';
-    document.getElementById('corrClockOut')?.value = item.record.clock_out ? fmtTimeFromISO(item.record.clock_out) : '';
-    document.getElementById('corrNotes')?.value = '';
+    document.getElementById('corrRecordId').value = item.record.id;
+    document.getElementById('corrClockIn').value = item.record.clock_in ? fmtTimeFromISO(item.record.clock_in) : '';
+    document.getElementById('corrClockOut').value = item.record.clock_out ? fmtTimeFromISO(item.record.clock_out) : '';
+    document.getElementById('corrNotes').value = '';
     document.getElementById('correctionModal')?.style.display = 'flex';
 }
 
@@ -495,11 +494,9 @@ function renderSchedule(dates) {
     // Update label
     if (scheduleView === 'week') {
         const sun = dates[6];
-        document.getElementById('schedLabel')?.textContent =
-            `Тиждень ${dates[0].getDate()}–${sun.getDate()} ${MONTHS_UK[sun.getMonth()]} ${sun.getFullYear()}`;
+        document.getElementById('schedLabel').textContent =             `Тиждень ${dates[0].getDate()}–${sun.getDate()} ${MONTHS_UK[sun.getMonth()]} ${sun.getFullYear()}`;
     } else {
-        document.getElementById('schedLabel')?.textContent =
-            `${MONTHS_SHORT[scheduleWeekStart.getMonth()]} ${scheduleWeekStart.getFullYear()}`;
+        document.getElementById('schedLabel').textContent =             `${MONTHS_SHORT[scheduleWeekStart.getMonth()]} ${scheduleWeekStart.getFullYear()}`;
     }
 
     // Build shift lookup: staffId_date → shift
@@ -557,26 +554,26 @@ function openShiftModal(staffId, date) {
     editingShift = { staffId, date, existing };
 
     const staff = scheduleStaff.find(s => s.id === staffId);
-    document.getElementById('shiftModalTitle')?.textContent = existing
+    document.getElementById('shiftModalTitle').textContent = existing
         ? `Редагувати зміну — ${staff?.name || ''}`
         : `Додати зміну — ${staff?.name || ''}`;
 
     if (existing) {
-        document.getElementById('shiftStart')?.value = fmtTime(existing.planned_start);
-        document.getElementById('shiftEnd')?.value = fmtTime(existing.planned_end);
-        document.getElementById('shiftType')?.value = existing.shift_type || 'regular';
-        document.getElementById('shiftBreak')?.value = existing.break_minutes || 30;
-        document.getElementById('shiftNotes')?.value = existing.notes || '';
+        document.getElementById('shiftStart').value = fmtTime(existing.planned_start);
+        document.getElementById('shiftEnd').value = fmtTime(existing.planned_end);
+        document.getElementById('shiftType').value = existing.shift_type || 'regular';
+        document.getElementById('shiftBreak').value = existing.break_minutes || 30;
+        document.getElementById('shiftNotes').value = existing.notes || '';
         document.getElementById('shiftDelete')?.style.display = '';
     } else {
         // Use selected template
         const tplId = document.getElementById('templateSelect')?.value;
         const tpl = shiftTemplates.find(t => t.id === parseInt(tplId));
-        document.getElementById('shiftStart')?.value = tpl ? fmtTime(tpl.planned_start) : '12:00';
-        document.getElementById('shiftEnd')?.value = tpl ? fmtTime(tpl.planned_end) : '20:00';
-        document.getElementById('shiftType')?.value = tpl ? tpl.shift_type : 'regular';
-        document.getElementById('shiftBreak')?.value = tpl ? tpl.break_minutes : 30;
-        document.getElementById('shiftNotes')?.value = '';
+        document.getElementById('shiftStart').value = tpl ? fmtTime(tpl.planned_start) : '12:00';
+        document.getElementById('shiftEnd').value = tpl ? fmtTime(tpl.planned_end) : '20:00';
+        document.getElementById('shiftType').value = tpl ? tpl.shift_type : 'regular';
+        document.getElementById('shiftBreak').value = tpl ? tpl.break_minutes : 30;
+        document.getElementById('shiftNotes').value = '';
         document.getElementById('shiftDelete')?.style.display = 'none';
     }
 
@@ -744,18 +741,18 @@ function openStaffEdit(staffId) {
     const s = teamStaff.find(st => st.id === staffId);
     if (!s) return;
 
-    document.getElementById('editStaffId')?.value = staffId;
-    document.getElementById('editRoleType')?.value = s.role_type || 'animator';
-    document.getElementById('editPhone')?.value = s.phone || '';
-    document.getElementById('editBirthDate')?.value = s.birth_date ? s.birth_date.substring(0, 10) : '';
-    document.getElementById('editEmergencyContact')?.value = s.emergency_contact || '';
-    document.getElementById('editEmergencyPhone')?.value = s.emergency_phone || '';
-    document.getElementById('editHourlyRate')?.value = s.hourly_rate || 0;
-    document.getElementById('editTelegramId')?.value = s.telegram_id || '';
-    document.getElementById('editTelegramUsername')?.value = s.telegram_username || '';
-    document.getElementById('editContractType')?.value = s.contract_type || 'parttime';
-    document.getElementById('editSkills')?.value = (s.skills || []).join(', ');
-    document.getElementById('editNotes')?.value = s.notes || '';
+    document.getElementById('editStaffId').value = staffId;
+    document.getElementById('editRoleType').value = s.role_type || 'animator';
+    document.getElementById('editPhone').value = s.phone || '';
+    document.getElementById('editBirthDate').value = s.birth_date ? s.birth_date.substring(0, 10) : '';
+    document.getElementById('editEmergencyContact').value = s.emergency_contact || '';
+    document.getElementById('editEmergencyPhone').value = s.emergency_phone || '';
+    document.getElementById('editHourlyRate').value = s.hourly_rate || 0;
+    document.getElementById('editTelegramId').value = s.telegram_id || '';
+    document.getElementById('editTelegramUsername').value = s.telegram_username || '';
+    document.getElementById('editContractType').value = s.contract_type || 'parttime';
+    document.getElementById('editSkills').value = (s.skills || []).join(', ');
+    document.getElementById('editNotes').value = s.notes || '';
 
     document.getElementById('staffEditModal')?.style.display = 'flex';
 }
@@ -828,7 +825,7 @@ function renderReports(data) {
     const totalScheduled = rows.reduce((a, r) => a + r.days_scheduled, 0);
     const attendanceRate = totalScheduled > 0 ? Math.round(totalPresent / totalScheduled * 100) : 0;
 
-    document.getElementById('reportSummary')?.innerHTML = `
+    document.getElementById('reportSummary').innerHTML = `
         <div class="hr-report-stat"><div class="stat-value">${attendanceRate}%</div><div class="stat-label">Присутність</div></div>
         <div class="hr-report-stat"><div class="stat-value">${totalLate}</div><div class="stat-label">Запізнень</div></div>
         <div class="hr-report-stat"><div class="stat-value">${totalAbsent}</div><div class="stat-label">Відсутностей</div></div>
@@ -836,11 +833,11 @@ function renderReports(data) {
     `;
 
     // Table
-    document.getElementById('reportHead')?.innerHTML = `<tr>
+    document.getElementById('reportHead').innerHTML = `<tr>
         <th>ПІБ</th><th>Зміни</th><th>Відпрац.</th><th>Запізн.</th>
         <th>Сер. запізн.</th><th>Годин</th><th>Сума</th></tr>`;
 
-    document.getElementById('reportBody')?.innerHTML = rows.map(r => `<tr>
+    document.getElementById('reportBody').innerHTML = rows.map(r => `<tr>
         <td>${escapeHtml(r.staff_name)}</td>
         <td class="num">${r.days_scheduled}</td>
         <td class="num">${r.days_worked}</td>
@@ -1293,7 +1290,7 @@ async function loadSalary() {
 
 function renderSalary(data) {
     const totals = data.totals;
-    document.getElementById('salaryTotals')?.innerHTML = `
+    document.getElementById('salaryTotals').innerHTML = `
         <div class="hr-summary">
             <div class="hr-summary-card"><div class="value">${(totals.total_salary || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Всього</div></div>
             <div class="hr-summary-card green"><div class="value">${(totals.total_base || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Базова</div></div>
@@ -1303,12 +1300,12 @@ function renderSalary(data) {
         </div>
     `;
 
-    document.getElementById('salaryHead')?.innerHTML = `<tr>
+    document.getElementById('salaryHead').innerHTML = `<tr>
         <th>Співробітник</th><th>Роль</th><th>Ставка</th><th>Днів</th><th>Годин</th>
         <th>Базова</th><th>Переробки</th><th>Бонуси</th><th>Утримання</th><th>Всього</th>
     </tr>`;
 
-    document.getElementById('salaryBody')?.innerHTML = data.data.map(s => `<tr>
+    document.getElementById('salaryBody').innerHTML = data.data.map(s => `<tr>
         <td><strong>${escapeHtml(s.staff_name)}</strong></td>
         <td>${ROLE_LABELS[s.role_type] || s.role_type || ''}</td>
         <td>${s.hourly_rate} ₴/год</td>
@@ -1569,7 +1566,7 @@ async function loadVacancies() {
             </div>
         </div>
     `).join('');
-    document.getElementById('vacStatusFilter')?.onchange = loadVacancies;
+    document.getElementById('vacStatusFilter').onchange = loadVacancies;
 }
 
 async function patchVacancy(id, status) {
@@ -1579,11 +1576,11 @@ async function patchVacancy(id, status) {
 
 async function openCandidates(vacancyId, title) {
     currentVacancyId = vacancyId;
-    document.getElementById('candidatesTitle')?.textContent = `Кандидати: ${title}`;
+    document.getElementById('candidatesTitle').textContent = `Кандидати: ${title}`;
     document.getElementById('candidatesSection')?.style.display = 'block';
     document.getElementById('candidatesSection')?.scrollIntoView({ behavior: 'smooth' });
     await refreshCandidates();
-    document.getElementById('btnAddCandidate')?.onclick = () => addCandidatePrompt(vacancyId);
+    document.getElementById('btnAddCandidate').onclick = () => addCandidatePrompt(vacancyId);
 }
 
 async function refreshCandidates() {

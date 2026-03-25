@@ -302,10 +302,10 @@ const ReportsPage = (() => {
         const inc = today?.income || 0;
         const exp = today?.expense || 0;
 
-        document.getElementById('sumIncome')?.textContent = formatAmount(inc);
-        document.getElementById('sumExpense')?.textContent = formatAmount(exp);
-        document.getElementById('sumProfit')?.textContent = formatAmount(inc - exp);
-        document.getElementById('sumPending')?.textContent = today?.newReports || _summary.statuses?.new || 0;
+        document.getElementById('sumIncome').textContent = formatAmount(inc);
+        document.getElementById('sumExpense').textContent = formatAmount(exp);
+        document.getElementById('sumProfit').textContent = formatAmount(inc - exp);
+        document.getElementById('sumPending').textContent = today?.newReports || _summary.statuses?.new || 0;
     }
 
     // ==========================================
@@ -669,12 +669,12 @@ const ReportsPage = (() => {
         _editingId = report?.id || null;
         _modalHashtags = report?.hashtags ? [...report.hashtags] : [];
 
-        document.getElementById('reportModalTitle')?.textContent = _editingId ? 'Редагувати звіт' : 'Додати звіт вручну';
-        document.getElementById('reportType')?.value = report?.type || 'expense';
-        document.getElementById('reportAmount')?.value = report?.amount || '';
-        document.getElementById('reportDescription')?.value = report?.description || '';
-        document.getElementById('reportCategory')?.value = report?.category || '';
-        document.getElementById('reportEditId')?.value = _editingId || '';
+        document.getElementById('reportModalTitle').textContent = _editingId ? 'Редагувати звіт' : 'Додати звіт вручну';
+        document.getElementById('reportType').value = report?.type || 'expense';
+        document.getElementById('reportAmount').value = report?.amount || '';
+        document.getElementById('reportDescription').value = report?.description || '';
+        document.getElementById('reportCategory').value = report?.category || '';
+        document.getElementById('reportEditId').value = _editingId || '';
 
         renderModalHashtags();
 
@@ -782,16 +782,16 @@ const ReportsPage = (() => {
     }
 
     function resetFilters() {
-        document.getElementById('periodFilter')?.value = 'month';
+        document.getElementById('periodFilter').value = 'month';
         document.getElementById('dateFromFilter')?.style.display = 'none';
         document.getElementById('dateToFilter')?.style.display = 'none';
-        document.getElementById('dateFromFilter')?.value = '';
-        document.getElementById('dateToFilter')?.value = '';
-        document.getElementById('typeFilter')?.value = '';
-        document.getElementById('statusFilter')?.value = '';
-        document.getElementById('submittedByFilter')?.value = '';
-        document.getElementById('categoryFilter')?.value = '';
-        document.getElementById('hashtagFilter')?.value = '';
+        document.getElementById('dateFromFilter').value = '';
+        document.getElementById('dateToFilter').value = '';
+        document.getElementById('typeFilter').value = '';
+        document.getElementById('statusFilter').value = '';
+        document.getElementById('submittedByFilter').value = '';
+        document.getElementById('categoryFilter').value = '';
+        document.getElementById('hashtagFilter').value = '';
         _page = 1;
         loadReports();
         loadSummary();

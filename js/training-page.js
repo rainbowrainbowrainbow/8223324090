@@ -61,10 +61,10 @@
             const res = await fetch(API + '/api/training/overview-stats', { headers });
             if (!res.ok) return;
             const data = await res.json();
-            document.getElementById('statArticles')?.textContent = data.totalArticles || 0;
-            document.getElementById('statTests')?.textContent = data.totalTests || 0;
-            document.getElementById('statRead')?.textContent = data.readByUser || 0;
-            document.getElementById('statPassed')?.textContent = data.passedByUser || 0;
+            document.getElementById('statArticles').textContent = data.totalArticles || 0;
+            document.getElementById('statTests').textContent = data.totalTests || 0;
+            document.getElementById('statRead').textContent = data.readByUser || 0;
+            document.getElementById('statPassed').textContent = data.passedByUser || 0;
         } catch (e) { console.error('Stats error', e); }
     }
 
@@ -259,7 +259,7 @@
                         modal.querySelectorAll('.quiz-option').forEach(o => o.style.pointerEvents = 'none');
                         opt.classList.add('selected');
 
-                        document.getElementById('quizNext')?.disabled = false;
+                        document.getElementById('quizNext').disabled = false;
                     });
                 });
 

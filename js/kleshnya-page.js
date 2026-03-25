@@ -863,7 +863,7 @@
         if (user) {
             try {
                 var parsed = JSON.parse(user);
-                document.getElementById('currentUser')?.textContent = parsed.name || parsed.username || '';
+                document.getElementById('currentUser').textContent = parsed.name || parsed.username || '';
             } catch (e) {}
         }
 

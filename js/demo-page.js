@@ -107,7 +107,7 @@ function setupTabs() {
 async function loadOverview() {
     const data = await apiGet('/demo/overview');
     if (!data?.success) {
-        document.getElementById('demoStats')?.innerHTML = '<div class="demo-empty">Помилка</div>';
+        document.getElementById('demoStats').innerHTML = '<div class="demo-empty">Помилка</div>';
         return;
     }
     overviewData = data;
@@ -155,7 +155,7 @@ function renderStats(data) {
 async function loadScenarios() {
     const data = await apiGet('/demo/scenarios');
     if (!data?.success) {
-        document.getElementById('scenariosGrid')?.innerHTML = '<div class="demo-empty">Помилка</div>';
+        document.getElementById('scenariosGrid').innerHTML = '<div class="demo-empty">Помилка</div>';
         return;
     }
     scenarios = data.scenarios || [];
@@ -205,7 +205,7 @@ async function startScenario(scenarioId) {
 
     const steps = typeof scenario.steps === 'string' ? JSON.parse(scenario.steps) : (scenario.steps || []);
 
-    document.getElementById('playerTitle')?.textContent = `${scenario.icon} ${scenario.title}`;
+    document.getElementById('playerTitle').textContent = `${scenario.icon} ${scenario.title}`;
     renderPlayer(steps);
     document.getElementById('playerModal')?.classList.remove('hidden');
 }
@@ -287,7 +287,7 @@ async function updateSessionStep() {
 async function loadPackages() {
     const data = await apiGet('/packages');
     if (!data?.success) {
-        document.getElementById('packagesGrid')?.innerHTML = '<div class="demo-empty">Помилка</div>';
+        document.getElementById('packagesGrid').innerHTML = '<div class="demo-empty">Помилка</div>';
         return;
     }
     packages = data.packages || [];
@@ -351,7 +351,7 @@ function renderPackages(pkgs) {
 async function loadFlags() {
     const data = await apiGet('/packages/flags/all');
     if (!data?.success) {
-        document.getElementById('flagsList')?.innerHTML = '<div class="demo-empty">Помилка</div>';
+        document.getElementById('flagsList').innerHTML = '<div class="demo-empty">Помилка</div>';
         return;
     }
     flags = data.flags || [];
@@ -406,7 +406,7 @@ async function toggleDemoMode(enabled) {
         showNotification(`Demo-режим ${enabled ? 'увімкнено' : 'вимкнено'}`, 'success');
     } else {
         showNotification(result.error || 'Помилка', 'error');
-        document.getElementById('demoToggle')?.checked = !enabled;
+        document.getElementById('demoToggle').checked = !enabled;
     }
 }
 

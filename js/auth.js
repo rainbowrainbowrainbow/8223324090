@@ -1087,8 +1087,8 @@ async function profileChangePassword() {
     if (result.success) {
         okEl.textContent = 'Пароль змінено!';
         okEl.classList.remove('hidden');
-        document.getElementById('profileCurrentPwd')?.value = '';
-        document.getElementById('profileNewPwd')?.value = '';
+        document.getElementById('profileCurrentPwd').value = '';
+        document.getElementById('profileNewPwd').value = '';
         setTimeout(() => {
             document.getElementById('profilePasswordForm')?.classList.add('hidden');
             okEl.classList.add('hidden');

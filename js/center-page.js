@@ -2013,7 +2013,7 @@ async function sendReportToTelegram() {
 async function loadOverview() {
     const data = await apiCenterOverview();
     if (!data || !data.success) {
-        document.getElementById('kpiGrid')?.innerHTML = '<div class="center-empty">Помилка завантаження</div>';
+        document.getElementById('kpiGrid').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
         return;
     }
     centerData = data;
@@ -2029,18 +2029,18 @@ async function loadWorkers() {
         if (data.success) {
             renderWorkers(data.workers);
         } else {
-            document.getElementById('workersGrid')?.innerHTML = '<div class="center-empty">Помилка завантаження</div>';
+            document.getElementById('workersGrid').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
         }
     } catch (err) {
         console.error('Load workers error:', err);
-        document.getElementById('workersGrid')?.innerHTML = '<div class="center-empty">Помилка завантаження</div>';
+        document.getElementById('workersGrid').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
     }
 }
 
 async function loadPrices() {
     const data = await apiCenterPrices();
     if (!data || !data.success) {
-        document.getElementById('pricesContent')?.innerHTML = '<div class="center-empty">Помилка завантаження цін</div>';
+        document.getElementById('pricesContent').innerHTML = '<div class="center-empty">Помилка завантаження цін</div>';
         return;
     }
     pricesData = data.prices || [];
@@ -2050,7 +2050,7 @@ async function loadPrices() {
 async function loadTasks() {
     const data = await apiCenterTasks();
     if (!data || !data.success) {
-        document.getElementById('tasksList')?.innerHTML = '<div class="center-empty">Помилка завантаження задач</div>';
+        document.getElementById('tasksList').innerHTML = '<div class="center-empty">Помилка завантаження задач</div>';
         return;
     }
     tasksData = data.tasks || [];
@@ -2060,7 +2060,7 @@ async function loadTasks() {
 async function loadReport() {
     const data = await apiCenterReport();
     if (!data || !data.success) {
-        document.getElementById('reportContent')?.innerHTML = '<div class="center-empty">Помилка завантаження звіту</div>';
+        document.getElementById('reportContent').innerHTML = '<div class="center-empty">Помилка завантаження звіту</div>';
         return;
     }
     renderReport(data.report);
@@ -2115,7 +2115,7 @@ async function loadGoals() {
     if (data.success) {
         renderGoals(data.goals, centerData?.kpi);
     } else {
-        document.getElementById('goalsContent')?.innerHTML = '<div class="center-empty">Помилка завантаження</div>';
+        document.getElementById('goalsContent').innerHTML = '<div class="center-empty">Помилка завантаження</div>';
     }
 }
 
@@ -2124,7 +2124,7 @@ async function loadBriefing() {
     if (data.success) {
         renderBriefing(data.briefing);
     } else {
-        document.getElementById('briefingContent')?.innerHTML = '<div class="center-empty">Помилка</div>';
+        document.getElementById('briefingContent').innerHTML = '<div class="center-empty">Помилка</div>';
     }
 }
 
@@ -2138,7 +2138,7 @@ async function loadProgramPerformance() {
     if (data.success) {
         renderProgramPerformance(data);
     } else {
-        document.getElementById('perfContent')?.innerHTML = '<div class="center-empty">Помилка</div>';
+        document.getElementById('perfContent').innerHTML = '<div class="center-empty">Помилка</div>';
     }
 }
 
@@ -2147,7 +2147,7 @@ async function loadHeatmap() {
     if (data.success) {
         renderHeatmap(data);
     } else {
-        document.getElementById('heatmapContent')?.innerHTML = '<div class="center-empty">Помилка</div>';
+        document.getElementById('heatmapContent').innerHTML = '<div class="center-empty">Помилка</div>';
     }
 }
 
@@ -2156,7 +2156,7 @@ async function loadCrossSell() {
     if (data.success) {
         renderCrossSell(data);
     } else {
-        document.getElementById('crossSellContent')?.innerHTML = '<div class="center-empty">Помилка</div>';
+        document.getElementById('crossSellContent').innerHTML = '<div class="center-empty">Помилка</div>';
     }
 }
 

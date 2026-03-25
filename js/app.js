@@ -205,7 +205,7 @@ function initAuthListeners() {
         e.preventDefault();
         const result = await login(document.getElementById('username')?.value, document.getElementById('password')?.value);
         if (!result.success) {
-            document.getElementById('loginError')?.textContent = result.error || 'Невірний логін або пароль';
+            document.getElementById('loginError').textContent = result.error || 'Невірний логін або пароль';
         }
     });
     document.getElementById('logoutBtn')?.addEventListener('click', logout);
@@ -241,7 +241,7 @@ function initTimelineListeners() {
     if (todayBtn) {
         todayBtn.addEventListener('click', () => {
             AppState.selectedDate = new Date();
-            document.getElementById('timelineDate')?.value = formatDate(AppState.selectedDate);
+            document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
             renderTimeline();
         });
     }
@@ -305,10 +305,10 @@ function initTimelineListeners() {
     if (historyFilterApply) historyFilterApply.addEventListener('click', () => { historyCurrentOffset = 0; loadHistoryPage(); });
     const historyFilterReset = document.getElementById('historyFilterReset');
     if (historyFilterReset) historyFilterReset.addEventListener('click', () => {
-        document.getElementById('historyFilterAction')?.value = '';
-        document.getElementById('historyFilterUser')?.value = '';
-        document.getElementById('historyFilterFrom')?.value = '';
-        document.getElementById('historyFilterTo')?.value = '';
+        document.getElementById('historyFilterAction').value = '';
+        document.getElementById('historyFilterUser').value = '';
+        document.getElementById('historyFilterFrom').value = '';
+        document.getElementById('historyFilterTo').value = '';
         historyCurrentOffset = 0;
         loadHistoryPage();
     });
@@ -334,7 +334,7 @@ function initBookingFormListeners() {
     const editLineNameSelect = document.getElementById('editLineNameSelect');
     if (editLineNameSelect) {
         editLineNameSelect.addEventListener('change', (e) => {
-            if (e.target.value) document.getElementById('editLineName')?.value = e.target.value;
+            if (e.target.value) document.getElementById('editLineName').value = e.target.value;
         });
     }
 

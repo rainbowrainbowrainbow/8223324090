@@ -101,7 +101,7 @@ async function initPage() {
     }
 
     AppState.currentUser = user;
-    document.getElementById('currentUser')?.textContent = user.name;
+    document.getElementById('currentUser').textContent = user.name;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
     document.getElementById('logoutBtn')?.addEventListener('click', () => {
@@ -318,8 +318,8 @@ async function loadMyPoints() {
     const points = await apiGetMyPoints(username);
     const bar = document.getElementById('pointsBar');
     if (points && bar) {
-        document.getElementById('pointsPermanent')?.textContent = points.permanent_points || 0;
-        document.getElementById('pointsMonthly')?.textContent = points.monthly_points || 0;
+        document.getElementById('pointsPermanent').textContent = points.permanent_points || 0;
+        document.getElementById('pointsMonthly').textContent = points.monthly_points || 0;
         bar.style.display = '';
     }
 }
@@ -339,9 +339,9 @@ function updateCounts() {
     const weekTasks = active.filter(t => t.date >= week.from && t.date <= week.to);
     const myTasks = active.filter(t => t.assigned_to && t.assigned_to === username);
 
-    document.getElementById('countToday')?.textContent = todayTasks.length;
-    document.getElementById('countWeek')?.textContent = weekTasks.length;
-    document.getElementById('countMy')?.textContent = myTasks.length;
+    document.getElementById('countToday').textContent = todayTasks.length;
+    document.getElementById('countWeek').textContent = weekTasks.length;
+    document.getElementById('countMy').textContent = myTasks.length;
 }
 
 function renderBoard() {
@@ -560,8 +560,8 @@ async function addTask() {
 
     const result = await apiCreateTask(data);
     if (result && result.success) {
-        document.getElementById('taskTitle')?.value = '';
-        if (document.getElementById('taskDeadlineTime')) document.getElementById('taskDeadlineTime')?.value = '';
+        document.getElementById('taskTitle').value = '';
+        if (document.getElementById('taskDeadlineTime')) document.getElementById('taskDeadlineTime').value = '';
         showNotification('Задачу додано', 'success');
         await loadAllTasks();
     } else {
@@ -655,8 +655,8 @@ async function addTemplate() {
 
     const result = await apiCreateTemplate({ title, recurrencePattern, recurrenceDays, priority, assignedTo, category });
     if (result && result.success) {
-        document.getElementById('tplTitle')?.value = '';
-        document.getElementById('tplDays')?.value = '';
+        document.getElementById('tplTitle').value = '';
+        document.getElementById('tplDays').value = '';
         showNotification('Шаблон додано', 'success');
         await loadTemplates();
     } else {
@@ -689,7 +689,7 @@ function updateBulkSelection() {
     if (!toolbar) return;
     if (ids.length > 0) {
         toolbar.style.display = 'flex';
-        document.getElementById('bulkCount')?.textContent = ids.length + ' обрано';
+        document.getElementById('bulkCount').textContent = ids.length + ' обрано';
     } else {
         toolbar.style.display = 'none';
     }

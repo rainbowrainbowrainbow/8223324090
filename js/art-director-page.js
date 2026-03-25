@@ -195,7 +195,7 @@ function lazyLoadIframe(tabName) {
 async function loadOverview() {
     const data = await apiGet('/overview');
     if (!data || !data.success) {
-        document.getElementById('overviewStats')?.innerHTML = '<div class="artdir-empty">Помилка завантаження</div>';
+        document.getElementById('overviewStats').innerHTML = '<div class="artdir-empty">Помилка завантаження</div>';
         return;
     }
     overviewData = data;
@@ -279,7 +279,7 @@ async function loadPipeline() {
 
     const data = await apiGet(`/content${query}`);
     if (!data || !data.success) {
-        document.getElementById('pipelineKanban')?.innerHTML = '<div class="artdir-empty">Помилка завантаження</div>';
+        document.getElementById('pipelineKanban').innerHTML = '<div class="artdir-empty">Помилка завантаження</div>';
         return;
     }
     contentItems = data.items || [];
@@ -383,7 +383,7 @@ async function openContentDetail(id) {
     const history = historyData?.history || [];
 
     const modal = document.getElementById('detailModal');
-    document.getElementById('detailModalTitle')?.textContent = detail.title;
+    document.getElementById('detailModalTitle').textContent = detail.title;
 
     const fieldValues = typeof detail.field_values === 'string'
         ? JSON.parse(detail.field_values || '{}')
@@ -421,7 +421,7 @@ async function openContentDetail(id) {
         </div>`;
     }
 
-    document.getElementById('detailContent')?.innerHTML = `
+    document.getElementById('detailContent').innerHTML = `
         <div style="display:flex; flex-direction:column; gap:8px;">
             <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
                 <span class="status-badge status-${detail.status}">${STATUS_EMOJIS[detail.status]} ${STATUS_LABELS[detail.status]}</span>
@@ -484,7 +484,7 @@ async function deleteContent(id) {
 
 function openCreateContent() {
     editingContentId = null;
-    document.getElementById('contentModalTitle')?.textContent = 'Новий контент';
+    document.getElementById('contentModalTitle').textContent = 'Новий контент';
     document.getElementById('contentForm')?.reset();
     document.getElementById('templateFieldsContainer')?.style.display = 'none';
     populateTemplateSelect();
@@ -496,17 +496,17 @@ function openEditContent(id) {
     if (!item) return;
 
     editingContentId = id;
-    document.getElementById('contentModalTitle')?.textContent = 'Редагувати контент';
-    document.getElementById('contentTitle')?.value = item.title || '';
-    document.getElementById('contentCategory')?.value = item.category || 'poster';
-    document.getElementById('contentPriority')?.value = item.priority || 'normal';
-    document.getElementById('contentDueDate')?.value = item.due_date || '';
-    document.getElementById('contentAssignee')?.value = item.assigned_to || '';
-    document.getElementById('contentNotes')?.value = item.notes || '';
+    document.getElementById('contentModalTitle').textContent = 'Редагувати контент';
+    document.getElementById('contentTitle').value = item.title || '';
+    document.getElementById('contentCategory').value = item.category || 'poster';
+    document.getElementById('contentPriority').value = item.priority || 'normal';
+    document.getElementById('contentDueDate').value = item.due_date || '';
+    document.getElementById('contentAssignee').value = item.assigned_to || '';
+    document.getElementById('contentNotes').value = item.notes || '';
 
     populateTemplateSelect();
     if (item.template_id) {
-        document.getElementById('contentTemplate')?.value = item.template_id;
+        document.getElementById('contentTemplate').value = item.template_id;
         showTemplateFields(item.template_id, item.field_values);
     }
 
@@ -603,7 +603,7 @@ async function loadTemplates() {
     const query = templateCategoryFilter ? `?category=${templateCategoryFilter}` : '';
     const data = await apiGet(`/templates${query}`);
     if (!data || !data.success) {
-        document.getElementById('templatesGrid')?.innerHTML = '<div class="artdir-empty">Помилка завантаження шаблонів</div>';
+        document.getElementById('templatesGrid').innerHTML = '<div class="artdir-empty">Помилка завантаження шаблонів</div>';
         return;
     }
     templates = data.templates || [];
@@ -642,12 +642,12 @@ function useTemplate(templateId) {
     const tpl = templates.find(t => t.id === templateId);
     if (!tpl) return;
 
-    document.getElementById('contentModalTitle')?.textContent = `Новий: ${tpl.name}`;
+    document.getElementById('contentModalTitle').textContent = `Новий: ${tpl.name}`;
     document.getElementById('contentForm')?.reset();
-    document.getElementById('contentCategory')?.value = tpl.category || 'poster';
+    document.getElementById('contentCategory').value = tpl.category || 'poster';
 
     populateTemplateSelect();
-    document.getElementById('contentTemplate')?.value = templateId;
+    document.getElementById('contentTemplate').value = templateId;
     showTemplateFields(templateId, {});
 
     document.getElementById('contentModal')?.classList.remove('hidden');
@@ -660,7 +660,7 @@ function useTemplate(templateId) {
 async function loadBrand() {
     const data = await apiGet('/brand');
     if (!data || !data.success) {
-        document.getElementById('brandContent')?.innerHTML = '<div class="artdir-empty">Помилка завантаження</div>';
+        document.getElementById('brandContent').innerHTML = '<div class="artdir-empty">Помилка завантаження</div>';
         return;
     }
     brandGuidelines = data.guidelines || [];

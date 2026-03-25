@@ -816,7 +816,7 @@ const DashboardPage = (() => {
         grid.insertBefore(devTools, grid.firstChild);
 
         if (currentTestRole) {
-            document.getElementById('testRoleSelect')?.value = currentTestRole;
+            document.getElementById('testRoleSelect').value = currentTestRole;
         }
 
         // Load users for impersonation dropdown

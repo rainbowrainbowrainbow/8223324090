@@ -65,7 +65,7 @@ let editTags = [];
         const data = await res.json();
         const user = data.user || data;
         AppState.currentUser = user;
-        document.getElementById('currentUser')?.textContent = user.name || user.username;
+        document.getElementById('currentUser').textContent = user.name || user.username;
     } catch {
         if (isEmbedded) {
             // In embed mode, still show content — API calls use token from localStorage
@@ -188,7 +188,7 @@ async function loadDesigns(append = false) {
     currentOffset = designs.length;
 
     renderDesignGrid();
-    document.getElementById('countDesigns')?.textContent = totalDesigns;
+    document.getElementById('countDesigns').textContent = totalDesigns;
     document.getElementById('loadMore')?.style.display = currentOffset < totalDesigns ? '' : 'none';
 }
 
@@ -196,7 +196,7 @@ async function loadCollections() {
     const res = await apiFetch(`${API}/collections`);
     if (!res) return;
     collections = await res.json();
-    document.getElementById('countCollections')?.textContent = collections.length;
+    document.getElementById('countCollections').textContent = collections.length;
 }
 
 async function loadTags() {
@@ -453,7 +453,7 @@ function openLightbox(id) {
     const img = document.getElementById('lightboxImg');
     img.onerror = () => { img.src = '/images/favicon-512.png'; };
     img.src = `/uploads/designs/${d.filename}`;
-    document.getElementById('lightboxInfo')?.textContent = d.title || d.originalName;
+    document.getElementById('lightboxInfo').textContent = d.title || d.originalName;
     lb.classList.add('visible');
 }
 window.openLightbox = openLightbox;
@@ -530,7 +530,7 @@ function renderEditTags() {
 function showTagAutocomplete(matches) {
     const ac = document.getElementById('tagAutocomplete');
     ac.innerHTML = matches.map(m =>
-        `<div class="tag-autocomplete-item" onmousedown="addEditTag('${esc(m.tag)}'); document.getElementById('editTagInput')?.value=''; hideTagAutocomplete();">#${esc(m.tag)} (${m.count})</div>`
+        `<div class="tag-autocomplete-item" onmousedown="addEditTag('${esc(m.tag)}'); document.getElementById('editTagInput').value = ''; hideTagAutocomplete();">#${esc(m.tag)} (${m.count})</div>`
     ).join('');
     ac.classList.add('visible');
 }
@@ -545,10 +545,10 @@ function openEditModal(id) {
     const d = designs.find(x => x.id === id);
     if (!d) return;
     editingDesignId = id;
-    document.getElementById('editTitle')?.value = d.title || '';
-    document.getElementById('editDescription')?.value = d.description || '';
-    document.getElementById('editCollection')?.value = d.collectionId || '';
-    document.getElementById('editPublishDate')?.value = d.publishDate || '';
+    document.getElementById('editTitle').value = d.title || '';
+    document.getElementById('editDescription').value = d.description || '';
+    document.getElementById('editCollection').value = d.collectionId || '';
+    document.getElementById('editPublishDate').value = d.publishDate || '';
     editTags = [...(d.tags || [])];
     renderEditTags();
     document.getElementById('editOverlay')?.classList.add('visible');
@@ -599,7 +599,7 @@ async function generateDesignImage() {
     const fullPrompt = `Festive event poster for Ukrainian children's park. ${prompt}. Title: "${title}". Colorful, joyful, bright cartoon style.`;
 
     document.getElementById('genProgress')?.style.display = 'block';
-    document.getElementById('genImageBtn')?.disabled = true;
+    document.getElementById('genImageBtn').disabled = true;
     document.getElementById('genPreview')?.style.display = 'none';
 
     try {
@@ -610,7 +610,7 @@ async function generateDesignImage() {
         if (!res || !res.ok) {
             showNotification('Помилка генерації', 'error');
             document.getElementById('genProgress')?.style.display = 'none';
-            document.getElementById('genImageBtn')?.disabled = false;
+            document.getElementById('genImageBtn').disabled = false;
             return;
         }
         const data = await res.json();
@@ -620,12 +620,12 @@ async function generateDesignImage() {
         } else {
             showNotification('Не вдалося створити задачу генерації', 'error');
             document.getElementById('genProgress')?.style.display = 'none';
-            document.getElementById('genImageBtn')?.disabled = false;
+            document.getElementById('genImageBtn').disabled = false;
         }
     } catch (e) {
         showNotification('Помилка: ' + e.message, 'error');
         document.getElementById('genProgress')?.style.display = 'none';
-        document.getElementById('genImageBtn')?.disabled = false;
+        document.getElementById('genImageBtn').disabled = false;
     }
 }
 window.generateDesignImage = generateDesignImage;
@@ -633,8 +633,8 @@ window.generateDesignImage = generateDesignImage;
 function pollImageStatus(taskId, attempt) {
     attempt = attempt || 0;
     if (attempt > 30) {
-        document.getElementById('genProgress')?.textContent = 'Таймаут генерації. Спробуйте знову.';
-        document.getElementById('genImageBtn')?.disabled = false;
+        document.getElementById('genProgress').textContent = 'Таймаут генерації. Спробуйте знову.';
+        document.getElementById('genImageBtn').disabled = false;
         return;
     }
     genPollingTimer = setTimeout(async () => {
@@ -645,14 +645,14 @@ function pollImageStatus(taskId, attempt) {
             if (data.status === 'completed' || data.output?.image_url) {
                 const imgUrl = data.output?.image_url || data.imageUrl || '';
                 document.getElementById('genProgress')?.style.display = 'none';
-                document.getElementById('genImageBtn')?.disabled = false;
+                document.getElementById('genImageBtn').disabled = false;
                 if (imgUrl) {
-                    document.getElementById('genPreview')?.src = imgUrl;
+                    document.getElementById('genPreview').src = imgUrl;
                     document.getElementById('genPreview')?.style.display = 'block';
                 }
                 showNotification('Зображення згенеровано!');
             } else {
-                document.getElementById('genProgress')?.textContent = `⏳ Генеруємо... (${attempt + 1}/30)`;
+                document.getElementById('genProgress').textContent = `⏳ Генеруємо... (${attempt + 1}/30)`;
                 pollImageStatus(taskId, attempt + 1);
             }
         } catch (e) { pollImageStatus(taskId, attempt + 1); }
@@ -673,7 +673,7 @@ function setupCollections() {
                 body: JSON.stringify({ name, color })
             });
             if (res && res.ok) {
-                document.getElementById('newCollectionName')?.value = '';
+                document.getElementById('newCollectionName').value = '';
                 await loadCollections();
                 renderCollections();
                 updateCollectionFilters();
@@ -702,7 +702,7 @@ function renderCollections() {
 
 function filterCollection(id) {
     // Switch to gallery tab filtered by collection
-    document.getElementById('collectionFilter')?.value = id;
+    document.getElementById('collectionFilter').value = id;
     document.querySelectorAll('.design-tab').forEach(t => t.classList.remove('active'));
     const galleryTab = document.querySelector('[data-tab="gallery"]');
     if (galleryTab) galleryTab.classList.add('active');
@@ -817,7 +817,7 @@ async function renderCalendar() {
 
     const monthNames = ['Січень', 'Лютий', 'Березень', 'Квітень', 'Травень', 'Червень',
                         'Липень', 'Серпень', 'Вересень', 'Жовтень', 'Листопад', 'Грудень'];
-    document.getElementById('calTitle')?.textContent = `${monthNames[month]} ${year}`;
+    document.getElementById('calTitle').textContent = `${monthNames[month]} ${year}`;
 
     // Load calendar data
     const res = await apiFetch(`${API}/calendar?month=${monthStr}`);
@@ -1077,9 +1077,8 @@ function renderCatalogViewer() {
 function renderCurrentPage() {
     const pkg = catalogPackages[currentCatalogPage];
     if (!pkg) return;
-    document.getElementById('catalogPages')?.innerHTML = buildCatalogPageHtml(pkg);
-    document.getElementById('catalogPageIndicator')?.textContent =
-        `${currentCatalogPage + 1} / ${catalogPackages.length}`;
+    document.getElementById('catalogPages').innerHTML = buildCatalogPageHtml(pkg);
+    document.getElementById('catalogPageIndicator').textContent =         `${currentCatalogPage + 1} / ${catalogPackages.length}`;
 }
 
 function catalogNext() {

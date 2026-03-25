@@ -113,9 +113,9 @@ window.BookingForm = {
      * Reset booking form to initial state
      */
     reset() {
-        document.getElementById('roomSelect')?.value = '';
-        document.getElementById('selectedProgram')?.value = '';
-        document.getElementById('bookingNotes')?.value = '';
+        document.getElementById('roomSelect').value = '';
+        document.getElementById('selectedProgram').value = '';
+        document.getElementById('bookingNotes').value = '';
 
         // v33.3: Reset tags and payment method
         document.querySelectorAll('.booking-tag-option.active').forEach(t => t.classList.remove('active'));

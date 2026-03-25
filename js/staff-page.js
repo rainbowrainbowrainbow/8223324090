@@ -206,7 +206,7 @@ function renderWeekLabel() {
     const from = dates[0];
     const to = dates[6];
     const label = `${from.getDate()} ${MONTHS_UK[from.getMonth()]} — ${to.getDate()} ${MONTHS_UK[to.getMonth()]} ${to.getFullYear()}`;
-    document.getElementById('weekLabel')?.textContent = label;
+    document.getElementById('weekLabel').textContent = label;
 }
 
 function renderSummary() {
@@ -352,11 +352,11 @@ function openEditModal(staffId, date) {
     StaffState.editingCell = { staffId, date };
     const entry = StaffState.schedule[`${staffId}_${date}`];
 
-    document.getElementById('schModalTitle')?.textContent = `${emp.name} — ${date}`;
-    document.getElementById('schStatus')?.value = entry?.status || 'working';
-    document.getElementById('schStart')?.value = entry?.shift_start || '09:00';
-    document.getElementById('schEnd')?.value = entry?.shift_end || '18:00';
-    document.getElementById('schNote')?.value = entry?.note || '';
+    document.getElementById('schModalTitle').textContent = `${emp.name} — ${date}`;
+    document.getElementById('schStatus').value = entry?.status || 'working';
+    document.getElementById('schStart').value = entry?.shift_start || '09:00';
+    document.getElementById('schEnd').value = entry?.shift_end || '18:00';
+    document.getElementById('schNote').value = entry?.note || '';
 
     toggleTimeFields();
     document.getElementById('schModalOverlay')?.classList.add('visible');
@@ -435,10 +435,10 @@ function openFillWeekModal() {
         select.innerHTML += `<option value="${emp.id}">${escapeHtml(emp.name)} — ${escapeHtml(emp.position)}</option>`;
     }
 
-    document.getElementById('fillStatus')?.value = 'working';
-    document.getElementById('fillStart')?.value = '09:00';
-    document.getElementById('fillEnd')?.value = '18:00';
-    document.getElementById('fillNote')?.value = '';
+    document.getElementById('fillStatus').value = 'working';
+    document.getElementById('fillStart').value = '09:00';
+    document.getElementById('fillEnd').value = '18:00';
+    document.getElementById('fillNote').value = '';
     toggleFillTimeFields();
     document.getElementById('fillWeekOverlay')?.classList.add('visible');
 }
@@ -722,7 +722,7 @@ async function initPage() {
     }
 
     AppState.currentUser = user;
-    document.getElementById('currentUser')?.textContent = user.name;
+    document.getElementById('currentUser').textContent = user.name;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];

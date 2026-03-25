@@ -474,15 +474,15 @@ async function showCustomerDetail(id) {
 
 function openEditModal(customer) {
     CrmState.editingId = customer ? customer.id : null;
-    document.getElementById('customerEditTitle')?.textContent = customer ? 'Редагувати клієнта' : 'Новий клієнт';
+    document.getElementById('customerEditTitle').textContent = customer ? 'Редагувати клієнта' : 'Новий клієнт';
 
-    document.getElementById('editName')?.value = customer?.name || '';
-    document.getElementById('editPhone')?.value = customer?.phone || '';
-    document.getElementById('editInstagram')?.value = customer?.instagram || '';
-    document.getElementById('editChildName')?.value = customer?.childName || '';
-    document.getElementById('editChildBirthday')?.value = customer?.childBirthday ? customer.childBirthday.slice(0, 10) : '';
-    document.getElementById('editSource')?.value = customer?.source || '';
-    document.getElementById('editNotes')?.value = customer?.notes || '';
+    document.getElementById('editName').value = customer?.name || '';
+    document.getElementById('editPhone').value = customer?.phone || '';
+    document.getElementById('editInstagram').value = customer?.instagram || '';
+    document.getElementById('editChildName').value = customer?.childName || '';
+    document.getElementById('editChildBirthday').value = customer?.childBirthday ? customer.childBirthday.slice(0, 10) : '';
+    document.getElementById('editSource').value = customer?.source || '';
+    document.getElementById('editNotes').value = customer?.notes || '';
 
     document.getElementById('customerEditModal')?.classList.remove('hidden');
     document.getElementById('editName')?.focus();
@@ -963,7 +963,7 @@ async function initPage() {
     }
 
     AppState.currentUser = user;
-    document.getElementById('currentUser')?.textContent = user.name;
+    document.getElementById('currentUser').textContent = user.name;
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     const canManage = MANAGE_ROLES.includes(user.role);

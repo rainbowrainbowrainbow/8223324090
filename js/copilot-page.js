@@ -888,7 +888,7 @@ const CopilotPage = (() => {
                     <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Швидкі запити:</div>
                     <div class="flex-wrap">
                         ${quickQuestions.map(q => `
-                            <button class="btn-ghost" style="font-size:12px;" onclick="document.getElementById('academyQuestion')?.value=${JSON.stringify(q)}">${escHtml(q)}</button>
+                            <button class="btn-ghost" style="font-size:12px;" onclick="document.getElementById('academyQuestion').value = ${JSON.stringify(q)}">${escHtml(q)}</button>
                         `).join('')}
                     </div>
                 </div>

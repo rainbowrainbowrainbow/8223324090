@@ -533,17 +533,17 @@ async function showCustomerCardModal(leadId) {
     overlay.dataset.leadId = leadId;
 
     // Pre-fill from lead data
-    document.getElementById('ccName')?.value = lead?.client_name || '';
-    document.getElementById('ccPhone')?.value = lead?.phone || '';
-    document.getElementById('ccEmail')?.value = '';
-    document.getElementById('ccChannel')?.value = lead?.source_channel || lead?.source || '';
-    document.getElementById('ccEventType')?.value = lead?.quality_category || '';
-    document.getElementById('ccEventDate')?.value = lead?.event_date ? lead.event_date.split('T')[0] : '';
-    document.getElementById('ccGuestCount')?.value = '';
-    document.getElementById('ccChildrenCount')?.value = lead?.children_count || '';
-    document.getElementById('ccBudget')?.value = '';
-    document.getElementById('ccHowFound')?.value = '';
-    document.getElementById('ccNotes')?.value = '';
+    document.getElementById('ccName').value = lead?.client_name || '';
+    document.getElementById('ccPhone').value = lead?.phone || '';
+    document.getElementById('ccEmail').value = '';
+    document.getElementById('ccChannel').value = lead?.source_channel || lead?.source || '';
+    document.getElementById('ccEventType').value = lead?.quality_category || '';
+    document.getElementById('ccEventDate').value = lead?.event_date ? lead.event_date.split('T')[0] : '';
+    document.getElementById('ccGuestCount').value = '';
+    document.getElementById('ccChildrenCount').value = lead?.children_count || '';
+    document.getElementById('ccBudget').value = '';
+    document.getElementById('ccHowFound').value = '';
+    document.getElementById('ccNotes').value = '';
 
     // Load existing card if any
     try {
@@ -551,15 +551,15 @@ async function showCustomerCardModal(leadId) {
         const data = await res.json();
         if (data.card) {
             const c = data.card;
-            if (c.email) document.getElementById('ccEmail')?.value = c.email;
-            if (c.channel) document.getElementById('ccChannel')?.value = c.channel;
-            if (c.event_type) document.getElementById('ccEventType')?.value = c.event_type;
-            if (c.event_date) document.getElementById('ccEventDate')?.value = c.event_date.split('T')[0];
-            if (c.guest_count) document.getElementById('ccGuestCount')?.value = c.guest_count;
-            if (c.children_count) document.getElementById('ccChildrenCount')?.value = c.children_count;
-            if (c.budget_approx) document.getElementById('ccBudget')?.value = c.budget_approx;
-            if (c.how_found) document.getElementById('ccHowFound')?.value = c.how_found;
-            if (c.notes) document.getElementById('ccNotes')?.value = c.notes;
+            if (c.email) document.getElementById('ccEmail').value = c.email;
+            if (c.channel) document.getElementById('ccChannel').value = c.channel;
+            if (c.event_type) document.getElementById('ccEventType').value = c.event_type;
+            if (c.event_date) document.getElementById('ccEventDate').value = c.event_date.split('T')[0];
+            if (c.guest_count) document.getElementById('ccGuestCount').value = c.guest_count;
+            if (c.children_count) document.getElementById('ccChildrenCount').value = c.children_count;
+            if (c.budget_approx) document.getElementById('ccBudget').value = c.budget_approx;
+            if (c.how_found) document.getElementById('ccHowFound').value = c.how_found;
+            if (c.notes) document.getElementById('ccNotes').value = c.notes;
         }
     } catch(e) { /* ok */ }
 
@@ -618,8 +618,8 @@ function showLostReasonModal(leadId, stage) {
     if (!overlay) return;
     overlay.dataset.leadId = leadId;
     overlay.dataset.stage = stage;
-    document.getElementById('lostReasonSelect')?.value = '';
-    document.getElementById('lostReasonNotes')?.value = '';
+    document.getElementById('lostReasonSelect').value = '';
+    document.getElementById('lostReasonNotes').value = '';
     overlay.classList.add('active');
 }
 
@@ -685,11 +685,11 @@ async function loadMailing() {
 function showAddMailingModal() {
     const overlay = document.getElementById('addMailingModal');
     if (!overlay) return;
-    document.getElementById('mailingName')?.value = '';
-    document.getElementById('mailingPhone')?.value = '';
-    document.getElementById('mailingEmail')?.value = '';
-    document.getElementById('mailingChannel')?.value = '';
-    document.getElementById('mailingNotes')?.value = '';
+    document.getElementById('mailingName').value = '';
+    document.getElementById('mailingPhone').value = '';
+    document.getElementById('mailingEmail').value = '';
+    document.getElementById('mailingChannel').value = '';
+    document.getElementById('mailingNotes').value = '';
     overlay.classList.add('active');
 }
 
@@ -804,16 +804,16 @@ function setupEvents() {
 }
 
 function openAddModal() {
-    document.getElementById('leadModalTitle')?.textContent = 'Новий лід';
-    document.getElementById('leadEditId')?.value = '';
-    document.getElementById('leadName')?.value = '';
-    document.getElementById('leadPhone')?.value = '';
-    document.getElementById('leadInstagram')?.value = '';
-    document.getElementById('leadSource')?.value = '';
-    document.getElementById('leadEventDate')?.value = '';
-    document.getElementById('leadChildrenCount')?.value = '';
-    document.getElementById('leadNotes')?.value = '';
-    document.getElementById('leadAssignedTo')?.value = '';
+    document.getElementById('leadModalTitle').textContent = 'Новий лід';
+    document.getElementById('leadEditId').value = '';
+    document.getElementById('leadName').value = '';
+    document.getElementById('leadPhone').value = '';
+    document.getElementById('leadInstagram').value = '';
+    document.getElementById('leadSource').value = '';
+    document.getElementById('leadEventDate').value = '';
+    document.getElementById('leadChildrenCount').value = '';
+    document.getElementById('leadNotes').value = '';
+    document.getElementById('leadAssignedTo').value = '';
 
     // Hide pipeline/type fields for new lead
     const stageGroup = document.getElementById('leadStageGroup');
@@ -827,23 +827,23 @@ function editLead(id) {
     const lead = leadsData.find(l => l.id === id);
     if (!lead) return;
 
-    document.getElementById('leadModalTitle')?.textContent = 'Редагування ліду';
-    document.getElementById('leadEditId')?.value = id;
-    document.getElementById('leadName')?.value = lead.client_name || '';
-    document.getElementById('leadPhone')?.value = lead.phone || '';
-    document.getElementById('leadInstagram')?.value = lead.instagram || '';
-    document.getElementById('leadSource')?.value = lead.source || '';
-    document.getElementById('leadEventDate')?.value = lead.event_date ? lead.event_date.split('T')[0] : '';
-    document.getElementById('leadChildrenCount')?.value = lead.children_count || '';
-    document.getElementById('leadNotes')?.value = lead.notes || '';
-    document.getElementById('leadAssignedTo')?.value = lead.assigned_to || '';
+    document.getElementById('leadModalTitle').textContent = 'Редагування ліду';
+    document.getElementById('leadEditId').value = id;
+    document.getElementById('leadName').value = lead.client_name || '';
+    document.getElementById('leadPhone').value = lead.phone || '';
+    document.getElementById('leadInstagram').value = lead.instagram || '';
+    document.getElementById('leadSource').value = lead.source || '';
+    document.getElementById('leadEventDate').value = lead.event_date ? lead.event_date.split('T')[0] : '';
+    document.getElementById('leadChildrenCount').value = lead.children_count || '';
+    document.getElementById('leadNotes').value = lead.notes || '';
+    document.getElementById('leadAssignedTo').value = lead.assigned_to || '';
 
     // Show pipeline/type fields for existing lead
     const stageGroup = document.getElementById('leadStageGroup');
     if (stageGroup) {
         stageGroup.style.display = '';
-        document.getElementById('leadPipelineStage')?.value = lead.pipeline_stage || 'new';
-        document.getElementById('leadLeadType')?.value = lead.lead_type || 'quality';
+        document.getElementById('leadPipelineStage').value = lead.pipeline_stage || 'new';
+        document.getElementById('leadLeadType').value = lead.lead_type || 'quality';
     }
 
     modalInitialState = getModalState();

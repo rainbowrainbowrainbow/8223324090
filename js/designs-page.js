@@ -1049,7 +1049,7 @@ async function loadCatalogs() {
 }
 
 function openCatalog(catalogId) {
-    if (catalogId !== 'graduation' || catalogPackages.length === 0) {
+    if (catalogPackages.length === 0) {
         loadCatalogs().then(() => {
             if (catalogPackages.length > 0) renderCatalogViewer();
         });

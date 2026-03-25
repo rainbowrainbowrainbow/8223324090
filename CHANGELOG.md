@@ -4,6 +4,42 @@
 
 ---
 
+## v38.6.0 — Business Logic Hardening + Full System Audit (2026-03-25)
+
+### Booking System Hardening [claude-code]
+- **Status whitelist** — тільки `confirmed`, `preliminary`, `cancelled` приймаються; будь-який інший рядок ігнорується
+- **Cancelled→confirmed blocked** — скасоване бронювання не можна відновити, потрібно створити нове
+- **Midnight span prevention** — бронювання не може перевищувати 00:00 (time + duration > 1440 хв = помилка)
+- **mapBookingRow on payment** — `PATCH /:id/payment` тепер повертає camelCase замість raw snake_case
+
+### Wallet Race Conditions Fixed [claude-code]
+- **Transfer deadlock prevention** — lock обох wallets в порядку ID (менший перший) при переказах
+- **Daily login idempotency** — подвійний guard: перевірка `last_login_reward` + перевірка `coin_transactions` за сьогодні
+
+### Database Migration 126 [claude-code]
+- **5 нових indexes** — `leads(assigned_to)`, `leads(status, created_at)`, `bookings(program_id)`, `finance_transactions(category_id)`, `staff(hire_date)`
+- **FK ON DELETE** — `bookings.customer_id` і `discount_usage.customer_id` → `ON DELETE SET NULL`
+
+### Frontend Fixes [claude-code]
+- **setInterval cleanup** — agents-panel, alerts, status-page: `clearInterval` on `beforeunload`
+- **innerHTML XSS** — escaped user data в hr-page, center-page, chat-page
+- **CSS iOS zoom** — 3 inputs з font-size 13px → 16px (controls.css: timeline-search, night-settings, template-select)
+
+### Code Cleanup [claude-code]
+- **3 unused imports** видалено — `requireRole` з decisions.js, designs.js, points.js
+
+### Testing [claude-code]
+- **+11 нових тестів** (424 → 435): wallet (2), shop (3), minigame (3), booking validation (3)
+
+### System Audit Findings (documented for next session) [claude-code]
+- **29 route files** без dedicated тестів (wallet, shop, minigame, personal-accounts, recurring, chat та інші)
+- **Server startup**: DATABASE_URL missing = тільки warning (має бути fatal)
+- **Graceful shutdown**: не чекає in-flight requests перед закриттям DB pool
+- **Stale data on reconnect**: після тривалого offline клієнт бачить суміш старих і нових даних
+- **Response format inconsistency**: 4 формати pagination, 3 формати errors across routes
+
+---
+
 ## v38.5.0 — Deep QA Sweep (2026-03-25)
 
 ### Security Hardening [claude-code]

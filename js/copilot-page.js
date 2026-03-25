@@ -207,6 +207,7 @@ const CopilotPage = (() => {
         runDebrief, saveDebrief,
         runAcademyQA,
         loadTracker, markFollowupDone, addManualInteraction,
+        showAddInteractionForm, loadTrackerAlerts,
         runMeetingPrep,
         loadPipeline,
         runMessageWriter, copyMessage, resendWriter,

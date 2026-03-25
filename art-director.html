@@ -330,7 +330,7 @@
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -341,13 +341,13 @@
 
                 <!-- Tabs -->
                 <div class="artdir-tabs" id="artdirTabs">
-                    <button class="artdir-tab active" data-tab="overview">Огляд</button>
-                    <button class="artdir-tab" data-tab="pipeline">Конвеєр</button>
-                    <button class="artdir-tab" data-tab="templates">Шаблони</button>
-                    <button class="artdir-tab" data-tab="brand">Brand Book</button>
-                    <button class="artdir-tab" data-tab="programs">Програми</button>
-                    <button class="artdir-tab" data-tab="designs">Дизайни</button>
-                    <button class="artdir-tab" data-tab="graduation">Випускний</button>
+                    <button type="button" class="artdir-tab active" data-tab="overview">Огляд</button>
+                    <button type="button" class="artdir-tab" data-tab="pipeline">Конвеєр</button>
+                    <button type="button" class="artdir-tab" data-tab="templates">Шаблони</button>
+                    <button type="button" class="artdir-tab" data-tab="brand">Brand Book</button>
+                    <button type="button" class="artdir-tab" data-tab="programs">Програми</button>
+                    <button type="button" class="artdir-tab" data-tab="designs">Дизайни</button>
+                    <button type="button" class="artdir-tab" data-tab="graduation">Випускний</button>
                 </div>
 
                 <!-- Tab: Programs (read-only catalog) -->
@@ -405,7 +405,7 @@
                             <option value="low">Низький</option>
                         </select>
                         <input type="text" id="pipelineSearch" aria-label="Пошук..." placeholder="Пошук...">
-                        <button class="btn-create" id="btnCreateContent">+ Створити</button>
+                        <button type="button" class="btn-create" id="btnCreateContent">+ Створити</button>
                     </div>
                     <div class="pipeline-kanban" id="pipelineKanban">
                         <div class="artdir-loading">Завантаження...</div>
@@ -415,12 +415,12 @@
                 <!-- Tab: Templates -->
                 <div class="artdir-tab-content" id="tab-templates">
                     <div class="template-categories" id="templateCategories">
-                        <button class="template-cat-chip active" data-cat="">Всі</button>
-                        <button class="template-cat-chip" data-cat="poster">Афіші</button>
-                        <button class="template-cat-chip" data-cat="social">Соцмережі</button>
-                        <button class="template-cat-chip" data-cat="certificate">Сертифікати</button>
-                        <button class="template-cat-chip" data-cat="banner">Банери</button>
-                        <button class="template-cat-chip" data-cat="print">Друк</button>
+                        <button type="button" class="template-cat-chip active" data-cat="">Всі</button>
+                        <button type="button" class="template-cat-chip" data-cat="poster">Афіші</button>
+                        <button type="button" class="template-cat-chip" data-cat="social">Соцмережі</button>
+                        <button type="button" class="template-cat-chip" data-cat="certificate">Сертифікати</button>
+                        <button type="button" class="template-cat-chip" data-cat="banner">Банери</button>
+                        <button type="button" class="template-cat-chip" data-cat="print">Друк</button>
                     </div>
                     <div class="templates-grid" id="templatesGrid">
                         <div class="artdir-loading">Завантаження...</div>
@@ -432,7 +432,7 @@
                     <div class="artdir-section" id="brandSection">
                         <div class="artdir-section-title">
                             <span class="section-icon"></span> Brand Guidelines
-                            <button id="btnAddBrand" style="margin-left:auto; padding:4px 12px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-weight:700; font-family:inherit; font-size:12px; cursor:pointer;">+ Додати</button>
+                            <button type="button" id="btnAddBrand" style="margin-left:auto; padding:4px 12px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-weight:700; font-family:inherit; font-size:12px; cursor:pointer;">+ Додати</button>
                         </div>
                         <div id="brandContent">
                             <div class="artdir-loading">Завантаження...</div>

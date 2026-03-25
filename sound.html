@@ -62,7 +62,7 @@
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -83,12 +83,12 @@
                             <input type="search" id="librarySearch" class="sound-search" placeholder="Пошук звуків..." aria-label="Пошук звуків">
                         </div>
                         <div class="sound-category-filter" id="libraryCategoryFilter">
-                            <button class="sound-cat-btn active" data-cat="">Всі</button>
-                            <button class="sound-cat-btn" data-cat="music">🎶 Музика</button>
-                            <button class="sound-cat-btn" data-cat="effects">💥 Ефекти</button>
-                            <button class="sound-cat-btn" data-cat="atmosphere">🌿 Атмосфера</button>
-                            <button class="sound-cat-btn" data-cat="quest">🧩 Квести</button>
-                            <button class="sound-cat-btn" data-cat="announcement">📢 Оголошення</button>
+                            <button type="button" class="sound-cat-btn active" data-cat="">Всі</button>
+                            <button type="button" class="sound-cat-btn" data-cat="music">🎶 Музика</button>
+                            <button type="button" class="sound-cat-btn" data-cat="effects">💥 Ефекти</button>
+                            <button type="button" class="sound-cat-btn" data-cat="atmosphere">🌿 Атмосфера</button>
+                            <button type="button" class="sound-cat-btn" data-cat="quest">🧩 Квести</button>
+                            <button type="button" class="sound-cat-btn" data-cat="announcement">📢 Оголошення</button>
                         </div>
                     </div>
                     <div class="sound-stats-row" id="libraryStats"></div>
@@ -101,8 +101,8 @@
                 <div class="sound-tab-panel" id="tabAnnouncements">
                     <div class="sound-toolbar">
                         <div class="sound-header-actions">
-                            <button class="btn-primary-sm" id="createAnnouncementBtn">➕ Нове оголошення</button>
-                            <button class="btn-outline" id="announcementsRefreshBtn">🔄 Оновити</button>
+                            <button type="button" class="btn-primary-sm" id="createAnnouncementBtn">➕ Нове оголошення</button>
+                            <button type="button" class="btn-outline" id="announcementsRefreshBtn">🔄 Оновити</button>
                         </div>
                     </div>
                     <div id="announcementsContainer">
@@ -114,8 +114,8 @@
                 <div class="sound-tab-panel" id="tabProjects">
                     <div class="sound-toolbar">
                         <div class="sound-header-actions">
-                            <button class="btn-primary-sm" id="createProjectBtn">➕ Новий проєкт</button>
-                            <button class="btn-outline" id="projectsRefreshBtn">🔄 Оновити</button>
+                            <button type="button" class="btn-primary-sm" id="createProjectBtn">➕ Новий проєкт</button>
+                            <button type="button" class="btn-outline" id="projectsRefreshBtn">🔄 Оновити</button>
                         </div>
                     </div>
                     <div id="projectsContainer">
@@ -127,12 +127,12 @@
                 <div class="sound-tab-panel" id="tabLog">
                     <div class="sound-log-filters">
                         <div class="sound-filter" role="group" aria-label="Фільтр за типом дії">
-                            <button class="log-action-btn sound-filter-btn active" data-action="" aria-pressed="true">Всі</button>
-                            <button class="log-action-btn sound-filter-btn" data-action="play" aria-pressed="false">▶ Програвання</button>
-                            <button class="log-action-btn sound-filter-btn" data-action="tts" aria-pressed="false">🎙️ TTS</button>
-                            <button class="log-action-btn sound-filter-btn" data-action="create" aria-pressed="false">➕ Створення</button>
-                            <button class="log-action-btn sound-filter-btn" data-action="update" aria-pressed="false">✏️ Зміни</button>
-                            <button class="log-action-btn sound-filter-btn" data-action="delete" aria-pressed="false">🗑️ Видалення</button>
+                            <button type="button" class="log-action-btn sound-filter-btn active" data-action="" aria-pressed="true">Всі</button>
+                            <button type="button" class="log-action-btn sound-filter-btn" data-action="play" aria-pressed="false">▶ Програвання</button>
+                            <button type="button" class="log-action-btn sound-filter-btn" data-action="tts" aria-pressed="false">🎙️ TTS</button>
+                            <button type="button" class="log-action-btn sound-filter-btn" data-action="create" aria-pressed="false">➕ Створення</button>
+                            <button type="button" class="log-action-btn sound-filter-btn" data-action="update" aria-pressed="false">✏️ Зміни</button>
+                            <button type="button" class="log-action-btn sound-filter-btn" data-action="delete" aria-pressed="false">🗑️ Видалення</button>
                         </div>
                         <div class="sound-log-date-filter">
                             <label for="logDateFrom">Від:</label>
@@ -155,7 +155,7 @@
         <div class="modal-container" style="max-width:520px">
             <div class="modal-header">
                 <h3 id="announcementModalTitle">Нове оголошення</h3>
-                <button class="modal-close" id="announcementModalClose" aria-label="Закрити">&times;</button>
+                <button type="button" class="modal-close" id="announcementModalClose" aria-label="Закрити">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
@@ -185,8 +185,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn-outline" id="announcementModalCancel">Скасувати</button>
-                <button class="btn-primary-sm" id="announcementModalSave">Зберегти</button>
+                <button type="button" class="btn-outline" id="announcementModalCancel">Скасувати</button>
+                <button type="button" class="btn-primary-sm" id="announcementModalSave">Зберегти</button>
             </div>
         </div>
     </div>
@@ -196,7 +196,7 @@
         <div class="modal-container" style="max-width:520px">
             <div class="modal-header">
                 <h3 id="projectModalTitle">Новий звуковий проєкт</h3>
-                <button class="modal-close" id="projectModalClose" aria-label="Закрити">&times;</button>
+                <button type="button" class="modal-close" id="projectModalClose" aria-label="Закрити">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
@@ -218,8 +218,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn-outline" id="projectModalCancel">Скасувати</button>
-                <button class="btn-primary-sm" id="projectModalSave">Зберегти</button>
+                <button type="button" class="btn-outline" id="projectModalCancel">Скасувати</button>
+                <button type="button" class="btn-primary-sm" id="projectModalSave">Зберегти</button>
             </div>
         </div>
     </div>

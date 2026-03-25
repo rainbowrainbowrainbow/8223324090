@@ -153,17 +153,17 @@
     <div id="resultArea" class="result" style="display:none;"></div>
 
     <div class="controls">
-        <button class="btn btn-primary" onclick="toggleMode()">
+        <button type="button" class="btn btn-primary" onclick="toggleMode()">
             <span id="modeLabel">Режим: Check-in</span>
         </button>
-        <button class="btn btn-register" onclick="showRegister()">📸 Зареєструвати обличчя</button>
+        <button type="button" class="btn btn-register" onclick="showRegister()">📸 Зареєструвати обличчя</button>
     </div>
 
     <div id="registerPanel" class="register-panel">
         <h3>Реєстрація обличчя співробітника</h3>
         <select id="staffSelect"><option value="">Оберіть співробітника...</option></select>
-        <button class="btn btn-primary" onclick="registerFace()">📸 Зафіксувати обличчя</button>
-        <button class="btn btn-secondary" onclick="hideRegister()">Скасувати</button>
+        <button type="button" class="btn btn-primary" onclick="registerFace()">📸 Зафіксувати обличчя</button>
+        <button type="button" class="btn btn-secondary" onclick="hideRegister()">Скасувати</button>
     </div>
 
     <div class="log" id="logArea">

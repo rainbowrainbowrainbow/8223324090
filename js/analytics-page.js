@@ -27,8 +27,7 @@ async function apiRequest(method, url, body) {
     });
     if (res.status === 401 || res.status === 403) {
         localStorage.removeItem('pzp_token');
-        document.getElementById('loginOverlay')?.classList.remove('hidden');
-        if (document.getElementById('mainApp')) document.getElementById('mainApp').style.display = 'none';
+        window.location.href = '/';
         throw new Error('Unauthorized');
     }
     if (!res.ok) {
@@ -440,7 +439,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const token = localStorage.getItem('pzp_token');
     if (!token) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
+        window.location.href = '/';
         document.getElementById('mainApp').style.display = 'none';
         return;
     }
@@ -451,7 +450,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         AppState.currentUser = user;
         document.getElementById('currentUser').textContent = user.name || user.username;
     } catch {
-        document.getElementById('loginOverlay').classList.remove('hidden');
+        window.location.href = '/';
         document.getElementById('mainApp').style.display = 'none';
         return;
     }

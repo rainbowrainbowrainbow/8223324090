@@ -152,7 +152,7 @@ function setupTabs() {
             document.querySelectorAll('.artdir-tab-content').forEach(c => c.classList.remove('active'));
 
             tab.classList.add('active');
-            document.getElementById(`tab-${tabName}`).classList.add('active');
+            document.getElementById(`tab-${tabName}`)?.classList.add('active');
             activeTab = tabName;
 
             // Persist tab in URL for refresh
@@ -773,15 +773,13 @@ async function initAuth() {
     const savedUser = localStorage.getItem(CONFIG.STORAGE.CURRENT_USER);
 
     if (!token || !savedUser) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        return false;
-    }
+        window.location.href = '/';
+        throw new Error('Unauthorized');
 
     const user = await apiVerifyToken();
     if (!user) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        return false;
-    }
+        window.location.href = '/';
+        throw new Error('Unauthorized');
 
     AppState.currentUser = user;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();

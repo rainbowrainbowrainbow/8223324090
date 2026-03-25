@@ -262,12 +262,12 @@
 
             ${isOwner ? `
                 <div class="room-controls">
-                    <button class="room-ctrl-btn" onclick="toggleMoodSelector()">\ud83d\ude04 \u041d\u0430\u0441\u0442\u0440\u0456\u0439</button>
-                    <button class="room-ctrl-btn" onclick="location.href='/shop'">\ud83d\uded2 \u041c\u0430\u0433\u0430\u0437\u0438\u043d</button>
+                    <button type="button" class="room-ctrl-btn" onclick="toggleMoodSelector()">\ud83d\ude04 \u041d\u0430\u0441\u0442\u0440\u0456\u0439</button>
+                    <button type="button" class="room-ctrl-btn" onclick="location.href='/shop'">\ud83d\uded2 \u041c\u0430\u0433\u0430\u0437\u0438\u043d</button>
                 </div>
                 <div id="moodSelector" style="display:none" class="mood-selector">
                     ${Object.entries(MOOD_ICONS).map(([key, emoji]) =>
-                        `<button class="mood-btn ${roomData.mood === key ? 'active' : ''}" onclick="setMood('${key}')">${emoji}</button>`
+                        `<button type="button" class="mood-btn ${roomData.mood === key ? 'active' : ''}" onclick="setMood('${key}')">${emoji}</button>`
                     ).join('')}
                 </div>
 

@@ -52,9 +52,8 @@ let editTags = [];
             initPage();
             return;
         }
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     // Verify token with server
@@ -73,9 +72,8 @@ let editTags = [];
             initPage();
             return;
         }
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     document.getElementById('logoutBtn').addEventListener('click', () => {

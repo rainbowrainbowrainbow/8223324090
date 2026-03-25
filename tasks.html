@@ -247,10 +247,10 @@
         <header class="header">
             <div class="header-content">
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
-                <button class="alert-bell-btn" id="alertBell" onclick="toggleAlertsPanel(event)" title="Алерти"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="alert-badge" id="alertBadge" style="display:none">0</span></button>
+                <button type="button" class="alert-bell-btn" id="alertBell" onclick="toggleAlertsPanel(event)" title="Алерти"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="alert-badge" id="alertBadge" style="display:none">0</span></button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -267,22 +267,22 @@
 
             <!-- Board view tabs -->
             <div class="board-tabs" id="boardTabs">
-                <button class="board-tab active" data-view="today">Сьогодні <span class="tab-count" id="countToday">0</span></button>
-                <button class="board-tab" data-view="week">Тиждень <span class="tab-count" id="countWeek">0</span></button>
-                <button class="board-tab" data-view="my">Мої <span class="tab-count" id="countMy">0</span></button>
-                <button class="board-tab" data-view="board">Канбан</button>
-                <button class="board-tab" data-view="templates">Шаблони</button>
+                <button type="button" class="board-tab active" data-view="today">Сьогодні <span class="tab-count" id="countToday">0</span></button>
+                <button type="button" class="board-tab" data-view="week">Тиждень <span class="tab-count" id="countWeek">0</span></button>
+                <button type="button" class="board-tab" data-view="my">Мої <span class="tab-count" id="countMy">0</span></button>
+                <button type="button" class="board-tab" data-view="board">Канбан</button>
+                <button type="button" class="board-tab" data-view="templates">Шаблони</button>
             </div>
 
             <!-- Category chips -->
             <div class="cat-filters" id="catFilters">
-                <button class="cat-chip active" data-cat="all">Всі</button>
-                <button class="cat-chip" data-cat="event">Івенти</button>
-                <button class="cat-chip" data-cat="purchase">Закупівлі</button>
-                <button class="cat-chip" data-cat="admin">Адмін</button>
-                <button class="cat-chip" data-cat="trampoline">Батути</button>
-                <button class="cat-chip" data-cat="personal">Особисті</button>
-                <button class="cat-chip" data-cat="improvement">Покращення</button>
+                <button type="button" class="cat-chip active" data-cat="all">Всі</button>
+                <button type="button" class="cat-chip" data-cat="event">Івенти</button>
+                <button type="button" class="cat-chip" data-cat="purchase">Закупівлі</button>
+                <button type="button" class="cat-chip" data-cat="admin">Адмін</button>
+                <button type="button" class="cat-chip" data-cat="trampoline">Батути</button>
+                <button type="button" class="cat-chip" data-cat="personal">Особисті</button>
+                <button type="button" class="cat-chip" data-cat="improvement">Покращення</button>
             </div>
 
             <!-- Quick add task -->
@@ -306,15 +306,15 @@
                     <option value="bot">Bot</option>
                 </select>
                 <input type="time" id="taskDeadlineTime" title="Дедлайн (час)" style="width:100px">
-                <button id="addTaskBtn">+ Додати</button>
+                <button type="button" id="addTaskBtn">+ Додати</button>
             </div>
 
             <!-- v33.4: Bulk toolbar -->
             <div id="bulkToolbar" class="bulk-toolbar-tasks" style="display:none">
                 <span id="bulkCount">0 обрано</span>
-                <button onclick="bulkAction('done')">✅ Виконати</button>
-                <button onclick="bulkAction('archive')">📦 Архів</button>
-                <button onclick="clearBulkSelection()">✕ Скинути</button>
+                <button type="button" onclick="bulkAction('done')">✅ Виконати</button>
+                <button type="button" onclick="bulkAction('archive')">📦 Архів</button>
+                <button type="button" onclick="clearBulkSelection()">✕ Скинути</button>
             </div>
 
             <!-- Task board content -->
@@ -343,7 +343,7 @@
                         <option value="high">Високий</option>
                     </select>
                     <input type="text" id="tplAssignedTo" aria-label="Відповідальний" placeholder="Відповідальний" style="width:120px">
-                    <button id="addTemplateBtn">+ Шаблон</button>
+                    <button type="button" id="addTemplateBtn">+ Шаблон</button>
                 </div>
                 <div id="templatesList" class="cards-grid"></div>
             </div>

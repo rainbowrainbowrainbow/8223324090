@@ -889,7 +889,7 @@
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -897,11 +897,11 @@
         <main id="main-content" class="page-container">
             <!-- Tabs -->
             <div class="design-tabs" id="designTabs">
-                <button class="design-tab active" data-tab="gallery">Дизайни <span class="tab-count" id="countDesigns">0</span></button>
-                <button class="design-tab" data-tab="collections">Колекції <span class="tab-count" id="countCollections">0</span></button>
-                <button class="design-tab" data-tab="price">Прайс-лист</button>
-                <button class="design-tab" data-tab="calendar">Календар</button>
-                <button class="design-tab" data-tab="catalogs">Каталоги</button>
+                <button type="button" class="design-tab active" data-tab="gallery">Дизайни <span class="tab-count" id="countDesigns">0</span></button>
+                <button type="button" class="design-tab" data-tab="collections">Колекції <span class="tab-count" id="countCollections">0</span></button>
+                <button type="button" class="design-tab" data-tab="price">Прайс-лист</button>
+                <button type="button" class="design-tab" data-tab="calendar">Календар</button>
+                <button type="button" class="design-tab" data-tab="catalogs">Каталоги</button>
             </div>
 
             <!-- ==================== GALLERY TAB ==================== -->
@@ -912,7 +912,7 @@
                     <select id="collectionFilter">
                         <option value="">Всі колекції</option>
                     </select>
-                    <button class="btn-filter-pin" id="pinFilter" title="Тільки закріплені">⭐</button>
+                    <button type="button" class="btn-filter-pin" id="pinFilter" title="Тільки закріплені">⭐</button>
                 </div>
 
                 <!-- Tag chips -->
@@ -931,7 +931,7 @@
 
                 <!-- Load more -->
                 <div id="loadMore" style="display:none; text-align:center; padding:20px;">
-                    <button id="loadMoreBtn" style="padding:10px 24px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-weight:700; cursor:pointer; font-family:inherit;">Завантажити ще</button>
+                    <button type="button" id="loadMoreBtn" style="padding:10px 24px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-weight:700; cursor:pointer; font-family:inherit;">Завантажити ще</button>
                 </div>
             </div>
 
@@ -940,7 +940,7 @@
                 <div class="add-collection-bar">
                     <input type="text" id="newCollectionName" aria-label="Назва колекції..." placeholder="Назва колекції...">
                     <input type="color" id="newCollectionColor" value="#6366F1" title="Колір">
-                    <button id="addCollectionBtn">+ Колекція</button>
+                    <button type="button" id="addCollectionBtn">+ Колекція</button>
                 </div>
                 <div class="collections-grid" id="collectionsGrid"></div>
             </div>
@@ -948,7 +948,7 @@
             <!-- ==================== PRICE TAB ==================== -->
             <div id="tabPrice" style="display:none">
                 <div class="price-actions">
-                    <button onclick="window.print()" style="padding:10px 20px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-weight:700; cursor:pointer; font-family:inherit;">Друкувати</button>
+                    <button type="button" onclick="window.print()" style="padding:10px 20px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-weight:700; cursor:pointer; font-family:inherit;">Друкувати</button>
                 </div>
                 <div id="priceContent"></div>
             </div>
@@ -956,10 +956,10 @@
             <!-- ==================== CALENDAR TAB ==================== -->
             <div id="tabCalendar" style="display:none">
                 <div class="calendar-nav">
-                    <button id="calPrev">◀</button>
+                    <button type="button" id="calPrev">◀</button>
                     <span class="calendar-nav-title" id="calTitle"></span>
-                    <button id="calNext">▶</button>
-                    <button id="calToday" style="margin-left:auto">Сьогодні</button>
+                    <button type="button" id="calNext">▶</button>
+                    <button type="button" id="calToday" style="margin-left:auto">Сьогодні</button>
                 </div>
                 <div class="calendar-grid" id="calendarGrid"></div>
                 <div class="calendar-day-detail" id="calDetail" style="display:none"></div>
@@ -983,8 +983,8 @@
                             <span class="catalog-meta catalog-updated" id="catalogUpdated"></span>
                         </div>
                         <div class="catalog-actions">
-                            <button class="btn-catalog" onclick="openCatalog('graduation')">Переглянути</button>
-                            <button class="btn-catalog btn-catalog-print" onclick="printCatalog('graduation')">Друк</button>
+                            <button type="button" class="btn-catalog" onclick="openCatalog('graduation')">Переглянути</button>
+                            <button type="button" class="btn-catalog btn-catalog-print" onclick="printCatalog('graduation')">Друк</button>
                         </div>
                     </div>
                     <!-- Dynamic catalogs loaded here -->
@@ -994,10 +994,10 @@
                 <!-- Fullscreen catalog viewer -->
                 <div class="catalog-viewer" id="catalogViewer" style="display:none;">
                     <div class="catalog-viewer-nav">
-                        <button class="btn-catalog-nav" onclick="catalogPrev()" id="catalogPrevBtn">&#9664;</button>
+                        <button type="button" class="btn-catalog-nav" onclick="catalogPrev()" id="catalogPrevBtn">&#9664;</button>
                         <span class="catalog-page-indicator" id="catalogPageIndicator">1 / 7</span>
-                        <button class="btn-catalog-nav" onclick="catalogNext()" id="catalogNextBtn">&#9654;</button>
-                        <button class="btn-catalog-nav btn-catalog-close" onclick="closeCatalog()">&times;</button>
+                        <button type="button" class="btn-catalog-nav" onclick="catalogNext()" id="catalogNextBtn">&#9654;</button>
+                        <button type="button" class="btn-catalog-nav btn-catalog-close" onclick="closeCatalog()">&times;</button>
                     </div>
                     <div class="catalog-pages-container" id="catalogPages"></div>
                 </div>
@@ -1007,7 +1007,7 @@
 
     <!-- Lightbox -->
     <div class="lightbox" id="lightbox">
-        <button class="lightbox-close">&times;</button>
+        <button type="button" class="lightbox-close">&times;</button>
         <img id="lightboxImg" src="" alt="Превʼю">
         <div class="lightbox-info" id="lightboxInfo"></div>
     </div>
@@ -1048,8 +1048,8 @@
                 <img id="genPreview" style="display:none;margin-top:8px;max-width:100%;border-radius:8px;border:1px solid #ddd" alt="Preview">
             </div>
             <div class="edit-actions">
-                <button class="btn-cancel" id="editCancel">Скасувати</button>
-                <button class="btn-save" id="editSave">Зберегти</button>
+                <button type="button" class="btn-cancel" id="editCancel">Скасувати</button>
+                <button type="button" class="btn-save" id="editSave">Зберегти</button>
             </div>
         </div>
     </div>
@@ -1089,8 +1089,8 @@
                         <span class="catalog-meta">${countMap[c.id] || 0} позицій</span>
                     </div>
                     <div class="catalog-actions">
-                        <button class="btn-catalog" onclick="openCatalogView('${c.id}')">Переглянути</button>
-                        <button class="btn-catalog btn-catalog-print" onclick="printCatalogItems('${c.id}')">Друк</button>
+                        <button type="button" class="btn-catalog" onclick="openCatalogView('${c.id}')">Переглянути</button>
+                        <button type="button" class="btn-catalog btn-catalog-print" onclick="printCatalogItems('${c.id}')">Друк</button>
                         <label class="toggle-inline" title="Автокаталог">
                             <input type="checkbox" class="auto-cat-cb" data-catalog="${c.id}"
                                    onchange="toggleAutoCatalog('${c.id}', this.checked)">

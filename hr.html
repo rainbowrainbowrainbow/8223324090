@@ -973,10 +973,10 @@
         <header class="header">
             <div class="header-content">
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
-                <button class="alert-bell-btn" id="alertBell" onclick="toggleAlertsPanel(event)" title="Алерти"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="alert-badge" id="alertBadge" style="display:none">0</span></button>
+                <button type="button" class="alert-bell-btn" id="alertBell" onclick="toggleAlertsPanel(event)" title="Алерти"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="alert-badge" id="alertBadge" style="display:none">0</span></button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -988,17 +988,17 @@
             </div>
 
             <div class="hr-tabs">
-                <button class="hr-tab active" data-tab="today">Хто зараз</button>
-                <button class="hr-tab" data-tab="schedule">Розклад</button>
-                <button class="hr-tab" data-tab="team">Команда</button>
-                <button class="hr-tab" data-tab="reports">Звіти</button>
-                <button class="hr-tab" data-tab="ai-team">AI Команда</button>
-                <button class="hr-tab" data-tab="leaves">Відпустки</button>
-                <button class="hr-tab" data-tab="salary">Зарплата</button>
-                <button class="hr-tab" data-tab="ratings">Рейтинг</button>
-                <button class="hr-tab" data-tab="onboarding">Онбординг</button>
-                <button class="hr-tab" data-tab="costumes">Костюмерна</button>
-                <button class="hr-tab" data-tab="vacancies">💼 Вакансії</button>
+                <button type="button" class="hr-tab active" data-tab="today">Хто зараз</button>
+                <button type="button" class="hr-tab" data-tab="schedule">Розклад</button>
+                <button type="button" class="hr-tab" data-tab="team">Команда</button>
+                <button type="button" class="hr-tab" data-tab="reports">Звіти</button>
+                <button type="button" class="hr-tab" data-tab="ai-team">AI Команда</button>
+                <button type="button" class="hr-tab" data-tab="leaves">Відпустки</button>
+                <button type="button" class="hr-tab" data-tab="salary">Зарплата</button>
+                <button type="button" class="hr-tab" data-tab="ratings">Рейтинг</button>
+                <button type="button" class="hr-tab" data-tab="onboarding">Онбординг</button>
+                <button type="button" class="hr-tab" data-tab="costumes">Костюмерна</button>
+                <button type="button" class="hr-tab" data-tab="vacancies">💼 Вакансії</button>
             </div>
 
             <!-- TAB 1: TODAY -->
@@ -1011,16 +1011,16 @@
             <!-- TAB 2: SCHEDULE -->
             <div id="tab-schedule" class="hr-tab-content">
                 <div class="hr-view-toggle">
-                    <button class="hr-view-btn active" data-view="week">Тиждень</button>
-                    <button class="hr-view-btn" data-view="month">Місяць</button>
+                    <button type="button" class="hr-view-btn active" data-view="week">Тиждень</button>
+                    <button type="button" class="hr-view-btn" data-view="month">Місяць</button>
                 </div>
                 <div class="hr-schedule-controls">
-                    <button id="schedPrev" class="btn-nav">◀</button>
+                    <button type="button" id="schedPrev" class="btn-nav">◀</button>
                     <span id="schedLabel" class="hr-week-label"></span>
-                    <button id="schedNext" class="btn-nav">▶</button>
+                    <button type="button" id="schedNext" class="btn-nav">▶</button>
                     <div class="hr-schedule-actions">
-                        <button id="schedToday">Сьогодні</button>
-                        <button id="schedCopy">Копіювати тиждень</button>
+                        <button type="button" id="schedToday">Сьогодні</button>
+                        <button type="button" id="schedCopy">Копіювати тиждень</button>
                     </div>
                 </div>
                 <div id="scheduleTemplate" style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
@@ -1076,7 +1076,7 @@
             <div id="tab-reports" class="hr-tab-content">
                 <div class="hr-report-controls">
                     <select id="reportMonth" class="hr-team-select"></select>
-                    <button id="reportExport" class="btn-export">📥 Експорт CSV</button>
+                    <button type="button" id="reportExport" class="btn-export">📥 Експорт CSV</button>
                 </div>
                 <div id="reportSummary" class="hr-report-summary"></div>
                 <div class="hr-report-table-wrap">
@@ -1106,7 +1106,7 @@
                         <option value="approved">Затверджені</option>
                         <option value="rejected">Відхилені</option>
                     </select>
-                    <button id="btnNewLeave" class="btn-add" style="margin-left:auto;">+ Нова заявка</button>
+                    <button type="button" id="btnNewLeave" class="btn-add" style="margin-left:auto;">+ Нова заявка</button>
                 </div>
                 <div id="leavesList"></div>
             </div>
@@ -1115,8 +1115,8 @@
             <div id="tab-salary" class="hr-tab-content">
                 <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
                     <select id="salaryMonth" class="hr-team-select" style="min-width:160px;"></select>
-                    <button id="btnAddAdjustment" class="btn-add">+ Бонус/Штраф</button>
-                    <button id="btnCommitSalary" class="btn-add" style="background:var(--success,#00b894);color:#fff" onclick="commitSalaries()">💰 Нарахувати зарплати</button>
+                    <button type="button" id="btnAddAdjustment" class="btn-add">+ Бонус/Штраф</button>
+                    <button type="button" id="btnCommitSalary" class="btn-add" style="background:var(--success,#00b894);color:#fff" onclick="commitSalaries()">💰 Нарахувати зарплати</button>
                 </div>
                 <div id="salaryTotals" style="margin-bottom:16px;"></div>
                 <div class="hr-report-table-wrap">
@@ -1135,7 +1135,7 @@
             <!-- TAB 9: ONBOARDING -->
             <div id="tab-onboarding" class="hr-tab-content">
                 <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;">
-                    <button id="btnStartOnboarding" class="btn-add">+ Запустити онбординг</button>
+                    <button type="button" id="btnStartOnboarding" class="btn-add">+ Запустити онбординг</button>
                 </div>
                 <div id="onboardingList"></div>
             </div>
@@ -1143,7 +1143,7 @@
             <!-- TAB 10: COSTUMES -->
             <div id="tab-costumes" class="hr-tab-content">
                 <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;">
-                    <button id="btnAddCostume" class="btn-add">+ Додати костюм</button>
+                    <button type="button" id="btnAddCostume" class="btn-add">+ Додати костюм</button>
                 </div>
                 <div id="costumesList"></div>
             </div>
@@ -1160,15 +1160,15 @@
                             <option value="closed">❌ Закриті</option>
                         </select>
                     </div>
-                    <button id="btnAddVacancy" class="btn-add">+ Вакансія</button>
+                    <button type="button" id="btnAddVacancy" class="btn-add">+ Вакансія</button>
                 </div>
                 <div id="vacStats" class="vacancy-stats"></div>
                 <div id="vacanciesList"></div>
                 <div id="candidatesSection" style="display:none;margin-top:24px">
                     <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
                         <h4 id="candidatesTitle" style="margin:0"></h4>
-                        <button id="btnAddCandidate" class="btn-add btn-sm">+ Кандидат</button>
-                        <button onclick="document.getElementById('candidatesSection').style.display='none'" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:18px">✕</button>
+                        <button type="button" id="btnAddCandidate" class="btn-add btn-sm">+ Кандидат</button>
+                        <button type="button" onclick="document.getElementById('candidatesSection').style.display='none'" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:18px">✕</button>
                     </div>
                     <div id="candidatesKanban" class="candidates-kanban"></div>
                 </div>
@@ -1218,9 +1218,9 @@
                 <textarea id="shiftNotes" rows="2"></textarea>
             </div>
             <div class="hr-modal-actions">
-                <button id="shiftDelete" class="btn-danger" style="display:none;">Видалити</button>
-                <button id="shiftCancel" class="btn-secondary">Скасувати</button>
-                <button id="shiftSave" class="btn-primary">Зберегти</button>
+                <button type="button" id="shiftDelete" class="btn-danger" style="display:none;">Видалити</button>
+                <button type="button" id="shiftCancel" class="btn-secondary">Скасувати</button>
+                <button type="button" id="shiftSave" class="btn-primary">Зберегти</button>
             </div>
         </div>
     </div>
@@ -1303,8 +1303,8 @@
                 <textarea id="editNotes" rows="3"></textarea>
             </div>
             <div class="hr-modal-actions">
-                <button id="editCancel" class="btn-secondary">Скасувати</button>
-                <button id="editSave" class="btn-primary">Зберегти</button>
+                <button type="button" id="editCancel" class="btn-secondary">Скасувати</button>
+                <button type="button" id="editSave" class="btn-primary">Зберегти</button>
             </div>
         </div>
     </div>
@@ -1327,18 +1327,18 @@
                 <textarea id="corrNotes" rows="2" aria-label="Забув відмітитись..." placeholder="Забув відмітитись..."></textarea>
             </div>
             <div class="hr-modal-actions">
-                <button id="corrCancel" class="btn-secondary">Скасувати</button>
-                <button id="corrSave" class="btn-primary">Зберегти</button>
+                <button type="button" id="corrCancel" class="btn-secondary">Скасувати</button>
+                <button type="button" id="corrSave" class="btn-primary">Зберегти</button>
             </div>
         </div>
     </div>
 
     <!-- Context menu -->
     <div id="contextMenu" class="hr-context-menu">
-        <button class="hr-context-item" data-action="sick">🏥 Позначити хворобу</button>
-        <button class="hr-context-item" data-action="vacation">🌴 Позначити відпустку</button>
-        <button class="hr-context-item" data-action="day_off">📴 Позначити вихідний</button>
-        <button class="hr-context-item" data-action="correct">✏️ Виправити час</button>
+        <button type="button" class="hr-context-item" data-action="sick">🏥 Позначити хворобу</button>
+        <button type="button" class="hr-context-item" data-action="vacation">🌴 Позначити відпустку</button>
+        <button type="button" class="hr-context-item" data-action="day_off">📴 Позначити вихідний</button>
+        <button type="button" class="hr-context-item" data-action="correct">✏️ Виправити час</button>
     </div>
 
     <div id="notification" class="notification hidden">

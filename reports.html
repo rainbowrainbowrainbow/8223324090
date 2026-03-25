@@ -453,7 +453,7 @@
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -468,7 +468,7 @@
                     <a href="/finance" class="btn-page-secondary" style="text-decoration:none;font-size:13px">💰 Фінанси</a>
                     <a href="/center" class="btn-page-secondary" style="text-decoration:none;font-size:13px">💲 Центр цін</a>
                     <a class="rpt-bot-link" href="https://t.me/EGen_Park_Report_bot" target="_blank">@EGen_Park_Report_bot — надсилай чеки боту!</a>
-                    <button id="addReportBtn" class="btn-page-primary">+ Додати звіт</button>
+                    <button type="button" id="addReportBtn" class="btn-page-primary">+ Додати звіт</button>
                 </div>
             </div>
 
@@ -549,8 +549,8 @@
                     <option value="Офіс">Офіс</option>
                     <option value="Інше">Інше</option>
                 </select>
-                <button id="filterBtn" class="rpt-filter-btn primary" onclick="ReportsPage.applyFilters()">Фільтрувати</button>
-                <button class="rpt-filter-btn secondary" onclick="ReportsPage.resetFilters()">Скинути</button>
+                <button type="button" id="filterBtn" class="rpt-filter-btn primary" onclick="ReportsPage.applyFilters()">Фільтрувати</button>
+                <button type="button" class="rpt-filter-btn secondary" onclick="ReportsPage.resetFilters()">Скинути</button>
             </div>
 
             <!-- Table -->

@@ -2313,16 +2313,14 @@ async function initAuth() {
     const savedUser = localStorage.getItem(CONFIG.STORAGE.CURRENT_USER);
 
     if (!token || !savedUser) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        return false;
-    }
+        window.location.href = '/';
+        throw new Error('Unauthorized');
 
     // Verify token
     const user = await apiVerifyToken();
     if (!user) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        return false;
-    }
+        window.location.href = '/';
+        throw new Error('Unauthorized');
 
     AppState.currentUser = user;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();

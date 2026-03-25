@@ -517,7 +517,7 @@
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -528,10 +528,10 @@
                 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
                     <a href="/reports" class="btn-page-secondary" style="text-decoration:none">📋 Звіти</a>
                     <a href="/center" class="btn-page-secondary" style="text-decoration:none">💲 Центр цін</a>
-                    <button id="exportXlsxBtn" class="btn-page-secondary" title="Excel">Excel</button>
-                    <button id="exportCsvBtn" class="btn-page-secondary">CSV</button>
-                    <button id="addTransactionBtn" class="btn-page-primary" style="display:none">+ Дохід</button>
-                    <button id="addExpenseBtn" class="btn-page-primary" style="display:none;background:#EF4444">💸 Витрата</button>
+                    <button type="button" id="exportXlsxBtn" class="btn-page-secondary" title="Excel">Excel</button>
+                    <button type="button" id="exportCsvBtn" class="btn-page-secondary">CSV</button>
+                    <button type="button" id="addTransactionBtn" class="btn-page-primary" style="display:none">+ Дохід</button>
+                    <button type="button" id="addExpenseBtn" class="btn-page-primary" style="display:none;background:#EF4444">💸 Витрата</button>
                 </div>
             </div>
 
@@ -540,18 +540,18 @@
 
             <!-- Tabs -->
             <div class="fin-tabs">
-                <button class="fin-tab active" data-tab="dashboard">Дашборд</button>
-                <button class="fin-tab" data-tab="transactions">Транзакції</button>
-                <button class="fin-tab" data-tab="shift">Каса</button>
-                <button class="fin-tab" data-tab="forecast">Прогноз</button>
-                <button class="fin-tab" data-tab="pnl">P&L</button>
-                <button class="fin-tab" data-tab="debts">Борги</button>
-                <button class="fin-tab" data-tab="monthly">Місяці</button>
-                <button class="fin-tab" data-tab="salary">Зарплати</button>
-                <button class="fin-tab" data-tab="budget">Бюджет</button>
-                <button class="fin-tab" data-tab="advanced">Аналітика</button>
-                <button class="fin-tab" data-tab="accounts">Рахунки</button>
-                <button class="fin-tab" data-tab="personal">👤 Особисті</button>
+                <button type="button" class="fin-tab active" data-tab="dashboard">Дашборд</button>
+                <button type="button" class="fin-tab" data-tab="transactions">Транзакції</button>
+                <button type="button" class="fin-tab" data-tab="shift">Каса</button>
+                <button type="button" class="fin-tab" data-tab="forecast">Прогноз</button>
+                <button type="button" class="fin-tab" data-tab="pnl">P&L</button>
+                <button type="button" class="fin-tab" data-tab="debts">Борги</button>
+                <button type="button" class="fin-tab" data-tab="monthly">Місяці</button>
+                <button type="button" class="fin-tab" data-tab="salary">Зарплати</button>
+                <button type="button" class="fin-tab" data-tab="budget">Бюджет</button>
+                <button type="button" class="fin-tab" data-tab="advanced">Аналітика</button>
+                <button type="button" class="fin-tab" data-tab="accounts">Рахунки</button>
+                <button type="button" class="fin-tab" data-tab="personal">👤 Особисті</button>
             </div>
 
             <!-- Dashboard tab -->
@@ -678,12 +678,12 @@
                 <div id="shiftStatus" style="margin-bottom:16px"></div>
                 <div class="fin-filters" style="gap:8px;margin-bottom:16px">
                     <input type="number" id="openingCashInput" min="0" placeholder="Готівка в касі, ₴" style="width:200px;padding:10px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:16px;font-family:inherit;min-height:44px">
-                    <button id="openShiftBtn" class="btn-page-primary">Відкрити зміну</button>
+                    <button type="button" id="openShiftBtn" class="btn-page-primary">Відкрити зміну</button>
                 </div>
                 <div id="closeShiftSection" style="display:none;margin-bottom:16px">
                     <div class="fin-filters" style="gap:8px">
                         <input type="number" id="closingCashInput" min="0" placeholder="Фактична готівка, ₴" style="width:200px;padding:10px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:16px;font-family:inherit;min-height:44px">
-                        <button id="closeShiftBtn" class="btn-page-primary" style="background:#EF4444">Закрити зміну</button>
+                        <button type="button" id="closeShiftBtn" class="btn-page-primary" style="background:#EF4444">Закрити зміну</button>
                     </div>
                 </div>
                 <h4 style="font-weight:800;margin-bottom:8px">Історія змін</h4>
@@ -735,7 +735,7 @@
                         <option value="PLN">PLN</option>
                         <option value="CZK">CZK</option>
                     </select>
-                    <button id="convertCurrencyBtn" class="btn-page-secondary">= UAH</button>
+                    <button type="button" id="convertCurrencyBtn" class="btn-page-secondary">= UAH</button>
                 </div>
                 <div id="currencyResult" style="margin-bottom:16px"></div>
                 <div id="pnlContent"></div>
@@ -755,7 +755,7 @@
             <div id="tabAccounts" style="display:none">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
                     <h3 style="font-weight:800;margin:0">Рахунки</h3>
-                    <button class="btn-page-primary" onclick="openAddAccountModal()">+ Новий рахунок</button>
+                    <button type="button" class="btn-page-primary" onclick="openAddAccountModal()">+ Новий рахунок</button>
                 </div>
                 <div id="accountsList"></div>
             </div>
@@ -769,7 +769,7 @@
                     </p>
                 </div>
                 <div id="personalAccountsList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px"></div>
-                <button class="btn-page-secondary" onclick="window.open('https://t.me/EGen_Park_Report_bot', '_blank')" style="font-size:13px">
+                <button type="button" class="btn-page-secondary" onclick="window.open('https://t.me/EGen_Park_Report_bot', '_blank')" style="font-size:13px">
                     ➕ Новий рахунок (через бота: /new_account)
                 </button>
                 <div id="personalTxSection" style="display:none;margin-top:24px">
@@ -796,7 +796,7 @@
                         <option value="11">Листопад</option>
                         <option value="12">Грудень</option>
                     </select>
-                    <button id="loadBudgetBtn" class="btn-page-primary" onclick="loadBudgetComparison()">Порівняти</button>
+                    <button type="button" id="loadBudgetBtn" class="btn-page-primary" onclick="loadBudgetComparison()">Порівняти</button>
                 </div>
 
                 <div id="budgetComparison"></div>
@@ -806,7 +806,7 @@
                     <div class="fin-filters" style="gap:8px">
                         <select id="budgetCategorySelect" class="fin-filter-select"></select>
                         <input type="number" id="budgetAmountInput" aria-label="Сума ₴" placeholder="Сума ₴" min="0" style="width:120px;padding:10px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:16px;font-family:inherit;min-height:44px;">
-                        <button onclick="saveBudgetPlan()" class="btn-page-primary">Зберегти план</button>
+                        <button type="button" onclick="saveBudgetPlan()" class="btn-page-primary">Зберегти план</button>
                     </div>
                 </div>
             </div>
@@ -858,8 +858,8 @@
                     <textarea id="editDescription" rows="3" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:var(--font-sm);font-family:inherit;box-sizing:border-box;resize:vertical"></textarea>
                 </div>
                 <div style="display:flex;gap:8px;margin-top:4px">
-                    <button id="saveTransBtn" class="btn-page-primary" style="flex:1">Зберегти</button>
-                    <button id="cancelTransBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
+                    <button type="button" id="saveTransBtn" class="btn-page-primary" style="flex:1">Зберегти</button>
+                    <button type="button" id="cancelTransBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
                 </div>
             </div>
         </div>
@@ -904,8 +904,8 @@
                 <input type="text" id="accDescription" placeholder="Опціонально">
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-                <button class="btn-page-secondary" onclick="document.getElementById('addAccountModal').classList.add('hidden')">Скасувати</button>
-                <button class="btn-page-primary" onclick="saveAccount()">Зберегти</button>
+                <button type="button" class="btn-page-secondary" onclick="document.getElementById('addAccountModal').classList.add('hidden')">Скасувати</button>
+                <button type="button" class="btn-page-primary" onclick="saveAccount()">Зберегти</button>
             </div>
         </div>
     </div>

@@ -616,7 +616,7 @@
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -624,22 +624,22 @@
         <main id="main-content" class="page-container">
             <div class="page-header">
                 <h2>Графік роботи</h2>
-                <button id="addStaffBtn" class="btn-page-primary" style="display:none">+ Додати співробітника</button>
+                <button type="button" id="addStaffBtn" class="btn-page-primary" style="display:none">+ Додати співробітника</button>
             </div>
 
             <!-- Week navigation + department filter -->
             <div class="schedule-controls">
                 <div class="week-nav">
-                    <button id="prevWeekBtn" title="Попередній тиждень">‹</button>
+                    <button type="button" id="prevWeekBtn" title="Попередній тиждень">‹</button>
                     <span id="weekLabel" class="week-label"></span>
-                    <button id="nextWeekBtn" title="Наступний тиждень">›</button>
-                    <button id="todayWeekBtn" title="Поточний тиждень" style="font-size:13px;width:auto;padding:0 12px;font-weight:700">Сьогодні</button>
+                    <button type="button" id="nextWeekBtn" title="Наступний тиждень">›</button>
+                    <button type="button" id="todayWeekBtn" title="Поточний тиждень" style="font-size:13px;width:auto;padding:0 12px;font-weight:700">Сьогодні</button>
                 </div>
                 <div class="schedule-toolbar">
-                    <button id="copyWeekBtn" class="btn-page-secondary" style="display:none" title="Скопіювати цей тиждень на наступний">Копія тижня</button>
-                    <button id="fillWeekBtn" class="btn-page-secondary" style="display:none" title="Масове заповнення тижня">Заповнити тиждень</button>
-                    <button id="toggleHoursBtn" class="btn-page-secondary" title="Показати/сховати години">Години</button>
-                    <button id="toggleLoadViewBtn" class="btn-page-secondary" title="Навантаження по дням">Навантаження</button>
+                    <button type="button" id="copyWeekBtn" class="btn-page-secondary" style="display:none" title="Скопіювати цей тиждень на наступний">Копія тижня</button>
+                    <button type="button" id="fillWeekBtn" class="btn-page-secondary" style="display:none" title="Масове заповнення тижня">Заповнити тиждень</button>
+                    <button type="button" id="toggleHoursBtn" class="btn-page-secondary" title="Показати/сховати години">Години</button>
+                    <button type="button" id="toggleLoadViewBtn" class="btn-page-secondary" title="Навантаження по дням">Навантаження</button>
                 </div>
                 <div id="deptFilter" class="dept-filter"></div>
             </div>
@@ -694,8 +694,8 @@
                 <input type="text" id="schNote" aria-label="Необов'язково" placeholder="Необов'язково">
             </div>
             <div class="modal-actions">
-                <button id="schSaveBtn" class="btn-page-primary" style="flex:1">Зберегти</button>
-                <button id="schCancelBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
+                <button type="button" id="schSaveBtn" class="btn-page-primary" style="flex:1">Зберегти</button>
+                <button type="button" id="schCancelBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
             </div>
         </div>
     </div>
@@ -745,8 +745,8 @@
                 <input type="text" id="fillNote" aria-label="Необов'язково" placeholder="Необов'язково">
             </div>
             <div class="modal-actions">
-                <button id="fillSaveBtn" class="btn-page-primary" style="flex:1">Заповнити</button>
-                <button id="fillCancelBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
+                <button type="button" id="fillSaveBtn" class="btn-page-primary" style="flex:1">Заповнити</button>
+                <button type="button" id="fillCancelBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
             </div>
         </div>
     </div>

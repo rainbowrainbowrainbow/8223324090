@@ -818,7 +818,7 @@
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -827,10 +827,10 @@
             <div class="page-header">
                 <h2>База клієнтів</h2>
                 <div style="display:flex;gap:6px;flex-wrap:wrap">
-                    <button id="exportVcfBtn" class="btn-page-secondary" style="display:none;font-size:12px;padding:6px 12px;min-height:36px">vCard</button>
-                    <button id="importVcfBtn" class="btn-page-secondary" style="display:none;font-size:12px;padding:6px 12px;min-height:36px">vCard</button>
-                    <button id="exportCsvBtn" class="btn-page-secondary" style="display:none">Експорт CSV</button>
-                    <button id="addCustomerBtn" class="btn-page-primary" style="display:none">+ Новий клієнт</button>
+                    <button type="button" id="exportVcfBtn" class="btn-page-secondary" style="display:none;font-size:12px;padding:6px 12px;min-height:36px">vCard</button>
+                    <button type="button" id="importVcfBtn" class="btn-page-secondary" style="display:none;font-size:12px;padding:6px 12px;min-height:36px">vCard</button>
+                    <button type="button" id="exportCsvBtn" class="btn-page-secondary" style="display:none">Експорт CSV</button>
+                    <button type="button" id="addCustomerBtn" class="btn-page-primary" style="display:none">+ Новий клієнт</button>
                     <input type="file" id="vcfFileInput" accept=".vcf,.vcard" style="display:none">
                 </div>
             </div>
@@ -840,12 +840,12 @@
 
             <!-- Tabs -->
             <div class="crm-tabs">
-                <button class="crm-tab active" data-tab="list">Список</button>
-                <button class="crm-tab" data-tab="rfm">RFM-аналітика</button>
-                <button class="crm-tab" data-tab="journey">Воронка</button>
-                <button class="crm-tab" data-tab="duplicates">Дублікати</button>
-                <button class="crm-tab" data-tab="nps">NPS</button>
-                <button class="crm-tab" data-tab="bulk">Розсилка</button>
+                <button type="button" class="crm-tab active" data-tab="list">Список</button>
+                <button type="button" class="crm-tab" data-tab="rfm">RFM-аналітика</button>
+                <button type="button" class="crm-tab" data-tab="journey">Воронка</button>
+                <button type="button" class="crm-tab" data-tab="duplicates">Дублікати</button>
+                <button type="button" class="crm-tab" data-tab="nps">NPS</button>
+                <button type="button" class="crm-tab" data-tab="bulk">Розсилка</button>
             </div>
 
             <!-- List tab -->
@@ -999,8 +999,8 @@
                     <textarea id="editNotes" rows="3" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:var(--font-sm);font-family:inherit;box-sizing:border-box;resize:vertical"></textarea>
                 </div>
                 <div style="display:flex;gap:8px;margin-top:4px">
-                    <button id="saveCustomerBtn" class="btn-page-primary" style="flex:1">Зберегти</button>
-                    <button id="cancelEditBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
+                    <button type="button" id="saveCustomerBtn" class="btn-page-primary" style="flex:1">Зберегти</button>
+                    <button type="button" id="cancelEditBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
                 </div>
             </div>
         </div>

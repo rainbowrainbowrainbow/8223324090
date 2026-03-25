@@ -442,7 +442,7 @@
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -456,13 +456,13 @@
                         <h2>OmniClaw</h2>
                         <input type="text" class="omni-search" id="omniSearch" placeholder="Пошук розмов..." maxlength="100" aria-label="Пошук розмов">
                         <div class="omni-channel-filters" id="omniFilters">
-                            <button class="omni-channel-btn active" data-channel="all">Всі</button>
-                            <button class="omni-channel-btn" data-channel="telegram">TG</button>
-                            <button class="omni-channel-btn" data-channel="viber">Viber</button>
-                            <button class="omni-channel-btn" data-channel="sms">SMS</button>
-                            <button class="omni-channel-btn" data-channel="facebook">FB</button>
-                            <button class="omni-channel-btn" data-channel="instagram">IG</button>
-                            <button class="omni-channel-btn" data-channel="binotel">Tel</button>
+                            <button type="button" class="omni-channel-btn active" data-channel="all">Всі</button>
+                            <button type="button" class="omni-channel-btn" data-channel="telegram">TG</button>
+                            <button type="button" class="omni-channel-btn" data-channel="viber">Viber</button>
+                            <button type="button" class="omni-channel-btn" data-channel="sms">SMS</button>
+                            <button type="button" class="omni-channel-btn" data-channel="facebook">FB</button>
+                            <button type="button" class="omni-channel-btn" data-channel="instagram">IG</button>
+                            <button type="button" class="omni-channel-btn" data-channel="binotel">Tel</button>
                         </div>
                     </div>
                     <div class="omni-stats" id="omniStats">
@@ -488,15 +488,15 @@
                             <div class="omni-chat-header-channel" id="omniChatChannel"></div>
                         </div>
                         <div class="omni-chat-header-actions">
-                            <button id="omniToggleAI" title="AI авто-відповіді">AI</button>
-                            <button id="omniCloseConv" title="Закрити розмову">Закрити</button>
+                            <button type="button" id="omniToggleAI" title="AI авто-відповіді">AI</button>
+                            <button type="button" id="omniCloseConv" title="Закрити розмову">Закрити</button>
                         </div>
                     </div>
                     <div class="omni-chat-messages" id="omniMessages" style="display:none"></div>
                     <div class="omni-quick-replies" id="omniQuickReplies" style="display:none"></div>
                     <div class="omni-chat-input" id="omniInputArea" style="display:none">
                         <textarea id="omniInput" rows="1" placeholder="Написати повідомлення..." maxlength="4000" aria-label="Повідомлення"></textarea>
-                        <button class="omni-send-btn" id="omniSendBtn" title="Відправити">&gt;</button>
+                        <button type="button" class="omni-send-btn" id="omniSendBtn" title="Відправити">&gt;</button>
                     </div>
                 </div>
             </div>
@@ -655,7 +655,7 @@
 
         function renderQuickReplies() {
             quickRepliesEl.innerHTML = quickReplies.map(qr =>
-                '<button class="omni-quick-btn" data-content="' + esc(qr.content) + '">' + esc(qr.title) + '</button>'
+                '<button type="button" class="omni-quick-btn" data-content="' + esc(qr.content) + '">' + esc(qr.title) + '</button>'
             ).join('');
         }
 

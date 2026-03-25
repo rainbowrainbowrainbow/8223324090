@@ -527,10 +527,10 @@
         <header class="header">
             <div class="header-content">
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
-                <button class="alert-bell-btn" id="alertBell" onclick="toggleAlertsPanel(event)" title="Алерти"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="alert-badge" id="alertBadge" style="display:none">0</span></button>
+                <button type="button" class="alert-bell-btn" id="alertBell" onclick="toggleAlertsPanel(event)" title="Алерти"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="alert-badge" id="alertBadge" style="display:none">0</span></button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -539,9 +539,9 @@
         <main id="main-content" class="page-container">
             <!-- v17.0: Page-level tabs -->
             <div class="wh-page-tabs">
-                <button class="wh-page-tab active" data-page-tab="stock" onclick="switchPageTab('stock')">Склад</button>
-                <button class="wh-page-tab" data-page-tab="procurement" onclick="switchPageTab('procurement')">Закупки</button>
-                <button class="wh-page-tab" data-page-tab="pinata" onclick="switchPageTab('pinata');loadPinataTab()">🪅 Піньяти</button>
+                <button type="button" class="wh-page-tab active" data-page-tab="stock" onclick="switchPageTab('stock')">Склад</button>
+                <button type="button" class="wh-page-tab" data-page-tab="procurement" onclick="switchPageTab('procurement')">Закупки</button>
+                <button type="button" class="wh-page-tab" data-page-tab="pinata" onclick="switchPageTab('pinata');loadPinataTab()">🪅 Піньяти</button>
             </div>
 
             <!-- ============ STOCK TAB ============ -->
@@ -552,8 +552,8 @@
             <div class="page-header">
                 <h2>Склад</h2>
                 <div style="display:flex;gap:8px;">
-                    <button onclick="window.print()" class="btn-page-secondary">PDF</button>
-                    <button id="addItemBtn" class="btn-page-primary" style="display:none;">+ Додати позицію</button>
+                    <button type="button" onclick="window.print()" class="btn-page-secondary">PDF</button>
+                    <button type="button" id="addItemBtn" class="btn-page-primary" style="display:none;">+ Додати позицію</button>
                 </div>
             </div>
 
@@ -563,7 +563,7 @@
             <!-- Filters -->
             <div class="wh-filters">
                 <input type="text" id="searchInput" class="wh-search" aria-label="Пошук за назвою..." placeholder="Пошук за назвою...">
-                <button id="lowStockToggle" class="wh-toggle">Мало на складі</button>
+                <button type="button" id="lowStockToggle" class="wh-toggle">Мало на складі</button>
             </div>
 
             <!-- Add/edit form (hidden by default) -->
@@ -620,8 +620,8 @@
                 </div>
                 <input type="hidden" id="wf-id" value="">
                 <div style="display:flex; gap:8px; margin-top:20px;">
-                    <button id="saveItemBtn" class="btn-page-primary">Зберегти</button>
-                    <button id="cancelItemBtn" class="btn-page-secondary">Скасувати</button>
+                    <button type="button" id="saveItemBtn" class="btn-page-primary">Зберегти</button>
+                    <button type="button" id="cancelItemBtn" class="btn-page-secondary">Скасувати</button>
                 </div>
             </div>
 
@@ -663,8 +663,8 @@
                 <div class="page-header">
                     <h2>Закупки</h2>
                     <div style="display:flex;gap:8px;">
-                        <button onclick="exportProcXlsx()" class="btn-page-secondary">Excel</button>
-                        <button onclick="openProcForm()" class="btn-page-primary">+ Новий список</button>
+                        <button type="button" onclick="exportProcXlsx()" class="btn-page-secondary">Excel</button>
+                        <button type="button" onclick="openProcForm()" class="btn-page-primary">+ Новий список</button>
                     </div>
                 </div>
 
@@ -685,7 +685,7 @@
                         <option value="purchased">Закуплено</option>
                         <option value="delivered">Доставлено</option>
                     </select>
-                    <button onclick="loadSuggestions()" class="wh-toggle">Авто з нестач</button>
+                    <button type="button" onclick="loadSuggestions()" class="wh-toggle">Авто з нестач</button>
                 </div>
 
                 <div id="procListCards" class="proc-cards"></div>
@@ -710,8 +710,8 @@
                 <input type="text" id="qtyModalReason" aria-label="Щоденне використання" placeholder="Щоденне використання">
             </div>
             <div class="wh-modal-actions">
-                <button id="qtyModalConfirm" class="btn-page-primary">Підтвердити</button>
-                <button id="qtyModalCancel" class="btn-page-secondary">Скасувати</button>
+                <button type="button" id="qtyModalConfirm" class="btn-page-primary">Підтвердити</button>
+                <button type="button" id="qtyModalCancel" class="btn-page-secondary">Скасувати</button>
             </div>
         </div>
     </div>
@@ -755,8 +755,8 @@
             </div>
             <input type="hidden" id="pf-id" value="">
             <div class="wh-modal-actions">
-                <button onclick="saveProcList()" class="btn-page-primary">Зберегти</button>
-                <button onclick="closeProcForm()" class="btn-page-secondary">Скасувати</button>
+                <button type="button" onclick="saveProcList()" class="btn-page-primary">Зберегти</button>
+                <button type="button" onclick="closeProcForm()" class="btn-page-secondary">Скасувати</button>
             </div>
         </div>
     </div>
@@ -773,12 +773,12 @@
                 <input type="text" id="pd-item-name" aria-label="Позиція" placeholder="Позиція" style="flex:1;min-width:140px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
                 <input type="number" id="pd-item-qty" aria-label="К-сть" placeholder="К-сть" value="1" min="1" style="width:70px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
                 <input type="number" id="pd-item-price" aria-label="Ціна ₴" placeholder="Ціна ₴" value="0" min="0" style="width:90px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
-                <button onclick="addProcItem()" class="btn-page-primary" style="white-space:nowrap;">+ Додати</button>
+                <button type="button" onclick="addProcItem()" class="btn-page-primary" style="white-space:nowrap;">+ Додати</button>
             </div>
 
             <div class="wh-modal-actions" style="margin-top:20px;">
-                <button id="procCompleteBtn" onclick="completeProcList()" class="btn-page-primary" style="background:#10B981;">Закупити все</button>
-                <button onclick="closeProcDetail()" class="btn-page-secondary">Закрити</button>
+                <button type="button" id="procCompleteBtn" onclick="completeProcList()" class="btn-page-primary" style="background:#10B981;">Закупити все</button>
+                <button type="button" onclick="closeProcDetail()" class="btn-page-secondary">Закрити</button>
             </div>
         </div>
     </div>
@@ -792,14 +792,14 @@
       <div id="pinataUpcomingList" style="margin-bottom:24px;"></div>
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
         <h4 style="margin:0">🖼️ Дизайни картинок</h4>
-        <button class="btn-page-primary" onclick="openAddDesignForm()">+ Дизайн</button>
+        <button type="button" class="btn-page-primary" onclick="openAddDesignForm()">+ Дизайн</button>
       </div>
       <div id="pinataDesignsList"></div>
       <div id="addDesignForm" style="display:none; background:var(--glass-bg); border:1px solid var(--border-color); border-radius:12px; padding:16px; margin-top:12px;">
         <input type="text" id="newDesignName" placeholder="Назва дизайну" style="margin-bottom:8px; width:100%; padding:10px; border:1px solid var(--border-color); border-radius:8px; font-size:16px;">
         <div style="display:flex; gap:8px;">
-          <button class="btn-page-primary" onclick="saveNewDesign()">💾 Зберегти</button>
-          <button class="btn-page-secondary" onclick="document.getElementById('addDesignForm').style.display='none'">Скасувати</button>
+          <button type="button" class="btn-page-primary" onclick="saveNewDesign()">💾 Зберегти</button>
+          <button type="button" class="btn-page-secondary" onclick="document.getElementById('addDesignForm').style.display='none'">Скасувати</button>
         </div>
       </div>
     </div>
@@ -840,8 +840,8 @@
                     <div style="font-size:32px; font-weight:800; color:${isLow ? '#ef4444' : 'inherit'};">${s.quantity}</div>
                     <div style="font-size:12px; color:var(--gray-400);">${s.unit} (мін: ${s.min_quantity})</div>
                     <div style="display:flex; gap:6px; justify-content:center; margin-top:10px;">
-                        <button class="wh-btn danger" onclick="pinataAdjust(${s.id},'use')">−</button>
-                        <button class="wh-btn restock" onclick="pinataAdjust(${s.id},'restock')">+</button>
+                        <button type="button" class="wh-btn danger" onclick="pinataAdjust(${s.id},'use')">−</button>
+                        <button type="button" class="wh-btn restock" onclick="pinataAdjust(${s.id},'restock')">+</button>
                     </div>
                 </div>`;
             }).join('');
@@ -856,9 +856,9 @@
                     <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border-color);">
                         <span>${d.name}</span>
                         <div style="display:flex; align-items:center; gap:8px;">
-                            <button class="wh-btn danger" onclick="designAdjust(${d.id},-1)">−</button>
+                            <button type="button" class="wh-btn danger" onclick="designAdjust(${d.id},-1)">−</button>
                             <span style="font-weight:700; min-width:30px; text-align:center; color:${d.prints_qty<=2?'#ef4444':'inherit'}">${d.prints_qty}</span>
-                            <button class="wh-btn restock" onclick="designAdjust(${d.id},1)">+</button>
+                            <button type="button" class="wh-btn restock" onclick="designAdjust(${d.id},1)">+</button>
                             <span style="font-size:12px; color:var(--gray-400);">шт</span>
                         </div>
                     </div>`).join('')

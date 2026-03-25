@@ -876,7 +876,7 @@
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -887,10 +887,10 @@
 
                 <!-- v20.3.0: Center tabs -->
                 <div class="center-tabs" id="centerTabs">
-                    <button class="center-tab-btn active" data-tab="overview">Огляд</button>
-                    <button class="center-tab-btn" data-tab="finance">Фінанси</button>
-                    <button class="center-tab-btn" data-tab="reports">Звіти</button>
-                    <button class="center-tab-btn" data-tab="analytics">Аналітика</button>
+                    <button type="button" class="center-tab-btn active" data-tab="overview">Огляд</button>
+                    <button type="button" class="center-tab-btn" data-tab="finance">Фінанси</button>
+                    <button type="button" class="center-tab-btn" data-tab="reports">Звіти</button>
+                    <button type="button" class="center-tab-btn" data-tab="analytics">Аналітика</button>
                 </div>
 
                 <!-- Tab: Finance (embedded iframe) -->
@@ -913,9 +913,9 @@
                     </div>
                     <div class="section-body">
                         <div class="kpi-period-tabs" id="kpiTabs">
-                            <button class="kpi-period-tab active" data-period="today">Сьогодні</button>
-                            <button class="kpi-period-tab" data-period="week">Тиждень</button>
-                            <button class="kpi-period-tab" data-period="month">Місяць</button>
+                            <button type="button" class="kpi-period-tab active" data-period="today">Сьогодні</button>
+                            <button type="button" class="kpi-period-tab" data-period="week">Тиждень</button>
+                            <button type="button" class="kpi-period-tab" data-period="month">Місяць</button>
                         </div>
                         <div class="kpi-grid" id="kpiGrid">
                             <div class="center-loading">Завантаження...</div>
@@ -996,7 +996,7 @@
                 <div class="center-section" id="goalsSection">
                     <div class="center-section-title" onclick="toggleSection(this)">
                         <span class="collapse-arrow">▼</span> Цілі
-                        <button class="btn-center-action" onclick="event.stopPropagation();showGoalsForm()">Налаштувати</button>
+                        <button type="button" class="btn-center-action" onclick="event.stopPropagation();showGoalsForm()">Налаштувати</button>
                     </div>
                     <div class="section-body">
                         <div id="goalsContent"><div class="center-loading">Завантаження...</div></div>
@@ -1075,7 +1075,7 @@
                     <div class="section-body">
                         <div class="client-search-bar">
                             <input type="text" id="clientSearchInput" placeholder="Пошук клієнта (ім'я, телефон, дитина)..." class="client-search-input" onkeydown="if(event.key==='Enter')searchClients()">
-                            <button class="btn-center-action" onclick="searchClients()" style="margin-left:0">Знайти</button>
+                            <button type="button" class="btn-center-action" onclick="searchClients()" style="margin-left:0">Знайти</button>
                         </div>
                         <div id="clientsContent"></div>
                         <div id="clientBookingsContent" class="hidden"></div>
@@ -1096,7 +1096,7 @@
                 <div class="center-section" id="loyaltySection">
                     <div class="center-section-title" onclick="toggleSection(this)">
                         <span class="collapse-arrow">▼</span> Програма лояльності
-                        <button class="btn-center-action" onclick="event.stopPropagation();recalculateLoyalty()">Перерахувати</button>
+                        <button type="button" class="btn-center-action" onclick="event.stopPropagation();recalculateLoyalty()">Перерахувати</button>
                     </div>
                     <div class="section-body">
                         <div class="loyalty-tiers-grid" id="loyaltyTiersGrid">
@@ -1110,7 +1110,7 @@
                 <div class="center-section" id="discountsSection">
                     <div class="center-section-title" onclick="toggleSection(this)">
                         <span class="collapse-arrow">▼</span> Промокоди
-                        <button class="btn-center-action" onclick="event.stopPropagation();showAddDiscountForm()">+ Додати</button>
+                        <button type="button" class="btn-center-action" onclick="event.stopPropagation();showAddDiscountForm()">+ Додати</button>
                     </div>
                     <div class="section-body">
                         <div id="discountsList">
@@ -1124,7 +1124,7 @@
                 <div class="center-section" id="proposalsSection">
                     <div class="center-section-title" onclick="toggleSection(this)">
                         <span class="collapse-arrow">▼</span> Пропозиції зі знижками
-                        <button class="btn-center-action" onclick="event.stopPropagation();showAddProposalForm()">+ Додати</button>
+                        <button type="button" class="btn-center-action" onclick="event.stopPropagation();showAddProposalForm()">+ Додати</button>
                     </div>
                     <div class="section-body">
                         <div id="proposalsList">
@@ -1180,7 +1180,7 @@
                 <div class="center-section" id="reportSection">
                     <div class="center-section-title" onclick="toggleSection(this)">
                         <span class="collapse-arrow">▼</span> Щоденний звіт
-                        <button class="btn-center-action" onclick="event.stopPropagation();sendReportToTelegram()">Надіслати в Telegram</button>
+                        <button type="button" class="btn-center-action" onclick="event.stopPropagation();sendReportToTelegram()">Надіслати в Telegram</button>
                     </div>
                     <div class="section-body">
                         <div id="reportContent">
@@ -1328,7 +1328,7 @@
                 banner.style.display = '';
                 banner.style.cssText = 'padding:12px 16px;border-radius:8px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;background:' + bg;
                 banner.innerHTML = '<span style="font-weight:600">' + icon + ': ' + (data.amount || 0) + ' грн</span>' +
-                    '<button onclick="this.parentElement.style.display=\'none\';localStorage.setItem(\'subscription_dismissed_\'+new Date().toISOString().split(\'T\')[0],\'1\')" style="background:none;border:none;cursor:pointer;font-size:18px">✕</button>';
+                    '<button type="button" onclick="this.parentElement.style.display=\'none\';localStorage.setItem(\'subscription_dismissed_\'+new Date().toISOString().split(\'T\')[0],\'1\')" style="background:none;border:none;cursor:pointer;font-size:18px">✕</button>';
             })
             .catch(() => {});
         }

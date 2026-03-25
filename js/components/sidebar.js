@@ -378,7 +378,7 @@ const Sidebar = (() => {
             // Same-page hash navigation (e.g. /sound#library → /sound#announcements)
             const hrefBase = href.split('#')[0];
             const hrefHash = href.includes('#') ? href.split('#')[1] : '';
-            const currentBase = window.location.pathname;
+            const currentBase = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
             if (hrefBase === currentBase && hrefHash) {
                 e.preventDefault();
                 window.location.hash = '#' + hrefHash;

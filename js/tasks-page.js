@@ -90,16 +90,14 @@ async function initPage() {
     initDarkMode();
     const token = localStorage.getItem('pzp_token');
     if (!token) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     const user = await apiVerifyToken();
     if (!user) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     AppState.currentUser = user;

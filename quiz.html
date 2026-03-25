@@ -235,7 +235,7 @@
                                 <div class="quiz-stat-label">\u041c\u0430\u043a\u0441 \u043c\u043e\u043d\u0435\u0442</div>
                             </div>
                         </div>
-                        <button class="quiz-start-btn pulse" onclick="startQuiz()">\u25b6\ufe0f \u041f\u043e\u0447\u0430\u0442\u0438 \u0432\u0456\u043a\u0442\u043e\u0440\u0438\u043d\u0443</button>
+                        <button type="button" class="quiz-start-btn pulse" onclick="startQuiz()">\u25b6\ufe0f \u041f\u043e\u0447\u0430\u0442\u0438 \u0432\u0456\u043a\u0442\u043e\u0440\u0438\u043d\u0443</button>
                     </div>
                 `}
             </div>
@@ -318,7 +318,7 @@
                 <div class="quiz-question-text">${q.question}</div>
                 <div class="quiz-answers" id="quizAnswers">
                     ${q.answers.map((a, i) => `
-                        <button class="quiz-answer-btn" onclick="answerQuestion(${i})" data-idx="${i}">
+                        <button type="button" class="quiz-answer-btn" onclick="answerQuestion(${i})" data-idx="${i}">
                             ${String.fromCharCode(65 + i)}. ${a}
                         </button>
                     `).join('')}
@@ -428,8 +428,8 @@
                 </div>
 
                 <div style="display:flex;gap:8px;justify-content:center;margin-top:16px">
-                    <button class="quiz-start-btn" onclick="location.reload()" style="font-size:0.9rem;padding:10px 20px">\ud83d\udd04 \u0429\u0435 \u0440\u0430\u0437</button>
-                    <button class="quiz-start-btn" onclick="location.href='/profile'" style="font-size:0.9rem;padding:10px 20px;background:var(--gray-200);color:var(--gray-700)">\u2190 \u041f\u0440\u043e\u0444\u0456\u043b\u044c</button>
+                    <button type="button" class="quiz-start-btn" onclick="location.reload()" style="font-size:0.9rem;padding:10px 20px">\ud83d\udd04 \u0429\u0435 \u0440\u0430\u0437</button>
+                    <button type="button" class="quiz-start-btn" onclick="location.href='/profile'" style="font-size:0.9rem;padding:10px 20px;background:var(--gray-200);color:var(--gray-700)">\u2190 \u041f\u0440\u043e\u0444\u0456\u043b\u044c</button>
                 </div>
             </div>
         </div>`;

@@ -32,12 +32,10 @@ async function initPage() {
         document.body.classList.add('embed-mode');
         const sidebar = document.getElementById('sidebarNav');
         const header = document.querySelector('.header');
-        const loginOverlay = document.getElementById('loginOverlay');
-        if (sidebar) sidebar.style.display = 'none';
-        if (header) header.style.display = 'none';
-        if (loginOverlay) loginOverlay.style.display = 'none';
-        const main = document.querySelector('.page-container');
-        if (main) main.style.marginLeft = '0';
+        window.location.href = '/';
+        throw new Error('Unauthorized');
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     const token = localStorage.getItem('pzp_token');
@@ -48,9 +46,8 @@ async function initPage() {
             await loadProducts();
             return;
         }
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     const user = await apiVerifyToken();
@@ -61,9 +58,8 @@ async function initPage() {
             await loadProducts();
             return;
         }
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     AppState.currentUser = user;

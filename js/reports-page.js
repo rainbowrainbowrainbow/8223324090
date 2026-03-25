@@ -44,9 +44,8 @@ const ReportsPage = (() => {
         });
         if (res.status === 401 || res.status === 403) {
             localStorage.removeItem('pzp_token');
-            document.getElementById('loginOverlay')?.classList.remove('hidden');
-            if (document.getElementById('mainApp')) document.getElementById('mainApp').style.display = 'none';
-            throw new Error('Unauthorized');
+        window.location.href = '/';
+        throw new Error('Unauthorized');
         }
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));

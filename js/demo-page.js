@@ -91,7 +91,7 @@ function setupTabs() {
             document.querySelectorAll('.demo-tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.demo-tab-content').forEach(c => c.classList.remove('active'));
             tab.classList.add('active');
-            document.getElementById(`tab-${tabName}`).classList.add('active');
+            document.getElementById(`tab-${tabName}`)?.classList.add('active');
             activeTab = tabName;
 
             if (tabName === 'packages') loadPackages();
@@ -431,14 +431,12 @@ async function initAuth() {
     const token = localStorage.getItem('pzp_token');
     const savedUser = localStorage.getItem(CONFIG.STORAGE.CURRENT_USER);
     if (!token || !savedUser) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        return false;
-    }
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     const user = await apiVerifyToken();
     if (!user) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        return false;
-    }
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     AppState.currentUser = user;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];

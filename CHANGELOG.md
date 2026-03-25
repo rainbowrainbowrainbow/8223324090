@@ -68,6 +68,178 @@
 
 ---
 
+## v38.2.0 — Тестовий деплой + Deep Research підготовка (2026-03-24)
+
+### Research & Deploy [claude-code]
+- **Deep Research** — підготовлено промпти для глибокого аналізу CRM (бізнес + технічний)
+- **Тестовий деплой** — перевірка стабільності системи
+
+---
+
+## v38.1.0 — HR: Команда + Вакансії + Підбір персоналу (2026-03-22)
+
+### Team Tab Fix [claude-code]
+- **initTabs()** — null-safe panel lookup + loader object pattern
+- **loadTeam()** — spinner, null-check для hrFetch, error states
+
+### Roles Sync [claude-code]
+- **ROLE_LABELS** — 7 → 15 ролей (+trampoline_instructor, waiter, bartender, cook, head_cook, director, vice_director, hr_manager)
+- **teamRoleFilter** — optgroup структура (Керівництво/Аніматори/Кухня/Технічний)
+
+### Vacancies Module [claude-code]
+- **Migration 123** — `job_vacancies` + `job_applications` таблиці з індексами, тригер auto-update applications_count
+- **routes/hr.js** — 8 нових ендпоінтів (vacancies CRUD, applications CRUD, hire з auto-staff creation)
+- **hr.html** — новий таб "Вакансії" зі статус-фільтром, stat cards, канбан кандидатів
+
+---
+
+## v38.0.0 — Sound Module (2026-03-22)
+
+### Sound Page [claude-code]
+- **sound.html** — повний rewrite з 4 табами: Оголошення / Бібліотека / Плейлисти / Лог
+- **Migration 122** — sounds.url column, extended category/type checks
+- **routes/music.js** — POST /generate-tts (TTS), GET/POST/DELETE /library (file upload), GET/POST/DELETE /projects
+- **js/sound-page.js** — логіка табів, API calls, модалки
+- **css/sound.css** — Design System v4.0 токени, dark mode, мобільна адаптація
+
+### v38.0.1 — Sidebar Fixes [claude-code]
+- **Арт директор** — додано до окремої групи sidebar
+- **Ukrainian labels** — локалізація sidebar меню
+
+---
+
+## v37.8.0 — Visual Polish (2026-03-22)
+
+### UI Enhancement [claude-code]
+- **Cards** — глибші тіні, hover-lift з border-glow
+- **Buttons** — gradient backgrounds, glow-shadow, scale active
+- **Inputs** — inset shadow, hover border, покращений focus ring
+- **Login** — gradient кнопка, стильніші інпути, inner glow
+- **Tooltip** — backdrop-blur, rounded 12px
+- **Tabs/Filters** — gradient active, hover-lift
+- **Dashboard** — widget hover-lift, stat-items gradient tint
+- **Dark mode** — оновлено empty-state
+
+---
+
+## v37.7.0 — Page Transitions (2026-03-22)
+
+### Animations [claude-code]
+- **5 анімацій входу** — унікальна анімація для кожної групи sidebar (CRM, Управління, HR, Творче, Система)
+- **Exit анімація** — 180ms fade-slide-down при навігації
+- **prefers-reduced-motion** — вимикає всі переходи
+
+---
+
+## v37.6.0 — Sidebar Visual Upgrade (2026-03-22)
+
+### Sidebar Redesign [claude-code]
+- **Nav icons** — 28px rounded boxes з gray-50 background, colored on active
+- **User card** — gradient card з border, shadow, 36px avatar
+- **Active state** — gradient background + 4px glow indicator bar
+- **Hover** — translateX(2px) slide animation
+- **Custom scrollbar** — 4px thin (webkit + firefox)
+- **Dark mode** — всі нові стилі адаптовано
+
+---
+
+## v37.5.0 — Cache Bust Fix (2026-03-22)
+
+### Browser Cache [claude-code]
+- **Проблема** — браузер кешував старі JS файли (config.js, sidebar.js) бо ?v= не змінився
+- **Фікс** — оновлено ?v=37.5.0 на всіх 30 HTML сторінках
+
+---
+
+## v37.4.0 — Системний QA Чекап (2026-03-22)
+
+### QA [claude-code]
+- **Version bump** — 37.3.0 → 37.4.0
+- **Changelog entry** — 13 пунктів всіх змін сесії
+- **Cache-bust** — ?v=37.4.0 на всіх 30 HTML сторінках
+
+---
+
+## v37.3.0 — Sidebar Always Expanded (2026-03-22)
+
+### UX Change [claude-code]
+- **Collapse видалено** — display:none !important
+- **Всі 5 груп відкриті** — defaultOpen: true (CRM, Управління, HR, Творче, Система)
+- **localStorage очищено** — pzp_sidebar_collapsed + pzp_sidebar_groups removed on init
+
+---
+
+## v37.2.0 — HR Group in Sidebar (2026-03-22)
+
+### Navigation [claude-code]
+- **Нова 5-а група** — HR (🤝) з Графік, Команда, Кадри, Навчання
+- **Навчання** — переміщено з CRM до HR групи
+- **Управління** — залишено тільки бізнес-елементи (Клієнти, Ліди, Фінанси, Аналітика, Звіти, AI)
+
+---
+
+## v37.1.0 — Sidebar Responsive Fix (2026-03-22)
+
+### Responsive [claude-code]
+- **Root cause** — group labels з uppercase + letter-spacing:1.2px overflow 220px sidebar
+- **layout.css** — letter-spacing 1.2→0.8px, text-overflow:ellipsis
+- **Tablet (769-1023px)** — font 12px, group label 9px для 200px sidebar
+- **Mobile (≤768px)** — accordion groups в collapsed off-canvas sidebar 280px
+
+---
+
+## v37.0.0 — UI Polish Bundle (2026-03-22)
+
+### 7 Improvements [claude-code]
+- **Profile** — null-safe getElementById для currentUser
+- **Афіша** — 🎭 кнопка додана до timeline top-bar
+- **Statistics** — приховано з dropdown menu
+- **History** — видалено дублікат з dropdown (залишено тільки sidebar)
+- **sound.html** — нова сторінка з Library/Projects/Upload табами
+- **routes/sound-library.js** — CRUD API для звуків
+- **designer.html** — нова сторінка з 5 табами (Catalogs, Guideline, Brand Book, Styleguide, Templates)
+
+---
+
+## v36.0.0 — Decision Screen (2026-03-22)
+
+### Центр прийняття рішень [claude-code]
+- **decisions.sql** — PostgreSQL таблиця з пріоритетами, джерелами, індексами
+- **routes/decisions.js** — 4 ендпоінти: GET pending, POST create, PUT approve/reject/defer, GET history
+- **js/decision-screen.js** — IIFE модуль з локальними утилітами, блокуючий overlay на Dashboard
+- **css/decision-screen.css** — overlay z:99999, sticky header, card animations
+- **Priority cards** — critical (red), important (yellow), normal (blue)
+- **Dark mode** — повна підтримка
+
+### v36.1.0 — Decision Screen for All Roles [claude-code]
+- Зняте обмеження по ролях для /pending, /:id/:action, /history
+
+### v36.2.0 — Seed Decisions [claude-code]
+- **Migration 116** — 3 тестових рішення (critical/important/normal) для першого деплою
+
+---
+
+## v35.1.0–v35.11.0 — Sidebar Polish & Site Health (2026-03-22)
+
+### Sidebar Improvements [claude-code]
+- **v35.1.0** — чисті emoji іконки (прибрано gray badge box), додано /reports до Управління
+- **v35.2.0** — compact nav-links (padding 10→7px, font 14→13px), smart defaultOpen (тільки активна група)
+- **v35.3.0** — додано Каталоги до Творче групи, фікс user card onclick
+- **v35.4.0** — видалено improvementFab (перекривав Клешню)
+- **v35.5.0** — 🌙/☀️ theme toggle кнопка в sidebar
+
+### API & Page Fixes [claude-code]
+- **v35.6.0** — API bugfixes: copilot columns (updated_at→last_contact_at, full_name→name), warehouse route ordering
+- **v35.7.0** — додано /copilot до PAGE_ACCESS в auth.js
+- **v35.8.0** — unified sidebar на всіх 24 сторінках
+- **v35.9.0** — фікс blank copilot page (auth flow broken — тепер робить свій apiVerifyToken)
+
+### Site Health [claude-code]
+- **v35.10.0** — CSS cache bust + Nunito font на всіх 27 сторінках
+- **v35.11.0** — full site health fix: overlays, scripts, fonts, versions (0 remaining issues)
+
+---
+
 ## v35.0.0 — Sidebar Full Rebuild (2026-03-22)
 
 ### Sidebar Accordion Groups [claude-code]

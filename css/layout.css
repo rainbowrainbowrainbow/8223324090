@@ -1549,10 +1549,15 @@ body[data-page-group="hr"] .page-container,
 body[data-page-group="hr"] .main-content {
     animation: ptSlideInUp 0.35s var(--ease-out-expo) both;
 }
-/* Творче: perspective rotate */
-body[data-page-group="creative"] .page-container,
-body[data-page-group="creative"] .main-content {
+/* Арт: perspective rotate */
+body[data-page-group="art"] .page-container,
+body[data-page-group="art"] .main-content {
     animation: ptRotateIn 0.4s var(--ease-out-expo) both;
+}
+/* Дизайнер: fade scale */
+body[data-page-group="designer"] .page-container,
+body[data-page-group="designer"] .main-content {
+    animation: ptFadeScale 0.4s var(--ease-out-expo) both;
 }
 /* Система: bounce */
 body[data-page-group="system"] .page-container,

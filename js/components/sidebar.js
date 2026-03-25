@@ -30,18 +30,21 @@ const Sidebar = (() => {
         { href: '/hr',           icon: '🤝', label: 'Кадри',          access: 'hr_page',        group: 'hr' },
         { href: '/training',     icon: '🎓', label: 'Навчання',       access: 'all',            group: 'hr' },
 
-        // ─── GROUP: Продукт ──────────────────────────────────────
-        { type: 'group', key: 'creative', label: 'Продукт', icon: '🎨', defaultOpen: true },
-        { href: '/programs',     icon: '🎪', label: 'Програми',       access: 'programs',       group: 'creative' },
-        { href: '/art',          icon: '🎨', label: 'Арт директор',   access: 'art',            group: 'creative' },
-        { href: '/designer',     icon: '📐', label: 'Дизайнер',       access: 'art',            group: 'creative' },
-        { href: '/graduation',   icon: '🎓', label: 'Випускний',      access: 'graduation',     group: 'creative' },
-        { href: '/art',          icon: '📂', label: 'Каталоги',       access: 'art',            group: 'creative', noActive: true },
-        // E4/E5 FIX: Афіша і Сертифікати — action-links
-        { href: '#afisha',       icon: '🎭', label: 'Афіша',          access: 'all',            group: 'creative',
+        // ─── GROUP: Арт (розваги, програми, автоматизація) ────────
+        { type: 'group', key: 'art', label: 'Арт', icon: '🎨', defaultOpen: true },
+        { href: '/programs',     icon: '🎪', label: 'Програми',       access: 'programs',       group: 'art' },
+        { href: '/art',          icon: '🎨', label: 'Арт директор',   access: 'art',            group: 'art' },
+        { href: '/graduation',   icon: '🎓', label: 'Випускний',      access: 'graduation',     group: 'art' },
+        { href: '#afisha',       icon: '🎭', label: 'Афіша',          access: 'all',            group: 'art',
           action: 'sidebarOpenAfisha',       isHashLink: true },
-        { href: '#certificates', icon: '🎫', label: 'Сертифікати',    access: 'all',            group: 'creative',
+        { href: '#certificates', icon: '🎫', label: 'Сертифікати',    access: 'all',            group: 'art',
           action: 'sidebarOpenCertificates', isHashLink: true },
+
+        // ─── GROUP: Дизайнер (візуал, каталоги, стайлгайд) ─────
+        { type: 'group', key: 'designer', label: 'Дизайнер', icon: '📐', defaultOpen: true },
+        { href: '/designs',      icon: '🖼️', label: 'Дизайн-борд',    access: 'art',            group: 'designer' },
+        { href: '/designs#catalogs', icon: '📂', label: 'Каталоги',   access: 'art',            group: 'designer' },
+        { href: '/designer',     icon: '📖', label: 'Стайлгайд',      access: 'art',            group: 'designer' },
 
         // ─── GROUP: Звук ────────────────────────────────────────
         { type: 'group', key: 'sound', label: 'Звук', icon: '🔊', defaultOpen: true },

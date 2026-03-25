@@ -4,6 +4,15 @@
 
 ---
 
+## v38.8.0 — Авто-каталог Fix + Dashboard Widget (2026-03-25)
+
+### Catalog Fixes [claude-code]
+- **Шрифти зменшено** — cover icon 56→40px, year 28→22px, title clamp(20,4vw,28)px, price clamp(18,3vw,24)px, h3 16→15px
+- **Viewer overflow** — catalog-pages-container max-height: 80vh
+- **Dashboard widget** — каталоги повернено до списку доступних dashboard віджетів
+
+---
+
 ## v38.7.0 — Sidebar: Арт + Дизайнер Split (2026-03-25)
 
 ### Sidebar Restructure [claude-code]

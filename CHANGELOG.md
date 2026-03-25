@@ -4,6 +4,68 @@
 
 ---
 
+## v38.5.0 — Deep QA Sweep (2026-03-25)
+
+### Security Hardening [claude-code]
+- **Hardcoded API ключі видалено** — KIE.ai (2 місця) + OpenRouter: graceful 503 якщо env var не задано
+- **SQL injection fix** — `routes/backup.js`: table name interpolation → `safeTableName()` з allowlist
+- **Telegram HTML injection** — `esc()` для всіх user-controlled полів у notification templates (notes, names, descriptions)
+- **IDOR fix** — `PATCH /bookings/:id/payment` додано `requireAction('edit_booking')`
+- **innerHTML XSS** — escaped user data в hr-page, center-page, chat-page (4 місця)
+- **10 missing PAGE_ACCESS** — додано auth записи для art-director, designs, game, leads, profile, quiz, report-agent, reports, room, shop
+
+### Race Conditions Fixed [claude-code]
+- **awardXP** — atomic SQL `xp = xp + $1` замість read-modify-write
+- **purchaseShopItem** — `FOR UPDATE` lock на shop_items запобігає oversell
+- **updateStreak** — atomic UPSERT з CASE логікою, без read-modify-write
+
+### Performance [claude-code]
+- **N+1 achievements** — 500+ queries → 9 parallel batch queries (Promise.all)
+- **N+1 bulk messaging** — 1000 INSERTs → single batch INSERT
+- **N+1 meeting action items** — loop INSERT → multi-row INSERT
+- **52+ unbounded SELECT*** — додано LIMIT на всі queries без обмежень
+- **Pagination caps** — chat limit=200, summary limit=100, days=365
+
+### Frontend QA [claude-code]
+- **401 blank screen fix** — 13 сторінок: `loginOverlay` → `window.location.href='/'`
+- **434 buttons** — додано `type="button"` (запобігає accidental form submit)
+- **Sidebar hash nav** — нормалізація pathname для in-page tab switching
+- **Dark mode flash** — prevention script на 20 сторінках
+- **Null-safe getElementById** — demo-page, art-director-page tab switching
+- **setInterval leaks** — agents-panel, alerts, status-page: clearInterval on beforeunload
+- **CSS iOS zoom** — 3 inputs з font-size 13px → 16px
+
+### Timezone DST Fixes [claude-code]
+- **music-delivery.js** — hardcoded UTC+3 → DST-aware `toLocaleString('en-US', { timeZone: 'Europe/Kyiv' })`
+- **agentTracker.js** — hardcoded +02:00 → dynamic DST offset
+- **8 toLocaleDateString()** — додано `timeZone: 'Europe/Kyiv'` (graduation, certificates, finance, bot, templates)
+
+### Memory & Stability [claude-code]
+- **Guardian.js** — periodic cleanup (5 хв) для 9 in-memory caches (запобігає ~20MB leak за 7 днів)
+- **contextCache.js** — periodic cleanup (10 хв) + hard cap 500 entries
+- **WebSocket heartbeat** — snapshot iteration запобігає iterator invalidation; `_removeClient()` для повного cleanup
+- **unhandledRejection** — тепер `process.exit(1)` (запобігає corrupted state)
+- **API 404** — JSON `{ error: 'Not found' }` замість HTML для `/api/*` routes
+
+### Database [claude-code]
+- **Migration 126** — 5 missing indexes (leads, bookings, finance, staff) + ON DELETE SET NULL для bookings.customer_id, discount_usage.customer_id
+
+### Telegram [claude-code]
+- **Message truncation** — `truncate()` helper для 4096 char Telegram limit
+- **Silent catches** — 3 `.catch(() => {})` → logging (order notify, lead notify, chat ID reg)
+
+### Testing [claude-code]
+- **+78 нових тестів** (346 → 424): auth-refresh (15), sql-safety (13), decisions (11), vacancies (9), graduation (10), dashboard-widgets (10), our-fixes (10)
+
+### Documentation [claude-code]
+- **CHANGELOG.md** — відновлено 20+ пропущених версій (v35.1–v38.2)
+- **PROJECT_PASSPORT.md** — v22.18 → v38.5, routes 61→74, services 30→41, CSS 17→22
+- **SNAPSHOT.md** — оновлено architecture counts
+- **Cache-bust** — `?v=38.5.0` на всіх 34 HTML сторінках
+- **Accessibility** — aria-label на 11 inputs (analytics, customers, dashboard, art-director, chat, demo, center)
+
+---
+
 ## v38.4.0 — Security & Reliability Hardening (2026-03-25)
 
 ### JWT Refresh Tokens [claude-code]

@@ -276,12 +276,9 @@ app.get('/copilot', (req, res) => {
 app.get('/kleshnya', (req, res) => {
     res.redirect('/chat');
 });
-// v22.0.0: designs merged into art-director page
+// v38.8.0: designs as standalone page (was redirect to /art?tab=designs)
 app.get('/designs', (req, res) => {
-    if (req.query.embedded === '1') {
-        return res.sendFile(path.join(__dirname, 'designs.html'));
-    }
-    res.redirect(302, '/art?tab=designs');
+    res.sendFile(path.join(__dirname, 'designs.html'));
 });
 app.get('/warehouse', (req, res) => {
     res.sendFile(path.join(__dirname, 'warehouse.html'));

@@ -98,22 +98,22 @@ async function initPage() {
     setupCollections();
     setupCalendarNav();
 
-    await Promise.all([
-        loadDesigns(),
-        loadCollections(),
-        loadTags(),
-        loadCatalogs()
-    ]);
-
-    renderTagChips();
-    updateCollectionFilters();
-
-    // Switch to tab from URL hash (e.g. /designs#catalogs)
+    // v38.9.0: Switch to tab from URL hash IMMEDIATELY (before async loads)
     const hash = window.location.hash.replace('#', '');
     if (hash) {
         const targetTab = document.querySelector(`[data-tab="${hash}"]`);
         if (targetTab) targetTab.click();
     }
+
+    await Promise.all([
+        loadDesigns(),
+        loadCollections(),
+        loadTags(),
+        loadCatalogs()
+    ]).catch(err => console.error('initPage load error:', err));
+
+    renderTagChips();
+    updateCollectionFilters();
 }
 
 // ==========================================

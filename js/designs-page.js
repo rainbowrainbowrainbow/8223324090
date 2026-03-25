@@ -107,6 +107,13 @@ async function initPage() {
 
     renderTagChips();
     updateCollectionFilters();
+
+    // Switch to tab from URL hash (e.g. /designs#catalogs)
+    const hash = window.location.hash.replace('#', '');
+    if (hash) {
+        const targetTab = document.querySelector(`[data-tab="${hash}"]`);
+        if (targetTab) targetTab.click();
+    }
 }
 
 // ==========================================
@@ -134,6 +141,15 @@ function setupTabs() {
         });
     });
 }
+
+// Handle hash changes without page reload (e.g. sidebar navigation)
+window.addEventListener('hashchange', () => {
+    const h = window.location.hash.replace('#', '');
+    if (h) {
+        const t = document.querySelector(`[data-tab="${h}"]`);
+        if (t) t.click();
+    }
+});
 
 // ==========================================
 // API CALLS

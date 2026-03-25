@@ -1313,7 +1313,7 @@ router.get('/act/:bookingId', async (req, res) => {
         const b = booking.rows[0];
 
         const actNumber = `ACT-${b.id}`;
-        const actDate = new Date().toLocaleDateString('uk-UA');
+        const actDate = new Date().toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' });
 
         const html = `<!DOCTYPE html>
 <html lang="uk"><head><meta charset="UTF-8">

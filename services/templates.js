@@ -83,8 +83,8 @@ function formatBookingNotification(type, booking, extra = {}) {
 // v8.4: Certificate notification templates
 const certificateTemplates = {
     certificate_issued(cert, extra) {
-        const issuedDate = cert.issued_at ? new Date(cert.issued_at).toLocaleDateString('uk-UA') : '—';
-        const validUntil = cert.valid_until ? new Date(cert.valid_until).toLocaleDateString('uk-UA') : '—';
+        const issuedDate = cert.issued_at ? new Date(cert.issued_at).toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' }) : '—';
+        const validUntil = cert.valid_until ? new Date(cert.valid_until).toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' }) : '—';
         const mode = cert.display_mode === 'fio' ? 'ПІБ' : 'Номер';
         return `📄 <b>Видано сертифікат</b>\n\n` +
             `🏷 Тип: ${esc(cert.type_text || 'на одноразовий вхід')}\n` +
@@ -128,7 +128,7 @@ const certificateTemplates = {
  * @returns {string} formatted HTML text
  */
 function formatBatchCertificateNotification(codes, extra = {}) {
-    const validDate = extra.validUntil ? new Date(extra.validUntil).toLocaleDateString('uk-UA') : '—';
+    const validDate = extra.validUntil ? new Date(extra.validUntil).toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' }) : '—';
     let text = `📦 <b>Пакетна видача сертифікатів</b>\n\n`;
     text += `📊 Кількість: ${extra.quantity || codes.length} шт.\n`;
     text += `🏷 Тип: ${extra.typeText || 'на одноразовий вхід'}\n`;

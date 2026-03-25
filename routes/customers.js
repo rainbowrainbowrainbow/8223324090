@@ -815,21 +815,23 @@ router.post('/bulk-message', requireMinRole('manager'), async (req, res) => {
             return res.json({ success: true, dryRun: true, recipientCount: result.rows.length });
         }
 
-        // Send messages (rate-limited, fire-and-forget)
-        let sent = 0;
-        for (const customer of result.rows) {
+        // v38.4.0: Batch INSERT instead of N+1 loop
+        const rows = result.rows.map(customer => {
             const message = template
                 .replace(/\{name\}/g, customer.name || '')
                 .replace(/\{childName\}/g, customer.child_name || '')
                 .replace(/\{phone\}/g, customer.phone || '');
-
-            // Log to communication_log
+            return { id: customer.id, message };
+        });
+        if (rows.length > 0) {
+            const values = rows.map((r, i) => `($${i*4+1}, $${i*4+2}, $${i*4+3}, $${i*4+4})`).join(',');
+            const params = rows.flatMap(r => [r.id, 'bulk_message', r.message, req.user?.id || null]);
             await pool.query(
-                'INSERT INTO communication_log (customer_id, type, direction, summary, created_by) VALUES ($1, $2, $3, $4, $5)',
-                [customer.id, 'bulk_message', 'out', message, req.user?.id || null]
+                `INSERT INTO communication_log (customer_id, type, summary, created_by) VALUES ${values}`,
+                params
             );
-            sent++;
         }
+        const sent = rows.length;
 
         log.info(`Bulk message sent to ${sent} customers by ${req.user?.username}`);
         res.json({ success: true, sent });

@@ -495,7 +495,7 @@ router.post('/:id/send-image', requireRole('admin', 'user'), async (req, res) =>
 
         // Build caption
         const mode = cert.display_mode === 'fio' ? 'ПІБ' : 'Номер';
-        const validDate = cert.valid_until ? new Date(cert.valid_until).toLocaleDateString('uk-UA') : '—';
+        const validDate = cert.valid_until ? new Date(cert.valid_until).toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' }) : '—';
         const caption = `📄 <b>Видано сертифікат</b>\n\n` +
             `🔑 <code>${cert.cert_code}</code>\n` +
             (cert.display_value ? `${mode}: ${cert.display_value}\n` : '') +

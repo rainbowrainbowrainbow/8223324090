@@ -123,16 +123,16 @@ router.post('/meeting', requireRole(...ANY_ROLE), async (req, res) => {
         const meeting = meetingResult.rows[0];
 
         // Create action items if provided
-        const items = [];
-        if (Array.isArray(actionItems)) {
-            for (const item of actionItems) {
-                const itemResult = await pool.query(
-                    `INSERT INTO meeting_action_items (meeting_id, description, assigned_to, due_date)
-                     VALUES ($1, $2, $3, $4) RETURNING *`,
-                    [meeting.id, item.description, item.assignedTo || null, item.dueDate || null]
-                );
-                items.push(itemResult.rows[0]);
-            }
+        // v38.4.0: Batch INSERT instead of N+1 loop
+        let items = [];
+        if (Array.isArray(actionItems) && actionItems.length > 0) {
+            const values = actionItems.map((_, i) => `($${i*4+1}, $${i*4+2}, $${i*4+3}, $${i*4+4})`).join(',');
+            const params = actionItems.flatMap(item => [meeting.id, item.description, item.assignedTo || null, item.dueDate || null]);
+            const itemResult = await pool.query(
+                `INSERT INTO meeting_action_items (meeting_id, description, assigned_to, due_date) VALUES ${values} RETURNING *`,
+                params
+            );
+            items = itemResult.rows;
         }
 
         res.json({ success: true, meeting, actionItems: items });

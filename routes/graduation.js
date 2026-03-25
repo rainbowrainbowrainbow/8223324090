@@ -611,7 +611,7 @@ ${q.discount_percent > 0 ? `<div style="color:#4CAF50;margin-top:4px">Знижк
 
 <div class="footer">
 <p>Парк Закревського Періоду</p>
-<p>Пропозиція ${q.quote_number} від ${new Date(q.created_at).toLocaleDateString('uk-UA')}</p>
+<p>Пропозиція ${q.quote_number} від ${new Date(q.created_at).toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' })}</p>
 </div>
 </div>
 </body>

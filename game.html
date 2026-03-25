@@ -16,6 +16,10 @@
     <link rel="icon" href="images/favicon.ico">
 </head>
 <body data-page-group="system">
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
     <div id="mainApp" class="main-app">
         <!-- Бокове меню -->
         <aside class="sidebar-nav" id="sidebarNav">

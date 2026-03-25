@@ -631,7 +631,8 @@ router.post('/generate-image', authenticateToken, async (req, res) => {
         const { prompt, eventId, type } = req.body;
         if (!prompt) return res.status(400).json({ error: 'prompt required' });
 
-        const KIE_API_KEY = process.env.KIE_API_KEY || '5dabed41ea307ecc6ca17010eaaf90b0';
+        const KIE_API_KEY = process.env.KIE_API_KEY;
+        if (!KIE_API_KEY) return res.status(503).json({ error: 'KIE API key not configured' });
         const kieRes = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
@@ -648,7 +649,8 @@ router.post('/generate-image', authenticateToken, async (req, res) => {
 // v33.3: GET /api/kleshnya/generate-image/:taskId — poll image generation status
 router.get('/generate-image/:taskId', authenticateToken, async (req, res) => {
     try {
-        const KIE_API_KEY = process.env.KIE_API_KEY || '5dabed41ea307ecc6ca17010eaaf90b0';
+        const KIE_API_KEY = process.env.KIE_API_KEY;
+        if (!KIE_API_KEY) return res.status(503).json({ error: 'KIE API key not configured' });
         const kieRes = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(req.params.taskId)}`, {
             headers: { 'Authorization': `Bearer ${KIE_API_KEY}` }
         });

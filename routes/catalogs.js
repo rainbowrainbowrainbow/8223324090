@@ -513,7 +513,8 @@ router.post('/analyze-trends', requireRole('admin', 'user'), async (req, res) =>
 Категорія для дитячого парку розваг: ${catName}.
 ТІЛЬКИ JSON без пояснень:
 [{"name":"Назва","reason":"чому популярно","suggestedPrice":600,"imagePrompt":"short english prompt"}]`;
-        const orKey = process.env.OPENROUTER_KEY || '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';
+        const orKey = process.env.OPENROUTER_KEY;
+        if (!orKey) return res.status(503).json({ error: 'OpenRouter API key not configured' });
         const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${orKey}`, 'Content-Type': 'application/json' },

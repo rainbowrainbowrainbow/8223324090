@@ -22,6 +22,10 @@
     </style>
 </head>
 <body data-page-group="crm">
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
     <div id="loginScreen" class="login-screen hidden"></div>
 
     <div id="mainApp" class="main-app hidden">

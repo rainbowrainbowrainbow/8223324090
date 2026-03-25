@@ -303,6 +303,10 @@
     </style>
 </head>
 <body data-page-group="mgmt">
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
     <!-- Sidebar -->
     <aside class="sidebar-nav" id="sidebarNav">
         <div class="sidebar-header" id="sidebarHeader">

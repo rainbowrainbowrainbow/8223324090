@@ -285,6 +285,10 @@
     </style>
 </head>
 <body data-page-group="creative">
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
     <!-- Skip link for accessibility -->
     <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
     <!-- Login overlay -->

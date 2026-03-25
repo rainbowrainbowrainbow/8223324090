@@ -846,6 +846,10 @@
     </style>
 </head>
 <body data-page-group="creative">
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
     <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
     <div id="loginOverlay" class="page-login-overlay hidden">
         <a href="/">Увійти в систему</a>
@@ -1142,6 +1146,10 @@
             if (!items.length) { showNotification('Немає позицій для друку'); return; }
             const w = window.open('', '_blank');
             w.document.write('<html><head><title>Каталог</title><style>body{font-family:Nunito,sans-serif;padding:20px}.item{display:inline-block;width:200px;margin:10px;text-align:center;border:1px solid #eee;border-radius:8px;padding:10px}.item img{max-width:180px;border-radius:6px}.price{font-weight:bold;color:#e91e63}</style></head><body>');
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
             items.forEach(it => {
                 w.document.write('<div class="item">' +
                     (it.image_url ? '<img src="' + it.image_url + '">' : '<div style="font-size:3rem">' + (it.catalog_emoji || '🗂️') + '</div>') +

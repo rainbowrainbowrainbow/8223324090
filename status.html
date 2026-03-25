@@ -276,6 +276,10 @@
     <link rel="stylesheet" href="css/role-panel.css?v=38.4.0">
 </head>
 <body data-page-group="system">
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
     <div class="status-header">
         <div class="logo-row">
             <a href="/" style="display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:inherit;">

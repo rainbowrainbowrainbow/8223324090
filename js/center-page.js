@@ -2204,7 +2204,7 @@ async function loadHotLeads() {
                     </div>
                 </div>
                 <div class="hot-lead-actions">
-                    ${l.phone ? `<a href="tel:${l.phone}" class="btn-lead-action">📞</a>` : ''}
+                    ${l.phone ? `<a href="tel:${escapeHtml(l.phone)}" class="btn-lead-action">📞</a>` : ''}
                     <button class="btn-lead-action" onclick="updateLeadStatus(${l.id}, 'contacted')" title="Зв'язались">✅</button>
                     <button class="btn-lead-action" onclick="updateLeadStatus(${l.id}, 'lost')" title="Закрити">✖</button>
                 </div>

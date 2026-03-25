@@ -39,10 +39,10 @@ router.get('/', async (req, res) => {
         const { type } = req.query;
         const validTypes = ['event', 'birthday', 'regular'];
         if (type && validTypes.includes(type)) {
-            const result = await pool.query('SELECT * FROM afisha WHERE type = $1 ORDER BY date, time', [type]);
+            const result = await pool.query('SELECT * FROM afisha WHERE type = $1 ORDER BY date, time LIMIT 1000', [type]);
             return res.json(result.rows);
         }
-        const result = await pool.query('SELECT * FROM afisha ORDER BY date, time');
+        const result = await pool.query('SELECT * FROM afisha ORDER BY date, time LIMIT 1000');
         res.json(result.rows);
     } catch (err) {
         log.error('Get error', err);

@@ -157,5 +157,6 @@
     loadStatus();
 
     // Auto-refresh every 60 seconds
-    setInterval(loadStatus, 60000);
+    const _statusInterval = setInterval(loadStatus, 60000);
+    window.addEventListener('beforeunload', () => clearInterval(_statusInterval));
 })();

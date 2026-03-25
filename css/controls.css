@@ -121,7 +121,7 @@
     padding: 4px 8px;
     border: 1px solid var(--gray-200);
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 16px; /* v38.4.0: iOS zoom prevention */
     background: var(--white);
     color: var(--gray-700);
     min-height: 32px;
@@ -499,7 +499,7 @@ body.dark-mode .night-settings-select {
 .timeline-search-input {
     border: none;
     outline: none;
-    font-size: 13px;
+    font-size: 16px; /* v38.4.0: iOS zoom prevention */
     font-family: inherit;
     width: 160px;
     background: transparent;
@@ -605,7 +605,7 @@ body.dark-mode .night-settings-select {
     padding: 6px 8px;
     border: 1px solid var(--gray-200);
     border-radius: var(--radius-sm);
-    font-size: 13px;
+    font-size: 16px; /* v38.4.0: iOS zoom prevention */
     font-family: inherit;
     background: var(--white);
     color: var(--gray-700);

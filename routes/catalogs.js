@@ -53,7 +53,7 @@ function parseKieImageUrl(data) {
 router.get('/definitions', requireRole('admin', 'user'), async (req, res) => {
     try {
         const defs = await pool.query(
-            'SELECT * FROM catalog_definitions WHERE is_active = true ORDER BY sort_order'
+            'SELECT * FROM catalog_definitions WHERE is_active = true ORDER BY sort_order LIMIT 500'
         );
         const subs = await pool.query(
             'SELECT * FROM catalog_subcategories ORDER BY catalog_id, sort_order LIMIT 1000'

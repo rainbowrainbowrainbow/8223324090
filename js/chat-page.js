@@ -6165,17 +6165,18 @@
                 return;
             }
             list.innerHTML = data.map(function (u) {
-                var initials = (u.username || '?').substring(0, 2).toUpperCase();
+                var initials = _esc((u.username || '?').substring(0, 2).toUpperCase());
                 var barColor = u.level === 'trusted' ? '#10B981' : u.level === 'watched' ? '#F59E0B' : u.level === 'restricted' ? '#EF4444' : '#6B7280';
                 var levelLabel = u.level === 'trusted' ? 'Довірений' : u.level === 'watched' ? 'Під наглядом' : u.level === 'restricted' ? 'Обмежений' : 'Звичайний';
+                var safeScore = parseInt(u.trustScore, 10) || 0;
                 return '<div class="guardian-trust-row">' +
-                    '<div class="guardian-trust-avatar ' + u.level + '">' + initials + '</div>' +
+                    '<div class="guardian-trust-avatar ' + _esc(u.level) + '">' + initials + '</div>' +
                     '<div class="guardian-trust-info">' +
                         '<div class="guardian-trust-name">' + _esc(u.username) + '</div>' +
                         '<div class="guardian-trust-level">' + levelLabel + '</div>' +
                     '</div>' +
-                    '<div class="guardian-trust-score-bar"><div class="guardian-trust-score-fill" style="width:' + u.trustScore + '%;background:' + barColor + '"></div></div>' +
-                    '<span class="guardian-trust-score-num" style="color:' + barColor + '">' + u.trustScore + '</span>' +
+                    '<div class="guardian-trust-score-bar"><div class="guardian-trust-score-fill" style="width:' + safeScore + '%;background:' + barColor + '"></div></div>' +
+                    '<span class="guardian-trust-score-num" style="color:' + barColor + '">' + safeScore + '</span>' +
                 '</div>';
             }).join('');
         } catch (e) {

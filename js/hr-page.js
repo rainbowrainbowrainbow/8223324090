@@ -673,7 +673,7 @@ async function loadTeam() {
         return;
     }
     if (!data.success) {
-        if (grid) grid.innerHTML = `<div style="text-align:center;color:var(--gray-400);padding:32px">${data.error || 'Помилка сервера'}</div>`;
+        if (grid) grid.innerHTML = `<div style="text-align:center;color:var(--gray-400);padding:32px">${escapeHtml(data.error || 'Помилка сервера')}</div>`;
         return;
     }
     teamStaff = data.data || [];

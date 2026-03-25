@@ -58,7 +58,8 @@
         });
 
         // Refresh every 2 minutes
-        setInterval(loadAgentStatus, 120000);
+        const _agentInterval = setInterval(loadAgentStatus, 120000);
+        window.addEventListener('beforeunload', () => clearInterval(_agentInterval));
     }
 
     // ==========================================

@@ -39,7 +39,7 @@ function mapRow(r) {
 router.get('/', authenticateToken, async (req, res) => {
     try {
         const { rows } = await pool.query(
-            'SELECT * FROM booking_templates ORDER BY is_favorite DESC, usage_count DESC, name ASC'
+            'SELECT * FROM booking_templates ORDER BY is_favorite DESC, usage_count DESC, name ASC LIMIT 200'
         );
         res.json(rows.map(mapRow));
     } catch (err) {

@@ -23,7 +23,7 @@ router.get('/brand', async (req, res) => {
             query += ' AND category = $1';
             params.push(category);
         }
-        query += ' ORDER BY category, sort_order, id';
+        query += ' ORDER BY category, sort_order, id LIMIT 500';
         const result = await pool.query(query, params);
 
         // Group by category
@@ -111,7 +111,7 @@ router.get('/templates', async (req, res) => {
             query += ' AND category = $1';
             params.push(category);
         }
-        query += ' ORDER BY category, name';
+        query += ' ORDER BY category, name LIMIT 500';
         const result = await pool.query(query, params);
         res.json({ success: true, templates: result.rows });
     } catch (err) {

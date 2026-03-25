@@ -104,5 +104,6 @@ document.addEventListener('click', e => {
 
 document.addEventListener('DOMContentLoaded', () => {
     loadAlertBell();
-    setInterval(loadAlertBell, 300000);
+    const _alertInterval = setInterval(loadAlertBell, 300000);
+    window.addEventListener('beforeunload', () => clearInterval(_alertInterval));
 });

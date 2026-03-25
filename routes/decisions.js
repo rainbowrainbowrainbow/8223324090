@@ -21,6 +21,7 @@ router.get('/pending', async (req, res) => {
                     ELSE 2
                 END,
                 created_at ASC
+            LIMIT 200
         `);
         res.json({ decisions: result.rows, count: result.rows.length });
     } catch (err) {

@@ -164,7 +164,7 @@ router.get('/overview', async (req, res) => {
 router.get('/workers', async (req, res) => {
     try {
         const workersResult = await pool.query(
-            'SELECT * FROM worker_roles ORDER BY created_at'
+            'SELECT * FROM worker_roles ORDER BY created_at LIMIT 500'
         ).catch(() => ({ rows: [] }));
 
         // Check multiple activity sources for each worker

@@ -519,6 +519,7 @@ async function getTasksNeedingReminders() {
                 OR last_reminded_at < NOW() - INTERVAL '30 minutes'
               )
             ORDER BY deadline ASC
+            LIMIT 200
         `);
         return result.rows;
     } catch (err) {
@@ -538,6 +539,7 @@ async function getOverdueTasks() {
               AND deadline IS NOT NULL
               AND deadline < NOW()
             ORDER BY deadline ASC
+            LIMIT 200
         `);
         return result.rows;
     } catch (err) {

@@ -48,7 +48,7 @@ router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
 router.get('/catalog', requireRole(...ANY_ROLE), async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT * FROM achievements WHERE is_active = true ORDER BY category, rarity DESC'
+            'SELECT * FROM achievements WHERE is_active = true ORDER BY category, rarity DESC LIMIT 500'
         );
         const catalog = result.rows.map(a => ({
             id: a.id,

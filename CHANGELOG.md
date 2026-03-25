@@ -4,6 +4,18 @@
 
 ---
 
+## v38.7.0 — Sidebar: Арт + Дизайнер Split (2026-03-25)
+
+### Sidebar Restructure [claude-code]
+- **Група "Продукт" розділена** на два окремих блоки:
+  - **🎨 Арт** — Програми, Арт директор, Випускний, Афіша, Сертифікати (все пов'язане з розважальними програмами)
+  - **📐 Дизайнер** — Дизайн-борд, Каталоги, Стайлгайд (все по дизайну та візуалу)
+- **Каталоги переміщено** з `/art` → `/designs#catalogs` (де живе авто-каталог viewer з AI генерацією та PDF експортом)
+- **data-page-group** оновлено: art-director/programs/graduation → `"art"`, designer/designs → `"designer"`
+- **CSS page transitions** — окремі анімації для груп art (rotateIn) та designer (fadeScale)
+
+---
+
 ## v38.6.0 — Business Logic Hardening + Full System Audit (2026-03-25)
 
 ### Booking System Hardening [claude-code]

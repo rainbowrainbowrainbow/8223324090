@@ -9,6 +9,12 @@ function esc(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// v38.4.0: Truncate for Telegram 4096 char limit
+function truncate(text, max = 4000) {
+    if (!text || text.length <= max) return text;
+    return text.slice(0, max) + '\n\n... (обрізано)';
+}
+
 const notificationTemplates = {
     create(booking, extra) {
         const endTime = minutesToTime(timeToMinutes(booking.time) + (booking.duration || 0));
@@ -71,7 +77,7 @@ const notificationTemplates = {
 function formatBookingNotification(type, booking, extra = {}) {
     const template = notificationTemplates[type];
     if (!template) return '';
-    return template(booking, extra);
+    return truncate(template(booking, extra));
 }
 
 // v8.4: Certificate notification templates
@@ -224,4 +230,4 @@ function formatTaskNotification(type, task, extra = {}) {
     return template(task, extra);
 }
 
-module.exports = { notificationTemplates, formatBookingNotification, formatAfishaBlock, certificateTemplates, formatCertificateNotification, formatBatchCertificateNotification, taskTemplates, formatTaskNotification };
+module.exports = { notificationTemplates, formatBookingNotification, formatAfishaBlock, certificateTemplates, formatCertificateNotification, formatBatchCertificateNotification, taskTemplates, formatTaskNotification, truncate };

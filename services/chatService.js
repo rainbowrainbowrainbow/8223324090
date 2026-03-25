@@ -517,7 +517,16 @@ async function deleteMessage(messageId, userId, isAdmin) {
             [messageId, userId]
         );
     }
-    return result.rows[0] || null;
+    const deleted = result.rows[0] || null;
+    // v38.4.0: Clean up uploaded file on message delete
+    if (deleted?.metadata?.file?.url) {
+        try {
+            const fname = deleted.metadata.file.url.replace('/uploads/chat/', '');
+            const fpath = require('path').join(__dirname, '../uploads/chat', fname);
+            require('fs').existsSync(fpath) && require('fs').unlinkSync(fpath);
+        } catch (e) { /* file may already be gone */ }
+    }
+    return deleted;
 }
 
 /**

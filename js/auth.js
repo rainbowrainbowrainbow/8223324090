@@ -136,6 +136,16 @@ const PAGE_ACCESS = {
     '/sound':     [..._MANAGER_UP, 'art_director'],
     '/afisha':    _ALL_STAFF,
     '/certificates': _ALL_STAFF,
+    '/art-director': ['creator', 'director', 'vice_director', 'art_director'],
+    '/designs': ['creator', 'director', 'vice_director', 'art_director', 'senior_manager', 'manager'],
+    '/game': null, // all authenticated users
+    '/leads': ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'marketer'],
+    '/profile': null, // all authenticated users
+    '/quiz': null, // all authenticated users
+    '/report-agent': ['creator', 'director', 'vice_director'],
+    '/reports': ['creator', 'director', 'vice_director', 'senior_manager', 'accountant'],
+    '/room': null, // all authenticated users
+    '/shop': null, // all authenticated users
 };
 
 const ACTION_PERMISSIONS = {

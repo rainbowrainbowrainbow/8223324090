@@ -215,7 +215,7 @@ router.post('/webhook', async (req, res) => {
                 pool.query(
                     'UPDATE users SET telegram_chat_id = $1 WHERE telegram_username = $2 AND telegram_chat_id IS NULL',
                     [botChatId, fromUsername]
-                ).catch(() => {});
+                ).catch(e => log.warn('Chat ID reg failed', e.message));
             }
 
             // v12.6: Handle contractor deep link /start ctr_XXXXX
@@ -563,7 +563,7 @@ router.post('/webhook', async (req, res) => {
                                     + `${order.stock_name}: ${order.quantity} ${order.unit}\n`
                                     + `Від: Event Genix Park\n`
                                     + `Затверджено: ${actorName}`;
-                                await sendTelegramMessage(order.telegram_chat_id, orderText).catch(() => {});
+                                await sendTelegramMessage(order.telegram_chat_id, orderText).catch(e => log.warn('Order notify failed', e.message));
                             }
                             await pool.query(
                                 "UPDATE auto_order_requests SET status = 'ordered' WHERE id = $1",
@@ -679,7 +679,7 @@ async function handleLeadCapture(update) {
 
         if (result.rows.length > 0) {
             log.info(`New TG lead: ${clientName} (tg_id: ${telegramId})`);
-            notifyNewLead(result.rows[0]).catch(() => {});
+            notifyNewLead(result.rows[0]).catch(e => log.warn('Lead notify failed', e.message));
 
             await sendTelegramMessage(
                 msg.chat.id,

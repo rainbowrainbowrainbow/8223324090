@@ -584,7 +584,7 @@ initDatabase().then(() => {
             const { flushLearnBatch } = require('./services/guardian');
             await flushLearnBatch();
         }
-        schedulerIntervals.push(setInterval(guardScheduler('flushGuardianLearn', flushGuardianLearn), 5 * 60 * 1000));
+        schedulerIntervals.push(setInterval(guardScheduler('flushGuardianLearn', flushGuardianLearn, { dedup: null }), 5 * 60 * 1000));
 
         // Contour 2: Agent activity tracking — parse git log every 30 min
         async function syncAgentActivities() {

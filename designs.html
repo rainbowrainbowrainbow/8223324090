@@ -1428,10 +1428,28 @@
                     const poll = await pr.json();
                     if (poll.done && poll.imageUrl) {
                         clearInterval(_aiPollTimer);
-                        await apiFetch('/api/catalogs/apply-image', {
+                        _aiPollTimer = null;
+                        const applyRes = await apiFetch('/api/catalogs/apply-image', {
                             method: 'POST', body: JSON.stringify({ itemId, taskId })
                         });
-                        showNotification('AI зображення згенеровано!');
+                        if (applyRes) {
+                            const applyData = await applyRes.json();
+                            if (applyData.success && applyData.imageUrl) {
+                                showNotification('AI зображення згенеровано!');
+                            } else {
+                                // apply-image didn't save — save manually via PATCH
+                                await apiFetch('/api/catalogs/items/' + itemId, {
+                                    method: 'PATCH', body: JSON.stringify({ imageUrl: poll.imageUrl })
+                                });
+                                showNotification('AI зображення згенеровано!');
+                            }
+                        } else {
+                            // Fallback: save image URL directly
+                            await apiFetch('/api/catalogs/items/' + itemId, {
+                                method: 'PATCH', body: JSON.stringify({ imageUrl: poll.imageUrl })
+                            });
+                            showNotification('AI зображення згенеровано!');
+                        }
                         openItemDetail(itemId);
                     } else if (poll.state === 'failed') {
                         clearInterval(_aiPollTimer);

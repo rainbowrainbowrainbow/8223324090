@@ -959,8 +959,9 @@ let currentCatalogPage = 0;
 async function loadCatalogs() {
     try {
         const res = await apiFetch('/api/graduation/packages');
-        if (!res) return;
-        catalogPackages = await res.json();
+        if (!res || !res.ok) return;
+        const data = await res.json();
+        catalogPackages = Array.isArray(data) ? data : [];
         const updatedEl = document.getElementById('catalogUpdated');
         if (updatedEl) updatedEl.textContent = 'Оновлено: ' + new Date().toLocaleDateString('uk-UA');
     } catch (err) {

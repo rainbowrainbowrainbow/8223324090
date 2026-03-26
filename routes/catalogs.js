@@ -240,8 +240,8 @@ router.post('/generate-image', requireRole('admin', 'user'), async (req, res) =>
         const enContext = themeContext.split('').map(c => _tr[c.toLowerCase()] || c).join('');
         const prompt = customPrompt || `${aiStyle}. Product: "${enContext}". Children's entertainment park toy.`;
         const r = await kieRequest('POST', '/api/v1/jobs/createTask', {
-            model: 'google/nano-banana',
-            input: { prompt, image_size: '1:1' }
+            model: 'nano-banana-2',
+            input: { prompt, aspect_ratio: '1:1', resolution: '1K', output_format: 'png' }
         });
         const taskId = r?.data?.taskId;
         if (!taskId) return res.status(500).json({ error: 'Kie.ai: no taskId', raw: r });
@@ -289,8 +289,8 @@ router.post('/batch-generate', requireRole('admin', 'user'), async (req, res) =>
                 const themeCtx = [item.name, item.subcategory].filter(Boolean).join(', ');
                 const prompt = `${style}. Product: "${themeCtx}". Ukrainian children's park.`;
                 const r = await kieRequest('POST', '/api/v1/jobs/createTask', {
-                    model: 'google/nano-banana',
-                    input: { prompt, image_size: '1:1' }
+                    model: 'nano-banana-2',
+                    input: { prompt, aspect_ratio: '1:1', resolution: '1K', output_format: 'png' }
                 });
                 if (r?.data?.taskId) tasks.push({ itemId: item.id, taskId: r.data.taskId });
             } catch (e) { log.warn(`Batch gen failed ${item.id}: ${e.message}`); }

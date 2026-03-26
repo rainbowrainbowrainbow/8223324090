@@ -636,7 +636,7 @@ router.post('/generate-image', authenticateToken, async (req, res) => {
         const kieRes = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'google/nano-banana', input: { prompt, image_size: '9:16' } })
+            body: JSON.stringify({ model: 'nano-banana-2', input: { prompt, aspect_ratio: '9:16', resolution: '1K', output_format: 'png' } })
         });
         const task = await kieRes.json();
         res.json({ taskId: task.data?.taskId || null, status: 'processing', eventId, type });

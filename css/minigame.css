@@ -530,9 +530,10 @@
     cursor: pointer;
     transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
-    background: rgba(255,255,255,0.12);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(139,92,246,0.06);
+    border: 1px solid rgba(139,92,246,0.1);
     backdrop-filter: blur(2px);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 .game-cell .piece-img {
     width: 80%;
@@ -655,7 +656,7 @@
     font-size: clamp(16px, 4vw, 24px);
     line-height: 1;
     pointer-events: none;
-    filter: drop-shadow(0 0 6px rgba(255,100,50,0.8));
+    filter: drop-shadow(0 0 4px rgba(0,0,0,0.3)) drop-shadow(0 0 8px rgba(255,100,50,0.6));
     z-index: 5;
     background: none;
     padding: 0;
@@ -663,10 +664,10 @@
 }
 .game-cell .special-indicator .special-img {
     width: 65%; height: 65%;
-    min-width: 20px; min-height: 20px;
-    max-width: 32px; max-height: 32px;
+    min-width: 22px; min-height: 22px;
+    max-width: 34px; max-height: 34px;
     object-fit: contain;
-    filter: drop-shadow(0 0 6px rgba(255,100,50,0.8));
+    filter: drop-shadow(0 0 3px rgba(0,0,0,0.4)) drop-shadow(0 0 6px rgba(255,100,50,0.7));
 }
 @keyframes special-pulse {
     0% { transform: translate(-50%, -50%) scale(1); }

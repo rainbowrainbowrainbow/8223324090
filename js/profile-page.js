@@ -124,7 +124,7 @@ async function initProfilePage() {
 
 async function loadProfileData(userId) {
     const results = await Promise.all([
-        apiGet(`/profile/${userId}`),
+        apiGet(isOwnProfile ? '/auth/profile' : `/auth/profile/${userId}`),
         isOwnProfile ? apiGet('/wallet') : null,
         isOwnProfile ? apiGet('/inventory') : null,
         apiGet('/achievements'),

@@ -203,18 +203,18 @@ function renderProfile() {
                 <div class="profile-role">${escapeHtml(p.role)}</div>
                 ${p.bio ? `<div class="profile-bio">${escapeHtml(p.bio)}</div>` : ''}
 
-                <div class="profile-stats">
-                    <div class="profile-stat">
-                        <div class="profile-stat-value">\ud83d\udcb0 ${formatCoins(isOwnProfile ? walletData?.coins : p.coins)}</div>
-                        <div class="profile-stat-label">Монети</div>
+                <div style="display:flex;gap:12px;flex-wrap:wrap">
+                    <div style="text-align:center;padding:10px 16px;background:rgba(255,255,255,0.15);border-radius:10px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);min-width:80px">
+                        <div style="font-size:20px;font-weight:800;color:#fff">\ud83d\udcb0 ${formatCoins(isOwnProfile ? walletData?.coins : p.coins)}</div>
+                        <div style="font-size:11px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px">Монети</div>
                     </div>
-                    <div class="profile-stat">
-                        <div class="profile-stat-value">${completedAch.length}/${totalAch}</div>
-                        <div class="profile-stat-label">Ачивки</div>
+                    <div style="text-align:center;padding:10px 16px;background:rgba(255,255,255,0.15);border-radius:10px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);min-width:80px">
+                        <div style="font-size:20px;font-weight:800;color:#fff">${completedAch.length}/${totalAch}</div>
+                        <div style="font-size:11px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px">Ачивки</div>
                     </div>
-                    <div class="profile-stat">
-                        <div class="profile-stat-value">${p.profileViews || 0}</div>
-                        <div class="profile-stat-label">Перегляди</div>
+                    <div style="text-align:center;padding:10px 16px;background:rgba(255,255,255,0.15);border-radius:10px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);min-width:80px">
+                        <div style="font-size:20px;font-weight:800;color:#fff">\ud83d\udd25 ${p.currentStreak || 0}</div>
+                        <div style="font-size:11px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px">Streak</div>
                     </div>
                 </div>
 
@@ -233,9 +233,8 @@ function renderProfile() {
             ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'inventory' ? 'active' : ''}" onclick="switchTab('inventory')">🎒 Інвентар</button>` : ''}
             ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'shop' ? 'active' : ''}" onclick="switchTab('shop')">🛒 Магазин</button>` : ''}
             <button class="profile-tab ${activeTab === 'leaderboard' ? 'active' : ''}" onclick="switchTab('leaderboard')">📊 Рейтинг</button>
-            <button class="profile-tab ${activeTab === 'room' ? 'active' : ''}" onclick="switchTab('room')">🏠 Кімната</button>
-            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'quests' ? 'active' : ''}" onclick="switchTab('quests')">✅ Квести</button>` : ''}
-            <button class="profile-tab ${activeTab === 'season' ? 'active' : ''}" onclick="switchTab('season')">🏔️ Сезон</button>
+            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'quests' ? 'active' : ''}" onclick="switchTab('quests')">📋 Щоденні</button>` : ''}
+            <button class="profile-tab ${activeTab === 'season' ? 'active' : ''}" onclick="switchTab('season')">⭐ Сезон</button>
             <button class="profile-tab ${activeTab === 'teams' ? 'active' : ''}" onclick="switchTab('teams')">⚡ Команди</button>
             ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'referral' ? 'active' : ''}" onclick="switchTab('referral')">🤝 Реферали</button>` : ''}
         </div>
@@ -277,7 +276,7 @@ function renderTabContent() {
         case 'inventory': return renderInventory();
         case 'shop': return renderShopTab();
         case 'leaderboard': return renderLeaderboardTab();
-        case 'room': return renderRoom();
+        case 'room': return '<div style="text-align:center;padding:40px;color:var(--gray-400)">Кімнату прибрано. Використовуй інші розділи!</div>';
         case 'quests': return renderQuests();
         case 'titles': return renderTitles();
         case 'season': return renderSeasonTab();
@@ -295,30 +294,33 @@ function renderTabContent() {
 // INVENTORY
 // ==========================================
 function renderInventory() {
-    const SLOTS = 18; // 6x3
-    const items = myInventory.slice(0, SLOTS);
-    let slotsHtml = '';
+    const items = myInventory || [];
 
-    for (let i = 0; i < SLOTS; i++) {
-        const item = items[i];
-        if (item) {
-            const emoji = CATEGORY_EMOJIS[item.category] || '📦';
-            slotsHtml += `
-            <div class="inventory-slot ${item.isEquipped ? 'equipped' : ''} rarity-${item.rarity}"
-                 title="${escapeHtml(item.name)} (${RARITY_LABELS[item.rarity] || item.rarity})"
-                 data-item-id="${item.itemId}" data-slot="${item.equipSlot || ''}">
-                ${escapeHtml(emoji)}
-                ${item.quantity > 1 ? `<span class="qty-badge">x${item.quantity}</span>` : ''}
-            </div>`;
-        } else {
-            slotsHtml += '<div class="inventory-slot empty">⬜</div>';
-        }
+    if (items.length === 0) {
+        return `<div style="text-align:center;padding:48px 20px">
+            <div style="font-size:48px;margin-bottom:12px">🎒</div>
+            <div style="font-size:16px;font-weight:700;color:var(--gray-700);margin-bottom:4px">Інвентар порожній</div>
+            <div style="font-size:13px;color:var(--gray-400)">Купуй предмети в магазині або отримуй за ачивки</div>
+            <button onclick="switchTab('shop')" style="margin-top:16px;padding:10px 24px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-weight:700;cursor:pointer;font-family:inherit">🛒 Перейти в магазин</button>
+        </div>`;
     }
 
-    return `
-    <div class="inventory-section">
-        <h3>🎒 Інвентар</h3>
-        <div class="inventory-grid">${slotsHtml}</div>
+    const cardsHtml = items.map(item => {
+        const emoji = CATEGORY_EMOJIS[item.category] || '📦';
+        const rarityColor = { common: '#9ca3af', uncommon: '#22c55e', rare: '#3b82f6', epic: '#a855f7', legendary: '#f59e0b' }[item.rarity] || '#9ca3af';
+        return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--gray-50,#f9fafb);border-radius:12px;border-left:4px solid ${rarityColor}">
+            <div style="font-size:28px;flex-shrink:0">${escapeHtml(emoji)}</div>
+            <div style="flex:1;min-width:0">
+                <div style="font-size:14px;font-weight:700;color:var(--gray-800)">${escapeHtml(item.name)}</div>
+                <div style="font-size:12px;color:var(--gray-400)">${RARITY_LABELS[item.rarity] || item.rarity}${item.quantity > 1 ? ' · x' + item.quantity : ''}</div>
+            </div>
+            ${item.isEquipped ? '<span style="padding:4px 10px;border-radius:6px;background:var(--primary);color:#fff;font-size:11px;font-weight:700">Одягнено</span>' : ''}
+        </div>`;
+    }).join('');
+
+    return `<div style="margin-top:16px">
+        <h3 style="margin-bottom:12px">🎒 Інвентар (${items.length})</h3>
+        <div style="display:flex;flex-direction:column;gap:8px">${cardsHtml}</div>
     </div>`;
 }
 

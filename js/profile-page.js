@@ -36,6 +36,11 @@ let leaderboardMode = 'overall'; // 'overall' or 'monthly'
 // ==========================================
 // UTILITIES
 // ==========================================
+function _hasUnclaimedQuests() {
+    if (!questsData?.quests) return false;
+    return questsData.quests.some(q => q.completed && !q.claimed);
+}
+
 function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -233,7 +238,7 @@ function renderProfile() {
             ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'inventory' ? 'active' : ''}" onclick="switchTab('inventory')">🎒 Інвентар</button>` : ''}
             ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'shop' ? 'active' : ''}" onclick="switchTab('shop')">🛒 Магазин</button>` : ''}
             <button class="profile-tab ${activeTab === 'leaderboard' ? 'active' : ''}" onclick="switchTab('leaderboard')">📊 Рейтинг</button>
-            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'quests' ? 'active' : ''}" onclick="switchTab('quests')">📋 Щоденні</button>` : ''}
+            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'quests' ? 'active' : ''}" onclick="switchTab('quests')" style="position:relative">📋 Щоденні${_hasUnclaimedQuests() ? '<span style="position:absolute;top:2px;right:2px;width:8px;height:8px;background:#ef4444;border-radius:50%;animation:badge-pulse 1.5s infinite"></span>' : ''}</button>` : ''}
             <button class="profile-tab ${activeTab === 'season' ? 'active' : ''}" onclick="switchTab('season')">⭐ Сезон</button>
             <button class="profile-tab ${activeTab === 'teams' ? 'active' : ''}" onclick="switchTab('teams')">⚡ Команди</button>
             ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'referral' ? 'active' : ''}" onclick="switchTab('referral')">🤝 Реферали</button>` : ''}
@@ -285,6 +290,7 @@ function renderTabContent() {
         default: return `
             ${isOwnProfile ? renderStreakWidget() : ''}
             ${isOwnProfile ? renderLevelProgress() : ''}
+            ${isOwnProfile ? renderDailyPreview() : ''}
             ${isOwnProfile ? renderNotes() : ''}
         `;
     }
@@ -502,6 +508,25 @@ function renderRoom() {
 // ==========================================
 // QUESTS
 // ==========================================
+function renderDailyPreview() {
+    if (!questsData?.quests || questsData.quests.length === 0) return '';
+    const unclaimed = questsData.quests.filter(q => q.completed && !q.claimed).length;
+    const done = questsData.quests.filter(q => q.completed).length;
+    const total = questsData.quests.length;
+    return `
+    <div style="margin-bottom:16px;padding:16px;background:var(--gray-50,#f9fafb);border-radius:12px;border:1px solid var(--gray-100,#f3f4f6)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <h3 style="margin:0;font-size:15px;font-weight:700">📋 Щоденні завдання</h3>
+            <span style="font-size:13px;color:var(--gray-500)">${done}/${total}</span>
+        </div>
+        <div style="height:6px;background:var(--gray-200);border-radius:3px;overflow:hidden;margin-bottom:10px">
+            <div style="height:100%;width:${total > 0 ? Math.round(done/total*100) : 0}%;background:var(--primary);border-radius:3px;transition:width 0.4s"></div>
+        </div>
+        ${unclaimed > 0 ? `<div style="color:#ef4444;font-size:13px;font-weight:600;margin-bottom:8px">🎁 ${unclaimed} нагород готові до збору!</div>` : ''}
+        <button onclick="switchTab('quests')" style="padding:8px 16px;border:none;border-radius:8px;background:var(--primary);color:#fff;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px">Переглянути завдання</button>
+    </div>`;
+}
+
 function renderQuests() {
     if (!questsData?.quests) return '<div style="text-align:center;padding:40px;color:var(--gray-500)">Квести завантажуються...</div>';
 

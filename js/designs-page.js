@@ -846,520 +846,322 @@ window.sendToTelegram = sendToTelegram;
 // ==========================================
 // CATALOGS
 // ==========================================
-const CATALOGS_API = '/api/catalogs';
-let catalogsList = [];
-let currentCatalogId = null;
-let currentCatalogPages = [];
-let _imgPickerCatalogId = null;
-let _imgPickerPageNumber = null;
-let _imgPickerField = null;
-let _imgPickerGeneratedUrl = null;
-let _pageFormMode = 'add'; // 'add' or 'edit'
-let _pageFormEditPageNumber = null;
+
+const CATALOG_DESCRIPTIONS = {
+    'best-dj': 'Музика, танці, кольоровий паперовий дощ і яскравий аквагрим! Ведучий-діджей запалить справжню вечірку, а на завершення — капсула часу з мріями та урочиста видача дипломів. Ідеальний вибір для класу, який любить рухатись!',
+    'super-party': 'Класична програма з аніматорами у костюмах улюблених героїв! Захопливі ігри, конкурси, живі танці — а на фінал капсула часу з листами у майбутнє та урочиста видача дипломів на сцені. Перевірений формат, який обожнюють діти!',
+    'science-party': 'Для розумників та допитливих! Починаємо з велком-зони, де ведучий-персонаж знайомить всіх. Потім — гра Мафія (інтелектуальний батл!) і фінальне шоу з сухим льодом: димові каскади, хімічні експерименти та магічні перетворення. Наука ще ніколи не була такою крутою!',
+    'handmade-party': 'Створюй, їж і святкуй! Два крутих майстер-класи: кожен робить свій унікальний слайм (обирає колір та блискітки) та авторську піцу з улюбленою начинкою. А на завершення — капсула часу і дипломи. Ідеально для творчого класу!',
+    'pizza-party': 'Піца + вечірка = ідеальний випускний! Спочатку кожен робить свою авторську піцу, а потім — два повних години нон-стоп анімації з аніматорами у костюмах героїв. Ігри, конкурси, танці — і все це з повним животом!',
+    'squid-game': 'Для сміливих! Захоплива інтерактивна програма в стилі серіалу. Три ведучих у яскравих костюмах проводять кілька циклів ігор на швидкість, логіку та витримку. Два раунди, фінальний сюрприз і подарунки для переможців. Адреналін гарантовано!',
+    'neon-party': 'Вечірка у світлі ультрафіолету! Неонова паперова дискотека, магічні мильні бульбашки що світяться, аквагрим який перетворює кожного на зірку неонової вечірки — і подарунки на пам\'ять. Це як потрапити всередину неонової мрії!'
+};
+
+const CATALOG_ICONS = {
+    'best-dj': '🎧', 'super-party': '🎉', 'science-party': '🔬',
+    'handmade-party': '🎨', 'pizza-party': '🍕', 'squid-game': '🦑', 'neon-party': '✨'
+};
+
+// Package color themes — vibrant, bold colors matching marketing materials
+const CATALOG_THEMES = {
+    'best-dj': {
+        bg1: '#e0b8f0', bg2: '#d098e8', bg3: '#b878d8',
+        accent: '#9333ea', accentLight: 'rgba(147,51,234,0.15)',
+        heroGradient: 'linear-gradient(135deg, #7c3aed, #c026d3)',
+        priceColor: '#9333ea'
+    },
+    'super-party': {
+        bg1: '#f5dca0', bg2: '#ecd080', bg3: '#e0c060',
+        accent: '#C9A84C', accentLight: 'rgba(201,168,76,0.15)',
+        heroGradient: 'linear-gradient(135deg, #b8960a, #e8c84c)',
+        priceColor: '#b8960a'
+    },
+    'science-party': {
+        bg1: '#a8c8f0', bg2: '#88b0e8', bg3: '#6898e0',
+        accent: '#2563eb', accentLight: 'rgba(37,99,235,0.15)',
+        heroGradient: 'linear-gradient(135deg, #1d4ed8, #60a5fa)',
+        priceColor: '#2563eb'
+    },
+    'handmade-party': {
+        bg1: '#90e8c0', bg2: '#70d8a8', bg3: '#50c890',
+        accent: '#059669', accentLight: 'rgba(5,150,105,0.15)',
+        heroGradient: 'linear-gradient(135deg, #047857, #34d399)',
+        priceColor: '#059669'
+    },
+    'pizza-party': {
+        bg1: '#fce0a0', bg2: '#f8d080', bg3: '#f0c060',
+        accent: '#d97706', accentLight: 'rgba(217,119,6,0.15)',
+        heroGradient: 'linear-gradient(135deg, #b45309, #fbbf24)',
+        priceColor: '#d97706'
+    },
+    'squid-game': {
+        bg1: '#fca0a0', bg2: '#f07878', bg3: '#e85050',
+        accent: '#dc2626', accentLight: 'rgba(220,38,38,0.15)',
+        heroGradient: 'linear-gradient(135deg, #b91c1c, #f87171)',
+        priceColor: '#dc2626'
+    },
+    'neon-party': {
+        bg1: '#f0a0d8', bg2: '#e878c8', bg3: '#d850b0',
+        accent: '#db2777', accentLight: 'rgba(219,39,119,0.15)',
+        heroGradient: 'linear-gradient(135deg, #be185d, #f472b6)',
+        priceColor: '#db2777'
+    }
+};
+
+function catalogFormatDuration(min) {
+    if (!min) return '0 хв';
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    if (h === 0) return `${m} хв`;
+    if (m === 0) return `${h} год`;
+    return `${h} год ${m} хв`;
+}
+
+const SERVICE_ICONS = {
+    'Вхід': '🎟️', 'Паперова дискотека': '🎵', 'Аквагрим': '🎨',
+    'Капсула часу': '📦', 'Видача дипломів та вітання класу на сцені': '🎓',
+    'Анімація': '🎪', 'Анімація 2 години': '🎪', 'Велком Зона': '👋',
+    'Мафія': '🕵️', 'Шоу з сухим льодом': '🧊', 'МК "Слайм"': '🧪',
+    'МК "Піца"': '🍕', 'Подарунки': '🎁', 'Неонова паперова дискотека': '🎵',
+    'Неонові мильні бульбашки': '🫧', 'Неоновий аквагрим': '🎨',
+    'Програма "Гра в кальмара" Ч.1': '🦑', 'Програма "Гра в кальмара" Ч.2': '🦑',
+    'Шоу Бульбашок': '🫧', 'Шоу з сухим людом': '🧊',
+    'Тимчасові тату': '🖌️', 'МК "Розпис футболок"': '👕',
+    'МК "Термомозаїка"': '🧩', 'Тематична вечірка': '🎭',
+    'Солодка вата': '🍬', 'Бармен шоу': '🍹'
+};
+
+// Detailed descriptions for each service
+const SERVICE_DESCRIPTIONS = {
+    'Аквагрим': 'Веселі та яскраві аквагрим-образи для дітей на вашому святі! Нехай маленькі гості насолоджуються перетворенням у фантастичних героїв та казкових тварин.',
+    'Неоновий аквагрим': 'Магічний аквагрим, що світиться в ультрафіолеті! Кожна дитина стає зіркою неонової вечірки з яскравими візерунками.',
+    'Паперова дискотека': 'Приєднуйтесь до нас на паперовій дискотеці! 80 кг яскравого паперу перетворюють місце проведення на райський куточок. Талановиті ведучі, популярна музика, танці та інтерактиви.',
+    'Неонова паперова дискотека': 'Паперове шоу в ультрафіолетовому світлі! 80 кг неонового паперу, музика, танці — незабутня атмосфера свята.',
+    'Капсула часу': 'Яскраве завершення вечірки. Ведучий збирає всіх учасників, всі пишуть ким вони хочуть стати через 10 років, що видатного хочуть зробити — кладуть у капсулу часу та урочисто заклеюють.',
+    'Видача дипломів та вітання класу на сцені': 'Урочистий момент! Потім всім дітям заповнюють дипломи. Ведучий грає з дітьми в кілька ігор на сцені і вітає їх зі святом.',
+    'Анімація': 'Захопливі ігри, конкурси та живі танці з аніматорами у костюмах улюблених героїв! Нон-стоп веселощі для всього класу.',
+    'Анімація 2 години': 'Два повних години нон-стоп анімації! Аніматори у костюмах героїв проводять ігри, конкурси, танці — найвеселіший формат.',
+    'Велком Зона': 'Ведучий-персонаж зустрічає всіх гостей, знайомить між собою та створює атмосферу свята з перших хвилин.',
+    'Мафія': 'Інтелектуальний батл! Захоплива гра Мафія з ведучим — діти вчаться дедукції, логіці та командній грі.',
+    'Шоу з сухим льодом': 'Димові каскади, хімічні експерименти та магічні перетворення! Наука ще ніколи не була такою крутою — шоу що вражає.',
+    'МК "Слайм"': 'Кожен робить свій унікальний слайм — обирає колір та блискітки. Творчий процес та чудовий подарунок на пам\'ять!',
+    'МК "Піца"': 'Кожна дитина робить свою авторську піцу з улюбленою начинкою. Смачно, весело та креативно!',
+    'Подарунки': 'Кожен учасник отримує подарунок на пам\'ять про незабутнє свято!',
+    'Неонові мильні бульбашки': 'Магічні мильні бульбашки що світяться в ультрафіолеті! Казкова атмосфера, від якої діти в захваті.',
+    'Вхід': 'Вхід до розважального парку — простір для свята та пригод!',
+    'Програма "Гра в кальмара" Ч.1': 'Перший раунд захопливої програми! Три ведучих у костюмах проводять ігри на швидкість, логіку та витримку.',
+    'Програма "Гра в кальмара" Ч.2': 'Фінальний раунд з новими випробуваннями! Сюрпризи, адреналін та подарунки для переможців.'
+};
+
+let catalogPackages = [];
+let currentCatalogPage = 0;
 
 async function loadCatalogs() {
     try {
-        const res = await apiFetch(`${CATALOGS_API}/definitions`);
-        if (!res || !res.ok) { catalogsList = []; renderCatalogs(); return; }
-        const data = await res.json();
-        catalogsList = data.catalogs || [];
-        renderCatalogs();
-        const countEl = document.getElementById('countCatalogs');
-        if (countEl) countEl.textContent = catalogsList.length;
+        const res = await apiFetch('/api/graduation/packages');
+        if (!res) return;
+        catalogPackages = await res.json();
+        const updatedEl = document.getElementById('catalogUpdated');
+        if (updatedEl) updatedEl.textContent = 'Оновлено: ' + new Date().toLocaleDateString('uk-UA');
     } catch (err) {
         console.error('Load catalogs error:', err);
-        catalogsList = [];
-        renderCatalogs();
     }
 }
 
-function renderCatalogs() {
-    const container = document.getElementById('catalogsList');
-    if (!container) return;
-
-    if (catalogsList.length === 0) {
-        container.innerHTML = '<div class="empty-state"><span>📚</span>Немає каталогів. Створіть перший!</div>';
+function openCatalog(catalogId) {
+    if (catalogPackages.length === 0) {
+        loadCatalogs().then(() => {
+            if (catalogPackages.length > 0) renderCatalogViewer();
+        });
         return;
     }
-
-    container.innerHTML = catalogsList.map(c => {
-        return `<div class="catalog-card" onclick="openCatalogPages('${esc(c.id)}')">
-            <div class="catalog-card-cover">
-                <div class="catalog-card-badge" style="font-size:28px">${c.emoji || '📁'}</div>
-            </div>
-            <div class="catalog-card-body">
-                <div class="catalog-card-title">${esc(c.name || c.title || c.id)}</div>
-                <div class="catalog-card-desc">${esc(c.description || '')}</div>
-            </div>
-            <div class="catalog-card-footer" onclick="event.stopPropagation()">
-                <span class="catalog-card-pages">${c.is_active ? 'active' : 'draft'}</span>
-                <div class="catalog-card-actions">
-                    <button onclick="deleteCatalog('${esc(c.id)}')" title="Видалити">🗑</button>
-                </div>
-            </div>
-        </div>`;
-    }).join('');
+    renderCatalogViewer();
 }
 
-async function openCatalogPages(catalogId) {
-    currentCatalogId = catalogId;
-    try {
-        const pagesRes = await apiFetch(`${CATALOGS_API}/${catalogId}/pages`);
-        if (!pagesRes || !pagesRes.ok) { currentCatalogPages = []; } else {
-            const pagesData = await pagesRes.json();
-            currentCatalogPages = pagesData.pages || [];
-        }
-        const catalog = catalogsList.find(c => c.id === catalogId) || { id: catalogId, name: catalogId, title: catalogId };
+function renderCatalogViewer() {
+    currentCatalogPage = 0;
+    const viewer = document.getElementById('catalogViewer');
+    viewer.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    renderCurrentPage();
 
-        document.getElementById('catalogsList').style.display = 'none';
-        document.querySelector('.catalog-toolbar').style.display = 'none';
-        const viewer = document.getElementById('catalogViewer');
-        viewer.style.display = '';
-        document.getElementById('catalogViewerTitle').textContent = catalog.name || catalog.title || catalogId;
+    // Keyboard navigation
+    viewer._keyHandler = (e) => {
+        if (e.key === 'ArrowRight') catalogNext();
+        else if (e.key === 'ArrowLeft') catalogPrev();
+        else if (e.key === 'Escape') closeCatalog();
+    };
+    document.addEventListener('keydown', viewer._keyHandler);
+}
 
-        renderCatalogPages(catalog);
-    } catch (err) {
-        console.error('Open catalog error:', err);
-        showNotification('Помилка завантаження каталогу', 'error');
+function renderCurrentPage() {
+    const pkg = catalogPackages[currentCatalogPage];
+    if (!pkg) return;
+    document.getElementById('catalogPages').innerHTML = buildCatalogPageHtml(pkg);
+    document.getElementById('catalogPageIndicator').textContent =         `${currentCatalogPage + 1} / ${catalogPackages.length}`;
+}
+
+function catalogNext() {
+    if (currentCatalogPage < catalogPackages.length - 1) {
+        currentCatalogPage++;
+        renderCurrentPage();
     }
 }
-window.openCatalogPages = openCatalogPages;
 
-function closeCatalogViewer() {
-    document.getElementById('catalogViewer').style.display = 'none';
-    document.getElementById('catalogsList').style.display = '';
-    document.querySelector('.catalog-toolbar').style.display = '';
-    currentCatalogId = null;
-    currentCatalogPages = [];
+function catalogPrev() {
+    if (currentCatalogPage > 0) {
+        currentCatalogPage--;
+        renderCurrentPage();
+    }
 }
-window.closeCatalogViewer = closeCatalogViewer;
 
-function renderCatalogPages(catalog) {
+function closeCatalog() {
+    const viewer = document.getElementById('catalogViewer');
+    viewer.style.display = 'none';
+    document.body.style.overflow = '';
+    if (viewer._keyHandler) {
+        document.removeEventListener('keydown', viewer._keyHandler);
+        viewer._keyHandler = null;
+    }
+}
+
+function printCatalog(catalogId) {
+    if (catalogPackages.length === 0) {
+        loadCatalogs().then(() => {
+            if (catalogPackages.length > 0) doPrintCatalog();
+        });
+        return;
+    }
+    doPrintCatalog();
+}
+
+function doPrintCatalog() {
+    const viewer = document.getElementById('catalogViewer');
+    viewer.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    document.body.classList.add('printing-catalog');
+
     const container = document.getElementById('catalogPages');
-    if (!container) return;
+    container.innerHTML = catalogPackages.map(pkg => buildCatalogPageHtml(pkg)).join('');
 
-    let html = '';
-
-    // Cover page (page_number=0)
-    const coverPage = currentCatalogPages.find(p => p.page_number === 0);
-    const bgStyle = coverPage && coverPage.background_url ? `background-image:url(${esc(coverPage.background_url)})` : '';
-    html += `<div class="cat-page-cover" style="${bgStyle}">
-        <div class="cat-page-cover-overlay">
-            <h3>${esc(coverPage ? coverPage.title : (catalog.name || catalog.title || ''))}</h3>
-            <div class="subtitle">${esc(coverPage ? (coverPage.subtitle || '') : (catalog.description || ''))}</div>
-        </div>
-        <div class="cat-page-cover-actions">
-            <button class="cat-page-image-btn" onclick="insertPageImage('${esc(catalog.id)}', 0, 'background')">Фон</button>
-        </div>
-    </div>`;
-
-    // Content pages (page_number > 0)
-    const contentPages = currentCatalogPages.filter(p => p.page_number > 0);
-    if (contentPages.length === 0) {
-        html += '<div class="empty-state" style="margin-top:16px"><span>📄</span>Немає сторінок. Додайте першу!</div>';
-    } else {
-        for (const page of contentPages) {
-            const imgStyle = page.image_url ? `background-image:url(${esc(page.image_url)})` : '';
-            const details = page.details || {};
-            const detailStr = [details.age, details.kids ? details.kids + ' дітей' : '', details.duration].filter(Boolean).join(' · ');
-            html += `<div class="cat-page-card">
-                <div class="cat-page-image" style="${imgStyle}">
-                    ${page.image_url ? '' : '<div class="cat-page-image-placeholder">Без зображення</div>'}
-                    <button class="cat-page-image-btn" onclick="insertPageImage('${esc(catalog.id)}', ${page.page_number}, 'image')">Зображення</button>
-                </div>
-                <div class="cat-page-info">
-                    <h3>${esc(page.title || 'Без назви')}</h3>
-                    ${page.subtitle ? `<div class="subtitle">${esc(page.subtitle)}</div>` : ''}
-                    ${page.description ? `<div class="desc">${esc(page.description)}</div>` : ''}
-                    ${page.price_label ? `<div class="price">${esc(page.price_label)}</div>` : (page.price ? `<div class="price">від ${page.price.toLocaleString('uk-UA')} ₴</div>` : '')}
-                    ${detailStr ? `<div class="detail">${esc(detailStr)}</div>` : ''}
-                    <div class="cat-page-actions">
-                        <button onclick="showEditPageForm('${esc(catalog.id)}', ${page.page_number})">Редагувати</button>
-                        <button onclick="deletePageConfirm('${esc(catalog.id)}', ${page.page_number})">Видалити</button>
-                    </div>
-                </div>
-            </div>`;
-        }
-    }
-
-    container.innerHTML = html;
+    setTimeout(() => {
+        window.print();
+        document.body.classList.remove('printing-catalog');
+        closeCatalog();
+    }, 300);
 }
 
-// --- Create Catalog ---
-function showCreateCatalogForm() {
-    document.getElementById('catalogNameInput').value = '';
-    document.getElementById('catalogDescInput').value = '';
-    document.getElementById('catalogCategoryInput').value = 'general';
-    document.getElementById('createCatalogTitle').textContent = 'Новий каталог';
-    document.getElementById('createCatalogOverlay').classList.remove('hidden');
-    setTimeout(() => document.getElementById('catalogNameInput').focus(), 100);
-}
-window.showCreateCatalogForm = showCreateCatalogForm;
+function buildCatalogPageHtml(pkg) {
+    const icon = CATALOG_ICONS[pkg.slug] || '🎉';
+    const desc = CATALOG_DESCRIPTIONS[pkg.slug] || '';
+    const theme = CATALOG_THEMES[pkg.slug] || CATALOG_THEMES['super-party'];
+    const totalPrice = pkg.totalPerChild || 0;
+    const totalDuration = pkg.totalDuration || 0;
 
-function closeCreateCatalog() {
-    document.getElementById('createCatalogOverlay').classList.add('hidden');
-}
-window.closeCreateCatalog = closeCreateCatalog;
-
-async function submitCreateCatalog() {
-    const name = document.getElementById('catalogNameInput').value.trim();
-    if (!name) { document.getElementById('catalogNameInput').focus(); return; }
-
-    const slug = name.toLowerCase().replace(/[^a-zа-яіїєґ0-9]+/gi, '-').replace(/^-|-$/g, '');
-    const category = document.getElementById('catalogCategoryInput').value;
-    const body = {
-        id: slug || category || 'new-' + Date.now(),
-        name,
-        emoji: { general: '📁', graduation: '🎓', pinata: '🪅', cakes: '🎂', masterclass: '🎨', shows: '✨' }[category] || '📁',
-        description: document.getElementById('catalogDescInput').value.trim() || null
-    };
-
-    try {
-        const res = await apiFetch(`${CATALOGS_API}/definitions`, {
-            method: 'POST',
-            body: JSON.stringify(body),
-            headers: { 'Content-Type': 'application/json' }
-        });
-        if (res && !res.ok) {
-            const err = await res.json().catch(() => ({}));
-            showNotification(err.error || 'Помилка створення', 'error');
-            return;
-        }
-        closeCreateCatalog();
-        showNotification('Каталог створено');
-        await loadCatalogs();
-    } catch (err) {
-        showNotification('Помилка створення', 'error');
-    }
-}
-window.submitCreateCatalog = submitCreateCatalog;
-
-async function deleteCatalog(id) {
-    if (!await confirmModal('Видалити каталог і всі його сторінки?', { type: 'danger', okText: 'Видалити' })) return;
-    try {
-        await apiFetch(`${CATALOGS_API}/${id}`, { method: 'DELETE' });
-        showNotification('Каталог видалено');
-        await loadCatalogs();
-    } catch (err) {
-        showNotification('Помилка видалення', 'error');
-    }
-}
-window.deleteCatalog = deleteCatalog;
-
-// --- Page Form (Add/Edit) ---
-function showAddPageForm() {
-    if (!currentCatalogId) return;
-    _pageFormMode = 'add';
-    _pageFormEditPageNumber = null;
-    document.getElementById('pageFormTitle').textContent = 'Додати сторінку';
-    document.getElementById('pageTitle').value = '';
-    document.getElementById('pageSubtitle').value = '';
-    document.getElementById('pageDescription').value = '';
-    document.getElementById('pagePriceLabel').value = '';
-    document.getElementById('pageDetail').value = '';
-    populateProductSelect();
-    document.getElementById('pageProductSelect').value = '';
-    document.getElementById('pageFormOverlay').classList.remove('hidden');
-    setTimeout(() => document.getElementById('pageTitle').focus(), 100);
-}
-window.showAddPageForm = showAddPageForm;
-
-function showEditPageForm(catalogId, pageNumber) {
-    currentCatalogId = catalogId;
-    _pageFormMode = 'edit';
-    _pageFormEditPageNumber = pageNumber;
-    const page = currentCatalogPages.find(p => p.page_number === pageNumber);
-    if (!page) return;
-
-    document.getElementById('pageFormTitle').textContent = `Редагувати сторінку ${pageNumber}`;
-    document.getElementById('pageTitle').value = page.title || '';
-    document.getElementById('pageSubtitle').value = page.subtitle || '';
-    document.getElementById('pageDescription').value = page.description || '';
-    document.getElementById('pagePriceLabel').value = page.price_label || '';
-    document.getElementById('pageDetail').value = page.detail || '';
-    populateProductSelect();
-    document.getElementById('pageProductSelect').value = page.product_id || '';
-    document.getElementById('pageFormOverlay').classList.remove('hidden');
-}
-window.showEditPageForm = showEditPageForm;
-
-function closePageForm() {
-    document.getElementById('pageFormOverlay').classList.add('hidden');
-}
-window.closePageForm = closePageForm;
-
-async function submitPageForm() {
-    const title = document.getElementById('pageTitle').value.trim();
-    if (!title) { document.getElementById('pageTitle').focus(); return; }
-
-    const body = {
-        title,
-        subtitle: document.getElementById('pageSubtitle').value.trim() || null,
-        description: document.getElementById('pageDescription').value.trim() || null,
-        price_label: document.getElementById('pagePriceLabel').value.trim() || null,
-        detail: document.getElementById('pageDetail').value.trim() || null,
-        product_id: document.getElementById('pageProductSelect').value || null
-    };
-
-    try {
-        if (_pageFormMode === 'edit' && _pageFormEditPageNumber) {
-            await apiFetch(`${CATALOGS_API}/${currentCatalogId}/pages/${_pageFormEditPageNumber}`, {
-                method: 'PUT',
-                body: JSON.stringify(body)
-            });
-        } else {
-            await apiFetch(`${CATALOGS_API}/${currentCatalogId}/pages`, {
-                method: 'POST',
-                body: JSON.stringify(body)
-            });
-        }
-        closePageForm();
-        showNotification(_pageFormMode === 'edit' ? 'Сторінку оновлено' : 'Сторінку додано');
-        openCatalogPages(currentCatalogId);
-    } catch (err) {
-        showNotification('Помилка збереження', 'error');
-    }
-}
-window.submitPageForm = submitPageForm;
-
-async function deletePageConfirm(catalogId, pageNumber) {
-    if (!await confirmModal('Видалити цю сторінку?', { type: 'danger', okText: 'Видалити' })) return;
-    try {
-        await apiFetch(`${CATALOGS_API}/${catalogId}/pages/${pageNumber}`, { method: 'DELETE' });
-        showNotification('Сторінку видалено');
-        openCatalogPages(catalogId);
-    } catch (err) {
-        showNotification('Помилка видалення', 'error');
-    }
-}
-window.deletePageConfirm = deletePageConfirm;
-
-// --- Product Select (auto-fill) ---
-function populateProductSelect() {
-    const select = document.getElementById('pageProductSelect');
-    if (!select) return;
-
-    const categories = {
-        quest: 'Квести', animation: 'Анімація', show: 'Шоу',
-        photo: 'Фото', masterclass: 'Майстер-класи', pinata: 'Піньяти'
-    };
-
-    let html = '<option value="">— Ввести вручну —</option>';
-    if (typeof PROGRAMS !== 'undefined') {
-        const grouped = {};
-        for (const p of PROGRAMS) {
-            if (!grouped[p.category]) grouped[p.category] = [];
-            grouped[p.category].push(p);
-        }
-        for (const [cat, items] of Object.entries(grouped)) {
-            html += `<optgroup label="${categories[cat] || cat}">`;
-            for (const p of items) {
-                html += `<option value="${p.id}">${p.icon || ''} ${p.name} — ${p.price ? p.price + ' ₴' : ''}</option>`;
-            }
-            html += '</optgroup>';
-        }
-    }
-    select.innerHTML = html;
-}
-
-function fillPageFromProduct(productId) {
-    if (!productId || typeof PROGRAMS === 'undefined') return;
-    const product = PROGRAMS.find(p => p.id === productId);
-    if (!product) return;
-
-    document.getElementById('pageTitle').value = product.name;
-    document.getElementById('pageSubtitle').value = (product.icon || '') + ' ' + (product.label || '');
-    document.getElementById('pageDescription').value = product.description || '';
-    document.getElementById('pagePriceLabel').value = product.price ? `від ${product.price.toLocaleString('uk-UA')} ₴` : '';
-    const details = [
-        product.age || '',
-        product.kids ? `${product.kids} дітей` : '',
-        product.duration ? `${product.duration} хв` : '',
-        product.hosts ? `${product.hosts} аніматор(ів)` : ''
-    ].filter(Boolean).join(' · ');
-    document.getElementById('pageDetail').value = details;
-}
-window.fillPageFromProduct = fillPageFromProduct;
-
-// --- Image Picker ---
-function insertPageImage(catalogId, pageNumber, field) {
-    _imgPickerCatalogId = catalogId;
-    _imgPickerPageNumber = pageNumber;
-    _imgPickerField = field;
-    _imgPickerGeneratedUrl = null;
-
-    const title = field === 'background'
-        ? 'Фон обкладинки'
-        : `Зображення сторінки ${pageNumber}`;
-    document.getElementById('imagePickerTitle').textContent = title;
-
-    // Reset form
-    document.getElementById('imgGenPrompt').value = '';
-    const preview = document.getElementById('imgGenPreview');
-    preview.style.display = 'none';
-    document.getElementById('imgGenStatus').style.display = 'none';
-    document.getElementById('imgGenActions').style.display = 'none';
-    document.getElementById('imgUrlInput').value = '';
-
-    loadImageGallery();
-    document.getElementById('imagePickerOverlay').classList.remove('hidden');
-}
-window.insertPageImage = insertPageImage;
-
-function closeImagePicker() {
-    document.getElementById('imagePickerOverlay').classList.add('hidden');
-}
-window.closeImagePicker = closeImagePicker;
-
-// AI Generate
-async function generatePageImage() {
-    const promptText = document.getElementById('imgGenPrompt').value.trim();
-    if (!promptText) { document.getElementById('imgGenPrompt').focus(); return; }
-
-    const btn = document.getElementById('imgGenBtn');
-    btn.disabled = true;
-    btn.textContent = '⏳...';
-    document.getElementById('imgGenStatus').style.display = 'block';
-    document.getElementById('imgGenStatus').textContent = '⏳ Генерація ~30с...';
-
-    try {
-        const resp = await apiFetch(`${CATALOGS_API}/generate-image`, {
-            method: 'POST',
-            body: JSON.stringify({ prompt: promptText }),
-            headers: { 'Content-Type': 'application/json' }
-        });
-        if (!resp || !resp.ok) throw new Error('Сервер не відповідає');
-        const data = await resp.json();
-
-        if (data.url) {
-            _imgPickerGeneratedUrl = data.url;
-            document.getElementById('imgGenPreview').src = data.url;
-            document.getElementById('imgGenPreview').style.display = 'block';
-            document.getElementById('imgGenActions').style.display = 'flex';
-            document.getElementById('imgGenStatus').textContent = '✅ Готово!';
-        }
-    } catch (err) {
-        document.getElementById('imgGenStatus').textContent = '❌ Помилка: ' + (err.message || 'спробуйте ще');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Згенерувати';
-    }
-}
-window.generatePageImage = generatePageImage;
-
-function useGeneratedImage() {
-    if (!_imgPickerGeneratedUrl) return;
-    savePageImage(_imgPickerGeneratedUrl);
-}
-window.useGeneratedImage = useGeneratedImage;
-
-// Upload
-function uploadPageImage() {
-    document.getElementById('imgUploadInput').click();
-}
-window.uploadPageImage = uploadPageImage;
-
-document.addEventListener('DOMContentLoaded', () => {
-    const uploadInput = document.getElementById('imgUploadInput');
-    if (uploadInput) {
-        uploadInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const formData = new FormData();
-            formData.append('files', file);
-
-            try {
-                const resp = await fetch('/api/designs/upload', {
-                    method: 'POST',
-                    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') },
-                    body: formData
-                });
-                const data = await resp.json();
-                if (data.items && data.items[0]) {
-                    const url = `/uploads/designs/${data.items[0].filename}`;
-                    savePageImage(url);
-                }
-            } catch (err) {
-                showNotification('Помилка завантаження: ' + err.message, 'error');
-            }
-            uploadInput.value = '';
-        });
-    }
-
-    // ESC to close modals
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            closeImagePicker();
-            closePageForm();
-            closeTelegramCaption();
-            closeCreateCatalog();
-        }
-    });
-
-    // Click overlay to close
-    ['imagePickerOverlay', 'pageFormOverlay', 'telegramCaptionOverlay', 'createCatalogOverlay'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('click', (e) => { if (e.target === el) el.classList.add('hidden'); });
-    });
-});
-
-// Gallery
-async function loadImageGallery() {
-    const grid = document.getElementById('imgGalleryGrid');
-    if (!grid) return;
-
-    try {
-        const resp = await apiFetch('/api/designs?limit=8&sort=newest');
-        if (!resp || !resp.ok) { grid.innerHTML = ''; return; }
-        const data = await resp.json();
-        const items = data.items || data.designs || (Array.isArray(data) ? data : []);
-
-        if (!Array.isArray(items) || items.length === 0) {
-            grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:rgba(255,255,255,0.3);padding:12px;font-size:13px">Немає завантажених дизайнів</div>';
-            return;
-        }
-
-        grid.innerHTML = items.slice(0, 8).map(d => {
-            const url = d.filename ? `/uploads/designs/${d.filename}` : (d.file_url || d.url || '');
-            return `<div class="img-gallery-item" onclick="selectGalleryImage('${esc(url)}')">
-                <img src="${esc(url)}" alt="${esc(d.title || '')}" loading="lazy">
-            </div>`;
+    // Services grid — 2 columns, filter out "Вхід"
+    const servicesHtml = pkg.services
+        .filter(svc => svc.serviceName !== 'Вхід')
+        .map(svc => {
+            const svcIcon = SERVICE_ICONS[svc.serviceName] || '🎯';
+            const dur = svc.durationMin > 0
+                ? `<span class="csvc-dur">${svc.durationMin} хв</span>`
+                : '';
+            return `
+                <div class="csvc-card">
+                    <span class="csvc-icon">${svcIcon}</span>
+                    <span class="csvc-name">${esc(svc.serviceName)}</span>
+                    ${dur}
+                </div>`;
         }).join('');
-    } catch (err) {
-        grid.innerHTML = '<div style="color:rgba(255,255,255,0.3);font-size:13px">Не вдалось завантажити</div>';
-    }
+
+    const durationStr = catalogFormatDuration(totalDuration);
+    const kidsStr = `${pkg.minKids || 7}–${pkg.maxKids || 50}`;
+
+    const bannerSrc = `/images/catalogs/graduation/${pkg.slug}-banner.png`;
+
+    return `
+        <div class="cat-page" data-package="${pkg.slug}"
+             style="--cat-bg1:${theme.bg1};--cat-bg2:${theme.bg2};--cat-bg3:${theme.bg3};--cat-accent:${theme.accent};--cat-price:${theme.priceColor}">
+            <!-- HERO with banner image overlay -->
+            <div class="cat-hero">
+                <img class="cat-hero-img" src="${bannerSrc}" alt="${esc(pkg.name)}"
+                     onerror="this.style.display='none'">
+                <div class="cat-hero-content">
+                    <h1 class="cat-title">${esc(pkg.name).toUpperCase()}</h1>
+                    <p class="cat-subtitle">Програма випускного свята</p>
+                </div>
+            </div>
+            <!-- STATS -->
+            <div class="cat-stats">
+                <div class="cat-stat">
+                    <span class="cat-stat-val">${durationStr}</span>
+                    <span class="cat-stat-lbl">тривалість</span>
+                </div>
+                <div class="cat-stat-divider"></div>
+                <div class="cat-stat">
+                    <span class="cat-stat-val">${kidsStr}</span>
+                    <span class="cat-stat-lbl">дітей</span>
+                </div>
+                <div class="cat-stat-divider"></div>
+                <div class="cat-stat cat-stat-price">
+                    <span class="cat-price-val">${totalPrice.toLocaleString('uk-UA')} ₴</span>
+                    <span class="cat-stat-lbl">за дитину</span>
+                </div>
+            </div>
+            <!-- SERVICES -->
+            <div class="cat-body">
+                <div class="cat-section-title">Що входить у програму</div>
+                <div class="cat-services">${servicesHtml}</div>
+                ${desc ? `<div class="cat-desc">${esc(desc)}</div>` : ''}
+            </div>
+            <!-- FOOTER -->
+            <div class="cat-footer">
+                <img src="/images/logo_element.png?v=38.4.0" alt="Парк Закревського" class="cat-footer-logo">
+                <div class="cat-footer-info">
+                    <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
+                    <span>📞 0800 75 35 53</span>
+                </div>
+            </div>
+            <!-- ACTIONS (hidden in print) -->
+            <div class="cat-actions">
+                <button class="cat-btn cat-btn-print" onclick="printCatalogPage('graduation', '${pkg.slug}')">🖨️ Друк / PDF</button>
+            </div>
+        </div>
+    `;
 }
 
-function selectGalleryImage(url) {
-    savePageImage(url);
-}
-window.selectGalleryImage = selectGalleryImage;
+function printCatalogPage(catalogId, slug) {
+    const pkg = catalogPackages.find(p => p.slug === slug);
+    if (!pkg) return;
 
-// URL
-function useUrlImage() {
-    const url = document.getElementById('imgUrlInput').value.trim();
-    if (!url) { document.getElementById('imgUrlInput').focus(); return; }
-    savePageImage(url);
-}
-window.useUrlImage = useUrlImage;
+    const container = document.getElementById('catalogPages');
+    const prevHtml = container.innerHTML;
+    const viewer = document.getElementById('catalogViewer');
+    const wasHidden = viewer.style.display === 'none';
 
-// Save page image — universal
-async function savePageImage(url) {
-    const body = _imgPickerField === 'background'
-        ? { background_url: url }
-        : { image_url: url };
+    container.innerHTML = buildCatalogPageHtml(pkg);
+    if (wasHidden) viewer.style.display = 'flex';
+    document.body.classList.add('printing-catalog');
 
-    try {
-        // Both cover (page 0) and content pages use the pages endpoint
-        await apiFetch(`${CATALOGS_API}/${_imgPickerCatalogId}/pages/${_imgPickerPageNumber}`, {
-            method: 'PUT',
-            body: JSON.stringify(body)
-        });
-        closeImagePicker();
-        showNotification('Зображення збережено');
-        if (currentCatalogId) openCatalogPages(currentCatalogId);
-    } catch (err) {
-        showNotification('Помилка: ' + err.message, 'error');
-    }
+    setTimeout(() => {
+        window.print();
+        document.body.classList.remove('printing-catalog');
+        container.innerHTML = prevHtml;
+        if (wasHidden) viewer.style.display = 'none';
+    }, 400);
 }
+
+// ==========================================
+// EXPOSE GLOBALS
+// ==========================================
+window.downloadDesign = downloadDesign;
+window.copyDesign = copyDesign;
+window.togglePin = togglePin;
+window.deleteDesign = deleteDesign;
+window.sendToTelegram = sendToTelegram;
+window.openCatalog = openCatalog;
+window.closeCatalog = closeCatalog;
+window.catalogNext = catalogNext;
+window.catalogPrev = catalogPrev;
+window.printCatalog = printCatalog;
+window.printCatalogPage = printCatalogPage;

@@ -940,19 +940,57 @@
                 <div class="calendar-day-detail" id="calDetail" style="display:none"></div>
             </div>
 
-            <!-- ==================== CATALOGS TAB ==================== -->
+            <!-- ==================== CATALOGS TAB v38.14 (restored from v38.10) ==================== -->
             <div id="tabCatalogs" style="display:none">
-                <div style="display:flex;justify-content:flex-end;margin-bottom:16px" class="catalog-toolbar">
-                    <button style="padding:10px 18px;border-radius:12px;border:none;background:linear-gradient(135deg,#C9A84C,#D4AF37);color:#0D0D0D;font-size:14px;font-weight:800;cursor:pointer;font-family:inherit" onclick="showCreateCatalogForm()">+ Новий каталог</button>
+                <!-- Header with create button -->
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                    <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--gray-800)">Каталоги</h3>
+                    <button type="button" class="btn-catalog" onclick="openCreateCatalogModal()" style="display:flex;align-items:center;gap:6px">
+                        <span style="font-size:16px">+</span> Створити каталог
+                    </button>
                 </div>
-                <div id="catalogsList" class="catalogs-grid"></div>
-                <div id="catalogViewer" style="display:none">
-                    <div class="catalog-viewer-header">
-                        <button class="img-picker-btn-secondary" onclick="closeCatalogViewer()">← Назад</button>
-                        <h3 id="catalogViewerTitle"></h3>
-                        <button class="img-picker-btn-primary" onclick="showAddPageForm()">+ Сторінка</button>
+
+                <!-- Section: Ready catalogs -->
+                <div class="catalog-section-header">
+                    <h3 style="margin:0;font-size:13px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:1px">Готові каталоги</h3>
+                </div>
+                <div class="catalog-list" id="catalogList">
+                    <!-- Graduation card -->
+                    <div class="catalog-card" data-catalog="graduation" data-status="ready">
+                        <div class="catalog-cover">
+                            <div class="catalog-cover-placeholder">
+                                <span class="catalog-cover-icon">🎓</span>
+                                <span class="catalog-cover-year">2026</span>
+                            </div>
+                        </div>
+                        <div class="catalog-info">
+                            <h3>Випускні 2026</h3>
+                            <span class="catalog-meta">7 пакетів · <span id="catalogUpdated">—</span></span>
+                        </div>
+                        <div class="catalog-actions">
+                            <button type="button" class="btn-catalog" onclick="openCatalog('graduation')">Переглянути</button>
+                            <button type="button" class="btn-catalog btn-catalog-print" onclick="printCatalog('graduation')">Друк</button>
+                        </div>
                     </div>
-                    <div id="catalogPages" class="catalog-pages-viewer"></div>
+                </div>
+
+                <!-- Section: Dynamic catalogs (from catalog_definitions) -->
+                <div class="catalog-section-header" style="margin-top:20px">
+                    <h3 style="margin:0;font-size:14px;font-weight:700;color:var(--gray-700)">Каталоги товарів</h3>
+                </div>
+                <div class="catalog-list" id="dynamicCatalogCards">
+                    <div style="color:var(--gray-400);padding:12px;font-size:13px">Завантаження...</div>
+                </div>
+
+                <!-- Fullscreen catalog viewer -->
+                <div class="catalog-viewer" id="catalogViewer" style="display:none;">
+                    <div class="catalog-viewer-nav">
+                        <button type="button" class="btn-catalog-nav" onclick="catalogPrev()" id="catalogPrevBtn">&#9664;</button>
+                        <span class="catalog-page-indicator" id="catalogPageIndicator">1 / 7</span>
+                        <button type="button" class="btn-catalog-nav" onclick="catalogNext()" id="catalogNextBtn">&#9654;</button>
+                        <button type="button" class="btn-catalog-nav btn-catalog-close" onclick="closeCatalog()">&#10005;</button>
+                    </div>
+                    <div class="catalog-pages-container" id="catalogPages"></div>
                 </div>
             </div>
         </main>
@@ -1155,5 +1193,170 @@
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script src="js/designs-page.js?v=38.14.0"></script>
     <script src="js/role-panel.js?v=38.14.0"></script>
+    <script>
+    // v38.9.0: Create catalog modal functions
+    function openCreateCatalogModal() {
+        // Use our img-picker modal for creating catalogs
+        var overlay = document.getElementById('createCatalogOverlay');
+        if (overlay) { overlay.classList.remove('hidden'); return; }
+        // Fallback: simple prompt-free modal
+        var name = ''; var emoji = '📂';
+        var modal = document.createElement('div');
+        modal.className = 'img-picker-overlay';
+        modal.innerHTML = '<div class="img-picker-modal" style="max-width:420px"><div class="img-picker-header"><h3>Створити каталог</h3><button type="button" class="img-picker-close" onclick="this.closest(\'.img-picker-overlay\').remove()">&#10005;</button></div><div style="padding:16px 20px"><form onsubmit="event.preventDefault();_doCreateCatalog(this)"><div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--gray-500);display:block;margin-bottom:4px">Назва</label><input name="name" required style="width:100%;padding:10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;box-sizing:border-box" placeholder="Каталог піньят"></div><div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--gray-500);display:block;margin-bottom:4px">Емодзі</label><input name="emoji" value="📂" style="width:60px;padding:10px;border:1px solid var(--gray-200);border-radius:8px;font-size:20px;text-align:center"></div><div style="display:flex;gap:8px"><button type="submit" style="flex:1;padding:10px;border:none;border-radius:8px;background:linear-gradient(135deg,#C9A84C,#D4AF37);color:#0D0D0D;font-weight:800;cursor:pointer;font-family:inherit">Створити</button><button type="button" onclick="this.closest(\'.img-picker-overlay\').remove()" style="flex:1;padding:10px;border:1px solid var(--gray-200);border-radius:8px;background:none;cursor:pointer;font-family:inherit">Скасувати</button></div></form></div></div>';
+        document.body.appendChild(modal);
+        modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+    }
+    async function _doCreateCatalog(form) {
+        var name = form.name.value.trim();
+        var emoji = form.emoji.value.trim() || '📂';
+        if (!name) return;
+        var tr = {'а':'a','б':'b','в':'v','г':'h','ґ':'g','д':'d','е':'e','є':'ye','ж':'zh','з':'z','и':'y','і':'i','ї':'yi','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ь':'','ю':'yu','я':'ya'};
+        var id = name.toLowerCase().split('').map(function(c) { return tr[c] || c; }).join('').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'catalog-' + Date.now();
+        try {
+            var res = await apiFetch('/api/catalogs/definitions', { method: 'POST', body: JSON.stringify({ id: id, name: name, emoji: emoji }) });
+            if (!res) return;
+            var data = await res.json();
+            if (data.success || data.id) {
+                form.closest('.img-picker-overlay').remove();
+                showNotification('Каталог "' + name + '" створено!');
+                loadDynamicCatalogCards();
+            } else {
+                showNotification(data.error || 'Помилка', 'error');
+            }
+        } catch (err) { showNotification('Помилка: ' + err.message, 'error'); }
+    }
+    </script>
+    <script>
+    // v33.5+v38.10: Dynamic catalog cards + inline catalog view
+    async function loadDynamicCatalogCards() {
+        var container = document.getElementById('dynamicCatalogCards');
+        if (!container) return;
+        try {
+            var r = await apiFetch('/api/catalogs/definitions');
+            if (!r || !r.ok) return;
+            var d = await r.json();
+            var catalogs = d.catalogs || [];
+            var itemsR = await apiFetch('/api/catalogs/items');
+            var items = [];
+            if (itemsR && itemsR.ok) { var id2 = await itemsR.json(); items = id2.items || id2 || []; }
+            if (catalogs.length === 0) {
+                container.innerHTML = '<div style="color:var(--gray-400);padding:12px;font-size:13px">Немає каталогів товарів</div>';
+                return;
+            }
+            container.innerHTML = catalogs.map(function(c) {
+                var count = Array.isArray(items) ? items.filter(function(i) { return i.catalog_id === c.id; }).length : 0;
+                return '<div class="catalog-card" data-catalog="' + c.id + '">' +
+                    '<div class="catalog-cover"><div class="catalog-cover-placeholder"><span class="catalog-cover-icon">' + (c.emoji || '📂') + '</span></div></div>' +
+                    '<div class="catalog-info"><h3>' + (c.name || c.id) + '</h3><span class="catalog-meta">' + count + ' товарів</span></div>' +
+                    '<div class="catalog-actions"><button type="button" class="btn-catalog" onclick="openCatalogPages(\'' + c.id + '\')">Сторінки</button></div></div>';
+            }).join('');
+        } catch (err) { console.error('loadDynamicCatalogCards:', err); }
+    }
+
+    // v38.12: Catalog pages viewer (inline in tab)
+    var _pagesCatalogId = null;
+    async function openCatalogPages(catalogId) {
+        _pagesCatalogId = catalogId;
+        try {
+            var r = await apiFetch('/api/catalogs/' + catalogId + '/pages');
+            if (!r || !r.ok) return;
+            var d = await r.json();
+            var pages = d.pages || [];
+            // Hide other content, show inline viewer
+            document.querySelectorAll('#tabCatalogs > *:not(#inlineCatalogView)').forEach(function(el) { el.style.display = 'none'; });
+            var viewEl = document.getElementById('inlineCatalogView');
+            if (!viewEl) { viewEl = document.createElement('div'); viewEl.id = 'inlineCatalogView'; document.getElementById('tabCatalogs').appendChild(viewEl); }
+            viewEl.style.display = '';
+            var cat = null;
+            try { var cr = await apiFetch('/api/catalogs/definitions'); if (cr && cr.ok) { var cd = await cr.json(); cat = (cd.catalogs || []).find(function(c2) { return c2.id === catalogId; }); } } catch(e) {}
+            var html = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">' +
+                '<button type="button" onclick="closeInlineCatalogView()" style="padding:8px 14px;border:1px solid var(--gray-200);border-radius:8px;background:none;cursor:pointer;font-family:inherit;font-size:13px">← Назад</button>' +
+                '<h3 style="margin:0;font-size:16px;font-weight:700">' + (cat ? cat.emoji + ' ' + cat.name : catalogId) + ' — Сторінки</h3>' +
+                '<button type="button" onclick="addCatalogPage()" style="margin-left:auto;padding:8px 14px;border:none;border-radius:8px;background:linear-gradient(135deg,#C9A84C,#D4AF37);color:#0D0D0D;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">+ Сторінка</button></div>';
+            if (pages.length === 0) {
+                html += '<div style="text-align:center;padding:40px;color:var(--gray-400)">Немає сторінок. Натисніть "+ Сторінка"</div>';
+            } else {
+                pages.forEach(function(p) {
+                    var imgHtml = p.image_url ? '<img src="' + p.image_url + '" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<span style=color:var(--gray-300);font-size:13px>Без фото</span>\'">' : '<span style="color:var(--gray-300);font-size:13px">Без фото</span>';
+                    var det = p.details || {};
+                    var detStr = [det.duration, det.kids, det.age].filter(Boolean).join(' · ');
+                    html += '<div style="display:flex;gap:16px;background:var(--white,#fff);border:1px solid var(--gray-100,rgba(0,0,0,0.06));border-radius:12px;margin-bottom:12px;overflow:hidden">' +
+                        '<div style="width:200px;min-height:160px;background:var(--gray-50,#f8f8f8);display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0">' + imgHtml +
+                        '<button onclick="insertPageImage(\'' + catalogId + '\',' + p.page_number + ')" style="position:absolute;bottom:6px;right:6px;padding:4px 10px;border-radius:6px;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;cursor:pointer;backdrop-filter:blur(4px)">Фото</button></div>' +
+                        '<div style="flex:1;padding:16px;display:flex;flex-direction:column;gap:4px">' +
+                        '<h3 style="margin:0;font-size:16px;font-weight:800">' + (p.title || '—') + '</h3>' +
+                        (p.subtitle ? '<div style="color:var(--gray-500);font-size:13px">' + p.subtitle + '</div>' : '') +
+                        (p.description ? '<div style="color:var(--gray-600);font-size:13px;line-height:1.4">' + p.description + '</div>' : '') +
+                        (p.price_label ? '<div style="color:#10B981;font-size:18px;font-weight:900">' + p.price_label + '</div>' : (p.price ? '<div style="color:#10B981;font-size:18px;font-weight:900">від ' + p.price.toLocaleString('uk-UA') + ' ₴</div>' : '')) +
+                        (detStr ? '<div style="color:var(--gray-400);font-size:12px">' + detStr + '</div>' : '') +
+                        '<div style="margin-top:auto;display:flex;gap:6px;padding-top:8px"><button onclick="editCatalogPage(\'' + catalogId + '\',' + p.page_number + ')" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:none;cursor:pointer;font-size:12px">Редагувати</button><button onclick="deleteCatalogPage(\'' + catalogId + '\',' + p.page_number + ')" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:none;cursor:pointer;font-size:12px;color:var(--gray-400)">Видалити</button></div></div></div>';
+                });
+            }
+            viewEl.innerHTML = html;
+        } catch (err) { console.error('openCatalogPages:', err); }
+    }
+    window.openCatalogPages = openCatalogPages;
+
+    function closeInlineCatalogView() {
+        var v = document.getElementById('inlineCatalogView');
+        if (v) v.style.display = 'none';
+        document.querySelectorAll('#tabCatalogs > *:not(#inlineCatalogView)').forEach(function(el) { el.style.display = ''; });
+    }
+
+    async function addCatalogPage() {
+        if (!_pagesCatalogId) return;
+        var overlay = document.getElementById('pageFormOverlay');
+        if (overlay) { overlay.classList.remove('hidden'); document.getElementById('pageFormTitle').textContent = 'Додати сторінку'; return; }
+    }
+
+    async function editCatalogPage(catalogId, pageNumber) {
+        // Open page form modal pre-filled
+        var r = await apiFetch('/api/catalogs/' + catalogId + '/pages');
+        if (!r || !r.ok) return;
+        var d = await r.json();
+        var page = (d.pages || []).find(function(p) { return p.page_number === pageNumber; });
+        if (!page) return;
+        var overlay = document.getElementById('pageFormOverlay');
+        if (!overlay) return;
+        document.getElementById('pageFormTitle').textContent = 'Редагувати сторінку ' + pageNumber;
+        var ti = document.getElementById('pageTitle'); if (ti) ti.value = page.title || '';
+        var si = document.getElementById('pageSubtitle'); if (si) si.value = page.subtitle || '';
+        var di = document.getElementById('pageDescription'); if (di) di.value = page.description || '';
+        var pi = document.getElementById('pagePriceLabel'); if (pi) pi.value = page.price_label || '';
+        var dei = document.getElementById('pageDetail'); if (dei) { var det = page.details || {}; dei.value = [det.duration, det.kids].filter(Boolean).join(' · '); }
+        overlay.classList.remove('hidden');
+    }
+
+    async function deleteCatalogPage(catalogId, pageNumber) {
+        if (!await confirmModal('Видалити сторінку ' + pageNumber + '?', { type: 'danger', okText: 'Видалити' })) return;
+        try {
+            await apiFetch('/api/catalogs/' + catalogId + '/pages/' + pageNumber, { method: 'DELETE' });
+            showNotification('Сторінку видалено');
+            openCatalogPages(catalogId);
+        } catch (err) { showNotification('Помилка', 'error'); }
+    }
+
+    function insertPageImage(catalogId, pageNumber) {
+        // Open image picker modal
+        var overlay = document.getElementById('imagePickerOverlay');
+        if (!overlay) return;
+        window._imgPickerCatalogId = catalogId;
+        window._imgPickerPageNumber = pageNumber;
+        window._imgPickerField = 'image';
+        document.getElementById('imagePickerTitle').textContent = 'Зображення сторінки ' + pageNumber;
+        document.getElementById('imgGenPrompt').value = '';
+        document.getElementById('imgUrlInput').value = '';
+        overlay.classList.remove('hidden');
+    }
+
+    // Load dynamic catalogs on tab switch
+    var _catalogsLoaded = false;
+    var origLoadCatalogs = window.loadCatalogs || loadCatalogs;
+    window.loadCatalogs = function() {
+        origLoadCatalogs();
+        if (!_catalogsLoaded) { _catalogsLoaded = true; loadDynamicCatalogCards(); }
+    };
+    </script>
 </body>
 </html>

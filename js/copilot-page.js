@@ -23,7 +23,7 @@ const CopilotPage = (() => {
         const user = AppState?.currentUser;
         if (!user || !MANAGER_ROLES.includes(user.role)) {
             var denied = document.getElementById('accessDenied');
-            if (denied) { denied.classList.remove('hidden'); denied.style.display = 'flex'; }
+            if (denied) { denied.classList.remove('hidden'); }
             document.getElementById('copilotApp')?.classList.add('hidden');
             return;
         }
@@ -1542,10 +1542,10 @@ const CopilotPage = (() => {
         const el = document.getElementById('copiedFlash');
         if (!el) return;
         el.textContent = msg;
+        
         el.classList.remove('hidden');
-        el.style.display = 'block';
         clearTimeout(el._timer);
-        el._timer = setTimeout(() => { el.style.display = 'none'; }, 2000);
+        el._timer = setTimeout(() => { el.classList.add('hidden'); }, 2000);
     }
 
     function showError(msg) {

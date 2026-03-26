@@ -316,8 +316,11 @@ router.post('/apply-image', requireRole('admin', 'creator', 'director', 'art_dir
         const itemName = item.rows[0]?.name || 'item';
         const catalogId = item.rows[0]?.catalog_id || 'misc';
         const filename = makeFilename(catalogId, itemName);
+        log.info(`apply-image: downloading ${kieUrl.substring(0, 50)}... → ${filename}`);
         const permanentUrl = await uploadFromUrl(kieUrl, filename);
-        const finalUrl = permanentUrl || kieUrl; // Fallback to Kie.ai URL if upload fails
+        const finalUrl = permanentUrl || kieUrl;
+        log.info(`apply-image: saved as ${permanentUrl ? 'SUPABASE' : 'KIE.AI fallback'}: ${finalUrl.substring(0, 60)}`);
+
 
         await pool.query('UPDATE catalog_items SET image_url = $1, updated_at = NOW() WHERE id = $2', [finalUrl, itemId]);
         res.json({ success: true, done: true, imageUrl: finalUrl });

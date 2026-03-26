@@ -20,22 +20,32 @@ const BUCKET = 'catalog-images';
 async function uploadFromUrl(sourceUrl, filename) {
     const supabase = getSupabase();
     if (!supabase) {
-        log.warn('Supabase not configured — keeping original URL');
+        log.warn('Supabase not configured (SUPABASE_KEY missing) — keeping original URL');
         return null;
     }
 
     try {
         // 1. Download image from source URL
+        log.info(`Downloading image from ${sourceUrl.substring(0, 60)}...`);
         const imageBuffer = await downloadImage(sourceUrl);
         if (!imageBuffer || imageBuffer.length === 0) {
             log.error('Downloaded empty image from', sourceUrl);
             return null;
         }
+        log.info(`Downloaded ${Math.round(imageBuffer.length / 1024)}KB`);
 
         // 2. Ensure bucket exists
-        const { data: buckets } = await supabase.storage.listBuckets();
+        const { data: buckets, error: listErr } = await supabase.storage.listBuckets();
+        if (listErr) {
+            log.error('Failed to list buckets:', listErr.message);
+            return null;
+        }
         if (!buckets?.find(b => b.name === BUCKET)) {
-            await supabase.storage.createBucket(BUCKET, { public: true });
+            const { error: createErr } = await supabase.storage.createBucket(BUCKET, { public: true });
+            if (createErr) {
+                log.error('Failed to create bucket:', createErr.message);
+                return null;
+            }
             log.info(`Created storage bucket: ${BUCKET}`);
         }
 
@@ -51,9 +61,10 @@ async function uploadFromUrl(sourceUrl, filename) {
             });
 
         if (error) {
-            log.error('Supabase upload error:', error.message);
+            log.error('Supabase upload error:', error.message, error.statusCode || '');
             return null;
         }
+        log.info(`Uploaded to Supabase: ${path}`);
 
         // 4. Get public URL
         const { data: urlData } = supabase.storage

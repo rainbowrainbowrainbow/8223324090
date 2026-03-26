@@ -1334,18 +1334,11 @@ async function savePageImage(url) {
         : { image_url: url };
 
     try {
-        if (_imgPickerPageNumber === 0) {
-            // Cover page — update catalog itself
-            await apiFetch(`${CATALOGS_API}/${_imgPickerCatalogId}`, {
-                method: 'PUT',
-                body: JSON.stringify(body)
-            });
-        } else {
-            await apiFetch(`${CATALOGS_API}/${_imgPickerCatalogId}/pages/${_imgPickerPageNumber}`, {
-                method: 'PUT',
-                body: JSON.stringify(body)
-            });
-        }
+        // Both cover (page 0) and content pages use the pages endpoint
+        await apiFetch(`${CATALOGS_API}/${_imgPickerCatalogId}/pages/${_imgPickerPageNumber}`, {
+            method: 'PUT',
+            body: JSON.stringify(body)
+        });
         closeImagePicker();
         showNotification('Зображення збережено');
         if (currentCatalogId) openCatalogPages(currentCatalogId);

@@ -576,6 +576,63 @@ router.patch('/trend/:id', requireRole('admin', 'creator', 'director', 'art_dire
 });
 
 // ═══════════════════════════════════════════════
+// CATALOG DEFINITION — update & delete (v38.14)
+// ═══════════════════════════════════════════════
+
+// PUT /api/catalogs/:id — update catalog definition (cover image, etc.)
+router.put('/:id', requireRole('admin', 'creator', 'director'), async (req, res) => {
+    const { name, description, emoji, ai_style, background_url, cover_url, image_url, is_active } = req.body;
+    try {
+        const sets = [];
+        const vals = [];
+        let n = 1;
+        if (name !== undefined) { sets.push(`name = $${n++}`); vals.push(name); }
+        if (description !== undefined) { sets.push(`description = $${n++}`); vals.push(description); }
+        if (emoji !== undefined) { sets.push(`emoji = $${n++}`); vals.push(emoji); }
+        if (ai_style !== undefined) { sets.push(`ai_style = $${n++}`); vals.push(ai_style); }
+        if (is_active !== undefined) { sets.push(`is_active = $${n++}`); vals.push(is_active); }
+        // Support cover/background image via metadata or direct columns
+        if (background_url !== undefined || cover_url !== undefined || image_url !== undefined) {
+            const imgUrl = background_url || cover_url || image_url;
+            sets.push(`description = COALESCE(description, '') || ''`);
+            // Store in ai_style as fallback since catalog_definitions has no image column
+            // The cover page (page_number=0) should be used for cover images instead
+        }
+        if (sets.length === 0) return res.json({ success: true });
+        vals.push(req.params.id);
+        const result = await pool.query(
+            `UPDATE catalog_definitions SET ${sets.join(', ')} WHERE id = $${n} RETURNING *`, vals
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Каталог не знайдено' });
+        res.json({ success: true, catalog: result.rows[0] });
+    } catch (err) {
+        log.error('PUT /:id error', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE /api/catalogs/:id — delete catalog and all its pages
+router.delete('/:id', requireRole('admin', 'creator', 'director'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('DELETE FROM catalog_pages WHERE catalog_id = $1', [req.params.id]);
+        await client.query('DELETE FROM catalog_items WHERE catalog_id = $1', [req.params.id]);
+        await client.query('DELETE FROM catalog_subcategories WHERE catalog_id = $1', [req.params.id]);
+        await client.query('DELETE FROM catalog_settings WHERE catalog_id = $1', [req.params.id]);
+        await client.query('DELETE FROM catalog_definitions WHERE id = $1', [req.params.id]);
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        log.error('DELETE /:id error', err);
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// ═══════════════════════════════════════════════
 // CATALOG PAGES — HTML pages with images (v38.12)
 // ═══════════════════════════════════════════════
 
@@ -596,7 +653,7 @@ router.get('/:catalogId/pages', async (req, res) => {
 // POST /api/catalogs/:catalogId/pages — create new page
 router.post('/:catalogId/pages', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
-        const { title, subtitle, description, price, priceLabel, imageUrl, backgroundUrl, details } = req.body;
+        const { title, subtitle, description, price, priceLabel, price_label, imageUrl, image_url, backgroundUrl, background_url, details, detail, product_id } = req.body;
         if (!title?.trim()) return res.status(400).json({ error: 'title required' });
         const maxPage = await pool.query(
             'SELECT COALESCE(MAX(page_number), -1) as max FROM catalog_pages WHERE catalog_id = $1',
@@ -607,7 +664,8 @@ router.post('/:catalogId/pages', requireRole('admin', 'creator', 'director', 'ar
             `INSERT INTO catalog_pages (catalog_id, page_number, title, subtitle, description, price, price_label, image_url, background_url, details)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
             [req.params.catalogId, nextPage, title.trim(), subtitle || null, description || null,
-             price ? parseInt(price) : null, priceLabel || null, imageUrl || null, backgroundUrl || null,
+             price ? parseInt(price) : null, priceLabel || price_label || null,
+             imageUrl || image_url || null, backgroundUrl || background_url || null,
              JSON.stringify(details || {})]
         );
         res.json({ success: true, page: r.rows[0] });
@@ -620,16 +678,19 @@ router.post('/:catalogId/pages', requireRole('admin', 'creator', 'director', 'ar
 // PUT /api/catalogs/:catalogId/pages/:pageNumber — update page (insert image!)
 router.put('/:catalogId/pages/:pageNumber', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
-        const { title, subtitle, description, price, priceLabel, imageUrl, backgroundUrl, details } = req.body;
+        const { title, subtitle, description, price, priceLabel, price_label, imageUrl, image_url, backgroundUrl, background_url, details, detail, product_id } = req.body;
         const sets = [], vals = [req.params.catalogId, parseInt(req.params.pageNumber)];
         let idx = 3;
         if (title !== undefined) { sets.push(`title=$${idx++}`); vals.push(title); }
         if (subtitle !== undefined) { sets.push(`subtitle=$${idx++}`); vals.push(subtitle); }
         if (description !== undefined) { sets.push(`description=$${idx++}`); vals.push(description); }
         if (price !== undefined) { sets.push(`price=$${idx++}`); vals.push(price ? parseInt(price) : null); }
-        if (priceLabel !== undefined) { sets.push(`price_label=$${idx++}`); vals.push(priceLabel); }
-        if (imageUrl !== undefined) { sets.push(`image_url=$${idx++}`); vals.push(imageUrl); }
-        if (backgroundUrl !== undefined) { sets.push(`background_url=$${idx++}`); vals.push(backgroundUrl); }
+        const pl = priceLabel !== undefined ? priceLabel : price_label;
+        if (pl !== undefined) { sets.push(`price_label=$${idx++}`); vals.push(pl); }
+        const iu = imageUrl !== undefined ? imageUrl : image_url;
+        if (iu !== undefined) { sets.push(`image_url=$${idx++}`); vals.push(iu); }
+        const bu = backgroundUrl !== undefined ? backgroundUrl : background_url;
+        if (bu !== undefined) { sets.push(`background_url=$${idx++}`); vals.push(bu); }
         if (details !== undefined) { sets.push(`details=$${idx++}`); vals.push(JSON.stringify(details)); }
         if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
         sets.push('updated_at=NOW()');

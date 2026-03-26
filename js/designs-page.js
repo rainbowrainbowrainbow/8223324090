@@ -860,13 +860,16 @@ let _pageFormEditPageNumber = null;
 async function loadCatalogs() {
     try {
         const res = await apiFetch(`${CATALOGS_API}/definitions`);
-        const data = res && res.catalogs ? res : (res && res.json ? await res.json() : { catalogs: [] });
+        if (!res || !res.ok) { catalogsList = []; renderCatalogs(); return; }
+        const data = await res.json();
         catalogsList = data.catalogs || [];
         renderCatalogs();
         const countEl = document.getElementById('countCatalogs');
         if (countEl) countEl.textContent = catalogsList.length;
     } catch (err) {
         console.error('Load catalogs error:', err);
+        catalogsList = [];
+        renderCatalogs();
     }
 }
 
@@ -902,8 +905,10 @@ async function openCatalogPages(catalogId) {
     currentCatalogId = catalogId;
     try {
         const pagesRes = await apiFetch(`${CATALOGS_API}/${catalogId}/pages`);
-        const pagesData = pagesRes && pagesRes.pages ? pagesRes : (pagesRes && pagesRes.json ? await pagesRes.json() : { pages: [] });
-        currentCatalogPages = pagesData.pages || [];
+        if (!pagesRes || !pagesRes.ok) { currentCatalogPages = []; } else {
+            const pagesData = await pagesRes.json();
+            currentCatalogPages = pagesData.pages || [];
+        }
         const catalog = catalogsList.find(c => c.id === catalogId) || { id: catalogId, name: catalogId, title: catalogId };
 
         document.getElementById('catalogsList').style.display = 'none';
@@ -997,20 +1002,29 @@ function closeCreateCatalog() {
 window.closeCreateCatalog = closeCreateCatalog;
 
 async function submitCreateCatalog() {
-    const title = document.getElementById('catalogNameInput').value.trim();
-    if (!title) { document.getElementById('catalogNameInput').focus(); return; }
+    const name = document.getElementById('catalogNameInput').value.trim();
+    if (!name) { document.getElementById('catalogNameInput').focus(); return; }
 
+    const slug = name.toLowerCase().replace(/[^a-zа-яіїєґ0-9]+/gi, '-').replace(/^-|-$/g, '');
+    const category = document.getElementById('catalogCategoryInput').value;
     const body = {
-        title,
-        description: document.getElementById('catalogDescInput').value.trim(),
-        category: document.getElementById('catalogCategoryInput').value
+        id: slug || category || 'new-' + Date.now(),
+        name,
+        emoji: { general: '📁', graduation: '🎓', pinata: '🪅', cakes: '🎂', masterclass: '🎨', shows: '✨' }[category] || '📁',
+        description: document.getElementById('catalogDescInput').value.trim() || null
     };
 
     try {
-        await apiFetch(`${CATALOGS_API}/definitions`, {
+        const res = await apiFetch(`${CATALOGS_API}/definitions`, {
             method: 'POST',
-            body: JSON.stringify(body)
+            body: JSON.stringify(body),
+            headers: { 'Content-Type': 'application/json' }
         });
+        if (res && !res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showNotification(err.error || 'Помилка створення', 'error');
+            return;
+        }
         closeCreateCatalog();
         showNotification('Каталог створено');
         await loadCatalogs();
@@ -1211,9 +1225,11 @@ async function generatePageImage() {
     try {
         const resp = await apiFetch(`${CATALOGS_API}/generate-image`, {
             method: 'POST',
-            body: JSON.stringify({ prompt: promptText })
+            body: JSON.stringify({ prompt: promptText }),
+            headers: { 'Content-Type': 'application/json' }
         });
-        const data = resp.url ? resp : (resp.json ? await resp.json() : resp);
+        if (!resp || !resp.ok) throw new Error('Сервер не відповідає');
+        const data = await resp.json();
 
         if (data.url) {
             _imgPickerGeneratedUrl = data.url;
@@ -1295,8 +1311,9 @@ async function loadImageGallery() {
 
     try {
         const resp = await apiFetch('/api/designs?limit=8&sort=newest');
-        const data = resp.designs || resp;
-        const items = Array.isArray(data) ? data : (data.json ? await data.json() : []);
+        if (!resp || !resp.ok) { grid.innerHTML = ''; return; }
+        const data = await resp.json();
+        const items = data.items || data.designs || (Array.isArray(data) ? data : []);
 
         if (!Array.isArray(items) || items.length === 0) {
             grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:rgba(255,255,255,0.3);padding:12px;font-size:13px">Немає завантажених дизайнів</div>';

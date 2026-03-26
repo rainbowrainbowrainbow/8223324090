@@ -12,11 +12,14 @@ const DashboardPage = (() => {
         my_schedule:    { icon: '🕐', title: 'Мій графік', minRole: null },
         team_online:    { icon: '👥', title: 'Команда онлайн', minRole: 'manager' },
         alerts:         { icon: '🔔', title: 'Сповіщення', minRole: null },
+        exceptions:     { icon: '🚨', title: 'Що потребує уваги', minRole: 'admin' },
         leads_new:      { icon: '🔥', title: 'Нові ліди', minRole: 'manager' },
         finance_today:  { icon: '💰', title: 'Фінанси сьогодні', minRole: 'senior_manager' },
         weather:        { icon: '🌤', title: 'Погода', minRole: null },
         currency:       { icon: '💱', title: 'Курси валют', minRole: 'manager' },
         announcements:  { icon: '📢', title: 'Оголошення', minRole: null },
+        reports_today:  { icon: '📋', title: 'Звіти сьогодні', minRole: 'senior_manager' },
+        catalogs:       { icon: '📚', title: 'Авто-каталоги', minRole: 'admin' },
     };
 
     let _config = { widgets: [], layout: {}, theme: 'default' };
@@ -37,6 +40,7 @@ const DashboardPage = (() => {
                 AppState.currentUser = user;
                 const el = document.getElementById('currentUser');
                 if (el) el.textContent = user.name;
+                if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
             } catch {}
         }
 
@@ -49,6 +53,11 @@ const DashboardPage = (() => {
         AppState.currentUser = verified;
         const el = document.getElementById('currentUser');
         if (el) el.textContent = verified.name;
+
+        // Decision Screen — before dashboard loads
+        if (typeof DecisionScreen !== 'undefined') {
+            try { await DecisionScreen.init(); } catch(e) { console.error('[Dashboard] DecisionScreen.init failed:', e); }
+        }
 
         // Load config
         await loadConfig();
@@ -192,11 +201,20 @@ const DashboardPage = (() => {
             case 'alerts':
                 renderAlerts(data, container);
                 break;
+            case 'exceptions':
+                renderExceptions(data, container);
+                break;
             case 'leads_new':
                 renderLeadsNew(data, container);
                 break;
             case 'finance_today':
                 renderFinanceToday(data, container);
+                break;
+            case 'reports_today':
+                renderReportsToday(data, container);
+                break;
+            case 'catalogs':
+                renderCatalogs(data, container);
                 break;
             default:
                 container.innerHTML = '<div class="widget-empty">Невідомий віджет</div>';
@@ -231,14 +249,21 @@ const DashboardPage = (() => {
         const items = data.tasks.slice(0, 6).map(t => {
             const priorityCls = t.priority || 'medium';
             const deadline = t.deadline ? formatDeadline(t.deadline) : '';
-            return `<div class="widget-task-item">
+            const catInfo = { event: '🎉', purchase: '🛒', admin: '📎', trampoline: '🤸', personal: '👤', improvement: '⚡' };
+            const catIcon = catInfo[t.category] || '📋';
+            const statusLabel = t.status === 'in_progress' ? 'В роботі' : t.status === 'todo' ? 'Todo' : t.status;
+            return `<div class="widget-task-item" onclick="DashboardPage.openTask(${t.id})" title="Відкрити задачу">
                 <div class="widget-task-icon ${priorityCls}"></div>
-                <div class="widget-task-title">${escapeHtml(t.title)}</div>
-                ${deadline ? `<div class="widget-task-deadline">${deadline}</div>` : ''}
+                <div class="widget-task-info">
+                    <div class="widget-task-title">${escapeHtml(t.title)}</div>
+                    <div class="widget-task-meta">${catIcon} ${statusLabel}${deadline ? ' · ' + deadline : ''}</div>
+                </div>
+                <div class="widget-task-arrow">›</div>
             </div>`;
         }).join('');
 
-        container.innerHTML = `<div class="widget-task-list">${items}</div>`;
+        const footer = `<div class="widget-footer"><a href="/tasks" class="widget-footer-link">Всі задачі →</a></div>`;
+        container.innerHTML = `<div class="widget-task-list">${items}</div>${footer}`;
     }
 
     function renderBookings(data, container) {
@@ -306,7 +331,7 @@ const DashboardPage = (() => {
 
     function renderWeather(data, container) {
         if (data.error) {
-            container.innerHTML = `<div class="widget-empty">${data.error}</div>`;
+            container.innerHTML = `<div class="widget-empty">${escapeHtml(data.error)}</div>`;
             return;
         }
 
@@ -331,7 +356,7 @@ const DashboardPage = (() => {
 
     function renderCurrency(data, container) {
         if (data.error) {
-            container.innerHTML = `<div class="widget-empty">${data.error}</div>`;
+            container.innerHTML = `<div class="widget-empty">${escapeHtml(data.error)}</div>`;
             return;
         }
 
@@ -372,17 +397,50 @@ const DashboardPage = (() => {
 
     function renderAlerts(data, container) {
         if (!data.alerts || data.alerts.length === 0) {
-            container.innerHTML = '<div class="widget-empty">Все в порядку</div>';
+            container.innerHTML = '<div class="widget-empty">✅ Все в порядку</div>';
             return;
         }
+        const DEFAULT_LINKS = { warning: '/tasks', info: '/', critical: '/finance' };
         const items = data.alerts.map(a => {
-            const typeCls = a.type === 'warning' ? 'alert-warning' : 'alert-info';
-            return `<div class="alert-item ${typeCls}">
-                <span class="alert-icon">${a.icon || '🔔'}</span>
-                <span class="alert-text">${escapeHtml(a.title)}</span>
-            </div>`;
+            const typeCls = a.level === 'critical' ? 'alert-critical' : a.level === 'warning' ? 'alert-warning' : 'alert-info';
+            const link = a.link || DEFAULT_LINKS[a.level] || '/dashboard';
+            return `<a href="${link}" class="dash-alert-item ${typeCls}" title="Перейти →">
+                <span class="dash-alert-icon">${a.icon || '🔔'}</span>
+                <span class="dash-alert-text">${escapeHtml(a.title)}</span>
+                <span class="dash-alert-arrow">›</span>
+            </a>`;
         }).join('');
         container.innerHTML = items;
+    }
+
+    function renderExceptions(data, container) {
+        if (!data.exceptions || data.exceptions.length === 0) {
+            container.innerHTML = '<div class="widget-empty">✅ Все під контролем — жодних виключень</div>';
+            return;
+        }
+        const catLabels = {
+            conflicts: '💥 Конфлікти', noAnimator: '🎭 Без аніматора',
+            overduePrep: '⏰ Підготовка', detractors: '😞 NPS',
+            cleaningSLA: '🧹 Прибирання', unconfirmedLate: '🔴 Не підтверджено'
+        };
+        // Category summary bar
+        const cats = data.categories || {};
+        const summaryParts = Object.entries(cats)
+            .filter(([, v]) => v > 0)
+            .map(([k, v]) => `<span class="exc-cat-badge" title="${catLabels[k] || k}">${(catLabels[k] || k).split(' ')[0]} ${v}</span>`)
+            .join('');
+        const summary = summaryParts ? `<div class="exc-summary">${summaryParts}</div>` : '';
+
+        const items = data.exceptions.slice(0, 8).map(e => {
+            const lvlCls = e.level === 'critical' ? 'alert-critical' : e.level === 'warning' ? 'alert-warning' : 'alert-info';
+            const link = e.link || '/';
+            return `<a href="${link}" class="dash-alert-item ${lvlCls}" title="${escapeHtml(e.action?.prompt || '')}">
+                <span class="dash-alert-icon">${e.icon || '⚠️'}</span>
+                <span class="dash-alert-text">${escapeHtml(e.title)}</span>
+                <span class="dash-alert-arrow">›</span>
+            </a>`;
+        }).join('');
+        container.innerHTML = summary + items;
     }
 
     function renderLeadsNew(data, container) {
@@ -430,6 +488,65 @@ const DashboardPage = (() => {
                 </div>
             </div>
         `;
+    }
+
+    function renderReportsToday(data, container) {
+        const fmt = (v) => {
+            if (v >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+            return Math.round(v) + '';
+        };
+        container.innerHTML = `
+            <div class="finance-today-grid">
+                <div class="finance-stat revenue">
+                    <div class="finance-stat-value">${fmt(data.income || 0)} ₴</div>
+                    <div class="finance-stat-label">Доходи</div>
+                </div>
+                <div class="finance-stat expenses">
+                    <div class="finance-stat-value">${fmt(data.expense || 0)} ₴</div>
+                    <div class="finance-stat-label">Витрати</div>
+                </div>
+                <div class="finance-stat bookings">
+                    <div class="finance-stat-value">${data.newCount || 0}</div>
+                    <div class="finance-stat-label">Нових звітів</div>
+                </div>
+            </div>
+            <a href="/reports" style="display:block;text-align:center;margin-top:8px;font-size:12px;color:var(--primary);font-weight:700;text-decoration:none">
+                Відкрити звіти →
+            </a>
+        `;
+    }
+
+    function renderCatalogs(data, container) {
+        const items = data.recentItems || [];
+        const defs = data.definitions || [];
+        let html = '';
+        if (defs.length) {
+            html += '<div class="catalog-defs-row">';
+            defs.forEach(d => {
+                html += `<span class="catalog-def-badge" title="${escapeHtml(d.name)}">${d.emoji} ${escapeHtml(d.name)} <small>(${d.count || 0})</small></span> `;
+            });
+            html += '</div>';
+        }
+        if (items.length) {
+            html += '<div class="catalog-mini-list">';
+            items.forEach(it => {
+                html += `<div class="catalog-mini-item">
+                    <div class="catalog-mini-thumb">${it.image_url ? '<img src="' + escapeHtml(it.image_url) + '" loading="lazy" alt="">' : '<span>' + (it.catalog_emoji || '🗂️') + '</span>'}</div>
+                    <div class="catalog-mini-info">
+                        <span class="catalog-mini-name">${escapeHtml(it.name)}</span>
+                        <span class="catalog-mini-meta">${escapeHtml(it.catalog_name || '')}${it.price ? ' · ' + it.price + ' грн' : ''}</span>
+                    </div>
+                </div>`;
+            });
+            html += '</div>';
+        } else {
+            html += '<div class="widget-empty">Позицій ще немає</div>';
+        }
+        html += `<div style="display:flex;gap:8px;margin-top:8px;justify-content:center">
+            <button class="btn-primary btn-sm" onclick="openAddCatalogItem()">+ Додати позицію</button>
+            <a href="/designs" style="font-size:12px;color:var(--primary);font-weight:700;text-decoration:none;line-height:32px">Каталоги →</a>
+        </div>`;
+        container.innerHTML = html;
     }
 
     // Onboarding wizard
@@ -536,7 +653,7 @@ const DashboardPage = (() => {
                 </div>
                 <div class="settings-widget-list" id="settingsWidgetList">${widgetItems}</div>
                 <div class="settings-modal-footer">
-                    <button class="dashboard-btn" onclick="document.getElementById('settingsOverlay').remove()">Скасувати</button>
+                    <button class="dashboard-btn" onclick="document.getElementById('settingsOverlay')?.remove()">Скасувати</button>
                     <button class="dashboard-btn primary" onclick="DashboardPage.saveSettings()">Зберегти</button>
                 </div>
             </div>
@@ -637,6 +754,9 @@ const DashboardPage = (() => {
 
     // Test panel for creator
     function initTestPanel() {
+        // v33.8.0: Dev Tools hidden temporarily
+        return;
+
         if (!AppState.currentUser || AppState.currentUser.role !== 'creator') return;
 
         // v24.0.0: Dev Tools section on dashboard (replaces old FAB test panel)
@@ -722,7 +842,7 @@ const DashboardPage = (() => {
             const users = await resp.json();
             select.innerHTML = '<option value="">— Обрати юзера —</option>' +
                 users.filter(u => u.username !== AppState.currentUser.username)
-                    .map(u => `<option value="${u.id}">${u.name} (${ROLE_NAMES[u.role] || u.role})</option>`)
+                    .map(u => `<option value="${u.id}">${escapeHtml(u.name)} (${ROLE_NAMES[u.role] || escapeHtml(u.role)})</option>`)
                     .join('');
         } catch {
             select.innerHTML = '<option value="">Помилка</option>';
@@ -786,6 +906,81 @@ const DashboardPage = (() => {
         badge.textContent = `Тестовий режим: ${roleName}`;
     }
 
+    async function openTask(taskId) {
+        // Fetch full task details
+        try {
+            const resp = await fetch(`/api/tasks/${taskId}`, {
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const task = await resp.json();
+            if (!task || !task.id) throw new Error('Task not found');
+
+            showTaskModal(task);
+        } catch (err) {
+            console.error('Open task error:', err);
+            // Fallback: navigate to tasks page
+            window.location.href = '/tasks';
+        }
+    }
+
+    function showTaskModal(t) {
+        // Remove previous if open
+        const prev = document.getElementById('dashTaskModal');
+        if (prev) prev.remove();
+
+        const priorityLabels = { critical: 'Критичний', high: 'Високий', medium: 'Середній', low: 'Низький' };
+        const statusLabels = { todo: 'Todo', in_progress: 'В роботі', done: 'Готово', cancelled: 'Скасовано' };
+        const catLabels = { event: '🎉 Івент', purchase: '🛒 Закупівлі', admin: '📎 Адмін', trampoline: '🤸 Батути', personal: '👤 Особисті', improvement: '⚡ Покращення' };
+
+        const priorityCls = t.priority === 'high' || t.priority === 'critical' ? 'high' : t.priority === 'low' ? 'low' : 'medium';
+
+        let deadlineHtml = '';
+        if (t.deadline) {
+            const dl = new Date(t.deadline);
+            const now = new Date();
+            const isOverdue = dl < now;
+            const dlStr = dl.toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            deadlineHtml = `<div class="task-modal-row"><span class="task-modal-label">Дедлайн:</span> <span class="${isOverdue ? 'text-danger' : ''}">${dlStr}${isOverdue ? ' (протерміновано!)' : ''}</span></div>`;
+        }
+
+        const modal = document.createElement('div');
+        modal.id = 'dashTaskModal';
+        modal.className = 'modal';
+        modal.setAttribute('role', 'dialog');
+        modal.innerHTML = `
+            <div class="modal-content">
+                <span class="modal-close" onclick="document.getElementById('dashTaskModal')?.remove()">&times;</span>
+                <div class="task-modal-header">
+                    <span class="task-modal-priority ${priorityCls}"></span>
+                    <h3>${escapeHtml(t.title)}</h3>
+                </div>
+                <div class="task-modal-body">
+                    <div class="task-modal-row"><span class="task-modal-label">Статус:</span> ${statusLabels[t.status] || t.status}</div>
+                    <div class="task-modal-row"><span class="task-modal-label">Пріоритет:</span> ${priorityLabels[t.priority] || t.priority}</div>
+                    <div class="task-modal-row"><span class="task-modal-label">Категорія:</span> ${catLabels[t.category] || t.category || '—'}</div>
+                    ${t.assigned_to ? `<div class="task-modal-row"><span class="task-modal-label">Відповідальний:</span> ${escapeHtml(t.assigned_to)}</div>` : ''}
+                    ${t.owner ? `<div class="task-modal-row"><span class="task-modal-label">Власник:</span> ${escapeHtml(t.owner)}</div>` : ''}
+                    ${deadlineHtml}
+                    ${t.date ? `<div class="task-modal-row"><span class="task-modal-label">Дата:</span> ${new Date(t.date).toLocaleDateString('uk-UA')}</div>` : ''}
+                    ${t.description ? `<div class="task-modal-description"><span class="task-modal-label">Опис:</span><p>${escapeHtml(t.description)}</p></div>` : ''}
+                    ${t.notes ? `<div class="task-modal-description"><span class="task-modal-label">Нотатки:</span><p>${escapeHtml(t.notes)}</p></div>` : ''}
+                </div>
+                <div class="task-modal-footer">
+                    <a href="/tasks" class="dashboard-btn primary">Відкрити на сторінці задач</a>
+                    <button class="dashboard-btn" onclick="document.getElementById('dashTaskModal')?.remove()">Закрити</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // Close on overlay click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.remove();
+        });
+    }
+
     function refreshWidget(type) {
         loadWidgetData(type);
     }
@@ -817,6 +1012,7 @@ const DashboardPage = (() => {
     return {
         init,
         refreshWidget,
+        openTask,
         toggleOnboardingWidget,
         saveOnboarding,
         openSettings,

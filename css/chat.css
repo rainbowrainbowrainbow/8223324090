@@ -415,6 +415,7 @@ body.dark-mode .chat-theme-select {
     justify-content: center;
     color: var(--gray-400);
     transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    position: relative;
 }
 
 .chat-header-action-btn:hover {
@@ -583,6 +584,99 @@ body.dark-mode .chat-theme-select {
     background-position: 0 0, 0 0, 40px 70px, 40px 70px;
 }
 
+/* v33.5: New wallpapers */
+/* Confetti — festive party */
+.chat-messages[data-wallpaper="confetti"] {
+    background-color: #fffbeb;
+    background-image:
+        radial-gradient(3px 3px at 10% 15%, rgba(239,68,68,0.18) 50%, transparent 50%),
+        radial-gradient(2px 4px at 25% 45%, rgba(59,130,246,0.16) 50%, transparent 50%),
+        radial-gradient(3px 2px at 40% 80%, rgba(16,185,129,0.18) 50%, transparent 50%),
+        radial-gradient(2px 3px at 55% 25%, rgba(245,158,11,0.2) 50%, transparent 50%),
+        radial-gradient(3px 3px at 70% 60%, rgba(168,85,247,0.15) 50%, transparent 50%),
+        radial-gradient(2px 2px at 85% 35%, rgba(236,72,153,0.18) 50%, transparent 50%),
+        radial-gradient(3px 2px at 15% 70%, rgba(99,102,241,0.15) 50%, transparent 50%),
+        radial-gradient(2px 3px at 90% 85%, rgba(34,197,94,0.18) 50%, transparent 50%);
+    background-size: 150px 150px;
+}
+
+/* Sakura — cherry blossom */
+.chat-messages[data-wallpaper="sakura"] {
+    background-color: #fdf2f8;
+    background-image:
+        radial-gradient(ellipse 8px 8px at 15% 20%, rgba(236,72,153,0.1) 50%, transparent 50%),
+        radial-gradient(ellipse 6px 6px at 35% 65%, rgba(244,114,182,0.08) 50%, transparent 50%),
+        radial-gradient(ellipse 10px 10px at 60% 30%, rgba(236,72,153,0.06) 50%, transparent 50%),
+        radial-gradient(ellipse 5px 5px at 80% 75%, rgba(244,114,182,0.09) 50%, transparent 50%),
+        radial-gradient(ellipse 7px 7px at 45% 90%, rgba(236,72,153,0.07) 50%, transparent 50%);
+    background-size: 180px 180px;
+}
+
+/* Ocean — deep blue gradient */
+.chat-messages[data-wallpaper="ocean"] {
+    background: linear-gradient(180deg, #e0f2fe 0%, #bae6fd 30%, #7dd3fc 60%, #38bdf8 100%);
+}
+
+/* Sunset — warm orange-pink */
+.chat-messages[data-wallpaper="sunset"] {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 20%, #fdba74 40%, #fb923c 60%, #f472b6 80%, #c084fc 100%);
+}
+
+/* Forest — nature greens */
+.chat-messages[data-wallpaper="forest"] {
+    background-color: #f0fdf4;
+    background-image:
+        linear-gradient(180deg, rgba(22,163,74,0.03) 0%, rgba(22,163,74,0.06) 100%),
+        repeating-linear-gradient(60deg, transparent, transparent 30px, rgba(34,197,94,0.04) 30px, rgba(34,197,94,0.04) 31px),
+        repeating-linear-gradient(-60deg, transparent, transparent 30px, rgba(34,197,94,0.03) 30px, rgba(34,197,94,0.03) 31px);
+}
+
+/* Cosmos — dark purple gradient */
+.chat-messages[data-wallpaper="cosmos"] {
+    background: linear-gradient(160deg, #1e1b4b 0%, #312e81 30%, #4c1d95 60%, #581c87 80%, #701a75 100%);
+}
+.chat-messages[data-wallpaper="cosmos"] .chat-bubble-content,
+.chat-messages[data-wallpaper="cosmos"] .chat-date-divider span,
+.chat-messages[data-wallpaper="cosmos"] .chat-bubble-time { color: #e2e8f0; }
+
+/* Lavender — soft purple */
+.chat-messages[data-wallpaper="lavender"] {
+    background: linear-gradient(160deg, #faf5ff 0%, #f3e8ff 30%, #e9d5ff 60%, #f5f3ff 100%);
+}
+
+/* Grid — subtle grid */
+.chat-messages[data-wallpaper="grid"] {
+    background-color: #f8fafc;
+    background-image:
+        linear-gradient(rgba(148,163,184,0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148,163,184,0.08) 1px, transparent 1px);
+    background-size: 24px 24px;
+}
+
+/* Dark mode for new wallpapers */
+[data-theme="dark"] .chat-messages[data-wallpaper="confetti"] {
+    background-color: var(--dark-bg);
+}
+[data-theme="dark"] .chat-messages[data-wallpaper="sakura"] {
+    background-color: #1a0a14;
+    background-image:
+        radial-gradient(ellipse 8px 8px at 15% 20%, rgba(236,72,153,0.15) 50%, transparent 50%),
+        radial-gradient(ellipse 6px 6px at 35% 65%, rgba(244,114,182,0.12) 50%, transparent 50%),
+        radial-gradient(ellipse 10px 10px at 60% 30%, rgba(236,72,153,0.1) 50%, transparent 50%),
+        radial-gradient(ellipse 5px 5px at 80% 75%, rgba(244,114,182,0.13) 50%, transparent 50%),
+        radial-gradient(ellipse 7px 7px at 45% 90%, rgba(236,72,153,0.1) 50%, transparent 50%);
+    background-size: 180px 180px;
+}
+[data-theme="dark"] .chat-messages[data-wallpaper="ocean"] {
+    background: linear-gradient(180deg, #0c4a6e 0%, #075985 40%, #0369a1 70%, #0284c7 100%);
+}
+[data-theme="dark"] .chat-messages[data-wallpaper="grid"] {
+    background-color: var(--dark-bg);
+    background-image:
+        linear-gradient(rgba(148,163,184,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148,163,184,0.06) 1px, transparent 1px);
+}
+
 /* Dark mode wallpapers */
 [data-theme="dark"] .chat-messages[data-wallpaper="bubbles"] {
     background-color: var(--dark-bg);
@@ -708,6 +802,38 @@ body.dark-mode .chat-theme-select {
     background-color: #fafafa;
     background-image: linear-gradient(30deg, rgba(99, 102, 241, 0.08) 12%, transparent 12.5%, transparent 87%, rgba(99, 102, 241, 0.08) 87.5%);
     background-size: 20px 35px;
+}
+
+.chat-wallpaper-option[data-wp="confetti"] {
+    background-color: #fffbeb;
+    background-image:
+        radial-gradient(3px 3px at 20% 25%, rgba(239,68,68,0.3) 50%, transparent 50%),
+        radial-gradient(2px 3px at 50% 60%, rgba(59,130,246,0.3) 50%, transparent 50%),
+        radial-gradient(3px 2px at 75% 35%, rgba(16,185,129,0.3) 50%, transparent 50%);
+    background-size: 30px 30px;
+}
+.chat-wallpaper-option[data-wp="sakura"] {
+    background: linear-gradient(135deg, #fdf2f8, #fce7f3);
+}
+.chat-wallpaper-option[data-wp="ocean"] {
+    background: linear-gradient(180deg, #e0f2fe, #7dd3fc);
+}
+.chat-wallpaper-option[data-wp="sunset"] {
+    background: linear-gradient(135deg, #fef3c7, #fb923c, #f472b6);
+}
+.chat-wallpaper-option[data-wp="forest"] {
+    background: linear-gradient(135deg, #dcfce7, #86efac);
+}
+.chat-wallpaper-option[data-wp="cosmos"] {
+    background: linear-gradient(135deg, #1e1b4b, #4c1d95, #701a75);
+}
+.chat-wallpaper-option[data-wp="lavender"] {
+    background: linear-gradient(135deg, #faf5ff, #e9d5ff);
+}
+.chat-wallpaper-option[data-wp="grid"] {
+    background-color: #f8fafc;
+    background-image: linear-gradient(rgba(148,163,184,0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.15) 1px, transparent 1px);
+    background-size: 8px 8px;
 }
 
 .chat-wallpaper-label {
@@ -841,9 +967,26 @@ body.dark-mode .chat-theme-select {
     animation: bubbleAppearOther 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     padding: 2px 0;
 }
+@media (min-width: 1600px) {
+    .chat-message { max-width: 55%; }
+}
+@media (min-width: 2200px) {
+    .chat-message { max-width: 45%; }
+}
 
 .chat-message.own {
     animation: bubbleAppearOwn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+/* v33.5: Send impact animation */
+.chat-message.own.msg-just-sent {
+    animation: msgSendImpact 0.5s cubic-bezier(0.22, 1.2, 0.36, 1);
+}
+@keyframes msgSendImpact {
+    0% { opacity: 0; transform: translateX(60px) scale(0.7); }
+    40% { opacity: 1; transform: translateX(-8px) scale(1.04); }
+    60% { transform: translateX(3px) scale(0.98); }
+    80% { transform: translateX(-1px) scale(1.01); }
+    100% { transform: translateX(0) scale(1); }
 }
 
 .chat-message.grouped {
@@ -949,11 +1092,6 @@ body.dark-mode .chat-theme-select {
     0% { transform: scale(0.5); opacity: 0; }
     60% { transform: scale(1.3); opacity: 1; }
     100% { transform: scale(1); opacity: 1; }
-}
-
-@keyframes unreadBadgePulse {
-    0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
-    50% { transform: scale(1.1); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0); }
 }
 
 .chat-message.own {
@@ -1404,7 +1542,7 @@ body.dark-mode .chat-theme-select {
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.5);
-    z-index: 1000;
+    z-index: var(--z-modal);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1756,12 +1894,54 @@ body.dark-mode .chat-theme-select {
     background: rgba(16,185,129,0.2);
 }
 .chat-voice-player {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--glass-bg, rgba(255,255,255,0.1));
+    border-radius: 18px;
+    min-width: 200px;
+    max-width: 280px;
+    cursor: pointer;
     margin: 4px 0;
 }
-.chat-audio-element {
-    max-width: 260px;
-    height: 36px;
-    border-radius: 18px;
+.chat-voice-play-btn {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--primary, #6366f1);
+    border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: transform 0.15s, opacity 0.15s;
+    color: #fff; font-size: 14px;
+}
+.chat-voice-play-btn:hover { transform: scale(1.08); opacity: 0.9; }
+.chat-voice-play-btn.playing::before { content: '⏸'; }
+.chat-voice-play-btn:not(.playing)::before { content: '▶'; }
+.chat-voice-waveform-bars {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 28px;
+    overflow: hidden;
+}
+.chat-voice-bar {
+    width: 3px;
+    border-radius: 2px;
+    background: var(--primary, #6366f1);
+    opacity: 0.4;
+    transition: opacity 0.1s;
+    flex-shrink: 0;
+}
+.chat-voice-bar.active { opacity: 1; }
+.chat-voice-duration {
+    font-size: 11px;
+    color: var(--gray-400);
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-width: 32px;
+    text-align: right;
 }
 
 /* Slash command popup */
@@ -2314,13 +2494,6 @@ body.dark-mode .chat-theme-select {
     transform: scale(0.9);
 }
 
-.chat-emoji-panel-frequent {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2px;
-    padding: 4px 0;
-}
-
 /* ==========================================
    INPUT ICON BUTTONS
    ========================================== */
@@ -2707,60 +2880,6 @@ body.dark-mode .chat-theme-select {
     min-height: 0;
 }
 
-.chat-typing-dots {
-    display: inline-flex;
-    gap: 3px;
-    vertical-align: middle;
-    margin-left: 4px;
-}
-
-.chat-typing-dots span {
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: var(--primary);
-    animation: typingBounce 1.2s infinite;
-}
-
-.chat-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
-.chat-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
-
-@keyframes typingBounce {
-    0%, 70%, 100% { transform: translateY(0) scale(1); opacity: 0.25; }
-    35% { transform: translateY(-5px) scale(1.15); opacity: 1; }
-}
-
-/* Guardian typing — purple dots */
-.chat-typing-text.guardian-typing {
-    color: #6366F1;
-    font-weight: 600;
-}
-
-.chat-typing-text.guardian-typing .chat-typing-dots span {
-    background: #6366F1;
-    width: 5px;
-    height: 5px;
-    animation: guardianTypingBounce 1s infinite;
-}
-
-.chat-typing-text.guardian-typing .chat-typing-dots span:nth-child(2) { animation-delay: 0.15s; }
-.chat-typing-text.guardian-typing .chat-typing-dots span:nth-child(3) { animation-delay: 0.3s; }
-
-@keyframes guardianTypingBounce {
-    0%, 100% { transform: translateY(0) scale(1); opacity: 0.3; box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
-    50% { transform: translateY(-6px) scale(1.3); opacity: 1; box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4); }
-}
-
-/* Bot typing — green dots */
-.chat-typing-text.bot-typing {
-    color: #059669;
-    font-weight: 600;
-}
-
-.chat-typing-text.bot-typing .chat-typing-dots span {
-    background: #10B981;
-}
-
 /* ==========================================
    CHAT INPUT
    ========================================== */
@@ -2976,26 +3095,6 @@ body.dark-mode .chat-theme-select {
 .chat-mention-item-role {
     font-size: 12px;
     color: var(--gray-400);
-}
-
-/* ==========================================
-   SIDEBAR UNREAD BADGE (for nav)
-   ========================================== */
-
-.chat-unread-badge {
-    background: var(--danger);
-    color: white;
-    font-size: 10px;
-    font-weight: 700;
-    min-width: 18px;
-    height: 18px;
-    border-radius: 9px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 5px;
-    margin-left: auto;
-    animation: unreadBadgePulse 2s ease-in-out infinite;
 }
 
 /* ==========================================
@@ -3223,7 +3322,7 @@ body.dark-mode .chat-theme-select {
     border-radius: 10px;
     font-size: 13px;
     font-weight: 600;
-    z-index: 999;
+    z-index: var(--z-notification);
     animation: toastIn 0.3s ease, toastOut 0.3s ease 2.5s forwards;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
@@ -6253,14 +6352,6 @@ body.dark-mode .guardian-digest-generate-btn {
 /* ==========================================
    FEATURE 12: VOICE MESSAGE UI
    ========================================== */
-.chat-voice-msg {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 0;
-    min-width: 200px;
-}
-
 .chat-voice-play {
     width: 32px;
     height: 32px;
@@ -7230,27 +7321,6 @@ body.dark-mode .guardian-digest-generate-btn {
     font-weight: 500;
 }
 
-/* Message link copy toast */
-.chat-copy-toast {
-    position: fixed;
-    bottom: 80px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--bg-card, #1e293b);
-    color: var(--text-primary, #fff);
-    padding: 8px 16px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 500;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    z-index: 10000;
-    animation: chatToastIn 0.2s ease;
-}
-@keyframes chatToastIn {
-    from { opacity: 0; transform: translateX(-50%) translateY(8px); }
-    to { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-
 /* ARIA focus styles */
 .chat-channel-item:focus-visible,
 .chat-context-item:focus-visible,
@@ -7381,16 +7451,16 @@ body.dark-mode .guardian-digest-generate-btn {
 }
 
 .sound-settings-panel {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
-    width: 220px;
-    background: var(--bg-secondary, #1e1e2e);
-    border: 1px solid var(--border-color, #333);
-    border-radius: 10px;
-    padding: 12px;
-    z-index: 1000;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    position: fixed;
+    top: 50px;
+    right: 16px;
+    width: 240px;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 12px;
+    padding: 14px;
+    z-index: 99999;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -7489,4 +7559,500 @@ body.dark-mode .guardian-digest-generate-btn {
 
 .sound-toggle-switch input:checked + .sound-toggle-slider::before {
     transform: translateX(16px);
+}
+
+/* ── Forwarded Badge (v33.5) ──────────── */
+.chat-forwarded-badge {
+    font-size: 11px;
+    color: var(--primary, #6366f1);
+    border-left: 2px solid var(--primary, #6366f1);
+    padding: 2px 6px;
+    margin-bottom: 4px;
+    opacity: 0.85;
+}
+
+/* ── Channel Info Panel — Edit/Manage (v33.5) ── */
+.chat-info-edit-section {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+.chat-info-field { margin-bottom: 10px; }
+.chat-info-field label { font-size: 11px; color: var(--gray-400); display: block; margin-bottom: 4px; }
+.chat-info-field input {
+    width: 100%; padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px; font-size: 13px;
+    background: var(--input-bg, #fff);
+    box-sizing: border-box;
+}
+.chat-info-save-btn {
+    width: 100%; padding: 8px; margin-top: 4px;
+    background: var(--primary, #6366f1); color: #fff;
+    border: none; border-radius: 8px; cursor: pointer;
+    font-size: 13px; font-weight: 600;
+    transition: opacity 0.2s;
+}
+.chat-info-save-btn:hover { opacity: 0.9; }
+/* Mute toggle */
+.chat-mute-toggle { position: relative; display: inline-block; width: 36px; height: 20px; }
+.chat-mute-toggle input { display: none; }
+.chat-mute-slider {
+    position: absolute; inset: 0; border-radius: 10px;
+    background: var(--gray-200); cursor: pointer; transition: background 0.2s;
+}
+.chat-mute-toggle input:checked + .chat-mute-slider { background: var(--primary); }
+.chat-mute-slider::after {
+    content: ''; position: absolute;
+    width: 16px; height: 16px; border-radius: 50%;
+    top: 2px; left: 2px; background: #fff;
+    transition: transform 0.2s;
+}
+.chat-mute-toggle input:checked + .chat-mute-slider::after { transform: translateX(16px); }
+/* Danger zone */
+.chat-info-danger { padding: 12px 16px; background: rgba(239,68,68,0.03); }
+.chat-info-danger-btn {
+    width: 100%; padding: 8px; border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: none; cursor: pointer; font-size: 13px;
+    margin-bottom: 6px; text-align: left;
+    transition: background 0.2s;
+}
+.chat-info-danger-btn:hover { background: var(--gray-100); }
+.chat-info-danger-btn--red { color: #ef4444; border-color: rgba(239,68,68,0.3); }
+.chat-info-danger-btn--red:hover { background: rgba(239,68,68,0.07); }
+.chat-info-member-remove {
+    background: none; border: none; cursor: pointer;
+    color: var(--gray-300); font-size: 14px;
+    padding: 2px 4px; border-radius: 4px;
+    transition: color 0.2s; margin-left: auto;
+}
+.chat-info-member-remove:hover { color: #ef4444; }
+
+/* v33.5: Muted bell — crossed out icon */
+.chat-header-action-btn.muted-bell svg { opacity: 0.4; }
+.chat-header-action-btn.muted-bell::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 20px; height: 2px;
+    background: #ef4444;
+    transform: translate(-50%, -50%) rotate(-45deg);
+    border-radius: 1px;
+    pointer-events: none;
+}
+
+/* ==========================================
+ * v33.7.0: Booking Preview Card
+ * ========================================== */
+.chat-booking-preview {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: var(--bg-secondary, #f8f9fa);
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-left: 3px solid var(--primary, #6c5ce7);
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.chat-booking-preview:hover {
+    background: var(--bg-tertiary, #eef0f4);
+}
+.chat-bp-header {
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 4px;
+    color: var(--primary, #6c5ce7);
+}
+.chat-bp-row {
+    padding: 1px 0;
+    color: var(--text-secondary, #666);
+}
+.chat-bp-price {
+    margin-top: 4px;
+    font-weight: 600;
+    color: var(--success, #00b894);
+}
+
+/* ==========================================
+ * v33.7.0: Checklist in Messages
+ * ========================================== */
+.chat-check-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+    cursor: pointer;
+    user-select: none;
+}
+.chat-check-item input[type=checkbox] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary, #6c5ce7);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.chat-check-text {
+    font-size: 13px;
+}
+.chat-check-done {
+    text-decoration: line-through;
+    color: var(--gray-400, #999);
+}
+
+/* ==========================================
+ * v33.7.0: Important Messages
+ * ========================================== */
+.chat-message.important .chat-bubble {
+    border-left: 3px solid #f39c12;
+    background: rgba(243, 156, 18, 0.06);
+}
+.chat-important-badge {
+    font-size: 12px;
+    margin-left: 4px;
+}
+
+/* ==========================================
+ * v33.7.0: Status Area
+ * ========================================== */
+.chat-status-area {
+    position: relative;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+}
+.chat-peer-status {
+    font-size: 11px;
+    color: var(--gray-400, #999);
+    margin-left: 4px;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ==========================================
+ * v33.7.0: Remind Picker Modal Buttons
+ * ========================================== */
+.chat-modal-btn {
+    padding: 8px 14px;
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-radius: 8px;
+    background: var(--bg-secondary, #f8f9fa);
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s;
+    text-align: left;
+}
+.chat-modal-btn:hover {
+    background: var(--bg-tertiary, #eef0f4);
+}
+.chat-modal-btn-primary {
+    background: var(--primary, #6c5ce7);
+    color: #fff;
+    border-color: var(--primary, #6c5ce7);
+}
+.chat-modal-btn-primary:hover {
+    background: var(--primary-dark, #5a4bd1);
+}
+
+/* Dark mode overrides */
+.dark-mode .chat-booking-preview {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.1);
+}
+.dark-mode .chat-message.important .chat-bubble {
+    background: rgba(243, 156, 18, 0.1);
+}
+.dark-mode .chat-modal-btn {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.15);
+    color: var(--text-primary, #eee);
+}
+.dark-mode .chat-modal-btn:hover {
+    background: rgba(255,255,255,0.12);
+}
+
+/* ==========================================
+ * v33.12.0: Info Panel Tabs
+ * ========================================== */
+.chat-info-tabs {
+    display: flex; gap: 0;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    padding: 0 8px;
+}
+.chat-info-tab {
+    padding: 8px 12px; font-size: 14px; background: none; border: none;
+    cursor: pointer; border-bottom: 2px solid transparent;
+    color: var(--gray-400); transition: color 0.15s;
+}
+.chat-info-tab.active { color: var(--primary, #6366f1); border-bottom-color: var(--primary, #6366f1); }
+.chat-info-tab:hover { color: var(--gray-600); }
+
+/* AI Task Form in message */
+.msg-ai-task-form {
+    margin-top: 8px; padding: 10px;
+    background: var(--bg-secondary, #f8f9fa);
+    border: 1px solid var(--primary, #6366f1);
+    border-radius: 10px;
+}
+
+/* ==========================================
+ * v33.9.0: ANIMATED WALLPAPERS
+ * ========================================== */
+
+/* Bubbles — floating circles */
+.wp-bubbles {
+    background:
+        radial-gradient(circle at 20% 80%, rgba(167,139,250,0.18) 0%, transparent 40%),
+        radial-gradient(circle at 80% 20%, rgba(244,114,182,0.18) 0%, transparent 40%),
+        radial-gradient(circle at 50% 50%, rgba(99,102,241,0.08) 0%, transparent 60%);
+    animation: wpBubblesMove 20s ease-in-out infinite;
+}
+@keyframes wpBubblesMove {
+    0%,100% { background-position: 0% 0%, 100% 0%, 50% 50%; }
+    33%     { background-position: 10% 20%, 90% 30%, 40% 60%; }
+    66%     { background-position: 5% 10%, 95% 10%, 55% 45%; }
+}
+
+/* Aurora — moving gradient */
+.wp-aurora {
+    background: linear-gradient(-45deg, rgba(16,185,129,0.12), rgba(99,102,241,0.12), rgba(244,63,94,0.12), rgba(59,130,246,0.12));
+    background-size: 400% 400%;
+    animation: wpAurora 15s ease infinite;
+}
+@keyframes wpAurora {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Cosmos — deep space with twinkling */
+.wp-cosmos {
+    background:
+        radial-gradient(1px 1px at 10% 20%, rgba(255,255,255,0.6) 0%, transparent 100%),
+        radial-gradient(1px 1px at 30% 60%, rgba(255,255,255,0.5) 0%, transparent 100%),
+        radial-gradient(1px 1px at 50% 30%, rgba(255,255,255,0.4) 0%, transparent 100%),
+        radial-gradient(1px 1px at 70% 70%, rgba(255,255,255,0.6) 0%, transparent 100%),
+        radial-gradient(1px 1px at 90% 10%, rgba(255,255,255,0.5) 0%, transparent 100%),
+        radial-gradient(2px 2px at 25% 85%, rgba(167,139,250,0.8) 0%, transparent 100%),
+        radial-gradient(2px 2px at 75% 45%, rgba(96,165,250,0.8) 0%, transparent 100%),
+        radial-gradient(circle at 30% 70%, rgba(99,102,241,0.15) 0%, transparent 50%),
+        radial-gradient(circle at 70% 30%, rgba(168,85,247,0.1) 0%, transparent 50%),
+        linear-gradient(180deg, #0f172a 0%, #1e1b4b 40%, #312e81 70%, #1e1b4b 100%);
+    animation: wpCosmosTwinkle 4s ease-in-out infinite alternate;
+}
+@keyframes wpCosmosTwinkle {
+    0%   { filter: brightness(1); }
+    100% { filter: brightness(1.05); }
+}
+.wp-cosmos .chat-bubble { color: #e2e8f0; }
+.wp-cosmos .chat-bubble-username { color: #a5b4fc !important; }
+.wp-cosmos .chat-bubble-time { color: #94a3b8 !important; }
+
+/* Ocean — waves */
+.wp-ocean {
+    background: linear-gradient(180deg,
+        rgba(14,165,233,0.08) 0%, rgba(6,182,212,0.12) 30%,
+        rgba(13,148,136,0.08) 60%, rgba(14,165,233,0.04) 100%);
+    background-size: 100% 200%;
+    animation: wpOcean 8s ease-in-out infinite;
+}
+@keyframes wpOcean {
+    0%,100% { background-position: 0% 0%; }
+    50%     { background-position: 0% 100%; }
+}
+
+/* Sunset — warm glow */
+.wp-sunset {
+    background: linear-gradient(-45deg,
+        rgba(249,115,22,0.1), rgba(239,68,68,0.1),
+        rgba(236,72,153,0.1), rgba(249,115,22,0.08));
+    background-size: 400% 400%;
+    animation: wpSunset 12s ease infinite;
+}
+@keyframes wpSunset {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Forest — depth layers */
+.wp-forest {
+    background:
+        linear-gradient(180deg, rgba(22,101,52,0.06) 0%, rgba(21,128,61,0.1) 50%, rgba(34,197,94,0.06) 100%),
+        radial-gradient(ellipse at 20% 80%, rgba(22,163,74,0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(34,197,94,0.08) 0%, transparent 50%);
+    animation: wpForest 20s ease-in-out infinite;
+}
+@keyframes wpForest {
+    0%,100% { filter: brightness(1) saturate(1); }
+    50%     { filter: brightness(1.03) saturate(1.1); }
+}
+
+/* Candy — playful gradient */
+.wp-candy {
+    background: linear-gradient(-45deg,
+        rgba(236,72,153,0.1), rgba(168,85,247,0.1),
+        rgba(59,130,246,0.1), rgba(14,165,233,0.08));
+    background-size: 300% 300%;
+    animation: wpCandy 10s ease infinite;
+}
+@keyframes wpCandy {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Neon — cyberpunk glow */
+.wp-neon {
+    background:
+        radial-gradient(circle at 20% 50%, rgba(124,58,237,0.15) 0%, transparent 40%),
+        radial-gradient(circle at 80% 50%, rgba(6,182,212,0.15) 0%, transparent 40%),
+        radial-gradient(circle at 50% 80%, rgba(16,185,129,0.1) 0%, transparent 40%),
+        linear-gradient(180deg, rgba(15,23,42,0.05) 0%, rgba(30,41,59,0.05) 100%);
+    animation: wpNeon 6s ease-in-out infinite alternate;
+}
+@keyframes wpNeon {
+    0%   { filter: hue-rotate(0deg) brightness(1); }
+    100% { filter: hue-rotate(30deg) brightness(1.05); }
+}
+
+/* Snow — soft falling effect */
+.wp-snow {
+    background:
+        radial-gradient(2px 2px at 15% 20%, rgba(148,163,184,0.4) 0%, transparent 100%),
+        radial-gradient(2px 2px at 35% 50%, rgba(148,163,184,0.3) 0%, transparent 100%),
+        radial-gradient(1px 1px at 55% 30%, rgba(148,163,184,0.3) 0%, transparent 100%),
+        radial-gradient(2px 2px at 75% 70%, rgba(148,163,184,0.4) 0%, transparent 100%),
+        radial-gradient(1px 1px at 85% 15%, rgba(148,163,184,0.3) 0%, transparent 100%),
+        linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 50%, #f8fafc 100%);
+    background-size: 200px 200px, 300px 300px, 250px 250px, 150px 150px, 350px 350px, 100% 100%;
+    animation: wpSnowFall 10s linear infinite;
+}
+@keyframes wpSnowFall {
+    0%   { background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0; }
+    100% { background-position: 0 200px, 50px 300px, -30px 250px, 20px 150px, -10px 350px, 0 0; }
+}
+
+/* Dino / Park — themed */
+.wp-dino {
+    background:
+        radial-gradient(ellipse at 30% 80%, rgba(22,163,74,0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 70% 20%, rgba(202,138,4,0.1) 0%, transparent 50%),
+        linear-gradient(180deg, rgba(34,197,94,0.05) 0%, rgba(146,64,14,0.05) 100%);
+    animation: wpDino 15s ease-in-out infinite;
+}
+@keyframes wpDino {
+    0%,100% { filter: saturate(1); }
+    50%     { filter: saturate(1.15); }
+}
+
+/* Geometric — subtle grid pattern */
+.wp-geometric {
+    background:
+        linear-gradient(30deg, rgba(71,85,105,0.04) 12%, transparent 12.5%, transparent 87%, rgba(71,85,105,0.04) 87.5%),
+        linear-gradient(150deg, rgba(71,85,105,0.04) 12%, transparent 12.5%, transparent 87%, rgba(71,85,105,0.04) 87.5%),
+        linear-gradient(30deg, rgba(71,85,105,0.04) 12%, transparent 12.5%, transparent 87%, rgba(71,85,105,0.04) 87.5%),
+        linear-gradient(150deg, rgba(71,85,105,0.04) 12%, transparent 12.5%, transparent 87%, rgba(71,85,105,0.04) 87.5%),
+        linear-gradient(60deg, rgba(100,116,139,0.05) 25%, transparent 25.5%, transparent 75%, rgba(100,116,139,0.05) 75%);
+    background-size: 40px 70px;
+}
+
+/* Gradient — smooth animated */
+.wp-gradient {
+    background: linear-gradient(-45deg, rgba(99,102,241,0.1), rgba(168,85,247,0.1), rgba(236,72,153,0.1), rgba(59,130,246,0.1));
+    background-size: 400% 400%;
+    animation: wpGradient 8s ease infinite;
+}
+@keyframes wpGradient {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Dark mode wallpaper adjustments */
+.dark-mode .wp-sunset {
+    background: linear-gradient(-45deg, rgba(249,115,22,0.15), rgba(239,68,68,0.15), rgba(236,72,153,0.15), rgba(249,115,22,0.12));
+    background-size: 400% 400%;
+    animation: wpSunset 12s ease infinite;
+}
+.dark-mode .wp-forest {
+    background:
+        linear-gradient(180deg, rgba(22,101,52,0.12) 0%, rgba(21,128,61,0.18) 50%, rgba(34,197,94,0.1) 100%),
+        radial-gradient(ellipse at 20% 80%, rgba(22,163,74,0.18) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(34,197,94,0.12) 0%, transparent 50%);
+}
+.dark-mode .wp-snow {
+    background:
+        radial-gradient(2px 2px at 15% 20%, rgba(255,255,255,0.2) 0%, transparent 100%),
+        radial-gradient(2px 2px at 35% 50%, rgba(255,255,255,0.15) 0%, transparent 100%),
+        radial-gradient(1px 1px at 55% 30%, rgba(255,255,255,0.15) 0%, transparent 100%),
+        radial-gradient(2px 2px at 75% 70%, rgba(255,255,255,0.2) 0%, transparent 100%),
+        radial-gradient(1px 1px at 85% 15%, rgba(255,255,255,0.15) 0%, transparent 100%),
+        linear-gradient(180deg, rgba(30,41,59,0.8) 0%, rgba(15,23,42,0.8) 100%);
+    background-size: 200px 200px, 300px 300px, 250px 250px, 150px 150px, 350px 350px, 100% 100%;
+    animation: wpSnowFall 10s linear infinite;
+}
+.dark-mode .wp-geometric {
+    background:
+        linear-gradient(30deg, rgba(148,163,184,0.06) 12%, transparent 12.5%, transparent 87%, rgba(148,163,184,0.06) 87.5%),
+        linear-gradient(150deg, rgba(148,163,184,0.06) 12%, transparent 12.5%, transparent 87%, rgba(148,163,184,0.06) 87.5%),
+        linear-gradient(30deg, rgba(148,163,184,0.06) 12%, transparent 12.5%, transparent 87%, rgba(148,163,184,0.06) 87.5%),
+        linear-gradient(150deg, rgba(148,163,184,0.06) 12%, transparent 12.5%, transparent 87%, rgba(148,163,184,0.06) 87.5%),
+        linear-gradient(60deg, rgba(148,163,184,0.08) 25%, transparent 25.5%, transparent 75%, rgba(148,163,184,0.08) 75%);
+    background-size: 40px 70px;
+}
+
+/* ==========================================
+ * v33.9.0: Channel Section Labels
+ * ========================================== */
+.chat-section-label {
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--gray-400, #9CA3AF);
+    letter-spacing: 0.5px;
+    padding: 12px 14px 4px;
+    text-transform: uppercase;
+}
+
+/* ==========================================
+ * v33.9.0: Send Effects
+ * ========================================== */
+@keyframes effectWave {
+    0%,100% { transform: translateX(0); }
+    25%     { transform: translateX(-3px); }
+    75%     { transform: translateX(3px); }
+}
+@keyframes confettiFall {
+    0%   { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(60px) rotate(720deg); opacity: 0; }
+}
+.chat-effect-wave { animation: effectWave 0.3s ease; }
+.chat-confetti {
+    position: fixed;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    pointer-events: none;
+    animation: confettiFall 0.8s ease-out forwards;
+    z-index: 10000;
+}
+
+/* ==========================================
+ * v33.9.0: Super Reaction Float
+ * ========================================== */
+@keyframes superReactionPop {
+    0%   { transform: scale(0) translateY(0); opacity: 0; }
+    30%  { transform: scale(1.8) translateY(-10px); opacity: 1; }
+    60%  { transform: scale(1.5) translateY(-20px); opacity: 0.9; }
+    100% { transform: scale(1) translateY(-40px); opacity: 0; }
+}
+.chat-super-reaction-float {
+    position: fixed;
+    font-size: 36px;
+    pointer-events: none;
+    animation: superReactionPop 1.2s ease-out forwards;
+    z-index: 10000;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    filter: drop-shadow(0 0 8px rgba(99,102,241,0.6));
 }

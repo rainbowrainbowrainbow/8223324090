@@ -7,19 +7,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
+    <link rel="stylesheet" href="css/base.css?v=38.13.0">
+    <link rel="stylesheet" href="css/layout.css?v=38.13.0">
+    <link rel="stylesheet" href="css/pages.css?v=38.13.0">
+    <link rel="stylesheet" href="css/modals.css?v=38.13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=38.13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=38.13.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=38.13.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -290,7 +284,11 @@
         }
     </style>
 </head>
-<body>
+<body data-page-group="art">
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
     <!-- Skip link for accessibility -->
     <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
     <!-- Login overlay -->
@@ -301,58 +299,70 @@
     <div id="mainApp">
         <!-- Бокове меню -->
         <aside class="sidebar-nav" id="sidebarNav">
-            <div class="sidebar-logo">
-                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-                <div class="em-logo">
-                    <span class="em-logo-title">Event Genix</span>
-                    <span class="em-logo-sub">AI First CRM</span>
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
                 </div>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
             </div>
-            <nav class="sidebar-links" id="sidebarLinks">
-                <!-- Populated by sidebar.js -->
-            </nav>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+        <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+            <span class="collapse-icon">◀</span>
+            <span class="collapse-text">Згорнути</span>
+        </button>
         </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
         <header class="header">
             <div class="header-content">
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
-                <div class="logo">
-                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-                </div>
-                <nav class="header-nav">
-                    <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
-                    <a href="/center" class="nav-link"><span class="nav-icon">Ц</span> <span class="nav-text">Центр</span></a>
-                    <a href="/art" class="nav-link active"><span class="nav-icon">А</span> <span class="nav-text">Арт</span></a>
-                </nav>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
 
-        <main id="main-content" class="page-container" style="margin-left: 220px;">
+        <main id="main-content" class="page-container">
             <div class="artdir-page">
                 <h1>Арт</h1>
 
                 <!-- Tabs -->
                 <div class="artdir-tabs" id="artdirTabs">
-                    <button class="artdir-tab active" data-tab="overview">Огляд</button>
-                    <button class="artdir-tab" data-tab="pipeline">Конвеєр</button>
-                    <button class="artdir-tab" data-tab="templates">Шаблони</button>
-                    <button class="artdir-tab" data-tab="brand">Brand Book</button>
-                    <button class="artdir-tab" data-tab="programs">Програми</button>
-                    <button class="artdir-tab" data-tab="designs">Дизайни</button>
+                    <button type="button" class="artdir-tab active" data-tab="overview">Огляд</button>
+                    <button type="button" class="artdir-tab" data-tab="pipeline">Конвеєр</button>
+                    <button type="button" class="artdir-tab" data-tab="templates">Шаблони</button>
+                    <button type="button" class="artdir-tab" data-tab="brand">Brand Book</button>
+                    <button type="button" class="artdir-tab" data-tab="programs">Програми</button>
+                    <button type="button" class="artdir-tab" data-tab="designs">Дизайни</button>
+                    <button type="button" class="artdir-tab" data-tab="graduation">Випускний</button>
                 </div>
 
                 <!-- Tab: Programs (read-only catalog) -->
                 <div class="artdir-tab-content" id="tab-programs">
-                    <iframe src="/programs?embedded=1" class="artdir-embed-frame" title="Каталог програм"></iframe>
+                    <iframe data-src="/programs?embedded=1" class="artdir-embed-frame" title="Каталог програм"></iframe>
                 </div>
 
                 <!-- Tab: Designs (full functionality) -->
                 <div class="artdir-tab-content" id="tab-designs">
-                    <iframe src="/designs?embedded=1" class="artdir-embed-frame" title="Дизайни"></iframe>
+                    <iframe data-src="/designs?embedded=1" class="artdir-embed-frame" title="Дизайни"></iframe>
+                </div>
+
+                <!-- Tab: Graduation (v30.0.0) -->
+                <div class="artdir-tab-content" id="tab-graduation">
+                    <iframe data-src="/graduation?embedded=1" class="artdir-embed-frame" title="Конструктор випускного"></iframe>
                 </div>
 
                 <!-- Tab: Overview -->
@@ -395,7 +405,7 @@
                             <option value="low">Низький</option>
                         </select>
                         <input type="text" id="pipelineSearch" aria-label="Пошук..." placeholder="Пошук...">
-                        <button class="btn-create" id="btnCreateContent">+ Створити</button>
+                        <button type="button" class="btn-create" id="btnCreateContent">+ Створити</button>
                     </div>
                     <div class="pipeline-kanban" id="pipelineKanban">
                         <div class="artdir-loading">Завантаження...</div>
@@ -405,12 +415,12 @@
                 <!-- Tab: Templates -->
                 <div class="artdir-tab-content" id="tab-templates">
                     <div class="template-categories" id="templateCategories">
-                        <button class="template-cat-chip active" data-cat="">Всі</button>
-                        <button class="template-cat-chip" data-cat="poster">Афіші</button>
-                        <button class="template-cat-chip" data-cat="social">Соцмережі</button>
-                        <button class="template-cat-chip" data-cat="certificate">Сертифікати</button>
-                        <button class="template-cat-chip" data-cat="banner">Банери</button>
-                        <button class="template-cat-chip" data-cat="print">Друк</button>
+                        <button type="button" class="template-cat-chip active" data-cat="">Всі</button>
+                        <button type="button" class="template-cat-chip" data-cat="poster">Афіші</button>
+                        <button type="button" class="template-cat-chip" data-cat="social">Соцмережі</button>
+                        <button type="button" class="template-cat-chip" data-cat="certificate">Сертифікати</button>
+                        <button type="button" class="template-cat-chip" data-cat="banner">Банери</button>
+                        <button type="button" class="template-cat-chip" data-cat="print">Друк</button>
                     </div>
                     <div class="templates-grid" id="templatesGrid">
                         <div class="artdir-loading">Завантаження...</div>
@@ -422,7 +432,7 @@
                     <div class="artdir-section" id="brandSection">
                         <div class="artdir-section-title">
                             <span class="section-icon"></span> Brand Guidelines
-                            <button id="btnAddBrand" style="margin-left:auto; padding:4px 12px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-weight:700; font-family:inherit; font-size:12px; cursor:pointer;">+ Додати</button>
+                            <button type="button" id="btnAddBrand" style="margin-left:auto; padding:4px 12px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-weight:700; font-family:inherit; font-size:12px; cursor:pointer;">+ Додати</button>
                         </div>
                         <div id="brandContent">
                             <div class="artdir-loading">Завантаження...</div>
@@ -435,14 +445,14 @@
 
     <!-- Modal: Create/Edit Content -->
     <div id="contentModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Контент">
-        <div class="modal-content modal-medium">
+        <div class="modal-content modal-medium" role="dialog" aria-modal="true">
             <span class="modal-close" id="contentModalClose">&times;</span>
             <h3 id="contentModalTitle">Новий контент</h3>
             <form id="contentForm" autocomplete="off">
                 <div style="display:flex; flex-direction:column; gap:12px;">
                     <div>
                         <label style="font-size:12px; font-weight:700; display:block; margin-bottom:4px;">Назва *</label>
-                        <input type="text" id="contentTitle" required style="width:100%; padding:8px 12px; border:1.5px solid var(--gray-200); border-radius:10px; font-family:inherit; font-size:14px; box-sizing:border-box;">
+                        <input type="text" id="contentTitle" aria-label="Назва контенту" required style="width:100%; padding:8px 12px; border:1.5px solid var(--gray-200); border-radius:10px; font-family:inherit; font-size:14px; box-sizing:border-box;">
                     </div>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
                         <div>
@@ -497,7 +507,7 @@
 
     <!-- Modal: Content Detail / Approval -->
     <div id="detailModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Деталі контенту">
-        <div class="modal-content modal-medium">
+        <div class="modal-content modal-medium" role="dialog" aria-modal="true">
             <span class="modal-close" id="detailModalClose">&times;</span>
             <h3 id="detailModalTitle">Деталі</h3>
             <div id="detailContent"></div>
@@ -506,7 +516,7 @@
 
     <!-- Modal: Add Brand Guideline -->
     <div id="brandModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Brand guideline">
-        <div class="modal-content modal-medium">
+        <div class="modal-content modal-medium" role="dialog" aria-modal="true">
             <span class="modal-close" id="brandModalClose">&times;</span>
             <h3>Нове правило бренду</h3>
             <form id="brandForm" autocomplete="off">
@@ -543,7 +553,7 @@
 
     <!-- Profile Modal -->
     <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
-        <div class="modal-content modal-medium">
+        <div class="modal-content modal-medium" role="dialog" aria-modal="true">
             <span class="modal-close">&times;</span>
             <h3>Особистий кабінет</h3>
             <div id="profileContent" class="profile-content">
@@ -556,12 +566,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=25.3.0"></script>
-    <script src="js/api.js?v=25.3.0"></script>
-    <script src="js/auth.js?v=25.3.0"></script>
-    <script src="js/components/sidebar.js?v=25.3.0"></script>
+    <script src="js/config.js?v=38.13.0"></script>
+    <script src="js/notification.js?v=38.13.0"></script>
+    <script src="js/api.js?v=38.13.0"></script>
+    <script src="js/auth.js?v=38.13.0"></script>
+    <script src="js/components/sidebar.js?v=38.13.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/art-director-page.js?v=25.3.0"></script>
-    <script src="js/role-panel.js?v=25.3.0"></script>
+    <script src="js/art-director-page.js?v=38.13.0"></script>
+    <script src="js/role-panel.js?v=38.13.0"></script>
 </body>
 </html>

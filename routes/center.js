@@ -164,7 +164,7 @@ router.get('/overview', async (req, res) => {
 router.get('/workers', async (req, res) => {
     try {
         const workersResult = await pool.query(
-            'SELECT * FROM worker_roles ORDER BY created_at'
+            'SELECT * FROM worker_roles ORDER BY created_at LIMIT 500'
         ).catch(() => ({ rows: [] }));
 
         // Check multiple activity sources for each worker
@@ -284,6 +284,10 @@ router.put('/prices/:code', requireMinRole('senior_manager'), async (req, res) =
 
         await client.query('BEGIN');
 
+        // v33.3: Fetch old price for history tracking
+        const oldPriceResult = await client.query('SELECT value, name FROM price_rules WHERE code = $1', [req.params.code]);
+        const oldPrice = oldPriceResult.rows[0] || null;
+
         // Update product_id if provided (one-time link)
         if (productId !== undefined) {
             await client.query('UPDATE price_rules SET product_id = $1 WHERE code = $2', [productId || null, req.params.code]);
@@ -308,6 +312,16 @@ router.put('/prices/:code', requireMinRole('senior_manager'), async (req, res) =
         }
 
         const priceRule = result.rows[0];
+
+        // v33.3: Price history tracking
+        if (oldPrice && value !== undefined && oldPrice.value !== null && parseFloat(oldPrice.value) !== parseFloat(value)) {
+            await client.query(
+                `INSERT INTO price_history (price_code, name, old_value, new_value, changed_by, reason)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [req.params.code, oldPrice.name, oldPrice.value, value, req.user.username, req.body.reason || null]
+            );
+        }
+
         let productSynced = false;
 
         // v20.9.25: Sync price to products table if linked and effective now
@@ -331,6 +345,20 @@ router.put('/prices/:code', requireMinRole('senior_manager'), async (req, res) =
         res.status(500).json({ success: false, error: 'Помилка оновлення ціни' });
     } finally {
         client.release();
+    }
+});
+
+// v33.3: GET /api/center/prices/:code/history — price change history
+router.get('/prices/:code/history', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM price_history WHERE price_code = $1 ORDER BY changed_at DESC LIMIT 50',
+            [req.params.code]
+        );
+        res.json({ success: true, history: result.rows });
+    } catch (err) {
+        log.error('GET /prices/:code/history error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
 });
 

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Дизайнер</title>
+    <meta name="description" content="Event Genix — Дизайнер: каталоги, гайдлайн, бренд">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=38.13.0">
+    <link rel="stylesheet" href="css/layout.css?v=38.13.0">
+    <link rel="stylesheet" href="css/pages.css?v=38.13.0">
+    <link rel="stylesheet" href="css/modals.css?v=38.13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=38.13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=38.13.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=38.13.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        .designer-page { padding: 20px 24px; min-height: 100vh; }
+        .designer-header { margin-bottom: 24px; }
+        .designer-header h1 { font-size: 28px; font-weight: 800; margin: 0 0 4px; }
+        .designer-header .subtitle { font-size: 14px; color: var(--gray-500); }
+        .designer-tabs { display: flex; gap: 4px; margin-bottom: 20px; background: var(--gray-50); border-radius: 10px; padding: 4px; flex-wrap: wrap; }
+        .designer-tab { padding: 8px 16px; border: none; background: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--gray-500); transition: all 0.15s; }
+        .designer-tab.active { background: var(--white); color: var(--gray-900); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .designer-tab:hover:not(.active) { color: var(--gray-700); }
+        .designer-tab-content { display: none; }
+        .designer-tab-content.active { display: block; }
+        .designer-section { margin-bottom: 24px; }
+        .designer-section h2 { font-size: 20px; font-weight: 800; margin: 0 0 12px; }
+        .designer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+        .designer-card { background: var(--white); border: 1px solid var(--gray-100); border-radius: 12px; padding: 18px; }
+        .designer-card h3 { font-size: 15px; font-weight: 700; margin: 0 0 8px; }
+        .designer-card p { font-size: 13px; color: var(--gray-500); margin: 0; line-height: 1.5; }
+        .designer-empty { text-align: center; padding: 60px 20px; color: var(--gray-400); }
+        .designer-empty-icon { font-size: 48px; margin-bottom: 12px; }
+        /* Color swatches */
+        .color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+        .color-swatch { border-radius: 10px; overflow: hidden; border: 1px solid var(--gray-100); }
+        .color-swatch-preview { height: 60px; }
+        .color-swatch-info { padding: 8px; font-size: 11px; font-weight: 600; }
+        .color-swatch-name { color: var(--gray-700); }
+        .color-swatch-hex { color: var(--gray-400); }
+        /* Dark mode */
+        body.dark-mode .designer-tabs { background: rgba(255,255,255,0.04); }
+        body.dark-mode .designer-tab.active { background: rgba(255,255,255,0.08); color: #E2E8F0; }
+        body.dark-mode .designer-card { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.06); }
+        body.dark-mode .color-swatch { border-color: rgba(255,255,255,0.06); }
+    </style>
+</head>
+<body data-page-group="designer">
+    <script>(function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();</script>
+
+    <div id="loginScreen" class="login-screen hidden">
+        <div class="login-container">
+            <h1>Event Genix</h1>
+            <form id="loginForm" class="login-form">
+                <input type="text" id="username" placeholder="Логін" required>
+                <input type="password" id="password" placeholder="Пароль" required>
+                <button type="submit" class="btn-login">Увійти</button>
+                <p id="loginError" class="error-message"></p>
+            </form>
+        </div>
+    </div>
+
+    <div id="mainApp" class="main-app hidden">
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+                </div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+            <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+                <span class="collapse-icon">◀</span>
+                <span class="collapse-text">Згорнути</span>
+            </button>
+        </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
+
+        <header class="header">
+            <button type="button" id="sidebarToggle" class="sidebar-toggle">☰</button>
+            <div class="header-right">
+                <span id="currentUser" class="user-name" role="button" tabindex="0"></span>
+                <button type="button" id="logoutBtn" class="btn-logout" title="Вийти">Вийти</button>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="designer-page">
+                <div class="designer-header">
+                    <h1>📐 Дизайнер</h1>
+                    <p class="subtitle">Каталоги, гайдлайни, брендбук, стайлгайд</p>
+                </div>
+
+                <div class="designer-tabs">
+                    <button type="button" class="designer-tab active" data-tab="catalogs">📂 Каталоги</button>
+                    <button type="button" class="designer-tab" data-tab="guideline">📖 Гайдлайн</button>
+                    <button type="button" class="designer-tab" data-tab="brand">🎨 Brand Book</button>
+                    <button type="button" class="designer-tab" data-tab="styleguide">📐 Стайлгайд</button>
+                    <button type="button" class="designer-tab" data-tab="templates">📋 Шаблони</button>
+                </div>
+
+                <!-- Каталоги -->
+                <div id="tabCatalogs" class="designer-tab-content active">
+                    <div class="designer-section">
+                        <h2>Каталоги продуктів</h2>
+                        <div class="designer-grid" id="catalogsGrid">
+                            <div class="designer-card">
+                                <h3>🎯 Квести</h3>
+                                <p>Піратський квест, Лісова академія, Квест-Фотограф та інші</p>
+                            </div>
+                            <div class="designer-card">
+                                <h3>🎂 Дні народження</h3>
+                                <p>Базовий, Стандарт, Преміум, VIP пакети</p>
+                            </div>
+                            <div class="designer-card">
+                                <h3>🎪 Програми</h3>
+                                <p>Анімації, шоу, МК, фото-зони</p>
+                            </div>
+                            <div class="designer-card">
+                                <h3>🎓 Випускні</h3>
+                                <p>7 пакетів від Базового до Преміум+</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Гайдлайн -->
+                <div id="tabGuideline" class="designer-tab-content">
+                    <div class="designer-section">
+                        <h2>Правила використання бренду</h2>
+                        <div class="designer-grid">
+                            <div class="designer-card">
+                                <h3>Логотип</h3>
+                                <p>Основний — gear-logo.svg. Мінімальний розмір 32px. Не змінювати пропорції та кольори.</p>
+                            </div>
+                            <div class="designer-card">
+                                <h3>Найменування</h3>
+                                <p>Офіційна назва: Event Genix. Не використовувати: EventGenix, event genix, EG.</p>
+                            </div>
+                            <div class="designer-card">
+                                <h3>Мова</h3>
+                                <p>UI/UX — українською. Код — англійською. Бренд-матеріали — українською.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Brand Book -->
+                <div id="tabBrand" class="designer-tab-content">
+                    <div class="designer-section">
+                        <h2>Brand Book</h2>
+                        <div id="brandContent">
+                            <div class="designer-empty">
+                                <div class="designer-empty-icon">🎨</div>
+                                <p>Завантаження Brand Book...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Стайлгайд -->
+                <div id="tabStyleguide" class="designer-tab-content">
+                    <div class="designer-section">
+                        <h2>Кольори</h2>
+                        <div class="color-grid">
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#10B981"></div><div class="color-swatch-info"><div class="color-swatch-name">Primary</div><div class="color-swatch-hex">#10B981</div></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#F5C842"></div><div class="color-swatch-info"><div class="color-swatch-name">Accent</div><div class="color-swatch-hex">#F5C842</div></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#EF4444"></div><div class="color-swatch-info"><div class="color-swatch-name">Danger</div><div class="color-swatch-hex">#EF4444</div></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#3B82F6"></div><div class="color-swatch-info"><div class="color-swatch-name">Info</div><div class="color-swatch-hex">#3B82F6</div></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#1a1a2e"></div><div class="color-swatch-info"><div class="color-swatch-name">Dark BG</div><div class="color-swatch-hex">#1a1a2e</div></div></div>
+                            <div class="color-swatch"><div class="color-swatch-preview" style="background:#F9FAFB"></div><div class="color-swatch-info"><div class="color-swatch-name">Light BG</div><div class="color-swatch-hex">#F9FAFB</div></div></div>
+                        </div>
+                    </div>
+                    <div class="designer-section">
+                        <h2>Типографіка</h2>
+                        <div class="designer-grid">
+                            <div class="designer-card">
+                                <h3>Nunito</h3>
+                                <p>Основний шрифт CRM. Ваги: 400, 600, 700, 800, 900. Google Fonts.</p>
+                            </div>
+                            <div class="designer-card">
+                                <h3>Inter</h3>
+                                <p>Допоміжний шрифт для даних та таблиць. Ваги: 400, 600, 700.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="designer-section">
+                        <h2>Відступи та радіуси</h2>
+                        <div class="designer-grid">
+                            <div class="designer-card"><h3>Radius</h3><p>--radius: 16px, --radius-card: 12px, --radius-sm: 10px</p></div>
+                            <div class="designer-card"><h3>Spacing</h3><p>Base: 8px. Grid gap: 12-14px. Section gap: 24px.</p></div>
+                            <div class="designer-card"><h3>Touch Target</h3><p>Min 44px (WCAG 2.1). Font-size inputs: min 16px.</p></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Шаблони -->
+                <div id="tabTemplates" class="designer-tab-content">
+                    <div class="designer-section">
+                        <h2>Шаблони дизайнів</h2>
+                        <div id="templatesContent">
+                            <div class="designer-empty">
+                                <div class="designer-empty-icon">📋</div>
+                                <p>Завантаження шаблонів...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/config.js?v=38.13.0"></script>
+    <script src="js/api.js?v=38.13.0"></script>
+    <script src="js/auth.js?v=38.13.0"></script>
+    <script src="js/components/sidebar.js?v=38.13.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script>
+    // Auth check — unhide mainApp
+    (async function() {
+        const token = localStorage.getItem('pzp_token');
+        if (token) {
+            const user = await apiVerifyToken();
+            if (user) {
+                AppState.currentUser = user;
+                var ls = document.getElementById('loginScreen'); if (ls) ls.classList.add('hidden');
+                document.getElementById('mainApp').classList.remove('hidden');
+                var ue = document.getElementById('currentUser'); if (ue) ue.textContent = user.name;
+                if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
+                return;
+            }
+        }
+        window.location.href = '/';
+    })();
+    </script>
+    <script>
+    // Tab switching
+    document.querySelectorAll('.designer-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.designer-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.designer-tab-content').forEach(c => c.classList.remove('active'));
+            tab.classList.add('active');
+            const tabId = 'tab' + tab.dataset.tab.charAt(0).toUpperCase() + tab.dataset.tab.slice(1);
+            document.getElementById(tabId)?.classList.add('active');
+        });
+    });
+    </script>
+    <script src="js/role-panel.js?v=38.13.0"></script>
+</body>
+</html>

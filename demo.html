@@ -6,21 +6,15 @@
     <title>Event Genix | Demo & Packages</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
+    <link rel="stylesheet" href="css/base.css?v=38.13.0">
+    <link rel="stylesheet" href="css/layout.css?v=38.13.0">
+    <link rel="stylesheet" href="css/pages.css?v=38.13.0">
+    <link rel="stylesheet" href="css/modals.css?v=38.13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=38.13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=38.13.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=38.13.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         .demo-page { padding: 16px; max-width: 1400px; margin: 0 auto; }
         .demo-page h1 { font-size: 22px; font-weight: 900; margin-bottom: 20px; }
@@ -211,7 +205,11 @@
         .dark-mode .player-step { background: rgba(40,40,40,0.3); }
     </style>
 </head>
-<body>
+<body data-page-group="system">
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
     <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
     <div id="loginOverlay" class="page-login-overlay hidden">
         <a href="/">Увійти в систему</a>
@@ -219,44 +217,50 @@
 
     <div id="mainApp">
         <aside class="sidebar-nav" id="sidebarNav">
-            <div class="sidebar-logo">
-                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-                <div class="em-logo">
-                    <span class="em-logo-title">Event Genix</span>
-                    <span class="em-logo-sub">AI First CRM</span>
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
                 </div>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
             </div>
-            <nav class="sidebar-links" id="sidebarLinks">
-                <!-- Populated by sidebar.js -->
-            </nav>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+        <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+            <span class="collapse-icon">◀</span>
+            <span class="collapse-text">Згорнути</span>
+        </button>
         </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
         <header class="header">
             <div class="header-content">
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
-                <div class="logo">
-                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-                </div>
-                <nav class="header-nav">
-                    <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
-                    <a href="/center" class="nav-link"><span class="nav-icon">Ц</span> <span class="nav-text">Центр</span></a>
-                    <a href="/demo" class="nav-link active"><span class="nav-icon">De</span> <span class="nav-text">Demo</span></a>
-                </nav>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
 
-        <main id="main-content" class="page-container" style="margin-left: 220px;">
+        <main id="main-content" class="page-container">
             <div class="demo-page">
                 <h1>Demo & Packages</h1>
 
                 <div class="demo-tabs" id="demoTabs">
-                    <button class="demo-tab active" data-tab="scenarios">Демо-сценарії</button>
-                    <button class="demo-tab" data-tab="packages">Пакети</button>
-                    <button class="demo-tab" data-tab="flags">Feature Flags</button>
+                    <button type="button" class="demo-tab active" data-tab="scenarios">Демо-сценарії</button>
+                    <button type="button" class="demo-tab" data-tab="packages">Пакети</button>
+                    <button type="button" class="demo-tab" data-tab="flags">Feature Flags</button>
                 </div>
 
                 <!-- Tab: Scenarios -->
@@ -265,7 +269,7 @@
                         <span class="demo-toggle-label">Demo-режим (гостьовий вхід)</span>
                         <span class="demo-toggle-status off" id="demoStatusText">Вимкнено</span>
                         <label class="toggle-switch">
-                            <input type="checkbox" id="demoToggle">
+                            <input type="checkbox" id="demoToggle" aria-label="Демо режим">
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
@@ -310,7 +314,7 @@
 
     <!-- Scenario Player Modal -->
     <div id="playerModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Сценарій">
-        <div class="modal-content modal-medium">
+        <div class="modal-content modal-medium" role="dialog" aria-modal="true">
             <span class="modal-close" id="playerModalClose">&times;</span>
             <h3 id="playerTitle">Сценарій</h3>
             <div id="playerContent"></div>
@@ -318,7 +322,7 @@
     </div>
 
     <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
-        <div class="modal-content modal-medium">
+        <div class="modal-content modal-medium" role="dialog" aria-modal="true">
             <span class="modal-close">&times;</span>
             <h3>Особистий кабінет</h3>
             <div id="profileContent" class="profile-content"><div class="profile-loading">Завантаження...</div></div>
@@ -329,12 +333,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=25.3.0"></script>
-    <script src="js/api.js?v=25.3.0"></script>
-    <script src="js/auth.js?v=25.3.0"></script>
-    <script src="js/components/sidebar.js?v=25.3.0"></script>
+    <script src="js/config.js?v=38.13.0"></script>
+    <script src="js/notification.js?v=38.13.0"></script>
+    <script src="js/api.js?v=38.13.0"></script>
+    <script src="js/auth.js?v=38.13.0"></script>
+    <script src="js/components/sidebar.js?v=38.13.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/demo-page.js?v=25.3.0"></script>
-    <script src="js/role-panel.js?v=25.3.0"></script>
+    <script src="js/demo-page.js?v=38.13.0"></script>
+    <script src="js/role-panel.js?v=38.13.0"></script>
 </body>
 </html>

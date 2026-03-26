@@ -57,15 +57,15 @@
 
         // --- Events ---
         fab.addEventListener('click', togglePanel);
-        document.getElementById('kwCloseBtn').addEventListener('click', closePanel);
-        document.getElementById('kwSendBtn').addEventListener('click', sendMessage);
-        document.getElementById('kwInput').addEventListener('keydown', (e) => {
+        document.getElementById('kwCloseBtn')?.addEventListener('click', closePanel);
+        document.getElementById('kwSendBtn')?.addEventListener('click', sendMessage);
+        document.getElementById('kwInput')?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 sendMessage();
             }
         });
-        document.getElementById('kwVoiceBtn').addEventListener('click', toggleVoice);
+        document.getElementById('kwVoiceBtn')?.addEventListener('click', toggleVoice);
 
         // Close on Escape
         document.addEventListener('keydown', (e) => {

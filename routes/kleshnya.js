@@ -36,6 +36,7 @@ const { getPendingMessages, handleWebhookResponse, getTelegramFileUrl,
         BRIDGE_ENABLED, KLESHNYA_WEBHOOK_SECRET } = require('../services/kleshnya-bridge');
 const { sendToUsername } = require('../services/websocket');
 const { createLogger } = require('../utils/logger');
+const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('KleshnyaRoute');
 
@@ -84,11 +85,11 @@ function detectGenerationTrigger(text) {
 }
 
 // ==========================================
-// SESSIONS CRUD
+// SESSIONS CRUD (auth required)
 // ==========================================
 
 // GET /sessions — list user sessions
-router.get('/sessions', async (req, res) => {
+router.get('/sessions', authenticateToken, async (req, res) => {
     try {
         const username = req.user?.username;
         if (!username) return res.status(401).json({ error: 'Not authenticated' });
@@ -109,7 +110,7 @@ router.get('/sessions', async (req, res) => {
 });
 
 // POST /sessions — create new session
-router.post('/sessions', async (req, res) => {
+router.post('/sessions', authenticateToken, async (req, res) => {
     try {
         const username = req.user?.username;
         if (!username) return res.status(401).json({ error: 'Not authenticated' });
@@ -129,7 +130,7 @@ router.post('/sessions', async (req, res) => {
 });
 
 // PUT /sessions/:id — update session (rename, pin, emoji)
-router.put('/sessions/:id', async (req, res) => {
+router.put('/sessions/:id', authenticateToken, async (req, res) => {
     try {
         const username = req.user?.username;
         if (!username) return res.status(401).json({ error: 'Not authenticated' });
@@ -165,7 +166,7 @@ router.put('/sessions/:id', async (req, res) => {
 });
 
 // DELETE /sessions/:id — delete session + all messages (CASCADE)
-router.delete('/sessions/:id', async (req, res) => {
+router.delete('/sessions/:id', authenticateToken, async (req, res) => {
     try {
         const username = req.user?.username;
         if (!username) return res.status(401).json({ error: 'Not authenticated' });
@@ -185,7 +186,7 @@ router.delete('/sessions/:id', async (req, res) => {
 });
 
 // GET /sessions/:id/messages — paginated messages for session
-router.get('/sessions/:id/messages', async (req, res) => {
+router.get('/sessions/:id/messages', authenticateToken, async (req, res) => {
     try {
         const username = req.user?.username;
         if (!username) return res.status(401).json({ error: 'Not authenticated' });
@@ -217,7 +218,7 @@ router.get('/sessions/:id/messages', async (req, res) => {
 });
 
 // DELETE /sessions/:id/messages — clear session messages (keep session)
-router.delete('/sessions/:id/messages', async (req, res) => {
+router.delete('/sessions/:id/messages', authenticateToken, async (req, res) => {
     try {
         const username = req.user?.username;
         if (!username) return res.status(401).json({ error: 'Not authenticated' });
@@ -245,7 +246,7 @@ router.delete('/sessions/:id/messages', async (req, res) => {
 // GREETING (unchanged)
 // ==========================================
 
-router.get('/greeting', async (req, res) => {
+router.get('/greeting', authenticateToken, async (req, res) => {
     try {
         const username = req.user?.username;
         const displayName = req.user?.name || username;
@@ -263,7 +264,7 @@ router.get('/greeting', async (req, res) => {
 // ==========================================
 
 // GET /chat — global chat history (backward compat for widget)
-router.get('/chat', async (req, res) => {
+router.get('/chat', authenticateToken, async (req, res) => {
     try {
         const username = req.user?.username;
         if (!username) return res.status(401).json({ error: 'Not authenticated' });
@@ -276,7 +277,7 @@ router.get('/chat', async (req, res) => {
 });
 
 // POST /chat — send message (session + bridge + local engine)
-router.post('/chat', async (req, res) => {
+router.post('/chat', authenticateToken, async (req, res) => {
     try {
         const username = req.user?.username;
         if (!username) return res.status(401).json({ error: 'Not authenticated' });
@@ -521,7 +522,7 @@ router.post('/webhook', async (req, res) => {
 // REACTIONS
 // ==========================================
 
-router.patch('/messages/:id/reaction', async (req, res) => {
+router.patch('/messages/:id/reaction', authenticateToken, async (req, res) => {
     try {
         const username = req.user?.username;
         if (!username) return res.status(401).json({ error: 'Not authenticated' });
@@ -549,7 +550,7 @@ router.patch('/messages/:id/reaction', async (req, res) => {
 // ==========================================
 
 // GET /media — media library for user
-router.get('/media', async (req, res) => {
+router.get('/media', authenticateToken, async (req, res) => {
     try {
         const username = req.user?.username;
         if (!username) return res.status(401).json({ error: 'Not authenticated' });
@@ -579,7 +580,7 @@ router.get('/media', async (req, res) => {
 });
 
 // GET /media/:id — single media item
-router.get('/media/:id', async (req, res) => {
+router.get('/media/:id', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(
             'SELECT * FROM kleshnya_media WHERE id = $1',
@@ -596,7 +597,7 @@ router.get('/media/:id', async (req, res) => {
 });
 
 // GET /media/file/:fileId — proxy Telegram file download
-router.get('/media/file/:fileId', async (req, res) => {
+router.get('/media/file/:fileId', authenticateToken, async (req, res) => {
     try {
         const url = await getTelegramFileUrl(req.params.fileId);
         if (!url) {
@@ -613,7 +614,7 @@ router.get('/media/file/:fileId', async (req, res) => {
 // SKILLS (unchanged)
 // ==========================================
 
-router.get('/skills', (req, res) => {
+router.get('/skills', authenticateToken, (req, res) => {
     const skills = SKILLS.map(s => ({
         id: s.id,
         name: s.name,
@@ -622,6 +623,43 @@ router.get('/skills', (req, res) => {
         examples: s.examples
     }));
     res.json(skills);
+});
+
+// v33.3: POST /api/kleshnya/generate-image — AI image generation (Kie.ai)
+router.post('/generate-image', authenticateToken, async (req, res) => {
+    try {
+        const { prompt, eventId, type } = req.body;
+        if (!prompt) return res.status(400).json({ error: 'prompt required' });
+
+        const KIE_API_KEY = process.env.KIE_API_KEY;
+        if (!KIE_API_KEY) return res.status(503).json({ error: 'KIE API key not configured' });
+        const kieRes = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'nano-banana-2', input: { prompt, aspect_ratio: '9:16', resolution: '1K', output_format: 'png' } })
+        });
+        const task = await kieRes.json();
+        res.json({ taskId: task.data?.taskId || null, status: 'processing', eventId, type });
+    } catch (err) {
+        log.error('generate-image error', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// v33.3: GET /api/kleshnya/generate-image/:taskId — poll image generation status
+router.get('/generate-image/:taskId', authenticateToken, async (req, res) => {
+    try {
+        const KIE_API_KEY = process.env.KIE_API_KEY;
+        if (!KIE_API_KEY) return res.status(503).json({ error: 'KIE API key not configured' });
+        const kieRes = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(req.params.taskId)}`, {
+            headers: { 'Authorization': `Bearer ${KIE_API_KEY}` }
+        });
+        const data = await kieRes.json();
+        res.json(data.data || data);
+    } catch (err) {
+        log.error('generate-image poll error', err);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 module.exports = router;

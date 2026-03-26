@@ -5,8 +5,12 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('Print');
+
+// All print routes require authentication
+router.use(authenticateToken);
 
 // ============================================
 // Print Templates
@@ -242,13 +246,18 @@ router.put('/jobs/:id/status', async (req, res) => {
         }
 
         let setClause = 'status = $1';
+        const params = [status];
         if (status === 'printing') setClause += ', started_at = NOW()';
         if (status === 'completed') setClause += ', completed_at = NOW()';
-        if (error) setClause += `, error = '${error.replace(/'/g, "''")}'`;
+        if (error) {
+            params.push(error);
+            setClause += `, error = $${params.length}`;
+        }
+        params.push(req.params.id);
 
         const result = await pool.query(
-            `UPDATE print_jobs SET ${setClause} WHERE id = $2 RETURNING *`,
-            [status, req.params.id]
+            `UPDATE print_jobs SET ${setClause} WHERE id = $${params.length} RETURNING *`,
+            params
         );
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Завдання друку не знайдено' });
@@ -263,7 +272,7 @@ router.put('/jobs/:id/status', async (req, res) => {
 // GET /api/print/routing — list routing rules
 router.get('/routing', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM print_routing_rules ORDER BY priority DESC');
+        const result = await pool.query('SELECT * FROM print_routing_rules ORDER BY priority DESC LIMIT 200');
         res.json(result.rows);
     } catch (err) {
         log.error('List routing error', err);

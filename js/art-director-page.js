@@ -52,15 +52,6 @@ const NEXT_STATUS = {
 // NOTIFICATIONS
 // ==========================================
 
-function showNotification(message, type = '') {
-    let c = document.getElementById('toastContainer');
-    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
-    const t = document.createElement('div');
-    t.className = 'toast' + (type ? ' ' + type : '');
-    t.textContent = message;
-    c.appendChild(t);
-    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
-}
 
 // ==========================================
 // API CALLS
@@ -152,8 +143,16 @@ function setupTabs() {
             document.querySelectorAll('.artdir-tab-content').forEach(c => c.classList.remove('active'));
 
             tab.classList.add('active');
-            document.getElementById(`tab-${tabName}`).classList.add('active');
+            document.getElementById(`tab-${tabName}`)?.classList.add('active');
             activeTab = tabName;
+
+            // Persist tab in URL for refresh
+            const url = new URL(window.location);
+            url.searchParams.set('tab', tabName);
+            history.replaceState(null, '', url);
+
+            // Lazy-load iframe tabs (programs, designs, graduation)
+            lazyLoadIframe(tabName);
 
             // Lazy-load tab data
             if (tabName === 'pipeline') loadPipeline();
@@ -161,6 +160,23 @@ function setupTabs() {
             if (tabName === 'brand') loadBrand();
         });
     });
+}
+
+// Lazy-load iframes: set src from data-src only when tab is activated
+function lazyLoadIframe(tabName) {
+    const tabEl = document.getElementById(`tab-${tabName}`);
+    if (!tabEl) return;
+    const iframe = tabEl.querySelector('iframe[data-src]');
+    if (iframe && !iframe.src.includes(iframe.dataset.src)) {
+        let src = iframe.dataset.src;
+        // Pass auth token via URL for embedded pages that may not access parent localStorage
+        const token = localStorage.getItem('pzp_token');
+        if (token) {
+            const sep = src.includes('?') ? '&' : '?';
+            src += sep + 'token=' + encodeURIComponent(token);
+        }
+        iframe.src = src;
+    }
 }
 
 // ==========================================
@@ -419,19 +435,19 @@ async function openContentDetail(id) {
             ${historyHtml}
 
             <div style="display:flex; gap:6px; margin-top:12px; flex-wrap:wrap">
-                ${NEXT_STATUS[detail.status] ? `<button onclick="changeStatus(${detail.id}, '${NEXT_STATUS[detail.status]}'); document.getElementById('detailModal').classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-weight:700; font-family:inherit; cursor:pointer;">
+                ${NEXT_STATUS[detail.status] ? `<button onclick="changeStatus(${detail.id}, '${NEXT_STATUS[detail.status]}'); document.getElementById('detailModal')?.classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-weight:700; font-family:inherit; cursor:pointer;">
                     → ${STATUS_LABELS[NEXT_STATUS[detail.status]]}
                 </button>` : ''}
-                ${detail.status === 'in_review' ? `<button onclick="changeStatus(${detail.id}, 'rejected'); document.getElementById('detailModal').classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:#FFEBEE; color:#C62828; font-weight:700; font-family:inherit; cursor:pointer;">
+                ${detail.status === 'in_review' ? `<button onclick="changeStatus(${detail.id}, 'rejected'); document.getElementById('detailModal')?.classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:#FFEBEE; color:#C62828; font-weight:700; font-family:inherit; cursor:pointer;">
                     ✕ Відхилити
                 </button>` : ''}
-                ${detail.status === 'rejected' ? `<button onclick="changeStatus(${detail.id}, 'draft'); document.getElementById('detailModal').classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:var(--gray-100); color:var(--gray-600); font-weight:700; font-family:inherit; cursor:pointer;">
+                ${detail.status === 'rejected' ? `<button onclick="changeStatus(${detail.id}, 'draft'); document.getElementById('detailModal')?.classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:var(--gray-100); color:var(--gray-600); font-weight:700; font-family:inherit; cursor:pointer;">
                     ↩ Повернути в чернетки
                 </button>` : ''}
-                <button onclick="openEditContent(${detail.id}); document.getElementById('detailModal').classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:var(--gray-100); color:var(--gray-600); font-weight:700; font-family:inherit; cursor:pointer;">
+                <button onclick="openEditContent(${detail.id}); document.getElementById('detailModal')?.classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:var(--gray-100); color:var(--gray-600); font-weight:700; font-family:inherit; cursor:pointer;">
                     ✎ Редагувати
                 </button>
-                ${isAdminUser ? `<button onclick="deleteContent(${detail.id}); document.getElementById('detailModal').classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:#FFEBEE; color:#C62828; font-weight:700; font-family:inherit; cursor:pointer;">
+                ${isAdminUser ? `<button onclick="deleteContent(${detail.id}); document.getElementById('detailModal')?.classList.add('hidden')" style="padding:8px 16px; border:none; border-radius:8px; background:#FFEBEE; color:#C62828; font-weight:700; font-family:inherit; cursor:pointer;">
                     🗑 Видалити
                 </button>` : ''}
             </div>
@@ -463,7 +479,7 @@ function openCreateContent() {
     document.getElementById('contentForm').reset();
     document.getElementById('templateFieldsContainer').style.display = 'none';
     populateTemplateSelect();
-    document.getElementById('contentModal').classList.remove('hidden');
+    document.getElementById('contentModal')?.classList.remove('hidden');
 }
 
 function openEditContent(id) {
@@ -485,7 +501,7 @@ function openEditContent(id) {
         showTemplateFields(item.template_id, item.field_values);
     }
 
-    document.getElementById('contentModal').classList.remove('hidden');
+    document.getElementById('contentModal')?.classList.remove('hidden');
 }
 
 function populateTemplateSelect() {
@@ -561,7 +577,7 @@ async function handleContentSubmit(e) {
 
     if (result.success) {
         showNotification(editingContentId ? 'Контент оновлено' : 'Контент створено', 'success');
-        document.getElementById('contentModal').classList.add('hidden');
+        document.getElementById('contentModal')?.classList.add('hidden');
         editingContentId = null;
         loadPipeline();
         if (activeTab === 'overview') loadOverview();
@@ -625,7 +641,7 @@ function useTemplate(templateId) {
     document.getElementById('contentTemplate').value = templateId;
     showTemplateFields(templateId, {});
 
-    document.getElementById('contentModal').classList.remove('hidden');
+    document.getElementById('contentModal')?.classList.remove('hidden');
 }
 
 // ==========================================
@@ -716,7 +732,7 @@ async function handleBrandSubmit(e) {
     const result = await apiPost('/brand', { category, title, value, description });
     if (result.success) {
         showNotification('Правило додано', 'success');
-        document.getElementById('brandModal').classList.add('hidden');
+        document.getElementById('brandModal')?.classList.add('hidden');
         document.getElementById('brandForm').reset();
         loadBrand();
     } else {
@@ -748,18 +764,19 @@ async function initAuth() {
     const savedUser = localStorage.getItem(CONFIG.STORAGE.CURRENT_USER);
 
     if (!token || !savedUser) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
+        document.getElementById('loginOverlay')?.classList.remove('hidden');
         return false;
     }
 
     const user = await apiVerifyToken();
     if (!user) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
+        document.getElementById('loginOverlay')?.classList.remove('hidden');
         return false;
     }
 
     AppState.currentUser = user;
-    const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
+    if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
+    const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     isAdminUser = ADMIN_ROLES.includes(user.role);
 
     const userEl = document.getElementById('currentUser');
@@ -792,7 +809,7 @@ async function initAuth() {
 function setupModals() {
     // Content modal
     document.getElementById('contentModalClose')?.addEventListener('click', () => {
-        document.getElementById('contentModal').classList.add('hidden');
+        document.getElementById('contentModal')?.classList.add('hidden');
     });
     document.getElementById('contentForm')?.addEventListener('submit', handleContentSubmit);
     document.getElementById('contentTemplate')?.addEventListener('change', (e) => {
@@ -801,16 +818,16 @@ function setupModals() {
 
     // Detail modal
     document.getElementById('detailModalClose')?.addEventListener('click', () => {
-        document.getElementById('detailModal').classList.add('hidden');
+        document.getElementById('detailModal')?.classList.add('hidden');
     });
 
     // Brand modal
     document.getElementById('brandModalClose')?.addEventListener('click', () => {
-        document.getElementById('brandModal').classList.add('hidden');
+        document.getElementById('brandModal')?.classList.add('hidden');
     });
     document.getElementById('brandForm')?.addEventListener('submit', handleBrandSubmit);
     document.getElementById('btnAddBrand')?.addEventListener('click', () => {
-        document.getElementById('brandModal').classList.remove('hidden');
+        document.getElementById('brandModal')?.classList.remove('hidden');
     });
 
     // Create content button
@@ -862,7 +879,9 @@ async function initArtDirectorPage() {
     if (!authed) return;
 
     if (!isAdminUser) {
-        document.querySelector('.artdir-page').innerHTML = `
+        const artdirPage = document.querySelector('.artdir-page');
+        if (!artdirPage) return;
+        artdirPage.innerHTML = `
             <div class="artdir-empty" style="padding:60px">
                 <span style="font-size:48px">🔒</span>
                 <h2>Доступ обмежено</h2>

@@ -7,21 +7,15 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
+    <link rel="stylesheet" href="css/base.css?v=38.13.0">
+    <link rel="stylesheet" href="css/layout.css?v=38.13.0">
+    <link rel="stylesheet" href="css/pages.css?v=38.13.0">
+    <link rel="stylesheet" href="css/modals.css?v=38.13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=38.13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=38.13.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=38.13.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         /* Center page styles */
         .center-page { padding: 16px; max-width: 1200px; margin: 0 auto; }
@@ -836,7 +830,11 @@
         .dark-mode .loyalty-stats strong { color: var(--gray-200); }
     </style>
 </head>
-<body>
+<body data-page-group="crm">
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
     <!-- Skip link for accessibility -->
     <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
     <!-- Login overlay -->
@@ -847,33 +845,38 @@
     <div id="mainApp">
         <!-- Бокове меню -->
         <aside class="sidebar-nav" id="sidebarNav">
-            <div class="sidebar-logo">
-                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-                <div class="em-logo">
-                    <span class="em-logo-title">Event Genix</span>
-                    <span class="em-logo-sub">AI First CRM</span>
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
                 </div>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
             </div>
-            <nav class="sidebar-links" id="sidebarLinks">
-                <!-- Populated by sidebar.js -->
-            </nav>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+        <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+            <span class="collapse-icon">◀</span>
+            <span class="collapse-text">Згорнути</span>
+        </button>
         </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
         <header class="header">
             <div class="header-content">
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
-                <div class="logo">
-                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-                </div>
-                <nav class="header-nav">
-                    <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
-                    <a href="/tasks" class="nav-link"><span class="nav-icon">З</span> <span class="nav-text">Задачі</span></a>
-                    <a href="/staff" class="nav-link"><span class="nav-icon">Г</span> <span class="nav-text">Графік</span></a>
-                    <a href="/center" class="nav-link active"><span class="nav-icon">Ц</span> <span class="nav-text">Центр</span></a>
-                </nav>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -884,14 +887,19 @@
 
                 <!-- v20.3.0: Center tabs -->
                 <div class="center-tabs" id="centerTabs">
-                    <button class="center-tab-btn active" data-tab="overview">Огляд</button>
-                    <button class="center-tab-btn" data-tab="finance">Фінанси</button>
-                    <button class="center-tab-btn" data-tab="analytics">Аналітика</button>
+                    <button type="button" class="center-tab-btn active" data-tab="overview">Огляд</button>
+                    <button type="button" class="center-tab-btn" data-tab="finance">Фінанси</button>
+                    <button type="button" class="center-tab-btn" data-tab="reports">Звіти</button>
+                    <button type="button" class="center-tab-btn" data-tab="analytics">Аналітика</button>
                 </div>
 
                 <!-- Tab: Finance (embedded iframe) -->
                 <div class="center-tab-panel hidden" id="tabFinance">
                     <iframe src="/finance?embed=1" class="center-embed-frame" title="Фінанси"></iframe>
+                </div>
+                <!-- Tab: Reports (embedded iframe) -->
+                <div class="center-tab-panel hidden" id="tabReports">
+                    <iframe src="/reports?embed=1" class="center-embed-frame" title="Звіти"></iframe>
                 </div>
                 <!-- Tab: Analytics (embedded iframe) -->
                 <div class="center-tab-panel hidden" id="tabAnalytics">
@@ -905,15 +913,31 @@
                     </div>
                     <div class="section-body">
                         <div class="kpi-period-tabs" id="kpiTabs">
-                            <button class="kpi-period-tab active" data-period="today">Сьогодні</button>
-                            <button class="kpi-period-tab" data-period="week">Тиждень</button>
-                            <button class="kpi-period-tab" data-period="month">Місяць</button>
+                            <button type="button" class="kpi-period-tab active" data-period="today">Сьогодні</button>
+                            <button type="button" class="kpi-period-tab" data-period="week">Тиждень</button>
+                            <button type="button" class="kpi-period-tab" data-period="month">Місяць</button>
                         </div>
                         <div class="kpi-grid" id="kpiGrid">
                             <div class="center-loading">Завантаження...</div>
                         </div>
                     </div>
                 </div>
+
+                <!-- v32.1: Upcoming Birthdays (director/deputy_director/creator only) -->
+                <div class="center-section" id="birthdaysSection" style="display:none">
+                    <div class="center-section-title" onclick="toggleSection(this)">
+                        <span class="collapse-arrow">▼</span> 🎂 Найближчі дні народження (30 днів)
+                        <span class="section-badge" id="birthdaysCount" style="display:none"></span>
+                    </div>
+                    <div class="section-body">
+                        <div id="birthdaysList" class="birthdays-list">
+                            <div class="center-loading">Завантаження...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- v32.1: Subscription reminder banner -->
+                <div id="subscriptionBanner" style="display:none"></div>
 
                 <!-- Block: Hot Leads (v20.7.0) -->
                 <div class="center-section" id="hotLeadsSection">
@@ -972,7 +996,7 @@
                 <div class="center-section" id="goalsSection">
                     <div class="center-section-title" onclick="toggleSection(this)">
                         <span class="collapse-arrow">▼</span> Цілі
-                        <button class="btn-center-action" onclick="event.stopPropagation();showGoalsForm()">Налаштувати</button>
+                        <button type="button" class="btn-center-action" onclick="event.stopPropagation();showGoalsForm()">Налаштувати</button>
                     </div>
                     <div class="section-body">
                         <div id="goalsContent"><div class="center-loading">Завантаження...</div></div>
@@ -1050,8 +1074,8 @@
                     </div>
                     <div class="section-body">
                         <div class="client-search-bar">
-                            <input type="text" id="clientSearchInput" placeholder="Пошук клієнта (ім'я, телефон, дитина)..." class="client-search-input" onkeydown="if(event.key==='Enter')searchClients()">
-                            <button class="btn-center-action" onclick="searchClients()" style="margin-left:0">Знайти</button>
+                            <input type="text" id="clientSearchInput" aria-label="Пошук клієнта" placeholder="Пошук клієнта (ім'я, телефон, дитина)..." class="client-search-input" onkeydown="if(event.key==='Enter')searchClients()">
+                            <button type="button" class="btn-center-action" onclick="searchClients()" style="margin-left:0">Знайти</button>
                         </div>
                         <div id="clientsContent"></div>
                         <div id="clientBookingsContent" class="hidden"></div>
@@ -1072,7 +1096,7 @@
                 <div class="center-section" id="loyaltySection">
                     <div class="center-section-title" onclick="toggleSection(this)">
                         <span class="collapse-arrow">▼</span> Програма лояльності
-                        <button class="btn-center-action" onclick="event.stopPropagation();recalculateLoyalty()">Перерахувати</button>
+                        <button type="button" class="btn-center-action" onclick="event.stopPropagation();recalculateLoyalty()">Перерахувати</button>
                     </div>
                     <div class="section-body">
                         <div class="loyalty-tiers-grid" id="loyaltyTiersGrid">
@@ -1086,7 +1110,7 @@
                 <div class="center-section" id="discountsSection">
                     <div class="center-section-title" onclick="toggleSection(this)">
                         <span class="collapse-arrow">▼</span> Промокоди
-                        <button class="btn-center-action" onclick="event.stopPropagation();showAddDiscountForm()">+ Додати</button>
+                        <button type="button" class="btn-center-action" onclick="event.stopPropagation();showAddDiscountForm()">+ Додати</button>
                     </div>
                     <div class="section-body">
                         <div id="discountsList">
@@ -1100,7 +1124,7 @@
                 <div class="center-section" id="proposalsSection">
                     <div class="center-section-title" onclick="toggleSection(this)">
                         <span class="collapse-arrow">▼</span> Пропозиції зі знижками
-                        <button class="btn-center-action" onclick="event.stopPropagation();showAddProposalForm()">+ Додати</button>
+                        <button type="button" class="btn-center-action" onclick="event.stopPropagation();showAddProposalForm()">+ Додати</button>
                     </div>
                     <div class="section-body">
                         <div id="proposalsList">
@@ -1156,7 +1180,7 @@
                 <div class="center-section" id="reportSection">
                     <div class="center-section-title" onclick="toggleSection(this)">
                         <span class="collapse-arrow">▼</span> Щоденний звіт
-                        <button class="btn-center-action" onclick="event.stopPropagation();sendReportToTelegram()">Надіслати в Telegram</button>
+                        <button type="button" class="btn-center-action" onclick="event.stopPropagation();sendReportToTelegram()">Надіслати в Telegram</button>
                     </div>
                     <div class="section-body">
                         <div id="reportContent">
@@ -1170,7 +1194,7 @@
 
     <!-- Profile Modal -->
     <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
-        <div class="modal-content modal-medium">
+        <div class="modal-content modal-medium" role="dialog" aria-modal="true">
             <span class="modal-close">&times;</span>
             <h3>Особистий кабінет</h3>
             <div id="profileContent" class="profile-content">
@@ -1184,12 +1208,13 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="js/config.js?v=25.3.0"></script>
-    <script src="js/api.js?v=25.3.0"></script>
-    <script src="js/auth.js?v=25.3.0"></script>
-    <script src="js/components/sidebar.js?v=25.3.0"></script>
+    <script src="js/config.js?v=38.13.0"></script>
+    <script src="js/notification.js?v=38.13.0"></script>
+    <script src="js/api.js?v=38.13.0"></script>
+    <script src="js/auth.js?v=38.13.0"></script>
+    <script src="js/components/sidebar.js?v=38.13.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/center-page.js?v=25.3.0"></script>
+    <script src="js/center-page.js?v=38.13.0"></script>
     <script>
     // v20.3.0: Center tabs
     (function() {
@@ -1212,18 +1237,103 @@
             // Show/hide sections
             const overviewSections = document.querySelectorAll('.center-section');
             const financePanel = document.getElementById('tabFinance');
+            const reportsPanel = document.getElementById('tabReports');
             const analyticsPanel = document.getElementById('tabAnalytics');
 
             overviewSections.forEach(s => s.style.display = tab === 'overview' ? '' : 'none');
             if (financePanel) financePanel.classList.toggle('hidden', tab !== 'finance');
+            if (reportsPanel) reportsPanel.classList.toggle('hidden', tab !== 'reports');
             if (analyticsPanel) analyticsPanel.classList.toggle('hidden', tab !== 'analytics');
         }
 
-        if (urlTab && ['finance', 'analytics'].includes(urlTab)) {
+        if (urlTab && ['finance', 'analytics', 'reports'].includes(urlTab)) {
             switchCenterTab(urlTab);
         }
     })();
     </script>
-    <script src="js/role-panel.js?v=25.3.0"></script>
+    <script src="js/role-panel.js?v=38.13.0"></script>
+    <!-- v32.1: Birthdays + Subscription reminder -->
+    <script>
+    (function() {
+        const ALLOWED_ROLES = ['director', 'deputy_director', 'top_manager', 'creator', 'admin'];
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        let userRole;
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            userRole = payload.role;
+        } catch { return; }
+        if (!ALLOWED_ROLES.includes(userRole)) return;
+
+        // === BIRTHDAYS ===
+        const section = document.getElementById('birthdaysSection');
+        const list = document.getElementById('birthdaysList');
+        const badge = document.getElementById('birthdaysCount');
+        if (section) {
+            section.style.display = '';
+            fetch('/api/customers/birthdays?days=30', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            })
+            .then(r => r.json())
+            .then(data => {
+                const items = data.birthdays || [];
+                if (badge && items.length > 0) {
+                    badge.textContent = items.length;
+                    badge.style.display = '';
+                }
+                if (items.length === 0) {
+                    list.innerHTML = '<div style="padding:12px;color:#888">Найближчі 30 днів без днів народження</div>';
+                    return;
+                }
+                list.innerHTML = items.map(b => {
+                    const d = b.daysUntilBirthday;
+                    let color = '#10B981'; // green >14
+                    let icon = '🎂';
+                    if (d === 0) { color = '#F59E0B'; icon = '🔥'; }
+                    else if (d <= 7) { color = '#EF4444'; }
+                    else if (d <= 14) { color = '#F59E0B'; }
+                    const dateStr = b.childBirthday ? new Date(b.childBirthday).toLocaleDateString('uk-UA') : '';
+                    const label = d === 0 ? 'Сьогодні!' : d + ' дн.';
+                    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border-color, #eee)">' +
+                        '<span style="color:' + color + ';font-weight:700;min-width:80px">' + icon + ' ' + label + '</span>' +
+                        '<span style="font-weight:600">' + (b.childName || '—') + '</span>' +
+                        '<span style="color:#888">' + dateStr + '</span>' +
+                        '<span style="color:#888">' + (b.parentName || '') + '</span>' +
+                        '<a href="tel:' + (b.phone || '') + '" style="color:#3B82F6;margin-left:auto">' + (b.phone || '') + '</a>' +
+                    '</div>';
+                }).join('');
+            })
+            .catch(() => {
+                list.innerHTML = '<div style="padding:12px;color:#888">Не вдалось завантажити</div>';
+            });
+        }
+
+        // === SUBSCRIPTION REMINDER ===
+        const banner = document.getElementById('subscriptionBanner');
+        if (banner) {
+            fetch('/api/subscription/status', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success || !data.nextPaymentDate) return;
+                const days = data.daysUntilPayment;
+                if (days > 14) return;
+                const dismissed = localStorage.getItem('subscription_dismissed_' + new Date().toISOString().split('T')[0]);
+                if (dismissed) return;
+                let bg, icon;
+                if (days < 0) { bg = '#FEE2E2'; icon = '❌ Підписка прострочена!'; }
+                else if (days <= 3) { bg = '#FEE2E2'; icon = '🚨 ТЕРМІНОВО: Оплата підписки через ' + days + ' дн.!'; }
+                else if (days <= 7) { bg = '#FFF7ED'; icon = '🔔 Через ' + days + ' днів оплата підписки'; }
+                else { bg = '#FFFBEB'; icon = '⚠️ Через ' + days + ' днів оплата підписки'; }
+                banner.style.display = '';
+                banner.style.cssText = 'padding:12px 16px;border-radius:8px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;background:' + bg;
+                banner.innerHTML = '<span style="font-weight:600">' + icon + ': ' + (data.amount || 0) + ' грн</span>' +
+                    '<button type="button" onclick="this.parentElement.style.display=\'none\';localStorage.setItem(\'subscription_dismissed_\'+new Date().toISOString().split(\'T\')[0],\'1\')" style="background:none;border:none;cursor:pointer;font-size:18px">✕</button>';
+            })
+            .catch(() => {});
+        }
+    })();
+    </script>
 </body>
 </html>

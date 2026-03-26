@@ -12,7 +12,7 @@ function securityHeaders(req, res, next) {
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
-        "img-src 'self' data: blob:",
+        "img-src 'self' data: blob: https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://*.kie.ai https://*.supabase.co",
         "connect-src 'self' ws: wss: https://*.up.railway.app https://docs.google.com",
         "frame-src 'self'",
         "frame-ancestors 'self'"

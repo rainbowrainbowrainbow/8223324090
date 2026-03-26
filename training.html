@@ -7,15 +7,15 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
+    <link rel="stylesheet" href="css/base.css?v=38.13.0">
+    <link rel="stylesheet" href="css/layout.css?v=38.13.0">
+    <link rel="stylesheet" href="css/pages.css?v=38.13.0">
+    <link rel="stylesheet" href="css/modals.css?v=38.13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=38.13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=38.13.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=38.13.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         /* ═══ Training Page — Dark Glassmorphism Theme ═══ */
         .training-page {
@@ -551,7 +551,7 @@
         }
     </style>
 </head>
-<body>
+<body data-page-group="hr">
     <script>
     (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
     </script>
@@ -559,21 +559,36 @@
     <div id="mainApp">
         <!-- Sidebar -->
         <aside class="sidebar-nav" id="sidebarNav">
-            <div class="sidebar-logo">
-                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-                <div class="em-logo">
-                    <span class="em-title">Event Genix</span>
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
                 </div>
-                <button class="sidebar-collapse-btn" id="sidebarCollapseBtn"><span class="collapse-icon">«</span><span class="collapse-text">Згорнути</span></button>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
             </div>
             <nav class="sidebar-links" id="sidebarLinks"></nav>
+        <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+            <span class="collapse-icon">◀</span>
+            <span class="collapse-text">Згорнути</span>
+        </button>
         </aside>
         <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
         <!-- Header -->
         <header class="header">
             <div class="header-left">
-                <button class="sidebar-toggle" id="sidebarToggle">☰</button>
+                <button type="button" class="sidebar-toggle" id="sidebarToggle">☰</button>
                 <h2>🎓 Навчання</h2>
             </div>
         </header>
@@ -608,19 +623,19 @@
 
             <!-- Tabs -->
             <div class="training-tabs" id="trainingTabs">
-                <button class="training-tab active" data-tab="materials">📚 Матеріали</button>
-                <button class="training-tab" data-tab="tests">✅ Тести</button>
-                <button class="training-tab" data-tab="progress">📊 Прогрес</button>
-                <button class="training-tab" data-tab="leaderboard">🏆 Рейтинг</button>
+                <button type="button" class="training-tab active" data-tab="materials">📚 Матеріали</button>
+                <button type="button" class="training-tab" data-tab="tests">✅ Тести</button>
+                <button type="button" class="training-tab" data-tab="progress">📊 Прогрес</button>
+                <button type="button" class="training-tab" data-tab="leaderboard">🏆 Рейтинг</button>
             </div>
 
             <!-- Tab: Materials -->
             <div class="tab-content active" id="tabMaterials">
                 <div class="role-filter" id="roleFilter">
-                    <button class="role-pill active" data-role="all">Всі</button>
-                    <button class="role-pill" data-role="animator">🎭 Аніматори</button>
-                    <button class="role-pill" data-role="admin">📋 Адміністрація</button>
-                    <button class="role-pill" data-role="manager">👥 Менеджери</button>
+                    <button type="button" class="role-pill active" data-role="all">Всі</button>
+                    <button type="button" class="role-pill" data-role="animator">🎭 Аніматори</button>
+                    <button type="button" class="role-pill" data-role="admin">📋 Адміністрація</button>
+                    <button type="button" class="role-pill" data-role="manager">👥 Менеджери</button>
                 </div>
                 <div class="articles-grid" id="articlesGrid">
                     <div class="empty-state"><div class="empty-icon">📚</div><div class="empty-text">Завантаження...</div></div>
@@ -663,12 +678,14 @@
     <!-- Confetti -->
     <canvas id="confettiCanvas"></canvas>
 
-    <script src="js/config.js?v=25.3.0"></script>
-    <script src="js/api.js?v=25.3.0"></script>
-    <script src="js/auth.js?v=25.3.0"></script>
-    <script src="js/ui.js?v=25.3.0"></script>
-    <script src="js/components/sidebar.js?v=25.3.0"></script>
-    <script src="js/training-page.js?v=25.3.0"></script>
-    <script src="js/role-panel.js?v=25.3.0"></script>
+    <script src="js/config.js?v=38.13.0"></script>
+    <script src="js/notification.js?v=38.13.0"></script>
+    <script src="js/api.js?v=38.13.0"></script>
+    <script src="js/auth.js?v=38.13.0"></script>
+    <script src="js/ui.js?v=38.13.0"></script>
+    <script src="js/components/sidebar.js?v=38.13.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/training-page.js?v=38.13.0"></script>
+    <script src="js/role-panel.js?v=38.13.0"></script>
 </body>
 </html>

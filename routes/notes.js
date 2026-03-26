@@ -11,13 +11,20 @@ const log = createLogger('Notes');
 // GET /api/notes
 router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
     try {
+        const userId = req.user.id || req.user.userId;
+        const userRole = req.user.role || '';
         const result = await pool.query(
-            'SELECT * FROM user_notes WHERE user_id = $1 ORDER BY pinned DESC, updated_at DESC',
-            [req.user.id]
+            `SELECT * FROM quick_notes
+             WHERE user_id = $1
+                OR is_shared = true
+                OR (visible_to_depts IS NOT NULL AND $2 = ANY(visible_to_depts))
+             ORDER BY pinned DESC, updated_at DESC LIMIT 100`,
+            [userId, userRole]
         );
         res.json(result.rows.map(n => ({
-            id: n.id, title: n.title, content: n.content, color: n.color,
-            pinned: n.pinned, createdAt: n.created_at, updatedAt: n.updated_at
+            id: n.id, text: n.text, content: n.text, title: n.title || '',
+            pinned: n.pinned || false, createdAt: n.created_at,
+            isShared: n.is_shared || false, visibleToDepts: n.visible_to_depts || null
         })));
     } catch (err) {
         log.error('Get notes error', err);
@@ -27,15 +34,19 @@ router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
 
 // POST /api/notes
 router.post('/', requireRole(...ANY_ROLE), async (req, res) => {
-    const { title, content, color } = req.body;
-    if (!content && !title) return res.status(400).json({ error: 'title або content обов\'язкові' });
+    const { title, content, color, is_shared, visible_to_depts, channel_id } = req.body;
+    const noteText = content || title || '';
+    if (!noteText.trim()) return res.status(400).json({ error: 'text обов\'язковий' });
     try {
         const result = await pool.query(
-            'INSERT INTO user_notes (user_id, title, content, color) VALUES ($1, $2, $3, $4) RETURNING *',
-            [req.user.id, title || '', content || '', color || '#fef3c7']
+            `INSERT INTO quick_notes (user_id, text, is_shared, visible_to_depts, channel_id)
+             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+            [req.user.id || req.user.userId, noteText.trim().slice(0, 200),
+             !!is_shared, visible_to_depts || null, channel_id || null]
         );
         const n = result.rows[0];
-        res.json({ id: n.id, title: n.title, content: n.content, color: n.color, pinned: n.pinned, createdAt: n.created_at });
+        res.json({ id: n.id, text: n.text, content: n.text, isShared: n.is_shared,
+                   visibleToDepts: n.visible_to_depts, createdAt: n.created_at });
     } catch (err) {
         log.error('Create note error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -47,7 +58,7 @@ router.put('/:id', requireRole(...ANY_ROLE), async (req, res) => {
     const { title, content, color } = req.body;
     try {
         const result = await pool.query(
-            `UPDATE user_notes SET title = COALESCE($1, title), content = COALESCE($2, content),
+            `UPDATE quick_notes SET title = COALESCE($1, title), content = COALESCE($2, content),
              color = COALESCE($3, color), updated_at = NOW()
              WHERE id = $4 AND user_id = $5 RETURNING *`,
             [title, content, color, req.params.id, req.user.id]
@@ -64,7 +75,7 @@ router.put('/:id', requireRole(...ANY_ROLE), async (req, res) => {
 router.delete('/:id', requireRole(...ANY_ROLE), async (req, res) => {
     try {
         const result = await pool.query(
-            'DELETE FROM user_notes WHERE id = $1 AND user_id = $2 RETURNING id',
+            'DELETE FROM quick_notes WHERE id = $1 AND user_id = $2 RETURNING id',
             [req.params.id, req.user.id]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Не знайдено' });
@@ -79,7 +90,7 @@ router.delete('/:id', requireRole(...ANY_ROLE), async (req, res) => {
 router.put('/:id/pin', requireRole(...ANY_ROLE), async (req, res) => {
     try {
         const result = await pool.query(
-            'UPDATE user_notes SET pinned = NOT pinned, updated_at = NOW() WHERE id = $1 AND user_id = $2 RETURNING pinned',
+            'UPDATE quick_notes SET pinned = NOT pinned, updated_at = NOW() WHERE id = $1 AND user_id = $2 RETURNING pinned',
             [req.params.id, req.user.id]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Не знайдено' });
@@ -112,16 +123,16 @@ router.post('/meeting', requireRole(...ANY_ROLE), async (req, res) => {
         const meeting = meetingResult.rows[0];
 
         // Create action items if provided
-        const items = [];
-        if (Array.isArray(actionItems)) {
-            for (const item of actionItems) {
-                const itemResult = await pool.query(
-                    `INSERT INTO meeting_action_items (meeting_id, description, assigned_to, due_date)
-                     VALUES ($1, $2, $3, $4) RETURNING *`,
-                    [meeting.id, item.description, item.assignedTo || null, item.dueDate || null]
-                );
-                items.push(itemResult.rows[0]);
-            }
+        // v38.4.0: Batch INSERT instead of N+1 loop
+        let items = [];
+        if (Array.isArray(actionItems) && actionItems.length > 0) {
+            const values = actionItems.map((_, i) => `($${i*4+1}, $${i*4+2}, $${i*4+3}, $${i*4+4})`).join(',');
+            const params = actionItems.flatMap(item => [meeting.id, item.description, item.assignedTo || null, item.dueDate || null]);
+            const itemResult = await pool.query(
+                `INSERT INTO meeting_action_items (meeting_id, description, assigned_to, due_date) VALUES ${values} RETURNING *`,
+                params
+            );
+            items = itemResult.rows;
         }
 
         res.json({ success: true, meeting, actionItems: items });

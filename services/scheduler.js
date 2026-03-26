@@ -928,6 +928,224 @@ async function checkBirthdayGreetings() {
     }
 }
 
+// v30.4: Birthday reminder — 7 days before
+let birthdayReminderSentToday = null;
+
+async function checkBirthdayReminders() {
+    try {
+        const todayStr = getKyivDateStr();
+        if (birthdayReminderSentToday === todayStr) return;
+
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '09:30') return;
+
+        const dbLast = await getLastSent('birthday_reminder_7d');
+        if (dbLast === todayStr) { birthdayReminderSentToday = todayStr; return; }
+
+        birthdayReminderSentToday = todayStr;
+        await setLastSent('birthday_reminder_7d', todayStr);
+
+        const kyiv = getKyivDate();
+        const futureDate = new Date(kyiv);
+        futureDate.setDate(futureDate.getDate() + 7);
+        const month = futureDate.getMonth() + 1;
+        const day = futureDate.getDate();
+
+        const result = await pool.query(
+            `SELECT id, name, phone, child_name, child_birthday, total_bookings
+             FROM customers
+             WHERE child_birthday IS NOT NULL
+               AND EXTRACT(MONTH FROM child_birthday) = $1
+               AND EXTRACT(DAY FROM child_birthday) = $2`,
+            [month, day]
+        );
+
+        if (result.rows.length === 0) return;
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        let text = `📅 <b>ДНІ НАРОДЖЕННЯ ЧЕРЕЗ ТИЖДЕНЬ</b>\n\n`;
+        for (const c of result.rows) {
+            const age = c.child_birthday ? kyiv.getFullYear() - new Date(c.child_birthday).getFullYear() + 1 : '?';
+            text += `🎂 <b>${c.child_name || 'Дитина'}</b> — ${age} р.\n`;
+            text += `   👤 ${c.name}`;
+            if (c.phone) text += ` · 📞 ${c.phone}`;
+            text += `\n\n`;
+        }
+        text += `💡 <i>Час запропонувати святкування!</i>`;
+
+        await sendTelegramMessage(chatId, text, { silent: true });
+        log.info(`Birthday reminders (7d) sent: ${result.rows.length}`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('BirthdayReminders error', err);
+        }
+    }
+}
+
+// v30.4: Dormant customers — no visit for 60+ days
+let dormantSentToday = null;
+
+async function checkDormantCustomers() {
+    try {
+        const todayStr = getKyivDateStr();
+        if (dormantSentToday === todayStr) return;
+
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '10:00') return;
+
+        const dbLast = await getLastSent('dormant_customers');
+        if (dbLast === todayStr) { dormantSentToday = todayStr; return; }
+
+        dormantSentToday = todayStr;
+        await setLastSent('dormant_customers', todayStr);
+
+        const result = await pool.query(`
+            SELECT id, name, phone, total_bookings, total_spent, last_visit
+            FROM customers
+            WHERE last_visit < NOW() - INTERVAL '60 days'
+              AND total_bookings >= 2
+            ORDER BY last_visit ASC LIMIT 15
+        `);
+
+        if (result.rows.length === 0) return;
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        let text = `😴 <b>КЛІЄНТИ БЕЗ ВІЗИТІВ 60+ ДНІВ</b>\n\n`;
+        for (const c of result.rows) {
+            const days = Math.floor((Date.now() - new Date(c.last_visit).getTime()) / (1000*60*60*24));
+            text += `👤 <b>${c.name}</b> — ${days} днів\n`;
+            if (c.phone) text += `   📞 ${c.phone}`;
+            text += ` · ${c.total_bookings} візит. · ${c.total_spent} ₴\n\n`;
+        }
+        text += `💡 <i>Зателефонуйте або надішліть пропозицію!</i>`;
+
+        await sendTelegramMessage(chatId, text, { silent: true });
+        log.info(`Dormant customers alert sent: ${result.rows.length}`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('DormantCustomers error', err);
+        }
+    }
+}
+
+// v30.4: Upcoming booking reminder — 3 days before
+let upcomingSentToday = null;
+
+async function checkUpcomingBookings() {
+    try {
+        const todayStr = getKyivDateStr();
+        if (upcomingSentToday === todayStr) return;
+
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '11:00') return;
+
+        const dbLast = await getLastSent('upcoming_bookings');
+        if (dbLast === todayStr) { upcomingSentToday = todayStr; return; }
+
+        upcomingSentToday = todayStr;
+        await setLastSent('upcoming_bookings', todayStr);
+
+        const result = await pool.query(`
+            SELECT b.id, b.date, b.time, b.label, b.program_name, b.room,
+                   c.name AS customer_name, c.phone AS customer_phone
+            FROM bookings b
+            LEFT JOIN customers c ON b.customer_id = c.id
+            WHERE b.date = CURRENT_DATE + INTERVAL '3 days'
+              AND b.status IN ('confirmed', 'pending')
+              AND b.linked_to IS NULL
+        `);
+
+        if (result.rows.length === 0) return;
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        let text = `📅 <b>БРОНЮВАННЯ ЧЕРЕЗ 3 ДНІ</b>\n\n`;
+        for (const b of result.rows) {
+            text += `🎉 <b>${b.label || b.program_name || b.id}</b>\n`;
+            text += `   ⏰ ${b.time} · 🏠 ${b.room || '?'}\n`;
+            if (b.customer_name) {
+                text += `   👤 ${b.customer_name}`;
+                if (b.customer_phone) text += ` · 📞 ${b.customer_phone}`;
+                text += `\n`;
+            }
+            text += `\n`;
+        }
+        text += `💡 <i>Перевірте готовність!</i>`;
+
+        await sendTelegramMessage(chatId, text, { silent: true });
+        log.info(`Upcoming bookings reminder sent: ${result.rows.length}`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('UpcomingBookings error', err);
+        }
+    }
+}
+
+// v30.6: Debt notification — weekly reminder about unpaid bookings
+let debtSentThisWeek = null;
+let pushRemindersSentToday = null;
+let certExpirySentToday = null;
+
+async function checkDebtNotifications() {
+    try {
+        const todayStr = getKyivDateStr();
+        const weekId = todayStr.substring(0, 7) + '-W' + Math.ceil(new Date().getDate() / 7);
+        if (debtSentThisWeek === weekId) return;
+
+        // Only send on Mondays at 09:00
+        const now = new Date();
+        if (now.getDay() !== 1) return;
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '09:00') return;
+
+        const dbLast = await getLastSent('debt_notifications');
+        if (dbLast === weekId) { debtSentThisWeek = weekId; return; }
+
+        debtSentThisWeek = weekId;
+        await setLastSent('debt_notifications', weekId);
+
+        const result = await pool.query(`
+            SELECT b.id, b.date, b.label, b.program_name, b.price, b.paid_amount,
+                   c.name AS customer_name, c.phone AS customer_phone,
+                   (COALESCE(b.price, 0) - COALESCE(b.paid_amount, 0)) AS debt
+            FROM bookings b
+            LEFT JOIN customers c ON b.customer_id = c.id
+            WHERE b.status = 'confirmed' AND b.linked_to IS NULL AND b.price > 0
+              AND (b.payment_status IS NULL OR b.payment_status != 'paid')
+              AND COALESCE(b.paid_amount, 0) < COALESCE(b.price, 0)
+              AND b.date::date <= CURRENT_DATE
+            ORDER BY debt DESC LIMIT 20
+        `);
+
+        if (result.rows.length === 0) return;
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        const totalDebt = result.rows.reduce((s, r) => s + r.debt, 0);
+        let text = `💸 <b>БОРГИ: ${result.rows.length} неоплачених</b>\n`;
+        text += `💰 Загалом: ${totalDebt.toLocaleString('uk-UA')} ₴\n\n`;
+        for (const b of result.rows.slice(0, 10)) {
+            text += `• ${b.label || b.program_name || b.id} — ${b.debt.toLocaleString('uk-UA')} ₴`;
+            if (b.customer_name) text += ` (${b.customer_name})`;
+            text += `\n`;
+        }
+        if (result.rows.length > 10) text += `\n...та ще ${result.rows.length - 10}`;
+
+        await sendTelegramMessage(chatId, text, { silent: true });
+        log.info(`Debt notification sent: ${result.rows.length} debts, ${totalDebt} UAH`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('DebtNotifications error', err);
+        }
+    }
+}
+
 // v19.1: Event Queue processor — retry failed events + move to DLQ
 async function checkEventQueue() {
     try {
@@ -1040,31 +1258,62 @@ async function checkScheduledAnnouncements() {
 async function checkTaskOverdue() {
     try {
         const todayStr = getKyivDateStr();
+
+        // 1. Mark overdue tasks
         const result = await pool.query(
             `UPDATE tasks SET status = 'overdue'
              WHERE date < $1 AND status NOT IN ('done', 'overdue', 'cancelled')
              RETURNING id, title, date, priority, assigned_to`,
             [todayStr]
         );
+
         if (result.rows.length > 0) {
+            // Publish events
             try {
                 const { publish } = require('./eventBus');
                 for (const task of result.rows) {
                     await publish('task.overdue', {
-                        task_id: task.id,
-                        title: task.title,
-                        date: task.date,
-                        priority: task.priority,
+                        task_id: task.id, title: task.title,
+                        date: task.date, priority: task.priority,
                         assigned_to: task.assigned_to
                     }, `task_overdue_${task.id}_${todayStr}`);
                 }
-                log.info(`Task overdue: ${result.rows.length} task(s) marked overdue`);
-            } catch (e) {
-                // eventBus may not exist yet, that's ok
-            }
+            } catch (e) { /* eventBus may not exist */ }
+
+            // v33.10.0: Gamification penalty for overdue tasks
+            try {
+                const { spendCoins } = require('./gamification');
+                for (const task of result.rows) {
+                    if (task.assigned_to) {
+                        const penalty = task.priority === 'high' ? 10 : task.priority === 'normal' ? 5 : 2;
+                        await spendCoins(task.assigned_to, penalty,
+                            `Протерміноване завдання: ${(task.title || '').slice(0, 50)}`,
+                            'penalty', task.id
+                        ).catch(() => {});
+                    }
+                }
+            } catch (e) { /* gamification not ready */ }
+
+            log.info(`Task overdue: ${result.rows.length} task(s) marked overdue`);
         }
+
+        // 2. v33.10.0: Auto-close tasks linked to past events (deadline passed 3+ days ago)
+        try {
+            const closed = await pool.query(
+                `UPDATE tasks SET status = 'cancelled', updated_at = NOW()
+                 WHERE status = 'overdue'
+                   AND deadline IS NOT NULL
+                   AND deadline::date < ($1::date - INTERVAL '3 days')
+                 RETURNING id, title, assigned_to`,
+                [todayStr]
+            );
+            if (closed.rowCount > 0) {
+                log.info(`Task auto-closed: ${closed.rowCount} overdue task(s) cancelled after 3 days`);
+            }
+        } catch (e) { /* deadline column may not exist in older schemas */ }
+
     } catch (err) {
-        if (!err.message.includes('does not exist')) {
+        if (!err.message?.includes('does not exist')) {
             log.error('checkTaskOverdue error', err);
         }
     }
@@ -1353,7 +1602,7 @@ async function checkAutoReviewRequests() {
             FROM bookings b
             LEFT JOIN review_requests_sent rrs ON rrs.booking_id = b.id
             WHERE b.status = 'confirmed'
-              AND b.date <= CURRENT_DATE
+              AND b.date::date <= CURRENT_DATE
               AND rrs.booking_id IS NULL
               AND b.phone IS NOT NULL
               AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time + (b.duration || ' minutes')::interval) < NOW() - ($1 || ' hours')::interval
@@ -1444,6 +1693,314 @@ async function checkTeamPulseReminder() {
     }
 }
 
+// v33.5: Refresh stale catalog images (daily at 03:00 Kyiv)
+async function checkStaleCatalogImages() {
+    try {
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '03:00') return;
+        const last = await getLastSent('stale_catalog_images');
+        const today = getKyivDateStr();
+        if (last === today) return;
+        await setLastSent('stale_catalog_images', today);
+        const stale = await pool.query(
+            `SELECT ci.id, ci.name, ci.subcategory, ci.catalog_id, cd.ai_style
+             FROM catalog_items ci
+             JOIN catalog_definitions cd ON cd.id = ci.catalog_id
+             WHERE ci.status = 'active'
+               AND ci.image_url IS NOT NULL
+               AND ci.updated_at < NOW() - INTERVAL '6 days'
+             LIMIT 10`
+        );
+        if (!stale.rowCount) return;
+        const https = require('https');
+        const KIE_KEY = '5dabed41ea307ecc6ca17010eaaf90b0';
+        const DEFAULT_STYLE = 'colorful illustration, white background, no text';
+
+        function kieHttpRequest(method, path, postBody) {
+            return new Promise((resolve, reject) => {
+                const opts = {
+                    hostname: 'api.kie.ai', path, method,
+                    headers: { 'Authorization': `Bearer ${KIE_KEY}`, 'Content-Type': 'application/json' }
+                };
+                if (postBody) opts.headers['Content-Length'] = Buffer.byteLength(postBody);
+                const req = https.request(opts, res => {
+                    let d = '';
+                    res.on('data', c => d += c);
+                    res.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve(null); } });
+                });
+                req.on('error', reject);
+                req.setTimeout(30000, () => { req.destroy(); reject(new Error('timeout')); });
+                if (postBody) req.write(postBody);
+                req.end();
+            });
+        }
+
+        let refreshed = 0;
+        for (const item of stale.rows) {
+            try {
+                const style = item.ai_style || DEFAULT_STYLE;
+                const themeCtx = [item.name, item.subcategory].filter(Boolean).join(', ');
+                const prompt = `${style}. Product: "${themeCtx}". Ukrainian children's park.`;
+                const body = JSON.stringify({ model: 'google/nano-banana', input: { prompt, image_size: '1:1' } });
+                const taskData = await kieHttpRequest('POST', '/api/v1/jobs/createTask', body);
+                if (!taskData?.data?.taskId) continue;
+                await new Promise(r => setTimeout(r, 20000));
+                const pollData = await kieHttpRequest('GET', `/api/v1/jobs/recordInfo?taskId=${taskData.data.taskId}`);
+                const rj = pollData?.data?.resultJson;
+                let url = null;
+                try { url = rj ? JSON.parse(typeof rj === 'string' ? rj : '{}')?.resultUrls?.[0] : null; } catch { /* ignore */ }
+                if (url) {
+                    await pool.query('UPDATE catalog_items SET image_url = $1, updated_at = NOW() WHERE id = $2', [url, item.id]);
+                    refreshed++;
+                }
+            } catch (e) { log.warn(`Stale refresh failed item ${item.id}: ${e.message}`); }
+        }
+        if (refreshed > 0) log.info(`Stale catalog images refreshed: ${refreshed}/${stale.rowCount}`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) log.error('checkStaleCatalogImages error', err);
+    }
+}
+
+// v33.7.0: Daily chat digest (20:00 Kyiv)
+async function checkChatDailyDigest() {
+    try {
+        const nowTime = getKyivTimeStr();
+        if (nowTime !== '20:00') return;
+        const today = getKyivDateStr();
+        const last = await getLastSent('chat_daily_digest');
+        if (last === today) return;
+        await setLastSent('chat_daily_digest', today);
+
+        const stats = await pool.query(`
+            SELECT
+                cc.name AS channel_name,
+                COUNT(cm.id)::int AS msg_count,
+                COUNT(DISTINCT cm.user_id)::int AS active_users
+            FROM chat_channels cc
+            LEFT JOIN chat_messages cm
+                ON cm.channel_id = cc.id
+                AND cm.created_at >= $1::date
+                AND cm.deleted_at IS NULL
+                AND (cm.is_bot IS NULL OR cm.is_bot = false)
+            WHERE (cc.is_archived IS NULL OR cc.is_archived = false)
+            GROUP BY cc.id, cc.name
+            HAVING COUNT(cm.id) > 0
+            ORDER BY msg_count DESC`, [today]);
+
+        if (!stats.rowCount) return;
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        const totalMsgs = stats.rows.reduce((s, r) => s + r.msg_count, 0);
+        let text = `💬 <b>Чат — зведення ${today}</b>\n${totalMsgs} повід.\n\n`;
+        stats.rows.forEach(r => {
+            text += `<b>${r.channel_name}</b>: ${r.msg_count}`;
+            if (r.active_users > 1) text += ` (${r.active_users} уч.)`;
+            text += '\n';
+        });
+
+        await sendTelegramMessage(chatId, text);
+        log.info(`[ChatDigest] Sent for ${today}`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('[ChatDigest] Error', err);
+        }
+    }
+}
+
+// v38.3.0: Event Pipeline — auto-publish lifecycle events for bookings
+async function checkEventPipeline() {
+    try {
+        const { publish } = require('./eventBus');
+        const today = getKyivDateStr();
+        const tomorrow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Kyiv' }));
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+
+        // T-24: bookings happening tomorrow that haven't had t24 event
+        const t24 = await pool.query(`
+            SELECT b.id, b.label, b.time, b.program_name, b.room, b.phone, b.customer_telegram_id
+            FROM bookings b
+            LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 't24_sent'
+            WHERE b.date = $1 AND b.status IN ('confirmed', 'preliminary')
+              AND bp.id IS NULL
+            LIMIT 20
+        `, [tomorrowStr]).catch(() => ({ rows: [] }));
+
+        for (const b of t24.rows) {
+            await publish('booking.t24', {
+                booking_id: b.id, label: b.label, time: b.time,
+                programName: b.program_name, room: b.room, phone: b.phone,
+                customer_telegram_id: b.customer_telegram_id
+            }, `t24_${b.id}_${tomorrowStr}`);
+            await pool.query(
+                'INSERT INTO booking_pipeline (booking_id, stage) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [b.id, 't24_sent']
+            ).catch(() => {});
+        }
+
+        // Day-of: bookings today that haven't had day_of event
+        const dayOf = await pool.query(`
+            SELECT b.id, b.label, b.time, b.program_name, b.room
+            FROM bookings b
+            LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 'day_of_prep'
+            WHERE b.date = $1 AND b.status IN ('confirmed', 'preliminary')
+              AND bp.id IS NULL
+            LIMIT 20
+        `, [today]).catch(() => ({ rows: [] }));
+
+        for (const b of dayOf.rows) {
+            await publish('booking.day_of', {
+                booking_id: b.id, label: b.label, time: b.time,
+                programName: b.program_name, room: b.room
+            }, `dayof_${b.id}_${today}`);
+            await pool.query(
+                'INSERT INTO booking_pipeline (booking_id, stage) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [b.id, 'day_of_prep']
+            ).catch(() => {});
+        }
+
+        // Completed: bookings that ended (time + duration < now) but no completion event
+        const completed = await pool.query(`
+            SELECT b.id, b.label, b.time, b.program_name, b.room, b.duration
+            FROM bookings b
+            LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 'completed'
+            WHERE b.date = $1 AND b.status = 'confirmed'
+              AND bp.id IS NULL
+              AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time
+                   + (COALESCE(b.duration, 120) || ' minutes')::interval) < NOW()
+            LIMIT 20
+        `, [today]).catch(() => ({ rows: [] }));
+
+        for (const b of completed.rows) {
+            await publish('booking.completed', {
+                booking_id: b.id, label: b.label, time: b.time,
+                programName: b.program_name, room: b.room
+            }, `completed_${b.id}_${today}`);
+            await pool.query(
+                'INSERT INTO booking_pipeline (booking_id, stage) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [b.id, 'completed']
+            ).catch(() => {});
+        }
+
+        const total = t24.rows.length + dayOf.rows.length + completed.rows.length;
+        if (total > 0) {
+            log.info(`Event pipeline: ${t24.rows.length} T-24, ${dayOf.rows.length} day-of, ${completed.rows.length} completed`);
+        }
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('checkEventPipeline error', err);
+        }
+    }
+}
+
+// v38.3.0: NPS follow-up — create tasks for detractors, referral for promoters
+async function checkNpsFollowUp() {
+    try {
+        const { publish } = require('./eventBus');
+
+        // Detractors: rating 1-2, no follow-up yet
+        const detractors = await pool.query(`
+            SELECT er.id, er.booking_id, er.rating, er.comment, er.customer_name, er.customer_phone,
+                   b.program_name, b.date
+            FROM event_reviews er
+            LEFT JOIN bookings b ON b.id = er.booking_id
+            WHERE er.rating <= 2
+              AND (er.follow_up_status IS NULL OR er.follow_up_status = 'none')
+              AND er.created_at > NOW() - INTERVAL '48 hours'
+            LIMIT 10
+        `).catch(() => ({ rows: [] }));
+
+        for (const d of detractors.rows) {
+            await publish('review.detractor', {
+                review_id: d.id, booking_id: d.booking_id, rating: d.rating,
+                comment: d.comment || '', customerName: d.customer_name || 'Клієнт',
+                programName: d.program_name || '', phone: d.customer_phone
+            }, `detractor_${d.id}`);
+            await pool.query(
+                "UPDATE event_reviews SET follow_up_status = 'pending', follow_up_at = NOW() WHERE id = $1",
+                [d.id]
+            ).catch(() => {});
+        }
+
+        // Promoters: rating 5, no follow-up yet
+        const promoters = await pool.query(`
+            SELECT er.id, er.booking_id, er.rating, er.customer_name, er.customer_telegram_id,
+                   b.program_name
+            FROM event_reviews er
+            LEFT JOIN bookings b ON b.id = er.booking_id
+            WHERE er.rating = 5
+              AND (er.follow_up_status IS NULL OR er.follow_up_status = 'none')
+              AND er.created_at > NOW() - INTERVAL '48 hours'
+              AND er.customer_telegram_id IS NOT NULL
+            LIMIT 10
+        `).catch(() => ({ rows: [] }));
+
+        for (const p of promoters.rows) {
+            await publish('review.promoter', {
+                review_id: p.id, booking_id: p.booking_id, rating: p.rating,
+                customerName: p.customer_name || 'Клієнт',
+                programName: p.program_name || '',
+                customer_telegram_id: p.customer_telegram_id
+            }, `promoter_${p.id}`);
+            await pool.query(
+                "UPDATE event_reviews SET follow_up_status = 'completed', follow_up_at = NOW() WHERE id = $1",
+                [p.id]
+            ).catch(() => {});
+        }
+
+        const total = detractors.rows.length + promoters.rows.length;
+        if (total > 0) {
+            log.info(`NPS follow-up: ${detractors.rows.length} detractors, ${promoters.rows.length} promoters`);
+        }
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('checkNpsFollowUp error', err);
+        }
+    }
+}
+
+// v38.3.0: Auto-create cleaning tasks for completed bookings
+async function checkCleaningTasks() {
+    try {
+        const today = getKyivDateStr();
+
+        // Find completed bookings that don't have cleaning tasks yet
+        const result = await pool.query(`
+            SELECT b.id, b.room, b.time, b.duration, b.program_name, b.label
+            FROM bookings b
+            LEFT JOIN cleaning_tasks ct ON ct.booking_id = b.id
+            WHERE b.date = $1 AND b.status = 'confirmed'
+              AND b.room IS NOT NULL AND b.room != ''
+              AND ct.id IS NULL
+              AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time
+                   + (COALESCE(b.duration, 120) || ' minutes')::interval) < NOW()
+            LIMIT 20
+        `, [today]).catch(() => ({ rows: [] }));
+
+        for (const b of result.rows) {
+            const endMinutes = (parseInt(b.time.slice(0,2)) * 60 + parseInt(b.time.slice(3,5))) + (b.duration || 120);
+            const endHour = Math.floor(endMinutes / 60);
+            const endMin = endMinutes % 60;
+            const scheduledAt = `${today} ${String(endHour).padStart(2,'0')}:${String(endMin).padStart(2,'0')}:00`;
+
+            await pool.query(`
+                INSERT INTO cleaning_tasks (booking_id, room, scheduled_at, sla_minutes)
+                VALUES ($1, $2, $3, 15)
+                ON CONFLICT DO NOTHING
+            `, [b.id, b.room, scheduledAt]).catch(() => {});
+        }
+
+        if (result.rows.length > 0) {
+            log.info(`Cleaning tasks: created ${result.rows.length} for completed bookings`);
+        }
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('checkCleaningTasks error', err);
+        }
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
@@ -1451,6 +2008,7 @@ module.exports = {
     checkRecurringBookings, checkCertificateExpiry,
     checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset,
     checkStreakUpdates, checkBirthdayGreetings,
+    checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkDebtNotifications,
     checkEventQueue, checkSLABreach, checkScheduledAnnouncements,
     checkTaskOverdue, checkCustomerRetention, checkAutoReport,
     checkHotLeads,
@@ -1458,8 +2016,51 @@ module.exports = {
     checkExpiredChatMessages,
     checkAutoReviewRequests,
     checkTeamPulseReminder,
-    checkAutoOrdering
+    checkAutoOrdering,
+    checkBookingPushReminders,
+    checkCertExpiryReminders,
+    checkStaleCatalogImages,
+    checkChatDailyDigest,
+    checkRecurringAnnouncements,
+    checkEventPipeline,
+    checkNpsFollowUp,
+    checkCleaningTasks
 };
+
+// v33.15.0: Recurring announcements — play based on repeat_cron
+async function checkRecurringAnnouncements() {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM announcements
+             WHERE status = 'active' AND schedule_type = 'recurring'
+               AND repeat_cron IS NOT NULL AND deleted_at IS NULL`
+        );
+        if (!result.rows.length) return;
+        const { deliverAnnouncement, isCronDue } = require('./music-delivery');
+        const now = new Date();
+        for (const ann of result.rows) {
+            if (!isCronDue(ann.repeat_cron, now)) continue;
+            if (ann.last_played_at && (now - new Date(ann.last_played_at)) / 1000 < 55) continue;
+
+            const delivery = await deliverAnnouncement(ann, { triggeredBy: 'scheduler' });
+            await pool.query(
+                `UPDATE announcements SET played_count=played_count+1, last_played_at=NOW(),
+                 last_delivery_status=$1, last_delivery_mode=$2, last_delivery_detail=$3, last_delivery_at=NOW()
+                 WHERE id=$4`,
+                [delivery.success ? 'success' : 'failed', delivery.mode, delivery.detail, ann.id]
+            );
+            await pool.query(
+                `INSERT INTO music_log (action, announcement_id, delivery_status, delivery_mode, delivery_detail, triggered_by)
+                 VALUES ('play', $1, $2, $3, $4, 'scheduler')`,
+                [ann.id, delivery.success ? 'success' : 'failed', delivery.mode, delivery.detail]
+            );
+            log.info(`[RecurringAnn] #${ann.id} "${ann.title}" — ${delivery.success ? '✓' : '✗'} ${delivery.mode}`);
+        }
+    } catch (err) {
+        if (!err.message?.includes('does not exist'))
+            log.error('checkRecurringAnnouncements error', err);
+    }
+}
 
 // v22.18: Auto-ordering — check stock levels and create order requests
 async function checkAutoOrdering() {
@@ -1525,6 +2126,120 @@ async function checkAutoOrdering() {
     } catch (err) {
         if (!err.message.includes('does not exist')) {
             log.error('checkAutoOrdering error', err);
+        }
+    }
+}
+
+// v30.7: Push reminders — notify animators 30 min before their booking (#9)
+async function checkBookingPushReminders() {
+    try {
+        const kyiv = getKyivDate();
+        const todayStr = getKyivDateStr();
+        const nowTime = getKyivTimeStr();
+
+        if (pushRemindersSentToday === todayStr + '_' + nowTime) return;
+
+        // Check every minute, find bookings starting in ~30 minutes
+        const nowMinutes = kyiv.getHours() * 60 + kyiv.getMinutes();
+        const targetMinutes = nowMinutes + 30;
+        const targetTime = `${String(Math.floor(targetMinutes / 60)).padStart(2, '0')}:${String(targetMinutes % 60).padStart(2, '0')}`;
+
+        const result = await pool.query(`
+            SELECT b.id, b.id AS booking_number, b.time AS time_start, b.program_name,
+                   b.hosts, b.second_animator
+            FROM bookings b
+            WHERE b.date = $1
+              AND b.status IN ('confirmed', 'pending')
+              AND b.time = $2
+              AND b.hosts IS NOT NULL AND b.hosts != ''
+        `, [todayStr, targetTime]);
+
+        if (result.rows.length === 0) return;
+
+        pushRemindersSentToday = todayStr + '_' + nowTime;
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        for (const booking of result.rows) {
+            const hostIds = [booking.hosts];
+            if (booking.second_animator && /^\d+$/.test(booking.second_animator)) {
+                hostIds.push(parseInt(booking.second_animator));
+            }
+            const validIds = hostIds.filter(Boolean);
+            if (validIds.length === 0) continue;
+
+            const staff = await pool.query(
+                'SELECT id, name, telegram_id FROM staff WHERE id = ANY($1)', [validIds]
+            );
+
+            for (const s of staff.rows) {
+                const text = `⏰ <b>Через 30 хв у тебе бронювання!</b>\n\n`
+                    + `📋 ${booking.booking_number}\n`
+                    + `🎭 ${booking.program_name || 'Програма не вказана'}\n`
+                    + `🕐 ${booking.time_start}\n`;
+
+                const targetChat = s.telegram_id || chatId;
+                await sendTelegramMessage(targetChat, text);
+            }
+        }
+        log.info(`Push reminders sent for ${result.rows.length} upcoming bookings`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('checkBookingPushReminders error', err);
+        }
+    }
+}
+
+// v30.7: Certificate expiry reminders — notify about expiring certifications
+async function checkCertExpiryReminders() {
+    try {
+        const todayStr = getKyivDateStr();
+        const nowTime = getKyivTimeStr();
+
+        if (nowTime !== '09:15') return;
+        if (certExpirySentToday === todayStr) return;
+        const dbLast = await getLastSent('cert_expiry_reminder');
+        if (dbLast === todayStr) { certExpirySentToday = todayStr; return; }
+
+        certExpirySentToday = todayStr;
+        await setLastSent('cert_expiry_reminder', todayStr);
+
+        // Find certs expiring in next 14 days
+        const result = await pool.query(`
+            SELECT sc.id, sc.name AS cert_name, sc.expires_at, sc.status,
+                   s.name AS staff_name, s.id AS staff_id
+            FROM staff_certifications sc
+            JOIN staff s ON s.id = sc.staff_id
+            WHERE sc.expires_at IS NOT NULL
+              AND sc.status = 'active'
+              AND sc.expires_at BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '14 days'
+            ORDER BY sc.expires_at ASC
+        `);
+
+        if (result.rows.length === 0) return;
+
+        // Mark expired ones
+        await pool.query(`
+            UPDATE staff_certifications SET status = 'expired'
+            WHERE expires_at < CURRENT_DATE AND status = 'active'
+        `);
+
+        const chatId = await getConfiguredChatId();
+        if (!chatId) return;
+
+        let text = `📜 <b>Сертифікати: термін спливає</b>\n\n`;
+        for (const cert of result.rows) {
+            const daysLeft = Math.ceil((new Date(cert.expires_at) - new Date(todayStr)) / 86400000);
+            const urgency = daysLeft <= 3 ? '🔴' : daysLeft <= 7 ? '🟡' : '🟢';
+            text += `${urgency} <b>${cert.staff_name}</b> — ${cert.cert_name} (${daysLeft} дн.)\n`;
+        }
+
+        await sendTelegramMessage(chatId, text);
+        log.info(`Cert expiry reminders: ${result.rows.length} certs expiring soon`);
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('checkCertExpiryReminders error', err);
         }
     }
 }

@@ -24,7 +24,8 @@ function mapStockRow(row) {
         isActive: row.is_active,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
-        updatedBy: row.updated_by
+        updatedBy: row.updated_by,
+        owner: row.owner || 'park'
     };
 }
 
@@ -61,6 +62,12 @@ function validateStock(body) {
     return errors;
 }
 
+// v32.1: Alias /items → / for frontend compatibility
+router.get('/items', (req, res, next) => {
+    req.url = '/';
+    next();
+});
+
 // GET /api/warehouse — List all stock items
 router.get('/', async (req, res) => {
     try {
@@ -84,6 +91,20 @@ router.get('/', async (req, res) => {
         }
 
         const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+
+        // v32.1: Ensure table exists before querying
+        try {
+            await pool.query(`CREATE TABLE IF NOT EXISTS warehouse_stock (
+                id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL,
+                category VARCHAR(50) NOT NULL DEFAULT 'consumable',
+                quantity INTEGER NOT NULL DEFAULT 0, min_quantity INTEGER NOT NULL DEFAULT 0,
+                unit VARCHAR(30) NOT NULL DEFAULT 'шт', notes TEXT,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW(),
+                updated_by VARCHAR(100)
+            )`);
+        } catch (e) { /* table already exists */ }
+
         const result = await pool.query(
             `SELECT * FROM warehouse_stock ${where} ORDER BY category, name`,
             params
@@ -95,12 +116,13 @@ router.get('/', async (req, res) => {
         );
 
         res.json({
+            success: true,
             items: result.rows.map(mapStockRow),
             lowStockCount: parseInt(lowStockResult.rows[0].count)
         });
     } catch (err) {
         log.error('List warehouse stock error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -124,6 +146,102 @@ router.get('/history', async (req, res) => {
         });
     } catch (err) {
         log.error('Get warehouse history error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── Pinata Status & Designs (v33.5) ─────────────────────────
+// GET /api/warehouse/pinata-status
+router.get('/pinata-status', async (req, res) => {
+    try {
+        const [stock, upcoming, designs] = await Promise.all([
+            pool.query(
+                `SELECT id, name, quantity, min_quantity, unit
+                 FROM warehouse_stock
+                 WHERE linked_product_type = 'pinata_filler' AND is_active = true
+                 ORDER BY name`
+            ),
+            pool.query(
+                `SELECT id, date, time, pinata_filler, group_name
+                 FROM bookings
+                 WHERE pinata_filler IS NOT NULL
+                   AND pinata_filler != ''
+                   AND date >= CURRENT_DATE
+                   AND date <= CURRENT_DATE + INTERVAL '14 days'
+                   AND status != 'cancelled'
+                 ORDER BY date, time`
+            ),
+            pool.query('SELECT * FROM pinata_designs WHERE is_active = true ORDER BY name')
+        ]);
+        const needed   = upcoming.rowCount;
+        const minStock = stock.rows.length
+            ? Math.min(...stock.rows.map(s => s.quantity))
+            : 0;
+        const hasEnough = minStock >= needed;
+        res.json({
+            success: true,
+            stock: stock.rows,
+            upcomingCount: needed,
+            upcomingList: upcoming.rows,
+            designs: designs.rows,
+            hasEnough,
+            alert: !hasEnough || stock.rows.some(s => s.quantity <= s.min_quantity)
+        });
+    } catch (err) {
+        log.error('GET /pinata-status', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// GET /api/warehouse/pinata-designs
+router.get('/pinata-designs', async (req, res) => {
+    try {
+        const r = await pool.query('SELECT * FROM pinata_designs WHERE is_active = true ORDER BY name');
+        res.json({ success: true, designs: r.rows });
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// POST /api/warehouse/pinata-designs
+router.post('/pinata-designs', requireRole('admin', 'manager'), async (req, res) => {
+    try {
+        const { name, printsQty, imageUrl } = req.body;
+        if (!name?.trim()) return res.status(400).json({ error: 'name required' });
+        const r = await pool.query(
+            `INSERT INTO pinata_designs (name, prints_qty, image_url) VALUES ($1, $2, $3) RETURNING *`,
+            [name.trim(), printsQty || 0, imageUrl || null]
+        );
+        res.json({ success: true, design: r.rows[0] });
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// PATCH /api/warehouse/pinata-designs/:id
+router.patch('/pinata-designs/:id', requireRole('admin', 'manager'), async (req, res) => {
+    try {
+        const { printsQty, name, imageUrl, isActive } = req.body;
+        const sets = ['updated_at = NOW()'], vals = [];
+        let idx = 1;
+        if (name !== undefined)      { sets.push(`name = $${idx++}`);       vals.push(name); }
+        if (printsQty !== undefined) { sets.push(`prints_qty = $${idx++}`); vals.push(printsQty); }
+        if (imageUrl !== undefined)  { sets.push(`image_url = $${idx++}`);  vals.push(imageUrl); }
+        if (isActive !== undefined)  { sets.push(`is_active = $${idx++}`);  vals.push(isActive === true || isActive === 'true'); }
+        vals.push(req.params.id);
+        const r = await pool.query(
+            `UPDATE pinata_designs SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`, vals
+        );
+        if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
+        res.json({ success: true, design: r.rows[0] });
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// GET /api/warehouse/categories — List unique categories
+router.get('/categories', async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT DISTINCT category FROM warehouse_stock WHERE category IS NOT NULL ORDER BY category`
+        );
+        res.json(result.rows.map(r => r.category));
+    } catch (err) {
+        logger.error('[Warehouse] Get categories error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -162,14 +280,14 @@ router.post('/', requireRole('admin', 'manager'), async (req, res) => {
 
         const {
             name, category = 'consumable', quantity = 0,
-            minQuantity = 0, unit = 'шт', notes = null
+            minQuantity = 0, unit = 'шт', notes = null, owner = 'park'
         } = req.body;
 
         const result = await pool.query(
-            `INSERT INTO warehouse_stock (name, category, quantity, min_quantity, unit, notes, updated_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `INSERT INTO warehouse_stock (name, category, quantity, min_quantity, unit, notes, updated_by, owner)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              RETURNING *`,
-            [name.trim(), category, quantity, minQuantity, unit, notes, req.user.username]
+            [name.trim(), category, quantity, minQuantity, unit, notes, req.user.username, owner]
         );
 
         log.info(`Stock created: "${name}" by ${req.user.username}`);
@@ -196,15 +314,15 @@ router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
 
         const {
             name, category = 'consumable', minQuantity = 0,
-            unit = 'шт', notes = null
+            unit = 'шт', notes = null, owner = 'park'
         } = req.body;
 
         const result = await pool.query(
             `UPDATE warehouse_stock SET
                 name = $1, category = $2, min_quantity = $3,
-                unit = $4, notes = $5, updated_at = NOW(), updated_by = $6
-             WHERE id = $7 RETURNING *`,
-            [name.trim(), category, minQuantity, unit, notes, req.user.username, id]
+                unit = $4, notes = $5, updated_at = NOW(), updated_by = $6, owner = $7
+             WHERE id = $8 RETURNING *`,
+            [name.trim(), category, minQuantity, unit, notes, req.user.username, owner, id]
         );
 
         log.info(`Stock updated: #${id} by ${req.user.username}`);

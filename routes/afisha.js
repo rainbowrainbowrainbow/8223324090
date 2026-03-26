@@ -7,6 +7,10 @@ const { validateDate, validateTime, timeToMinutes, minutesToTime, getKyivDateStr
 const { generateTasksForEvent } = require('../services/taskTemplates');
 const { ensureRecurringAfishaForDate } = require('../services/scheduler');
 const { createLogger } = require('../utils/logger');
+const { authenticateToken } = require('../middleware/auth');
+
+// All afisha routes require authentication
+router.use(authenticateToken);
 
 /**
  * Check if a recurring template should create an event for a given date.
@@ -35,10 +39,10 @@ router.get('/', async (req, res) => {
         const { type } = req.query;
         const validTypes = ['event', 'birthday', 'regular'];
         if (type && validTypes.includes(type)) {
-            const result = await pool.query('SELECT * FROM afisha WHERE type = $1 ORDER BY date, time', [type]);
+            const result = await pool.query('SELECT * FROM afisha WHERE type = $1 ORDER BY date, time LIMIT 1000', [type]);
             return res.json(result.rows);
         }
-        const result = await pool.query('SELECT * FROM afisha ORDER BY date, time');
+        const result = await pool.query('SELECT * FROM afisha ORDER BY date, time LIMIT 1000');
         res.json(result.rows);
     } catch (err) {
         log.error('Get error', err);
@@ -49,7 +53,7 @@ router.get('/', async (req, res) => {
 // v8.0: Recurring afisha templates CRUD (MUST be before /:date to avoid param capture)
 router.get('/templates/list', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM afisha_templates ORDER BY created_at DESC');
+        const result = await pool.query('SELECT * FROM afisha_templates ORDER BY created_at DESC LIMIT 500');
         res.json(result.rows);
     } catch (err) {
         if (err.message.includes('does not exist')) return res.json([]);

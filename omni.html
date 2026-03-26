@@ -6,13 +6,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
+    <link rel="stylesheet" href="css/base.css?v=38.13.0">
+    <link rel="stylesheet" href="css/layout.css?v=38.13.0">
+    <link rel="stylesheet" href="css/pages.css?v=38.13.0">
+    <link rel="stylesheet" href="css/modals.css?v=38.13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=38.13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=38.13.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=38.13.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -402,7 +402,7 @@
         }
     </style>
 </head>
-<body>
+<body data-page-group="system">
     <script>
     (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
     </script>
@@ -411,17 +411,41 @@
     <div id="mainApp" class="main-app hidden">
         <!-- Sidebar nav -->
         <aside class="sidebar-nav" id="sidebarNav">
-            <div class="sidebar-logo">
-                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-                <div class="em-logo">
-                    <span class="em-logo-title">Event Genix</span>
-                    <span class="em-logo-sub">AI First CRM</span>
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+        <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+            <span class="collapse-icon">◀</span>
+            <span class="collapse-text">Згорнути</span>
+        </button>
+        </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
+
+        <header class="header">
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
-            <nav class="sidebar-links" id="sidebarLinks">
-                <!-- Populated by sidebar.js -->
-            </nav>
-        </aside>
+        </header>
 
         <!-- Main content -->
         <main class="main-content" id="mainContent">
@@ -432,13 +456,13 @@
                         <h2>OmniClaw</h2>
                         <input type="text" class="omni-search" id="omniSearch" placeholder="Пошук розмов..." maxlength="100" aria-label="Пошук розмов">
                         <div class="omni-channel-filters" id="omniFilters">
-                            <button class="omni-channel-btn active" data-channel="all">Всі</button>
-                            <button class="omni-channel-btn" data-channel="telegram">TG</button>
-                            <button class="omni-channel-btn" data-channel="viber">Viber</button>
-                            <button class="omni-channel-btn" data-channel="sms">SMS</button>
-                            <button class="omni-channel-btn" data-channel="facebook">FB</button>
-                            <button class="omni-channel-btn" data-channel="instagram">IG</button>
-                            <button class="omni-channel-btn" data-channel="binotel">Tel</button>
+                            <button type="button" class="omni-channel-btn active" data-channel="all">Всі</button>
+                            <button type="button" class="omni-channel-btn" data-channel="telegram">TG</button>
+                            <button type="button" class="omni-channel-btn" data-channel="viber">Viber</button>
+                            <button type="button" class="omni-channel-btn" data-channel="sms">SMS</button>
+                            <button type="button" class="omni-channel-btn" data-channel="facebook">FB</button>
+                            <button type="button" class="omni-channel-btn" data-channel="instagram">IG</button>
+                            <button type="button" class="omni-channel-btn" data-channel="binotel">Tel</button>
                         </div>
                     </div>
                     <div class="omni-stats" id="omniStats">
@@ -464,27 +488,27 @@
                             <div class="omni-chat-header-channel" id="omniChatChannel"></div>
                         </div>
                         <div class="omni-chat-header-actions">
-                            <button id="omniToggleAI" title="AI авто-відповіді">AI</button>
-                            <button id="omniCloseConv" title="Закрити розмову">Закрити</button>
+                            <button type="button" id="omniToggleAI" title="AI авто-відповіді">AI</button>
+                            <button type="button" id="omniCloseConv" title="Закрити розмову">Закрити</button>
                         </div>
                     </div>
                     <div class="omni-chat-messages" id="omniMessages" style="display:none"></div>
                     <div class="omni-quick-replies" id="omniQuickReplies" style="display:none"></div>
                     <div class="omni-chat-input" id="omniInputArea" style="display:none">
                         <textarea id="omniInput" rows="1" placeholder="Написати повідомлення..." maxlength="4000" aria-label="Повідомлення"></textarea>
-                        <button class="omni-send-btn" id="omniSendBtn" title="Відправити">&gt;</button>
+                        <button type="button" class="omni-send-btn" id="omniSendBtn" title="Відправити">&gt;</button>
                     </div>
                 </div>
             </div>
         </main>
     </div>
 
-    <script src="js/config.js?v=25.3.0"></script>
-    <script src="js/api.js?v=25.3.0"></script>
-    <script src="js/auth.js?v=25.3.0"></script>
-    <script src="js/components/sidebar.js?v=25.3.0"></script>
+    <script src="js/config.js?v=38.13.0"></script>
+    <script src="js/api.js?v=38.13.0"></script>
+    <script src="js/auth.js?v=38.13.0"></script>
+    <script src="js/components/sidebar.js?v=38.13.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=25.3.0"></script>
+    <script src="js/ws.js?v=38.13.0"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -631,7 +655,7 @@
 
         function renderQuickReplies() {
             quickRepliesEl.innerHTML = quickReplies.map(qr =>
-                '<button class="omni-quick-btn" data-content="' + esc(qr.content) + '">' + esc(qr.title) + '</button>'
+                '<button type="button" class="omni-quick-btn" data-content="' + esc(qr.content) + '">' + esc(qr.title) + '</button>'
             ).join('');
         }
 
@@ -832,6 +856,6 @@
         });
     })();
     </script>
-    <script src="js/role-panel.js?v=25.3.0"></script>
+    <script src="js/role-panel.js?v=38.13.0"></script>
 </body>
 </html>

@@ -1,229 +1,385 @@
 /**
- * routes/music.js — Music Center API (v19.0)
- * Announcements, playlists, scheduling.
+ * routes/music.js — Music Center API v33.15.0
+ * Announcements CRUD, real delivery, TTS, scheduling, playlists.
  */
 const router = require('express').Router();
 const { pool } = require('../db');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const { createLogger } = require('../utils/logger');
-
+const { deliverAnnouncement } = require('../services/music-delivery');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const log = createLogger('Music');
 
+// File upload for sound library
+const uploadSound = multer({
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => {
+            const dir = path.join(__dirname, '../uploads/sounds');
+            fs.mkdirSync(dir, { recursive: true });
+            cb(null, dir);
+        },
+        filename: (req, file, cb) =>
+            cb(null, Date.now() + '-' + file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_'))
+    }),
+    limits: { fileSize: 50 * 1024 * 1024 },
+    fileFilter: (req, file, cb) =>
+        cb(null, /\.(mp3|wav|ogg|m4a|aac)$/i.test(path.extname(file.originalname)))
+});
+
+// All music routes require authentication
+router.use(authenticateToken);
+
 // ============================================
-// Announcements
+// Announcements — CRUD
 // ============================================
 
-// GET /api/music/announcements — list announcements
 router.get('/announcements', async (req, res) => {
     try {
-        const { status, type } = req.query;
-        let query = 'SELECT * FROM announcements';
-        const conditions = [];
+        const { status, type, includeDeleted } = req.query;
+        const conds = includeDeleted ? [] : ['deleted_at IS NULL'];
         const params = [];
-        if (status) { params.push(status); conditions.push(`status = $${params.length}`); }
-        if (type) { params.push(type); conditions.push(`announcement_type = $${params.length}`); }
-        if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
-        query += ' ORDER BY priority DESC, created_at DESC';
-        const result = await pool.query(query, params);
-        res.json(result.rows);
-    } catch (err) {
-        log.error('List announcements error', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+        if (status) { params.push(status); conds.push(`status = $${params.length}`); }
+        if (type)   { params.push(type);   conds.push(`announcement_type = $${params.length}`); }
+        const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+        const r = await pool.query(
+            `SELECT * FROM announcements ${where} ORDER BY priority DESC, created_at DESC LIMIT 200`, params
+        );
+        res.json({ success: true, announcements: r.rows, total: r.rows.length });
+    } catch (err) { log.error('List announcements', err); res.status(500).json({ error: err.message }); }
 });
 
-// POST /api/music/announcements — create announcement
 router.post('/announcements', async (req, res) => {
     try {
-        const { title, text_content, announcement_type, schedule_type, scheduled_at, repeat_cron, duration_seconds, priority } = req.body;
-        if (!title || !text_content) {
-            return res.status(400).json({ error: 'Назва і текст обов\'язкові' });
-        }
-
-        const result = await pool.query(
-            `INSERT INTO announcements (title, text_content, announcement_type, schedule_type, scheduled_at, repeat_cron, duration_seconds, priority, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-            [title, text_content, announcement_type || 'promo', schedule_type || 'once',
-             scheduled_at || null, repeat_cron || null, duration_seconds || 30,
-             priority || 0, req.user?.username || 'system']
+        const { title, text_content, announcement_type, schedule_type, scheduled_at, repeat_cron, duration_seconds, priority, zone_id } = req.body;
+        if (!title?.trim() || !text_content?.trim()) return res.status(400).json({ error: 'Назва і текст обов\'язкові' });
+        const initStatus = scheduled_at ? 'scheduled' : 'draft';
+        const r = await pool.query(
+            `INSERT INTO announcements (title, text_content, announcement_type, schedule_type, scheduled_at, repeat_cron, duration_seconds, priority, zone_id, status, created_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+            [title.trim(), text_content.trim(), announcement_type || 'promo', schedule_type || 'once',
+             scheduled_at || null, repeat_cron || null, duration_seconds || 30, priority || 0,
+             zone_id || null, initStatus, req.user?.username || 'system']
         );
-        log.info(`Announcement created: ${title}`);
-        res.json({ success: true, announcement: result.rows[0] });
-    } catch (err) {
-        log.error('Create announcement error', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+        res.json({ success: true, announcement: r.rows[0] });
+    } catch (err) { log.error('Create announcement', err); res.status(500).json({ error: err.message }); }
 });
 
-// PUT /api/music/announcements/:id — update announcement
 router.put('/announcements/:id', async (req, res) => {
     try {
-        const { title, text_content, announcement_type, schedule_type, scheduled_at, repeat_cron, duration_seconds, priority, status } = req.body;
-        const result = await pool.query(
-            `UPDATE announcements SET title=$1, text_content=$2, announcement_type=$3,
-             schedule_type=$4, scheduled_at=$5, repeat_cron=$6, duration_seconds=$7,
-             priority=$8, status=$9 WHERE id=$10 RETURNING *`,
-            [title, text_content, announcement_type, schedule_type, scheduled_at || null,
-             repeat_cron || null, duration_seconds || 30, priority || 0,
-             status || 'draft', req.params.id]
+        const { title, text_content, announcement_type, schedule_type, scheduled_at, repeat_cron, duration_seconds, priority, status, zone_id } = req.body;
+        const r = await pool.query(
+            `UPDATE announcements SET title=$1, text_content=$2, announcement_type=$3, schedule_type=$4,
+             scheduled_at=$5, repeat_cron=$6, duration_seconds=$7, priority=$8, status=$9, zone_id=$10, updated_at=NOW()
+             WHERE id=$11 AND deleted_at IS NULL RETURNING *`,
+            [title, text_content, announcement_type, schedule_type, scheduled_at || null, repeat_cron || null,
+             duration_seconds || 30, priority || 0, status || 'draft', zone_id || null, req.params.id]
         );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Оголошення не знайдено' });
-        }
-        res.json({ success: true, announcement: result.rows[0] });
-    } catch (err) {
-        log.error('Update announcement error', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+        if (!r.rowCount) return res.status(404).json({ error: 'Не знайдено' });
+        res.json({ success: true, announcement: r.rows[0] });
+    } catch (err) { log.error('Update announcement', err); res.status(500).json({ error: err.message }); }
 });
 
-// DELETE /api/music/announcements/:id
 router.delete('/announcements/:id', async (req, res) => {
     try {
-        await pool.query('DELETE FROM announcements WHERE id = $1', [req.params.id]);
-        res.json({ success: true });
-    } catch (err) {
-        log.error('Delete announcement error', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// POST /api/music/announcements/:id/play — mark as played
-router.post('/announcements/:id/play', async (req, res) => {
-    try {
-        const result = await pool.query(
-            `UPDATE announcements SET played_count = played_count + 1, last_played_at = NOW()
-             WHERE id = $1 RETURNING *`,
+        const r = await pool.query(
+            `UPDATE announcements SET deleted_at=NOW(), status='archived' WHERE id=$1 AND deleted_at IS NULL RETURNING id`,
             [req.params.id]
         );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Оголошення не знайдено' });
-        }
+        if (!r.rowCount) return res.status(404).json({ error: 'Не знайдено' });
+        res.json({ success: true });
+    } catch (err) { log.error('Delete announcement', err); res.status(500).json({ error: err.message }); }
+});
 
-        // Log play action
+router.post('/announcements/:id/restore', async (req, res) => {
+    try {
+        await pool.query('UPDATE announcements SET deleted_at=NULL, status=\'draft\' WHERE id=$1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============================================
+// PLAY — real delivery
+// ============================================
+
+router.post('/announcements/:id/play', async (req, res) => {
+    try {
+        const { zone_id } = req.body;
+        const annRes = await pool.query('SELECT * FROM announcements WHERE id=$1 AND deleted_at IS NULL', [req.params.id]);
+        if (!annRes.rowCount) return res.status(404).json({ error: 'Не знайдено' });
+        const ann = annRes.rows[0];
+
+        const delivery = await deliverAnnouncement(ann, { triggeredBy: 'manual', zoneId: zone_id || ann.zone_id });
+
         await pool.query(
-            `INSERT INTO music_log (action, announcement_id, details)
-             VALUES ('play', $1, $2)`,
-            [req.params.id, JSON.stringify({ played_by: req.user?.username || 'system' })]
+            `UPDATE announcements SET played_count=played_count+1, last_played_at=NOW(),
+             last_delivery_status=$1, last_delivery_mode=$2, last_delivery_detail=$3, last_delivery_at=NOW()
+             WHERE id=$4`,
+            [delivery.success ? 'success' : 'failed', delivery.mode, delivery.detail, ann.id]
         );
 
-        res.json({ success: true, announcement: result.rows[0] });
-    } catch (err) {
-        log.error('Play announcement error', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+        await pool.query(
+            `INSERT INTO music_log (action, announcement_id, delivery_status, delivery_mode, delivery_detail, triggered_by, details)
+             VALUES ('play', $1, $2, $3, $4, 'manual', $5)`,
+            [ann.id, delivery.success ? 'success' : 'failed', delivery.mode, delivery.detail,
+             JSON.stringify({ played_by: req.user?.username || 'system', zone_id })]
+        );
+
+        res.json({ success: delivery.success, delivery, announcement: { id: ann.id, title: ann.title } });
+    } catch (err) { log.error('Play announcement', err); res.status(500).json({ error: err.message }); }
+});
+
+router.post('/announcements/:id/play-in', async (req, res) => {
+    try {
+        const mins = parseInt(req.body.minutes, 10);
+        if (!mins || mins < 1 || mins > 1440) return res.status(400).json({ error: 'minutes: 1-1440' });
+        const scheduledAt = new Date(Date.now() + mins * 60000).toISOString();
+        const r = await pool.query(
+            `UPDATE announcements SET status='scheduled', scheduled_at=$1, updated_at=NOW()
+             WHERE id=$2 AND deleted_at IS NULL RETURNING id, title`,
+            [scheduledAt, req.params.id]
+        );
+        if (!r.rowCount) return res.status(404).json({ error: 'Не знайдено' });
+        res.json({ success: true, scheduledAt, message: `Заплановано через ${mins} хв` });
+    } catch (err) { log.error('Play-in', err); res.status(500).json({ error: err.message }); }
 });
 
 // ============================================
 // Playlists
 // ============================================
 
-// GET /api/music/playlists — list playlists
 router.get('/playlists', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM playlists ORDER BY category, name');
-        res.json(result.rows);
-    } catch (err) {
-        log.error('List playlists error', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+        const r = await pool.query('SELECT * FROM playlists ORDER BY category, name LIMIT 500');
+        res.json({ success: true, playlists: r.rows });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /api/music/playlists — create playlist
 router.post('/playlists', async (req, res) => {
     try {
         const { name, description, category, tracks, schedule_start, schedule_end } = req.body;
-        if (!name) return res.status(400).json({ error: 'Назва обов\'язкова' });
-
-        const result = await pool.query(
+        if (!name?.trim()) return res.status(400).json({ error: 'Назва обов\'язкова' });
+        const r = await pool.query(
             `INSERT INTO playlists (name, description, category, tracks, schedule_start, schedule_end)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-            [name, description || null, category || 'background',
-             JSON.stringify(tracks || []), schedule_start || null, schedule_end || null]
+             VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+            [name.trim(), description || null, category || 'background', JSON.stringify(tracks || []),
+             schedule_start || null, schedule_end || null]
         );
-        log.info(`Playlist created: ${name}`);
-        res.json({ success: true, playlist: result.rows[0] });
-    } catch (err) {
-        log.error('Create playlist error', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+        res.json({ success: true, playlist: r.rows[0] });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// PUT /api/music/playlists/:id — update playlist
 router.put('/playlists/:id', async (req, res) => {
     try {
         const { name, description, category, tracks, schedule_start, schedule_end, is_active } = req.body;
-        const result = await pool.query(
+        const r = await pool.query(
             `UPDATE playlists SET name=$1, description=$2, category=$3, tracks=$4,
              schedule_start=$5, schedule_end=$6, is_active=$7 WHERE id=$8 RETURNING *`,
             [name, description, category, JSON.stringify(tracks || []),
              schedule_start || null, schedule_end || null, is_active !== false, req.params.id]
         );
-        if (result.rows.length === 0) return res.status(404).json({ error: 'Плейліст не знайдено' });
-        res.json({ success: true, playlist: result.rows[0] });
-    } catch (err) {
-        log.error('Update playlist error', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+        if (!r.rowCount) return res.status(404).json({ error: 'Не знайдено' });
+        res.json({ success: true, playlist: r.rows[0] });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// DELETE /api/music/playlists/:id
 router.delete('/playlists/:id', async (req, res) => {
     try {
-        await pool.query('DELETE FROM playlists WHERE id = $1', [req.params.id]);
+        await pool.query('DELETE FROM playlists WHERE id=$1', [req.params.id]);
         res.json({ success: true });
-    } catch (err) {
-        log.error('Delete playlist error', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ============================================
-// Music Log + Overview
+// Now Playing + Overview + Stats
 // ============================================
 
-// GET /api/music/log — recent actions
-router.get('/log', async (req, res) => {
+router.get('/now-playing', async (req, res) => {
     try {
-        const result = await pool.query(
-            `SELECT ml.*, a.title as announcement_title, p.name as playlist_name
-             FROM music_log ml
-             LEFT JOIN announcements a ON ml.announcement_id = a.id
-             LEFT JOIN playlists p ON ml.playlist_id = p.id
-             ORDER BY ml.created_at DESC LIMIT 50`
+        const r = await pool.query(
+            `SELECT ml.*, a.title, a.text_content, a.duration_seconds, a.announcement_type
+             FROM music_log ml LEFT JOIN announcements a ON a.id = ml.announcement_id
+             WHERE ml.action = 'play' AND ml.delivery_status = 'success'
+             ORDER BY ml.created_at DESC LIMIT 1`
         );
-        res.json(result.rows);
-    } catch (err) {
-        log.error('Music log error', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+        const scheduled = await pool.query(
+            `SELECT id, title, announcement_type, scheduled_at, duration_seconds
+             FROM announcements WHERE status='scheduled' AND scheduled_at > NOW() AND deleted_at IS NULL
+             ORDER BY scheduled_at ASC LIMIT 5`
+        );
+        res.json({ success: true, lastPlayed: r.rows[0] || null, upcoming: scheduled.rows });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// GET /api/music/overview — dashboard
 router.get('/overview', async (req, res) => {
     try {
-        const [announcements, playlists, today] = await Promise.all([
+        const [ann, pl, today] = await Promise.all([
             pool.query(`SELECT
-                COUNT(*) FILTER (WHERE status = 'active') as active,
-                COUNT(*) FILTER (WHERE status = 'draft') as draft,
-                COUNT(*) FILTER (WHERE status = 'scheduled') as scheduled,
-                SUM(played_count) as total_plays,
-                COUNT(*) as total
+                COUNT(*) FILTER (WHERE status='active' AND deleted_at IS NULL)::int AS active,
+                COUNT(*) FILTER (WHERE status='draft' AND deleted_at IS NULL)::int AS draft,
+                COUNT(*) FILTER (WHERE status='scheduled' AND deleted_at IS NULL)::int AS scheduled,
+                COALESCE(SUM(played_count) FILTER (WHERE deleted_at IS NULL), 0)::int AS total_plays
              FROM announcements`),
-            pool.query(`SELECT
-                COUNT(*) FILTER (WHERE is_active) as active,
-                COUNT(*) as total
-             FROM playlists`),
-            pool.query(`SELECT COUNT(*) as plays_today FROM music_log WHERE action = 'play' AND created_at > CURRENT_DATE`)
+            pool.query(`SELECT COUNT(*) FILTER (WHERE is_active)::int AS active, COUNT(*)::int AS total FROM playlists`),
+            pool.query(`SELECT COUNT(*)::int AS plays_today FROM music_log WHERE action='play' AND created_at>CURRENT_DATE`)
         ]);
-        res.json({
-            announcements: announcements.rows[0],
-            playlists: playlists.rows[0],
-            today: today.rows[0]
+        res.json({ success: true, announcements: ann.rows[0], playlists: pl.rows[0], today: today.rows[0] });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/log', async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit || '200'), 500);
+        const conditions = [];
+        const params = [];
+        let idx = 1;
+
+        if (req.query.action) {
+            conditions.push(`ml.action = $${idx++}`);
+            params.push(req.query.action);
+        }
+        if (req.query.from) {
+            conditions.push(`ml.created_at >= $${idx++}::date`);
+            params.push(req.query.from);
+        }
+        if (req.query.to) {
+            conditions.push(`ml.created_at < ($${idx++}::date + INTERVAL '1 day')`);
+            params.push(req.query.to);
+        }
+
+        const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+        params.push(limit);
+
+        const r = await pool.query(
+            `SELECT ml.*, a.title AS announcement_title, a.announcement_type
+             FROM music_log ml LEFT JOIN announcements a ON ml.announcement_id = a.id
+             ${where}
+             ORDER BY ml.created_at DESC LIMIT $${idx}`, params
+        );
+        res.json({ success: true, log: r.rows });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============================================
+// TTS Generation via Kie.ai
+// ============================================
+
+router.post('/announcements/:id/generate-tts', requireRole('admin', 'director', 'art_director'), async (req, res) => {
+    const id = parseInt(req.params.id);
+    try {
+        const ann = await pool.query('SELECT * FROM announcements WHERE id = $1', [id]);
+        if (!ann.rows.length) return res.status(404).json({ error: 'Не знайдено' });
+        const KIE_KEY = process.env.KIE_API_KEY;
+        if (!KIE_KEY) return res.status(501).json({ error: 'KIE_API_KEY не налаштовано' });
+
+        const payload = JSON.stringify({
+            model: 'elevenlabs/text-to-speech-multilingual-v2',
+            text: ann.rows[0].text_content,
+            voice: 'Rachel', language: 'uk'
         });
+        const kieRes = await new Promise((resolve, reject) => {
+            const r = require('https').request({
+                hostname: 'api.kie.ai', path: '/api/v1/audio/speech', method: 'POST',
+                headers: { 'Authorization': `Bearer ${KIE_KEY}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+            }, resp => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ error: d }); } }); });
+            r.on('error', reject); r.write(payload); r.end();
+        });
+
+        if (!kieRes.taskId && !kieRes.url)
+            return res.status(502).json({ error: 'TTS failed', detail: kieRes });
+
+        if (kieRes.url) {
+            await pool.query(
+                'UPDATE announcements SET voice_url=$1, voice_provider=$2, tts_generated=true WHERE id=$3',
+                [kieRes.url, 'elevenlabs', id]
+            );
+            return res.json({ ok: true, voiceUrl: kieRes.url, status: 'ready' });
+        }
+        res.json({ ok: true, taskId: kieRes.taskId, status: 'generating' });
     } catch (err) {
-        log.error('Overview error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        log.error('POST /generate-tts error', err);
+        res.status(500).json({ error: err.message });
     }
+});
+
+// ============================================
+// Sound Library CRUD (uses sounds table)
+// ============================================
+
+router.get('/library', async (req, res) => {
+    try {
+        const { category } = req.query;
+        const q = category
+            ? 'SELECT * FROM sounds WHERE category=$1 ORDER BY created_at DESC'
+            : 'SELECT * FROM sounds ORDER BY created_at DESC LIMIT 500';
+        const r = await pool.query(q, category ? [category] : []);
+        res.json({ sounds: r.rows });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/library/upload', uploadSound.single('file'), async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'Файл не обрано' });
+    try {
+        const r = await pool.query(
+            `INSERT INTO sounds (name, filename, file_path, category, file_size, uploaded_by)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+            [req.body.name || req.file.originalname, req.file.filename,
+             `/uploads/sounds/${req.file.filename}`, req.body.category || 'general',
+             req.file.size, req.user?.username || null]
+        );
+        res.json({ ok: true, id: r.rows[0].id, filename: req.file.filename });
+    } catch (err) { log.error('Upload sound error', err); res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/library/:id', requireRole('admin', 'director'), async (req, res) => {
+    try {
+        const r = await pool.query('SELECT * FROM sounds WHERE id=$1', [req.params.id]);
+        if (!r.rows.length) return res.status(404).json({ error: 'Не знайдено' });
+        if (r.rows[0].filename) {
+            const fp = path.join(__dirname, '../uploads/sounds', r.rows[0].filename);
+            if (fs.existsSync(fp)) fs.unlinkSync(fp);
+        }
+        await pool.query('DELETE FROM sounds WHERE id=$1', [req.params.id]);
+        res.json({ ok: true });
+    } catch (err) { log.error('Delete sound error', err); res.status(500).json({ error: err.message }); }
+});
+
+// ============================================
+// Sound Projects CRUD
+// ============================================
+
+router.get('/projects', async (req, res) => {
+    try {
+        const projects = await pool.query('SELECT * FROM sound_projects ORDER BY created_at DESC LIMIT 200');
+        const result = [];
+        for (const p of projects.rows) {
+            const tracks = await pool.query(
+                `SELECT s.* FROM sounds s JOIN sound_project_tracks t ON t.sound_id = s.id
+                 WHERE t.project_id = $1 ORDER BY t.sort_order`, [p.id]);
+            result.push({ ...p, tracks: tracks.rows });
+        }
+        res.json({ projects: result });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/projects', async (req, res) => {
+    const { name, type = 'quest', description } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Назва обов\'язкова' });
+    try {
+        const r = await pool.query(
+            'INSERT INTO sound_projects (name, type, description) VALUES ($1,$2,$3) RETURNING *',
+            [name.trim(), type, description || null]);
+        res.json({ ok: true, project: r.rows[0] });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/projects/:id', requireRole('admin', 'director'), async (req, res) => {
+    try {
+        const r = await pool.query('DELETE FROM sound_projects WHERE id=$1 RETURNING id', [req.params.id]);
+        if (!r.rowCount) return res.status(404).json({ error: 'Не знайдено' });
+        res.json({ ok: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = router;

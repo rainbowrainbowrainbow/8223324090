@@ -58,7 +58,8 @@
         });
 
         // Refresh every 2 minutes
-        setInterval(loadAgentStatus, 120000);
+        const _agentInterval = setInterval(loadAgentStatus, 120000);
+        window.addEventListener('beforeunload', () => clearInterval(_agentInterval));
     }
 
     // ==========================================
@@ -85,11 +86,11 @@
             container.innerHTML = agents.map(a => {
                 const icon = AGENT_ICONS[a.agentTag] || '❓';
                 const statusDot = a.isOnline ? '🟢' : '⚪';
-                const shortSummary = (a.lastSummary || '').substring(0, 40);
-                return `<div class="agent-status-item" title="${a.lastSummary || 'Немає даних'}">
+                const shortSummary = escapeHtml((a.lastSummary || '').substring(0, 40));
+                return `<div class="agent-status-item" title="${escapeHtml(a.lastSummary || 'Немає даних')}">
                     <span class="agent-status-dot">${statusDot}</span>
                     <span class="agent-status-icon">${icon}</span>
-                    <span class="agent-status-name">${a.agentTag}</span>
+                    <span class="agent-status-name">${escapeHtml(a.agentTag)}</span>
                     <span class="agent-status-summary">${shortSummary}</span>
                 </div>`;
             }).join('');

@@ -2,6 +2,11 @@
  * settings.js - Історія, каталог програм, лінії/аніматори, Telegram, налаштування
  */
 
+function _escS(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // ==========================================
 // ПОКАЗ ІСТОРІЇ
 // ==========================================
@@ -14,7 +19,7 @@ async function showHistory() {
     if (!canViewHistory()) return;
     historyCurrentOffset = 0;
     await loadHistoryPage();
-    document.getElementById('historyModal').classList.remove('hidden');
+    document.getElementById('historyModal')?.classList.remove('hidden');
 }
 
 function getHistoryFilters() {
@@ -175,7 +180,7 @@ async function showProgramsCatalog() {
             html += `
                 <div class="catalog-program-card ${cat}${inactiveClass}" data-product-id="${p.id}">
                     <div class="catalog-program-header">
-                        <span class="catalog-icon">${p.icon}</span>
+                        <span class="catalog-icon">${_escS(p.icon)}</span>
                         <div class="catalog-program-info">
                             <span class="catalog-program-name">${escapeHtml(p.name)}${p.isActive === false ? ' <span class="catalog-badge-inactive">неактивна</span>' : ''}</span>
                             <span class="catalog-program-meta">${priceText}${infoItems ? ' · ' + infoItems : ''}</span>
@@ -216,7 +221,7 @@ async function openProductForm(productId) {
         // Load product data
         const product = await apiGetProduct(productId);
         if (!product) {
-            alert('Не вдалося завантажити програму');
+            showNotification('Не вдалося завантажити програму', 'error');
             return;
         }
 
@@ -252,12 +257,12 @@ async function saveProduct() {
     const form = document.getElementById('productForm');
     const productId = form.dataset.productId;
 
-    const code = document.getElementById('pf-code').value.trim();
-    const label = document.getElementById('pf-label').value.trim();
-    const name = document.getElementById('pf-name').value.trim();
+    const code = document.getElementById('pf-code')?.value.trim();
+    const label = document.getElementById('pf-label')?.value.trim();
+    const name = document.getElementById('pf-name')?.value.trim();
 
     if (!code || !label || !name) {
-        alert('Заповніть обов\'язкові поля: Код, Мітка, Назва');
+        showNotification('Заповніть поля: Код, Мітка, Назва', 'error');
         return;
     }
 
@@ -265,18 +270,18 @@ async function saveProduct() {
         code,
         label,
         name,
-        icon: document.getElementById('pf-icon').value.trim(),
-        category: document.getElementById('pf-category').value,
-        duration: parseInt(document.getElementById('pf-duration').value) || 0,
-        price: parseInt(document.getElementById('pf-price').value) || 0,
-        hosts: parseInt(document.getElementById('pf-hosts').value) || 1,
-        ageRange: document.getElementById('pf-age').value.trim() || null,
-        kidsCapacity: document.getElementById('pf-kids').value.trim() || null,
-        description: document.getElementById('pf-description').value.trim() || null,
-        isPerChild: document.getElementById('pf-perchild').checked,
-        hasFiller: document.getElementById('pf-filler').checked,
-        isActive: document.getElementById('pf-active').checked,
-        sortOrder: parseInt(document.getElementById('pf-sort').value) || 0
+        icon: document.getElementById('pf-icon')?.value.trim(),
+        category: document.getElementById('pf-category')?.value,
+        duration: parseInt(document.getElementById('pf-duration')?.value) || 0,
+        price: parseInt(document.getElementById('pf-price')?.value) || 0,
+        hosts: parseInt(document.getElementById('pf-hosts')?.value) || 1,
+        ageRange: document.getElementById('pf-age')?.value.trim() || null,
+        kidsCapacity: document.getElementById('pf-kids')?.value.trim() || null,
+        description: document.getElementById('pf-description')?.value.trim() || null,
+        isPerChild: document.getElementById('pf-perchild')?.checked,
+        hasFiller: document.getElementById('pf-filler')?.checked,
+        isActive: document.getElementById('pf-active')?.checked,
+        sortOrder: parseInt(document.getElementById('pf-sort')?.value) || 0
     };
 
     let result;
@@ -287,14 +292,14 @@ async function saveProduct() {
     }
 
     if (result.success) {
-        document.getElementById('productFormModal').classList.add('hidden');
+        document.getElementById('productFormModal')?.classList.add('hidden');
         // Invalidate products cache
         AppState.products = null;
         AppState.productsLoadedAt = 0;
         // Refresh catalog
         await showProgramsCatalog();
     } else {
-        alert('Помилка: ' + (result.error || 'Невідома помилка'));
+        showNotification(result.error || 'Помилка', 'error');
     }
 }
 
@@ -308,7 +313,7 @@ async function deleteProduct(productId) {
         AppState.productsLoadedAt = 0;
         await showProgramsCatalog();
     } else {
-        alert('Помилка: ' + (result.error || 'Невідома помилка'));
+        showNotification(result.error || 'Помилка', 'error');
     }
 }
 
@@ -330,14 +335,14 @@ function showNoteModal() {
 
         function cleanup() {
             modal.classList.add('hidden');
-            document.getElementById('noteModalOk').removeEventListener('click', onOk);
-            document.getElementById('noteModalCancel').removeEventListener('click', onCancel);
+            document.getElementById('noteModalOk')?.removeEventListener('click', onOk);
+            document.getElementById('noteModalCancel')?.removeEventListener('click', onCancel);
         }
         function onOk() { cleanup(); resolve(input.value || ''); }
         function onCancel() { cleanup(); resolve(null); }
 
-        document.getElementById('noteModalOk').addEventListener('click', onOk);
-        document.getElementById('noteModalCancel').addEventListener('click', onCancel);
+        document.getElementById('noteModalOk')?.addEventListener('click', onOk);
+        document.getElementById('noteModalCancel')?.addEventListener('click', onCancel);
         input.focus();
     });
 }
@@ -419,7 +424,7 @@ async function editLineModal(lineId) {
 
     populateAnimatorsSelect();
 
-    document.getElementById('editLineModal').classList.remove('hidden');
+    document.getElementById('editLineModal')?.classList.remove('hidden');
 }
 
 function getSavedAnimators() {
@@ -447,7 +452,7 @@ function saveAnimatorsList() {
 function showAnimatorsModal() {
     const animators = getSavedAnimators();
     document.getElementById('animatorsList').value = animators.join('\n');
-    document.getElementById('animatorsModal').classList.remove('hidden');
+    document.getElementById('animatorsModal')?.classList.remove('hidden');
 }
 
 function populateAnimatorsSelect() {
@@ -468,13 +473,13 @@ function populateAnimatorsSelect() {
 async function handleEditLine(e) {
     e.preventDefault();
 
-    const lineId = document.getElementById('editLineId').value;
+    const lineId = document.getElementById('editLineId')?.value;
     const lines = await getLinesForDate(AppState.selectedDate);
     const index = lines.findIndex(l => l.id === lineId);
 
     if (index !== -1) {
         // v5.9: Validate empty name
-        const newName = document.getElementById('editLineName').value.trim();
+        const newName = document.getElementById('editLineName')?.value.trim();
         if (!newName) {
             showNotification('Введіть ім\'я аніматора', 'error');
             return;
@@ -486,7 +491,7 @@ async function handleEditLine(e) {
             return;
         }
         lines[index].name = newName;
-        lines[index].color = document.getElementById('editLineColor').value;
+        lines[index].color = document.getElementById('editLineColor')?.value;
         await saveLinesForDate(AppState.selectedDate, lines);
 
         closeAllModals();
@@ -496,7 +501,7 @@ async function handleEditLine(e) {
 }
 
 async function deleteLine() {
-    const lineId = document.getElementById('editLineId').value;
+    const lineId = document.getElementById('editLineId')?.value;
     const lines = await getLinesForDate(AppState.selectedDate);
 
     if (lines.length <= 1) {
@@ -634,7 +639,7 @@ async function fetchAndRenderThreads() {
         const data = await response.json();
         if (data.threads && data.threads.length > 0) {
             container.innerHTML = data.threads.map(t =>
-                `<div class="telegram-chat-item" onclick="document.getElementById('settingsTelegramThreadId').value='${t.thread_id}'">
+                `<div class="telegram-chat-item" onclick="document.getElementById('settingsTelegramThreadId').value = '${t.thread_id}'">
                     <strong>${escapeHtml(t.title || 'Тема #' + t.thread_id)}</strong> <span class="chat-id">ID: ${t.thread_id}</span>
                 </div>`
             ).join('');
@@ -659,7 +664,7 @@ async function showTelegramSetup() {
 }
 
 async function saveTelegramChatId() {
-    const chatId = document.getElementById('telegramChatId').value.trim();
+    const chatId = document.getElementById('telegramChatId')?.value.trim();
     if (!chatId) {
         showNotification('Введіть Chat ID', 'error');
         return;
@@ -723,6 +728,28 @@ async function showSettings() {
     const autoDelHours = document.getElementById('settingsAutoDeleteHours');
     if (autoDelHours) autoDelHours.value = autoDeleteHours || '10';
 
+    // v33.4: Load language setting
+    const lang = await apiGetSetting('language');
+    const langSelect = document.getElementById('settingsLanguage');
+    if (langSelect) langSelect.value = lang || 'uk';
+    const saveLangBtn = document.getElementById('saveLanguageBtn');
+    if (saveLangBtn) {
+        saveLangBtn.onclick = async () => {
+            const val = document.getElementById('settingsLanguage')?.value || 'uk';
+            try {
+                const res = await fetch(`${API_BASE}/settings/language`, {
+                    method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify({ value: val })
+                });
+                if (res.ok) {
+                    localStorage.setItem('crm_lang', val);
+                    showToast('✅ Мову збережено. Перезавантажте сторінку для повної зміни.');
+                } else {
+                    showToast('❌ Помилка збереження мови', 'error');
+                }
+            } catch (e) { showToast('❌ ' + e.message, 'error'); }
+        };
+    }
+
     // v12.6: Load contractors
     const contractorsSection = document.getElementById('settingsContractorsSection');
     if (contractorsSection) {
@@ -739,7 +766,7 @@ async function showSettings() {
 
     // v8.4: Certificates moved to timeline panel (see openCertificatesPanel)
 
-    document.getElementById('settingsModal').classList.remove('hidden');
+    document.getElementById('settingsModal')?.classList.remove('hidden');
     fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
     fetchAndRenderThreads();
 }
@@ -834,7 +861,7 @@ function saveAnimatorsListFromSettings() {
 }
 
 async function saveTelegramChatIdFromSettings() {
-    const chatId = document.getElementById('settingsTelegramChatId').value.trim();
+    const chatId = document.getElementById('settingsTelegramChatId')?.value.trim();
     if (!chatId) {
         showNotification('Введіть Chat ID', 'error');
         return;
@@ -1442,18 +1469,18 @@ async function editAfishaItem(id) {
     if (durGroup) durGroup.style.display = isBirthday ? 'none' : '';
 
     modal.classList.remove('hidden');
-    document.getElementById('afishaEditName').focus();
+    document.getElementById('afishaEditName')?.focus();
 }
 
 // v8.0: Handle afisha edit form submit
 async function handleAfishaEditSubmit(e) {
     e.preventDefault();
-    const id = document.getElementById('afishaEditId').value;
-    const type = document.getElementById('afishaEditType').value;
-    const title = document.getElementById('afishaEditName').value.trim();
-    const date = document.getElementById('afishaEditDate').value;
-    const time = document.getElementById('afishaEditTime').value;
-    const duration = type === 'birthday' ? 15 : (parseInt(document.getElementById('afishaEditDuration').value) || 60);
+    const id = document.getElementById('afishaEditId')?.value;
+    const type = document.getElementById('afishaEditType')?.value;
+    const title = document.getElementById('afishaEditName')?.value.trim();
+    const date = document.getElementById('afishaEditDate')?.value;
+    const time = document.getElementById('afishaEditTime')?.value;
+    const duration = type === 'birthday' ? 15 : (parseInt(document.getElementById('afishaEditDuration')?.value) || 60);
     const description = document.getElementById('afishaEditDescription')?.value.trim() || '';
 
     if (!title || !date || !time) {
@@ -1468,7 +1495,7 @@ async function handleAfishaEditSubmit(e) {
 
     const result = await apiUpdateAfisha(id, { date, time, title, duration, type, description });
     if (result && result.success) {
-        document.getElementById('afishaEditModal').classList.add('hidden');
+        document.getElementById('afishaEditModal')?.classList.add('hidden');
         showNotification('Подію оновлено', 'success');
         await renderAfishaList();
         if (formatDate(AppState.selectedDate) === oldDate || formatDate(AppState.selectedDate) === date) {
@@ -2031,20 +2058,20 @@ async function editTask(id) {
     document.getElementById('taskEditAssigned').value = task.assigned_to || '';
     document.getElementById('taskEditCategory').value = task.category || 'admin';
 
-    document.getElementById('taskEditModal').classList.remove('hidden');
-    document.getElementById('taskEditTitle').focus();
+    document.getElementById('taskEditModal')?.classList.remove('hidden');
+    document.getElementById('taskEditTitle')?.focus();
 }
 
 // v8.0: Handle task edit form submit
 async function handleTaskEditSubmit(e) {
     e.preventDefault();
-    const id = document.getElementById('taskEditId').value;
-    const title = document.getElementById('taskEditTitle').value.trim();
-    const description = document.getElementById('taskEditDescription').value.trim();
-    const date = document.getElementById('taskEditDate').value || null;
-    const priority = document.getElementById('taskEditPriority').value || 'normal';
-    const assigned_to = document.getElementById('taskEditAssigned').value.trim() || null;
-    const category = document.getElementById('taskEditCategory').value || 'admin';
+    const id = document.getElementById('taskEditId')?.value;
+    const title = document.getElementById('taskEditTitle')?.value.trim();
+    const description = document.getElementById('taskEditDescription')?.value.trim();
+    const date = document.getElementById('taskEditDate')?.value || null;
+    const priority = document.getElementById('taskEditPriority')?.value || 'normal';
+    const assigned_to = document.getElementById('taskEditAssigned')?.value.trim() || null;
+    const category = document.getElementById('taskEditCategory')?.value || 'admin';
 
     if (!title) {
         showNotification('Введіть назву', 'error');
@@ -2058,7 +2085,7 @@ async function handleTaskEditSubmit(e) {
 
     const result = await apiUpdateTask(id, { title, description, date, status, priority, assigned_to, category });
     if (result && result.success) {
-        document.getElementById('taskEditModal').classList.add('hidden');
+        document.getElementById('taskEditModal')?.classList.add('hidden');
         showNotification('Завдання оновлено', 'success');
         await renderTasksList();
     }
@@ -2085,7 +2112,7 @@ function showImprovementFab() {
 
 async function handleImprovementSubmit(e) {
     e.preventDefault();
-    const title = document.getElementById('improvementTitle').value.trim();
+    const title = document.getElementById('improvementTitle')?.value.trim();
     const description = document.getElementById('improvementDescription')?.value.trim() || null;
     if (!title) {
         showNotification('Введіть опис ідеї', 'error');
@@ -2105,7 +2132,7 @@ async function handleImprovementSubmit(e) {
     if (result && result.success) {
         document.getElementById('improvementTitle').value = '';
         document.getElementById('improvementDescription').value = '';
-        document.getElementById('improvementModal').classList.add('hidden');
+        document.getElementById('improvementModal')?.classList.add('hidden');
         showNotification('Ідею надіслано в задачі!', 'success');
     } else {
         showNotification('Помилка надсилання', 'error');
@@ -2202,7 +2229,7 @@ async function deleteAutomationRule(id) {
 function showAddAutomationRule() {
     const modal = document.getElementById('automationRuleModal');
     if (!modal) return;
-    document.getElementById('automationRuleForm').reset();
+    document.getElementById('automationRuleForm')?.reset();
     document.getElementById('arDaysBefore').value = '3';
     document.getElementById('arTaskTitle').value = '📋 Підготовка до {programName} на {date}';
     document.getElementById('arContractorTemplate').value = '🔔 <b>Нове замовлення</b>\n\n📅 {date} о {time}\n🏠 {room}\n👶 Дітей: {kidsCount}';
@@ -2210,20 +2237,20 @@ function showAddAutomationRule() {
     if (wrap) wrap.classList.add('hidden');
     populateContractorSelect();
     modal.classList.remove('hidden');
-    document.getElementById('arName').focus();
+    document.getElementById('arName')?.focus();
 }
 
 async function handleAutomationRuleSubmit(e) {
     e.preventDefault();
-    const name = document.getElementById('arName').value.trim();
-    const productIds = document.getElementById('arProductIds').value.trim();
-    const triggerType = document.getElementById('arTriggerType').value;
-    const daysBefore = parseInt(document.getElementById('arDaysBefore').value) || 0;
-    const taskTitle = document.getElementById('arTaskTitle').value.trim();
-    const sendTelegram = document.getElementById('arSendTelegram').checked;
-    const notifyContractor = document.getElementById('arNotifyContractor').checked;
-    const contractorId = document.getElementById('arContractorId').value;
-    const contractorTemplate = document.getElementById('arContractorTemplate').value.trim();
+    const name = document.getElementById('arName')?.value.trim();
+    const productIds = document.getElementById('arProductIds')?.value.trim();
+    const triggerType = document.getElementById('arTriggerType')?.value;
+    const daysBefore = parseInt(document.getElementById('arDaysBefore')?.value) || 0;
+    const taskTitle = document.getElementById('arTaskTitle')?.value.trim();
+    const sendTelegram = document.getElementById('arSendTelegram')?.checked;
+    const notifyContractor = document.getElementById('arNotifyContractor')?.checked;
+    const contractorId = document.getElementById('arContractorId')?.value;
+    const contractorTemplate = document.getElementById('arContractorTemplate')?.value.trim();
 
     if (!name || !productIds || !taskTitle) {
         showNotification('Заповніть всі поля', 'error');
@@ -2269,7 +2296,7 @@ async function handleAutomationRuleSubmit(e) {
         });
         const data = await response.json();
         if (data.success) {
-            document.getElementById('automationRuleModal').classList.add('hidden');
+            document.getElementById('automationRuleModal')?.classList.add('hidden');
             showNotification('Правило створено!', 'success');
             renderAutomationRules();
         } else {
@@ -2309,7 +2336,7 @@ async function renderContractors() {
     container.innerHTML = contractors.map(c => {
         const specs = (c.specialty || []).join(', ') || '—';
         const connected = c.telegram_chat_id ? '🟢' : '🔴';
-        const tgInfo = c.telegram_username ? `@${c.telegram_username}` : (c.telegram_chat_id ? `ID: ${c.telegram_chat_id}` : 'не підключено');
+        const tgInfo = c.telegram_username ? `@${_escS(c.telegram_username)}` : (c.telegram_chat_id ? `ID: ${c.telegram_chat_id}` : 'не підключено');
         const activeClass = c.is_active ? '' : ' rule-inactive';
         return `
         <div class="automation-rule${activeClass}" data-id="${c.id}">
@@ -2336,11 +2363,11 @@ async function renderContractors() {
 function showAddContractor() {
     const modal = document.getElementById('contractorModal');
     if (!modal) return;
-    document.getElementById('contractorForm').reset();
+    document.getElementById('contractorForm')?.reset();
     document.getElementById('contractorEditId').value = '';
     document.getElementById('contractorModalTitle').textContent = '🤝 Новий підрядник';
     modal.classList.remove('hidden');
-    document.getElementById('contractorName').focus();
+    document.getElementById('contractorName')?.focus();
 }
 
 async function showEditContractor(id) {
@@ -2361,13 +2388,13 @@ async function showEditContractor(id) {
 
 async function handleContractorSubmit(e) {
     e.preventDefault();
-    const editId = document.getElementById('contractorEditId').value;
-    const name = document.getElementById('contractorName').value.trim();
-    const specialtyStr = document.getElementById('contractorSpecialty').value.trim();
-    const telegramChatId = document.getElementById('contractorTelegramId').value.trim();
-    const telegramUsername = document.getElementById('contractorTelegramUser').value.trim();
-    const phone = document.getElementById('contractorPhone').value.trim();
-    const notes = document.getElementById('contractorNotes').value.trim();
+    const editId = document.getElementById('contractorEditId')?.value;
+    const name = document.getElementById('contractorName')?.value.trim();
+    const specialtyStr = document.getElementById('contractorSpecialty')?.value.trim();
+    const telegramChatId = document.getElementById('contractorTelegramId')?.value.trim();
+    const telegramUsername = document.getElementById('contractorTelegramUser')?.value.trim();
+    const phone = document.getElementById('contractorPhone')?.value.trim();
+    const notes = document.getElementById('contractorNotes')?.value.trim();
 
     if (!name) {
         showNotification("Вкажіть ім'я підрядника", 'error');
@@ -2395,7 +2422,7 @@ async function handleContractorSubmit(e) {
         });
         const data = await response.json();
         if (data.success) {
-            document.getElementById('contractorModal').classList.add('hidden');
+            document.getElementById('contractorModal')?.classList.add('hidden');
             showNotification(editId ? 'Підрядника оновлено!' : 'Підрядника додано!', 'success');
             renderContractors();
             populateContractorSelect(); // refresh dropdown in automation rules
@@ -2475,7 +2502,7 @@ async function populateContractorSelect() {
 }
 
 function toggleContractorSelect() {
-    const checked = document.getElementById('arNotifyContractor').checked;
+    const checked = document.getElementById('arNotifyContractor')?.checked;
     const wrap = document.getElementById('arContractorSelectWrap');
     if (wrap) wrap.classList.toggle('hidden', !checked);
     if (checked) populateContractorSelect();
@@ -2560,7 +2587,7 @@ async function loadCertificates() {
         const issuedDate = cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('uk-UA') : '—';
         return `<div class="cert-card cert-status-${cert.status}" onclick="showCertDetail(${cert.id})" data-cert-id="${cert.id}">
             <div class="cert-card-header">
-                <span class="cert-code">${cert.certCode}</span>
+                <span class="cert-code">${_escS(cert.certCode)}</span>
                 ${statusBadge}
             </div>
             <div class="cert-card-body">
@@ -2604,7 +2631,7 @@ function showCreateCertificateModal() {
     const modal = document.getElementById('certificateModal');
     if (!modal) return;
     document.getElementById('certModalTitle').textContent = '📄 Видати сертифікат';
-    document.getElementById('certificateForm').reset();
+    document.getElementById('certificateForm')?.reset();
     // Reset display mode label
     const modeSelect = document.getElementById('certDisplayMode');
     if (modeSelect) modeSelect.value = 'fio';
@@ -2613,7 +2640,7 @@ function showCreateCertificateModal() {
     const presetSel = document.getElementById('certTypePreset');
     if (presetSel) presetSel.value = 'на одноразовий вхід';
     document.getElementById('certTypeText').value = 'на одноразовий вхід';
-    document.getElementById('certTypeText').classList.add('hidden');
+    document.getElementById('certTypeText')?.classList.add('hidden');
     // Auto valid_until = today + 45 days (no editing)
     const d = new Date();
     d.setDate(d.getDate() + 45);
@@ -2628,8 +2655,8 @@ function showCreateCertificateModal() {
 function showBatchCertificateModal() {
     const modal = document.getElementById('batchCertModal');
     if (!modal) return;
-    document.getElementById('batchCertForm').reset();
-    document.getElementById('batchCertResult').classList.add('hidden');
+    document.getElementById('batchCertForm')?.reset();
+    document.getElementById('batchCertResult')?.classList.add('hidden');
     document.getElementById('batchCertSubmitBtn').disabled = false;
     document.getElementById('batchCertSubmitBtn').textContent = '📦 Згенерувати';
     // Auto valid_until = today + 45 days (no editing)
@@ -2653,10 +2680,10 @@ async function handleBatchCertSubmit(event) {
     if (!qtyInput) return showNotification('Оберіть кількість', 'error');
     const quantity = parseInt(qtyInput.value);
     const eventName = (document.getElementById('batchCertEventName')?.value || '').trim();
-    const baseType = document.getElementById('batchCertType').value;
+    const baseType = document.getElementById('batchCertType')?.value;
     const typeText = eventName || baseType;
-    const validUntil = document.getElementById('batchCertValidUntil').value || undefined;
-    const season = document.getElementById('batchCertSeason').value || getCertCurrentSeason();
+    const validUntil = document.getElementById('batchCertValidUntil')?.value || undefined;
+    const season = document.getElementById('batchCertSeason')?.value || getCertCurrentSeason();
 
     btn.disabled = true;
     btn.textContent = `⏳ Генерація ${quantity} шт...`;
@@ -2672,7 +2699,7 @@ async function handleBatchCertSubmit(event) {
     const codes = result.certificates.map(c => c.certCode);
     const codesDiv = document.getElementById('batchCertCodes');
     codesDiv.innerHTML = codes.map((code, i) => `<div style="padding:4px 0;border-bottom:1px solid rgba(0,0,0,0.06)">${i + 1}. <b>${code}</b></div>`).join('');
-    document.getElementById('batchCertResult').classList.remove('hidden');
+    document.getElementById('batchCertResult')?.classList.remove('hidden');
     btn.textContent = `✅ Згенеровано ${quantity} сертифікатів`;
 
     showNotification(`Згенеровано ${quantity} сертифікатів`, 'success');
@@ -2690,7 +2717,7 @@ function copyBatchCodes() {
 }
 
 function onCertDisplayModeChange() {
-    const mode = document.getElementById('certDisplayMode').value;
+    const mode = document.getElementById('certDisplayMode')?.value;
     const label = document.getElementById('certDisplayValueLabel');
     if (label) {
         label.textContent = mode === 'fio' ? 'ПІБ (прізвище та ім\'я)' : 'Номер або ідентифікатор';
@@ -2698,7 +2725,7 @@ function onCertDisplayModeChange() {
 }
 
 function onCertTypePresetChange() {
-    const preset = document.getElementById('certTypePreset').value;
+    const preset = document.getElementById('certTypePreset')?.value;
     const textInput = document.getElementById('certTypeText');
     if (preset === 'custom') {
         textInput.value = '';
@@ -2730,17 +2757,17 @@ function initCertSeasonButtons(rowId, hiddenId) {
 async function handleCertificateSubmit(event) {
     event.preventDefault();
     const data = {
-        displayMode: document.getElementById('certDisplayMode').value,
-        displayValue: document.getElementById('certDisplayValue').value.trim(),
-        typeText: document.getElementById('certTypeText').value.trim() || 'на одноразовий вхід',
-        validUntil: document.getElementById('certValidUntil').value || undefined,
-        notes: document.getElementById('certNotes').value.trim() || undefined,
-        season: document.getElementById('certSeason').value || getCertCurrentSeason()
+        displayMode: document.getElementById('certDisplayMode')?.value,
+        displayValue: document.getElementById('certDisplayValue')?.value.trim(),
+        typeText: document.getElementById('certTypeText')?.value.trim() || 'на одноразовий вхід',
+        validUntil: document.getElementById('certValidUntil')?.value || undefined,
+        notes: document.getElementById('certNotes')?.value.trim() || undefined,
+        season: document.getElementById('certSeason')?.value || getCertCurrentSeason()
     };
 
     const result = await apiCreateCertificate(data);
     if (result.success) {
-        document.getElementById('certificateModal').classList.add('hidden');
+        document.getElementById('certificateModal')?.classList.add('hidden');
         showNotification(`Сертифікат ${result.certificate.certCode} видано!`, 'success');
         loadCertificates();
         // Одразу показати деталі нового сертифіката
@@ -2863,7 +2890,7 @@ async function deleteCertificate(id) {
 
     const result = await apiDeleteCertificate(id);
     if (result.success) {
-        document.getElementById('certDetailModal').classList.add('hidden');
+        document.getElementById('certDetailModal')?.classList.add('hidden');
         showNotification('Сертифікат видалено', 'success');
         loadCertificates();
     } else {

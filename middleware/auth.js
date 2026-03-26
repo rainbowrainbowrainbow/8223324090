@@ -55,20 +55,22 @@ const PAGE_ACCESS = {
     '/dashboard': ROLE_HIERARCHY,  // Everyone
     '/':          ALL_STAFF,
     '/tasks':     ALL_STAFF,
-    '/center':    MANAGEMENT_UP,
-    '/art':       [...MANAGEMENT_UP, 'art_director'],
+    '/center':    MANAGER_UP,
+    '/art':       [...MANAGER_UP, 'art_director', 'marketer'],
+    '/graduation': [...MANAGER_UP, 'admin', 'art_director', 'marketer'],
     '/customers': [...ADMIN_UP, 'reception'],
-    '/staff':     [...MANAGEMENT_UP, 'hr'],
-    '/warehouse': [...MANAGEMENT_UP, 'admin'],
+    '/staff':     [...MANAGER_UP, 'hr'],
+    '/warehouse': [...MANAGER_UP, 'admin'],
     '/training':  [...MANAGER_UP, 'senior_instructor', 'instructor'],
     '/settings':  ['creator', 'director'],
     '/demo':      MANAGER_UP,
     '/programs':  [...ADMIN_UP, 'senior_instructor'],
-    '/hr':        [...MANAGEMENT_UP, 'hr'],
+    '/hr':        [...MANAGER_UP, 'hr'],
     '/chat':      ALL_STAFF,
     '/finance':   ['creator', 'director', 'accountant'],
-    '/analytics': MANAGEMENT_UP,
-    '/status':    MANAGEMENT_UP,
+    '/analytics': MANAGER_UP,
+    '/status':    MANAGER_UP,
+    '/sound':     [...MANAGER_UP, 'art_director'],
 };
 
 // v22.0.0: Action permissions matrix for timeline
@@ -80,10 +82,10 @@ const ACTION_PERMISSIONS = {
     view_all:        ADMIN_UP,
     view_own:        ['senior_instructor', 'instructor', 'animator', 'reception'],
     manage_users:    ['creator', 'director'],
-    view_revenue:    [...MANAGEMENT_UP, 'accountant'],
+    view_revenue:    [...MANAGER_UP, 'accountant'],
     manage_settings: ['creator', 'director'],
-    export_data:     MANAGEMENT_UP,
-    manage_staff:    [...MANAGEMENT_UP, 'hr'],
+    export_data:     MANAGER_UP,
+    manage_staff:    [...MANAGER_UP, 'hr'],
 };
 
 function authenticateToken(req, res, next) {
@@ -99,9 +101,19 @@ function authenticateToken(req, res, next) {
         if (user.id) {
             const cacheKey = `activity_${user.id}`;
             const now = Date.now();
-            if (!authenticateToken._activityCache) authenticateToken._activityCache = {};
-            if (!authenticateToken._activityCache[cacheKey] || now - authenticateToken._activityCache[cacheKey] > 60000) {
-                authenticateToken._activityCache[cacheKey] = now;
+            if (!authenticateToken._activityCache) {
+                authenticateToken._activityCache = new Map();
+                // Cleanup stale entries every 10 minutes
+                authenticateToken._activityCleanup = setInterval(() => {
+                    const cutoff = Date.now() - 120000;
+                    for (const [k, v] of authenticateToken._activityCache) {
+                        if (v < cutoff) authenticateToken._activityCache.delete(k);
+                    }
+                }, 600000);
+                if (authenticateToken._activityCleanup.unref) authenticateToken._activityCleanup.unref();
+            }
+            if (!authenticateToken._activityCache.has(cacheKey) || now - authenticateToken._activityCache.get(cacheKey) > 60000) {
+                authenticateToken._activityCache.set(cacheKey, now);
                 pool.query(
                     'UPDATE employee_profiles SET last_activity_at = NOW() WHERE user_id = $1',
                     [user.id]
@@ -170,12 +182,155 @@ function requireAction(action) {
 // Convenience: all roles that can access gamification features
 const ANY_ROLE = ROLE_HIERARCHY;
 
+// v38.4.0: Refresh token utilities
+const REFRESH_TOKEN_EXPIRY_DAYS = 30;
+const ACCESS_TOKEN_EXPIRY = '15m'; // Short-lived access token
+
+/**
+ * Generate a cryptographically secure refresh token
+ */
+function generateRefreshToken() {
+    return crypto.randomBytes(48).toString('hex');
+}
+
+/**
+ * Hash a refresh token for storage (never store raw tokens)
+ */
+function hashRefreshToken(token) {
+    return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+/**
+ * Create a new access + refresh token pair
+ */
+async function createTokenPair(user, { deviceInfo, ipAddress } = {}) {
+    const accessToken = jwt.sign(
+        { id: user.id, username: user.username, role: user.role, name: user.name },
+        JWT_SECRET,
+        { expiresIn: ACCESS_TOKEN_EXPIRY }
+    );
+
+    const refreshToken = generateRefreshToken();
+    const tokenHash = hashRefreshToken(refreshToken);
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
+    await pool.query(
+        `INSERT INTO refresh_tokens (user_id, token_hash, device_info, ip_address, expires_at)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [user.id, tokenHash, (deviceInfo || '').slice(0, 200), ipAddress || null, expiresAt]
+    );
+
+    return { accessToken, refreshToken, expiresAt };
+}
+
+/**
+ * Rotate refresh token: verify old → issue new → revoke old
+ * Implements replay detection: if already-revoked token is reused, revoke ALL tokens for that user
+ */
+async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {}) {
+    const oldHash = hashRefreshToken(oldRefreshToken);
+
+    const result = await pool.query(
+        'SELECT id, user_id, revoked_at, expires_at FROM refresh_tokens WHERE token_hash = $1',
+        [oldHash]
+    );
+
+    if (result.rows.length === 0) {
+        return { error: 'Invalid refresh token', status: 401 };
+    }
+
+    const oldToken = result.rows[0];
+
+    // Replay detection: if token was already revoked, it's a potential theft
+    if (oldToken.revoked_at) {
+        log.warn(`Refresh token replay detected for user ${oldToken.user_id} — revoking all tokens`);
+        await pool.query(
+            'UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL',
+            [oldToken.user_id]
+        );
+        return { error: 'Token reuse detected. All sessions revoked.', status: 401 };
+    }
+
+    // Check expiry
+    if (new Date(oldToken.expires_at) < new Date()) {
+        await pool.query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1', [oldToken.id]);
+        return { error: 'Refresh token expired', status: 401 };
+    }
+
+    // Get user
+    const userResult = await pool.query(
+        'SELECT id, username, role, name, is_active FROM users WHERE id = $1',
+        [oldToken.user_id]
+    );
+
+    if (userResult.rows.length === 0 || !userResult.rows[0].is_active) {
+        await pool.query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1', [oldToken.id]);
+        return { error: 'User not found or deactivated', status: 403 };
+    }
+
+    const user = userResult.rows[0];
+
+    // Issue new pair
+    const { accessToken, refreshToken: newRefreshToken, expiresAt } = await createTokenPair(user, { deviceInfo, ipAddress });
+
+    // Revoke old token and link to new via hash lookup (atomic)
+    const newHash = hashRefreshToken(newRefreshToken);
+    await pool.query(
+        `UPDATE refresh_tokens SET revoked_at = NOW(),
+                replaced_by = (SELECT id FROM refresh_tokens WHERE token_hash = $1)
+         WHERE id = $2`,
+        [newHash, oldToken.id]
+    );
+
+    return { accessToken, refreshToken: newRefreshToken, expiresAt, user };
+}
+
+/**
+ * Revoke a specific refresh token (logout)
+ */
+async function revokeRefreshToken(refreshToken) {
+    const tokenHash = hashRefreshToken(refreshToken);
+    await pool.query(
+        'UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1',
+        [tokenHash]
+    );
+}
+
+/**
+ * Revoke all refresh tokens for a user (logout all devices)
+ */
+async function revokeAllUserTokens(userId) {
+    await pool.query(
+        'UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL',
+        [userId]
+    );
+}
+
+/**
+ * Cleanup expired/revoked refresh tokens (called by scheduler)
+ */
+async function cleanupRefreshTokens() {
+    const result = await pool.query(
+        `DELETE FROM refresh_tokens
+         WHERE (revoked_at IS NOT NULL AND revoked_at < NOW() - INTERVAL '7 days')
+            OR (expires_at < NOW() - INTERVAL '7 days')
+         RETURNING id`
+    );
+    return result.rowCount;
+}
+
 module.exports = {
     JWT_SECRET,
+    ACCESS_TOKEN_EXPIRY,
     authenticateToken,
     requireRole,
     requireMinRole,
     requireAction,
+    createTokenPair,
+    rotateRefreshToken,
+    revokeRefreshToken,
+    revokeAllUserTokens,
+    cleanupRefreshTokens,
     ROLE_HIERARCHY,
     ROLE_LEVEL,
     PAGE_ACCESS,

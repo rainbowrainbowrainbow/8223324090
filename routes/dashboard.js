@@ -79,7 +79,7 @@ router.get('/widgets/:type', async (req, res) => {
                         CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
                         deadline ASC NULLS LAST
                     LIMIT 10
-                `, [req.user.id]);
+                `, [req.user.name]);
                 data = { tasks: result.rows };
                 break;
             }
@@ -126,38 +126,83 @@ router.get('/widgets/:type', async (req, res) => {
 
             case 'quick_stats': {
                 const today = getKyivDateStr();
-                const [bookings, tasks, revenue] = await Promise.all([
+                const [bookings, tasks, revenue, overdueQS, unconfirmedQS, lowStockQS, coldLeadsQS] = await Promise.all([
                     pool.query("SELECT COUNT(*) as count FROM bookings WHERE date = $1 AND status != 'cancelled'", [today]),
                     pool.query("SELECT COUNT(*) as count FROM tasks WHERE status = 'in_progress'"),
                     pool.query("SELECT COALESCE(SUM(price), 0) as total FROM bookings WHERE date = $1 AND status = 'confirmed'", [today]),
+                    pool.query("SELECT COUNT(*) as count FROM tasks WHERE deadline < NOW() AND status NOT IN ('done','cancelled')"),
+                    pool.query("SELECT COUNT(*) as count FROM bookings WHERE date = $1 AND status = 'preliminary'", [today]),
+                    pool.query("SELECT COUNT(*) as count FROM warehouse_stock WHERE quantity <= min_quantity AND is_active = true"),
+                    pool.query("SELECT COUNT(*) as count FROM leads WHERE status = 'new' AND created_at < NOW() - INTERVAL '48 hours'")
                 ]);
+                const ov = parseInt(overdueQS.rows[0].count);
+                const uc = parseInt(unconfirmedQS.rows[0].count);
+                const ls = parseInt(lowStockQS.rows[0].count);
+                const cl = parseInt(coldLeadsQS.rows[0].count);
                 data = {
                     bookingsToday: parseInt(bookings.rows[0].count),
                     activeTasks: parseInt(tasks.rows[0].count),
                     revenueToday: parseFloat(revenue.rows[0].total),
+                    needsAttention: ov + uc + ls + cl,
+                    overdueTasks: ov,
+                    unconfirmedBookings: uc,
+                    lowStockItems: ls,
+                    coldLeads: cl
                 };
                 break;
             }
 
             case 'alerts': {
-                // System alerts: overdue tasks, unconfirmed bookings, low stock
                 const alertToday = getKyivDateStr();
-                const [overdue, unconfirmed] = await Promise.all([
-                    pool.query(`
-                        SELECT COUNT(*) as count FROM tasks
-                        WHERE deadline < NOW() AND status NOT IN ('done', 'cancelled')
-                    `),
-                    pool.query(`
-                        SELECT COUNT(*) as count FROM bookings
-                        WHERE date = $1 AND status = 'preliminary'
-                    `, [alertToday]),
+                const [overdue, unconfirmed, lowStock, coldLeads, shiftCheck] = await Promise.all([
+                    pool.query(`SELECT id, title, deadline FROM tasks
+                                WHERE deadline < NOW() AND status NOT IN ('done','cancelled')
+                                ORDER BY deadline ASC LIMIT 5`),
+                    pool.query(`SELECT id, label, time FROM bookings
+                                WHERE date = $1 AND status = 'preliminary' ORDER BY time LIMIT 5`, [alertToday]),
+                    pool.query(`SELECT name, quantity, min_quantity, unit FROM warehouse_stock
+                                WHERE quantity <= min_quantity AND is_active = true LIMIT 3`),
+                    pool.query(`SELECT COUNT(*) as c FROM leads
+                                WHERE status = 'new' AND created_at < NOW() - INTERVAL '48 hours'`),
+                    pool.query(`SELECT
+                                  (SELECT COUNT(*) FROM cash_register_shifts WHERE status = 'open') AS open_shifts,
+                                  (SELECT COUNT(*) FROM bookings WHERE date = $1 AND status = 'confirmed') AS today_bk`,
+                                [alertToday])
                 ]);
                 const alerts = [];
-                const overdueCount = parseInt(overdue.rows[0].count);
-                const unconfirmedCount = parseInt(unconfirmed.rows[0].count);
-                if (overdueCount > 0) alerts.push({ type: 'warning', title: `${overdueCount} протерм. задач`, icon: '⚠️' });
-                if (unconfirmedCount > 0) alerts.push({ type: 'info', title: `${unconfirmedCount} непідтв. бронювань`, icon: '📋' });
-                data = { alerts };
+                overdue.rows.forEach(t => {
+                    alerts.push({ id: `overdue_${t.id}`, type: 'warning', level: 'warning', icon: '⚠️',
+                        title: `Прострочена: "${(t.title || '').slice(0, 40)}"`, link: '/tasks',
+                        action: { label: '📋 Задача', prompt: `Задача прострочена: "${t.title}". Що робимо?` }
+                    });
+                });
+                unconfirmed.rows.forEach(b => {
+                    alerts.push({ id: `unconfirmed_${b.id}`, type: 'info', level: 'info', icon: '📋',
+                        title: `Непідтверджене: ${(b.time || '').slice(0, 5)} ${b.label || ''}`, link: '/',
+                        action: { label: '✅ Підтвердити', prompt: `Бронювання ${b.id} очікує підтвердження.` }
+                    });
+                });
+                lowStock.rows.forEach((s, i) => {
+                    alerts.push({ id: `stock_${i}`, type: 'warning', level: 'warning', icon: '📦',
+                        title: `Мало: ${s.name} (${s.quantity} ${s.unit})`, link: '/warehouse',
+                        action: { label: '📋 Замовити', prompt: `На складі мало: ${s.name} (${s.quantity}/${s.min_quantity}). Замовити.` }
+                    });
+                });
+                const coldCount = parseInt(coldLeads.rows[0].c);
+                if (coldCount > 0) {
+                    alerts.push({ id: 'cold_leads', type: 'warning', level: 'warning', icon: '🥶',
+                        title: `${coldCount} лідів без відповіді >48год`, link: '/sales-funnel',
+                        action: { label: '📋 Обдзвін', prompt: `${coldCount} лідів без відповіді. Задача менеджеру.` }
+                    });
+                }
+                const { open_shifts, today_bk } = shiftCheck.rows[0];
+                if (parseInt(open_shifts) === 0 && parseInt(today_bk) > 0) {
+                    alerts.push({ id: 'no_shift', type: 'critical', level: 'critical', icon: '🔴',
+                        title: `Каса не відкрита! (${today_bk} броні)`, link: '/finance',
+                        action: { label: '💰 Відкрити', prompt: 'Каса не відкрита. Нагадати.' }
+                    });
+                }
+                data = { alerts, count: alerts.length };
                 break;
             }
 
@@ -211,6 +256,148 @@ router.get('/widgets/:type', async (req, res) => {
                 break;
             }
 
+            case 'reports_today': {
+                const repToday = getKyivDateStr();
+                const [repIncome, repExpense, repNew] = await Promise.all([
+                    pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM reports WHERE created_at::date = $1 AND type = 'income'", [repToday]).catch(() => ({ rows: [{ total: 0 }] })),
+                    pool.query("SELECT COALESCE(SUM(amount), 0) as total FROM reports WHERE created_at::date = $1 AND type = 'expense'", [repToday]).catch(() => ({ rows: [{ total: 0 }] })),
+                    pool.query("SELECT COUNT(*) as count FROM reports WHERE created_at::date = $1 AND status = 'new'", [repToday]).catch(() => ({ rows: [{ count: 0 }] })),
+                ]);
+                data = {
+                    income: parseFloat(repIncome.rows[0].total),
+                    expense: parseFloat(repExpense.rows[0].total),
+                    newCount: parseInt(repNew.rows[0].count)
+                };
+                break;
+            }
+
+            case 'exceptions': {
+                const excToday = getKyivDateStr();
+                const [conflictsQ, noAnimatorQ, overduePrep, detractors, cleaningSLA, unconfirmedLate] = await Promise.all([
+                    // Resource conflicts: same room, overlapping times
+                    pool.query(`
+                        SELECT b1.id as booking1, b2.id as booking2, b1.room, b1.time as time1, b2.time as time2
+                        FROM bookings b1
+                        JOIN bookings b2 ON b1.room = b2.room AND b1.date = b2.date AND b1.id < b2.id
+                        WHERE b1.date = $1 AND b1.status != 'cancelled' AND b2.status != 'cancelled'
+                          AND b1.room IS NOT NULL AND b1.room != ''
+                          AND ABS(
+                            (SUBSTRING(b1.time FROM 1 FOR 2)::int * 60 + SUBSTRING(b1.time FROM 4 FOR 2)::int) -
+                            (SUBSTRING(b2.time FROM 1 FOR 2)::int * 60 + SUBSTRING(b2.time FROM 4 FOR 2)::int)
+                          ) < COALESCE(b1.duration, 120)
+                        LIMIT 5
+                    `, [excToday]).catch(() => ({ rows: [] })),
+                    // Bookings without assigned animator
+                    pool.query(`
+                        SELECT b.id, b.label, b.time, b.program_name, b.room
+                        FROM bookings b
+                        WHERE b.date = $1 AND b.status != 'cancelled'
+                          AND (b.line_id IS NULL OR b.line_id = 0)
+                        ORDER BY b.time LIMIT 5
+                    `, [excToday]).catch(() => ({ rows: [] })),
+                    // Overdue preparation tasks (event category, not done)
+                    pool.query(`
+                        SELECT id, title, deadline FROM tasks
+                        WHERE category = 'event' AND status NOT IN ('done','cancelled')
+                          AND deadline < NOW()
+                        ORDER BY deadline ASC LIMIT 5
+                    `).catch(() => ({ rows: [] })),
+                    // Recent NPS detractors (rating 1-2, last 7 days, no follow-up)
+                    pool.query(`
+                        SELECT er.id, er.booking_id, er.rating, er.comment, er.customer_name, er.created_at
+                        FROM event_reviews er
+                        WHERE er.rating <= 2 AND er.created_at > NOW() - INTERVAL '7 days'
+                          AND (er.follow_up_status IS NULL OR er.follow_up_status = 'none')
+                        ORDER BY er.created_at DESC LIMIT 5
+                    `).catch(() => ({ rows: [] })),
+                    // Cleaning SLA breaches
+                    pool.query(`
+                        SELECT id, room, scheduled_at, sla_minutes FROM cleaning_tasks
+                        WHERE status = 'pending'
+                          AND scheduled_at < NOW() - (sla_minutes || ' minutes')::interval
+                        ORDER BY scheduled_at ASC LIMIT 5
+                    `).catch(() => ({ rows: [] })),
+                    // Unconfirmed bookings close to start (< 2 hours)
+                    pool.query(`
+                        SELECT id, label, time, room FROM bookings
+                        WHERE date = $1 AND status = 'preliminary'
+                          AND (SUBSTRING(time FROM 1 FOR 2)::int * 60 + SUBSTRING(time FROM 4 FOR 2)::int)
+                              - EXTRACT(HOUR FROM NOW() AT TIME ZONE 'Europe/Kyiv')::int * 60
+                              - EXTRACT(MINUTE FROM NOW() AT TIME ZONE 'Europe/Kyiv')::int
+                              BETWEEN 0 AND 120
+                        ORDER BY time LIMIT 5
+                    `, [excToday]).catch(() => ({ rows: [] }))
+                ]);
+
+                const exceptions = [];
+
+                conflictsQ.rows.forEach(c => {
+                    exceptions.push({
+                        id: `conflict_${c.booking1}_${c.booking2}`, type: 'conflict', level: 'critical', icon: '💥',
+                        title: `Конфлікт кімнати ${c.room}: ${(c.time1 || '').slice(0,5)} vs ${(c.time2 || '').slice(0,5)}`,
+                        link: '/', action: { label: 'Вирішити', prompt: `Конфлікт: бронювання ${c.booking1} і ${c.booking2} в кімнаті ${c.room}` }
+                    });
+                });
+                noAnimatorQ.rows.forEach(b => {
+                    exceptions.push({
+                        id: `no_animator_${b.id}`, type: 'no_animator', level: 'warning', icon: '🎭',
+                        title: `Без аніматора: ${(b.time || '').slice(0,5)} ${b.label || b.program_name}`,
+                        link: '/', action: { label: 'Призначити', prompt: `Бронювання ${b.id} без аніматора` }
+                    });
+                });
+                overduePrep.rows.forEach(t => {
+                    exceptions.push({
+                        id: `prep_overdue_${t.id}`, type: 'prep_overdue', level: 'warning', icon: '⏰',
+                        title: `Прострочена підготовка: ${(t.title || '').slice(0,40)}`,
+                        link: '/tasks', action: { label: 'Виконати', prompt: `Задача підготовки ${t.id} прострочена` }
+                    });
+                });
+                detractors.rows.forEach(r => {
+                    exceptions.push({
+                        id: `detractor_${r.id}`, type: 'detractor', level: 'warning', icon: '😞',
+                        title: `Незадоволений: ${r.customer_name || 'Клієнт'} (${r.rating}/5)`,
+                        link: '/customers', action: { label: 'Зателефонувати', prompt: `Клієнт ${r.customer_name} поставив ${r.rating}/5. Коментар: ${r.comment}` }
+                    });
+                });
+                cleaningSLA.rows.forEach(c => {
+                    exceptions.push({
+                        id: `cleaning_sla_${c.id}`, type: 'cleaning_sla', level: 'info', icon: '🧹',
+                        title: `Прибирання просрочено: ${c.room}`,
+                        link: '/tasks', action: { label: 'Перевірити', prompt: `Прибирання кімнати ${c.room} перевищило SLA ${c.sla_minutes} хв` }
+                    });
+                });
+                unconfirmedLate.rows.forEach(b => {
+                    exceptions.push({
+                        id: `late_unconfirmed_${b.id}`, type: 'late_unconfirmed', level: 'critical', icon: '🔴',
+                        title: `Не підтверджено за <2год: ${(b.time || '').slice(0,5)} ${b.label || ''}`,
+                        link: '/', action: { label: 'Підтвердити', prompt: `Бронювання ${b.id} не підтверджене, початок менш ніж за 2 години!` }
+                    });
+                });
+
+                data = {
+                    exceptions,
+                    count: exceptions.length,
+                    categories: {
+                        conflicts: conflictsQ.rows.length,
+                        noAnimator: noAnimatorQ.rows.length,
+                        overduePrep: overduePrep.rows.length,
+                        detractors: detractors.rows.length,
+                        cleaningSLA: cleaningSLA.rows.length,
+                        unconfirmedLate: unconfirmedLate.rows.length
+                    }
+                };
+                break;
+            }
+
+            case 'catalogs': {
+                const [catDefs, catItems] = await Promise.all([
+                    pool.query("SELECT cd.id, cd.name, cd.emoji, COUNT(ci.id)::int AS count FROM catalog_definitions cd LEFT JOIN catalog_items ci ON ci.catalog_id = cd.id AND ci.status = 'active' WHERE cd.is_active = true GROUP BY cd.id, cd.name, cd.emoji, cd.sort_order ORDER BY cd.sort_order").catch(() => ({ rows: [] })),
+                    pool.query("SELECT ci.id, ci.name, ci.price, ci.image_url, ci.catalog_id, cd.name AS catalog_name, cd.emoji AS catalog_emoji FROM catalog_items ci JOIN catalog_definitions cd ON cd.id = ci.catalog_id WHERE ci.status = 'active' ORDER BY ci.created_at DESC LIMIT 5").catch(() => ({ rows: [] })),
+                ]);
+                data = { definitions: catDefs.rows, recentItems: catItems.rows };
+                break;
+            }
+
             default:
                 return res.status(400).json({ error: 'Unknown widget type' });
         }
@@ -242,7 +429,7 @@ router.get('/today', async (req, res) => {
 
         const [bookings, tasks, revenue, teamOnline, newLeads] = await Promise.all([
             pool.query("SELECT COUNT(*) as count FROM bookings WHERE date = $1 AND status != 'cancelled'", [today]),
-            pool.query("SELECT COUNT(*) as count FROM tasks WHERE (assigned_to = $1 OR created_by = $1) AND status NOT IN ('done', 'cancelled')", [req.user.id]),
+            pool.query("SELECT COUNT(*) as count FROM tasks WHERE (assigned_to = $1 OR created_by = $1) AND status NOT IN ('done', 'cancelled')", [req.user.name]),
             pool.query("SELECT COALESCE(SUM(price), 0) as total FROM bookings WHERE date = $1 AND status = 'confirmed'", [today]),
             pool.query("SELECT COUNT(*) as count FROM users u LEFT JOIN employee_profiles ep ON ep.user_id = u.id WHERE u.is_active = true AND ep.last_activity_at > NOW() - INTERVAL '5 minutes'"),
             pool.query("SELECT COUNT(*) as count FROM leads WHERE status = 'new'").catch(() => ({ rows: [{ count: 0 }] })),
@@ -325,5 +512,57 @@ async function fetchCurrency() {
         return { error: 'Currency fetch failed' };
     }
 }
+
+// GET /api/dashboard/alerts — standalone endpoint for alert bell
+router.get('/alerts', async (req, res) => {
+    try {
+        const today = getKyivDateStr();
+        const [overdue, unconfirmed, lowStock, coldLeads, shiftCheck] = await Promise.all([
+            pool.query(`SELECT id, title, deadline FROM tasks WHERE deadline < NOW() AND status NOT IN ('done','cancelled') ORDER BY deadline ASC LIMIT 5`),
+            pool.query(`SELECT id, label, time FROM bookings WHERE date = $1 AND status = 'preliminary' ORDER BY time LIMIT 5`, [today]),
+            pool.query(`SELECT name, quantity, min_quantity, unit FROM warehouse_stock WHERE quantity <= min_quantity AND is_active = true LIMIT 3`),
+            pool.query(`SELECT COUNT(*) as c FROM leads WHERE status='new' AND created_at < NOW() - INTERVAL '48 hours'`),
+            pool.query(`SELECT (SELECT COUNT(*) FROM cash_register_shifts WHERE status='open') AS open_shifts,
+                               (SELECT COUNT(*) FROM bookings WHERE date=$1 AND status='confirmed') AS today_bk`, [today])
+        ]);
+        const alerts = [];
+        overdue.rows.forEach(t => {
+            alerts.push({ id: `overdue_${t.id}`, level: 'warning', icon: '⚠️',
+                title: `Прострочена: "${(t.title || '').slice(0, 40)}"`, link: '/tasks',
+                action: { label: '📋 Задача', prompt: `Задача прострочена: "${t.title}". Що робимо?` }
+            });
+        });
+        unconfirmed.rows.forEach(b => {
+            alerts.push({ id: `unconfirmed_${b.id}`, level: 'info', icon: '📋',
+                title: `Непідтверджене: ${(b.time || '').slice(0, 5)} ${b.label || ''}`, link: '/',
+                action: { label: '✅ Підтвердити', prompt: `Бронювання ${b.id} очікує підтвердження.` }
+            });
+        });
+        lowStock.rows.forEach((s, i) => {
+            alerts.push({ id: `stock_${i}`, level: 'warning', icon: '📦',
+                title: `Мало: ${s.name} (${s.quantity} ${s.unit})`, link: '/warehouse',
+                action: { label: '📋 Замовити', prompt: `На складі мало: ${s.name} (${s.quantity}/${s.min_quantity}). Замовити.` }
+            });
+        });
+        const cl = parseInt(coldLeads.rows[0].c);
+        if (cl > 0) {
+            alerts.push({ id: 'cold_leads', level: 'warning', icon: '🥶',
+                title: `${cl} лідів без відповіді >48год`, link: '/sales-funnel',
+                action: { label: '📋 Обдзвін', prompt: `${cl} лідів без відповіді. Задача менеджеру.` }
+            });
+        }
+        const os = parseInt(shiftCheck.rows[0].open_shifts);
+        const tb = parseInt(shiftCheck.rows[0].today_bk);
+        if (os === 0 && tb > 0) {
+            alerts.push({ id: 'no_shift', level: 'critical', icon: '🔴',
+                title: `Каса не відкрита! (${tb} броні)`, link: '/finance',
+                action: { label: '💰 Відкрити', prompt: 'Каса не відкрита. Нагадати.' }
+            });
+        }
+        res.json({ success: true, alerts, count: alerts.length });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
 
 module.exports = router;

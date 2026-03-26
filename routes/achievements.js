@@ -48,7 +48,7 @@ router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
 router.get('/catalog', requireRole(...ANY_ROLE), async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT * FROM achievements WHERE is_active = true ORDER BY category, rarity DESC'
+            'SELECT * FROM achievements WHERE is_active = true ORDER BY category, rarity DESC LIMIT 500'
         );
         const catalog = result.rows.map(a => ({
             id: a.id,
@@ -83,86 +83,71 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
               AND a.type != 'repeatable'
         `, [userId]);
 
+        // v38.4.0: Batch all criteria data in parallel to prevent N+1 queries
+        const [streakR, quizPlayR, quizPerfR, minigameR, bossR, walletR, roomR, tasksR, giftsR] = await Promise.all([
+            pool.query('SELECT MAX(best_count) as best FROM game_streaks WHERE user_id = $1', [userId]),
+            pool.query("SELECT COUNT(*)::int as cnt FROM quiz_sessions WHERE user_id = $1 AND completed = true", [userId]),
+            pool.query("SELECT COUNT(*)::int as cnt FROM quiz_sessions WHERE user_id = $1 AND completed = true AND correct_count = questions_count", [userId]),
+            pool.query('SELECT MAX(score) as best FROM minigame_sessions WHERE user_id = $1', [userId]),
+            pool.query("SELECT COUNT(*)::int as cnt FROM boss_rounds WHERE user_id = $1 AND completed = true", [userId]),
+            pool.query('SELECT total_earned FROM game_wallets WHERE user_id = $1', [userId]),
+            pool.query('SELECT visitor_count, wallpaper_item_id, floor_item_id FROM user_rooms WHERE user_id = $1', [userId]),
+            pool.query("SELECT COUNT(*)::int as cnt FROM tasks WHERE assigned_to = $1 AND status = 'done'", [userId]),
+            pool.query("SELECT COUNT(*)::int as cnt FROM coin_transactions WHERE user_id = $1 AND type = 'gift' AND amount < 0", [userId])
+        ]);
+        const criteria = {
+            streak: streakR.rows[0]?.best || 0,
+            quiz_play: quizPlayR.rows[0]?.cnt || 0,
+            quiz_perfect: quizPerfR.rows[0]?.cnt || 0,
+            minigame_score: minigameR.rows[0]?.best || 0,
+            boss_win: bossR.rows[0]?.cnt || 0,
+            total_earned: walletR.rows[0]?.total_earned || 0,
+            room_decorate: (roomR.rows[0]?.wallpaper_item_id || roomR.rows[0]?.floor_item_id) ? 1 : 0,
+            room_visitors: roomR.rows[0]?.visitor_count || 0,
+            tasks_completed: tasksR.rows[0]?.cnt || 0,
+            gift_sent: giftsR.rows[0]?.cnt || 0
+        };
+
         for (const ach of uncompleted.rows) {
             const cond = ach.condition || {};
             let achieved = false;
             let progress = 0;
 
             if (cond.type === 'login') {
-                progress = 1; // if checking, user is logged in
+                progress = 1;
                 achieved = true;
             } else if (cond.type === 'streak') {
-                const r = await pool.query(
-                    'SELECT MAX(best_count) as best FROM game_streaks WHERE user_id = $1',
-                    [userId]
-                );
-                progress = r.rows[0]?.best || 0;
+                progress = criteria.streak;
                 achieved = progress >= cond.count;
             } else if (cond.type === 'quiz_play') {
-                const r = await pool.query(
-                    "SELECT COUNT(*) FROM quiz_sessions WHERE user_id = $1 AND completed = true",
-                    [userId]
-                );
-                progress = parseInt(r.rows[0].count);
+                progress = criteria.quiz_play;
                 achieved = progress >= cond.count;
             } else if (cond.type === 'quiz_perfect') {
-                const r = await pool.query(
-                    "SELECT COUNT(*) FROM quiz_sessions WHERE user_id = $1 AND completed = true AND correct_count = questions_count",
-                    [userId]
-                );
-                progress = parseInt(r.rows[0].count);
+                progress = criteria.quiz_perfect;
                 achieved = progress >= cond.count;
             } else if (cond.type === 'minigame_score') {
-                const r = await pool.query(
-                    'SELECT MAX(score) as best FROM minigame_sessions WHERE user_id = $1',
-                    [userId]
-                );
-                progress = r.rows[0]?.best || 0;
+                progress = criteria.minigame_score;
                 achieved = progress >= cond.count;
             } else if (cond.type === 'boss_win') {
-                const r = await pool.query(
-                    "SELECT COUNT(*) FROM boss_rounds WHERE user_id = $1 AND completed = true",
-                    [userId]
-                );
-                progress = parseInt(r.rows[0].count);
+                progress = criteria.boss_win;
                 achieved = progress >= cond.count;
             } else if (cond.type === 'total_earned') {
-                const r = await pool.query(
-                    'SELECT total_earned FROM game_wallets WHERE user_id = $1',
-                    [userId]
-                );
-                progress = r.rows[0]?.total_earned || 0;
+                progress = criteria.total_earned;
                 achieved = progress >= cond.count;
             } else if (cond.type === 'room_decorate') {
-                const r = await pool.query(
-                    'SELECT 1 FROM user_rooms WHERE user_id = $1 AND (wallpaper_item_id IS NOT NULL OR floor_item_id IS NOT NULL)',
-                    [userId]
-                );
-                progress = r.rows.length;
+                progress = criteria.room_decorate;
                 achieved = progress >= cond.count;
             } else if (cond.type === 'room_visitors') {
-                const r = await pool.query(
-                    'SELECT visitor_count FROM user_rooms WHERE user_id = $1',
-                    [userId]
-                );
-                progress = r.rows[0]?.visitor_count || 0;
+                progress = criteria.room_visitors;
                 achieved = progress >= cond.count;
             } else if (cond.type === 'tasks_completed') {
-                const r = await pool.query(
-                    "SELECT COUNT(*) FROM tasks WHERE assigned_to = $1 AND status = 'done'",
-                    [userId]
-                );
-                progress = parseInt(r.rows[0].count);
+                progress = criteria.tasks_completed;
                 achieved = progress >= cond.count;
             } else if (cond.type === 'gift_sent') {
-                const r = await pool.query(
-                    "SELECT COUNT(*) FROM coin_transactions WHERE user_id = $1 AND type = 'gift' AND amount < 0",
-                    [userId]
-                );
-                progress = parseInt(r.rows[0].count);
+                progress = criteria.gift_sent;
                 achieved = progress >= cond.count;
             } else if (cond.type === 'combo') {
-                continue; // tracked at game time, not checkable retroactively
+                continue;
             } else if (cond.type === 'manual_award') {
                 continue;
             } else if (cond.type === 'easter_egg' || cond.type === 'rare_drop' || cond.type === 'minigame_late') {

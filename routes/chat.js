@@ -11,7 +11,12 @@ const guardian = require('../services/guardian');
 const linkPreview = require('../services/linkPreview');
 const { createLogger } = require('../utils/logger');
 
+const { authenticateToken } = require('../middleware/auth');
+
 const log = createLogger('ChatAPI');
+
+// All chat routes require authentication
+router.use(authenticateToken);
 
 // Chat message rate limiter: max 1 msg per 500ms per user, 60 msgs/min per channel
 const _chatRateLimits = new Map(); // userId → { lastSent, channelCounts: Map<channelId, {count, resetAt}> }
@@ -160,7 +165,7 @@ router.get('/channels/:id/messages', async (req, res) => {
         }
 
         const before = req.query.before ? parseInt(req.query.before, 10) : undefined;
-        const limit = req.query.limit ? parseInt(req.query.limit, 10) : 50;
+        const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
 
         const messages = await chat.getChannelMessages(channelId, userId, { before, limit });
         res.json(messages);
@@ -177,7 +182,7 @@ router.post('/channels/:id/messages', async (req, res) => {
         const channelId = parseInt(req.params.id, 10);
         if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
 
-        const { content, replyTo, clientMessageId } = req.body;
+        const { content, replyTo, clientMessageId, metadata } = req.body;
         if (!content || !content.trim()) {
             return res.status(400).json({ error: 'Message content is required' });
         }
@@ -195,6 +200,16 @@ router.post('/channels/:id/messages', async (req, res) => {
             return res.status(403).json({ error: 'Not a member of this channel' });
         }
 
+        // v33.7.0: Announce mode — only admins can write
+        const pool = require('../db').pool;
+        const chAnnounce = await pool.query('SELECT is_announce FROM chat_channels WHERE id = $1', [channelId]);
+        if (chAnnounce.rows[0]?.is_announce === true) {
+            const canWrite = ['admin', 'director', 'senior_manager'].includes(req.user.role);
+            if (!canWrite) {
+                return res.status(403).json({ error: '📢 Цей канал тільки для оголошень. Тільки адміністратори можуть писати.' });
+            }
+        }
+
         // Guardian: pre-check BEFORE saving (mute + keyword + LLM profanity)
         const username = req.user.username || req.user.name || 'unknown';
         const preCheck = await guardian.preCheckMessage({
@@ -210,7 +225,8 @@ router.post('/channels/:id/messages', async (req, res) => {
         const { message, mentionedUserIds } = await chat.sendMessage(channelId, userId, {
             content: content.trim(),
             replyTo: replyTo || null,
-            clientMessageId: clientMessageId || null
+            clientMessageId: clientMessageId || null,
+            metadata: metadata || null
         });
 
         // Track activity stats (fire-and-forget)
@@ -222,6 +238,34 @@ router.post('/channels/:id/messages', async (req, res) => {
             channelId,
             message
         }, String(userId));
+
+        // v33.7.0: BK preview — fire-and-forget
+        const _bkMatch = content.match(/\bBK-\d{4}-\d{4,}\b/i);
+        if (_bkMatch) {
+            const _bkId = _bkMatch[0].toUpperCase();
+            const _msgId = message.id;
+            setImmediate(async () => {
+                try {
+                    const bkData = await pool.query(
+                        'SELECT id, date, time, program_name, label, status, price FROM bookings WHERE id = $1',
+                        [_bkId]
+                    );
+                    if (!bkData.rowCount) return;
+                    const b = bkData.rows[0];
+                    const preview = {
+                        id: b.id, date: b.date, time: String(b.time).slice(0, 5),
+                        programName: b.program_name, label: b.label, status: b.status, price: b.price
+                    };
+                    await pool.query(
+                        `UPDATE chat_messages SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb WHERE id = $2`,
+                        [JSON.stringify({ bookingPreview: preview }), _msgId]
+                    );
+                    broadcastToChannel(channelId, 'chat:booking-preview', {
+                        channelId, messageId: _msgId, bookingPreview: preview
+                    });
+                } catch (e) { /* silent */ }
+            });
+        }
 
         // Send mention notifications to specific users
         for (const mentionedId of mentionedUserIds) {
@@ -277,8 +321,9 @@ router.post('/channels/:id/upload', chatUpload.single('file'), async (req, res) 
 
         const file = req.file;
         const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(file.originalname);
+        const isAudio = /\.(webm|ogg|mp3|wav|m4a)$/i.test(file.originalname);
         const fileUrl = '/uploads/chat/' + file.filename;
-        const contentType = isImage ? 'image' : 'file';
+        const contentType = isImage ? 'image' : (isAudio ? 'voice' : 'file');
         const caption = req.body.caption || '';
 
         const metadata = {
@@ -287,8 +332,10 @@ router.post('/channels/:id/upload', chatUpload.single('file'), async (req, res) 
                 name: file.originalname,
                 size: file.size,
                 mimeType: file.mimetype,
-                type: contentType
-            }
+                type: contentType,
+                duration: parseInt(req.body.duration) || 0
+            },
+            duration: parseInt(req.body.duration) || 0
         };
 
         // Send as message with file metadata
@@ -620,7 +667,12 @@ router.post('/dm', async (req, res) => {
 router.post('/channels/:id/members', async (req, res) => {
     try {
         const channelId = parseInt(req.params.id, 10);
-        const { userId: targetUserId } = req.body;
+        let targetUserId = req.body.userId;
+        // Support adding by username (e.g., guardian invite)
+        if (!targetUserId && req.body.username) {
+            const userLookup = await require('../db').pool.query('SELECT id FROM users WHERE username = $1', [req.body.username]);
+            if (userLookup.rows.length > 0) targetUserId = userLookup.rows[0].id;
+        }
         if (isNaN(channelId) || !targetUserId) {
             return res.status(400).json({ error: 'Invalid channel or user ID' });
         }
@@ -694,7 +746,12 @@ router.patch('/channels/:id', async (req, res) => {
     try {
         const channelId = parseInt(req.params.id, 10);
         if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
-        const { name, description } = req.body;
+        const { name, description, isArchived } = req.body;
+        // Archive via dedicated method if requested
+        if (isArchived === true) {
+            await chat.archiveChannel(channelId);
+            return res.json({ success: true });
+        }
         const updated = await chat.updateChannel(channelId, { name, description });
         if (!updated) return res.status(404).json({ error: 'Channel not found' });
         res.json(updated);
@@ -1683,6 +1740,489 @@ router.get('/polls/:pollId/results', async (req, res) => {
     } catch (err) {
         log.error('Poll results error', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// v32.1: Kleshnya bridge — proxy to OpenClaw (HostHatch)
+router.post('/kleshnya', async (req, res) => {
+    const { message, context } = req.body;
+    const user = req.user;
+
+    try {
+        const KLESHNYA_BRIDGE_URL = process.env.KLESHNYA_BRIDGE_URL;
+        const KLESHNYA_BRIDGE_TOKEN = process.env.KLESHNYA_BRIDGE_TOKEN;
+
+        if (!KLESHNYA_BRIDGE_URL) {
+            return res.json({
+                success: true,
+                reply: '🦞 Клешня тимчасово недоступна. Пиши в Telegram @EventHelper_One_Bot'
+            });
+        }
+
+        const response = await fetch(KLESHNYA_BRIDGE_URL + '/api/bridge/crm', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${KLESHNYA_BRIDGE_TOKEN}`
+            },
+            body: JSON.stringify({
+                message,
+                userId: user.id,
+                userName: user.name,
+                userRole: user.role,
+                context: context || {},
+                parkId: process.env.PARK_ID || 'park-zakrevskogo'
+            }),
+            signal: AbortSignal.timeout(15000)
+        });
+
+        const data = await response.json();
+        return res.json({ success: true, reply: data.reply || 'Немає відповіді' });
+    } catch (err) {
+        log.error('[Kleshnya Bridge Error]', err.message);
+        return res.json({
+            success: true,
+            reply: '🦞 Клешня зараз зайнята. Спробуй ще раз або пиши в Telegram.'
+        });
+    }
+});
+
+// ==========================================
+// v33.7.0: CRM SLASH COMMANDS
+// ==========================================
+
+// POST /api/chat/slash — CRM slash commands (/вільно, /броні, /задачі, /склад)
+router.post('/slash', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const { command, args } = req.body;
+        if (!command) return res.status(400).json({ error: 'command required' });
+        const cmd = command.toLowerCase().trim().replace(/^\/+/, '');
+
+        function parseArgsDate(arg) {
+            if (!arg || ['сьогодні', 'today', 'зараз'].includes(arg.toLowerCase()))
+                return new Date().toISOString().slice(0, 10);
+            const dm = arg.match(/^(\d{1,2})\.(\d{1,2})$/);
+            if (dm) return `${new Date().getFullYear()}-${dm[2].padStart(2, '0')}-${dm[1].padStart(2, '0')}`;
+            const dmy = arg.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+            if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+            return arg;
+        }
+
+        let reply = null;
+        switch (cmd) {
+            case 'вільно':
+            case 'free': {
+                const date = parseArgsDate(args);
+                const bk = await pool.query(
+                    `SELECT SUBSTRING(time, 1, 5) AS t FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time`,
+                    [date]
+                );
+                const busy = bk.rows.map(r => r.t);
+                const slots = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'];
+                const free = slots.filter(s => !busy.includes(s));
+                reply = free.length
+                    ? `📅 Вільно ${date}:\n${free.join(' · ')}`
+                    : `📅 ${date}: всі слоти зайняті (${busy.length} бронювань)`;
+                break;
+            }
+            case 'броні':
+            case 'bookings': {
+                const date = parseArgsDate(args);
+                const rows = await pool.query(
+                    `SELECT SUBSTRING(time,1,5) AS t, program_name, label FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time LIMIT 20`,
+                    [date]
+                );
+                reply = rows.rowCount
+                    ? `📋 Бронювання ${date} (${rows.rowCount}):\n` + rows.rows.map(r => `${r.t} — ${r.program_name} | ${r.label}`).join('\n')
+                    : `📋 ${date}: бронювань немає`;
+                break;
+            }
+            case 'задачі':
+            case 'tasks': {
+                const rows = await pool.query(
+                    `SELECT title, priority, deadline FROM tasks
+                     WHERE (assigned_to = $1 OR created_by = $1) AND status IN ('todo', 'in_progress')
+                     ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, deadline NULLS LAST
+                     LIMIT 5`,
+                    [req.user.username]
+                );
+                reply = rows.rowCount
+                    ? `✅ Задачі (${rows.rowCount}):\n` + rows.rows.map(t =>
+                        `• ${t.title.slice(0, 50)}` + (t.deadline ? ` 📅${String(t.deadline).slice(5, 10)}` : '')
+                    ).join('\n')
+                    : '✅ Немає активних задач!';
+                break;
+            }
+            case 'склад': {
+                const search = args ? `%${args}%` : '%';
+                const rows = await pool.query(
+                    `SELECT name, quantity, min_quantity, unit FROM warehouse_stock
+                     WHERE name ILIKE $1 AND is_active = true ORDER BY name LIMIT 5`,
+                    [search]
+                );
+                reply = rows.rowCount
+                    ? `📦 Склад:\n` + rows.rows.map(s =>
+                        `${s.quantity <= s.min_quantity ? '⚠️' : '✅'} ${s.name}: ${s.quantity} ${s.unit}` +
+                        (s.quantity <= s.min_quantity ? ` (мін: ${s.min_quantity})` : '')
+                    ).join('\n')
+                    : '📦 Нічого не знайдено на складі';
+                break;
+            }
+            default:
+                return res.status(404).json({ error: `Невідома команда: /${command}` });
+        }
+        res.json({ success: true, reply, command: cmd, args: args || '' });
+    } catch (err) {
+        log.error('[Slash] Error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==========================================
+// v33.7.0: BOOKING-LINKED CHAT CHANNELS
+// ==========================================
+
+// POST /api/chat/booking-channel
+router.post('/booking-channel', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const { bookingId } = req.body;
+        if (!bookingId || typeof bookingId !== 'string') return res.status(400).json({ error: 'bookingId required' });
+
+        const existing = await pool.query(
+            'SELECT * FROM chat_channels WHERE linked_booking_id = $1', [bookingId]
+        );
+        if (existing.rowCount) return res.json({ success: true, channel: existing.rows[0], isNew: false });
+
+        const bk = await pool.query(
+            'SELECT id, date, program_name, label FROM bookings WHERE id = $1', [bookingId]
+        );
+        if (!bk.rowCount) return res.status(404).json({ error: 'Booking not found' });
+        const b = bk.rows[0];
+
+        const slugBase = 'bk-' + bookingId.toLowerCase().replace(/[^a-z0-9]/g, '-');
+        const slug = slugBase + '-' + Date.now().toString(36);
+        const name = `🎉 ${b.date} ${b.program_name}`;
+        const userId = req.user.id || req.user.userId;
+
+        const r = await pool.query(
+            `INSERT INTO chat_channels (slug, name, description, type, linked_booking_id, created_by)
+             VALUES ($1, $2, $3, 'booking', $4, $5) RETURNING *`,
+            [slug, name, `Координація: ${b.label}`, bookingId, userId]
+        );
+        const channel = r.rows[0];
+
+        await pool.query(
+            'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2) ON CONFLICT (channel_id, user_id) DO NOTHING',
+            [channel.id, userId]
+        );
+
+        res.json({ success: true, channel, isNew: true });
+    } catch (err) {
+        log.error('[BookingChannel] Error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// GET /api/chat/booking-channel/:bookingId
+router.get('/booking-channel/:bookingId', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const r = await pool.query(
+            'SELECT * FROM chat_channels WHERE linked_booking_id = $1',
+            [req.params.bookingId]
+        );
+        res.json({ success: true, channel: r.rows[0] || null });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==========================================
+// v33.7.0: USER STATUS
+// ==========================================
+
+// PATCH /api/chat/users/me/status
+router.patch('/users/me/status', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const { status, emoji, until } = req.body;
+        const userId = req.user.id || req.user.userId;
+        const untilVal = until && new Date(until) > new Date() ? until : null;
+
+        await pool.query(
+            `UPDATE users SET chat_status = $1, chat_status_emoji = $2, chat_status_until = $3 WHERE id = $4`,
+            [status || null, emoji || null, untilVal, userId]
+        );
+
+        try {
+            const { broadcast } = require('../services/websocket');
+            broadcast('user:status', { userId: String(userId), status: status || null, emoji: emoji || null });
+        } catch (e) { /* silent */ }
+
+        res.json({ success: true });
+    } catch (err) {
+        log.error('[UserStatus] Error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==========================================
+// v33.7.0: MESSAGE REMINDERS
+// ==========================================
+
+// POST /api/chat/messages/:id/remind — MUST be BEFORE GET /messages/:id/thread
+router.post('/messages/:id/remind', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const messageId = parseInt(req.params.id, 10);
+        if (isNaN(messageId)) return res.status(400).json({ error: 'Invalid message ID' });
+
+        const { remindAt } = req.body;
+        if (!remindAt) return res.status(400).json({ error: 'remindAt required' });
+        const remindDate = new Date(remindAt);
+        if (isNaN(remindDate.getTime()) || remindDate <= new Date()) {
+            return res.status(400).json({ error: 'remindAt must be a future datetime' });
+        }
+
+        const msgRes = await pool.query(
+            'SELECT id, channel_id, content FROM chat_messages WHERE id = $1', [messageId]
+        );
+        if (!msgRes.rowCount) return res.status(404).json({ error: 'Message not found' });
+        const m = msgRes.rows[0];
+
+        // Create task via kleshnya service
+        let taskId = null;
+        try {
+            const kleshnya = require('../services/kleshnya');
+            const task = await kleshnya.createTask({
+                title: `⏰ Нагадування: "${m.content.slice(0, 80)}"`,
+                description: `Нагадування з чату (канал #${m.channel_id}, msg #${m.id})`,
+                deadline: remindAt,
+                priority: 'normal',
+                source_type: 'chat_reminder',
+                category: 'admin',
+                created_by: req.user.username
+            });
+            taskId = task.id;
+        } catch (e) {
+            // Fallback: insert task directly
+            const taskRes = await pool.query(
+                `INSERT INTO tasks (title, description, deadline, priority, status, created_by, category)
+                 VALUES ($1, $2, $3, 'normal', 'todo', $4, 'admin') RETURNING id`,
+                [
+                    `⏰ Нагадування: "${m.content.slice(0, 80)}"`,
+                    `Нагадування з чату (канал #${m.channel_id}, msg #${m.id})`,
+                    remindAt,
+                    req.user.username
+                ]
+            );
+            taskId = taskRes.rows[0].id;
+        }
+
+        log.info(`[Remind] Task #${taskId} created for msg #${messageId} at ${remindAt}`);
+        res.json({ success: true, taskId, remindAt });
+    } catch (err) {
+        log.error('[Remind] Error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==========================================
+// v33.7.0: ANNOUNCE MODE + IMPORTANT MESSAGES
+// ==========================================
+
+// PATCH /api/chat/messages/:id/important — toggle important
+router.patch('/messages/:id/important', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const messageId = parseInt(req.params.id, 10);
+        if (isNaN(messageId)) return res.status(400).json({ error: 'Invalid message ID' });
+
+        if (!['admin', 'director'].includes(req.user.role)) {
+            return res.status(403).json({ error: 'Тільки адміністратори можуть позначати важливі' });
+        }
+
+        const { important } = req.body;
+        const r = await pool.query(
+            `UPDATE chat_messages SET is_important = $1 WHERE id = $2 RETURNING channel_id`,
+            [important === true, messageId]
+        );
+        if (!r.rowCount) return res.status(404).json({ error: 'Message not found' });
+
+        broadcastToChannel(r.rows[0].channel_id, 'chat:important', {
+            channelId: r.rows[0].channel_id,
+            messageId,
+            important: important === true
+        });
+
+        res.json({ success: true });
+    } catch (err) {
+        log.error('[Important] Error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==========================================
+// v33.9.0: ROOM CHANNELS
+// ==========================================
+
+// POST /api/chat/room-channels/init — create channels for all rooms
+router.post('/room-channels/init', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        if (!['admin', 'director', 'creator'].includes(req.user.role)) {
+            return res.status(403).json({ error: 'Admin only' });
+        }
+        const rooms = await pool.query(
+            `SELECT DISTINCT line_id FROM bookings
+             WHERE line_id IS NOT NULL AND line_id != '' ORDER BY line_id`
+        );
+        const created = [];
+        for (const room of rooms.rows) {
+            const slug = 'room-' + room.line_id.toLowerCase().replace(/[^a-z0-9а-яіїєґ]/gi, '-').replace(/-+/g, '-');
+            const existing = await pool.query('SELECT id FROM chat_channels WHERE line_id = $1', [room.line_id]);
+            if (existing.rowCount) {
+                created.push({ lineId: room.line_id, channelId: existing.rows[0].id, isNew: false });
+                continue;
+            }
+            const userId = req.user.id || req.user.userId;
+            const r = await pool.query(
+                `INSERT INTO chat_channels (slug, name, type, line_id, description, created_by)
+                 VALUES ($1, $2, 'room', $3, $4, $5)
+                 ON CONFLICT (slug) DO NOTHING RETURNING id`,
+                [slug + '-' + Date.now().toString(36), `🏠 ${room.line_id}`, room.line_id, `Хронологія кімнати ${room.line_id}`, userId]
+            );
+            if (r.rowCount) created.push({ lineId: room.line_id, channelId: r.rows[0].id, isNew: true });
+        }
+        res.json({ success: true, channels: created });
+    } catch (err) {
+        log.error('[RoomChannels] Init error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// GET /api/chat/room-channels/:lineId/history — full room chronology
+router.get('/room-channels/:lineId/history', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const { lineId } = req.params;
+        const limit = Math.min(parseInt(req.query.limit || '50'), 200);
+
+        // Bookings in this room
+        const bookings = await pool.query(
+            `SELECT 'booking' AS source_type, id AS source_id,
+                    date || 'T' || SUBSTRING(time,1,5) AS event_time,
+                    program_name || ' | ' || COALESCE(group_name, label, '') AS content,
+                    status, kids_count, created_by
+             FROM bookings WHERE line_id = $1
+             ORDER BY date DESC, time DESC LIMIT $2`,
+            [lineId, limit]
+        );
+
+        // Chat messages in room channel
+        const chanRow = await pool.query('SELECT id FROM chat_channels WHERE line_id = $1 LIMIT 1', [lineId]);
+        let chatMsgs = { rows: [] };
+        if (chanRow.rowCount) {
+            chatMsgs = await pool.query(
+                `SELECT 'chat' AS source_type, cm.id::text AS source_id,
+                        cm.created_at AS event_time, cm.content, u.name AS author
+                 FROM chat_messages cm JOIN users u ON u.id = cm.user_id
+                 WHERE cm.channel_id = $1 AND cm.deleted_at IS NULL
+                 ORDER BY cm.created_at DESC LIMIT $2`,
+                [chanRow.rows[0].id, limit]
+            );
+        }
+
+        const all = [...bookings.rows, ...chatMsgs.rows]
+            .sort((a, b) => new Date(b.event_time) - new Date(a.event_time))
+            .slice(0, limit);
+
+        res.json({ success: true, history: all, lineId });
+    } catch (err) {
+        log.error('[RoomChannels] History error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==========================================
+// v33.9.0: CHAT PREFERENCES
+// ==========================================
+
+// GET /api/chat/preferences
+router.get('/preferences', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const userId = req.user.id || req.user.userId;
+        let prefs = await pool.query('SELECT * FROM chat_user_preferences WHERE user_id = $1', [userId]);
+        if (!prefs.rowCount) {
+            prefs = await pool.query('INSERT INTO chat_user_preferences (user_id) VALUES ($1) RETURNING *', [userId]);
+        }
+        res.json({ success: true, preferences: prefs.rows[0] });
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// PATCH /api/chat/preferences
+router.patch('/preferences', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const userId = req.user.id || req.user.userId;
+        const { accentColor, messageFont, chatSignature, moodEmoji, notificationSound, channelSounds, wallpaper } = req.body;
+        const sets = ['updated_at = NOW()'], vals = [];
+        let idx = 1;
+        if (accentColor !== undefined)       { sets.push(`accent_color = $${idx++}`); vals.push(accentColor); }
+        if (messageFont !== undefined)       { sets.push(`message_font = $${idx++}`); vals.push(messageFont); }
+        if (chatSignature !== undefined)     { sets.push(`chat_signature = $${idx++}`); vals.push((chatSignature || '').slice(0, 80) || null); }
+        if (moodEmoji !== undefined)         { sets.push(`mood_emoji = $${idx++}`); sets.push('mood_date = CURRENT_DATE'); vals.push(moodEmoji || null); }
+        if (notificationSound !== undefined) { sets.push(`notification_sound = $${idx++}`); vals.push(notificationSound); }
+        if (channelSounds !== undefined)     { sets.push(`channel_sounds = $${idx++}`); vals.push(JSON.stringify(channelSounds)); }
+        if (wallpaper !== undefined)         { sets.push(`wallpaper = $${idx++}`); vals.push(wallpaper); }
+        vals.push(userId);
+        await pool.query('INSERT INTO chat_user_preferences (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [userId]);
+        await pool.query(`UPDATE chat_user_preferences SET ${sets.join(', ')} WHERE user_id = $${idx}`, vals);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// ==========================================
+// v33.9.0: SUPER REACTION
+// ==========================================
+
+router.post('/messages/:id/super-reaction', async (req, res) => {
+    try {
+        const pool = require('../db').pool;
+        const { emoji } = req.body;
+        if (!emoji) return res.status(400).json({ error: 'emoji required' });
+        const userId = req.user.id || req.user.userId;
+        const username = req.user.username;
+        const COST = 5;
+
+        const gamification = require('../services/gamification');
+        try {
+            await gamification.spendCoins(username, COST, 'super_reaction', `Супер-реакція ${emoji}`);
+        } catch (e) {
+            return res.status(402).json({ error: `Недостатньо монет (потрібно ${COST})` });
+        }
+
+        const msgRes = await pool.query('SELECT channel_id FROM chat_messages WHERE id = $1', [parseInt(req.params.id)]);
+        if (!msgRes.rowCount) return res.status(404).json({ error: 'Message not found' });
+
+        await pool.query(
+            `INSERT INTO chat_reactions (message_id, user_id, emoji) VALUES ($1, $2, $3) ON CONFLICT (message_id, user_id, emoji) DO NOTHING`,
+            [parseInt(req.params.id), userId, emoji]
+        );
+
+        broadcastToChannel(msgRes.rows[0].channel_id, 'chat:super-reaction', {
+            channelId: msgRes.rows[0].channel_id,
+            messageId: parseInt(req.params.id),
+            emoji, username, fromUserId: String(userId)
+        });
+
+        res.json({ success: true, coinsSpent: COST });
+    } catch (err) {
+        log.error('[SuperReaction] Error', err);
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 

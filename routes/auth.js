@@ -11,7 +11,10 @@ const router = require('express').Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
-const { JWT_SECRET, authenticateToken, PAGE_ACCESS, ACTION_PERMISSIONS, ROLE_HIERARCHY, ROLE_LEVEL } = require('../middleware/auth');
+const {
+    JWT_SECRET, authenticateToken, PAGE_ACCESS, ACTION_PERMISSIONS, ROLE_HIERARCHY, ROLE_LEVEL,
+    createTokenPair, rotateRefreshToken, revokeRefreshToken, revokeAllUserTokens, cleanupRefreshTokens
+} = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Auth');
@@ -43,10 +46,16 @@ router.post('/login', async (req, res) => {
 
         const valid = await bcrypt.compare(password, user.password_hash);
         if (!valid) {
-            log.warn(`Login failed: wrong password for "${username}" (hash starts: ${user.password_hash.substring(0, 10)}...)`);
+            log.warn(`Login failed: wrong password for "${username}"`);
             return res.status(401).json({ error: 'Невірний пароль' });
         }
 
+        // v38.4.0: Issue access + refresh token pair
+        const deviceInfo = req.headers['user-agent'] || '';
+        const ipAddress = req.ip || req.connection?.remoteAddress;
+        const { accessToken, refreshToken, expiresAt } = await createTokenPair(user, { deviceInfo, ipAddress });
+
+        // Backward compat: also issue legacy long-lived token for existing clients
         const token = jwt.sign(
             { id: user.id, username: user.username, role: user.role, name: user.name },
             JWT_SECRET,
@@ -56,9 +65,15 @@ router.post('/login', async (req, res) => {
         log.info(`User "${username}" logged in (role: ${user.role})`);
 
         // v22.10.0: Update login streak (fire-and-forget)
-        try { require('./streaks').updateStreak(user.id, 'login'); } catch (e) {}
+        try { require('./streaks').updateStreak(user.id, 'login'); } catch (e) { log.warn('Streak update failed', e.message); }
 
-        res.json({ token, user: { id: user.id, username: user.username, role: user.role, name: user.name } });
+        res.json({
+            token, // legacy: 24h access token (backward compat)
+            accessToken, // new: short-lived (15m)
+            refreshToken, // new: long-lived (30d), store securely
+            refreshExpiresAt: expiresAt,
+            user: { id: user.id, username: user.username, role: user.role, name: user.name }
+        });
     } catch (err) {
         log.error('Login error', err);
         res.status(500).json({ error: 'Server error' });
@@ -585,9 +600,8 @@ router.patch('/tasks/:id/quick-status', authenticateToken, async (req, res) => {
         if (!canChange) return res.status(403).json({ error: 'Недостатньо прав' });
 
         const oldStatus = t.status;
-        const completedAt = status === 'done' ? 'NOW()' : 'NULL';
         await pool.query(
-            `UPDATE tasks SET status = $1, completed_at = ${completedAt}, updated_at = NOW() WHERE id = $2`,
+            `UPDATE tasks SET status = $1, completed_at = CASE WHEN $1 = 'done' THEN NOW() ELSE NULL END, updated_at = NOW() WHERE id = $2`,
             [status, parseInt(id)]
         );
         // Log the change
@@ -741,6 +755,84 @@ router.get('/users-list', authenticateToken, async (req, res) => {
     } catch (err) {
         log.error('Users list error', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// v38.4.0: Refresh token — rotate and get new access token
+router.post('/refresh', async (req, res) => {
+    try {
+        const { refreshToken } = req.body;
+        if (!refreshToken) return res.status(400).json({ error: 'refreshToken required' });
+
+        const deviceInfo = req.headers['user-agent'] || '';
+        const ipAddress = req.ip || req.connection?.remoteAddress;
+        const result = await rotateRefreshToken(refreshToken, { deviceInfo, ipAddress });
+
+        if (result.error) {
+            log.warn(`Refresh failed: ${result.error}`);
+            return res.status(result.status).json({ error: result.error });
+        }
+
+        log.info(`Token refreshed for user "${result.user.username}"`);
+        res.json({
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+            refreshExpiresAt: result.expiresAt,
+            user: { id: result.user.id, username: result.user.username, role: result.user.role, name: result.user.name }
+        });
+    } catch (err) {
+        log.error('Refresh error', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// v38.4.0: Logout — revoke refresh token
+// Note: revoking a single refresh token without auth is safe — the 96-char token
+// itself is a bearer credential; knowing it already proves possession.
+router.post('/logout', async (req, res) => {
+    try {
+        const { refreshToken, allDevices } = req.body;
+
+        if (!refreshToken && !allDevices) {
+            return res.status(400).json({ error: 'refreshToken or allDevices required' });
+        }
+
+        if (allDevices) {
+            // Need auth to logout all devices
+            const authHeader = req.headers['authorization'];
+            const token = authHeader && authHeader.split(' ')[1];
+            if (!token) return res.status(401).json({ error: 'Auth required for logout-all' });
+            try {
+                const user = jwt.verify(token, JWT_SECRET);
+                await revokeAllUserTokens(user.id);
+                log.info(`All tokens revoked for user "${user.username}"`);
+            } catch {
+                return res.status(401).json({ error: 'Invalid token' });
+            }
+        } else if (refreshToken) {
+            await revokeRefreshToken(refreshToken);
+        }
+
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Logout error', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// v38.4.0: Active sessions — list user's active refresh tokens
+router.get('/sessions', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT id, device_info, ip_address, created_at, expires_at
+             FROM refresh_tokens
+             WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()
+             ORDER BY created_at DESC`,
+            [req.user.id]
+        );
+        res.json({ sessions: result.rows });
+    } catch (err) {
+        res.status(500).json({ error: 'Server error' });
     }
 });
 

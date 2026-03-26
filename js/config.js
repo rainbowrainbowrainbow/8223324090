@@ -181,10 +181,27 @@ function initDarkMode() {
         const autoEnd = parseInt(localStorage.getItem('pzp_night_end') || '7', 10);
         isDark = (autoStart > autoEnd) ? (hour >= autoStart || hour < autoEnd) : (hour >= autoStart && hour < autoEnd);
     } else {
-        isDark = false;
+        // v33.3: Fallback to system preference
+        isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
     document.body.classList.toggle('dark-mode', isDark);
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+
+    // v33.3: Listen for system theme changes (only if no manual override)
+    if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+            const manualSaved = localStorage.getItem('pzp_dark_mode');
+            if (manualSaved !== null) return; // User set it manually, don't override
+            const sysDark = e.matches;
+            document.body.classList.toggle('dark-mode', sysDark);
+            document.documentElement.setAttribute('data-theme', sysDark ? 'dark' : 'light');
+            const icon = document.getElementById('darkModeIcon');
+            if (icon) icon.textContent = sysDark ? '☀️' : '🌙';
+            const toggle = document.getElementById('darkModeToggle');
+            if (toggle) toggle.checked = sysDark;
+        });
+    }
+
     return isDark;
 }
 
@@ -196,7 +213,7 @@ function initDarkMode() {
 const CACHE_TTL = 10000;
 
 const AppState = {
-    currentUser: null,
+    _currentUser: null,
     selectedDate: new Date(),
     selectedCell: null,
     selectedLineId: null,
@@ -209,6 +226,10 @@ const AppState = {
     compactMode: false,
     darkMode: false,
     undoStack: [],
+    redoStack: [],
+    searchQuery: '',
+    searchResults: [],
+    searchIndex: -1,
     nowLineInterval: null,
     pendingPollInterval: null,  // v3.9: track polling for cleanup
     editingBookingId: null,     // v5.5: ID бронювання в режимі редагування
@@ -217,6 +238,19 @@ const AppState = {
     products: null,             // Array of products from API (or null = not loaded)
     productsLoadedAt: 0         // Timestamp when products were loaded
 };
+
+// Auto-update sidebar avatar when currentUser changes
+Object.defineProperty(AppState, 'currentUser', {
+    get() { return this._currentUser; },
+    set(user) {
+        this._currentUser = user;
+        if (user && typeof Sidebar !== 'undefined' && Sidebar.initUserCard) {
+            Sidebar.initUserCard();
+        }
+    },
+    enumerable: true,
+    configurable: true
+});
 
 // v7.0: Products cache TTL (5 minutes)
 const PRODUCTS_CACHE_TTL = 5 * 60 * 1000;

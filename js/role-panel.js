@@ -105,7 +105,7 @@ const RolePanel = (() => {
         // Event listeners
         fab.addEventListener('click', toggle);
         overlay.addEventListener('click', close);
-        document.getElementById('rpClose').addEventListener('click', close);
+        document.getElementById('rpClose')?.addEventListener('click', close);
 
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && _open) close();
@@ -142,7 +142,7 @@ const RolePanel = (() => {
         document.body.prepend(banner);
         document.body.classList.add('has-impersonation-banner');
 
-        document.getElementById('impReturnBtn').addEventListener('click', () => {
+        document.getElementById('impReturnBtn')?.addEventListener('click', () => {
             if (typeof RoleSwitcher !== 'undefined') {
                 RoleSwitcher.resetImpersonation();
             }
@@ -167,15 +167,15 @@ const RolePanel = (() => {
 
     function open() {
         _open = true;
-        document.getElementById('rolePanel').classList.add('open');
-        document.getElementById('rolePanelOverlay').classList.add('active');
+        document.getElementById('rolePanel')?.classList.add('open');
+        document.getElementById('rolePanelOverlay')?.classList.add('active');
         _loadAndRender();
     }
 
     function close() {
         _open = false;
-        document.getElementById('rolePanel').classList.remove('open');
-        document.getElementById('rolePanelOverlay').classList.remove('active');
+        document.getElementById('rolePanel')?.classList.remove('open');
+        document.getElementById('rolePanelOverlay')?.classList.remove('active');
     }
 
     async function _loadAndRender() {

@@ -7,10 +7,11 @@ const { pool } = require('../db');
 const { sendTelegramMessage } = require('../services/telegram');
 const { createLogger } = require('../utils/logger');
 
-const { requireRole } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
 const log = createLogger('Contractors');
 
-// RBAC: Contractors — management only
+// RBAC: Contractors — authentication + management only
+router.use(authenticateToken);
 router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager'));
 
 // GET /api/contractors — list all contractors with stats

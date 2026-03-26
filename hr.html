@@ -7,21 +7,15 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
+    <link rel="stylesheet" href="css/base.css?v=38.13.0">
+    <link rel="stylesheet" href="css/layout.css?v=38.13.0">
+    <link rel="stylesheet" href="css/pages.css?v=38.13.0">
+    <link rel="stylesheet" href="css/modals.css?v=38.13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=38.13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=38.13.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=38.13.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         /* ==========================================
            HR TABS
@@ -653,6 +647,18 @@
             color: var(--gray-600);
         }
         .btn-export:hover { background: var(--gray-50); color: var(--primary); }
+        .btn-add {
+            padding: 8px 20px;
+            border: none;
+            background: var(--primary);
+            color: #fff;
+            font-family: inherit;
+            font-size: var(--font-xs);
+            font-weight: 700;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+        .btn-add:hover { opacity: 0.9; }
 
         /* ==========================================
            DARK MODE
@@ -885,9 +891,48 @@
         body.dark-mode .ai-worker-panel { background: #1E1E38; border-color: #3D3D5C; color: #9CA3AF; }
         body.dark-mode .ai-worker-panel h5 { color: #E2E8F0; }
         body.dark-mode .ai-task-form input { background: #1E1E38; border-color: #3D3D5C; color: #E2E8F0; }
+
+        /* Vacancies */
+        .hr-vacancy-card { background: var(--white); border: 1px solid var(--gray-100); border-radius: var(--radius-card, 12px); padding: 16px; margin-bottom: 10px; cursor: pointer; transition: box-shadow 0.2s; }
+        .hr-vacancy-card:hover { box-shadow: var(--shadow-sm, 0 4px 12px rgba(0,0,0,0.08)); }
+        .vac-header { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+        .vac-badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; background: var(--gray-100); color: var(--gray-600); font-weight: 600; }
+        .vac-badge.urgent { background: #FEE2E2; color: #DC2626; }
+        .vac-apps { font-size: 12px; color: var(--gray-400); margin-left: auto; }
+        .vac-title { font-weight: 700; font-size: 16px; margin-bottom: 2px; }
+        .vac-role { font-size: 13px; color: var(--gray-500); margin-bottom: 4px; }
+        .vac-meta { font-size: 12px; color: var(--gray-400); }
+        .vac-desc { font-size: 13px; color: var(--gray-600); margin-top: 6px; line-height: 1.4; }
+        .vac-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+        .btn-vac-action { padding: 4px 10px; border: 1px solid var(--gray-200); border-radius: 6px; font-size: 12px; cursor: pointer; background: var(--white); font-family: inherit; }
+        .btn-vac-action.filled { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .btn-vac-action.danger { color: #DC2626; border-color: #FCA5A5; }
+        .vac-stat-card { background: var(--white); border: 1px solid var(--gray-100); border-radius: 12px; padding: 10px 16px; display: flex; flex-direction: column; align-items: center; }
+        .vac-stat-card.urgent { border-color: #FCA5A5; background: #FEF2F2; }
+        .vac-stat-num { font-size: 24px; font-weight: 800; }
+        .vac-stat-label { font-size: 11px; color: var(--gray-500); }
+        /* Kanban */
+        .candidates-kanban { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; }
+        .kanban-col { min-width: 200px; flex: 1; background: var(--gray-50); border-radius: 12px; padding: 10px; }
+        .kanban-col-title { font-weight: 700; font-size: 12px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--gray-200); display: flex; justify-content: space-between; }
+        .kanban-count { background: var(--gray-200); border-radius: 20px; padding: 1px 6px; font-size: 11px; }
+        .kanban-card { background: var(--white); border: 1px solid var(--gray-100); border-radius: 8px; padding: 10px; margin-bottom: 8px; font-size: 13px; }
+        .kc-name { font-weight: 600; margin-bottom: 4px; }
+        .kc-meta { color: var(--gray-500); font-size: 12px; }
+        .kc-actions { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+        .kc-btn { padding: 3px 8px; border: 1px solid var(--gray-200); border-radius: 6px; font-size: 11px; cursor: pointer; background: var(--white); font-family: inherit; }
+        .kc-btn.success { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .kc-btn.danger { color: #DC2626; border-color: #FCA5A5; }
+        .btn-sm { font-size: 12px; padding: 4px 10px; }
+        /* Dark mode vacancies */
+        body.dark-mode .hr-vacancy-card, body.dark-mode .kanban-card, body.dark-mode .vac-stat-card { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
+        body.dark-mode .kanban-col { background: rgba(255,255,255,0.03); }
+        body.dark-mode .vac-desc { color: var(--gray-400); }
+        body.dark-mode .btn-vac-action, body.dark-mode .kc-btn { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--gray-300); }
+        @media (max-width: 640px) { .candidates-kanban { flex-direction: column; } .kanban-col { min-width: auto; } }
     </style>
 </head>
-<body>
+<body data-page-group="hr">
     <script>
     (function(){if(localStorage.getItem('pzp_dark_mode')==='true'){document.body.classList.add('dark-mode')}})();
     </script>
@@ -899,50 +944,61 @@
     <div id="mainApp">
         <!-- Бокове меню -->
         <aside class="sidebar-nav" id="sidebarNav">
-            <div class="sidebar-logo">
-                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-                <div class="em-logo">
-                    <span class="em-logo-title">Event Genix</span>
-                    <span class="em-logo-sub">AI First CRM</span>
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
                 </div>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
             </div>
-            <nav class="sidebar-links" id="sidebarLinks">
-                <!-- Populated by sidebar.js -->
-            </nav>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+        <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+            <span class="collapse-icon">◀</span>
+            <span class="collapse-text">Згорнути</span>
+        </button>
         </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
         <header class="header">
             <div class="header-content">
-                <div class="logo">
-                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-                </div>
-                <nav class="header-nav">
-                    <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
-                    <a href="/tasks" class="nav-link"><span class="nav-icon">З</span> <span class="nav-text">Задачі</span></a>
-                    <a href="/staff" class="nav-link"><span class="nav-icon">Г</span> <span class="nav-text">Графік</span></a>
-                    <a href="/hr" class="nav-link active"><span class="nav-icon">H</span> <span class="nav-text">HR</span></a>
-                    <a href="/warehouse" class="nav-link"><span class="nav-icon">С</span> <span class="nav-text">Склад</span></a>
-                    <a href="/customers" class="nav-link"><span class="nav-icon">К</span> <span class="nav-text">Клієнти</span></a>
-                    <a href="/finance" class="nav-link"><span class="nav-icon">Ф</span> <span class="nav-text">Фінанси</span></a>
-                </nav>
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <button type="button" class="alert-bell-btn" id="alertBell" onclick="toggleAlertsPanel(event)" title="Алерти"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="alert-badge" id="alertBadge" style="display:none">0</span></button>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name"></span>
-                    <button id="logoutBtn" class="btn-logout">Вийти</button>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
                 </div>
             </div>
         </header>
+        <div class="alerts-panel" id="alertsPanel"></div>
 
-        <main id="main-content" class="page-container" style="margin-left: 220px;">
+        <main id="main-content" class="page-container">
             <div class="page-header">
                 <h2>HR</h2>
             </div>
 
             <div class="hr-tabs">
-                <button class="hr-tab active" data-tab="today">Хто зараз</button>
-                <button class="hr-tab" data-tab="schedule">Розклад</button>
-                <button class="hr-tab" data-tab="team">Команда</button>
-                <button class="hr-tab" data-tab="reports">Звіти</button>
-                <button class="hr-tab" data-tab="ai-team">AI Команда</button>
+                <button type="button" class="hr-tab active" data-tab="today">Хто зараз</button>
+                <button type="button" class="hr-tab" data-tab="schedule">Розклад</button>
+                <button type="button" class="hr-tab" data-tab="team">Команда</button>
+                <button type="button" class="hr-tab" data-tab="reports">Звіти</button>
+                <button type="button" class="hr-tab" data-tab="ai-team">AI Команда</button>
+                <button type="button" class="hr-tab" data-tab="leaves">Відпустки</button>
+                <button type="button" class="hr-tab" data-tab="salary">Зарплата</button>
+                <button type="button" class="hr-tab" data-tab="ratings">Рейтинг</button>
+                <button type="button" class="hr-tab" data-tab="onboarding">Онбординг</button>
+                <button type="button" class="hr-tab" data-tab="costumes">Костюмерна</button>
+                <button type="button" class="hr-tab" data-tab="vacancies">💼 Вакансії</button>
             </div>
 
             <!-- TAB 1: TODAY -->
@@ -955,16 +1011,16 @@
             <!-- TAB 2: SCHEDULE -->
             <div id="tab-schedule" class="hr-tab-content">
                 <div class="hr-view-toggle">
-                    <button class="hr-view-btn active" data-view="week">Тиждень</button>
-                    <button class="hr-view-btn" data-view="month">Місяць</button>
+                    <button type="button" class="hr-view-btn active" data-view="week">Тиждень</button>
+                    <button type="button" class="hr-view-btn" data-view="month">Місяць</button>
                 </div>
                 <div class="hr-schedule-controls">
-                    <button id="schedPrev" class="btn-nav">◀</button>
+                    <button type="button" id="schedPrev" class="btn-nav">◀</button>
                     <span id="schedLabel" class="hr-week-label"></span>
-                    <button id="schedNext" class="btn-nav">▶</button>
+                    <button type="button" id="schedNext" class="btn-nav">▶</button>
                     <div class="hr-schedule-actions">
-                        <button id="schedToday">Сьогодні</button>
-                        <button id="schedCopy">Копіювати тиждень</button>
+                        <button type="button" id="schedToday">Сьогодні</button>
+                        <button type="button" id="schedCopy">Копіювати тиждень</button>
                     </div>
                 </div>
                 <div id="scheduleTemplate" style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
@@ -985,13 +1041,29 @@
                     <input type="text" id="teamSearch" class="hr-team-search" aria-label="Пошук за ім'ям або телефоном..." placeholder="Пошук за ім'ям або телефоном...">
                     <select id="teamRoleFilter" class="hr-team-select">
                         <option value="">Всі ролі</option>
-                        <option value="animator">Аніматор</option>
-                        <option value="host">Ведуча</option>
-                        <option value="technician">Технік</option>
-                        <option value="admin">Адмін</option>
-                        <option value="cleaner">Прибиральник</option>
-                        <option value="manager">Менеджер</option>
-                        <option value="intern">Стажер</option>
+                        <optgroup label="Керівництво">
+                            <option value="director">Директор</option>
+                            <option value="vice_director">Зам. директора</option>
+                            <option value="manager">Менеджер</option>
+                            <option value="hr_manager">HR-менеджер</option>
+                            <option value="admin">Адмін</option>
+                        </optgroup>
+                        <optgroup label="Аніматори і ведучі">
+                            <option value="animator">Аніматор</option>
+                            <option value="host">Ведуча</option>
+                            <option value="trampoline_instructor">Інструктор батутів</option>
+                            <option value="intern">Стажер</option>
+                        </optgroup>
+                        <optgroup label="Кухня">
+                            <option value="head_cook">Шеф-повар</option>
+                            <option value="cook">Повар</option>
+                            <option value="bartender">Бармен</option>
+                            <option value="waiter">Офіціант</option>
+                        </optgroup>
+                        <optgroup label="Технічний персонал">
+                            <option value="technician">Технік</option>
+                            <option value="cleaner">Прибиральник</option>
+                        </optgroup>
                     </select>
                     <label style="font-size:var(--font-xs);display:flex;align-items:center;gap:6px;cursor:pointer;">
                         <input type="checkbox" id="teamActiveOnly" checked> Тільки активні
@@ -1004,7 +1076,7 @@
             <div id="tab-reports" class="hr-tab-content">
                 <div class="hr-report-controls">
                     <select id="reportMonth" class="hr-team-select"></select>
-                    <button id="reportExport" class="btn-export">📥 Експорт CSV</button>
+                    <button type="button" id="reportExport" class="btn-export">📥 Експорт CSV</button>
                 </div>
                 <div id="reportSummary" class="hr-report-summary"></div>
                 <div class="hr-report-table-wrap">
@@ -1023,6 +1095,94 @@
                     </p>
                 </div>
                 <div id="aiTeamList"></div>
+            </div>
+
+            <!-- TAB 6: LEAVES -->
+            <div id="tab-leaves" class="hr-tab-content">
+                <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
+                    <select id="leaveStatusFilter" class="hr-team-select" style="min-width:140px;">
+                        <option value="">Всі статуси</option>
+                        <option value="pending" selected>Очікують</option>
+                        <option value="approved">Затверджені</option>
+                        <option value="rejected">Відхилені</option>
+                    </select>
+                    <button type="button" id="btnNewLeave" class="btn-add" style="margin-left:auto;">+ Нова заявка</button>
+                </div>
+                <div id="leavesList"></div>
+            </div>
+
+            <!-- TAB 7: SALARY -->
+            <div id="tab-salary" class="hr-tab-content">
+                <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
+                    <select id="salaryMonth" class="hr-team-select" style="min-width:160px;"></select>
+                    <button type="button" id="btnAddAdjustment" class="btn-add">+ Бонус/Штраф</button>
+                    <button type="button" id="btnCommitSalary" class="btn-add" style="background:var(--success,#00b894);color:#fff" onclick="commitSalaries()">💰 Нарахувати зарплати</button>
+                </div>
+                <div id="salaryTotals" style="margin-bottom:16px;"></div>
+                <div class="hr-report-table-wrap">
+                    <table class="hr-report-table">
+                        <thead id="salaryHead"></thead>
+                        <tbody id="salaryBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 8: RATINGS -->
+            <div id="tab-ratings" class="hr-tab-content">
+                <div id="ratingsBoard"></div>
+            </div>
+
+            <!-- TAB 9: ONBOARDING -->
+            <div id="tab-onboarding" class="hr-tab-content">
+                <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;">
+                    <button type="button" id="btnStartOnboarding" class="btn-add">+ Запустити онбординг</button>
+                </div>
+                <div id="onboardingList"></div>
+            </div>
+
+            <!-- TAB 10: COSTUMES -->
+            <div id="tab-costumes" class="hr-tab-content">
+                <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;">
+                    <button type="button" id="btnAddCostume" class="btn-add">+ Додати костюм</button>
+                </div>
+                <div id="costumesList"></div>
+            </div>
+
+            <!-- TAB 11: VACANCIES -->
+            <div id="tab-vacancies" class="hr-tab-content">
+                <div class="hr-team-filters" style="justify-content:space-between">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <select id="vacStatusFilter" class="hr-team-select">
+                            <option value="open">🟢 Відкриті</option>
+                            <option value="all">Всі</option>
+                            <option value="paused">⏸ Призупинені</option>
+                            <option value="filled">✅ Заповнені</option>
+                            <option value="closed">❌ Закриті</option>
+                        </select>
+                    </div>
+                    <button type="button" id="btnAddVacancy" class="btn-add">+ Вакансія</button>
+                </div>
+                <div id="vacStats" class="vacancy-stats"></div>
+                <div id="vacanciesList"></div>
+                <div id="candidatesSection" style="display:none;margin-top:24px">
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+                        <h4 id="candidatesTitle" style="margin:0"></h4>
+                        <button type="button" id="btnAddCandidate" class="btn-add btn-sm">+ Кандидат</button>
+                        <button type="button" onclick="document.getElementById('candidatesSection').style.display='none'" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:18px">✕</button>
+                    </div>
+                    <div id="candidatesKanban" class="candidates-kanban"></div>
+                </div>
+            </div>
+
+            <!-- ─── Shifts Summary (v33.5) ─── -->
+            <div class="page-section" id="shiftsSummarySection">
+              <div class="section-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 style="margin:0;">📊 Зміни аніматорів</h3>
+                <input type="month" id="shiftsMonthPicker"
+                       style="padding:6px 10px; border:1px solid var(--border-color); border-radius:8px; font-size:16px;"
+                       onchange="loadShiftsSummary()">
+              </div>
+              <div id="shiftsSummaryContainer"></div>
             </div>
         </main>
     </div>
@@ -1058,9 +1218,9 @@
                 <textarea id="shiftNotes" rows="2"></textarea>
             </div>
             <div class="hr-modal-actions">
-                <button id="shiftDelete" class="btn-danger" style="display:none;">Видалити</button>
-                <button id="shiftCancel" class="btn-secondary">Скасувати</button>
-                <button id="shiftSave" class="btn-primary">Зберегти</button>
+                <button type="button" id="shiftDelete" class="btn-danger" style="display:none;">Видалити</button>
+                <button type="button" id="shiftCancel" class="btn-secondary">Скасувати</button>
+                <button type="button" id="shiftSave" class="btn-primary">Зберегти</button>
             </div>
         </div>
     </div>
@@ -1073,13 +1233,29 @@
             <div class="form-group">
                 <label>Посада / Роль</label>
                 <select id="editRoleType">
-                    <option value="animator">Аніматор</option>
-                    <option value="host">Ведуча</option>
-                    <option value="technician">Технік</option>
-                    <option value="admin">Адмін</option>
-                    <option value="cleaner">Прибиральник</option>
-                    <option value="manager">Менеджер</option>
-                    <option value="intern">Стажер</option>
+                    <optgroup label="Керівництво">
+                        <option value="director">Директор</option>
+                        <option value="vice_director">Зам. директора</option>
+                        <option value="manager">Менеджер</option>
+                        <option value="hr_manager">HR-менеджер</option>
+                        <option value="admin">Адмін</option>
+                    </optgroup>
+                    <optgroup label="Аніматори і ведучі">
+                        <option value="animator">Аніматор</option>
+                        <option value="host">Ведуча</option>
+                        <option value="trampoline_instructor">Інструктор батутів</option>
+                        <option value="intern">Стажер</option>
+                    </optgroup>
+                    <optgroup label="Кухня">
+                        <option value="head_cook">Шеф-повар</option>
+                        <option value="cook">Повар</option>
+                        <option value="bartender">Бармен</option>
+                        <option value="waiter">Офіціант</option>
+                    </optgroup>
+                    <optgroup label="Технічний персонал">
+                        <option value="technician">Технік</option>
+                        <option value="cleaner">Прибиральник</option>
+                    </optgroup>
                 </select>
             </div>
             <div class="form-group">
@@ -1127,8 +1303,8 @@
                 <textarea id="editNotes" rows="3"></textarea>
             </div>
             <div class="hr-modal-actions">
-                <button id="editCancel" class="btn-secondary">Скасувати</button>
-                <button id="editSave" class="btn-primary">Зберегти</button>
+                <button type="button" id="editCancel" class="btn-secondary">Скасувати</button>
+                <button type="button" id="editSave" class="btn-primary">Зберегти</button>
             </div>
         </div>
     </div>
@@ -1151,30 +1327,93 @@
                 <textarea id="corrNotes" rows="2" aria-label="Забув відмітитись..." placeholder="Забув відмітитись..."></textarea>
             </div>
             <div class="hr-modal-actions">
-                <button id="corrCancel" class="btn-secondary">Скасувати</button>
-                <button id="corrSave" class="btn-primary">Зберегти</button>
+                <button type="button" id="corrCancel" class="btn-secondary">Скасувати</button>
+                <button type="button" id="corrSave" class="btn-primary">Зберегти</button>
             </div>
         </div>
     </div>
 
     <!-- Context menu -->
     <div id="contextMenu" class="hr-context-menu">
-        <button class="hr-context-item" data-action="sick">🏥 Позначити хворобу</button>
-        <button class="hr-context-item" data-action="vacation">🌴 Позначити відпустку</button>
-        <button class="hr-context-item" data-action="day_off">📴 Позначити вихідний</button>
-        <button class="hr-context-item" data-action="correct">✏️ Виправити час</button>
+        <button type="button" class="hr-context-item" data-action="sick">🏥 Позначити хворобу</button>
+        <button type="button" class="hr-context-item" data-action="vacation">🌴 Позначити відпустку</button>
+        <button type="button" class="hr-context-item" data-action="day_off">📴 Позначити вихідний</button>
+        <button type="button" class="hr-context-item" data-action="correct">✏️ Виправити час</button>
     </div>
 
     <div id="notification" class="notification hidden">
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=25.3.0"></script>
-    <script src="js/api.js?v=25.3.0"></script>
-    <script src="js/auth.js?v=25.3.0"></script>
-    <script src="js/components/sidebar.js?v=25.3.0"></script>
+    <script src="js/config.js?v=38.13.0"></script>
+    <script src="js/notification.js?v=38.13.0"></script>
+    <script src="js/api.js?v=38.13.0"></script>
+    <script src="js/auth.js?v=38.13.0"></script>
+    <script src="js/components/sidebar.js?v=38.13.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=25.3.0"></script>
-    <script src="js/role-panel.js?v=25.3.0"></script>
+    <script src="js/hr-page.js?v=38.13.0"></script>
+    <script src="js/alerts.js?v=38.13.0"></script>
+    <script src="js/role-panel.js?v=38.13.0"></script>
+    <script>
+    // ─── Shifts Summary (v33.5) ──────────
+    async function loadShiftsSummary() {
+        const month = document.getElementById('shiftsMonthPicker')?.value || new Date().toISOString().slice(0,7);
+        const container = document.getElementById('shiftsSummaryContainer');
+        if (!container) return;
+        container.innerHTML = '<p style="color:var(--gray-400)">Завантаження...</p>';
+        try {
+            const token = localStorage.getItem('pzp_token');
+            const res = await fetch(`/api/hr/shifts-summary?month=${month}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const { summary = [], period } = await res.json();
+            if (!summary.length) {
+                container.innerHTML = '<p style="color:var(--gray-400); font-size:13px;">Немає даних.<br>Додайте <b>display_name</b> аніматорам (як вписують в бронюваннях).</p>';
+                return;
+            }
+            container.innerHTML = `
+                <p style="font-size:12px;color:var(--gray-400);margin:0 0 12px">${period.from} — ${period.to}</p>
+                <table class="data-table" style="width:100%">
+                  <thead><tr><th>Аніматор</th><th style="text-align:center">Всього</th><th style="text-align:center">Ведучий</th><th style="text-align:center">Другий</th></tr></thead>
+                  <tbody>${summary.map(s => `
+                    <tr>
+                      <td><strong>${s.name}</strong> <span style="font-size:12px;color:var(--gray-400);margin-left:6px;">(${s.displayName})</span></td>
+                      <td style="text-align:center"><strong>${s.total}</strong></td>
+                      <td style="text-align:center">${s.asHost}</td>
+                      <td style="text-align:center">${s.asSecond}</td>
+                    </tr>`).join('')}
+                  </tbody>
+                </table>`;
+        } catch (e) { container.innerHTML = `<p style="color:#ef4444">❌ ${e.message}</p>`; }
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+        const picker = document.getElementById('shiftsMonthPicker');
+        if (picker) { picker.value = new Date().toISOString().slice(0,7); loadShiftsSummary(); }
+    });
+
+    // v33.8.0: Salary commit to finance
+    async function commitSalaries() {
+        var monthEl = document.getElementById('salaryMonth');
+        var month = monthEl ? monthEl.value : null;
+        if (!month) { if (typeof showToast === 'function') showToast('Оберіть місяць', 'error'); return; }
+        if (!confirm('Нарахувати зарплати за ' + month + '? Це запише транзакції у фінанси.')) return;
+        var token = localStorage.getItem('pzp_token');
+        try {
+            var resp = await fetch('/api/hr/salary/commit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ month: month })
+            });
+            var data = await resp.json();
+            if (resp.ok && data.success) {
+                if (typeof showToast === 'function') showToast('Нараховано ' + data.committed + ' зарплат за ' + month + '!', 'success');
+            } else {
+                if (typeof showToast === 'function') showToast(data.error || 'Помилка', 'error');
+            }
+        } catch (e) {
+            if (typeof showToast === 'function') showToast('Помилка: ' + e.message, 'error');
+        }
+    }
+    </script>
 </body>
 </html>

@@ -2,6 +2,16 @@
  * booking.js - Панель бронювання, форма, деталі, видалення, перенос часу
  */
 
+function _escB(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// v33.3: Toggle booking tag selection
+function toggleBookingTag(el) {
+    el.classList.toggle('active');
+}
+
 // ==========================================
 // ПАНЕЛЬ БРОНЮВАННЯ
 // ==========================================
@@ -31,17 +41,17 @@ async function openBookingPanel(time, lineId) {
     // v5.49: Reset program search
     const programSearch = document.getElementById('programSearch');
     if (programSearch) { programSearch.value = ''; filterPrograms(); }
-    document.getElementById('programDetails').classList.add('hidden');
-    document.getElementById('hostsWarning').classList.add('hidden');
-    document.getElementById('customProgramSection').classList.add('hidden');
-    document.getElementById('secondAnimatorSection').classList.add('hidden');
-    document.getElementById('pinataFillerSection').classList.add('hidden');
+    document.getElementById('programDetails')?.classList.add('hidden');
+    document.getElementById('hostsWarning')?.classList.add('hidden');
+    document.getElementById('customProgramSection')?.classList.add('hidden');
+    document.getElementById('secondAnimatorSection')?.classList.add('hidden');
+    document.getElementById('pinataFillerSection')?.classList.add('hidden');
 
     // Скинути toggle додаткового ведучого
     const extraHostToggle = document.getElementById('extraHostToggle');
     if (extraHostToggle) {
         extraHostToggle.checked = false;
-        document.getElementById('extraHostAnimatorSection').classList.add('hidden');
+        document.getElementById('extraHostAnimatorSection')?.classList.add('hidden');
     }
 
     // Скинути костюм
@@ -70,7 +80,7 @@ async function openBookingPanel(time, lineId) {
     if (customerToggle) customerToggle.checked = false;
     document.getElementById('customerDataSection')?.classList.add('hidden');
 
-    document.getElementById('bookingPanel').classList.remove('hidden');
+    document.getElementById('bookingPanel')?.classList.remove('hidden');
     document.querySelector('.main-content').classList.add('panel-open');
     // v5.33: Lock body scroll on mobile when panel is open
     document.body.classList.add('panel-open');
@@ -104,7 +114,7 @@ function selectCustomerFromSearch(customer) {
     document.getElementById('customerChildName').value = customer.childName || '';
     document.getElementById('customerChildBirthday').value = customer.childBirthday ? customer.childBirthday.split('T')[0] : '';
     document.getElementById('customerSearch').value = customer.name || '';
-    document.getElementById('customerSearchResults').classList.add('hidden');
+    document.getElementById('customerSearchResults')?.classList.add('hidden');
 
     // Show visit badge
     if (customer.totalBookings > 0) {
@@ -207,7 +217,7 @@ async function showFreeRooms() {
 
         if (data.free && data.free.length > 0) {
             panel.innerHTML = data.free.map(room =>
-                `<span class="free-room-chip" onclick="document.getElementById('roomSelect').value='${escapeHtml(room)}';document.getElementById('freeRoomsPanel').classList.add('hidden')">${escapeHtml(room)}</span>`
+                `<span class="free-room-chip" onclick="document.getElementById('roomSelect').value = '${escapeHtml(room)}';document.getElementById('freeRoomsPanel')?.classList.add('hidden')">${escapeHtml(room)}</span>`
             ).join('') +
             (data.occupied.length > 0 ? `<div class="occupied-rooms">Зайняті: ${data.occupied.map(r => escapeHtml(r)).join(', ')}</div>` : '');
         } else {
@@ -218,8 +228,53 @@ async function showFreeRooms() {
     }
 }
 
+// v33.8.0: Validate certificate code
+async function validateCertificate() {
+    var code = document.getElementById('certCodeInput')?.value?.trim();
+    if (!code) return;
+    var resultEl = document.getElementById('certValidationResult');
+    if (!resultEl) return;
+    resultEl.style.display = 'block';
+    resultEl.textContent = '⏳ Перевіряю...';
+    resultEl.style.color = '';
+    try {
+        var resp = await fetch('/api/certificates/validate/' + encodeURIComponent(code), {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
+        });
+        var data = await resp.json();
+        if (data.valid) {
+            resultEl.innerHTML = '✅ Сертифікат дійсний: <b>' + escapeHtml(data.certificate.display_value) + '</b> (' + escapeHtml(data.certificate.type_text || '') + ')';
+            resultEl.style.color = 'var(--success, green)';
+        } else {
+            resultEl.textContent = '❌ ' + (data.reason === 'expired' ? 'Прострочений' : data.reason === 'used' ? 'Вже використаний' : data.error || 'Недійсний');
+            resultEl.style.color = '#ef4444';
+        }
+    } catch (e) {
+        resultEl.textContent = '❌ Помилка перевірки';
+        resultEl.style.color = '#ef4444';
+    }
+}
+
+// v33.7.0: Open booking chat channel
+async function openBookingChat(bookingId) {
+    var token = localStorage.getItem('pzp_token');
+    try {
+        var r = await fetch('/api/chat/booking-channel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ bookingId: bookingId })
+        });
+        var data = await r.json();
+        if (data.success && data.channel) {
+            window.open('/chat.html?channelId=' + data.channel.id, '_blank');
+        } else {
+            if (typeof showToast === 'function') showToast('Не вдалось відкрити чат', 'error');
+        }
+    } catch (e) { console.error('openBookingChat:', e); }
+}
+
 function closeBookingPanel() {
-    document.getElementById('bookingPanel').classList.add('hidden');
+    document.getElementById('bookingPanel')?.classList.add('hidden');
     document.querySelector('.main-content').classList.remove('panel-open');
     // v5.33: Unlock body scroll
     document.body.classList.remove('panel-open');
@@ -231,8 +286,10 @@ function closeBookingPanel() {
     if (AppState.editingBookingId) {
         AppState.editingBookingId = null;
         AppState.editingBookingUpdatedAt = null; // Clear optimistic lock
-        document.querySelector('#bookingPanel .panel-header h3').textContent = 'Нове бронювання';
-        document.querySelector('#bookingForm .btn-submit').textContent = 'Додати бронювання';
+        const panelH3 = document.querySelector('#bookingPanel .panel-header h3');
+        const btnSubmit = document.querySelector('#bookingForm .btn-submit');
+        if (panelH3) panelH3.textContent = 'Нове бронювання';
+        if (btnSubmit) btnSubmit.textContent = 'Додати бронювання';
     }
 }
 
@@ -275,8 +332,8 @@ async function renderProgramIcons() {
                 : '';
             icon.innerHTML = `
                 ${durationBadge}
-                <span class="icon-circle"><span class="icon">${p.icon}</span></span>
-                <span class="name">${p.code}</span>
+                <span class="icon-circle"><span class="icon">${_escB(p.icon)}</span></span>
+                <span class="name">${_escB(p.code)}</span>
             `;
             icon.addEventListener('click', () => selectProgram(p.id));
             grid.appendChild(icon);
@@ -334,28 +391,29 @@ function selectProgram(programId) {
     if (ageEl) ageEl.textContent = program.age || '—';
     if (kidsEl) kidsEl.textContent = program.kids || '—';
 
-    document.getElementById('programDetails').classList.remove('hidden');
+    document.getElementById('programDetails')?.classList.remove('hidden');
 
     if (program.isCustom) {
-        document.getElementById('customProgramSection').classList.remove('hidden');
+        document.getElementById('customProgramSection')?.classList.remove('hidden');
     } else {
-        document.getElementById('customProgramSection').classList.add('hidden');
+        document.getElementById('customProgramSection')?.classList.add('hidden');
     }
 
     if (program.hasFiller) {
-        document.getElementById('pinataFillerSection').classList.remove('hidden');
+        document.getElementById('pinataFillerSection')?.classList.remove('hidden');
         document.getElementById('pinataFillerSelect').value = '';
+        _loadPinataStockBadge();
     } else {
-        document.getElementById('pinataFillerSection').classList.add('hidden');
+        document.getElementById('pinataFillerSection')?.classList.add('hidden');
     }
 
     if (program.hosts > 1) {
-        document.getElementById('hostsWarning').classList.remove('hidden');
-        document.getElementById('secondAnimatorSection').classList.remove('hidden');
+        document.getElementById('hostsWarning')?.classList.remove('hidden');
+        document.getElementById('secondAnimatorSection')?.classList.remove('hidden');
         populateSecondAnimatorSelect();
     } else {
-        document.getElementById('hostsWarning').classList.add('hidden');
-        document.getElementById('secondAnimatorSection').classList.add('hidden');
+        document.getElementById('hostsWarning')?.classList.add('hidden');
+        document.getElementById('secondAnimatorSection')?.classList.add('hidden');
     }
 
     // v20.9.14: Banquet fields visibility
@@ -467,7 +525,7 @@ function showAgeRecommendations() {
     const container = document.getElementById('ageRecoPrograms');
     container.innerHTML = matching.length
         ? matching.map(p => `<button type="button" class="age-reco-btn" onclick="selectProgram(${typeof p.id === 'number' ? p.id : "'" + p.id + "'"})">
-            ${p.icon || '🎯'} ${p.label || p.name}
+            ${_escB(p.icon) || '🎯'} ${_escB(p.label || p.name)}
           </button>`).join('')
         : recs.map(r => `<span class="age-reco-tag">${r}</span>`).join('');
 
@@ -498,7 +556,7 @@ async function initScriptsQuickAccess() {
 
         const tabs = document.getElementById('scriptsTabs');
         tabs.innerHTML = categories.map((cat, i) =>
-            `<button type="button" class="scripts-tab-btn${i === 0 ? ' active' : ''}" data-cat="${cat}">${cat}</button>`
+            `<button type="button" class="scripts-tab-btn${i === 0 ? ' active' : ''}" data-cat="${_escB(cat)}">${_escB(cat)}</button>`
         ).join('');
 
         tabs.addEventListener('click', (e) => {
@@ -520,8 +578,8 @@ function renderScriptCategory(category) {
     const scripts = _cachedScripts[category];
     content.innerHTML = scripts.map(s => `
         <div style="margin-bottom:8px">
-            ${s.trigger_phrase ? `<div class="scripts-trigger">${s.trigger_phrase}</div>` : ''}
-            <div style="font-size:12px;line-height:1.5">${s.response_text}</div>
+            ${s.trigger_phrase ? `<div class="scripts-trigger">${_escB(s.trigger_phrase)}</div>` : ''}
+            <div style="font-size:12px;line-height:1.5">${_escB(s.response_text)}</div>
             <button type="button" class="scripts-copy-btn" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent.trim());this.textContent='Скопійовано ✓';setTimeout(()=>this.textContent='Копіювати',1500)">Копіювати</button>
         </div>
     `).join('<hr style="border:none;border-top:1px solid var(--gray-200);margin:6px 0">');
@@ -532,7 +590,7 @@ async function populateAnimatorSelectById(selectId, placeholder) {
     const select = document.getElementById(selectId);
     if (!select) return;
     const lines = await getLinesForDate(AppState.selectedDate);
-    const currentLineId = document.getElementById('bookingLine').value;
+    const currentLineId = document.getElementById('bookingLine')?.value;
 
     select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>`;
 
@@ -584,7 +642,7 @@ async function resolveSecondAnimatorSelect(storedName, bookingId) {
 }
 
 function updateCustomDuration() {
-    const duration = parseInt(document.getElementById('customDuration').value) || 30;
+    const duration = parseInt(document.getElementById('customDuration')?.value) || 30;
     document.getElementById('detailDuration').textContent = `${duration} хв`;
 }
 
@@ -593,29 +651,29 @@ function updateCustomDuration() {
 // ==========================================
 
 function getBookingFormData() {
-    const programId = document.getElementById('selectedProgram').value;
-    const room = document.getElementById('roomSelect').value;
+    const programId = document.getElementById('selectedProgram')?.value;
+    const room = document.getElementById('roomSelect')?.value;
     const program = programId ? getProductsSync().find(p => p.id === programId) : null;
-    const time = document.getElementById('bookingTime').value;
-    const lineId = document.getElementById('bookingLine').value;
+    const time = document.getElementById('bookingTime')?.value;
+    const lineId = document.getElementById('bookingLine')?.value;
 
     let duration = program ? program.duration : 0;
     let label = program ? program.label : '';
 
     if (program && program.isCustom) {
-        duration = parseInt(document.getElementById('customDuration').value) || 30;
-        const customName = document.getElementById('customName').value || 'Інше';
+        duration = parseInt(document.getElementById('customDuration')?.value) || 30;
+        const customName = document.getElementById('customName')?.value || 'Інше';
         label = `${customName}(${duration})`;
     }
 
     let pinataFiller = '';
     if (program && program.hasFiller) {
-        pinataFiller = document.getElementById('pinataFillerSelect').value;
+        pinataFiller = document.getElementById('pinataFillerSelect')?.value;
         if (pinataFiller) label = `Пін+${pinataFiller}`;
     }
 
     const secondAnimator = program && program.hosts > 1
-        ? document.getElementById('secondAnimatorSelect').value : null;
+        ? document.getElementById('secondAnimatorSelect')?.value : null;
 
     return { programId, room, program, time, lineId, duration, label, pinataFiller, secondAnimator };
 }
@@ -674,7 +732,7 @@ async function checkDuplicateProgram(programId, program, time, duration, exclude
 }
 
 function buildBookingObject(formData, program) {
-    const costume = document.getElementById('costumeSelect').value;
+    const costume = document.getElementById('costumeSelect')?.value;
     const statusEl = document.querySelector('input[name="bookingStatus"]:checked');
     const status = statusEl ? statusEl.value : 'confirmed';
     const kidsCountInput = document.getElementById('kidsCountInput');
@@ -688,7 +746,7 @@ function buildBookingObject(formData, program) {
         programId: formData.programId,
         programCode: program.code,
         label: formData.label,
-        programName: program.isCustom ? (document.getElementById('customName').value || 'Інше') : program.name,
+        programName: program.isCustom ? (document.getElementById('customName')?.value || 'Інше') : program.name,
         category: program.category,
         duration: formData.duration,
         price: finalPrice,
@@ -697,15 +755,23 @@ function buildBookingObject(formData, program) {
         pinataFiller: formData.pinataFiller,
         costume: costume,
         room: formData.room,
-        notes: document.getElementById('bookingNotes').value,
+        notes: document.getElementById('bookingNotes')?.value,
         createdBy: AppState.currentUser ? AppState.currentUser.username : '',
         createdAt: new Date().toISOString(),
         status: status,
         kidsCount: kidsCount || null,
         groupName: document.getElementById('bookingGroupName')?.value.trim() || null,
         extraData: buildExtraData(formData.programId),
-        skipNotification: document.getElementById('skipNotificationToggle')?.checked || false
+        skipNotification: document.getElementById('skipNotificationToggle')?.checked || false,
+        paymentMethod: document.getElementById('bookingPaymentMethod')?.value || null
     };
+
+    // v33.3: Include tags in extraData
+    const selectedTags = Array.from(document.querySelectorAll('.booking-tag-option.active')).map(t => t.dataset.value);
+    if (selectedTags.length > 0) {
+        if (!obj.extraData) obj.extraData = {};
+        obj.extraData.tags = selectedTags;
+    }
 
     // v20.9.14: Banquet fields
     if (program.category === 'banquet') {
@@ -734,6 +800,10 @@ function buildBookingObject(formData, program) {
             }
         }
     }
+
+    // v33.8.0: Certificate code
+    const certCode = document.getElementById('certCodeInput')?.value?.trim();
+    if (certCode) obj.certificateCode = certCode;
 
     // Optimistic locking: include updatedAt from the booking being edited
     if (AppState.editingBookingId) {
@@ -782,7 +852,7 @@ async function buildLinkedBookings(booking, program) {
     // Додатковий ведучий (700 ₴/год)
     const extraHostToggle = document.getElementById('extraHostToggle');
     if (extraHostToggle && extraHostToggle.checked) {
-        const extraHostAnimator = document.getElementById('extraHostAnimatorSelect').value;
+        const extraHostAnimator = document.getElementById('extraHostAnimatorSelect')?.value;
         if (extraHostAnimator) {
             const extraLine = lines.find(l => l.name === extraHostAnimator);
             if (extraLine) {
@@ -1172,6 +1242,8 @@ async function showBookingDetails(bookingId) {
         <div class="booking-actions modal-footer-sticky">
             <button onclick="editBooking('${escapeHtml(booking.id)}')" class="btn-edit-booking">✏️ Редагувати</button>
             <button onclick="duplicateBooking('${escapeHtml(booking.id)}')" class="btn-duplicate-booking">📋 Повторити</button>
+            <button onclick="showRecurringModal('${escapeHtml(booking.id)}')" class="btn-recurring-booking">🔄 Повторюване</button>
+            <button onclick="openBookingChat('${escapeHtml(booking.id)}')" class="btn-secondary btn-sm">💬 Чат команди</button>
             <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="btn-delete-booking">Видалити</button>
         </div>
     `;
@@ -1238,7 +1310,7 @@ async function showBookingDetails(bookingId) {
         ${editControls}
     `;
 
-    document.getElementById('bookingModal').classList.remove('hidden');
+    document.getElementById('bookingModal')?.classList.remove('hidden');
 
     // v24.3.1: Copy buttons on detail rows
     document.querySelectorAll('.detail-copy-btn').forEach(btn => {
@@ -1354,8 +1426,10 @@ async function editBooking(bookingId) {
     await openBookingPanel(booking.time, booking.lineId);
 
     // Змінити заголовок і кнопку
-    document.querySelector('#bookingPanel .panel-header h3').textContent = 'Редагувати бронювання';
-    document.querySelector('#bookingForm .btn-submit').textContent = 'Зберегти зміни';
+    const editH3 = document.querySelector('#bookingPanel .panel-header h3');
+    const editBtn = document.querySelector('#bookingForm .btn-submit');
+    if (editH3) editH3.textContent = 'Редагувати бронювання';
+    if (editBtn) editBtn.textContent = 'Зберегти зміни';
 
     // Заповнити форму
     document.getElementById('roomSelect').value = booking.room || '';
@@ -1459,7 +1533,8 @@ async function duplicateBooking(bookingId) {
     await openBookingPanel(booking.time, booking.lineId);
 
     // Заголовок для дублювання
-    document.querySelector('#bookingPanel .panel-header h3').textContent = 'Повторити бронювання';
+    const dupH3 = document.querySelector('#bookingPanel .panel-header h3');
+    if (dupH3) dupH3.textContent = 'Повторити бронювання';
     document.querySelector('#bookingForm .btn-submit').textContent = 'Створити копію';
 
     // Pre-fill форму (ідентично editBooking)
@@ -1754,4 +1829,220 @@ async function switchBookingLine(bookingId, targetLineId) {
     } catch (error) {
         handleError('Переключення лінії', error);
     }
+}
+
+// ==========================================
+// v30.3: RECURRING BOOKINGS UI
+// ==========================================
+
+async function showRecurringModal(bookingId) {
+    const bookings = await getBookingsForDate(AppState.selectedDate);
+    const booking = bookings.find(b => b.id === bookingId);
+    if (!booking) return;
+
+    document.getElementById('recurringBookingId').value = bookingId;
+
+    // Set default end date to 3 months from now
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + 3);
+    document.getElementById('recurringEndDate').value = formatDate(endDate);
+
+    // Pre-check current day of week
+    const bookingDate = new Date(booking.date);
+    const dayOfWeek = bookingDate.getDay();
+    document.querySelectorAll('input[name="recurringDay"]').forEach(cb => {
+        cb.checked = parseInt(cb.value) === dayOfWeek;
+    });
+
+    // Show/hide days section based on pattern
+    const patternSel = document.getElementById('recurringPattern');
+    const daysSection = document.getElementById('recurringDaysSection');
+    function updateDaysVisibility() {
+        const pattern = patternSel.value;
+        daysSection.style.display = (pattern === 'weekly' || pattern === 'biweekly') ? '' : 'none';
+    }
+    patternSel.onchange = updateDaysVisibility;
+    updateDaysVisibility();
+
+    closeAllModals();
+    document.getElementById('recurringModal')?.classList.remove('hidden');
+}
+
+// Form submit handler
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('recurringForm');
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const bookingId = document.getElementById('recurringBookingId')?.value;
+            const bookings = await getBookingsForDate(AppState.selectedDate);
+            const booking = bookings.find(b => b.id === bookingId);
+            if (!booking) return;
+
+            const pattern = document.getElementById('recurringPattern')?.value;
+            const endDate = document.getElementById('recurringEndDate')?.value;
+            const daysOfWeek = Array.from(document.querySelectorAll('input[name="recurringDay"]:checked'))
+                .map(cb => parseInt(cb.value));
+
+            const body = {
+                pattern,
+                daysOfWeek: daysOfWeek.length > 0 ? daysOfWeek : [new Date(booking.date).getDay()],
+                startDate: booking.date,
+                endDate,
+                timeStart: booking.time,
+                timeEnd: addMinutesToTime(booking.time, booking.duration),
+                lineId: booking.lineId,
+                room: booking.room,
+                productId: booking.programId,
+                productCode: booking.programCode,
+                productName: booking.programName,
+                duration: booking.duration,
+                price: booking.price,
+                hosts: booking.hosts,
+                secondAnimatorName: booking.secondAnimator || null,
+                pinataFiller: booking.pinataFiller || null,
+                costume: booking.costume || null,
+                kidsCount: booking.kidsCount || null,
+                notes: booking.notes || null
+            };
+
+            try {
+                const res = await fetch('/api/recurring', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    },
+                    body: JSON.stringify(body)
+                });
+
+                if (res.ok) {
+                    const result = await res.json();
+                    document.getElementById('recurringModal')?.classList.add('hidden');
+                    AppState.cachedBookings = {};
+                    await renderTimeline();
+                    const count = result.generated || 0;
+                    showNotification(`Створено повторюване бронювання (${count} подій)`, 'success');
+                } else {
+                    const err = await res.json();
+                    showNotification(err.error || 'Помилка створення', 'error');
+                }
+            } catch (error) {
+                handleError('Recurring creation', error);
+            }
+        });
+    }
+});
+
+// ==========================================
+// v30.3: BULK OPERATIONS
+// ==========================================
+
+const BulkOps = {
+    selected: new Set(),
+
+    toggle(bookingId) {
+        if (this.selected.has(bookingId)) {
+            this.selected.delete(bookingId);
+        } else {
+            this.selected.add(bookingId);
+        }
+        this.updateUI();
+    },
+
+    clear() {
+        this.selected.clear();
+        this.updateUI();
+    },
+
+    updateUI() {
+        // Update block highlights
+        document.querySelectorAll('.booking-block').forEach(block => {
+            const id = block.getAttribute('data-booking-id') || block._bookingId;
+            if (id && this.selected.has(id)) {
+                block.classList.add('bulk-selected');
+            } else {
+                block.classList.remove('bulk-selected');
+            }
+        });
+
+        // Show/hide action bar
+        let bar = document.getElementById('bulkActionBar');
+        if (this.selected.size > 0) {
+            if (!bar) {
+                bar = document.createElement('div');
+                bar.id = 'bulkActionBar';
+                bar.className = 'bulk-action-bar';
+                document.body.appendChild(bar);
+            }
+            bar.innerHTML = `
+                <span class="bulk-count">${this.selected.size} обрано</span>
+                <button onclick="BulkOps.bulkDelete()">🗑 Видалити</button>
+                <button onclick="BulkOps.bulkStatus('confirmed')">✅ Підтвердити</button>
+                <button onclick="BulkOps.bulkStatus('preliminary')">⏳ Попередні</button>
+                <button class="bulk-cancel" onclick="BulkOps.clear()">✕ Скасувати</button>
+            `;
+        } else if (bar) {
+            bar.remove();
+        }
+    },
+
+    async bulkDelete() {
+        if (!await customConfirm(`Видалити ${this.selected.size} бронювань?`)) return;
+        const ids = Array.from(this.selected);
+        const undoData = [];
+
+        for (const id of ids) {
+            try {
+                const bookings = await getBookingsForDate(AppState.selectedDate);
+                const b = bookings.find(x => x.id === id);
+                if (b) undoData.push(b);
+                await apiDeleteBooking(id);
+            } catch (e) { /* continue */ }
+        }
+
+        if (undoData.length > 0) pushUndo('delete', undoData);
+        this.clear();
+        AppState.cachedBookings = {};
+        await renderTimeline();
+        showNotification(`Видалено ${ids.length} бронювань`, 'warning');
+    },
+
+    async bulkStatus(status) {
+        const ids = Array.from(this.selected);
+        for (const id of ids) {
+            try {
+                const bookings = await getBookingsForDate(AppState.selectedDate);
+                const b = bookings.find(x => x.id === id);
+                if (b) await apiUpdateBooking(id, { ...b, status });
+            } catch (e) { /* continue */ }
+        }
+
+        this.clear();
+        AppState.cachedBookings = {};
+        await renderTimeline();
+        showNotification(`Статус змінено для ${ids.length} бронювань`, 'success');
+    }
+};
+
+window.BulkOps = BulkOps;
+
+// ─── Pinata Stock Badge (v33.5) ──────────
+async function _loadPinataStockBadge() {
+    const badge = document.getElementById('pinataStockBadge');
+    if (!badge) return;
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res  = await fetch('/api/warehouse/pinata-status', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!data.success) return;
+        const osnovy = data.stock.find(s => s.name.includes('Основи'));
+        if (osnovy) {
+            badge.textContent = `📦 Основи: ${osnovy.quantity} шт ${osnovy.quantity <= 3 ? '⚠️' : '✅'}`;
+            badge.style.display = 'inline-block';
+            badge.style.color   = osnovy.quantity <= 3 ? '#ef4444' : 'var(--gray-500)';
+        }
+    } catch { /* silent */ }
 }

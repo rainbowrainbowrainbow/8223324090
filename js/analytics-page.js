@@ -6,6 +6,11 @@
 
 /* global apiVerifyToken, initDarkMode */
 
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // ==========================================
 // HELPERS — apiRequest & showNotification
 // ==========================================
@@ -22,8 +27,7 @@ async function apiRequest(method, url, body) {
     });
     if (res.status === 401 || res.status === 403) {
         localStorage.removeItem('pzp_token');
-        document.getElementById('loginOverlay')?.classList.remove('hidden');
-        if (document.getElementById('mainApp')) document.getElementById('mainApp').style.display = 'none';
+        window.location.href = '/';
         throw new Error('Unauthorized');
     }
     if (!res.ok) {
@@ -33,15 +37,6 @@ async function apiRequest(method, url, body) {
     return await res.json();
 }
 
-function showNotification(message, type = '') {
-    let c = document.getElementById('toastContainer');
-    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
-    const t = document.createElement('div');
-    t.className = 'toast' + (type ? ' ' + type : '');
-    t.textContent = message;
-    c.appendChild(t);
-    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
-}
 
 // ==========================================
 // STATE
@@ -288,7 +283,7 @@ function renderTopPrograms(programs) {
         const rankClass = i < 3 ? `rank-${i + 1}` : 'rank-n';
         return `<tr>
             <td style="width:40px"><span class="rank ${rankClass}">${i + 1}</span></td>
-            <td style="font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name || '—'}</td>
+            <td style="font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name) || '—'}</td>
             <td style="width:40px;text-align:center;font-size:12px;color:var(--gray-400)">${p.count}x</td>
             <td style="text-align:right;font-weight:700;color:#10B981">${fmtMoney(p.revenue)}</td>
         </tr>`;
@@ -303,9 +298,9 @@ function renderWeekdayChart(weekday) {
         const h = Math.max((w.count / maxCnt) * 100, 2);
         return `<div class="an-bar-group">
             <div class="an-bar-pair" style="height:100px">
-                <div class="an-bar purple" style="height:${h}px" title="${w.name}: ${w.count} бронювань, ${fmtMoney(w.revenue)}"></div>
+                <div class="an-bar purple" style="height:${h}px" title="${escapeHtml(w.name)}: ${w.count} бронювань, ${fmtMoney(w.revenue)}"></div>
             </div>
-            <div class="an-bar-label">${w.name}</div>
+            <div class="an-bar-label">${escapeHtml(w.name)}</div>
         </div>`;
     }).join('');
 }
@@ -316,7 +311,7 @@ function renderFinCategories(cats) {
     const maxTotal = Math.max(...cats.map(c => c.total), 1);
     el.innerHTML = cats.slice(0, 8).map(c => `
         <div class="an-hbar-row">
-            <span class="an-hbar-label">${c.icon || ''} ${c.name}</span>
+            <span class="an-hbar-label">${escapeHtml(c.icon) || ''} ${escapeHtml(c.name)}</span>
             <div class="an-hbar-track">
                 <div class="an-hbar-fill" style="width:${Math.round(c.total / maxTotal * 100)}%;background:${c.color || '#6366F1'}"></div>
             </div>
@@ -404,13 +399,13 @@ function switchPeriod(period) {
     document.querySelectorAll('.an-period-tab').forEach(t => {
         t.classList.toggle('active', t.dataset.period === period);
     });
-    document.getElementById('customRange').classList.toggle('visible', period === 'custom');
+    document.getElementById('customRange')?.classList.toggle('visible', period === 'custom');
     if (period !== 'custom') refreshAll();
 }
 
 function applyCustomRange() {
-    const from = document.getElementById('customFrom').value;
-    const to = document.getElementById('customTo').value;
+    const from = document.getElementById('customFrom')?.value;
+    const to = document.getElementById('customTo')?.value;
     if (!from || !to) {
         showNotification('Оберіть обидві дати', 'error');
         return;
@@ -435,7 +430,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const token = localStorage.getItem('pzp_token');
     if (!token) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
+        window.location.href = '/';
         document.getElementById('mainApp').style.display = 'none';
         return;
     }
@@ -443,9 +438,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const user = await apiVerifyToken();
         if (!user) throw new Error('Invalid token');
+        AppState.currentUser = user;
         document.getElementById('currentUser').textContent = user.name || user.username;
     } catch {
-        document.getElementById('loginOverlay').classList.remove('hidden');
+        window.location.href = '/';
         document.getElementById('mainApp').style.display = 'none';
         return;
     }

@@ -4,6 +4,509 @@
 
 ---
 
+## v38.13.0 — Catalog Pages + Supabase Storage (2026-03-26)
+
+### Catalog Pages [claude-code]
+- **catalog_pages таблиця** — Migration 127: HTML-сторінки для каталогу (обкладинка + товарні)
+- **API** — GET/POST/PUT/DELETE endpoints для сторінок каталогу
+- **Fullscreen viewer** — ← → навігація, Escape закриття
+- **Створення сторінок** — "+ Обкладинка" та "+ Сторінка" кнопки
+- **Вставка зображень** — кнопка "🖼 Зображення" на кожній сторінці
+- **Редагування** — назва, опис, ціна через "✏️ Редагувати"
+
+### Supabase Storage [claude-code]
+- **Постійне збереження** — AI зображення завантажуються в Supabase Storage (bucket: catalog-images)
+- **Транслітерація filename** — UA→ASCII для Supabase (фікс "Invalid key" помилки)
+- **Fallback** — якщо Supabase недоступний, зберігає Kie.ai temp URL
+- **CSP** — дозволено img-src для *.supabase.co та *.aiquickdraw.com
+
+### AI Image Generation [claude-code]
+- **nano-banana-2** — оновлено модель (google/nano-banana → nano-banana-2)
+- **Role access** — всі catalog endpoints дозволяють creator/director/art_director/manager
+- **Error feedback** — toast на старті/успіху/помилці генерації
+
+### CSS Architecture [claude-code]
+- **css/designs.css** — 342 рядків витягнуто з designs.html
+- **css/catalog.css** — 483 рядків + стилі catalog pages
+- **designs.html** — 1541 → 725 рядків (-53%)
+
+---
+
+## v38.11.0 — Systematic Frontend Improvements (2026-03-26)
+
+### AI Image Generation [claude-code]
+- **Kie.ai prompt fix** — transliterate Ukrainian→English (Gemini rejected cyrillic)
+- **Fallback save** — if apply-image fails, saves via PATCH directly
+- **Error feedback** — toast on start/success/failure
+
+### Centralized Notifications [claude-code]
+- **js/notification.js** — single showNotification() with aria-live, replaces 9 duplicates
+- **alert() → toast** — 16 alert() calls replaced across hr, sound, settings, warehouse
+
+---
+
+## v38.10.0 — Sidebar Active Fix + Catalog Improvements (2026-03-26)
+
+### Sidebar [claude-code]
+- **Active state rewritten** — exact match only, no startsWith. Fixes double-active (/art + /art-director, /designs + /designs#catalogs)
+- **Hash logic** — hash items active only when URL hash matches; default first hash only when no non-hash sibling
+- **Scroll restore** — saves/restores scroll position between page navigations
+
+### Catalogs [claude-code]
+- **"+ Створити каталог" button** — modal with name, emoji, description; POSTs to /api/catalogs/definitions
+- **Viewer overflow fixed** — removed max-height:80vh that cut off catalog page content
+- **Hash tab switching** — /designs#catalogs now switches tab BEFORE async loads
+- **Null checks** — apiFetch responses checked before .json() (12 places fixed)
+- **UI split** — "Готові каталоги" and "Каталоги товарів" sections
+- **Price bug** — totalPerChild was string concatenation; fixed with parseFloat
+
+### Match-3 Game [claude-code]
+- **Special indicators** — 10→16px, dark bg, hover tooltip with label + description
+- **Pause button** — ⏸ in header, overlay with blur, resume button
+- **Bonus banner** — animated slide-across on special activation
+
+---
+
+## v38.9.0 — Stability & Page Fixes (2026-03-25)
+
+### Critical Fixes [claude-code]
+- **art-director-page.js, center-page.js, demo-page.js** — відновлено оригінальні файли (помилковий "fix" ламав initPage функції → сторінки Арт, Центр, Демо не працювали)
+- **copilot-page.js** — додано `showAddInteractionForm` і `loadTrackerAlerts` до window.CopilotPage (кнопки в Менеджер AI не реагували)
+- **designs.html** — видалено misplaced `<script>` тег всередині JS функції + fix openCatalog() race condition
+- **server.js** — `/designs` тепер показує designs.html напряму (було 302 redirect на /art)
+
+### Sidebar & CSS [claude-code]
+- **Центр цін → Центр керування** 🎛️ (перейменовано в sidebar)
+- **embed-mode CSS** — ховає sidebar/header в iframe (фікс дублювання sidebar в Звіти tab)
+
+### Tooling [claude-code]
+- **tests/ui-check.js** — 106 автоматичних DOM/JS перевірок через jsdom (синтаксис, структура, exports)
+- **jsdom** додано як dev dependency
+
+---
+
+## v38.8.0 — Авто-каталог Fix + Dashboard Widget (2026-03-25)
+
+### Catalog Fixes [claude-code]
+- **Шрифти зменшено** — cover icon 56→40px, year 28→22px, title clamp(20,4vw,28)px, price clamp(18,3vw,24)px, h3 16→15px
+- **Viewer overflow** — catalog-pages-container max-height: 80vh
+- **Dashboard widget** — каталоги повернено до списку доступних dashboard віджетів
+
+---
+
+## v38.7.0 — Sidebar: Арт + Дизайнер Split (2026-03-25)
+
+### Sidebar Restructure [claude-code]
+- **Група "Продукт" розділена** на два окремих блоки:
+  - **🎨 Арт** — Програми, Арт директор, Випускний, Афіша, Сертифікати (все пов'язане з розважальними програмами)
+  - **📐 Дизайнер** — Дизайн-борд, Каталоги, Стайлгайд (все по дизайну та візуалу)
+- **Каталоги переміщено** з `/art` → `/designs#catalogs` (де живе авто-каталог viewer з AI генерацією та PDF експортом)
+- **data-page-group** оновлено: art-director/programs/graduation → `"art"`, designer/designs → `"designer"`
+- **CSS page transitions** — окремі анімації для груп art (rotateIn) та designer (fadeScale)
+
+---
+
+## v38.6.0 — Business Logic Hardening + Full System Audit (2026-03-25)
+
+### Booking System Hardening [claude-code]
+- **Status whitelist** — тільки `confirmed`, `preliminary`, `cancelled` приймаються; будь-який інший рядок ігнорується
+- **Cancelled→confirmed blocked** — скасоване бронювання не можна відновити, потрібно створити нове
+- **Midnight span prevention** — бронювання не може перевищувати 00:00 (time + duration > 1440 хв = помилка)
+- **mapBookingRow on payment** — `PATCH /:id/payment` тепер повертає camelCase замість raw snake_case
+
+### Wallet Race Conditions Fixed [claude-code]
+- **Transfer deadlock prevention** — lock обох wallets в порядку ID (менший перший) при переказах
+- **Daily login idempotency** — подвійний guard: перевірка `last_login_reward` + перевірка `coin_transactions` за сьогодні
+
+### Database Migration 126 [claude-code]
+- **5 нових indexes** — `leads(assigned_to)`, `leads(status, created_at)`, `bookings(program_id)`, `finance_transactions(category_id)`, `staff(hire_date)`
+- **FK ON DELETE** — `bookings.customer_id` і `discount_usage.customer_id` → `ON DELETE SET NULL`
+
+### Frontend Fixes [claude-code]
+- **setInterval cleanup** — agents-panel, alerts, status-page: `clearInterval` on `beforeunload`
+- **innerHTML XSS** — escaped user data в hr-page, center-page, chat-page
+- **CSS iOS zoom** — 3 inputs з font-size 13px → 16px (controls.css: timeline-search, night-settings, template-select)
+
+### Code Cleanup [claude-code]
+- **3 unused imports** видалено — `requireRole` з decisions.js, designs.js, points.js
+
+### Testing [claude-code]
+- **+11 нових тестів** (424 → 435): wallet (2), shop (3), minigame (3), booking validation (3)
+
+### System Audit Findings (documented for next session) [claude-code]
+- **29 route files** без dedicated тестів (wallet, shop, minigame, personal-accounts, recurring, chat та інші)
+- **Server startup**: DATABASE_URL missing = тільки warning (має бути fatal)
+- **Graceful shutdown**: не чекає in-flight requests перед закриттям DB pool
+- **Stale data on reconnect**: після тривалого offline клієнт бачить суміш старих і нових даних
+- **Response format inconsistency**: 4 формати pagination, 3 формати errors across routes
+
+---
+
+## v38.5.0 — Deep QA Sweep (2026-03-25)
+
+### Security Hardening [claude-code]
+- **Hardcoded API ключі видалено** — KIE.ai (2 місця) + OpenRouter: graceful 503 якщо env var не задано
+- **SQL injection fix** — `routes/backup.js`: table name interpolation → `safeTableName()` з allowlist
+- **Telegram HTML injection** — `esc()` для всіх user-controlled полів у notification templates (notes, names, descriptions)
+- **IDOR fix** — `PATCH /bookings/:id/payment` додано `requireAction('edit_booking')`
+- **innerHTML XSS** — escaped user data в hr-page, center-page, chat-page (4 місця)
+- **10 missing PAGE_ACCESS** — додано auth записи для art-director, designs, game, leads, profile, quiz, report-agent, reports, room, shop
+
+### Race Conditions Fixed [claude-code]
+- **awardXP** — atomic SQL `xp = xp + $1` замість read-modify-write
+- **purchaseShopItem** — `FOR UPDATE` lock на shop_items запобігає oversell
+- **updateStreak** — atomic UPSERT з CASE логікою, без read-modify-write
+
+### Performance [claude-code]
+- **N+1 achievements** — 500+ queries → 9 parallel batch queries (Promise.all)
+- **N+1 bulk messaging** — 1000 INSERTs → single batch INSERT
+- **N+1 meeting action items** — loop INSERT → multi-row INSERT
+- **52+ unbounded SELECT*** — додано LIMIT на всі queries без обмежень
+- **Pagination caps** — chat limit=200, summary limit=100, days=365
+
+### Frontend QA [claude-code]
+- **401 blank screen fix** — 13 сторінок: `loginOverlay` → `window.location.href='/'`
+- **434 buttons** — додано `type="button"` (запобігає accidental form submit)
+- **Sidebar hash nav** — нормалізація pathname для in-page tab switching
+- **Dark mode flash** — prevention script на 20 сторінках
+- **Null-safe getElementById** — demo-page, art-director-page tab switching
+- **setInterval leaks** — agents-panel, alerts, status-page: clearInterval on beforeunload
+- **CSS iOS zoom** — 3 inputs з font-size 13px → 16px
+
+### Timezone DST Fixes [claude-code]
+- **music-delivery.js** — hardcoded UTC+3 → DST-aware `toLocaleString('en-US', { timeZone: 'Europe/Kyiv' })`
+- **agentTracker.js** — hardcoded +02:00 → dynamic DST offset
+- **8 toLocaleDateString()** — додано `timeZone: 'Europe/Kyiv'` (graduation, certificates, finance, bot, templates)
+
+### Memory & Stability [claude-code]
+- **Guardian.js** — periodic cleanup (5 хв) для 9 in-memory caches (запобігає ~20MB leak за 7 днів)
+- **contextCache.js** — periodic cleanup (10 хв) + hard cap 500 entries
+- **WebSocket heartbeat** — snapshot iteration запобігає iterator invalidation; `_removeClient()` для повного cleanup
+- **unhandledRejection** — тепер `process.exit(1)` (запобігає corrupted state)
+- **API 404** — JSON `{ error: 'Not found' }` замість HTML для `/api/*` routes
+
+### Database [claude-code]
+- **Migration 126** — 5 missing indexes (leads, bookings, finance, staff) + ON DELETE SET NULL для bookings.customer_id, discount_usage.customer_id
+
+### Telegram [claude-code]
+- **Message truncation** — `truncate()` helper для 4096 char Telegram limit
+- **Silent catches** — 3 `.catch(() => {})` → logging (order notify, lead notify, chat ID reg)
+
+### Testing [claude-code]
+- **+78 нових тестів** (346 → 424): auth-refresh (15), sql-safety (13), decisions (11), vacancies (9), graduation (10), dashboard-widgets (10), our-fixes (10)
+
+### Documentation [claude-code]
+- **CHANGELOG.md** — відновлено 20+ пропущених версій (v35.1–v38.2)
+- **PROJECT_PASSPORT.md** — v22.18 → v38.5, routes 61→74, services 30→41, CSS 17→22
+- **SNAPSHOT.md** — оновлено architecture counts
+- **Cache-bust** — `?v=38.5.0` на всіх 34 HTML сторінках
+- **Accessibility** — aria-label на 11 inputs (analytics, customers, dashboard, art-director, chat, demo, center)
+
+---
+
+## v38.4.0 — Security & Reliability Hardening (2026-03-25)
+
+### JWT Refresh Tokens [claude-code]
+- **Refresh token rotation** — short-lived access tokens (15m) + long-lived refresh tokens (30d)
+- **Replay detection** — reuse of revoked token automatically revokes ALL user sessions
+- **Session management** — `/api/auth/sessions` endpoint to list active sessions
+- **Logout** — `/api/auth/logout` revokes refresh token; `allDevices: true` revokes all
+- **Backward compatible** — legacy 24h token still issued for existing clients
+- **Auto-cleanup** — scheduler job removes expired/revoked tokens weekly
+
+### Transactional Outbox [claude-code]
+- **Outbox pattern** — `publishInTransaction()` writes events in the same DB transaction as business data
+- **Outbox relay** — scheduler processes unpublished events every 5 seconds via `FOR UPDATE SKIP LOCKED`
+- **Dual-write prevention** — eliminates risk of event loss when DB commits but event publish fails
+- **Auto-cleanup** — published outbox events cleaned up after 7 days
+
+### pg_stat_statements [claude-code]
+- **Enabled** via migration — provides query performance statistics (planning time, execution time, calls)
+- **Migration 125** — `refresh_tokens` table, `outbox_events` table, pg_stat_statements extension
+
+### SQL Safety Utilities [claude-code]
+- **`utils/sqlSafe.js`** — `safeOrderBy()`, `safeTableName()`, `safeSets()` helpers
+- **Audit complete** — all 12+ dynamic SQL locations verified using allowlists (no actual injection vectors found)
+
+---
+
+## v38.3.0 — Operations Intelligence (2026-03-24)
+
+### Exceptions Inbox [claude-code]
+- **Новий dashboard віджет "Що потребує уваги"** — агрегує 6 типів операційних проблем:
+  - 💥 Конфлікти кімнат (перекриття часу бронювань)
+  - 🎭 Бронювання без аніматора
+  - ⏰ Прострочена підготовка (event-задачі)
+  - 😞 NPS детрактори (оцінка 1-2/5 без follow-up)
+  - 🧹 Прибирання з перевищеним SLA
+  - 🔴 Непідтверджені бронювання за <2 години до старту
+- **Авто-додано** до дашбордів: creator, director, vice_director, senior_manager, manager, admin, reception
+
+### Event Pipeline [claude-code]
+- **Автоматичний lifecycle бронювання** через event bus:
+  - `booking.t24` — за 24 години до події (нагадування + задача підготовки)
+  - `booking.day_of` — в день події (чек-лист підготовки кімнати)
+  - `booking.completed` — після завершення (тригер для прибирання)
+- **booking_pipeline** таблиця — відстеження стадій кожного бронювання (idempotent)
+
+### NPS Follow-Up Automation [claude-code]
+- **Detractor follow-up** — при оцінці 1-2/5 автоматично:
+  - Створюється high-priority задача менеджеру
+  - Telegram-алерт директору
+- **Promoter referral** — при оцінці 5/5 автоматично:
+  - Telegram-повідомлення з пропозицією рекомендації
+- Нові поля event_reviews: `nps_score`, `follow_up_status`, `follow_up_task_id`
+
+### Cleaning Task Chain [claude-code]
+- **cleaning_tasks** таблиця — автоматичне створення задач прибирання після завершення подій
+- **SLA tracking** — дефолт 15 хвилин на прибирання, відстеження в exceptions inbox
+- Прив'язка до кімнати та бронювання
+
+### Event Bus Rules [claude-code]
+- 5 нових default правил: `booking_t24_reminder`, `nps_detractor_followup`, `nps_promoter_referral`, `booking_cleaning_auto`, `booking_day_prep`
+- Scheduler jobs: `checkEventPipeline` (5 хв), `checkNpsFollowUp` (hourly), `checkCleaningTasks` (5 хв)
+
+---
+
+## v38.2.0 — Тестовий деплой + Deep Research підготовка (2026-03-24)
+
+### Research & Deploy [claude-code]
+- **Deep Research** — підготовлено промпти для глибокого аналізу CRM (бізнес + технічний)
+- **Тестовий деплой** — перевірка стабільності системи
+
+---
+
+## v38.1.0 — HR: Команда + Вакансії + Підбір персоналу (2026-03-22)
+
+### Team Tab Fix [claude-code]
+- **initTabs()** — null-safe panel lookup + loader object pattern
+- **loadTeam()** — spinner, null-check для hrFetch, error states
+
+### Roles Sync [claude-code]
+- **ROLE_LABELS** — 7 → 15 ролей (+trampoline_instructor, waiter, bartender, cook, head_cook, director, vice_director, hr_manager)
+- **teamRoleFilter** — optgroup структура (Керівництво/Аніматори/Кухня/Технічний)
+
+### Vacancies Module [claude-code]
+- **Migration 123** — `job_vacancies` + `job_applications` таблиці з індексами, тригер auto-update applications_count
+- **routes/hr.js** — 8 нових ендпоінтів (vacancies CRUD, applications CRUD, hire з auto-staff creation)
+- **hr.html** — новий таб "Вакансії" зі статус-фільтром, stat cards, канбан кандидатів
+
+---
+
+## v38.0.0 — Sound Module (2026-03-22)
+
+### Sound Page [claude-code]
+- **sound.html** — повний rewrite з 4 табами: Оголошення / Бібліотека / Плейлисти / Лог
+- **Migration 122** — sounds.url column, extended category/type checks
+- **routes/music.js** — POST /generate-tts (TTS), GET/POST/DELETE /library (file upload), GET/POST/DELETE /projects
+- **js/sound-page.js** — логіка табів, API calls, модалки
+- **css/sound.css** — Design System v4.0 токени, dark mode, мобільна адаптація
+
+### v38.0.1 — Sidebar Fixes [claude-code]
+- **Арт директор** — додано до окремої групи sidebar
+- **Ukrainian labels** — локалізація sidebar меню
+
+---
+
+## v37.8.0 — Visual Polish (2026-03-22)
+
+### UI Enhancement [claude-code]
+- **Cards** — глибші тіні, hover-lift з border-glow
+- **Buttons** — gradient backgrounds, glow-shadow, scale active
+- **Inputs** — inset shadow, hover border, покращений focus ring
+- **Login** — gradient кнопка, стильніші інпути, inner glow
+- **Tooltip** — backdrop-blur, rounded 12px
+- **Tabs/Filters** — gradient active, hover-lift
+- **Dashboard** — widget hover-lift, stat-items gradient tint
+- **Dark mode** — оновлено empty-state
+
+---
+
+## v37.7.0 — Page Transitions (2026-03-22)
+
+### Animations [claude-code]
+- **5 анімацій входу** — унікальна анімація для кожної групи sidebar (CRM, Управління, HR, Творче, Система)
+- **Exit анімація** — 180ms fade-slide-down при навігації
+- **prefers-reduced-motion** — вимикає всі переходи
+
+---
+
+## v37.6.0 — Sidebar Visual Upgrade (2026-03-22)
+
+### Sidebar Redesign [claude-code]
+- **Nav icons** — 28px rounded boxes з gray-50 background, colored on active
+- **User card** — gradient card з border, shadow, 36px avatar
+- **Active state** — gradient background + 4px glow indicator bar
+- **Hover** — translateX(2px) slide animation
+- **Custom scrollbar** — 4px thin (webkit + firefox)
+- **Dark mode** — всі нові стилі адаптовано
+
+---
+
+## v37.5.0 — Cache Bust Fix (2026-03-22)
+
+### Browser Cache [claude-code]
+- **Проблема** — браузер кешував старі JS файли (config.js, sidebar.js) бо ?v= не змінився
+- **Фікс** — оновлено ?v=37.5.0 на всіх 30 HTML сторінках
+
+---
+
+## v37.4.0 — Системний QA Чекап (2026-03-22)
+
+### QA [claude-code]
+- **Version bump** — 37.3.0 → 37.4.0
+- **Changelog entry** — 13 пунктів всіх змін сесії
+- **Cache-bust** — ?v=37.4.0 на всіх 30 HTML сторінках
+
+---
+
+## v37.3.0 — Sidebar Always Expanded (2026-03-22)
+
+### UX Change [claude-code]
+- **Collapse видалено** — display:none !important
+- **Всі 5 груп відкриті** — defaultOpen: true (CRM, Управління, HR, Творче, Система)
+- **localStorage очищено** — pzp_sidebar_collapsed + pzp_sidebar_groups removed on init
+
+---
+
+## v37.2.0 — HR Group in Sidebar (2026-03-22)
+
+### Navigation [claude-code]
+- **Нова 5-а група** — HR (🤝) з Графік, Команда, Кадри, Навчання
+- **Навчання** — переміщено з CRM до HR групи
+- **Управління** — залишено тільки бізнес-елементи (Клієнти, Ліди, Фінанси, Аналітика, Звіти, AI)
+
+---
+
+## v37.1.0 — Sidebar Responsive Fix (2026-03-22)
+
+### Responsive [claude-code]
+- **Root cause** — group labels з uppercase + letter-spacing:1.2px overflow 220px sidebar
+- **layout.css** — letter-spacing 1.2→0.8px, text-overflow:ellipsis
+- **Tablet (769-1023px)** — font 12px, group label 9px для 200px sidebar
+- **Mobile (≤768px)** — accordion groups в collapsed off-canvas sidebar 280px
+
+---
+
+## v37.0.0 — UI Polish Bundle (2026-03-22)
+
+### 7 Improvements [claude-code]
+- **Profile** — null-safe getElementById для currentUser
+- **Афіша** — 🎭 кнопка додана до timeline top-bar
+- **Statistics** — приховано з dropdown menu
+- **History** — видалено дублікат з dropdown (залишено тільки sidebar)
+- **sound.html** — нова сторінка з Library/Projects/Upload табами
+- **routes/sound-library.js** — CRUD API для звуків
+- **designer.html** — нова сторінка з 5 табами (Catalogs, Guideline, Brand Book, Styleguide, Templates)
+
+---
+
+## v36.0.0 — Decision Screen (2026-03-22)
+
+### Центр прийняття рішень [claude-code]
+- **decisions.sql** — PostgreSQL таблиця з пріоритетами, джерелами, індексами
+- **routes/decisions.js** — 4 ендпоінти: GET pending, POST create, PUT approve/reject/defer, GET history
+- **js/decision-screen.js** — IIFE модуль з локальними утилітами, блокуючий overlay на Dashboard
+- **css/decision-screen.css** — overlay z:99999, sticky header, card animations
+- **Priority cards** — critical (red), important (yellow), normal (blue)
+- **Dark mode** — повна підтримка
+
+### v36.1.0 — Decision Screen for All Roles [claude-code]
+- Зняте обмеження по ролях для /pending, /:id/:action, /history
+
+### v36.2.0 — Seed Decisions [claude-code]
+- **Migration 116** — 3 тестових рішення (critical/important/normal) для першого деплою
+
+---
+
+## v35.1.0–v35.11.0 — Sidebar Polish & Site Health (2026-03-22)
+
+### Sidebar Improvements [claude-code]
+- **v35.1.0** — чисті emoji іконки (прибрано gray badge box), додано /reports до Управління
+- **v35.2.0** — compact nav-links (padding 10→7px, font 14→13px), smart defaultOpen (тільки активна група)
+- **v35.3.0** — додано Каталоги до Творче групи, фікс user card onclick
+- **v35.4.0** — видалено improvementFab (перекривав Клешню)
+- **v35.5.0** — 🌙/☀️ theme toggle кнопка в sidebar
+
+### API & Page Fixes [claude-code]
+- **v35.6.0** — API bugfixes: copilot columns (updated_at→last_contact_at, full_name→name), warehouse route ordering
+- **v35.7.0** — додано /copilot до PAGE_ACCESS в auth.js
+- **v35.8.0** — unified sidebar на всіх 24 сторінках
+- **v35.9.0** — фікс blank copilot page (auth flow broken — тепер робить свій apiVerifyToken)
+
+### Site Health [claude-code]
+- **v35.10.0** — CSS cache bust + Nunito font на всіх 27 сторінках
+- **v35.11.0** — full site health fix: overlays, scripts, fonts, versions (0 remaining issues)
+
+---
+
+## v35.0.0 — Sidebar Full Rebuild (2026-03-22)
+
+### Sidebar Accordion Groups [claude-code]
+- **Accordion Navigation** — 4 групи (CRM, Управління, Творче, Система) з CSS grid-template-rows анімацією
+- **Unified Nav** — однакове sidebar меню на всіх 24 сторінках замість різних hub-dropdown
+- **Collapse Button** — `sidebarCollapseBtn` додано на всі 23 standalone сторінки
+- **Nav Icons** — збільшено emoji розмір (15px → 17px collapsed), scale(1.08) анімація при hover
+
+### Cross-Page Actions [claude-code]
+- **Афіша/Сертифікати/Налаштування** — кнопки працюють з будь-якої сторінки через `?open=` auto-open
+- **`sidebarOpen*` helpers** — якщо на таймлайні → модалка, якщо на іншій сторінці → redirect `/?open=`
+- **`_checkAutoOpen()`** — app.js читає `?open=` параметр і відкриває панель після ініціалізації
+
+### New Routes [claude-code]
+- **`/afisha`** → redirect 302 → `/?open=afisha`
+- **`/certificates`** → redirect 302 → `/?open=certificates`
+- **`/designer`** → sendFile або redirect → `/art`
+- **`/sound`** → sendFile або redirect → `/`
+- **PAGE_ACCESS** — додано `/designer`, `/sound`, `/afisha`, `/certificates`
+
+### Bugfixes (E1-E11) [claude-code]
+- **E1** — `sidebar-group-inner { min-height: 0 }` для grid collapse анімації
+- **E2/E6** — `#sidebarActions` приховано `display:none` (не видалено — app.js/auth.js мають обробники)
+- **E3** — collapse button на всіх сторінках
+- **E4/E5** — `showAfishaModal` / `openCertificatesPanel` graceful з redirect
+- **E7** — `/staff` двічі → `noActive: true` на "Команді" запобігає подвійному підсвічуванню
+- **E8** — collapsed sidebar: `.sidebar-group-items { display: none }`
+- **E9** — спрощений onclick без зайвого `window.X` дублювання
+- **E10** — collapsed nav-link padding override
+- **E11** — `toggleGroup` додано в `return {}`
+
+### Dark Mode [claude-code]
+- Accordion стилі: border, hover, arrow, group icon, vertical track
+- Nav icon active: `box-shadow: 0 2px 8px rgba(16,185,129,0.25)`
+
+### Infrastructure [claude-code]
+- **8 unclosed `<div>` tags** — виправлено в changelog секції index.html (v20.0.0 → v12.3.0)
+- **346/346 тестів pass**, 0 fail
+- **31 файл змінено**, 654 insertions, 310 deletions
+
+---
+
+## v32.0.0 — Premium Каталог Випускних (2026-03-16)
+- **Premium Catalog Redesign** — повний редизайн каталогу випускних на рівні друкованих каталогів 2025 [claude-code]
+- **Geometric Mosaic** — CSS полігональний фон з унікальною пастельною палітрою для кожного з 7 пакетів [claude-code]
+- **Info Cards** — нова структура: "ВИПУСКНИЙ" label + назва великим текстом + іконки ⏱ тривалість / 👥 діти / ₴ ціна [claude-code]
+- **Services Card** — кольоровий акцентний блок з переліком послуг UPPERCASE [claude-code]
+- **Description Card** — детальні описи кожної послуги (catalog_description) з DB [claude-code]
+- **Fullscreen Viewer** — immersive перегляд з sticky topbar, навігація ◀▶, Escape/Arrow/Swipe [claude-code]
+- **7 Package Themes** — лавандовий (best-dj), золотий (super-party), блакитний (science), м'ятний (handmade), жовтий (pizza), червоний (squid-game), рожевий (neon) [claude-code]
+- **Print A4** — 1 пакет = 1 сторінка, geometric mosaic зберігається при друку, компактна типографіка [claude-code]
+- **Export** — повний каталог (обкладинка + 7 сторінок) з premium дизайном для друку/PDF [claude-code]
+- **Share** — Web Share API + clipboard fallback для поширення пакету [claude-code]
+- **DB Migration 086** — min_kids/max_kids для пакетів, catalog_description для послуг [claude-code]
+- **automation.test.js fix** — 28 тестів виправлено: додано 'auto_complete' до valid task type filter [claude-code]
+- **Version sync** — всі 360 cache-bust ?v= тегів синхронізовані [claude-code]
+- **SNAPSHOT.md** — повне оновлення з v24.3 до v31.8 з актуальними метриками [claude-code]
+
+## v30.3.0 — Пошук, Шаблони, Повтори (2026-03-14)
+- **Пошук по таймлайну** — Ctrl+F відкриває search bar, підсвітка знайдених блоків, навігація ▲▼ по результатах, авто-скрол, dimming непотрібних блоків [claude-code]
+- **Redo + Hotkeys** — Ctrl+Z скасувати, Ctrl+Shift+Z / Ctrl+Y повторити, повний redo стек (до 10 дій) [claude-code]
+- **Шаблони бронювань** — DB таблиця `booking_templates`, CRUD API `/api/booking-templates`, dropdown + кнопка 💾 у формі бронювання, лічильник використань, сортування по popular+favorites [claude-code]
+- **Повторювані бронювання UI** — модалка з вибором патерну (щотижня, через тиждень, будні, вихідні, щомісяця), дні тижня, дата завершення. Кнопка 🔄 в деталях бронювання [claude-code]
+- **Bulk-операції** — Shift+Click для multi-select блоків на таймлайні, floating action bar (видалити, підтвердити, зробити попередніми) [claude-code]
+- **PDF експорт** — кнопка "Друк PDF" з print stylesheet (ховає UI, зберігає кольори блоків) [claude-code]
+- **Міграція 075** — `booking_templates` таблиця з індексами на favorite та usage_count [claude-code]
+
 ## v24.4.0 — QA Mega Fix + Adaptive Layout (2026-03-12)
 - **8 сторінок виправлено** — додано відсутній ui.js (customers, chat, dashboard, leads, profile, shop, quiz, room) — confirmModal/showNotification були undefined [claude-code]
 - **Адаптивний layout** — прибрано max-width обмеження (1800/1400/1200px), контент розтягується на повну ширину коли панель закрита [claude-code]

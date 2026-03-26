@@ -441,4 +441,127 @@ router.get('/conversion', async (req, res) => {
     }
 });
 
+// ==========================================
+// v33.3: GET /api/analytics/bookings — Booking analytics
+// ==========================================
+
+router.get('/bookings', async (req, res) => {
+    try {
+        let from = req.query.from, to = req.query.to;
+        if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
+            const range = getDateRange(req.query.period || 'month');
+            from = range.from; to = range.to;
+        }
+        const cacheKey = `bookings:${from}:${to}`;
+        const cached = getCached(cacheKey);
+        if (cached) return res.json(cached);
+
+        const [totalsR, byProgramR, byDayR, byCategoryR, byWeekdayR] = await Promise.all([
+            pool.query(`
+                SELECT COUNT(*)::int AS total,
+                       COALESCE(SUM(price), 0)::int AS revenue,
+                       ROUND(COALESCE(AVG(price), 0))::int AS avg_check,
+                       COUNT(*) FILTER (WHERE status = 'confirmed')::int AS confirmed,
+                       COUNT(*) FILTER (WHERE status = 'preliminary')::int AS preliminary
+                FROM bookings WHERE date >= $1 AND date <= $2
+                AND status != 'cancelled' AND linked_to IS NULL
+            `, [from, to]),
+            pool.query(`
+                SELECT program_name AS name, program_code AS code, category,
+                       COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
+                FROM bookings WHERE date >= $1 AND date <= $2
+                AND status != 'cancelled' AND linked_to IS NULL
+                GROUP BY program_name, program_code, category ORDER BY revenue DESC LIMIT 15
+            `, [from, to]),
+            pool.query(`
+                SELECT date, COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
+                FROM bookings WHERE date >= $1 AND date <= $2
+                AND status != 'cancelled' AND linked_to IS NULL
+                GROUP BY date ORDER BY date
+            `, [from, to]),
+            pool.query(`
+                SELECT category, COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
+                FROM bookings WHERE date >= $1 AND date <= $2
+                AND status != 'cancelled' AND linked_to IS NULL AND category IS NOT NULL
+                GROUP BY category ORDER BY revenue DESC
+            `, [from, to]),
+            pool.query(`
+                SELECT EXTRACT(ISODOW FROM date::date)::int AS dow, COUNT(*)::int AS count,
+                       COALESCE(SUM(price), 0)::int AS revenue
+                FROM bookings WHERE date >= $1 AND date <= $2
+                AND status != 'cancelled' AND linked_to IS NULL
+                GROUP BY EXTRACT(ISODOW FROM date::date) ORDER BY dow
+            `, [from, to])
+        ]);
+
+        const DOW_NAMES = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
+        const data = {
+            from, to,
+            totals: totalsR.rows[0],
+            byProgram: byProgramR.rows,
+            byDay: byDayR.rows,
+            byCategory: byCategoryR.rows,
+            byWeekday: byWeekdayR.rows.map(r => ({ ...r, name: DOW_NAMES[r.dow] || r.dow }))
+        };
+        setCache(cacheKey, data);
+        res.json(data);
+    } catch (err) {
+        log.error('GET /bookings error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v33.3: GET /api/analytics/revenue — Revenue analytics
+// ==========================================
+
+router.get('/revenue', async (req, res) => {
+    try {
+        let from = req.query.from, to = req.query.to;
+        if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
+            const range = getDateRange(req.query.period || 'month');
+            from = range.from; to = range.to;
+        }
+        const cacheKey = `revenue:${from}:${to}`;
+        const cached = getCached(cacheKey);
+        if (cached) return res.json(cached);
+
+        const [totalsR, byCategoryR, monthlyR] = await Promise.all([
+            pool.query(`
+                SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0)::int AS total_income,
+                       COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0)::int AS total_expense
+                FROM finance_transactions WHERE date >= $1 AND date <= $2
+            `, [from, to]),
+            pool.query(`
+                SELECT fc.name AS category, fc.type, fc.icon, fc.color,
+                       COUNT(*)::int AS count, COALESCE(SUM(ft.amount), 0)::int AS total
+                FROM finance_transactions ft
+                LEFT JOIN finance_categories fc ON ft.category_id = fc.id
+                WHERE ft.date >= $1 AND ft.date <= $2
+                GROUP BY fc.id, fc.name, fc.type, fc.icon, fc.color ORDER BY total DESC
+            `, [from, to]),
+            pool.query(`
+                SELECT TO_CHAR(date::date, 'YYYY-MM') AS month,
+                       COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0)::int AS income,
+                       COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0)::int AS expense
+                FROM finance_transactions WHERE date >= $1 AND date <= $2
+                GROUP BY TO_CHAR(date::date, 'YYYY-MM') ORDER BY month
+            `, [from, to])
+        ]);
+
+        const t = totalsR.rows[0];
+        const data = {
+            from, to,
+            totals: { totalIncome: t.total_income, totalExpense: t.total_expense, profit: t.total_income - t.total_expense },
+            byCategory: byCategoryR.rows,
+            monthly: monthlyR.rows
+        };
+        setCache(cacheKey, data);
+        res.json(data);
+    } catch (err) {
+        log.error('GET /revenue error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 module.exports = router;

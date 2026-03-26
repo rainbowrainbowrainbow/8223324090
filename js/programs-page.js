@@ -6,15 +6,6 @@
 // PAGE AUTH & INIT
 // ==========================================
 
-function showNotification(message, type = '') {
-    let c = document.getElementById('toastContainer');
-    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
-    const t = document.createElement('div');
-    t.className = 'toast' + (type ? ' ' + type : '');
-    t.textContent = message;
-    c.appendChild(t);
-    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
-}
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -23,35 +14,53 @@ function escapeHtml(str) {
 
 async function initPage() {
     initDarkMode();
+
+    // Detect embedded mode early — before any auth check
+    const isEmbeddedEarly = new URLSearchParams(window.location.search).get('embedded') === '1'
+        || window.self !== window.top;
+    if (isEmbeddedEarly) {
+        document.documentElement.classList.add('embed-mode');
+        document.body.classList.add('embed-mode');
+        const sidebar = document.getElementById('sidebarNav');
+        const header = document.querySelector('.header');
+        window.location.href = '/';
+        throw new Error('Unauthorized');
+        window.location.href = '/';
+        throw new Error('Unauthorized');
+    }
+
     const token = localStorage.getItem('pzp_token');
     if (!token) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        if (isEmbeddedEarly) {
+            // In embed mode, continue without auth — parent handles it
+            renderCategoryTabs();
+            await loadProducts();
+            return;
+        }
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     const user = await apiVerifyToken();
     if (!user) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        if (isEmbeddedEarly) {
+            // In embed mode, continue without auth
+            renderCategoryTabs();
+            await loadProducts();
+            return;
+        }
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
+    if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
     // v20.8.0: Embedded mode — read-only (no edit/delete/add)
-    const isEmbedded = new URLSearchParams(window.location.search).get('embedded') === '1';
+    const isEmbedded = isEmbeddedEarly;
     if (isEmbedded) {
         AppState.embedded = true;
-        const sidebar = document.getElementById('sidebarNav');
-        const header = document.querySelector('.header');
-        const loginOverlay = document.getElementById('loginOverlay');
-        if (sidebar) sidebar.style.display = 'none';
-        if (header) header.style.display = 'none';
-        if (loginOverlay) loginOverlay.style.display = 'none';
-        const main = document.querySelector('.page-container');
-        if (main) main.style.marginLeft = '0';
     }
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
@@ -59,7 +68,7 @@ async function initPage() {
     const addBtn = document.getElementById('addProductBtn');
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
 
-    document.getElementById('logoutBtn').addEventListener('click', () => {
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('pzp_token');
         localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
         window.location = '/';
@@ -68,9 +77,9 @@ async function initPage() {
     renderCategoryTabs();
     await loadProducts();
 
-    document.getElementById('addProductBtn').addEventListener('click', () => openProductForm());
-    document.getElementById('saveProductBtn').addEventListener('click', saveProduct);
-    document.getElementById('cancelProductBtn').addEventListener('click', closeProductForm);
+    document.getElementById('addProductBtn')?.addEventListener('click', () => openProductForm());
+    document.getElementById('saveProductBtn')?.addEventListener('click', saveProduct);
+    document.getElementById('cancelProductBtn')?.addEventListener('click', closeProductForm);
 }
 
 // ==========================================
@@ -220,23 +229,23 @@ function closeProductForm() {
 }
 
 async function saveProduct() {
-    const id = document.getElementById('pf-id').value;
+    const id = document.getElementById('pf-id')?.value;
     const product = {
-        code: document.getElementById('pf-code').value.trim(),
-        name: document.getElementById('pf-name').value.trim(),
-        label: document.getElementById('pf-label').value.trim(),
-        icon: document.getElementById('pf-icon').value.trim(),
-        category: document.getElementById('pf-category').value,
-        duration: parseInt(document.getElementById('pf-duration').value) || 0,
-        price: parseInt(document.getElementById('pf-price').value) || 0,
-        hosts: parseInt(document.getElementById('pf-hosts').value) || 1,
-        ageRange: document.getElementById('pf-age').value.trim(),
-        kidsCapacity: document.getElementById('pf-kids').value.trim(),
-        description: document.getElementById('pf-description').value.trim(),
-        isPerChild: document.getElementById('pf-perchild').checked,
-        hasFiller: document.getElementById('pf-filler').checked,
-        isActive: document.getElementById('pf-active').checked,
-        sortOrder: parseInt(document.getElementById('pf-sort').value) || 0
+        code: document.getElementById('pf-code')?.value.trim(),
+        name: document.getElementById('pf-name')?.value.trim(),
+        label: document.getElementById('pf-label')?.value.trim(),
+        icon: document.getElementById('pf-icon')?.value.trim(),
+        category: document.getElementById('pf-category')?.value,
+        duration: parseInt(document.getElementById('pf-duration')?.value) || 0,
+        price: parseInt(document.getElementById('pf-price')?.value) || 0,
+        hosts: parseInt(document.getElementById('pf-hosts')?.value) || 1,
+        ageRange: document.getElementById('pf-age')?.value.trim(),
+        kidsCapacity: document.getElementById('pf-kids')?.value.trim(),
+        description: document.getElementById('pf-description')?.value.trim(),
+        isPerChild: document.getElementById('pf-perchild')?.checked,
+        hasFiller: document.getElementById('pf-filler')?.checked,
+        isActive: document.getElementById('pf-active')?.checked,
+        sortOrder: parseInt(document.getElementById('pf-sort')?.value) || 0
     };
 
     if (!product.code || !product.name) {

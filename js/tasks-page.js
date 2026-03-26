@@ -32,15 +32,6 @@ let userPermissions = null; // v20.9.16: loaded from /api/tasks/permissions
 // UTILITIES
 // ==========================================
 
-function showNotification(message, type = '') {
-    let c = document.getElementById('toastContainer');
-    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
-    const t = document.createElement('div');
-    t.className = 'toast' + (type ? ' ' + type : '');
-    t.textContent = message;
-    c.appendChild(t);
-    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
-}
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -90,22 +81,21 @@ async function initPage() {
     initDarkMode();
     const token = localStorage.getItem('pzp_token');
     if (!token) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     const user = await apiVerifyToken();
     if (!user) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
+    if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
-    document.getElementById('logoutBtn').addEventListener('click', () => {
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('pzp_token');
         localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
         window.location = '/';
@@ -143,14 +133,14 @@ async function initPage() {
     });
 
     // Quick add task
-    document.getElementById('addTaskBtn').addEventListener('click', addTask);
-    document.getElementById('taskTitle').addEventListener('keydown', (e) => {
+    document.getElementById('addTaskBtn')?.addEventListener('click', addTask);
+    document.getElementById('taskTitle')?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') addTask();
     });
 
     // Templates
-    document.getElementById('addTemplateBtn').addEventListener('click', addTemplate);
-    document.getElementById('tplPattern').addEventListener('change', (e) => {
+    document.getElementById('addTemplateBtn')?.addEventListener('click', addTemplate);
+    document.getElementById('tplPattern')?.addEventListener('change', (e) => {
         document.getElementById('tplDays').style.display = e.target.value === 'custom' ? '' : 'none';
     });
 
@@ -202,8 +192,28 @@ async function apiCreateTask(data) {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
         });
         if (handleAuthError(response)) return null;
+        // v33.3: Handle duplicate (409)
+        if (response.status === 409) {
+            const err = await response.json();
+            if (confirm(`⚠️ ${err.message || 'Задача вже існує'}\nВсе одно додати дубль?`)) {
+                return apiCreateTask({ ...data, force: true });
+            }
+            return null;
+        }
         return await response.json();
     } catch (err) { console.error('API createTask error:', err); return null; }
+}
+
+// v33.3: Bulk task actions
+async function apiBulkTasks(ids, action, extra = {}) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/bulk`, {
+            method: 'POST', headers: getAuthHeaders(),
+            body: JSON.stringify({ ids, action, ...extra })
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) { console.error('API bulkTasks error:', err); return null; }
 }
 
 async function apiPatchTaskStatus(id, status) {
@@ -493,7 +503,10 @@ function renderTaskCard(t) {
     const ownerHtml = (t.owner && t.owner !== t.assigned_to) ? `<span class="task-card-owner">${escapeHtml(t.owner)}</span>` : '';
 
     return `
-    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''}">
+    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''}" data-task-id="${t.id}">
+        <label class="task-checkbox-wrap" onclick="event.stopPropagation()">
+            <input type="checkbox" class="task-bulk-cb" data-id="${t.id}" onchange="updateBulkSelection()">
+        </label>
         <div class="task-card-title">${escHtml}${priorityIcon ? priorityIcon + ' ' : ''}${escapeHtml(t.title)}</div>
         <div class="task-card-meta">
             ${typeBadge}
@@ -517,14 +530,14 @@ function renderTaskCard(t) {
 // ==========================================
 
 async function addTask() {
-    const title = document.getElementById('taskTitle').value.trim();
+    const title = document.getElementById('taskTitle')?.value.trim();
     if (!title) {
         showNotification('Введіть назву задачі', 'error');
         return;
     }
 
-    const category = document.getElementById('taskCategory').value;
-    const priority = document.getElementById('taskPriority').value;
+    const category = document.getElementById('taskCategory')?.value;
+    const priority = document.getElementById('taskPriority')?.value;
     const taskType = document.getElementById('taskType')?.value || 'human';
     const deadlineTime = document.getElementById('taskDeadlineTime')?.value || '';
     const today = getTodayStr();
@@ -614,17 +627,17 @@ function renderTemplates(templates) {
 }
 
 async function addTemplate() {
-    const title = document.getElementById('tplTitle').value.trim();
+    const title = document.getElementById('tplTitle')?.value.trim();
     if (!title) {
         showNotification('Введіть назву шаблону', 'error');
         return;
     }
 
-    const recurrencePattern = document.getElementById('tplPattern').value;
-    const recurrenceDays = document.getElementById('tplDays').value.trim() || null;
-    const priority = document.getElementById('tplPriority').value;
-    const assignedTo = document.getElementById('tplAssignedTo').value.trim() || null;
-    const category = document.getElementById('tplCategory').value;
+    const recurrencePattern = document.getElementById('tplPattern')?.value;
+    const recurrenceDays = document.getElementById('tplDays')?.value.trim() || null;
+    const priority = document.getElementById('tplPriority')?.value;
+    const assignedTo = document.getElementById('tplAssignedTo')?.value.trim() || null;
+    const category = document.getElementById('tplCategory')?.value;
 
     if (recurrencePattern === 'custom' && !recurrenceDays) {
         showNotification('Вкажіть дні для кастомного розкладу', 'error');
@@ -652,6 +665,49 @@ async function deleteTemplate(templateId) {
         showNotification('Помилка видалення', 'error');
     }
 }
+
+// ==========================================
+// v33.4: BULK SELECTION
+// ==========================================
+
+function getSelectedTaskIds() {
+    return Array.from(document.querySelectorAll('.task-bulk-cb:checked')).map(cb => parseInt(cb.dataset.id));
+}
+
+function updateBulkSelection() {
+    const ids = getSelectedTaskIds();
+    const toolbar = document.getElementById('bulkToolbar');
+    if (!toolbar) return;
+    if (ids.length > 0) {
+        toolbar.style.display = 'flex';
+        document.getElementById('bulkCount').textContent = ids.length + ' обрано';
+    } else {
+        toolbar.style.display = 'none';
+    }
+}
+window.updateBulkSelection = updateBulkSelection;
+
+async function bulkAction(action) {
+    const ids = getSelectedTaskIds();
+    if (!ids.length) return;
+    const labels = { done: 'Виконати', archive: 'Архівувати' };
+    if (!confirm(`${labels[action] || action} ${ids.length} задач?`)) return;
+    const result = await apiBulkTasks(ids, action);
+    if (result && result.success) {
+        showNotification(`${labels[action] || action}: ${result.affected || ids.length} задач`, 'success');
+        clearBulkSelection();
+        await loadAndRender();
+    } else {
+        showNotification('Помилка bulk операції', 'error');
+    }
+}
+window.bulkAction = bulkAction;
+
+function clearBulkSelection() {
+    document.querySelectorAll('.task-bulk-cb:checked').forEach(cb => { cb.checked = false; });
+    updateBulkSelection();
+}
+window.clearBulkSelection = clearBulkSelection;
 
 // ==========================================
 // START

@@ -5,8 +5,12 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { publish: publishEvent, processEventRules } = require('../services/eventBus');
 const { createLogger } = require('../utils/logger');
+const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('EventQueue');
+
+// All event-queue routes require authentication
+router.use(authenticateToken);
 
 // ============================================
 // Event Queue
@@ -121,7 +125,7 @@ router.get('/dead-letter', async (req, res) => {
 // GET /api/events/rules — list rules
 router.get('/rules', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM rule_definitions ORDER BY priority DESC, created_at');
+        const result = await pool.query('SELECT * FROM rule_definitions ORDER BY priority DESC, created_at LIMIT 500');
         res.json(result.rows);
     } catch (err) {
         log.error('List rules error', err);

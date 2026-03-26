@@ -22,7 +22,8 @@ const CopilotPage = (() => {
 
         const user = AppState?.currentUser;
         if (!user || !MANAGER_ROLES.includes(user.role)) {
-            document.getElementById('accessDenied')?.classList.remove('hidden');
+            var denied = document.getElementById('accessDenied');
+            if (denied) { denied.classList.remove('hidden'); }
             document.getElementById('copilotApp')?.classList.add('hidden');
             return;
         }
@@ -46,14 +47,26 @@ const CopilotPage = (() => {
         switchModule('coach');
     }
 
-    function waitForAuth() {
-        return new Promise(resolve => {
-            const check = () => {
-                if (AppState?.currentUser) { resolve(); return; }
-                setTimeout(check, 100);
-            };
-            check();
-        });
+    async function waitForAuth() {
+        // If already authenticated, return immediately
+        if (AppState?.currentUser) return;
+
+        // Try to restore from localStorage
+        const token = localStorage.getItem('pzp_token');
+        if (!token) { window.location.href = '/'; return; }
+
+        const savedUser = localStorage.getItem('pzp_current_user');
+        if (savedUser) {
+            try { AppState.currentUser = JSON.parse(savedUser); } catch {}
+        }
+
+        // Verify with server
+        if (typeof apiVerifyToken === 'function') {
+            const verified = await apiVerifyToken();
+            if (!verified) { window.location.href = '/'; return; }
+            AppState.currentUser = verified;
+            if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
+        }
     }
 
     async function loadAllData() {
@@ -194,6 +207,7 @@ const CopilotPage = (() => {
         runDebrief, saveDebrief,
         runAcademyQA,
         loadTracker, markFollowupDone, addManualInteraction,
+        showAddInteractionForm, loadTrackerAlerts,
         runMeetingPrep,
         loadPipeline,
         runMessageWriter, copyMessage, resendWriter,
@@ -373,7 +387,7 @@ const CopilotPage = (() => {
         list.innerHTML = (obj.responses || []).map(r => `
             <div class="accordion-item">
                 <div class="accordion-header" onclick="CopilotPage.toggleAccordion(this)">
-                    <span>📌 ${r.label}</span>
+                    <span>📌 ${escHtml(r.label)}</span>
                     <span class="accordion-chevron">▾</span>
                 </div>
                 <div class="accordion-body">
@@ -412,7 +426,7 @@ const CopilotPage = (() => {
                 ${data.nextStep ? `<div class="ai-meta-item" style="margin-top:10px;"><span class="label">➡️</span><span class="content"><b>Наступний крок:</b> ${escHtml(data.nextStep)}</span></div>` : ''}
             </div>`;
         } catch (e) {
-            result.innerHTML = `<div style="color:var(--danger-color);padding:10px;">Помилка: ${e.message}</div>`;
+            result.innerHTML = `<div style="color:var(--danger-color);padding:10px;">Помилка: ${escHtml(e.message)}</div>`;
         }
     }
 
@@ -875,7 +889,7 @@ const CopilotPage = (() => {
                     <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Швидкі запити:</div>
                     <div class="flex-wrap">
                         ${quickQuestions.map(q => `
-                            <button class="btn-ghost" style="font-size:12px;" onclick="document.getElementById('academyQuestion').value=${JSON.stringify(q)}">${escHtml(q)}</button>
+                            <button class="btn-ghost" style="font-size:12px;" onclick="document.getElementById('academyQuestion').value = ${JSON.stringify(q)}">${escHtml(q)}</button>
                         `).join('')}
                     </div>
                 </div>
@@ -903,7 +917,7 @@ const CopilotPage = (() => {
                 <div style="font-size:14px;line-height:1.7;color:#fff;white-space:pre-line;">${escHtml(data.answer)}</div>
             </div>`;
         } catch (e) {
-            result.innerHTML = `<div style="color:var(--danger-color);">Помилка: ${e.message}</div>`;
+            result.innerHTML = `<div style="color:var(--danger-color);">Помилка: ${escHtml(e.message)}</div>`;
         }
     }
 
@@ -964,7 +978,7 @@ const CopilotPage = (() => {
                 </div>
                 <div class="flex-row">
                     <button class="btn-gold" onclick="CopilotPage.addManualInteraction()">Зберегти</button>
-                    <button class="btn-ghost" onclick="document.getElementById('addInteractionForm').classList.add('hidden')">Скасувати</button>
+                    <button class="btn-ghost" onclick="document.getElementById('addInteractionForm')?.classList.add('hidden')">Скасувати</button>
                 </div>
             </div>
         </div>`;
@@ -1013,7 +1027,7 @@ const CopilotPage = (() => {
                 </div>
             `).join('');
         } catch (e) {
-            list.innerHTML = `<div style="color:var(--danger-color);padding:20px;">Помилка: ${e.message}</div>`;
+            list.innerHTML = `<div style="color:var(--danger-color);padding:20px;">Помилка: ${escHtml(e.message)}</div>`;
         }
     }
 
@@ -1034,7 +1048,7 @@ const CopilotPage = (() => {
                 <div class="alert-item ${cls}">
                     <div>
                         <div style="font-weight:600;color:#fff;">${escHtml(a.client_name)}</div>
-                        <div style="font-size:12px;color:var(--text-muted);">${a.manager_name || '—'} • ${a.status}</div>
+                        <div style="font-size:12px;color:var(--text-muted);">${escHtml(a.manager_name) || '—'} • ${escHtml(a.status)}</div>
                     </div>
                     <div style="text-align:right;">
                         <div style="font-size:13px;font-weight:600;color:${days>=7?'var(--danger-color)':'var(--warning-color)'};">${days} днів без контакту</div>
@@ -1042,7 +1056,7 @@ const CopilotPage = (() => {
                 </div>`;
             }).join('') || '<div style="color:var(--text-muted);padding:20px;text-align:center;">Всі ліди в нормі ✅</div>';
         } catch (e) {
-            list.innerHTML = `<div style="color:var(--danger-color);">Помилка: ${e.message}</div>`;
+            list.innerHTML = `<div style="color:var(--danger-color);">Помилка: ${escHtml(e.message)}</div>`;
         }
     }
 
@@ -1353,7 +1367,7 @@ const CopilotPage = (() => {
             };
         } catch (e) {
             const board = document.getElementById('pipelineBoard');
-            if (board) board.innerHTML = `<div style="color:var(--danger-color);padding:20px;">Помилка: ${e.message}</div>`;
+            if (board) board.innerHTML = `<div style="color:var(--danger-color);padding:20px;">Помилка: ${escHtml(e.message)}</div>`;
         }
     }
 
@@ -1369,7 +1383,7 @@ const CopilotPage = (() => {
             <div class="deal-card-meta">${escHtml(lead.manager_name || '—')}</div>
             <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
                 <span class="deal-days-badge ${daysCls}">${days}д</span>
-                <a href="/leads" style="font-size:11px;color:var(--text-muted);text-decoration:none;">→ Відкрити</a>
+                <a href="/sales-funnel" style="font-size:11px;color:var(--text-muted);text-decoration:none;">→ Відкрити</a>
             </div>
         </div>`;
     }
@@ -1528,10 +1542,10 @@ const CopilotPage = (() => {
         const el = document.getElementById('copiedFlash');
         if (!el) return;
         el.textContent = msg;
+        
         el.classList.remove('hidden');
-        el.style.display = 'block';
         clearTimeout(el._timer);
-        el._timer = setTimeout(() => { el.style.display = 'none'; }, 2000);
+        el._timer = setTimeout(() => { el.classList.add('hidden'); }, 2000);
     }
 
     function showError(msg) {

@@ -42,7 +42,7 @@ async function notifyNewLead(lead) {
 
     const text = `🔥 <b>Новий лід</b> [${src}]\n\n`
       + `👤 <b>${name}</b>${phone}${ig}${notes}\n\n`
-      + `<a href="https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost:3000'}/customers?tab=leads">Відкрити в CRM →</a>`;
+      + `<a href="https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'localhost:3000'}/leads">Відкрити в CRM →</a>`;
 
     for (const row of managers.rows) {
       sendTelegramMessage(row.telegram_chat_id, text, { parse_mode: 'HTML' })

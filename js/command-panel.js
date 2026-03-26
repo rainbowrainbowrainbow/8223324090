@@ -71,10 +71,10 @@ const CommandPanel = (() => {
         document.body.appendChild(panelEl);
 
         // Events
-        document.getElementById('cmdCloseBtn').addEventListener('click', hide);
-        document.getElementById('cmdAddNote').addEventListener('click', toggleNoteForm);
-        document.getElementById('cmdSaveNote').addEventListener('click', saveNote);
-        document.getElementById('cmdNoteInput').addEventListener('keydown', (e) => {
+        document.getElementById('cmdCloseBtn')?.addEventListener('click', hide);
+        document.getElementById('cmdAddNote')?.addEventListener('click', toggleNoteForm);
+        document.getElementById('cmdSaveNote')?.addEventListener('click', saveNote);
+        document.getElementById('cmdNoteInput')?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') saveNote();
         });
 
@@ -87,7 +87,7 @@ const CommandPanel = (() => {
         const role = typeof getUserRole === 'function' ? getUserRole() : 'admin';
         const SHARED_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
         if (!SHARED_ROLES.includes(role)) {
-            document.getElementById('cmdSharedLabel').classList.add('hidden');
+            document.getElementById('cmdSharedLabel')?.classList.add('hidden');
         }
     }
 
@@ -116,6 +116,7 @@ const CommandPanel = (() => {
 
     function hide() {
         isOpen = false;
+        if (!panelEl) return;
         panelEl.classList.remove('cmd-panel--open');
         panelEl.classList.add('cmd-panel--closed');
         if (fabEl) fabEl.classList.remove('hidden');
@@ -203,7 +204,7 @@ const CommandPanel = (() => {
         const form = document.getElementById('cmdNoteForm');
         form.classList.toggle('hidden');
         if (!form.classList.contains('hidden')) {
-            document.getElementById('cmdNoteInput').focus();
+            document.getElementById('cmdNoteInput')?.focus();
         }
     }
 
@@ -223,7 +224,7 @@ const CommandPanel = (() => {
             if (resp.ok) {
                 input.value = '';
                 shared.checked = false;
-                document.getElementById('cmdNoteForm').classList.add('hidden');
+                document.getElementById('cmdNoteForm')?.classList.add('hidden');
                 await refreshNotes();
             }
         } catch { /* ignore */ }

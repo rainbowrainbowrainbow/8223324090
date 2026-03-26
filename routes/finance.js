@@ -10,6 +10,7 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
 const { requireRole } = require('../middleware/auth');
+const { publish } = require('../services/eventBus');
 const log = createLogger('Finance');
 
 // RBAC: Finance access — creator, director, accountant only
@@ -236,6 +237,16 @@ router.post('/transactions', async (req, res) => {
         );
 
         const r = result.rows[0];
+
+        // Publish income event for chat notifications
+        if (r.type === 'income') {
+            publish('finance.income', {
+                amount: r.amount,
+                description: r.description || '',
+                category: ''
+            }).catch(e => log.warn('eventBus publish income:', e.message));
+        }
+
         res.status(201).json({
             id: r.id, type: r.type, categoryId: r.category_id, amount: r.amount,
             description: r.description, date: r.date, paymentMethod: r.payment_method,
@@ -774,6 +785,751 @@ router.get('/export', async (req, res) => {
     } catch (err) {
         log.error('GET /export error', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v30.6: CASH REGISTER SHIFTS
+// ==========================================
+
+// GET /api/finance/shift/current
+router.get('/shift/current', async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM cash_register_shifts WHERE status = 'open' ORDER BY opened_at DESC LIMIT 1`
+        );
+        if (result.rows.length === 0) {
+            return res.json({ shift: null, isOpen: false });
+        }
+        const s = result.rows[0];
+        // Calculate cash transactions during this shift
+        const cashTx = await pool.query(`
+            SELECT
+                COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0)::int AS cash_income,
+                COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)::int AS cash_expense
+            FROM finance_transactions
+            WHERE payment_method = 'cash' AND created_at >= $1
+        `, [s.opened_at]);
+        const ct = cashTx.rows[0];
+        res.json({
+            shift: {
+                id: s.id, openedBy: s.opened_by, openedAt: s.opened_at,
+                openingCash: s.opening_cash, notes: s.notes,
+                cashIncome: ct.cash_income, cashExpense: ct.cash_expense,
+                expectedCash: s.opening_cash + ct.cash_income - ct.cash_expense
+            },
+            isOpen: true
+        });
+    } catch (err) {
+        log.error('GET /shift/current error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/finance/shift/open
+router.post('/shift/open', async (req, res) => {
+    try {
+        const { openingCash, notes } = req.body;
+        if (openingCash === undefined || openingCash < 0) {
+            return res.status(400).json({ error: 'openingCash (>=0) обовʼязковий' });
+        }
+        // Check if shift already open
+        const existing = await pool.query(`SELECT id FROM cash_register_shifts WHERE status = 'open' LIMIT 1`);
+        if (existing.rows.length > 0) {
+            return res.status(400).json({ error: 'Зміна вже відкрита. Спочатку закрийте поточну.' });
+        }
+        const result = await pool.query(
+            `INSERT INTO cash_register_shifts (opened_by, opening_cash, notes) VALUES ($1, $2, $3) RETURNING *`,
+            [req.user.id, parseInt(openingCash), notes || null]
+        );
+        res.status(201).json({ success: true, shift: result.rows[0] });
+    } catch (err) {
+        log.error('POST /shift/open error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/finance/shift/close
+router.post('/shift/close', async (req, res) => {
+    try {
+        const { closingCash, notes } = req.body;
+        if (closingCash === undefined || closingCash < 0) {
+            return res.status(400).json({ error: 'closingCash (>=0) обовʼязковий' });
+        }
+        const current = await pool.query(`SELECT * FROM cash_register_shifts WHERE status = 'open' ORDER BY opened_at DESC LIMIT 1`);
+        if (current.rows.length === 0) {
+            return res.status(400).json({ error: 'Немає відкритої зміни' });
+        }
+        const shift = current.rows[0];
+        // Calculate expected cash
+        const cashTx = await pool.query(`
+            SELECT
+                COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0)::int AS cash_income,
+                COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)::int AS cash_expense
+            FROM finance_transactions
+            WHERE payment_method = 'cash' AND created_at >= $1
+        `, [shift.opened_at]);
+        const ct = cashTx.rows[0];
+        const expectedCash = shift.opening_cash + ct.cash_income - ct.cash_expense;
+        const cashDiff = parseInt(closingCash) - expectedCash;
+
+        await pool.query(
+            `UPDATE cash_register_shifts SET status = 'closed', closed_by = $1, closed_at = NOW(),
+             closing_cash = $2, expected_cash = $3, cash_difference = $4, notes = COALESCE($5, notes)
+             WHERE id = $6`,
+            [req.user.id, parseInt(closingCash), expectedCash, cashDiff, notes, shift.id]
+        );
+        res.json({
+            success: true,
+            summary: {
+                openingCash: shift.opening_cash,
+                cashIncome: ct.cash_income,
+                cashExpense: ct.cash_expense,
+                expectedCash,
+                closingCash: parseInt(closingCash),
+                difference: cashDiff
+            }
+        });
+    } catch (err) {
+        log.error('POST /shift/close error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/finance/shift/history
+router.get('/shift/history', async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+        const result = await pool.query(
+            `SELECT s.*, u1.name AS opened_by_name, u2.name AS closed_by_name
+             FROM cash_register_shifts s
+             LEFT JOIN users u1 ON s.opened_by = u1.id
+             LEFT JOIN users u2 ON s.closed_by = u2.id
+             ORDER BY s.opened_at DESC LIMIT $1`, [limit]
+        );
+        res.json({ shifts: result.rows });
+    } catch (err) {
+        log.error('GET /shift/history error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v30.6: REVENUE FORECAST
+// ==========================================
+
+router.get('/forecast', async (req, res) => {
+    try {
+        const days = parseInt(req.query.days) || 30;
+        const today = new Date().toISOString().split('T')[0];
+        const endDate = new Date(Date.now() + days * 86400000).toISOString().split('T')[0];
+
+        // Confirmed bookings revenue
+        const bookings = await pool.query(`
+            SELECT date, COUNT(*)::int AS booking_count,
+                COALESCE(SUM(price), 0)::int AS expected_revenue
+            FROM bookings
+            WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL
+            GROUP BY date ORDER BY date
+        `, [today, endDate]);
+
+        // Weekly aggregate
+        const weekly = await pool.query(`
+            SELECT DATE_TRUNC('week', date::date)::date AS week_start,
+                COUNT(*)::int AS booking_count,
+                COALESCE(SUM(price), 0)::int AS expected_revenue
+            FROM bookings
+            WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL
+            GROUP BY week_start ORDER BY week_start
+        `, [today, endDate]);
+
+        // Historical average (last 3 months same weekday pattern)
+        const histAvg = await pool.query(`
+            SELECT EXTRACT(DOW FROM date::date)::int AS dow,
+                ROUND(AVG(daily_revenue))::int AS avg_revenue,
+                ROUND(AVG(daily_count))::int AS avg_count
+            FROM (
+                SELECT date, SUM(price) AS daily_revenue, COUNT(*) AS daily_count
+                FROM bookings
+                WHERE date::date >= (CURRENT_DATE - INTERVAL '90 days') AND date::date < CURRENT_DATE
+                  AND status = 'confirmed' AND linked_to IS NULL
+                GROUP BY date
+            ) sub
+            GROUP BY dow ORDER BY dow
+        `);
+
+        const totalForecast = bookings.rows.reduce((s, r) => s + r.expected_revenue, 0);
+        const totalBookings = bookings.rows.reduce((s, r) => s + r.booking_count, 0);
+
+        res.json({
+            period: { from: today, to: endDate, days },
+            daily: bookings.rows,
+            weekly: weekly.rows,
+            historicalAverage: histAvg.rows,
+            totals: { expectedRevenue: totalForecast, bookingCount: totalBookings }
+        });
+    } catch (err) {
+        log.error('GET /forecast error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v30.6: EXPENSE ALLOCATION
+// ==========================================
+
+router.get('/expense-allocation', async (req, res) => {
+    try {
+        let { from, to } = req.query;
+        if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
+            const now = new Date();
+            const range = getMonthRange(now.getFullYear(), now.getMonth() + 1);
+            from = range.from;
+            to = range.to;
+        }
+
+        const result = await pool.query(`
+            SELECT fc.name, fc.icon, fc.color, fc.type,
+                COALESCE(SUM(ft.amount), 0)::int AS total,
+                COUNT(ft.id)::int AS count,
+                ROUND(COALESCE(SUM(ft.amount), 0) * 100.0 /
+                    NULLIF((SELECT SUM(amount) FROM finance_transactions WHERE type = 'expense' AND date >= $1 AND date <= $2), 0)
+                )::int AS percentage
+            FROM finance_categories fc
+            LEFT JOIN finance_transactions ft ON ft.category_id = fc.id AND ft.date >= $1 AND ft.date <= $2
+            WHERE fc.type = 'expense' AND fc.is_active = true
+            GROUP BY fc.id, fc.name, fc.icon, fc.color, fc.type
+            ORDER BY total DESC
+        `, [from, to]);
+
+        const totalExpenses = result.rows.reduce((s, r) => s + r.total, 0);
+
+        res.json({
+            period: { from, to },
+            allocation: result.rows.map(r => ({
+                category: r.name, icon: r.icon, color: r.color,
+                total: r.total, count: r.count,
+                percentage: r.percentage || 0
+            })),
+            totalExpenses
+        });
+    } catch (err) {
+        log.error('GET /expense-allocation error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v30.6: ENHANCED P&L REPORT
+// ==========================================
+
+router.get('/report/pnl', async (req, res) => {
+    try {
+        const year = parseInt(req.query.year) || new Date().getFullYear();
+        const month = parseInt(req.query.month);
+
+        let from, to;
+        if (month && month >= 1 && month <= 12) {
+            const range = getMonthRange(year, month);
+            from = range.from;
+            to = range.to;
+        } else {
+            from = `${year}-01-01`;
+            to = `${year}-12-31`;
+        }
+
+        // Revenue by category
+        const income = await pool.query(`
+            SELECT fc.name, fc.icon, COALESCE(SUM(ft.amount), 0)::int AS total
+            FROM finance_transactions ft
+            JOIN finance_categories fc ON ft.category_id = fc.id
+            WHERE ft.type = 'income' AND ft.date >= $1 AND ft.date <= $2
+            GROUP BY fc.id, fc.name, fc.icon ORDER BY total DESC
+        `, [from, to]);
+
+        // COGS / Direct expenses
+        const expenses = await pool.query(`
+            SELECT fc.name, fc.icon, COALESCE(SUM(ft.amount), 0)::int AS total
+            FROM finance_transactions ft
+            JOIN finance_categories fc ON ft.category_id = fc.id
+            WHERE ft.type = 'expense' AND ft.date >= $1 AND ft.date <= $2
+            GROUP BY fc.id, fc.name, fc.icon ORDER BY total DESC
+        `, [from, to]);
+
+        // Booking revenue (cross-reference)
+        const bookingRev = await pool.query(`
+            SELECT COALESCE(SUM(price), 0)::int AS total
+            FROM bookings WHERE date >= $1 AND date <= $2
+            AND status = 'confirmed' AND linked_to IS NULL
+        `, [from, to]);
+
+        const totalIncome = income.rows.reduce((s, r) => s + r.total, 0);
+        const totalExpenses = expenses.rows.reduce((s, r) => s + r.total, 0);
+        const grossProfit = totalIncome - totalExpenses;
+        const margin = totalIncome > 0 ? Math.round((grossProfit / totalIncome) * 100) : 0;
+
+        // Previous period comparison
+        let prevFrom, prevTo;
+        if (month) {
+            const pm = month === 1 ? 12 : month - 1;
+            const py = month === 1 ? year - 1 : year;
+            const prevRange = getMonthRange(py, pm);
+            prevFrom = prevRange.from;
+            prevTo = prevRange.to;
+        } else {
+            prevFrom = `${year - 1}-01-01`;
+            prevTo = `${year - 1}-12-31`;
+        }
+
+        const prevTotals = await pool.query(`
+            SELECT
+                COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0)::int AS income,
+                COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)::int AS expense
+            FROM finance_transactions WHERE date >= $1 AND date <= $2
+        `, [prevFrom, prevTo]);
+
+        const prev = prevTotals.rows[0];
+
+        res.json({
+            period: { from, to, year, month: month || null },
+            revenue: income.rows,
+            expenses: expenses.rows,
+            bookingRevenue: bookingRev.rows[0].total,
+            summary: {
+                totalIncome, totalExpenses, grossProfit, margin,
+                previousIncome: prev.income, previousExpenses: prev.expense,
+                previousProfit: prev.income - prev.expense,
+                incomeChange: prev.income > 0 ? Math.round(((totalIncome - prev.income) / prev.income) * 100) : 0,
+                expenseChange: prev.expense > 0 ? Math.round(((totalExpenses - prev.expense) / prev.expense) * 100) : 0
+            }
+        });
+    } catch (err) {
+        log.error('GET /report/pnl error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v30.6: RECEIPT / CHECK GENERATION
+// ==========================================
+
+router.post('/receipt', async (req, res) => {
+    try {
+        const { bookingId, transactionId, amount, paymentMethod, customerName, items } = req.body;
+        if (!amount || amount <= 0) {
+            return res.status(400).json({ error: 'amount обовʼязковий' });
+        }
+
+        // Generate receipt number: RCP-YYYY-NNNN
+        const yearStr = new Date().getFullYear().toString();
+        const countResult = await pool.query(
+            `SELECT COUNT(*)::int AS cnt FROM receipts WHERE receipt_number LIKE $1`,
+            [`RCP-${yearStr}-%`]
+        );
+        const num = (countResult.rows[0].cnt + 1).toString().padStart(4, '0');
+        const receiptNumber = `RCP-${yearStr}-${num}`;
+
+        // QR data: simple payment info
+        const qrData = JSON.stringify({
+            receipt: receiptNumber,
+            amount,
+            date: new Date().toISOString(),
+            paymentMethod: paymentMethod || 'cash',
+            company: 'Парк Закревського Періоду'
+        });
+
+        const result = await pool.query(
+            `INSERT INTO receipts (booking_id, transaction_id, amount, payment_method, receipt_number, qr_data, customer_name, items, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+            [bookingId || null, transactionId || null, parseInt(amount),
+             paymentMethod || null, receiptNumber, qrData,
+             customerName || null, items ? JSON.stringify(items) : null, req.user?.username]
+        );
+
+        res.status(201).json({
+            success: true,
+            receipt: {
+                id: result.rows[0].id,
+                receiptNumber,
+                amount: parseInt(amount),
+                qrData,
+                createdAt: result.rows[0].created_at
+            }
+        });
+    } catch (err) {
+        log.error('POST /receipt error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/finance/receipt/:id — get receipt for printing
+router.get('/receipt/:id', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM receipts WHERE id = $1', [req.params.id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Чек не знайдено' });
+        const r = result.rows[0];
+        res.json({
+            id: r.id, receiptNumber: r.receipt_number, amount: r.amount,
+            paymentMethod: r.payment_method, qrData: r.qr_data,
+            customerName: r.customer_name, items: r.items,
+            bookingId: r.booking_id, createdBy: r.created_by, createdAt: r.created_at
+        });
+    } catch (err) {
+        log.error('GET /receipt/:id error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v30.6: DEBT NOTIFICATIONS
+// ==========================================
+
+router.get('/debts', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT b.id, b.date, b.time, b.label, b.program_name, b.price,
+                b.payment_status, b.paid_amount, b.customer_id,
+                c.name AS customer_name, c.phone AS customer_phone,
+                (COALESCE(b.price, 0) - COALESCE(b.paid_amount, 0)) AS debt_amount
+            FROM bookings b
+            LEFT JOIN customers c ON b.customer_id = c.id
+            WHERE b.status = 'confirmed'
+              AND b.linked_to IS NULL
+              AND b.price > 0
+              AND (b.payment_status IS NULL OR b.payment_status != 'paid')
+              AND COALESCE(b.paid_amount, 0) < COALESCE(b.price, 0)
+              AND b.date::date <= CURRENT_DATE
+            ORDER BY b.date DESC
+            LIMIT 100
+        `);
+
+        const totalDebt = result.rows.reduce((s, r) => s + r.debt_amount, 0);
+
+        res.json({
+            debts: result.rows.map(r => ({
+                bookingId: r.id, date: r.date, time: r.time,
+                label: r.label, programName: r.program_name,
+                price: r.price, paidAmount: r.paid_amount,
+                debtAmount: r.debt_amount,
+                paymentStatus: r.payment_status,
+                customerId: r.customer_id,
+                customerName: r.customer_name,
+                customerPhone: r.customer_phone
+            })),
+            totalDebt,
+            count: result.rows.length
+        });
+    } catch (err) {
+        log.error('GET /debts error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/finance/debts/:bookingId/mark-paid
+router.post('/debts/:bookingId/mark-paid', async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const { paidAmount } = req.body;
+        const booking = await pool.query('SELECT price FROM bookings WHERE id = $1', [bookingId]);
+        if (booking.rows.length === 0) return res.status(404).json({ error: 'Бронювання не знайдено' });
+
+        const amount = paidAmount ? parseInt(paidAmount) : booking.rows[0].price;
+        const status = amount >= booking.rows[0].price ? 'paid' : 'partial';
+
+        await pool.query(
+            `UPDATE bookings SET paid_amount = $1, payment_status = $2 WHERE id = $3`,
+            [amount, status, bookingId]
+        );
+        res.json({ success: true, paymentStatus: status, paidAmount: amount });
+    } catch (err) {
+        log.error('POST /debts/:bookingId/mark-paid error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v30.6: MULTI-CURRENCY CONVERSION
+// ==========================================
+
+const CURRENCY_RATES = {
+    EUR: 44.5,
+    USD: 41.2,
+    GBP: 52.1,
+    PLN: 10.3,
+    CZK: 1.7
+};
+
+router.get('/currency/rates', (req, res) => {
+    res.json({
+        base: 'UAH',
+        rates: CURRENCY_RATES,
+        updatedAt: new Date().toISOString()
+    });
+});
+
+router.post('/currency/convert', async (req, res) => {
+    try {
+        const { amount, currency, bookingId } = req.body;
+        if (!amount || amount <= 0) return res.status(400).json({ error: 'amount обовʼязковий' });
+        const curr = (currency || 'EUR').toUpperCase();
+        const rate = CURRENCY_RATES[curr];
+        if (!rate) return res.status(400).json({ error: `Невідома валюта: ${curr}` });
+
+        const converted = Math.round(amount * rate);
+
+        await pool.query(
+            `INSERT INTO currency_conversions (from_currency, to_currency, original_amount, rate, converted_amount, booking_id, created_by)
+             VALUES ($1, 'UAH', $2, $3, $4, $5, $6)`,
+            [curr, amount, rate, converted, bookingId || null, req.user?.username]
+        );
+
+        res.json({
+            original: { amount, currency: curr },
+            converted: { amount: converted, currency: 'UAH' },
+            rate,
+            formatted: `${amount} ${curr} = ${converted.toLocaleString('uk-UA')} ₴`
+        });
+    } catch (err) {
+        log.error('POST /currency/convert error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v30.6: ACT OF COMPLETED WORK (Акт виконаних робіт)
+// ==========================================
+
+router.get('/act/:bookingId', async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const booking = await pool.query(`
+            SELECT b.*, c.name AS customer_name, c.phone AS customer_phone
+            FROM bookings b
+            LEFT JOIN customers c ON b.customer_id = c.id
+            WHERE b.id = $1
+        `, [bookingId]);
+
+        if (booking.rows.length === 0) return res.status(404).json({ error: 'Бронювання не знайдено' });
+        const b = booking.rows[0];
+
+        const actNumber = `ACT-${b.id}`;
+        const actDate = new Date().toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' });
+
+        const html = `<!DOCTYPE html>
+<html lang="uk"><head><meta charset="UTF-8">
+<title>Акт ${actNumber}</title>
+<style>
+body{font-family:'Nunito',Arial,sans-serif;margin:40px;color:#1a1a2e;font-size:14px;line-height:1.6}
+h1{text-align:center;font-size:20px;margin-bottom:4px}
+.subtitle{text-align:center;color:#666;margin-bottom:30px}
+table{width:100%;border-collapse:collapse;margin:20px 0}
+th,td{border:1px solid #ddd;padding:10px 14px;text-align:left}
+th{background:#f8f9fa;font-weight:700}
+.total{font-weight:900;font-size:16px}
+.signatures{display:flex;justify-content:space-between;margin-top:60px}
+.sign-block{width:45%;border-top:1px solid #333;padding-top:8px;text-align:center}
+.company{margin-bottom:20px}
+@media print{body{margin:20px}button{display:none}}
+</style></head><body>
+<div class="company"><strong>ФОП "Парк Закревського Періоду"</strong><br>м. Київ, вул. Закревського</div>
+<h1>АКТ ВИКОНАНИХ РОБІТ</h1>
+<div class="subtitle">${actNumber} від ${actDate}</div>
+<p><strong>Замовник:</strong> ${b.customer_name || 'Не вказано'}</p>
+<p><strong>Телефон:</strong> ${b.customer_phone || 'Не вказано'}</p>
+<p><strong>Дата проведення:</strong> ${b.date} о ${b.time}</p>
+<table>
+<thead><tr><th>№</th><th>Послуга</th><th>Тривалість</th><th>Сума, ₴</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>${b.program_name || b.label || b.program_code || 'Розважальна програма'}</td>
+<td>${b.duration || 0} хв</td><td>${(b.price || 0).toLocaleString('uk-UA')}</td></tr>
+</tbody>
+<tfoot><tr><td colspan="3" class="total">РАЗОМ:</td><td class="total">${(b.price || 0).toLocaleString('uk-UA')} ₴</td></tr></tfoot>
+</table>
+<p>Роботи виконані в повному обсязі. Замовник претензій до якості та обсягу наданих послуг не має.</p>
+<div class="signatures">
+<div class="sign-block">Виконавець<br><br>_______________<br>ФОП "Парк Закревського Періоду"</div>
+<div class="sign-block">Замовник<br><br>_______________<br>${b.customer_name || '_______________'}</div>
+</div>
+<br><button onclick="window.print()" style="padding:12px 24px;background:#10B981;color:white;border:none;border-radius:8px;font-size:16px;cursor:pointer">Друкувати</button>
+</body></html>`;
+
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(html);
+    } catch (err) {
+        log.error('GET /act/:bookingId error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// v30.6: ADVANCED FINANCIAL DASHBOARD
+// ==========================================
+
+router.get('/advanced-dashboard', async (req, res) => {
+    try {
+        // Revenue trend (last 6 months)
+        const revenueTrend = await pool.query(`
+            SELECT TO_CHAR(date::date, 'YYYY-MM') AS month,
+                COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0)::int AS income,
+                COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)::int AS expense
+            FROM finance_transactions
+            WHERE date::date >= (CURRENT_DATE - INTERVAL '6 months')
+            GROUP BY month ORDER BY month
+        `);
+
+        // Cash flow (income vs expense by week, last 8 weeks)
+        const cashFlow = await pool.query(`
+            SELECT DATE_TRUNC('week', date::date)::date AS week,
+                COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0)::int AS inflow,
+                COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0)::int AS outflow
+            FROM finance_transactions
+            WHERE date::date >= (CURRENT_DATE - INTERVAL '8 weeks')
+            GROUP BY week ORDER BY week
+        `);
+
+        // Top 5 expenses (current month)
+        const now = new Date();
+        const range = getMonthRange(now.getFullYear(), now.getMonth() + 1);
+        const topExpenses = await pool.query(`
+            SELECT ft.description, ft.amount, ft.date, fc.name AS category_name, fc.icon
+            FROM finance_transactions ft
+            LEFT JOIN finance_categories fc ON ft.category_id = fc.id
+            WHERE ft.type = 'expense' AND ft.date >= $1 AND ft.date <= $2
+            ORDER BY ft.amount DESC LIMIT 5
+        `, [range.from, range.to]);
+
+        // Payment method distribution (current month)
+        const paymentDist = await pool.query(`
+            SELECT payment_method,
+                COALESCE(SUM(amount), 0)::int AS total,
+                COUNT(*)::int AS count
+            FROM finance_transactions
+            WHERE date >= $1 AND date <= $2 AND payment_method IS NOT NULL
+            GROUP BY payment_method ORDER BY total DESC
+        `, [range.from, range.to]);
+
+        // Key metrics
+        const metrics = await pool.query(`
+            SELECT
+                (SELECT COALESCE(SUM(amount), 0)::int FROM finance_transactions WHERE type = 'income' AND date >= $1 AND date <= $2) AS month_income,
+                (SELECT COALESCE(SUM(amount), 0)::int FROM finance_transactions WHERE type = 'expense' AND date >= $1 AND date <= $2) AS month_expense,
+                (SELECT COALESCE(SUM(price), 0)::int FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL) AS month_bookings_revenue,
+                (SELECT COUNT(*)::int FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL) AS month_bookings_count,
+                (SELECT COALESCE(AVG(price), 0)::int FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL AND price > 0) AS avg_booking_price
+        `, [range.from, range.to]);
+
+        // Debt summary
+        const debtSummary = await pool.query(`
+            SELECT COUNT(*)::int AS count,
+                COALESCE(SUM(COALESCE(price, 0) - COALESCE(paid_amount, 0)), 0)::int AS total_debt
+            FROM bookings
+            WHERE status = 'confirmed' AND linked_to IS NULL AND price > 0
+              AND (payment_status IS NULL OR payment_status != 'paid')
+              AND COALESCE(paid_amount, 0) < COALESCE(price, 0)
+              AND date::date <= CURRENT_DATE
+        `);
+
+        const m = metrics.rows[0];
+
+        res.json({
+            revenueTrend: revenueTrend.rows,
+            cashFlow: cashFlow.rows.map(r => ({
+                week: r.week, inflow: r.inflow, outflow: r.outflow,
+                netFlow: r.inflow - r.outflow
+            })),
+            topExpenses: topExpenses.rows.map(r => ({
+                description: r.description, amount: r.amount,
+                date: r.date, category: r.category_name, icon: r.icon
+            })),
+            paymentDistribution: paymentDist.rows,
+            metrics: {
+                monthIncome: m.month_income,
+                monthExpense: m.month_expense,
+                monthProfit: m.month_income - m.month_expense,
+                bookingsRevenue: m.month_bookings_revenue,
+                bookingsCount: m.month_bookings_count,
+                avgBookingPrice: m.avg_booking_price,
+                margin: m.month_income > 0 ? Math.round(((m.month_income - m.month_expense) / m.month_income) * 100) : 0
+            },
+            debt: debtSummary.rows[0]
+        });
+    } catch (err) {
+        log.error('GET /advanced-dashboard error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ─── Finance Accounts (v33.5) ────────────────────────────────
+const ACCOUNT_TYPES = ['cash', 'card', 'bank'];
+
+router.get('/accounts', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM finance_accounts WHERE is_active = true ORDER BY sort_order'
+        );
+        res.json({ success: true, accounts: result.rows });
+    } catch (err) {
+        log.error('GET /accounts error', err);
+        res.status(500).json({ success: false, error: 'Database error' });
+    }
+});
+
+router.post('/accounts', requireRole('admin', 'senior_manager'), async (req, res) => {
+    try {
+        const { name, emoji, description, type, sortOrder } = req.body;
+        if (!name?.trim()) return res.status(400).json({ error: 'name required' });
+        if (type && !ACCOUNT_TYPES.includes(type)) {
+            return res.status(400).json({ error: 'Invalid type (cash|card|bank)' });
+        }
+        const r = await pool.query(
+            `INSERT INTO finance_accounts (name, emoji, description, type, sort_order, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [name.trim(), emoji || '💳', description?.trim() || null,
+             type || 'cash', sortOrder || 99, req.user.username]
+        );
+        res.json({ success: true, account: r.rows[0] });
+    } catch (err) {
+        log.error('POST /accounts error', err);
+        res.status(500).json({ success: false, error: 'Database error' });
+    }
+});
+
+router.patch('/accounts/:id', requireRole('admin', 'senior_manager'), async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ error: 'Invalid account ID' });
+        const { name, emoji, description, isActive, sortOrder } = req.body;
+        const sets = [], vals = [];
+        let idx = 1;
+        if (name !== undefined)        { sets.push(`name = $${idx++}`);        vals.push(String(name).trim()); }
+        if (emoji !== undefined)       { sets.push(`emoji = $${idx++}`);       vals.push(String(emoji).slice(0, 10)); }
+        if (description !== undefined) { sets.push(`description = $${idx++}`); vals.push(description?.trim() || null); }
+        if (isActive !== undefined)    { sets.push(`is_active = $${idx++}`);   vals.push(isActive === true || isActive === 'true'); }
+        if (sortOrder !== undefined)   { sets.push(`sort_order = $${idx++}`);  vals.push(parseInt(sortOrder, 10) || 0); }
+        if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
+        vals.push(id);
+        const r = await pool.query(
+            `UPDATE finance_accounts SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+            vals
+        );
+        if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
+        res.json({ success: true, account: r.rows[0] });
+    } catch (err) {
+        log.error('PATCH /accounts error', err);
+        res.status(500).json({ success: false, error: 'Database error' });
+    }
+});
+
+router.delete('/accounts/:id', requireRole('admin'), async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ error: 'Invalid account ID' });
+        const r = await pool.query('UPDATE finance_accounts SET is_active = false WHERE id = $1', [id]);
+        if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
+        res.json({ success: true });
+    } catch (err) {
+        log.error('DELETE /accounts error', err);
+        res.status(500).json({ success: false, error: 'Database error' });
     }
 });
 

@@ -73,14 +73,14 @@
     border-radius: var(--radius);
     padding: 20px;
     transition: all var(--speed-normal) var(--ease-smooth);
-    box-shadow: var(--shadow-xs);
+    box-shadow: var(--shadow-sm);
     animation: fadeInUp 0.35s var(--ease-out-expo) both;
 }
 
 .card:hover {
-    box-shadow: var(--shadow);
-    transform: translateY(-2px);
-    border-color: var(--gray-200);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-3px);
+    border-color: rgba(16,185,129,0.15);
 }
 
 .card-header {
@@ -128,8 +128,8 @@
     white-space: nowrap;
 }
 
-.badge-done { background: #D1FAE5; color: #065F46; }
-.badge-normal { background: var(--gray-100); color: var(--gray-600); }
+.badge-done { background: #D1FAE5; color: #065F46; box-shadow: 0 1px 3px rgba(6,95,70,0.1); }
+.badge-normal { background: var(--gray-100); color: var(--gray-600); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
 
 /* ==========================================
    INLINE FORM
@@ -173,6 +173,14 @@
     background: var(--white);
     color: var(--gray-800);
     min-height: 44px;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.04);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.inline-form input:hover,
+.inline-form select:hover,
+.inline-form textarea:hover {
+    border-color: var(--gray-300);
 }
 
 .inline-form input:focus,
@@ -180,12 +188,12 @@
 .inline-form textarea:focus {
     outline: none;
     border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
+    box-shadow: 0 0 0 4px rgba(16,185,129,0.12), inset 0 1px 2px rgba(0,0,0,0.04);
 }
 
 .btn-page-primary {
     padding: 10px 20px;
-    background: var(--primary);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: white;
     border: none;
     border-radius: var(--radius-sm);
@@ -193,19 +201,20 @@
     font-size: var(--font-sm);
     cursor: pointer;
     min-height: 44px;
-    transition: all var(--speed-fast) var(--ease-smooth);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     font-family: inherit;
+    box-shadow: 0 2px 4px rgba(16,185,129,0.2);
 }
 
 .btn-page-primary:hover {
-    background: var(--primary-dark);
+    background: linear-gradient(135deg, var(--primary-dark) 0%, #059669 100%);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(16,185,129,0.25);
+    box-shadow: 0 6px 20px rgba(16,185,129,0.35);
 }
 
 .btn-page-primary:active {
     transform: translateY(0) scale(0.97);
-    box-shadow: none;
+    box-shadow: 0 1px 3px rgba(16,185,129,0.15);
 }
 
 .btn-page-secondary {
@@ -218,18 +227,21 @@
     font-size: var(--font-sm);
     cursor: pointer;
     min-height: 44px;
-    transition: all var(--speed-fast) var(--ease-smooth);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     font-family: inherit;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 
 .btn-page-secondary:hover {
     background: var(--gray-50);
     border-color: var(--gray-300);
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 
 .btn-page-secondary:active {
     transform: translateY(0) scale(0.97);
+    box-shadow: none;
 }
 
 .btn-page-danger {
@@ -327,36 +339,32 @@
     font-weight: 600;
     color: var(--gray-600);
     cursor: pointer;
-    transition: all var(--speed-fast);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     font-family: inherit;
     min-height: 44px;
+    position: relative;
 }
 
 .category-tab:hover {
     border-color: var(--primary);
     color: var(--primary-dark);
+    background: rgba(16,185,129,0.04);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(16,185,129,0.12);
 }
 
 .category-tab.active {
-    background: var(--primary);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: white;
-    border-color: var(--primary);
+    border-color: transparent;
+    box-shadow: 0 4px 12px rgba(16,185,129,0.3);
 }
 
 /* ==========================================
    EMPTY STATE
    ========================================== */
 
-.empty-state {
-    text-align: center;
-    padding: 60px 20px;
-    color: var(--gray-400);
-}
-
-.empty-state-icon {
-    font-size: 48px;
-    margin-bottom: 12px;
-}
+/* empty-state base styles defined in base.css */
 
 .empty-state-img {
     width: 200px;

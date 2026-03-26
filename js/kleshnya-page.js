@@ -299,11 +299,13 @@
         } else if (action === 'clear') {
             const doClear = await confirmModal('Очистити всі повідомлення цього чату?', { type: 'danger', okText: 'Очистити' });
             if (doClear) {
+                try {
                 var token = getToken();
                 await fetch(API_BASE + '/kleshnya/sessions/' + sid + '/messages', {
                     method: 'DELETE',
                     headers: { 'Authorization': 'Bearer ' + token }
                 });
+                } catch (e) { showNotification('Помилка очищення чату', 'error'); return; }
                 var s = sessions.find(function (s) { return s.id === sid; });
                 if (s) { s.last_message = null; s.message_count = 0; }
                 if (sid === activeSessionId) {
@@ -362,10 +364,12 @@
         $renameInput.focus();
     }
 
-    document.getElementById('klRenameSave').addEventListener('click', async function () {
+    document.getElementById('klRenameSave')?.addEventListener('click', async function () {
         if (!renameSessionId) return;
         var newTitle = $renameInput.value.trim() || 'Новий чат';
+        try {
         await apiUpdateKleshnyaSession(renameSessionId, { title: newTitle, emoji: renameEmoji });
+        } catch (e) { showNotification('Помилка перейменування', 'error'); return; }
 
         var session = sessions.find(function (s) { return s.id === renameSessionId; });
         if (session) {
@@ -380,7 +384,7 @@
         renameSessionId = null;
     });
 
-    document.getElementById('klRenameCancel').addEventListener('click', function () {
+    document.getElementById('klRenameCancel')?.addEventListener('click', function () {
         $renameOverlay.classList.remove('visible');
         renameSessionId = null;
     });
@@ -393,7 +397,7 @@
     });
 
     $renameInput.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') document.getElementById('klRenameSave').click();
+        if (e.key === 'Enter') document.getElementById('klRenameSave')?.click();
     });
 
     // ==========================================
@@ -778,7 +782,7 @@
     var reportSubmitBtn = document.getElementById('reportSubmitBtn');
     var reportType = 'bug';
 
-    document.getElementById('reportBtn').addEventListener('click', function () {
+    document.getElementById('reportBtn')?.addEventListener('click', function () {
         reportOverlay.classList.add('visible');
         reportTitle.value = '';
         reportDesc.value = '';
@@ -786,7 +790,7 @@
         reportTitle.focus();
     });
 
-    document.getElementById('reportCancelBtn').addEventListener('click', function () {
+    document.getElementById('reportCancelBtn')?.addEventListener('click', function () {
         reportOverlay.classList.remove('visible');
     });
     reportOverlay.addEventListener('click', function (e) {
@@ -863,7 +867,7 @@
             } catch (e) {}
         }
 
-        document.getElementById('mainApp').classList.remove('hidden');
+        document.getElementById('mainApp')?.classList.remove('hidden');
         loadSessions();
         initKleshnyaWS();
 
@@ -871,7 +875,7 @@
         if (typeof ParkWS !== 'undefined') ParkWS.connect();
     }
 
-    document.getElementById('logoutBtn').addEventListener('click', function () {
+    document.getElementById('logoutBtn')?.addEventListener('click', function () {
         if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
         localStorage.removeItem('pzp_token');
         localStorage.removeItem('pzp_current_user');

@@ -8,7 +8,6 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireRole } = require('../middleware/auth');
 const { getUserPoints, getAllPoints } = require('../services/kleshnya');
 const { createLogger } = require('../utils/logger');
 

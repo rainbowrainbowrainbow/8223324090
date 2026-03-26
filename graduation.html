@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Випускний</title>
+    <meta name="description" content="Event Genix — Конструктор випускного">
+    <meta property="og:title" content="Event Genix — Випускний">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <script>
+    (function() {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('embedded') === '1' || params.get('embed') === '1') {
+            document.documentElement.classList.add('embed-mode');
+        }
+        try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
+    })();
+    </script>
+    <link rel="stylesheet" href="css/base.css?v=38.13.0">
+    <link rel="stylesheet" href="css/layout.css?v=38.13.0">
+    <link rel="stylesheet" href="css/pages.css?v=38.13.0">
+    <link rel="stylesheet" href="css/modals.css?v=38.13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=38.13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=38.13.0">
+    <link rel="stylesheet" href="css/graduation.css?v=38.13.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=38.13.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        .embed-mode .sidebar-nav,
+        .embed-mode .header,
+        .embed-mode .sidebar-overlay,
+        .embed-mode .skip-link,
+        .embed-mode .page-login-overlay { display: none !important; }
+        .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
+    </style>
+</head>
+<body data-page-group="art">
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
+    <div id="loginOverlay" class="login-overlay" style="display:none">
+        <div class="login-redirect">Перенаправлення на логін...</div>
+    </div>
+
+    <div class="app-container">
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+        <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+            <span class="collapse-icon">◀</span>
+            <span class="collapse-text">Згорнути</span>
+        </button>
+        </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
+
+        <header class="header">
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-container">
+            <div class="grad-page">
+                <h1>Конструктор випускного</h1>
+
+                <div class="grad-tabs">
+                    <button type="button" class="grad-tab active" data-tab="constructor">Конструктор</button>
+                    <button type="button" class="grad-tab" data-tab="packages">Пакети</button>
+                    <button type="button" class="grad-tab" data-tab="quotes">Кошики</button>
+                    <button type="button" class="grad-tab" data-tab="analytics">Аналітика</button>
+                    <button type="button" class="grad-tab" data-tab="settings">Налаштування</button>
+                </div>
+
+                <div id="gradContent"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Info modal -->
+    <div class="grad-modal" id="gradInfoModal" onclick="if(event.target===this)this.style.display='none'">
+        <div class="grad-modal-content"></div>
+    </div>
+
+    <!-- Notification -->
+    <div id="notification" class="notification" style="display:none"></div>
+
+    <script src="js/config.js?v=38.13.0"></script>
+    <script src="js/notification.js?v=38.13.0"></script>
+    <script src="js/api.js?v=38.13.0"></script>
+    <script src="js/auth.js?v=38.13.0"></script>
+    <script src="js/components/sidebar.js?v=38.13.0"></script>
+    <script src="js/graduation.js?v=38.13.0"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const isEmbedded = new URLSearchParams(location.search).get('embedded') === '1'
+                || window.self !== window.top;
+            if (isEmbedded) {
+                document.documentElement.classList.add('embed-mode');
+                document.body.classList.add('embed-mode');
+                // Hide sidebar, header, login overlay
+                const sidebar = document.querySelector('.sidebar-nav');
+                const header = document.querySelector('.header');
+                const loginOverlay = document.getElementById('loginOverlay');
+                if (sidebar) sidebar.style.display = 'none';
+                if (header) header.style.display = 'none';
+                if (loginOverlay) loginOverlay.style.display = 'none';
+                const main = document.getElementById('main-content');
+                if (main) main.style.marginLeft = '0';
+                // Inherit token from URL query (passed by parent art-director iframe loader)
+                const urlToken = new URLSearchParams(location.search).get('token');
+                if (urlToken && !localStorage.getItem('pzp_token')) {
+                    localStorage.setItem('pzp_token', urlToken);
+                }
+                // Also try inheriting from parent frame
+                try {
+                    if (!localStorage.getItem('pzp_token') && window.parent && window.parent.localStorage) {
+                        const parentToken = window.parent.localStorage.getItem('pzp_token');
+                        if (parentToken) localStorage.setItem('pzp_token', parentToken);
+                    }
+                } catch (e) { /* cross-origin — token should already be shared via same-origin localStorage */ }
+            } else {
+                if (typeof Sidebar !== 'undefined') Sidebar.init('#sidebarLinks');
+                // Load role-panel only in standalone mode
+                const s = document.createElement('script');
+                s.src = 'js/role-panel.js?v=38.13.0';
+                document.body.appendChild(s);
+            }
+            try {
+                if (typeof GradPage !== 'undefined') {
+                    GradPage.init();
+                } else {
+                    console.error('[Graduation] GradPage not defined — check graduation.js loading');
+                    const content = document.getElementById('gradContent');
+                    if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#999">Помилка завантаження конструктора. Спробуйте оновити сторінку.</div>';
+                }
+            } catch (err) {
+                console.error('[Graduation] Init error:', err);
+                const content = document.getElementById('gradContent');
+                if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#999">Помилка: ' + err.message + '</div>';
+            }
+        });
+    </script>
+</body>
+</html>

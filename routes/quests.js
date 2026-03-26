@@ -41,7 +41,7 @@ function hashCode(str) {
 // GET /api/quests/daily — today's quests with progress
 router.get('/daily', requireRole(...ANY_ROLE), async (req, res) => {
     try {
-        const allQuests = await pool.query('SELECT * FROM daily_quests ORDER BY id');
+        const allQuests = await pool.query('SELECT * FROM daily_quests ORDER BY id LIMIT 200');
         const todayIds = getTodayQuestIds(allQuests.rows, req.user.id);
         const metaQuest = allQuests.rows.find(q => q.quest_type === 'meta_quest');
         const questIds = metaQuest ? [...todayIds, metaQuest.id] : todayIds;
@@ -118,7 +118,7 @@ router.post('/claim/:questId', requireRole(...ANY_ROLE), async (req, res) => {
         }
 
         // Get reward amount
-        const qDef = await client.query('SELECT * FROM daily_quests WHERE id = $1', [questId]);
+        const qDef = await client.query('SELECT * FROM daily_quests LIMIT 200 WHERE id = $1', [questId]);
         const reward = qDef.rows[0].reward_coins;
 
         // Award coins
@@ -192,7 +192,7 @@ async function updateQuestProgress(userId, questType, increment = 1) {
 router.get('/titles', requireRole(...ANY_ROLE), async (req, res) => {
     try {
         const [definitions, earned, profile] = await Promise.all([
-            pool.query('SELECT * FROM title_definitions ORDER BY id'),
+            pool.query('SELECT * FROM title_definitions ORDER BY id LIMIT 500'),
             pool.query('SELECT title_code, earned_at FROM user_titles WHERE user_id = $1', [req.user.id]),
             pool.query('SELECT active_title FROM user_profiles_extended WHERE user_id = $1', [req.user.id])
         ]);
@@ -245,7 +245,7 @@ router.put('/titles/set', requireRole(...ANY_ROLE), async (req, res) => {
 async function checkTitles(userId) {
     try {
         const [definitions, earned] = await Promise.all([
-            pool.query('SELECT * FROM title_definitions'),
+            pool.query('SELECT * FROM title_definitions LIMIT 500'),
             pool.query('SELECT title_code FROM user_titles WHERE user_id = $1', [userId])
         ]);
 

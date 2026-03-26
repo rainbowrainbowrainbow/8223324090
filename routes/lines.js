@@ -6,8 +6,12 @@ const { pool } = require('../db');
 const { validateDate, ensureDefaultLines } = require('../services/booking');
 const { broadcast } = require('../services/websocket');
 const { createLogger } = require('../utils/logger');
+const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('Lines');
+
+// All lines routes require authentication
+router.use(authenticateToken);
 
 router.get('/:date', async (req, res) => {
     try {

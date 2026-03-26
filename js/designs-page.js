@@ -859,8 +859,9 @@ let _pageFormEditPageNumber = null;
 
 async function loadCatalogs() {
     try {
-        const res = await apiFetch(CATALOGS_API);
-        catalogsList = Array.isArray(res) ? res : (res ? await res.json() : []);
+        const res = await apiFetch(`${CATALOGS_API}/definitions`);
+        const data = res && res.catalogs ? res : (res && res.json ? await res.json() : { catalogs: [] });
+        catalogsList = data.catalogs || [];
         renderCatalogs();
         const countEl = document.getElementById('countCatalogs');
         if (countEl) countEl.textContent = catalogsList.length;
@@ -879,19 +880,18 @@ function renderCatalogs() {
     }
 
     container.innerHTML = catalogsList.map(c => {
-        const coverStyle = c.cover_url ? `background-image:url(${esc(c.cover_url)})` : '';
-        return `<div class="catalog-card" onclick="openCatalogPages(${c.id})">
-            <div class="catalog-card-cover" style="${coverStyle}">
-                <div class="catalog-card-badge">${c.page_count || 0} стор.</div>
+        return `<div class="catalog-card" onclick="openCatalogPages('${esc(c.id)}')">
+            <div class="catalog-card-cover">
+                <div class="catalog-card-badge" style="font-size:28px">${c.emoji || '📁'}</div>
             </div>
             <div class="catalog-card-body">
-                <div class="catalog-card-title">${esc(c.title)}</div>
+                <div class="catalog-card-title">${esc(c.name || c.title || c.id)}</div>
                 <div class="catalog-card-desc">${esc(c.description || '')}</div>
             </div>
             <div class="catalog-card-footer" onclick="event.stopPropagation()">
-                <span class="catalog-card-pages">${c.status || 'draft'}</span>
+                <span class="catalog-card-pages">${c.is_active ? 'active' : 'draft'}</span>
                 <div class="catalog-card-actions">
-                    <button onclick="deleteCatalog(${c.id})" title="Видалити">🗑</button>
+                    <button onclick="deleteCatalog('${esc(c.id)}')" title="Видалити">🗑</button>
                 </div>
             </div>
         </div>`;
@@ -901,15 +901,16 @@ function renderCatalogs() {
 async function openCatalogPages(catalogId) {
     currentCatalogId = catalogId;
     try {
-        const res = await apiFetch(`${CATALOGS_API}/${catalogId}`);
-        const catalog = res.id ? res : await res.json();
-        currentCatalogPages = catalog.pages || [];
+        const pagesRes = await apiFetch(`${CATALOGS_API}/${catalogId}/pages`);
+        const pagesData = pagesRes && pagesRes.pages ? pagesRes : (pagesRes && pagesRes.json ? await pagesRes.json() : { pages: [] });
+        currentCatalogPages = pagesData.pages || [];
+        const catalog = catalogsList.find(c => c.id === catalogId) || { id: catalogId, name: catalogId, title: catalogId };
 
         document.getElementById('catalogsList').style.display = 'none';
         document.querySelector('.catalog-toolbar').style.display = 'none';
         const viewer = document.getElementById('catalogViewer');
         viewer.style.display = '';
-        document.getElementById('catalogViewerTitle').textContent = catalog.title;
+        document.getElementById('catalogViewerTitle').textContent = catalog.name || catalog.title || catalogId;
 
         renderCatalogPages(catalog);
     } catch (err) {
@@ -934,38 +935,42 @@ function renderCatalogPages(catalog) {
 
     let html = '';
 
-    // Cover page
-    const bgStyle = catalog.background_url ? `background-image:url(${esc(catalog.background_url)})` : '';
+    // Cover page (page_number=0)
+    const coverPage = currentCatalogPages.find(p => p.page_number === 0);
+    const bgStyle = coverPage && coverPage.background_url ? `background-image:url(${esc(coverPage.background_url)})` : '';
     html += `<div class="cat-page-cover" style="${bgStyle}">
         <div class="cat-page-cover-overlay">
-            <h3>${esc(catalog.title)}</h3>
-            <div class="subtitle">${esc(catalog.description || '')}</div>
+            <h3>${esc(coverPage ? coverPage.title : (catalog.name || catalog.title || ''))}</h3>
+            <div class="subtitle">${esc(coverPage ? (coverPage.subtitle || '') : (catalog.description || ''))}</div>
         </div>
         <div class="cat-page-cover-actions">
-            <button class="cat-page-image-btn" onclick="insertPageImage(${catalog.id}, 0, 'background')">Фон</button>
+            <button class="cat-page-image-btn" onclick="insertPageImage('${esc(catalog.id)}', 0, 'background')">Фон</button>
         </div>
     </div>`;
 
-    // Content pages
-    if (currentCatalogPages.length === 0) {
+    // Content pages (page_number > 0)
+    const contentPages = currentCatalogPages.filter(p => p.page_number > 0);
+    if (contentPages.length === 0) {
         html += '<div class="empty-state" style="margin-top:16px"><span>📄</span>Немає сторінок. Додайте першу!</div>';
     } else {
-        for (const page of currentCatalogPages) {
+        for (const page of contentPages) {
             const imgStyle = page.image_url ? `background-image:url(${esc(page.image_url)})` : '';
+            const details = page.details || {};
+            const detailStr = [details.age, details.kids ? details.kids + ' дітей' : '', details.duration].filter(Boolean).join(' · ');
             html += `<div class="cat-page-card">
                 <div class="cat-page-image" style="${imgStyle}">
                     ${page.image_url ? '' : '<div class="cat-page-image-placeholder">Без зображення</div>'}
-                    <button class="cat-page-image-btn" onclick="insertPageImage(${catalog.id}, ${page.page_number}, 'image')">Зображення</button>
+                    <button class="cat-page-image-btn" onclick="insertPageImage('${esc(catalog.id)}', ${page.page_number}, 'image')">Зображення</button>
                 </div>
                 <div class="cat-page-info">
                     <h3>${esc(page.title || 'Без назви')}</h3>
                     ${page.subtitle ? `<div class="subtitle">${esc(page.subtitle)}</div>` : ''}
                     ${page.description ? `<div class="desc">${esc(page.description)}</div>` : ''}
-                    ${page.price_label ? `<div class="price">${esc(page.price_label)}</div>` : ''}
-                    ${page.detail ? `<div class="detail">${esc(page.detail)}</div>` : ''}
+                    ${page.price_label ? `<div class="price">${esc(page.price_label)}</div>` : (page.price ? `<div class="price">від ${page.price.toLocaleString('uk-UA')} ₴</div>` : '')}
+                    ${detailStr ? `<div class="detail">${esc(detailStr)}</div>` : ''}
                     <div class="cat-page-actions">
-                        <button onclick="showEditPageForm(${catalog.id}, ${page.page_number})">Редагувати</button>
-                        <button onclick="deletePageConfirm(${catalog.id}, ${page.page_number})">Видалити</button>
+                        <button onclick="showEditPageForm('${esc(catalog.id)}', ${page.page_number})">Редагувати</button>
+                        <button onclick="deletePageConfirm('${esc(catalog.id)}', ${page.page_number})">Видалити</button>
                     </div>
                 </div>
             </div>`;
@@ -1002,7 +1007,7 @@ async function submitCreateCatalog() {
     };
 
     try {
-        await apiFetch(CATALOGS_API, {
+        await apiFetch(`${CATALOGS_API}/definitions`, {
             method: 'POST',
             body: JSON.stringify(body)
         });

@@ -803,7 +803,12 @@ async function processCascade() {
 
         if (activation.activatedSpecials.length > 0) {
             renderBoard([], false, activation.activatedSpecials);
-            for (const sp of activation.activatedSpecials) spawnExplosionParticles(sp.row, sp.col, sp.type);
+            for (const sp of activation.activatedSpecials) {
+                spawnExplosionParticles(sp.row, sp.col, sp.type);
+                // v38.9.0: Show bonus banner for each special
+                const spDef = SPECIAL_TYPES[sp.type];
+                if (spDef) showBonusBanner(spDef.emoji, `${spDef.label}: ${spDef.desc}!`);
+            }
             await sleep(250);
         }
 
@@ -1010,7 +1015,8 @@ function renderBoard(matchedCells = [], falling = false, activatedSpecials = [])
             }
 
             const pieceId = piece?.id || '';
-            html += `<div class="${classes.join(' ')}" data-row="${r}" data-col="${c}" data-piece-id="${pieceId}">${content}</div>`;
+            const specialAttr = piece?.special ? ` data-special="${piece.special}" data-special-label="${SPECIAL_TYPES[piece.special]?.label || ''}: ${SPECIAL_TYPES[piece.special]?.desc || ''}"` : '';
+            html += `<div class="${classes.join(' ')}" data-row="${r}" data-col="${c}" data-piece-id="${pieceId}"${specialAttr}>${content}</div>`;
         }
     }
     boardEl.innerHTML = html;
@@ -1218,8 +1224,12 @@ function startGameWithModifier(modifier) {
     maxCombo = 0;
     lastSwap = null;
     gameActive = true;
+    gamePausedByUser = false;
     timeLeft = GAME_TIME;
     nextEventTime = 0;
+    // Show pause button
+    const pauseBtn = document.getElementById('gamePauseBtn');
+    if (pauseBtn) pauseBtn.style.display = '';
 
     renderBoard();
     updateHeader();
@@ -1285,6 +1295,7 @@ function renderGameUI() {
             <div id="gameScore" class="game-score">0</div>
             <div id="gameTimer" class="game-timer">—:——</div>
             <div class="game-coins-display">💰 <span id="gameCoinsValue">0/${MAX_COINS}</span></div>
+            <button type="button" class="game-pause-btn" id="gamePauseBtn" title="Пауза" style="display:none" onclick="Match3.togglePause()">⏸</button>
         </div>
 
         <div class="game-specials-legend">
@@ -1343,6 +1354,41 @@ function renderGameUI() {
 function showTarotSelection() {
     const cards = drawTarotCards();
     renderTarotSelection(cards);
+}
+
+// v38.9.0: Pause toggle
+let gamePausedByUser = false;
+function togglePause() {
+    if (!gameActive) return;
+    gamePausedByUser = !gamePausedByUser;
+    timerPaused = gamePausedByUser;
+    const btn = document.getElementById('gamePauseBtn');
+    if (btn) btn.textContent = gamePausedByUser ? '▶' : '⏸';
+    const boardEl = document.getElementById('gameBoard');
+    if (!boardEl) return;
+    // Remove existing overlay
+    const existing = boardEl.querySelector('.game-paused-overlay');
+    if (existing) existing.remove();
+    if (gamePausedByUser) {
+        const overlay = document.createElement('div');
+        overlay.className = 'game-paused-overlay';
+        overlay.innerHTML = '<div class="pause-icon">⏸</div><div class="pause-text">ПАУЗА</div><button type="button" class="resume-btn" onclick="togglePause()">Продовжити</button>';
+        boardEl.appendChild(overlay);
+    }
+}
+// Expose globally for onclick
+window.togglePause = togglePause;
+window.Match3 = { togglePause };
+
+// v38.9.0: Bonus banner — animated notification
+function showBonusBanner(emoji, text) {
+    const boardEl = document.getElementById('gameBoard');
+    if (!boardEl) return;
+    const banner = document.createElement('div');
+    banner.className = 'bonus-banner';
+    banner.innerHTML = `<span class="bonus-emoji">${emoji}</span> ${text}`;
+    boardEl.appendChild(banner);
+    setTimeout(() => banner.remove(), 2200);
 }
 
 function startGame() {

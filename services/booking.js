@@ -156,7 +156,8 @@ function mapBookingRow(row) {
         paymentMethod: row.payment_method || null,
         banquetGuests: row.banquet_guests || null,
         banquetTables: row.banquet_tables || null,
-        banquetMenu: row.banquet_menu || null
+        banquetMenu: row.banquet_menu || null,
+        certificateId: row.certificate_id || null
     };
 }
 

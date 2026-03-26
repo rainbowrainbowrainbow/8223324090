@@ -318,7 +318,7 @@ function renderSchedule() {
                 bodyHtml += `<td>
                     <div class="sch-cell status-${status} ${isToday ? 'today-col' : ''}"
                          data-staff="${emp.id}" data-date="${ds}"
-                         title="${emp.name} — ${ds}">
+                         title="${escapeHtml(emp.name)} — ${ds}">
                         ${cellContent}
                     </div>
                 </td>`;
@@ -359,26 +359,26 @@ function openEditModal(staffId, date) {
     document.getElementById('schNote').value = entry?.note || '';
 
     toggleTimeFields();
-    document.getElementById('schModalOverlay').classList.add('visible');
+    document.getElementById('schModalOverlay')?.classList.add('visible');
 }
 
 function closeEditModal() {
-    document.getElementById('schModalOverlay').classList.remove('visible');
+    document.getElementById('schModalOverlay')?.classList.remove('visible');
     StaffState.editingCell = null;
 }
 
 function toggleTimeFields() {
-    const status = document.getElementById('schStatus').value;
+    const status = document.getElementById('schStatus')?.value;
     document.getElementById('schTimeFields').style.display = (status === 'working' || status === 'remote') ? '' : 'none';
 }
 
 async function handleSave() {
     const { staffId, date } = StaffState.editingCell;
-    const status = document.getElementById('schStatus').value;
+    const status = document.getElementById('schStatus')?.value;
     const showTime = status === 'working' || status === 'remote';
-    const shiftStart = showTime ? document.getElementById('schStart').value : null;
-    const shiftEnd = showTime ? document.getElementById('schEnd').value : null;
-    const note = document.getElementById('schNote').value.trim() || null;
+    const shiftStart = showTime ? document.getElementById('schStart')?.value : null;
+    const shiftEnd = showTime ? document.getElementById('schEnd')?.value : null;
+    const note = document.getElementById('schNote')?.value.trim() || null;
 
     const result = await saveScheduleEntry(staffId, date, shiftStart, shiftEnd, status, note);
     if (result.success) {
@@ -432,7 +432,7 @@ function openFillWeekModal() {
 
     select.innerHTML = '<option value="all">Всі видимі працівники</option>';
     for (const emp of filtered) {
-        select.innerHTML += `<option value="${emp.id}">${emp.name} — ${emp.position}</option>`;
+        select.innerHTML += `<option value="${emp.id}">${escapeHtml(emp.name)} — ${escapeHtml(emp.position)}</option>`;
     }
 
     document.getElementById('fillStatus').value = 'working';
@@ -440,25 +440,25 @@ function openFillWeekModal() {
     document.getElementById('fillEnd').value = '18:00';
     document.getElementById('fillNote').value = '';
     toggleFillTimeFields();
-    document.getElementById('fillWeekOverlay').classList.add('visible');
+    document.getElementById('fillWeekOverlay')?.classList.add('visible');
 }
 
 function closeFillWeekModal() {
-    document.getElementById('fillWeekOverlay').classList.remove('visible');
+    document.getElementById('fillWeekOverlay')?.classList.remove('visible');
 }
 
 function toggleFillTimeFields() {
-    const status = document.getElementById('fillStatus').value;
+    const status = document.getElementById('fillStatus')?.value;
     document.getElementById('fillTimeFields').style.display = (status === 'working' || status === 'remote') ? '' : 'none';
 }
 
 async function handleFillWeekSave() {
-    const staffValue = document.getElementById('fillStaffSelect').value;
-    const status = document.getElementById('fillStatus').value;
+    const staffValue = document.getElementById('fillStaffSelect')?.value;
+    const status = document.getElementById('fillStatus')?.value;
     const showTime = status === 'working' || status === 'remote';
-    const shiftStart = showTime ? document.getElementById('fillStart').value : null;
-    const shiftEnd = showTime ? document.getElementById('fillEnd').value : null;
-    const note = document.getElementById('fillNote').value.trim() || null;
+    const shiftStart = showTime ? document.getElementById('fillStart')?.value : null;
+    const shiftEnd = showTime ? document.getElementById('fillEnd')?.value : null;
+    const note = document.getElementById('fillNote')?.value.trim() || null;
 
     // Get selected days (checkboxes)
     const checkedDays = [];
@@ -566,7 +566,7 @@ async function toggleHours() {
     renderSchedule();
     // Apply show-hours class after render (tbody is re-created)
     if (StaffState.showHours) {
-        document.getElementById('scheduleBody').classList.add('show-hours');
+        document.getElementById('scheduleBody')?.classList.add('show-hours');
     }
 }
 
@@ -711,20 +711,19 @@ async function initPage() {
 
     const token = localStorage.getItem('pzp_token');
     if (!token) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     const user = await apiVerifyToken();
     if (!user) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
+    if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     const canManage = MANAGE_ROLES.includes(user.role);
@@ -737,7 +736,7 @@ async function initPage() {
     if (copyBtn) copyBtn.style.display = canManage ? '' : 'none';
     if (fillBtn) fillBtn.style.display = canManage ? '' : 'none';
 
-    document.getElementById('logoutBtn').addEventListener('click', () => {
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('pzp_token');
         localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
         window.location = '/';
@@ -756,34 +755,34 @@ async function initPage() {
     renderSchedule();
 
     // Event listeners
-    document.getElementById('prevWeekBtn').addEventListener('click', prevWeek);
-    document.getElementById('nextWeekBtn').addEventListener('click', nextWeek);
-    document.getElementById('todayWeekBtn').addEventListener('click', goToday);
-    document.getElementById('schSaveBtn').addEventListener('click', handleSave);
-    document.getElementById('schCancelBtn').addEventListener('click', closeEditModal);
-    document.getElementById('schStatus').addEventListener('change', toggleTimeFields);
+    document.getElementById('prevWeekBtn')?.addEventListener('click', prevWeek);
+    document.getElementById('nextWeekBtn')?.addEventListener('click', nextWeek);
+    document.getElementById('todayWeekBtn')?.addEventListener('click', goToday);
+    document.getElementById('schSaveBtn')?.addEventListener('click', handleSave);
+    document.getElementById('schCancelBtn')?.addEventListener('click', closeEditModal);
+    document.getElementById('schStatus')?.addEventListener('change', toggleTimeFields);
 
-    document.getElementById('schModalOverlay').addEventListener('click', (e) => {
+    document.getElementById('schModalOverlay')?.addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closeEditModal();
     });
 
     // Fill week modal
-    document.getElementById('fillWeekBtn').addEventListener('click', openFillWeekModal);
-    document.getElementById('fillSaveBtn').addEventListener('click', handleFillWeekSave);
-    document.getElementById('fillCancelBtn').addEventListener('click', closeFillWeekModal);
-    document.getElementById('fillStatus').addEventListener('change', toggleFillTimeFields);
-    document.getElementById('fillWeekOverlay').addEventListener('click', (e) => {
+    document.getElementById('fillWeekBtn')?.addEventListener('click', openFillWeekModal);
+    document.getElementById('fillSaveBtn')?.addEventListener('click', handleFillWeekSave);
+    document.getElementById('fillCancelBtn')?.addEventListener('click', closeFillWeekModal);
+    document.getElementById('fillStatus')?.addEventListener('change', toggleFillTimeFields);
+    document.getElementById('fillWeekOverlay')?.addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closeFillWeekModal();
     });
 
     // Copy week
-    document.getElementById('copyWeekBtn').addEventListener('click', handleCopyWeek);
+    document.getElementById('copyWeekBtn')?.addEventListener('click', handleCopyWeek);
 
     // Hours toggle
-    document.getElementById('toggleHoursBtn').addEventListener('click', toggleHours);
+    document.getElementById('toggleHoursBtn')?.addEventListener('click', toggleHours);
 
     // Load view toggle
-    document.getElementById('toggleLoadViewBtn').addEventListener('click', toggleLoadView);
+    document.getElementById('toggleLoadViewBtn')?.addEventListener('click', toggleLoadView);
 
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {

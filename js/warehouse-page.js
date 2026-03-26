@@ -58,27 +58,26 @@ async function initPage() {
     initDarkMode();
     const token = localStorage.getItem('pzp_token');
     if (!token) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     const user = await apiVerifyToken();
     if (!user) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
+    if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     canManage = MANAGE_ROLES.includes(user.role);
     const addBtn = document.getElementById('addItemBtn');
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
 
-    document.getElementById('logoutBtn').addEventListener('click', () => {
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('pzp_token');
         localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
         window.location = '/';
@@ -90,13 +89,13 @@ async function initPage() {
 }
 
 function setupEventListeners() {
-    document.getElementById('addItemBtn').addEventListener('click', () => openItemForm());
-    document.getElementById('saveItemBtn').addEventListener('click', saveItem);
-    document.getElementById('cancelItemBtn').addEventListener('click', closeItemForm);
+    document.getElementById('addItemBtn')?.addEventListener('click', () => openItemForm());
+    document.getElementById('saveItemBtn')?.addEventListener('click', saveItem);
+    document.getElementById('cancelItemBtn')?.addEventListener('click', closeItemForm);
 
     // Search with debounce
     let searchTimer;
-    document.getElementById('searchInput').addEventListener('input', (e) => {
+    document.getElementById('searchInput')?.addEventListener('input', (e) => {
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => {
             searchQuery = e.target.value.trim().toLowerCase();
@@ -105,18 +104,18 @@ function setupEventListeners() {
     });
 
     // Low stock toggle
-    document.getElementById('lowStockToggle').addEventListener('click', () => {
+    document.getElementById('lowStockToggle')?.addEventListener('click', () => {
         lowStockFilter = !lowStockFilter;
-        document.getElementById('lowStockToggle').classList.toggle('active', lowStockFilter);
+        document.getElementById('lowStockToggle')?.classList.toggle('active', lowStockFilter);
         renderStock();
     });
 
     // Qty modal
-    document.getElementById('qtyModalCancel').addEventListener('click', closeQtyModal);
-    document.getElementById('qtyModalConfirm').addEventListener('click', confirmQtyModal);
+    document.getElementById('qtyModalCancel')?.addEventListener('click', closeQtyModal);
+    document.getElementById('qtyModalConfirm')?.addEventListener('click', confirmQtyModal);
 
     // Close modal on backdrop click
-    document.getElementById('qtyModal').addEventListener('click', (e) => {
+    document.getElementById('qtyModal')?.addEventListener('click', (e) => {
         if (e.target === document.getElementById('qtyModal')) closeQtyModal();
     });
 
@@ -269,6 +268,8 @@ function openItemForm(itemId = null) {
         document.getElementById('wf-min').value = item.minQuantity || 0;
         document.getElementById('wf-unit').value = item.unit || 'шт';
         document.getElementById('wf-notes').value = item.notes || '';
+        var ownerEl = document.getElementById('wf-owner');
+        if (ownerEl) ownerEl.value = item.owner || 'park';
         // Disable quantity field for edit (use +/- buttons instead)
         document.getElementById('wf-quantity').disabled = true;
     } else {
@@ -290,14 +291,15 @@ function closeItemForm() {
 }
 
 async function saveItem() {
-    const id = document.getElementById('wf-id').value;
+    const id = document.getElementById('wf-id')?.value;
     const item = {
-        name: document.getElementById('wf-name').value.trim(),
-        category: document.getElementById('wf-category').value,
-        quantity: parseInt(document.getElementById('wf-quantity').value) || 0,
-        minQuantity: parseInt(document.getElementById('wf-min').value) || 0,
-        unit: document.getElementById('wf-unit').value,
-        notes: document.getElementById('wf-notes').value.trim() || null
+        name: document.getElementById('wf-name')?.value.trim(),
+        category: document.getElementById('wf-category')?.value,
+        quantity: parseInt(document.getElementById('wf-quantity')?.value) || 0,
+        minQuantity: parseInt(document.getElementById('wf-min')?.value) || 0,
+        unit: document.getElementById('wf-unit')?.value,
+        notes: document.getElementById('wf-notes')?.value.trim() || null,
+        owner: document.getElementById('wf-owner')?.value || 'park'
     };
 
     if (!item.name) {
@@ -349,7 +351,7 @@ function openUseModal(itemId) {
     document.getElementById('qtyModalConfirm').className = 'btn-page-primary';
     document.getElementById('qtyModalConfirm').style.background = document.body.classList.contains('dark-mode') ? 'rgba(239,68,68,0.8)' : '#EF4444';
     document.getElementById('qtyModal').style.display = '';
-    document.getElementById('qtyModalAmount').focus();
+    document.getElementById('qtyModalAmount')?.focus();
 }
 
 function openRestockModal(itemId) {
@@ -358,14 +360,14 @@ function openRestockModal(itemId) {
     const item = allItems.find(x => x.id === itemId);
     document.getElementById('qtyModalTitle').textContent = `Поповнити: ${item ? item.name : ''}`;
     document.getElementById('qtyModalAmount').value = 1;
-    document.getElementById('qtyModalAmount').removeAttribute('max');
+    document.getElementById('qtyModalAmount')?.removeAttribute('max');
     document.getElementById('qtyModalReason').value = '';
     document.getElementById('qtyModalReason').placeholder = 'Закупка, доставка...';
     document.getElementById('qtyModalConfirm').textContent = 'Поповнити';
     document.getElementById('qtyModalConfirm').className = 'btn-page-primary';
     document.getElementById('qtyModalConfirm').style.background = '';
     document.getElementById('qtyModal').style.display = '';
-    document.getElementById('qtyModalAmount').focus();
+    document.getElementById('qtyModalAmount')?.focus();
 }
 
 function closeQtyModal() {
@@ -375,8 +377,8 @@ function closeQtyModal() {
 }
 
 async function confirmQtyModal() {
-    const amount = parseInt(document.getElementById('qtyModalAmount').value);
-    const reason = document.getElementById('qtyModalReason').value.trim();
+    const amount = parseInt(document.getElementById('qtyModalAmount')?.value);
+    const reason = document.getElementById('qtyModalReason')?.value.trim();
 
     if (!amount || amount <= 0) {
         showNotification('Вкажіть кількість', 'error');
@@ -442,6 +444,8 @@ function switchPageTab(tab) {
     document.querySelectorAll('.wh-page-tab').forEach(t => t.classList.toggle('active', t.dataset.pageTab === tab));
     document.getElementById('stockTab').style.display = tab === 'stock' ? '' : 'none';
     document.getElementById('procurementTab').style.display = tab === 'procurement' ? '' : 'none';
+    var pinataEl = document.getElementById('pinataTab');
+    if (pinataEl) pinataEl.style.display = tab === 'pinata' ? '' : 'none';
     if (tab === 'procurement' && procLists.length === 0) loadProcLists();
 }
 
@@ -525,12 +529,12 @@ function closeProcForm() {
 }
 
 async function saveProcList() {
-    const id = document.getElementById('pf-id').value;
+    const id = document.getElementById('pf-id')?.value;
     const data = {
-        title: document.getElementById('pf-title').value.trim(),
-        department: document.getElementById('pf-department').value,
-        plannedDate: document.getElementById('pf-date').value || null,
-        notes: document.getElementById('pf-notes').value.trim() || null
+        title: document.getElementById('pf-title')?.value.trim(),
+        department: document.getElementById('pf-department')?.value,
+        plannedDate: document.getElementById('pf-date')?.value || null,
+        notes: document.getElementById('pf-notes')?.value.trim() || null
     };
 
     if (!data.title) {
@@ -564,8 +568,7 @@ async function openProcDetail(listId) {
     document.getElementById('procDetailTitle').textContent = data.title;
 
     const statusBadge = `<span class="proc-status-badge proc-status-${data.status}">${escapeHtml(data.statusLabel)}</span>`;
-    document.getElementById('procDetailMeta').innerHTML =
-        `${data.departmentLabel} ${statusBadge} ${data.plannedDate ? `· 📅 ${data.plannedDate}` : ''} ${data.assignedName ? `· 👤 ${escapeHtml(data.assignedName)}` : ''}`;
+    document.getElementById('procDetailMeta').innerHTML =         `${data.departmentLabel} ${statusBadge} ${data.plannedDate ? `· 📅 ${data.plannedDate}` : ''} ${data.assignedName ? `· 👤 ${escapeHtml(data.assignedName)}` : ''}`;
 
     renderProcDetailItems(data.items || []);
 
@@ -605,9 +608,9 @@ function closeProcDetail() {
 
 async function addProcItem() {
     if (!currentProcListId) return;
-    const name = document.getElementById('pd-item-name').value.trim();
-    const qty = parseInt(document.getElementById('pd-item-qty').value) || 1;
-    const price = parseInt(document.getElementById('pd-item-price').value) || 0;
+    const name = document.getElementById('pd-item-name')?.value.trim();
+    const qty = parseInt(document.getElementById('pd-item-qty')?.value) || 1;
+    const price = parseInt(document.getElementById('pd-item-price')?.value) || 0;
 
     if (!name) {
         showNotification('Вкажіть назву позиції', 'error');
@@ -629,12 +632,21 @@ async function addProcItem() {
 }
 
 async function toggleProcItem(listId, itemId, checked) {
-    await apiUpdateProcurementItem(listId, itemId, { isPurchased: checked });
+    try {
+        await apiUpdateProcurementItem(listId, itemId, { isPurchased: checked });
+    } catch (e) {
+        showNotification('Помилка оновлення: ' + e.message, 'error');
+        await openProcDetail(listId);
+    }
 }
 
 async function removeProcItem(listId, itemId) {
-    await apiDeleteProcurementItem(listId, itemId);
-    await openProcDetail(listId);
+    try {
+        await apiDeleteProcurementItem(listId, itemId);
+        await openProcDetail(listId);
+    } catch (e) {
+        showNotification('Помилка видалення: ' + e.message, 'error');
+    }
 }
 
 async function completeProcList() {

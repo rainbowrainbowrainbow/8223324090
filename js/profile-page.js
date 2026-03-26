@@ -22,6 +22,17 @@ let achCatFilter = 'all';
 let leaderboardSort = 'xp';
 let activeTab = 'profile';
 
+// v30.8.0 — Gamification v3 state
+let seasonalQuests = null;
+let teamsData = null;
+let challengesData = null;
+let referralData = null;
+let monthlyLeaderboard = null;
+let monthlyCategory = 'overall';
+let monthlyYear = new Date().getFullYear();
+let monthlyMonth = new Date().getMonth() + 1;
+let leaderboardMode = 'overall'; // 'overall' or 'monthly'
+
 // ==========================================
 // UTILITIES
 // ==========================================
@@ -224,6 +235,9 @@ function renderProfile() {
             <button class="profile-tab ${activeTab === 'leaderboard' ? 'active' : ''}" onclick="switchTab('leaderboard')">📊 Рейтинг</button>
             <button class="profile-tab ${activeTab === 'room' ? 'active' : ''}" onclick="switchTab('room')">🏠 Кімната</button>
             ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'quests' ? 'active' : ''}" onclick="switchTab('quests')">✅ Квести</button>` : ''}
+            <button class="profile-tab ${activeTab === 'season' ? 'active' : ''}" onclick="switchTab('season')">🏔️ Сезон</button>
+            <button class="profile-tab ${activeTab === 'teams' ? 'active' : ''}" onclick="switchTab('teams')">⚡ Команди</button>
+            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'referral' ? 'active' : ''}" onclick="switchTab('referral')">🤝 Реферали</button>` : ''}
         </div>
 
         <div id="tabContent">
@@ -241,6 +255,9 @@ async function switchTab(tab) {
     // Lazy load data for tabs that need it
     if (tab === 'shop' && shopItems.length === 0) await loadShopItems();
     if (tab === 'leaderboard' && !leaderboardData) await loadLeaderboard();
+    if (tab === 'season' && !seasonalQuests) await loadSeasonalQuests();
+    if (tab === 'teams' && !teamsData) await loadTeamsData();
+    if (tab === 'referral' && !referralData) await loadReferralData();
 
     const tabContent = document.getElementById('tabContent');
     if (tabContent) {
@@ -263,7 +280,12 @@ function renderTabContent() {
         case 'room': return renderRoom();
         case 'quests': return renderQuests();
         case 'titles': return renderTitles();
+        case 'season': return renderSeasonTab();
+        case 'teams': return renderTeamsTab();
+        case 'referral': return renderReferralTab();
         default: return `
+            ${isOwnProfile ? renderStreakWidget() : ''}
+            ${isOwnProfile ? renderLevelProgress() : ''}
             ${isOwnProfile ? renderNotes() : ''}
         `;
     }
@@ -616,10 +638,23 @@ function setLeaderboardSort(sort) {
 }
 
 function renderLeaderboardTab() {
-    if (!leaderboardData) return '<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-text">Завантаження рейтингу...</div></div>';
+    // Mode toggle: Overall vs Monthly
+    const modeHtml = `
+    <div style="display:flex;gap:4px;margin-bottom:12px">
+        <button class="profile-tab ${leaderboardMode === 'overall' ? 'active' : ''}" style="font-size:13px;padding:6px 14px"
+                onclick="setLeaderboardMode('overall')">🏅 Загальний</button>
+        <button class="profile-tab ${leaderboardMode === 'monthly' ? 'active' : ''}" style="font-size:13px;padding:6px 14px"
+                onclick="setLeaderboardMode('monthly')">📅 Щомісячний</button>
+    </div>`;
+
+    if (leaderboardMode === 'monthly') {
+        return modeHtml + renderMonthlyLeaderboard();
+    }
+
+    if (!leaderboardData) return modeHtml + '<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-text">Завантаження рейтингу...</div></div>';
 
     const list = Array.isArray(leaderboardData) ? leaderboardData : (leaderboardData.leaderboard || []);
-    if (!list.length) return '<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-text">Рейтинг поки порожній</div></div>';
+    if (!list.length) return modeHtml + '<div class="empty-state"><div class="empty-state-icon">📊</div><div class="empty-state-text">Рейтинг поки порожній</div></div>';
 
     const sortTabs = [
         { id: 'xp', label: 'За XP' },
@@ -660,8 +695,58 @@ function renderLeaderboardTab() {
     return `
     <div style="margin-top:16px">
         <h3 style="margin-bottom:12px">📊 Рейтинг</h3>
+        ${modeHtml}
         <div class="profile-tabs" style="margin-bottom:14px">${tabsHtml}</div>
         <div class="leaderboard-list">${listHtml}</div>
+    </div>`;
+}
+
+function renderMonthlyLeaderboard() {
+    const months = ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
+    const categories = [
+        { id: 'overall', label: 'Загальний' },
+        { id: 'bookings', label: 'Бронювання' },
+        { id: 'tasks', label: 'Задачі' },
+        { id: 'xp', label: 'XP' },
+        { id: 'coins', label: 'Монети' }
+    ];
+
+    const catTabs = categories.map(c =>
+        `<button class="profile-tab ${monthlyCategory === c.id ? 'active' : ''}" style="font-size:12px;padding:5px 12px"
+                 onclick="setMonthlyFilter('${c.id}')">${c.label}</button>`
+    ).join('');
+
+    let listHtml = '';
+    const data = monthlyLeaderboard;
+    const list = data?.leaderboard || [];
+
+    if (list.length === 0) {
+        listHtml = '<div class="empty-state" style="padding:20px"><div class="empty-state-text">Немає даних за цей місяць. Рейтинг оновлюється автоматично.</div></div>';
+    } else {
+        const rankIcons = ['🥇', '🥈', '🥉'];
+        listHtml = `<div class="leaderboard-list">${list.map((u, i) => `
+            <div class="leaderboard-item">
+                <div class="leaderboard-rank ${i < 3 ? `top-${i + 1}` : ''}">${rankIcons[i] || u.rank || (i + 1)}</div>
+                <div class="leaderboard-avatar">${(u.display_name || u.username || '?')[0].toUpperCase()}</div>
+                <div class="leaderboard-user">
+                    <div class="leaderboard-name">${escapeHtml(u.display_name || u.username)}</div>
+                    <div class="leaderboard-title-text">${escapeHtml(u.title || '')}</div>
+                </div>
+                <div class="leaderboard-score">
+                    <div class="leaderboard-score-value">${formatCoins(u.score)}</div>
+                    <div class="leaderboard-score-label">${monthlyCategory}</div>
+                </div>
+            </div>
+        `).join('')}</div>`;
+    }
+
+    return `
+    <div style="margin-top:8px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+            <h4>📅 ${months[monthlyMonth - 1]} ${monthlyYear}</h4>
+        </div>
+        <div class="profile-tabs" style="margin-bottom:14px">${catTabs}</div>
+        ${listHtml}
     </div>`;
 }
 
@@ -698,13 +783,15 @@ function attachProfileListeners() {
             const item = myInventory.find(i => i.itemId === itemId);
             if (!item) return;
 
-            if (item.isEquipped) {
-                await apiPut('/profile/unequip', { slot: equipSlot });
-            } else {
-                await apiPut('/profile/equip', { item_id: itemId, slot: equipSlot });
-            }
-            await loadProfileData(currentUserId);
-            renderProfile();
+            try {
+                if (item.isEquipped) {
+                    await apiPut('/profile/unequip', { slot: equipSlot });
+                } else {
+                    await apiPut('/profile/equip', { item_id: itemId, slot: equipSlot });
+                }
+                await loadProfileData(currentUserId);
+                renderProfile();
+            } catch (e) { showNotification('Помилка екіпірування', 'error'); }
         });
     });
 
@@ -766,6 +853,428 @@ async function pinNote(id) {
         if (note) note.pinned = result.pinned;
         renderProfile();
     }
+}
+
+// ==========================================
+// LEVEL PROGRESS (v30.8.0)
+// ==========================================
+function renderLevelProgress() {
+    const p = profileData;
+    if (!p) return '';
+
+    const level = p.level || 1;
+    const xp = p.xp || 0;
+    const title = p.title || 'Новачок';
+    const xpForCurrent = p.xpForCurrent || 0;
+    const xpForNext = p.xpForNext;
+    const isMaxLevel = !xpForNext;
+
+    const pct = isMaxLevel ? 100 : Math.min(100, Math.round(((xp - xpForCurrent) / (xpForNext - xpForCurrent)) * 100));
+    const xpNeeded = isMaxLevel ? 'MAX' : `${formatCoins(xp - xpForCurrent)} / ${formatCoins(xpForNext - xpForCurrent)}`;
+
+    return `
+    <div class="level-progress-card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
+            <div class="level-badge-lg" data-level="${level}">
+                <span class="level-number">${level}</span>
+            </div>
+            <div style="flex:1">
+                <div style="font-weight:800;font-size:16px;color:var(--gray-800)">${escapeHtml(title)}</div>
+                <div style="font-size:12px;color:var(--gray-400)">Рівень ${level}${xpForNext ? ` → ${p.nextTitle || ''}` : ' (МАКС)'}</div>
+            </div>
+            <div style="text-align:right">
+                <div style="font-weight:800;font-size:18px;color:var(--primary)">${formatCoins(xp)}</div>
+                <div style="font-size:11px;color:var(--gray-400)">XP</div>
+            </div>
+        </div>
+        <div class="xp-progress-bar">
+            <div class="xp-progress-fill" style="width:${pct}%"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px">
+            <span style="font-size:11px;color:var(--gray-400)">${xpNeeded} XP</span>
+            <span style="font-size:11px;color:var(--gray-400)">${pct}%</span>
+        </div>
+    </div>`;
+}
+
+// ==========================================
+// STREAK WIDGET (v30.8.0)
+// ==========================================
+function renderStreakWidget() {
+    const streaks = profileData?.streaks || {};
+    const currentStreak = streaks.current_streak || streaks.currentStreak || 0;
+    const longestStreak = streaks.longest_streak || streaks.longestStreak || 0;
+
+    const milestones = [3, 7, 14, 30, 60, 100];
+    const nextMilestone = milestones.find(m => m > currentStreak) || 100;
+    const pct = Math.min(100, Math.round((currentStreak / nextMilestone) * 100));
+
+    const last30 = [];
+    for (let i = 29; i >= 0; i--) {
+        const active = i < currentStreak;
+        last30.push(`<div class="streak-day ${active ? 'active' : ''}" title="${active ? '🔥' : '⬜'}"></div>`);
+    }
+
+    return `
+    <div class="streak-section" style="margin-bottom:16px">
+        <div class="streak-widget">
+            <div class="streak-card">
+                <div class="streak-icon">🔥</div>
+                <div class="streak-value">${currentStreak}</div>
+                <div class="streak-label">Поточний streak</div>
+            </div>
+            <div class="streak-card">
+                <div class="streak-icon">🏅</div>
+                <div class="streak-value">${longestStreak}</div>
+                <div class="streak-label">Рекорд</div>
+            </div>
+            <div class="streak-card">
+                <div class="streak-icon">🎯</div>
+                <div class="streak-value">${nextMilestone}</div>
+                <div class="streak-label">Наступна мета</div>
+                <div class="streak-milestone-bar" style="margin-top:6px">
+                    <div class="streak-milestone-fill" style="width:${pct}%"></div>
+                </div>
+            </div>
+        </div>
+        <div class="streak-roadmap">
+            ${milestones.map(m => `
+                <div class="streak-milestone ${currentStreak >= m ? 'reached' : ''} ${m === nextMilestone ? 'next' : ''}">
+                    <div class="milestone-dot">${currentStreak >= m ? '✅' : m}</div>
+                    <div class="milestone-label">${m}д</div>
+                </div>
+            `).join('<div class="milestone-line"></div>')}
+        </div>
+        <div class="streak-heatmap" style="margin-top:10px">
+            <div style="font-size:11px;color:var(--gray-400);margin-bottom:4px">Останні 30 днів:</div>
+            <div class="heatmap-grid">${last30.join('')}</div>
+        </div>
+        <div style="margin-top:8px;text-align:center">
+            <button class="streak-freeze-btn" onclick="buyStreakFreeze()">❄️ Заморозити streak (50 🪙)</button>
+        </div>
+    </div>`;
+}
+
+async function buyStreakFreeze() {
+    if (!confirm('Заморозити streak за 50 монет? (1 раз/тиждень)')) return;
+    const result = await apiPost('/gamification/streak/freeze');
+    if (result?.success) {
+        if (typeof showNotification === 'function') showNotification('❄️ Streak заморожено!', 'success');
+        walletData = await apiGet('/wallet');
+        renderProfile();
+    } else {
+        if (typeof showNotification === 'function') showNotification(result?.error || 'Помилка', 'error');
+    }
+}
+
+// ==========================================
+// SEASONAL QUESTS TAB (v30.8.0)
+// ==========================================
+async function loadSeasonalQuests() {
+    seasonalQuests = await apiGet('/gamification/seasons');
+    // Also check progress
+    await apiPost('/gamification/seasons/check');
+    seasonalQuests = await apiGet('/gamification/seasons');
+}
+
+function renderSeasonTab() {
+    if (!seasonalQuests) return '<div class="empty-state"><div class="empty-state-icon">🏔️</div><div class="empty-state-text">Завантаження сезонних квестів...</div></div>';
+
+    const quests = Array.isArray(seasonalQuests) ? seasonalQuests : [];
+    if (quests.length === 0) {
+        return '<div class="empty-state"><div class="empty-state-icon">🏔️</div><div class="empty-state-text">Наразі немає активних сезонних квестів</div></div>';
+    }
+
+    const season = quests[0]?.season || 'spring';
+    const seasonNames = { winter: '❄️ Зимовий сезон', spring: '🌸 Весняний сезон', summer: '☀️ Літній сезон', autumn: '🍂 Осінній сезон' };
+    const seasonColors = { winter: '#60a5fa', spring: '#34d399', summer: '#fbbf24', autumn: '#f97316' };
+
+    const endDate = quests[0]?.end_date;
+    const daysLeft = endDate ? Math.max(0, Math.ceil((new Date(endDate) - new Date()) / 86400000)) : 0;
+
+    let cardsHtml = quests.map(q => {
+        const progress = q.progress || 0;
+        const target = q.target_value;
+        const pct = Math.min(100, Math.round((progress / target) * 100));
+        const completed = q.completed;
+        const claimed = q.claimed;
+        const canClaim = completed && !claimed;
+
+        return `
+        <div class="season-quest-card ${completed ? 'completed' : ''} ${claimed ? 'claimed' : ''}">
+            <div class="season-quest-icon">${q.icon || '🏔️'}</div>
+            <div class="season-quest-info">
+                <h4>${escapeHtml(q.title)}</h4>
+                <p>${escapeHtml(q.description)}</p>
+                <div class="season-quest-progress">
+                    <div class="season-quest-bar"><div class="season-quest-fill" style="width:${pct}%;background:${seasonColors[season] || '#6366f1'}"></div></div>
+                    <span>${progress}/${target}</span>
+                </div>
+                <div class="season-quest-reward">
+                    ${q.reward_coins ? `🪙 ${q.reward_coins}` : ''} ${q.reward_xp ? `⚡ ${q.reward_xp} XP` : ''}
+                    ${q.reward_title ? `🏷️ "${escapeHtml(q.reward_title)}"` : ''}
+                </div>
+            </div>
+            <div>
+                ${canClaim ? `<button class="quest-claim-btn" onclick="claimSeasonQuest(${q.id})">Забрати!</button>` : ''}
+                ${claimed ? '<span style="color:var(--primary);font-size:12px;font-weight:700">✅ Отримано</span>' : ''}
+            </div>
+        </div>`;
+    }).join('');
+
+    return `
+    <div style="margin-top:16px">
+        <div class="season-banner" style="background:linear-gradient(135deg,${seasonColors[season] || '#6366f1'},${seasonColors[season] || '#6366f1'}99);color:white;border-radius:var(--radius-md);padding:20px;margin-bottom:16px;text-align:center">
+            <h3 style="margin:0 0 4px;font-size:20px">${seasonNames[season] || season}</h3>
+            <div style="font-size:13px;opacity:0.9">Залишилось ${daysLeft} днів</div>
+        </div>
+        ${cardsHtml}
+    </div>`;
+}
+
+async function claimSeasonQuest(questId) {
+    const result = await apiPost(`/gamification/seasons/${questId}/claim`);
+    if (result?.success) {
+        if (typeof showNotification === 'function') showNotification(`🎉 Отримано: +${result.coins || 0} 🪙`, 'success');
+        if (result.title && typeof AchievementPopup !== 'undefined') {
+            AchievementPopup.show({ name: result.title, description: 'Новий титул за сезонний квест!', icon: '🏷️', rarity: 'epic', reward_coins: result.coins });
+        }
+        seasonalQuests = null;
+        walletData = await apiGet('/wallet');
+        switchTab('season');
+    } else {
+        if (typeof showNotification === 'function') showNotification(result?.error || 'Помилка', 'error');
+    }
+}
+
+// ==========================================
+// TEAMS & CHALLENGES TAB (v30.8.0)
+// ==========================================
+async function loadTeamsData() {
+    const [teams, challenges] = await Promise.all([
+        apiGet('/gamification/teams'),
+        apiGet('/gamification/challenges')
+    ]);
+    teamsData = teams;
+    challengesData = Array.isArray(challenges) ? challenges : [];
+}
+
+function renderTeamsTab() {
+    if (!teamsData) return '<div class="empty-state"><div class="empty-state-icon">⚡</div><div class="empty-state-text">Завантаження команд...</div></div>';
+
+    const teams = teamsData.teams || [];
+    const userTeamId = teamsData.userTeamId;
+    const challenges = challengesData || [];
+
+    let teamsHtml = teams.map(t => {
+        const isMyTeam = t.id === userTeamId;
+        const memberAvatars = (t.members || []).slice(0, 5).map(m =>
+            `<div class="team-member-avatar" title="${escapeHtml(m.display_name || m.username)}">${(m.display_name || m.username || '?')[0].toUpperCase()}</div>`
+        ).join('');
+
+        return `
+        <div class="team-card ${isMyTeam ? 'my-team' : ''}" style="border-left:4px solid ${t.color || '#6366f1'}">
+            <div class="team-header">
+                <span class="team-icon">${t.icon || '⚡'}</span>
+                <span class="team-name">${escapeHtml(t.name)}</span>
+                <span class="team-count">${t.member_count || t.members?.length || 0} чол.</span>
+            </div>
+            <div class="team-members">${memberAvatars}${(t.members?.length || 0) > 5 ? `<span style="font-size:11px;color:var(--gray-400)">+${t.members.length - 5}</span>` : ''}</div>
+            <div style="margin-top:8px">
+                ${isMyTeam
+                    ? `<button class="team-btn leave" onclick="leaveMyTeam()">Вийти</button>`
+                    : (!userTeamId ? `<button class="team-btn join" onclick="joinTeamById(${t.id})">Приєднатися</button>` : '')}
+                ${isMyTeam ? '<span style="font-size:12px;color:var(--primary);font-weight:700">Ваша команда</span>' : ''}
+            </div>
+        </div>`;
+    }).join('');
+
+    let challengesHtml = '';
+    if (challenges.length > 0) {
+        challengesHtml = `<h3 style="margin:20px 0 12px">🏆 Активні челенджі</h3>`;
+        for (const ch of challenges) {
+            const daysLeft = Math.max(0, Math.ceil((new Date(ch.end_date) - new Date()) / 86400000));
+            const teamScores = (ch.teams || []).sort((a, b) => b.score - a.score);
+
+            let scoresHtml = teamScores.map((ts, i) => {
+                const pct = ch.target_value > 0 ? Math.min(100, Math.round((ts.score / ch.target_value) * 100)) : 0;
+                const isMyTeamScore = ts.team_id === userTeamId;
+                const rankIcons = ['🥇', '🥈', '🥉'];
+                return `
+                <div class="challenge-team-score ${isMyTeamScore ? 'my-team' : ''}">
+                    <span class="challenge-rank">${rankIcons[i] || (i + 1)}</span>
+                    <span class="challenge-team-name">${ts.team_icon || ''} ${escapeHtml(ts.team_name)}</span>
+                    <div class="challenge-score-bar" style="flex:1"><div class="challenge-score-fill" style="width:${pct}%;background:${ts.team_color || '#6366f1'}"></div></div>
+                    <span class="challenge-score-num">${ts.score}/${ch.target_value}</span>
+                </div>`;
+            }).join('');
+
+            challengesHtml += `
+            <div class="challenge-card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                    <h4>${ch.icon || '🏆'} ${escapeHtml(ch.title)}</h4>
+                    <span style="font-size:12px;color:var(--gray-400)">${daysLeft} днів</span>
+                </div>
+                ${ch.description ? `<p style="font-size:13px;color:var(--gray-500);margin-bottom:10px">${escapeHtml(ch.description)}</p>` : ''}
+                <div class="challenge-scores">${scoresHtml}</div>
+                <div style="font-size:12px;color:var(--gray-400);margin-top:8px">
+                    Нагорода: ${ch.reward_coins_per_member} 🪙 + ${ch.reward_xp_per_member} XP на учасника
+                </div>
+            </div>`;
+        }
+    }
+
+    return `
+    <div style="margin-top:16px">
+        <h3 style="margin-bottom:12px">⚡ Команди</h3>
+        <div class="teams-grid">${teamsHtml}</div>
+        ${challengesHtml}
+    </div>`;
+}
+
+async function joinTeamById(teamId) {
+    const result = await apiPost(`/gamification/teams/${teamId}/join`);
+    if (result?.success) {
+        if (typeof showNotification === 'function') showNotification(`⚡ Ви приєдналися до команди!`, 'success');
+        teamsData = null;
+        switchTab('teams');
+    } else {
+        if (typeof showNotification === 'function') showNotification(result?.error || 'Помилка', 'error');
+    }
+}
+
+async function leaveMyTeam() {
+    if (!confirm('Вийти з команди?')) return;
+    const result = await apiPost('/gamification/teams/leave');
+    if (result?.success) {
+        if (typeof showNotification === 'function') showNotification('Ви вийшли з команди', 'success');
+        teamsData = null;
+        switchTab('teams');
+    } else {
+        if (typeof showNotification === 'function') showNotification(result?.error || 'Помилка', 'error');
+    }
+}
+
+// ==========================================
+// REFERRAL TAB (v30.8.0)
+// ==========================================
+async function loadReferralData() {
+    referralData = await apiGet('/gamification/referral');
+}
+
+function renderReferralTab() {
+    if (!referralData) return '<div class="empty-state"><div class="empty-state-icon">🤝</div><div class="empty-state-text">Завантаження...</div></div>';
+
+    const code = referralData.code || '';
+    const referrals = referralData.referrals || [];
+    const totalReferred = referralData.totalReferred || 0;
+    const totalRewarded = referralData.totalRewarded || 0;
+    const totalCoins = referralData.totalCoinsEarned || 0;
+
+    // Milestone progress
+    const milestones = [
+        { target: 5, label: 'Рекрутер 🤝', reward: '1000 🪙' },
+        { target: 10, label: 'HR-Менеджер 👔', reward: '2500 🪙 + предмет' }
+    ];
+
+    let milestonesHtml = milestones.map(m => {
+        const pct = Math.min(100, Math.round((totalRewarded / m.target) * 100));
+        return `
+        <div class="referral-milestone ${totalRewarded >= m.target ? 'reached' : ''}">
+            <div class="referral-milestone-label">${escapeHtml(m.label)}</div>
+            <div class="referral-milestone-bar"><div class="referral-milestone-fill" style="width:${pct}%"></div></div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--gray-400)">
+                <span>${totalRewarded}/${m.target}</span>
+                <span>${m.reward}</span>
+            </div>
+        </div>`;
+    }).join('');
+
+    let referralsHtml = referrals.length > 0
+        ? referrals.map(r => `
+            <div class="referral-row">
+                <span class="referral-user">👤 ${escapeHtml(r.referred_username || '—')}</span>
+                <span class="referral-status ${r.status}">${r.status === 'rewarded' ? '✅ Нагороджено' : r.status === 'active' ? '⏳ Активний' : '📋 Очікує'}</span>
+                <span class="referral-date">${formatDate(r.created_at)}</span>
+            </div>`).join('')
+        : '<div class="empty-state" style="padding:20px"><div class="empty-state-text">Поки немає рефералів. Поділіться кодом!</div></div>';
+
+    return `
+    <div style="margin-top:16px">
+        <h3 style="margin-bottom:16px">🤝 Реферальна програма</h3>
+
+        <div class="referral-code-card">
+            <div style="font-size:13px;color:var(--gray-500);margin-bottom:6px">Ваш реферальний код:</div>
+            <div style="display:flex;gap:8px;align-items:center">
+                <div class="referral-code-display">${escapeHtml(code)}</div>
+                <button class="referral-copy-btn" onclick="copyReferralCode('${escapeHtml(code)}')">📋 Копіювати</button>
+            </div>
+            <div style="font-size:12px;color:var(--gray-400);margin-top:8px">
+                Ви отримаєте <strong>500 🪙</strong> коли реферал створить перше бронювання.
+                Реферал отримує <strong>200 🪙</strong> при реєстрації.
+            </div>
+        </div>
+
+        <div class="referral-stats" style="margin:16px 0">
+            <div class="referral-stat-card">
+                <div class="referral-stat-value">${totalReferred}</div>
+                <div class="referral-stat-label">Запрошено</div>
+            </div>
+            <div class="referral-stat-card">
+                <div class="referral-stat-value">${totalRewarded}</div>
+                <div class="referral-stat-label">Активних</div>
+            </div>
+            <div class="referral-stat-card">
+                <div class="referral-stat-value">${formatCoins(totalCoins)} 🪙</div>
+                <div class="referral-stat-label">Зароблено</div>
+            </div>
+        </div>
+
+        <div style="margin-bottom:16px">
+            <h4 style="margin-bottom:8px">🎯 Досягнення</h4>
+            ${milestonesHtml}
+        </div>
+
+        <h4 style="margin-bottom:8px">📋 Мої реферали</h4>
+        <div class="referral-list">${referralsHtml}</div>
+    </div>`;
+}
+
+function copyReferralCode(code) {
+    navigator.clipboard.writeText(code).then(() => {
+        if (typeof showNotification === 'function') showNotification('📋 Код скопійовано!', 'success');
+    }).catch(() => {
+        // Fallback
+        const input = document.createElement('input');
+        input.value = code;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        input.remove();
+        if (typeof showNotification === 'function') showNotification('📋 Код скопійовано!', 'success');
+    });
+}
+
+// ==========================================
+// MONTHLY LEADERBOARD EXTENSION (v30.8.0)
+// ==========================================
+function setLeaderboardMode(mode) {
+    leaderboardMode = mode;
+    if (mode === 'monthly' && !monthlyLeaderboard) {
+        loadMonthlyLeaderboard().then(() => switchTab('leaderboard'));
+        return;
+    }
+    switchTab('leaderboard');
+}
+
+async function loadMonthlyLeaderboard() {
+    monthlyLeaderboard = await apiGet(`/gamification/leaderboard/monthly?year=${monthlyYear}&month=${monthlyMonth}&category=${monthlyCategory}`);
+}
+
+function setMonthlyFilter(category) {
+    monthlyCategory = category;
+    monthlyLeaderboard = null;
+    loadMonthlyLeaderboard().then(() => switchTab('leaderboard'));
 }
 
 // ==========================================

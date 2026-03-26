@@ -12,6 +12,7 @@ const crypto = require('crypto');
 
 const { logAdminAction } = require('../services/adminAudit');
 const { requireRole } = require('../middleware/auth');
+const { safeTableName } = require('../utils/sqlSafe');
 const log = createLogger('Backup');
 
 // RBAC: All backup operations restricted to creator/director only
@@ -129,9 +130,10 @@ router.post('/restore', async (req, res) => {
         // Fix serial counters for restored tables (use SAVEPOINT to avoid aborting transaction)
         for (const table of tablesWithData) {
             try {
+                const safeName = safeTableName(table, BACKUP_TABLES);
                 await client.query('SAVEPOINT seq_fix');
                 await client.query(
-                    `SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM ${table}), 0) + 1, false)`
+                    `SELECT setval(pg_get_serial_sequence(${safeName}, 'id'), COALESCE((SELECT MAX(id) FROM ${safeName}), 0) + 1, false)`
                 );
                 await client.query('RELEASE SAVEPOINT seq_fix');
             } catch {

@@ -8,8 +8,8 @@ const { pool } = require('../db');
 const { requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 
+const { JWT_SECRET } = require('../middleware/auth');
 const log = createLogger('Demo');
-const JWT_SECRET = process.env.JWT_SECRET || 'park-booking-secret-key-2024';
 
 // ==========================================
 // DEMO LOGIN (guest access without registration)

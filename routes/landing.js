@@ -5,6 +5,8 @@
  */
 const express = require('express');
 const router = express.Router();
+const { createLogger } = require('../utils/logger');
+const log = createLogger('Landing');
 
 router.post('/demo-request', async (req, res) => {
     const { name, contact, package: pkg } = req.body;
@@ -30,7 +32,7 @@ router.post('/demo-request', async (req, res) => {
             });
         }
     } catch (err) {
-        console.error('[landing] Telegram notification failed:', err.message);
+        log.error('Telegram notification failed', err);
     }
 
     res.json({ ok: true });

@@ -72,6 +72,24 @@ router.post('/settings', requireRole('creator', 'director'), async (req, res) =>
     }
 });
 
+// v33.3: PUT /api/settings/language — dedicated language endpoint
+router.put('/settings/language', requireRole('creator', 'director', 'admin', 'user'), async (req, res) => {
+    try {
+        const { value } = req.body;
+        if (!['uk', 'en'].includes(value)) {
+            return res.status(400).json({ error: 'value must be uk or en' });
+        }
+        await pool.query(
+            `INSERT INTO settings (key, value) VALUES ('language', $1) ON CONFLICT (key) DO UPDATE SET value = $1`,
+            [value]
+        );
+        settingsCache.invalidate('language');
+        res.json({ success: true, value });
+    } catch (err) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Free rooms
 router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
     try {
@@ -107,9 +125,14 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
 });
 
 // v20.13: Version endpoint — returns package.json version
+// v29.1.0: Added testMode flag
 router.get('/version', (req, res) => {
     const pkg = require('../package.json');
-    res.json({ version: pkg.version, name: pkg.name || 'park-booking' });
+    res.json({
+        version: pkg.version,
+        name: 'Event Genix',
+        testMode: process.env.TEST_MODE === 'true'
+    });
 });
 
 // Health check — v19.17: deep health check with DB pool, memory, uptime
@@ -140,9 +163,11 @@ router.get('/health', async (req, res) => {
     } catch { /* ignore */ }
     checks.userCount = userCount;
 
-    // Memory warning
-    const heapPct = Math.round((mem.heapUsed / mem.heapTotal) * 100);
-    checks.status = checks.database === 'connected' && heapPct < 90 ? 'ok' : 'degraded';
+    // Memory warning — use absolute heap limit (512MB) instead of percentage
+    // because Node.js heapTotal grows dynamically and heapUsed/heapTotal ratio
+    // is unreliable (often 85-95% even under normal load)
+    const heapUsedMB = Math.round(mem.heapUsed / 1024 / 1024);
+    checks.status = checks.database === 'connected' && heapUsedMB < 512 ? 'ok' : 'degraded';
 
     res.status(checks.status === 'ok' ? 200 : 503).json(checks);
 });
@@ -150,7 +175,7 @@ router.get('/health', async (req, res) => {
 // v8.3: Automation rules CRUD
 router.get('/automation-rules', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM automation_rules ORDER BY created_at DESC');
+        const result = await pool.query('SELECT * FROM automation_rules ORDER BY created_at DESC LIMIT 500');
         res.json(result.rows);
     } catch (err) {
         if (err.message.includes('does not exist')) return res.json([]);

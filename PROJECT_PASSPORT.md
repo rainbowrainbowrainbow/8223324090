@@ -1,6 +1,6 @@
 # PROJECT PASSPORT — Event Genix CRM
 
-> Паспорт проекту для передачі в новий чат. Оновлено: 2026-03-11, v22.18.0
+> Паспорт проекту для передачі в новий чат. Оновлено: 2026-03-25, v38.13.0
 
 ---
 
@@ -17,7 +17,7 @@
 | Хостинг | Railway |
 | Staging гілка | `main` |
 | Production гілка | `deployed` (ТІЛЬКИ Клешня) |
-| Версія | v22.18.0 |
+| Версія | v38.13.0 |
 | Порт | `PORT` (default 3000) |
 
 ### Env змінні
@@ -51,8 +51,8 @@ node --test tests/api.test.js
 | Bot | Custom Telegram Bot API (**NO grammY**) |
 | AI | @anthropic-ai/sdk (Клешня AI agent) |
 | Frontend | Vanilla HTML+CSS+JS SPA (**NO React/Next.js**) |
-| CSS | 17-file modular + Design System v4.0 |
-| Testing | `node --test` (296+ тестів, 3 файли + helpers) |
+| CSS | 22-file modular + Design System v4.0 |
+| Testing | `node --test` (346+ тестів, 3 файли + helpers) |
 | Realtime | WebSocket (ws library) |
 
 **Dependencies (15):** @anthropic-ai/sdk, @supabase/supabase-js, bcryptjs, chart.js, compression, cors, exceljs, express, jsonwebtoken, multer, pg, qrcode, swagger-ui-express, web-push, ws
@@ -66,11 +66,11 @@ server.js              — Entry point, middleware, routes, schedulers, WS init
 
 db/index.js            — Pool, schema (40+ таблиць), seed, indexes
 db/migrate.js          — Migration runner
-db/migrations/         — 001–050 (50 міграцій)
+db/migrations/         — 001–125 (125 міграцій)
 
-routes/ (61):          auth, bookings, lines, history, settings, stats,
-                       afisha, telegram, backup, products, tasks,
-                       task-templates, staff, certificates, recurring,
+routes/ (74):          auth, bookings, booking-templates, lines, history,
+                       settings, stats, afisha, telegram, backup, products,
+                       tasks, task-templates, staff, certificates, recurring,
                        points, kleshnya, procurement, gamification,
                        dashboard, analytics, finance, hr, customers,
                        leads, sales, agents, chat, center, designs,
@@ -80,15 +80,19 @@ routes/ (61):          auth, bookings, lines, history, settings, stats,
                        page-statuses, summary, svitlana, board,
                        achievements, minigame, quests, wallet,
                        art-director, contractors, employees,
-                       event-queue, guardian, scripts, users
+                       event-queue, guardian, scripts, users,
+                       decisions, graduation, sound-library, landing,
+                       copilot, report-bot, personal-accounts,
+                       subscription, omnichannel, inventory, streaks
 
-services/ (30):        adminAudit, agentTracker, backup, bookingAutomation,
+services/ (41):        adminAudit, agentTracker, backup, bookingAutomation,
                        bot, cache, certificates, chat-bot, chatService,
                        contextCache, eventBus, gamification, guardian,
                        hr, kleshnya, kleshnya-bridge, kleshnya-chat,
                        kleshnya-greeting, linkPreview, notificationDigest,
                        recurring, scheduler, schedulerGuard, summary-agent,
-                       taskTemplates, telegram, templates, training, websocket
+                       taskTemplates, telegram, templates, training,
+                       websocket, booking (helpers), outbox
 
 middleware/ (6):       auth (JWT), rateLimit, security, requestId,
                        apiAudit, apiVersioning
@@ -348,4 +352,4 @@ swagger.js             — OpenAPI 3.0 spec
 
 ---
 
-> Актуальна версія: v22.18.0. Копіюй в новий чат — тут все для продовження.
+> Актуальна версія: v38.13.0. Копіюй в новий чат — тут все для продовження.

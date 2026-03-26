@@ -46,10 +46,13 @@ body.dark-mode {
 
 /* Sidebar */
 body.dark-mode .sidebar-nav {
-    background: #1a1a2e;
+    background: linear-gradient(180deg, #1a1a2e 0%, #161625 100%);
     border-right-color: var(--gray-200);
-    box-shadow: 1px 0 8px rgba(0,0,0,0.2);
+    box-shadow: 1px 0 12px rgba(0,0,0,0.3);
 }
+body.dark-mode .sidebar-header { background: linear-gradient(135deg, rgba(16,185,129,0.04) 0%, rgba(99,102,241,0.04) 100%); }
+body.dark-mode .sidebar-user-card { background: linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(99,102,241,0.06) 100%); border-color: rgba(16,185,129,0.12); }
+body.dark-mode .sidebar-user-card:hover { background: linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(99,102,241,0.1) 100%); border-color: rgba(16,185,129,0.2); }
 
 body.dark-mode .sidebar-logo {
     border-bottom-color: var(--gray-200);
@@ -69,25 +72,18 @@ body.dark-mode .sidebar-links .nav-link:hover {
 }
 
 body.dark-mode .sidebar-links .nav-link.active {
-    background: rgba(16,185,129,0.1);
+    background: linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.08) 100%);
     color: #10B981;
+    box-shadow: 0 1px 4px rgba(16,185,129,0.1);
 }
+body.dark-mode .sidebar-links .nav-link:hover { transform: translateX(2px); }
 
 /* Nav icon — dark mode */
 body.dark-mode .nav-icon {
-    background: rgba(255,255,255,0.08);
-    color: var(--gray-400);
+    background: rgba(255,255,255,0.06);
 }
-
-body.dark-mode .nav-link:hover .nav-icon {
-    background: rgba(16,185,129,0.15);
-    color: #10B981;
-}
-
-body.dark-mode .nav-link.active .nav-icon {
-    background: #10B981;
-    color: #FFFFFF;
-}
+body.dark-mode .nav-link:hover .nav-icon { background: rgba(255,255,255,0.1); }
+body.dark-mode .nav-link.active .nav-icon { background: rgba(16,185,129,0.2); }
 
 body.dark-mode .nav-icon--kleshnya {
     background: rgba(225,29,72,0.15);
@@ -426,12 +422,6 @@ body.dark-mode .toggle-mini:has(input:checked) span {
 
 body.dark-mode .btn-undo {
     background: var(--gray-100);
-    border-color: var(--gray-300);
-}
-
-/* Tooltip */
-body.dark-mode .booking-tooltip {
-    background: #252540;
     border-color: var(--gray-300);
 }
 
@@ -1213,9 +1203,9 @@ body.dark-mode .now-line-global {
     background: rgba(239, 68, 68, 0.35);
 }
 
-/* v5.18.1: Tooltip contrast in dark */
+/* v37.8.0: Tooltip dark mode (consolidated from v5.18.1) */
 body.dark-mode .booking-tooltip {
-    background: #2d2d4e;
+    background: linear-gradient(135deg, #252540 0%, #1a1a35 100%);
     border-color: #444466;
     color: #F3F4F6;
     box-shadow: 0 8px 24px rgba(0,0,0,0.5);
@@ -1418,6 +1408,11 @@ body.dark-mode .prof-task-btn.start { color: #60A5FA; }
 body.dark-mode .prof-task-btn.start:hover { background: #3B82F6; }
 body.dark-mode .prof-blocked-lbl { color: #FBBF24; }
 body.dark-mode .profile-pwd-error { background: rgba(239,68,68,0.1); }
+body.dark-mode .profile-role-badge { background: rgba(16,185,129,0.15); color: #34D399; }
+body.dark-mode .profile-tg-badge { background: rgba(255,255,255,0.08); color: #94A3B8; }
+body.dark-mode .profile-tg-badge.connected { background: rgba(16,185,129,0.15); color: #34D399; }
+body.dark-mode .prof-game-empty-title { color: #E2E8F0; }
+body.dark-mode .prof-game-btn-secondary { background: rgba(255,255,255,0.08); color: #CBD5E1; }
 
 /* Standalone pages dark mode */
 body.dark-mode .badge-done { background: rgba(16,185,129,0.15); color: #34D399; }
@@ -2073,6 +2068,31 @@ body.dark-mode .skeleton {
     background: linear-gradient(90deg, #2A2A4A 25%, #1E1E3A 50%, #2A2A4A 75%);
     background-size: 200% 100%;
 }
-body.dark-mode .empty-state { color: #6B7280; }
+body.dark-mode .empty-state { color: #6B7280; background: linear-gradient(135deg, rgba(16,185,129,0.03) 0%, rgba(139,92,246,0.03) 100%); border-color: #374151; }
 body.dark-mode .empty-state-text { color: #9CA3AF; }
 body.dark-mode .empty-state-hint { color: #6B7280; }
+
+/* v37.8.0: Dark mode for Visual Polish */
+body.dark-mode .card:hover { border-color: rgba(16,185,129,0.2); }
+body.dark-mode .category-tab.active { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); border-color: transparent; }
+body.dark-mode .stat-item { background: linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(139,92,246,0.06) 100%); border-color: rgba(255,255,255,0.05); }
+body.dark-mode .widget-action-btn:hover { background: rgba(16,185,129,0.15); color: #6EE7B7; }
+body.dark-mode .catalog-program-card:hover { background: var(--gray-200); }
+
+/* v37.10: Dark mode gap fixes — banners, bulk actions, test panels */
+body.dark-mode .offline-banner { background: linear-gradient(135deg, #B45309, #92400E); color: #FEF3C7; }
+body.dark-mode .global-error-banner { background: linear-gradient(135deg, #B91C1C, #991B1B); color: #FEE2E2; }
+body.dark-mode .bulk-action-bar { background: #1E293B; border: 1px solid #334155; }
+body.dark-mode .test-panel { background: #1E293B; border: 1px solid #334155; color: #E2E8F0; }
+body.dark-mode .test-panel-fab { background: #6D28D9; }
+body.dark-mode .test-mode-badge { background: #6D28D9; }
+body.dark-mode .occupancy-bar { background: #1E293B; border: 1px solid #334155; }
+body.dark-mode .occupancy-fill { background: linear-gradient(90deg, var(--primary-dark), var(--primary)); }
+body.dark-mode .occupancy-label { color: #E2E8F0; }
+body.dark-mode .chat-toast { background: #334155; color: #F1F5F9; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
+body.dark-mode .automation-rule { background: #1E293B; border-color: #334155; border-left-color: #8B5CF6; color: #E2E8F0; }
+body.dark-mode .automation-rule.rule-inactive { opacity: 0.5; border-left-color: #475569; }
+
+/* v38.3.0: Exceptions Inbox widget dark mode */
+body.dark-mode .exc-summary { border-bottom-color: rgba(255,255,255,0.08); }
+body.dark-mode .exc-cat-badge { background: rgba(255,255,255,0.08); color: #CBD5E1; }

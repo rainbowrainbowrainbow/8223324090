@@ -3,110 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Event Genix | Ліди</title>
+    <title>Event Genix | Воронка продажів</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
+    <link rel="stylesheet" href="css/base.css?v=38.13.0">
+    <link rel="stylesheet" href="css/layout.css?v=38.13.0">
+    <link rel="stylesheet" href="css/pages.css?v=38.13.0">
+    <link rel="stylesheet" href="css/modals.css?v=38.13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=38.13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=38.13.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=38.13.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
-        /* Standalone page layout */
-        .standalone-page {
-            max-width: 1100px;
-            margin: 0 auto;
-            padding: 24px 20px 40px;
-            min-height: 100vh;
-        }
-        .standalone-header {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            margin-bottom: 28px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #E2E8F0;
-        }
-        .standalone-header .back-link {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 8px 14px;
-            border-radius: var(--radius-sm);
-            background: #E2E8F0;
-            color: #334155;
-            text-decoration: none;
-            font-size: 13px;
-            font-weight: 700;
-            transition: all .15s;
-            white-space: nowrap;
-            min-height: 40px;
-            border: 1px solid #CBD5E1;
-        }
-        .standalone-header .back-link:hover {
-            background: #CBD5E1;
-            color: #1E293B;
-        }
-        .standalone-header h1 {
-            font-family: var(--font-heading);
-            font-size: 28px;
-            font-weight: 800;
-            color: #0F172A;
-            margin: 0;
-            letter-spacing: -0.5px;
-        }
-
         /* Stats row */
         .leads-stats {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 12px;
-            margin-bottom: 24px;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
         }
         .leads-stat {
             background: #FFFFFF;
             border-radius: var(--radius-card);
-            padding: 16px;
+            padding: 14px 12px;
             border: 1.5px solid #CBD5E1;
             box-shadow: 0 1px 3px rgba(0,0,0,0.08);
             text-align: center;
+            cursor: pointer;
             transition: transform .15s, box-shadow .15s;
         }
-        .leads-stat:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-sm);
+        .leads-stat:hover { transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+        .leads-stat .stat-val { font-family: var(--font-heading); font-size: 26px; font-weight: 800; line-height: 1.2; }
+        .leads-stat .stat-lbl { font-size: 10px; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
+        .leads-stat.type-quality .stat-val { color: #10B981; }
+        .leads-stat.type-spam .stat-val { color: #EF4444; }
+        .leads-stat.type-collab .stat-val { color: #8B5CF6; }
+        .leads-stat.type-info .stat-val { color: #3B82F6; }
+        .leads-stat.type-low .stat-val { color: #9CA3AF; }
+        .leads-stat.total .stat-val { color: #0F172A; }
+
+        /* TEST MODE badge */
+        .test-mode-badge {
+            display: none;
+            align-items: center;
+            gap: 6px;
+            background: #FEF3C7;
+            color: #92400E;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            margin-left: auto;
         }
-        .leads-stat .stat-val { font-family: var(--font-heading); font-size: 28px; font-weight: 800; line-height: 1.2; }
-        .leads-stat .stat-lbl { font-size: 11px; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
-        .leads-stat.new .stat-val { color: #3B82F6; }
-        .leads-stat.contact .stat-val { color: #F59E0B; }
-        .leads-stat.proposal .stat-val { color: #F97316; }
-        .leads-stat.booked .stat-val { color: #10B981; }
-        .leads-stat.lost .stat-val { color: #EF4444; }
 
         /* Toolbar */
         .leads-toolbar {
             display: flex;
-            gap: 12px;
+            gap: 10px;
             align-items: center;
             flex-wrap: wrap;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
         .leads-toolbar .btn-add {
             background: var(--primary);
             color: #fff;
             border: none;
-            padding: 10px 22px;
+            padding: 10px 20px;
             border-radius: var(--radius-sm);
             font-weight: 700;
             font-family: inherit;
@@ -116,21 +79,12 @@
             transition: all .15s;
             box-shadow: 0 2px 8px rgba(16,185,129,0.25);
         }
-        .leads-toolbar .btn-add:hover {
-            background: var(--primary-dark);
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(16,185,129,0.3);
-        }
-        .leads-toolbar .btn-add:active {
-            transform: translateY(0) scale(0.97);
-        }
-        .leads-toolbar .filter-btns {
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-        }
-        .leads-toolbar .filter-btn {
-            padding: 8px 16px;
+        .leads-toolbar .btn-add:hover { background: var(--primary-dark); transform: translateY(-1px); }
+
+        /* View toggle */
+        .view-btns { display: flex; gap: 4px; }
+        .view-btn {
+            padding: 8px 14px;
             border-radius: var(--radius-sm);
             border: 1.5px solid #CBD5E1;
             background: #F1F5F9;
@@ -142,20 +96,28 @@
             min-height: 44px;
             transition: all .15s;
         }
-        .leads-toolbar .filter-btn:hover {
-            border-color: #10B981;
-            color: #059669;
-            background: #ECFDF5;
+        .view-btn:hover { border-color: #10B981; color: #059669; }
+        .view-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+        .filter-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+        .filter-btn {
+            padding: 8px 14px;
+            border-radius: var(--radius-sm);
+            border: 1.5px solid #CBD5E1;
+            background: #F1F5F9;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 700;
+            font-family: inherit;
+            color: #334155;
+            min-height: 44px;
+            transition: all .15s;
         }
-        .leads-toolbar .filter-btn.active {
-            background: var(--primary);
-            color: #fff;
-            border-color: var(--primary);
-            box-shadow: 0 2px 8px rgba(16,185,129,0.2);
-        }
-        .leads-toolbar .search-input {
+        .filter-btn:hover { border-color: #10B981; color: #059669; background: #ECFDF5; }
+        .filter-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .search-input {
             flex: 1;
-            min-width: 200px;
+            min-width: 180px;
             padding: 10px 14px;
             border: 1.5px solid #CBD5E1;
             border-radius: var(--radius-sm);
@@ -164,341 +126,363 @@
             min-height: 44px;
             background: #FFFFFF;
             color: #1E293B;
-            transition: border-color .15s, box-shadow .15s;
         }
-        .leads-toolbar .search-input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
-        }
+        .search-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(16,185,129,0.1); }
 
         /* Table */
-        .leads-table-wrap {
-            overflow-x: auto;
-            background: #FFFFFF;
-            border-radius: var(--radius-card);
-            border: 1.5px solid #CBD5E1;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-        }
-        .leads-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-        .leads-table th {
-            text-align: left;
-            padding: 14px 16px;
-            font-weight: 700;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: .5px;
-            color: #475569;
-            border-bottom: 2px solid #CBD5E1;
-            white-space: nowrap;
-            background: #F1F5F9;
-        }
-        .leads-table td {
-            padding: 14px 16px;
-            border-bottom: 1px solid var(--gray-50);
-            vertical-align: middle;
-        }
+        .leads-table-wrap { overflow-x: auto; background: #FFFFFF; border-radius: var(--radius-card); border: 1.5px solid #CBD5E1; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .leads-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .leads-table th { text-align: left; padding: 12px 14px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #475569; border-bottom: 2px solid #CBD5E1; white-space: nowrap; background: #F1F5F9; }
+        .leads-table td { padding: 12px 14px; border-bottom: 1px solid var(--gray-50); vertical-align: middle; }
         .leads-table tr:hover { background: rgba(16,185,129,.03); }
-        .status-badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 700;
-            white-space: nowrap;
-        }
-        .status-badge.new { background: #DBEAFE; color: #1D4ED8; }
-        .status-badge.contact { background: #FEF3C7; color: #92400E; }
-        .status-badge.proposal { background: #FFEDD5; color: #9A3412; }
-        .status-badge.booked { background: #D1FAE5; color: #065F46; }
-        .status-badge.completed { background: #D1FAE5; color: #065F46; }
-        .status-badge.lost { background: #FEE2E2; color: #991B1B; }
 
-        .lead-actions { display: flex; gap: 6px; }
-        .lead-actions button {
-            padding: 6px 14px;
-            border-radius: var(--radius-xs);
-            border: 1.5px solid #CBD5E1;
-            background: #F8FAFC;
-            cursor: pointer;
-            font-size: 12px;
-            font-weight: 700;
-            font-family: inherit;
-            min-height: 36px;
-            white-space: nowrap;
-            transition: all .15s;
-            color: #334155;
-        }
-        .lead-actions .btn-convert {
-            background: #10B981;
-            color: #fff;
-            border-color: #10B981;
-        }
-        .lead-actions .btn-convert:hover { background: #059669; transform: translateY(-1px); }
-        .lead-actions .btn-edit:hover { background: var(--gray-50); border-color: var(--gray-300); }
+        /* Lead type badge */
+        .lead-type-badge { display: inline-block; padding: 3px 10px; border-radius: 16px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+        .lead-type-badge.type-quality { background: #D1FAE5; color: #065F46; }
+        .lead-type-badge.type-spam { background: #FEE2E2; color: #991B1B; }
+        .lead-type-badge.type-collab { background: #EDE9FE; color: #5B21B6; }
+        .lead-type-badge.type-info { background: #DBEAFE; color: #1D4ED8; }
+        .lead-type-badge.type-low { background: #F1F5F9; color: #64748B; }
+        .pipeline-stage { font-size: 12px; font-weight: 600; }
+
+        /* Idle color indicators */
+        tr.idle-green { border-left: 3px solid #10B981; }
+        tr.idle-yellow { border-left: 3px solid #F59E0B; }
+        tr.idle-red { border-left: 3px solid #EF4444; background: rgba(239,68,68,0.03); }
+
+        /* Actions */
+        .lead-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+        .lead-actions button { padding: 5px 12px; border-radius: var(--radius-xs); border: 1.5px solid #CBD5E1; background: #F8FAFC; cursor: pointer; font-size: 12px; font-weight: 700; font-family: inherit; min-height: 34px; white-space: nowrap; transition: all .15s; color: #334155; }
+        .lead-actions .btn-convert { background: #10B981; color: #fff; border-color: #10B981; }
+        .lead-actions .btn-convert:hover { background: #059669; }
+        .lead-actions .btn-type { background: #EDE9FE; color: #5B21B6; border-color: #C4B5FD; }
+        .lead-actions .btn-type:hover { background: #DDD6FE; }
+        .lead-actions .btn-edit:hover { background: var(--gray-50); }
         .lead-actions .btn-delete { color: #EF4444; border-color: #FCA5A5; }
         .lead-actions .btn-delete:hover { background: #FEE2E2; }
 
-        /* Modal */
-        .lead-modal-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,.5);
-            backdrop-filter: blur(4px);
-            z-index: 1000;
-            justify-content: center;
-            align-items: center;
-        }
+        /* Type menu popup */
+        .type-menu-popup { position: fixed; z-index: 2000; background: #fff; border: 1.5px solid #CBD5E1; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding: 4px; min-width: 180px; }
+        .type-menu-popup button { display: block; width: 100%; text-align: left; padding: 10px 14px; border: none; background: none; cursor: pointer; font-size: 14px; font-family: inherit; border-radius: 4px; }
+        .type-menu-popup button:hover { background: #F1F5F9; }
+
+        /* Kanban */
+        #kanbanView { display: none; overflow-x: auto; padding-bottom: 12px; }
+        .kanban-column { min-width: 200px; max-width: 240px; flex-shrink: 0; background: #F1F5F9; border-radius: var(--radius-card); border: 1px solid #E2E8F0; }
+        .kanban-column-header { padding: 12px 14px; font-weight: 700; font-size: 13px; border-bottom: 2px solid #E2E8F0; display: flex; justify-content: space-between; align-items: center; }
+        .kanban-count { background: #CBD5E1; color: #475569; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+        .kanban-cards { padding: 8px; min-height: 100px; display: flex; flex-direction: column; gap: 6px; }
+        .kanban-cards.drag-over { background: rgba(16,185,129,0.08); }
+        .kanban-card { background: #fff; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; cursor: pointer; transition: box-shadow .15s; }
+        .kanban-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .kanban-card.dragging { opacity: 0.5; }
+        .kanban-card.idle-green { border-left: 3px solid #10B981; }
+        .kanban-card.idle-yellow { border-left: 3px solid #F59E0B; }
+        .kanban-card.idle-red { border-left: 3px solid #EF4444; background: #FFF5F5; }
+        .kanban-card-name { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+        .kanban-card-meta { font-size: 11px; color: #64748B; display: flex; justify-content: space-between; align-items: center; }
+        .kanban-card-date { font-size: 11px; color: #64748B; margin-top: 4px; }
+        .kanban-empty { color: #94A3B8; font-size: 12px; text-align: center; padding: 16px 0; }
+
+        /* Funnel conversion bar */
+        .funnel-bar-container { display: flex; flex-direction: column; gap: 2px; margin-bottom: 16px; padding: 16px; background: #FFFFFF; border-radius: var(--radius-card); border: 1.5px solid #E2E8F0; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .funnel-step { display: flex; align-items: center; gap: 8px; }
+        .funnel-bar { height: 28px; border-radius: 6px; display: flex; align-items: center; padding: 0 12px; min-width: 60px; transition: width .3s ease; }
+        .funnel-bar-label { color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .funnel-arrow { font-size: 11px; font-weight: 700; color: #64748B; white-space: nowrap; min-width: 48px; }
+
+        /* Column sum */
+        .kanban-column-sum { text-align: center; padding: 4px 8px; font-size: 12px; font-weight: 700; color: #059669; background: #ECFDF5; border-bottom: 1px solid #E2E8F0; }
+
+        /* Days on stage badge */
+        .kanban-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; margin-bottom: 4px; }
+        .kanban-days { font-size: 10px; font-weight: 600; color: #94A3B8; background: #F1F5F9; padding: 1px 6px; border-radius: 8px; white-space: nowrap; flex-shrink: 0; }
+        .kanban-days.days-mid { color: #D97706; background: #FEF3C7; }
+        .kanban-days.days-warn { color: #DC2626; background: #FEE2E2; }
+
+        /* Quick action buttons */
+        .kanban-card-actions { display: flex; gap: 4px; margin-top: 6px; }
+        .kanban-action-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: #F1F5F9; text-decoration: none; font-size: 13px; transition: all .15s; cursor: pointer; }
+        .kanban-action-btn:hover { background: #DBEAFE; transform: scale(1.1); }
+
+        /* WIP warning */
+        .wip-warning { margin-left: 4px; animation: pulse-wip 1.5s infinite; }
+        .kanban-column-wip { border-color: #F59E0B !important; }
+        .kanban-column-wip .kanban-column-header { background: #FFFBEB; }
+        @keyframes pulse-wip { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        /* Empty columns collapsed */
+        .kanban-column-empty { min-width: 80px; max-width: 80px; opacity: 0.6; transition: all .2s; }
+        .kanban-column-empty:hover { min-width: 200px; max-width: 240px; opacity: 1; }
+        .kanban-column-empty .kanban-cards { min-height: 40px; }
+        .kanban-column-empty .kanban-column-header span:first-child { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* Modal shared */
+        .lead-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); backdrop-filter: blur(4px); z-index: 1000; justify-content: center; align-items: center; }
         .lead-modal-overlay.active { display: flex; }
-        .lead-modal {
-            background: var(--white);
-            border-radius: var(--radius);
-            padding: 28px;
-            width: min(90vw, 500px);
-            max-height: 85vh;
-            overflow-y: auto;
-            box-shadow: var(--shadow-xl);
-        }
-        .lead-modal h2 {
-            font-family: var(--font-heading);
-            font-size: 20px;
-            font-weight: 800;
-            margin: 0 0 20px;
-        }
-        .lead-modal .form-group {
-            margin-bottom: 14px;
-        }
-        .lead-modal label {
-            display: block;
-            font-weight: 700;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: .5px;
-            color: var(--gray-600);
-            margin-bottom: 6px;
-        }
-        .lead-modal input,
-        .lead-modal select,
-        .lead-modal textarea {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1.5px solid var(--gray-200);
-            border-radius: var(--radius-sm);
-            font-size: 16px;
-            font-family: inherit;
-            min-height: 44px;
-            box-sizing: border-box;
-            color: var(--gray-800);
-            transition: border-color .15s, box-shadow .15s;
-        }
-        .lead-modal input:focus,
-        .lead-modal select:focus,
-        .lead-modal textarea:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
-        }
-        .lead-modal textarea { min-height: 70px; resize: vertical; }
-        .lead-modal .modal-btns {
-            display: flex;
-            gap: 10px;
-            margin-top: 20px;
-            justify-content: flex-end;
-        }
-        .lead-modal .btn-save {
-            background: var(--primary);
-            color: #fff;
-            border: none;
-            padding: 10px 24px;
-            border-radius: var(--radius-sm);
-            font-weight: 700;
-            font-family: inherit;
-            cursor: pointer;
-            min-height: 44px;
-            transition: all .15s;
-            box-shadow: 0 2px 8px rgba(16,185,129,0.25);
-        }
-        .lead-modal .btn-save:hover {
-            background: var(--primary-dark);
-            transform: translateY(-1px);
-        }
-        .lead-modal .btn-cancel {
-            background: var(--gray-100);
-            color: var(--gray-700);
-            border: none;
-            padding: 10px 20px;
-            border-radius: var(--radius-sm);
-            font-weight: 600;
-            font-family: inherit;
-            cursor: pointer;
-            min-height: 44px;
-            transition: all .15s;
-        }
-        .lead-modal .btn-cancel:hover { background: var(--gray-200); }
+        .lead-modal { background: var(--white); border-radius: var(--radius); padding: 24px; width: min(92vw, 520px); max-height: 88vh; overflow-y: auto; box-shadow: var(--shadow-xl); }
+        .lead-modal h2 { font-family: var(--font-heading); font-size: 20px; font-weight: 800; margin: 0 0 18px; }
+        .lead-modal .form-group { margin-bottom: 12px; }
+        .lead-modal label { display: block; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--gray-600); margin-bottom: 5px; }
+        .lead-modal input, .lead-modal select, .lead-modal textarea { width: 100%; padding: 10px 12px; border: 1.5px solid var(--gray-200); border-radius: var(--radius-sm); font-size: 16px; font-family: inherit; min-height: 44px; box-sizing: border-box; color: var(--gray-800); }
+        .lead-modal input:focus, .lead-modal select:focus, .lead-modal textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(16,185,129,0.1); }
+        .lead-modal textarea { min-height: 60px; resize: vertical; }
+        .modal-btns { display: flex; gap: 10px; margin-top: 18px; justify-content: flex-end; }
+        .btn-save { background: var(--primary); color: #fff; border: none; padding: 10px 24px; border-radius: var(--radius-sm); font-weight: 700; font-family: inherit; cursor: pointer; min-height: 44px; }
+        .btn-save:hover { background: var(--primary-dark); }
+        .btn-cancel { background: var(--gray-100); color: var(--gray-700); border: none; padding: 10px 20px; border-radius: var(--radius-sm); font-weight: 600; font-family: inherit; cursor: pointer; min-height: 44px; }
+        .btn-cancel:hover { background: var(--gray-200); }
 
-        .empty-state {
-            text-align: center;
-            padding: 48px 20px;
-            color: var(--gray-400);
-            font-size: 15px;
-        }
+        /* Quality category buttons */
+        .quality-category-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 20px 0; }
+        .quality-category-btns button { padding: 16px; border: 2px solid #E2E8F0; border-radius: 12px; background: #fff; cursor: pointer; font-size: 15px; font-weight: 700; font-family: inherit; transition: all .15s; min-height: 56px; }
+        .quality-category-btns button:hover { border-color: var(--primary); background: #ECFDF5; }
 
-        /* Dark mode overrides — using body.dark-mode (consistent with dark-mode.css) */
-        body.dark-mode .standalone-header { border-color: rgba(255,255,255,0.08); }
-        body.dark-mode .standalone-header h1 { color: #E2E8F0; }
-        body.dark-mode .standalone-header .back-link { background: rgba(255,255,255,0.06); color: #D1D5DB; border-color: rgba(255,255,255,0.1); }
-        body.dark-mode .standalone-header .back-link:hover { background: rgba(255,255,255,0.1); color: #fff; }
-        body.dark-mode .leads-stat,
-        body.dark-mode .leads-table-wrap {
-            background: rgba(255,255,255,0.04);
-            border-color: rgba(255,255,255,0.08);
-        }
+        /* Mailing */
+        .mailing-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .mailing-header h3 { font-family: var(--font-heading); font-size: 18px; font-weight: 800; margin: 0; }
+        .btn-add-mailing { background: var(--primary); color: #fff; border: none; padding: 8px 18px; border-radius: var(--radius-sm); font-weight: 700; cursor: pointer; font-family: inherit; min-height: 40px; }
+        .btn-add-mailing:hover { background: var(--primary-dark); }
+
+        .empty-state { text-align: center; padding: 48px 20px; color: var(--gray-400); font-size: 15px; }
+
+        /* Two-column form row */
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+        /* Dark mode */
+        body.dark-mode .leads-stat, body.dark-mode .leads-table-wrap { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
         body.dark-mode .leads-stat .stat-lbl { color: #9CA3AF; }
         body.dark-mode .leads-table th { border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); color: #9CA3AF; }
         body.dark-mode .leads-table td { border-color: rgba(255,255,255,0.04); color: #E2E8F0; }
         body.dark-mode .leads-table tr:hover { background: rgba(255,255,255,0.04); }
-        body.dark-mode .leads-toolbar .filter-btn { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: #D1D5DB; }
-        body.dark-mode .leads-toolbar .filter-btn:hover { background: rgba(16,185,129,0.1); border-color: var(--primary); color: var(--primary); }
-        body.dark-mode .leads-toolbar .filter-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
-        body.dark-mode .leads-toolbar .search-input { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: #E2E8F0; }
+        body.dark-mode .filter-btn, body.dark-mode .view-btn { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: #D1D5DB; }
+        body.dark-mode .filter-btn:hover, body.dark-mode .view-btn:hover { background: rgba(16,185,129,0.1); border-color: var(--primary); color: var(--primary); }
+        body.dark-mode .filter-btn.active, body.dark-mode .view-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        body.dark-mode .search-input { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: #E2E8F0; }
         body.dark-mode .lead-modal { background: #1e1e32; color: #E2E8F0; }
         body.dark-mode .lead-modal h2 { color: #E2E8F0; }
         body.dark-mode .lead-modal label { color: #9CA3AF; }
-        body.dark-mode .lead-modal input,
-        body.dark-mode .lead-modal textarea { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); color: #E2E8F0; }
+        body.dark-mode .lead-modal input, body.dark-mode .lead-modal textarea { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); color: #E2E8F0; }
         body.dark-mode .lead-modal select { background: #252540; border-color: rgba(255,255,255,0.12); color: #E2E8F0; }
-        body.dark-mode .lead-modal select option { background: #252540; color: #E2E8F0; }
-        body.dark-mode .lead-modal .btn-cancel { background: rgba(255,255,255,0.08); color: #D1D5DB; }
         body.dark-mode .lead-actions button { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: #D1D5DB; }
-        body.dark-mode .lead-actions .btn-convert { background: #10B981; color: #fff; border-color: #10B981; }
-        body.dark-mode .lead-actions .btn-delete { color: #F87171; border-color: rgba(239,68,68,0.3); }
-        body.dark-mode .empty-state { color: #6B7280; }
-        body.dark-mode .lead-modal-overlay.active { background: rgba(0,0,0,0.7); }
+        body.dark-mode .lead-actions .btn-convert { background: #10B981; color: #fff; }
+        body.dark-mode .lead-actions .btn-delete { color: #F87171; }
+        body.dark-mode .kanban-column { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.06); }
+        body.dark-mode .kanban-card { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.08); }
+        body.dark-mode .kanban-card-name { color: #E2E8F0; }
+        body.dark-mode .type-menu-popup { background: #1e1e32; border-color: rgba(255,255,255,0.12); }
+        body.dark-mode .type-menu-popup button { color: #E2E8F0; }
+        body.dark-mode .type-menu-popup button:hover { background: rgba(255,255,255,0.08); }
+        body.dark-mode .quality-category-btns button { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: #E2E8F0; }
+        body.dark-mode .quality-category-btns button:hover { border-color: var(--primary); background: rgba(16,185,129,0.1); }
+        body.dark-mode .test-mode-badge { background: rgba(254,243,199,0.15); }
+        body.dark-mode .funnel-bar-container { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.06); }
+        body.dark-mode .funnel-arrow { color: #9CA3AF; }
+        body.dark-mode .kanban-column-sum { background: rgba(16,185,129,0.1); color: #34D399; border-color: rgba(255,255,255,0.06); }
+        body.dark-mode .kanban-days { background: rgba(255,255,255,0.08); color: #9CA3AF; }
+        body.dark-mode .kanban-days.days-mid { background: rgba(217,119,6,0.15); color: #FBBF24; }
+        body.dark-mode .kanban-days.days-warn { background: rgba(220,38,38,0.15); color: #F87171; }
+        body.dark-mode .kanban-action-btn { background: rgba(255,255,255,0.06); }
+        body.dark-mode .kanban-action-btn:hover { background: rgba(59,130,246,0.15); }
+        body.dark-mode .kanban-column-wip .kanban-column-header { background: rgba(245,158,11,0.1); }
 
-        /* Responsive */
         @media (max-width: 768px) {
-            .standalone-page { padding: 16px 12px 32px; }
-            .standalone-header h1 { font-size: 22px; }
             .leads-toolbar { flex-direction: column; align-items: stretch; }
             .leads-toolbar .btn-add { text-align: center; }
-            .leads-toolbar .filter-btns { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
-            .leads-toolbar .search-input { min-width: 0; }
+            .filter-btns { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+            .search-input { min-width: 0; }
+            .form-row { grid-template-columns: 1fr; }
+            .quality-category-btns { grid-template-columns: 1fr; }
+            #kanbanView { gap: 8px; }
+            .kanban-column { min-width: 180px; }
+            .kanban-column-empty { min-width: 60px; max-width: 60px; }
+            .funnel-bar-container { padding: 10px; }
+            .funnel-bar { height: 22px; }
+            .funnel-bar-label { font-size: 10px; }
         }
     </style>
 </head>
-<body>
+<body data-page-group="mgmt">
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
     <!-- Sidebar -->
     <aside class="sidebar-nav" id="sidebarNav">
-        <div class="sidebar-logo">
-            <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
-            <div class="em-logo"><span class="em-title">Event Genix</span></div>
-            <button class="sidebar-collapse-btn" id="sidebarCollapseBtn"><span class="collapse-icon">«</span><span class="collapse-text">Згорнути</span></button>
-        </div>
-        <nav class="sidebar-links" id="sidebarLinks">
-            <!-- Populated by sidebar.js -->
-        </nav>
-    </aside>
+        <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+        <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+            <span class="collapse-icon">◀</span>
+            <span class="collapse-text">Згорнути</span>
+        </button>
+        </aside>
     <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
     <div class="page-container">
         <header class="header">
             <div class="header-left">
-                <button class="sidebar-toggle" id="sidebarToggle">☰</button>
-                <h2>Ліди</h2>
+                <button type="button" class="sidebar-toggle" id="sidebarToggle">☰</button>
+                <h2>Воронка продажів</h2>
+                <span class="test-mode-badge" id="testModeBadge">⚙️ Тестовий режим</span>
+                <button type="button" class="alert-bell-btn" id="alertBell" onclick="toggleAlertsPanel(event)" title="Алерти" style="margin-left:auto;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="alert-badge" id="alertBadge" style="display:none">0</span></button>
             </div>
         </header>
+        <div class="alerts-panel" id="alertsPanel"></div>
 
         <main class="main-content" id="leadsApp">
-            <!-- Stats -->
+            <!-- Stats by type -->
             <div class="leads-stats" id="leadsStats"></div>
 
             <!-- Toolbar -->
             <div class="leads-toolbar">
-                <button class="btn-add" id="addLeadBtn">+ Новий лід</button>
-                <div class="filter-btns" id="filterBtns">
-                    <button class="filter-btn active" data-status="">Всі</button>
-                    <button class="filter-btn" data-status="new">Нові</button>
-                    <button class="filter-btn" data-status="contact">В роботі</button>
-                    <button class="filter-btn" data-status="proposal">Пропозиція</button>
-                    <button class="filter-btn" data-status="booked">Заброньовано</button>
-                    <button class="filter-btn" data-status="lost">Втрачено</button>
+                <button type="button" class="btn-add" id="addLeadBtn">+ Новий лід</button>
+                <div class="view-btns">
+                    <button type="button" class="view-btn active" data-view="table">Таблиця</button>
+                    <button type="button" class="view-btn" data-view="kanban">Kanban</button>
+                    <button type="button" class="view-btn" data-view="mailing">Розсилка</button>
                 </div>
-                <input type="text" class="search-input" id="leadsSearch" aria-label="Пошук за ім'ям, телефоном..." placeholder="Пошук за ім'ям, телефоном...">
+                <div class="filter-btns" id="filterBtns">
+                    <button type="button" class="filter-btn active" data-status="">Всі</button>
+                    <button type="button" class="filter-btn" data-status="new">Нові</button>
+                    <button type="button" class="filter-btn" data-status="contact">В роботі</button>
+                    <button type="button" class="filter-btn" data-status="booked">Заброньовано</button>
+                    <button type="button" class="filter-btn" data-status="lost">Втрачено</button>
+                </div>
+                <div class="filter-btns" id="dateBtns">
+                    <button type="button" class="filter-btn" data-date="today">📅 Сьогодні</button>
+                    <button type="button" class="filter-btn" data-date="tomorrow">📅 Завтра</button>
+                </div>
+                <input type="text" class="search-input" id="leadsSearch" aria-label="Пошук" placeholder="Пошук за ім'ям, телефоном...">
             </div>
 
-            <!-- Table -->
-            <div class="leads-table-wrap">
-                <table class="leads-table">
-                    <thead>
-                        <tr>
-                            <th>Ім'я</th>
-                            <th>Телефон</th>
-                            <th>Джерело</th>
-                            <th>Статус</th>
-                            <th>Дата запиту</th>
-                            <th>Відповідальний</th>
-                            <th>Дії</th>
-                        </tr>
-                    </thead>
-                    <tbody id="leadsTableBody">
-                        <tr><td colspan="7" class="empty-state">Завантаження...</td></tr>
-                    </tbody>
-                </table>
+            <!-- Table View -->
+            <div id="tableView">
+                <div class="leads-table-wrap">
+                    <table class="leads-table">
+                        <thead>
+                            <tr>
+                                <th>Ім'я</th>
+                                <th>Телефон</th>
+                                <th>Джерело</th>
+                                <th>Тип</th>
+                                <th>Етап</th>
+                                <th>Дата</th>
+                                <th>Дії</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leadsTableBody">
+                            <tr><td colspan="8" class="empty-state">Завантаження...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
+
+            <!-- Kanban View -->
+            <div id="kanbanView" style="display:none;overflow-x:auto;gap:12px;"></div>
+
+            <!-- Mailing View -->
+            <div id="mailingView" style="display:none;"></div>
         </main>
     </div>
 
     <!-- Add/Edit Lead Modal -->
-    <div class="lead-modal-overlay" id="leadModal">
+    <div class="lead-modal-overlay" id="leadModal" role="dialog" aria-modal="true">
         <div class="lead-modal">
             <h2 id="leadModalTitle">Новий лід</h2>
             <input type="hidden" id="leadEditId">
-            <div class="form-group">
-                <label>Ім'я *</label>
-                <input type="text" id="leadName" aria-label="Ім'я клієнта" placeholder="Ім'я клієнта">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Ім'я *</label>
+                    <input type="text" id="leadName" placeholder="Ім'я клієнта">
+                </div>
+                <div class="form-group">
+                    <label>Телефон</label>
+                    <input type="tel" id="leadPhone" placeholder="+380..." inputmode="tel">
+                </div>
             </div>
-            <div class="form-group">
-                <label>Телефон</label>
-                <input type="tel" id="leadPhone" aria-label="+380..." placeholder="+380..." inputmode="tel">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Instagram</label>
+                    <input type="text" id="leadInstagram" placeholder="@username">
+                </div>
+                <div class="form-group">
+                    <label>Джерело</label>
+                    <select id="leadSource">
+                        <option value="">— не вказано —</option>
+                        <option value="telegram">🔵 Telegram</option>
+                        <option value="facebook">🔷 Facebook</option>
+                        <option value="instagram">🟣 Instagram</option>
+                        <option value="viber">🟢 Viber</option>
+                        <option value="tiktok">⚫ TikTok</option>
+                        <option value="turbo">🟠 Turbo</option>
+                        <option value="bnderoga">🟡 BnD</option>
+                        <option value="google">🔍 Google</option>
+                        <option value="recommendation">🤝 Рекомендація</option>
+                        <option value="site">🌐 Сайт</option>
+                        <option value="phone">📞 Телефон</option>
+                        <option value="walk-in">🚶 Прийшли</option>
+                    </select>
+                </div>
             </div>
-            <div class="form-group">
-                <label>Instagram</label>
-                <input type="text" id="leadInstagram" aria-label="@username" placeholder="@username">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Бажана дата</label>
+                    <input type="date" id="leadEventDate">
+                </div>
+                <div class="form-group">
+                    <label>Кількість дітей</label>
+                    <input type="number" id="leadChildrenCount" min="1" max="100" placeholder="10">
+                </div>
             </div>
-            <div class="form-group">
-                <label>Джерело</label>
-                <select id="leadSource">
-                    <option value="">— не вказано —</option>
-                    <option value="telegram">🔵 Telegram</option>
-                    <option value="facebook">🔷 Facebook</option>
-                    <option value="instagram">🟣 Instagram</option>
-                    <option value="viber">🟢 Viber</option>
-                    <option value="tiktok">⚫ TikTok</option>
-                    <option value="turbo">🟠 Turbo</option>
-                    <option value="bnderoga">🟡 BnD</option>
-                    <option value="google">🔍 Google</option>
-                    <option value="recommendation">🤝 Рекомендація</option>
-                    <option value="site">🌐 Сайт</option>
-                    <option value="phone">📞 Телефон</option>
-                    <option value="walk-in">🚶 Прийшли</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Бажана дата</label>
-                <input type="date" id="leadEventDate">
-            </div>
-            <div class="form-group">
-                <label>Кількість дітей</label>
-                <input type="number" id="leadChildrenCount" min="1" max="100" aria-label="10" placeholder="10">
+            <!-- Pipeline & Type (shown only when editing) -->
+            <div id="leadStageGroup" style="display:none;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Етап воронки</label>
+                        <select id="leadPipelineStage">
+                            <option value="new">🔵 Новий лід</option>
+                            <option value="contacted">📞 Контакт</option>
+                            <option value="info_sent">📋 Надання інфо</option>
+                            <option value="deal">🤝 Угода</option>
+                            <option value="deposit_received">💰 Завдаток</option>
+                            <option value="waiting">⏳ В очікуванні</option>
+                            <option value="completed">✅ Проведено</option>
+                            <option value="closed">💚 Закрито</option>
+                            <option value="lost">❌ Провалено</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Тип ліда</label>
+                        <select id="leadLeadType">
+                            <option value="quality">🟢 Якісний</option>
+                            <option value="spam">🔴 Спам</option>
+                            <option value="collaboration">🤝 Співпраця</option>
+                            <option value="informational">📩 Інформаційний</option>
+                            <option value="low_quality">⬇️ Неякісний</option>
+                        </select>
+                    </div>
+                </div>
             </div>
             <div class="form-group">
                 <label>Нотатки</label>
-                <textarea id="leadNotes" rows="3" aria-label="Додаткова інформація..." placeholder="Додаткова інформація..."></textarea>
+                <textarea id="leadNotes" rows="2" placeholder="Додаткова інформація..."></textarea>
             </div>
             <div class="form-group">
                 <label>Відповідальний</label>
@@ -506,22 +490,194 @@
                     <option value="">— не призначено —</option>
                 </select>
             </div>
-            <div class="modal-btns">
-                <button class="btn-cancel" id="leadModalCancel">Скасувати</button>
-                <button class="btn-save" id="leadModalSave">Зберегти</button>
+            <div class="modal-btns" role="dialog" aria-modal="true">
+                <button type="button" class="btn-cancel" id="leadModalCancel">Скасувати</button>
+                <button type="button" class="btn-save" id="leadModalSave">Зберегти</button>
             </div>
         </div>
     </div>
-    </main>
+
+    <!-- Quality Category Modal -->
+    <div class="lead-modal-overlay" id="qualityCategoryModal" role="dialog" aria-modal="true">
+        <div class="lead-modal">
+            <h2>Тип якісного ліда</h2>
+            <div class="quality-category-btns">
+                <button type="button" onclick="setQualityCategory('birthday')">🎂 День народження</button>
+                <button type="button" onclick="setQualityCategory('graduation')">🎓 Випускний</button>
+                <button type="button" onclick="setQualityCategory('trip')">🚌 Виїзд</button>
+                <button type="button" onclick="setQualityCategory('corporate')">🏢 Корпоратив</button>
+            </div>
+            <div class="modal-btns" role="dialog" aria-modal="true">
+                <button type="button" class="btn-cancel" onclick="document.getElementById('qualityCategoryModal').classList.remove('active')">Скасувати</button>
+            </div>
+        </div>
     </div>
 
-    <script src="js/config.js?v=25.3.0"></script>
-    <script src="js/api.js?v=25.3.0"></script>
-    <script src="js/auth.js?v=25.3.0"></script>
-    <script src="js/components/sidebar.js?v=25.3.0"></script>
+    <!-- Customer Card Modal -->
+    <div class="lead-modal-overlay" id="customerCardModal" role="dialog" aria-modal="true">
+        <div class="lead-modal" style="width:min(92vw,580px);">
+            <h2>Карта клієнта</h2>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Ім'я *</label>
+                    <input type="text" id="ccName" placeholder="Ім'я клієнта">
+                </div>
+                <div class="form-group">
+                    <label>Телефон *</label>
+                    <input type="tel" id="ccPhone" placeholder="+380..." inputmode="tel">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="ccEmail" placeholder="email@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Канал звернення</label>
+                    <select id="ccChannel">
+                        <option value="">— не вказано —</option>
+                        <option value="telegram">Telegram</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="viber">Viber</option>
+                        <option value="phone">Дзвінок</option>
+                        <option value="site">Форма на сайті</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Тип події</label>
+                    <select id="ccEventType">
+                        <option value="">— не вказано —</option>
+                        <option value="birthday">День народження</option>
+                        <option value="graduation">Випускний</option>
+                        <option value="trip">Виїзд</option>
+                        <option value="corporate">Корпоратив</option>
+                        <option value="other">Інше</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Дата події</label>
+                    <input type="date" id="ccEventDate">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Кількість гостей</label>
+                    <input type="number" id="ccGuestCount" min="1" max="500" placeholder="15">
+                </div>
+                <div class="form-group">
+                    <label>Кількість дітей</label>
+                    <input type="number" id="ccChildrenCount" min="1" max="200" placeholder="10">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Бюджет (орієнтовно, ₴)</label>
+                    <input type="number" id="ccBudget" min="0" step="500" placeholder="5000">
+                </div>
+                <div class="form-group">
+                    <label>Як дізнались</label>
+                    <input type="text" id="ccHowFound" placeholder="Від подруги, Google, Instagram...">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Примітки</label>
+                <textarea id="ccNotes" rows="2" placeholder="Додаткова інформація..."></textarea>
+            </div>
+            <div class="modal-btns" role="dialog" aria-modal="true">
+                <button type="button" class="btn-cancel" onclick="document.getElementById('customerCardModal').classList.remove('active')">Пропустити</button>
+                <button type="button" class="btn-save" onclick="saveCustomerCard()">Зберегти картку</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lost Reason Modal -->
+    <div class="lead-modal-overlay" id="lostReasonModal" role="dialog" aria-modal="true">
+        <div class="lead-modal">
+            <h2>Причина втрати</h2>
+            <div class="form-group">
+                <label>Причина</label>
+                <select id="lostReasonSelect">
+                    <option value="">— оберіть причину —</option>
+                    <option value="Вибрали конкурента">Вибрали конкурента</option>
+                    <option value="Дорого">Дорого</option>
+                    <option value="Не відповідає">Не відповідає</option>
+                    <option value="Не підходить дата">Не підходить дата</option>
+                    <option value="Інше">Інше</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Додатково</label>
+                <textarea id="lostReasonNotes" rows="2" placeholder="Деталі..."></textarea>
+            </div>
+            <div class="modal-btns" role="dialog" aria-modal="true">
+                <button type="button" class="btn-cancel" onclick="document.getElementById('lostReasonModal').classList.remove('active')">Скасувати</button>
+                <button type="button" class="btn-save" onclick="saveLostReason()">Зберегти</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add to Mailing Modal -->
+    <div class="lead-modal-overlay" id="addMailingModal" role="dialog" aria-modal="true">
+        <div class="lead-modal">
+            <h2>Додати до розсилки</h2>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Ім'я</label>
+                    <input type="text" id="mailingName" placeholder="Ім'я">
+                </div>
+                <div class="form-group">
+                    <label>Телефон</label>
+                    <input type="tel" id="mailingPhone" placeholder="+380..." inputmode="tel">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="mailingEmail" placeholder="email@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Канал</label>
+                    <select id="mailingChannel">
+                        <option value="">— не вказано —</option>
+                        <option value="telegram">Telegram</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="phone">Телефон</option>
+                        <option value="viber">Viber</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Примітки</label>
+                <textarea id="mailingNotes" rows="2" placeholder="Що хочемо написати..."></textarea>
+            </div>
+            <div class="modal-btns" role="dialog" aria-modal="true">
+                <button type="button" class="btn-cancel" onclick="document.getElementById('addMailingModal').classList.remove('active')">Скасувати</button>
+                <button type="button" class="btn-save" onclick="saveMailingEntry()">Додати</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // Force update stale Service Worker that cached old 301 redirect
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+            regs.forEach(function(reg) { reg.update(); });
+        });
+    }
+    </script>
+    <script src="js/config.js?v=38.13.0"></script>
+    <script src="js/notification.js?v=38.13.0"></script>
+    <script src="js/api.js?v=38.13.0"></script>
+    <script src="js/auth.js?v=38.13.0"></script>
+    <script src="js/components/sidebar.js?v=38.13.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/leads-page.js?v=25.3.0"></script>
-    <script src="js/ui.js?v=25.3.0"></script>
-    <script src="js/role-panel.js?v=25.3.0"></script>
+    <script src="js/leads-page.js?v=38.13.0"></script>
+    <script src="js/ui.js?v=38.13.0"></script>
+    <script src="js/alerts.js?v=38.13.0"></script>
+    <script src="js/role-panel.js?v=38.13.0"></script>
 </body>
 </html>

@@ -4,17 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
     <title>Event Genix | Вікторина</title>
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
+    <link rel="stylesheet" href="css/base.css?v=38.13.0">
+    <link rel="stylesheet" href="css/layout.css?v=38.13.0">
+    <link rel="stylesheet" href="css/pages.css?v=38.13.0">
+    <link rel="stylesheet" href="css/modals.css?v=38.13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=38.13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=38.13.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=38.13.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="icon" href="images/favicon.ico">
@@ -158,15 +154,17 @@
         .dark-mode .quiz-answer-btn.correct { background: rgba(22,163,106,0.15); }
         .dark-mode .quiz-answer-btn.wrong { background: rgba(220,38,38,0.15); }
     </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
-<body>
+<body data-page-group="system">
     <div id="mainApp" class="main-app" style="padding:20px">
         <div style="text-align:center;padding:40px;color:var(--gray-400)">Завантаження...</div>
     </div>
-    <script src="js/config.js?v=25.3.0"></script>
-    <script src="js/api.js?v=25.3.0"></script>
-    <script src="js/auth.js?v=25.3.0"></script>
-    <script src="js/ui.js?v=25.3.0"></script>
+    <script src="js/config.js?v=38.13.0"></script>
+    <script src="js/api.js?v=38.13.0"></script>
+    <script src="js/auth.js?v=38.13.0"></script>
+    <script src="js/ui.js?v=38.13.0"></script>
     <script>
     /**
      * minigame-quiz.js — Quiz Minigame (Park Knowledge)
@@ -237,7 +235,7 @@
                                 <div class="quiz-stat-label">\u041c\u0430\u043a\u0441 \u043c\u043e\u043d\u0435\u0442</div>
                             </div>
                         </div>
-                        <button class="quiz-start-btn pulse" onclick="startQuiz()">\u25b6\ufe0f \u041f\u043e\u0447\u0430\u0442\u0438 \u0432\u0456\u043a\u0442\u043e\u0440\u0438\u043d\u0443</button>
+                        <button type="button" class="quiz-start-btn pulse" onclick="startQuiz()">\u25b6\ufe0f \u041f\u043e\u0447\u0430\u0442\u0438 \u0432\u0456\u043a\u0442\u043e\u0440\u0438\u043d\u0443</button>
                     </div>
                 `}
             </div>
@@ -320,7 +318,7 @@
                 <div class="quiz-question-text">${q.question}</div>
                 <div class="quiz-answers" id="quizAnswers">
                     ${q.answers.map((a, i) => `
-                        <button class="quiz-answer-btn" onclick="answerQuestion(${i})" data-idx="${i}">
+                        <button type="button" class="quiz-answer-btn" onclick="answerQuestion(${i})" data-idx="${i}">
                             ${String.fromCharCode(65 + i)}. ${a}
                         </button>
                     `).join('')}
@@ -430,8 +428,8 @@
                 </div>
 
                 <div style="display:flex;gap:8px;justify-content:center;margin-top:16px">
-                    <button class="quiz-start-btn" onclick="location.reload()" style="font-size:0.9rem;padding:10px 20px">\ud83d\udd04 \u0429\u0435 \u0440\u0430\u0437</button>
-                    <button class="quiz-start-btn" onclick="location.href='/profile'" style="font-size:0.9rem;padding:10px 20px;background:var(--gray-200);color:var(--gray-700)">\u2190 \u041f\u0440\u043e\u0444\u0456\u043b\u044c</button>
+                    <button type="button" class="quiz-start-btn" onclick="location.reload()" style="font-size:0.9rem;padding:10px 20px">\ud83d\udd04 \u0429\u0435 \u0440\u0430\u0437</button>
+                    <button type="button" class="quiz-start-btn" onclick="location.href='/profile'" style="font-size:0.9rem;padding:10px 20px;background:var(--gray-200);color:var(--gray-700)">\u2190 \u041f\u0440\u043e\u0444\u0456\u043b\u044c</button>
                 </div>
             </div>
         </div>`;
@@ -452,6 +450,6 @@
 
     document.addEventListener('DOMContentLoaded', initQuizPage);
     </script>
-    <script src="js/role-panel.js?v=25.3.0"></script>
+    <script src="js/role-panel.js?v=38.13.0"></script>
 </body>
 </html>

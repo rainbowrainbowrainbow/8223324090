@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Genix | Звук</title>
+    <meta name="description" content="Event Genix — Звуковий модуль">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=38.13.0">
+    <link rel="stylesheet" href="css/auth.css?v=38.13.0">
+    <link rel="stylesheet" href="css/layout.css?v=38.13.0">
+    <link rel="stylesheet" href="css/pages.css?v=38.13.0">
+    <link rel="stylesheet" href="css/modals.css?v=38.13.0">
+    <link rel="stylesheet" href="css/sound.css?v=38.13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=38.13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=38.13.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=38.13.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body data-page-group="sound">
+    <script>(function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();</script>
+
+    <!-- Skip link for accessibility -->
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <!-- Login overlay -->
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
+    </div>
+
+    <div id="mainApp" class="hidden">
+        <!-- Бокове меню -->
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus" aria-label="Онлайн">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks" aria-label="Головне меню"></nav>
+        <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+            <span class="collapse-icon">◀</span>
+            <span class="collapse-text">Згорнути</span>
+        </button>
+        </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
+
+        <header class="header">
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-container">
+            <div class="sound-page">
+                <div class="sound-header">
+                    <div>
+                        <h1 id="soundPageTitle">🔊 Звук</h1>
+                        <p class="subtitle" id="soundPageSubtitle">Бібліотека звуків, оголошення, TTS та звукові проєкти</p>
+                    </div>
+                </div>
+
+                <!-- ═══ PANEL: Library ═══ -->
+                <div class="sound-tab-panel active" id="tabLibrary">
+                    <div class="sound-toolbar">
+                        <div class="sound-search-wrap">
+                            <input type="search" id="librarySearch" class="sound-search" placeholder="Пошук звуків..." aria-label="Пошук звуків">
+                        </div>
+                        <div class="sound-category-filter" id="libraryCategoryFilter">
+                            <button type="button" class="sound-cat-btn active" data-cat="">Всі</button>
+                            <button type="button" class="sound-cat-btn" data-cat="music">🎶 Музика</button>
+                            <button type="button" class="sound-cat-btn" data-cat="effects">💥 Ефекти</button>
+                            <button type="button" class="sound-cat-btn" data-cat="atmosphere">🌿 Атмосфера</button>
+                            <button type="button" class="sound-cat-btn" data-cat="quest">🧩 Квести</button>
+                            <button type="button" class="sound-cat-btn" data-cat="announcement">📢 Оголошення</button>
+                        </div>
+                    </div>
+                    <div class="sound-stats-row" id="libraryStats"></div>
+                    <div id="libraryContainer" class="sound-grid">
+                        <div class="sound-empty"><div class="sound-empty-icon">🎵</div><p>Завантаження бібліотеки...</p></div>
+                    </div>
+                </div>
+
+                <!-- ═══ TAB: Announcements ═══ -->
+                <div class="sound-tab-panel" id="tabAnnouncements">
+                    <div class="sound-toolbar">
+                        <div class="sound-header-actions">
+                            <button type="button" class="btn-primary-sm" id="createAnnouncementBtn">➕ Нове оголошення</button>
+                            <button type="button" class="btn-outline" id="announcementsRefreshBtn">🔄 Оновити</button>
+                        </div>
+                    </div>
+                    <div id="announcementsContainer">
+                        <div class="sound-empty"><div class="sound-empty-icon">📢</div><p>Завантаження оголошень...</p></div>
+                    </div>
+                </div>
+
+                <!-- ═══ TAB: Projects ═══ -->
+                <div class="sound-tab-panel" id="tabProjects">
+                    <div class="sound-toolbar">
+                        <div class="sound-header-actions">
+                            <button type="button" class="btn-primary-sm" id="createProjectBtn">➕ Новий проєкт</button>
+                            <button type="button" class="btn-outline" id="projectsRefreshBtn">🔄 Оновити</button>
+                        </div>
+                    </div>
+                    <div id="projectsContainer">
+                        <div class="sound-empty"><div class="sound-empty-icon">🎬</div><p>Завантаження проєктів...</p></div>
+                    </div>
+                </div>
+
+                <!-- ═══ TAB: Log ═══ -->
+                <div class="sound-tab-panel" id="tabLog">
+                    <div class="sound-log-filters">
+                        <div class="sound-filter" role="group" aria-label="Фільтр за типом дії">
+                            <button type="button" class="log-action-btn sound-filter-btn active" data-action="" aria-pressed="true">Всі</button>
+                            <button type="button" class="log-action-btn sound-filter-btn" data-action="play" aria-pressed="false">▶ Програвання</button>
+                            <button type="button" class="log-action-btn sound-filter-btn" data-action="tts" aria-pressed="false">🎙️ TTS</button>
+                            <button type="button" class="log-action-btn sound-filter-btn" data-action="create" aria-pressed="false">➕ Створення</button>
+                            <button type="button" class="log-action-btn sound-filter-btn" data-action="update" aria-pressed="false">✏️ Зміни</button>
+                            <button type="button" class="log-action-btn sound-filter-btn" data-action="delete" aria-pressed="false">🗑️ Видалення</button>
+                        </div>
+                        <div class="sound-log-date-filter">
+                            <label for="logDateFrom">Від:</label>
+                            <input type="date" id="logDateFrom" aria-label="Дата початку">
+                            <label for="logDateTo">До:</label>
+                            <input type="date" id="logDateTo" aria-label="Дата кінця">
+                        </div>
+                    </div>
+                    <div class="sound-log-stats" id="logStats"></div>
+                    <div id="logContainer" class="sound-log-wrap">
+                        <div class="sound-empty"><div class="sound-empty-icon">📊</div><p>Завантаження...</p></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal: Create Announcement -->
+    <div class="modal-overlay hidden" id="announcementModal">
+        <div class="modal-container" style="max-width:520px">
+            <div class="modal-header">
+                <h3 id="announcementModalTitle">Нове оголошення</h3>
+                <button type="button" class="modal-close" id="announcementModalClose" aria-label="Закрити">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="annTitle">Назва</label>
+                    <input type="text" id="annTitle" class="form-input" placeholder="Назва оголошення" required>
+                </div>
+                <div class="form-group">
+                    <label for="annText">Текст оголошення</label>
+                    <textarea id="annText" class="form-input" rows="3" placeholder="Текст для TTS або показу"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="annType">Тип</label>
+                    <select id="annType" class="form-input">
+                        <option value="general">Загальне</option>
+                        <option value="safety">Безпека</option>
+                        <option value="event">Подія</option>
+                        <option value="promo">Промо</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="annPriority">Пріоритет</label>
+                    <select id="annPriority" class="form-input">
+                        <option value="normal">Звичайний</option>
+                        <option value="high">Високий</option>
+                        <option value="urgent">Терміновий</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-outline" id="announcementModalCancel">Скасувати</button>
+                <button type="button" class="btn-primary-sm" id="announcementModalSave">Зберегти</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Create Project -->
+    <div class="modal-overlay hidden" id="projectModal">
+        <div class="modal-container" style="max-width:520px">
+            <div class="modal-header">
+                <h3 id="projectModalTitle">Новий звуковий проєкт</h3>
+                <button type="button" class="modal-close" id="projectModalClose" aria-label="Закрити">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="projName">Назва</label>
+                    <input type="text" id="projName" class="form-input" placeholder="Назва проєкту" required>
+                </div>
+                <div class="form-group">
+                    <label for="projType">Тип</label>
+                    <select id="projType" class="form-input">
+                        <option value="quest">Квест</option>
+                        <option value="program">Програма</option>
+                        <option value="event">Подія</option>
+                        <option value="background">Фон</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="projDesc">Опис</label>
+                    <textarea id="projDesc" class="form-input" rows="3" placeholder="Опис проєкту (необов'язково)"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-outline" id="projectModalCancel">Скасувати</button>
+                <button type="button" class="btn-primary-sm" id="projectModalSave">Зберегти</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js?v=38.13.0"></script>
+    <script src="js/notification.js?v=38.13.0"></script>
+    <script src="js/api.js?v=38.13.0"></script>
+    <script src="js/auth.js?v=38.13.0"></script>
+    <script src="js/components/sidebar.js?v=38.13.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script>
+    (async function() {
+        var logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) logoutBtn.addEventListener('click', function() {
+            localStorage.removeItem('pzp_token');
+            localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
+            window.location.href = '/';
+        });
+
+        var token = localStorage.getItem('pzp_token');
+        if (token) {
+            var user = await apiVerifyToken();
+            if (user) {
+                AppState.currentUser = user;
+                document.getElementById('mainApp')?.classList.remove('hidden');
+                document.getElementById('loginOverlay')?.classList.add('hidden');
+                var ue = document.getElementById('currentUser'); if (ue) ue.textContent = user.name;
+                if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
+                return;
+            }
+        }
+        document.getElementById('loginOverlay')?.classList.remove('hidden');
+    })();
+    </script>
+    <script src="js/sound-page.js?v=38.13.0"></script>
+    <script src="js/role-panel.js?v=38.13.0"></script>
+</body>
+</html>

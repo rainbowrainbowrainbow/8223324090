@@ -1,7 +1,7 @@
 /**
- * hr-page.js — HR module frontend (v15.0)
+ * hr-page.js — HR module frontend (v30.7)
  *
- * 4 tabs: Today (clock-in/out), Schedule (shifts), Team (profiles), Reports
+ * 10 tabs: Today, Schedule, Team, Reports, AI Team, Leaves, Salary, Ratings, Onboarding, Costumes
  * API: /api/hr/*
  */
 
@@ -11,7 +11,10 @@
 
 const ROLE_LABELS = {
     animator: 'Аніматор', host: 'Ведуча', technician: 'Технік',
-    admin: 'Адмін', cleaner: 'Прибиральник', manager: 'Менеджер', intern: 'Стажер'
+    admin: 'Адмін', cleaner: 'Прибиральник', manager: 'Менеджер', intern: 'Стажер',
+    trampoline_instructor: 'Інструктор батутів', waiter: 'Офіціант',
+    bartender: 'Бармен', cook: 'Повар', head_cook: 'Шеф-повар',
+    director: 'Директор', vice_director: 'Зам. директора', hr_manager: 'HR-менеджер'
 };
 
 const STATUS_LABELS = {
@@ -45,15 +48,6 @@ let pollTimer = null;
 // HELPERS
 // ==========================================
 
-function showNotification(message, type = '') {
-    let c = document.getElementById('toastContainer');
-    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
-    const t = document.createElement('div');
-    t.className = 'toast' + (type ? ' ' + type : '');
-    t.textContent = message;
-    c.appendChild(t);
-    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
-}
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -139,24 +133,23 @@ async function initPage() {
     initDarkMode();
     const token = localStorage.getItem('pzp_token');
     if (!token) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     const user = await apiVerifyToken();
     if (!user) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
-        return;
+        window.location.href = '/';
+        throw new Error('Unauthorized');
     }
 
     AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
+    if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     canManage = MANAGE_ROLES.includes(user.role);
 
-    document.getElementById('logoutBtn').addEventListener('click', () => {
+    document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('pzp_token');
         localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
         location.href = '/';
@@ -166,8 +159,18 @@ async function initPage() {
     initScheduleControls();
     initModals();
     initContextMenu();
+    initNewTabs();
     await loadToday();
     startPolling();
+}
+
+function initNewTabs() {
+    document.getElementById('leaveStatusFilter')?.addEventListener('change', loadLeaves);
+    document.getElementById('btnNewLeave')?.addEventListener('click', showNewLeaveForm);
+    document.getElementById('salaryMonth')?.addEventListener('change', loadSalary);
+    document.getElementById('btnAddAdjustment')?.addEventListener('click', showAdjustmentForm);
+    document.getElementById('btnStartOnboarding')?.addEventListener('click', showStartOnboarding);
+    document.getElementById('btnAddCostume')?.addEventListener('click', showAddCostume);
 }
 
 // ==========================================
@@ -181,13 +184,16 @@ function initTabs() {
             document.querySelectorAll('.hr-tab-content').forEach(c => c.classList.remove('active'));
             tab.classList.add('active');
             const target = tab.dataset.tab;
-            document.getElementById(`tab-${target}`).classList.add('active');
-
-            if (target === 'today') loadToday();
-            if (target === 'schedule') loadSchedule();
-            if (target === 'team') loadTeam();
-            if (target === 'reports') loadReports();
-            if (target === 'ai-team') renderAITeam();
+            const panel = document.getElementById(`tab-${target}`);
+            if (!panel) { console.error(`[HR] panel #tab-${target} not found`); return; }
+            panel.classList.add('active');
+            const loaders = {
+                today: loadToday, schedule: loadSchedule, team: loadTeam,
+                reports: loadReports, 'ai-team': renderAITeam, leaves: loadLeaves,
+                salary: loadSalary, ratings: loadRatings, onboarding: loadOnboarding,
+                costumes: loadCostumes, vacancies: loadVacancies
+            };
+            loaders[target]?.();
         });
     });
 }
@@ -206,8 +212,7 @@ async function loadToday() {
 function renderToday(data) {
     const today = new Date();
     const dayName = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П\'ятниця', 'Субота'][today.getDay()];
-    document.getElementById('todayDate').textContent =
-        `${dayName}, ${today.getDate()} ${MONTHS_UK[today.getMonth()]} ${today.getFullYear()}`;
+    document.getElementById('todayDate').textContent =         `${dayName}, ${today.getDate()} ${MONTHS_UK[today.getMonth()]} ${today.getFullYear()}`;
 
     const s = data.summary;
     document.getElementById('todaySummary').innerHTML = `
@@ -343,7 +348,7 @@ function startPolling() {
 
 function initContextMenu() {
     document.addEventListener('click', () => {
-        document.getElementById('contextMenu').classList.remove('visible');
+        document.getElementById('contextMenu')?.classList.remove('visible');
     });
 
     document.querySelectorAll('.hr-context-item').forEach(btn => {
@@ -397,7 +402,7 @@ function openCorrectionModal(staffId) {
 function initScheduleControls() {
     scheduleWeekStart = getMonday(new Date());
 
-    document.getElementById('schedPrev').addEventListener('click', () => {
+    document.getElementById('schedPrev')?.addEventListener('click', () => {
         if (scheduleView === 'week') {
             scheduleWeekStart.setDate(scheduleWeekStart.getDate() - 7);
         } else {
@@ -407,7 +412,7 @@ function initScheduleControls() {
         loadSchedule();
     });
 
-    document.getElementById('schedNext').addEventListener('click', () => {
+    document.getElementById('schedNext')?.addEventListener('click', () => {
         if (scheduleView === 'week') {
             scheduleWeekStart.setDate(scheduleWeekStart.getDate() + 7);
         } else {
@@ -417,12 +422,12 @@ function initScheduleControls() {
         loadSchedule();
     });
 
-    document.getElementById('schedToday').addEventListener('click', () => {
+    document.getElementById('schedToday')?.addEventListener('click', () => {
         scheduleWeekStart = getMonday(new Date());
         loadSchedule();
     });
 
-    document.getElementById('schedCopy').addEventListener('click', copyWeek);
+    document.getElementById('schedCopy')?.addEventListener('click', copyWeek);
 
     document.querySelectorAll('.hr-view-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -480,11 +485,9 @@ function renderSchedule(dates) {
     // Update label
     if (scheduleView === 'week') {
         const sun = dates[6];
-        document.getElementById('schedLabel').textContent =
-            `Тиждень ${dates[0].getDate()}–${sun.getDate()} ${MONTHS_UK[sun.getMonth()]} ${sun.getFullYear()}`;
+        document.getElementById('schedLabel').textContent =             `Тиждень ${dates[0].getDate()}–${sun.getDate()} ${MONTHS_UK[sun.getMonth()]} ${sun.getFullYear()}`;
     } else {
-        document.getElementById('schedLabel').textContent =
-            `${MONTHS_SHORT[scheduleWeekStart.getMonth()]} ${scheduleWeekStart.getFullYear()}`;
+        document.getElementById('schedLabel').textContent =             `${MONTHS_SHORT[scheduleWeekStart.getMonth()]} ${scheduleWeekStart.getFullYear()}`;
     }
 
     // Build shift lookup: staffId_date → shift
@@ -555,7 +558,7 @@ function openShiftModal(staffId, date) {
         document.getElementById('shiftDelete').style.display = '';
     } else {
         // Use selected template
-        const tplId = document.getElementById('templateSelect').value;
+        const tplId = document.getElementById('templateSelect')?.value;
         const tpl = shiftTemplates.find(t => t.id === parseInt(tplId));
         document.getElementById('shiftStart').value = tpl ? fmtTime(tpl.planned_start) : '12:00';
         document.getElementById('shiftEnd').value = tpl ? fmtTime(tpl.planned_end) : '20:00';
@@ -573,11 +576,11 @@ async function saveShift() {
     const body = {
         staff_id: editingShift.staffId,
         shift_date: editingShift.date,
-        planned_start: document.getElementById('shiftStart').value,
-        planned_end: document.getElementById('shiftEnd').value,
-        shift_type: document.getElementById('shiftType').value,
-        break_minutes: parseInt(document.getElementById('shiftBreak').value) || 0,
-        notes: document.getElementById('shiftNotes').value
+        planned_start: document.getElementById('shiftStart')?.value,
+        planned_end: document.getElementById('shiftEnd')?.value,
+        shift_type: document.getElementById('shiftType')?.value,
+        break_minutes: parseInt(document.getElementById('shiftBreak')?.value) || 0,
+        notes: document.getElementById('shiftNotes')?.value
     };
 
     if (!body.planned_start || !body.planned_end) {
@@ -649,22 +652,32 @@ async function copyWeek() {
 let teamStaff = [];
 
 async function loadTeam() {
-    const activeOnly = document.getElementById('teamActiveOnly').checked;
+    const activeOnly = document.getElementById('teamActiveOnly')?.checked ?? true;
+    const grid = document.getElementById('teamGrid');
+    if (grid) grid.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:32px">⏳ Завантаження...</div>';
     const data = await hrFetch(`/staff?active=${activeOnly}`);
-    if (data && data.success) {
-        teamStaff = data.data;
-        filterAndRenderTeam();
+    if (!data) {
+        if (grid) grid.innerHTML = '<div style="text-align:center;color:var(--danger);padding:32px">❌ Помилка завантаження. Оновіть сторінку.</div>';
+        return;
     }
-
-    // Attach filter listeners (idempotent — ok to re-attach)
-    document.getElementById('teamSearch').oninput = filterAndRenderTeam;
-    document.getElementById('teamRoleFilter').onchange = filterAndRenderTeam;
-    document.getElementById('teamActiveOnly').onchange = loadTeam;
+    if (!data.success) {
+        if (grid) grid.innerHTML = `<div style="text-align:center;color:var(--gray-400);padding:32px">${escapeHtml(data.error || 'Помилка сервера')}</div>`;
+        return;
+    }
+    teamStaff = data.data || [];
+    filterAndRenderTeam();
+    // Attach filter listeners (idempotent)
+    const searchEl = document.getElementById('teamSearch');
+    const roleEl = document.getElementById('teamRoleFilter');
+    const activeEl = document.getElementById('teamActiveOnly');
+    if (searchEl) searchEl.oninput = filterAndRenderTeam;
+    if (roleEl) roleEl.onchange = filterAndRenderTeam;
+    if (activeEl) activeEl.onchange = loadTeam;
 }
 
 function filterAndRenderTeam() {
-    const query = document.getElementById('teamSearch').value.toLowerCase();
-    const role = document.getElementById('teamRoleFilter').value;
+    const query = document.getElementById('teamSearch')?.value.toLowerCase();
+    const role = document.getElementById('teamRoleFilter')?.value;
 
     let filtered = teamStaff;
     if (query) {
@@ -736,19 +749,19 @@ function openStaffEdit(staffId) {
 }
 
 async function saveStaffEdit() {
-    const staffId = document.getElementById('editStaffId').value;
+    const staffId = document.getElementById('editStaffId')?.value;
     const body = {
-        role_type: document.getElementById('editRoleType').value,
-        phone: document.getElementById('editPhone').value || null,
-        birth_date: document.getElementById('editBirthDate').value || null,
-        emergency_contact: document.getElementById('editEmergencyContact').value || null,
-        emergency_phone: document.getElementById('editEmergencyPhone').value || null,
-        hourly_rate: parseFloat(document.getElementById('editHourlyRate').value) || 0,
-        telegram_id: document.getElementById('editTelegramId').value || null,
-        telegram_username: document.getElementById('editTelegramUsername').value || null,
-        contract_type: document.getElementById('editContractType').value || 'parttime',
-        skills: document.getElementById('editSkills').value ? document.getElementById('editSkills').value.split(',').map(s => s.trim()).filter(Boolean) : null,
-        notes: document.getElementById('editNotes').value || null
+        role_type: document.getElementById('editRoleType')?.value,
+        phone: document.getElementById('editPhone')?.value || null,
+        birth_date: document.getElementById('editBirthDate')?.value || null,
+        emergency_contact: document.getElementById('editEmergencyContact')?.value || null,
+        emergency_phone: document.getElementById('editEmergencyPhone')?.value || null,
+        hourly_rate: parseFloat(document.getElementById('editHourlyRate')?.value) || 0,
+        telegram_id: document.getElementById('editTelegramId')?.value || null,
+        telegram_username: document.getElementById('editTelegramUsername')?.value || null,
+        contract_type: document.getElementById('editContractType')?.value || 'parttime',
+        skills: document.getElementById('editSkills')?.value ? document.getElementById('editSkills')?.value.split(',').map(s => s.trim()).filter(Boolean) : null,
+        notes: document.getElementById('editNotes')?.value || null
     };
 
     const data = await hrFetch(`/staff/${staffId}`, {
@@ -780,7 +793,7 @@ async function loadReports() {
             sel.innerHTML += `<option value="${val}">${label}</option>`;
         }
         sel.addEventListener('change', loadReports);
-        document.getElementById('reportExport').addEventListener('click', exportCSV);
+        document.getElementById('reportExport')?.addEventListener('click', exportCSV);
     }
 
     const month = sel.value;
@@ -827,7 +840,7 @@ function renderReports(data) {
 }
 
 async function exportCSV() {
-    const month = document.getElementById('reportMonth').value;
+    const month = document.getElementById('reportMonth')?.value;
     const from = `${month}-01`;
     const d = new Date(from);
     d.setMonth(d.getMonth() + 1);
@@ -857,37 +870,37 @@ async function exportCSV() {
 
 function initModals() {
     // Shift modal
-    document.getElementById('shiftSave').addEventListener('click', saveShift);
-    document.getElementById('shiftDelete').addEventListener('click', deleteShift);
-    document.getElementById('shiftCancel').addEventListener('click', () => {
+    document.getElementById('shiftSave')?.addEventListener('click', saveShift);
+    document.getElementById('shiftDelete')?.addEventListener('click', deleteShift);
+    document.getElementById('shiftCancel')?.addEventListener('click', () => {
         document.getElementById('shiftModal').style.display = 'none';
     });
 
     // Staff edit modal
-    document.getElementById('editSave').addEventListener('click', saveStaffEdit);
-    document.getElementById('editCancel').addEventListener('click', () => {
+    document.getElementById('editSave')?.addEventListener('click', saveStaffEdit);
+    document.getElementById('editCancel')?.addEventListener('click', () => {
         document.getElementById('staffEditModal').style.display = 'none';
     });
 
     // Correction modal
-    document.getElementById('corrSave').addEventListener('click', saveCorrection);
-    document.getElementById('corrCancel').addEventListener('click', () => {
+    document.getElementById('corrSave')?.addEventListener('click', saveCorrection);
+    document.getElementById('corrCancel')?.addEventListener('click', () => {
         document.getElementById('correctionModal').style.display = 'none';
     });
 
     // Close modals on overlay click
     ['shiftModal', 'staffEditModal', 'correctionModal'].forEach(id => {
-        document.getElementById(id).addEventListener('click', (e) => {
+        document.getElementById(id)?.addEventListener('click', (e) => {
             if (e.target === e.currentTarget) e.currentTarget.style.display = 'none';
         });
     });
 }
 
 async function saveCorrection() {
-    const recordId = document.getElementById('corrRecordId').value;
-    const clockIn = document.getElementById('corrClockIn').value;
-    const clockOut = document.getElementById('corrClockOut').value;
-    const notes = document.getElementById('corrNotes').value;
+    const recordId = document.getElementById('corrRecordId')?.value;
+    const clockIn = document.getElementById('corrClockIn')?.value;
+    const clockOut = document.getElementById('corrClockOut')?.value;
+    const notes = document.getElementById('corrNotes')?.value;
 
     if (!clockIn && !clockOut) {
         showNotification('Вкажіть час', 'error');
@@ -1182,6 +1195,292 @@ function sendAITask(workerId) {
 }
 
 // ==========================================
+// TAB 6: LEAVES (#2)
+// ==========================================
+
+async function loadLeaves() {
+    const statusFilter = document.getElementById('leaveStatusFilter')?.value || '';
+    const data = await hrFetch(`/leave-requests?status=${statusFilter}`);
+    if (!data || !data.success) return;
+    renderLeaves(data.data);
+}
+
+function renderLeaves(leaves) {
+    const el = document.getElementById('leavesList');
+    if (!leaves.length) {
+        el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Немає заявок</div>';
+        return;
+    }
+    const typeLabels = { vacation: 'Відпустка', sick: 'Лікарняний', day_off: 'Вихідний', unpaid: 'За свій рахунок' };
+    const statusColors = { pending: '#F59E0B', approved: '#10B981', rejected: '#EF4444', cancelled: '#9CA3AF' };
+    const statusLabels = { pending: 'Очікує', approved: 'Затверджено', rejected: 'Відхилено', cancelled: 'Скасовано' };
+
+    el.innerHTML = leaves.map(l => `
+        <div style="background:var(--white);border:1px solid var(--gray-100);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow-xs);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div>
+                    <strong>${escapeHtml(l.staff_name)}</strong>
+                    <span style="margin-left:8px;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;background:${statusColors[l.status]}20;color:${statusColors[l.status]};">${statusLabels[l.status]}</span>
+                </div>
+                <span style="font-size:12px;color:var(--gray-500);">${typeLabels[l.type] || l.type}</span>
+            </div>
+            <div style="font-size:13px;color:var(--gray-600);margin-bottom:6px;">
+                ${l.date_from?.split('T')[0]} — ${l.date_to?.split('T')[0]} (${l.days} дн.)
+            </div>
+            ${l.reason ? `<div style="font-size:12px;color:var(--gray-500);">Причина: ${escapeHtml(l.reason)}</div>` : ''}
+            ${l.status === 'pending' && canManage ? `
+                <div style="display:flex;gap:8px;margin-top:10px;">
+                    <button onclick="reviewLeave(${l.id}, 'approved')" style="padding:6px 16px;border:none;background:#10B981;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">Затвердити</button>
+                    <button onclick="reviewLeave(${l.id}, 'rejected')" style="padding:6px 16px;border:none;background:#EF4444;color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">Відхилити</button>
+                </div>
+            ` : ''}
+        </div>
+    `).join('');
+}
+
+window.reviewLeave = async function(id, status) {
+    const comment = status === 'rejected' ? prompt('Причина відхилення:') : '';
+    const data = await hrFetch(`/leave-requests/${id}/review`, 'PUT', { status, comment });
+    if (data?.success) { showNotification(status === 'approved' ? 'Заявку затверджено' : 'Заявку відхилено', 'success'); loadLeaves(); }
+};
+
+window.showNewLeaveForm = async function() {
+    const staff = await hrFetch('/staff?active=true');
+    if (!staff?.success) return;
+    const staffId = prompt('ID співробітника:\n' + staff.data.map(s => `${s.id} — ${s.name}`).join('\n'));
+    if (!staffId) return;
+    const type = prompt('Тип (vacation/sick/day_off/unpaid):') || 'vacation';
+    const dateFrom = prompt('Дата з (YYYY-MM-DD):');
+    const dateTo = prompt('Дата по (YYYY-MM-DD):');
+    if (!dateFrom || !dateTo) return;
+    const reason = prompt('Причина:') || '';
+    const data = await hrFetch('/leave-requests', 'POST', { staff_id: parseInt(staffId), type, date_from: dateFrom, date_to: dateTo, reason });
+    if (data?.success) { showNotification('Заявку створено', 'success'); loadLeaves(); }
+};
+
+// ==========================================
+// TAB 7: SALARY (#7)
+// ==========================================
+
+async function loadSalary() {
+    const monthSelect = document.getElementById('salaryMonth');
+    if (monthSelect && !monthSelect.options.length) {
+        const now = new Date();
+        for (let i = 0; i < 12; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const label = `${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
+            monthSelect.add(new Option(label, val));
+        }
+    }
+    const month = monthSelect?.value || '';
+    const data = await hrFetch(`/salary?month=${month}`);
+    if (!data || !data.success) return;
+    renderSalary(data);
+}
+
+function renderSalary(data) {
+    const totals = data.totals;
+    document.getElementById('salaryTotals').innerHTML = `
+        <div class="hr-summary">
+            <div class="hr-summary-card"><div class="value">${(totals.total_salary || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Всього</div></div>
+            <div class="hr-summary-card green"><div class="value">${(totals.total_base || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Базова</div></div>
+            <div class="hr-summary-card"><div class="value">${(totals.total_overtime || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Переробки</div></div>
+            <div class="hr-summary-card green"><div class="value">${(totals.total_bonuses || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Бонуси</div></div>
+            <div class="hr-summary-card red"><div class="value">${(totals.total_deductions || 0).toLocaleString('uk-UA')} ₴</div><div class="label">Утримання</div></div>
+        </div>
+    `;
+
+    document.getElementById('salaryHead').innerHTML = `<tr>
+        <th>Співробітник</th><th>Роль</th><th>Ставка</th><th>Днів</th><th>Годин</th>
+        <th>Базова</th><th>Переробки</th><th>Бонуси</th><th>Утримання</th><th>Всього</th>
+    </tr>`;
+
+    document.getElementById('salaryBody').innerHTML = data.data.map(s => `<tr>
+        <td><strong>${escapeHtml(s.staff_name)}</strong></td>
+        <td>${ROLE_LABELS[s.role_type] || s.role_type || ''}</td>
+        <td>${s.hourly_rate} ₴/год</td>
+        <td>${s.days_worked}</td>
+        <td>${s.hours_worked}</td>
+        <td>${s.base_salary.toLocaleString('uk-UA')} ₴</td>
+        <td>${s.overtime_pay ? s.overtime_pay.toLocaleString('uk-UA') + ' ₴' : '—'}</td>
+        <td style="color:#10B981;">${(s.bonuses + s.tips) ? '+' + (s.bonuses + s.tips).toLocaleString('uk-UA') + ' ₴' : '—'}</td>
+        <td style="color:#EF4444;">${(s.deductions + s.penalties) ? '-' + (s.deductions + s.penalties).toLocaleString('uk-UA') + ' ₴' : '—'}</td>
+        <td><strong>${s.total_salary.toLocaleString('uk-UA')} ₴</strong></td>
+    </tr>`).join('');
+}
+
+window.showAdjustmentForm = async function() {
+    const staff = await hrFetch('/staff?active=true');
+    if (!staff?.success) return;
+    const staffId = prompt('ID співробітника:\n' + staff.data.map(s => `${s.id} — ${s.name}`).join('\n'));
+    if (!staffId) return;
+    const type = prompt('Тип (bonus/deduction/penalty/tip):') || 'bonus';
+    const amount = parseInt(prompt('Сума (₴):') || '0');
+    if (!amount) return;
+    const reason = prompt('Причина:') || '';
+    const month = document.getElementById('salaryMonth')?.value || '';
+    const data = await hrFetch('/salary/adjustment', 'POST', { staff_id: parseInt(staffId), month, type, amount, reason });
+    if (data?.success) { showNotification('Коригування додано', 'success'); loadSalary(); }
+};
+
+// ==========================================
+// TAB 8: RATINGS (#3)
+// ==========================================
+
+async function loadRatings() {
+    const data = await hrFetch('/ratings');
+    if (!data || !data.success) return;
+    renderRatings(data.data);
+}
+
+function renderRatings(staff) {
+    const el = document.getElementById('ratingsBoard');
+    if (!staff.length) {
+        el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Немає даних</div>';
+        return;
+    }
+
+    el.innerHTML = staff.map((s, i) => {
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+        const stars = '★'.repeat(Math.round(parseFloat(s.avg_rating))) + '☆'.repeat(5 - Math.round(parseFloat(s.avg_rating)));
+        return `
+        <div style="display:flex;align-items:center;gap:16px;padding:14px 16px;background:var(--white);border:1px solid var(--gray-100);border-radius:var(--radius);margin-bottom:8px;box-shadow:var(--shadow-xs);">
+            <span style="font-size:20px;min-width:36px;text-align:center;">${medal}</span>
+            <div style="width:36px;height:36px;border-radius:50%;background:${s.color || '#6366F1'};display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;">
+                ${escapeHtml(s.name?.charAt(0) || '?')}
+            </div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;">${escapeHtml(s.name)}</div>
+                <div style="font-size:12px;color:var(--gray-500);">${ROLE_LABELS[s.role_type] || s.role_type || ''}</div>
+            </div>
+            <div style="text-align:center;">
+                <div style="color:#F59E0B;font-size:14px;letter-spacing:1px;">${stars}</div>
+                <div style="font-size:12px;color:var(--gray-500);">${parseFloat(s.avg_rating).toFixed(1)} (${s.total_ratings} відгуків)</div>
+            </div>
+            <div style="text-align:center;min-width:60px;">
+                <div style="font-weight:800;font-size:18px;color:var(--gray-800);">${s.total_events}</div>
+                <div style="font-size:11px;color:var(--gray-500);">подій</div>
+            </div>
+            <div style="text-align:center;min-width:50px;">
+                <div style="font-weight:700;font-size:14px;color:#6366F1;">${s.events_30d}</div>
+                <div style="font-size:10px;color:var(--gray-400);">за 30 дн</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ==========================================
+// TAB 9: ONBOARDING (#5)
+// ==========================================
+
+async function loadOnboarding() {
+    const data = await hrFetch('/onboarding');
+    if (!data || !data.success) return;
+    renderOnboarding(data.data);
+}
+
+function renderOnboarding(list) {
+    const el = document.getElementById('onboardingList');
+    if (!list.length) {
+        el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Немає активних онбордингів</div>';
+        return;
+    }
+
+    el.innerHTML = list.map(o => {
+        const pct = o.total_items > 0 ? Math.round(o.completed_items / o.total_items * 100) : 0;
+        const items = o.items || [];
+        return `
+        <div style="background:var(--white);border:1px solid var(--gray-100);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow-xs);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <div>
+                    <strong>${escapeHtml(o.staff_name)}</strong>
+                    <span style="font-size:12px;color:var(--gray-500);margin-left:8px;">${escapeHtml(o.template_name || '')}</span>
+                </div>
+                <span style="font-weight:800;color:${pct === 100 ? '#10B981' : '#6366F1'};">${pct}%</span>
+            </div>
+            <div style="background:var(--gray-100);border-radius:99px;height:6px;margin-bottom:12px;overflow:hidden;">
+                <div style="background:${pct === 100 ? '#10B981' : '#6366F1'};height:100%;width:${pct}%;border-radius:99px;transition:width 0.3s;"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+                ${items.map(it => `
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;${it.done ? 'color:var(--gray-400);text-decoration:line-through;' : ''}">
+                        <input type="checkbox" ${it.done ? 'checked' : ''} onchange="toggleOnboardingItem(${o.id}, ${it.id}, this.checked)" style="width:16px;height:16px;">
+                        <span>${escapeHtml(it.title)}</span>
+                    </label>
+                `).join('')}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+window.toggleOnboardingItem = async function(progressId, itemId, done) {
+    const data = await hrFetch(`/onboarding/${progressId}/check`, 'PUT', { item_id: itemId, done });
+    if (data?.success) loadOnboarding();
+};
+
+window.showStartOnboarding = async function() {
+    const [staff, templates] = await Promise.all([
+        hrFetch('/staff?active=true'),
+        hrFetch('/onboarding/templates')
+    ]);
+    if (!staff?.success || !templates?.success) return;
+    const staffId = prompt('ID співробітника:\n' + staff.data.map(s => `${s.id} — ${s.name}`).join('\n'));
+    if (!staffId) return;
+    const templateId = prompt('ID шаблону:\n' + templates.data.map(t => `${t.id} — ${t.name}`).join('\n'));
+    if (!templateId) return;
+    const data = await hrFetch('/onboarding/start', 'POST', { staff_id: parseInt(staffId), template_id: parseInt(templateId) });
+    if (data?.success) { showNotification('Онбординг запущено', 'success'); loadOnboarding(); }
+};
+
+// ==========================================
+// TAB 10: COSTUMES (#8)
+// ==========================================
+
+async function loadCostumes() {
+    const data = await hrFetch('/costumes');
+    if (!data || !data.success) return;
+    renderCostumes(data.data);
+}
+
+function renderCostumes(costumes) {
+    const el = document.getElementById('costumesList');
+    if (!costumes.length) {
+        el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px;">Немає костюмів</div>';
+        return;
+    }
+
+    const condLabels = { new: 'Новий', good: 'Добрий', worn: 'Потертий', damaged: 'Пошкоджений', retired: 'Списаний' };
+    const condColors = { new: '#10B981', good: '#6366F1', worn: '#F59E0B', damaged: '#EF4444', retired: '#9CA3AF' };
+
+    el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">
+        ${costumes.map(c => `
+            <div style="background:var(--white);border:1px solid var(--gray-100);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow-xs);">
+                <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;">
+                    <strong style="font-size:14px;">${escapeHtml(c.name)}</strong>
+                    <span style="padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;background:${condColors[c.condition] || '#9CA3AF'}20;color:${condColors[c.condition] || '#9CA3AF'};">${condLabels[c.condition] || c.condition}</span>
+                </div>
+                ${c.category ? `<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">Категорія: ${escapeHtml(c.category)}</div>` : ''}
+                ${c.size ? `<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">Розмір: ${escapeHtml(c.size)}</div>` : ''}
+                <div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">
+                    ${c.assigned_name ? `Призначено: <strong>${escapeHtml(c.assigned_name)}</strong>` : '<span style="color:var(--gray-400);">Не призначено</span>'}
+                </div>
+                ${c.notes ? `<div style="font-size:11px;color:var(--gray-400);margin-top:4px;">${escapeHtml(c.notes)}</div>` : ''}
+            </div>
+        `).join('')}
+    </div>`;
+}
+
+window.showAddCostume = async function() {
+    const name = prompt('Назва костюму:');
+    if (!name) return;
+    const category = prompt('Категорія (наприклад: піратський, казковий, спортивний):') || 'general';
+    const size = prompt('Розмір:') || '';
+    const data = await hrFetch('/costumes', 'POST', { name, category, size });
+    if (data?.success) { showNotification('Костюм додано', 'success'); loadCostumes(); }
+};
+
+// ==========================================
 // DARK MODE
 // ==========================================
 
@@ -1190,6 +1489,174 @@ function initDarkMode() {
         document.body.classList.add('dark-mode');
     }
 }
+
+// ==========================================
+// VACANCIES
+// ==========================================
+
+let currentVacancyId = null;
+const VAC_STATUS_LABEL = {
+    open: '🟢 Відкрита', paused: '⏸ Призупинена',
+    filled: '✅ Заповнена', closed: '❌ Закрита'
+};
+const APP_STATUS_LABEL = {
+    new: '🆕 Новий', contacted: '📞 Зв\'язались', interview: '🎙️ Співбесіда',
+    offer: '📝 Оффер', hired: '✅ Найнятий', rejected: '❌ Відхилено'
+};
+const APP_STATUS_COLOR = {
+    new: '#64748B', contacted: '#3B82F6', interview: '#8B5CF6',
+    offer: '#F59E0B', hired: '#10B981', rejected: '#EF4444'
+};
+
+async function loadVacancies() {
+    const status = document.getElementById('vacStatusFilter')?.value || 'open';
+    const list = document.getElementById('vacanciesList');
+    if (list) list.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:24px">⏳</div>';
+    const sec = document.getElementById('candidatesSection');
+    if (sec) sec.style.display = 'none';
+
+    const data = await hrFetch(`/vacancies?status=${status}`);
+    if (!data?.success) {
+        if (list) list.innerHTML = '<div style="text-align:center;color:var(--danger);padding:24px">Помилка завантаження</div>';
+        return;
+    }
+    const vacancies = data.vacancies || [];
+
+    const urgent = vacancies.filter(v => v.priority === 'urgent' && v.status === 'open').length;
+    const open = vacancies.filter(v => v.status === 'open').length;
+    const totalC = vacancies.reduce((s, v) => s + (parseInt(v.active_candidates) || 0), 0);
+    const stats = document.getElementById('vacStats');
+    if (stats) stats.innerHTML = `
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+            <div class="vac-stat-card"><span class="vac-stat-num">${open}</span><span class="vac-stat-label">Відкритих</span></div>
+            ${urgent ? `<div class="vac-stat-card urgent"><span class="vac-stat-num">${urgent}</span><span class="vac-stat-label">🔴 Терміново</span></div>` : ''}
+            <div class="vac-stat-card"><span class="vac-stat-num">${totalC}</span><span class="vac-stat-label">Кандидатів</span></div>
+        </div>`;
+
+    if (!vacancies.length) {
+        if (list) list.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px">Вакансій немає. Натисни "+ Вакансія"</div>';
+        return;
+    }
+    if (list) list.innerHTML = vacancies.map(v => `
+        <div class="hr-vacancy-card" onclick="openCandidates(${v.id},'${escapeHtml(v.title).replace(/'/g,"\\'")}')">
+            <div class="vac-header">
+                ${v.priority === 'urgent' ? '<span class="vac-badge urgent">🔴 ТЕРМІНОВО</span>' : ''}
+                <span class="vac-badge">${VAC_STATUS_LABEL[v.status] || v.status}</span>
+                <span class="vac-apps" title="Кандидатів">👥 ${v.active_candidates || 0}</span>
+            </div>
+            <div class="vac-title">${escapeHtml(v.title)}</div>
+            <div class="vac-role">${ROLE_LABELS[v.role_type] || v.role_type}</div>
+            ${v.schedule ? `<div class="vac-meta">🕐 ${escapeHtml(v.schedule)}</div>` : ''}
+            ${v.salary_from || v.salary_to ? `<div class="vac-meta">💰 ${v.salary_from || '?'}–${v.salary_to || '?'} ₴</div>` : ''}
+            ${v.description ? `<div class="vac-desc">${escapeHtml(v.description.slice(0, 120))}${v.description.length > 120 ? '…' : ''}</div>` : ''}
+            <div class="vac-actions" onclick="event.stopPropagation()">
+                ${v.status === 'open' ? `<button class="btn-vac-action" onclick="patchVacancy(${v.id},'paused')">⏸</button>` : ''}
+                ${v.status !== 'filled' && v.status !== 'closed' ? `<button class="btn-vac-action filled" onclick="patchVacancy(${v.id},'filled')">✅ Заповнено</button>` : ''}
+                ${v.status === 'paused' ? `<button class="btn-vac-action" onclick="patchVacancy(${v.id},'open')">▶ Відкрити</button>` : ''}
+                <button class="btn-vac-action danger" onclick="patchVacancy(${v.id},'closed')">✕</button>
+            </div>
+        </div>
+    `).join('');
+    document.getElementById('vacStatusFilter').onchange = loadVacancies;
+}
+
+async function patchVacancy(id, status) {
+    await hrFetch(`/vacancies/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+    loadVacancies();
+}
+
+async function openCandidates(vacancyId, title) {
+    currentVacancyId = vacancyId;
+    document.getElementById('candidatesTitle').textContent = `Кандидати: ${title}`;
+    document.getElementById('candidatesSection').style.display = 'block';
+    document.getElementById('candidatesSection')?.scrollIntoView({ behavior: 'smooth' });
+    await refreshCandidates();
+    document.getElementById('btnAddCandidate').onclick = () => addCandidatePrompt(vacancyId);
+}
+
+async function refreshCandidates() {
+    if (!currentVacancyId) return;
+    const data = await hrFetch(`/vacancies/${currentVacancyId}/applications`);
+    if (!data?.success) return;
+    const apps = data.applications || [];
+    const statuses = ['new', 'contacted', 'interview', 'offer'];
+    const kanban = document.getElementById('candidatesKanban');
+    if (!kanban) return;
+    kanban.innerHTML = statuses.map(s => `
+        <div class="kanban-col">
+            <div class="kanban-col-title" style="border-top:3px solid ${APP_STATUS_COLOR[s]}">
+                ${APP_STATUS_LABEL[s]} <span class="kanban-count">${apps.filter(a => a.status === s).length}</span>
+            </div>
+            <div class="kanban-cards">
+                ${apps.filter(a => a.status === s).map(a => `
+                    <div class="kanban-card">
+                        <div class="kc-name">${escapeHtml(a.name)}</div>
+                        ${a.phone ? `<div class="kc-meta">📞 ${escapeHtml(a.phone)}</div>` : ''}
+                        ${a.telegram_username ? `<div class="kc-meta">✈️ @${escapeHtml(a.telegram_username)}</div>` : ''}
+                        ${a.salary_expectation ? `<div class="kc-meta">💰 ${a.salary_expectation} ₴</div>` : ''}
+                        ${a.interview_date ? `<div class="kc-meta">📅 ${new Date(a.interview_date).toLocaleDateString('uk-UA')}</div>` : ''}
+                        <div class="kc-actions">
+                            ${s !== 'offer' ? `<button class="kc-btn" onclick="moveCandidate(${a.id},'${nextCandidateStatus(s)}')">→ ${APP_STATUS_LABEL[nextCandidateStatus(s)]}</button>` : ''}
+                            ${s === 'offer' ? `<button class="kc-btn success" onclick="hireCandidate(${a.id})">✅ Найняти</button>` : ''}
+                            <button class="kc-btn danger" onclick="moveCandidate(${a.id},'rejected')">✕</button>
+                        </div>
+                    </div>
+                `).join('') || '<div style="color:var(--gray-400);font-size:12px;padding:8px">Порожньо</div>'}
+            </div>
+        </div>
+    `).join('');
+}
+
+function nextCandidateStatus(s) {
+    const chain = ['new', 'contacted', 'interview', 'offer', 'hired'];
+    return chain[chain.indexOf(s) + 1] || 'hired';
+}
+
+async function moveCandidate(id, status) {
+    await hrFetch(`/applications/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+    refreshCandidates();
+}
+
+async function hireCandidate(id) {
+    if (!confirm('Найняти кандидата? Буде створений запис у команді.')) return;
+    const res = await hrFetch(`/applications/${id}/hire`, { method: 'POST', body: JSON.stringify({}) });
+    if (res?.success) {
+        alert(`✅ ${res.message}`);
+        loadVacancies();
+        refreshCandidates();
+    }
+}
+
+async function addCandidatePrompt(vacancyId) {
+    const name = prompt('Ім\'я кандидата *:');
+    if (!name?.trim()) return;
+    const phone = prompt('Телефон (або Enter щоб пропустити):');
+    const tg = prompt('Telegram username (або Enter):');
+    await hrFetch(`/vacancies/${vacancyId}/applications`, {
+        method: 'POST',
+        body: JSON.stringify({ name: name.trim(), phone: phone || null, telegram_username: tg || null })
+    });
+    refreshCandidates();
+}
+
+// Vacancy create button
+document.getElementById('btnAddVacancy')?.addEventListener('click', () => {
+    const title = prompt('Назва вакансії *:');
+    if (!title?.trim()) return;
+    const roleKeys = Object.keys(ROLE_LABELS);
+    const roleList = roleKeys.map((k, i) => `${i + 1}. ${ROLE_LABELS[k]}`).join('\n');
+    const roleNum = prompt(`Роль (введи номер):\n${roleList}`);
+    const roleKey = roleKeys[parseInt(roleNum) - 1];
+    if (!roleKey) return alert('Невірний номер ролі');
+    const salary_from = parseInt(prompt('Зарплата від (₴, або 0):')) || null;
+    const salary_to = parseInt(prompt('Зарплата до (₴, або 0):')) || null;
+    const schedule = prompt('Графік (або Enter):');
+    const priority = confirm('Терміново?') ? 'urgent' : 'normal';
+    hrFetch('/vacancies', {
+        method: 'POST',
+        body: JSON.stringify({ title: title.trim(), role_type: roleKey, salary_from, salary_to, schedule: schedule || null, priority })
+    }).then(r => { if (r?.success) loadVacancies(); });
+});
 
 // ==========================================
 // BOOT

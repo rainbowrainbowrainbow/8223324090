@@ -24,7 +24,7 @@
 
     // ═══ Tabs ═══
     function initTabs() {
-        document.getElementById('trainingTabs').addEventListener('click', e => {
+        document.getElementById('trainingTabs')?.addEventListener('click', e => {
             const tab = e.target.closest('.training-tab');
             if (!tab) return;
             const tabName = tab.dataset.tab;
@@ -33,7 +33,7 @@
             tab.classList.add('active');
 
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            const target = document.getElementById('tab' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
+            const target = document.getElementById('tab' + tabName.charAt(0)?.toUpperCase() + tabName.slice(1));
             if (target) target.classList.add('active');
 
             // Lazy load tab data
@@ -45,7 +45,7 @@
 
     // ═══ Role Filter ═══
     function initRoleFilter() {
-        document.getElementById('roleFilter').addEventListener('click', e => {
+        document.getElementById('roleFilter')?.addEventListener('click', e => {
             const pill = e.target.closest('.role-pill');
             if (!pill) return;
             document.querySelectorAll('.role-pill').forEach(p => p.classList.remove('active'));
@@ -145,10 +145,12 @@
 
             overlay.classList.add('active');
 
-            modal.querySelector('#closeReadModal').addEventListener('click', () => overlay.classList.remove('active'));
+            const closeBtn = modal.querySelector('#closeReadModal');
+            if (closeBtn) closeBtn.addEventListener('click', () => overlay.classList.remove('active'));
             overlay.addEventListener('click', e => { if (e.target === overlay) overlay.classList.remove('active'); });
 
-            modal.querySelector('.btn-mark-read').addEventListener('click', async function() {
+            const markReadBtn = modal.querySelector('.btn-mark-read');
+            if (markReadBtn) markReadBtn.addEventListener('click', async function() {
                 try {
                     await fetch(API + '/api/training/knowledge-base/' + article.id + '/mark-read', { method: 'POST', headers });
                     this.textContent = '✓ Готово!';
@@ -261,7 +263,7 @@
                     });
                 });
 
-                document.getElementById('quizNext').addEventListener('click', () => {
+                document.getElementById('quizNext')?.addEventListener('click', () => {
                     currentQ++;
                     if (currentQ < questions.length) {
                         renderQuestion();
@@ -314,7 +316,7 @@
                 </div>
             `;
 
-            document.getElementById('quizClose').addEventListener('click', () => {
+            document.getElementById('quizClose')?.addEventListener('click', () => {
                 overlay.classList.remove('active');
                 loadOverviewStats();
                 if (testsData.length > 0) loadTests();

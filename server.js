@@ -17,7 +17,8 @@ const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { apiVersionRewrite } = require('./middleware/apiVersioning');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount, processRetryQueue } = require('./services/telegram');
-const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering } = require('./services/scheduler');
+const { ensureReportBotWebhook, REPORT_BOT_TOKEN } = require('./services/report-bot');
+const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders, checkStaleCatalogImages, checkChatDailyDigest, checkRecurringAnnouncements, checkEventPipeline, checkNpsFollowUp, checkCleaningTasks } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
 const { cleanupExpired: cleanupKleshnyaMessages } = require('./services/kleshnya-greeting');
@@ -95,8 +96,12 @@ app.use('/api', rateLimiter);
 
 // Auth middleware: protect all API endpoints except public ones
 app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path === '/version' || req.path.startsWith('/telegram/webhook') || req.path === '/kleshnya/webhook' || req.path === '/kleshnya/pending-messages' || req.path === '/kleshnya/sync-chat' || req.path === '/demo/login' || req.path === '/demo/scenarios' || req.path === '/packages' || req.path === '/status/public' || req.path.startsWith('/leads/webhook/') || (req.path === '/leads/landing' && req.method === 'POST')) {
+    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path === '/version' || req.path.startsWith('/telegram/webhook') || req.path.startsWith('/report-bot/') || req.path.startsWith('/personal-accounts/') || req.path === '/kleshnya/webhook' || req.path === '/kleshnya/pending-messages' || req.path === '/kleshnya/sync-chat' || req.path === '/demo/login' || req.path === '/demo/scenarios' || req.path === '/packages' || req.path === '/status/public' || req.path.startsWith('/leads/webhook/') || (req.path === '/leads/landing' && req.method === 'POST')) {
         return next();
+    }
+    // Support token in query string for proposal/print endpoints opened via window.open()
+    if (!req.headers['authorization'] && req.query.token) {
+        req.headers['authorization'] = `Bearer ${req.query.token}`;
     }
     authenticateToken(req, res, next);
 });
@@ -115,6 +120,7 @@ app.use('/api', apiAudit);
 // --- Mount route modules ---
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/bookings', require('./routes/bookings'));
+app.use('/api/booking-templates', require('./routes/booking-templates'));
 app.use('/api/lines', require('./routes/lines'));
 app.use('/api/history', require('./routes/history'));
 app.use('/api/afisha', require('./routes/afisha'));
@@ -137,6 +143,9 @@ app.use('/api/hr', require('./routes/hr'));
 app.use('/api/svitlana', require('./routes/svitlana'));
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/finance', require('./routes/finance'));
+app.use('/api/reports', require('./routes/reports'));
+app.use('/api/report-bot', require('./routes/report-bot'));
+app.use('/api/personal-accounts', require('./routes/personal-accounts'));
 app.use('/api/analytics', require('./routes/analytics'));
 app.use('/api/procurement', require('./routes/procurement'));
 app.use('/api/workers', require('./routes/workers'));
@@ -159,14 +168,18 @@ app.use('/api/sales', require('./routes/sales'));
 app.use('/api/page-statuses', require('./routes/page-statuses'));
 app.use('/api/leads', require('./routes/leads'));
 app.use('/api/copilot', require('./routes/copilot'));
+app.use('/api/decisions', require('./routes/decisions'));
+app.use('/api/sound-library', require('./routes/sound-library'));
 app.use('/api/landing', require('./routes/landing'));
 app.use('/api/scripts', require('./routes/scripts'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/guardian', require('./routes/guardian'));
+app.use('/api/graduation', require('./routes/graduation'));
 app.use('/api/agents', require('./routes/agents'));
 app.use('/api/summary', require('./routes/summary'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/gamification', require('./routes/gamification'));
+app.use('/api/subscription', require('./routes/subscription'));
 
 // v22.4.0: Achievements system
 app.use('/api/wallet', require('./routes/wallet'));
@@ -238,7 +251,7 @@ app.get('/api/shifts/daily-digest', async (req, res) => {
 });
 
 // --- Static pages ---
-// v22.0.0: Dashboard as HOME page
+// v22.0.0: Dashboard
 app.get('/dashboard', (req, res) => {
     res.sendFile(path.join(__dirname, 'dashboard.html'));
 });
@@ -257,11 +270,16 @@ app.get('/programs', (req, res) => {
 app.get('/staff', (req, res) => {
     res.sendFile(path.join(__dirname, 'staff.html'));
 });
+app.get('/copilot', (req, res) => {
+    res.sendFile(path.join(__dirname, 'copilot.html'));
+});
 app.get('/kleshnya', (req, res) => {
     res.redirect('/chat');
 });
-// v22.0.0: designs merged into art-director page
-app.get('/designs', (req, res) => res.redirect(301, '/art?tab=designs'));
+// v38.8.0: designs as standalone page (was redirect to /art?tab=designs)
+app.get('/designs', (req, res) => {
+    res.sendFile(path.join(__dirname, 'designs.html'));
+});
 app.get('/warehouse', (req, res) => {
     res.sendFile(path.join(__dirname, 'warehouse.html'));
 });
@@ -274,11 +292,27 @@ app.get('/customers', (req, res) => {
 app.get('/finance', (req, res) => {
     res.sendFile(path.join(__dirname, 'finance.html'));
 });
+app.get('/reports', (req, res) => {
+    res.sendFile(path.join(__dirname, 'reports.html'));
+});
+app.get('/report-agent', (req, res) => {
+    res.sendFile(path.join(__dirname, 'report-agent.html'));
+});
 app.get('/analytics', (req, res) => {
     res.sendFile(path.join(__dirname, 'analytics.html'));
 });
 app.get('/center', (req, res) => {
     res.sendFile(path.join(__dirname, 'center.html'));
+});
+// Embed routes — direct file serving for art-director iframes (no redirects)
+app.get('/embed/designs', (req, res) => {
+    res.sendFile(path.join(__dirname, 'designs.html'));
+});
+app.get('/embed/programs', (req, res) => {
+    res.sendFile(path.join(__dirname, 'programs.html'));
+});
+app.get('/embed/graduation', (req, res) => {
+    res.sendFile(path.join(__dirname, 'graduation.html'));
 });
 // v20.3.0: art-director → art rename
 app.get('/art', (req, res) => {
@@ -286,6 +320,10 @@ app.get('/art', (req, res) => {
 });
 app.get('/art-director', (req, res) => res.redirect(301, '/art'));
 app.get('/art-director.html', (req, res) => res.redirect(301, '/art'));
+// v30.0.0: Graduation Event Builder
+app.get('/graduation', (req, res) => {
+    res.sendFile(path.join(__dirname, 'graduation.html'));
+});
 app.get('/checkin', (req, res) => {
     res.sendFile(path.join(__dirname, 'checkin.html'));
 });
@@ -299,8 +337,14 @@ app.get('/status', (req, res) => {
 app.get('/training', (req, res) => {
     res.sendFile(path.join(__dirname, 'training.html'));
 });
-// v22.0.0: leads merged into customers page
-app.get('/leads', (req, res) => res.redirect(301, '/customers?tab=leads'));
+// v29.2.0: leads page — /sales-funnel is canonical, /leads redirects (bust cached 301)
+app.get('/sales-funnel', (req, res) => {
+    res.sendFile(path.join(__dirname, 'leads.html'));
+});
+app.get('/leads', (req, res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.redirect(302, '/sales-funnel');
+});
 // v20.13: Team messenger
 app.get('/chat', (req, res) => {
     res.sendFile(path.join(__dirname, 'chat.html'));
@@ -335,6 +379,22 @@ app.get('/omni', (req, res) => {
     res.sendFile(path.join(__dirname, 'omni.html'));
 });
 
+// v34.0.0: Sidebar action redirects (modals only in index.html)
+app.get('/afisha', (req, res) => res.redirect(302, '/?open=afisha'));
+app.get('/certificates', (req, res) => res.redirect(302, '/?open=certificates'));
+// Designer and Sound — sendFile or redirect to /art
+app.get('/designer', (req, res) => {
+    res.sendFile(path.join(__dirname, 'designer.html'));
+});
+app.get('/sound', (req, res) => {
+    res.sendFile(path.join(__dirname, 'sound.html'));
+});
+
+// v38.4.0: API 404 handler — return JSON instead of HTML for unknown API routes
+app.use('/api', (req, res) => {
+    res.status(404).json({ error: 'Not found' });
+});
+
 // SPA fallback (must be last)
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
@@ -350,6 +410,8 @@ app.use((err, req, res, next) => {
 // Process-level error handlers
 process.on('unhandledRejection', (reason) => {
     log.error('Unhandled promise rejection', reason);
+    // v38.4.0: Exit on unhandled rejection to prevent corrupted state
+    process.exit(1);
 });
 process.on('uncaughtException', (err) => {
     log.error('Uncaught exception', err);
@@ -374,6 +436,7 @@ initDatabase().then(() => {
         log.info(`Server running on port ${PORT}`);
         log.info(`Telegram bot token: ${TELEGRAM_BOT_TOKEN ? 'SET' : 'NOT SET'}`);
         log.info(`Telegram default chat ID: ${TELEGRAM_DEFAULT_CHAT_ID || 'NOT SET'}`);
+        log.info(`Report bot token: ${REPORT_BOT_TOKEN ? 'SET' : 'NOT SET'}`);
         try {
             const dbChatId = await getConfiguredChatId();
             log.info(`Telegram effective chat ID: ${dbChatId || 'NONE'}`);
@@ -392,6 +455,7 @@ initDatabase().then(() => {
             : null;
         if (appUrl) {
             ensureWebhook(appUrl).catch(err => log.error('Webhook auto-setup error', err));
+            ensureReportBotWebhook(appUrl).catch(err => log.error('Report bot webhook setup error', err));
         }
 
         // v11.1: Register bot commands (Telegram menu button)
@@ -399,6 +463,12 @@ initDatabase().then(() => {
             const { registerBotCommands } = require('./services/bot');
             registerBotCommands().catch(err => log.error('Bot commands registration error', err));
         } catch (e) { log.error('Failed to register bot commands', e); }
+
+        // v32.5: Register report bot commands
+        try {
+            const { registerReportBotCommands } = require('./services/report-bot');
+            registerReportBotCommands().catch(err => log.error('Report bot commands registration error', err));
+        } catch (e) { log.error('Failed to register report bot commands', e); }
 
         // Ensure chat bot is member of all default channels
         try {
@@ -442,6 +512,10 @@ initDatabase().then(() => {
         schedulerIntervals.push(setInterval(guardScheduler('checkStreakUpdates', checkStreakUpdates, { dedup: 'daily' }), 60000));
         // v15.1: Birthday greetings
         schedulerIntervals.push(setInterval(guardScheduler('checkBirthdayGreetings', checkBirthdayGreetings, { dedup: 'daily' }), 60000));
+        // v30.4: CRM reminders — birthday 7d, dormant, upcoming bookings
+        schedulerIntervals.push(setInterval(guardScheduler('checkBirthdayReminders', checkBirthdayReminders, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkDormantCustomers', checkDormantCustomers, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkUpcomingBookings', checkUpcomingBookings, { dedup: 'daily' }), 60000));
         // v19.1: Event queue processor + SLA breach + announcements
         schedulerIntervals.push(setInterval(guardScheduler('checkEventQueue', checkEventQueue, { dedup: null }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkSLABreach', checkSLABreach, { dedup: 'hourly' }), 60000));
@@ -462,6 +536,19 @@ initDatabase().then(() => {
         schedulerIntervals.push(setInterval(guardScheduler('checkAutoReviewRequests', checkAutoReviewRequests, { dedup: 'hourly' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkTeamPulseReminder', checkTeamPulseReminder, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('checkAutoOrdering', checkAutoOrdering, { dedup: 'hourly' }), 60000));
+        // v30.7: HR push reminders (every minute) + cert expiry (daily)
+        schedulerIntervals.push(setInterval(guardScheduler('checkBookingPushReminders', checkBookingPushReminders), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkCertExpiryReminders', checkCertExpiryReminders, { dedup: 'daily' }), 60000));
+        // v33.5: Stale catalog images refresh (daily at 03:00 Kyiv)
+        schedulerIntervals.push(setInterval(guardScheduler('checkStaleCatalogImages', checkStaleCatalogImages, { dedup: 'daily' }), 60000));
+        // v33.7: Chat daily digest (20:00 Kyiv)
+        schedulerIntervals.push(setInterval(guardScheduler('checkChatDailyDigest', checkChatDailyDigest, { dedup: 'daily' }), 60000));
+        // v33.15.0: Recurring announcements (every minute, no dedup)
+        schedulerIntervals.push(setInterval(guardScheduler('checkRecurringAnnouncements', checkRecurringAnnouncements, { dedup: null }), 60000));
+        // v38.3.0: Operations Intelligence — event pipeline, NPS follow-up, cleaning tasks
+        schedulerIntervals.push(setInterval(guardScheduler('checkEventPipeline', checkEventPipeline, { dedup: '5min' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkNpsFollowUp', checkNpsFollowUp, { dedup: 'hourly' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('checkCleaningTasks', checkCleaningTasks, { dedup: '5min' }), 60000));
         // v20.4.0: Training prompts (Mon 09:00 Kyiv) + summary (Fri 17:00 Kyiv)
         async function checkTrainingPrompts() {
             const { getKyivTimeStr, getKyivDate } = require('./services/booking');
@@ -496,7 +583,7 @@ initDatabase().then(() => {
             const { flushLearnBatch } = require('./services/guardian');
             await flushLearnBatch();
         }
-        schedulerIntervals.push(setInterval(guardScheduler('flushGuardianLearn', flushGuardianLearn), 5 * 60 * 1000));
+        schedulerIntervals.push(setInterval(guardScheduler('flushGuardianLearn', flushGuardianLearn, { dedup: null }), 5 * 60 * 1000));
 
         // Contour 2: Agent activity tracking — parse git log every 30 min
         async function syncAgentActivities() {
@@ -507,7 +594,18 @@ initDatabase().then(() => {
         // Run initial sync on startup
         syncAgentActivities().catch(err => log.error('Initial agent sync error', err.message));
 
-        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training + guardian + ai-learn + agent-tracker');
+        // v38.4.0: Outbox relay — process transactional outbox events every 5 seconds
+        const { processOutbox, cleanupOutbox } = require('./services/eventBus');
+        schedulerIntervals.push(setInterval(async () => {
+            try { await processOutbox(); } catch (e) { log.error('Outbox relay error', e.message); }
+        }, 5000));
+
+        // v38.4.0: Outbox + refresh token cleanup (daily)
+        const { cleanupRefreshTokens } = require('./middleware/auth');
+        schedulerIntervals.push(setInterval(guardScheduler('cleanupOutbox', cleanupOutbox, { dedup: 'daily' }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('cleanupRefreshTokens', cleanupRefreshTokens, { dedup: 'daily' }), 60000));
+
+        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training + guardian + ai-learn + agent-tracker + outbox + token-cleanup');
 
         // WebSocket: attach to HTTP server for live-sync
         initWebSocket(server);

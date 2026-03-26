@@ -6,28 +6,52 @@
     <title>Event Genix | 🤖 Менеджер AI Copilot</title>
     <meta name="description" content="Event Genix — Manager AI Copilot для продажників">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=27.0.0">
-    <link rel="stylesheet" href="css/layout.css?v=27.0.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=27.0.0">
-    <link rel="stylesheet" href="css/copilot.css?v=27.0.0">
+    <link rel="stylesheet" href="css/base.css?v=38.13.0">
+    <link rel="stylesheet" href="css/layout.css?v=38.13.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=38.13.0">
+    <link rel="stylesheet" href="css/responsive.css?v=38.13.0">
+    <link rel="stylesheet" href="css/pages.css?v=38.13.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=38.13.0">
+    <link rel="stylesheet" href="css/copilot.css?v=38.13.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
-<body class="dark-mode">
-<div id="sidebarOverlay" class="sidebar-overlay"></div>
+<body class="dark-mode" data-page-group="mgmt">
+    <script>
+    // Dark mode flash prevention
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
 <div class="app-wrapper">
     <!-- CRM sidebar -->
-    <nav id="sidebarNav" class="sidebar">
-        <div class="sidebar-header">
-            <button id="sidebarToggle" class="sidebar-toggle">☰</button>
-            <span class="sidebar-logo">EG</span>
+    <aside class="sidebar-nav" id="sidebarNav">
+        <div class="sidebar-header" id="sidebarHeader">
+            <div class="sidebar-brand">
+                <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                <div class="em-logo">
+                    <span class="em-logo-title">Event Genix</span>
+                    <span class="em-logo-sub">AI First CRM</span>
+                </div>
+            </div>
+            <div class="sidebar-user-card" id="sidebarUserCard">
+                <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                <div class="sidebar-user-info">
+                    <div class="sidebar-user-name" id="sidebarUserName"></div>
+                    <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                </div>
+                <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+            </div>
         </div>
-        <ul id="sidebarLinks" class="sidebar-links"></ul>
-    </nav>
+        <nav class="sidebar-links" id="sidebarLinks"></nav>
+        <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+            <span class="collapse-icon">◀</span>
+            <span class="collapse-text">Згорнути</span>
+        </button>
+    </aside>
+    <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
     <main class="main-content" style="padding:0; overflow:hidden;">
         <!-- Access denied overlay (shown if no access) -->
-        <div id="accessDenied" class="hidden" style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px;color:rgba(255,255,255,0.5);">
+        <div id="accessDenied" class="hidden" style="align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px;color:rgba(255,255,255,0.5);">
             <span style="font-size:48px;">🔒</span>
             <h2 style="color:#fff;margin:0;">Доступ обмежено</h2>
             <p>Ця сторінка доступна тільки для менеджерів та директорів.</p>
@@ -105,13 +129,14 @@
 <!-- Copied notification -->
 <div id="copiedFlash" class="copied-flash hidden">📋 Скопійовано!</div>
 
-<script src="js/config.js?v=27.0.0"></script>
-<script src="js/api.js?v=27.0.0"></script>
-<script src="js/auth.js?v=27.0.0"></script>
-<script src="js/components/sidebar.js?v=27.0.0"></script>
+<script src="js/config.js?v=38.13.0"></script>
+    <script src="js/notification.js?v=38.13.0"></script>
+<script src="js/api.js?v=38.13.0"></script>
+<script src="js/auth.js?v=38.13.0"></script>
+<script src="js/components/sidebar.js?v=38.13.0"></script>
 <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-<script src="js/copilot-page.js?v=27.0.0"></script>
-<script src="js/ui.js?v=27.0.0"></script>
-<script src="js/role-panel.js?v=27.0.0"></script>
+<script src="js/copilot-page.js?v=38.13.0"></script>
+<script src="js/ui.js?v=38.13.0"></script>
+<script src="js/role-panel.js?v=38.13.0"></script>
 </body>
 </html>

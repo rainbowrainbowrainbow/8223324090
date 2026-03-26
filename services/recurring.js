@@ -289,6 +289,7 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
             const lineConflict = await checkServerConflicts(client, dateStr, primaryLineId, timeStart, duration);
             if (lineConflict.overlap) {
                 await client.query('ROLLBACK');
+                client.release();
                 const details = `Line conflict: ${lineConflict.conflictWith?.label || lineConflict.conflictWith?.program_code || '?'} at ${lineConflict.conflictWith?.time || '?'}`;
                 await logSkip(template.id, dateStr, 'line_conflict', details);
                 result.skipped++;
@@ -301,6 +302,7 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
             const roomConflict = await checkRoomConflict(client, dateStr, template.room, timeStart, duration);
             if (roomConflict) {
                 await client.query('ROLLBACK');
+                client.release();
                 const details = `Room "${template.room}" occupied: ${roomConflict.label || roomConflict.program_code || '?'} at ${roomConflict.time || '?'}`;
                 await logSkip(template.id, dateStr, 'room_conflict', details);
                 result.skipped++;
@@ -337,6 +339,7 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
                     const secondConflict = await checkServerConflicts(client, dateStr, secondLineId, timeStart, duration);
                     if (secondConflict.overlap) {
                         await client.query('ROLLBACK');
+                        client.release();
                         const details = `Second animator conflict: ${secondConflict.conflictWith?.label || '?'} at ${secondConflict.conflictWith?.time || '?'}`;
                         await logSkip(template.id, dateStr, 'second_animator_conflict', details);
                         result.skipped++;

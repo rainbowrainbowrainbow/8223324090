@@ -9,6 +9,8 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { requireMinRole } = require('../middleware/auth');
+const { createLogger } = require('../utils/logger');
+const log = createLogger('PageStatuses');
 
 // GET /api/page-statuses — all statuses (for sidebar rendering)
 router.get('/', async (req, res) => {
@@ -20,7 +22,7 @@ router.get('/', async (req, res) => {
         }
         res.json({ success: true, statuses });
     } catch (err) {
-        console.error('GET /page-statuses error', err.message);
+        log.error('GET /page-statuses error', err);
         res.status(500).json({ success: false, error: 'Помилка завантаження статусів' });
     }
 });
@@ -43,6 +45,7 @@ router.patch('/*', requireMinRole('director'), async (req, res) => {
         );
         res.json({ success: true, pageStatus: result.rows[0] });
     } catch (err) {
+        log.error('PATCH /page-statuses error', err);
         res.status(500).json({ success: false, error: 'Помилка оновлення статусу' });
     }
 });

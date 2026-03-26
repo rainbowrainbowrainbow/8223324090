@@ -84,7 +84,39 @@ function initializeApp() {
     if (typeof BookingForm !== 'undefined' && BookingForm.init) BookingForm.init();
     // v19.11: Room Load Panel
     if (typeof initRoomLoadPanel === 'function') initRoomLoadPanel();
+    // v30.3: Timeline search + keyboard shortcuts + redo
+    if (typeof initTimelineSearch === 'function') initTimelineSearch();
+    if (typeof initKeyboardShortcuts === 'function') initKeyboardShortcuts();
+    // v30.3: Redo button listener
+    const redoBtn = document.getElementById('redoBtn');
+    if (redoBtn) redoBtn.addEventListener('click', () => {
+        if (typeof handleRedo === 'function') handleRedo();
+    });
     AppState.nowLineInterval = setInterval(renderNowLine, 60000);
+    // v34.0.0: Auto-open panel/modal from URL ?open= parameter
+    _checkAutoOpen();
+}
+
+function _checkAutoOpen() {
+    const params = new URLSearchParams(window.location.search);
+    const open = params.get('open');
+    if (!open) return;
+    // Remove parameter from URL (prevent re-open on refresh)
+    history.replaceState(null, '', window.location.pathname);
+    // Open corresponding panel after full initialization
+    setTimeout(() => {
+        switch (open) {
+            case 'afisha':
+                if (typeof showAfishaModal === 'function') showAfishaModal();
+                break;
+            case 'certificates':
+                if (typeof openCertificatesPanel === 'function') openCertificatesPanel();
+                break;
+            case 'settings':
+                if (typeof showSettings === 'function') showSettings();
+                break;
+        }
+    }, 800);
 }
 
 function loadPreferences() {
@@ -169,27 +201,27 @@ function initConnectionStatusListeners() {
 }
 
 function initAuthListeners() {
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const result = await login(document.getElementById('username').value, document.getElementById('password').value);
+        const result = await login(document.getElementById('username')?.value, document.getElementById('password')?.value);
         if (!result.success) {
             document.getElementById('loginError').textContent = result.error || 'Невірний логін або пароль';
         }
     });
-    document.getElementById('logoutBtn').addEventListener('click', logout);
+    document.getElementById('logoutBtn')?.addEventListener('click', logout);
 
     const changelogBtn = document.getElementById('changelogBtn');
     if (changelogBtn) {
         changelogBtn.addEventListener('click', () => {
-            document.getElementById('changelogModal').classList.remove('hidden');
+            document.getElementById('changelogModal')?.classList.remove('hidden');
         });
     }
 }
 
 function initTimelineListeners() {
-    document.getElementById('prevDay').addEventListener('click', () => changeDate(-1));
-    document.getElementById('nextDay').addEventListener('click', () => changeDate(1));
-    document.getElementById('timelineDate').addEventListener('change', (e) => {
+    document.getElementById('prevDay')?.addEventListener('click', () => changeDate(-1));
+    document.getElementById('nextDay')?.addEventListener('click', () => changeDate(1));
+    document.getElementById('timelineDate')?.addEventListener('change', (e) => {
         const newDate = new Date(e.target.value);
         // Skip if date hasn't actually changed (prevents double-render from programmatic .value set)
         if (formatDate(newDate) === formatDate(AppState.selectedDate)) return;
@@ -198,8 +230,11 @@ function initTimelineListeners() {
         renderTimeline();
     });
 
-    document.getElementById('addLineBtn').addEventListener('click', addNewLine);
-    document.getElementById('exportTimelineBtn').addEventListener('click', exportTimelineImage);
+    document.getElementById('addLineBtn')?.addEventListener('click', addNewLine);
+    document.getElementById('exportTimelineBtn')?.addEventListener('click', exportTimelineImage);
+    // v30.3: PDF export
+    const pdfBtn = document.getElementById('exportPdfBtn');
+    if (pdfBtn) pdfBtn.addEventListener('click', exportTimelinePdf);
 
     // v5.15: Today button
     const todayBtn = document.getElementById('todayBtn');
@@ -249,6 +284,12 @@ function initTimelineListeners() {
     const historyBtnEl = document.getElementById('historyBtn');
     if (historyBtnEl) historyBtnEl.addEventListener('click', showHistory);
 
+    // v36.2: Afisha top-bar button
+    const afishaTopBtn = document.getElementById('afishaTopBtn');
+    if (afishaTopBtn) afishaTopBtn.addEventListener('click', () => {
+        if (typeof showAfishaModal === 'function') showAfishaModal();
+    });
+
     // v20.10.0: History CSV export
     const historyExportBtn = document.getElementById('historyExportBtn');
     if (historyExportBtn) historyExportBtn.addEventListener('click', () => {
@@ -282,13 +323,13 @@ function initTimelineListeners() {
 }
 
 function initBookingFormListeners() {
-    document.getElementById('closePanel').addEventListener('click', closeBookingPanel);
+    document.getElementById('closePanel')?.addEventListener('click', closeBookingPanel);
     // v5.35: Close panel when clicking the backdrop overlay
     document.getElementById('panelBackdrop')?.addEventListener('click', closeBookingPanel);
-    document.getElementById('bookingForm').addEventListener('submit', handleBookingSubmit);
+    document.getElementById('bookingForm')?.addEventListener('submit', handleBookingSubmit);
 
-    document.getElementById('editLineForm').addEventListener('submit', handleEditLine);
-    document.getElementById('deleteLineBtn').addEventListener('click', deleteLine);
+    document.getElementById('editLineForm')?.addEventListener('submit', handleEditLine);
+    document.getElementById('deleteLineBtn')?.addEventListener('click', deleteLine);
 
     const editLineNameSelect = document.getElementById('editLineNameSelect');
     if (editLineNameSelect) {
@@ -297,8 +338,8 @@ function initBookingFormListeners() {
         });
     }
 
-    document.getElementById('closeWarning').addEventListener('click', () => {
-        document.getElementById('warningBanner').classList.add('hidden');
+    document.getElementById('closeWarning')?.addEventListener('click', () => {
+        document.getElementById('warningBanner')?.classList.add('hidden');
     });
 
     const customDuration = document.getElementById('customDuration');
@@ -454,14 +495,6 @@ function initSettingsListeners() {
     const tasksFilterStatus = document.getElementById('tasksFilterStatus');
     if (tasksFilterStatus) tasksFilterStatus.addEventListener('change', renderTasksList);
 
-    // v8.0: Improvement suggestion FAB + form
-    const improvementFab = document.getElementById('improvementFab');
-    if (improvementFab) improvementFab.addEventListener('click', () => {
-        document.getElementById('improvementModal').classList.remove('hidden');
-        document.getElementById('improvementTitle').focus();
-    });
-    const improvementForm = document.getElementById('improvementForm');
-    if (improvementForm) improvementForm.addEventListener('submit', handleImprovementSubmit);
 }
 
 function initUIControlListeners() {

@@ -26,6 +26,39 @@ async function getLineName(lineId, date) {
     }
 }
 
+// v33.3: GET /api/bookings/occupancy — Line occupancy stats
+router.get('/occupancy', async (req, res) => {
+    try {
+        const from = req.query.from || new Date().toISOString().slice(0, 10);
+        const to = req.query.to || from;
+        const workdayHours = 10;
+
+        const result = await pool.query(`
+            SELECT line_id, COUNT(*)::int AS bookings_count,
+                   COALESCE(SUM(duration), 0)::int AS total_minutes
+            FROM bookings
+            WHERE date >= $1 AND date <= $2
+              AND status != 'cancelled' AND linked_to IS NULL
+            GROUP BY line_id
+        `, [from, to]);
+
+        const days = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000) + 1);
+        const maxMinutes = workdayHours * 60 * days;
+
+        const lines = result.rows.map(r => ({
+            lineId: r.line_id,
+            bookingsCount: r.bookings_count,
+            totalMinutes: r.total_minutes,
+            occupancyPercent: Math.min(100, Math.round((r.total_minutes / maxMinutes) * 100))
+        }));
+
+        res.json({ from, to, days, lines });
+    } catch (err) {
+        log.error('GET /bookings/occupancy error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Get bookings for a date
 router.get('/:date', async (req, res) => {
     try {
@@ -36,7 +69,7 @@ router.get('/:date', async (req, res) => {
             `SELECT id, date, time, line_id, program_id, program_code, label, program_name,
                     category, duration, price, hosts, second_animator, pinata_filler, costume,
                     room, notes, created_by, created_at, linked_to, status, kids_count,
-                    updated_at, group_name, extra_data, skip_notification, customer_id, payment_method
+                    updated_at, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id
              FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time`,
             [date]
         );
@@ -65,6 +98,13 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         if (b.groupName && b.groupName.length > 200) { return res.status(400).json({ error: 'Група: макс. 200 символів' }); }
         const dur = parseInt(b.duration) || 0;
         if (dur < 0 || dur > 1440) { return res.status(400).json({ error: 'Тривалість: 0-1440 хвилин' }); }
+        // v38.5.0: Prevent bookings spanning midnight
+        if (b.time && dur > 0) {
+            const [_hh, _mm] = b.time.split(':').map(Number);
+            if (_hh * 60 + _mm + dur > 1440) {
+                return res.status(400).json({ error: `Бронювання не може перевищувати опівніч. Макс: ${1440 - _hh * 60 - _mm} хв` });
+            }
+        }
 
         // [FIX] Заборона бронювання в минулому
         if (!b.linkedTo) {
@@ -102,27 +142,69 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             }
         }
 
-        // CRM: resolve or create customer
+        // Validate price (prevent negative/NaN amounts)
+        if (b.price != null) {
+            b.price = parseFloat(b.price);
+            if (!Number.isFinite(b.price) || b.price < 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Ціна не може бути від\'ємною або некоректною' });
+            }
+        }
+
+        // CRM: resolve or create customer (v30.4: auto-link by phone)
         let customerId = b.customerId ? parseInt(b.customerId) : null;
         if (b.customer && b.customer.name && !customerId) {
             const c = b.customer;
-            const custResult = await client.query(
-                `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source)
-                 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-                [c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
-            );
-            customerId = custResult.rows[0].id;
+            // v30.4: Try to find existing customer by phone first
+            if (c.phone && c.phone.trim()) {
+                const existing = await client.query(
+                    'SELECT id FROM customers WHERE phone = $1 LIMIT 1',
+                    [c.phone.trim()]
+                );
+                if (existing.rows.length > 0) {
+                    customerId = existing.rows[0].id;
+                }
+            }
+            // Create new customer only if not found
+            if (!customerId) {
+                const custResult = await client.query(
+                    `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source)
+                     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+                    [c.name.trim(), c.phone || null, c.instagram || null, c.childName || null, c.childBirthday || null, c.source || null]
+                );
+                customerId = custResult.rows[0].id;
+            }
         }
 
         if (!b.id || !/^BK-\d{4}-\d{4,}$/.test(b.id)) {
             b.id = await generateBookingNumber(client);
         }
 
+        // v33.8.0 Integration 6: Certificate validation (INSIDE transaction)
+        let certificateId = null;
+        if (b.certificateCode) {
+            const certRow = await client.query(
+                `SELECT id, status, display_value FROM certificates WHERE cert_code = $1 FOR UPDATE`,
+                [String(b.certificateCode).toUpperCase()]
+            );
+            if (!certRow.rowCount) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Сертифікат не знайдено' });
+            }
+            const cert = certRow.rows[0];
+            if (cert.status !== 'active') {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: `Сертифікат недійсний (статус: ${cert.status})` });
+            }
+            certificateId = cert.id;
+            await client.query(`UPDATE certificates SET status = 'used', used_at = NOW() WHERE id = $1`, [certificateId]);
+        }
+
         const insertResult = await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
              RETURNING *`,
-            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, b.skipNotification || false, customerId, b.paymentMethod || null]
+            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, b.skipNotification || false, customerId, b.paymentMethod || null, certificateId]
         );
 
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
@@ -153,6 +235,20 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 );
             } catch (finErr) {
                 log.warn(`Finance auto-record failed (non-critical): ${finErr.message}`);
+            }
+        }
+
+        // v33.8.0 Integration 6: Certificate payment finance record
+        if (certificateId && b.price > 0) {
+            try {
+                await client.query(
+                    `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, booking_id, certificate_id, created_by)
+                     VALUES ('income', (SELECT id FROM finance_categories WHERE name ILIKE '%сертифікат%' LIMIT 1),
+                             $1, $2, $3, 'certificate', $4, $5, 'system')`,
+                    [b.price, `Оплата сертифікатом для бронювання ${b.id}`, b.date, b.id, certificateId]
+                );
+            } catch (certFinErr) {
+                log.warn(`Certificate finance record failed (non-critical): ${certFinErr.message}`);
             }
         }
 
@@ -187,6 +283,161 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 status: b.status || 'confirmed', price: b.price || 0,
                 kids_count: b.kidsCount, created_by: b.createdBy
             }, `booking_created_${b.id}`);
+        }
+
+        // ==========================================
+        // v33.8.0: Post-commit integrations (all fire-and-forget)
+        // ==========================================
+
+        // Integration 1: Warehouse stock deduction
+        if (b.programId) {
+            setImmediate(async () => {
+                try {
+                    const reqs = await pool.query(
+                        `SELECT psr.stock_id, psr.quantity, ws.name, ws.quantity AS current_qty
+                         FROM product_stock_requirements psr
+                         JOIN warehouse_stock ws ON ws.id = psr.stock_id
+                         WHERE psr.product_id = $1 AND ws.is_active = true`,
+                        [b.programId]
+                    );
+                    for (const req of reqs.rows) {
+                        if (req.current_qty < req.quantity) {
+                            log.warn(`[StockDeduct] Low stock: ${req.name} (${req.current_qty} < ${req.quantity}) for booking ${insertResult.rows[0].id}`);
+                        }
+                        await pool.query(
+                            `UPDATE warehouse_stock SET quantity = GREATEST(0, quantity - $1), updated_at = NOW(), updated_by = 'booking' WHERE id = $2`,
+                            [req.quantity, req.stock_id]
+                        );
+                        await pool.query(
+                            `INSERT INTO warehouse_history (stock_id, change, reason, created_by, created_at) VALUES ($1, $2, $3, 'booking', NOW())`,
+                            [req.stock_id, -req.quantity, `Бронювання ${insertResult.rows[0].id}`]
+                        );
+                    }
+                } catch (e) { log.warn('[StockDeduct] Error:', e.message); }
+            });
+        }
+
+        // Integration 2: HR shift warning (no block)
+        // Note: bookings.hosts is INTEGER (animator count). Use second_animator for name matching.
+        if (b.secondAnimator && b.date) {
+            setImmediate(async () => {
+                try {
+                    const animName = String(b.secondAnimator).split(',')[0].trim();
+                    const staffRow = await pool.query(
+                        `SELECT id, name FROM staff WHERE (display_name ILIKE $1 OR name ILIKE $1) AND is_active = true LIMIT 1`,
+                        [animName]
+                    );
+                    if (!staffRow.rowCount) return;
+                    const shift = await pool.query(
+                        `SELECT id FROM hr_shifts WHERE staff_id = $1 AND shift_date = $2`,
+                        [staffRow.rows[0].id, b.date]
+                    );
+                    if (!shift.rowCount) {
+                        const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
+                        const chatId = await getConfiguredChatId();
+                        if (chatId) {
+                            await sendTelegramMessage(chatId,
+                                `⚠️ Бронювання ${insertResult.rows[0].id} (${b.date} ${b.time}): ` +
+                                `для аніматора "${b.secondAnimator}" не знайдено зміни в HR. Перевірте графік!`
+                            );
+                        }
+                    }
+                } catch (e) { /* silent */ }
+            });
+        }
+
+        // Integration 7: Loyalty tier auto-upgrade
+        if (customerId) {
+            setImmediate(async () => {
+                try {
+                    const cust = await pool.query(
+                        `SELECT c.id, c.name, c.total_bookings, c.total_spent,
+                                c.loyalty_tier_id, lt.name AS current_tier_name
+                         FROM customers c
+                         LEFT JOIN loyalty_tiers lt ON lt.id = c.loyalty_tier_id
+                         WHERE c.id = $1`,
+                        [customerId]
+                    );
+                    if (!cust.rowCount) return;
+                    const c = cust.rows[0];
+                    const tiers = await pool.query(
+                        `SELECT * FROM loyalty_tiers
+                         WHERE min_bookings <= $1 AND min_spent <= $2
+                         ORDER BY min_bookings DESC, min_spent DESC LIMIT 1`,
+                        [c.total_bookings, c.total_spent]
+                    );
+                    if (!tiers.rowCount) return;
+                    const newTier = tiers.rows[0];
+                    if (newTier.id !== c.loyalty_tier_id) {
+                        await pool.query('UPDATE customers SET loyalty_tier_id = $1 WHERE id = $2', [newTier.id, customerId]);
+                        const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
+                        const chatId = await getConfiguredChatId();
+                        if (chatId) {
+                            await sendTelegramMessage(chatId,
+                                `🏆 Клієнт <b>${c.name}</b> підвищено до tier <b>${newTier.name}</b>!\n` +
+                                `Бронювань: ${c.total_bookings} | Сума: ${c.total_spent} грн`
+                            );
+                        }
+                        log.info(`[Loyalty] Customer ${customerId} upgraded: ${c.current_tier_name || 'none'} → ${newTier.name}`);
+                    }
+                } catch (e) { log.warn('[Loyalty] Tier update error:', e.message); }
+            });
+        }
+
+        // Integration 10: Gamification achievements check
+        setImmediate(async () => {
+            try {
+                const { checkAchievements } = require('../services/gamification');
+                const hostUsername = b.hosts ? String(b.hosts).split(',')[0].trim() : null;
+                if (hostUsername) {
+                    const unlocked = await checkAchievements(hostUsername, { context: 'booking' });
+                    if (unlocked.length > 0) {
+                        log.info(`[Gamification] ${hostUsername} unlocked: ${unlocked.map(a => a.key).join(', ')}`);
+                    }
+                }
+                if (b.createdBy && b.createdBy !== 'system') {
+                    await checkAchievements(b.createdBy, { context: 'booking' }).catch(() => {});
+                }
+            } catch (e) { log.warn('[Gamification] Achievement check error:', e.message); }
+        });
+
+        // v33.9.0: Post message to room channel
+        if (b.lineId) {
+            setImmediate(async () => {
+                try {
+                    const roomChan = await pool.query(
+                        "SELECT id FROM chat_channels WHERE line_id = $1 AND type = 'room' LIMIT 1", [b.lineId]
+                    );
+                    if (!roomChan.rowCount) return;
+                    const sysUser = await pool.query("SELECT id FROM users WHERE username = 'system' LIMIT 1");
+                    if (!sysUser.rowCount) return;
+                    const seqRes = await pool.query('SELECT next_chat_seq($1) AS seq', [roomChan.rows[0].id]);
+                    await pool.query(
+                        `INSERT INTO chat_messages (channel_id, user_id, seq, content, is_bot, created_at)
+                         VALUES ($1, $2, $3, $4, true, NOW())`,
+                        [roomChan.rows[0].id, sysUser.rows[0].id, seqRes.rows[0].seq,
+                         `📅 ${b.date} ${b.time} — ${b.programName || b.label}${b.kidsCount ? ' | 👶' + b.kidsCount : ''}`]
+                    );
+                } catch (e) { /* silent */ }
+            });
+        }
+
+        // v33.15.0: Auto birthday announcement
+        if ((b.programName || '').toLowerCase().match(/день народж|birthday|дн\b/i) && b.date && b.time) {
+            setImmediate(async () => {
+                try {
+                    const eventTime = new Date(`${b.date}T${b.time}`);
+                    const annTime = new Date(eventTime.getTime() - 5 * 60000);
+                    if (annTime <= new Date()) return;
+                    const childName = (b.label || '').replace(/[^а-яА-ЯіІїЇєЄa-zA-Z\s]/g, '').trim().split(/\s+/)[0] || '';
+                    const text = `Шановні відвідувачі! Сьогодні у нас особливий гість${childName ? ' — ' + childName : ''}! Святкування починається о ${b.time.slice(0, 5)}. Бажаємо прекрасного свята! 🎉`;
+                    await pool.query(
+                        `INSERT INTO announcements (title, text_content, announcement_type, schedule_type, scheduled_at, status, priority, created_by)
+                         VALUES ($1, $2, 'birthday', 'once', $3, 'scheduled', 5, 'booking_auto')`,
+                        [`🎂 ДН: ${childName || b.label}`, text, annTime.toISOString()]
+                    );
+                } catch (e) { /* silent */ }
+            });
         }
 
         res.json({ success: true, booking });
@@ -386,6 +637,34 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
 
         await client.query('COMMIT');
 
+        // v33.8.0: Restore stock and certificate on cancel (fire-and-forget)
+        if (booking.program_id) {
+            setImmediate(async () => {
+                try {
+                    const reqs = await pool.query(
+                        `SELECT psr.stock_id, psr.quantity, ws.name FROM product_stock_requirements psr
+                         JOIN warehouse_stock ws ON ws.id = psr.stock_id WHERE psr.product_id = $1`,
+                        [booking.program_id]
+                    );
+                    for (const r of reqs.rows) {
+                        await pool.query('UPDATE warehouse_stock SET quantity = quantity + $1, updated_at = NOW() WHERE id = $2', [r.quantity, r.stock_id]);
+                        await pool.query(
+                            'INSERT INTO warehouse_history (stock_id, change, reason, created_by, created_at) VALUES ($1, $2, $3, $4, NOW())',
+                            [r.stock_id, r.quantity, `Скасування ${id}`, req.user?.username || 'system']
+                        );
+                    }
+                } catch (e) { log.warn('[StockRestore] Error:', e.message); }
+            });
+        }
+        if (booking.certificate_id) {
+            setImmediate(async () => {
+                try {
+                    await pool.query("UPDATE certificates SET status = 'active', used_at = NULL WHERE id = $1 AND status = 'used'", [booking.certificate_id]);
+                    log.info(`[CertRestore] Certificate ${booking.certificate_id} restored for cancelled booking ${id}`);
+                } catch (e) { log.warn('[CertRestore] Error:', e.message); }
+            });
+        }
+
         getLineName(booking.line_id, booking.date).then(lineName =>
             notifyTelegram('delete', booking, { username: req.user?.username, lineName }))
             .catch(err => log.error(`Telegram notify failed (delete): ${err.message}`));
@@ -434,6 +713,13 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         if (b.groupName && b.groupName.length > 200) { return res.status(400).json({ error: 'Група: макс. 200 символів' }); }
         const dur = parseInt(b.duration) || 0;
         if (dur < 0 || dur > 1440) { return res.status(400).json({ error: 'Тривалість: 0-1440 хвилин' }); }
+        // v38.5.0: Prevent bookings spanning midnight
+        if (b.time && dur > 0) {
+            const [_hh, _mm] = b.time.split(':').map(Number);
+            if (_hh * 60 + _mm + dur > 1440) {
+                return res.status(400).json({ error: `Бронювання не може перевищувати опівніч. Макс: ${1440 - _hh * 60 - _mm} хв` });
+            }
+        }
 
         await client.query('BEGIN');
 
@@ -490,7 +776,42 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             }
         }
 
-        const newStatus = b.status || 'confirmed';
+        // v33.3: Animator conflict detection
+        if (b.hosts && !b.linkedTo) {
+            const animId = parseInt(b.hosts);
+            if (animId) {
+                const startMinutes = timeToMinutes(b.time);
+                const endMinutes = startMinutes + (parseInt(b.duration) || 0);
+                const animConflict = await client.query(`
+                    SELECT id, time, duration, label, program_code FROM bookings
+                    WHERE (hosts = $1 OR second_animator = $1::text)
+                      AND date = $2 AND id != $3
+                      AND status != 'cancelled' AND linked_to IS NULL
+                `, [animId, b.date, id]);
+
+                for (const ac of animConflict.rows) {
+                    const acStart = timeToMinutes(ac.time);
+                    const acEnd = acStart + (ac.duration || 0);
+                    if (startMinutes < acEnd && endMinutes > acStart) {
+                        await client.query('ROLLBACK');
+                        return res.status(409).json({
+                            success: false,
+                            error: `Аніматор вже зайнятий о ${ac.time} (${ac.label || ac.program_code})`,
+                            conflictBookingId: ac.id
+                        });
+                    }
+                }
+            }
+        }
+
+        // v38.5.0: Status whitelist — prevent invalid status values and transitions
+        const VALID_STATUSES = ['confirmed', 'preliminary', 'cancelled'];
+        const newStatus = VALID_STATUSES.includes(b.status) ? b.status : (oldBooking.status || 'confirmed');
+        // Prevent cancelled → confirmed/preliminary (must create new booking)
+        if (oldBooking.status === 'cancelled' && newStatus !== 'cancelled') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Скасоване бронювання не можна відновити. Створіть нове.' });
+        }
 
         // CRM: resolve customer_id for update
         const updateCustomerId = b.customerId ? parseInt(b.customerId) : (oldBooking.customer_id || null);
@@ -503,14 +824,15 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
                  label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
                  second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
-                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$25
+                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$25,
+                 payment_method=$26
                  WHERE id=$23 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $24::timestamp)
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
                  b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null,
-                 id, clientUpdatedAt, updateCustomerId]
+                 id, clientUpdatedAt, updateCustomerId, b.paymentMethod || null]
             );
         } else {
             // Legacy: no optimistic locking (backward compatibility)
@@ -518,13 +840,15 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 `UPDATE bookings SET date=$1, time=$2, line_id=$3, program_id=$4, program_code=$5,
                  label=$6, program_name=$7, category=$8, duration=$9, price=$10, hosts=$11,
                  second_animator=$12, pinata_filler=$13, costume=$14, room=$15, notes=$16, created_by=$17,
-                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$24
+                 linked_to=$18, status=$19, kids_count=$20, group_name=$21, extra_data=$22, customer_id=$24,
+                 payment_method=$25
                  WHERE id=$23
                  RETURNING *`,
                 [b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName,
                  b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller,
                  b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, newStatus,
-                 b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id, updateCustomerId]
+                 b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, id, updateCustomerId,
+                 b.paymentMethod || null]
             );
         }
 
@@ -664,6 +988,45 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         res.status(500).json({ error: 'Failed to update booking' });
     } finally {
         client.release();
+    }
+});
+
+// v29.1.0: Checkbox MVP — update payment method
+router.patch('/:id/payment', requireAction('edit_booking'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { payment_method, fiscal_required } = req.body;
+
+        const updates = ['updated_at = NOW()'];
+        const params = [];
+
+        if (payment_method !== undefined) {
+            params.push(payment_method);
+            updates.push(`payment_method = $${params.length}`);
+        }
+        if (fiscal_required !== undefined) {
+            params.push(fiscal_required);
+            updates.push(`fiscal_required = $${params.length}`);
+        }
+
+        if (params.length === 0) {
+            return res.status(400).json({ error: 'No fields to update' });
+        }
+
+        params.push(id);
+        const result = await pool.query(
+            `UPDATE bookings SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING id, payment_method, fiscal_required`,
+            params
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Booking not found' });
+        }
+
+        res.json({ success: true, booking: mapBookingRow(result.rows[0]) });
+    } catch (err) {
+        log.error('PATCH /bookings/:id/payment error', err);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 

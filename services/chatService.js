@@ -169,7 +169,7 @@ async function getChannelMessages(channelId, userId, { before, limit = 50 } = {}
 /**
  * Send a message in a channel. Uses transaction for seq atomicity.
  */
-async function sendMessage(channelId, userId, { content, replyTo, clientMessageId }) {
+async function sendMessage(channelId, userId, { content, replyTo, clientMessageId, metadata }) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -203,10 +203,10 @@ async function sendMessage(channelId, userId, { content, replyTo, clientMessageI
 
         // Insert message
         const msgResult = await client.query(`
-            INSERT INTO chat_messages (channel_id, user_id, seq, content, reply_to, client_message_id)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO chat_messages (channel_id, user_id, seq, content, reply_to, client_message_id, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
-        `, [channelId, userId, seq, content, replyTo || null, clientMessageId || null]);
+        `, [channelId, userId, seq, content, replyTo || null, clientMessageId || null, metadata ? JSON.stringify(metadata) : null]);
         const msg = msgResult.rows[0];
 
         // Parse @mentions
@@ -260,7 +260,7 @@ async function sendMessage(channelId, userId, { content, replyTo, clientMessageI
         // Retry once on unique violation (seq race condition)
         if (err.code === '23505' && err.constraint === 'chat_messages_channel_id_seq_key') {
             log.warn('Seq collision, retrying sendMessage');
-            return sendMessage(channelId, userId, { content, replyTo });
+            return sendMessage(channelId, userId, { content, replyTo, clientMessageId });
         }
         throw err;
     } finally {
@@ -416,13 +416,20 @@ async function ensureDefaultMemberships(userId) {
  */
 async function getChatUsers() {
     const result = await pool.query(
-        "SELECT id, username, name AS display_name, role FROM users WHERE is_active = true ORDER BY username"
+        `SELECT id, username, name AS display_name, role,
+                CASE WHEN chat_status_until IS NOT NULL AND chat_status_until < NOW()
+                     THEN NULL ELSE chat_status END AS chat_status,
+                CASE WHEN chat_status_until IS NOT NULL AND chat_status_until < NOW()
+                     THEN NULL ELSE chat_status_emoji END AS chat_status_emoji
+         FROM users WHERE is_active = true ORDER BY username`
     );
     return result.rows.map(r => ({
         id: r.id,
         username: r.username,
         displayName: r.display_name || r.username,
-        role: r.role
+        role: r.role,
+        chatStatus: r.chat_status || null,
+        chatStatusEmoji: r.chat_status_emoji || null
     }));
 }
 
@@ -510,7 +517,16 @@ async function deleteMessage(messageId, userId, isAdmin) {
             [messageId, userId]
         );
     }
-    return result.rows[0] || null;
+    const deleted = result.rows[0] || null;
+    // v38.4.0: Clean up uploaded file on message delete
+    if (deleted?.metadata?.file?.url) {
+        try {
+            const fname = deleted.metadata.file.url.replace('/uploads/chat/', '');
+            const fpath = require('path').join(__dirname, '../uploads/chat', fname);
+            require('fs').existsSync(fpath) && require('fs').unlinkSync(fpath);
+        } catch (e) { /* file may already be gone */ }
+    }
+    return deleted;
 }
 
 /**

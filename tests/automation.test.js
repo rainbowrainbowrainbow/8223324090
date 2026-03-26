@@ -84,6 +84,8 @@ async function updateRule(id, body) {
 async function findAutoTasks(titleMarker, opts = {}) {
     const params = new URLSearchParams({ type: 'auto_complete' });
     if (opts.date) params.set('date', opts.date);
+    // Filter to future test dates to avoid pagination issues with stale data
+    if (!opts.date) params.set('date_from', '2098-01-01');
     const res = await authRequest('GET', `/api/tasks?${params}`);
     if (res.status !== 200 || !Array.isArray(res.data)) return [];
     return res.data.filter(t => t.title && t.title.includes(titleMarker));
@@ -1210,6 +1212,11 @@ describe('Integration (E2E) — Automation Flows', () => {
         await ensureLine(date, lineId2);
 
         const marker = 'E2E-LINKED-005';
+
+        // Clean up stale tasks from previous test runs with same marker
+        const staleTasks = await findAutoTasks(marker);
+        for (const t of staleTasks) await deleteTask(t.id);
+
         const rule = await createRule({
             name: `Test ${marker}`,
             trigger_condition: { product_ids: ['kv1'] },

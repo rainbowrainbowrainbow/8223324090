@@ -186,6 +186,7 @@
                 var parsed = JSON.parse(savedUser);
                 _currentUserId = String(parsed.id || parsed.userId);
                 _currentUsername = parsed.username;
+                window._chatUserRole = parsed.role || '';
                 var userEl = document.getElementById('currentUser');
                 if (userEl) userEl.textContent = parsed.name || parsed.username || '';
             } catch (e) {
@@ -194,7 +195,7 @@
         }
 
         // Show main app FIRST (prevent white page)
-        document.getElementById('mainApp').classList.remove('hidden');
+        document.getElementById('mainApp')?.classList.remove('hidden');
 
         // Connect WebSocket
         if (typeof ParkWS !== 'undefined') ParkWS.connect();
@@ -340,7 +341,7 @@
     async function _uploadFile() {
         if (!_pendingFile || !_currentChannel) return;
         var file = _pendingFile;
-        var caption = document.getElementById('chatInput').value.trim();
+        var caption = document.getElementById('chatInput')?.value.trim();
 
         var formData = new FormData();
         formData.append('file', file);
@@ -613,12 +614,75 @@
     var _newChannelName = document.getElementById('chatNewChannelName');
     var _newChannelDesc = document.getElementById('chatNewChannelDesc');
 
+    // v33.10.0: Member selection for new channel
+    var _newChanSelectedMembers = [];
+    var _newChanAllUsers = null;
+
+    async function _loadNewChanUsers() {
+        if (_newChanAllUsers) return;
+        try { _newChanAllUsers = await _api('GET', '/users') || []; } catch { _newChanAllUsers = []; }
+    }
+
+    function _renderNewChanMemberSearch(filter) {
+        var list = document.getElementById('chatNewChannelMemberList');
+        if (!list || !_newChanAllUsers) return;
+        list.innerHTML = '';
+        var f = (filter || '').toLowerCase();
+        _newChanAllUsers.filter(function(u) {
+            return (!f || u.username.toLowerCase().includes(f) || (u.displayName || '').toLowerCase().includes(f))
+                && _newChanSelectedMembers.indexOf(u.id) === -1;
+        }).slice(0, 8).forEach(function(u) {
+            var item = document.createElement('div');
+            item.style.cssText = 'padding:6px 8px;cursor:pointer;border-radius:6px;font-size:13px;display:flex;align-items:center;gap:6px';
+            item.innerHTML = '<span style="width:24px;height:24px;border-radius:50%;background:var(--primary-50);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">' + (u.displayName || u.username).charAt(0).toUpperCase() + '</span>' + _esc(u.displayName || u.username);
+            item.onmouseenter = function() { item.style.background = 'var(--gray-50)'; };
+            item.onmouseleave = function() { item.style.background = ''; };
+            item.onclick = function() {
+                _newChanSelectedMembers.push(u.id);
+                _renderNewChanSelectedBadges();
+                _renderNewChanMemberSearch(document.getElementById('chatNewChannelMemberSearch')?.value);
+            };
+            list.appendChild(item);
+        });
+    }
+
+    function _renderNewChanSelectedBadges() {
+        var container = document.getElementById('chatNewChannelMembers');
+        if (!container) return;
+        container.innerHTML = '';
+        _newChanSelectedMembers.forEach(function(uid) {
+            var u = _newChanAllUsers?.find(function(x) { return x.id === uid; });
+            if (!u) return;
+            var badge = document.createElement('span');
+            badge.style.cssText = 'background:var(--primary-50);color:var(--primary-dark);padding:2px 8px;border-radius:12px;font-size:12px;display:inline-flex;align-items:center;gap:4px';
+            badge.innerHTML = _esc(u.displayName || u.username) + ' <span style="cursor:pointer;font-size:14px" onclick="this.parentElement.remove()">×</span>';
+            badge.querySelector('span').onclick = function() {
+                _newChanSelectedMembers = _newChanSelectedMembers.filter(function(id) { return id !== uid; });
+                _renderNewChanSelectedBadges();
+                _renderNewChanMemberSearch(document.getElementById('chatNewChannelMemberSearch')?.value);
+            };
+            container.appendChild(badge);
+        });
+    }
+
     if (_newChannelBtn) {
-        _newChannelBtn.addEventListener('click', function () {
+        _newChannelBtn.addEventListener('click', async function () {
             _newChannelOverlay.style.display = 'flex';
             _newChannelName.value = '';
             _newChannelDesc.value = '';
+            _newChanSelectedMembers = [];
+            _renderNewChanSelectedBadges();
+            var searchInput = document.getElementById('chatNewChannelMemberSearch');
+            if (searchInput) searchInput.value = '';
+            await _loadNewChanUsers();
+            _renderNewChanMemberSearch('');
             _newChannelName.focus();
+        });
+    }
+    var _newChanMemberSearchInput = document.getElementById('chatNewChannelMemberSearch');
+    if (_newChanMemberSearchInput) {
+        _newChanMemberSearchInput.addEventListener('input', function() {
+            _renderNewChanMemberSearch(this.value);
         });
     }
     if (_newChannelCancel) {
@@ -638,13 +702,20 @@
             try {
                 var channel = await _api('POST', '/channels', { name: name, description: _newChannelDesc.value.trim() });
                 if (channel) {
+                    // Add selected members
+                    for (var i = 0; i < _newChanSelectedMembers.length; i++) {
+                        try {
+                            var u = _newChanAllUsers?.find(function(x) { return x.id === _newChanSelectedMembers[i]; });
+                            if (u) await _api('POST', '/channels/' + channel.id + '/members', { username: u.username });
+                        } catch (e) { /* skip */ }
+                    }
                     _channels.unshift(channel);
                     _renderChannels();
                     _selectChannel(channel);
                     _newChannelOverlay.style.display = 'none';
                 }
             } catch (err) {
-                showNotification(err.message || 'Помилка створення каналу', 'error');
+                if (typeof showNotification === 'function') showNotification(err.message || 'Помилка створення каналу', 'error');
             }
         });
     }
@@ -944,13 +1015,13 @@
             });
         });
 
-        document.getElementById('avatarReset').addEventListener('click', function () {
+        document.getElementById('avatarReset')?.addEventListener('click', function () {
             selectedEmoji = null;
             selectedColor = null;
             body.querySelectorAll('.avatar-pick-emoji, .avatar-pick-color').forEach(function (b) { b.classList.remove('active'); });
         });
 
-        document.getElementById('avatarSave').addEventListener('click', async function () {
+        document.getElementById('avatarSave')?.addEventListener('click', async function () {
             try {
                 await _api('PATCH', '/users/me/avatar', { avatarEmoji: selectedEmoji, avatarColor: selectedColor });
                 _showUserProfile(profile.id);
@@ -965,7 +1036,7 @@
     if (_pinBtn) {
         _pinBtn.addEventListener('click', async function () {
             if (!_currentChannel) return;
-            var isOpen = _infoPanel.classList.contains('open') && document.getElementById('chatInfoPanelTitle').textContent === 'Закріплені';
+            var isOpen = _infoPanel.classList.contains('open') && document.getElementById('chatInfoPanelTitle')?.textContent === 'Закріплені';
             if (isOpen) {
                 _infoPanel.classList.remove('open');
                 _pinBtn.classList.remove('active');
@@ -1023,7 +1094,15 @@
         { id: 'waves', label: 'Хвилі' },
         { id: 'gradient', label: 'Градієнт' },
         { id: 'stars', label: 'Зірки' },
-        { id: 'geometric', label: 'Геометрія' }
+        { id: 'geometric', label: 'Геометрія' },
+        { id: 'confetti', label: 'Конфетті' },
+        { id: 'sakura', label: 'Сакура' },
+        { id: 'ocean', label: 'Океан' },
+        { id: 'sunset', label: 'Захід' },
+        { id: 'forest', label: 'Ліс' },
+        { id: 'cosmos', label: 'Космос' },
+        { id: 'lavender', label: 'Лаванда' },
+        { id: 'grid', label: 'Сітка' }
     ];
     var _wallpaperBtn = document.getElementById('chatWallpaperBtn');
     var _wallpaperPopup = null;
@@ -1131,6 +1210,7 @@
                 var result = await _api('PUT', '/channels/' + _currentChannel.id + '/mute');
                 if (result) {
                     _muteBtn.classList.toggle('active', result.muted);
+                    _muteBtn.classList.toggle('muted-bell', result.muted);
                     _muteBtn.title = result.muted ? 'Увімкнути сповіщення' : 'Вимкнути сповіщення';
                 }
             } catch (err) {
@@ -1164,6 +1244,13 @@
         if (profileItem) profileItem.style.display = isOwn ? 'none' : 'flex';
         var dmItem = _contextMenu.querySelector('[data-action="dm"]');
         if (dmItem) dmItem.style.display = isOwn ? 'none' : 'flex';
+
+        // v33.7.0: Show mark-important only for admin/director
+        var impItem = _contextMenu.querySelector('[data-action="mark-important"]');
+        if (impItem) {
+            var userRole = window._chatUserRole || '';
+            impItem.style.display = (userRole === 'admin' || userRole === 'director') ? 'flex' : 'none';
+        }
 
         // Position context menu
         var x = e.clientX;
@@ -1224,7 +1311,13 @@
                     _bookmarkFromContext();
                     break;
                 case 'create-task':
-                    _createTaskFromMessage();
+                    if (_contextMsg) _createAITaskFromMsg(_contextMsg, _contextMsg.el);
+                    break;
+                case 'remind':
+                    _remindFromContext();
+                    break;
+                case 'mark-important':
+                    _markImportant();
                     break;
             }
             _contextMenu.style.display = 'none';
@@ -1338,7 +1431,18 @@
         var overlay = document.getElementById('chatForwardOverlay');
         var list = document.getElementById('chatForwardChannelList');
         var cancelBtn = document.getElementById('chatForwardCancel');
+        var preview = document.getElementById('chatForwardPreview');
         if (!overlay || !list) return;
+
+        // Show preview of original message
+        if (preview) {
+            var preContentEl = _contextMsg.el.querySelector('.chat-bubble-content');
+            var preUserEl = _contextMsg.el.querySelector('.chat-bubble-username');
+            preview.innerHTML =
+                '<div style="font-size:11px;color:var(--gray-400);margin-bottom:4px;">Переслати повідомлення від <b>' + _esc(preUserEl ? preUserEl.textContent : '?') + '</b>:</div>' +
+                '<div style="padding:8px 12px;background:var(--glass-bg);border-left:3px solid var(--primary);border-radius:0 8px 8px 0;font-size:13px;max-height:80px;overflow:hidden;">' +
+                _esc(preContentEl ? preContentEl.textContent.slice(0, 200) : '') + '</div>';
+        }
 
         // Load channels
         var channels = await _api('GET', '/channels');
@@ -1347,20 +1451,29 @@
             if (ch.id === (_currentChannel ? _currentChannel.id : -1)) return;
             var item = document.createElement('button');
             item.className = 'chat-forward-item';
-            item.textContent = (ch.isDm ? '💬 ' : '# ') + ch.name;
+            item.innerHTML = (ch.isDm ? '💬 ' : '# ') + _esc(ch.name.replace(/^#/, ''));
             item.addEventListener('click', async function () {
                 var contentEl = _contextMsg.el.querySelector('.chat-bubble-content');
                 var usernameEl = _contextMsg.el.querySelector('.chat-bubble-username');
-                var fwdContent = '↪ Переслано від ' + (usernameEl ? usernameEl.textContent : '?') + ':\n' +
-                    (contentEl ? contentEl.textContent : '');
+                var fromName = usernameEl ? usernameEl.textContent : '?';
+                var origText = contentEl ? contentEl.textContent : '';
                 try {
                     await _api('POST', '/channels/' + ch.id + '/messages', {
-                        content: fwdContent,
-                        metadata: { forwarded: { fromChannel: _currentChannel.id, fromMessageId: _contextMsg.id } }
+                        content: origText,
+                        metadata: {
+                            forwarded: {
+                                fromChannelId: _currentChannel ? _currentChannel.id : null,
+                                fromChannelName: _currentChannel ? _currentChannel.name : null,
+                                fromMessageId: _contextMsg.id,
+                                fromUsername: fromName
+                            }
+                        }
                     });
                     overlay.style.display = 'none';
+                    if (typeof showNotification === 'function') showNotification('✅ Переслано в ' + ch.name, 'success');
                 } catch (err) {
                     console.error('[Chat] Forward error:', err);
+                    if (typeof showNotification === 'function') showNotification('Помилка пересилання', 'error');
                 }
             });
             list.appendChild(item);
@@ -1391,6 +1504,71 @@
             }
         } catch (err) {
             console.error('[Chat] Bookmark error:', err);
+        }
+    }
+
+    // v33.7.0: Remind from context menu
+    function _remindFromContext() {
+        if (!_contextMsg) return;
+        var old = document.getElementById('chatRemindPicker');
+        if (old) old.remove();
+        var picker = document.createElement('div');
+        picker.id = 'chatRemindPicker';
+        picker.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:10000';
+        picker.innerHTML =
+            '<div style="background:var(--card-bg,#fff);border-radius:16px;padding:20px;min-width:280px;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,0.18)">' +
+            '<h4 style="margin:0 0 14px;font-size:15px">⏰ Нагадати про повідомлення</h4>' +
+            '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">' +
+            '<button class="chat-modal-btn" onclick="_doRemind(\'1h\')">Через 1 годину</button>' +
+            '<button class="chat-modal-btn" onclick="_doRemind(\'3h\')">Через 3 години</button>' +
+            '<button class="chat-modal-btn" onclick="_doRemind(\'tomorrow\')">Завтра вранці (9:00)</button>' +
+            '<button class="chat-modal-btn" onclick="_doRemind(\'week\')">За тиждень</button>' +
+            '</div>' +
+            '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">' +
+            '<input type="datetime-local" id="remindCustomTime" style="flex:1;padding:7px 10px;border:1px solid var(--border-color);border-radius:8px;font-size:13px">' +
+            '<button class="chat-modal-btn chat-modal-btn-primary" onclick="_doRemind(\'custom\')">✓</button>' +
+            '</div>' +
+            '<button onclick="document.getElementById(\'chatRemindPicker\')?.remove()" style="width:100%;padding:7px;border:1px solid var(--border-color);border-radius:8px;background:none;cursor:pointer;font-size:13px">Скасувати</button>' +
+            '</div>';
+        document.body.appendChild(picker);
+        picker.addEventListener('click', function(e) { if (e.target === picker) picker.remove(); });
+        window._remindMsgId = _contextMsg.id;
+    }
+
+    window._doRemind = async function(type) {
+        var remindAt;
+        var now = new Date();
+        if (type === '1h') remindAt = new Date(now.getTime() + 3600000);
+        else if (type === '3h') remindAt = new Date(now.getTime() + 10800000);
+        else if (type === 'tomorrow') {
+            var t = new Date(now); t.setDate(t.getDate() + 1); t.setHours(9, 0, 0, 0); remindAt = t;
+        }
+        else if (type === 'week') remindAt = new Date(now.getTime() + 7 * 86400000);
+        else if (type === 'custom') {
+            var val = document.getElementById('remindCustomTime')?.value;
+            if (!val) { if (typeof showNotification === 'function') showNotification('Оберіть час', 'error'); return; }
+            remindAt = new Date(val);
+        }
+        if (!remindAt || isNaN(remindAt.getTime())) return;
+        try {
+            await _api('POST', '/messages/' + window._remindMsgId + '/remind', { remindAt: remindAt.toISOString() });
+            var picker = document.getElementById('chatRemindPicker');
+            if (picker) picker.remove();
+            if (typeof showNotification === 'function') showNotification('⏰ ' + remindAt.toLocaleString('uk-UA', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }), 'success');
+        } catch (e) {
+            if (typeof showNotification === 'function') showNotification('Помилка: ' + e.message, 'error');
+        }
+    };
+
+    // v33.7.0: Mark message as important
+    async function _markImportant() {
+        if (!_contextMsg) return;
+        var isCurrentlyImportant = _contextMsg.el.classList.contains('important');
+        try {
+            await _api('PATCH', '/messages/' + _contextMsg.id + '/important', { important: !isCurrentlyImportant });
+            _contextMsg.el.classList.toggle('important', !isCurrentlyImportant);
+        } catch (e) {
+            if (typeof showNotification === 'function') showNotification('Помилка', 'error');
         }
     }
 
@@ -1428,6 +1606,47 @@
                 setTimeout(function () { toast.remove(); }, 3000);
             }
         }).catch(function () {});
+    }
+
+    // v33.12.0: AI task from message (inline form instead of window.prompt)
+    function _createAITaskFromMsg(msg, el) {
+        var contentEl = el ? el.querySelector('.chat-bubble-content') : null;
+        var usernameEl = el ? el.querySelector('.chat-bubble-username') : null;
+        var msgText = contentEl ? contentEl.textContent.trim() : (msg.content || '');
+        var author = usernameEl ? usernameEl.textContent.trim() : (msg.displayName || msg.username || '');
+        var existing = el ? el.querySelector('.msg-ai-task-form') : null;
+        if (existing) { existing.remove(); return; }
+        var form = document.createElement('div');
+        form.className = 'msg-ai-task-form';
+        form.innerHTML =
+            '<div style="font-size:11px;color:var(--gray-400);margin-bottom:6px">📋 Поставити задачу</div>' +
+            '<div style="font-size:12px;color:var(--gray-500);margin-bottom:6px;padding:6px;background:rgba(0,0,0,0.03);border-radius:6px;border-left:2px solid var(--primary,#6366f1)"><b>@' + _esc(author) + ':</b> ' + _esc(msgText.slice(0, 100)) + '</div>' +
+            '<textarea placeholder="Що треба зробити?" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;resize:none;height:50px;box-sizing:border-box;margin-bottom:6px"></textarea>' +
+            '<div style="display:flex;gap:6px"><button class="ai-task-submit" style="flex:1;padding:6px;background:var(--primary,#6366f1);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">📋 Створити задачу</button>' +
+            '<button onclick="this.closest(\'.msg-ai-task-form\').remove()" style="padding:6px 10px;border:1px solid var(--border-color);border-radius:6px;background:none;cursor:pointer;font-size:12px">✕</button></div>';
+        var bubble = el ? el.querySelector('.chat-bubble') : null;
+        if (bubble) bubble.appendChild(form);
+        var textarea = form.querySelector('textarea');
+        if (textarea) textarea.focus();
+        var submitBtn = form.querySelector('.ai-task-submit');
+        if (submitBtn) {
+            submitBtn.addEventListener('click', async function() {
+                var text = textarea.value.trim();
+                if (!text) { textarea.focus(); return; }
+                submitBtn.disabled = true;
+                submitBtn.textContent = '⏳...';
+                try {
+                    var resp = await fetch('/api/tasks', {
+                        method: 'POST', headers: _headers(),
+                        body: JSON.stringify({ title: text.slice(0, 100), description: 'З чату від @' + author + ':\n' + msgText + '\n\nЗадача: ' + text, priority: 'normal', sourceType: 'chat' })
+                    });
+                    if (resp.ok) {
+                        form.innerHTML = '<div style="color:var(--success,green);font-size:12px;padding:4px">✅ Задачу створено!</div>';
+                        setTimeout(function() { form.remove(); }, 2000);
+                    } else { throw new Error('Failed'); }
+                } catch (e) { submitBtn.disabled = false; submitBtn.textContent = '📋 Створити задачу'; }
+            });
+        }
     }
 
     function _startEdit() {
@@ -1620,14 +1839,14 @@
     if (_infoBtn) {
         _infoBtn.addEventListener('click', function () {
             if (!_currentChannel) return;
-            var isOpen = _infoPanel.classList.contains('open') && document.getElementById('chatInfoPanelTitle').textContent === 'Учасники';
+            var isOpen = _infoPanel.classList.contains('open') && document.getElementById('chatInfoPanelTitle')?.textContent === 'Учасники';
             if (isOpen) {
                 _infoPanel.classList.remove('open');
                 _infoBtn.classList.remove('active');
             } else {
                 if (_pinBtn) _pinBtn.classList.remove('active');
                 _infoBtn.classList.add('active');
-                document.getElementById('chatInfoPanelTitle').textContent = 'Учасники';
+                document.getElementById('chatInfoPanelTitle').textContent = _currentChannel ? _currentChannel.name : 'Канал';
                 _renderInfoPanel();
                 _infoPanel.classList.add('open');
             }
@@ -1645,15 +1864,50 @@
         var body = document.getElementById('chatInfoPanelBody');
         if (!body || !_currentChannel) return;
         body.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray-400);font-size:13px">Завантаження...</div>';
+
+        // Get current user role from localStorage
+        var savedUser = localStorage.getItem('pzp_current_user');
+        var myRole = '';
+        try { myRole = JSON.parse(savedUser).role || ''; } catch(e) {}
+        var isAdmin = myRole === 'admin' || myRole === 'creator' || myRole === 'director';
+        var isDm = _currentChannel.isDm;
+
         try {
             var members = await _api('GET', '/channels/' + _currentChannel.id + '/members');
             _channelMembers = members || [];
         } catch (err) {
             _channelMembers = _chatUsers;
         }
+
+        var html = '';
+
+        // ─── Edit section (admin only, not DM) ───
+        if (isAdmin && !isDm) {
+            html += '<div class="chat-info-edit-section">' +
+                '<div class="chat-info-field"><label>Назва</label>' +
+                    '<input type="text" id="_infoPanelName" value="' + _esc((_currentChannel.name || '').replace(/^#/, '')) + '" maxlength="40">' +
+                '</div>' +
+                '<div class="chat-info-field"><label>Опис</label>' +
+                    '<input type="text" id="_infoPanelDesc" value="' + _esc(_currentChannel.description || '') + '" maxlength="200">' +
+                '</div>' +
+                '<button class="chat-info-save-btn" id="_infoPanelSave">💾 Зберегти</button>' +
+            '</div>';
+        }
+
+        // ─── Mute toggle ───
+        var isMuted = _currentChannel.muted || false;
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border-color);">' +
+            '<span style="font-size:14px;">🔔 Сповіщення</span>' +
+            '<label class="chat-mute-toggle">' +
+                '<input type="checkbox" id="_infoPanelMute"' + (isMuted ? ' checked' : '') + '>' +
+                '<span class="chat-mute-slider"></span>' +
+            '</label>' +
+        '</div>';
+
+        // ─── Members ───
         var count = _channelMembers.length;
-        var html = '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px 8px">' +
-            '<div class="chat-info-section-label" style="padding:0">' + count + ' ' + _pluralize(count, 'учасник', 'учасники', 'учасників') + '</div>' +
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 8px">' +
+            '<div class="chat-info-section-label" style="padding:0;font-weight:600">' + count + ' ' + _pluralize(count, 'учасник', 'учасники', 'учасників') + '</div>' +
             '<button class="chat-sidebar-action-btn" id="chatAddMemberBtn" title="Додати учасника"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>' +
             '</div>';
         var hasGuardian = _channelMembers.some(function (u) { return u.username === 'guardian'; });
@@ -1664,15 +1918,19 @@
             var colorClass = isGuardianUser ? '' : 'chat-avatar-color-' + _colorIdx(u.id || 0);
             var avatarStyle = isGuardianUser ? 'background:linear-gradient(135deg,#6366F1,#8B5CF6);color:white;' : isOpenclawUser ? 'background:linear-gradient(135deg,#10B981,#059669);color:white;' : '';
             var badgeHtml = isGuardianUser ? '<span class="chat-bot-badge guardian-badge" style="margin-left:6px;font-size:8px">GUARD</span>' : isOpenclawUser ? '<span class="chat-bot-badge" style="margin-left:6px;font-size:8px">BOT</span>' : '';
-            html += '<div class="chat-info-member" data-user-id="' + u.id + '" style="cursor:pointer">' +
+            var removeBtn = isAdmin && String(u.id || u.userId) !== _currentUserId && !isGuardianUser && !isOpenclawUser
+                ? '<button class="chat-info-member-remove" data-remove-uid="' + (u.id || u.userId) + '" title="Видалити">✕</button>'
+                : '';
+            html += '<div class="chat-info-member" data-user-id="' + (u.id || u.userId) + '" style="cursor:pointer;padding:4px 16px;">' +
                 '<div class="chat-info-member-avatar ' + colorClass + '"' + (avatarStyle ? ' style="' + avatarStyle + '"' : '') + '>' + initial + '</div>' +
-                '<div>' +
+                '<div style="flex:1">' +
                     '<div class="chat-info-member-name">' + _esc(u.displayName || u.username) + badgeHtml + '</div>' +
                     '<div class="chat-info-member-role">@' + _esc(u.username) + ' · ' + _esc(_roleLabel(u.role)) + '</div>' +
                 '</div>' +
+                removeBtn +
             '</div>';
         });
-        // Add Guardian invite button if not in channel
+        // Guardian invite
         if (!hasGuardian) {
             html += '<div class="chat-guardian-invite" id="chatGuardianInvite">' +
                 '<button class="chat-guardian-invite-btn">' +
@@ -1681,13 +1939,70 @@
                 '</button>' +
             '</div>';
         }
+
+        // ─── Danger zone (admin only, not DM) ───
+        if (isAdmin && !isDm) {
+            html += '<div class="chat-info-danger">' +
+                '<button class="chat-info-danger-btn" id="_infoPanelArchive">📦 Архівувати канал</button>' +
+                '<button class="chat-info-danger-btn chat-info-danger-btn--red" id="_infoPanelDelete">🗑️ Видалити канал</button>' +
+            '</div>';
+        }
+
         body.innerHTML = html;
+
+        // ─── Event listeners ───
+        // Save channel
+        var saveBtn = body.querySelector('#_infoPanelSave');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async function() {
+                var newName = (body.querySelector('#_infoPanelName') || {}).value || '';
+                var newDesc = (body.querySelector('#_infoPanelDesc') || {}).value || '';
+                if (!newName.trim()) return;
+                try {
+                    await _api('PATCH', '/channels/' + _currentChannel.id, {
+                        name: '#' + newName.trim(),
+                        description: newDesc.trim()
+                    });
+                    _currentChannel.name = '#' + newName.trim();
+                    _currentChannel.description = newDesc.trim();
+                    document.getElementById('chatHeaderName').textContent = '#' + newName.trim();
+                    document.getElementById('chatHeaderDesc').textContent = newDesc.trim();
+                    document.getElementById('chatInfoPanelTitle').textContent = '#' + newName.trim();
+                    _loadChannels();
+                    if (typeof showNotification === 'function') showNotification('✅ Канал оновлено', 'success');
+                } catch(e) { if (typeof showNotification === 'function') showNotification('Помилка збереження', 'error'); }
+            });
+        }
+
+        // Mute toggle
+        var muteEl = body.querySelector('#_infoPanelMute');
+        if (muteEl) {
+            muteEl.addEventListener('change', async function() {
+                try {
+                    var result = await _api('PUT', '/channels/' + _currentChannel.id + '/mute', { muted: muteEl.checked });
+                    _currentChannel.muted = result.muted;
+                } catch(e) { console.error('[Chat] Mute error:', e); }
+            });
+        }
 
         // Add member button
         var addBtn = body.querySelector('#chatAddMemberBtn');
         if (addBtn) {
             addBtn.addEventListener('click', function () { _openAddMemberModal(); });
         }
+
+        // Remove member buttons
+        body.querySelectorAll('.chat-info-member-remove').forEach(function(btn) {
+            btn.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                var uid = btn.dataset.removeUid;
+                if (!confirm('Видалити учасника з каналу?')) return;
+                try {
+                    await _api('DELETE', '/channels/' + _currentChannel.id + '/members/' + uid);
+                    _renderInfoPanel();
+                } catch(e2) { if (typeof showNotification === 'function') showNotification('Помилка видалення', 'error'); }
+            });
+        });
 
         // Guardian invite button
         var guardianInvite = body.querySelector('#chatGuardianInvite');
@@ -1704,9 +2019,38 @@
             });
         }
 
+        // Archive channel
+        var archiveBtn = body.querySelector('#_infoPanelArchive');
+        if (archiveBtn) {
+            archiveBtn.addEventListener('click', async function() {
+                if (!confirm('Архівувати канал "' + _currentChannel.name + '"?')) return;
+                try {
+                    await _api('PATCH', '/channels/' + _currentChannel.id, { isArchived: true });
+                    _infoPanel.classList.remove('open');
+                    _loadChannels();
+                    if (typeof showNotification === 'function') showNotification('📦 Канал архівовано', 'success');
+                } catch(e) { if (typeof showNotification === 'function') showNotification('Помилка архівування', 'error'); }
+            });
+        }
+
+        // Delete channel
+        var deleteBtn = body.querySelector('#_infoPanelDelete');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', async function() {
+                if (!confirm('Видалити канал "' + _currentChannel.name + '"? Це незворотньо!')) return;
+                try {
+                    await _api('DELETE', '/channels/' + _currentChannel.id);
+                    _infoPanel.classList.remove('open');
+                    _loadChannels();
+                    if (typeof showNotification === 'function') showNotification('🗑️ Канал видалено', 'success');
+                } catch(e) { if (typeof showNotification === 'function') showNotification('Помилка видалення', 'error'); }
+            });
+        }
+
         // Click member → profile
         body.querySelectorAll('.chat-info-member[data-user-id]').forEach(function (el) {
-            el.addEventListener('click', function () {
+            el.addEventListener('click', function (ev) {
+                if (ev.target.closest('.chat-info-member-remove')) return;
                 _showUserProfile(parseInt(el.dataset.userId, 10));
             });
         });
@@ -1827,6 +2171,227 @@
         });
     }
 
+    // v33.7.0: Status picker
+    var _statusBtn = document.getElementById('chatStatusBtn');
+    if (_statusBtn) {
+        _statusBtn.addEventListener('click', function() {
+            var picker = document.getElementById('chatStatusPicker');
+            if (picker) picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+        });
+    }
+    window._setUserStatus = async function(emoji, text) {
+        try {
+            await _api('PATCH', '/users/me/status', { status: text || null, emoji: emoji || null, until: null });
+            var picker = document.getElementById('chatStatusPicker');
+            if (picker) picker.style.display = 'none';
+            var indicator = document.getElementById('chatMyStatus');
+            if (indicator) indicator.textContent = text ? (emoji + ' ' + text) : '';
+            var emojiEl = document.getElementById('chatMyStatusEmoji');
+            if (emojiEl) emojiEl.textContent = emoji || '😊';
+            if (typeof showNotification === 'function') showNotification(text ? (emoji + ' ' + text + ' встановлено') : 'Статус очищено', 'success');
+        } catch (e) {
+            if (typeof showNotification === 'function') showNotification('Помилка: ' + e.message, 'error');
+        }
+    };
+
+    // ==========================================
+    // v33.9.0: WALLPAPERS, PREFERENCES, EFFECTS
+    // ==========================================
+    var _userPrefs = null;
+    // Wallpapers: 'class' means CSS class on #chatMessages, 'bg' means inline background
+    var _WALLPAPERS = {
+        'default':  { label: 'Без фону',     bg: '' },
+        'bubbles':  { label: 'Бульбашки',    cls: 'wp-bubbles' },
+        'aurora':   { label: 'Аврора',       cls: 'wp-aurora' },
+        'cosmos':   { label: 'Космос',       cls: 'wp-cosmos' },
+        'ocean':    { label: 'Океан',        cls: 'wp-ocean' },
+        'sunset':   { label: 'Захід',        cls: 'wp-sunset' },
+        'forest':   { label: 'Ліс',          cls: 'wp-forest' },
+        'candy':    { label: 'Цукерки',      cls: 'wp-candy' },
+        'neon':     { label: 'Неон',          cls: 'wp-neon' },
+        'snow':     { label: 'Сніг',          cls: 'wp-snow' },
+        'dino':     { label: 'Парк',          cls: 'wp-dino' },
+        'geometric':{ label: 'Геометрія',    cls: 'wp-geometric' },
+        'gradient': { label: 'Градієнт',     cls: 'wp-gradient' }
+    };
+
+    async function _loadMyPreferences() {
+        try {
+            var data = await _api('GET', '/preferences');
+            _userPrefs = data.preferences || {};
+            _applyMyPreferences();
+        } catch (e) { /* silent */ }
+    }
+
+    function _applyMyPreferences() {
+        if (!_userPrefs) return;
+        if (_userPrefs.accent_color) {
+            document.documentElement.style.setProperty('--chat-accent', _userPrefs.accent_color);
+        }
+        var wp = _userPrefs.wallpaper || localStorage.getItem('chat_wallpaper') || 'default';
+        var chatArea = document.getElementById('chatMessages');
+        if (chatArea) {
+            // Remove all wp- classes
+            chatArea.className = chatArea.className.replace(/\bwp-\S+/g, '').trim();
+            chatArea.style.backgroundImage = '';
+            var wpData = _WALLPAPERS[wp];
+            if (wpData && wpData.cls) chatArea.classList.add(wpData.cls);
+            else if (wpData && wpData.bg) chatArea.style.backgroundImage = wpData.bg;
+        }
+        var sigEl = document.getElementById('chatMySignature');
+        if (sigEl) sigEl.textContent = _userPrefs.chat_signature || '';
+        var moodEl = document.getElementById('chatMoodBtn');
+        if (moodEl && _userPrefs.mood_emoji && _userPrefs.mood_date === new Date().toISOString().slice(0, 10)) {
+            moodEl.textContent = _userPrefs.mood_emoji;
+        }
+    }
+
+    window._openWallpaperPicker = function() {
+        var picker = document.getElementById('chatWallpaperPicker');
+        if (!picker) return;
+        picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+        var grid = document.getElementById('wallpaperGrid');
+        if (!grid || grid.children.length > 0) return;
+        // Wallpaper preview colors for picker
+        var PREVIEW = {
+            'default':'#f8f9fa','bubbles':'linear-gradient(135deg,#a78bfa,#f472b6)',
+            'aurora':'linear-gradient(135deg,#10b981,#6366f1,#f43f5e)','cosmos':'linear-gradient(135deg,#0f172a,#312e81,#1e1b4b)',
+            'ocean':'linear-gradient(135deg,#0ea5e9,#06b6d4,#0d9488)','sunset':'linear-gradient(135deg,#f97316,#ef4444,#ec4899)',
+            'forest':'linear-gradient(135deg,#166534,#15803d,#22c55e)','candy':'linear-gradient(135deg,#ec4899,#a855f7,#3b82f6)',
+            'neon':'linear-gradient(135deg,#7c3aed,#06b6d4,#10b981)','snow':'linear-gradient(135deg,#e2e8f0,#cbd5e1,#f1f5f9)',
+            'dino':'linear-gradient(135deg,#16a34a,#ca8a04,#92400e)','geometric':'linear-gradient(135deg,#1e293b,#334155,#475569)',
+            'gradient':'linear-gradient(135deg,#6366f1,#a855f7,#ec4899)'
+        };
+        Object.keys(_WALLPAPERS).forEach(function(key) {
+            var wpData = _WALLPAPERS[key];
+            var btn = document.createElement('div');
+            btn.style.cssText = 'width:44px;height:44px;border-radius:8px;cursor:pointer;border:2px solid transparent;' +
+                'background:' + (PREVIEW[key] || '#f8f9fa') + ';transition:all 0.15s;';
+            btn.title = wpData.label || key;
+            btn.onmouseenter = function() { btn.style.transform = 'scale(1.1)'; btn.style.borderColor = '#6366f1'; };
+            btn.onmouseleave = function() { btn.style.transform = ''; btn.style.borderColor = 'transparent'; };
+            btn.onclick = function() {
+                _api('PATCH', '/preferences', { wallpaper: key }).then(function() {
+                    localStorage.setItem('chat_wallpaper', key);
+                    if (_userPrefs) _userPrefs.wallpaper = key;
+                    _applyMyPreferences();
+                    picker.style.display = 'none';
+                    if (typeof showNotification === 'function') showNotification(wpData.label + ' встановлено', 'success');
+                }).catch(function() {});
+            };
+            grid.appendChild(btn);
+        });
+    };
+
+    window._setMood = async function(emoji) {
+        try {
+            await _api('PATCH', '/preferences', { moodEmoji: emoji || null });
+            var moodBtn = document.getElementById('chatMoodBtn');
+            if (moodBtn) moodBtn.textContent = emoji || '😊';
+            var moodPicker = document.getElementById('chatMoodPicker');
+            if (moodPicker) moodPicker.style.display = 'none';
+        } catch (e) { /* silent */ }
+    };
+
+    window._openMoodPicker = function() {
+        var p = document.getElementById('chatMoodPicker');
+        if (p) p.style.display = p.style.display === 'none' ? 'flex' : 'none';
+    };
+
+    // Send effects
+    var _selectedEffect = localStorage.getItem('chat_send_effect') || 'none';
+    function _triggerSendEffect(msgEl) {
+        if (!_selectedEffect || _selectedEffect === 'none' || !msgEl) return;
+        if (_selectedEffect === 'confetti') {
+            var rect = msgEl.getBoundingClientRect();
+            for (var i = 0; i < 12; i++) {
+                var dot = document.createElement('div');
+                dot.className = 'chat-confetti';
+                dot.style.left = (rect.left + Math.random() * rect.width) + 'px';
+                dot.style.top = rect.top + 'px';
+                dot.style.background = ['#6366f1','#ef4444','#f59e0b','#10b981','#ec4899'][Math.floor(Math.random() * 5)];
+                dot.style.animationDelay = (Math.random() * 0.2) + 's';
+                document.body.appendChild(dot);
+                setTimeout(function(d) { d.remove(); }, 1000, dot);
+            }
+        } else if (_selectedEffect === 'wave') {
+            msgEl.classList.add('chat-effect-wave');
+            setTimeout(function() { msgEl.classList.remove('chat-effect-wave'); }, 400);
+        }
+    }
+
+    // Load preferences on init
+    setTimeout(_loadMyPreferences, 500);
+
+    // v33.12.0: Info panel tabs (members/pinned/notes)
+    window._switchInfoTab = function(tabName) {
+        document.querySelectorAll('.chat-info-tab').forEach(function(t) {
+            t.classList.toggle('active', t.dataset.tab === tabName);
+        });
+        document.querySelectorAll('.chat-info-tab-content').forEach(function(c) {
+            c.style.display = c.id === 'infoTab-' + tabName ? '' : 'none';
+        });
+        if (tabName === 'notes') _loadNotes();
+        if (tabName === 'pinned') _loadPinnedInPanel();
+    };
+
+    window._saveNote = async function() {
+        var text = document.getElementById('newNoteText')?.value?.trim();
+        if (!text) return;
+        var vis = document.getElementById('newNoteVisibility')?.value || 'private';
+        try {
+            await _api('POST', '../../api/notes', {
+                title: '', content: text,
+                is_shared: vis === 'shared',
+                channel_id: _currentChannel?.id || null
+            });
+            document.getElementById('newNoteText').value = '';
+            _loadNotes();
+        } catch (e) { if (typeof showNotification === 'function') showNotification('Помилка', 'error'); }
+    };
+
+    async function _loadNotes() {
+        var container = document.getElementById('notesList');
+        if (!container) return;
+        container.innerHTML = '<p style="color:var(--gray-400);font-size:12px;padding:8px">Завантаження...</p>';
+        try {
+            var token = localStorage.getItem('pzp_token');
+            var resp = await fetch('/api/notes', { headers: { 'Authorization': 'Bearer ' + token } });
+            var notes = await resp.json();
+            if (!Array.isArray(notes)) notes = notes.notes || notes || [];
+            if (!notes.length) { container.innerHTML = '<p style="color:var(--gray-400);font-size:12px;padding:8px">Нотаток немає</p>'; return; }
+            container.innerHTML = notes.map(function(n) {
+                var visLabel = n.isShared ? '🌐' : '🔒';
+                return '<div style="padding:8px;border-bottom:1px solid var(--border-color,#e5e7eb)">' +
+                    '<div style="font-size:13px;margin-bottom:4px">' + _esc(n.content || n.title || '') + '</div>' +
+                    '<div style="display:flex;justify-content:space-between;align-items:center">' +
+                    '<span style="font-size:10px;color:var(--gray-400)">' + visLabel + '</span>' +
+                    '<button onclick="_deleteNote(' + n.id + ')" style="background:none;border:none;cursor:pointer;color:var(--gray-300);font-size:12px">✕</button>' +
+                    '</div></div>';
+            }).join('');
+        } catch { container.innerHTML = '<p style="color:#ef4444;font-size:12px;padding:8px">Помилка</p>'; }
+    }
+
+    window._deleteNote = async function(id) {
+        var token = localStorage.getItem('pzp_token');
+        await fetch('/api/notes/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } });
+        _loadNotes();
+    };
+
+    async function _loadPinnedInPanel() {
+        var container = document.getElementById('chatPinnedList');
+        if (!container || !_currentChannel) return;
+        try {
+            var pinned = await _api('GET', '/channels/' + _currentChannel.id + '/pinned');
+            if (!pinned?.length) { container.innerHTML = '<p style="color:var(--gray-400);font-size:12px">Немає закріплених</p>'; return; }
+            container.innerHTML = pinned.map(function(m) {
+                return '<div style="padding:6px;border-bottom:1px solid var(--border-color)">' +
+                    '<div style="font-size:11px;color:var(--gray-400);margin-bottom:2px">@' + _esc(m.username || '') + '</div>' +
+                    '<div style="font-size:13px">' + _esc((m.content || '').slice(0, 80)) + '</div></div>';
+            }).join('');
+        } catch { container.innerHTML = '<p style="color:var(--gray-400);font-size:12px">Помилка</p>'; }
+    }
+
     // Night time settings
     var _nightStartSel = document.getElementById('chatNightStart');
     var _nightEndSel = document.getElementById('chatNightEnd');
@@ -1913,6 +2478,12 @@
         try {
             _channels = await _api('GET', '/channels') || [];
             _renderChannels();
+            // v33.7.0: Open channel from URL param
+            var urlChId = parseInt(new URLSearchParams(window.location.search).get('channelId') || '0', 10);
+            if (urlChId) {
+                var target = _channels.find(function(c) { return c.id === urlChId; });
+                if (target) _selectChannel(target);
+            }
         } catch (err) {
             console.error('[Chat] Load channels error:', err);
         }
@@ -1927,50 +2498,78 @@
         if (!list) return;
         list.innerHTML = '';
 
-        _channels.forEach(function (ch, idx) {
-            var el = document.createElement('div');
-            var isActive = _currentChannel && _currentChannel.id === ch.id;
-            var hasUnread = ch.unreadCount > 0;
-            el.className = 'chat-channel-item' + (isActive ? ' active' : '') + (hasUnread ? ' has-unread' : '');
-            el.dataset.channelId = ch.id;
+        // v33.9.0: Group channels by type
+        var regularChannels = _channels.filter(function(c) { return c.type !== 'room' && c.type !== 'booking' && !c.isDm; });
+        var roomChannels = _channels.filter(function(c) { return c.type === 'room'; });
+        var dmChannels = _channels.filter(function(c) { return c.isDm; });
+        var bookingChannels = _channels.filter(function(c) { return c.type === 'booking'; });
 
-            var isDm = ch.isDm || false;
-            var colorClass = isDm ? 'chat-avatar-color-' + _colorIdx(ch.dmOtherUserId || idx) : 'chat-channel-color-' + _channelColorIdx(idx);
-            var iconClass = isDm ? 'chat-channel-dm-icon' : 'chat-channel-icon';
-            var icon = isDm ? (ch.name || '?').charAt(0).toUpperCase() : ch.name.charAt(1).toUpperCase();
-            var preview = ch.lastMessageContent
-                ? (ch.lastMessageUsername ? ch.lastMessageUsername + ': ' : '') + ch.lastMessageContent
-                : ch.description || 'Ще немає повідомлень';
+        function addSection(label) {
+            var lbl = document.createElement('div');
+            lbl.className = 'chat-section-label';
+            lbl.textContent = label;
+            list.appendChild(lbl);
+        }
 
-            var timeStr = '';
-            if (ch.lastMessageAt) {
-                var d = new Date(ch.lastMessageAt);
-                var now = new Date();
-                timeStr = d.toDateString() === now.toDateString()
-                    ? d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
-                    : d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });
-            }
+        if (regularChannels.length) {
+            addSection('КАНАЛИ');
+            regularChannels.forEach(function(ch, idx) { list.appendChild(_createChannelEl(ch, idx)); });
+        }
+        if (roomChannels.length) {
+            addSection('🏠 КІМНАТИ');
+            roomChannels.forEach(function(ch, idx) { list.appendChild(_createChannelEl(ch, idx)); });
+        }
+        if (bookingChannels.length) {
+            addSection('🎉 БРОНЮВАННЯ');
+            bookingChannels.forEach(function(ch, idx) { list.appendChild(_createChannelEl(ch, idx)); });
+        }
+        if (dmChannels.length) {
+            addSection('ОСОБИСТІ');
+            dmChannels.forEach(function(ch, idx) { list.appendChild(_createChannelEl(ch, idx)); });
+        }
+    }
 
-            var dmOnlineDot = isDm && ch.dmOtherUserId ? '<span class="chat-online-dot sidebar-dot" data-user-id="' + ch.dmOtherUserId + '"></span>' : '';
+    function _createChannelEl(ch, idx) {
+        var el = document.createElement('div');
+        var isActive = _currentChannel && _currentChannel.id === ch.id;
+        var hasUnread = ch.unreadCount > 0;
+        el.className = 'chat-channel-item' + (isActive ? ' active' : '') + (hasUnread ? ' has-unread' : '');
+        el.dataset.channelId = ch.id;
 
-            el.innerHTML =
-                '<div class="' + iconClass + ' ' + colorClass + '">' + icon + dmOnlineDot + '</div>' +
-                '<div class="chat-channel-info">' +
-                    '<div class="chat-channel-name-row">' +
-                        '<div class="chat-channel-name">' + _esc(ch.name) + '</div>' +
-                        (timeStr ? '<span class="chat-channel-time">' + timeStr + '</span>' : '') +
-                    '</div>' +
-                    '<div class="chat-channel-preview-row">' +
-                        '<div class="chat-channel-preview">' + _esc(_truncate(preview, 35)) + '</div>' +
-                        (hasUnread ? '<div class="chat-channel-badge">' + ch.unreadCount + '</div>' : '') +
-                    '</div>' +
-                '</div>';
+        var isDm = ch.isDm || false;
+        var colorClass = isDm ? 'chat-avatar-color-' + _colorIdx(ch.dmOtherUserId || idx) : 'chat-channel-color-' + _channelColorIdx(idx);
+        var iconClass = isDm ? 'chat-channel-dm-icon' : 'chat-channel-icon';
+        var icon = isDm ? (ch.name || '?').charAt(0).toUpperCase() : ch.name.charAt(1).toUpperCase();
+        var preview = ch.lastMessageContent
+            ? (ch.lastMessageUsername ? ch.lastMessageUsername + ': ' : '') + ch.lastMessageContent
+            : ch.description || 'Ще немає повідомлень';
 
-            el.addEventListener('click', function () {
-                _selectChannel(ch);
-            });
-            list.appendChild(el);
-        });
+        var timeStr = '';
+        if (ch.lastMessageAt) {
+            var d = new Date(ch.lastMessageAt);
+            var now = new Date();
+            timeStr = d.toDateString() === now.toDateString()
+                ? d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
+                : d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' });
+        }
+
+        var dmOnlineDot = isDm && ch.dmOtherUserId ? '<span class="chat-online-dot sidebar-dot" data-user-id="' + ch.dmOtherUserId + '"></span>' : '';
+
+        el.innerHTML =
+            '<div class="' + iconClass + ' ' + colorClass + '">' + icon + dmOnlineDot + '</div>' +
+            '<div class="chat-channel-info">' +
+                '<div class="chat-channel-name-row">' +
+                    '<div class="chat-channel-name">' + _esc(ch.name) + '</div>' +
+                    (timeStr ? '<span class="chat-channel-time">' + timeStr + '</span>' : '') +
+                '</div>' +
+                '<div class="chat-channel-preview-row">' +
+                    '<div class="chat-channel-preview">' + _esc(_truncate(preview, 35)) + '</div>' +
+                    (hasUnread ? '<div class="chat-channel-badge">' + ch.unreadCount + '</div>' : '') +
+                '</div>' +
+            '</div>';
+
+        el.addEventListener('click', function () { _selectChannel(ch); });
+        return el;
     }
 
     async function _selectChannel(channel) {
@@ -2000,6 +2599,7 @@
         // Set mute button state from channel data
         if (_muteBtn) {
             _muteBtn.classList.toggle('active', !!channel.muted);
+            _muteBtn.classList.toggle('muted-bell', !!channel.muted);
             _muteBtn.title = channel.muted ? 'Увімкнути сповіщення' : 'Вимкнути сповіщення';
         }
 
@@ -2187,18 +2787,41 @@
         // Feature 1: Online dot
         var onlineDotHtml = '<span class="chat-online-dot" data-user-id="' + msg.userId + '"></span>';
 
+        // v33.7.0: Booking preview card
+        var bookingPreviewHtml = '';
+        if (msg.metadata && msg.metadata.bookingPreview && !msg.deletedAt) {
+            var bk = msg.metadata.bookingPreview;
+            var bkSt = bk.status === 'confirmed' ? '✅' : bk.status === 'cancelled' ? '❌' : '⏳';
+            bookingPreviewHtml =
+                '<div class="chat-booking-preview">' +
+                '<div class="chat-bp-header">' + bkSt + ' ' + _esc(bk.id) + '</div>' +
+                '<div class="chat-bp-row">📅 ' + _esc(bk.date) + ' о ' + _esc(bk.time || '') + '</div>' +
+                '<div class="chat-bp-row">🎭 ' + _esc(bk.programName || '') + '</div>' +
+                '<div class="chat-bp-row">👥 ' + _esc(bk.label || '') + '</div>' +
+                (bk.price ? '<div class="chat-bp-price">💰 ' + bk.price + ' ₴</div>' : '') +
+                '</div>';
+        }
+
+        // v33.7.0: Important message class
+        var importantClass = msg.isImportant ? ' important' : '';
+
+        el.className += importantClass;
+
         el.innerHTML =
             '<div class="chat-avatar ' + avatarColorClass + '">' + initial + onlineDotHtml + '</div>' +
             '<div class="chat-bubble">' +
                 '<div class="chat-bubble-header">' +
                     '<span class="chat-bubble-username ' + usernameColorClass + roleUsernameClass + '">' + _esc(msg.displayName || msg.username) + '</span>' +
                     (isGuardian ? '<span class="chat-bot-badge guardian-badge">GUARD</span>' : (isBot ? '<span class="chat-bot-badge">BOT</span>' : roleBadgeHtml)) +
+                    (msg.isImportant ? '<span class="chat-important-badge">❗</span>' : '') +
                     editedHtml +
                     '<span class="chat-bubble-time">' + time + readCheckHtml + '</span>' +
                 '</div>' +
                 replyHtml +
+                _renderForwardedBadge(msg) +
                 _renderFileAttachment(msg) +
                 '<div class="chat-bubble-content">' + content + '</div>' +
+                bookingPreviewHtml +
                 _renderLinkPreview(msg) +
                 _renderGuardianActions(msg) +
                 (msg.threadReplyCount > 0 ? '<button class="chat-thread-badge" data-thread-id="' + msg.id + '">' + msg.threadReplyCount + ' відп.</button>' : '') +
@@ -2206,7 +2829,7 @@
                 '<div class="chat-msg-actions">' +
                     '<button class="chat-msg-action-btn" data-action="reply" title="Відповісти">↩</button>' +
                     '<button class="chat-msg-action-btn" data-action="react" title="Реакція">😊</button>' +
-                    '<button class="chat-msg-action-btn" data-action="translate" title="Перекласти">🌐</button>' +
+                    '<button class="chat-msg-action-btn" data-action="ai-task" title="Задача через Клешню">📋</button>' +
                 '</div>' +
             '</div>' +
             '<span class="chat-swipe-reply-icon">↩</span>';
@@ -2225,10 +2848,10 @@
             });
         }
 
-        var translateBtn = el.querySelector('[data-action="translate"]');
-        if (translateBtn) {
-            translateBtn.addEventListener('click', function () {
-                _translateMessage(msg, el);
+        var aiTaskBtn = el.querySelector('[data-action="ai-task"]');
+        if (aiTaskBtn) {
+            aiTaskBtn.addEventListener('click', function () {
+                _createAITaskFromMsg(msg, el);
             });
         }
 
@@ -2335,34 +2958,71 @@
     }
 
     function _formatContent(text) {
-        var safe = _esc(text);
+        // v33.7.0: Extract checklist items BEFORE escaping
+        var _clMap = {};
+        var _clIdx = 0;
+        var _processed = text.replace(/^(- \[[ xXхХ]\] .+)$/gm, function(line) {
+            var checked = /\[[xXхХ]\]/.test(line);
+            var itemRaw = line.replace(/^- \[[ xXхХ]\] /, '');
+            var ph = '___CL' + (_clIdx++) + '___';
+            _clMap[ph] =
+                '<label class="chat-check-item" onclick="event.stopPropagation()">' +
+                '<input type="checkbox"' + (checked ? ' checked' : '') +
+                ' onchange="window._chatToggleCheck(this)">' +
+                '<span class="chat-check-text' + (checked ? ' chat-check-done' : '') + '">' +
+                _esc(itemRaw) + '</span></label>';
+            return ph;
+        });
+
+        var safe = _esc(_processed);
 
         // --- Markdown formatting ---
-        // Code blocks (```) — must be before inline code
         safe = safe.replace(/```(\w*)\n?([\s\S]*?)```/g, function(_, lang, code) {
             return '<pre class="chat-codeblock" data-lang="' + (lang || '') + '"><code>' + code.replace(/\n$/, '') + '</code></pre>';
         });
-        // Inline code (`)
         safe = safe.replace(/`([^`\n]+)`/g, '<code class="chat-inline-code">$1</code>');
-        // Bold (**text**)
         safe = safe.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        // Italic (*text*)
         safe = safe.replace(/\*(.+?)\*/g, '<em>$1</em>');
-        // Strikethrough (~~text~~)
         safe = safe.replace(/~~(.+?)~~/g, '<del>$1</del>');
-        // Blockquote (> text) — at line start
         safe = safe.replace(/(?:^|(?<=\n))&gt; ?(.+)/g, '<blockquote class="chat-blockquote">$1</blockquote>');
-
-        // Format @mentions
         safe = safe.replace(/\B@(\w+)/g, '<span class="chat-mention">@$1</span>');
-        // Format URLs
         safe = safe.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:var(--primary-dark);text-decoration:underline">$1</a>');
-        // Newlines to <br> (outside of pre blocks)
         safe = safe.replace(/\n/g, '<br>');
-        // Wrap emojis with animated span for hover wobble
         safe = safe.replace(/([\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2702}-\u{27B0}\u{2764}\u{2728}\u{2705}\u{274C}\u{2B50}][\u{FE0F}\u{200D}]?)/gu, '<span class="chat-animated-emoji">$1</span>');
+
+        // Restore checklist placeholders
+        Object.keys(_clMap).forEach(function(ph) {
+            safe = safe.split(ph).join(_clMap[ph]);
+        });
         return safe;
     }
+
+    // v33.7.0: Checklist toggle handler
+    window._chatToggleCheck = async function(checkbox) {
+        var msgEl = checkbox.closest('[data-message-id]');
+        if (!msgEl) return;
+        var msgId = msgEl.dataset.messageId;
+        if (!msgId) return;
+        var items = msgEl.querySelectorAll('.chat-check-item');
+        var lines = [];
+        items.forEach(function(item) {
+            var cb = item.querySelector('input[type=checkbox]');
+            var span = item.querySelector('.chat-check-text');
+            if (cb && span) lines.push('- [' + (cb.checked ? 'x' : ' ') + '] ' + span.textContent);
+        });
+        if (!lines.length) return;
+        try {
+            await _api('PUT', '/messages/' + msgId, { content: lines.join('\n') });
+            items.forEach(function(item) {
+                var cb = item.querySelector('input[type=checkbox]');
+                var span = item.querySelector('.chat-check-text');
+                if (cb && span) span.classList.toggle('chat-check-done', cb.checked);
+            });
+        } catch (e) {
+            checkbox.checked = !checkbox.checked;
+            if (typeof showNotification === 'function') showNotification('Помилка збереження', 'error');
+        }
+    };
 
     /** Render file/image attachment from metadata */
     function _renderFileAttachment(msg) {
@@ -2385,10 +3045,22 @@
                 '<img src="' + _esc(f.url) + '" alt="' + _esc(f.name) + '" class="chat-attached-image" loading="lazy" style="cursor:zoom-in">' +
             '</div>';
         }
-        // Audio/voice message
-        if (/\.(webm|ogg|mp3|wav)$/i.test(f.name)) {
-            return '<div class="chat-voice-player">' +
-                '<audio controls preload="metadata" class="chat-audio-element"><source src="' + _esc(f.url) + '" type="' + _esc(f.mimeType || 'audio/webm') + '"></audio>' +
+        // Audio/voice message — Telegram-style player
+        if (/\.(webm|ogg|mp3|wav|m4a)$/i.test(f.name)) {
+            var vmId = msg.id;
+            var vmDuration = (msg.metadata && msg.metadata.duration) ? msg.metadata.duration : ((meta.file && meta.file.duration) ? meta.file.duration : 0);
+            var vmDurStr = vmDuration > 0
+                ? Math.floor(vmDuration / 60) + ':' + String(vmDuration % 60).padStart(2, '0')
+                : '0:00';
+            var vmBars = '';
+            for (var bi = 0; bi < 20; bi++) {
+                var bh = 4 + Math.floor(Math.abs(Math.sin(bi * 1.7 + vmId)) * 20);
+                vmBars += '<div class="chat-voice-bar" style="height:' + bh + 'px" data-bar="' + bi + '"></div>';
+            }
+            return '<div class="chat-voice-player" data-voice-url="' + _esc(f.url) + '" data-voice-duration="' + vmDuration + '" data-voice-id="' + vmId + '" onclick="_handleVoiceClick(this)">' +
+                '<button class="chat-voice-play-btn" data-voice-id="' + vmId + '"></button>' +
+                '<div class="chat-voice-waveform-bars">' + vmBars + '</div>' +
+                '<span class="chat-voice-duration">' + _esc(vmDurStr) + '</span>' +
             '</div>';
         }
         // File attachment
@@ -2561,6 +3233,28 @@
             return;
         }
 
+        // v33.7.0: CRM slash commands (/вільно, /броні, /задачі, /склад)
+        var CRM_SLASH = ['вільно','free','броні','bookings','задачі','tasks','склад'];
+        var slashM = content.match(/^\/([а-яёіїєґa-z]+)\s*(.*)/iu);
+        if (slashM && CRM_SLASH.indexOf(slashM[1].toLowerCase()) !== -1) {
+            var slashCmd = slashM[1];
+            var slashArgs = slashM[2].trim();
+            input.value = '';
+            if (typeof _autoGrow === 'function') _autoGrow(input);
+            try {
+                var slashResp = await _api('POST', '/slash', { command: slashCmd, args: slashArgs });
+                if (slashResp && slashResp.reply && _currentChannel) {
+                    var slashMsg = await _api('POST', '/channels/' + _currentChannel.id + '/messages', {
+                        content: slashResp.reply
+                    });
+                    if (slashMsg) _appendMessage(slashMsg);
+                }
+            } catch (slashErr) {
+                _appendSystemMessage('❌ ' + (slashErr.message || 'Помилка команди'));
+            }
+            return;
+        }
+
         // Handle edit mode
         if (_editingMsg) {
             var editId = _editingMsg.id;
@@ -2711,7 +3405,13 @@
             }
         }
 
-        container.appendChild(_createMessageEl(msg, isGrouped));
+        var msgEl = _createMessageEl(msg, isGrouped);
+        // v33.5: Impact animation for own just-sent messages
+        if (String(msg.userId) === _currentUserId) {
+            msgEl.classList.add('msg-just-sent');
+            setTimeout(function() { msgEl.classList.remove('msg-just-sent'); }, 600);
+        }
+        container.appendChild(msgEl);
         container.scrollTop = container.scrollHeight;
 
         // Trim old messages to prevent DOM bloat
@@ -3159,8 +3859,11 @@
         // Create quick time options
         var now = new Date();
         var options = [
+            { label: 'Через 5 хв', time: new Date(now.getTime() + 5 * 60000) },
+            { label: 'Через 10 хв', time: new Date(now.getTime() + 10 * 60000) },
             { label: 'Через 30 хв', time: new Date(now.getTime() + 30 * 60000) },
             { label: 'Через 1 год', time: new Date(now.getTime() + 60 * 60000) },
+            { label: 'Через 3 год', time: new Date(now.getTime() + 180 * 60000) },
             { label: 'Завтра о 9:00', time: _nextDayAt(9) },
             { label: 'Завтра о 12:00', time: _nextDayAt(12) }
         ];
@@ -3181,21 +3884,36 @@
             popup.appendChild(btn);
         });
 
-        // Custom datetime
-        var customBtn = document.createElement('button');
-        customBtn.className = 'chat-schedule-option';
-        customBtn.textContent = 'Обрати час...';
-        customBtn.addEventListener('click', function () {
-            var dateStr = prompt('Дата та час (РРРР-ММ-ДД ГГ:ХХ)');
-            if (dateStr) {
-                var date = new Date(dateStr.replace(' ', 'T'));
-                if (!isNaN(date.getTime())) {
-                    _scheduleMessage(content, date.toISOString());
-                }
+        // Custom datetime — inline input instead of prompt()
+        var customDiv = document.createElement('div');
+        customDiv.style.cssText = 'padding:6px 12px;border-top:1px solid var(--border-color,#e5e7eb);margin-top:4px;';
+        customDiv.innerHTML = '<label style="font-size:11px;color:var(--gray-400);display:block;margin-bottom:4px;">Свій час:</label>' +
+            '<div style="display:flex;gap:6px;align-items:center;">' +
+                '<input type="datetime-local" id="_schedCustomTime" style="flex:1;padding:6px 8px;border:1px solid var(--border-color,#ddd);border-radius:8px;font-size:13px;font-family:Nunito,sans-serif;">' +
+                '<button id="_schedCustomSend" style="padding:6px 12px;background:var(--primary,#6366f1);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">OK</button>' +
+            '</div>';
+        popup.appendChild(customDiv);
+        setTimeout(function() {
+            var dtInput = popup.querySelector('#_schedCustomTime');
+            var sendBtn = popup.querySelector('#_schedCustomSend');
+            if (dtInput) {
+                var minDate = new Date(now.getTime() + 60000);
+                dtInput.min = minDate.toISOString().slice(0, 16);
+                dtInput.value = new Date(now.getTime() + 3600000).toISOString().slice(0, 16);
             }
-            popup.remove();
-        });
-        popup.appendChild(customBtn);
+            if (sendBtn) {
+                sendBtn.addEventListener('click', function() {
+                    var val = dtInput ? dtInput.value : '';
+                    if (val) {
+                        var date = new Date(val);
+                        if (!isNaN(date.getTime())) {
+                            _scheduleMessage(content, date.toISOString());
+                            popup.remove();
+                        }
+                    }
+                });
+            }
+        }, 0);
 
         // Position near button
         var inputArea = document.querySelector('.chat-input-area');
@@ -3526,6 +4244,7 @@
             var formData = new FormData();
             formData.append('file', file);
             formData.append('caption', '🎙 Голосове (' + duration + 'с)');
+            formData.append('duration', String(duration));
 
             try {
                 var token = localStorage.getItem('pzp_token');
@@ -3625,7 +4344,7 @@
         if (!content) return;
         _api('POST', '/templates', { shortcut: shortcut, content: content }).then(function () {
             _loadTemplates();
-        });
+        }).catch(function (err) { console.error('Template save error:', err); });
     }
 
     function _handleMentionInput(input) {
@@ -3770,6 +4489,50 @@
             case 'guardian:event':
                 _onGuardianEvent(payload);
                 break;
+            case 'user:status': {
+                document.querySelectorAll('[data-user-id="' + payload.userId + '"] .chat-peer-status').forEach(function(el) {
+                    el.textContent = payload.status ? ((payload.emoji || '') + ' ' + payload.status) : '';
+                });
+                break;
+            }
+            case 'chat:important': {
+                var impEl = document.querySelector('[data-message-id="' + payload.messageId + '"]');
+                if (impEl) impEl.classList.toggle('important', payload.important);
+                break;
+            }
+            case 'chat:booking-preview': {
+                var bpEl = document.querySelector('[data-message-id="' + payload.messageId + '"]');
+                if (bpEl && !bpEl.querySelector('.chat-booking-preview') && payload.bookingPreview) {
+                    var bubble = bpEl.querySelector('.chat-bubble-content');
+                    if (bubble) {
+                        var bk = payload.bookingPreview;
+                        var bkSt = bk.status === 'confirmed' ? '✅' : bk.status === 'cancelled' ? '❌' : '⏳';
+                        var html = '<div class="chat-booking-preview">' +
+                            '<div class="chat-bp-header">' + bkSt + ' ' + _esc(bk.id) + '</div>' +
+                            '<div class="chat-bp-row">📅 ' + _esc(bk.date) + ' о ' + _esc(bk.time || '') + '</div>' +
+                            '<div class="chat-bp-row">🎭 ' + _esc(bk.programName || '') + '</div>' +
+                            '<div class="chat-bp-row">👥 ' + _esc(bk.label || '') + '</div>' +
+                            (bk.price ? '<div class="chat-bp-price">💰 ' + bk.price + ' ₴</div>' : '') +
+                            '</div>';
+                        bubble.insertAdjacentHTML('afterend', html);
+                    }
+                }
+                break;
+            }
+            case 'chat:super-reaction': {
+                var srEl = document.querySelector('[data-message-id="' + payload.messageId + '"]');
+                if (srEl) {
+                    var srRect = srEl.getBoundingClientRect();
+                    var floater = document.createElement('div');
+                    floater.className = 'chat-super-reaction-float';
+                    floater.textContent = payload.emoji;
+                    floater.style.left = (srRect.left + srRect.width / 2 - 18) + 'px';
+                    floater.style.top = srRect.top + 'px';
+                    document.body.appendChild(floater);
+                    setTimeout(function() { floater.remove(); }, 1200);
+                }
+                break;
+            }
         }
     }
 
@@ -4597,6 +5360,76 @@
         textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
     }
 
+    // ── Forwarded Badge (v33.5) ──────────────────────
+    function _renderForwardedBadge(msg) {
+        if (!msg.metadata || !msg.metadata.forwarded) return '';
+        var fwd = msg.metadata.forwarded;
+        return '<div class="chat-forwarded-badge">↪ Переслано' +
+            (fwd.fromUsername ? ' від <b>' + _esc(fwd.fromUsername) + '</b>' : '') +
+            (fwd.fromChannelName ? ' з <b>' + _esc(fwd.fromChannelName) + '</b>' : '') +
+            '</div>';
+    }
+
+    // ── Voice Player (v33.5) ─────────────────────────
+    var _voicePlayers = {};
+    window._handleVoiceClick = function(playerEl) {
+        var url      = playerEl.dataset.voiceUrl;
+        var msgId    = playerEl.dataset.voiceId;
+        var duration = parseInt(playerEl.dataset.voiceDuration) || 0;
+        var playBtn  = playerEl.querySelector('.chat-voice-play-btn');
+        var bars     = playerEl.querySelectorAll('.chat-voice-bar');
+        var durationEl = playerEl.querySelector('.chat-voice-duration');
+
+        // Stop all other players
+        Object.keys(_voicePlayers).forEach(function(id) {
+            if (id !== msgId && _voicePlayers[id]) {
+                _voicePlayers[id].audio.pause();
+                _voicePlayers[id].audio.currentTime = 0;
+                clearInterval(_voicePlayers[id].interval);
+                var otherBtn = document.querySelector('[data-voice-id="' + id + '"].chat-voice-play-btn');
+                if (otherBtn) otherBtn.classList.remove('playing');
+                document.querySelectorAll('[data-voice-id="' + id + '"] .chat-voice-bar').forEach(function(b) { b.classList.remove('active'); });
+            }
+        });
+
+        var player = _voicePlayers[msgId];
+        if (!player) {
+            var audio = new Audio(url);
+            player = { audio: audio, isPlaying: false, interval: null };
+            _voicePlayers[msgId] = player;
+            audio.addEventListener('ended', function() {
+                playBtn.classList.remove('playing');
+                clearInterval(player.interval);
+                bars.forEach(function(b) { b.classList.remove('active'); });
+                if (durationEl && duration > 0) {
+                    durationEl.textContent = Math.floor(duration / 60) + ':' + String(duration % 60).padStart(2, '0');
+                }
+                player.isPlaying = false;
+            });
+        }
+
+        if (player.isPlaying) {
+            player.audio.pause();
+            clearInterval(player.interval);
+            playBtn.classList.remove('playing');
+            player.isPlaying = false;
+        } else {
+            player.audio.play().catch(function(e) { console.warn('Voice play error:', e); });
+            playBtn.classList.add('playing');
+            player.isPlaying = true;
+            player.interval = setInterval(function() {
+                var progress = player.audio.currentTime / (player.audio.duration || 1);
+                bars.forEach(function(b, i) {
+                    b.classList.toggle('active', i / bars.length <= progress);
+                });
+                if (durationEl) {
+                    var remaining = Math.max(0, (player.audio.duration || duration) - player.audio.currentTime);
+                    durationEl.textContent = Math.floor(remaining / 60) + ':' + String(Math.floor(remaining % 60)).padStart(2, '0');
+                }
+            }, 100);
+        }
+    };
+
     function _esc(str) {
         if (!str) return '';
         var div = document.createElement('div');
@@ -4653,7 +5486,7 @@
 
     if (_digestBtn) {
         _digestBtn.addEventListener('click', function () {
-            console.log('[Guardian] Digest button clicked, panel:', !!_digestPanel);
+            // console.log('[Guardian] Digest button clicked, panel:', !!_digestPanel);
             _digestOpen = !_digestOpen;
             _digestBtn.classList.toggle('active', _digestOpen);
             if (_digestPanel) _digestPanel.style.display = _digestOpen ? 'block' : 'none';
@@ -4725,7 +5558,7 @@
 
         try {
             var channelParam = _currentChannel ? '&channelId=' + _currentChannel.id : '';
-            console.log('[Guardian] Loading digest for', dateStr, channelParam ? 'channel ' + _currentChannel.id : 'all channels');
+            // console.log('[Guardian] Loading digest for', dateStr, channelParam ? 'channel ' + _currentChannel.id : 'all channels');
             var resp = await fetch('/api/guardian/reports?limit=10' + channelParam, { headers: _headers() });
             if (!resp.ok) {
                 console.error('[Guardian] Digest fetch failed:', resp.status, resp.statusText);
@@ -4735,7 +5568,7 @@
                 return;
             }
             var reports = await resp.json();
-            console.log('[Guardian] Reports received:', reports ? reports.length : 'null');
+            // console.log('[Guardian] Reports received:', reports ? reports.length : 'null');
             if (!reports || reports.length === 0) {
                 _digestContent.innerHTML = '<div class="guardian-digest-empty">📭 Дайджест ще не згенеровано.<br><small>Guardian створює звіт щовечора о 23:00</small><br>' +
                     '<button class="guardian-digest-generate-btn" onclick="void(0)">🔄 Згенерувати зараз</button></div>';
@@ -4772,7 +5605,7 @@
                 '</div>';
 
             // Format summary — allow safe HTML tags
-            var summary = report.summary || 'Немає даних';
+            var summary = _esc(report.summary || 'Немає даних');
             // Restore safe HTML tags from guardian reports
             summary = summary.replace(/&lt;b&gt;/g, '<b>').replace(/&lt;\/b&gt;/g, '</b>');
             summary = summary.replace(/&lt;i&gt;/g, '<i>').replace(/&lt;\/i&gt;/g, '</i>');
@@ -4797,7 +5630,7 @@
     var _isAdmin = false;
 
     function _initGuardianUI() {
-        console.log('[Guardian] Initializing guardian UI');
+        // console.log('[Guardian] Initializing guardian UI');
         // Check if user is admin
         try {
             var token = localStorage.getItem('pzp_token');
@@ -5047,7 +5880,7 @@
                     tab.classList.add('active');
                     var tabName = tab.dataset.tab;
                     document.querySelectorAll('.guardian-analytics-tab-content').forEach(function (tc) { tc.classList.remove('active'); });
-                    var target = document.getElementById('guardianTab' + tabName.charAt(0).toUpperCase() + tabName.slice(1));
+                    var target = document.getElementById('guardianTab' + tabName.charAt(0)?.toUpperCase() + tabName.slice(1));
                     if (target) target.classList.add('active');
                     _loadAnalyticsTab(tabName);
                 });
@@ -5332,17 +6165,18 @@
                 return;
             }
             list.innerHTML = data.map(function (u) {
-                var initials = (u.username || '?').substring(0, 2).toUpperCase();
+                var initials = _esc((u.username || '?').substring(0, 2).toUpperCase());
                 var barColor = u.level === 'trusted' ? '#10B981' : u.level === 'watched' ? '#F59E0B' : u.level === 'restricted' ? '#EF4444' : '#6B7280';
                 var levelLabel = u.level === 'trusted' ? 'Довірений' : u.level === 'watched' ? 'Під наглядом' : u.level === 'restricted' ? 'Обмежений' : 'Звичайний';
+                var safeScore = parseInt(u.trustScore, 10) || 0;
                 return '<div class="guardian-trust-row">' +
-                    '<div class="guardian-trust-avatar ' + u.level + '">' + initials + '</div>' +
+                    '<div class="guardian-trust-avatar ' + _esc(u.level) + '">' + initials + '</div>' +
                     '<div class="guardian-trust-info">' +
                         '<div class="guardian-trust-name">' + _esc(u.username) + '</div>' +
                         '<div class="guardian-trust-level">' + levelLabel + '</div>' +
                     '</div>' +
-                    '<div class="guardian-trust-score-bar"><div class="guardian-trust-score-fill" style="width:' + u.trustScore + '%;background:' + barColor + '"></div></div>' +
-                    '<span class="guardian-trust-score-num" style="color:' + barColor + '">' + u.trustScore + '</span>' +
+                    '<div class="guardian-trust-score-bar"><div class="guardian-trust-score-fill" style="width:' + safeScore + '%;background:' + barColor + '"></div></div>' +
+                    '<span class="guardian-trust-score-num" style="color:' + barColor + '">' + safeScore + '</span>' +
                 '</div>';
             }).join('');
         } catch (e) {
@@ -5567,7 +6401,7 @@
                     '<button class="chat-pinned-bar-close" id="chatPinnedClose">✕</button>';
                 header.after(bar);
 
-                document.getElementById('chatPinnedClose').addEventListener('click', function (e) {
+                document.getElementById('chatPinnedClose')?.addEventListener('click', function (e) {
                     e.stopPropagation();
                     bar.classList.remove('visible');
                 });
@@ -5903,7 +6737,7 @@
             // Request notification permission
             var permission = await Notification.requestPermission();
             if (permission !== 'granted') {
-                console.log('[Chat] Notification permission denied');
+                // console.log('[Chat] Notification permission denied');
                 return;
             }
 
@@ -5930,7 +6764,7 @@
                 endpoint: sub.endpoint,
                 keys: sub.keys
             });
-            console.log('[Chat] Push subscription saved');
+            // console.log('[Chat] Push subscription saved');
         } catch (err) {
             console.warn('[Chat] Push notifications not available:', err.message);
         }

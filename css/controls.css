@@ -7,21 +7,13 @@
    ========================================== */
 
 [aria-invalid="true"] {
-    border-color: #EF4444 !important;
+    border-color: var(--danger, #EF4444) !important;
     box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
 }
 
 [aria-invalid="true"]:focus {
-    border-color: #EF4444 !important;
+    border-color: var(--danger, #EF4444) !important;
     box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.3);
-}
-
-.field-error {
-    display: block;
-    color: #EF4444;
-    font-size: var(--font-xs, 12px);
-    margin-top: 4px;
-    font-weight: 600;
 }
 
 /* ==========================================
@@ -111,35 +103,6 @@
    NIGHT SETTINGS
    ========================================== */
 
-.btn-night-settings {
-    padding: 6px 8px;
-    border: 1px solid var(--gray-200);
-    background: var(--gray-50);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    font-size: 14px;
-    min-height: 36px;
-    transition: all 0.15s;
-}
-
-.btn-night-settings:hover {
-    background: var(--gray-100);
-}
-
-.night-settings-panel {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    z-index: 100;
-    background: var(--white);
-    border: 1px solid var(--gray-200);
-    border-radius: 10px;
-    padding: 12px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-    min-width: 220px;
-    margin-top: 4px;
-}
-
 .night-settings-row {
     display: flex;
     align-items: center;
@@ -158,15 +121,10 @@
     padding: 4px 8px;
     border: 1px solid var(--gray-200);
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 16px; /* v38.4.0: iOS zoom prevention */
     background: var(--white);
     color: var(--gray-700);
     min-height: 32px;
-}
-
-body.dark-mode .night-settings-panel {
-    background: var(--gray-800, #1f2937);
-    border-color: var(--gray-700, #374151);
 }
 
 body.dark-mode .night-settings-row {
@@ -177,36 +135,6 @@ body.dark-mode .night-settings-select {
     background: var(--gray-700, #374151);
     border-color: var(--gray-600, #4b5563);
     color: var(--gray-300, #d1d5db);
-}
-
-body.dark-mode .btn-night-settings {
-    background: var(--gray-700, #374151);
-    border-color: var(--gray-600, #4b5563);
-}
-
-.btn-reset-auto {
-    width: 100%;
-    padding: 6px 10px;
-    margin-top: 4px;
-    border: 1px solid var(--gray-300);
-    background: var(--gray-50);
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 12px;
-    color: var(--gray-600);
-    transition: all 0.15s;
-}
-
-.btn-reset-auto:hover {
-    background: var(--primary, #6366f1);
-    color: white;
-    border-color: var(--primary, #6366f1);
-}
-
-body.dark-mode .btn-reset-auto {
-    background: var(--gray-700, #374151);
-    border-color: var(--gray-600, #4b5563);
-    color: var(--gray-400, #9ca3af);
 }
 
 /* ==========================================
@@ -226,9 +154,9 @@ body.dark-mode .btn-reset-auto {
 }
 
 .btn-undo:hover {
-    background: #FFF7ED;
+    background: var(--orange-50, #FFF7ED);
     border-color: var(--warning);
-    color: #92400E;
+    color: var(--orange-900, #92400E);
 }
 
 /* ==========================================
@@ -316,23 +244,28 @@ body.dark-mode .btn-reset-auto {
 
 .booking-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin-top: 12px;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--border-color);
 }
 
 .booking-actions button,
 .booking-actions a {
-    flex: 1;
-    padding: 10px 16px;
+    flex: 1 1 auto;
+    min-width: 80px;
+    padding: 10px 12px;
     border-radius: var(--radius-sm);
-    font-weight: 700;
-    font-size: var(--font-sm);
+    font-weight: 600;
+    font-size: 13px;
     cursor: pointer;
     font-family: inherit;
     text-align: center;
     text-decoration: none;
     border: none;
     transition: all var(--speed-fast) var(--ease-smooth);
+    white-space: nowrap;
 }
 
 /* Button colors defined per-class in modals.css (v5.31) */
@@ -400,18 +333,19 @@ body.dark-mode .btn-reset-auto {
     cursor: pointer;
     font-family: inherit;
     color: var(--gray-500);
-    transition: all var(--speed-fast) var(--ease-smooth);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .status-filter-btn.active {
-    background: var(--primary);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: var(--white);
-    box-shadow: 0 1px 3px rgba(16,185,129,0.3);
+    box-shadow: 0 2px 8px rgba(16,185,129,0.3);
 }
 
 .status-filter-btn:hover:not(.active) {
-    background: rgba(16,185,129,0.08);
+    background: rgba(16,185,129,0.1);
     color: var(--gray-700);
+    transform: translateY(-1px);
 }
 
 /* Hide filtered-out booking blocks */
@@ -442,14 +376,15 @@ body.dark-mode .btn-reset-auto {
     background: transparent;
     color: var(--gray-500);
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     font-family: inherit;
     white-space: nowrap;
 }
 
 .period-btn:hover:not(.active) {
-    background: rgba(16,185,129,0.08);
+    background: rgba(16,185,129,0.1);
     color: var(--gray-700);
+    transform: translateY(-1px);
 }
 
 .period-btn.active {
@@ -541,3 +476,344 @@ body.dark-mode .btn-reset-auto {
 
 .duration-badge.short { background: #DBEAFE; color: #1E40AF; }    /* <=60 min */
 .duration-badge.long { background: #FDE68A; color: #92400E; }     /* >60 min */
+
+/* ==========================================
+   TIMELINE SEARCH (v30.3)
+   ========================================== */
+
+.timeline-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 1px solid var(--primary);
+    border-radius: var(--radius-sm);
+    background: var(--white);
+    min-height: 44px;
+}
+
+.timeline-search-wrap.hidden {
+    display: none;
+}
+
+.timeline-search-input {
+    border: none;
+    outline: none;
+    font-size: 16px; /* v38.4.0: iOS zoom prevention */
+    font-family: inherit;
+    width: 160px;
+    background: transparent;
+    color: var(--gray-700);
+}
+
+.timeline-search-count {
+    font-size: 11px;
+    color: var(--gray-400);
+    white-space: nowrap;
+    min-width: 40px;
+    text-align: center;
+}
+
+.timeline-search-nav {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 12px;
+    color: var(--gray-500);
+    border-radius: var(--radius-sm);
+    line-height: 1;
+    min-width: 36px;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.timeline-search-nav:hover {
+    background: var(--gray-100);
+    color: var(--gray-700);
+}
+
+.timeline-search-close {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 14px;
+    color: var(--gray-400);
+    border-radius: var(--radius-sm);
+    line-height: 1;
+    min-width: 28px;
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.timeline-search-close:hover {
+    background: var(--red-50, #FEE2E2);
+    color: var(--red-700, #DC2626);
+}
+
+/* Search highlight on booking blocks */
+.booking-block.search-match {
+    outline: 3px solid var(--primary) !important;
+    outline-offset: 1px;
+    z-index: 20 !important;
+}
+
+.booking-block.search-match-active {
+    outline: 3px solid #F59E0B !important;
+    outline-offset: 1px;
+    z-index: 25 !important;
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.5);
+}
+
+.booking-block.search-dimmed {
+    opacity: 0.35;
+}
+
+/* Dark mode overrides */
+[data-theme="dark"] .timeline-search-wrap {
+    background: var(--gray-800);
+    border-color: var(--primary);
+}
+
+[data-theme="dark"] .timeline-search-input {
+    color: var(--gray-100);
+}
+
+
+/* ==========================================
+   BOOKING TEMPLATES (v30.3)
+   ========================================== */
+
+.template-section {
+    padding: 8px 0 4px;
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.template-controls {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.template-select {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: 16px; /* v38.4.0: iOS zoom prevention */
+    font-family: inherit;
+    background: var(--white);
+    color: var(--gray-700);
+    min-height: 36px;
+    cursor: pointer;
+}
+
+.btn-save-template {
+    padding: 6px 10px;
+    border: 1px solid var(--gray-200);
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+    font-size: 15px;
+    cursor: pointer;
+    min-height: 36px;
+    min-width: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--speed-fast) var(--ease-smooth);
+}
+
+.btn-save-template:hover {
+    background: var(--primary-50, #ECFDF5);
+    border-color: var(--primary);
+}
+
+[data-theme="dark"] .template-select {
+    background: var(--gray-800);
+    border-color: var(--gray-600);
+    color: var(--gray-200);
+}
+
+[data-theme="dark"] .btn-save-template {
+    background: var(--gray-700);
+    border-color: var(--gray-600);
+}
+
+/* ==========================================
+   RECURRING BOOKINGS UI (v30.3)
+   ========================================== */
+
+
+.recurring-form .form-section {
+    margin-bottom: 12px;
+}
+
+.recurring-form label {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 4px;
+    display: block;
+}
+
+.recurring-form select,
+.recurring-form input[type="date"] {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-family: inherit;
+    min-height: 40px;
+}
+
+.recurring-days {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.recurring-days label {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 6px 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 13px;
+    min-height: 36px;
+}
+
+.recurring-days label:has(input:checked) {
+    background: var(--primary-50, #ECFDF5);
+    border-color: var(--primary);
+    color: var(--primary-dark);
+}
+
+.recurring-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.recurring-actions .btn-primary {
+    flex: 1;
+    padding: 10px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    min-height: 44px;
+}
+
+.recurring-actions .btn-secondary {
+    padding: 10px 16px;
+    background: var(--gray-100);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    min-height: 44px;
+}
+
+/* Recurring icon on timeline blocks */
+.booking-block .recurring-icon {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+/* Bulk operations (v30.3) */
+
+.booking-block.bulk-selected {
+    outline: 3px solid #3B82F6 !important;
+    outline-offset: 1px;
+    z-index: 20 !important;
+}
+
+.bulk-action-bar {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--gray-800);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 12px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    z-index: var(--z-sidebar);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    font-size: 13px;
+    font-family: inherit;
+}
+
+.bulk-action-bar .bulk-count {
+    font-weight: 700;
+    margin-right: 6px;
+}
+
+.bulk-action-bar button {
+    padding: 6px 12px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.1);
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    min-height: 36px;
+}
+
+.bulk-action-bar button:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.bulk-action-bar button.bulk-cancel {
+    background: #EF4444;
+    border-color: #EF4444;
+}
+
+.bulk-action-bar button.bulk-cancel:hover {
+    background: #DC2626;
+}
+
+/* v33.3: Booking tag selector */
+.booking-tag-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.booking-tag-option {
+    padding: 4px 10px;
+    border-radius: 16px;
+    border: 1px solid var(--gray-300);
+    background: var(--gray-50);
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+    user-select: none;
+}
+.booking-tag-option:hover {
+    border-color: var(--primary);
+    background: var(--primary-50, #EEF2FF);
+}
+.booking-tag-option.active {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+

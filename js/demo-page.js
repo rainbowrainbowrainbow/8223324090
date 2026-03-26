@@ -22,15 +22,6 @@ const CATEGORY_LABELS = {
 // NOTIFICATIONS
 // ==========================================
 
-function showNotification(message, type = '') {
-    let c = document.getElementById('toastContainer');
-    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
-    const t = document.createElement('div');
-    t.className = 'toast' + (type ? ' ' + type : '');
-    t.textContent = message;
-    c.appendChild(t);
-    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
-}
 
 // ==========================================
 // API
@@ -91,7 +82,7 @@ function setupTabs() {
             document.querySelectorAll('.demo-tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.demo-tab-content').forEach(c => c.classList.remove('active'));
             tab.classList.add('active');
-            document.getElementById(`tab-${tabName}`).classList.add('active');
+            document.getElementById(`tab-${tabName}`)?.classList.add('active');
             activeTab = tabName;
 
             if (tabName === 'packages') loadPackages();
@@ -207,7 +198,7 @@ async function startScenario(scenarioId) {
 
     document.getElementById('playerTitle').textContent = `${scenario.icon} ${scenario.title}`;
     renderPlayer(steps);
-    document.getElementById('playerModal').classList.remove('hidden');
+    document.getElementById('playerModal')?.classList.remove('hidden');
 }
 
 function renderPlayer(steps) {
@@ -266,7 +257,7 @@ async function playerComplete() {
             status: 'completed', current_step: currentStep
         });
     }
-    document.getElementById('playerModal').classList.add('hidden');
+    document.getElementById('playerModal')?.classList.add('hidden');
     showNotification('Сценарій завершено!', 'success');
     loadOverview();
     loadScenarios();
@@ -431,16 +422,17 @@ async function initAuth() {
     const token = localStorage.getItem('pzp_token');
     const savedUser = localStorage.getItem(CONFIG.STORAGE.CURRENT_USER);
     if (!token || !savedUser) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
+        document.getElementById('loginOverlay')?.classList.remove('hidden');
         return false;
     }
     const user = await apiVerifyToken();
     if (!user) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
+        document.getElementById('loginOverlay')?.classList.remove('hidden');
         return false;
     }
     AppState.currentUser = user;
-    const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
+    if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
+    const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     isAdminUser = ADMIN_ROLES.includes(user.role);
     const userEl = document.getElementById('currentUser');
     if (userEl) userEl.textContent = user.name;
@@ -488,7 +480,7 @@ async function initDemoPage() {
 
     // Player modal close
     document.getElementById('playerModalClose')?.addEventListener('click', () => {
-        document.getElementById('playerModal').classList.add('hidden');
+        document.getElementById('playerModal')?.classList.add('hidden');
     });
     document.getElementById('playerModal')?.addEventListener('click', (e) => {
         if (e.target.id === 'playerModal') e.target.classList.add('hidden');

@@ -4,8 +4,12 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('TaskTemplates');
+
+// All task-templates routes require authentication
+router.use(authenticateToken);
 
 const VALID_PATTERNS = ['daily', 'weekly', 'weekdays', 'custom'];
 const VALID_PRIORITIES = ['low', 'normal', 'high'];

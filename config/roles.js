@@ -61,12 +61,12 @@ const ROLE_DEPARTMENTS = {
 // v24.3.0: Default dashboard widgets per role (all 24 roles)
 const DEFAULT_WIDGETS = {
     // Executive — full overview
-    creator:        ['quick_stats', 'tasks', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'weather', 'currency', 'announcements'],
-    director:       ['quick_stats', 'tasks', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'weather', 'currency', 'announcements'],
-    vice_director:  ['quick_stats', 'tasks', 'team_online', 'bookings_today', 'finance_today', 'weather', 'announcements'],
+    creator:        ['quick_stats', 'exceptions', 'tasks', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'catalogs', 'weather', 'currency', 'announcements'],
+    director:       ['quick_stats', 'exceptions', 'tasks', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'catalogs', 'weather', 'currency', 'announcements'],
+    vice_director:  ['quick_stats', 'exceptions', 'tasks', 'team_online', 'bookings_today', 'finance_today', 'weather', 'announcements'],
     // Management
-    senior_manager: ['quick_stats', 'tasks', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements'],
-    manager:        ['tasks', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements'],
+    senior_manager: ['quick_stats', 'exceptions', 'tasks', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements'],
+    manager:        ['exceptions', 'tasks', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements'],
     // Specialists
     accountant:     ['finance_today', 'tasks', 'quick_stats', 'currency', 'weather'],
     art_director:   ['tasks', 'my_schedule', 'bookings_today', 'weather', 'announcements'],
@@ -74,7 +74,7 @@ const DEFAULT_WIDGETS = {
     it_specialist:  ['tasks', 'alerts', 'team_online', 'weather'],
     hr:             ['tasks', 'team_online', 'my_schedule', 'announcements', 'weather'],
     // Operations
-    admin:          ['tasks', 'bookings_today', 'my_schedule', 'weather', 'announcements'],
+    admin:          ['exceptions', 'tasks', 'bookings_today', 'my_schedule', 'weather', 'announcements'],
     // Programs
     senior_instructor: ['my_schedule', 'tasks', 'bookings_today', 'weather', 'announcements'],
     instructor:     ['my_schedule', 'tasks', 'bookings_today', 'weather'],
@@ -85,7 +85,7 @@ const DEFAULT_WIDGETS = {
     pastry_chef:    ['my_schedule', 'tasks', 'weather'],
     // Field
     animator:       ['my_schedule', 'tasks', 'bookings_today', 'weather'],
-    reception:      ['bookings_today', 'tasks', 'my_schedule', 'weather'],
+    reception:      ['exceptions', 'bookings_today', 'tasks', 'my_schedule', 'weather'],
     barista:        ['my_schedule', 'tasks', 'weather'],
     wardrobe:       ['my_schedule', 'tasks', 'weather'],
     cleaning:       ['my_schedule', 'tasks', 'weather'],

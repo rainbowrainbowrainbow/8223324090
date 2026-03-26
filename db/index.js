@@ -9,7 +9,10 @@ const log = createLogger('DB');
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000
 });
 
 pool.on('error', (err) => {
@@ -764,28 +767,11 @@ async function initDatabase() {
         // v12.6: skip_notification flag for bookings
         await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS skip_notification BOOLEAN DEFAULT false`);
 
-        // v15.1: CRM — customers table
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS customers (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(200) NOT NULL,
-                phone VARCHAR(30),
-                instagram VARCHAR(100),
-                child_name VARCHAR(200),
-                child_birthday DATE,
-                source VARCHAR(50),
-                notes TEXT,
-                total_bookings INTEGER DEFAULT 0,
-                total_spent INTEGER DEFAULT 0,
-                first_visit DATE,
-                last_visit DATE,
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
+        // v15.1: CRM — customers indexes (table created earlier near certificates)
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone)');
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name)');
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_customers_instagram ON customers(instagram)');
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_customers_child_name ON customers(child_name)');
 
         // v15.1: CRM — link bookings to customers
         await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id)`);

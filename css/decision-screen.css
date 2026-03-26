@@ -1,0 +1,253 @@
+/* ════════════════════════════════════════════════
+   DECISION SCREEN v1.0 — Центр прийняття рішень
+   z-index: 99999 > 9999 (modals) > 9000 (Kleshnya)
+   ════════════════════════════════════════════════ */
+
+/* ── Overlay ──────────────────────────────────── */
+#decisionScreen {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: rgba(0, 0, 0, 0.82);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: dsOverlayIn var(--speed-normal, 250ms) var(--ease-smooth) both;
+}
+#decisionScreen.hidden { display: none; }
+#decisionScreen.ds-closing { animation: dsOverlayOut 300ms var(--ease-smooth) both; }
+@keyframes dsOverlayIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dsOverlayOut { from { opacity: 1; } to { opacity: 0; } }
+
+body.ds-open { overflow: hidden; }
+body.ds-open #decisionScreen { pointer-events: all; }
+
+/* ── Inner container ──────────────────────────── */
+.ds-inner {
+    background: var(--white);
+    border-radius: var(--radius, 16px);
+    max-width: 700px;
+    width: 100%;
+    max-height: min(88vh, 780px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.06),
+        0 25px 50px -12px rgba(0, 0, 0, 0.35),
+        0 50px 100px -20px rgba(0, 0, 0, 0.25);
+    animation: dsContentIn 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.ds-closing .ds-inner {
+    animation: dsContentOut 280ms var(--ease-smooth) both;
+}
+@keyframes dsContentIn {
+    from { transform: translateY(20px) scale(0.96); opacity: 0; }
+    to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+@keyframes dsContentOut {
+    from { transform: translateY(0) scale(1); opacity: 1; }
+    to   { transform: translateY(12px) scale(0.97); opacity: 0; }
+}
+
+/* ── Header (sticky) ─────────────────────────── */
+.ds-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 22px 28px 16px;
+    border-bottom: 1px solid var(--gray-100);
+    position: sticky;
+    top: 0;
+    background: var(--white);
+    z-index: 2;
+    border-radius: var(--radius, 16px) var(--radius, 16px) 0 0;
+}
+.ds-header-left { display: flex; align-items: center; gap: 10px; }
+.ds-icon { font-size: 22px; line-height: 1; }
+.ds-title-text {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 800;
+    color: var(--gray-900);
+    letter-spacing: -0.4px;
+}
+.ds-count-badge {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--primary-dark, #059669);
+    background: var(--primary-50, #ECFDF5);
+    border: 1px solid var(--primary-light, #A7F3D0);
+    padding: 3px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+/* ── List ────────────────────────────────────── */
+.ds-list {
+    padding: 20px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+/* ── Card ────────────────────────────────────── */
+.ds-card {
+    border-radius: var(--radius-card, 12px);
+    padding: 18px;
+    border-left: 4px solid var(--gray-200);
+    background: var(--gray-50);
+    transition: transform var(--speed-fast, 150ms) var(--ease-smooth),
+                opacity var(--speed-fast, 150ms) var(--ease-smooth);
+    animation: dsCardIn 0.25s var(--ease-smooth) both;
+}
+@keyframes dsCardIn {
+    from { opacity: 0; transform: translateX(-6px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+.ds-card:hover { transform: translateX(2px); }
+.ds-card--critical  { border-left-color: #EF4444; background: #FEF2F2; }
+.ds-card--important { border-left-color: #F59E0B; background: #FFFBEB; }
+.ds-card--normal    { border-left-color: #3B82F6; background: #EFF6FF; }
+.ds-card--deciding  { opacity: 0.5; pointer-events: none; transform: scale(0.99); }
+
+.ds-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+.ds-priority { font-size: 11px; font-weight: 800; letter-spacing: 0.5px; }
+.ds-time { font-size: 12px; color: var(--gray-400); }
+
+/* Override sticky h3 from modals.css */
+h3.ds-title {
+    position: static !important;
+    margin: 0 0 6px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--gray-900);
+    line-height: 1.3;
+    border-bottom: none !important;
+}
+
+.ds-desc {
+    font-size: 13px;
+    color: var(--gray-600);
+    margin: 0 0 8px;
+    line-height: 1.4;
+}
+
+.ds-card-footer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.ds-meta { font-size: 12px; color: var(--gray-400); }
+.ds-link {
+    font-size: 12px;
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+}
+.ds-link:hover { color: var(--primary-dark); text-decoration: underline; }
+
+/* ── Buttons ─────────────────────────────────── */
+.ds-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ds-btn {
+    padding: 8px 16px;
+    border-radius: var(--radius-sm, 10px);
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    transition: background 150ms, color 150ms, transform 150ms;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+}
+.ds-btn:active { transform: scale(0.95) !important; }
+.ds-btn:disabled { opacity: 0.5; cursor: default; }
+
+.ds-btn--approve { background: #DCFCE7; color: #16A34A; }
+.ds-btn--approve:hover:not(:disabled) { background: #16A34A; color: #fff; transform: scale(1.04); }
+.ds-btn--reject { background: #FEE2E2; color: #DC2626; }
+.ds-btn--reject:hover:not(:disabled) { background: #DC2626; color: #fff; transform: scale(1.04); }
+.ds-btn--defer { background: var(--gray-100); color: var(--gray-600); }
+.ds-btn--defer:hover:not(:disabled) { background: var(--gray-200); transform: scale(1.04); }
+
+/* ── Empty ───────────────────────────────────── */
+.ds-empty { text-align: center; padding: 40px 16px; }
+.ds-empty-icon { font-size: 44px; margin-bottom: 10px; }
+.ds-empty-text { color: var(--gray-400); font-size: 14px; margin: 0; }
+
+/* ── Footer ──────────────────────────────────── */
+.ds-footer {
+    padding: 14px 28px 20px;
+    text-align: center;
+    border-top: 1px solid var(--gray-100);
+    border-radius: 0 0 var(--radius, 16px) var(--radius, 16px);
+}
+.ds-hint { font-size: 12px; color: var(--gray-400); margin: 0; }
+
+/* ════ DARK MODE ════ */
+body.dark-mode .ds-inner { background: #1e1e32; }
+body.dark-mode .ds-header { background: #1e1e32; border-bottom-color: rgba(255, 255, 255, 0.06); }
+body.dark-mode .ds-title-text { color: #E2E8F0; }
+body.dark-mode .ds-count-badge {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.25);
+    color: #34D399;
+}
+body.dark-mode .ds-card { background: rgba(255, 255, 255, 0.04); }
+body.dark-mode .ds-card--critical { background: rgba(239, 68, 68, 0.12); }
+body.dark-mode .ds-card--important { background: rgba(245, 158, 11, 0.12); }
+body.dark-mode .ds-card--normal { background: rgba(59, 130, 246, 0.12); }
+body.dark-mode h3.ds-title { color: #E2E8F0; }
+body.dark-mode .ds-btn--defer { background: rgba(255, 255, 255, 0.08); color: #CBD5E1; }
+body.dark-mode .ds-btn--defer:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+body.dark-mode .ds-footer { border-top-color: rgba(255, 255, 255, 0.06); }
+
+/* ════ MOBILE / PWA ════ */
+@media (max-width: 640px) {
+    #decisionScreen { padding: 0; align-items: flex-end; }
+    .ds-inner {
+        border-radius: var(--radius, 16px) var(--radius, 16px) 0 0;
+        max-height: 92svh;
+        animation: dsContentInMobile 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    }
+    @keyframes dsContentInMobile {
+        from { transform: translateY(100%); }
+        to   { transform: translateY(0); }
+    }
+    .ds-header { padding: 18px 20px 14px; }
+    .ds-list { padding: 14px 20px; }
+    .ds-footer { padding: 12px 20px 16px; }
+    .ds-actions { flex-direction: column; }
+    .ds-btn { width: 100%; text-align: center; }
+}
+
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+    @media (max-width: 640px) {
+        .ds-footer {
+            padding-bottom: calc(16px + env(safe-area-inset-bottom));
+        }
+    }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    #decisionScreen, .ds-inner, .ds-card { animation: none !important; transition: none !important; }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+    #decisionScreen { align-items: flex-start; padding: 12px; }
+    .ds-inner { max-height: 96svh; border-radius: var(--radius, 16px); }
+}

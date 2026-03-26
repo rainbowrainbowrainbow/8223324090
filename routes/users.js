@@ -145,6 +145,21 @@ router.post('/', requireRole('creator', 'director'), async (req, res) => {
         );
 
         log.info(`User ${req.user.username} created user ${username} (role: ${role || 'admin'})`);
+
+        // Auto-add new user to default chat channels
+        try {
+            const newUserId = result.rows[0].id;
+            const defaultChannels = await pool.query(
+                'SELECT id FROM chat_channels WHERE is_default = true'
+            );
+            for (const ch of defaultChannels.rows) {
+                await pool.query(
+                    'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                    [ch.id, newUserId]
+                );
+            }
+        } catch (e) { /* non-critical */ }
+
         res.json({ success: true, user: result.rows[0] });
     } catch (err) {
         log.error('Create user error', err);

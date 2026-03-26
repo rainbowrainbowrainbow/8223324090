@@ -116,6 +116,7 @@ const CommandPanel = (() => {
 
     function hide() {
         isOpen = false;
+        if (!panelEl) return;
         panelEl.classList.remove('cmd-panel--open');
         panelEl.classList.add('cmd-panel--closed');
         if (fabEl) fabEl.classList.remove('hidden');

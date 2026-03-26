@@ -1350,6 +1350,85 @@
         overlay.classList.remove('hidden');
     }
 
+    // Modal functions for Image Picker + Page Form
+    function closeImagePicker() { var o = document.getElementById('imagePickerOverlay'); if (o) o.classList.add('hidden'); }
+    function closePageForm() { var o = document.getElementById('pageFormOverlay'); if (o) o.classList.add('hidden'); }
+    function closeCreateCatalog() { var o = document.getElementById('createCatalogOverlay'); if (o) o.classList.add('hidden'); }
+
+    async function generatePageImage() {
+        var p = document.getElementById('imgGenPrompt').value.trim();
+        if (!p) { document.getElementById('imgGenPrompt').focus(); return; }
+        var btn = document.getElementById('imgGenBtn'); btn.disabled = true; btn.textContent = '...';
+        document.getElementById('imgGenStatus').style.display = 'block';
+        document.getElementById('imgGenStatus').textContent = 'Генерація ~30с...';
+        try {
+            var r = await apiFetch('/api/catalogs/generate-image', { method: 'POST', body: JSON.stringify({ prompt: p, name: p, catalogId: window._imgPickerCatalogId || '' }), headers: { 'Content-Type': 'application/json' } });
+            if (!r || !r.ok) throw new Error('Сервер не відповідає');
+            var data = await r.json();
+            if (data.taskId) {
+                document.getElementById('imgGenStatus').textContent = 'Очікуємо результат...';
+                var poll = setInterval(async function() {
+                    var pr = await apiFetch('/api/catalogs/generate-image/' + data.taskId);
+                    if (!pr || !pr.ok) return;
+                    var pd = await pr.json();
+                    if (pd.status === 'completed' && pd.url) { clearInterval(poll); window._imgGenUrl = pd.url; document.getElementById('imgGenPreview').src = pd.url; document.getElementById('imgGenPreview').style.display = 'block'; document.getElementById('imgGenActions').style.display = 'flex'; document.getElementById('imgGenStatus').textContent = 'Готово!'; }
+                    else if (pd.status === 'failed') { clearInterval(poll); document.getElementById('imgGenStatus').textContent = 'Помилка генерації'; }
+                }, 3000);
+                setTimeout(function() { clearInterval(poll); }, 180000);
+            }
+        } catch (err) { document.getElementById('imgGenStatus').textContent = 'Помилка: ' + err.message; }
+        finally { btn.disabled = false; btn.textContent = 'Згенерувати'; }
+    }
+    function useGeneratedImage() { if (window._imgGenUrl) savePageImg(window._imgGenUrl); }
+    function uploadPageImage() { document.getElementById('imgUploadInput').click(); }
+    document.getElementById('imgUploadInput')?.addEventListener('change', async function(e) {
+        var file = e.target.files[0]; if (!file) return;
+        var fd = new FormData(); fd.append('files', file);
+        try {
+            var r = await fetch('/api/designs/upload', { method: 'POST', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }, body: fd });
+            var d = await r.json();
+            if (d.items && d.items[0]) savePageImg('/uploads/designs/' + d.items[0].filename);
+        } catch (err) { showNotification('Помилка: ' + err.message, 'error'); }
+        e.target.value = '';
+    });
+    function useUrlImage() { var u = document.getElementById('imgUrlInput').value.trim(); if (u) savePageImg(u); }
+    async function savePageImg(url) {
+        var body = window._imgPickerField === 'background' ? { background_url: url } : { image_url: url };
+        try {
+            await apiFetch('/api/catalogs/' + window._imgPickerCatalogId + '/pages/' + window._imgPickerPageNumber, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+            closeImagePicker(); showNotification('Зображення збережено');
+            if (_pagesCatalogId) openCatalogPages(_pagesCatalogId);
+        } catch (err) { showNotification('Помилка', 'error'); }
+    }
+
+    function submitPageForm() {
+        var title = document.getElementById('pageTitle')?.value?.trim();
+        if (!title) { document.getElementById('pageTitle')?.focus(); return; }
+        var body = { title: title, subtitle: document.getElementById('pageSubtitle')?.value?.trim() || null, description: document.getElementById('pageDescription')?.value?.trim() || null, price_label: document.getElementById('pagePriceLabel')?.value?.trim() || null };
+        var det = document.getElementById('pageDetail')?.value?.trim();
+        if (det) body.details = JSON.stringify({ info: det });
+        apiFetch('/api/catalogs/' + _pagesCatalogId + '/pages', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } })
+            .then(function(r) { if (r) { closePageForm(); showNotification('Сторінку додано'); openCatalogPages(_pagesCatalogId); } });
+    }
+    function fillPageFromProduct(val) {
+        if (!val || typeof PROGRAMS === 'undefined') return;
+        var p = PROGRAMS.find(function(x) { return x.id === val; });
+        if (!p) return;
+        var ti = document.getElementById('pageTitle'); if (ti) ti.value = p.name;
+        var si = document.getElementById('pageSubtitle'); if (si) si.value = (p.icon || '') + ' ' + (p.label || '');
+        var di = document.getElementById('pageDescription'); if (di) di.value = p.description || '';
+        var pi = document.getElementById('pagePriceLabel'); if (pi) pi.value = p.price ? 'від ' + p.price.toLocaleString('uk-UA') + ' ₴' : '';
+    }
+
+    // ESC closes all modals
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') { closeImagePicker(); closePageForm(); closeCreateCatalog(); }
+    });
+    ['imagePickerOverlay', 'pageFormOverlay', 'createCatalogOverlay'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('click', function(e) { if (e.target === el) el.classList.add('hidden'); });
+    });
+
     // Load dynamic catalogs on tab switch
     var _catalogsLoaded = false;
     var origLoadCatalogs = window.loadCatalogs || loadCatalogs;

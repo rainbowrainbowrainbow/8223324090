@@ -1153,6 +1153,905 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
+                    <h4>v38.13.0 — Catalog Pages + Supabase (Claude Code, 26.03.2026)</h4>
+                    <ul>
+                        <li><b>Каталог сторінки</b> — HTML-сторінки з обкладинкою, товарами, цінами та зображеннями</li>
+                        <li><b>Supabase Storage</b> — AI зображення зберігаються постійно (не зникають через 14 днів)</li>
+                        <li><b>nano-banana-2</b> — нова AI модель для генерації зображень</li>
+                        <li><b>CSS extract</b> — designs.html -53%, окремі css/designs.css + css/catalog.css</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v38.11.0 — Системні покращення (Claude Code, 26.03.2026)</h4>
+                    <ul>
+                        <li><b>AI зображення</b> — транслітерація промпту UA→EN (Gemini відхиляв кирилицю)</li>
+                        <li><b>Нотифікації</b> — єдиний notification.js замість 9 дублікатів, alert()→toast</li>
+                        <li><b>Каталоги</b> — inline view, модалка деталей, AI генерація, кнопка створення</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v38.10.0 — Sidebar + Каталоги + Match-3 (Claude Code, 26.03.2026)</h4>
+                    <ul>
+                        <li><b>Sidebar</b> — фікс подвійного виділення (exact match замість startsWith)</li>
+                        <li><b>Каталоги</b> — кнопка створення, фікс viewer, hash навігація, ціни випускних</li>
+                        <li><b>Match-3</b> — паузa, бонус банер, збільшені спецефекти з tooltip</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v38.9.0 — Stability & Page Fixes (Claude Code, 25.03.2026)</h4>
+                    <ul>
+                        <li><b>Арт/Центр/Демо</b> — відновлено JS файли, сторінки знову працюють</li>
+                        <li><b>Менеджер AI</b> — кнопки Tracker тепер клікабельні</li>
+                        <li><b>Дизайн-борд</b> — окрема сторінка /designs (було redirect на /art)</li>
+                        <li><b>Sidebar</b> — Центр цін → Центр керування 🎛️, embed-mode CSS</li>
+                        <li><b>UI тести</b> — 106 автоматичних DOM перевірок через jsdom</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v38.8.0 — Авто-каталог Fix + Dashboard (Claude Code, 25.03.2026)</h4>
+                    <ul>
+                        <li><b>Каталог</b> — зменшено шрифти (cover icon 40px, title clamp 20-28px, price clamp 18-24px)</li>
+                        <li><b>Viewer</b> — max-height 80vh для preview, не займає весь екран</li>
+                        <li><b>Dashboard</b> — віджет "Авто-каталоги" повернено до списку доступних</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v38.7.0 — Sidebar: Арт + Дизайнер Split (Claude Code, 25.03.2026)</h4>
+                    <ul>
+                        <li><b>Sidebar</b> — група "Продукт" розділена на 🎨 Арт (програми, розваги) та 📐 Дизайнер (візуал, каталоги)</li>
+                        <li><b>Каталоги</b> — переміщено в /designs#catalogs (авто-каталог viewer з AI та PDF)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v38.6.0 — Business Logic Hardening (Claude Code, 25.03.2026)</h4>
+                    <ul>
+                        <li><b>Booking</b> — status whitelist (тільки confirmed/preliminary/cancelled), блок cancelled→confirmed, захист від midnight span</li>
+                        <li><b>Wallet</b> — deadlock prevention на переказах, idempotency guard на daily login</li>
+                        <li><b>DB</b> — Migration 126: 5 indexes (leads, bookings, finance, staff) + FK ON DELETE SET NULL</li>
+                        <li><b>Frontend</b> — setInterval cleanup (3 файли), innerHTML XSS fix (4 файли), CSS iOS zoom fix (3 inputs)</li>
+                        <li><b>Тести</b> — +11 нових (435 total): wallet, shop, minigame, booking validation</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v38.5.0 — Deep QA Sweep (Claude Code, 25.03.2026)</h4>
+                    <ul>
+                        <li><b>Security</b> — видалено hardcoded API ключі, Telegram HTML injection fix, IDOR fix на payment, XSS escape в 4 місцях</li>
+                        <li><b>Race Conditions</b> — atomic awardXP, FOR UPDATE на shop stock, atomic streak upsert</li>
+                        <li><b>Performance</b> — N+1 achievements (500→9 queries), batch INSERT для bulk messaging, 52+ LIMIT на SELECT*</li>
+                        <li><b>Frontend</b> — 401 blank screen fix (13 сторінок), 434 buttons type=button, setInterval cleanup, iOS zoom fix</li>
+                        <li><b>Timezone</b> — DST-aware music cron, 8 toLocaleDateString з timeZone: Europe/Kyiv</li>
+                        <li><b>Memory</b> — Guardian 9 caches cleanup, contextCache cap, WebSocket heartbeat fix</li>
+                        <li><b>DB</b> — Migration 126: 5 indexes + FK ON DELETE</li>
+                        <li><b>Тести</b> — +78 нових (424 total): JWT refresh, SQL safety, decisions, vacancies, graduation, dashboard</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v38.4.0 — Security & Reliability Hardening (Claude Code, 25.03.2026)</h4>
+                    <ul>
+                        <li><b>JWT Refresh Tokens</b> — короткоживучий access token (15 хв) + refresh token (30 днів) з ротацією та детекцією повторного використання</li>
+                        <li><b>Управління сесіями</b> — перегляд активних сесій, вихід з одного або всіх пристроїв</li>
+                        <li><b>Transactional Outbox</b> — надійна доставка подій: запис в тій самій транзакції що й бізнес-дані, relay кожні 5 сек</li>
+                        <li><b>pg_stat_statements</b> — моніторинг продуктивності SQL запитів</li>
+                        <li><b>SQL Safety Audit</b> — перевірка 12+ місць динамічного SQL, утиліти safeOrderBy/safeTableName</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v38.3.0 — Operations Intelligence (Claude Code, 24.03.2026)</h4>
+                    <ul>
+                        <li><b>Exceptions Inbox</b> — новий dashboard віджет: конфлікти кімнат, без аніматора, NPS detractors, прибирання SLA, непідтверджені броні</li>
+                        <li><b>Event Pipeline</b> — автоматичний lifecycle бронювання: T-24 нагадування, день підготовки, завершення</li>
+                        <li><b>NPS Follow-Up</b> — автоматичні задачі для незадоволених клієнтів + реферальні пропозиції для промоутерів</li>
+                        <li><b>Cleaning Chain</b> — авто-задачі прибирання з SLA 15 хв після кожної події</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v38.2.0 — Тестовий деплой + Deep Research підготовка (Claude Code, 24.03.2026)</h4>
+                    <ul>
+                        <li><b>Research</b> — Підготовлено промпти для глибокого аналізу CRM (бізнес + технічний)</li>
+                        <li><b>Deploy</b> — Тестовий деплой для перевірки стабільності системи</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v38.1.2 — Sidebar: Звук окрема група + QA фікси (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Sidebar</b> — "Звук" виділено в окрему групу (була під "Арт директор")</li>
+                        <li><b>Фікс</b> — sound-page.js: apiCall сигнатура виправлена (11 викликів)</li>
+                        <li><b>Фікс</b> — sound.html: cache-bust версії оновлені</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v38.1.0 — HR: Команда + Вакансії + Підбір персоналу (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Фікс</b> — Вкладка "Команда": null-safe initTabs, spinner, обробка помилок</li>
+                        <li><b>Ролі</b> — 8 нових ролей з optgroup-групами (інструктор батутів, офіціант, бармен, повар, шеф, директор, зам, HR)</li>
+                        <li><b>Новий модуль</b> — 💼 Вакансії: картки, статуси, пріоритет, статистика</li>
+                        <li><b>Новий модуль</b> — 👥 Підбір: Канбан кандидатів (Новий→Зв'язались→Співбесіда→Оффер→Найнятий)</li>
+                        <li><b>Автоматизація</b> — Найняти кандидата → автоматично створюється запис у staff</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v38.0.1 — 🔊 Звуковий модуль + Security Audit (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Новий модуль</b> — sound.html: Оголошення / Бібліотека / Плейлисти / Лог</li>
+                        <li><b>БД</b> — Migration 122: sounds.url, extended categories</li>
+                        <li><b>API</b> — TTS через Kie.ai ElevenLabs, upload бібліотеки, projects CRUD</li>
+                        <li><b>Фікс POST /play</b> — реальна доставка через Telegram + логування</li>
+                        <li><b>Security</b> — Auth middleware для 20 routes, RBAC для customers/leads/workers</li>
+                        <li><b>Security</b> — JWT secret fix, SQL injection whitelist, price validation</li>
+                        <li><b>CSS</b> — Видалено 690 рядків unused стилів, z-index tokens, dark mode gaps</li>
+                        <li><b>DB</b> — Transaction для customer delete, REAL→NUMERIC в graduation</li>
+                        <li><b>Sidebar</b> — Група "Арт директор", Ukrainian labels</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v37.9.0 — Report Bot + Особисті рахунки (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>БД</b> — Нові таблиці: finance_account_access, personal_account_transactions, report_bot_submissions, report_bot_category_map</li>
+                        <li><b>API</b> — routes/report-bot.js: submit з роутингом корпоративне/особисте, summary з аналітикою по об'єктах, submissions queue</li>
+                        <li><b>API</b> — routes/personal-accounts.js: sync, my, grant, revoke, transactions CRUD</li>
+                        <li><b>Finance UI</b> — Вкладка "Особисті рахунки" з карточками і таблицею транзакцій</li>
+                        <li><b>Ізоляція</b> — Особисті витрати в окремій таблиці, не впливають на P&L компанії</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v37.8.0 — Visual Polish (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Cards</b> — покращені тіні та hover-lift з м'яким border-glow</li>
+                        <li><b>Buttons</b> — gradient backgrounds, glow-shadow на hover, scale на active</li>
+                        <li><b>Inputs</b> — inset shadow, hover border, покращений focus ring з підсвіткою</li>
+                        <li><b>Login</b> — gradient кнопка входу, стильніші інпути з inner glow</li>
+                        <li><b>Tooltip</b> — backdrop-blur, rounded corners, глибокі тіні</li>
+                        <li><b>Tabs</b> — gradient active state, hover-lift, box-shadow</li>
+                        <li><b>Dashboard</b> — widget hover-lift, stat-items з gradient tint</li>
+                        <li><b>Empty state</b> — dashed border, gradient фон, менш «порожній» вигляд</li>
+                        <li><b>A11y</b> — alert bell збільшено до 44px touch target</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v37.7.0 — Page Transitions (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>UI</b> — 5 унікальних анімацій входу при переході між сторінками (по групах sidebar)</li>
+                        <li><b>CRM</b> — slide-in зліва, <b>Управління</b> — fade+scale, <b>HR</b> — підйом знизу</li>
+                        <li><b>Творче</b> — 3D perspective rotate, <b>Система</b> — bounce ефект</li>
+                        <li><b>UI</b> — плавна exit-анімація (fade-slide-down 180ms) при навігації</li>
+                        <li><b>A11y</b> — prefers-reduced-motion повністю вимикає всі переходи</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v37.6.0 — Sidebar Visual Upgrade (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>UI</b> — іконки навігації з кольоровим фоном (28px rounded boxes)</li>
+                        <li><b>UI</b> — user card з gradient підкладкою та shadow</li>
+                        <li><b>UI</b> — активний пункт меню з gradient background + глоу-індикатор</li>
+                        <li><b>UI</b> — hover ефекти з translateX(2px) анімацією</li>
+                        <li><b>UI</b> — custom thin scrollbar для sidebar</li>
+                        <li><b>UI</b> — gradient background для sidebar + brand header</li>
+                        <li><b>Dark mode</b> — адаптовано всі нові стилі</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v37.5.0 — Sidebar Avatar Fix (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Fix</b> — аватар у sidebar показує ініціал на ВСІХ сторінках (було "?" на всіх крім таймлайну)</li>
+                        <li><b>Auto-trigger</b> — Object.defineProperty на AppState.currentUser для автоматичного оновлення sidebar</li>
+                        <li><b>Fallback</b> — sidebar сам робить /api/auth/verify якщо user не знайдений через 2с</li>
+                        <li><b>Fix</b> — додано AppState.currentUser = user на 5 сторінках де було пропущено</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v37.4.0 — Системний QA Чекап (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Безпека</b> — sound-library.js: додано authenticateToken (був незахищений API!)</li>
+                        <li><b>Cache-bust</b> — синхронізовано ?v=38.13.0 на всіх 30 HTML сторінках</li>
+                        <li><b>Production cleanup</b> — прибрано 19 console.log з decision-screen, dashboard, timeline, chat, api</li>
+                        <li><b>Accessibility</b> — prefers-reduced-motion для decision-screen анімацій</li>
+                        <li><b>Decision Screen</b> — центр прийняття рішень: overlay на dashboard, approve/reject/defer</li>
+                        <li><b>Нові сторінки</b> — sound.html (бібліотека звуків), designer.html (дизайн-студія)</li>
+                        <li><b>Sidebar v5</b> — 5 груп (CRM, Управління, HR, Творче, Система), завжди розгорнутий</li>
+                        <li><b>Sidebar responsive</b> — Mac/tablet letter-spacing, mobile off-canvas 280px</li>
+                        <li><b>Copilot</b> — виправлена порожня сторінка, додано в PAGE_ACCESS</li>
+                        <li><b>Unified nav</b> — sidebar на 24+ сторінках з Sidebar.init()</li>
+                        <li><b>Nunito font</b> — підключено на всіх сторінках, до цього було тільки на 18</li>
+                        <li><b>БД</b> — 3 міграції: decisions (115), decisions_seed (116), sound_module (117)</li>
+                        <li><b>Тести</b> — 346/346 pass</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v37.3.0 — Sidebar Always Open (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Всі групи розгорнуті</b> — CRM, Управління, HR, Творче, Система відкриті за замовчуванням</li>
+                        <li><b>Згорнути прибрано</b> — кнопка "Згорнути" прихована, sidebar завжди повний</li>
+                        <li><b>localStorage очищено</b> — скинуто збережений collapsed/groups стан для всіх</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v37.2.0 — HR Group in Sidebar (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>HR група</b> — нова 5-та accordion секція: Графік, Команда, Кадри, Навчання</li>
+                        <li><b>Управління</b> — залишились тільки бізнес-пункти (Клієнти, Ліди, Фінанси, Аналітика, Звіти, AI)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v37.1.0 — Sidebar Responsive Fix (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Mac/Tablet</b> — group labels: letter-spacing 1.2→0.8px, text-overflow:ellipsis</li>
+                        <li><b>Tablet 769-1023px</b> — sidebar font 12px, group label 9px для 200px ширини</li>
+                        <li><b>Mobile</b> — accordion groups відновлені в collapsed sidebar (280px off-canvas)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v37.0.0 — UI Polish Bundle (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Профіль</b> — null-safe getElementById для currentUser на всіх сторінках</li>
+                        <li><b>Афіша</b> — кнопка 🎭 в топ-бар таймлайну поруч з Export</li>
+                        <li><b>Статистика</b> — прихована з dropdown меню (доступна через sidebar)</li>
+                        <li><b>Історія</b> — видалено дублювання з dropdown (залишено тільки sidebar)</li>
+                        <li><b>sound.html</b> — нова сторінка: Бібліотека / Проекти / Завантажити</li>
+                        <li><b>designer.html</b> — нова сторінка: Каталоги / Гайдлайн / Brand Book / Стайлгайд / Шаблони</li>
+                        <li><b>БД</b> — migration 117: sounds, sound_projects, sound_project_tracks</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v36.2.0 — Decision Screen Deploy Fix (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Seed Data</b> — міграція 116: 3 тестових рішення для першого запуску</li>
+                        <li><b>Script Order</b> — decision-screen.js тепер перед dashboard-page.js</li>
+                        <li><b>Debug Logs</b> — console.log діагностика в DecisionScreen.init()</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v36.1.0 — Decision Screen для всіх (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Всі ролі</b> — Decision Screen тепер доступний для всіх авторизованих користувачів</li>
+                        <li><b>Тестові рішення</b> — 3 приклади (критичне, важливе, звичайне)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v36.0.0 — Центр прийняття рішень (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Decision Screen</b> — блокуючий overlay на Dashboard для директорів</li>
+                        <li><b>API</b> — /api/decisions: pending, create, approve/reject/defer, history</li>
+                        <li><b>БД</b> — migration 115: таблиця decisions з пріоритетами та джерелами</li>
+                        <li><b>Mobile</b> — PWA bottom sheet, safe-area-inset, landscape</li>
+                        <li><b>Dark Mode</b> — повна підтримка (#1e1e32)</li>
+                        <li><b>Інтеграція</b> — Клешня та боти можуть POST /api/decisions</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v35.11.0 — Full Site Health Fix (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>CSS/JS Sync</b> — оновлено ?v= на всіх 27 standalone сторінках до актуальної версії</li>
+                        <li><b>Nunito Font</b> — додано на profile, quiz, room (18 сторінок раніше)</li>
+                        <li><b>copilot.html</b> — додано responsive.css, pages.css, role-panel.css; прибрано дублікат overlay</li>
+                        <li><b>game.html/shop.html</b> — overlay тепер hidden за замовчуванням</li>
+                        <li><b>status.html</b> — додано config.js, api.js, auth.js, sidebar.js (були повністю відсутні)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v35.10.0 — Sidebar Visual Sync (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>CSS Cache Bust</b> — оновлено ?v= на ВСІХ CSS/JS файлах 27 standalone сторінок (були на v33.15.0!)</li>
+                        <li><b>Nunito Font</b> — додано на 18 сторінок де був відсутній (основний шрифт CRM)</li>
+                        <li><b>Результат</b> — sidebar тепер виглядає ОДНАКОВО на всіх сторінках як на таймлайні</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v35.9.0 — Copilot Page Fix (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Copilot Fix</b> — сторінка /copilot була порожня: waitForAuth() чекала AppState який ніхто не ставив</li>
+                        <li><b>Auth</b> — copilot-page.js тепер сам робить apiVerifyToken() замість чекати на app.js</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v35.8.0 — Unified Sidebar (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>copilot.html</b> — sidebar перероблено зі стандартною структурою (aside.sidebar-nav + overlay)</li>
+                        <li><b>graduation.html</b> — додано id="sidebarNav"</li>
+                        <li><b>24/24 сторінок</b> — однакова sidebar структура, версія, collapse button</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v35.7.0 — Copilot Access Fix (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Додано</b> — PAGE_ACCESS для /copilot в auth.js (creator → manager)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v35.6.0 — API Bugfixes (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Copilot Fix</b> — pipeline/interactions: l.updated_at → l.last_contact_at, u.full_name → u.name</li>
+                        <li><b>Warehouse Fix</b> — /api/warehouse/categories route перед /:id (route ordering)</li>
+                        <li><b>0 API errors</b> — повний скан 35 endpoints, всі 200</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v35.5.0 — Theme Toggle in Sidebar (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Тема</b> — кнопка зміни теми 🌙/☀️ тепер в sidebar перед "Згорнути" на всіх сторінках</li>
+                        <li><b>Динамічна</b> — кнопка створюється через JS, працює на всіх 24 сторінках</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v35.4.0 — Cleanup (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Видалено</b> — FAB кнопка "Пропозиція покращення" 💡 що накладалась на Клешню</li>
+                        <li><b>Видалено</b> — модалка improvementModal + JS обробники + CSS стилі</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v35.3.0 — Каталоги + Profile Fix (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Каталоги</b> — додано кнопку "Каталоги" в групу Творче (відкриває Art Director)</li>
+                        <li><b>Profile Fix</b> — user card redirect на /dashboard замість /profile (profile view крашиться)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v35.2.0 — Sidebar UX Fix (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Compact</b> — padding 10→7px, font 14→13px, gap 10→8px (sidebar влізає без скролу)</li>
+                        <li><b>Active Fix</b> — прибрано подвійний indicator (border-left + ::before), залишено тільки ::before</li>
+                        <li><b>Clean Hover</b> — прибрано translateX(3px), тепер тільки background зміна</li>
+                        <li><b>Smart Groups</b> — тільки група з поточною сторінкою відкрита, решта згорнуті</li>
+                        <li><b>Arrow</b> — більша стрілка (6px/2px), margin-left:auto для правильного позиціонування</li>
+                        <li><b>Track Line</b> — видалено вертикальну лінію (конфліктувала з active)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v35.1.0 — Sidebar Polish (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Emoji Icons</b> — прибрано сірий фон з іконок, emoji тепер чисті на прозорому</li>
+                        <li><b>Звіти</b> — додано /reports в групу Управління</li>
+                        <li><b>Cleanup</b> — видалено невикористані nav-icon--kleshnya/status стилі</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v35.0.0 — Sidebar Full Rebuild (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Accordion Groups</b> — CRM, Управління, Творче, Система — згортаються/розгортаються з CSS grid анімацією</li>
+                        <li><b>Unified Nav</b> — однакове меню на всіх 24 сторінках замість hub-dropdown</li>
+                        <li><b>Cross-Page Actions</b> — Афіша/Сертифікати/Налаштування працюють з будь-якої сторінки (?open= auto-open)</li>
+                        <li><b>New Routes</b> — /designer, /sound, /afisha, /certificates з graceful redirect</li>
+                        <li><b>Collapse Button</b> — додано на всі 23 standalone сторінки</li>
+                        <li><b>Nav Icons</b> — збільшено emoji (15px/17px), scale(1.08) анімація при hover</li>
+                        <li><b>Dark Mode</b> — повна підтримка accordion стилів, box-shadow на active icons</li>
+                        <li><b>11 багфіксів (E1-E11)</b> — grid animation, sidebarActions hidden, double active /staff, toggleGroup</li>
+                        <li><b>HTML Fix</b> — 8 unclosed div tags в changelog виправлено</li>
+                        <li><b>Docs</b> — CHANGELOG.md + SNAPSHOT.md повністю оновлені</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v34.0.0 — Sidebar Pro (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Accordion Groups</b> — CRM, Управління, Творче, Система — згортаються/розгортаються з анімацією</li>
+                        <li><b>Unified Nav</b> — всі сторінки мають однакове меню з accordion замість hub-dropdown</li>
+                        <li><b>Афіша/Сертифікати</b> — кнопки працюють з будь-якої сторінки (?open= auto-open)</li>
+                        <li><b>Designer/Sound</b> — нові пункти в меню з graceful redirect</li>
+                        <li><b>Collapse Button</b> — додано на всі 23 standalone сторінки</li>
+                        <li><b>Nav Icons</b> — збільшено emoji розмір (15px/17px), scale анімація при hover</li>
+                        <li><b>Dark Mode</b> — повна підтримка accordion стилів</li>
+                        <li><b>8 багфіксів</b> — E1-E11: grid animation, hidden sidebarActions, PAGE_ACCESS, double active /staff</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.17.0 — Test Build (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Test Build</b> — тестова збірка для перевірки деплою та стабільності системи</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.16.0 — Test Build (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Test Build</b> — тестова збірка для перевірки деплою та стабільності системи</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.15.0 — Sound System (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>MusicDelivery</b> — адаптер доставки оголошень (Telegram/HTTP/Mock)</li>
+                        <li><b>Real Play</b> — /play тепер реально доставляє оголошення + логує статус</li>
+                        <li><b>Recurring</b> — повторювані оголошення по cron (checkRecurringAnnouncements)</li>
+                        <li><b>Soft Delete</b> — архів оголошень замість видалення</li>
+                        <li><b>Birthday Auto</b> — автоматичне привітання при бронюванні ДН</li>
+                        <li><b>Play-in</b> — відтворити через N хвилин</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.14.0 — Hub Nav (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Hub Navigation</b> — згруповані пункти (Клієнти·Ліди, Фінанси·Аналіт., Команда·HR, Склад·Ціни) з dropdown</li>
+                        <li><b>User Card</b> — аватар, ім'я, роль та статус в шапці sidebar</li>
+                        <li><b>Day Context</b> — мікро-інфо дня (кількість сповіщень) для менеджерів</li>
+                        <li><b>Live Badges</b> — лічильники алертів, лідів, чату на навігації</li>
+                        <li><b>Collapsed Tooltips</b> — підказки при наведенні на іконки в згорнутому режимі</li>
+                        <li><b>Animations</b> — stagger entrance, hub slide, badge pop, online pulse</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.13.0 — Sidebar Pro (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Sidebar</b> — CRM анімується з назвою ролі, Управління → HR з анімацією «Твоя команда»</li>
+                        <li><b>Навчання</b> — переміщено у секцію HR разом з Командою та Кадрами</li>
+                        <li><b>Alerts</b> — заголовок «Сповіщення», ширший panel, кнопки дій</li>
+                        <li><b>Каталоги</b> — покращено відображення badges та layout</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.12.0 — Chat UX (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Sidebar</b> — секція «Щоденне» → «CRM», прибрано кнопку «Статус»</li>
+                        <li><b>Alerts</b> — кнопка «Запропонувати рішення» на кожному алерті + inline задача</li>
+                        <li><b>Quick Stats</b> — блок «Потребує уваги» (прострочені, непідтверджені, склад, ліди)</li>
+                        <li><b>AI Task</b> — 📋 замість 🌐 в hover, inline форма задачі через Клешню</li>
+                        <li><b>Info Panel</b> — 3 вкладки: Учасники / Закріплені / Нотатки</li>
+                        <li><b>Notes</b> — нотатки в чаті з видимістю (приватні / спільні / по відділах)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.11.0 — Workload Fix (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Animator Workload</b> — виправлено: тепер групує по лінії (не по кожній даті окремо)</li>
+                        <li><b>Task Auto-close</b> — протерміновані задачі закриваються через 3 дні, штраф монет</li>
+                        <li><b>Sidebar</b> — Центр цін переміщено одразу після Складу</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.10.0 — Polish (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Chat Members</b> — вибір учасників при створенні каналу (пошук + бейджі)</li>
+                        <li><b>Sound Panel</b> — виправлено позиціонування popup звуків (z-index fix)</li>
+                        <li><b>Warehouse Owner</b> — нове поле «Належить» (Парк/Дар/Спільне) при додаванні на склад</li>
+                        <li><b>Pinata Tab</b> — виправлено пусту вкладку Піньяти на складі</li>
+                        <li><b>Sidebar</b> — прибрано зайві бейджі та кнопку згорнути з навчання/лідів</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.9.0 — Chat Rooms (Claude Code, 22.03.2026)</h4>
+                    <ul>
+                        <li><b>Room Channels</b> — кімнатні канали в чаті з хронологією бронювань</li>
+                        <li><b>Wallpapers</b> — 13 анімованих фонів чату (Космос, Аврора, Океан, Неон, Сніг, Ліс та інші)</li>
+                        <li><b>Mood</b> — щоденний настрій (emoji) в sidebar чату</li>
+                        <li><b>Super Reaction</b> — анімована реакція за 5 монет з floating emoji</li>
+                        <li><b>Send Effects</b> — конфеті та хвиля при відправці повідомлення</li>
+                        <li><b>Preferences</b> — персональні налаштування чату (фон, звук, підпис)</li>
+                        <li><b>Channel Sections</b> — розділення sidebar на КАНАЛИ / КІМНАТИ / ОСОБИСТІ</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.8.0 — System Links (Claude Code, 21.03.2026)</h4>
+                    <ul>
+                        <li><b>Stock Deduct</b> — автоматичне списання складу при бронюванні (програма → матеріали)</li>
+                        <li><b>Shift Warning</b> — Telegram-попередження якщо аніматор без зміни в HR</li>
+                        <li><b>Review Link</b> — відгуки прив'язуються до клієнтів, average_rating в профілі</li>
+                        <li><b>Certificate Pay</b> — оплата сертифікатом при бронюванні + фінансова транзакція</li>
+                        <li><b>Loyalty Auto</b> — автоматичне підвищення tier після бронювання</li>
+                        <li><b>Lead Source</b> — при конвертації ліда джерело переноситься в customers</li>
+                        <li><b>Salary Commit</b> — нарахування зарплат одним кліком у фінанси</li>
+                        <li><b>Achievements</b> — 10 ачивок для аніматорів (booking/task/streak)</li>
+                        <li><b>Reports → Finance</b> — звіти автоматично створюють фінансові транзакції при підтвердженні</li>
+                        <li><b>Центр цін</b> — нова вкладка «Звіти», cross-links між Фінанси/Звіти/Центр цін</li>
+                        <li><b>UI Fix</b> — виправлено лого на сторінках Ліди та Навчання, SVG іконка сповіщень</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.7.0 — Chat CRM (Claude Code, 21.03.2026)</h4>
+                    <ul>
+                        <li><b>CRM Slash</b> — /вільно, /броні, /задачі, /склад — CRM-команди прямо в чаті</li>
+                        <li><b>Booking Chat</b> — кнопка «Чат команди» у бронюванні, прив'язаний канал з координацією</li>
+                        <li><b>User Status</b> — встановлення статусу (На святі, Перерва, Не турбувати і т.д.)</li>
+                        <li><b>Remind</b> — нагадування з повідомлення через 1/3 год, завтра, тиждень, або custom</li>
+                        <li><b>Daily Digest</b> — щоденне зведення чату о 20:00 в Telegram</li>
+                        <li><b>Announce Mode</b> — канали лише для оголошень (пишуть тільки адміни)</li>
+                        <li><b>Important</b> — позначення важливих повідомлень з виділенням</li>
+                        <li><b>BK Preview</b> — автоматична rich-картка при згадці BK-YYYY-NNNN</li>
+                        <li><b>Checklist</b> — інтерактивні чеклісти в повідомленнях (- [ ] / - [x])</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.6.0 — Chat Pro (Claude Code, 21.03.2026)</h4>
+                    <ul>
+                        <li><b>Voice Player</b> — Telegram-стиль: waveform бари замість &lt;audio&gt;, play/pause, прогрес, таймер</li>
+                        <li><b>Forward</b> — превью повідомлення в модалці, metadata (від кого, з якого каналу), плашка "Переслано"</li>
+                        <li><b>Info Panel</b> — редагування назви/опису каналу, mute toggle, видалення учасників, архів/видалення каналу</li>
+                        <li><b>Auto Members</b> — міграція 100: всі users в дефолтні канали, авто-додавання при створенні user</li>
+                        <li><b>Send Animation</b> — bounce-impact ефект при відправці повідомлення (пружинний відскок)</li>
+                        <li><b>Wide Monitor</b> — адаптивна ширина бульбашок: 55% на 1600px+, 45% на 2200px+</li>
+                        <li><b>Mute Icon</b> — перечеркнутий дзвіночок коли сповіщення вимкнені</li>
+                        <li><b>Wallpapers</b> — 8 нових фонів: Конфетті, Сакура, Океан, Захід, Ліс, Космос, Лаванда, Сітка (всього 16)</li>
+                        <li><b>Schedule</b> — опції 5хв/10хв/3год, datetime-local інпут замість prompt()</li>
+                        <li><b>Summary Fix</b> — виправлено 500 помилку резюме розмови (SQL колонка display_name)</li>
+                        <li><b>Guardian</b> — кнопка "Додати Guardian" працює (POST /members приймає username)</li>
+                        <li><b>Metadata</b> — sendMessage тепер зберігає metadata JSONB (forward, voice duration)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.5.0 — Автокаталоги v6 (Claude Code, 21.03.2026)</h4>
+                    <ul>
+                        <li><b>Мультикаталоги</b> — динамічна система: Піньяти, Торти, Меню, Костюми (catalog_definitions)</li>
+                        <li><b>Підкатегорії</b> — Меню (Піца/Бургери/Салати/Дитяче/Фрі/Напої), Торти (Бісквітні/Кремові/Дитячі/Мусові)</li>
+                        <li><b>AI зображення</b> — Kie.ai генерація з динамічним стилем по каталогу + batch-генерація</li>
+                        <li><b>Тренди</b> — AI аналіз трендів через OpenRouter + пропозиції нових позицій</li>
+                        <li><b>Publish</b> — транзакція: позиція + ціна + задача на друк одним кліком</li>
+                        <li><b>Designs</b> — динамічні картки каталогів + toggle автокаталогу + перегляд + друк</li>
+                        <li><b>Dashboard</b> — віджет «Каталоги» на дашборді з кнопкою «+ Додати позицію»</li>
+                        <li><b>Scheduler</b> — checkStaleCatalogImages (оновлення протухлих зображень о 03:00)</li>
+                        <li><b>Sidebar</b> — прибрано дублювання Графік/Команда (обидва вели на /staff)</li>
+                        <li><b>Copilot</b> — виправлено зависання сторінки Менеджер (waitForAuth timeout 5с)</li>
+                        <li><b>Security</b> — auth на всіх ендпоінтах каталогів, фікс filter bypass, XSS protection</li>
+                        <li><b>Scheduler</b> — виправлено "value too long for varchar(10)" для hourly schedulers (міграція 094)</li>
+                        <li><b>Рахунки</b> — finance_accounts таблиця, CRUD API, report-bot sync, вкладка «Рахунки» у фінансах</li>
+                        <li><b>Report Bot</b> — account_id/account_name в submit, GET /report-bot/accounts для синхронізації</li>
+                        <li><b>Cache Busting</b> — ?v=37.3.0 на всіх 25 HTML сторінках (321 оновлення)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.4.0 — Test Build (Claude Code, 21.03.2026)</h4>
+                    <ul>
+                        <li><b>Тест</b> — тестова збірка для перевірки деплою та версіонування</li>
+                        <li><b>Мерж</b> — синхронізація з v33.3.0 CRM Audit Fixes</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.3.0 — CRM Audit Fixes (Claude Code, 21.03.2026)</h4>
+                    <ul>
+                        <li><b>Tasks</b> — архівовано 1448 дублікатів, захист від нових дублів (409), bulk-дії (archive/done/assign/priority)</li>
+                        <li><b>Analytics</b> — реалізовано /bookings (totals, byProgram, byDay, byWeekday) та /revenue (totals, byCategory, monthly)</li>
+                        <li><b>Bookings</b> — paymentMethod зберігається в UPDATE, перевірка конфліктів аніматорів, occupancy endpoint</li>
+                        <li><b>Finance UI</b> — кнопка «💸 Витрата» для швидкого додавання витрат</li>
+                        <li><b>Leads</b> — source_channel додано в PATCH whitelist</li>
+                        <li><b>Customers</b> — search з live агрегацією totalBookings/totalSpent через JOIN</li>
+                        <li><b>Форма бронювання</b> — textarea для нотаток, теги (VIP/Алергія/Складний/Корпоратив), select оплати</li>
+                        <li><b>Staff</b> — payroll endpoint: агрегація подій × ставка за місяць</li>
+                        <li><b>Прайс</b> — таблиця price_history, GET /prices/:code/history, автозапис змін</li>
+                        <li><b>Settings</b> — PUT /settings/language (uk/en)</li>
+                        <li><b>Dark mode</b> — автоперемикання по prefers-color-scheme системи</li>
+                        <li><b>Afisha</b> — API генерації зображень через Kie.ai (POST/GET generate-image)</li>
+                        <li><b>Mobile</b> — timeline scroll, forms 1col, tables overflow, header compact</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.2.0 — XSS Hardening (Claude Code, 21.03.2026)</h4>
+                    <ul>
+                        <li><b>XSS</b> — analytics-page.js: escapeHtml для p.name, c.name, c.icon в таблицях та графіках</li>
+                        <li><b>XSS</b> — agents-panel.js: escapeHtml для lastSummary та agentTag</li>
+                        <li><b>XSS</b> — designs-page.js: escapeHtml для c.name в select колекцій</li>
+                        <li><b>XSS</b> — center-page.js: escapeHtml для p.name, d.code, d.name в select</li>
+                        <li><b>XSS</b> — finance-page.js: escapeHtml для c.name, c.icon в обох категорій select</li>
+                        <li><b>XSS</b> — auth.js: _escHtml для u.name в role-switcher, c.code/c.name в сертифікатах</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.1.0 — Другий прохід аудиту (Claude Code, 21.03.2026)</h4>
+                    <ul>
+                        <li><b>SQL injection</b> — training.js: staffId інтерполяція → параметризовані $N запити</li>
+                        <li><b>Memory</b> — guardian.js: ліміт 500 на _dynamicToxicWords (було unbounded)</li>
+                        <li><b>Null ref</b> — center-page chartsGrid, booking panel h3/btn (3 місця), art-director-page, designs-page gallery tab</li>
+                        <li><b>Event leak</b> — graduation.js: touch listeners тепер removeEventListener при закритті</li>
+                        <li><b>XSS</b> — staff-page.js: escapeHtml(emp.name) в select option</li>
+                        <li><b>Currency</b> — kleshnya-greeting.js: parseInt → parseFloat для revenue</li>
+                        <li><b>Logging</b> — page-statuses.js + landing.js: console.error → createLogger()</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v33.0.0 — Глибокий аудит + Стабільність (Claude Code, 21.03.2026)</h4>
+                    <ul>
+                        <li><b>Memory leak</b> — auth.js activity cache: Map + cleanup кожні 10 хв замість plain object</li>
+                        <li><b>Pool leak</b> — recurring.js: client.release() при conflict + continue в циклі</li>
+                        <li><b>Chat дублікати</b> — chatService retry тепер передає clientMessageId</li>
+                        <li><b>XSS</b> — graduation.js onclick → addEventListener + data-attrs; null checks на 3 querySelector</li>
+                        <li><b>XSS</b> — dashboard weather/currency: escapeHtml(data.error)</li>
+                        <li><b>SQL injection</b> — print.js: параметризований error; auth/tasks/kleshnya: CASE WHEN замість інтерполяції</li>
+                        <li><b>Error handling</b> — kleshnya chat/rename, profile equip, designs collection, chat templates</li>
+                        <li><b>CSS</b> — touch targets 28→36px (search nav, widget buttons)</li>
+                        <li><b>HTML</b> — game.html/shop.html: header + hamburger ☰; dashboard.html: v31.7→33.0</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v32.9.0 — Безпека + Стабільність (Claude Code, 21.03.2026)</h4>
+                    <ul>
+                        <li><b>Sidebar</b> — overlay z-index фікс, гамбургер ☰ на всіх 21 сторінках</li>
+                        <li><b>Responsive</b> — прибрано inline margin-left:220px з 11 сторінок</li>
+                        <li><b>XSS</b> — санітизація e.message в copilot, data-attr замість inline JS в shop</li>
+                        <li><b>DB</b> — pool config (max:20, timeout:5s), індекс child_name, прибрано дублікат таблиці</li>
+                        <li><b>Memory</b> — clearInterval при зміні digest mode (notificationDigest)</li>
+                        <li><b>Error handling</b> — warehouse procurement + training modal null checks</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v32.8.0 — Sidebar + Налаштування + Менеджер (Claude Code, 21.03.2026)</h4>
+                    <ul>
+                        <li><b>Менеджер</b> — додано маршрут /copilot, кнопка в sidebar тепер працює</li>
+                        <li><b>Налаштування</b> — кнопка ⚙️ працює з будь-якої сторінки (redirect на /?settings=open)</li>
+                        <li><b>Sidebar</b> — прибрано дублюючий пункт "Клешня" (redirect на /chat)</li>
+                        <li><b>Звіти</b> — виправлено SQL-запити summary: вимкнені хештеги не потрапляють в графіки</li>
+                        <li><b>Тести</b> — 18 нових тестів для hashtag CRUD, фільтрації, toggle, stats</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v32.7.0 — Хештеги витрат + дашборд фільтрація (Claude Code, 21.03.2026)</h4>
+                    <ul>
+                        <li><b>Хештеги</b> — кожна витрата отримує хештег(и) для групування</li>
+                        <li><b>Фільтрація</b> — фільтр по хештегу та категорії в таблиці звітів</li>
+                        <li><b>Дашборд</b> — картки по кожному хештегу з сумою та тогл вкл/викл</li>
+                        <li><b>Категорії</b> — фіксований список: Афіша, ЗП, Майстер-класи, ДАР, Костюми, Квести, Реквізит, Аквагрим, Декорації, Офіс</li>
+                        <li><b>API</b> — GET /api/reports/hashtags, фільтр ?hashtag= та ?category=</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v32.6.0 — Сторінка звітів (Claude Code, 20.03.2026)</h4>
+                    <ul>
+                        <li><b>Звіти</b> — повна сторінка з таблицею, фільтрами, Chart.js графіками</li>
+                        <li><b>Sidebar</b> — пункт "Звіти" в навігації</li>
+                        <li><b>Bot API</b> — endpoints submit/on-duty/summary з API key авторизацією</li>
+                        <li><b>Ручне додавання</b> — модальне вікно для ручних звітів</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v32.4.0 — Модуль звітів (Claude Code, 19.03.2026)</h4>
+                    <ul>
+                        <li><b>Reports</b> — нова сторінка звітів з графіками та фільтрами</li>
+                        <li><b>Субагент</b> — AI-бот для збору чеків, накладних, голосових звітів</li>
+                        <li><b>Авто-розподіл</b> — звіти автоматично потрапляють до бухгалтера на зміні</li>
+                        <li><b>OCR</b> — розпізнавання тексту з фото чеків</li>
+                        <li><b>Dashboard</b> — віджет звітів</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v32.3.0 — Каталог: логотип Парку + контакти (Claude Code, 19.03.2026)</h4>
+                    <ul>
+                        <li><b>Логотип Парку</b> — додано на кожну сторінку каталогу випускних</li>
+                        <li><b>Контактний номер</b> — 📞 0800 75 35 53 замість @EventHelper_One_Bot</li>
+                        <li><b>Прибрано</b> — кнопку "Поділитись" (не потрібна для каталогу)</li>
+                        <li><b>Друк</b> — виправлено відображення, логотип та телефон видно при друку</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v32.2.0 — Каталог випускного: Повний редизайн (Claude Code, 17.03.2026)</h4>
+                    <ul>
+                        <li><b>Новий дизайн</b> — преміум картка з gradient hero, stats bar, 2-column services grid</li>
+                        <li><b>Уніфікація</b> — один HTML шаблон для viewer і print (усунено дублювання)</li>
+                        <li><b>Print CSS</b> — A4 portrait, кольори зберігаються, кнопки приховані</li>
+                        <li><b>Footer</b> — контактні дані парку на кожній сторінці каталогу</li>
+                        <li><b>Кнопки</b> — "Друк/PDF" та "Поділитись" яскраво-кольорові, помітні</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v32.1.0 — Audit Fixes: LTV, склад, зарплати, сегменти, навігація, ДН, підписка (Claude Code, 17.03.2026)</h4>
+                    <ul>
+                        <li><b>Фікс</b> — JOIN bookings→customers (LTV тепер реальний)</li>
+                        <li><b>Фікс</b> — /api/warehouse/items 500 error</li>
+                        <li><b>Фікс</b> — /api/hr/salary 500 error</li>
+                        <li><b>Фікс</b> — /api/customers/segments 500 error</li>
+                        <li><b>Фікс</b> — /dashboard redirect → /center</li>
+                        <li><b>Фікс</b> — прибрано дублювання header-nav + sidebar</li>
+                        <li><b>CSV/XLSX</b> — кнопки завжди видимі у фінансах</li>
+                        <li><b>Нова фіча</b> — вкладка "Найближчі ДН" на дашборді (30 днів)</li>
+                        <li><b>Нова фіча</b> — нагадування про підписку для директора/замдиректора/creator</li>
+                        <li><b>Нова фіча</b> — міст Клешня (POST /api/chat/kleshnya)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v32.0.1 — Тестовий деплой (Claude Code, 16.03.2026)</h4>
+                    <ul>
+                        <li><b>Test Deploy</b> — перевірка деплою через новий бранч після мерджу v32.0.0</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v32.0.0 — Premium Каталог Випускних (Claude Code, 16.03.2026)</h4>
+                    <ul>
+                        <li><b>Каталог</b> — повний редизайн на рівні друкованих каталогів 2025</li>
+                        <li><b>Geometric Mosaic</b> — полігональний фон з унікальною палітрою для кожного пакету</li>
+                        <li><b>Info Cards</b> — тривалість / діти / ціна з іконками ⏱/👥/₴</li>
+                        <li><b>Services + Descriptions</b> — кольорові блоки з переліком та описами</li>
+                        <li><b>Fullscreen Viewer</b> — immersive перегляд каталогу з sticky topbar</li>
+                        <li><b>Print</b> — 1 пакет = 1 сторінка A4 з кольорами та мозаїчним фоном</li>
+                        <li><b>Export</b> — повний каталог в новій вкладці для друку/PDF</li>
+                        <li><b>Share</b> — Web Share API + clipboard для поширення пакету</li>
+                        <li><b>7 тем</b> — лавандовий, золотий, блакитний, м'ятний, жовтий, червоний, рожевий</li>
+                    </ul>
+
+                    <h4>v31.8.0 — Каталог випускних: редизайн + друк + експорт (Claude Code, 16.03.2026)</h4>
+                    <ul>
+                        <li><b>Друк</b> — 1 пакет = 1 сторінка A4, compact layout, білий фон</li>
+                        <li><b>Картинки</b> — підтримка custom image per package (поле image_url)</li>
+                        <li><b>Описи</b> — розгорнуті продажні тексти для всіх 7 пакетів</li>
+                        <li><b>Layout</b> — вертикальний catalog viewer (hero image + CTA)</li>
+                        <li><b>Тривалість</b> — людський формат "~X год Y хв"</li>
+                        <li><b>Експорт</b> — повний каталог для друку (обкладинка + 7 сторінок)</li>
+                        <li><b>Ціни</b> — перевірка коректності розрахунку</li>
+                    </ul>
+
+                    <h4>v31.7.0 — Редизайн каталогу випускних (Claude Code, 16.03.2026)</h4>
+                    <ul>
+                        <li><b>Каталог</b> — повний редизайн UI: hero-картинки, продажні описи, красива верстка</li>
+                        <li><b>Картинки</b> — підтримка AI-згенерованих ілюстрацій з gradient fallback</li>
+                        <li><b>Тексти</b> — розгорнуті продажні описи для кожного з 7 пакетів</li>
+                        <li><b>Каталог-в'юер</b> — повноекранний перегляд з навігацією, swipe, клавіатурою</li>
+                        <li><b>Експорт</b> — повний каталог для друку (A4, обкладинка + 7 сторінок)</li>
+                        <li><b>Тривалість</b> — людський формат "~X год Y хв"</li>
+                    </ul>
+
+                    <h4>v31.6.0 — Фікс iframe embed-mode (Claude Code, 16.03.2026)</h4>
+                    <ul>
+                        <li><b>Embed-mode fix</b> — сайдбар більше не дублюється в iframe (Дизайни, Програми, Випускний)</li>
+                        <li><b>Раннє визначення</b> — embed-mode клас додається в &lt;head&gt; до рендерингу CSS</li>
+                        <li><b>Sidebar.init() skip</b> — в embedded режимі сайдбар не ініціалізується</li>
+                    </ul>
+
+                    <h4>v31.5.0 — Каталоги випускних (Claude Code, 16.03.2026)</h4>
+                    <ul>
+                        <li><b>Каталоги</b> — нова вкладка в Дизайнах з повноекранним переглядом пакетів</li>
+                        <li><b>7 пакетних пропозицій</b> — з продажними описами та автоцінами з модуля Випускний</li>
+                        <li><b>Автозадачі</b> — при зміні ціни послуги/коефіцієнту створюється задача на оновлення каталогу</li>
+                        <li><b>Друк</b> — print-ready сторінки каталогу (A4), друк всього каталогу або окремої сторінки</li>
+                        <li><b>Шейрінг</b> — підтримка Web Share API + PDF через друк</li>
+                    </ul>
+
+                    <h4>v31.4.0 — Синхронізація статусу лідів (Claude Code, 15.03.2026)</h4>
+                    <ul>
+                        <li><b>Статус лідів</b> — при оновленні ліда статус автоматично синхронізується з pipeline_stage</li>
+                    </ul>
+
+                    <h4>v31.3.0 — Кнопки Сьогодні/Завтра в Лідах (Claude Code, 15.03.2026)</h4>
+                    <ul>
+                        <li>Додано кнопки «Сьогодні» та «Завтра» для фільтрації лідів по даті івенту</li>
+                        <li>Кнопки працюють як toggle — повторний клік скидає фільтр</li>
+                        <li>Бекенд: фільтрація по event_date в GET /api/leads</li>
+                    </ul>
+
+                    <h4>v31.2.0 — Фікс задач на дашборді (Claude Code, 15.03.2026)</h4>
+                    <ul>
+                        <li><b>Задачі на дашборді</b> — виправлено фільтрацію: використовувався числовий ID замість username, задачі не знаходились і не відображались</li>
+                        <li><b>Лічильник задач</b> — аналогічний фікс у stats-блоці дашборду</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v31.1.0 — CSS Cleanup: прибрано дублі на 23 сторінках (Claude Code, 15.03.2026)</h4>
+                    <ul>
+                        <li><b>Дублі CSS</b> — видалено подвійні CSS-імпорти на 16 сторінках (~98 зайвих тегів)</li>
+                        <li><b>Дублі JS</b> — видалено подвійні JS-імпорти на customers.html</li>
+                        <li><b>Cache Busting</b> — оновлено ?v= теги до 31.1.0 на всіх 23 standalone-сторінках</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v31.0.0 — Kanban Pro: 7 покращень воронки (Claude Code, 15.03.2026)</h4>
+                    <ul>
+                        <li><b>Конверсійна воронка</b> — візуальний бар з % переходу між етапами над канбаном</li>
+                        <li><b>Сума угод</b> — підсумок budget_approx по кожному стовпцю в ₴</li>
+                        <li><b>Кольорові заголовки</b> — кожен етап має свій унікальний колір</li>
+                        <li><b>Дні на етапі</b> — бейдж на картці (жовтий >3дн, червоний >7дн)</li>
+                        <li><b>Швидкі дії</b> — кнопки 📞 дзвінок та 💬 Telegram прямо на картці</li>
+                        <li><b>WIP-ліміти</b> — попередження при >10 лідів у стовпці</li>
+                        <li><b>Згорнуті порожні</b> — порожні стовпці мінімізуються, розкриваються при наведенні</li>
+                        <li><b>Фікс</b> — дашборд гігантський gear-logo (login-logo-img → login-gear-icon)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v30.9.0 — Kanban воронка + кеш-фікс (Claude Code, 15.03.2026)</h4>
+                    <ul>
+                        <li><b>Kanban воронка</b> — виправлено відображення стовпців (display:flex замість hidden)</li>
+                        <li><b>Cache-bust</b> — оновлено версії CSS/JS на leads.html (29.2.0 → 30.9.0)</li>
+                        <li><b>Inline стилі</b> — прибрано конфлікт display:none/display:flex в kanbanView</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v30.7.0 — HR: 10 покращень (Claude Code, 14.03.2026)</h4>
+                    <ul>
+                        <li><b>Заявки на відпустку</b> — подання, затвердження/відхилення, автозапис у табель</li>
+                        <li><b>Рейтинг аніматорів</b> — лідерборд з оцінками, кількістю подій за 30 днів</li>
+                        <li><b>Автопризначення</b> — підбір аніматора за навичками, доступністю та рейтингом</li>
+                        <li><b>Онбординг чеклист</b> — шаблони з 8 пунктів, прогрес-бар, відмітка виконання</li>
+                        <li><b>Сертифікація</b> — трекінг сертифікатів з дедлайнами, авто-нагадування за 14 днів</li>
+                        <li><b>Зарплатна відомість</b> — ставка x години + переробки x1.5 + бонуси - штрафи</li>
+                        <li><b>Костюмерна</b> — облік костюмів, стан, розмір, призначення до аніматора</li>
+                        <li><b>Push-нагадування</b> — Telegram за 30 хв до бронювання з деталями</li>
+                        <li><b>Доступність в реалтаймі</b> — статус online/busy/break/offline для кожного</li>
+                        <li><b>Нові таби</b> — Відпустки, Зарплата, Рейтинг, Онбординг, Костюмерна в HR</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v30.6.0 — Фінанси: 10 покращень (Claude Code, 14.03.2026)</h4>
+                    <ul>
+                        <li><b>Каса дня</b> — відкриття/закриття зміни з підрахунком готівки, різниця факт/очікувана</li>
+                        <li><b>Прогноз доходу</b> — на основі підтверджених бронювань, тижневий і денний розріз</li>
+                        <li><b>Рознесення витрат</b> — автоматичний розподіл по категоріях з відсотками</li>
+                        <li><b>P&L звіт</b> — повний Profit & Loss з порівнянням попереднього періоду</li>
+                        <li><b>Чекова інтеграція</b> — генерація чеків RCP-YYYY-NNNN з QR-даними</li>
+                        <li><b>Боргові сповіщення</b> — список неоплачених, щотижневий Telegram дайджест</li>
+                        <li><b>Бюджет план/факт</b> — розширений з трендами та алертами</li>
+                        <li><b>Multi-currency</b> — конвертація EUR/USD/GBP/PLN/CZK → UAH</li>
+                        <li><b>Акт виконаних робіт</b> — HTML/PDF генерація для корпоративних клієнтів</li>
+                        <li><b>Фінансовий дашборд</b> — revenue trend, cash flow, top expenses, payment distribution</li>
+                    </ul>
+                </div>
+
+                <div class="changelog-section">
+                    <h4>v30.5.0 — Version bump (Claude Code, 14.03.2026)</h4>
+                    <ul>
+                        <li>Cache bust всіх CSS/JS, фікс міграції 076</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v30.4.0 — CRM: 10 покращень (Claude Code, 14.03.2026)</h4>
+                    <ul>
+                        <li><b>Теги клієнтів</b> — VIP, Корпорат, Проблемний та інші, кольорові pills, фільтрація по тегу</li>
+                        <li><b>Дедуплікація</b> — автодетект дублікатів по телефону/Instagram, обʼєднання профілів</li>
+                        <li><b>Customer Journey</b> — воронка: Ліди → Нові → Повторні → Лояльні</li>
+                        <li><b>LTV розрахунок</b> — прогноз lifetime value для кожного клієнта</li>
+                        <li><b>NPS/Feedback</b> — дашборд оцінок, розподіл, останні відгуки</li>
+                        <li><b>Масова розсилка</b> — фільтри по тегах, візитах, джерелу + шаблони з {name}</li>
+                        <li><b>Історія комунікацій</b> — timeline дзвінків, повідомлень, нотаток в профілі клієнта</li>
+                        <li><b>Автопривʼязка</b> — автоматичне зʼєднання бронювання з клієнтом по телефону</li>
+                        <li><b>vCard</b> — імпорт/експорт контактів у форматі .vcf</li>
+                        <li><b>Нагадування</b> — ДН за 7 днів, dormant 60+ днів, бронювання за 3 дні</li>
+                    </ul>
+                </div>
+
+                <div class="changelog-section">
+                    <h4>v30.3.0 — Пошук, Шаблони, Повтори (Claude Code, 14.03.2026)</h4>
+                    <ul>
+                        <li><b>Пошук по таймлайну</b> — Ctrl+F, підсвітка, навігація по результатах, авто-скрол</li>
+                        <li><b>Redo + Hotkeys</b> — Ctrl+Z скасувати, Ctrl+Shift+Z повторити, повний redo стек</li>
+                        <li><b>Шаблони бронювань</b> — збереження/завантаження пресетів із форми бронювання</li>
+                        <li><b>Повторювані бронювання</b> — UI для створення recurring (щотижня, будні, щомісяця)</li>
+                        <li><b>Bulk-операції</b> — Shift+Click мульти-вибір, масове видалення та зміна статусу</li>
+                        <li><b>PDF експорт</b> — друк таймлайну як PDF через print stylesheet</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v30.2.0 — QA Fix Випускний (Claude Code, 14.03.2026)</h4>
+                    <ul>
+                        <li><b>Дублікати послуг</b> — виправлено ON CONFLICT, додано UNIQUE на name, очищено 25 дублів з БД</li>
+                        <li><b>Booking creation</b> — виправлено room_id→room, додано line_id (NOT NULL)</li>
+                        <li><b>КП proposal</b> — підтримка ?token= в query string для window.open()</li>
+                        <li><b>art-director.html</b> — прибрано дублікати CSS, синхронізовано cache-bust до v30.2.0</li>
+                        <li><b>filterQuotes</b> — виправлено implicit event → передача btn як параметра</li>
+                    </ul>
+                </div>
+
+                <div class="changelog-section">
+                    <h4>v30.1.0 — Hotfix Випускний (Claude Code, 14.03.2026)</h4>
+                    <ul>
+                        <li><b>Авторизація</b> — виправлено ключ токена (pzp_token), послуги і пакети тепер завантажуються</li>
+                        <li><b>Подвійна панель</b> — прибрано дублювання кнопки "ПАНЕЛЬ" в iframe</li>
+                        <li><b>API</b> — перехід на глобальний apiCall() замість кастомних fetch-обгорток</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v30.0.0 — Модуль Випускний (Claude Code, 14.03.2026)</h4>
+                    <ul>
+                        <li><b>Конструктор випускного</b> — інтерактивний вибір послуг з автопідрахунком</li>
+                        <li><b>7 готових пакетів</b> — від 745 до 1275 ₴/дитина</li>
+                        <li><b>25 послуг</b> — анімація, шоу, МК, неон, ігри</li>
+                        <li><b>Собівартість та маржа</b> — деталізація для director</li>
+                        <li><b>Комерційна пропозиція</b> — генерація HTML для клієнта</li>
+                        <li><b>Інтеграція з бронюваннями</b> — створення booking з конфігурації</li>
+                    </ul>
+                </div>
+
+                <div class="changelog-section">
+                    <h4>v29.2.0 — Fix Ліди (Claude Code, 13.03.2026)</h4>
+                    <ul>
+                        <li><b>Ліди</b> — сторінка переїхала на /sales-funnel (обхід кешованого 301)</li>
+                        <li><b>Service Worker</b> — навігація тепер network-first, фікс дублікату CACHE_NAME</li>
+                        <li><b>Sidebar</b> — оновлене посилання + коректний active state</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v29.1.0 — Воронка продажів (Клешня, 13.03.2026)</h4>
+                    <ul>
+                        <li><b>Ліди</b> — типи: якісний/спам/співпраця/інформаційний/неякісний</li>
+                        <li><b>Карта клієнта</b> — поля при якісному ліді (опційно)</li>
+                        <li><b>Pipeline</b> — статуси воронки з кольоровою сигналізацією часу</li>
+                        <li><b>Kanban</b> — перетягування лідів між стадіями воронки</li>
+                        <li><b>Авторозподіл</b> — задачі після завдатку: Арт/Кухня/Адміни</li>
+                        <li><b>Втрачені клієнти</b> — окрема категорія + авто-пропозиція до розсилки</li>
+                        <li><b>Список розсилки</b> — зберігання контактів з каналом звернення</li>
+                        <li><b>Тестовий режим</b> — TEST_MODE env var + UI badge</li>
+                        <li><b>Checkbox MVP</b> — тип оплати (банк/готівка) для підготовки до ПРРО</li>
+                        <li><b>Sales Deck</b> — онлайн-презентація для менеджерів (/sales-deck.html)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v28.2.0 — Guardian Етап 1: Whitelist + Edit + Toggle + Stop (Клешня, 13.03.2026)</h4>
                     <ul>
                         <li><b>Whitelist</b> — слова-виключення для зменшення false positives (статичний + динамічний через БД)</li>

@@ -1431,11 +1431,19 @@
 
     // Load dynamic catalogs on tab switch
     var _catalogsLoaded = false;
-    var origLoadCatalogs = window.loadCatalogs || loadCatalogs;
-    window.loadCatalogs = function() {
-        origLoadCatalogs();
-        if (!_catalogsLoaded) { _catalogsLoaded = true; loadDynamicCatalogCards(); }
-    };
+    // Override tab switch: load graduation + dynamic catalogs
+    var _origSetupTabs = false;
+    document.addEventListener('DOMContentLoaded', function() {
+        var tabBtn = document.querySelector('[data-tab="catalogs"]');
+        if (tabBtn) {
+            tabBtn.addEventListener('click', function() {
+                if (!_catalogsLoaded) {
+                    _catalogsLoaded = true;
+                    loadDynamicCatalogCards();
+                }
+            });
+        }
+    });
     </script>
 </body>
 </html>

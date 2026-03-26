@@ -427,7 +427,6 @@
         .catalog-pages-container {
             flex: 1; overflow-y: auto; padding: 24px 16px;
             display: flex; align-items: flex-start; justify-content: center;
-            max-height: 80vh;
         }
 
         /* ==========================================
@@ -969,9 +968,17 @@
 
             <!-- ==================== CATALOGS TAB v38.10 ==================== -->
             <div id="tabCatalogs" style="display:none">
+                <!-- Header with create button -->
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                    <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--gray-800)">📚 Каталоги</h3>
+                    <button type="button" class="btn-catalog" onclick="openCreateCatalogModal()" style="display:flex;align-items:center;gap:6px">
+                        <span style="font-size:16px">+</span> Створити каталог
+                    </button>
+                </div>
+
                 <!-- Section: Ready catalogs -->
                 <div class="catalog-section-header">
-                    <h3 style="margin:0;font-size:14px;font-weight:700;color:var(--gray-700)">✅ Готові каталоги</h3>
+                    <h3 style="margin:0;font-size:13px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:1px">✅ Готові каталоги</h3>
                 </div>
                 <div class="catalog-list" id="catalogList">
                     <!-- Graduation card -->
@@ -1010,6 +1017,31 @@
                         <button type="button" class="btn-catalog-nav btn-catalog-close" onclick="closeCatalog()">&times;</button>
                     </div>
                     <div class="catalog-pages-container" id="catalogPages"></div>
+                </div>
+
+                <!-- Create catalog modal -->
+                <div id="createCatalogModal" class="modal hidden" role="dialog" aria-modal="true" style="z-index:10000">
+                    <div class="modal-content" style="max-width:480px">
+                        <span class="modal-close" onclick="closeCreateCatalogModal()">&times;</span>
+                        <h3 style="margin:0 0 16px;font-size:16px;font-weight:700">📂 Новий каталог</h3>
+                        <form id="createCatalogForm" onsubmit="submitCreateCatalog(event)">
+                            <div style="display:flex;flex-direction:column;gap:12px">
+                                <div>
+                                    <label style="font-size:12px;font-weight:600;color:var(--gray-600);display:block;margin-bottom:4px">Назва *</label>
+                                    <input type="text" id="newCatalogName" required placeholder="напр. Піньяти, Торти..." style="width:100%;padding:10px 12px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit">
+                                </div>
+                                <div>
+                                    <label style="font-size:12px;font-weight:600;color:var(--gray-600);display:block;margin-bottom:4px">Емодзі</label>
+                                    <input type="text" id="newCatalogEmoji" placeholder="🎉" maxlength="4" style="width:60px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:8px;font-size:20px;text-align:center">
+                                </div>
+                                <div>
+                                    <label style="font-size:12px;font-weight:600;color:var(--gray-600);display:block;margin-bottom:4px">Опис</label>
+                                    <textarea id="newCatalogDesc" rows="2" placeholder="Короткий опис каталогу..." style="width:100%;padding:10px 12px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical"></textarea>
+                                </div>
+                                <button type="submit" class="btn-catalog" style="width:100%;padding:12px;font-size:14px;margin-top:4px">Створити</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
         </main>
@@ -1075,6 +1107,45 @@
     <script>if (typeof Sidebar !== "undefined" && !document.documentElement.classList.contains('embed-mode')) Sidebar.init("#sidebarLinks");</script>
     <script src="js/designs-page.js?v=38.9.0"></script>
     <script src="js/role-panel.js?v=38.9.0"></script>
+    <script>
+    // v38.9.0: Create catalog modal functions
+    function openCreateCatalogModal() {
+        document.getElementById('createCatalogModal')?.classList.remove('hidden');
+    }
+    function closeCreateCatalogModal() {
+        document.getElementById('createCatalogModal')?.classList.add('hidden');
+        document.getElementById('createCatalogForm')?.reset();
+    }
+    async function submitCreateCatalog(e) {
+        e.preventDefault();
+        const name = document.getElementById('newCatalogName').value.trim();
+        const emoji = document.getElementById('newCatalogEmoji').value.trim() || '📂';
+        const description = document.getElementById('newCatalogDesc').value.trim();
+        if (!name) return;
+        try {
+            const res = await apiFetch('/api/catalogs/definitions', {
+                method: 'POST',
+                body: JSON.stringify({ name, emoji, description })
+            });
+            if (!res) return;
+            const data = await res.json();
+            if (data.success || data.id) {
+                closeCreateCatalogModal();
+                showNotification('Каталог "' + name + '" створено!');
+                // Reload dynamic cards
+                location.reload();
+            } else {
+                showNotification(data.error || 'Помилка створення', 'error');
+            }
+        } catch (err) {
+            showNotification('Помилка: ' + err.message, 'error');
+        }
+    }
+    // Close modal on backdrop click
+    document.getElementById('createCatalogModal')?.addEventListener('click', function(e) {
+        if (e.target === this) closeCreateCatalogModal();
+    });
+    </script>
     <script>
     // v33.5: Dynamic catalog cards from catalog_definitions
     (async function loadDynamicCatalogCards() {

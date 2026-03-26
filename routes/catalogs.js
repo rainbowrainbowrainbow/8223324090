@@ -169,7 +169,7 @@ router.post('/items', requireRole('admin', 'creator', 'director', 'art_director'
     }
 });
 
-router.patch('/items/:id', requireRole('admin', 'user'), async (req, res) => {
+router.patch('/items/:id', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const { name, description, price, imageUrl, subcategory, status, extraData } = req.body;
         const COLS = {
@@ -197,7 +197,7 @@ router.patch('/items/:id', requireRole('admin', 'user'), async (req, res) => {
     }
 });
 
-router.delete('/items/:id', requireRole('admin', 'user'), async (req, res) => {
+router.delete('/items/:id', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         await pool.query(
             "UPDATE catalog_items SET status = 'archived', updated_at = NOW() WHERE id = $1",

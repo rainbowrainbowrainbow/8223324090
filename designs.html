@@ -1069,6 +1069,14 @@
                     </form>
                 </div>
             </div>
+
+            <!-- Item detail modal -->
+            <div id="itemDetailModal" class="modal hidden" role="dialog" aria-modal="true" style="z-index:10001">
+                <div class="modal-content" style="max-width:520px">
+                    <span class="modal-close" onclick="closeItemDetail()">&times;</span>
+                    <div id="itemDetailContent">Loading...</div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -1160,8 +1168,8 @@
             if (data.success || data.id) {
                 closeCreateCatalogModal();
                 showNotification('Каталог "' + name + '" створено!');
-                // Reload dynamic cards
-                location.reload();
+                // Re-render dynamic cards without page reload
+                loadDynamicCatalogCards();
             } else {
                 showNotification(data.error || 'Помилка створення', 'error');
             }
@@ -1221,7 +1229,7 @@
     </script>
     <script>
     // v33.5: Dynamic catalog cards from catalog_definitions
-    (async function loadDynamicCatalogCards() {
+    async function loadDynamicCatalogCards() {
         const container = document.getElementById('dynamicCatalogCards');
         if (!container) return;
         try {
@@ -1265,7 +1273,8 @@
                 } catch { /* silent */ }
             }
         } catch (e) { console.error('loadDynamicCatalogCards:', e); }
-    })();
+    }
+    loadDynamicCatalogCards(); // Initial load
     async function openCatalogView(catalogId) {
         try {
             const r = await apiFetch('/api/catalogs/items?catalogId=' + catalogId);
@@ -1286,7 +1295,7 @@
             } else {
                 html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">';
                 html += items.map(it => `
-                    <div class="catalog-item-card" style="background:var(--white,#fff);border-radius:12px;border:1px solid var(--gray-100);overflow:hidden">
+                    <div class="catalog-item-card" onclick="openItemDetail(${it.id})" style="background:var(--white,#fff);border-radius:12px;border:1px solid var(--gray-100);overflow:hidden;cursor:pointer;transition:transform 0.15s">
                         <div style="height:120px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff">
                             ${it.image_url ? '<img src="' + it.image_url + '" loading="lazy" alt="" style="width:100%;height:100%;object-fit:cover">' : '<span style="font-size:36px">' + (it.catalog_emoji || '🗂️') + '</span>'}
                         </div>
@@ -1339,6 +1348,161 @@
             w.document.close();
             w.print();
         } catch (e) { showNotification(e.message); }
+    }
+
+    // ═══════════════════════════════════════════════
+    // ITEM DETAIL — edit, delete, AI image, telegram
+    // ═══════════════════════════════════════════════
+    let _currentItem = null;
+    let _currentViewCatalogId = null;
+
+    async function openItemDetail(itemId) {
+        try {
+            const r = await apiFetch('/api/catalogs/items/' + itemId);
+            if (!r) return;
+            const { item } = await r.json();
+            if (!item) { showNotification('Товар не знайдено', 'error'); return; }
+            _currentItem = item;
+            _currentViewCatalogId = item.catalog_id;
+
+            const imgSrc = item.image_url || '';
+            const imgPreview = imgSrc
+                ? `<img src="${imgSrc}" alt="" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;background:#f3f4f6">`
+                : '<div style="height:120px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e);border-radius:8px;color:#fff;font-size:48px">' + (item.catalog_emoji || '📦') + '</div>';
+
+            document.getElementById('itemDetailContent').innerHTML = `
+                <h3 style="margin:0 0 16px;font-size:16px;font-weight:700">📦 ${item.name}</h3>
+                <div id="itemImagePreview" style="margin-bottom:12px">${imgPreview}</div>
+                <div style="display:flex;gap:6px;margin-bottom:16px">
+                    <button type="button" class="btn-catalog btn-catalog-print" onclick="promptImageUrl(${item.id})" style="font-size:11px">📤 URL зображення</button>
+                    <button type="button" class="btn-catalog" onclick="generateItemAI(${item.id})" style="font-size:11px" id="aiGenBtn">🤖 Згенерувати AI</button>
+                    <span id="aiGenStatus" style="font-size:11px;color:var(--gray-400);display:none;align-items:center">⏳ Генеруємо...</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:10px">
+                    <div>
+                        <label style="font-size:11px;font-weight:600;color:var(--gray-500);display:block;margin-bottom:3px">Назва</label>
+                        <input type="text" id="editItemName" value="${(item.name||'').replace(/"/g,'&quot;')}" style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;font-family:inherit">
+                    </div>
+                    <div style="display:flex;gap:10px">
+                        <div style="flex:1">
+                            <label style="font-size:11px;font-weight:600;color:var(--gray-500);display:block;margin-bottom:3px">Ціна (грн)</label>
+                            <input type="number" id="editItemPrice" value="${item.price||''}" min="0" style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;font-family:inherit">
+                        </div>
+                        <div style="flex:1">
+                            <label style="font-size:11px;font-weight:600;color:var(--gray-500);display:block;margin-bottom:3px">Підкатегорія</label>
+                            <input type="text" id="editItemSubcat" value="${(item.subcategory||'').replace(/"/g,'&quot;')}" placeholder="напр. Дитячі" style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;font-family:inherit">
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size:11px;font-weight:600;color:var(--gray-500);display:block;margin-bottom:3px">Опис</label>
+                        <textarea id="editItemDesc" rows="2" style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;font-family:inherit;resize:vertical">${item.description||''}</textarea>
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:16px">
+                    <button type="button" class="btn-catalog" onclick="saveItemDetail(${item.id})" style="flex:1;padding:10px">💾 Зберегти</button>
+                    <button type="button" class="btn-catalog btn-catalog-print" onclick="sendItemTelegram(${item.id})" style="padding:10px">📤</button>
+                    <button type="button" style="padding:10px;border:none;border-radius:8px;background:var(--red-50,#FEE2E2);color:var(--red-700,#DC2626);font-size:12px;font-weight:600;cursor:pointer" onclick="deleteItemConfirm(${item.id})">🗑</button>
+                </div>
+            `;
+            document.getElementById('itemDetailModal')?.classList.remove('hidden');
+        } catch (e) { showNotification('Помилка: ' + e.message, 'error'); }
+    }
+
+    function closeItemDetail() {
+        document.getElementById('itemDetailModal')?.classList.add('hidden');
+        _currentItem = null;
+    }
+    document.getElementById('itemDetailModal')?.addEventListener('click', function(e) {
+        if (e.target === this) closeItemDetail();
+    });
+
+    async function saveItemDetail(itemId) {
+        const name = document.getElementById('editItemName').value.trim();
+        const price = document.getElementById('editItemPrice').value;
+        const subcategory = document.getElementById('editItemSubcat').value.trim();
+        const description = document.getElementById('editItemDesc').value.trim();
+        if (!name) { showNotification('Назва обов\'язкова', 'error'); return; }
+        try {
+            const r = await apiFetch('/api/catalogs/items/' + itemId, {
+                method: 'PATCH',
+                body: JSON.stringify({ name, price: price ? parseFloat(price) : null, subcategory: subcategory || null, description: description || null })
+            });
+            if (!r) return;
+            const data = await r.json();
+            if (data.success) {
+                showNotification('Збережено!');
+                closeItemDetail();
+                if (_currentViewCatalogId) openCatalogView(_currentViewCatalogId);
+            } else {
+                showNotification(data.error || 'Помилка', 'error');
+            }
+        } catch (e) { showNotification(e.message, 'error'); }
+    }
+
+    async function deleteItemConfirm(itemId) {
+        if (!confirm('Видалити цей товар?')) return;
+        try {
+            const r = await apiFetch('/api/catalogs/items/' + itemId, { method: 'DELETE' });
+            if (!r) return;
+            showNotification('Товар видалено');
+            closeItemDetail();
+            if (_currentViewCatalogId) openCatalogView(_currentViewCatalogId);
+        } catch (e) { showNotification(e.message, 'error'); }
+    }
+
+    function promptImageUrl(itemId) {
+        const url = prompt('Введіть URL зображення:');
+        if (!url) return;
+        apiFetch('/api/catalogs/items/' + itemId, {
+            method: 'PATCH', body: JSON.stringify({ imageUrl: url })
+        }).then(r => { if (r) { showNotification('Зображення оновлено'); openItemDetail(itemId); }});
+    }
+
+    let _aiPollTimer = null;
+    async function generateItemAI(itemId) {
+        const btn = document.getElementById('aiGenBtn');
+        const status = document.getElementById('aiGenStatus');
+        if (btn) btn.style.display = 'none';
+        if (status) status.style.display = 'flex';
+        try {
+            const r = await apiFetch('/api/catalogs/generate-image', {
+                method: 'POST',
+                body: JSON.stringify({ name: _currentItem?.name || '', catalogId: _currentItem?.catalog_id || '' })
+            });
+            if (!r) { if (btn) btn.style.display = ''; if (status) status.style.display = 'none'; return; }
+            const { taskId } = await r.json();
+            if (!taskId) { showNotification('Не вдалося запустити генерацію', 'error'); return; }
+            // Poll every 3 sec
+            _aiPollTimer = setInterval(async () => {
+                try {
+                    const pr = await apiFetch('/api/catalogs/generate-image/' + taskId);
+                    if (!pr) return;
+                    const poll = await pr.json();
+                    if (poll.done && poll.imageUrl) {
+                        clearInterval(_aiPollTimer);
+                        await apiFetch('/api/catalogs/apply-image', {
+                            method: 'POST', body: JSON.stringify({ itemId, taskId })
+                        });
+                        showNotification('AI зображення згенеровано!');
+                        openItemDetail(itemId);
+                    } else if (poll.state === 'failed') {
+                        clearInterval(_aiPollTimer);
+                        showNotification('Генерація не вдалася', 'error');
+                        if (btn) btn.style.display = ''; if (status) status.style.display = 'none';
+                    }
+                } catch { /* continue polling */ }
+            }, 3000);
+            // Timeout 3 min
+            setTimeout(() => { if (_aiPollTimer) { clearInterval(_aiPollTimer); showNotification('Таймаут генерації', 'error'); if (btn) btn.style.display = ''; if (status) status.style.display = 'none'; } }, 180000);
+        } catch (e) { showNotification(e.message, 'error'); if (btn) btn.style.display = ''; if (status) status.style.display = 'none'; }
+    }
+
+    async function sendItemTelegram(itemId) {
+        try {
+            const r = await apiFetch('/api/catalogs/items/' + itemId + '/telegram', { method: 'POST' });
+            if (!r) return;
+            showNotification('Відправлено в Telegram!');
+        } catch (e) { showNotification(e.message, 'error'); }
     }
     </script>
 </body>

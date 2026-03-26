@@ -50,7 +50,8 @@ const rateLimitAI = rateLimit({
     keyGenerator: (req) => String(req.user?.id || req.ip),
     message: { error: 'Забагато запитів. Зачекайте хвилину.' },
     standardHeaders: false,
-    legacyHeaders: false
+    legacyHeaders: false,
+    validate: { xForwardedForHeader: false }
 });
 
 // All routes require manager+ role

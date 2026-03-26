@@ -3,6 +3,30 @@
  * v12.0: Gallery, collections, price list, calendar, Telegram integration
  */
 
+// Expose catalog globals immediately (function declarations are hoisted)
+window.openCatalog = function(id) { openCatalog(id); };
+window.closeCatalog = function() { closeCatalog(); };
+window.catalogNext = function() { catalogNext(); };
+window.catalogPrev = function() { catalogPrev(); };
+window.printCatalog = function(id) { printCatalog(id); };
+window.printCatalogPage = function(id, slug) { printCatalogPage(id, slug); };
+window.openLightbox = function(id) { openLightbox(id); };
+window.openEditModal = function(id) { openEditModal(id); };
+window.downloadDesign = function(id) { downloadDesign(id); };
+window.copyDesign = function(id) { copyDesign(id); };
+window.togglePin = function(id) { togglePin(id); };
+window.deleteDesign = function(id) { deleteDesign(id); };
+window.sendToTelegram = function(id) { sendToTelegram(id); };
+window.filterByTag = function(tag) { filterByTag(tag); };
+window.filterCollection = function(id) { filterCollection(id); };
+window.deleteCollection = function(id) { deleteCollection(id); };
+window.showCalendarDetail = function(d) { showCalendarDetail(d); };
+window.closeTelegramCaption = function() { closeTelegramCaption(); };
+window.submitTelegramCaption = function() { submitTelegramCaption(); };
+window.removeEditTag = function(tag) { removeEditTag(tag); };
+window.hideTagAutocomplete = function() { hideTagAutocomplete(); };
+window.addEditTag = function(v) { addEditTag(v); };
+
 const API = '/api/designs';
 const PRODUCTS_API = '/api/products';
 
@@ -978,7 +1002,6 @@ function openCatalog(catalogId) {
     }
     renderCatalogViewer();
 }
-
 function renderCatalogViewer() {
     currentCatalogPage = 0;
     const viewer = document.getElementById('catalogViewer');
@@ -1152,17 +1175,4 @@ function printCatalogPage(catalogId, slug) {
     }, 400);
 }
 
-// ==========================================
-// EXPOSE GLOBALS
-// ==========================================
-window.downloadDesign = downloadDesign;
-window.copyDesign = copyDesign;
-window.togglePin = togglePin;
-window.deleteDesign = deleteDesign;
-window.sendToTelegram = sendToTelegram;
-window.openCatalog = openCatalog;
-window.closeCatalog = closeCatalog;
-window.catalogNext = catalogNext;
-window.catalogPrev = catalogPrev;
-window.printCatalog = printCatalog;
-window.printCatalogPage = printCatalogPage;
+// Globals already exposed at top of file via wrapper functions

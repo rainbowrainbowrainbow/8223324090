@@ -106,12 +106,12 @@ function downloadImage(url) {
  * Generate filename from item data
  */
 function makeFilename(catalogId, itemName, ext = 'png') {
-    const slug = (itemName || 'item')
-        .toLowerCase()
-        .replace(/[^a-z0-9а-яіїєґ]+/gi, '-')
-        .replace(/^-|-$/g, '')
-        .substring(0, 40);
-    return `${catalogId}-${slug}-${Date.now()}.${ext}`;
+    // Transliterate Ukrainian → ASCII (Supabase Storage rejects non-ASCII keys)
+    const tr = {'а':'a','б':'b','в':'v','г':'h','ґ':'g','д':'d','е':'e','є':'ye','ж':'zh','з':'z','и':'y','і':'i','ї':'yi','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ь':'','ю':'yu','я':'ya'};
+    const ascii = (itemName || 'item').toLowerCase().split('').map(c => tr[c] || c).join('');
+    const slug = ascii.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').substring(0, 40);
+    const safeId = (catalogId || 'misc').replace(/[^a-z0-9-]+/gi, '');
+    return `${safeId}-${slug}-${Date.now()}.${ext}`;
 }
 
 module.exports = { uploadFromUrl, makeFilename };

@@ -4,6 +4,47 @@
 
 ---
 
+## v38.17.0 — Leaderboard + Daily Badge + Tasks Preview (2026-03-26)
+
+### Profile Leaderboard [claude-code]
+- **Seed data** — рейтинг заповнений для всіх юзерів (XP, coins, level)
+- **Daily badge pulse** — CSS `badge-pulse` анімація на табі щоденних завдань
+- **Tasks preview** — блок попереднього перегляду завдань на профілі
+- **Migration 129 fixes** — ALTER TABLE daily_quests ADD all columns (IF NOT EXISTS)
+
+---
+
+## v38.16.0 — Profile Redesign: Hero, Inventory, Shop, Quests (2026-03-26)
+
+### Profile Page [claude-code]
+- **Hero glassmorphism** — картка профілю зі скляним ефектом, контрастні шрифти
+- **Inventory** — RPG ячейки замінено на картковий вигляд (card layout)
+- **Shop seed** — 17 items: кава 200₴, піца 800₴ + 6 їжі + 9 косметики
+- **Quests seed** — 8 щоденних квестів у daily_quests таблиці
+- **Кімната прибрано** — таб "Кімната" видалено з profile page
+
+---
+
+## v38.15.0 — Match-3 Enhanced Special Effects + Profile (2026-03-26)
+
+### Match-3 Game [claude-code]
+- **Спецефекти** — bomb, lightning, cross, rainbow анімації по центру клітинки
+- **Клітинки** — фіолетовий тінт на білому фоні (light mode fix)
+- **Profile API** — `/profile/:userId` повертає JSON замість redirect
+
+---
+
+## v38.14.0 — Каталоги: Image Picker + Premium Viewer (2026-03-26)
+
+### Catalog UX [claude-code]
+- **Image Picker** — 4 варіанти: AI генерація, upload, галерея, URL (замість prompt())
+- **Premium Catalog Viewer** — 7 пакетів випускних з повноекранним переглядом
+- **openCatalog fix** — виправлено infinite recursion (Maximum call stack)
+- **submitCreateCatalog** — додано відсутню функцію створення каталогу
+- **Graduation seed** — inline button styles + graduation catalog seed data
+
+---
+
 ## v38.13.0 — Catalog Pages + Supabase Storage (2026-03-26)
 
 ### Catalog Pages [claude-code]

@@ -37,15 +37,6 @@ async function apiRequest(method, url, body) {
     return await res.json();
 }
 
-function showNotification(message, type = '') {
-    let c = document.getElementById('toastContainer');
-    if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
-    const t = document.createElement('div');
-    t.className = 'toast' + (type ? ' ' + type : '');
-    t.textContent = message;
-    c.appendChild(t);
-    setTimeout(() => { t.classList.add('toast-exit'); setTimeout(() => t.remove(), 300); }, 3000);
-}
 
 // ==========================================
 // STATE

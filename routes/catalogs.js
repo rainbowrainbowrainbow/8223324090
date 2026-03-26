@@ -235,7 +235,10 @@ router.post('/generate-image', requireRole('admin', 'user'), async (req, res) =>
             if (catRow.rows[0]?.ai_style) aiStyle = catRow.rows[0].ai_style;
         }
         const themeContext = [name, subcategory].filter(Boolean).join(', ');
-        const prompt = customPrompt || `${aiStyle}. Product: "${themeContext}". Ukrainian children's park.`;
+        // v38.11: Transliterate Ukrainian→English for AI (Gemini rejects cyrillic)
+        const _tr = {'а':'a','б':'b','в':'v','г':'h','ґ':'g','д':'d','е':'e','є':'ye','ж':'zh','з':'z','и':'y','і':'i','ї':'yi','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ь':'','ю':'yu','я':'ya'};
+        const enContext = themeContext.split('').map(c => _tr[c.toLowerCase()] || c).join('');
+        const prompt = customPrompt || `${aiStyle}. Product: "${enContext}". Children's entertainment park toy.`;
         const r = await kieRequest('POST', '/api/v1/jobs/createTask', {
             model: 'google/nano-banana',
             input: { prompt, image_size: '1:1' }

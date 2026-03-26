@@ -635,7 +635,7 @@ async function toggleProcItem(listId, itemId, checked) {
     try {
         await apiUpdateProcurementItem(listId, itemId, { isPurchased: checked });
     } catch (e) {
-        alert('Помилка оновлення: ' + e.message);
+        showNotification('Помилка оновлення: ' + e.message, 'error');
         await openProcDetail(listId);
     }
 }
@@ -645,7 +645,7 @@ async function removeProcItem(listId, itemId) {
         await apiDeleteProcurementItem(listId, itemId);
         await openProcDetail(listId);
     } catch (e) {
-        alert('Помилка видалення: ' + e.message);
+        showNotification('Помилка видалення: ' + e.message, 'error');
     }
 }
 

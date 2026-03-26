@@ -221,7 +221,7 @@ async function openProductForm(productId) {
         // Load product data
         const product = await apiGetProduct(productId);
         if (!product) {
-            alert('Не вдалося завантажити програму');
+            showNotification('Не вдалося завантажити програму', 'error');
             return;
         }
 
@@ -262,7 +262,7 @@ async function saveProduct() {
     const name = document.getElementById('pf-name')?.value.trim();
 
     if (!code || !label || !name) {
-        alert('Заповніть обов\'язкові поля: Код, Мітка, Назва');
+        showNotification('Заповніть поля: Код, Мітка, Назва', 'error');
         return;
     }
 
@@ -299,7 +299,7 @@ async function saveProduct() {
         // Refresh catalog
         await showProgramsCatalog();
     } else {
-        alert('Помилка: ' + (result.error || 'Невідома помилка'));
+        showNotification(result.error || 'Помилка', 'error');
     }
 }
 
@@ -313,7 +313,7 @@ async function deleteProduct(productId) {
         AppState.productsLoadedAt = 0;
         await showProgramsCatalog();
     } else {
-        alert('Помилка: ' + (result.error || 'Невідома помилка'));
+        showNotification(result.error || 'Помилка', 'error');
     }
 }
 

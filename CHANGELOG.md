@@ -4,6 +4,19 @@
 
 ---
 
+## v38.11.0 — Systematic Frontend Improvements (2026-03-26)
+
+### AI Image Generation [claude-code]
+- **Kie.ai prompt fix** — transliterate Ukrainian→English (Gemini rejected cyrillic)
+- **Fallback save** — if apply-image fails, saves via PATCH directly
+- **Error feedback** — toast on start/success/failure
+
+### Centralized Notifications [claude-code]
+- **js/notification.js** — single showNotification() with aria-live, replaces 9 duplicates
+- **alert() → toast** — 16 alert() calls replaced across hr, sound, settings, warehouse
+
+---
+
 ## v38.10.0 — Sidebar Active Fix + Catalog Improvements (2026-03-26)
 
 ### Sidebar [claude-code]

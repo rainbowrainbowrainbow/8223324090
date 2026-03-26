@@ -253,7 +253,7 @@
 
         if (saveBtn) saveBtn.addEventListener('click', async () => {
             const title = document.getElementById('annTitle')?.value?.trim();
-            if (!title) return alert('Введіть назву');
+            if (!title) return showNotification('Введіть назву', 'error');
             const body = {
                 title,
                 text: document.getElementById('annText')?.value?.trim() || '',
@@ -267,7 +267,7 @@
                 document.getElementById('annText').value = '';
                 loadAnnouncements();
             } catch (err) {
-                alert('Помилка: ' + (err.message || ''));
+                showNotification('Помилка: ' + (err.message || ''), 'error');
             }
         });
 
@@ -346,7 +346,7 @@
 
         if (saveBtn) saveBtn.addEventListener('click', async () => {
             const name = document.getElementById('projName')?.value?.trim();
-            if (!name) return alert('Введіть назву');
+            if (!name) return showNotification('Введіть назву', 'error');
             const body = {
                 name,
                 type: document.getElementById('projType')?.value || 'quest',
@@ -359,7 +359,7 @@
                 document.getElementById('projDesc').value = '';
                 loadProjects();
             } catch (err) {
-                alert('Помилка: ' + (err.message || ''));
+                showNotification('Помилка: ' + (err.message || ''), 'error');
             }
         });
 

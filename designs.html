@@ -1404,8 +1404,9 @@
     async function generateItemAI(itemId) {
         const btn = document.getElementById('aiGenBtn');
         const status = document.getElementById('aiGenStatus');
-        if (btn) btn.style.display = 'none';
-        if (status) status.style.display = 'flex';
+        if (btn) { btn.style.display = 'none'; btn.disabled = true; }
+        if (status) status.style.display = 'inline-flex';
+        showNotification('Запускаємо AI генерацію...');
         try {
             const r = await apiFetch('/api/catalogs/generate-image', {
                 method: 'POST',

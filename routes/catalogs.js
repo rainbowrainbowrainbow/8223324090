@@ -575,4 +575,87 @@ router.patch('/trend/:id', requireRole('admin', 'creator', 'director', 'art_dire
     } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// ═══════════════════════════════════════════════
+// CATALOG PAGES — HTML pages with images (v38.12)
+// ═══════════════════════════════════════════════
+
+// GET /api/catalogs/:catalogId/pages — all pages for catalog
+router.get('/:catalogId/pages', async (req, res) => {
+    try {
+        const pages = await pool.query(
+            'SELECT * FROM catalog_pages WHERE catalog_id = $1 AND is_active = true ORDER BY page_number',
+            [req.params.catalogId]
+        );
+        res.json({ success: true, pages: pages.rows });
+    } catch (err) {
+        log.error('GET /pages error', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/catalogs/:catalogId/pages — create new page
+router.post('/:catalogId/pages', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
+    try {
+        const { title, subtitle, description, price, priceLabel, imageUrl, backgroundUrl, details } = req.body;
+        if (!title?.trim()) return res.status(400).json({ error: 'title required' });
+        const maxPage = await pool.query(
+            'SELECT COALESCE(MAX(page_number), -1) as max FROM catalog_pages WHERE catalog_id = $1',
+            [req.params.catalogId]
+        );
+        const nextPage = maxPage.rows[0].max + 1;
+        const r = await pool.query(
+            `INSERT INTO catalog_pages (catalog_id, page_number, title, subtitle, description, price, price_label, image_url, background_url, details)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+            [req.params.catalogId, nextPage, title.trim(), subtitle || null, description || null,
+             price ? parseInt(price) : null, priceLabel || null, imageUrl || null, backgroundUrl || null,
+             JSON.stringify(details || {})]
+        );
+        res.json({ success: true, page: r.rows[0] });
+    } catch (err) {
+        log.error('POST /pages error', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /api/catalogs/:catalogId/pages/:pageNumber — update page (insert image!)
+router.put('/:catalogId/pages/:pageNumber', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
+    try {
+        const { title, subtitle, description, price, priceLabel, imageUrl, backgroundUrl, details } = req.body;
+        const sets = [], vals = [req.params.catalogId, parseInt(req.params.pageNumber)];
+        let idx = 3;
+        if (title !== undefined) { sets.push(`title=$${idx++}`); vals.push(title); }
+        if (subtitle !== undefined) { sets.push(`subtitle=$${idx++}`); vals.push(subtitle); }
+        if (description !== undefined) { sets.push(`description=$${idx++}`); vals.push(description); }
+        if (price !== undefined) { sets.push(`price=$${idx++}`); vals.push(price ? parseInt(price) : null); }
+        if (priceLabel !== undefined) { sets.push(`price_label=$${idx++}`); vals.push(priceLabel); }
+        if (imageUrl !== undefined) { sets.push(`image_url=$${idx++}`); vals.push(imageUrl); }
+        if (backgroundUrl !== undefined) { sets.push(`background_url=$${idx++}`); vals.push(backgroundUrl); }
+        if (details !== undefined) { sets.push(`details=$${idx++}`); vals.push(JSON.stringify(details)); }
+        if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
+        sets.push('updated_at=NOW()');
+        const r = await pool.query(
+            `UPDATE catalog_pages SET ${sets.join(',')} WHERE catalog_id=$1 AND page_number=$2 RETURNING *`, vals
+        );
+        if (!r.rowCount) return res.status(404).json({ error: 'Page not found' });
+        res.json({ success: true, page: r.rows[0] });
+    } catch (err) {
+        log.error('PUT /pages error', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE /api/catalogs/:catalogId/pages/:pageNumber
+router.delete('/:catalogId/pages/:pageNumber', requireRole('admin', 'creator', 'director'), async (req, res) => {
+    try {
+        await pool.query(
+            'DELETE FROM catalog_pages WHERE catalog_id=$1 AND page_number=$2',
+            [req.params.catalogId, parseInt(req.params.pageNumber)]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        log.error('DELETE /pages error', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;

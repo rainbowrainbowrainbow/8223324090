@@ -385,7 +385,8 @@
                         <span class="catalog-meta">${countMap[c.id] || 0} позицій</span>
                     </div>
                     <div class="catalog-actions">
-                        <button type="button" class="btn-catalog" onclick="openCatalogView('${c.id}')">Переглянути</button>
+                        <button type="button" class="btn-catalog" onclick="openCatalogView('${c.id}')">Товари</button>
+                        <button type="button" class="btn-catalog" onclick="openCatalogPages('${c.id}')">📄 Сторінки</button>
                         <button type="button" class="btn-catalog btn-catalog-print" onclick="printCatalogItems('${c.id}')">Друк</button>
                         <label class="toggle-inline" title="Автокаталог">
                             <input type="checkbox" class="auto-cat-cb" data-catalog="${c.id}"
@@ -454,6 +455,144 @@
             showNotification(enabled ? 'Автокаталог ON' : 'Автокаталог OFF');
         } catch (e) { showNotification(e.message); }
     }
+
+    // ═══════════════════════════════════════════════
+    // CATALOG PAGES VIEWER — HTML pages (v38.12)
+    // ═══════════════════════════════════════════════
+    let _pagesData = [];
+    let _pagesCurrentIdx = 0;
+    let _pagesCatalogId = null;
+
+    async function openCatalogPages(catalogId) {
+        _pagesCatalogId = catalogId;
+        try {
+            const r = await apiFetch('/api/catalogs/' + catalogId + '/pages');
+            if (!r) return;
+            const { pages = [] } = await r.json();
+            _pagesData = pages;
+            _pagesCurrentIdx = 0;
+            if (!pages.length) { showNotification('Сторінок ще немає. Додайте першу!', 'error'); return; }
+            renderPagesViewer();
+        } catch (e) { showNotification(e.message, 'error'); }
+    }
+
+    function renderPagesViewer() {
+        let viewer = document.getElementById('catalogPagesViewer');
+        if (!viewer) {
+            viewer = document.createElement('div');
+            viewer.id = 'catalogPagesViewer';
+            viewer.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0d0d0d;display:flex;flex-direction:column;overflow:hidden';
+            document.body.appendChild(viewer);
+        }
+        viewer.style.display = 'flex';
+
+        const page = _pagesData[_pagesCurrentIdx];
+        if (!page) return;
+
+        const isCover = page.page_number === 0;
+        const details = typeof page.details === 'string' ? JSON.parse(page.details || '{}') : (page.details || {});
+
+        let pageHtml;
+        if (isCover) {
+            pageHtml = `<div class="cat-page-card" style="max-width:800px;margin:auto">
+                <div class="cat-page-cover" ${page.background_url ? 'style="background-image:url('+page.background_url+')"' : ''}>
+                    ${page.background_url ? '<div class="cat-page-cover-bg" style="background-image:url('+page.background_url+')"></div>' : ''}
+                    <div class="cat-page-cover-content">
+                        <h1>${page.title}</h1>
+                        <p>${page.subtitle || ''}</p>
+                        <p style="margin-top:16px">${page.description || ''}</p>
+                    </div>
+                </div>
+                <div class="cat-page-actions">
+                    <button type="button" class="btn-catalog btn-catalog-print" onclick="insertPageImage('${_pagesCatalogId}',${page.page_number},'background')">🖼 Фон обкладинки</button>
+                </div>
+            </div>`;
+        } else {
+            pageHtml = `<div class="cat-page-card" style="max-width:800px;margin:auto">
+                <div class="cat-page-layout">
+                    <div class="cat-page-img">
+                        ${page.image_url
+                            ? '<img src="'+page.image_url+'" alt="'+page.title+'">'
+                            : '<div class="cat-page-img-empty" onclick="insertPageImage(\''+_pagesCatalogId+'\','+page.page_number+',\'image\')">📷 Натисніть щоб додати зображення</div>'}
+                    </div>
+                    <div class="cat-page-info">
+                        <h3>${page.title}</h3>
+                        <div class="subtitle">${page.subtitle || ''}</div>
+                        <div class="desc">${page.description || ''}</div>
+                        ${page.price_label ? '<div class="cat-page-price">'+page.price_label+'</div>' : ''}
+                        ${details.age ? '<div class="cat-page-detail">👶 '+details.age+'</div>' : ''}
+                        ${details.kids ? '<div class="cat-page-detail">👥 '+details.kids+'</div>' : ''}
+                        ${details.duration ? '<div class="cat-page-detail">⏱ '+details.duration+'</div>' : ''}
+                    </div>
+                </div>
+                <div class="cat-page-actions">
+                    <button type="button" class="btn-catalog" onclick="insertPageImage('${_pagesCatalogId}',${page.page_number},'image')">🖼 Зображення</button>
+                    <button type="button" class="btn-catalog btn-catalog-print" onclick="editCatalogPage('${_pagesCatalogId}',${page.page_number})">✏️ Редагувати</button>
+                </div>
+            </div>`;
+        }
+
+        viewer.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:rgba(255,255,255,0.05)">
+                <button type="button" class="btn-catalog btn-catalog-print" onclick="closePagesViewer()" style="color:#fff">← Назад</button>
+                <span style="color:rgba(255,255,255,0.7);font-weight:700">${_pagesCurrentIdx + 1} / ${_pagesData.length}</span>
+                <div style="display:flex;gap:8px">
+                    <button type="button" class="btn-catalog btn-catalog-print" onclick="pagesPrev()" style="color:#fff" ${_pagesCurrentIdx === 0 ? 'disabled' : ''}>◀</button>
+                    <button type="button" class="btn-catalog btn-catalog-print" onclick="pagesNext()" style="color:#fff" ${_pagesCurrentIdx >= _pagesData.length - 1 ? 'disabled' : ''}>▶</button>
+                    <button type="button" class="btn-catalog" onclick="window.print()">🖨 Друк</button>
+                </div>
+            </div>
+            <div style="flex:1;overflow-y:auto;padding:20px;display:flex;align-items:flex-start;justify-content:center">
+                ${pageHtml}
+            </div>`;
+
+        // Keyboard nav
+        if (!viewer._keyHandler) {
+            viewer._keyHandler = (e) => {
+                if (e.key === 'ArrowRight') pagesNext();
+                else if (e.key === 'ArrowLeft') pagesPrev();
+                else if (e.key === 'Escape') closePagesViewer();
+            };
+            document.addEventListener('keydown', viewer._keyHandler);
+        }
+    }
+
+    function pagesPrev() { if (_pagesCurrentIdx > 0) { _pagesCurrentIdx--; renderPagesViewer(); } }
+    function pagesNext() { if (_pagesCurrentIdx < _pagesData.length - 1) { _pagesCurrentIdx++; renderPagesViewer(); } }
+    function closePagesViewer() {
+        const v = document.getElementById('catalogPagesViewer');
+        if (v) { v.style.display = 'none'; if (v._keyHandler) { document.removeEventListener('keydown', v._keyHandler); v._keyHandler = null; } }
+    }
+
+    function insertPageImage(catalogId, pageNumber, field) {
+        const url = prompt('Вставте URL зображення:');
+        if (!url) return;
+        const body = field === 'background' ? { backgroundUrl: url } : { imageUrl: url };
+        apiFetch('/api/catalogs/' + catalogId + '/pages/' + pageNumber, {
+            method: 'PUT', body: JSON.stringify(body)
+        }).then(r => { if (r) { showNotification('Зображення додано!'); openCatalogPages(catalogId); } });
+    }
+
+    function editCatalogPage(catalogId, pageNumber) {
+        const page = _pagesData.find(p => p.page_number === pageNumber);
+        if (!page) return;
+        const title = prompt('Назва:', page.title);
+        if (title === null) return;
+        const desc = prompt('Опис:', page.description || '');
+        const priceLabel = prompt('Ціна (напр. "від 700 ₴"):', page.price_label || '');
+        apiFetch('/api/catalogs/' + catalogId + '/pages/' + pageNumber, {
+            method: 'PUT', body: JSON.stringify({ title: title || page.title, description: desc, priceLabel: priceLabel })
+        }).then(r => { if (r) { showNotification('Сторінку оновлено!'); openCatalogPages(catalogId); } });
+    }
+
+    // Expose globally
+    window.openCatalogPages = openCatalogPages;
+    window.closePagesViewer = closePagesViewer;
+    window.pagesPrev = pagesPrev;
+    window.pagesNext = pagesNext;
+    window.insertPageImage = insertPageImage;
+    window.editCatalogPage = editCatalogPage;
+
     async function printCatalogItems(catalogId) {
         try {
             const r = await apiFetch('/api/catalogs/items?catalogId=' + catalogId);

@@ -481,3 +481,154 @@ body.dark-mode .cat-actions { background: #141418; }
 .embed-mode .skip-link,
 .embed-mode .page-login-overlay { display: none !important; }
 .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
+
+/* ══════════════════════════════════════
+   CATALOG PAGES — HTML page viewer v38.12
+   ══════════════════════════════════════ */
+
+/* Page card */
+.cat-page-card {
+    background: var(--white, #fff);
+    border-radius: var(--radius-card, 12px);
+    overflow: hidden;
+    border: 1px solid var(--gray-100, #f3f4f6);
+    box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.06));
+    max-width: 800px;
+    margin: 0 auto 16px;
+}
+
+/* Cover page */
+.cat-page-cover {
+    position: relative;
+    min-height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    color: #fff;
+    text-align: center;
+    padding: 40px 24px;
+}
+.cat-page-cover-bg {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    filter: brightness(0.3);
+}
+.cat-page-cover-content {
+    position: relative;
+    z-index: 1;
+}
+.cat-page-cover h1 {
+    font-size: clamp(22px, 4vw, 36px);
+    font-weight: 900;
+    margin: 0 0 8px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.cat-page-cover p {
+    font-size: 14px;
+    opacity: 0.85;
+    margin: 4px 0;
+}
+
+/* Content page layout */
+.cat-page-layout {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    min-height: 250px;
+}
+.cat-page-img {
+    background: linear-gradient(135deg, #f0f0f0, #e5e5e5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    min-height: 200px;
+}
+.cat-page-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.cat-page-img-empty {
+    color: var(--gray-400);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 20px;
+    text-align: center;
+    transition: background 0.15s;
+}
+.cat-page-img-empty:hover {
+    background: rgba(0,0,0,0.03);
+}
+.cat-page-info {
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+.cat-page-info h3 {
+    font-size: 18px;
+    font-weight: 800;
+    margin: 0 0 4px;
+}
+.cat-page-info .subtitle {
+    font-size: 13px;
+    color: var(--gray-500);
+    margin-bottom: 10px;
+}
+.cat-page-info .desc {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--gray-600);
+    margin-bottom: 14px;
+}
+.cat-page-price {
+    font-size: 20px;
+    font-weight: 900;
+    color: var(--primary, #22c55e);
+    margin-bottom: 10px;
+}
+.cat-page-detail {
+    font-size: 12px;
+    color: var(--gray-500);
+    margin: 2px 0;
+}
+.cat-page-actions {
+    padding: 10px 16px;
+    display: flex;
+    gap: 6px;
+    border-top: 1px solid var(--gray-100);
+}
+
+/* Dark mode */
+body.dark-mode .cat-page-card {
+    background: var(--dark-card, #1e1e2e);
+    border-color: rgba(255,255,255,0.08);
+}
+body.dark-mode .cat-page-img {
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+}
+body.dark-mode .cat-page-img-empty { color: rgba(255,255,255,0.3); }
+body.dark-mode .cat-page-info h3 { color: #fff; }
+body.dark-mode .cat-page-info .subtitle { color: rgba(255,255,255,0.5); }
+body.dark-mode .cat-page-info .desc { color: rgba(255,255,255,0.6); }
+body.dark-mode .cat-page-detail { color: rgba(255,255,255,0.4); }
+body.dark-mode .cat-page-actions { border-color: rgba(255,255,255,0.06); }
+
+/* Mobile */
+@media (max-width: 640px) {
+    .cat-page-layout { grid-template-columns: 1fr; }
+    .cat-page-info { padding: 16px; }
+    .cat-page-info h3 { font-size: 16px; }
+    .cat-page-price { font-size: 18px; }
+    .cat-page-cover { min-height: 220px; padding: 24px 16px; }
+}
+
+/* Print */
+@media print {
+    .cat-page-card { break-inside: avoid; page-break-inside: avoid; border: 1px solid #ddd; }
+    .cat-page-actions { display: none !important; }
+    .cat-page-price { color: #10B981 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

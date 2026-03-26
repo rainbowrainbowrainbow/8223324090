@@ -8,6 +8,7 @@
 const router  = require('express').Router();
 const https   = require('https');
 const { pool }  = require('../db');
+const { uploadFromUrl, makeFilename } = require('../services/imageStorage');
 const { requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Catalogs');
@@ -307,11 +308,21 @@ router.post('/apply-image', requireRole('admin', 'creator', 'director', 'art_dir
         const { itemId, taskId } = req.body;
         if (!itemId || !taskId) return res.status(400).json({ error: 'itemId і taskId required' });
         const r = await kieRequest('GET', `/api/v1/jobs/recordInfo?taskId=${taskId}`);
-        const imgUrl = parseKieImageUrl(r?.data);
-        if (!imgUrl) return res.json({ success: false, done: false, state: r?.data?.state });
-        await pool.query('UPDATE catalog_items SET image_url = $1, updated_at = NOW() WHERE id = $2', [imgUrl, itemId]);
-        res.json({ success: true, done: true, imageUrl: imgUrl });
+        const kieUrl = parseKieImageUrl(r?.data);
+        if (!kieUrl) return res.json({ success: false, done: false, state: r?.data?.state });
+
+        // v38.11: Upload to Supabase Storage (permanent) instead of keeping Kie.ai temp URL (14 days)
+        const item = await pool.query('SELECT name, catalog_id FROM catalog_items WHERE id = $1', [itemId]);
+        const itemName = item.rows[0]?.name || 'item';
+        const catalogId = item.rows[0]?.catalog_id || 'misc';
+        const filename = makeFilename(catalogId, itemName);
+        const permanentUrl = await uploadFromUrl(kieUrl, filename);
+        const finalUrl = permanentUrl || kieUrl; // Fallback to Kie.ai URL if upload fails
+
+        await pool.query('UPDATE catalog_items SET image_url = $1, updated_at = NOW() WHERE id = $2', [finalUrl, itemId]);
+        res.json({ success: true, done: true, imageUrl: finalUrl });
     } catch (err) {
+        log.error('apply-image error', err);
         res.status(500).json({ success: false, error: err.message });
     }
 });

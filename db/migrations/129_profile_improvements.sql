@@ -39,7 +39,7 @@ SELECT id, name, description, icon, 'digital', price_coins, 'cosmetic', true, so
 FROM character_items WHERE is_buyable = true AND id NOT IN (SELECT item_id FROM shop_items WHERE item_id IS NOT NULL)
 ON CONFLICT DO NOTHING;
 
--- Daily quests — ensure table and columns exist
+-- Daily quests — ensure table AND columns exist
 CREATE TABLE IF NOT EXISTS daily_quests (
     id SERIAL PRIMARY KEY,
     code VARCHAR(50),
@@ -50,6 +50,13 @@ CREATE TABLE IF NOT EXISTS daily_quests (
     reward_coins INTEGER DEFAULT 25,
     is_active BOOLEAN DEFAULT true
 );
+ALTER TABLE daily_quests ADD COLUMN IF NOT EXISTS code VARCHAR(50);
+ALTER TABLE daily_quests ADD COLUMN IF NOT EXISTS title VARCHAR(200);
+ALTER TABLE daily_quests ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE daily_quests ADD COLUMN IF NOT EXISTS quest_type VARCHAR(30) DEFAULT 'play_minigame';
+ALTER TABLE daily_quests ADD COLUMN IF NOT EXISTS target_value INTEGER DEFAULT 1;
+ALTER TABLE daily_quests ADD COLUMN IF NOT EXISTS reward_coins INTEGER DEFAULT 25;
+ALTER TABLE daily_quests ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
 INSERT INTO daily_quests (code, title, description, quest_type, target_value, reward_coins, is_active) VALUES
 ('login_daily', 'Зайти в CRM', 'Просто зайди в систему', 'login', 1, 10, true),
 ('complete_task', 'Виконай завдання', 'Заверши одне завдання', 'task_complete', 1, 25, true),

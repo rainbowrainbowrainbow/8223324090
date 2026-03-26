@@ -1355,6 +1355,22 @@
     function closePageForm() { var o = document.getElementById('pageFormOverlay'); if (o) o.classList.add('hidden'); }
     function closeCreateCatalog() { var o = document.getElementById('createCatalogOverlay'); if (o) o.classList.add('hidden'); }
 
+    async function submitCreateCatalog() {
+        var name = document.getElementById('catalogNameInput')?.value?.trim();
+        if (!name) { document.getElementById('catalogNameInput')?.focus(); return; }
+        var emoji = {'general':'📂','graduation':'🎓','pinata':'🪅','cakes':'🎂','masterclass':'🎨','shows':'✨'}[document.getElementById('catalogCategoryInput')?.value] || '📂';
+        var desc = document.getElementById('catalogDescInput')?.value?.trim() || null;
+        var tr = {'а':'a','б':'b','в':'v','г':'h','ґ':'g','д':'d','е':'e','є':'ye','ж':'zh','з':'z','и':'y','і':'i','ї':'yi','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ь':'','ю':'yu','я':'ya'};
+        var id = name.toLowerCase().split('').map(function(c){return tr[c]||c;}).join('').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'cat-'+Date.now();
+        try {
+            var res = await apiFetch('/api/catalogs/definitions', { method:'POST', body:JSON.stringify({id:id,name:name,emoji:emoji,description:desc}), headers:{'Content-Type':'application/json'} });
+            if (!res) return;
+            var data = await res.json();
+            if (data.success || data.id) { closeCreateCatalog(); showNotification('Каталог "'+name+'" створено!'); loadDynamicCatalogCards(); }
+            else { showNotification(data.error||'Помилка','error'); }
+        } catch(e) { showNotification('Помилка: '+e.message,'error'); }
+    }
+
     async function generatePageImage() {
         var p = document.getElementById('imgGenPrompt').value.trim();
         if (!p) { document.getElementById('imgGenPrompt').focus(); return; }

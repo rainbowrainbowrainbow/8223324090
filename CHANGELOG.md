@@ -4,6 +4,34 @@
 
 ---
 
+## v38.13.0 — Catalog Pages + Supabase Storage (2026-03-26)
+
+### Catalog Pages [claude-code]
+- **catalog_pages таблиця** — Migration 127: HTML-сторінки для каталогу (обкладинка + товарні)
+- **API** — GET/POST/PUT/DELETE endpoints для сторінок каталогу
+- **Fullscreen viewer** — ← → навігація, Escape закриття
+- **Створення сторінок** — "+ Обкладинка" та "+ Сторінка" кнопки
+- **Вставка зображень** — кнопка "🖼 Зображення" на кожній сторінці
+- **Редагування** — назва, опис, ціна через "✏️ Редагувати"
+
+### Supabase Storage [claude-code]
+- **Постійне збереження** — AI зображення завантажуються в Supabase Storage (bucket: catalog-images)
+- **Транслітерація filename** — UA→ASCII для Supabase (фікс "Invalid key" помилки)
+- **Fallback** — якщо Supabase недоступний, зберігає Kie.ai temp URL
+- **CSP** — дозволено img-src для *.supabase.co та *.aiquickdraw.com
+
+### AI Image Generation [claude-code]
+- **nano-banana-2** — оновлено модель (google/nano-banana → nano-banana-2)
+- **Role access** — всі catalog endpoints дозволяють creator/director/art_director/manager
+- **Error feedback** — toast на старті/успіху/помилці генерації
+
+### CSS Architecture [claude-code]
+- **css/designs.css** — 342 рядків витягнуто з designs.html
+- **css/catalog.css** — 483 рядків + стилі catalog pages
+- **designs.html** — 1541 → 725 рядків (-53%)
+
+---
+
 ## v38.11.0 — Systematic Frontend Improvements (2026-03-26)
 
 ### AI Image Generation [claude-code]

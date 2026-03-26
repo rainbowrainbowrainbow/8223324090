@@ -3,7 +3,7 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md
 
 ## Де ми
-Версія **v38.11.0**. Бранч `claude/continue-project-work-pdpKD` — запушений.
+Версія **v38.13.0**. Бранч `claude/continue-project-work-pdpKD` — запушений.
 
 ## Актуальний стан
 
@@ -24,7 +24,7 @@ PGUSER=postgres PGPASSWORD=postgres PGDATABASE=park_booking PGHOST=localhost RAT
 
 ## Що зроблено в цій сесії
 
-### v38.11.0 — Security & Reliability Hardening (based on deep tech audit)
+### v38.13.0 — Security & Reliability Hardening (based on deep tech audit)
 
 #### JWT Refresh Tokens
 - Access token 15m + refresh token 30d з rotation
@@ -80,7 +80,7 @@ services/eventBus.js                          — publishInTransaction + process
 utils/sqlSafe.js                              — SQL safety utilities (NEW)
 server.js                                     — outbox relay + token cleanup schedulers
 package.json                                  — version 38.4.0
-CHANGELOG.md                                  — v38.11.0 entry
+CHANGELOG.md                                  — v38.13.0 entry
 SNAPSHOT.md                                   — this file
 ```
 
@@ -105,7 +105,7 @@ SNAPSHOT.md                                   — this file
 - v34.0.0–v35.0.0: Sidebar Full Rebuild
 - v38.0.0–v38.2.0: Testing, deep research prep
 - v38.3.0: Operations Intelligence
-- **v38.11.0: Security & Reliability Hardening (ПОТОЧНА СЕСІЯ)**
+- **v38.13.0: Security & Reliability Hardening (ПОТОЧНА СЕСІЯ)**
 
 ## Незроблені баги з BUGFIX_TASKS.md
 - **BUG-001** — Тімур бот: зайвий текст при decline/other (`tymur-bot/bot.py`) — НЕ ЗРОБЛЕНО
@@ -134,4 +134,4 @@ SNAPSHOT.md                                   — this file
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-25, v38.11.0, сесія claude-code*
+*Оновлено: 2026-03-25, v38.13.0, сесія claude-code*

@@ -34,20 +34,8 @@ async function uploadFromUrl(sourceUrl, filename) {
         }
         log.info(`Downloaded ${Math.round(imageBuffer.length / 1024)}KB`);
 
-        // 2. Ensure bucket exists
-        const { data: buckets, error: listErr } = await supabase.storage.listBuckets();
-        if (listErr) {
-            log.error('Failed to list buckets:', listErr.message);
-            return null;
-        }
-        if (!buckets?.find(b => b.name === BUCKET)) {
-            const { error: createErr } = await supabase.storage.createBucket(BUCKET, { public: true });
-            if (createErr) {
-                log.error('Failed to create bucket:', createErr.message);
-                return null;
-            }
-            log.info(`Created storage bucket: ${BUCKET}`);
-        }
+        // 2. Try upload directly (bucket should be created in Supabase Dashboard)
+        // If bucket doesn't exist, try to create it
 
         // 3. Upload to Supabase Storage
         const path = `items/${filename}`;
@@ -61,10 +49,23 @@ async function uploadFromUrl(sourceUrl, filename) {
             });
 
         if (error) {
-            log.error('Supabase upload error:', error.message, error.statusCode || '');
-            return null;
+            log.error('Supabase upload error:', error.message, JSON.stringify(error));
+            // If bucket not found, try to create and retry
+            if (error.message?.includes('not found') || error.statusCode === 404) {
+                log.info('Bucket not found, creating...');
+                await supabase.storage.createBucket(BUCKET, { public: true });
+                const retry = await supabase.storage.from(BUCKET).upload(path, imageBuffer, { contentType, upsert: true });
+                if (retry.error) {
+                    log.error('Retry upload failed:', retry.error.message);
+                    return null;
+                }
+                log.info(`Created bucket + uploaded: ${path}`);
+            } else {
+                return null;
+            }
+        } else {
+            log.info(`Uploaded to Supabase: ${path}`);
         }
-        log.info(`Uploaded to Supabase: ${path}`);
 
         // 4. Get public URL
         const { data: urlData } = supabase.storage

@@ -7,19 +7,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/base.css?v=25.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=25.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=25.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=25.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=25.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=25.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=25.3.0">
+    <link rel="stylesheet" href="css/base.css?v=28.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=28.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=28.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=28.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=28.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=28.3.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=28.3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -537,6 +531,299 @@
         .embed-mode .skip-link,
         .embed-mode .page-login-overlay { display: none !important; }
         .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
+
+        /* ==========================================
+           IMAGE PICKER + PAGE FORM MODALS
+           ========================================== */
+        .img-picker-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 10000;
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .img-picker-overlay.hidden { display: none; }
+
+        .img-picker-modal {
+            background: #1a1a1a;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 16px;
+            width: 100%; max-width: 480px; max-height: 85vh;
+            overflow-y: auto; padding: 0;
+        }
+        .img-picker-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .img-picker-header h3 { font-size: 16px; font-weight: 800; margin: 0; color: #fff; }
+        .img-picker-close {
+            background: none; border: none; color: rgba(255,255,255,0.5);
+            font-size: 18px; cursor: pointer; padding: 4px 8px;
+        }
+        .img-picker-section {
+            padding: 14px 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .img-picker-section-title {
+            font-size: 12px; font-weight: 700;
+            color: rgba(255,255,255,0.5);
+            margin-bottom: 8px;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .img-picker-label {
+            font-size: 12px; font-weight: 700;
+            color: rgba(255,255,255,0.6);
+            margin-bottom: 4px; display: block;
+        }
+        .img-picker-input {
+            padding: 10px 14px; border-radius: 10px;
+            border: 1.5px solid rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.05); color: #fff;
+            font-size: 14px; font-family: inherit; outline: none;
+            width: 100%; box-sizing: border-box;
+        }
+        .img-picker-input:focus { border-color: var(--primary, #a855f7); }
+        .img-picker-input::placeholder { color: rgba(255,255,255,0.3); }
+
+        .img-picker-btn-primary {
+            padding: 10px 18px; border-radius: 12px; border: none;
+            background: linear-gradient(135deg, #C9A84C, #D4AF37);
+            color: #0D0D0D; font-size: 14px; font-weight: 800;
+            cursor: pointer; font-family: inherit; white-space: nowrap;
+        }
+        .img-picker-btn-primary:hover { opacity: 0.9; }
+        .img-picker-btn-primary:disabled { opacity: 0.5; cursor: default; }
+
+        .img-picker-btn-secondary {
+            padding: 10px 18px; border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.7);
+            font-size: 14px; font-weight: 600;
+            cursor: pointer; font-family: inherit;
+        }
+        .img-picker-btn-secondary:hover { background: rgba(255,255,255,0.08); }
+
+        .img-picker-btn-cancel {
+            display: block; width: calc(100% - 40px);
+            margin: 12px 20px 16px; padding: 10px;
+            border-radius: 12px; border: none;
+            background: rgba(255,255,255,0.03);
+            color: rgba(255,255,255,0.4);
+            font-size: 14px; cursor: pointer; font-family: inherit;
+        }
+
+        .img-gallery-grid {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+        }
+        .img-gallery-item {
+            aspect-ratio: 1; border-radius: 8px; overflow: hidden;
+            cursor: pointer; border: 2px solid transparent;
+            transition: border-color 0.2s;
+        }
+        .img-gallery-item:hover { border-color: var(--primary, #a855f7); }
+        .img-gallery-item img { width: 100%; height: 100%; object-fit: cover; }
+
+        /* ==========================================
+           CATALOGS TAB
+           ========================================== */
+        .catalog-toolbar {
+            display: flex; justify-content: flex-end;
+            margin-bottom: 16px;
+        }
+        .catalogs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+        .catalog-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px; overflow: hidden;
+            cursor: pointer; transition: transform 0.2s, border-color 0.2s;
+        }
+        .catalog-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.15); }
+        .catalog-card-cover {
+            height: 120px; background: linear-gradient(135deg, #1a1a1a, #2d2d2d);
+            background-size: cover; background-position: center;
+            position: relative;
+        }
+        .catalog-card-badge {
+            position: absolute; top: 8px; right: 8px;
+            padding: 4px 10px; border-radius: 8px;
+            font-size: 11px; font-weight: 700;
+            background: rgba(0,0,0,0.5); color: #6EE7B7;
+            backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+        }
+        .catalog-card-body { padding: 14px 16px; }
+        .catalog-card-title { font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 4px; }
+        .catalog-card-desc { font-size: 13px; color: rgba(255,255,255,0.5); line-height: 1.4; }
+        .catalog-card-footer {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 16px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+        .catalog-card-pages { font-size: 12px; color: rgba(255,255,255,0.4); }
+        .catalog-card-actions { display: flex; gap: 6px; }
+        .catalog-card-actions button {
+            background: none; border: none; color: rgba(255,255,255,0.4);
+            font-size: 14px; cursor: pointer; padding: 4px;
+        }
+        .catalog-card-actions button:hover { color: #fff; }
+
+        /* Catalog Viewer */
+        .catalog-viewer-header {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 20px;
+        }
+        .catalog-viewer-header h3 {
+            flex: 1; font-size: 18px; font-weight: 800; color: #fff; margin: 0;
+        }
+
+        /* Catalog Page Preview */
+        .catalog-pages-viewer {
+            display: flex; flex-direction: column; gap: 16px;
+        }
+        .cat-page-card {
+            display: flex; gap: 20px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px; overflow: hidden;
+            transition: border-color 0.2s;
+        }
+        .cat-page-card:hover { border-color: rgba(255,255,255,0.15); }
+        .cat-page-image {
+            width: 240px; min-height: 200px; flex-shrink: 0;
+            background: linear-gradient(135deg, #1a1a1a, #252525);
+            background-size: cover; background-position: center;
+            display: flex; align-items: center; justify-content: center;
+            position: relative;
+        }
+        .cat-page-image-placeholder {
+            color: rgba(255,255,255,0.2); font-size: 13px; text-align: center; padding: 16px;
+        }
+        .cat-page-image-btn {
+            position: absolute; bottom: 8px; right: 8px;
+            padding: 6px 12px; border-radius: 8px; border: none;
+            background: rgba(0,0,0,0.6); color: #fff;
+            font-size: 12px; font-weight: 700; cursor: pointer;
+            backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+        }
+        .cat-page-image-btn:hover { background: rgba(0,0,0,0.8); }
+        .cat-page-info {
+            flex: 1; padding: 20px 20px 20px 0;
+            display: flex; flex-direction: column; gap: 6px;
+        }
+        .cat-page-info h3 {
+            color: #fff; font-weight: 800; font-size: 18px; margin: 0;
+        }
+        .cat-page-info .subtitle {
+            color: rgba(255,255,255,0.6); font-size: 14px;
+        }
+        .cat-page-info .desc {
+            color: rgba(255,255,255,0.75); font-size: 14px; line-height: 1.5;
+        }
+        .cat-page-info .price {
+            color: #6EE7B7; font-size: 20px; font-weight: 900;
+        }
+        .cat-page-info .detail {
+            color: rgba(255,255,255,0.5); font-size: 13px;
+        }
+        .cat-page-actions {
+            display: flex; gap: 6px; margin-top: auto; padding-top: 8px;
+        }
+        .cat-page-actions button {
+            padding: 6px 12px; border-radius: 8px; border: none;
+            background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.5);
+            font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+        }
+        .cat-page-actions button:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+        /* Cover page special */
+        .cat-page-cover {
+            position: relative; border-radius: 16px; overflow: hidden;
+            min-height: 240px; background-size: cover; background-position: center;
+            background-color: #1a1a1a;
+            display: flex; align-items: flex-end;
+        }
+        .cat-page-cover-overlay {
+            width: 100%; padding: 30px 24px;
+            background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+        }
+        .cat-page-cover h3,
+        .cat-page-cover .subtitle,
+        .cat-page-cover .desc {
+            color: #fff !important;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+        }
+        .cat-page-cover h3 { font-size: 24px; font-weight: 900; margin: 0 0 4px; }
+        .cat-page-cover .subtitle { font-size: 14px; opacity: 0.8; }
+        .cat-page-cover-actions {
+            position: absolute; top: 12px; right: 12px;
+            display: flex; gap: 6px;
+        }
+
+        /* Light mode overrides for modals */
+        body:not(.dark-mode) .img-picker-modal,
+        body:not([data-theme="dark"]) .img-picker-modal {
+            background: #fff; border-color: rgba(0,0,0,0.1);
+        }
+        body:not(.dark-mode) .img-picker-header h3,
+        body:not([data-theme="dark"]) .img-picker-header h3 { color: #1a1a1a; }
+        body:not(.dark-mode) .img-picker-input,
+        body:not([data-theme="dark"]) .img-picker-input {
+            background: #f5f5f5; border-color: #ddd; color: #1a1a1a;
+        }
+        body:not(.dark-mode) .img-picker-section-title,
+        body:not([data-theme="dark"]) .img-picker-section-title { color: #666; }
+        body:not(.dark-mode) .img-picker-label,
+        body:not([data-theme="dark"]) .img-picker-label { color: #555; }
+        body:not(.dark-mode) .img-picker-btn-secondary,
+        body:not([data-theme="dark"]) .img-picker-btn-secondary {
+            background: #f0f0f0; border-color: #ddd; color: #333;
+        }
+        body:not(.dark-mode) .img-picker-close,
+        body:not([data-theme="dark"]) .img-picker-close { color: #999; }
+        body:not(.dark-mode) .img-picker-btn-cancel,
+        body:not([data-theme="dark"]) .img-picker-btn-cancel {
+            background: #f5f5f5; color: #999;
+        }
+
+        /* Light mode catalog cards */
+        body:not(.dark-mode) .catalog-card,
+        body:not([data-theme="dark"]) .catalog-card {
+            background: #fff; border-color: #e5e5e5;
+        }
+        body:not(.dark-mode) .catalog-card-title,
+        body:not([data-theme="dark"]) .catalog-card-title { color: #1a1a1a; }
+        body:not(.dark-mode) .catalog-card-desc,
+        body:not([data-theme="dark"]) .catalog-card-desc { color: #666; }
+
+        /* Light mode catalog page preview */
+        body:not(.dark-mode) .cat-page-card,
+        body:not([data-theme="dark"]) .cat-page-card {
+            background: #fff; border-color: #e5e5e5;
+        }
+        body:not(.dark-mode) .cat-page-info h3,
+        body:not([data-theme="dark"]) .cat-page-info h3 { color: #1a1a1a; }
+        body:not(.dark-mode) .cat-page-info .subtitle,
+        body:not([data-theme="dark"]) .cat-page-info .subtitle { color: #666; }
+        body:not(.dark-mode) .cat-page-info .desc,
+        body:not([data-theme="dark"]) .cat-page-info .desc { color: #444; }
+        body:not(.dark-mode) .cat-page-info .price,
+        body:not([data-theme="dark"]) .cat-page-info .price { color: #10B981; }
+        body:not(.dark-mode) .cat-page-info .detail,
+        body:not([data-theme="dark"]) .cat-page-info .detail { color: #888; }
+
+        /* Mobile */
+        @media (max-width: 640px) {
+            .img-picker-modal { max-width: 100%; border-radius: 16px 16px 0 0; }
+            .img-gallery-grid { grid-template-columns: repeat(3, 1fr); }
+            .cat-page-card { flex-direction: column; }
+            .cat-page-image { width: 100%; min-height: 160px; }
+            .cat-page-info { padding: 16px; }
+        }
     </style>
 </head>
 <body>
@@ -587,6 +874,7 @@
                 <button class="design-tab" data-tab="collections">Колекції <span class="tab-count" id="countCollections">0</span></button>
                 <button class="design-tab" data-tab="price">Прайс-лист</button>
                 <button class="design-tab" data-tab="calendar">Календар</button>
+                <button class="design-tab" data-tab="catalogs">Каталоги <span class="tab-count" id="countCatalogs">0</span></button>
             </div>
 
             <!-- ==================== GALLERY TAB ==================== -->
@@ -649,6 +937,22 @@
                 <div class="calendar-grid" id="calendarGrid"></div>
                 <div class="calendar-day-detail" id="calDetail" style="display:none"></div>
             </div>
+
+            <!-- ==================== CATALOGS TAB ==================== -->
+            <div id="tabCatalogs" style="display:none">
+                <div class="catalog-toolbar">
+                    <button class="img-picker-btn-primary" onclick="showCreateCatalogForm()">+ Новий каталог</button>
+                </div>
+                <div id="catalogsList" class="catalogs-grid"></div>
+                <div id="catalogViewer" style="display:none">
+                    <div class="catalog-viewer-header">
+                        <button class="img-picker-btn-secondary" onclick="closeCatalogViewer()">← Назад</button>
+                        <h3 id="catalogViewerTitle"></h3>
+                        <button class="img-picker-btn-primary" onclick="showAddPageForm()">+ Сторінка</button>
+                    </div>
+                    <div id="catalogPages" class="catalog-pages-viewer"></div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -697,17 +1001,156 @@
         <span id="notificationText"></span>
     </div>
 
+    <!-- ==================== IMAGE PICKER MODAL ==================== -->
+    <div id="imagePickerOverlay" class="img-picker-overlay hidden">
+      <div class="img-picker-modal">
+        <div class="img-picker-header">
+          <h3 id="imagePickerTitle">Зображення</h3>
+          <button type="button" class="img-picker-close" onclick="closeImagePicker()">&#10005;</button>
+        </div>
+        <div class="img-picker-section">
+          <div class="img-picker-section-title">AI ГЕНЕРАЦІЯ</div>
+          <div style="display:flex;gap:6px">
+            <input type="text" id="imgGenPrompt" placeholder="Опишіть зображення..." class="img-picker-input" style="flex:1" autocomplete="off">
+            <button type="button" id="imgGenBtn" class="img-picker-btn-primary" onclick="generatePageImage()">Згенерувати</button>
+          </div>
+          <div id="imgGenStatus" style="display:none;margin-top:8px;font-size:13px;color:var(--primary,#a855f7)"></div>
+          <img id="imgGenPreview" style="display:none;margin-top:8px;max-width:100%;border-radius:10px" alt="Preview">
+          <div id="imgGenActions" style="display:none;margin-top:6px;gap:6px">
+            <button type="button" class="img-picker-btn-primary" onclick="useGeneratedImage()">Використати</button>
+            <button type="button" class="img-picker-btn-secondary" onclick="generatePageImage()">Перегенерувати</button>
+          </div>
+        </div>
+        <div class="img-picker-section">
+          <div class="img-picker-section-title">ЗАВАНТАЖИТИ З КОМПʼЮТЕРА</div>
+          <button type="button" class="img-picker-btn-secondary" style="width:100%" onclick="uploadPageImage()">
+            Обрати файл (JPG, PNG, WEBP)
+          </button>
+          <input type="file" id="imgUploadInput" accept="image/*" style="display:none">
+        </div>
+        <div class="img-picker-section">
+          <div class="img-picker-section-title">ОБРАТИ З ГОТОВИХ</div>
+          <div id="imgGalleryGrid" class="img-gallery-grid"></div>
+        </div>
+        <div class="img-picker-section">
+          <div class="img-picker-section-title">ВСТАВИТИ URL</div>
+          <div style="display:flex;gap:6px">
+            <input type="text" id="imgUrlInput" placeholder="https://..." class="img-picker-input" style="flex:1" autocomplete="off">
+            <button type="button" class="img-picker-btn-secondary" onclick="useUrlImage()">Вставити</button>
+          </div>
+        </div>
+        <button type="button" class="img-picker-btn-cancel" onclick="closeImagePicker()">Скасувати</button>
+      </div>
+    </div>
+
+    <!-- ==================== PAGE FORM MODAL (Add/Edit catalog page) ==================== -->
+    <div id="pageFormOverlay" class="img-picker-overlay hidden">
+      <div class="img-picker-modal">
+        <div class="img-picker-header">
+          <h3 id="pageFormTitle">Додати сторінку</h3>
+          <button type="button" class="img-picker-close" onclick="closePageForm()">&#10005;</button>
+        </div>
+        <div style="padding:16px 20px;display:flex;flex-direction:column;gap:12px">
+          <div class="form-group">
+            <label class="img-picker-label">Обрати з каталогу</label>
+            <select id="pageProductSelect" onchange="fillPageFromProduct(this.value)" class="img-picker-input" style="padding:10px 14px">
+              <option value="">— Ввести вручну —</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="img-picker-label">Назва *</label>
+            <input type="text" id="pageTitle" class="img-picker-input" placeholder="Назва програми" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label class="img-picker-label">Підзаголовок</label>
+            <input type="text" id="pageSubtitle" class="img-picker-input" placeholder="Короткий опис" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label class="img-picker-label">Опис</label>
+            <textarea id="pageDescription" class="img-picker-input" rows="3" placeholder="Детальний опис..." style="resize:vertical"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="img-picker-label">Ціна</label>
+            <input type="text" id="pagePriceLabel" class="img-picker-input" placeholder="від 700 ₴" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label class="img-picker-label">Деталі</label>
+            <input type="text" id="pageDetail" class="img-picker-input" placeholder="Вік, к-сть дітей..." autocomplete="off">
+          </div>
+          <div style="display:flex;gap:8px">
+            <button type="button" id="pageFormSubmit" class="img-picker-btn-primary" style="flex:1" onclick="submitPageForm()">Зберегти</button>
+            <button type="button" class="img-picker-btn-secondary" style="flex:1" onclick="closePageForm()">Скасувати</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TELEGRAM CAPTION MODAL ==================== -->
+    <div id="telegramCaptionOverlay" class="img-picker-overlay hidden">
+      <div class="img-picker-modal" style="max-width:420px">
+        <div class="img-picker-header">
+          <h3>Надіслати в Telegram</h3>
+          <button type="button" class="img-picker-close" onclick="closeTelegramCaption()">&#10005;</button>
+        </div>
+        <div style="padding:16px 20px;display:flex;flex-direction:column;gap:12px">
+          <div class="form-group">
+            <label class="img-picker-label">Підпис</label>
+            <input type="text" id="telegramCaption" class="img-picker-input" placeholder="Підпис для Telegram..." autocomplete="off">
+          </div>
+          <div style="display:flex;gap:8px">
+            <button type="button" class="img-picker-btn-primary" style="flex:1" onclick="submitTelegramCaption()">Надіслати</button>
+            <button type="button" class="img-picker-btn-secondary" style="flex:1" onclick="closeTelegramCaption()">Скасувати</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== CREATE CATALOG MODAL ==================== -->
+    <div id="createCatalogOverlay" class="img-picker-overlay hidden">
+      <div class="img-picker-modal" style="max-width:420px">
+        <div class="img-picker-header">
+          <h3 id="createCatalogTitle">Новий каталог</h3>
+          <button type="button" class="img-picker-close" onclick="closeCreateCatalog()">&#10005;</button>
+        </div>
+        <div style="padding:16px 20px;display:flex;flex-direction:column;gap:12px">
+          <div class="form-group">
+            <label class="img-picker-label">Назва *</label>
+            <input type="text" id="catalogNameInput" class="img-picker-input" placeholder="Каталог піньят" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label class="img-picker-label">Опис</label>
+            <textarea id="catalogDescInput" class="img-picker-input" rows="2" placeholder="Опис каталогу..." style="resize:vertical"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="img-picker-label">Категорія</label>
+            <select id="catalogCategoryInput" class="img-picker-input" style="padding:10px 14px">
+              <option value="general">Загальне</option>
+              <option value="graduation">Випускний</option>
+              <option value="pinata">Піньяти</option>
+              <option value="cakes">Торти</option>
+              <option value="masterclass">Майстер-класи</option>
+              <option value="shows">Шоу</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button type="button" class="img-picker-btn-primary" style="flex:1" onclick="submitCreateCatalog()">Створити</button>
+            <button type="button" class="img-picker-btn-secondary" style="flex:1" onclick="closeCreateCatalog()">Скасувати</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script>
     if (new URLSearchParams(window.location.search).get('embedded') === '1' || new URLSearchParams(window.location.search).get('embed') === '1' || window.self !== window.top) {
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/config.js?v=25.3.0"></script>
-    <script src="js/api.js?v=25.3.0"></script>
-    <script src="js/auth.js?v=25.3.0"></script>
-    <script src="js/components/sidebar.js?v=25.3.0"></script>
+    <script src="js/config.js?v=28.3.0"></script>
+    <script src="js/api.js?v=28.3.0"></script>
+    <script src="js/auth.js?v=28.3.0"></script>
+    <script src="js/components/sidebar.js?v=28.3.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/designs-page.js?v=25.3.0"></script>
-    <script src="js/role-panel.js?v=25.3.0"></script>
+    <script src="js/designs-page.js?v=28.3.0"></script>
+    <script src="js/role-panel.js?v=28.3.0"></script>
 </body>
 </html>

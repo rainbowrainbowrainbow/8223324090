@@ -130,6 +130,7 @@ app.use('/api/recurring', require('./routes/recurring'));
 app.use('/api/points', require('./routes/points'));
 app.use('/api/kleshnya', require('./routes/kleshnya'));
 app.use('/api/designs', require('./routes/designs'));
+app.use('/api/catalogs', require('./routes/catalogs'));
 app.use('/api/contractors', require('./routes/contractors'));
 app.use('/api/warehouse', require('./routes/warehouse'));
 app.use('/api/hr', require('./routes/hr'));

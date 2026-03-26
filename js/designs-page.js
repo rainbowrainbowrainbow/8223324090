@@ -103,10 +103,13 @@ function setupTabs() {
             document.getElementById('tabCollections').style.display = activeTab === 'collections' ? '' : 'none';
             document.getElementById('tabPrice').style.display = activeTab === 'price' ? '' : 'none';
             document.getElementById('tabCalendar').style.display = activeTab === 'calendar' ? '' : 'none';
+            const tabCatalogs = document.getElementById('tabCatalogs');
+            if (tabCatalogs) tabCatalogs.style.display = activeTab === 'catalogs' ? '' : 'none';
 
             if (activeTab === 'price') loadPriceList();
             if (activeTab === 'calendar') renderCalendar();
             if (activeTab === 'collections') renderCollections();
+            if (activeTab === 'catalogs') loadCatalogs();
         });
     });
 }
@@ -330,16 +333,31 @@ async function deleteDesign(id) {
     renderTagChips();
 }
 
+let _telegramDesignId = null;
+
 async function sendToTelegram(id) {
     const d = designs.find(x => x.id === id);
     if (!d) return;
-    const caption = prompt('Підпис для Telegram:', d.title || '');
-    if (caption === null) return;
+    _telegramDesignId = id;
+    document.getElementById('telegramCaption').value = d.title || '';
+    document.getElementById('telegramCaptionOverlay').classList.remove('hidden');
+    setTimeout(() => document.getElementById('telegramCaption').focus(), 100);
+}
 
-    const res = await apiFetch(`${API}/${id}/telegram`, {
+function closeTelegramCaption() {
+    document.getElementById('telegramCaptionOverlay').classList.add('hidden');
+    _telegramDesignId = null;
+}
+
+async function submitTelegramCaption() {
+    if (!_telegramDesignId) return;
+    const caption = document.getElementById('telegramCaption').value.trim();
+
+    const res = await apiFetch(`${API}/${_telegramDesignId}/telegram`, {
         method: 'POST',
         body: JSON.stringify({ caption })
     });
+    closeTelegramCaption();
     if (res && res.ok) {
         showNotification('Надіслано в Telegram');
     } else {
@@ -347,6 +365,8 @@ async function sendToTelegram(id) {
         showNotification(err?.error || 'Помилка відправки', 'error');
     }
 }
+window.closeTelegramCaption = closeTelegramCaption;
+window.submitTelegramCaption = submitTelegramCaption;
 
 // ==========================================
 // FILTERS
@@ -822,3 +842,509 @@ window.copyDesign = copyDesign;
 window.togglePin = togglePin;
 window.deleteDesign = deleteDesign;
 window.sendToTelegram = sendToTelegram;
+
+// ==========================================
+// CATALOGS
+// ==========================================
+const CATALOGS_API = '/api/catalogs';
+let catalogsList = [];
+let currentCatalogId = null;
+let currentCatalogPages = [];
+let _imgPickerCatalogId = null;
+let _imgPickerPageNumber = null;
+let _imgPickerField = null;
+let _imgPickerGeneratedUrl = null;
+let _pageFormMode = 'add'; // 'add' or 'edit'
+let _pageFormEditPageNumber = null;
+
+async function loadCatalogs() {
+    try {
+        const res = await apiFetch(CATALOGS_API);
+        catalogsList = Array.isArray(res) ? res : (res ? await res.json() : []);
+        renderCatalogs();
+        const countEl = document.getElementById('countCatalogs');
+        if (countEl) countEl.textContent = catalogsList.length;
+    } catch (err) {
+        console.error('Load catalogs error:', err);
+    }
+}
+
+function renderCatalogs() {
+    const container = document.getElementById('catalogsList');
+    if (!container) return;
+
+    if (catalogsList.length === 0) {
+        container.innerHTML = '<div class="empty-state"><span>📚</span>Немає каталогів. Створіть перший!</div>';
+        return;
+    }
+
+    container.innerHTML = catalogsList.map(c => {
+        const coverStyle = c.cover_url ? `background-image:url(${esc(c.cover_url)})` : '';
+        return `<div class="catalog-card" onclick="openCatalogPages(${c.id})">
+            <div class="catalog-card-cover" style="${coverStyle}">
+                <div class="catalog-card-badge">${c.page_count || 0} стор.</div>
+            </div>
+            <div class="catalog-card-body">
+                <div class="catalog-card-title">${esc(c.title)}</div>
+                <div class="catalog-card-desc">${esc(c.description || '')}</div>
+            </div>
+            <div class="catalog-card-footer" onclick="event.stopPropagation()">
+                <span class="catalog-card-pages">${c.status || 'draft'}</span>
+                <div class="catalog-card-actions">
+                    <button onclick="deleteCatalog(${c.id})" title="Видалити">🗑</button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function openCatalogPages(catalogId) {
+    currentCatalogId = catalogId;
+    try {
+        const res = await apiFetch(`${CATALOGS_API}/${catalogId}`);
+        const catalog = res.id ? res : await res.json();
+        currentCatalogPages = catalog.pages || [];
+
+        document.getElementById('catalogsList').style.display = 'none';
+        document.querySelector('.catalog-toolbar').style.display = 'none';
+        const viewer = document.getElementById('catalogViewer');
+        viewer.style.display = '';
+        document.getElementById('catalogViewerTitle').textContent = catalog.title;
+
+        renderCatalogPages(catalog);
+    } catch (err) {
+        console.error('Open catalog error:', err);
+        showNotification('Помилка завантаження каталогу', 'error');
+    }
+}
+window.openCatalogPages = openCatalogPages;
+
+function closeCatalogViewer() {
+    document.getElementById('catalogViewer').style.display = 'none';
+    document.getElementById('catalogsList').style.display = '';
+    document.querySelector('.catalog-toolbar').style.display = '';
+    currentCatalogId = null;
+    currentCatalogPages = [];
+}
+window.closeCatalogViewer = closeCatalogViewer;
+
+function renderCatalogPages(catalog) {
+    const container = document.getElementById('catalogPages');
+    if (!container) return;
+
+    let html = '';
+
+    // Cover page
+    const bgStyle = catalog.background_url ? `background-image:url(${esc(catalog.background_url)})` : '';
+    html += `<div class="cat-page-cover" style="${bgStyle}">
+        <div class="cat-page-cover-overlay">
+            <h3>${esc(catalog.title)}</h3>
+            <div class="subtitle">${esc(catalog.description || '')}</div>
+        </div>
+        <div class="cat-page-cover-actions">
+            <button class="cat-page-image-btn" onclick="insertPageImage(${catalog.id}, 0, 'background')">Фон</button>
+        </div>
+    </div>`;
+
+    // Content pages
+    if (currentCatalogPages.length === 0) {
+        html += '<div class="empty-state" style="margin-top:16px"><span>📄</span>Немає сторінок. Додайте першу!</div>';
+    } else {
+        for (const page of currentCatalogPages) {
+            const imgStyle = page.image_url ? `background-image:url(${esc(page.image_url)})` : '';
+            html += `<div class="cat-page-card">
+                <div class="cat-page-image" style="${imgStyle}">
+                    ${page.image_url ? '' : '<div class="cat-page-image-placeholder">Без зображення</div>'}
+                    <button class="cat-page-image-btn" onclick="insertPageImage(${catalog.id}, ${page.page_number}, 'image')">Зображення</button>
+                </div>
+                <div class="cat-page-info">
+                    <h3>${esc(page.title || 'Без назви')}</h3>
+                    ${page.subtitle ? `<div class="subtitle">${esc(page.subtitle)}</div>` : ''}
+                    ${page.description ? `<div class="desc">${esc(page.description)}</div>` : ''}
+                    ${page.price_label ? `<div class="price">${esc(page.price_label)}</div>` : ''}
+                    ${page.detail ? `<div class="detail">${esc(page.detail)}</div>` : ''}
+                    <div class="cat-page-actions">
+                        <button onclick="showEditPageForm(${catalog.id}, ${page.page_number})">Редагувати</button>
+                        <button onclick="deletePageConfirm(${catalog.id}, ${page.page_number})">Видалити</button>
+                    </div>
+                </div>
+            </div>`;
+        }
+    }
+
+    container.innerHTML = html;
+}
+
+// --- Create Catalog ---
+function showCreateCatalogForm() {
+    document.getElementById('catalogNameInput').value = '';
+    document.getElementById('catalogDescInput').value = '';
+    document.getElementById('catalogCategoryInput').value = 'general';
+    document.getElementById('createCatalogTitle').textContent = 'Новий каталог';
+    document.getElementById('createCatalogOverlay').classList.remove('hidden');
+    setTimeout(() => document.getElementById('catalogNameInput').focus(), 100);
+}
+window.showCreateCatalogForm = showCreateCatalogForm;
+
+function closeCreateCatalog() {
+    document.getElementById('createCatalogOverlay').classList.add('hidden');
+}
+window.closeCreateCatalog = closeCreateCatalog;
+
+async function submitCreateCatalog() {
+    const title = document.getElementById('catalogNameInput').value.trim();
+    if (!title) { document.getElementById('catalogNameInput').focus(); return; }
+
+    const body = {
+        title,
+        description: document.getElementById('catalogDescInput').value.trim(),
+        category: document.getElementById('catalogCategoryInput').value
+    };
+
+    try {
+        await apiFetch(CATALOGS_API, {
+            method: 'POST',
+            body: JSON.stringify(body)
+        });
+        closeCreateCatalog();
+        showNotification('Каталог створено');
+        await loadCatalogs();
+    } catch (err) {
+        showNotification('Помилка створення', 'error');
+    }
+}
+window.submitCreateCatalog = submitCreateCatalog;
+
+async function deleteCatalog(id) {
+    if (!await confirmModal('Видалити каталог і всі його сторінки?', { type: 'danger', okText: 'Видалити' })) return;
+    try {
+        await apiFetch(`${CATALOGS_API}/${id}`, { method: 'DELETE' });
+        showNotification('Каталог видалено');
+        await loadCatalogs();
+    } catch (err) {
+        showNotification('Помилка видалення', 'error');
+    }
+}
+window.deleteCatalog = deleteCatalog;
+
+// --- Page Form (Add/Edit) ---
+function showAddPageForm() {
+    if (!currentCatalogId) return;
+    _pageFormMode = 'add';
+    _pageFormEditPageNumber = null;
+    document.getElementById('pageFormTitle').textContent = 'Додати сторінку';
+    document.getElementById('pageTitle').value = '';
+    document.getElementById('pageSubtitle').value = '';
+    document.getElementById('pageDescription').value = '';
+    document.getElementById('pagePriceLabel').value = '';
+    document.getElementById('pageDetail').value = '';
+    populateProductSelect();
+    document.getElementById('pageProductSelect').value = '';
+    document.getElementById('pageFormOverlay').classList.remove('hidden');
+    setTimeout(() => document.getElementById('pageTitle').focus(), 100);
+}
+window.showAddPageForm = showAddPageForm;
+
+function showEditPageForm(catalogId, pageNumber) {
+    currentCatalogId = catalogId;
+    _pageFormMode = 'edit';
+    _pageFormEditPageNumber = pageNumber;
+    const page = currentCatalogPages.find(p => p.page_number === pageNumber);
+    if (!page) return;
+
+    document.getElementById('pageFormTitle').textContent = `Редагувати сторінку ${pageNumber}`;
+    document.getElementById('pageTitle').value = page.title || '';
+    document.getElementById('pageSubtitle').value = page.subtitle || '';
+    document.getElementById('pageDescription').value = page.description || '';
+    document.getElementById('pagePriceLabel').value = page.price_label || '';
+    document.getElementById('pageDetail').value = page.detail || '';
+    populateProductSelect();
+    document.getElementById('pageProductSelect').value = page.product_id || '';
+    document.getElementById('pageFormOverlay').classList.remove('hidden');
+}
+window.showEditPageForm = showEditPageForm;
+
+function closePageForm() {
+    document.getElementById('pageFormOverlay').classList.add('hidden');
+}
+window.closePageForm = closePageForm;
+
+async function submitPageForm() {
+    const title = document.getElementById('pageTitle').value.trim();
+    if (!title) { document.getElementById('pageTitle').focus(); return; }
+
+    const body = {
+        title,
+        subtitle: document.getElementById('pageSubtitle').value.trim() || null,
+        description: document.getElementById('pageDescription').value.trim() || null,
+        price_label: document.getElementById('pagePriceLabel').value.trim() || null,
+        detail: document.getElementById('pageDetail').value.trim() || null,
+        product_id: document.getElementById('pageProductSelect').value || null
+    };
+
+    try {
+        if (_pageFormMode === 'edit' && _pageFormEditPageNumber) {
+            await apiFetch(`${CATALOGS_API}/${currentCatalogId}/pages/${_pageFormEditPageNumber}`, {
+                method: 'PUT',
+                body: JSON.stringify(body)
+            });
+        } else {
+            await apiFetch(`${CATALOGS_API}/${currentCatalogId}/pages`, {
+                method: 'POST',
+                body: JSON.stringify(body)
+            });
+        }
+        closePageForm();
+        showNotification(_pageFormMode === 'edit' ? 'Сторінку оновлено' : 'Сторінку додано');
+        openCatalogPages(currentCatalogId);
+    } catch (err) {
+        showNotification('Помилка збереження', 'error');
+    }
+}
+window.submitPageForm = submitPageForm;
+
+async function deletePageConfirm(catalogId, pageNumber) {
+    if (!await confirmModal('Видалити цю сторінку?', { type: 'danger', okText: 'Видалити' })) return;
+    try {
+        await apiFetch(`${CATALOGS_API}/${catalogId}/pages/${pageNumber}`, { method: 'DELETE' });
+        showNotification('Сторінку видалено');
+        openCatalogPages(catalogId);
+    } catch (err) {
+        showNotification('Помилка видалення', 'error');
+    }
+}
+window.deletePageConfirm = deletePageConfirm;
+
+// --- Product Select (auto-fill) ---
+function populateProductSelect() {
+    const select = document.getElementById('pageProductSelect');
+    if (!select) return;
+
+    const categories = {
+        quest: 'Квести', animation: 'Анімація', show: 'Шоу',
+        photo: 'Фото', masterclass: 'Майстер-класи', pinata: 'Піньяти'
+    };
+
+    let html = '<option value="">— Ввести вручну —</option>';
+    if (typeof PROGRAMS !== 'undefined') {
+        const grouped = {};
+        for (const p of PROGRAMS) {
+            if (!grouped[p.category]) grouped[p.category] = [];
+            grouped[p.category].push(p);
+        }
+        for (const [cat, items] of Object.entries(grouped)) {
+            html += `<optgroup label="${categories[cat] || cat}">`;
+            for (const p of items) {
+                html += `<option value="${p.id}">${p.icon || ''} ${p.name} — ${p.price ? p.price + ' ₴' : ''}</option>`;
+            }
+            html += '</optgroup>';
+        }
+    }
+    select.innerHTML = html;
+}
+
+function fillPageFromProduct(productId) {
+    if (!productId || typeof PROGRAMS === 'undefined') return;
+    const product = PROGRAMS.find(p => p.id === productId);
+    if (!product) return;
+
+    document.getElementById('pageTitle').value = product.name;
+    document.getElementById('pageSubtitle').value = (product.icon || '') + ' ' + (product.label || '');
+    document.getElementById('pageDescription').value = product.description || '';
+    document.getElementById('pagePriceLabel').value = product.price ? `від ${product.price.toLocaleString('uk-UA')} ₴` : '';
+    const details = [
+        product.age || '',
+        product.kids ? `${product.kids} дітей` : '',
+        product.duration ? `${product.duration} хв` : '',
+        product.hosts ? `${product.hosts} аніматор(ів)` : ''
+    ].filter(Boolean).join(' · ');
+    document.getElementById('pageDetail').value = details;
+}
+window.fillPageFromProduct = fillPageFromProduct;
+
+// --- Image Picker ---
+function insertPageImage(catalogId, pageNumber, field) {
+    _imgPickerCatalogId = catalogId;
+    _imgPickerPageNumber = pageNumber;
+    _imgPickerField = field;
+    _imgPickerGeneratedUrl = null;
+
+    const title = field === 'background'
+        ? 'Фон обкладинки'
+        : `Зображення сторінки ${pageNumber}`;
+    document.getElementById('imagePickerTitle').textContent = title;
+
+    // Reset form
+    document.getElementById('imgGenPrompt').value = '';
+    const preview = document.getElementById('imgGenPreview');
+    preview.style.display = 'none';
+    document.getElementById('imgGenStatus').style.display = 'none';
+    document.getElementById('imgGenActions').style.display = 'none';
+    document.getElementById('imgUrlInput').value = '';
+
+    loadImageGallery();
+    document.getElementById('imagePickerOverlay').classList.remove('hidden');
+}
+window.insertPageImage = insertPageImage;
+
+function closeImagePicker() {
+    document.getElementById('imagePickerOverlay').classList.add('hidden');
+}
+window.closeImagePicker = closeImagePicker;
+
+// AI Generate
+async function generatePageImage() {
+    const promptText = document.getElementById('imgGenPrompt').value.trim();
+    if (!promptText) { document.getElementById('imgGenPrompt').focus(); return; }
+
+    const btn = document.getElementById('imgGenBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳...';
+    document.getElementById('imgGenStatus').style.display = 'block';
+    document.getElementById('imgGenStatus').textContent = '⏳ Генерація ~30с...';
+
+    try {
+        const resp = await apiFetch(`${CATALOGS_API}/generate-image`, {
+            method: 'POST',
+            body: JSON.stringify({ prompt: promptText })
+        });
+        const data = resp.url ? resp : (resp.json ? await resp.json() : resp);
+
+        if (data.url) {
+            _imgPickerGeneratedUrl = data.url;
+            document.getElementById('imgGenPreview').src = data.url;
+            document.getElementById('imgGenPreview').style.display = 'block';
+            document.getElementById('imgGenActions').style.display = 'flex';
+            document.getElementById('imgGenStatus').textContent = '✅ Готово!';
+        }
+    } catch (err) {
+        document.getElementById('imgGenStatus').textContent = '❌ Помилка: ' + (err.message || 'спробуйте ще');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Згенерувати';
+    }
+}
+window.generatePageImage = generatePageImage;
+
+function useGeneratedImage() {
+    if (!_imgPickerGeneratedUrl) return;
+    savePageImage(_imgPickerGeneratedUrl);
+}
+window.useGeneratedImage = useGeneratedImage;
+
+// Upload
+function uploadPageImage() {
+    document.getElementById('imgUploadInput').click();
+}
+window.uploadPageImage = uploadPageImage;
+
+document.addEventListener('DOMContentLoaded', () => {
+    const uploadInput = document.getElementById('imgUploadInput');
+    if (uploadInput) {
+        uploadInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('files', file);
+
+            try {
+                const resp = await fetch('/api/designs/upload', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') },
+                    body: formData
+                });
+                const data = await resp.json();
+                if (data.items && data.items[0]) {
+                    const url = `/uploads/designs/${data.items[0].filename}`;
+                    savePageImage(url);
+                }
+            } catch (err) {
+                showNotification('Помилка завантаження: ' + err.message, 'error');
+            }
+            uploadInput.value = '';
+        });
+    }
+
+    // ESC to close modals
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeImagePicker();
+            closePageForm();
+            closeTelegramCaption();
+            closeCreateCatalog();
+        }
+    });
+
+    // Click overlay to close
+    ['imagePickerOverlay', 'pageFormOverlay', 'telegramCaptionOverlay', 'createCatalogOverlay'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', (e) => { if (e.target === el) el.classList.add('hidden'); });
+    });
+});
+
+// Gallery
+async function loadImageGallery() {
+    const grid = document.getElementById('imgGalleryGrid');
+    if (!grid) return;
+
+    try {
+        const resp = await apiFetch('/api/designs?limit=8&sort=newest');
+        const data = resp.designs || resp;
+        const items = Array.isArray(data) ? data : (data.json ? await data.json() : []);
+
+        if (!Array.isArray(items) || items.length === 0) {
+            grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:rgba(255,255,255,0.3);padding:12px;font-size:13px">Немає завантажених дизайнів</div>';
+            return;
+        }
+
+        grid.innerHTML = items.slice(0, 8).map(d => {
+            const url = d.filename ? `/uploads/designs/${d.filename}` : (d.file_url || d.url || '');
+            return `<div class="img-gallery-item" onclick="selectGalleryImage('${esc(url)}')">
+                <img src="${esc(url)}" alt="${esc(d.title || '')}" loading="lazy">
+            </div>`;
+        }).join('');
+    } catch (err) {
+        grid.innerHTML = '<div style="color:rgba(255,255,255,0.3);font-size:13px">Не вдалось завантажити</div>';
+    }
+}
+
+function selectGalleryImage(url) {
+    savePageImage(url);
+}
+window.selectGalleryImage = selectGalleryImage;
+
+// URL
+function useUrlImage() {
+    const url = document.getElementById('imgUrlInput').value.trim();
+    if (!url) { document.getElementById('imgUrlInput').focus(); return; }
+    savePageImage(url);
+}
+window.useUrlImage = useUrlImage;
+
+// Save page image — universal
+async function savePageImage(url) {
+    const body = _imgPickerField === 'background'
+        ? { background_url: url }
+        : { image_url: url };
+
+    try {
+        if (_imgPickerPageNumber === 0) {
+            // Cover page — update catalog itself
+            await apiFetch(`${CATALOGS_API}/${_imgPickerCatalogId}`, {
+                method: 'PUT',
+                body: JSON.stringify(body)
+            });
+        } else {
+            await apiFetch(`${CATALOGS_API}/${_imgPickerCatalogId}/pages/${_imgPickerPageNumber}`, {
+                method: 'PUT',
+                body: JSON.stringify(body)
+            });
+        }
+        closeImagePicker();
+        showNotification('Зображення збережено');
+        if (currentCatalogId) openCatalogPages(currentCatalogId);
+    } catch (err) {
+        showNotification('Помилка: ' + err.message, 'error');
+    }
+}

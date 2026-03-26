@@ -3,17 +3,16 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v25.4.0**. package.json: `25.4.0`. Бранч `claude/update-snapshot-version-OJyXi` (чекає мерж в main).
+Версія **v28.3.0**. package.json: `28.3.0`. Бранч `claude/continue-project-work-pdpKD`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: feat: [claude-code] v25.4.0 — Meeting Features: Penalties, Reviews, Homework, Polls, Courses, Meeting Notes, Pipeline
-- **package.json**: `"version": "25.4.0"`
-- **Бранч**: `claude/update-snapshot-version-OJyXi`
-- **origin/main**: v24.0.0
-- **origin/deployed**: v17.4.1
-- **Що нового в v25.4.0**: 7 нових фіч з зустрічі Сергій+АнЛі: штрафні бали, оцінювання задач, домашні завдання, опитування в чаті, курси/curriculum, meeting notes з автозадачами, sales pipeline stages. 7 нових міграцій (060-066), 25+ нових API endpoints.
+- **Останній коміт**: feat: [claude-code] v28.3.0 — Каталоги: UX Image Picker + Page Form + Contrast fix
+- **package.json**: `"version": "28.3.0"`
+- **Бранч**: `claude/continue-project-work-pdpKD`
+- **origin/main**: v28.2.0 (Guardian Етап 1)
+- **Що нового в v28.3.0**: Каталоги UX — Image Picker модалка (4 варіанти: AI/upload/gallery/URL), Page Form модалка, Telegram Caption модалка, Create Catalog модалка. 0 prompt() в designs-page.js. Контрастність тексту dark/light. CRUD каталогів + сторінок. Міграція 069. Product auto-fill.
 
 ### Тести
 - **296+ тестів** (api.test.js)

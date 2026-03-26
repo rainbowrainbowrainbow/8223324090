@@ -4,3 +4,4 @@
 
 | DATE | SESSION | NAME | TAGS | OPEN_RISKS | TYPE |
 |------|---------|------|------|------------|------|
+| 2026-03-26 | pdpKD | Каталоги UX: Image Picker + Page Form + Contrast | catalogs,modals,UX,prompt-removal | AI image gen is placeholder | feature |

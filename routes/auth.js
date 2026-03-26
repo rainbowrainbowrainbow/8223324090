@@ -108,9 +108,18 @@ router.get('/profile/:userId', authenticateToken, async (req, res) => {
         );
         if (!user) return res.status(404).json({ error: 'User not found' });
 
-        // If own profile — redirect to full profile endpoint
+        // If own profile — return basic info (full profile at GET /profile without id)
         if (req.user.username === user.username) {
-            return res.redirect('/api/auth/profile');
+            const ach = await pool.query(
+                `SELECT a.code, a.name, a.icon, a.category, ua.unlocked_at
+                 FROM user_achievements ua JOIN achievements a ON a.code = ua.achievement_code
+                 WHERE ua.user_id = $1 ORDER BY ua.unlocked_at DESC LIMIT 20`, [userId]
+            ).catch(() => ({ rows: [] }));
+            return res.json({
+                id: user.id, username: user.username, displayName: user.name,
+                role: user.role, createdAt: user.created_at,
+                isOwnProfile: true, achievements: ach.rows
+            });
         }
 
         // Public profile — limited data

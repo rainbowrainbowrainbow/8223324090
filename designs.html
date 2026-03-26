@@ -1160,9 +1160,10 @@
             if (!res) return;
             const data = await res.json();
             if (data.success || data.id) {
+                const catId = _addItemCatalogId; // save before close clears it
                 closeAddItemModal();
                 showNotification('Товар "' + name + '" додано!');
-                openCatalogView(_addItemCatalogId); // refresh view
+                openCatalogView(catId); // refresh view
             } else {
                 showNotification(data.error || 'Помилка', 'error');
             }

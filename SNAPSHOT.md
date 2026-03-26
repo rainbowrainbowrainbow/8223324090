@@ -3,16 +3,25 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v38.14.0**. package.json: `38.14.0`. Бранч `claude/continue-project-work-pdpKD`.
+Версія **v38.17.0**. package.json: `38.17.0`. Бранч `claude/continue-project-work-pdpKD`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **Останній коміт**: feat: [claude-code] v38.14.0 — Каталоги: UX Image Picker + Page Form + Contrast fix
-- **package.json**: `"version": "38.14.0"`
+- **package.json**: `"version": "38.17.0"`
 - **Бранч**: `claude/continue-project-work-pdpKD`
-- **origin/main**: v28.2.0 (Guardian Етап 1)
-- **Що нового в v38.14.0**: Каталоги UX — Image Picker модалка (4 варіанти: AI/upload/gallery/URL), Page Form модалка, Telegram Caption модалка, Create Catalog модалка. 0 prompt() в designs-page.js. Контрастність тексту dark/light. CRUD каталогів + сторінок. Міграція 069. Product auto-fill.
+- **origin/main**: v28.2.0 (далеко позаду — наш бранч має merge v38.13.0)
+- **Зміни v38.14.0-v38.17.0**:
+  - v38.14.0: Каталоги UX (Image Picker 4 варіанти, Premium Catalog Viewer, 81 changelog)
+  - v38.15.0: Match-3 спецефекти (bomb/lightning/cross/rainbow) + profile API route
+  - v38.16.0: Profile (hero glassmorphism, inventory cards, shop seed, quests seed, Кімнату прибрано)
+  - v38.17.0: Leaderboard seed, daily badge, tasks preview
+
+### Що залишилось доробити:
+1. Profile: стріки по професіях, equip/unequip UI, confirm()→модалки
+2. Match-3: білий фон пофіксити (клітинки фіолетовий тінт є)
+3. Рейтинг: потребує реальних даних
+4. Міграція 129: може фейлитись якщо prod DB має неповні таблиці
 
 ### Тести
 - **296+ тестів** (api.test.js)

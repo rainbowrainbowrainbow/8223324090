@@ -1309,16 +1309,14 @@
             }
             html += '</div>';
             viewer.innerHTML = html;
-            document.getElementById('catalogList')?.style ? document.getElementById('catalogList').style.display = 'none' : null;
-            document.getElementById('dynamicCatalogCards')?.parentElement ? document.getElementById('dynamicCatalogCards').parentElement.style.display = 'none' : null;
+            // Hide catalog list sections, show viewer
+            document.querySelectorAll('#tabCatalogs > *:not(#catalogViewer)').forEach(el => el.style.display = 'none');
             document.getElementById('catalogViewer').style.display = 'block';
         } catch (e) { showNotification(e.message); }
     }
     function closeCatalogView() {
         document.getElementById('catalogViewer').style.display = 'none';
-        document.getElementById('catalogList').style.display = '';
-        const dynParent = document.getElementById('dynamicCatalogCards')?.parentElement;
-        if (dynParent) dynParent.style.display = '';
+        document.querySelectorAll('#tabCatalogs > *:not(#catalogViewer)').forEach(el => el.style.display = '');
     }
     async function toggleAutoCatalog(catalogId, enabled) {
         try {

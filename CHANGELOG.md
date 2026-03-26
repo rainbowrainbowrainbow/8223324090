@@ -4,6 +4,28 @@
 
 ---
 
+## v38.10.0 — Sidebar Active Fix + Catalog Improvements (2026-03-26)
+
+### Sidebar [claude-code]
+- **Active state rewritten** — exact match only, no startsWith. Fixes double-active (/art + /art-director, /designs + /designs#catalogs)
+- **Hash logic** — hash items active only when URL hash matches; default first hash only when no non-hash sibling
+- **Scroll restore** — saves/restores scroll position between page navigations
+
+### Catalogs [claude-code]
+- **"+ Створити каталог" button** — modal with name, emoji, description; POSTs to /api/catalogs/definitions
+- **Viewer overflow fixed** — removed max-height:80vh that cut off catalog page content
+- **Hash tab switching** — /designs#catalogs now switches tab BEFORE async loads
+- **Null checks** — apiFetch responses checked before .json() (12 places fixed)
+- **UI split** — "Готові каталоги" and "Каталоги товарів" sections
+- **Price bug** — totalPerChild was string concatenation; fixed with parseFloat
+
+### Match-3 Game [claude-code]
+- **Special indicators** — 10→16px, dark bg, hover tooltip with label + description
+- **Pause button** — ⏸ in header, overlay with blur, resume button
+- **Bonus banner** — animated slide-across on special activation
+
+---
+
 ## v38.9.0 — Stability & Page Fixes (2026-03-25)
 
 ### Critical Fixes [claude-code]

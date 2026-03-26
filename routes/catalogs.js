@@ -50,7 +50,7 @@ function parseKieImageUrl(data) {
 }
 
 // ─── Catalog definitions ─────────────────────────────────────
-router.get('/definitions', requireRole('admin', 'user'), async (req, res) => {
+router.get('/definitions', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const defs = await pool.query(
             'SELECT * FROM catalog_definitions WHERE is_active = true ORDER BY sort_order LIMIT 500'
@@ -92,7 +92,7 @@ router.post('/definitions', requireRole('admin', 'creator', 'director'), async (
     }
 });
 
-router.post('/definitions/:id/subcategories', requireRole('admin', 'user'), async (req, res) => {
+router.post('/definitions/:id/subcategories', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const { name, sortOrder } = req.body;
         if (!name) return res.status(400).json({ error: 'name required' });
@@ -209,7 +209,7 @@ router.delete('/items/:id', requireRole('admin', 'creator', 'director', 'art_dir
     }
 });
 
-router.post('/items/:id/restore', requireRole('admin', 'user'), async (req, res) => {
+router.post('/items/:id/restore', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const r = await pool.query(
             "UPDATE catalog_items SET status = 'active', updated_at = NOW() WHERE id = $1 RETURNING *",
@@ -225,7 +225,7 @@ router.post('/items/:id/restore', requireRole('admin', 'user'), async (req, res)
 // ─── Image generation (Kie.ai) ──────────────────────────────
 const DEFAULT_AI_STYLE = 'colorful illustration, white background, vibrant colors, professional, no text';
 
-router.post('/generate-image', requireRole('admin', 'user'), async (req, res) => {
+router.post('/generate-image', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const { name, catalogId, subcategory, customPrompt } = req.body;
         if (!name && !customPrompt) return res.status(400).json({ error: 'name required' });
@@ -267,7 +267,7 @@ router.get('/generate-image/:taskId', async (req, res) => {
     }
 });
 
-router.post('/batch-generate', requireRole('admin', 'user'), async (req, res) => {
+router.post('/batch-generate', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const { catalogId } = req.body;
         const conds  = ["ci.status = 'active'", 'ci.image_url IS NULL'];
@@ -302,7 +302,7 @@ router.post('/batch-generate', requireRole('admin', 'user'), async (req, res) =>
     }
 });
 
-router.post('/apply-image', requireRole('admin', 'user'), async (req, res) => {
+router.post('/apply-image', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const { itemId, taskId } = req.body;
         if (!itemId || !taskId) return res.status(400).json({ error: 'itemId і taskId required' });
@@ -316,7 +316,7 @@ router.post('/apply-image', requireRole('admin', 'user'), async (req, res) => {
     }
 });
 
-router.get('/kie-balance', requireRole('admin', 'user'), async (req, res) => {
+router.get('/kie-balance', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const r = await kieRequest('GET', '/api/v1/chat/credit');
         res.json({ success: true, balance: r?.data || 0 });
@@ -324,7 +324,7 @@ router.get('/kie-balance', requireRole('admin', 'user'), async (req, res) => {
 });
 
 // ─── Telegram share ──────────────────────────────────────────
-router.post('/items/:id/telegram', requireRole('admin', 'user'), async (req, res) => {
+router.post('/items/:id/telegram', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const { targetChatId, caption: extraCaption } = req.body;
         const { sendTelegramPhoto, sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
@@ -348,7 +348,7 @@ router.post('/items/:id/telegram', requireRole('admin', 'user'), async (req, res
 });
 
 // ─── Price suggestion ────────────────────────────────────────
-router.post('/suggest-price', requireRole('admin', 'user'), async (req, res) => {
+router.post('/suggest-price', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const { catalogId, subcategory, complexity } = req.body;
         const conds  = ["catalog_id = $1", "status = 'active'", "price > 0"];
@@ -377,7 +377,7 @@ router.post('/suggest-price', requireRole('admin', 'user'), async (req, res) => 
 });
 
 // ─── Publish (transaction) ───────────────────────────────────
-router.post('/publish', requireRole('admin', 'user'), async (req, res) => {
+router.post('/publish', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     const { catalogId, subcategory, name, description, price, imageUrl, extraData,
             createTask: doTask = true, createPrice: doPrice = true } = req.body;
     if (!catalogId || !name?.trim())
@@ -431,7 +431,7 @@ router.post('/publish', requireRole('admin', 'user'), async (req, res) => {
 });
 
 // ─── Demand stats ────────────────────────────────────────────
-router.get('/demand-stats', requireRole('admin', 'user'), async (req, res) => {
+router.get('/demand-stats', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const { catalogId } = req.query;
         let query, params = [];
@@ -491,7 +491,7 @@ router.get('/settings/:catalogId', async (req, res) => {
     } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
-router.put('/settings/:catalogId', requireRole('admin', 'user'), async (req, res) => {
+router.put('/settings/:catalogId', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const { autoEnabled, trendFrequency, trendRegion } = req.body;
         const sets = ['updated_at = NOW()'], vals = [];
@@ -506,7 +506,7 @@ router.put('/settings/:catalogId', requireRole('admin', 'user'), async (req, res
     } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
-router.post('/analyze-trends', requireRole('admin', 'user'), async (req, res) => {
+router.post('/analyze-trends', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const { catalogId = 'pinyata', region = 'Київ' } = req.body;
         const catRow = await pool.query('SELECT name FROM catalog_definitions WHERE id = $1', [catalogId]);
@@ -548,7 +548,7 @@ router.post('/analyze-trends', requireRole('admin', 'user'), async (req, res) =>
     }
 });
 
-router.patch('/trend/:id', requireRole('admin', 'user'), async (req, res) => {
+router.patch('/trend/:id', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const { status, generatedItemId } = req.body;
         if (!['approved', 'rejected'].includes(status))

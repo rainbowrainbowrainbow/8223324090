@@ -1277,46 +1277,42 @@
     loadDynamicCatalogCards(); // Initial load
     async function openCatalogView(catalogId) {
         try {
+            _currentViewCatalogId = catalogId;
             const r = await apiFetch('/api/catalogs/items?catalogId=' + catalogId);
             if (!r) return;
             const { items = [] } = await r.json();
-            const viewer = document.getElementById('catalogPages');
-            if (!viewer) return;
 
-            // Header with back button + add item button
-            let html = `<div style="width:100%;max-width:680px">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-                    <button type="button" class="btn-catalog btn-catalog-print" onclick="closeCatalogView()">← Назад</button>
-                    <button type="button" class="btn-catalog" onclick="openAddItemModal('${catalogId}')">+ Додати товар</button>
-                </div>`;
+            // INLINE view (not fullscreen) — shows inside tabCatalogs
+            document.querySelectorAll('#tabCatalogs > *:not(#inlineCatalogView)').forEach(el => el.style.display = 'none');
+            let viewEl = document.getElementById('inlineCatalogView');
+            if (!viewEl) { viewEl = document.createElement('div'); viewEl.id = 'inlineCatalogView'; document.getElementById('tabCatalogs').appendChild(viewEl); }
+            viewEl.style.display = '';
 
+            let html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">' +
+                '<button type="button" class="btn-catalog btn-catalog-print" onclick="closeCatalogView()">\u2190 Назад</button>' +
+                '<button type="button" class="btn-catalog" onclick="openAddItemModal(\'' + catalogId + '\')">+ Додати товар</button></div>';
             if (!items.length) {
-                html += '<div style="text-align:center;padding:40px 20px;color:var(--gray-400)"><div style="font-size:48px;margin-bottom:12px">📦</div><p style="font-size:14px">Позицій ще немає</p><p style="font-size:12px;color:var(--gray-400)">Натисніть "+ Додати товар" щоб почати</p></div>';
+                html += '<div style="text-align:center;padding:40px 20px;color:var(--gray-400)"><div style="font-size:48px;margin-bottom:12px">\ud83d\udce6</div><p style="font-size:14px">Позицій ще немає</p><p style="font-size:12px">Натисніть "+ Додати товар" щоб почати</p></div>';
             } else {
                 html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">';
-                html += items.map(it => `
-                    <div class="catalog-item-card" onclick="openItemDetail(${it.id})" style="background:var(--white,#fff);border-radius:12px;border:1px solid var(--gray-100);overflow:hidden;cursor:pointer;transition:transform 0.15s">
-                        <div style="height:120px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff">
-                            ${it.image_url ? '<img src="' + it.image_url + '" loading="lazy" alt="" style="width:100%;height:100%;object-fit:cover">' : '<span style="font-size:36px">' + (it.catalog_emoji || '🗂️') + '</span>'}
-                        </div>
-                        <div style="padding:10px 12px">
-                            <strong style="font-size:13px;display:block">${it.name}</strong>
-                            ${it.subcategory ? '<span style="font-size:11px;color:var(--gray-500)">' + it.subcategory + '</span>' : ''}
-                            ${it.price ? '<span style="font-size:13px;font-weight:700;color:var(--primary);display:block;margin-top:4px">' + it.price + ' грн</span>' : ''}
-                        </div>
-                    </div>`).join('');
+                items.forEach(function(it) {
+                    html += '<div onclick="openItemDetail(' + it.id + ')" style="background:var(--white,#fff);border-radius:12px;border:1px solid var(--gray-100);overflow:hidden;cursor:pointer">' +
+                        '<div style="height:100px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff">' +
+                        (it.image_url ? '<img src="' + it.image_url + '" loading="lazy" alt="" style="width:100%;height:100%;object-fit:cover">' : '<span style="font-size:32px">' + (it.catalog_emoji || '\ud83d\udce6') + '</span>') +
+                        '</div><div style="padding:8px 10px"><strong style="font-size:12px">' + it.name + '</strong>' +
+                        (it.price ? '<span style="font-size:12px;font-weight:700;color:var(--primary);display:block;margin-top:2px">' + it.price + ' грн</span>' : '') +
+                        '</div></div>';
+                });
                 html += '</div>';
             }
-            html += '</div>';
-            viewer.innerHTML = html;
-            // Hide catalog list sections, show viewer
-            document.querySelectorAll('#tabCatalogs > *:not(#catalogViewer)').forEach(el => el.style.display = 'none');
-            document.getElementById('catalogViewer').style.display = 'block';
+            viewEl.innerHTML = html;
         } catch (e) { showNotification(e.message); }
     }
     function closeCatalogView() {
-        document.getElementById('catalogViewer').style.display = 'none';
-        document.querySelectorAll('#tabCatalogs > *:not(#catalogViewer)').forEach(el => el.style.display = '');
+        var v = document.getElementById('inlineCatalogView');
+        if (v) v.style.display = 'none';
+        document.querySelectorAll('#tabCatalogs > *:not(#inlineCatalogView)').forEach(function(el) { el.style.display = ''; });
+        _currentViewCatalogId = null;
     }
     async function toggleAutoCatalog(catalogId, enabled) {
         try {

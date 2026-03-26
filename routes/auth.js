@@ -97,6 +97,43 @@ router.get('/verify', authenticateToken, async (req, res) => {
     }
 });
 
+// v38.15: View profile by user ID (public profile data)
+router.get('/profile/:userId', authenticateToken, async (req, res) => {
+    try {
+        const userId = parseInt(req.params.userId);
+        if (isNaN(userId)) return res.status(400).json({ error: 'Invalid user ID' });
+
+        const { rows: [user] } = await pool.query(
+            'SELECT id, username, name, role, created_at FROM users WHERE id = $1', [userId]
+        );
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        // If own profile — redirect to full profile endpoint
+        if (req.user.username === user.username) {
+            return res.redirect('/api/auth/profile');
+        }
+
+        // Public profile — limited data
+        const achievements = await pool.query(
+            `SELECT a.code, a.name, a.icon, a.category, ua.unlocked_at
+             FROM user_achievements ua JOIN achievements a ON a.code = ua.achievement_code
+             WHERE ua.user_id = $1 ORDER BY ua.unlocked_at DESC LIMIT 20`, [userId]
+        ).catch(() => ({ rows: [] }));
+
+        res.json({
+            id: user.id,
+            username: user.username,
+            displayName: user.name,
+            role: user.role,
+            createdAt: user.created_at,
+            achievements: achievements.rows
+        });
+    } catch (err) {
+        console.error('Get profile by ID error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // v10.6: Personal cabinet — comprehensive profile data with shift, achievements, team, deltas
 router.get('/profile', authenticateToken, async (req, res) => {
     try {

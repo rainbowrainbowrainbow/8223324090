@@ -71,7 +71,7 @@ router.get('/definitions', requireRole('admin', 'user'), async (req, res) => {
     }
 });
 
-router.post('/definitions', requireRole('admin'), async (req, res) => {
+router.post('/definitions', requireRole('admin', 'creator', 'director'), async (req, res) => {
     try {
         const { id, name, emoji, description, aiStyle, hasSubcategories, hasSizes, sortOrder } = req.body;
         if (!id || !name) return res.status(400).json({ error: 'id та name required' });

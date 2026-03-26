@@ -1122,10 +1122,13 @@
         const emoji = document.getElementById('newCatalogEmoji').value.trim() || '📂';
         const description = document.getElementById('newCatalogDesc').value.trim();
         if (!name) return;
+        // Auto-generate slug id from name (transliterate Ukrainian → Latin)
+        const tr = {'а':'a','б':'b','в':'v','г':'h','ґ':'g','д':'d','е':'e','є':'ye','ж':'zh','з':'z','и':'y','і':'i','ї':'yi','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ь':'','ю':'yu','я':'ya'};
+        const id = name.toLowerCase().split('').map(c => tr[c] || c).join('').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'catalog-' + Date.now();
         try {
             const res = await apiFetch('/api/catalogs/definitions', {
                 method: 'POST',
-                body: JSON.stringify({ name, emoji, description })
+                body: JSON.stringify({ id, name, emoji, description })
             });
             if (!res) return;
             const data = await res.json();

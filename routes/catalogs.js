@@ -149,7 +149,7 @@ router.get('/items/:id', async (req, res) => {
     }
 });
 
-router.post('/items', requireRole('admin', 'user'), async (req, res) => {
+router.post('/items', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const { catalogId, subcategory, name, description, price, imageUrl, extraData } = req.body;
         if (!catalogId) return res.status(400).json({ error: 'catalogId required' });

@@ -1044,6 +1044,31 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Add item modal -->
+            <div id="addItemModal" class="modal hidden" role="dialog" aria-modal="true" style="z-index:10000">
+                <div class="modal-content" style="max-width:480px">
+                    <span class="modal-close" onclick="closeAddItemModal()">&times;</span>
+                    <h3 style="margin:0 0 16px;font-size:16px;font-weight:700">📦 Новий товар</h3>
+                    <form id="addItemForm" onsubmit="submitAddItem(event)">
+                        <div style="display:flex;flex-direction:column;gap:12px">
+                            <div>
+                                <label style="font-size:12px;font-weight:600;color:var(--gray-600);display:block;margin-bottom:4px">Назва *</label>
+                                <input type="text" id="itemName" required placeholder="напр. Піньята Єдиноріг" style="width:100%;padding:10px 12px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit">
+                            </div>
+                            <div>
+                                <label style="font-size:12px;font-weight:600;color:var(--gray-600);display:block;margin-bottom:4px">Ціна (грн)</label>
+                                <input type="number" id="itemPrice" placeholder="600" min="0" step="1" style="width:120px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit">
+                            </div>
+                            <div>
+                                <label style="font-size:12px;font-weight:600;color:var(--gray-600);display:block;margin-bottom:4px">Опис</label>
+                                <textarea id="itemDesc" rows="2" placeholder="Короткий опис товару..." style="width:100%;padding:10px 12px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit;resize:vertical"></textarea>
+                            </div>
+                            <button type="submit" class="btn-catalog" style="width:100%;padding:12px;font-size:14px;margin-top:4px">Додати</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -1148,6 +1173,51 @@
     document.getElementById('createCatalogModal')?.addEventListener('click', function(e) {
         if (e.target === this) closeCreateCatalogModal();
     });
+
+    // v38.10: Add item to catalog
+    let _addItemCatalogId = null;
+    function openAddItemModal(catalogId) {
+        _addItemCatalogId = catalogId;
+        document.getElementById('addItemModal')?.classList.remove('hidden');
+    }
+    function closeAddItemModal() {
+        document.getElementById('addItemModal')?.classList.add('hidden');
+        document.getElementById('addItemForm')?.reset();
+        _addItemCatalogId = null;
+    }
+    async function submitAddItem(e) {
+        e.preventDefault();
+        if (!_addItemCatalogId) return;
+        const name = document.getElementById('itemName').value.trim();
+        const price = document.getElementById('itemPrice').value.trim();
+        const description = document.getElementById('itemDesc').value.trim();
+        if (!name) return;
+        try {
+            const res = await apiFetch('/api/catalogs/items', {
+                method: 'POST',
+                body: JSON.stringify({
+                    catalogId: _addItemCatalogId,
+                    name,
+                    price: price ? parseFloat(price) : null,
+                    description: description || null
+                })
+            });
+            if (!res) return;
+            const data = await res.json();
+            if (data.success || data.id) {
+                closeAddItemModal();
+                showNotification('Товар "' + name + '" додано!');
+                openCatalogView(_addItemCatalogId); // refresh view
+            } else {
+                showNotification(data.error || 'Помилка', 'error');
+            }
+        } catch (err) {
+            showNotification('Помилка: ' + err.message, 'error');
+        }
+    }
+    document.getElementById('addItemModal')?.addEventListener('click', function(e) {
+        if (e.target === this) closeAddItemModal();
+    });
     </script>
     <script>
     // v33.5: Dynamic catalog cards from catalog_definitions
@@ -1203,21 +1273,43 @@
             const { items = [] } = await r.json();
             const viewer = document.getElementById('catalogPages');
             if (!viewer) return;
-            if (!items.length) { viewer.innerHTML = '<p style="text-align:center;padding:2rem">Позицій ще немає</p>'; }
-            else {
-                viewer.innerHTML = items.map(it => `
-                    <div class="catalog-item-card">
-                        <div class="catalog-item-img">${it.image_url ? '<img src="' + it.image_url + '" loading="lazy" alt="">' : '<span class="catalog-cover-icon">' + (it.catalog_emoji || '🗂️') + '</span>'}</div>
-                        <div class="catalog-item-info">
-                            <strong>${it.name}</strong>
-                            ${it.subcategory ? '<span class="catalog-meta">' + it.subcategory + '</span>' : ''}
-                            ${it.price ? '<span class="catalog-price">' + it.price + ' грн</span>' : ''}
+
+            // Header with back button + add item button
+            let html = `<div style="width:100%;max-width:680px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                    <button type="button" class="btn-catalog btn-catalog-print" onclick="closeCatalogView()">← Назад</button>
+                    <button type="button" class="btn-catalog" onclick="openAddItemModal('${catalogId}')">+ Додати товар</button>
+                </div>`;
+
+            if (!items.length) {
+                html += '<div style="text-align:center;padding:40px 20px;color:var(--gray-400)"><div style="font-size:48px;margin-bottom:12px">📦</div><p style="font-size:14px">Позицій ще немає</p><p style="font-size:12px;color:var(--gray-400)">Натисніть "+ Додати товар" щоб почати</p></div>';
+            } else {
+                html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">';
+                html += items.map(it => `
+                    <div class="catalog-item-card" style="background:var(--white,#fff);border-radius:12px;border:1px solid var(--gray-100);overflow:hidden">
+                        <div style="height:120px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1a2e,#16213e);color:#fff">
+                            ${it.image_url ? '<img src="' + it.image_url + '" loading="lazy" alt="" style="width:100%;height:100%;object-fit:cover">' : '<span style="font-size:36px">' + (it.catalog_emoji || '🗂️') + '</span>'}
+                        </div>
+                        <div style="padding:10px 12px">
+                            <strong style="font-size:13px;display:block">${it.name}</strong>
+                            ${it.subcategory ? '<span style="font-size:11px;color:var(--gray-500)">' + it.subcategory + '</span>' : ''}
+                            ${it.price ? '<span style="font-size:13px;font-weight:700;color:var(--primary);display:block;margin-top:4px">' + it.price + ' грн</span>' : ''}
                         </div>
                     </div>`).join('');
+                html += '</div>';
             }
-            document.getElementById('catalogList').style.display   = 'none';
+            html += '</div>';
+            viewer.innerHTML = html;
+            document.getElementById('catalogList')?.style ? document.getElementById('catalogList').style.display = 'none' : null;
+            document.getElementById('dynamicCatalogCards')?.parentElement ? document.getElementById('dynamicCatalogCards').parentElement.style.display = 'none' : null;
             document.getElementById('catalogViewer').style.display = 'block';
         } catch (e) { showNotification(e.message); }
+    }
+    function closeCatalogView() {
+        document.getElementById('catalogViewer').style.display = 'none';
+        document.getElementById('catalogList').style.display = '';
+        const dynParent = document.getElementById('dynamicCatalogCards')?.parentElement;
+        if (dynParent) dynParent.style.display = '';
     }
     async function toggleAutoCatalog(catalogId, enabled) {
         try {

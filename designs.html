@@ -1317,7 +1317,7 @@
                 <div style="display:flex;gap:6px;margin-bottom:16px">
                     <button type="button" class="btn-catalog btn-catalog-print" onclick="promptImageUrl(${item.id})" style="font-size:11px">📤 URL зображення</button>
                     <button type="button" class="btn-catalog" onclick="generateItemAI(${item.id})" style="font-size:11px" id="aiGenBtn">🤖 Згенерувати AI</button>
-                    <span id="aiGenStatus" style="font-size:11px;color:var(--gray-400);display:none;align-items:center">⏳ Генеруємо...</span>
+                    <span id="aiGenStatus" style="font-size:11px;color:var(--primary);display:none;align-items:center;gap:4px"><span style="animation:spin 1s linear infinite;display:inline-block">⏳</span> Генеруємо зображення...</span>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:10px">
                     <div>
@@ -1411,8 +1411,13 @@
                 body: JSON.stringify({ name: _currentItem?.name || '', catalogId: _currentItem?.catalog_id || '' })
             });
             if (!r) { if (btn) btn.style.display = ''; if (status) status.style.display = 'none'; return; }
-            const { taskId } = await r.json();
-            if (!taskId) { showNotification('Не вдалося запустити генерацію', 'error'); return; }
+            const data = await r.json();
+            const taskId = data.taskId;
+            if (!taskId) {
+                showNotification(data.error || 'Не вдалося запустити генерацію', 'error');
+                if (btn) btn.style.display = ''; if (status) status.style.display = 'none';
+                return;
+            }
             // Poll every 3 sec
             _aiPollTimer = setInterval(async () => {
                 try {

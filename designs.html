@@ -471,7 +471,11 @@
             const { pages = [] } = await r.json();
             _pagesData = pages;
             _pagesCurrentIdx = 0;
-            if (!pages.length) { showNotification('Сторінок ще немає. Додайте першу!', 'error'); return; }
+            if (!pages.length) {
+                // Show empty state with create button
+                renderPagesEmpty();
+                return;
+            }
             renderPagesViewer();
         } catch (e) { showNotification(e.message, 'error'); }
     }
@@ -539,6 +543,7 @@
                 <div style="display:flex;gap:8px">
                     <button type="button" class="btn-catalog btn-catalog-print" onclick="pagesPrev()" style="color:#fff" ${_pagesCurrentIdx === 0 ? 'disabled' : ''}>◀</button>
                     <button type="button" class="btn-catalog btn-catalog-print" onclick="pagesNext()" style="color:#fff" ${_pagesCurrentIdx >= _pagesData.length - 1 ? 'disabled' : ''}>▶</button>
+                    <button type="button" class="btn-catalog" onclick="addCatalogPage('page')" style="color:#22c55e;border-color:#22c55e">+ Сторінка</button>
                     <button type="button" class="btn-catalog" onclick="window.print()">🖨 Друк</button>
                 </div>
             </div>
@@ -555,6 +560,63 @@
             };
             document.addEventListener('keydown', viewer._keyHandler);
         }
+    }
+
+    function renderPagesEmpty() {
+        let viewer = document.getElementById('catalogPagesViewer');
+        if (!viewer) {
+            viewer = document.createElement('div');
+            viewer.id = 'catalogPagesViewer';
+            viewer.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0d0d0d;display:flex;flex-direction:column;overflow:hidden';
+            document.body.appendChild(viewer);
+        }
+        viewer.style.display = 'flex';
+        viewer.innerHTML = `
+            <div style="display:flex;align-items:center;padding:12px 20px;background:rgba(255,255,255,0.05)">
+                <button type="button" class="btn-catalog btn-catalog-print" onclick="closePagesViewer()" style="color:#fff">← Назад</button>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff">
+                <div style="font-size:48px">📄</div>
+                <h3 style="margin:0;font-size:18px;font-weight:700">Сторінок ще немає</h3>
+                <p style="color:rgba(255,255,255,0.5);font-size:14px;margin:0">Створіть обкладинку та сторінки каталогу</p>
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <button type="button" onclick="addCatalogPage('cover')" style="padding:12px 24px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--primary),#16a34a);color:#fff;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit">+ Обкладинка</button>
+                    <button type="button" onclick="addCatalogPage('page')" style="padding:12px 24px;border:none;border-radius:12px;background:rgba(255,255,255,0.1);color:#fff;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;border:1px solid rgba(255,255,255,0.2)">+ Сторінка</button>
+                </div>
+            </div>`;
+    }
+
+    async function addCatalogPage(type) {
+        if (!_pagesCatalogId) return;
+        const isCover = type === 'cover';
+        const title = prompt(isCover ? 'Назва каталогу:' : 'Назва товару/послуги:', isCover ? 'Каталог' : '');
+        if (!title) return;
+
+        const body = { title };
+        if (!isCover) {
+            const priceLabel = prompt('Ціна (напр. "від 700 ₴"):', '');
+            const desc = prompt('Опис:', '');
+            if (priceLabel) body.priceLabel = priceLabel;
+            if (desc) body.description = desc;
+        } else {
+            body.subtitle = prompt('Підзаголовок:', '') || null;
+            body.description = prompt('Короткий опис:', '') || null;
+        }
+
+        try {
+            const r = await apiFetch('/api/catalogs/' + _pagesCatalogId + '/pages', {
+                method: 'POST',
+                body: JSON.stringify(body)
+            });
+            if (!r) return;
+            const data = await r.json();
+            if (data.success) {
+                showNotification('Сторінку додано!');
+                openCatalogPages(_pagesCatalogId);
+            } else {
+                showNotification(data.error || 'Помилка', 'error');
+            }
+        } catch (e) { showNotification(e.message, 'error'); }
     }
 
     function pagesPrev() { if (_pagesCurrentIdx > 0) { _pagesCurrentIdx--; renderPagesViewer(); } }
@@ -592,6 +654,7 @@
     window.pagesNext = pagesNext;
     window.insertPageImage = insertPageImage;
     window.editCatalogPage = editCatalogPage;
+    window.addCatalogPage = addCatalogPage;
 
     async function printCatalogItems(catalogId) {
         try {

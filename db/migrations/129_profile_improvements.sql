@@ -1,4 +1,7 @@
 -- v38.16: Profile improvements — shop items + daily quests seed
+-- Ensure columns exist
+ALTER TABLE shop_items ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
+
 -- Real food items
 INSERT INTO shop_items (item_id, name, description, icon, type, price_coins, category, is_active, is_featured, sort_order, rarity, code) VALUES
 (NULL, 'Кава', 'Справжня кава від бариста парку. Замов і забери на рецепції!', '☕', 'real', 200, 'real', true, true, 1, 'common', 'real_coffee'),
@@ -10,6 +13,8 @@ INSERT INTO shop_items (item_id, name, description, icon, type, price_coins, cat
 ON CONFLICT DO NOTHING;
 
 -- Fun cosmetic items
+ALTER TABLE character_items ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
+
 INSERT INTO character_items (name, description, icon, type, rarity, is_buyable, price_coins, is_active, sort_order) VALUES
 ('Вогняна аура', 'Палаючий ефект навколо аватара', '🔥', 'effect', 'rare', true, 350, true, 20),
 ('Зоряний пил', 'Мерехтливі зірочки навколо профілю', '✨', 'effect', 'uncommon', true, 180, true, 21),

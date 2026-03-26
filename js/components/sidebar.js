@@ -164,14 +164,31 @@ const Sidebar = (() => {
             const itemBase = item.href.split('#')[0];
             const itemHash = item.href.includes('#') ? item.href.split('#')[1] : '';
             const currentHash = location.hash.replace('#', '');
-            // For hash-based items on the same page, default first hash item as active when no hash set
-            const effectiveHash = currentHash || (currentPath === itemBase && itemHash ? _getDefaultHash(itemBase) : '');
-            const isActive = !item.noActive && !item.isHashLink && (
-                itemHash
-                    ? (currentPath === itemBase) && effectiveHash === itemHash
-                    : (currentPath === item.href)
-                      && !currentHash // v38.9.0: non-hash item NOT active when URL has a hash
-            );
+            // v38.9.0: Simple active logic — exact match only
+            // Hash items: active only when URL hash matches exactly
+            // Non-hash items: active only when URL matches AND no hash in URL
+            let isActive = false;
+            if (item.noActive || item.isHashLink) {
+                isActive = false;
+            } else if (itemHash) {
+                // Hash item: active when URL hash matches exactly
+                if (currentPath === itemBase) {
+                    if (currentHash) {
+                        isActive = currentHash === itemHash;
+                    } else {
+                        // No hash in URL — default first hash item ONLY if no non-hash item exists for same base
+                        const hasNonHashItem = NAV_ITEMS.some(n => !n.type && n.href === itemBase);
+                        if (!hasNonHashItem) {
+                            const firstHash = NAV_ITEMS.find(n => !n.type && n.href?.startsWith(itemBase + '#'));
+                            isActive = firstHash?.href === item.href;
+                        }
+                        // If non-hash item exists (/designs), hash items stay inactive when no hash
+                    }
+                }
+            } else {
+                // Non-hash item (e.g. /designs): active when path matches AND no hash
+                isActive = currentPath === item.href && !currentHash;
+            }
 
             // E9 FIX: simplified onclick
             let onclickAttr = '';

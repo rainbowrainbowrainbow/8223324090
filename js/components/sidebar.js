@@ -11,12 +11,12 @@ const Sidebar = (() => {
         { href: '/',             icon: '📅', label: 'Таймлайн',       access: 'timeline',       group: 'crm' },
         { href: '/tasks',        icon: '✅', label: 'Задачі',         access: 'all',            group: 'crm' },
         { href: '/chat',         icon: '💬', label: 'Чат',            access: 'all',            group: 'crm' },
-        { href: '/warehouse',    icon: '📦', label: 'Склад',          access: 'all',            group: 'crm' },
+        { href: '/warehouse',    icon: '📦', label: 'Склад',          access: 'warehouse',      group: 'crm' },
         { href: '/center',       icon: '🎛️', label: 'Центр керування', access: 'center',         group: 'crm' },
 
         // ─── GROUP: Управління ───────────────────────────────────
         { type: 'group', key: 'mgmt', label: 'Управління', icon: '👔', defaultOpen: true },
-        { href: '/customers',    icon: '👥', label: 'Клієнти',        access: 'management',     group: 'mgmt' },
+        { href: '/customers',    icon: '👥', label: 'Клієнти',        access: 'customers',      group: 'mgmt' },
         { href: '/sales-funnel', icon: '🔥', label: 'Ліди',          access: 'leads',          group: 'mgmt' },
         { href: '/finance',      icon: '💰', label: 'Фінанси',        access: 'finance',        group: 'mgmt' },
         { href: '/analytics',    icon: '📊', label: 'Аналітика',      access: 'analytics',      group: 'mgmt' },
@@ -28,7 +28,7 @@ const Sidebar = (() => {
         { href: '/staff',        icon: '🗓️', label: 'Графік',         access: 'schedule_daily', group: 'hr', staffView: 'schedule' },
         { href: '/staff',        icon: '📋', label: 'Команда',        access: 'staff',          group: 'hr', staffView: 'team', noActive: true },
         { href: '/hr',           icon: '🤝', label: 'Кадри',          access: 'hr_page',        group: 'hr' },
-        { href: '/training',     icon: '🎓', label: 'Навчання',       access: 'all',            group: 'hr' },
+        { href: '/training',     icon: '🎓', label: 'Навчання',       access: 'training',       group: 'hr' },
 
         // ─── GROUP: Арт (розваги, програми, автоматизація) ────────
         { type: 'group', key: 'art', label: 'Арт', icon: '🎨', defaultOpen: true },

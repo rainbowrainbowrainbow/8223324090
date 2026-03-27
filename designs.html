@@ -588,6 +588,27 @@
         .img-picker-input:focus { border-color: var(--primary, #a855f7); }
         .img-picker-input::placeholder { color: rgba(255,255,255,0.3); }
 
+        /* Image Picker Tabs */
+        .img-picker-tabs {
+            display: flex; gap: 0;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .img-picker-tab {
+            flex: 1; padding: 10px 12px;
+            font-size: 13px; font-weight: 700;
+            color: rgba(255,255,255,0.4);
+            background: none; border: none;
+            cursor: pointer; font-family: inherit;
+            transition: all 0.15s;
+            border-bottom: 2px solid transparent;
+            text-align: center;
+        }
+        .img-picker-tab:hover { color: rgba(255,255,255,0.7); }
+        .img-picker-tab.active {
+            color: #C9A84C;
+            border-bottom-color: #C9A84C;
+        }
+
         .img-picker-btn-primary {
             padding: 10px 18px; border-radius: 12px; border: none;
             background: linear-gradient(135deg, #C9A84C, #D4AF37);
@@ -1037,38 +1058,76 @@
           <h3 id="imagePickerTitle">Зображення</h3>
           <button type="button" class="img-picker-close" onclick="closeImagePicker()">&#10005;</button>
         </div>
-        <div class="img-picker-section">
-          <div class="img-picker-section-title">AI ГЕНЕРАЦІЯ</div>
-          <div style="display:flex;gap:6px">
-            <input type="text" id="imgGenPrompt" placeholder="Опишіть зображення..." class="img-picker-input" style="flex:1" autocomplete="off">
-            <button type="button" id="imgGenBtn" class="img-picker-btn-primary" onclick="generatePageImage()">Згенерувати</button>
-          </div>
-          <div id="imgGenStatus" style="display:none;margin-top:8px;font-size:13px;color:var(--primary,#a855f7)"></div>
-          <img id="imgGenPreview" style="display:none;margin-top:8px;max-width:100%;border-radius:10px" alt="Preview">
-          <div id="imgGenActions" style="display:none;margin-top:6px;gap:6px">
-            <button type="button" class="img-picker-btn-primary" onclick="useGeneratedImage()">Використати</button>
-            <button type="button" class="img-picker-btn-secondary" onclick="generatePageImage()">Перегенерувати</button>
-          </div>
+        <!-- Tabs -->
+        <div class="img-picker-tabs" id="imgPickerTabs">
+          <button type="button" class="img-picker-tab active" data-img-tab="generate" onclick="switchImgTab('generate')">🎨 Генерація</button>
+          <button type="button" class="img-picker-tab" data-img-tab="reference" onclick="switchImgTab('reference')">📸 Референс</button>
+          <button type="button" class="img-picker-tab" data-img-tab="upload" onclick="switchImgTab('upload')">📁 Завантажити</button>
         </div>
-        <div class="img-picker-section">
-          <div class="img-picker-section-title">ЗАВАНТАЖИТИ З КОМПʼЮТЕРА</div>
-          <button type="button" class="img-picker-btn-secondary" style="width:100%" onclick="uploadPageImage()">
-            Обрати файл (JPG, PNG, WEBP)
-          </button>
-          <input type="file" id="imgUploadInput" accept="image/*" style="display:none">
-        </div>
-        <div class="img-picker-section">
-          <div class="img-picker-section-title">ОБРАТИ З ГОТОВИХ</div>
-          <div id="imgGalleryGrid" class="img-gallery-grid"></div>
-        </div>
-        <div class="img-picker-section">
-          <div class="img-picker-section-title">ВСТАВИТИ URL</div>
-          <div style="display:flex;gap:6px">
-            <input type="text" id="imgUrlInput" placeholder="https://..." class="img-picker-input" style="flex:1" autocomplete="off">
-            <button type="button" class="img-picker-btn-secondary" onclick="useUrlImage()">Вставити</button>
+        <!-- Tab 1: Text-to-Image -->
+        <div id="imgTabGenerate" class="img-tab-content">
+          <div class="img-picker-section">
+            <div class="img-picker-section-title">ПРОМПТ</div>
+            <textarea id="imgGenPrompt" placeholder="Опишіть зображення..." class="img-picker-input" rows="3" style="resize:vertical;font-size:16px" autocomplete="off"></textarea>
+            <button type="button" id="imgGenBtn" class="img-picker-btn-primary" style="width:100%;margin-top:8px" onclick="generatePageImage()">🎨 Згенерувати</button>
+            <div id="imgGenStatus" style="display:none;margin-top:8px;font-size:13px;color:var(--primary,#a855f7)"></div>
+            <img id="imgGenPreview" style="display:none;margin-top:8px;max-width:100%;border-radius:10px" alt="Preview">
+            <div id="imgGenActions" style="display:none;margin-top:6px;gap:6px">
+              <button type="button" class="img-picker-btn-primary" onclick="useGeneratedImage()">✅ Використати</button>
+              <button type="button" class="img-picker-btn-secondary" onclick="generatePageImage()">🔄 Перегенерувати</button>
+            </div>
           </div>
         </div>
-        <button type="button" class="img-picker-btn-cancel" onclick="closeImagePicker()">Скасувати</button>
+        <!-- Tab 2: Image-to-Image (Reference) -->
+        <div id="imgTabReference" class="img-tab-content" style="display:none">
+          <div class="img-picker-section">
+            <div class="img-picker-section-title">РЕФЕРЕНС (ВИХІДНЕ ЗОБРАЖЕННЯ)</div>
+            <div style="display:flex;gap:6px">
+              <button type="button" class="img-picker-btn-secondary" style="flex:1" onclick="uploadRefImage()">📁 Завантажити файл</button>
+              <input type="file" id="refUploadInput" accept="image/*" style="display:none">
+            </div>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <input type="text" id="refUrlInput" placeholder="або вставте URL зображення..." class="img-picker-input" style="flex:1;font-size:16px" autocomplete="off">
+              <button type="button" class="img-picker-btn-secondary" onclick="loadRefFromUrl()">OK</button>
+            </div>
+            <img id="refPreview" style="display:none;margin-top:8px;max-width:100%;max-height:200px;border-radius:10px;object-fit:contain" alt="Reference">
+          </div>
+          <div class="img-picker-section">
+            <div class="img-picker-section-title">ПРОМПТ ТРАНСФОРМАЦІЇ</div>
+            <textarea id="refPrompt" placeholder="Збережи стиль, зміни фон на білий..." class="img-picker-input" rows="2" style="resize:vertical;font-size:16px" autocomplete="off"></textarea>
+            <button type="button" id="refGenBtn" class="img-picker-btn-primary" style="width:100%;margin-top:8px" onclick="generateFromRef()">📸 Згенерувати з референсу</button>
+            <div id="refGenStatus" style="display:none;margin-top:8px;font-size:13px;color:var(--primary,#a855f7)"></div>
+            <img id="refGenPreview" style="display:none;margin-top:8px;max-width:100%;border-radius:10px" alt="Result">
+            <div id="refGenActions" style="display:none;margin-top:6px;gap:6px">
+              <button type="button" class="img-picker-btn-primary" onclick="useRefGeneratedImage()">✅ Використати</button>
+              <button type="button" class="img-picker-btn-secondary" onclick="generateFromRef()">🔄 Перегенерувати</button>
+            </div>
+          </div>
+        </div>
+        <!-- Tab 3: Upload / URL / Gallery -->
+        <div id="imgTabUpload" class="img-tab-content" style="display:none">
+          <div class="img-picker-section">
+            <div class="img-picker-section-title">ЗАВАНТАЖИТИ З КОМПʼЮТЕРА</div>
+            <button type="button" class="img-picker-btn-secondary" style="width:100%" onclick="uploadPageImage()">
+              Обрати файл (JPG, PNG, WEBP)
+            </button>
+            <input type="file" id="imgUploadInput" accept="image/*" style="display:none">
+          </div>
+          <div class="img-picker-section">
+            <div class="img-picker-section-title">ВСТАВИТИ URL</div>
+            <div style="display:flex;gap:6px">
+              <input type="text" id="imgUrlInput" placeholder="https://..." class="img-picker-input" style="flex:1;font-size:16px" autocomplete="off">
+              <button type="button" class="img-picker-btn-secondary" onclick="useUrlImage()">Вставити</button>
+            </div>
+          </div>
+          <div class="img-picker-section">
+            <div class="img-picker-section-title">ОБРАТИ З ГОТОВИХ</div>
+            <div id="imgGalleryGrid" class="img-gallery-grid"></div>
+          </div>
+        </div>
+        <div style="padding:10px 20px">
+          <button type="button" class="img-picker-btn-cancel" onclick="closeImagePicker()">Скасувати</button>
+        </div>
       </div>
     </div>
 
@@ -1545,17 +1604,129 @@
     }
 
     function insertPageImage(catalogId, pageNumber) {
-        // Open image picker modal
         var overlay = document.getElementById('imagePickerOverlay');
         if (!overlay) return;
         window._imgPickerCatalogId = catalogId;
         window._imgPickerPageNumber = pageNumber;
         window._imgPickerField = 'image';
-        document.getElementById('imagePickerTitle').textContent = 'Зображення сторінки ' + pageNumber;
-        document.getElementById('imgGenPrompt').value = '';
-        document.getElementById('imgUrlInput').value = '';
+        document.getElementById('imagePickerTitle').textContent = '🖼 Зображення · Сторінка ' + pageNumber;
+        // Auto-prompt from page data
+        var page = _pagesData.find(function(p) { return p.page_number === pageNumber; });
+        var autoPrompt = '';
+        if (page && page.title) {
+            autoPrompt = 'Professional product photo of "' + page.title + '"' +
+                (page.subtitle ? ', ' + page.subtitle : '') +
+                ' for children entertainment park catalog, studio lighting, clean background, high quality commercial photography, vibrant colors, no text, 4K';
+        }
+        document.getElementById('imgGenPrompt').value = autoPrompt;
+        var urlInput = document.getElementById('imgUrlInput');
+        if (urlInput) urlInput.value = '';
+        // Reset ref tab
+        var refPreview = document.getElementById('refPreview');
+        if (refPreview) refPreview.style.display = 'none';
+        var refGenPreview = document.getElementById('refGenPreview');
+        if (refGenPreview) refGenPreview.style.display = 'none';
+        var refGenActions = document.getElementById('refGenActions');
+        if (refGenActions) refGenActions.style.display = 'none';
+        var refGenStatus = document.getElementById('refGenStatus');
+        if (refGenStatus) refGenStatus.style.display = 'none';
+        var refPrompt = document.getElementById('refPrompt');
+        if (refPrompt) refPrompt.value = page ? 'Keep the style, enhance quality, clean background' : '';
+        // Reset gen tab
+        var genPreview = document.getElementById('imgGenPreview');
+        if (genPreview) genPreview.style.display = 'none';
+        var genActions = document.getElementById('imgGenActions');
+        if (genActions) genActions.style.display = 'none';
+        var genStatus = document.getElementById('imgGenStatus');
+        if (genStatus) genStatus.style.display = 'none';
+        // Switch to first tab
+        switchImgTab('generate');
         overlay.classList.remove('hidden');
     }
+
+    // Tab switching
+    function switchImgTab(tabName) {
+        document.querySelectorAll('.img-picker-tab').forEach(function(t) { t.classList.toggle('active', t.dataset.imgTab === tabName); });
+        document.getElementById('imgTabGenerate').style.display = tabName === 'generate' ? '' : 'none';
+        document.getElementById('imgTabReference').style.display = tabName === 'reference' ? '' : 'none';
+        document.getElementById('imgTabUpload').style.display = tabName === 'upload' ? '' : 'none';
+    }
+    window.switchImgTab = switchImgTab;
+
+    // Reference image upload
+    function uploadRefImage() { document.getElementById('refUploadInput').click(); }
+    window.uploadRefImage = uploadRefImage;
+    document.getElementById('refUploadInput')?.addEventListener('change', async function(e) {
+        var file = e.target.files[0]; if (!file) return;
+        var fd = new FormData(); fd.append('files', file);
+        try {
+            var r = await fetch('/api/designs/upload', { method: 'POST', headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }, body: fd });
+            var d = await r.json();
+            if (d.items && d.items[0]) {
+                var url = '/uploads/designs/' + d.items[0].filename;
+                window._refImageUrl = url;
+                document.getElementById('refPreview').src = url;
+                document.getElementById('refPreview').style.display = 'block';
+                document.getElementById('refUrlInput').value = url;
+            }
+        } catch (err) { showNotification('Помилка: ' + err.message, 'error'); }
+        e.target.value = '';
+    });
+
+    function loadRefFromUrl() {
+        var url = document.getElementById('refUrlInput').value.trim();
+        if (!url) return;
+        window._refImageUrl = url;
+        document.getElementById('refPreview').src = url;
+        document.getElementById('refPreview').style.display = 'block';
+    }
+    window.loadRefFromUrl = loadRefFromUrl;
+
+    // Image2Image generation from reference
+    async function generateFromRef() {
+        var refUrl = window._refImageUrl;
+        if (!refUrl) { showNotification('Завантажте референс спочатку', 'error'); return; }
+        var prompt = document.getElementById('refPrompt').value.trim() || 'keep style, enhance quality';
+        var btn = document.getElementById('refGenBtn'); btn.disabled = true; btn.textContent = '⏳ Генерація...';
+        document.getElementById('refGenStatus').style.display = 'block';
+        document.getElementById('refGenStatus').textContent = 'Генерація з референсу ~30с...';
+        try {
+            var r = await apiFetch('/api/catalogs/generate-image-from-ref', { method: 'POST', body: JSON.stringify({ referenceUrl: refUrl, prompt: prompt, catalogId: window._imgPickerCatalogId || '' }), headers: { 'Content-Type': 'application/json' } });
+            if (!r || !r.ok) throw new Error('Сервер не відповідає');
+            var data = await r.json();
+            if (data.taskId) {
+                document.getElementById('refGenStatus').textContent = 'Очікуємо результат...';
+                var poll = setInterval(async function() {
+                    var pr = await apiFetch('/api/catalogs/generate-image/' + data.taskId);
+                    if (!pr || !pr.ok) return;
+                    var pd = await pr.json();
+                    if ((pd.done || pd.status === 'completed') && (pd.imageUrl || pd.url)) {
+                        clearInterval(poll);
+                        var _rUrl = pd.imageUrl || pd.url;
+                        window._refGenUrl = _rUrl;
+                        document.getElementById('refGenPreview').src = _rUrl;
+                        document.getElementById('refGenPreview').style.display = 'block';
+                        document.getElementById('refGenActions').style.display = 'flex';
+                        document.getElementById('refGenStatus').textContent = 'Готово!';
+                    } else if (pd.state === 'failed' || pd.status === 'failed') {
+                        clearInterval(poll);
+                        document.getElementById('refGenStatus').textContent = 'Помилка генерації';
+                    }
+                }, 3000);
+                setTimeout(function() { clearInterval(poll); }, 180000);
+            } else if (data.url) {
+                window._refGenUrl = data.url;
+                document.getElementById('refGenPreview').src = data.url;
+                document.getElementById('refGenPreview').style.display = 'block';
+                document.getElementById('refGenActions').style.display = 'flex';
+                document.getElementById('refGenStatus').textContent = 'Готово!';
+            }
+        } catch (err) { document.getElementById('refGenStatus').textContent = 'Помилка: ' + err.message; }
+        finally { btn.disabled = false; btn.textContent = '📸 Згенерувати з референсу'; }
+    }
+    window.generateFromRef = generateFromRef;
+    function useRefGeneratedImage() { if (window._refGenUrl) savePageImg(window._refGenUrl); }
+    window.useRefGeneratedImage = useRefGeneratedImage;
 
     // Modal functions for Image Picker + Page Form
     function closeImagePicker() { var o = document.getElementById('imagePickerOverlay'); if (o) o.classList.add('hidden'); }
@@ -1594,8 +1765,8 @@
                     var pr = await apiFetch('/api/catalogs/generate-image/' + data.taskId);
                     if (!pr || !pr.ok) return;
                     var pd = await pr.json();
-                    if (pd.status === 'completed' && pd.url) { clearInterval(poll); window._imgGenUrl = pd.url; document.getElementById('imgGenPreview').src = pd.url; document.getElementById('imgGenPreview').style.display = 'block'; document.getElementById('imgGenActions').style.display = 'flex'; document.getElementById('imgGenStatus').textContent = 'Готово!'; }
-                    else if (pd.status === 'failed') { clearInterval(poll); document.getElementById('imgGenStatus').textContent = 'Помилка генерації'; }
+                    if ((pd.done || pd.status === 'completed') && (pd.imageUrl || pd.url)) { clearInterval(poll); var _gUrl = pd.imageUrl || pd.url; window._imgGenUrl = _gUrl; document.getElementById('imgGenPreview').src = _gUrl; document.getElementById('imgGenPreview').style.display = 'block'; document.getElementById('imgGenActions').style.display = 'flex'; document.getElementById('imgGenStatus').textContent = 'Готово!'; }
+                    else if (pd.state === 'failed' || pd.status === 'failed') { clearInterval(poll); document.getElementById('imgGenStatus').textContent = 'Помилка генерації'; }
                 }, 3000);
                 setTimeout(function() { clearInterval(poll); }, 180000);
             }

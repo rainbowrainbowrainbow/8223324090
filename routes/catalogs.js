@@ -268,6 +268,31 @@ router.get('/generate-image/:taskId', async (req, res) => {
     }
 });
 
+// POST /api/catalogs/generate-image-from-ref — Image-to-Image using reference
+router.post('/generate-image-from-ref', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
+    try {
+        const { referenceUrl, prompt, catalogId } = req.body;
+        if (!referenceUrl) return res.status(400).json({ error: 'referenceUrl is required' });
+        const finalPrompt = prompt || 'keep style, enhance quality, clean background';
+        const r = await kieRequest('POST', '/api/v1/jobs/createTask', {
+            model: 'nano-banana-2',
+            input: {
+                prompt: finalPrompt,
+                image: referenceUrl,
+                aspect_ratio: '1:1',
+                resolution: '1K',
+                output_format: 'png'
+            }
+        });
+        const taskId = r?.data?.taskId;
+        if (!taskId) return res.status(500).json({ error: 'Kie.ai: no taskId', raw: r });
+        res.json({ success: true, taskId, status: 'processing' });
+    } catch (err) {
+        log.error('POST /generate-image-from-ref error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 router.post('/batch-generate', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {
         const { catalogId } = req.body;

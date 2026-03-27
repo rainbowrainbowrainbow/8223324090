@@ -210,7 +210,7 @@ router.get('/widgets/:type', async (req, res) => {
 
             case 'leads_new': {
                 const result = await pool.query(`
-                    SELECT id, name, phone, source, status, created_at
+                    SELECT id, client_name AS name, phone, source, status, created_at
                     FROM leads
                     WHERE status = 'new'
                     ORDER BY created_at DESC
@@ -555,8 +555,10 @@ router.get('/widgets/:type', async (req, res) => {
                     pool.query(`SELECT COALESCE(AVG(rating),0)::numeric(3,1) AS avg_rating, COUNT(*)::int AS count FROM event_reviews WHERE created_at > NOW() - INTERVAL '30 days'`).catch(() => ({ rows: [{ avg_rating: 0, count: 0 }] })),
                     pool.query(`SELECT COUNT(*)::int AS gaps FROM staff_schedule ss
                         JOIN staff s ON s.id = ss.staff_id
+                        JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active = true
+                        JOIN users u ON u.id = ep.user_id
                         WHERE ss.date = $1 AND ss.status = 'working' AND s.is_active = true
-                        AND NOT EXISTS (SELECT 1 FROM users u JOIN employee_profiles ep ON ep.user_id = u.id WHERE ep.staff_id = s.id AND u.last_seen_at > NOW() - INTERVAL '30 minutes')`, [today]).catch(() => ({ rows: [{ gaps: 0 }] }))
+                        AND (u.last_seen_at IS NULL OR u.last_seen_at < NOW() - INTERVAL '30 minutes')`, [today]).catch(() => ({ rows: [{ gaps: 0 }] }))
                 ]);
                 data = {
                     procurement: procurement.rows,

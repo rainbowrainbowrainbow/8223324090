@@ -327,7 +327,7 @@ const DashboardPage = (() => {
             return;
         }
 
-        const statusMap = { working: 'На зміні', dayoff: 'Вихідний', vacation: 'Відпустка', sick: 'Лікарняний' };
+        const statusMap = { working: 'На зміні', dayoff: 'Вихідний', day_off: 'Вихідний', vacation: 'Відпустка', sick: 'Лікарняний', remote: 'Віддалено' };
         const items = data.shifts.map(s => {
             const date = new Date(s.date).toLocaleDateString('uk-UA', { weekday: 'short', day: 'numeric', month: 'short' });
             const statusLabel = statusMap[s.status] || s.status;

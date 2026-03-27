@@ -24,6 +24,10 @@ const DashboardPage = (() => {
         staff_today:    { icon: '👷', title: 'Хто на зміні', minRole: 'manager' },
         week_bookings:  { icon: '📆', title: 'Бронювання на тиждень', minRole: 'admin' },
         team_tasks:     { icon: '📝', title: 'Задачі команди', minRole: 'manager' },
+        hr_overview:    { icon: '🏥', title: 'HR дайджест', minRole: 'hr' },
+        director_pnl:   { icon: '💹', title: 'P&L', minRole: 'director' },
+        content_pipeline: { icon: '🎨', title: 'Контент-пайплайн', minRole: 'art_director' },
+        operations:     { icon: '⚙️', title: 'Операції', minRole: 'vice_director' },
     };
 
     let _config = { widgets: [], layout: {}, theme: 'default' };
@@ -231,6 +235,18 @@ const DashboardPage = (() => {
                 break;
             case 'team_tasks':
                 renderTeamTasks(data, container);
+                break;
+            case 'hr_overview':
+                renderHrOverview(data, container);
+                break;
+            case 'director_pnl':
+                renderDirectorPnl(data, container);
+                break;
+            case 'content_pipeline':
+                renderContentPipeline(data, container);
+                break;
+            case 'operations':
+                renderOperations(data, container);
                 break;
             default:
                 container.innerHTML = '<div class="widget-empty">Невідомий віджет</div>';
@@ -693,6 +709,106 @@ const DashboardPage = (() => {
             html += '</div>';
         }
         html += `<div style="text-align:center;margin-top:8px"><a href="/tasks" style="font-size:12px;color:var(--primary);font-weight:700;text-decoration:none">Всі задачі →</a></div>`;
+        container.innerHTML = html;
+    }
+
+    // v39.10: HR overview
+    function renderHrOverview(data, container) {
+        let html = '';
+        if (data.absent?.length) {
+            html += `<div style="margin-bottom:8px"><div style="font-size:11px;font-weight:700;color:#ef4444;margin-bottom:4px">🏥 Відсутні сьогодні (${data.absent.length})</div>`;
+            data.absent.forEach(s => {
+                const label = s.status === 'sick' ? '🏥' : '🌴';
+                html += `<div style="font-size:12px;padding:2px 0">${label} ${escapeHtml(s.name)}</div>`;
+            });
+            html += '</div>';
+        }
+        if (data.pendingLeaves?.length) {
+            html += `<div style="margin-bottom:8px"><div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:4px">📋 Заявки на затвердження (${data.pendingLeaves.length})</div>`;
+            data.pendingLeaves.forEach(l => {
+                html += `<div style="font-size:12px;padding:2px 0">${escapeHtml(l.name)} — ${l.type} (${l.date_from?.slice(5)} → ${l.date_to?.slice(5)})</div>`;
+            });
+            html += '</div>';
+        }
+        if (data.birthdays?.length) {
+            html += `<div style="margin-bottom:8px"><div style="font-size:11px;font-weight:700;color:var(--primary);margin-bottom:4px">🎂 Дні народження цього тижня</div>`;
+            data.birthdays.forEach(b => {
+                const day = b.birth_date ? new Date(b.birth_date).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short' }) : '';
+                html += `<div style="font-size:12px;padding:2px 0">🎂 ${escapeHtml(b.name)} ${day}</div>`;
+            });
+            html += '</div>';
+        }
+        if (!html) html = '<div class="widget-empty">Все спокійно в HR</div>';
+        html += `<div style="text-align:center;margin-top:8px"><a href="/hr" style="font-size:12px;color:var(--primary);font-weight:700;text-decoration:none">HR →</a></div>`;
+        container.innerHTML = html;
+    }
+
+    // v39.10: Director P&L
+    function renderDirectorPnl(data, container) {
+        const w = data.week || {};
+        const m = data.month || {};
+        container.innerHTML = `
+            <div style="font-size:11px;font-weight:700;color:var(--gray-400);margin-bottom:4px">📊 Цей тиждень</div>
+            <div class="stats-grid" style="margin-bottom:12px">
+                <div class="stat-item"><div class="stat-value" style="color:#22c55e">${formatCurrency(w.revenue || 0)}</div><div class="stat-label">Дохід</div></div>
+                <div class="stat-item"><div class="stat-value" style="color:#ef4444">${formatCurrency(w.expenses || 0)}</div><div class="stat-label">Витрати</div></div>
+                <div class="stat-item"><div class="stat-value" style="color:${(w.profit||0)>=0?'#22c55e':'#ef4444'}">${formatCurrency(w.profit || 0)}</div><div class="stat-label">Прибуток</div></div>
+            </div>
+            <div style="font-size:11px;font-weight:700;color:var(--gray-400);margin-bottom:4px">📅 Цей місяць</div>
+            <div class="stats-grid" style="margin-bottom:8px">
+                <div class="stat-item"><div class="stat-value" style="color:#22c55e">${formatCurrency(m.revenue || 0)}</div><div class="stat-label">Дохід</div></div>
+                <div class="stat-item"><div class="stat-value" style="color:#ef4444">${formatCurrency(m.expenses || 0)}</div><div class="stat-label">Витрати</div></div>
+                <div class="stat-item"><div class="stat-value" style="color:${(m.profit||0)>=0?'#22c55e':'#ef4444'}">${formatCurrency(m.profit || 0)}</div><div class="stat-label">Прибуток</div></div>
+            </div>
+            <div style="font-size:11px;color:var(--gray-500)">👥 ${data.staffCount || 0} співробітників</div>
+            <div style="text-align:center;margin-top:8px"><a href="/finance" style="font-size:12px;color:var(--primary);font-weight:700;text-decoration:none">Фінанси →</a></div>
+        `;
+    }
+
+    // v39.10: Art director content pipeline
+    function renderContentPipeline(data, container) {
+        let html = '';
+        if (data.inReview?.length) {
+            html += `<div style="margin-bottom:8px"><div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:4px">👁 На ревью (${data.inReview.length})</div>`;
+            data.inReview.forEach(c => {
+                html += `<div style="font-size:12px;padding:3px 0;cursor:pointer" onclick="window.location='/art-director'">${escapeHtml(c.title?.slice(0, 40) || 'Без назви')}</div>`;
+            });
+            html += '</div>';
+        }
+        html += `<div style="font-size:12px;color:var(--gray-500);margin-bottom:8px">✅ Затверджено за тиждень: <b>${data.approvedThisWeek || 0}</b></div>`;
+        if (data.designTasks?.length) {
+            html += `<div style="margin-bottom:8px"><div style="font-size:11px;font-weight:700;color:var(--primary);margin-bottom:4px">🎨 Дизайн-задачі</div>`;
+            data.designTasks.forEach(t => {
+                const pIcon = t.priority === 'high' ? '🔴 ' : '';
+                html += `<div style="font-size:12px;padding:2px 0">${pIcon}${escapeHtml(t.title?.slice(0, 45) || '')}</div>`;
+            });
+            html += '</div>';
+        }
+        if (data.catalogs?.length) {
+            html += `<div style="font-size:11px;font-weight:700;color:var(--gray-400);margin-bottom:4px">📚 Каталоги (${data.catalogs.length})</div>`;
+            html += data.catalogs.map(c => `<span style="font-size:12px;margin-right:8px">${c.emoji || '📂'} ${escapeHtml(c.name)} <span style="color:${c.status==='ready'?'#22c55e':'#f59e0b'};font-size:10px">${c.status==='ready'?'✅':'🔄'}</span></span>`).join('');
+        }
+        html += `<div style="text-align:center;margin-top:8px"><a href="/designs" style="font-size:12px;color:var(--primary);font-weight:700;text-decoration:none">Дизайн →</a></div>`;
+        container.innerHTML = html || '<div class="widget-empty">Контент пайплайн порожній</div>';
+    }
+
+    // v39.10: Vice director operations
+    function renderOperations(data, container) {
+        const q = data.quality || {};
+        let html = `<div class="stats-grid" style="margin-bottom:8px">
+            <div class="stat-item"><div class="stat-value">${q.avg_rating || '—'}</div><div class="stat-label">Рейтинг (30д)</div></div>
+            <div class="stat-item"><div class="stat-value" style="color:#ef4444">${data.complaintsWeek || 0}</div><div class="stat-label">Скарги (7д)</div></div>
+            <div class="stat-item"><div class="stat-value" style="color:#f59e0b">${data.staffNotCheckedIn || 0}</div><div class="stat-label">Не на місці</div></div>
+        </div>`;
+        if (data.procurement?.length) {
+            html += `<div style="margin-bottom:8px"><div style="font-size:11px;font-weight:700;color:var(--gray-400);margin-bottom:4px">🛒 Закупки (${data.procurement.length})</div>`;
+            data.procurement.forEach(p => {
+                const statusLabel = p.status === 'ordered' ? '📦 Замовлено' : '📝 Чернетка';
+                html += `<div style="font-size:12px;padding:2px 0">${statusLabel} ${escapeHtml(p.name?.slice(0, 40) || '')}</div>`;
+            });
+            html += '</div>';
+        }
+        html += `<div style="text-align:center;margin-top:8px"><a href="/center" style="font-size:12px;color:var(--primary);font-weight:700;text-decoration:none">Центр →</a></div>`;
         container.innerHTML = html;
     }
 

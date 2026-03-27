@@ -480,6 +480,93 @@ router.get('/widgets/:type', async (req, res) => {
                 break;
             }
 
+            // v39.10: HR widget — absences, leaves, birthdays, contracts
+            case 'hr_overview': {
+                const today = getKyivDateStr();
+                const weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 7);
+                const weekStr = weekEnd.toISOString().split('T')[0];
+                const [absences, pendingLeaves, birthdays, expiring] = await Promise.all([
+                    pool.query(`SELECT s.name, ss.status FROM staff_schedule ss JOIN staff s ON s.id = ss.staff_id
+                        WHERE ss.date = $1 AND ss.status IN ('sick','vacation') AND s.is_active = true ORDER BY s.name`, [today]),
+                    pool.query(`SELECT lr.id, s.name, lr.type, lr.date_from, lr.date_to FROM hr_leave_requests lr
+                        JOIN staff s ON s.id = lr.staff_id WHERE lr.status = 'pending' ORDER BY lr.created_at DESC LIMIT 5`).catch(() => ({ rows: [] })),
+                    pool.query(`SELECT name, birth_date FROM staff WHERE is_active = true AND birth_date IS NOT NULL
+                        AND EXTRACT(MONTH FROM birth_date::date) = EXTRACT(MONTH FROM $1::date)
+                        AND EXTRACT(DAY FROM birth_date::date) BETWEEN EXTRACT(DAY FROM $1::date) AND EXTRACT(DAY FROM $2::date)
+                        ORDER BY EXTRACT(DAY FROM birth_date::date)`, [today, weekStr]).catch(() => ({ rows: [] })),
+                    pool.query(`SELECT name, contract_type FROM staff WHERE is_active = true
+                        AND hire_date IS NOT NULL AND hire_date::date < NOW() - INTERVAL '11 months'
+                        ORDER BY hire_date LIMIT 5`).catch(() => ({ rows: [] }))
+                ]);
+                data = {
+                    absent: absences.rows,
+                    pendingLeaves: pendingLeaves.rows,
+                    birthdays: birthdays.rows,
+                    contractsExpiring: expiring.rows
+                };
+                break;
+            }
+
+            // v39.10: Director P&L widget
+            case 'director_pnl': {
+                const today = getKyivDateStr();
+                const weekStart = new Date(today); weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
+                const ws = weekStart.toISOString().split('T')[0];
+                const monthStart = today.slice(0, 7) + '-01';
+                const [weekRev, monthRev, weekExp, monthExp, staffCost] = await Promise.all([
+                    pool.query(`SELECT COALESCE(SUM(price),0)::int AS rev FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL`, [ws, today]),
+                    pool.query(`SELECT COALESCE(SUM(price),0)::int AS rev FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL`, [monthStart, today]),
+                    pool.query(`SELECT COALESCE(SUM(amount),0)::int AS exp FROM finance_transactions WHERE date >= $1 AND date <= $2 AND type = 'expense'`, [ws, today]),
+                    pool.query(`SELECT COALESCE(SUM(amount),0)::int AS exp FROM finance_transactions WHERE date >= $1 AND date <= $2 AND type = 'expense'`, [monthStart, today]),
+                    pool.query(`SELECT COUNT(*)::int AS staff, COALESCE(SUM(hourly_rate),0)::int AS daily_cost FROM staff WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL)`).catch(() => ({ rows: [{ staff: 0, daily_cost: 0 }] }))
+                ]);
+                data = {
+                    week: { revenue: weekRev.rows[0].rev, expenses: weekExp.rows[0].exp, profit: weekRev.rows[0].rev - weekExp.rows[0].exp },
+                    month: { revenue: monthRev.rows[0].rev, expenses: monthExp.rows[0].exp, profit: monthRev.rows[0].rev - monthExp.rows[0].exp },
+                    staffCount: staffCost.rows[0].staff,
+                    dailyStaffCost: staffCost.rows[0].daily_cost
+                };
+                break;
+            }
+
+            // v39.10: Art director content pipeline
+            case 'content_pipeline': {
+                const [inReview, approved, tasks, catalogs] = await Promise.all([
+                    pool.query(`SELECT id, title, status FROM art_director_content WHERE status = 'in_review' ORDER BY created_at DESC LIMIT 5`).catch(() => ({ rows: [] })),
+                    pool.query(`SELECT COUNT(*)::int AS c FROM art_director_content WHERE status = 'approved' AND created_at > NOW() - INTERVAL '7 days'`).catch(() => ({ rows: [{ c: 0 }] })),
+                    pool.query(`SELECT id, title, priority FROM tasks WHERE category = 'improvement' AND status NOT IN ('done','cancelled') ORDER BY priority DESC, deadline ASC LIMIT 5`).catch(() => ({ rows: [] })),
+                    pool.query(`SELECT id, name, emoji, status FROM catalog_definitions WHERE is_active = true ORDER BY name`).catch(() => ({ rows: [] }))
+                ]);
+                data = {
+                    inReview: inReview.rows,
+                    approvedThisWeek: approved.rows[0].c,
+                    designTasks: tasks.rows,
+                    catalogs: catalogs.rows
+                };
+                break;
+            }
+
+            // v39.10: Vice director operations overview
+            case 'operations': {
+                const today = getKyivDateStr();
+                const [procurement, complaints, quality, staffGaps] = await Promise.all([
+                    pool.query(`SELECT id, name, status FROM procurement_lists WHERE status IN ('draft','ordered') ORDER BY created_at DESC LIMIT 5`).catch(() => ({ rows: [] })),
+                    pool.query(`SELECT COUNT(*)::int AS c FROM leads WHERE status = 'new' AND source = 'complaint' AND created_at > NOW() - INTERVAL '7 days'`).catch(() => ({ rows: [{ c: 0 }] })),
+                    pool.query(`SELECT COALESCE(AVG(rating),0)::numeric(3,1) AS avg_rating, COUNT(*)::int AS count FROM event_reviews WHERE created_at > NOW() - INTERVAL '30 days'`).catch(() => ({ rows: [{ avg_rating: 0, count: 0 }] })),
+                    pool.query(`SELECT COUNT(*)::int AS gaps FROM staff_schedule ss
+                        JOIN staff s ON s.id = ss.staff_id
+                        WHERE ss.date = $1 AND ss.status = 'working' AND s.is_active = true
+                        AND NOT EXISTS (SELECT 1 FROM users u JOIN employee_profiles ep ON ep.user_id = u.id WHERE ep.staff_id = s.id AND u.last_seen_at > NOW() - INTERVAL '30 minutes')`, [today]).catch(() => ({ rows: [{ gaps: 0 }] }))
+                ]);
+                data = {
+                    procurement: procurement.rows,
+                    complaintsWeek: complaints.rows[0].c,
+                    quality: quality.rows[0],
+                    staffNotCheckedIn: staffGaps.rows[0].gaps
+                };
+                break;
+            }
+
             default:
                 return res.status(400).json({ error: 'Unknown widget type' });
         }

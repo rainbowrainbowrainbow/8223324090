@@ -889,16 +889,17 @@ router.post('/:catalogId/bulk-generate-images', requireRole('admin', 'creator', 
             [req.params.catalogId]
         );
         if (!pages.rowCount) return res.json({ success: true, started: 0, message: 'Всі сторінки вже мають фото' });
+        // ai_style from DB = single source of truth for catalog context
+        const catDef = await pool.query('SELECT ai_style FROM catalog_definitions WHERE id=$1', [req.params.catalogId]);
+        const aiStyle = catDef.rows[0]?.ai_style || DEFAULT_AI_STYLE;
         const tasks = [];
         const _tr = {'а':'a','б':'b','в':'v','г':'h','ґ':'g','д':'d','е':'e','є':'ye','ж':'zh','з':'z','и':'y','і':'i','ї':'yi','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ь':'','ю':'yu','я':'ya',' ':' ',"'":''};
         const tl = (s) => (s||'').split('').map(c => _tr[c.toLowerCase()] !== undefined ? _tr[c.toLowerCase()] : c).join('');
-        const catContextMap = { pinyata: 'pinata toy for kids party, colorful paper mache figure', cake: 'birthday cake, decorated, festive', menu: 'food dish for restaurant', costume: 'theatrical costume for animator' };
-        const catCtx = catContextMap[req.params.catalogId] || 'product for children entertainment park';
         for (const page of pages.rows) {
             const enTitle = tl(page.title);
             const enSub = tl(page.subtitle);
             const enDesc = tl((page.description || '').slice(0, 100));
-            const prompt = `Professional product photograph of "${enTitle}"${enSub ? ', ' + enSub : ''}${enDesc ? ' — ' + enDesc : ''}, ${catCtx}, studio lighting, clean white background, vibrant colors, centered, no text, no watermarks, 4K`;
+            const prompt = `${aiStyle}. Product: "${enTitle}"${enSub ? ', ' + enSub : ''}${enDesc ? '. ' + enDesc : ''}. Studio lighting, clean white background, centered, no text, 4K`;
             try {
                 const r = await kieRequest('POST', '/api/v1/jobs/createTask', {
                     model: 'nano-banana-2',

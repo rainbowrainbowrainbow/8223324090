@@ -1715,29 +1715,35 @@
     function _translit(text) {
         return (text || '').split('').map(function(c) { return _trMap[c.toLowerCase()] !== undefined ? _trMap[c.toLowerCase()] : c; }).join('');
     }
-    var _catalogContext = {
-        'pinyata': 'pinata toy for kids party, colorful paper mache figure',
-        'cake': 'birthday cake for children party, decorated, festive',
-        'menu': 'food dish for children entertainment park menu',
-        'costume': 'costume for children animator, theatrical outfit',
-        'graduation': 'graduation party decoration for school kids'
-    };
+    // ai_style cache from DB (loaded per catalog)
+    var _catalogAiStyle = {};
+    async function _getCatalogAiStyle(catalogId) {
+        if (_catalogAiStyle[catalogId]) return _catalogAiStyle[catalogId];
+        try {
+            var r = await apiFetch('/api/catalogs/definitions');
+            if (r && r.ok) {
+                var d = await r.json();
+                (d.catalogs || []).forEach(function(c) { if (c.ai_style) _catalogAiStyle[c.id] = c.ai_style; });
+            }
+        } catch(e) {}
+        return _catalogAiStyle[catalogId] || 'product for children entertainment park, vibrant colors, white background, no text';
+    }
+
     function _buildSmartPrompt(page, catalogId) {
+        var aiStyle = _catalogAiStyle[catalogId] || 'product for children entertainment park, vibrant colors, white background, no text';
         var title = _translit(page.title || '');
         var subtitle = _translit(page.subtitle || '');
         var desc = _translit((page.description || '').slice(0, 120));
-        var context = _catalogContext[catalogId] || 'product for children entertainment park';
         var det = page.details || {};
         var details = [det.age, det.kids, det.duration].filter(Boolean).map(_translit).join(', ');
 
-        var parts = ['Professional product photograph'];
-        parts.push('"' + title + '"');
+        var parts = [aiStyle];
+        parts.push('Product: "' + title + '"');
         if (subtitle) parts.push(subtitle);
-        if (desc) parts.push('— ' + desc);
-        parts.push(context);
+        if (desc) parts.push(desc);
         if (details) parts.push('(' + details + ')');
-        parts.push('studio lighting, clean white background, high quality commercial photography, vibrant colors, centered composition, no text, no watermarks, 4K');
-        return parts.join(', ');
+        parts.push('Studio lighting, clean white background, centered, no text, 4K');
+        return parts.join('. ');
     }
 
     function insertPageImage(catalogId, pageNumber) {
@@ -1749,11 +1755,14 @@
         document.getElementById('imagePickerTitle').textContent = '🖼 Зображення · Сторінка ' + pageNumber;
         // Auto-prompt from page data
         var page = _pagesData.find(function(p) { return p.page_number === pageNumber; });
-        var autoPrompt = '';
-        if (page && page.title) {
-            autoPrompt = _buildSmartPrompt(page, window._imgPickerCatalogId);
-        }
-        document.getElementById('imgGenPrompt').value = autoPrompt;
+        // Load ai_style from DB then build prompt
+        _getCatalogAiStyle(catalogId).then(function() {
+            var autoPrompt = '';
+            if (page && page.title) {
+                autoPrompt = _buildSmartPrompt(page, catalogId);
+            }
+            document.getElementById('imgGenPrompt').value = autoPrompt;
+        });
         var urlInput = document.getElementById('imgUrlInput');
         if (urlInput) urlInput.value = '';
         // Reset ref tab
@@ -1768,8 +1777,8 @@
         var refPrompt = document.getElementById('refPrompt');
         if (refPrompt) {
             if (page && page.title) {
-                var refCtx = _catalogContext[catalogId] || 'product';
-                refPrompt.value = 'Transform this reference image into a professional photo of "' + _translit(page.title) + '" (' + refCtx + '), keep the shape and style, clean white background, studio lighting, vibrant colors, no text';
+                var refStyle = _catalogAiStyle[catalogId] || 'product';
+                refPrompt.value = 'Transform into: ' + _translit(page.title) + '. Style: ' + refStyle + '. Keep shape, clean white background, studio lighting, no text';
             } else {
                 refPrompt.value = 'Enhance quality, clean background, studio lighting, vibrant colors';
             }

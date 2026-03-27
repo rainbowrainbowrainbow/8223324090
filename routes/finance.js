@@ -311,7 +311,7 @@ router.get('/dashboard', async (req, res) => {
 
         if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
             // Default: current month
-            const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Kyiv' }));
+            const now = new Date(new Date().toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' }));
             const range = getMonthRange(now.getFullYear(), now.getMonth() + 1);
             from = range.from;
             to = range.to;

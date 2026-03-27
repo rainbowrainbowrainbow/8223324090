@@ -323,7 +323,9 @@ router.post('/batch-generate', requireRole('admin', 'creator', 'director', 'art_
             try {
                 const style = item.ai_style || DEFAULT_AI_STYLE;
                 const themeCtx = [item.name, item.subcategory].filter(Boolean).join(', ');
-                const prompt = `${style}. Product: "${themeCtx}". Ukrainian children's park.`;
+                const _tr = {'а':'a','б':'b','в':'v','г':'h','ґ':'g','д':'d','е':'e','є':'ye','ж':'zh','з':'z','и':'y','і':'i','ї':'yi','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ь':'','ю':'yu','я':'ya',' ':' '};
+                const enCtx = themeCtx.split('').map(c => _tr[c.toLowerCase()] || c).join('');
+                const prompt = `${style}. Product: "${enCtx}". Ukrainian children's park.`;
                 const r = await kieRequest('POST', '/api/v1/jobs/createTask', {
                     model: 'nano-banana-2',
                     input: { prompt, aspect_ratio: '1:1', resolution: '1K', output_format: 'png' }

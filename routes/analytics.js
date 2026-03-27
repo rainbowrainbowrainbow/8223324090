@@ -42,7 +42,7 @@ function setCache(key, data) {
 function isValidDate(str) { return /^\d{4}-\d{2}-\d{2}$/.test(str); }
 
 function getDateRange(period) {
-    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Kyiv' }));
+    const now = new Date(new Date().toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' }));
     const y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
     const dow = now.getDay() || 7;
     const fmt = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;

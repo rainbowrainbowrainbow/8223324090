@@ -631,12 +631,16 @@ router.post('/generate-image', authenticateToken, async (req, res) => {
         const { prompt, eventId, type } = req.body;
         if (!prompt) return res.status(400).json({ error: 'prompt required' });
 
+        // Transliterate Ukrainian→Latin for Kie.ai (rejects cyrillic)
+        const _tr = {'а':'a','б':'b','в':'v','г':'h','ґ':'g','д':'d','е':'e','є':'ye','ж':'zh','з':'z','и':'y','і':'i','ї':'yi','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ь':'','ю':'yu','я':'ya',' ':' '};
+        const enPrompt = prompt.split('').map(c => _tr[c.toLowerCase()] || c).join('');
+
         const KIE_API_KEY = process.env.KIE_API_KEY;
         if (!KIE_API_KEY) return res.status(503).json({ error: 'KIE API key not configured' });
         const kieRes = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${KIE_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'nano-banana-2', input: { prompt, aspect_ratio: '9:16', resolution: '1K', output_format: 'png' } })
+            body: JSON.stringify({ model: 'nano-banana-2', input: { prompt: enPrompt, aspect_ratio: '9:16', resolution: '1K', output_format: 'png' } })
         });
         const task = await kieRes.json();
         res.json({ taskId: task.data?.taskId || null, status: 'processing', eventId, type });

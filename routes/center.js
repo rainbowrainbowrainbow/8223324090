@@ -26,7 +26,7 @@ const log = createLogger('Center');
 // ==========================================
 
 function getKyivNow() {
-    return new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Kyiv' }));
+    return new Date(new Date().toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' }));
 }
 
 function formatDateISO(d) {

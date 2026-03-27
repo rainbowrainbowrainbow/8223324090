@@ -974,18 +974,13 @@
                 <!-- All catalogs in one grid -->
                 <div class="catalog-list" id="catalogList">
                     <!-- Graduation card (v39.3 redesigned) -->
-                    <div class="catalog-card" data-catalog="graduation" data-status="ready">
+                    <div class="catalog-card" data-catalog="graduation" data-status="ready" onclick="openCatalog('graduation')" style="cursor:pointer">
                         <div class="catalog-card-cover-empty" style="background:linear-gradient(135deg,#f5dca0,#e0c060)">
                             <span class="catalog-card-cover-icon">🎓</span>
-                            <span class="catalog-card-status ready">✅ Ready</span>
                         </div>
                         <div class="catalog-card-body">
                             <div class="catalog-card-title">Випускні 2026</div>
                             <div class="catalog-card-meta">7 пакетів · <span id="catalogUpdated">—</span></div>
-                        </div>
-                        <div class="catalog-card-actions">
-                            <button type="button" class="catalog-card-btn catalog-card-btn-primary" onclick="openCatalog('graduation')">Переглянути</button>
-                            <button type="button" class="catalog-card-btn" onclick="printCatalog('graduation')">🖨 Друк</button>
                         </div>
                     </div>
                     <!-- Dynamic catalog cards rendered here by JS -->
@@ -1308,12 +1303,10 @@
                 var card = document.createElement('div');
                 card.className = 'catalog-card';
                 card.dataset.catalog = c.id;
+                card.style.cursor = 'pointer';
+                card.onclick = (function(catId) { return function() { openCatalogPages(catId); }; })(c.id);
                 card.innerHTML = coverHtml +
-                    '<div class="catalog-card-body"><div class="catalog-card-title">' + (c.name || c.id) + '</div><div class="catalog-card-meta">' + count + ' сторінок</div></div>' +
-                    '<div class="catalog-card-actions">' +
-                    '<button type="button" class="catalog-card-btn catalog-card-btn-primary" onclick="openCatalog(\'' + c.id + '\')">Переглянути</button>' +
-                    '<button type="button" class="catalog-card-btn" onclick="openCatalogPages(\'' + c.id + '\')">Сторінки</button>' +
-                    '</div>';
+                    '<div class="catalog-card-body"><div class="catalog-card-title">' + (c.name || c.id) + '</div><div class="catalog-card-meta">' + count + ' сторінок</div></div>';
                 listContainer.appendChild(card);
             });
             // Add "+ Create" card at the end

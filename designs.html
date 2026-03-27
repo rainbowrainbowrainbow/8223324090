@@ -1122,6 +1122,10 @@
         </div>
         <div style="padding:10px 20px">
           <button type="button" class="img-picker-btn-cancel" onclick="closeImagePicker()">Скасувати</button>
+          <details style="margin-top:8px">
+            <summary style="font-size:11px;color:rgba(255,255,255,0.3);cursor:pointer;user-select:none">🔧 Debug Log</summary>
+            <pre id="imgDebugLog" style="font-size:10px;color:rgba(255,255,255,0.4);background:rgba(0,0,0,0.3);border-radius:6px;padding:8px;margin-top:4px;max-height:120px;overflow-y:auto;white-space:pre-wrap;word-break:break-all"></pre>
+          </details>
         </div>
       </div>
     </div>
@@ -1785,41 +1789,70 @@
         if (!refUrl) { showNotification('Завантажте референс спочатку', 'error'); return; }
         var prompt = document.getElementById('refPrompt').value.trim() || 'keep style, enhance quality';
         var btn = document.getElementById('refGenBtn'); btn.disabled = true; btn.textContent = '⏳ Генерація...';
-        document.getElementById('refGenStatus').style.display = 'block';
-        document.getElementById('refGenStatus').textContent = 'Генерація з референсу ~30с...';
+        _setGenStatus('refGenStatus', '📸 Надсилаємо запит...', false);
+        document.getElementById('refGenPreview').style.display = 'none';
+        document.getElementById('refGenActions').style.display = 'none';
+        _imgLog('Ref gen: url=' + refUrl.slice(0, 60) + ', prompt=' + prompt.slice(0, 40));
         try {
             var r = await apiFetch('/api/catalogs/generate-image-from-ref', { method: 'POST', body: JSON.stringify({ referenceUrl: refUrl, prompt: prompt, catalogId: window._imgPickerCatalogId || '' }), headers: { 'Content-Type': 'application/json' } });
-            if (!r || !r.ok) throw new Error('Сервер не відповідає');
-            var data = await r.json();
+            if (!r) throw new Error('Мережа недоступна');
+            var data;
+            try { data = await r.json(); } catch(e) { throw new Error('Сервер повернув невалідну відповідь (HTTP ' + r.status + ')'); }
+            if (!r.ok) throw new Error(data.error || 'Помилка Kie.ai (HTTP ' + r.status + ')');
+            _imgLog('Ref task: ' + (data.taskId || 'no taskId'));
             if (data.taskId) {
-                document.getElementById('refGenStatus').textContent = 'Очікуємо результат...';
+                _setGenStatus('refGenStatus', '⏳ Очікуємо результат від AI...', false);
+                var pollCount = 0;
+                var maxPolls = 40;
                 var poll = setInterval(async function() {
-                    var pr = await apiFetch('/api/catalogs/generate-image/' + data.taskId);
-                    if (!pr || !pr.ok) return;
-                    var pd = await pr.json();
-                    if ((pd.done || pd.status === 'completed') && (pd.imageUrl || pd.url)) {
-                        clearInterval(poll);
-                        var _rUrl = pd.imageUrl || pd.url;
-                        window._refGenUrl = _rUrl;
-                        document.getElementById('refGenPreview').src = _rUrl;
-                        document.getElementById('refGenPreview').style.display = 'block';
-                        document.getElementById('refGenActions').style.display = 'flex';
-                        document.getElementById('refGenStatus').textContent = 'Готово!';
-                    } else if (pd.state === 'failed' || pd.status === 'failed') {
-                        clearInterval(poll);
-                        document.getElementById('refGenStatus').textContent = 'Помилка генерації';
-                    }
+                    pollCount++;
+                    try {
+                        var pr = await apiFetch('/api/catalogs/generate-image/' + data.taskId);
+                        if (!pr || !pr.ok) { _imgLog('Ref poll #' + pollCount + ': HTTP ' + (pr?.status || 'fail')); return; }
+                        var pd = await pr.json();
+                        _imgLog('Ref poll #' + pollCount + ': state=' + (pd.state || pd.status || '?'));
+                        if ((pd.done || pd.status === 'completed') && (pd.imageUrl || pd.url)) {
+                            clearInterval(poll);
+                            var _rUrl = pd.imageUrl || pd.url;
+                            window._refGenUrl = _rUrl;
+                            document.getElementById('refGenPreview').src = _rUrl;
+                            document.getElementById('refGenPreview').style.display = 'block';
+                            document.getElementById('refGenActions').style.display = 'flex';
+                            _setGenStatus('refGenStatus', '✅ Готово!', false);
+                            _imgLog('Ref success: ' + _rUrl.slice(0, 80));
+                            btn.disabled = false; btn.textContent = '📸 Згенерувати з референсу';
+                        } else if (pd.state === 'failed' || pd.status === 'failed') {
+                            clearInterval(poll);
+                            var errMsg = pd.error || pd.failMsg || 'AI не зміг обробити зображення';
+                            _setGenStatus('refGenStatus', '❌ ' + errMsg, true);
+                            _imgLog('Ref fail: ' + errMsg);
+                            btn.disabled = false; btn.textContent = '🔄 Спробувати ще';
+                        } else if (pollCount >= maxPolls) {
+                            clearInterval(poll);
+                            _setGenStatus('refGenStatus', '⏰ Таймаут — AI не відповів. Спробуйте ще.', true);
+                            _imgLog('Ref timeout');
+                            btn.disabled = false; btn.textContent = '🔄 Спробувати ще';
+                        } else {
+                            _setGenStatus('refGenStatus', '⏳ Очікуємо... (' + pollCount + '/' + maxPolls + ')', false);
+                        }
+                    } catch(pe) { _imgLog('Ref poll error: ' + pe.message); }
                 }, 3000);
-                setTimeout(function() { clearInterval(poll); }, 180000);
             } else if (data.url) {
                 window._refGenUrl = data.url;
                 document.getElementById('refGenPreview').src = data.url;
                 document.getElementById('refGenPreview').style.display = 'block';
                 document.getElementById('refGenActions').style.display = 'flex';
-                document.getElementById('refGenStatus').textContent = 'Готово!';
+                _setGenStatus('refGenStatus', '✅ Готово!', false);
+                _imgLog('Ref instant: ' + data.url.slice(0, 80));
+                btn.disabled = false; btn.textContent = '📸 Згенерувати з референсу';
+            } else {
+                throw new Error(data.error || 'Невідома відповідь від Kie.ai');
             }
-        } catch (err) { document.getElementById('refGenStatus').textContent = 'Помилка: ' + err.message; }
-        finally { btn.disabled = false; btn.textContent = '📸 Згенерувати з референсу'; }
+        } catch (err) {
+            _setGenStatus('refGenStatus', '❌ ' + err.message, true);
+            _imgLog('Ref catch: ' + err.message);
+            btn.disabled = false; btn.textContent = '🔄 Спробувати ще';
+        }
     }
     window.generateFromRef = generateFromRef;
     function useRefGeneratedImage() { if (window._refGenUrl) savePageImg(window._refGenUrl); }
@@ -1846,29 +1879,93 @@
         } catch(e) { showNotification('Помилка: '+e.message,'error'); }
     }
 
+    // Debug log for image generation
+    var _imgDebugLog = [];
+    function _imgLog(msg) {
+        var ts = new Date().toLocaleTimeString('uk-UA');
+        _imgDebugLog.push('[' + ts + '] ' + msg);
+        if (_imgDebugLog.length > 50) _imgDebugLog.shift();
+        var logEl = document.getElementById('imgDebugLog');
+        if (logEl) logEl.textContent = _imgDebugLog.join('\n');
+    }
+    function _setGenStatus(elId, text, isError) {
+        var el = document.getElementById(elId);
+        if (!el) return;
+        el.style.display = 'block';
+        el.textContent = text;
+        el.style.color = isError ? '#EF4444' : 'var(--primary,#a855f7)';
+    }
+
     async function generatePageImage() {
         var p = document.getElementById('imgGenPrompt').value.trim();
         if (!p) { document.getElementById('imgGenPrompt').focus(); return; }
-        var btn = document.getElementById('imgGenBtn'); btn.disabled = true; btn.textContent = '...';
-        document.getElementById('imgGenStatus').style.display = 'block';
-        document.getElementById('imgGenStatus').textContent = 'Генерація ~30с...';
+        var btn = document.getElementById('imgGenBtn'); btn.disabled = true; btn.textContent = '⏳ Генерація...';
+        _setGenStatus('imgGenStatus', '🎨 Надсилаємо запит на Kie.ai...', false);
+        document.getElementById('imgGenPreview').style.display = 'none';
+        document.getElementById('imgGenActions').style.display = 'none';
+        _imgLog('Генерація: prompt="' + p.slice(0, 60) + '..."');
         try {
             var r = await apiFetch('/api/catalogs/generate-image', { method: 'POST', body: JSON.stringify({ prompt: p, name: p, catalogId: window._imgPickerCatalogId || '' }), headers: { 'Content-Type': 'application/json' } });
-            if (!r || !r.ok) throw new Error('Сервер не відповідає');
-            var data = await r.json();
+            if (!r) throw new Error('Мережа недоступна');
+            var data;
+            try { data = await r.json(); } catch(e) { throw new Error('Сервер повернув невалідну відповідь (HTTP ' + r.status + ')'); }
+            if (!r.ok) throw new Error(data.error || 'Помилка сервера (HTTP ' + r.status + ')');
+            _imgLog('Задача створена: ' + (data.taskId || 'no taskId'));
             if (data.taskId) {
-                document.getElementById('imgGenStatus').textContent = 'Очікуємо результат...';
+                _setGenStatus('imgGenStatus', '⏳ Очікуємо результат від AI (до 60с)...', false);
+                var pollCount = 0;
+                var maxPolls = 40; // 40 * 3s = 120s
                 var poll = setInterval(async function() {
-                    var pr = await apiFetch('/api/catalogs/generate-image/' + data.taskId);
-                    if (!pr || !pr.ok) return;
-                    var pd = await pr.json();
-                    if ((pd.done || pd.status === 'completed') && (pd.imageUrl || pd.url)) { clearInterval(poll); var _gUrl = pd.imageUrl || pd.url; window._imgGenUrl = _gUrl; document.getElementById('imgGenPreview').src = _gUrl; document.getElementById('imgGenPreview').style.display = 'block'; document.getElementById('imgGenActions').style.display = 'flex'; document.getElementById('imgGenStatus').textContent = 'Готово!'; }
-                    else if (pd.state === 'failed' || pd.status === 'failed') { clearInterval(poll); document.getElementById('imgGenStatus').textContent = 'Помилка генерації'; }
+                    pollCount++;
+                    try {
+                        var pr = await apiFetch('/api/catalogs/generate-image/' + data.taskId);
+                        if (!pr || !pr.ok) { _imgLog('Poll #' + pollCount + ': HTTP ' + (pr?.status || 'fail')); return; }
+                        var pd = await pr.json();
+                        _imgLog('Poll #' + pollCount + ': state=' + (pd.state || pd.status || '?'));
+                        if ((pd.done || pd.status === 'completed') && (pd.imageUrl || pd.url)) {
+                            clearInterval(poll);
+                            var _gUrl = pd.imageUrl || pd.url;
+                            window._imgGenUrl = _gUrl;
+                            document.getElementById('imgGenPreview').src = _gUrl;
+                            document.getElementById('imgGenPreview').style.display = 'block';
+                            document.getElementById('imgGenActions').style.display = 'flex';
+                            _setGenStatus('imgGenStatus', '✅ Готово!', false);
+                            _imgLog('Успіх: ' + _gUrl.slice(0, 80));
+                            btn.disabled = false; btn.textContent = '🎨 Згенерувати';
+                        } else if (pd.state === 'failed' || pd.status === 'failed') {
+                            clearInterval(poll);
+                            var errMsg = pd.error || pd.failMsg || 'AI не зміг згенерувати зображення';
+                            _setGenStatus('imgGenStatus', '❌ ' + errMsg, true);
+                            _imgLog('Помилка AI: ' + errMsg);
+                            btn.disabled = false; btn.textContent = '🔄 Спробувати ще';
+                        } else if (pollCount >= maxPolls) {
+                            clearInterval(poll);
+                            _setGenStatus('imgGenStatus', '⏰ Таймаут — AI не відповів за 2 хвилини. Спробуйте ще раз.', true);
+                            _imgLog('Таймаут після ' + pollCount + ' спроб');
+                            btn.disabled = false; btn.textContent = '🔄 Спробувати ще';
+                        } else {
+                            _setGenStatus('imgGenStatus', '⏳ Очікуємо... (' + pollCount + '/' + maxPolls + ')', false);
+                        }
+                    } catch(pollErr) { _imgLog('Poll error: ' + pollErr.message); }
                 }, 3000);
-                setTimeout(function() { clearInterval(poll); }, 180000);
+            } else if (data.url || data.imageUrl) {
+                // Instant result
+                var url = data.imageUrl || data.url;
+                window._imgGenUrl = url;
+                document.getElementById('imgGenPreview').src = url;
+                document.getElementById('imgGenPreview').style.display = 'block';
+                document.getElementById('imgGenActions').style.display = 'flex';
+                _setGenStatus('imgGenStatus', '✅ Готово!', false);
+                _imgLog('Instant result: ' + url.slice(0, 80));
+                btn.disabled = false; btn.textContent = '🎨 Згенерувати';
+            } else {
+                throw new Error(data.error || 'Невідома відповідь від сервера');
             }
-        } catch (err) { document.getElementById('imgGenStatus').textContent = 'Помилка: ' + err.message; }
-        finally { btn.disabled = false; btn.textContent = 'Згенерувати'; }
+        } catch (err) {
+            _setGenStatus('imgGenStatus', '❌ ' + err.message, true);
+            _imgLog('Catch: ' + err.message);
+            btn.disabled = false; btn.textContent = '🔄 Спробувати ще';
+        }
     }
     function useGeneratedImage() { if (window._imgGenUrl) savePageImg(window._imgGenUrl); }
     function uploadPageImage() { document.getElementById('imgUploadInput').click(); }

@@ -1,6 +1,6 @@
 {
   "name": "event-genix",
-  "version": "39.4.1",
+  "version": "39.5.1",
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
   "scripts": {

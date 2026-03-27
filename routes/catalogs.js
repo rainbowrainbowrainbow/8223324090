@@ -245,11 +245,16 @@ router.post('/generate-image', requireRole('admin', 'creator', 'director', 'art_
             input: { prompt, aspect_ratio: '1:1', resolution: '1K', output_format: 'png' }
         });
         const taskId = r?.data?.taskId;
-        if (!taskId) return res.status(500).json({ error: 'Kie.ai: no taskId', raw: r });
+        if (!taskId) {
+            const kieErr = r?.message || r?.error || JSON.stringify(r || {}).slice(0, 200);
+            log.error('Kie.ai no taskId:', kieErr);
+            return res.status(502).json({ error: `Kie.ai не створив задачу: ${kieErr}. Спробуйте пізніше.` });
+        }
         res.json({ success: true, taskId, status: 'processing' });
     } catch (err) {
         log.error('POST /generate-image error', err);
-        res.status(500).json({ success: false, error: err.message });
+        const msg = err.message.includes('timeout') ? 'Kie.ai не відповідає (таймаут). Спробуйте пізніше.' : err.message;
+        res.status(502).json({ success: false, error: msg });
     }
 });
 
@@ -285,11 +290,16 @@ router.post('/generate-image-from-ref', requireRole('admin', 'creator', 'directo
             }
         });
         const taskId = r?.data?.taskId;
-        if (!taskId) return res.status(500).json({ error: 'Kie.ai: no taskId', raw: r });
+        if (!taskId) {
+            const kieErr = r?.message || r?.error || JSON.stringify(r || {}).slice(0, 200);
+            log.error('Kie.ai ref no taskId:', kieErr);
+            return res.status(502).json({ error: `Kie.ai не створив задачу: ${kieErr}` });
+        }
         res.json({ success: true, taskId, status: 'processing' });
     } catch (err) {
         log.error('POST /generate-image-from-ref error', err);
-        res.status(500).json({ success: false, error: err.message });
+        const msg = err.message.includes('timeout') ? 'Kie.ai не відповідає (таймаут). Спробуйте пізніше.' : err.message;
+        res.status(502).json({ success: false, error: msg });
     }
 });
 

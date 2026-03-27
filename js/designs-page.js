@@ -93,25 +93,41 @@ async function initPage() {
 // TABS
 // ==========================================
 function setupTabs() {
+    const switchTab = (tabName) => {
+        document.querySelectorAll('.design-tab').forEach(t => t.classList.remove('active'));
+        const target = document.querySelector(`.design-tab[data-tab="${tabName}"]`);
+        if (target) target.classList.add('active');
+        activeTab = tabName;
+
+        document.getElementById('tabGallery').style.display = activeTab === 'gallery' ? '' : 'none';
+        document.getElementById('tabCollections').style.display = activeTab === 'collections' ? '' : 'none';
+        document.getElementById('tabPrice').style.display = activeTab === 'price' ? '' : 'none';
+        document.getElementById('tabCalendar').style.display = activeTab === 'calendar' ? '' : 'none';
+        const tabCatalogs = document.getElementById('tabCatalogs');
+        if (tabCatalogs) tabCatalogs.style.display = activeTab === 'catalogs' ? '' : 'none';
+
+        if (activeTab === 'price') loadPriceList();
+        if (activeTab === 'calendar') renderCalendar();
+        if (activeTab === 'collections') renderCollections();
+        if (activeTab === 'catalogs') { loadCatalogs(); if (typeof loadDynamicCatalogCards === 'function') loadDynamicCatalogCards(); }
+
+        // Update tab count
+        const countEl = document.getElementById('countCatalogs');
+        if (countEl && activeTab === 'catalogs') {
+            const cards = document.querySelectorAll('#catalogList .catalog-card[data-catalog]');
+            countEl.textContent = cards.length;
+        }
+    };
+
     document.querySelectorAll('.design-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('.design-tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            activeTab = tab.dataset.tab;
-
-            document.getElementById('tabGallery').style.display = activeTab === 'gallery' ? '' : 'none';
-            document.getElementById('tabCollections').style.display = activeTab === 'collections' ? '' : 'none';
-            document.getElementById('tabPrice').style.display = activeTab === 'price' ? '' : 'none';
-            document.getElementById('tabCalendar').style.display = activeTab === 'calendar' ? '' : 'none';
-            const tabCatalogs = document.getElementById('tabCatalogs');
-            if (tabCatalogs) tabCatalogs.style.display = activeTab === 'catalogs' ? '' : 'none';
-
-            if (activeTab === 'price') loadPriceList();
-            if (activeTab === 'calendar') renderCalendar();
-            if (activeTab === 'collections') renderCollections();
-            if (activeTab === 'catalogs') { loadCatalogs(); if (typeof loadDynamicCatalogCards === 'function') loadDynamicCatalogCards(); }
-        });
+        tab.addEventListener('click', () => switchTab(tab.dataset.tab));
     });
+
+    // Auto-switch tab from URL hash (#catalogs, #collections, etc.)
+    const hash = window.location.hash.replace('#', '');
+    if (hash && ['gallery', 'collections', 'price', 'calendar', 'catalogs'].includes(hash)) {
+        switchTab(hash);
+    }
 }
 
 // ==========================================

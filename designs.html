@@ -1285,7 +1285,7 @@
             var r = await apiFetch('/api/catalogs/definitions');
             if (!r || !r.ok) return;
             var d = await r.json();
-            var catalogs = d.catalogs || [];
+            var catalogs = (d.catalogs || []).filter(function(c) { return c.id !== 'graduation'; });
             // Count pages per catalog
             var pageCounts = {};
             try {
@@ -1323,6 +1323,9 @@
             createCard.innerHTML = '<span class="catalog-card-create-icon">+</span><span class="catalog-card-create-text">Створити каталог</span>';
             listContainer.appendChild(createCard);
             if (dynContainer) dynContainer.style.display = 'none';
+            // Update tab count
+            var countEl = document.getElementById('countCatalogs');
+            if (countEl) countEl.textContent = listContainer.querySelectorAll('.catalog-card[data-catalog]').length;
         } catch (err) { console.error('loadDynamicCatalogCards:', err); }
     }
 

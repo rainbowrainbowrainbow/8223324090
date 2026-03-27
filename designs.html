@@ -1710,6 +1710,36 @@
         } catch (err) { showNotification('Помилка', 'error'); }
     }
 
+    // Smart prompt builder — transliterates + uses description + catalog context
+    var _trMap = {'а':'a','б':'b','в':'v','г':'h','ґ':'g','д':'d','е':'e','є':'ye','ж':'zh','з':'z','и':'y','і':'i','ї':'yi','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ь':'','ю':'yu','я':'ya',' ':' ','\'':''};
+    function _translit(text) {
+        return (text || '').split('').map(function(c) { return _trMap[c.toLowerCase()] !== undefined ? _trMap[c.toLowerCase()] : c; }).join('');
+    }
+    var _catalogContext = {
+        'pinyata': 'pinata toy for kids party, colorful paper mache figure',
+        'cake': 'birthday cake for children party, decorated, festive',
+        'menu': 'food dish for children entertainment park menu',
+        'costume': 'costume for children animator, theatrical outfit',
+        'graduation': 'graduation party decoration for school kids'
+    };
+    function _buildSmartPrompt(page, catalogId) {
+        var title = _translit(page.title || '');
+        var subtitle = _translit(page.subtitle || '');
+        var desc = _translit((page.description || '').slice(0, 120));
+        var context = _catalogContext[catalogId] || 'product for children entertainment park';
+        var det = page.details || {};
+        var details = [det.age, det.kids, det.duration].filter(Boolean).map(_translit).join(', ');
+
+        var parts = ['Professional product photograph'];
+        parts.push('"' + title + '"');
+        if (subtitle) parts.push(subtitle);
+        if (desc) parts.push('— ' + desc);
+        parts.push(context);
+        if (details) parts.push('(' + details + ')');
+        parts.push('studio lighting, clean white background, high quality commercial photography, vibrant colors, centered composition, no text, no watermarks, 4K');
+        return parts.join(', ');
+    }
+
     function insertPageImage(catalogId, pageNumber) {
         var overlay = document.getElementById('imagePickerOverlay');
         if (!overlay) return;
@@ -1721,9 +1751,7 @@
         var page = _pagesData.find(function(p) { return p.page_number === pageNumber; });
         var autoPrompt = '';
         if (page && page.title) {
-            autoPrompt = 'Professional product photo of "' + page.title + '"' +
-                (page.subtitle ? ', ' + page.subtitle : '') +
-                ' for children entertainment park catalog, studio lighting, clean background, high quality commercial photography, vibrant colors, no text, 4K';
+            autoPrompt = _buildSmartPrompt(page, window._imgPickerCatalogId);
         }
         document.getElementById('imgGenPrompt').value = autoPrompt;
         var urlInput = document.getElementById('imgUrlInput');
@@ -1738,7 +1766,14 @@
         var refGenStatus = document.getElementById('refGenStatus');
         if (refGenStatus) refGenStatus.style.display = 'none';
         var refPrompt = document.getElementById('refPrompt');
-        if (refPrompt) refPrompt.value = page ? 'Keep the style, enhance quality, clean background' : '';
+        if (refPrompt) {
+            if (page && page.title) {
+                var refCtx = _catalogContext[catalogId] || 'product';
+                refPrompt.value = 'Transform this reference image into a professional photo of "' + _translit(page.title) + '" (' + refCtx + '), keep the shape and style, clean white background, studio lighting, vibrant colors, no text';
+            } else {
+                refPrompt.value = 'Enhance quality, clean background, studio lighting, vibrant colors';
+            }
+        }
         // Reset gen tab
         var genPreview = document.getElementById('imgGenPreview');
         if (genPreview) genPreview.style.display = 'none';

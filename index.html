@@ -44,9 +44,9 @@
             <div class="login-logo">
                 <img src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v39.2.1 — Графік: unset статус + UX polish</p>
+                <p class="tagline">AI First CRM v39.3.0 — Каталоги: редизайн + unified viewer</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v39.2.1</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v39.3.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1142,6 +1142,18 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v39.3.0 — Каталоги: Етап 1 — Фундамент (27.03.2026)</h4>
+                    <ul>
+                        <li><b>Редизайн карток</b> — нові картки з cover-зображеннями, статус-бейджами (Ready/Draft), красива сітка</li>
+                        <li><b>Unified viewer</b> — fullscreen перегляд працює і для випускних, і для автокаталогів (← → Esc)</li>
+                        <li><b>Product layout</b> — новий стиль сторінки «товар збоку» (.cat-style-product)</li>
+                        <li><b>Кольорові теми</b> — 7 тем (gold/purple/cyan/green/red/pink/orange) для сторінок каталогу</li>
+                        <li><b>Items grid</b> — автокаталоги тепер використовують ті самі .csvc-card що й випускний</li>
+                        <li><b>Cover page</b> — обкладинка каталогу з фоновим зображенням та контактами</li>
+                        <li><b>БД</b> — міграція 135: items, theme, reference_url, layout_style, public_token, cover_image_url, status, page_count, pdf_downloads</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v39.2.1 — Графік: UX Polish (27.03.2026)</h4>
                     <ul>

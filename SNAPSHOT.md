@@ -3,15 +3,15 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v39.6.0**. package.json: `39.6.0`. Бранч `claude/continue-event-genix-crm-q4yHw`.
+Версія **v39.7.0**. package.json: `39.7.0`. Бранч `claude/continue-event-genix-crm-k7nfY`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **package.json**: `"version": "39.6.0"`
-- **Бранч**: `claude/continue-event-genix-crm-q4yHw`
+- **package.json**: `"version": "39.7.0"`
+- **Бранч**: `claude/continue-event-genix-crm-k7nfY`
 - **origin/main**: v28.2.0 (далеко позаду — наш бранч має все)
-- **Зміни v39.1.0-v39.6.0** (сесія 27.03.2026):
+- **Зміни v39.1.0-v39.7.0** (сесія 27.03.2026):
   - v39.1.0: Графік — реальні 65 співробітників + зв'язка акаунтів CRM
   - v39.2.0: Графік підгрупи + іконки + CSV експорт + друк
   - v39.2.1: Графік UX polish — unset статус, trampoline chip, час 10-20
@@ -20,14 +20,10 @@
   - v39.5.0: System-wide: confirm→confirmModal (15), -webkit-backdrop-filter (45), error handling (15 fixes), task edit modal, warehouse hash
   - v39.5.1: Image generation error handling + debug log + smart AI prompts
   - v39.6.0: System consistency — 10 HTML sidebar fixes, profileModal на 17 pages, skip-links, headers, ?v= tags
+  - v39.7.0: 5 features — prompt→modals (20), streaks by profession, WS alerts, catalog AI covers, Match-3 fix
 
 ### Що залишилось доробити:
-1. **~20 prompt()** → модалки (hr-page 10шт, graduation 3шт, center 2шт, chat 2шт, settings 3шт)
-2. **Profile page** — стріки по професіях, сезонний пас контент
-3. **WebSocket push** для alerts замість 5-хв polling
-4. **Каталоги: cover images** — AI-генерація cover для кожного каталогу
-5. Match-3: білий фон клітинок
-6. Bulk create: PDF-друк паролів
+1. Bulk create: PDF-друк паролів
 
 ### Міграції (останні)
 - 132: staff_accounts_linking (реальні співробітники)

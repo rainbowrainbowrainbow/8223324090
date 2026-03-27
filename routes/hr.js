@@ -58,13 +58,14 @@ async function auditLog(action, staffId, performedBy, details, ipAddress) {
 // STAFF HR DATA
 // ==========================================
 
-// GET /api/hr/staff — list all staff with HR fields
+// GET /api/hr/staff — list all staff with HR fields (v39.8: filter freelance, add is_freelance)
 router.get('/staff', async (req, res) => {
     try {
-        const { active, role_type } = req.query;
+        const { active, role_type, include_freelance } = req.query;
         let sql = `SELECT id, name, department, position, phone, emergency_contact, emergency_phone,
                     role_type, hire_date, birth_date, is_active, hourly_rate, photo_url, notes,
-                    telegram_id, telegram_username, color, contract_type, skills
+                    telegram_id, telegram_username, color, contract_type, skills,
+                    is_freelance, unique_person_key
                     FROM staff`;
         const params = [];
         const conds = [];
@@ -75,6 +76,10 @@ router.get('/staff', async (req, res) => {
         if (role_type) {
             params.push(role_type);
             conds.push(`role_type = $${params.length}`);
+        }
+        // v39.8: hide freelance placeholder slots by default
+        if (include_freelance !== 'true') {
+            conds.push(`(is_freelance = false OR is_freelance IS NULL)`);
         }
         if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
         sql += ' ORDER BY name';
@@ -408,7 +413,7 @@ router.get('/today', async (req, res) => {
     try {
         const today = todayKyiv();
         const staff = await pool.query(
-            `SELECT id, name, color, role_type, photo_url FROM staff WHERE is_active = true ORDER BY name`
+            `SELECT id, name, color, role_type, photo_url FROM staff WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL) ORDER BY name`
         );
 
         const shifts = await pool.query(
@@ -725,7 +730,7 @@ router.get('/report/monthly', async (req, res) => {
         }
 
         const staffList = await pool.query(
-            'SELECT id, name, role_type, hourly_rate FROM staff WHERE is_active = true ORDER BY name'
+            'SELECT id, name, role_type, hourly_rate FROM staff WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL) ORDER BY name'
         );
 
         const shifts = await pool.query(
@@ -1272,7 +1277,7 @@ router.get('/salary', async (req, res) => {
         let staffList;
         try {
             staffList = await pool.query(
-                'SELECT id, name, role_type, hourly_rate, department FROM staff WHERE is_active = true ORDER BY name'
+                'SELECT id, name, role_type, hourly_rate, department FROM staff WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL) ORDER BY name'
             );
         } catch (staffErr) {
             log.warn('staff query failed:', staffErr.message);

@@ -11,8 +11,8 @@ const { createLogger } = require('../utils/logger');
 const { getKyivDate, getKyivDateStr } = require('../services/booking');
 const { requireRole } = require('../middleware/auth');
 
-// RBAC: HR module — management + HR only
-router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'));
+// RBAC: HR module — management + HR + security + admin + manager
+router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'security'));
 
 const log = createLogger('HR');
 

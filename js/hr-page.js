@@ -1497,6 +1497,20 @@ function renderCostumes(costumes) {
     </div>`;
 }
 
+// v39.8: commitSalaries — was missing, button existed but function didn't
+window.commitSalaries = async function() {
+    const month = document.getElementById('salaryMonth')?.value;
+    if (!month) { showNotification('Виберіть місяць', 'error'); return; }
+    if (!await confirmModal(`Нарахувати зарплати за ${month}?`, { type: 'danger', okText: 'Нарахувати' })) return;
+    const data = await hrFetch('/salary/commit', 'POST', { month });
+    if (data?.success) {
+        showNotification(`Зарплати нараховано (${data.count || 0} транзакцій)`, 'success');
+        loadSalary();
+    } else {
+        showNotification(data?.error || 'Помилка нарахування', 'error');
+    }
+};
+
 window.showAddCostume = async function() {
     const result = await formModal('Додати костюм', [
         { key: 'name', label: 'Назва костюму', required: true, placeholder: 'Наприклад: Пірат Джек' },

@@ -92,10 +92,12 @@
         <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
 
         <header class="header">
-            <button type="button" id="sidebarToggle" class="sidebar-toggle">☰</button>
-            <div class="header-right">
-                <span id="currentUser" class="user-name" role="button" tabindex="0"></span>
-                <button type="button" id="logoutBtn" class="btn-logout" title="Вийти">Вийти</button>
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
             </div>
         </header>
 

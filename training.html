@@ -588,9 +588,12 @@
 
         <!-- Header -->
         <header class="header">
-            <div class="header-left">
-                <button type="button" class="sidebar-toggle" id="sidebarToggle">☰</button>
-                <h2>🎓 Навчання</h2>
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
             </div>
         </header>
 

@@ -89,7 +89,7 @@ const Sidebar = (() => {
         schedule_daily: [..._MGR_UP, 'admin', 'hr', 'senior_instructor', 'instructor', 'it_specialist', 'security'],
         customers:      [..._ADMIN_UP, 'reception'],
         warehouse:      [..._MGR_UP, 'admin'],
-        training:       [..._MGR_UP, 'senior_instructor', 'instructor'],
+        training:       [..._MGR_UP, 'hr', 'senior_instructor', 'instructor'],
     };
 
     // ═══ ACCORDION STATE ══════════════════════════════════════════

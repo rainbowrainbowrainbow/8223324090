@@ -122,7 +122,7 @@ const PAGE_ACCESS = {
     '/customers': [..._ADMIN_UP, 'reception'],
     '/staff':     [..._MANAGER_UP, 'hr', 'security'],
     '/warehouse': [..._MANAGER_UP, 'admin'],
-    '/training':  [..._MANAGER_UP, 'senior_instructor', 'instructor'],
+    '/training':  [..._MANAGER_UP, 'hr', 'senior_instructor', 'instructor'],
     '/settings':  ['creator', 'director'],
     '/demo':      _MANAGER_UP,
     '/programs':  [..._ADMIN_UP, 'senior_instructor'],

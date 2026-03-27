@@ -1214,6 +1214,62 @@ function handlePrint() {
     window.print();
 }
 
+// v39.11: Add staff modal
+async function openAddStaffModal() {
+    const DEPTS = [
+        { value: 'animators', label: 'Аніматори' },
+        { value: 'admin', label: 'Адміністрація' },
+        { value: 'cafe', label: 'Кафе' },
+        { value: 'cleaning', label: 'Господарчі' },
+        { value: 'security', label: 'Охорона' },
+        { value: 'trampoline', label: 'Батути' }
+    ];
+    const ROLES = [
+        { value: 'animator', label: 'Аніматор' },
+        { value: 'admin', label: 'Адміністратор' },
+        { value: 'manager', label: 'Менеджер' },
+        { value: 'reception', label: 'Рецепція' },
+        { value: 'barista', label: 'Бариста' },
+        { value: 'cook', label: 'Кухар' },
+        { value: 'cleaning', label: 'Клінінг' },
+        { value: 'security', label: 'Охорона' },
+        { value: 'waiter', label: 'Офіціант' },
+        { value: 'instructor', label: 'Інструктор' },
+        { value: 'hr', label: 'HR' }
+    ];
+    if (typeof formModal !== 'function') return;
+    const result = await formModal('Додати співробітника', [
+        { key: 'name', label: 'ПІБ', required: true, placeholder: 'Прізвище Ім\'я По батькові' },
+        { key: 'department', label: 'Відділ', type: 'select', options: DEPTS, required: true },
+        { key: 'position', label: 'Посада', placeholder: 'Аніматор, Менеджер...' },
+        { key: 'role_type', label: 'Роль', type: 'select', options: ROLES },
+        { key: 'phone', label: 'Телефон', placeholder: '+380...' }
+    ], { icon: '👤', okText: 'Додати' });
+    if (!result) return;
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch('/api/staff', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({
+                name: result.name.trim(),
+                department: result.department,
+                position: result.position || '',
+                role_type: result.role_type || 'animator',
+                phone: result.phone || ''
+            })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            if (typeof showNotification === 'function') showNotification(err.error || 'Помилка додавання', 'error');
+            return;
+        }
+        if (typeof showNotification === 'function') showNotification('Співробітника додано!', 'success');
+        await fetchStaff();
+        renderSchedule();
+    } catch (e) { if (typeof showNotification === 'function') showNotification(e.message, 'error'); }
+}
+
 // Dark mode: handled by shared initDarkMode() from config.js
 
 // ==========================================
@@ -1239,7 +1295,7 @@ async function initPage() {
     const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
-    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
+    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr'];
     const canManage = MANAGE_ROLES.includes(user.role);
     const ADMIN_ROLES = ['creator', 'director'];
     const isAdmin = ADMIN_ROLES.includes(user.role);
@@ -1313,6 +1369,9 @@ async function initPage() {
     document.getElementById('excelImportInput')?.addEventListener('change', handleExcelImport);
     document.getElementById('exportExcelBtn')?.addEventListener('click', handleExcelExport);
     document.getElementById('printBtn')?.addEventListener('click', handlePrint);
+
+    // v39.11: Add staff button
+    document.getElementById('addStaffBtn')?.addEventListener('click', openAddStaffModal);
 
     // Link modal
     document.getElementById('linkConfirmBtn')?.addEventListener('click', confirmLinkAccount);

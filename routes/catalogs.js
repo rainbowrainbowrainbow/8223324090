@@ -692,6 +692,10 @@ router.put('/:catalogId/pages/:pageNumber', requireRole('admin', 'creator', 'dir
         const bu = backgroundUrl !== undefined ? backgroundUrl : background_url;
         if (bu !== undefined) { sets.push(`background_url=$${idx++}`); vals.push(bu); }
         if (details !== undefined) { sets.push(`details=$${idx++}`); vals.push(JSON.stringify(details)); }
+        const it = req.body.items;
+        if (it !== undefined) { sets.push(`items=$${idx++}`); vals.push(JSON.stringify(it)); }
+        if (req.body.theme !== undefined) { sets.push(`theme=$${idx++}`); vals.push(req.body.theme); }
+        if (req.body.reference_url !== undefined) { sets.push(`reference_url=$${idx++}`); vals.push(req.body.reference_url); }
         if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
         sets.push('updated_at=NOW()');
         const r = await pool.query(

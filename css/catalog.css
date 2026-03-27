@@ -167,11 +167,28 @@
 .btn-catalog:hover { opacity: 0.9; }
 .btn-catalog-print { background: var(--gray-100); color: var(--gray-700); }
 
+/* Editor header */
+.cat-editor-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+/* Inline edit hover hint */
+[data-inline-edit]:hover {
+    border-bottom-color: var(--gray-300) !important;
+    cursor: text;
+}
+
 /* Mobile catalog grid */
 @media (max-width: 640px) {
     .catalog-list { grid-template-columns: 1fr; gap: 16px; }
     .catalog-card-cover, .catalog-card-cover-empty { height: 140px; }
     .catalog-card-create { min-height: 200px; }
+    .cat-editor-header { flex-direction: column; align-items: stretch; }
+    .cat-editor-header > div:last-child { justify-content: center; }
 }
 
 /* Catalog viewer (fullscreen) */

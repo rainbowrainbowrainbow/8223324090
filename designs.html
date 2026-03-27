@@ -1267,48 +1267,260 @@
         } catch (err) { console.error('loadDynamicCatalogCards:', err); }
     }
 
-    // v38.12: Catalog pages viewer (inline in tab)
+    // v39.3: Catalog pages editor — inline edit, items grid, theme picker
     var _pagesCatalogId = null;
+    var _pagesData = [];
+    var _pagesCatalogDef = null;
+
     async function openCatalogPages(catalogId) {
         _pagesCatalogId = catalogId;
         try {
             var r = await apiFetch('/api/catalogs/' + catalogId + '/pages');
             if (!r || !r.ok) return;
             var d = await r.json();
-            var pages = d.pages || [];
-            // Hide other content, show inline viewer
+            _pagesData = d.pages || [];
             document.querySelectorAll('#tabCatalogs > *:not(#inlineCatalogView)').forEach(function(el) { el.style.display = 'none'; });
             var viewEl = document.getElementById('inlineCatalogView');
             if (!viewEl) { viewEl = document.createElement('div'); viewEl.id = 'inlineCatalogView'; document.getElementById('tabCatalogs').appendChild(viewEl); }
             viewEl.style.display = '';
-            var cat = null;
-            try { var cr = await apiFetch('/api/catalogs/definitions'); if (cr && cr.ok) { var cd = await cr.json(); cat = (cd.catalogs || []).find(function(c2) { return c2.id === catalogId; }); } } catch(e) {}
-            var html = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">' +
-                '<button type="button" onclick="closeInlineCatalogView()" style="padding:8px 14px;border:1px solid var(--gray-200);border-radius:8px;background:none;cursor:pointer;font-family:inherit;font-size:13px">← Назад</button>' +
-                '<h3 style="margin:0;font-size:16px;font-weight:700">' + (cat ? cat.emoji + ' ' + cat.name : catalogId) + ' — Сторінки</h3>' +
-                '<button type="button" onclick="addCatalogPage()" style="margin-left:auto;padding:8px 14px;border:none;border-radius:8px;background:linear-gradient(135deg,#C9A84C,#D4AF37);color:#0D0D0D;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">+ Сторінка</button></div>';
-            if (pages.length === 0) {
-                html += '<div style="text-align:center;padding:40px;color:var(--gray-400)">Немає сторінок. Натисніть "+ Сторінка"</div>';
-            } else {
-                pages.forEach(function(p) {
-                    var imgHtml = p.image_url ? '<img src="' + p.image_url + '" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<span style=color:var(--gray-300);font-size:13px>Без фото</span>\'">' : '<span style="color:var(--gray-300);font-size:13px">Без фото</span>';
-                    var det = p.details || {};
-                    var detStr = [det.duration, det.kids, det.age].filter(Boolean).join(' · ');
-                    html += '<div style="display:flex;gap:16px;background:var(--white,#fff);border:1px solid var(--gray-100,rgba(0,0,0,0.06));border-radius:12px;margin-bottom:12px;overflow:hidden">' +
-                        '<div style="width:200px;min-height:160px;background:var(--gray-50,#f8f8f8);display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0">' + imgHtml +
-                        '<button onclick="insertPageImage(\'' + catalogId + '\',' + p.page_number + ')" style="position:absolute;bottom:6px;right:6px;padding:4px 10px;border-radius:6px;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;cursor:pointer;backdrop-filter:blur(4px)">Фото</button></div>' +
-                        '<div style="flex:1;padding:16px;display:flex;flex-direction:column;gap:4px">' +
-                        '<h3 style="margin:0;font-size:16px;font-weight:800">' + (p.title || '—') + '</h3>' +
-                        (p.subtitle ? '<div style="color:var(--gray-500);font-size:13px">' + p.subtitle + '</div>' : '') +
-                        (p.description ? '<div style="color:var(--gray-600);font-size:13px;line-height:1.4">' + p.description + '</div>' : '') +
-                        (p.price_label ? '<div style="color:#10B981;font-size:18px;font-weight:900">' + p.price_label + '</div>' : (p.price ? '<div style="color:#10B981;font-size:18px;font-weight:900">від ' + p.price.toLocaleString('uk-UA') + ' ₴</div>' : '')) +
-                        (detStr ? '<div style="color:var(--gray-400);font-size:12px">' + detStr + '</div>' : '') +
-                        '<div style="margin-top:auto;display:flex;gap:6px;padding-top:8px"><button onclick="editCatalogPage(\'' + catalogId + '\',' + p.page_number + ')" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:none;cursor:pointer;font-size:12px">Редагувати</button><button onclick="deleteCatalogPage(\'' + catalogId + '\',' + p.page_number + ')" style="padding:4px 10px;border:1px solid var(--gray-200);border-radius:6px;background:none;cursor:pointer;font-size:12px;color:var(--gray-400)">Видалити</button></div></div></div>';
-                });
-            }
-            viewEl.innerHTML = html;
+            try { var cr = await apiFetch('/api/catalogs/definitions'); if (cr && cr.ok) { var cd = await cr.json(); _pagesCatalogDef = (cd.catalogs || []).find(function(c2) { return c2.id === catalogId; }); } } catch(e) {}
+            renderCatalogPagesEditor();
         } catch (err) { console.error('openCatalogPages:', err); }
     }
+
+    function renderCatalogPagesEditor() {
+        var viewEl = document.getElementById('inlineCatalogView');
+        var cat = _pagesCatalogDef;
+        var pages = _pagesData;
+        var catalogId = _pagesCatalogId;
+
+        var html = '<div class="cat-editor-header">' +
+            '<button type="button" onclick="closeInlineCatalogView()" class="catalog-card-btn" style="width:auto;flex:none">← Назад</button>' +
+            '<h3 style="margin:0;font-size:18px;font-weight:800">' + (cat ? cat.emoji + ' ' + cat.name : catalogId) + ' — Сторінки</h3>' +
+            '<div style="margin-left:auto;display:flex;gap:6px">' +
+            '<button type="button" onclick="openCatalog(\'' + catalogId + '\')" class="catalog-card-btn" style="width:auto;flex:none">👁 Перегляд</button>' +
+            '<button type="button" onclick="addCatalogPage()" class="catalog-card-btn catalog-card-btn-primary" style="width:auto;flex:none">+ Сторінка</button></div></div>';
+
+        if (pages.length === 0) {
+            html += '<div style="text-align:center;padding:60px;color:var(--gray-400);font-size:15px">Немає сторінок. Натисніть «+ Сторінка» щоб додати.</div>';
+        } else {
+            pages.forEach(function(p) {
+                html += renderPageEditorCard(p, catalogId);
+            });
+        }
+        viewEl.innerHTML = html;
+        // Attach inline edit handlers
+        viewEl.querySelectorAll('[data-inline-edit]').forEach(attachInlineEdit);
+    }
+
+    function renderPageEditorCard(p, catalogId) {
+        var imgHtml = p.image_url
+            ? '<img src="' + p.image_url + '" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">'
+            : '<div style="color:var(--gray-300);font-size:13px;text-align:center">Натисніть «Фото»<br>щоб додати</div>';
+        var det = p.details || {};
+        var items = Array.isArray(p.items) ? p.items : [];
+        var themeColors = {'gold':'#C9A84C','purple':'#a855f7','cyan':'#06b6d4','green':'#22c55e','red':'#ef4444','pink':'#ec4899','orange':'#f97316'};
+        var themeColor = themeColors[p.theme || 'gold'] || '#C9A84C';
+        var isCover = p.page_number === 0;
+        var pageLabel = isCover ? 'Обкладинка' : 'Сторінка ' + p.page_number;
+
+        var html = '<div class="cat-page-card" data-page-number="' + p.page_number + '" style="border-left:4px solid ' + themeColor + '">';
+        html += '<div style="padding:10px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--gray-100,rgba(0,0,0,0.06));background:var(--gray-50,#fafafa)">' +
+            '<span style="font-size:12px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px">' + pageLabel + '</span>' +
+            '<span style="font-size:11px;color:var(--gray-400)">' + (p.theme || 'gold') + '</span>' +
+            '<div style="margin-left:auto;display:flex;gap:4px">' +
+            Object.entries(themeColors).map(function(e) {
+                return '<button type="button" onclick="changePageTheme(\'' + catalogId + '\',' + p.page_number + ',\'' + e[0] + '\')" class="theme-dot' + (p.theme === e[0] || (!p.theme && e[0] === 'gold') ? ' active' : '') + '" style="width:20px;height:20px;background:' + e[1] + '" title="' + e[0] + '"></button>';
+            }).join('') +
+            '</div></div>';
+
+        html += '<div style="display:flex;gap:0">';
+        // Image
+        html += '<div style="width:220px;min-height:180px;background:var(--gray-50,#f8f8f8);display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0;cursor:pointer" onclick="insertPageImage(\'' + catalogId + '\',' + p.page_number + ')">' + imgHtml +
+            '<div style="position:absolute;bottom:8px;right:8px;padding:4px 10px;border-radius:6px;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)">🖼 Фото</div></div>';
+        // Content
+        html += '<div style="flex:1;padding:16px;display:flex;flex-direction:column;gap:6px">';
+        html += '<h3 data-inline-edit data-field="title" data-catalog="' + catalogId + '" data-page="' + p.page_number + '" style="margin:0;font-size:17px;font-weight:800;cursor:text;border-bottom:1px dashed transparent;transition:border-color .2s" title="Клік для редагування">' + (p.title || 'Без назви') + '</h3>';
+        html += '<div data-inline-edit data-field="subtitle" data-catalog="' + catalogId + '" data-page="' + p.page_number + '" style="color:var(--gray-500);font-size:13px;cursor:text;min-height:18px;border-bottom:1px dashed transparent" title="Клік для редагування">' + (p.subtitle || '') + '</div>';
+        html += '<div data-inline-edit data-field="description" data-catalog="' + catalogId + '" data-page="' + p.page_number + '" style="color:var(--gray-600);font-size:13px;line-height:1.5;cursor:text;min-height:20px;border-bottom:1px dashed transparent" title="Клік для редагування">' + (p.description || '') + '</div>';
+        html += '<div data-inline-edit data-field="price_label" data-catalog="' + catalogId + '" data-page="' + p.page_number + '" style="color:#10B981;font-size:18px;font-weight:900;cursor:text;min-height:22px;border-bottom:1px dashed transparent" title="Клік для редагування">' + (p.price_label || '') + '</div>';
+        // Details
+        var detParts = [det.duration, det.kids, det.age].filter(Boolean);
+        if (detParts.length) html += '<div style="color:var(--gray-400);font-size:12px">' + detParts.join(' · ') + '</div>';
+        // Items grid
+        if (items.length > 0) {
+            html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">';
+            items.forEach(function(item) {
+                html += '<span style="display:inline-flex;align-items:center;gap:3px;padding:3px 8px;background:var(--gray-100,rgba(0,0,0,0.04));border-radius:6px;font-size:11px;font-weight:600">' + (item.icon || '🎯') + ' ' + (item.name || '') + '</span>';
+            });
+            html += '</div>';
+        }
+        // Actions
+        html += '<div style="margin-top:auto;display:flex;gap:6px;padding-top:8px;flex-wrap:wrap">';
+        html += '<button onclick="openFullEditModal(\'' + catalogId + '\',' + p.page_number + ')" class="catalog-card-btn" style="flex:none;width:auto;min-height:36px;font-size:12px;padding:6px 12px">✏️ Повне редагування</button>';
+        html += '<button onclick="duplicateCatalogPage(\'' + catalogId + '\',' + p.page_number + ')" class="catalog-card-btn" style="flex:none;width:auto;min-height:36px;font-size:12px;padding:6px 12px">📋 Дублювати</button>';
+        html += '<button onclick="deleteCatalogPage(\'' + catalogId + '\',' + p.page_number + ')" class="catalog-card-btn" style="flex:none;width:auto;min-height:36px;font-size:12px;padding:6px 12px;color:var(--gray-400)">🗑</button>';
+        html += '</div></div></div></div>';
+        return html;
+    }
+
+    // Inline edit — click on field → input → blur = save
+    function attachInlineEdit(el) {
+        el.style.borderBottomColor = 'transparent';
+        el.addEventListener('mouseenter', function() { el.style.borderBottomColor = 'var(--gray-200)'; });
+        el.addEventListener('mouseleave', function() { if (!el._editing) el.style.borderBottomColor = 'transparent'; });
+        el.addEventListener('click', function(e) {
+            if (el._editing) return;
+            e.stopPropagation();
+            el._editing = true;
+            var field = el.dataset.field;
+            var catalogId = el.dataset.catalog;
+            var pageNum = parseInt(el.dataset.page);
+            var currentVal = el.textContent.trim();
+            var isTextarea = field === 'description';
+            var input = document.createElement(isTextarea ? 'textarea' : 'input');
+            input.value = currentVal;
+            input.style.cssText = 'width:100%;font-size:inherit;font-weight:inherit;font-family:inherit;background:rgba(16,185,129,0.06);border:1.5px solid var(--primary,#10B981);border-radius:8px;padding:6px 10px;color:inherit;outline:none;box-sizing:border-box;';
+            if (isTextarea) { input.rows = 3; input.style.resize = 'vertical'; }
+            el.textContent = '';
+            el.appendChild(input);
+            input.focus();
+            input.select();
+            var save = async function() {
+                var newVal = input.value.trim();
+                el._editing = false;
+                el.style.borderBottomColor = 'transparent';
+                if (newVal !== currentVal && newVal !== '') {
+                    input.disabled = true;
+                    input.style.borderColor = '#fbbf24';
+                    try {
+                        var body = {}; body[field] = newVal;
+                        var r = await apiFetch('/api/catalogs/' + catalogId + '/pages/' + pageNum, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+                        if (r && r.ok) {
+                            el.textContent = newVal;
+                            showNotification('Збережено');
+                            // Update local data
+                            var pg = _pagesData.find(function(x) { return x.page_number === pageNum; });
+                            if (pg) pg[field] = newVal;
+                        } else { el.textContent = currentVal; showNotification('Помилка збереження', 'error'); }
+                    } catch(err) { el.textContent = currentVal; showNotification('Помилка мережі', 'error'); }
+                } else {
+                    el.textContent = currentVal || '';
+                }
+            };
+            input.addEventListener('blur', save);
+            input.addEventListener('keydown', function(ev) {
+                if (ev.key === 'Enter' && !isTextarea) save();
+                if (ev.key === 'Escape') { el._editing = false; el.textContent = currentVal; el.style.borderBottomColor = 'transparent'; }
+            });
+        });
+    }
+
+    // Theme change
+    async function changePageTheme(catalogId, pageNumber, theme) {
+        try {
+            var r = await apiFetch('/api/catalogs/' + catalogId + '/pages/' + pageNumber, { method: 'PUT', body: JSON.stringify({ theme: theme }), headers: { 'Content-Type': 'application/json' } });
+            if (r && r.ok) {
+                var pg = _pagesData.find(function(x) { return x.page_number === pageNumber; });
+                if (pg) pg.theme = theme;
+                renderCatalogPagesEditor();
+                showNotification('Тему змінено');
+            }
+        } catch(err) { showNotification('Помилка', 'error'); }
+    }
+    window.changePageTheme = changePageTheme;
+
+    // Duplicate page
+    async function duplicateCatalogPage(catalogId, pageNumber) {
+        var page = _pagesData.find(function(p) { return p.page_number === pageNumber; });
+        if (!page) return;
+        var maxPage = Math.max.apply(null, _pagesData.map(function(p) { return p.page_number; }));
+        var newNum = maxPage + 1;
+        try {
+            var body = { title: page.title + ' (копія)', subtitle: page.subtitle, description: page.description, price: page.price, price_label: page.price_label, image_url: page.image_url, details: page.details, items: page.items, theme: page.theme };
+            var r = await apiFetch('/api/catalogs/' + catalogId + '/pages', { method: 'POST', body: JSON.stringify(Object.assign({ page_number: newNum }, body)), headers: { 'Content-Type': 'application/json' } });
+            if (r && r.ok) { showNotification('Сторінку дубльовано'); openCatalogPages(catalogId); }
+            else { showNotification('Помилка дублювання', 'error'); }
+        } catch(err) { showNotification('Помилка', 'error'); }
+    }
+    window.duplicateCatalogPage = duplicateCatalogPage;
+
+    // Full edit modal
+    function openFullEditModal(catalogId, pageNumber) {
+        var page = _pagesData.find(function(p) { return p.page_number === pageNumber; });
+        if (!page) return;
+        var det = page.details || {};
+        var items = Array.isArray(page.items) ? page.items : [];
+        var themeColors = {'gold':'#C9A84C','purple':'#a855f7','cyan':'#06b6d4','green':'#22c55e','red':'#ef4444','pink':'#ec4899','orange':'#f97316'};
+
+        var modal = document.createElement('div');
+        modal.className = 'img-picker-overlay';
+        modal.innerHTML = '<div class="img-picker-modal" style="max-width:560px;max-height:85vh;overflow-y:auto">' +
+            '<div class="img-picker-header"><h3>✏️ Редагувати · Сторінка ' + pageNumber + '</h3><button type="button" class="img-picker-close" onclick="this.closest(\'.img-picker-overlay\').remove()">✕</button></div>' +
+            '<div style="padding:16px 20px">' +
+            '<div style="margin-bottom:12px"><label style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Назва *</label><input id="_feTitle" value="' + (page.title || '').replace(/"/g, '&quot;') + '" style="width:100%;padding:10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;box-sizing:border-box;font-family:inherit"></div>' +
+            '<div style="margin-bottom:12px"><label style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Підзаголовок</label><input id="_feSubtitle" value="' + (page.subtitle || '').replace(/"/g, '&quot;') + '" style="width:100%;padding:10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;box-sizing:border-box;font-family:inherit"></div>' +
+            '<div style="margin-bottom:12px"><label style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Опис</label><textarea id="_feDesc" rows="3" style="width:100%;padding:10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;box-sizing:border-box;font-family:inherit;resize:vertical">' + (page.description || '') + '</textarea></div>' +
+            '<div style="margin-bottom:12px"><label style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Ціна (текст)</label><input id="_fePrice" value="' + (page.price_label || '').replace(/"/g, '&quot;') + '" placeholder="від 1 000 ₴" style="width:100%;padding:10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;box-sizing:border-box;font-family:inherit"></div>' +
+            '<div style="display:flex;gap:8px;margin-bottom:12px">' +
+            '<div style="flex:1"><label style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Тривалість</label><input id="_feDuration" value="' + (det.duration || '') + '" placeholder="15 хв" style="width:100%;padding:10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;box-sizing:border-box;font-family:inherit"></div>' +
+            '<div style="flex:1"><label style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Кількість</label><input id="_feKids" value="' + (det.kids || '') + '" placeholder="до 15" style="width:100%;padding:10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;box-sizing:border-box;font-family:inherit"></div>' +
+            '<div style="flex:1"><label style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Вік</label><input id="_feAge" value="' + (det.age || '') + '" placeholder="2-99р" style="width:100%;padding:10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;box-sizing:border-box;font-family:inherit"></div></div>' +
+            // Theme picker
+            '<div style="margin-bottom:12px"><label style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Тема кольору</label><div id="_feThemePicker" style="display:flex;gap:6px">' +
+            Object.entries(themeColors).map(function(e) { return '<button type="button" class="theme-dot' + ((page.theme || 'gold') === e[0] ? ' active' : '') + '" data-theme="' + e[0] + '" style="background:' + e[1] + '" title="' + e[0] + '"></button>'; }).join('') +
+            '</div></div>' +
+            // Items editor
+            '<div style="margin-bottom:12px"><label style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Елементи (grid карток)</label>' +
+            '<div id="_feItems">' + items.map(function(item, i) {
+                return '<div style="display:flex;gap:4px;margin-bottom:4px;align-items:center"><input value="' + (item.icon || '🎯') + '" style="width:40px;padding:6px;border:1px solid var(--gray-200);border-radius:6px;font-size:16px;text-align:center" data-item-icon="' + i + '"><input value="' + (item.name || '').replace(/"/g, '&quot;') + '" placeholder="Назва" style="flex:2;padding:6px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit" data-item-name="' + i + '"><input value="' + (item.detail || '').replace(/"/g, '&quot;') + '" placeholder="Деталь" style="flex:1;padding:6px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit" data-item-detail="' + i + '"><button type="button" onclick="this.parentElement.remove()" style="padding:4px 8px;border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:14px">🗑</button></div>';
+            }).join('') + '</div>' +
+            '<button type="button" onclick="document.getElementById(\'_feItems\').insertAdjacentHTML(\'beforeend\',\'<div style=display:flex;gap:4px;margin-bottom:4px;align-items:center><input value=🎯 style=width:40px;padding:6px;border:1px+solid+var(--gray-200);border-radius:6px;font-size:16px;text-align:center data-item-icon=new><input placeholder=Назва style=flex:2;padding:6px+8px;border:1px+solid+var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit data-item-name=new><input placeholder=Деталь style=flex:1;padding:6px+8px;border:1px+solid+var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit data-item-detail=new><button type=button onclick=this.parentElement.remove() style=padding:4px+8px;border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:14px>🗑</button></div>\')" style="padding:6px 12px;border:1px dashed var(--gray-200);border-radius:6px;background:none;cursor:pointer;font-size:12px;font-family:inherit;color:var(--gray-500);width:100%">+ Додати елемент</button></div>' +
+            // Save/Cancel
+            '<div style="display:flex;gap:8px;margin-top:16px"><button type="button" onclick="_saveFullEdit(\'' + catalogId + '\',' + pageNumber + ')" style="flex:1;padding:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#C9A84C,#D4AF37);color:#0D0D0D;font-weight:800;cursor:pointer;font-family:inherit;font-size:14px">💾 Зберегти</button><button type="button" onclick="this.closest(\'.img-picker-overlay\').remove()" style="flex:1;padding:12px;border:1px solid var(--gray-200);border-radius:10px;background:none;cursor:pointer;font-family:inherit;font-size:14px">Скасувати</button></div>' +
+            '</div></div>';
+        document.body.appendChild(modal);
+        modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+        // Theme picker clicks
+        modal.querySelectorAll('#_feThemePicker .theme-dot').forEach(function(dot) {
+            dot.addEventListener('click', function() {
+                modal.querySelectorAll('#_feThemePicker .theme-dot').forEach(function(d) { d.classList.remove('active'); });
+                dot.classList.add('active');
+            });
+        });
+    }
+    window.openFullEditModal = openFullEditModal;
+
+    async function _saveFullEdit(catalogId, pageNumber) {
+        var activeTheme = document.querySelector('#_feThemePicker .theme-dot.active');
+        var theme = activeTheme ? activeTheme.dataset.theme : 'gold';
+        // Collect items
+        var itemRows = document.querySelectorAll('#_feItems > div');
+        var items = [];
+        itemRows.forEach(function(row) {
+            var icon = row.querySelector('[data-item-icon]'); var name = row.querySelector('[data-item-name]'); var detail = row.querySelector('[data-item-detail]');
+            if (name && name.value.trim()) items.push({ icon: icon ? icon.value.trim() : '🎯', name: name.value.trim(), detail: detail ? detail.value.trim() : '' });
+        });
+        var body = {
+            title: document.getElementById('_feTitle').value.trim(),
+            subtitle: document.getElementById('_feSubtitle').value.trim(),
+            description: document.getElementById('_feDesc').value.trim(),
+            price_label: document.getElementById('_fePrice').value.trim(),
+            details: { duration: document.getElementById('_feDuration').value.trim(), kids: document.getElementById('_feKids').value.trim(), age: document.getElementById('_feAge').value.trim() },
+            items: items,
+            theme: theme
+        };
+        try {
+            var r = await apiFetch('/api/catalogs/' + catalogId + '/pages/' + pageNumber, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+            if (r && r.ok) {
+                document.querySelector('.img-picker-overlay:last-child')?.remove();
+                showNotification('Сторінку збережено');
+                openCatalogPages(catalogId);
+            } else { showNotification('Помилка збереження', 'error'); }
+        } catch(err) { showNotification('Помилка: ' + err.message, 'error'); }
+    }
+    window._saveFullEdit = _saveFullEdit;
+
     window.openCatalogPages = openCatalogPages;
 
     function closeInlineCatalogView() {
@@ -1321,24 +1533,6 @@
         if (!_pagesCatalogId) return;
         var overlay = document.getElementById('pageFormOverlay');
         if (overlay) { overlay.classList.remove('hidden'); document.getElementById('pageFormTitle').textContent = 'Додати сторінку'; return; }
-    }
-
-    async function editCatalogPage(catalogId, pageNumber) {
-        // Open page form modal pre-filled
-        var r = await apiFetch('/api/catalogs/' + catalogId + '/pages');
-        if (!r || !r.ok) return;
-        var d = await r.json();
-        var page = (d.pages || []).find(function(p) { return p.page_number === pageNumber; });
-        if (!page) return;
-        var overlay = document.getElementById('pageFormOverlay');
-        if (!overlay) return;
-        document.getElementById('pageFormTitle').textContent = 'Редагувати сторінку ' + pageNumber;
-        var ti = document.getElementById('pageTitle'); if (ti) ti.value = page.title || '';
-        var si = document.getElementById('pageSubtitle'); if (si) si.value = page.subtitle || '';
-        var di = document.getElementById('pageDescription'); if (di) di.value = page.description || '';
-        var pi = document.getElementById('pagePriceLabel'); if (pi) pi.value = page.price_label || '';
-        var dei = document.getElementById('pageDetail'); if (dei) { var det = page.details || {}; dei.value = [det.duration, det.kids].filter(Boolean).join(' · '); }
-        overlay.classList.remove('hidden');
     }
 
     async function deleteCatalogPage(catalogId, pageNumber) {

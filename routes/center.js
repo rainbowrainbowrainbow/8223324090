@@ -26,7 +26,9 @@ const log = createLogger('Center');
 // ==========================================
 
 function getKyivNow() {
-    return new Date(new Date().toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' }));
+    const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).formatToParts(new Date());
+    const get = type => p.find(x => x.type === type)?.value;
+    return new Date(parseInt(get('year')), parseInt(get('month')) - 1, parseInt(get('day')), parseInt(get('hour')), parseInt(get('minute')), parseInt(get('second')));
 }
 
 function formatDateISO(d) {

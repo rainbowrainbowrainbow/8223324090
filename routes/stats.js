@@ -55,7 +55,8 @@ function isValidDate(str) {
 /** Compute date range from period keyword (Europe/Kyiv timezone) */
 function getDateRange(period) {
     // Use Kyiv timezone for "today"
-    const nowKyiv = new Date(new Date().toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' }));
+    const kyivParts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).split('-');
+    const nowKyiv = new Date(parseInt(kyivParts[0]), parseInt(kyivParts[1]) - 1, parseInt(kyivParts[2]));
     const year = nowKyiv.getFullYear();
     const month = nowKyiv.getMonth();
     const day = nowKyiv.getDate();

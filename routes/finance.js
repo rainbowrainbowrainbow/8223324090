@@ -311,7 +311,8 @@ router.get('/dashboard', async (req, res) => {
 
         if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
             // Default: current month
-            const now = new Date(new Date().toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' }));
+            const kyivParts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).split('-');
+            const now = new Date(parseInt(kyivParts[0]), parseInt(kyivParts[1]) - 1, parseInt(kyivParts[2]));
             const range = getMonthRange(now.getFullYear(), now.getMonth() + 1);
             from = range.from;
             to = range.to;

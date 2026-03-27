@@ -42,7 +42,9 @@ function setCache(key, data) {
 function isValidDate(str) { return /^\d{4}-\d{2}-\d{2}$/.test(str); }
 
 function getDateRange(period) {
-    const now = new Date(new Date().toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' }));
+    // Use Intl to get Kyiv date parts without locale-dependent string parsing
+    const kyivParts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).split('-');
+    const now = new Date(parseInt(kyivParts[0]), parseInt(kyivParts[1]) - 1, parseInt(kyivParts[2]));
     const y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
     const dow = now.getDay() || 7;
     const fmt = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;

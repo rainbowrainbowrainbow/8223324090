@@ -852,7 +852,7 @@ async function exportCSV() {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!resp.ok) {
-        showNotification('Помилка експорту', 'error');
+        showNotification('Помилка експорту: ' + resp.statusText, 'error');
         return;
     }
     const blob = await resp.blob();

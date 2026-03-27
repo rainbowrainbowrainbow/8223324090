@@ -96,9 +96,16 @@ async function fetchCustomers() {
     if (CrmState.filters.dateTo) params.set('dateTo', CrmState.filters.dateTo);
     if (CrmState.filters.tag) params.set('tag', CrmState.filters.tag);
 
+    const tableBody = document.getElementById('crmTableBody');
+    if (tableBody) tableBody.innerHTML = '<tr><td colspan="8" class="empty-state">Завантаження...</td></tr>';
+
     const res = await fetch(`/api/customers?${params}`, {
         headers: { 'Authorization': `Bearer ${token}` }
     });
+    if (res.status === 401 || res.status === 403) {
+        window.location.href = '/';
+        return;
+    }
     const data = await res.json();
     CrmState.customers = data.customers || [];
     CrmState.total = data.total || 0;
@@ -540,11 +547,16 @@ window.confirmDeleteCustomer = async function(id) {
 
 window.removeTag = async function(customerId, tagId) {
     const token = localStorage.getItem('pzp_token');
-    await fetch(`/api/customers/${customerId}/tags/${tagId}`, {
-        method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
-    });
-    showCustomerDetail(customerId);
-    refreshData();
+    try {
+        await fetch(`/api/customers/${customerId}/tags/${tagId}`, {
+            method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
+        });
+        showCustomerDetail(customerId);
+        refreshData();
+    } catch (err) {
+        console.error('removeTag error', err);
+        if (typeof showNotification === 'function') showNotification('Помилка видалення тегу: ' + err.message, 'error');
+    }
 };
 
 window.showAddTagDropdown = function(customerId) {
@@ -565,13 +577,18 @@ window.showAddTagDropdown = function(customerId) {
 
 window.addTag = async function(customerId, tag, color) {
     const token = localStorage.getItem('pzp_token');
-    await fetch(`/api/customers/${customerId}/tags`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tag, color })
-    });
-    showCustomerDetail(customerId);
-    refreshData();
+    try {
+        await fetch(`/api/customers/${customerId}/tags`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag, color })
+        });
+        showCustomerDetail(customerId);
+        refreshData();
+    } catch (err) {
+        console.error('addTag error', err);
+        if (typeof showNotification === 'function') showNotification('Помилка додавання тегу: ' + err.message, 'error');
+    }
 };
 
 // ==========================================
@@ -887,7 +904,7 @@ function switchTab(tab) {
     });
 
     if (tab === 'rfm' && !CrmState.rfmData) {
-        fetchRFM().then(renderRFM).catch(function() { /* RFM load failed */ });
+        fetchRFM().then(renderRFM).catch(function(err) { console.warn('RFM load failed', err); });
     }
     if (tab === 'journey') loadJourney();
     if (tab === 'duplicates') loadDuplicates();

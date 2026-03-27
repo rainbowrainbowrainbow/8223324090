@@ -1125,7 +1125,7 @@
                 localStorage.setItem('chatWallpaper_ch_' + _currentChannel.id, wp);
             }
             localStorage.setItem('chatWallpaper', wp);
-        } catch (e) {}
+        } catch (e) { console.warn('Wallpaper load failed:', e); }
         var messages = document.getElementById('chatMessages');
         if (messages) messages.setAttribute('data-wallpaper', wp);
     }
@@ -1644,7 +1644,7 @@
                         form.innerHTML = '<div style="color:var(--success,green);font-size:12px;padding:4px">✅ Задачу створено!</div>';
                         setTimeout(function() { form.remove(); }, 2000);
                     } else { throw new Error('Failed'); }
-                } catch (e) { submitBtn.disabled = false; submitBtn.textContent = '📋 Створити задачу'; }
+                } catch (e) { submitBtn.textContent = '📋 Створити задачу'; } finally { submitBtn.disabled = false; }
             });
         }
     }

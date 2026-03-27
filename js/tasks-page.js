@@ -835,7 +835,7 @@ async function quickChangeStatus(taskId, newStatus) {
         document.getElementById('taskDetailOverlay')?.remove();
         showNotification('Статус змінено');
         if (typeof loadTasks === 'function') loadTasks();
-    } catch { showNotification('Помилка', 'error'); }
+    } catch (err) { showNotification('Помилка зміни статусу: ' + (err.message || ''), 'error'); }
 }
 window.quickChangeStatus = quickChangeStatus;
 

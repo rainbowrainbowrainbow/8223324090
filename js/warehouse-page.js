@@ -330,7 +330,7 @@ async function deleteItem(itemId) {
         showNotification('Позицію видалено', 'success');
         await loadStock();
     } else {
-        showNotification('Помилка видалення', 'error');
+        showNotification('Помилка видалення: ' + (result?.error || 'невідома помилка'), 'error');
     }
 }
 
@@ -738,7 +738,7 @@ async function exportProcXlsx() {
         URL.revokeObjectURL(url);
         showNotification('Excel завантажено');
     } catch (err) {
-        showNotification('Помилка експорту', 'error');
+        showNotification('Помилка експорту: ' + err.message, 'error');
     }
 }
 

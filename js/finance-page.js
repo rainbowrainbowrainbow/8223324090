@@ -1202,7 +1202,7 @@ window.markPaid = async function(bookingId) {
         showNotification('Оплату зараховано');
         loadDebts();
     } catch (err) {
-        showNotification('Помилка', 'error');
+        showNotification('Помилка оплати: ' + err.message, 'error');
     }
 };
 

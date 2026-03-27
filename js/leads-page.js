@@ -149,6 +149,8 @@ async function loadUsers() {
 }
 
 async function loadLeads() {
+    const tbody = document.getElementById('leadsTableBody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Завантаження...</td></tr>';
     try {
         const params = new URLSearchParams();
         if (currentFilter) params.set('status', currentFilter);
@@ -721,7 +723,7 @@ async function saveMailingEntry() {
         if (typeof showNotification === 'function') showNotification('Контакт додано до розсилки', 'success');
         loadMailing();
     } catch(e) {
-        if (typeof showNotification === 'function') showNotification('Помилка', 'error');
+        if (typeof showNotification === 'function') showNotification('Помилка: ' + e.message, 'error');
     }
 }
 
@@ -928,6 +930,7 @@ async function deleteLead(id) {
         await loadLeads();
     } catch (err) {
         console.error('Delete lead error', err);
+        if (typeof showNotification === 'function') showNotification('Помилка: ' + err.message, 'error');
     }
 }
 

@@ -1070,6 +1070,12 @@ function closeCatalog() {
         document.removeEventListener('keydown', viewer._keyHandler);
         viewer._keyHandler = null;
     }
+    // Return to catalog list (show all tabCatalogs children, hide inline view)
+    const inlineView = document.getElementById('inlineCatalogView');
+    if (inlineView) inlineView.style.display = 'none';
+    document.querySelectorAll('#tabCatalogs > *:not(#inlineCatalogView)').forEach(el => { el.style.display = ''; });
+    const tabCatalogs = document.getElementById('tabCatalogs');
+    if (tabCatalogs) tabCatalogs.style.display = '';
 }
 
 function printCatalog(catalogId) {

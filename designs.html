@@ -1329,6 +1329,10 @@
 
     async function openCatalogPages(catalogId) {
         _pagesCatalogId = catalogId;
+        // Push history state so browser Back returns to catalog list
+        if (!history.state || history.state.view !== 'catalog-pages') {
+            history.pushState({ view: 'catalog-pages', catalogId: catalogId }, '', '#catalog-' + catalogId);
+        }
         try {
             var r = await apiFetch('/api/catalogs/' + catalogId + '/pages');
             if (!r || !r.ok) return;
@@ -1672,7 +1676,13 @@
     function closeInlineCatalogView() {
         var v = document.getElementById('inlineCatalogView');
         if (v) v.style.display = 'none';
+        // Also close fullscreen viewer if open
+        var viewer = document.getElementById('catalogViewer');
+        if (viewer) viewer.style.display = 'none';
+        document.body.style.overflow = '';
+        // Show catalog list
         document.querySelectorAll('#tabCatalogs > *:not(#inlineCatalogView)').forEach(function(el) { el.style.display = ''; });
+        _pagesCatalogId = null;
     }
 
     async function addCatalogPage() {
@@ -2005,6 +2015,17 @@
         } catch(err) {}
     }
     window.deleteAutomation = deleteAutomation;
+
+    // Browser Back button — return to catalog list
+    window.addEventListener('popstate', function(e) {
+        if (_pagesCatalogId) {
+            closeInlineCatalogView();
+        }
+        var viewer = document.getElementById('catalogViewer');
+        if (viewer && viewer.style.display !== 'none') {
+            closeCatalog();
+        }
+    });
 
     // ESC closes all modals
     document.addEventListener('keydown', function(e) {

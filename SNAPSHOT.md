@@ -3,160 +3,49 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v39.1.0**. package.json: `39.1.0`. Бранч `claude/continue-event-genix-crm-q4yHw`.
+Версія **v39.6.0**. package.json: `39.6.0`. Бранч `claude/continue-event-genix-crm-q4yHw`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **package.json**: `"version": "39.1.0"`
+- **package.json**: `"version": "39.6.0"`
 - **Бранч**: `claude/continue-event-genix-crm-q4yHw`
-- **origin/main**: v28.2.0 (далеко позаду — наш бранч має merge v38.13.0)
-- **Зміни v38.14.0-v39.1.0**:
-  - v38.14.0: Каталоги UX (Image Picker 4 варіанти, Premium Catalog Viewer, 81 changelog)
-  - v38.15.0: Match-3 спецефекти (bomb/lightning/cross/rainbow) + profile API route
-  - v38.16.0: Profile (hero glassmorphism, inventory cards, shop seed, quests seed, Кімнату прибрано)
-  - v38.17.0: Leaderboard seed, daily badge, tasks preview
-  - v38.18.0: Profile polish — dark mode fix, confirm→modal, streaks per profession, season pass
-  - v39.1.0: Графік — реальні співробітники + зв'язка акаунтів CRM
+- **origin/main**: v28.2.0 (далеко позаду — наш бранч має все)
+- **Зміни v39.1.0-v39.6.0** (сесія 27.03.2026):
+  - v39.1.0: Графік — реальні 65 співробітників + зв'язка акаунтів CRM
+  - v39.2.0: Графік підгрупи + іконки + CSV експорт + друк
+  - v39.2.1: Графік UX polish — unset статус, trampoline chip, час 10-20
+  - v39.3.0-v39.4.0: Каталоги повний редизайн (5 етапів): картки, inline edit, Image2Image, drag-n-drop, public links, автоматизації, bulk gen, version history
+  - v39.4.1: Bugfixes — sidebar navigation, team online, catalog clicks
+  - v39.5.0: System-wide: confirm→confirmModal (15), -webkit-backdrop-filter (45), error handling (15 fixes), task edit modal, warehouse hash
+  - v39.5.1: Image generation error handling + debug log + smart AI prompts
+  - v39.6.0: System consistency — 10 HTML sidebar fixes, profileModal на 17 pages, skip-links, headers, ?v= tags
 
 ### Що залишилось доробити:
-1. Match-3: білий фон пофіксити (клітинки фіолетовий тінт є)
-2. Profile: equip/unequip UI покращити
-3. Міграція 129: може фейлитись якщо prod DB має неповні таблиці
-4. Bulk create: PDF-друк паролів для видачі співробітникам
+1. **~20 prompt()** → модалки (hr-page 10шт, graduation 3шт, center 2шт, chat 2шт, settings 3шт)
+2. **Profile page** — стріки по професіях, сезонний пас контент
+3. **WebSocket push** для alerts замість 5-хв polling
+4. **Каталоги: cover images** — AI-генерація cover для кожного каталогу
+5. Match-3: білий фон клітинок
+6. Bulk create: PDF-друк паролів
+
+### Міграції (останні)
+- 132: staff_accounts_linking (реальні співробітники)
+- 133: fix_freelance_duplicates
+- 134: separate_trampoline_dept
+- 135: catalog_enhancements (items, theme, layout_style, public_token, etc.)
+- 136: catalog_automations + page history
+- 137: fix_catalog_statuses
+- 138: cleanup_test_catalogs
 
 ### Тести
 - **346 тестів** (api.test.js) — 346 pass / 0 fail
 - Запуск: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MAX=5000 node --test tests/api.test.js`
-- automation.test.js — 28 тестів ЗАВЖДИ фейляться (pre-existing, НЕ наші)
 
-### Сервер
-```bash
-PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MAX=5000 node server.js
-```
-Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
-
-## Останні зміни (v38.14.0 → v39.1.0)
-
-### v39.1.0 (Claude Code, 27.03.2026)
-- **Migration 132**: `is_freelance`, `excel_department`, `unique_person_key` columns + 65 real staff from Excel
-- **Link status**: `GET /api/staff/link-status` — ✅/⚠️ індикатори зв'язки
-- **Link accounts**: `POST /api/staff/:id/link` + модалка з пошуком юзерів
-- **Bulk create**: `POST /api/staff/bulk-create-accounts` — масове створення + CSV + буфер
-- **Excel import**: `POST /api/staff/import-excel` — xlsx парсинг з маппінгом 16 відділів
-- **HR crosslinks**: 📅 на HR → графік, 👤 на графіку → HR
-- **Dashboard widget**: «Акаунти CRM» — linked/unlinked/freelance + прогрес-бар
-- **Staff page**: 🔗 Акаунти toggle, link modal, bulk results modal, Excel import button
-- **Freelance**: `is_freelance` flag, сірий стиль, без ⚠️ індикатора
-
-### v38.18.0 (Claude Code, 27.03.2026)
-- **Dark mode fix** — `[data-theme="dark"]` → `body.dark-mode` на profile.html (20+ селекторів)
-- **confirm() → confirmModal()** — buyItem, buyStreakFreeze, leaveMyTeam (3 виклики)
-- **Streaks по професіях** — animator (🎭), manager (📋), director (👑) з унікальними титулами та кольорами
-- **Room cleanup** — видалено renderRoom(), updateMood(), room API load (dead code)
-- **Tasks preview v2** — inline картки квестів з прогресом та кнопкою "Забрати"
-- **Season pass** — 6 весняних квестів seeded (booking_count, task_count, streak_days, xp_earned, minigame_count, season_complete)
-- **Migration 131** — season_pass_content.sql
-
-### v38.17.0 (Claude Code, 26.03.2026)
-- **Leaderboard seed** — рейтинг заповнений для всіх юзерів (XP, coins, level)
-- **Daily badge pulse** — CSS `badge-pulse` анімація на табі щоденних завдань
-- **Tasks preview** — блок попереднього перегляду завдань на профілі
-- **Migration 129 fixes** — ALTER TABLE daily_quests ADD all columns (IF NOT EXISTS)
-
-### v38.16.0 (Claude Code, 26.03.2026)
-- **Profile Redesign** — hero glassmorphism, контрастні шрифти
-- **Inventory** — RPG ячейки → картковий вигляд
-- **Shop seed** — 17 items (кава 200₴, піца 800₴ + 6 їжі + 9 косметики)
-- **Quests seed** — 8 щоденних квестів
-- **Кімната прибрано** — таб "Кімната" видалено
-
-### v38.15.0 (Claude Code, 26.03.2026)
-- **Match-3 спецефекти** — bomb, lightning, cross, rainbow анімації
-- **Клітинки** — фіолетовий тінт на білому фоні (light mode fix)
-- **Profile API** — `/profile/:userId` повертає JSON замість redirect
-
-### v38.14.0 (Claude Code, 26.03.2026)
-- **Image Picker** — 4 варіанти: AI генерація, upload, галерея, URL
-- **Premium Catalog Viewer** — 7 пакетів випускних з повноекранним переглядом
-- **openCatalog fix** — виправлено infinite recursion
-- **submitCreateCatalog** — додано відсутню функцію
-- **Graduation seed** — inline button styles + catalog seed data
-
-## Що готово (коротко, всі попередні версії)
-- v5.30–v5.51: Design System v4.0, responsive, dark mode, PWA, security, performance
-- v6.0: Test Mode
-- v7.0–v7.9: Каталог, Clawd Bot, Афіша, Задачник, standalone pages
-- v8.3–v8.6: Автоматизація, сертифікати, розумний розподіл
-- v9.0–v9.1: DnD, recurring, analytics, offline, migrations, WebSocket
-- v10.0–v10.5: Tasker, Kleshnya, Security, Data Integrity, Reliability, Profile
-- v11.0–v13.0: Kleshnya chat v1/v2, design board, auto dark mode
-- v14.0–v14.4: Branding, Warehouse, тести
-- v15.0–v15.1: HR Module, CRM Phase 2
-- v16.0–v16.2: Finance, Analytics v2, Swagger
-- v17.0–v17.10: Export, Budget, Procurement, AI Team, Task Bot, Worker Forge
-- v18.0–v18.4: Sidebar Nav, Center, Art Director, Demo/Packages, Leo v2, Status Page
-- v19.0–v19.17: Event Queue, Rule Engine, Deep Integration, UI Polish, Search, Loyalty, Charts, Backend Hardening, Monitoring
-- v20.0–v20.12: Milestone, Role System, Command Panel, Navigation, Sales, Rebranding, Tests, Security, UX, Validation, Swagger
-- v21.12–v21.15: Dark Mode Fix, Night Settings, Polish, A11y, Tablet, Unified Navigation
-- v22.0–v22.3: Dashboard, Messenger UX, Gamification, Game Profile
-- **v22.4–v22.20: Gamification V2, Match-3 Epic/Mystic/Candy, Dark Mode Polish, Security, Tech Debt, Guardian Phase 2+3**
-- **v23.0–v23.5: Major Release, Landing, OmniClaw, Lead Capture, Version Sync**
-- **v24.0–v24.3: Role Panel, Sidebar Rebuild, Dashboard Per-Role, QA**
-- **v25–v37: Continuous CRM improvements**
-- **v38.0–v38.13: Sound, HR, Operations, Security, Sidebar, Catalogs, Supabase**
-- **v38.14–v38.18: Image Picker, Match-3 FX, Profile Redesign, Leaderboard, Profile Polish (ПОТОЧНА СЕСІЯ)**
-
-## Стан гілок (26.03.2026)
-| Гілка | Версія | Статус |
-|-------|--------|--------|
-| `claude/continue-project-work-pdpKD` | **v38.17.1** | Попередня робоча гілка |
-| `claude/continue-event-genix-crm-q4yHw` | **v38.18.0** | Поточна сесія |
-| `origin/main` | v28.2.0 | Стара |
-
-## Незроблені баги
-- **BUG-001** — Лєо бот: зайвий текст при decline/other — НЕ ЗРОБЛЕНО
-- **CRM-VAL-001** — Минула дата в бронюванні — НЕ ЗРОБЛЕНО (бекенд валідація)
-- **VERSION-SYNC** — ВИПРАВЛЕНО в v23.0.0
-- **confirm() → confirmModal()** — виправлено в v38.18.0
-- **Streaks** — coin_transactions NOT NULL violation (давній баг)
-- **Migration 129** — може фейлитись на prod якщо таблиці неповні (додано ALTER TABLE фікси)
-
-## Архітектура (актуальна)
-
-| Метрика | Значення |
-|---------|----------|
-| Routes | 62 файлів |
-| Services | 35 файлів |
-| Middleware | 6 файлів |
-| Frontend JS | 44 модулі |
-| HTML сторінки | 26 |
-| CSS файли | 17 |
-| DB міграції | 53 (001–053) |
-| DB таблиці | 48+ (core) + міграції |
-| Залежності | 15 npm packages |
-| JS код | ~90 000 рядків |
-| HTML код | ~17 000 рядків |
-| CSS код | ~25 000 рядків |
-| **Всього коду** | **~132 000 рядків** |
-| Тести | 296+ |
-
-## Відомі проблеми / пастки
-- **Dark mode gray inversion**: gray-800 = #F3F4F6 = БІЛИЙ в dark mode! Використовуй rgba(255,255,255,0.08)
-- **Dashboard dark mode**: Фон сторінки `#0D0D0D`, картки мають бути `#2A2A4A+` щоб були видимі
-- **Версіонування 5 кроків**: package.json → all HTML `?v=` tags (25 файлів) → tagline → changelog button → changelog entry
-- **Два профілі**: `profile.html` (standalone, повний) та модалка в `auth.js` (вбудована, з game tab)
-- **Gamification API**: Повертає масиви/об'єкти напряму, БЕЗ `{ success: true, data: [...] }` обгортки
-- **Toast замість Notification**: `#toastContainer` + `showNotification()` створює toast елементи
-- **_debug() у ws.js/offline.js**: Показує тільки при `localStorage.pzp_debug = 'true'`
-- **Multi-agent**: Завжди git fetch + перевіряй чи хтось не змінив файли. Коміти з тегом `[claude-code]`
-- **Version mismatch**: Клешня комітить з v22.XX в повідомленні, але не бампить package.json
-- **Guardian commands**: `/g` або `/guardian` в чаті — 14 команд, admin-only для модерації
-
-## Деплой
-- `main` — staging (PR мерджаться сюди)
-- `deployed` — production Railway (ТІЛЬКИ Клешня деплоїть)
-- НІКОЛИ не push в `deployed` напряму
-
----
-*Оновлено: 2026-03-27, v38.18.0, сесія claude-code*
+### Ключові архітектурні рішення цієї сесії
+- **ai_style з БД** — catalog_definitions.ai_style = single source of truth для AI промптів
+- **Транслітерація** — всі Ukrainian→Latin перед відправкою в Kie.ai
+- **confirmModal** — замість native confirm() скрізь
+- **hashchange listener** — для sidebar tab navigation
+- **users.last_seen_at** — оновлюється при кожному auth запиті
+- **Sidebar standard** — staff.html = еталон структури для всіх сторінок

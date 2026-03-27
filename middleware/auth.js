@@ -22,7 +22,8 @@ const ROLE_HIERARCHY = [
     'cleaning',          // 3
     'wardrobe',          // 4
     'barista',           // 5
-    'reception',         // 6
+    'security',          // 6 — Охорона
+    'reception',         // 7
     'animator',          // 7
     'pastry_chef',       // 8
     'head_pastry',       // 9

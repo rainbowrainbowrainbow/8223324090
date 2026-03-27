@@ -84,7 +84,7 @@ function showLoginScreen() {
 // v22.0.0: Role hierarchy — 25 roles (higher index = more permissions)
 const ROLE_HIERARCHY = [
     'waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista',
-    'reception', 'animator', 'pastry_chef', 'head_pastry', 'cook', 'head_chef',
+    'security', 'reception', 'animator', 'pastry_chef', 'head_pastry', 'cook', 'head_chef',
     'instructor', 'senior_instructor', 'admin', 'hr', 'it_specialist',
     'marketer', 'art_director', 'accountant', 'manager', 'senior_manager',
     'vice_director', 'director', 'creator'
@@ -100,7 +100,7 @@ const ROLE_NAMES = {
     admin: 'Адміністратор',
     senior_instructor: 'Старший інструктор', instructor: 'Інструктор',
     head_chef: 'Шеф-кухар', cook: 'Кухар', head_pastry: 'Шеф-кондитер', pastry_chef: 'Кондитер',
-    animator: 'Аніматор', reception: 'Рецепція', barista: 'Бариста',
+    animator: 'Аніматор', reception: 'Рецепція', barista: 'Бариста', security: 'Охорона',
     wardrobe: 'Гардеробник', cleaning: 'Клінінг', maintenance: 'Технік',
     dishwasher: 'Посудомийник', waiter: 'Офіціант'
 };
@@ -120,13 +120,13 @@ const PAGE_ACCESS = {
     '/art':       [..._MANAGER_UP, 'art_director', 'marketer'],
     '/graduation': [..._MANAGER_UP, 'admin', 'art_director', 'marketer'],
     '/customers': [..._ADMIN_UP, 'reception'],
-    '/staff':     [..._MANAGER_UP, 'hr'],
+    '/staff':     [..._MANAGER_UP, 'hr', 'security'],
     '/warehouse': [..._MANAGER_UP, 'admin'],
     '/training':  [..._MANAGER_UP, 'senior_instructor', 'instructor'],
     '/settings':  ['creator', 'director'],
     '/demo':      _MANAGER_UP,
     '/programs':  [..._ADMIN_UP, 'senior_instructor'],
-    '/hr':        [..._MANAGER_UP, 'hr'],
+    '/hr':        [..._MANAGER_UP, 'hr', 'admin', 'security'],
     '/finance':   ['creator', 'director', 'accountant'],
     '/analytics': _MANAGER_UP,
     '/status':    _MANAGER_UP,

@@ -64,26 +64,32 @@ const Sidebar = (() => {
 
     // ═══ ACCESS MATRIX ════════════════════════════════════════════
     const ALL = true;
+    // v39.10: Sidebar access aligned with PAGE_ACCESS + security/reception roles added
+    const _MGR_UP = ['creator','director','vice_director','senior_manager','manager'];
+    const _ADMIN_UP = [..._MGR_UP, 'admin', 'hr', 'accountant', 'art_director', 'marketer', 'it_specialist'];
     const SIDEBAR_ACCESS = {
         all:            ALL,
-        timeline:       ['creator','director','vice_director','senior_manager','manager','admin','senior_instructor','instructor','hr','accountant','it_specialist'],
-        management:     ['creator','director','vice_director','senior_manager','manager','admin','marketer'],
-        leads:          ['creator','director','vice_director','senior_manager','manager','marketer'],
-        copilot:        ['creator','director','senior_manager','manager'],
-        staff:          ['creator','director','vice_director','senior_manager','manager','admin','hr','senior_instructor','instructor','it_specialist'],
-        hr:             ['creator','director','vice_director','senior_manager','manager','hr'],
-        hr_page:        ['creator','director','vice_director','senior_manager','manager','hr'],
-        finance:        ['creator','director','vice_director','accountant','senior_manager','manager'],
-        analytics:      ['creator','director','vice_director','senior_manager','manager','accountant','marketer','it_specialist'],
-        reports:        ['creator','director','vice_director','senior_manager','manager','admin','accountant'],
-        programs:       ['creator','director','vice_director','senior_manager','manager','admin','senior_instructor','instructor','art_director'],
-        center:         ['creator','director','vice_director','senior_manager','manager','admin','accountant'],
-        graduation:     ['creator','director','vice_director','senior_manager','manager','admin','art_director','marketer'],
-        art:            ['creator','director','vice_director','senior_manager','manager','art_director','marketer'],
-        sound:          ['creator','director','vice_director','senior_manager','manager','art_director'],
-        demo:           ['creator','director','vice_director'],
+        timeline:       [..._ADMIN_UP, 'reception', 'senior_instructor', 'instructor', 'security'],
+        management:     [..._MGR_UP, 'admin', 'marketer'],
+        leads:          [..._MGR_UP, 'marketer'],
+        copilot:        _MGR_UP,
+        staff:          [..._MGR_UP, 'admin', 'hr', 'senior_instructor', 'instructor', 'it_specialist', 'security'],
+        hr:             [..._MGR_UP, 'hr', 'admin', 'security'],
+        hr_page:        [..._MGR_UP, 'hr', 'admin', 'security'],
+        finance:        ['creator','director','accountant'],
+        analytics:      _MGR_UP,
+        reports:        ['creator','director','vice_director','senior_manager','accountant'],
+        programs:       [..._MGR_UP, 'admin', 'senior_instructor', 'instructor', 'art_director'],
+        center:         _MGR_UP,
+        graduation:     [..._MGR_UP, 'admin', 'art_director', 'marketer'],
+        art:            [..._MGR_UP, 'art_director', 'marketer'],
+        sound:          [..._MGR_UP, 'art_director'],
+        demo:           _MGR_UP,
         settings:       ['creator','director'],
-        schedule_daily: ['creator','director','vice_director','senior_manager','manager','admin','senior_instructor','instructor','hr','it_specialist'],
+        schedule_daily: [..._MGR_UP, 'admin', 'hr', 'senior_instructor', 'instructor', 'it_specialist', 'security'],
+        customers:      [..._ADMIN_UP, 'reception'],
+        warehouse:      [..._MGR_UP, 'admin'],
+        training:       [..._MGR_UP, 'senior_instructor', 'instructor'],
     };
 
     // ═══ ACCORDION STATE ══════════════════════════════════════════

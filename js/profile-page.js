@@ -154,7 +154,7 @@ async function loadProfileData(userId) {
 // ==========================================
 function renderProfile() {
     if (!profileData) {
-        document.getElementById('mainApp').innerHTML = '<div style="text-align:center;padding:40px;color:var(--gray-500)">Профіль не знайдено</div>';
+        document.getElementById('main-content').innerHTML = '<div style="text-align:center;padding:40px;color:var(--gray-500)">Профіль не знайдено</div>';
         return;
     }
 
@@ -249,7 +249,7 @@ function renderProfile() {
         </div>
     </div>`;
 
-    document.getElementById('mainApp').innerHTML = html;
+    document.getElementById('main-content').innerHTML = html;
     attachProfileListeners();
 }
 

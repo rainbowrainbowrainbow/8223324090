@@ -158,12 +158,70 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body data-page-group="system">
-    <div id="mainApp" class="main-app" style="padding:20px">
-        <div style="text-align:center;padding:40px;color:var(--gray-400)">Завантаження...</div>
+    <script>
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
+    <!-- Skip link for accessibility -->
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <!-- Login overlay -->
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
     </div>
+
+    <div id="mainApp">
+        <!-- Бокове меню -->
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+            <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+                <span class="collapse-icon">◀</span>
+                <span class="collapse-text">Згорнути</span>
+            </button>
+        </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
+
+        <header class="header">
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-container">
+            <div style="text-align:center;padding:40px;color:var(--gray-400)">Завантаження...</div>
+        </main>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
     <script src="js/config.js?v=39.4.0"></script>
+    <script src="js/notification.js?v=39.4.0"></script>
     <script src="js/api.js?v=39.4.0"></script>
     <script src="js/auth.js?v=39.4.0"></script>
+    <script src="js/components/sidebar.js?v=39.4.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script src="js/ui.js?v=39.4.0"></script>
     <script>
     /**
@@ -202,7 +260,7 @@
         const cooldown = quizStatus?.cooldownLeft || 0;
         const todayGames = quizStatus?.todayGames || 0;
 
-        document.getElementById('mainApp').innerHTML = `
+        document.getElementById('main-content').innerHTML = `
         <div class="quiz-page">
             <div style="margin-bottom:12px">
                 <a href="/profile" class="quiz-back-link">\u2190 \u041d\u0430\u0437\u0430\u0434</a>
@@ -298,7 +356,7 @@
         const diffClass = q.difficulty === 'easy' ? 'easy' : q.difficulty === 'hard' ? 'hard' : '';
         const diffLabel = q.difficulty === 'easy' ? '\u041b\u0435\u0433\u043a\u043e' : q.difficulty === 'hard' ? '\u0421\u043a\u043b\u0430\u0434\u043d\u043e' : '\u041d\u043e\u0440\u043c\u0430\u043b\u044c\u043d\u043e';
 
-        document.getElementById('mainApp').innerHTML = `
+        document.getElementById('main-content').innerHTML = `
         <div class="quiz-page">
             <div class="quiz-header">
                 <div>\ud83e\udde0 ${currentQIdx + 1}/${quizQuestions.length}</div>
@@ -404,7 +462,7 @@
         const icon = pct === 100 ? '\ud83c\udfc6' : pct >= 60 ? '\ud83c\udf1f' : pct >= 40 ? '\ud83d\udc4d' : '\ud83d\udcda';
         const title = pct === 100 ? '\u0406\u0434\u0435\u0430\u043b\u044c\u043d\u043e!' : pct >= 60 ? '\u0427\u0443\u0434\u043e\u0432\u043e!' : pct >= 40 ? '\u041d\u0435\u043f\u043e\u0433\u0430\u043d\u043e!' : '\u0421\u043f\u0440\u043e\u0431\u0443\u0439 \u0449\u0435!';
 
-        document.getElementById('mainApp').innerHTML = `
+        document.getElementById('main-content').innerHTML = `
         <div class="quiz-page">
             <div class="quiz-card">
                 <div class="quiz-result">
@@ -449,6 +507,14 @@
     }
 
     document.addEventListener('DOMContentLoaded', initQuizPage);
+    </script>
+    <script>
+    // Sidebar toggle for mobile
+    (function(){
+        var t=document.getElementById('sidebarToggle'),s=document.getElementById('sidebarNav'),o=document.getElementById('sidebarOverlay');
+        if(t&&s){t.addEventListener('click',function(){s.classList.toggle('open');if(o)o.classList.toggle('hidden')})}
+        if(o&&s){o.addEventListener('click',function(){s.classList.remove('open');o.classList.add('hidden')})}
+    })();
     </script>
     <script src="js/role-panel.js?v=39.4.0"></script>
 </body>

@@ -11,12 +11,14 @@
     <link rel="stylesheet" href="css/dark-mode.css?v=39.4.0">
     <link rel="stylesheet" href="css/responsive.css?v=39.4.0">
     <link rel="stylesheet" href="css/pages.css?v=39.4.0">
+    <link rel="stylesheet" href="css/modals.css?v=39.4.0">
     <link rel="stylesheet" href="css/role-panel.css?v=39.4.0">
     <link rel="stylesheet" href="css/copilot.css?v=39.4.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body class="dark-mode" data-page-group="mgmt">
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
     <script>
     // Dark mode flash prevention
     (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
@@ -48,6 +50,16 @@
         </button>
     </aside>
     <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
+
+    <header class="header">
+        <div class="header-content">
+            <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+            <div class="user-panel">
+                <span id="currentUser" class="user-name"></span>
+                <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
+            </div>
+        </div>
+    </header>
 
     <main class="main-content" style="padding:0; overflow:hidden;">
         <!-- Access denied overlay (shown if no access) -->

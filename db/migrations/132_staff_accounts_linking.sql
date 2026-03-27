@@ -223,44 +223,62 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- 8. Create employee_profiles for known linkable staff→users
--- Сергій Шарлай → admin (user 1) or Sergey (user 5)
--- Федорова Наталія → Natalia (user 4)
--- Синепол Віталіна → Vitalina (user 2)
--- Горощенко Даша → Dasha (user 3)
--- Пасенко Женя → Zhenya (user 8)
--- Телентюк Анна → Anli (user 7)
+-- Link by username (safe for any environment — no hardcoded IDs)
+-- Сергій Шарлай → Sergey
+-- Федорова Наталія → Natalia
+-- Синепол Віталіна → Vitalina
+-- Горощенко Даша → Dasha
+-- Пасенко Женя → Zhenya
+-- Телентюк Анна → Anli
 
 -- First, clean up any existing test employee_profiles
 UPDATE employee_profiles SET is_active = false WHERE staff_id <= 30;
 
--- Create profiles for real linked staff
--- We need to know the IDs of newly inserted staff, so we use subqueries
+-- Create profiles for real linked staff (JOIN on users by username — safe!)
 INSERT INTO employee_profiles (staff_id, user_id, full_name, role, department, is_active)
-SELECT s.id, 5, s.name, s.role_type, s.department, true
-FROM staff s WHERE s.unique_person_key = 'sharlai.serhiy' AND s.is_active = true
+SELECT s.id, u.id, s.name, s.role_type, s.department, true
+FROM staff s
+CROSS JOIN users u
+WHERE s.unique_person_key = 'sharlai.serhiy' AND s.is_active = true
+  AND u.username = 'Sergey' AND u.is_active = true
 ON CONFLICT DO NOTHING;
 
 INSERT INTO employee_profiles (staff_id, user_id, full_name, role, department, is_active)
-SELECT s.id, 4, s.name, s.role_type, s.department, true
-FROM staff s WHERE s.unique_person_key = 'fedorova.nataliya' AND s.is_active = true
+SELECT s.id, u.id, s.name, s.role_type, s.department, true
+FROM staff s
+CROSS JOIN users u
+WHERE s.unique_person_key = 'fedorova.nataliya' AND s.is_active = true
+  AND u.username = 'Natalia' AND u.is_active = true
 ON CONFLICT DO NOTHING;
 
 INSERT INTO employee_profiles (staff_id, user_id, full_name, role, department, is_active)
-SELECT s.id, 2, s.name, s.role_type, s.department, true
-FROM staff s WHERE s.unique_person_key = 'synepol.vitalina' AND s.is_active = true
+SELECT s.id, u.id, s.name, s.role_type, s.department, true
+FROM staff s
+CROSS JOIN users u
+WHERE s.unique_person_key = 'synepol.vitalina' AND s.is_active = true
+  AND u.username = 'Vitalina' AND u.is_active = true
 ON CONFLICT DO NOTHING;
 
 INSERT INTO employee_profiles (staff_id, user_id, full_name, role, department, is_active)
-SELECT s.id, 3, s.name, s.role_type, s.department, true
-FROM staff s WHERE s.unique_person_key = 'goroshchenko.dasha' AND s.is_active = true
+SELECT s.id, u.id, s.name, s.role_type, s.department, true
+FROM staff s
+CROSS JOIN users u
+WHERE s.unique_person_key = 'goroshchenko.dasha' AND s.is_active = true
+  AND u.username = 'Dasha' AND u.is_active = true
 ON CONFLICT DO NOTHING;
 
 INSERT INTO employee_profiles (staff_id, user_id, full_name, role, department, is_active)
-SELECT s.id, 8, s.name, s.role_type, s.department, true
-FROM staff s WHERE s.unique_person_key = 'pasenko.zhenya' AND s.is_active = true
+SELECT s.id, u.id, s.name, s.role_type, s.department, true
+FROM staff s
+CROSS JOIN users u
+WHERE s.unique_person_key = 'pasenko.zhenya' AND s.is_active = true
+  AND u.username = 'Zhenya' AND u.is_active = true
 ON CONFLICT DO NOTHING;
 
 INSERT INTO employee_profiles (staff_id, user_id, full_name, role, department, is_active)
-SELECT s.id, 7, s.name, s.role_type, s.department, true
-FROM staff s WHERE s.unique_person_key = 'telentyuk.anna' AND s.is_active = true
+SELECT s.id, u.id, s.name, s.role_type, s.department, true
+FROM staff s
+CROSS JOIN users u
+WHERE s.unique_person_key = 'telentyuk.anna' AND s.is_active = true
+  AND u.username = 'Anli' AND u.is_active = true
 ON CONFLICT DO NOTHING;

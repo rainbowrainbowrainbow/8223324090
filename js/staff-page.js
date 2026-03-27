@@ -56,6 +56,39 @@ const STATUS_LABELS = {
     remote: 'Віддалено'
 };
 
+const STATUS_ICONS = {
+    working: '●',
+    dayoff: '○',
+    vacation: '✈',
+    sick: '✚',
+    remote: '◉'
+};
+
+// Sub-groups within large departments (by role_type)
+const DEPT_SUB_GROUPS = {
+    animators: [
+        { key: 'animator', label: 'Аніматори', icon: '🎭' },
+        { key: 'instructor', label: 'Батутисти', icon: '🤸' }
+    ],
+    admin: [
+        { key: 'vice_director,art_director,senior_manager', label: 'Керівники', icon: '👑' },
+        { key: 'manager', label: 'Менеджери', icon: '💼' },
+        { key: 'admin', label: 'Адміністратори', icon: '📋' },
+        { key: 'accountant', label: 'Бухгалтери', icon: '💰' },
+        { key: 'hr', label: 'HR', icon: '👥' }
+    ],
+    cafe: [
+        { key: 'cook', label: 'Кухня', icon: '🍳' },
+        { key: 'barista', label: 'Бармени', icon: '🍸' },
+        { key: 'waiter', label: 'Офіціанти', icon: '🍽️' }
+    ],
+    cleaning: [
+        { key: 'cleaning', label: 'Хозяюшки', icon: '🧹' },
+        { key: 'dishwasher', label: 'Мийка', icon: '🧽' },
+        { key: 'wardrobe', label: 'Гардероб', icon: '🧥' }
+    ]
+};
+
 const DAYS_UK = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const MONTHS_UK = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', 'лип', 'сер', 'вер', 'жов', 'лис', 'гру'];
 
@@ -245,6 +278,61 @@ function renderSummary() {
     `;
 }
 
+function renderEmpRow(emp, dates, today) {
+    const initials = emp.name.split(' ').map(w => w[0]).join('').slice(0, 2);
+    const hoursData = StaffState.hoursData?.[emp.id];
+    const hoursLabel = hoursData ? `${hoursData.totalHours}г / ${hoursData.workingDays}д` : '';
+    const isFreelance = emp.is_freelance;
+    const linkBadge = renderLinkBadge(emp);
+    const hrLink = renderHrCrosslink(emp);
+    const avatarColor = emp.color || (isFreelance ? '#94A3B8' : '#6366F1');
+    let html = `<tr class="${isFreelance ? 'emp-freelance' : ''}">`;
+    html += `<td>
+        <div class="emp-cell">
+            <div class="emp-avatar" style="background:${escapeHtml(avatarColor)}">${isFreelance ? '~' : escapeHtml(initials)}</div>
+            <div class="emp-info">
+                <span class="emp-name">${escapeHtml(emp.name)}${hrLink}</span>
+                <span class="emp-position">${escapeHtml(emp.position)} ${linkBadge}</span>
+                <span class="emp-hours">${hoursLabel}</span>
+            </div>
+        </div>
+    </td>`;
+
+    for (const d of dates) {
+        const ds = formatDateStr(d);
+        const isToday = ds === today;
+        const entry = StaffState.schedule[`${emp.id}_${ds}`];
+        const status = entry ? entry.status : 'working';
+        const shiftStart = entry?.shift_start;
+        const shiftEnd = entry?.shift_end;
+        const icon = STATUS_ICONS[status] || '';
+
+        let cellContent = '';
+        if ((status === 'working' || status === 'remote') && shiftStart && shiftEnd) {
+            cellContent = `<span class="sch-time">${shiftStart.slice(0,5)}–${shiftEnd.slice(0,5)}</span>`;
+            if (status === 'remote') cellContent += `<span class="sch-label"><span class="sch-icon">${icon}</span> Відд.</span>`;
+        } else if (status === 'working') {
+            cellContent = `<span class="sch-label"><span class="sch-icon">${icon}</span> Роб.</span>`;
+        } else {
+            cellContent = `<span class="sch-label"><span class="sch-icon">${icon}</span> ${STATUS_LABELS[status] || status}</span>`;
+        }
+
+        if (entry?.note) {
+            cellContent += `<span class="sch-note">${escapeHtml(entry.note)}</span>`;
+        }
+
+        html += `<td>
+            <div class="sch-cell status-${status} ${isToday ? 'today-col' : ''}"
+                 data-staff="${emp.id}" data-date="${ds}"
+                 title="${escapeHtml(emp.name)} — ${ds}${shiftStart ? ' (' + shiftStart.slice(0,5) + '–' + shiftEnd.slice(0,5) + ')' : ''}">
+                ${cellContent}
+            </div>
+        </td>`;
+    }
+    html += `</tr>`;
+    return html;
+}
+
 function renderSchedule() {
     const dates = getWeekDates(StaffState.weekStart);
     const today = todayStr();
@@ -284,59 +372,36 @@ function renderSchedule() {
         if (!grouped[dept]) continue;
         const deptLabel = depts[dept] || dept;
         const icon = DEPT_ICONS[dept] || '';
+        const deptStaff = grouped[dept];
+        const subGroups = DEPT_SUB_GROUPS[dept];
 
-        bodyHtml += `<tr class="dept-row"><td colspan="${dates.length + 1}"><span class="dept-icon">${icon}</span>${deptLabel} (${grouped[dept].length})</td></tr>`;
+        // Department header
+        bodyHtml += `<tr class="dept-row" data-dept="${dept}"><td colspan="${dates.length + 1}"><span class="dept-icon">${icon}</span> ${deptLabel} <span class="dept-count">${deptStaff.length}</span></td></tr>`;
 
-        for (const emp of grouped[dept]) {
-            const initials = emp.name.split(' ').map(w => w[0]).join('').slice(0, 2);
-            const hoursData = StaffState.hoursData?.[emp.id];
-            const hoursLabel = hoursData ? `${hoursData.totalHours}г / ${hoursData.workingDays}д` : '';
-            const isFreelance = emp.is_freelance;
-            const linkBadge = renderLinkBadge(emp);
-            const hrLink = renderHrCrosslink(emp);
-            bodyHtml += `<tr class="${isFreelance ? 'emp-freelance' : ''}">`;
-            bodyHtml += `<td>
-                <div class="emp-cell">
-                    <div class="emp-avatar" style="background:${escapeHtml(emp.color || (isFreelance ? '#94A3B8' : '#94A3B8'))}">${isFreelance ? '~' : escapeHtml(initials)}</div>
-                    <div class="emp-info">
-                        <span class="emp-name">${escapeHtml(emp.name)}${hrLink}</span>
-                        <span class="emp-position">${escapeHtml(emp.position)} ${linkBadge}</span>
-                        <span class="emp-hours">${hoursLabel}</span>
-                    </div>
-                </div>
-            </td>`;
+        if (subGroups && deptStaff.length > 3) {
+            // Render sub-groups within department
+            for (const sg of subGroups) {
+                const roleKeys = sg.key.split(',');
+                const sgStaff = deptStaff.filter(s => roleKeys.includes(s.role_type));
+                if (sgStaff.length === 0) continue;
 
-            for (const d of dates) {
-                const ds = formatDateStr(d);
-                const isToday = ds === today;
-                const entry = StaffState.schedule[`${emp.id}_${ds}`];
-                const status = entry ? entry.status : 'working';
-                const shiftStart = entry?.shift_start;
-                const shiftEnd = entry?.shift_end;
+                bodyHtml += `<tr class="sub-group-row"><td colspan="${dates.length + 1}"><span class="sub-group-icon">${sg.icon}</span> ${sg.label} <span class="sub-group-count">${sgStaff.length}</span></td></tr>`;
 
-                let cellContent = '';
-                if ((status === 'working' || status === 'remote') && shiftStart && shiftEnd) {
-                    cellContent = `<span class="sch-time">${shiftStart.slice(0,5)}–${shiftEnd.slice(0,5)}</span>`;
-                    if (status === 'remote') cellContent += `<span class="sch-label">Віддалено</span>`;
-                } else if (status === 'working') {
-                    cellContent = `<span class="sch-label">${STATUS_LABELS[status]}</span>`;
-                } else {
-                    cellContent = `<span class="sch-label">${STATUS_LABELS[status] || status}</span>`;
+                for (const emp of sgStaff) {
+                    bodyHtml += renderEmpRow(emp, dates, today);
                 }
-
-                if (entry?.note) {
-                    cellContent += `<span class="sch-label" style="font-size:8px;margin-top:1px;opacity:0.7">${escapeHtml(entry.note)}</span>`;
-                }
-
-                bodyHtml += `<td>
-                    <div class="sch-cell status-${status} ${isToday ? 'today-col' : ''}"
-                         data-staff="${emp.id}" data-date="${ds}"
-                         title="${escapeHtml(emp.name)} — ${ds}">
-                        ${cellContent}
-                    </div>
-                </td>`;
             }
-            bodyHtml += `</tr>`;
+            // Render staff that didn't match any sub-group (edge case)
+            const allRoleKeys = subGroups.flatMap(sg => sg.key.split(','));
+            const unmatched = deptStaff.filter(s => !allRoleKeys.includes(s.role_type));
+            for (const emp of unmatched) {
+                bodyHtml += renderEmpRow(emp, dates, today);
+            }
+        } else {
+            // Small department — render without sub-groups
+            for (const emp of deptStaff) {
+                bodyHtml += renderEmpRow(emp, dates, today);
+            }
         }
     }
 
@@ -1049,6 +1114,79 @@ async function handleExcelImport(e) {
     e.target.value = '';
 }
 
+// ==========================================
+// EXCEL EXPORT
+// ==========================================
+
+function handleExcelExport() {
+    const dates = getWeekDates(StaffState.weekStart);
+    const depts = StaffState.departments;
+    const deptOrder = ['animators', 'trampoline', 'admin', 'cafe', 'tech', 'cleaning', 'security'];
+
+    // Build CSV (BOM for Excel)
+    let csv = '\ufeff';
+    csv += 'Відділ,Підгрупа,Ім\'я,Посада';
+    for (const d of dates) {
+        csv += `,${d.getDate()} ${MONTHS_UK[d.getMonth()]} (${DAYS_UK[d.getDay()]})`;
+    }
+    csv += '\n';
+
+    for (const dept of deptOrder) {
+        const deptStaff = StaffState.staff.filter(s => s.department === dept);
+        if (deptStaff.length === 0) continue;
+        const deptLabel = depts[dept] || dept;
+        const subGroups = DEPT_SUB_GROUPS[dept];
+
+        const renderStaffCsv = (emp, sgLabel) => {
+            let row = `"${deptLabel}","${sgLabel}","${emp.name}","${emp.position}"`;
+            for (const d of dates) {
+                const ds = formatDateStr(d);
+                const entry = StaffState.schedule[`${emp.id}_${ds}`];
+                const status = entry ? entry.status : 'working';
+                const time = (entry?.shift_start && entry?.shift_end)
+                    ? `${entry.shift_start.slice(0,5)}-${entry.shift_end.slice(0,5)}`
+                    : '';
+                const label = STATUS_LABELS[status] || status;
+                row += `,"${time || label}"`;
+            }
+            csv += row + '\n';
+        };
+
+        if (subGroups) {
+            for (const sg of subGroups) {
+                const roleKeys = sg.key.split(',');
+                const sgStaff = deptStaff.filter(s => roleKeys.includes(s.role_type));
+                for (const emp of sgStaff) renderStaffCsv(emp, sg.label);
+            }
+            const allRoleKeys = subGroups.flatMap(sg => sg.key.split(','));
+            const unmatched = deptStaff.filter(s => !allRoleKeys.includes(s.role_type));
+            for (const emp of unmatched) renderStaffCsv(emp, '');
+        } else {
+            for (const emp of deptStaff) renderStaffCsv(emp, '');
+        }
+    }
+
+    const from = dates[0];
+    const to = dates[6];
+    const filename = `grafik_${formatDateStr(from)}_${formatDateStr(to)}.csv`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    showNotification('Графік експортовано');
+}
+
+// ==========================================
+// PRINT
+// ==========================================
+
+function handlePrint() {
+    window.print();
+}
+
 // Dark mode: handled by shared initDarkMode() from config.js
 
 // ==========================================
@@ -1146,6 +1284,8 @@ async function initPage() {
     document.getElementById('bulkCreateBtn')?.addEventListener('click', handleBulkCreate);
     document.getElementById('importExcelBtn')?.addEventListener('click', triggerExcelImport);
     document.getElementById('excelImportInput')?.addEventListener('change', handleExcelImport);
+    document.getElementById('exportExcelBtn')?.addEventListener('click', handleExcelExport);
+    document.getElementById('printBtn')?.addEventListener('click', handlePrint);
 
     // Link modal
     document.getElementById('linkConfirmBtn')?.addEventListener('click', confirmLinkAccount);

@@ -7,13 +7,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=39.1.0">
-    <link rel="stylesheet" href="css/layout.css?v=39.1.0">
-    <link rel="stylesheet" href="css/pages.css?v=39.1.0">
-    <link rel="stylesheet" href="css/modals.css?v=39.1.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=39.1.0">
-    <link rel="stylesheet" href="css/responsive.css?v=39.1.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=39.1.0">
+    <link rel="stylesheet" href="css/base.css?v=39.2.0">
+    <link rel="stylesheet" href="css/layout.css?v=39.2.0">
+    <link rel="stylesheet" href="css/pages.css?v=39.2.0">
+    <link rel="stylesheet" href="css/modals.css?v=39.2.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=39.2.0">
+    <link rel="stylesheet" href="css/responsive.css?v=39.2.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=39.2.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -214,15 +214,66 @@
         /* Department group header */
         .dept-row td {
             background: var(--gray-50);
-            padding: 6px 16px;
+            padding: 8px 16px;
             font-weight: 800;
-            font-size: 13px;
+            font-size: 14px;
             color: var(--gray-700);
             border-top: 2px solid var(--gray-200);
         }
+        .dept-row[data-dept="animators"] td { border-left: 4px solid #059669; }
+        .dept-row[data-dept="admin"] td { border-left: 4px solid #4F46E5; }
+        .dept-row[data-dept="cafe"] td { border-left: 4px solid #D97706; }
+        .dept-row[data-dept="tech"] td { border-left: 4px solid #DC2626; }
+        .dept-row[data-dept="cleaning"] td { border-left: 4px solid #7C3AED; }
+        .dept-row[data-dept="security"] td { border-left: 4px solid #64748B; }
 
         .dept-row .dept-icon {
             margin-right: 6px;
+        }
+
+        .dept-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--gray-200);
+            color: var(--gray-600);
+            font-size: 11px;
+            font-weight: 800;
+            min-width: 22px;
+            height: 22px;
+            border-radius: 11px;
+            padding: 0 6px;
+            margin-left: 4px;
+        }
+
+        /* Sub-group header (within departments) */
+        .sub-group-row td {
+            background: var(--white);
+            padding: 4px 16px 4px 32px;
+            font-weight: 700;
+            font-size: 12px;
+            color: var(--gray-500);
+            border-top: 1px dashed var(--gray-200);
+        }
+
+        .sub-group-icon {
+            margin-right: 4px;
+            font-size: 13px;
+        }
+
+        .sub-group-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--gray-100);
+            color: var(--gray-400);
+            font-size: 10px;
+            font-weight: 800;
+            min-width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            padding: 0 5px;
+            margin-left: 3px;
         }
 
         /* Employee rows */
@@ -334,6 +385,22 @@
             padding: 1px 6px;
             border-radius: 4px;
             margin-top: 1px;
+        }
+
+        .sch-cell .sch-icon {
+            font-size: 10px;
+            margin-right: 1px;
+        }
+
+        .sch-cell .sch-note {
+            font-size: 8px;
+            font-weight: 500;
+            color: var(--gray-400);
+            margin-top: 1px;
+            max-width: 80px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         /* Status colors */
@@ -657,9 +724,19 @@
         .hr-crosslink:hover {
             opacity: 1;
         }
+        .emp-freelance td:first-child {
+            border-left: 2px dashed var(--gray-300);
+        }
         .emp-freelance .emp-name {
             color: var(--gray-400);
             font-style: italic;
+        }
+        .emp-freelance .emp-avatar {
+            opacity: 0.6;
+            border: 1px dashed var(--gray-300);
+        }
+        .emp-freelance .sch-cell {
+            opacity: 0.7;
         }
         .bulk-results-table {
             width: 100%;
@@ -687,6 +764,55 @@
         [data-theme="dark"] .link-user-item.selected { background: rgba(212,175,55,0.15); }
         [data-theme="dark"] .bulk-results-table th { background: var(--gray-700); }
         [data-theme="dark"] .bulk-results-table td { border-bottom-color: var(--gray-700); }
+        [data-theme="dark"] .sub-group-row td {
+            background: var(--gray-800);
+            color: var(--gray-500);
+            border-top-color: var(--gray-700);
+        }
+        [data-theme="dark"] .dept-count { background: var(--gray-600); color: var(--gray-300); }
+        [data-theme="dark"] .sub-group-count { background: var(--gray-700); color: var(--gray-500); }
+        [data-theme="dark"] .dept-row[data-dept] td { background: var(--gray-700); }
+        [data-theme="dark"] .emp-freelance td:first-child { border-left-color: var(--gray-600); }
+        [data-theme="dark"] .emp-freelance .emp-avatar { border-color: var(--gray-600); }
+
+        /* Print styles */
+        @media print {
+            .sidebar-nav, .sidebar-overlay, .header, .schedule-controls,
+            .schedule-summary, .link-stats-bar, .skip-link,
+            .btn-page-primary, .btn-page-secondary,
+            #loginOverlay, #profileModal, #notification,
+            .sch-modal-overlay, .hr-crosslink, .link-badge,
+            .emp-hours { display: none !important; }
+
+            .page-container { margin: 0 !important; padding: 8px !important; }
+            .schedule-wrapper { box-shadow: none !important; border: 1px solid #ddd !important; overflow: visible !important; }
+            .schedule-table { min-width: auto !important; font-size: 10px !important; }
+            .schedule-table td, .schedule-table th { padding: 3px 4px !important; }
+            .schedule-table td:first-child { position: static !important; }
+            .schedule-table thead th:first-child { position: static !important; }
+            .emp-cell { gap: 4px !important; }
+            .emp-avatar { width: 20px !important; height: 20px !important; font-size: 8px !important; }
+            .emp-name { font-size: 10px !important; }
+            .emp-position { font-size: 8px !important; display: block !important; }
+            .sch-cell { min-height: 28px !important; padding: 2px !important; }
+            .sch-cell .sch-time { font-size: 9px !important; }
+            .sch-cell .sch-label { font-size: 7px !important; }
+            .dept-row td { font-size: 11px !important; padding: 4px 8px !important; }
+            .sub-group-row td { font-size: 9px !important; padding: 2px 8px 2px 20px !important; }
+
+            body::before {
+                content: "Графік роботи — Event Genix CRM";
+                display: block;
+                font-size: 16px;
+                font-weight: 800;
+                margin-bottom: 8px;
+            }
+
+            @page {
+                size: landscape;
+                margin: 10mm;
+            }
+        }
     </style>
 </head>
 <body data-page-group="hr">
@@ -762,6 +888,8 @@
                     <button type="button" id="toggleLinkViewBtn" class="btn-page-secondary" title="Зв'язки з акаунтами CRM">🔗 Акаунти</button>
                     <button type="button" id="bulkCreateBtn" class="btn-page-secondary" style="display:none" title="Створити акаунти всім без акаунту">👥 Масове створення</button>
                     <button type="button" id="importExcelBtn" class="btn-page-secondary" style="display:none" title="Імпорт з Excel">📥 Excel</button>
+                    <button type="button" id="exportExcelBtn" class="btn-page-secondary" title="Експорт графіку в CSV">📤 Експорт</button>
+                    <button type="button" id="printBtn" class="btn-page-secondary" title="Друк графіку">🖨 Друк</button>
                     <input type="file" id="excelImportInput" accept=".xlsx,.xls" style="display:none">
                 </div>
                 <div id="deptFilter" class="dept-filter"></div>
@@ -919,13 +1047,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=39.1.0"></script>
-    <script src="js/notification.js?v=39.1.0"></script>
-    <script src="js/api.js?v=39.1.0"></script>
-    <script src="js/auth.js?v=39.1.0"></script>
-    <script src="js/components/sidebar.js?v=39.1.0"></script>
+    <script src="js/config.js?v=39.2.0"></script>
+    <script src="js/notification.js?v=39.2.0"></script>
+    <script src="js/api.js?v=39.2.0"></script>
+    <script src="js/auth.js?v=39.2.0"></script>
+    <script src="js/components/sidebar.js?v=39.2.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/staff-page.js?v=39.1.0"></script>
+    <script src="js/staff-page.js?v=39.2.0"></script>
     <script>
     // Sidebar toggle for mobile
     (function(){
@@ -934,6 +1062,6 @@
         if(o&&s){o.addEventListener('click',function(){s.classList.remove('open');o.classList.add('hidden')})}
     })();
     </script>
-    <script src="js/role-panel.js?v=39.1.0"></script>
+    <script src="js/role-panel.js?v=39.2.0"></script>
 </body>
 </html>

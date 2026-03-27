@@ -1648,7 +1648,7 @@ async function hireCandidate(id) {
     if (!await confirmModal('Найняти кандидата? Буде створений запис у команді.', { type: 'danger' })) return;
     const res = await hrFetch(`/applications/${id}/hire`, { method: 'POST', body: JSON.stringify({}) });
     if (res?.success) {
-        alert(`✅ ${res.message}`);
+        showNotification(res.message || 'Кандидата найнято!', 'success');
         loadVacancies();
         refreshCandidates();
     }

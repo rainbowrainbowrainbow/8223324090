@@ -391,7 +391,7 @@
 
         window.registerFace = async function() {
             var staffId = document.getElementById('staffSelect').value;
-            if (!staffId) { alert('Оберіть співробітника'); return; }
+            if (!staffId) { setStatus('Оберіть співробітника', 'error'); return; }
 
             setStatus('Фіксація обличчя... Дивіться в камеру', 'loading');
             var video = document.getElementById('video');

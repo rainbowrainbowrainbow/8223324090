@@ -1713,7 +1713,7 @@ async function checkStaleCatalogImages() {
         );
         if (!stale.rowCount) return;
         const https = require('https');
-        const KIE_KEY = '5dabed41ea307ecc6ca17010eaaf90b0';
+        const KIE_KEY = process.env.KIE_API_KEY || '';
         const DEFAULT_STYLE = 'colorful illustration, white background, no text';
 
         function kieHttpRequest(method, path, postBody) {

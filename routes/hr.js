@@ -1570,7 +1570,7 @@ router.get('/staff/:id/shifts', async (req, res) => {
         });
     } catch (err) {
         log.error('GET /staff/:id/shifts', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -1614,7 +1614,7 @@ router.get('/shifts-summary', async (req, res) => {
         });
     } catch (err) {
         log.error('GET /shifts-summary', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -1695,7 +1695,7 @@ router.post('/salary/commit', requireRole('admin', 'director', 'senior_manager')
         res.json({ success: true, committed: inserted.length, transactions: inserted });
     } catch (err) {
         log.error('[SalaryCommit] Error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -1714,7 +1714,7 @@ router.get('/vacancies', async (req, res) => {
         q += ` ORDER BY CASE v.priority WHEN 'urgent' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, v.created_at DESC`;
         const r = await pool.query(q, params);
         res.json({ success: true, vacancies: r.rows });
-    } catch (err) { log.error('GET /vacancies', err); res.status(500).json({ error: err.message }); }
+    } catch (err) { log.error('GET /vacancies', err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/vacancies', async (req, res) => {
@@ -1729,7 +1729,7 @@ router.post('/vacancies', async (req, res) => {
             [title.trim(), role_type, department, description||null, requirements||null,
              salary_from||null, salary_to||null, schedule||null, work_format, status, priority, req.user?.username||null]);
         res.json({ success: true, vacancy: r.rows[0] });
-    } catch (err) { log.error('POST /vacancies', err); res.status(500).json({ error: err.message }); }
+    } catch (err) { log.error('POST /vacancies', err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.patch('/vacancies/:id', async (req, res) => {
@@ -1750,14 +1750,14 @@ router.patch('/vacancies/:id', async (req, res) => {
     try {
         await pool.query(`UPDATE job_vacancies SET ${sets.join(',')} WHERE id=$${i}`, vals);
         res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.delete('/vacancies/:id', async (req, res) => {
     try {
         await pool.query(`UPDATE job_vacancies SET status='closed', closed_at=NOW() WHERE id=$1`, [req.params.id]);
         res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ══════════════════════════════════════════════════════
@@ -1768,7 +1768,7 @@ router.get('/vacancies/:id/applications', async (req, res) => {
     try {
         const r = await pool.query('SELECT * FROM job_applications WHERE vacancy_id=$1 ORDER BY created_at DESC', [req.params.id]);
         res.json({ success: true, applications: r.rows });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/vacancies/:id/applications', async (req, res) => {
@@ -1781,7 +1781,7 @@ router.post('/vacancies/:id/applications', async (req, res) => {
             [parseInt(req.params.id), name.trim(), phone||null, telegram_username||null, telegram_id||null,
              source, notes||null, salary_expectation||null, cv_url||null, req.user?.username||null]);
         res.json({ success: true, application: r.rows[0] });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.patch('/applications/:id', async (req, res) => {
@@ -1797,7 +1797,7 @@ router.patch('/applications/:id', async (req, res) => {
     try {
         await pool.query(`UPDATE job_applications SET ${sets.join(',')} WHERE id=$${i}`, vals);
         res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/applications/:id/hire', async (req, res) => {
@@ -1816,7 +1816,7 @@ router.post('/applications/:id/hire', async (req, res) => {
             [a.name, department, a.vac_title, a.phone||null, a.role_type,
              a.telegram_username||null, a.telegram_id||null, salary||0]);
         res.json({ success: true, staff_id: staffResult.rows[0].id, message: `${a.name} найнятий як ${a.role_type}` });
-    } catch (err) { log.error('POST /applications/:id/hire', err); res.status(500).json({ error: err.message }); }
+    } catch (err) { log.error('POST /applications/:id/hire', err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 module.exports = router;

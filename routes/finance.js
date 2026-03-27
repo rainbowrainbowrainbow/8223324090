@@ -12,6 +12,7 @@ const { createLogger } = require('../utils/logger');
 const { requireRole } = require('../middleware/auth');
 const { publish } = require('../services/eventBus');
 const log = createLogger('Finance');
+function _escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // RBAC: Finance access — creator, director, accountant only
 router.use(requireRole('creator', 'director', 'accountant'));
@@ -1335,13 +1336,13 @@ th{background:#f8f9fa;font-weight:700}
 <div class="company"><strong>ФОП "Парк Закревського Періоду"</strong><br>м. Київ, вул. Закревського</div>
 <h1>АКТ ВИКОНАНИХ РОБІТ</h1>
 <div class="subtitle">${actNumber} від ${actDate}</div>
-<p><strong>Замовник:</strong> ${b.customer_name || 'Не вказано'}</p>
-<p><strong>Телефон:</strong> ${b.customer_phone || 'Не вказано'}</p>
+<p><strong>Замовник:</strong> ${_escH(b.customer_name) || 'Не вказано'}</p>
+<p><strong>Телефон:</strong> ${_escH(b.customer_phone) || 'Не вказано'}</p>
 <p><strong>Дата проведення:</strong> ${b.date} о ${b.time}</p>
 <table>
 <thead><tr><th>№</th><th>Послуга</th><th>Тривалість</th><th>Сума, ₴</th></tr></thead>
 <tbody>
-<tr><td>1</td><td>${b.program_name || b.label || b.program_code || 'Розважальна програма'}</td>
+<tr><td>1</td><td>${_escH(b.program_name) || b.label || b.program_code || 'Розважальна програма'}</td>
 <td>${b.duration || 0} хв</td><td>${(b.price || 0).toLocaleString('uk-UA')}</td></tr>
 </tbody>
 <tfoot><tr><td colspan="3" class="total">РАЗОМ:</td><td class="total">${(b.price || 0).toLocaleString('uk-UA')} ₴</td></tr></tfoot>

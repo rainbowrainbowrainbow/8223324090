@@ -13,7 +13,7 @@ const { requireRole, authenticateToken } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Catalogs');
 
-const KIE_KEY = '5dabed41ea307ecc6ca17010eaaf90b0';
+const KIE_KEY = process.env.KIE_API_KEY || '';
 
 // ─── Kie.ai helpers ──────────────────────────────────────────
 function kieRequest(method, path, body) {
@@ -68,7 +68,7 @@ router.get('/definitions', requireRole('admin', 'creator', 'director', 'art_dire
         res.json({ success: true, catalogs: result });
     } catch (err) {
         log.error('GET /definitions error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -89,7 +89,7 @@ router.post('/definitions', requireRole('admin', 'creator', 'director'), async (
     } catch (err) {
         if (err.code === '23505') return res.status(409).json({ error: 'Каталог з таким id вже існує' });
         log.error('POST /definitions error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -103,7 +103,7 @@ router.post('/definitions/:id/subcategories', requireRole('admin', 'creator', 'd
         );
         res.json({ success: true, subcategory: r.rows[0] });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -130,7 +130,7 @@ router.get('/items', async (req, res) => {
         res.json({ success: true, items: result.rows, total: result.rowCount });
     } catch (err) {
         log.error('GET /items error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -146,7 +146,7 @@ router.get('/items/:id', async (req, res) => {
         if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
         res.json({ success: true, item: r.rows[0] });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -166,7 +166,7 @@ router.post('/items', requireRole('admin', 'creator', 'director', 'art_director'
         res.json({ success: true, item: r.rows[0] });
     } catch (err) {
         log.error('POST /items error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -194,7 +194,7 @@ router.patch('/items/:id', requireRole('admin', 'creator', 'director', 'art_dire
         res.json({ success: true, item: r.rows[0] });
     } catch (err) {
         log.error('PATCH /items/:id error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -206,7 +206,7 @@ router.delete('/items/:id', requireRole('admin', 'creator', 'director', 'art_dir
         );
         res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -219,7 +219,7 @@ router.post('/items/:id/restore', requireRole('admin', 'creator', 'director', 'a
         if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
         res.json({ success: true, item: r.rows[0] });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -269,7 +269,7 @@ router.get('/generate-image/:taskId', async (req, res) => {
                    imageUrl: done ? imgUrl : null,
                    error: state === 'failed' ? (data.failMsg || 'Failed') : null });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -336,7 +336,7 @@ router.post('/batch-generate', requireRole('admin', 'creator', 'director', 'art_
         res.json({ success: true, started: tasks.length, tasks,
                    estimatedCost: `~$${(tasks.length * 0.02).toFixed(2)}` });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -363,7 +363,7 @@ router.post('/apply-image', requireRole('admin', 'creator', 'director', 'art_dir
         res.json({ success: true, done: true, imageUrl: finalUrl });
     } catch (err) {
         log.error('apply-image error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -371,7 +371,7 @@ router.get('/kie-balance', requireRole('admin', 'creator', 'director', 'art_dire
     try {
         const r = await kieRequest('GET', '/api/v1/chat/credit');
         res.json({ success: true, balance: r?.data || 0 });
-    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+    } catch (err) { res.status(500).json({ success: false, error: 'Internal server error' }); }
 });
 
 // ─── Cover image generation (v39.7.0) ───────────────────────
@@ -399,7 +399,7 @@ router.post('/:catalogId/generate-cover', requireRole('admin', 'creator', 'direc
         res.json({ success: true, taskId, status: 'processing' });
     } catch (err) {
         log.error('generate-cover error', err);
-        res.status(502).json({ success: false, error: err.message });
+        res.status(502).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -424,7 +424,7 @@ router.post('/:catalogId/apply-cover', requireRole('admin', 'creator', 'director
         res.json({ success: true, done: true, imageUrl: finalUrl });
     } catch (err) {
         log.error('apply-cover error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -448,7 +448,7 @@ router.post('/items/:id/telegram', requireRole('admin', 'creator', 'director', '
         res.json({ success: true });
     } catch (err) {
         log.error('POST /items/:id/telegram error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -477,7 +477,7 @@ router.post('/suggest-price', requireRole('admin', 'creator', 'director', 'art_d
                    avgExisting: row?.avg ? Math.round(parseFloat(row.avg)) : null,
                    range: row?.avg ? { min: row.min, max: row.max } : null });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -513,7 +513,7 @@ router.post('/publish', requireRole('admin', 'creator', 'director', 'art_directo
     } catch (err) {
         await client.query('ROLLBACK');
         log.error('Publish ROLLBACK', err);
-        return res.status(500).json({ success: false, error: err.message });
+        return res.status(500).json({ success: false, error: 'Internal server error' });
     } finally {
         client.release();
     }
@@ -564,7 +564,7 @@ router.get('/demand-stats', requireRole('admin', 'creator', 'director', 'art_dir
         const result = await pool.query(query, params);
         res.json({ success: true, items: result.rows });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -582,7 +582,7 @@ router.get('/trends-history', async (req, res) => {
             params
         );
         res.json({ success: true, proposals: r.rows });
-    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+    } catch (err) { res.status(500).json({ success: false, error: 'Internal server error' }); }
 });
 
 router.get('/settings/:catalogId', async (req, res) => {
@@ -593,7 +593,7 @@ router.get('/settings/:catalogId', async (req, res) => {
         );
         const r = await pool.query('SELECT * FROM catalog_settings WHERE catalog_id = $1', [req.params.catalogId]);
         res.json({ success: true, settings: r.rows[0] });
-    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+    } catch (err) { res.status(500).json({ success: false, error: 'Internal server error' }); }
 });
 
 router.put('/settings/:catalogId', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
@@ -608,7 +608,7 @@ router.put('/settings/:catalogId', requireRole('admin', 'creator', 'director', '
         await pool.query('INSERT INTO catalog_settings (catalog_id) VALUES ($1) ON CONFLICT DO NOTHING', [req.params.catalogId]);
         await pool.query(`UPDATE catalog_settings SET ${sets.join(', ')} WHERE catalog_id = $${idx}`, vals);
         res.json({ success: true });
-    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+    } catch (err) { res.status(500).json({ success: false, error: 'Internal server error' }); }
 });
 
 router.post('/analyze-trends', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
@@ -649,7 +649,7 @@ router.post('/analyze-trends', requireRole('admin', 'creator', 'director', 'art_
         res.json({ success: true, trends: inserted });
     } catch (err) {
         log.error('POST /analyze-trends error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -663,7 +663,7 @@ router.patch('/trend/:id', requireRole('admin', 'creator', 'director', 'art_dire
             [status, req.user.username, generatedItemId || null, req.params.id]
         );
         res.json({ success: true });
-    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+    } catch (err) { res.status(500).json({ success: false, error: 'Internal server error' }); }
 });
 
 // ═══════════════════════════════════════════════
@@ -698,7 +698,7 @@ router.put('/:id', requireRole('admin', 'creator', 'director'), async (req, res)
         res.json({ success: true, catalog: result.rows[0] });
     } catch (err) {
         log.error('PUT /:id error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -717,7 +717,7 @@ router.delete('/:id', requireRole('admin', 'creator', 'director'), async (req, r
     } catch (err) {
         await client.query('ROLLBACK');
         log.error('DELETE /:id error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     } finally {
         client.release();
     }
@@ -737,7 +737,7 @@ router.get('/:catalogId/pages', async (req, res) => {
         res.json({ success: true, pages: pages.rows });
     } catch (err) {
         log.error('GET /pages error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -762,7 +762,7 @@ router.post('/:catalogId/pages', requireRole('admin', 'creator', 'director', 'ar
         res.json({ success: true, page: r.rows[0] });
     } catch (err) {
         log.error('POST /pages error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -806,7 +806,7 @@ router.put('/:catalogId/pages/:pageNumber', requireRole('admin', 'creator', 'dir
         res.json({ success: true, page: updated });
     } catch (err) {
         log.error('PUT /pages error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -820,7 +820,7 @@ router.delete('/:catalogId/pages/:pageNumber', requireRole('admin', 'creator', '
         res.json({ success: true });
     } catch (err) {
         log.error('DELETE /pages error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -843,7 +843,7 @@ router.post('/:catalogId/reorder', requireRole('admin', 'creator', 'director', '
     } catch (err) {
         await client.query('ROLLBACK');
         log.error('POST /reorder error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     } finally {
         client.release();
     }
@@ -859,7 +859,7 @@ router.post('/:catalogId/public-link', requireRole('admin', 'creator', 'director
         res.json({ success: true, token, url: `/catalog/${catalogId}/${token}` });
     } catch (err) {
         log.error('POST /public-link error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -884,7 +884,7 @@ router.post('/:catalogId/pages/:pageNumber/duplicate', requireRole('admin', 'cre
         res.json({ success: true, page: r.rows[0] });
     } catch (err) {
         log.error('POST /duplicate error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -894,7 +894,7 @@ router.get('/:catalogId/automations', authenticateToken, async (req, res) => {
     try {
         const r = await pool.query('SELECT * FROM catalog_automations WHERE catalog_id=$1 AND is_active=true ORDER BY created_at', [req.params.catalogId]);
         res.json({ success: true, automations: r.rows });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/catalogs/:catalogId/automations
@@ -907,7 +907,7 @@ router.post('/:catalogId/automations', requireRole('admin', 'creator', 'director
             [req.params.catalogId, name, description || null, triggerType || 'manual', assignedRole || 'admin']
         );
         res.json({ success: true, automation: r.rows[0] });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/catalogs/:catalogId/automations/:id/run — create task from automation
@@ -923,7 +923,7 @@ router.post('/:catalogId/automations/:id/run', requireRole('admin', 'creator', '
             [a.name, a.description || `Автозадача з каталогу ${req.params.catalogId}`, a.assigned_role, req.user?.username || 'system']
         );
         res.json({ success: true, taskId: taskR.rows[0].id });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // DELETE /api/catalogs/:catalogId/automations/:id
@@ -931,7 +931,7 @@ router.delete('/:catalogId/automations/:id', requireRole('admin', 'creator', 'di
     try {
         await pool.query('UPDATE catalog_automations SET is_active=false WHERE id=$1 AND catalog_id=$2', [req.params.id, req.params.catalogId]);
         res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── Bulk image generation ──────────────────────────────
@@ -963,7 +963,7 @@ router.post('/:catalogId/bulk-generate-images', requireRole('admin', 'creator', 
             } catch (e) { /* skip failed */ }
         }
         res.json({ success: true, started: tasks.length, total: pages.rowCount, tasks });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── Page version history ──────────────────────────────
@@ -974,7 +974,7 @@ router.get('/:catalogId/pages/:pageNumber/history', authenticateToken, async (re
         if (!page.rowCount) return res.status(404).json({ error: 'Page not found' });
         const h = await pool.query('SELECT * FROM catalog_page_history WHERE catalog_page_id=$1 ORDER BY version DESC LIMIT 20', [page.rows[0].id]);
         res.json({ success: true, history: h.rows });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 module.exports = router;

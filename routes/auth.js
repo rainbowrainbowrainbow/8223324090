@@ -31,23 +31,13 @@ router.post('/login', async (req, res) => {
             [username.trim()]
         );
 
-        if (result.rows.length === 0) {
-            log.warn(`Login failed: user "${username}" not found in DB`);
-            return res.status(401).json({ error: 'Користувача не знайдено' });
-        }
-
+        // v39.9: Unified error message prevents username enumeration
         const user = result.rows[0];
+        const valid = user && user.is_active !== false && await bcrypt.compare(password, user?.password_hash || '').catch(() => false);
 
-        // v20.1.0: Check if user is deactivated
-        if (user.is_active === false) {
-            log.warn(`Login failed: user "${username}" is deactivated`);
-            return res.status(403).json({ error: 'Акаунт деактивовано. Зверніться до адміністратора.' });
-        }
-
-        const valid = await bcrypt.compare(password, user.password_hash);
         if (!valid) {
-            log.warn(`Login failed: wrong password for "${username}"`);
-            return res.status(401).json({ error: 'Невірний пароль' });
+            log.warn(`Login failed for "${username}" (invalid credentials)`);
+            return res.status(401).json({ error: 'Невірний логін або пароль' });
         }
 
         // v38.4.0: Issue access + refresh token pair
@@ -138,7 +128,7 @@ router.get('/profile/:userId', authenticateToken, async (req, res) => {
             achievements: achievements.rows
         });
     } catch (err) {
-        console.error('Get profile by ID error:', err);
+        log.error('Get profile by ID error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

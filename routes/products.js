@@ -214,7 +214,7 @@ router.get('/:id/stock-requirements', async (req, res) => {
         res.json({ success: true, requirements: r.rows });
     } catch (err) {
         log.error('Get stock requirements error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -234,7 +234,7 @@ router.post('/:id/stock-requirements', requireRole('admin', 'manager'), async (r
         res.json({ success: true, requirement: r.rows[0] });
     } catch (err) {
         log.error('Create stock requirement error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -248,7 +248,7 @@ router.delete('/:id/stock-requirements/:stockId', requireRole('admin', 'manager'
         res.json({ success: true });
     } catch (err) {
         log.error('Delete stock requirement error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 

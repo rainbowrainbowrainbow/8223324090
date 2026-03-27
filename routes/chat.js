@@ -1875,7 +1875,7 @@ router.post('/slash', async (req, res) => {
         res.json({ success: true, reply, command: cmd, args: args || '' });
     } catch (err) {
         log.error('[Slash] Error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -1921,7 +1921,7 @@ router.post('/booking-channel', async (req, res) => {
         res.json({ success: true, channel, isNew: true });
     } catch (err) {
         log.error('[BookingChannel] Error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -1935,7 +1935,7 @@ router.get('/booking-channel/:bookingId', async (req, res) => {
         );
         res.json({ success: true, channel: r.rows[0] || null });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -1964,7 +1964,7 @@ router.patch('/users/me/status', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         log.error('[UserStatus] Error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -2025,7 +2025,7 @@ router.post('/messages/:id/remind', async (req, res) => {
         res.json({ success: true, taskId, remindAt });
     } catch (err) {
         log.error('[Remind] Error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -2060,7 +2060,7 @@ router.patch('/messages/:id/important', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         log.error('[Important] Error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -2099,7 +2099,7 @@ router.post('/room-channels/init', async (req, res) => {
         res.json({ success: true, channels: created });
     } catch (err) {
         log.error('[RoomChannels] Init error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -2142,7 +2142,7 @@ router.get('/room-channels/:lineId/history', async (req, res) => {
         res.json({ success: true, history: all, lineId });
     } catch (err) {
         log.error('[RoomChannels] History error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -2160,7 +2160,7 @@ router.get('/preferences', async (req, res) => {
             prefs = await pool.query('INSERT INTO chat_user_preferences (user_id) VALUES ($1) RETURNING *', [userId]);
         }
         res.json({ success: true, preferences: prefs.rows[0] });
-    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+    } catch (err) { res.status(500).json({ success: false, error: 'Internal server error' }); }
 });
 
 // PATCH /api/chat/preferences
@@ -2182,7 +2182,7 @@ router.patch('/preferences', async (req, res) => {
         await pool.query('INSERT INTO chat_user_preferences (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [userId]);
         await pool.query(`UPDATE chat_user_preferences SET ${sets.join(', ')} WHERE user_id = $${idx}`, vals);
         res.json({ success: true });
-    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+    } catch (err) { res.status(500).json({ success: false, error: 'Internal server error' }); }
 });
 
 // ==========================================
@@ -2222,7 +2222,7 @@ router.post('/messages/:id/super-reaction', async (req, res) => {
         res.json({ success: true, coinsSpent: COST });
     } catch (err) {
         log.error('[SuperReaction] Error', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 

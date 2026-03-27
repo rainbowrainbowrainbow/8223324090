@@ -193,7 +193,7 @@ router.get('/pinata-status', async (req, res) => {
         });
     } catch (err) {
         log.error('GET /pinata-status', err);
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -202,7 +202,7 @@ router.get('/pinata-designs', async (req, res) => {
     try {
         const r = await pool.query('SELECT * FROM pinata_designs WHERE is_active = true ORDER BY name');
         res.json({ success: true, designs: r.rows });
-    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+    } catch (err) { res.status(500).json({ success: false, error: 'Internal server error' }); }
 });
 
 // POST /api/warehouse/pinata-designs
@@ -215,7 +215,7 @@ router.post('/pinata-designs', requireRole('admin', 'manager'), async (req, res)
             [name.trim(), printsQty || 0, imageUrl || null]
         );
         res.json({ success: true, design: r.rows[0] });
-    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+    } catch (err) { res.status(500).json({ success: false, error: 'Internal server error' }); }
 });
 
 // PATCH /api/warehouse/pinata-designs/:id
@@ -234,7 +234,7 @@ router.patch('/pinata-designs/:id', requireRole('admin', 'manager'), async (req,
         );
         if (!r.rowCount) return res.status(404).json({ error: 'Not found' });
         res.json({ success: true, design: r.rows[0] });
-    } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+    } catch (err) { res.status(500).json({ success: false, error: 'Internal server error' }); }
 });
 
 // GET /api/warehouse/categories — List unique categories

@@ -143,7 +143,7 @@ router.post('/sync', async (req, res) => {
         res.json({ ok: true, id });
     } catch (err) {
         log.error('POST /personal-accounts/sync', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -184,7 +184,7 @@ router.get('/my', optionalJwt, async (req, res) => {
         res.json({ accounts: r.rows });
     } catch (err) {
         log.error('GET /personal-accounts/my', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -210,7 +210,7 @@ router.post('/:id/grant', optionalJwt, async (req, res) => {
         res.json({ ok: true });
     } catch (err) {
         log.error('POST /personal-accounts/:id/grant', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -231,7 +231,7 @@ router.delete('/:id/access/:tg_id', optionalJwt, async (req, res) => {
         res.json({ ok: true });
     } catch (err) {
         log.error('DELETE /personal-accounts/:id/access/:tg_id', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -269,7 +269,7 @@ router.post('/:id/transactions', optionalJwt, async (req, res) => {
         res.json({ ok: true, id: r.rows[0].id });
     } catch (err) {
         log.error('POST /personal-accounts/:id/transactions', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -298,7 +298,7 @@ router.get('/:id/transactions', optionalJwt, async (req, res) => {
         res.json({ transactions: r.rows });
     } catch (err) {
         log.error('GET /personal-accounts/:id/transactions', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 

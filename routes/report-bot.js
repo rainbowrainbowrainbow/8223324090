@@ -230,7 +230,7 @@ router.post('/submit', requireBotApiKey, async (req, res) => {
         });
     } catch (err) {
         log.error('POST /report-bot/submit error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -298,7 +298,7 @@ router.get('/summary', requireBotApiKey, async (req, res) => {
         });
     } catch (err) {
         log.error('GET /report-bot/summary error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -341,7 +341,7 @@ router.get('/submissions', requireBotApiKey, async (req, res) => {
         res.json({ submissions: result.rows, count: result.rowCount });
     } catch (err) {
         log.error('GET /report-bot/submissions error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 

@@ -47,7 +47,7 @@ router.get('/announcements', async (req, res) => {
             `SELECT * FROM announcements ${where} ORDER BY priority DESC, created_at DESC LIMIT 200`, params
         );
         res.json({ success: true, announcements: r.rows, total: r.rows.length });
-    } catch (err) { log.error('List announcements', err); res.status(500).json({ error: err.message }); }
+    } catch (err) { log.error('List announcements', err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/announcements', async (req, res) => {
@@ -63,7 +63,7 @@ router.post('/announcements', async (req, res) => {
              zone_id || null, initStatus, req.user?.username || 'system']
         );
         res.json({ success: true, announcement: r.rows[0] });
-    } catch (err) { log.error('Create announcement', err); res.status(500).json({ error: err.message }); }
+    } catch (err) { log.error('Create announcement', err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.put('/announcements/:id', async (req, res) => {
@@ -78,7 +78,7 @@ router.put('/announcements/:id', async (req, res) => {
         );
         if (!r.rowCount) return res.status(404).json({ error: 'Не знайдено' });
         res.json({ success: true, announcement: r.rows[0] });
-    } catch (err) { log.error('Update announcement', err); res.status(500).json({ error: err.message }); }
+    } catch (err) { log.error('Update announcement', err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.delete('/announcements/:id', async (req, res) => {
@@ -89,14 +89,14 @@ router.delete('/announcements/:id', async (req, res) => {
         );
         if (!r.rowCount) return res.status(404).json({ error: 'Не знайдено' });
         res.json({ success: true });
-    } catch (err) { log.error('Delete announcement', err); res.status(500).json({ error: err.message }); }
+    } catch (err) { log.error('Delete announcement', err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/announcements/:id/restore', async (req, res) => {
     try {
         await pool.query('UPDATE announcements SET deleted_at=NULL, status=\'draft\' WHERE id=$1', [req.params.id]);
         res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ============================================
@@ -127,7 +127,7 @@ router.post('/announcements/:id/play', async (req, res) => {
         );
 
         res.json({ success: delivery.success, delivery, announcement: { id: ann.id, title: ann.title } });
-    } catch (err) { log.error('Play announcement', err); res.status(500).json({ error: err.message }); }
+    } catch (err) { log.error('Play announcement', err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/announcements/:id/play-in', async (req, res) => {
@@ -142,7 +142,7 @@ router.post('/announcements/:id/play-in', async (req, res) => {
         );
         if (!r.rowCount) return res.status(404).json({ error: 'Не знайдено' });
         res.json({ success: true, scheduledAt, message: `Заплановано через ${mins} хв` });
-    } catch (err) { log.error('Play-in', err); res.status(500).json({ error: err.message }); }
+    } catch (err) { log.error('Play-in', err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ============================================
@@ -153,7 +153,7 @@ router.get('/playlists', async (req, res) => {
     try {
         const r = await pool.query('SELECT * FROM playlists ORDER BY category, name LIMIT 500');
         res.json({ success: true, playlists: r.rows });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/playlists', async (req, res) => {
@@ -167,7 +167,7 @@ router.post('/playlists', async (req, res) => {
              schedule_start || null, schedule_end || null]
         );
         res.json({ success: true, playlist: r.rows[0] });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.put('/playlists/:id', async (req, res) => {
@@ -181,14 +181,14 @@ router.put('/playlists/:id', async (req, res) => {
         );
         if (!r.rowCount) return res.status(404).json({ error: 'Не знайдено' });
         res.json({ success: true, playlist: r.rows[0] });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.delete('/playlists/:id', async (req, res) => {
     try {
         await pool.query('DELETE FROM playlists WHERE id=$1', [req.params.id]);
         res.json({ success: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ============================================
@@ -209,7 +209,7 @@ router.get('/now-playing', async (req, res) => {
              ORDER BY scheduled_at ASC LIMIT 5`
         );
         res.json({ success: true, lastPlayed: r.rows[0] || null, upcoming: scheduled.rows });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.get('/overview', async (req, res) => {
@@ -225,7 +225,7 @@ router.get('/overview', async (req, res) => {
             pool.query(`SELECT COUNT(*)::int AS plays_today FROM music_log WHERE action='play' AND created_at>CURRENT_DATE`)
         ]);
         res.json({ success: true, announcements: ann.rows[0], playlists: pl.rows[0], today: today.rows[0] });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.get('/log', async (req, res) => {
@@ -258,7 +258,7 @@ router.get('/log', async (req, res) => {
              ORDER BY ml.created_at DESC LIMIT $${idx}`, params
         );
         res.json({ success: true, log: r.rows });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ============================================
@@ -299,7 +299,7 @@ router.post('/announcements/:id/generate-tts', requireRole('admin', 'director', 
         res.json({ ok: true, taskId: kieRes.taskId, status: 'generating' });
     } catch (err) {
         log.error('POST /generate-tts error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -315,7 +315,7 @@ router.get('/library', async (req, res) => {
             : 'SELECT * FROM sounds ORDER BY created_at DESC LIMIT 500';
         const r = await pool.query(q, category ? [category] : []);
         res.json({ sounds: r.rows });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/library/upload', uploadSound.single('file'), async (req, res) => {
@@ -329,7 +329,7 @@ router.post('/library/upload', uploadSound.single('file'), async (req, res) => {
              req.file.size, req.user?.username || null]
         );
         res.json({ ok: true, id: r.rows[0].id, filename: req.file.filename });
-    } catch (err) { log.error('Upload sound error', err); res.status(500).json({ error: err.message }); }
+    } catch (err) { log.error('Upload sound error', err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.delete('/library/:id', requireRole('admin', 'director'), async (req, res) => {
@@ -342,7 +342,7 @@ router.delete('/library/:id', requireRole('admin', 'director'), async (req, res)
         }
         await pool.query('DELETE FROM sounds WHERE id=$1', [req.params.id]);
         res.json({ ok: true });
-    } catch (err) { log.error('Delete sound error', err); res.status(500).json({ error: err.message }); }
+    } catch (err) { log.error('Delete sound error', err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ============================================
@@ -360,7 +360,7 @@ router.get('/projects', async (req, res) => {
             result.push({ ...p, tracks: tracks.rows });
         }
         res.json({ projects: result });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.post('/projects', async (req, res) => {
@@ -371,7 +371,7 @@ router.post('/projects', async (req, res) => {
             'INSERT INTO sound_projects (name, type, description) VALUES ($1,$2,$3) RETURNING *',
             [name.trim(), type, description || null]);
         res.json({ ok: true, project: r.rows[0] });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.delete('/projects/:id', requireRole('admin', 'director'), async (req, res) => {
@@ -379,7 +379,7 @@ router.delete('/projects/:id', requireRole('admin', 'director'), async (req, res
         const r = await pool.query('DELETE FROM sound_projects WHERE id=$1 RETURNING id', [req.params.id]);
         if (!r.rowCount) return res.status(404).json({ error: 'Не знайдено' });
         res.json({ ok: true });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ============================================
@@ -431,7 +431,7 @@ router.post('/library/generate-tts', requireRole('admin', 'creator', 'director',
         res.status(502).json({ error: 'TTS не вдалось', detail: kieRes });
     } catch (err) {
         log.error('generate-tts error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -466,7 +466,7 @@ router.post('/library/generate-music', requireRole('admin', 'creator', 'director
         res.json({ success: true, taskId, status: 'generating', name: name || `Music: ${prompt.substring(0, 50)}` });
     } catch (err) {
         log.error('generate-music error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -492,7 +492,7 @@ router.get('/library/generate-status/:taskId', async (req, res) => {
             else if (result?.url) audioUrl = result.url;
         }
         res.json({ success: true, state, done: state === 'success' && !!audioUrl, audioUrl, error: state === 'failed' ? 'Генерація не вдалась' : null });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // v39.8: Apply generated audio — save to Supabase + DB
@@ -513,7 +513,7 @@ router.post('/library/apply-generated', requireRole('admin', 'creator', 'directo
             [JSON.stringify({ sound_id: r.rows[0].id, provider: provider || 'ai', source: audioUrl.substring(0, 100) })]);
 
         res.json({ success: true, id: r.rows[0].id, url: finalUrl });
-    } catch (err) { log.error('apply-generated error', err); res.status(500).json({ error: err.message }); }
+    } catch (err) { log.error('apply-generated error', err); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 module.exports = router;

@@ -8,6 +8,7 @@ const { requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Graduation');
+function _escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 function mapServiceRow(row) {
     return {
@@ -597,8 +598,8 @@ h1{font-size:28px;color:#C9A84C;text-align:center;margin-bottom:8px}
 <h2>Програма свята</h2>
 ${serviceDetails.map(s => `
 <div class="service-item">
-<h3>${s.name} <span>${s.duration_min ? s.duration_min + ' хв' : ''}</span></h3>
-<p>${s.description || ''}</p>
+<h3>${_escH(s.name)} <span>${s.duration_min ? s.duration_min + ' хв' : ''}</span></h3>
+<p>${_escH(s.description) || ''}</p>
 </div>`).join('')}
 </div>
 

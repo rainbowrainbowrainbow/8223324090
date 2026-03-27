@@ -440,7 +440,7 @@ router.post('/:id/telegram', async (req, res) => {
             return res.status(400).json({ error: 'Telegram чат не налаштовано' });
         }
 
-        const photoBuffer = fs.readFileSync(filePath);
+        const photoBuffer = await fs.promises.readFile(filePath);
         const finalCaption = caption || design.title || design.original_name;
 
         await sendTelegramPhoto(chatId, photoBuffer, `🎨 ${finalCaption}`);

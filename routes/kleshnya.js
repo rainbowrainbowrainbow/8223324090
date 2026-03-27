@@ -646,7 +646,7 @@ router.post('/generate-image', authenticateToken, async (req, res) => {
         res.json({ taskId: task.data?.taskId || null, status: 'processing', eventId, type });
     } catch (err) {
         log.error('generate-image error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -662,7 +662,7 @@ router.get('/generate-image/:taskId', authenticateToken, async (req, res) => {
         res.json(data.data || data);
     } catch (err) {
         log.error('generate-image poll error', err);
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 

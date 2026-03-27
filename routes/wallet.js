@@ -13,15 +13,24 @@ router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
     try {
         let wallet = await pool.query('SELECT * FROM game_wallets WHERE user_id = $1', [req.user.id]);
         if (wallet.rows.length === 0) {
-            // Auto-create wallet with starter bonus (500 coins)
-            await pool.query(
-                'INSERT INTO game_wallets (user_id, coins, total_earned) VALUES ($1, 500, 500) ON CONFLICT (user_id) DO NOTHING',
-                [req.user.id]
-            );
-            await pool.query(
-                'INSERT INTO coin_transactions (user_id, amount, type, description) VALUES ($1, 500, $2, $3)',
-                [req.user.id, 'starter_bonus', 'Стартовий бонус']
-            );
+            // v39.9: Wrap in transaction to prevent duplicate starter bonus race condition
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                await client.query(
+                    'INSERT INTO game_wallets (user_id, coins, total_earned) VALUES ($1, 500, 500) ON CONFLICT (user_id) DO NOTHING',
+                    [req.user.id]
+                );
+                // Only insert bonus if wallet was actually created (not already exists)
+                const created = await client.query('SELECT coins FROM game_wallets WHERE user_id = $1 AND coins = 500 AND total_earned = 500', [req.user.id]);
+                if (created.rows.length > 0) {
+                    await client.query(
+                        'INSERT INTO coin_transactions (user_id, amount, type, description) VALUES ($1, 500, $2, $3)',
+                        [req.user.id, 'starter_bonus', 'Стартовий бонус']
+                    );
+                }
+                await client.query('COMMIT');
+            } catch (e) { await client.query('ROLLBACK').catch(() => {}); } finally { client.release(); }
             wallet = await pool.query('SELECT * FROM game_wallets WHERE user_id = $1', [req.user.id]);
         }
         const w = wallet.rows[0];

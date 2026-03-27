@@ -88,38 +88,34 @@ router.get('/:date', async (req, res) => {
 
 // Create booking — requires create_booking action permission
 router.post('/', requireAction('create_booking'), async (req, res) => {
+    // v39.9: Validate BEFORE pool.connect() to prevent connection leaks on early returns
+    const b = req.body;
+    if (!b.date || !b.time || !b.lineId) {
+        return res.status(400).json({ error: 'Missing required fields: date, time, lineId' });
+    }
+    if (!validateDate(b.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
+    if (!validateTime(b.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
+    if (b.notes && b.notes.length > 2000) { return res.status(400).json({ error: 'Нотатки: макс. 2000 символів' }); }
+    if (b.label && b.label.length > 200) { return res.status(400).json({ error: 'Назва: макс. 200 символів' }); }
+    if (b.room && b.room.length > 100) { return res.status(400).json({ error: 'Кімната: макс. 100 символів' }); }
+    if (b.groupName && b.groupName.length > 200) { return res.status(400).json({ error: 'Група: макс. 200 символів' }); }
+    const dur = parseInt(b.duration) || 0;
+    if (dur < 0 || dur > 1440) { return res.status(400).json({ error: 'Тривалість: 0-1440 хвилин' }); }
+    if (b.time && dur > 0) {
+        const [_hh, _mm] = b.time.split(':').map(Number);
+        if (_hh * 60 + _mm + dur > 1440) {
+            return res.status(400).json({ error: `Бронювання не може перевищувати опівніч. Макс: ${1440 - _hh * 60 - _mm} хв` });
+        }
+    }
+    if (!b.linkedTo) {
+        const bookingDateTime = new Date(`${b.date}T${b.time}:00`);
+        if (bookingDateTime < new Date()) {
+            return res.status(400).json({ success: false, error: 'Неможливо створити бронювання в минулому.' });
+        }
+    }
+
     const client = await pool.connect();
     try {
-        const b = req.body;
-        if (!b.date || !b.time || !b.lineId) {
-            return res.status(400).json({ error: 'Missing required fields: date, time, lineId' });
-        }
-        if (!validateDate(b.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
-        if (!validateTime(b.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
-
-        // v19.14: Input length validation
-        if (b.notes && b.notes.length > 2000) { return res.status(400).json({ error: 'Нотатки: макс. 2000 символів' }); }
-        if (b.label && b.label.length > 200) { return res.status(400).json({ error: 'Назва: макс. 200 символів' }); }
-        if (b.room && b.room.length > 100) { return res.status(400).json({ error: 'Кімната: макс. 100 символів' }); }
-        if (b.groupName && b.groupName.length > 200) { return res.status(400).json({ error: 'Група: макс. 200 символів' }); }
-        const dur = parseInt(b.duration) || 0;
-        if (dur < 0 || dur > 1440) { return res.status(400).json({ error: 'Тривалість: 0-1440 хвилин' }); }
-        // v38.5.0: Prevent bookings spanning midnight
-        if (b.time && dur > 0) {
-            const [_hh, _mm] = b.time.split(':').map(Number);
-            if (_hh * 60 + _mm + dur > 1440) {
-                return res.status(400).json({ error: `Бронювання не може перевищувати опівніч. Макс: ${1440 - _hh * 60 - _mm} хв` });
-            }
-        }
-
-        // [FIX] Заборона бронювання в минулому
-        if (!b.linkedTo) {
-            const bookingDateTime = new Date(`${b.date}T${b.time}:00`);
-            if (bookingDateTime < new Date()) {
-                return res.status(400).json({ success: false, error: 'Неможливо створити бронювання в минулому. Оберіть майбутню дату та час.' });
-            }
-        }
-
         await client.query('BEGIN');
 
         if (!b.linkedTo) {
@@ -642,9 +638,17 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
             }
         }
 
+        // v39.9: Restore certificate INSIDE transaction (was fire-and-forget, could lose certs)
+        if (booking.certificate_id) {
+            try {
+                await client.query("UPDATE certificates SET status = 'active', used_at = NULL WHERE id = $1 AND status = 'used'", [booking.certificate_id]);
+                log.info(`[CertRestore] Certificate ${booking.certificate_id} restored in transaction`);
+            } catch (e) { log.warn('[CertRestore] Error:', e.message); }
+        }
+
         await client.query('COMMIT');
 
-        // v33.8.0: Restore stock and certificate on cancel (fire-and-forget)
+        // v33.8.0: Restore stock on cancel (fire-and-forget — non-critical)
         if (booking.program_id) {
             setImmediate(async () => {
                 try {
@@ -663,14 +667,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
                 } catch (e) { log.warn('[StockRestore] Error:', e.message); }
             });
         }
-        if (booking.certificate_id) {
-            setImmediate(async () => {
-                try {
-                    await pool.query("UPDATE certificates SET status = 'active', used_at = NULL WHERE id = $1 AND status = 'used'", [booking.certificate_id]);
-                    log.info(`[CertRestore] Certificate ${booking.certificate_id} restored for cancelled booking ${id}`);
-                } catch (e) { log.warn('[CertRestore] Error:', e.message); }
-            });
-        }
+        // v39.9: Certificate restore moved inside transaction (above)
 
         getLineName(booking.line_id, booking.date).then(lineName =>
             notifyTelegram('delete', booking, { username: req.user?.username, lineName }))

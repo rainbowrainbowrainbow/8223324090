@@ -235,6 +235,8 @@ const Sidebar = (() => {
 
     // ═══ ACCESS CHECK ══════════════════════════════════════════════
     function hasAccess(item, role) {
+        // v39.10: Creator always sees everything
+        if (role === 'creator') return true;
         const access = SIDEBAR_ACCESS[item.access];
         if (access === true) return true;
         if (!access) return false;

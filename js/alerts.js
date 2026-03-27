@@ -8,6 +8,11 @@ let _alertsData = [];
 
 // ─── Self-inject bell + panel ───────────────────
 function _ensureAlertElements() {
+    // Fix legacy panels with wrong class
+    const existingPanel = document.getElementById('alertsPanel');
+    if (existingPanel && !existingPanel.classList.contains('alerts-panel-v4')) {
+        existingPanel.className = 'alerts-panel-v4';
+    }
     if (document.getElementById('alertBell')) return;
     const header = document.querySelector('.header-actions, .page-header .user-panel, .top-bar, header')
         || document.querySelector('[id$="Header"] .user-panel, .page-header');

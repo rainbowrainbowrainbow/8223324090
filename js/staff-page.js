@@ -900,26 +900,30 @@ function renderLinkUsersList(searchTerm) {
 async function confirmLinkAccount() {
     if (!StaffState.linkingStaffId || !StaffState.selectedUserId) return;
 
-    const token = localStorage.getItem('pzp_token');
-    const res = await fetch(`/api/staff/${StaffState.linkingStaffId}/link`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: StaffState.selectedUserId })
-    });
-    const data = await res.json();
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch(`/api/staff/${StaffState.linkingStaffId}/link`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: StaffState.selectedUserId })
+        });
+        const data = await res.json();
 
-    if (data.warning) {
-        if (!await confirmModal(data.error + '\n\nПродовжити?', { type: 'warning', okText: 'Так' })) return;
-    }
+        if (data.warning) {
+            if (!await confirmModal(data.error + '\n\nПродовжити?', { type: 'warning', okText: 'Так' })) return;
+        }
 
-    if (data.success) {
-        showNotification('Акаунт зв\'язано');
-        closeLinkModal();
-        await fetchLinkStatus();
-        renderLinkStatsBar();
-        renderSchedule();
-    } else if (!data.warning) {
-        showNotification(data.error || 'Помилка зв\'язування', 'error');
+        if (data.success) {
+            showNotification('Акаунт зв\'язано');
+            closeLinkModal();
+            await fetchLinkStatus();
+            renderLinkStatsBar();
+            renderSchedule();
+        } else if (!data.warning) {
+            showNotification(data.error || 'Помилка зв\'язування', 'error');
+        }
+    } catch (err) {
+        showNotification('Помилка мережі', 'error');
     }
 }
 
@@ -934,21 +938,25 @@ async function handleBulkCreate() {
     if (!await confirmModal(`Створити акаунти для ${unlinked} працівників без акаунтів?\n\nБуде згенеровано логіни та паролі.`, { type: 'warning', okText: 'Створити' })) return;
 
     showNotification('Створюємо акаунти...');
-    const token = localStorage.getItem('pzp_token');
-    const res = await fetch('/api/staff/bulk-create-accounts', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
-    });
-    const data = await res.json();
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch('/api/staff/bulk-create-accounts', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
 
-    if (data.success) {
-        StaffState.bulkResults = data;
-        showBulkResults(data);
-        await fetchLinkStatus();
-        renderLinkStatsBar();
-        renderSchedule();
-    } else {
-        showNotification(data.error || 'Помилка створення', 'error');
+        if (data.success) {
+            StaffState.bulkResults = data;
+            showBulkResults(data);
+            await fetchLinkStatus();
+            renderLinkStatsBar();
+            renderSchedule();
+        } else {
+            showNotification(data.error || 'Помилка створення', 'error');
+        }
+    } catch (err) {
+        showNotification('Помилка мережі', 'error');
     }
 }
 

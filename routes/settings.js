@@ -8,11 +8,35 @@ const { createLogger } = require('../utils/logger');
 const { logAdminAction } = require('../services/adminAudit');
 const { settingsCache } = require('../services/cache');
 
-const { requireRole, requireMinRole, authenticateToken } = require('../middleware/auth'); 
+const { requireRole, requireMinRole, authenticateToken } = require('../middleware/auth');
 const log = createLogger('Settings');
 
-// Stats
-// v39.8: Security — require authentication
+// v39.8: Move version + health BEFORE auth (must be public)
+// Duplicates removed from below auth wall
+
+router.get('/version', (req, res) => {
+    const pkg = require('../package.json');
+    res.json({ version: pkg.version, name: 'Event Genix', testMode: process.env.TEST_MODE === 'true' });
+});
+
+router.get('/health', async (req, res) => {
+    const pkg = require('../package.json');
+    const checks = { version: pkg.version, database: 'unknown', uptime: process.uptime(), timestamp: new Date().toISOString() };
+    const mem = process.memoryUsage();
+    checks.memory = { rss: Math.round(mem.rss / 1024 / 1024) + 'MB', heap: Math.round(mem.heapUsed / 1024 / 1024) + '/' + Math.round(mem.heapTotal / 1024 / 1024) + 'MB' };
+    try {
+        const start = Date.now();
+        await pool.query('SELECT 1');
+        checks.database = 'connected';
+        checks.dbLatency = (Date.now() - start) + 'ms';
+        checks.pool = { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount };
+    } catch (err) { checks.database = 'error: ' + err.message; }
+    try { const uc = await pool.query('SELECT COUNT(*)::int as c FROM users'); checks.userCount = uc.rows[0].c; } catch {}
+    checks.status = checks.database === 'connected' ? 'ok' : 'degraded';
+    res.json(checks);
+});
+
+// v39.8: Security — require authentication for remaining endpoints
 router.use(authenticateToken);
 router.get('/stats/:dateFrom/:dateTo', async (req, res) => {
     try {
@@ -126,53 +150,9 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
     }
 });
 
-// v20.13: Version endpoint — returns package.json version
-// v29.1.0: Added testMode flag
-router.get('/version', (req, res) => {
-    const pkg = require('../package.json');
-    res.json({
-        version: pkg.version,
-        name: 'Event Genix',
-        testMode: process.env.TEST_MODE === 'true'
-    });
-});
+// v39.8: /version and /health moved before auth middleware (see above)
 
-// Health check — v19.17: deep health check with DB pool, memory, uptime
-router.get('/health', async (req, res) => {
-    const pkg = require('../package.json');
-    const checks = { version: pkg.version, database: 'unknown', uptime: process.uptime(), timestamp: new Date().toISOString() };
-    const mem = process.memoryUsage();
-    checks.memory = {
-        rss: Math.round(mem.rss / 1024 / 1024) + 'MB',
-        heap: Math.round(mem.heapUsed / 1024 / 1024) + '/' + Math.round(mem.heapTotal / 1024 / 1024) + 'MB'
-    };
-
-    try {
-        const start = Date.now();
-        await pool.query('SELECT 1');
-        checks.database = 'connected';
-        checks.dbLatency = (Date.now() - start) + 'ms';
-        // Pool stats
-        checks.pool = { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount };
-    } catch (err) {
-        checks.database = 'error: ' + err.message;
-    }
-
-    let userCount = 0;
-    try {
-        const uc = await pool.query('SELECT COUNT(*)::int as c FROM users');
-        userCount = uc.rows[0].c;
-    } catch { /* ignore */ }
-    checks.userCount = userCount;
-
-    // Memory warning — use absolute heap limit (512MB) instead of percentage
-    // because Node.js heapTotal grows dynamically and heapUsed/heapTotal ratio
-    // is unreliable (often 85-95% even under normal load)
-    const heapUsedMB = Math.round(mem.heapUsed / 1024 / 1024);
-    checks.status = checks.database === 'connected' && heapUsedMB < 512 ? 'ok' : 'degraded';
-
-    res.status(checks.status === 'ok' ? 200 : 503).json(checks);
-});
+// v39.8: /health moved before auth middleware (see above)
 
 // v8.3: Automation rules CRUD
 router.get('/automation-rules', async (req, res) => {

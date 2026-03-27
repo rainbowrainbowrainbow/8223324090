@@ -503,7 +503,7 @@ function renderTaskCard(t) {
     const ownerHtml = (t.owner && t.owner !== t.assigned_to) ? `<span class="task-card-owner">${escapeHtml(t.owner)}</span>` : '';
 
     return `
-    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''}" data-task-id="${t.id}">
+    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''}" data-task-id="${t.id}" onclick="openTaskDetail(${t.id})" style="cursor:pointer">
         <label class="task-checkbox-wrap" onclick="event.stopPropagation()">
             <input type="checkbox" class="task-bulk-cb" data-id="${t.id}" onchange="updateBulkSelection()">
         </label>
@@ -712,5 +712,81 @@ window.clearBulkSelection = clearBulkSelection;
 // ==========================================
 // START
 // ==========================================
+
+// Open task detail modal (from alerts deep-link or card click)
+async function openTaskDetail(taskId) {
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch(`/api/tasks/${taskId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) { showNotification('Задачу не знайдено', 'error'); return; }
+        const task = await res.json();
+        const t = task.data || task;
+        if (!t || !t.id) { showNotification('Задачу не знайдено', 'error'); return; }
+
+        const STATUS_LABELS = { todo: 'До виконання', in_progress: 'В роботі', done: 'Виконано', cancelled: 'Скасовано' };
+        const PRIORITY_LABELS = { low: 'Низький', normal: 'Звичайний', high: 'Високий' };
+        const statusColor = t.status === 'done' ? '#10B981' : t.status === 'in_progress' ? '#3B82F6' : t.status === 'cancelled' ? '#94A3B8' : '#F59E0B';
+        const prioColor = t.priority === 'high' ? '#EF4444' : t.priority === 'low' ? '#94A3B8' : '#6B7280';
+        const deadlineStr = t.deadline ? new Date(t.deadline).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+        const isOverdue = t.deadline && new Date(t.deadline) < new Date() && t.status !== 'done' && t.status !== 'cancelled';
+
+        let overlay = document.getElementById('taskDetailOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'taskDetailOverlay';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)';
+            document.body.appendChild(overlay);
+        }
+        overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+        overlay.innerHTML = `<div style="background:var(--white,#fff);border-radius:16px;max-width:520px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+            <div style="padding:20px 24px;border-bottom:1px solid var(--gray-100,#f3f4f6);display:flex;align-items:center;gap:12px">
+                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${statusColor}"></span>
+                <h3 style="margin:0;font-size:18px;font-weight:800;flex:1">${escapeHtml(t.title)}</h3>
+                <button onclick="document.getElementById('taskDetailOverlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--gray-400);padding:4px">✕</button>
+            </div>
+            <div style="padding:20px 24px">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+                    <span style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:${statusColor}22;color:${statusColor}">${STATUS_LABELS[t.status] || t.status}</span>
+                    <span style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:${prioColor}22;color:${prioColor}">${PRIORITY_LABELS[t.priority] || t.priority}</span>
+                    ${t.category ? `<span style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:var(--gray-100);color:var(--gray-600)">${escapeHtml(t.category)}</span>` : ''}
+                </div>
+                ${t.description ? `<div style="font-size:14px;line-height:1.6;color:var(--gray-600);margin-bottom:16px;white-space:pre-wrap">${escapeHtml(t.description)}</div>` : ''}
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
+                    <div><span style="color:var(--gray-400)">Дедлайн:</span> <span style="font-weight:700;${isOverdue ? 'color:#EF4444' : ''}">${deadlineStr}${isOverdue ? ' ⚠️' : ''}</span></div>
+                    <div><span style="color:var(--gray-400)">Призначено:</span> <span style="font-weight:700">${escapeHtml(t.assigned_to || '—')}</span></div>
+                    <div><span style="color:var(--gray-400)">Автор:</span> <span style="font-weight:700">${escapeHtml(t.created_by || '—')}</span></div>
+                    <div><span style="color:var(--gray-400)">Створено:</span> <span>${t.created_at ? new Date(t.created_at).toLocaleDateString('uk-UA') : '—'}</span></div>
+                </div>
+            </div>
+            <div style="padding:12px 24px;border-top:1px solid var(--gray-100);display:flex;gap:8px">
+                ${t.status !== 'done' ? `<button onclick="quickChangeStatus(${t.id},'${t.status === 'todo' ? 'in_progress' : 'done'}')" style="flex:1;padding:10px;border:none;border-radius:10px;background:#10B981;color:#fff;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">${t.status === 'todo' ? '▶ Почати' : '✅ Завершити'}</button>` : ''}
+                ${t.status === 'done' ? `<button onclick="quickChangeStatus(${t.id},'todo')" style="flex:1;padding:10px;border:none;border-radius:10px;background:var(--gray-100);color:var(--gray-600);font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">↩ Повернути</button>` : ''}
+                <button onclick="document.getElementById('taskDetailOverlay').remove()" style="flex:1;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:none;cursor:pointer;font-family:inherit;font-size:13px">Закрити</button>
+            </div>
+        </div>`;
+
+        // Highlight card in list
+        document.querySelectorAll('.task-card').forEach(c => c.style.outline = '');
+        const card = document.querySelector(`.task-card[data-task-id="${taskId}"]`);
+        if (card) { card.style.outline = '2px solid #10B981'; card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    } catch (err) { showNotification('Помилка: ' + err.message, 'error'); }
+}
+window.openTaskDetail = openTaskDetail;
+
+async function quickChangeStatus(taskId, newStatus) {
+    try {
+        const token = localStorage.getItem('pzp_token');
+        await fetch(`/api/tasks/${taskId}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ status: newStatus })
+        });
+        document.getElementById('taskDetailOverlay')?.remove();
+        showNotification('Статус змінено');
+        if (typeof loadTasks === 'function') loadTasks();
+    } catch { showNotification('Помилка', 'error'); }
+}
+window.quickChangeStatus = quickChangeStatus;
 
 document.addEventListener('DOMContentLoaded', initPage);

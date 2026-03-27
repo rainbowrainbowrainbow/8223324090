@@ -544,27 +544,30 @@ router.get('/alerts', async (req, res) => {
         const alerts = [];
         overdue.rows.forEach(t => {
             alerts.push({ id: `overdue_${t.id}`, level: 'warning', icon: '⚠️',
-                title: `Прострочена: "${(t.title || '').slice(0, 40)}"`, link: '/tasks',
-                action: { label: '📋 Задача', prompt: `Задача прострочена: "${t.title}". Що робимо?` }
+                title: `Прострочена: "${(t.title || '').slice(0, 40)}"`,
+                link: `/tasks?open=${t.id}`, taskId: t.id,
+                action: { label: '📋 Відкрити задачу', prompt: `Задача прострочена: "${t.title}". Що робимо?` }
             });
         });
         unconfirmed.rows.forEach(b => {
             alerts.push({ id: `unconfirmed_${b.id}`, level: 'info', icon: '📋',
-                title: `Непідтверджене: ${(b.time || '').slice(0, 5)} ${b.label || ''}`, link: '/',
+                title: `Непідтверджене: ${(b.time || '').slice(0, 5)} ${b.label || ''}`,
+                link: `/?date=${today}&highlight=${b.id}`, bookingId: b.id,
                 action: { label: '✅ Підтвердити', prompt: `Бронювання ${b.id} очікує підтвердження.` }
             });
         });
         lowStock.rows.forEach((s, i) => {
-            alerts.push({ id: `stock_${i}`, level: 'warning', icon: '📦',
-                title: `Мало: ${s.name} (${s.quantity} ${s.unit})`, link: '/warehouse',
-                action: { label: '📋 Замовити', prompt: `На складі мало: ${s.name} (${s.quantity}/${s.min_quantity}). Замовити.` }
+            alerts.push({ id: `stock_${s.name}_${s.quantity}`, level: 'warning', icon: '📦',
+                title: `Мало: ${s.name} (${s.quantity} ${s.unit})`,
+                link: '/warehouse#procurement', stockItem: s.name,
+                action: { label: '📋 Замовити', prompt: `Замовити ${s.name} (залишок: ${s.quantity}/${s.min_quantity} ${s.unit})`, assignRole: 'manager' }
             });
         });
         const cl = parseInt(coldLeads.rows[0].c);
         if (cl > 0) {
             alerts.push({ id: 'cold_leads', level: 'warning', icon: '🥶',
                 title: `${cl} лідів без відповіді >48год`, link: '/sales-funnel',
-                action: { label: '📋 Обдзвін', prompt: `${cl} лідів без відповіді. Задача менеджеру.` }
+                action: { label: '📋 Обдзвін', prompt: `${cl} лідів без відповіді >48год. Обдзвонити.`, assignRole: 'manager' }
             });
         }
         const os = parseInt(shiftCheck.rows[0].open_shifts);
@@ -572,7 +575,7 @@ router.get('/alerts', async (req, res) => {
         if (os === 0 && tb > 0) {
             alerts.push({ id: 'no_shift', level: 'critical', icon: '🔴',
                 title: `Каса не відкрита! (${tb} броні)`, link: '/finance',
-                action: { label: '💰 Відкрити', prompt: 'Каса не відкрита. Нагадати.' }
+                action: { label: '💰 Відкрити касу', prompt: 'Каса не відкрита — відкрити.', assignRole: 'admin' }
             });
         }
         res.json({ success: true, alerts, count: alerts.length });

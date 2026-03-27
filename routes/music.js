@@ -275,18 +275,21 @@ router.post('/announcements/:id/generate-tts', requireRole('admin', 'director', 
 
         const payload = JSON.stringify({
             model: 'elevenlabs/text-to-speech-multilingual-v2',
-            text: ann.rows[0].text_content,
-            voice: 'Rachel', language: 'uk'
+            input: {
+                text: ann.rows[0].text_content,
+                voice: 'Rachel', language: 'uk'
+            }
         });
         const kieRes = await new Promise((resolve, reject) => {
             const r = require('https').request({
-                hostname: 'api.kie.ai', path: '/api/v1/audio/speech', method: 'POST',
+                hostname: 'api.kie.ai', path: '/api/v1/jobs/createTask', method: 'POST',
                 headers: { 'Authorization': `Bearer ${KIE_KEY}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
             }, resp => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ error: d }); } }); });
             r.on('error', reject); r.write(payload); r.end();
         });
 
-        if (!kieRes.taskId && !kieRes.url)
+        const taskId = kieRes.data?.taskId || kieRes.taskId;
+        if (!taskId && !kieRes.url && !kieRes.data?.url)
             return res.status(502).json({ error: 'TTS failed', detail: kieRes });
 
         if (kieRes.url) {
@@ -447,40 +450,11 @@ router.post('/library/generate-music', requireRole('admin', 'creator', 'director
     const { prompt, name, category, duration } = req.body;
     if (!prompt) return res.status(400).json({ error: 'Потрібен prompt' });
     // Kie.ai only supports image (nano-banana-2) and TTS (elevenlabs) models
-    // Suno/Udio/MusicGen not available through Kie.ai proxy
-    return res.status(501).json({
-        error: 'Генерація музики тимчасово недоступна. Kie.ai підтримує тільки TTS (голос). Використовуйте «Створити голос» або завантажте музику вручну.',
+    // v40: Suno not available through Kie.ai — return clear message
+    res.status(501).json({
+        error: 'Генерація музики через Suno тимчасово недоступна. Kie.ai підтримує тільки TTS (голос). Використовуйте «Створити голос» або завантажте музику вручну.',
         suggestion: 'upload'
     });
-    try {
-        const KIE_KEY = process.env.KIE_API_KEY;
-        if (!KIE_KEY) return res.status(501).json({ error: 'KIE_API_KEY не налаштовано' });
-
-        const payload = JSON.stringify({
-            model: 'suno/v4',
-            input: {
-                prompt: prompt.substring(0, 1000),
-                duration: duration || 30,
-                make_instrumental: false
-            }
-        });
-
-        const kieRes = await new Promise((resolve, reject) => {
-            const r = require('https').request({
-                hostname: 'api.kie.ai', path: '/api/v1/jobs/createTask', method: 'POST',
-                headers: { 'Authorization': `Bearer ${KIE_KEY}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
-            }, resp => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); } }); });
-            r.on('error', reject); r.write(payload); r.end();
-        });
-
-        const taskId = kieRes.data?.taskId || kieRes.taskId;
-        if (!taskId) return res.status(502).json({ error: 'Suno не створив задачу', detail: kieRes });
-
-        res.json({ success: true, taskId, status: 'generating', name: name || `Music: ${prompt.substring(0, 50)}` });
-    } catch (err) {
-        log.error('generate-music error', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
 });
 
 // v39.8: Poll generation status + save to Supabase

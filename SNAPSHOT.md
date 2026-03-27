@@ -3,12 +3,12 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v39.9.0**. package.json: `39.8.0`. Бранч `claude/continue-event-genix-crm-k7nfY`.
+Версія **v39.10.0**. package.json: `39.10.0`. Бранч `claude/continue-event-genix-crm-k7nfY`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **package.json**: `"version": "39.8.0"`
+- **package.json**: `"version": "39.10.0"`
 - **Бранч**: `claude/continue-event-genix-crm-k7nfY`
 - **origin/main**: v28.2.0 (далеко позаду — наш бранч має все)
 - **Зміни v39.1.0-v39.7.0** (сесія 27.03.2026):
@@ -21,7 +21,7 @@
   - v39.5.1: Image generation error handling + debug log + smart AI prompts
   - v39.6.0: System consistency — 10 HTML sidebar fixes, profileModal на 17 pages, skip-links, headers, ?v= tags
   - v39.7.0: 5 features — prompt→modals (20), streaks by profession, WS alerts, catalog AI covers, Match-3 fix
-  - v39.9.0: Interactive alerts v4 (grouped, inline actions, dismiss), staff CRM badges on all lists
+  - v39.10.0: Interactive alerts v4 (grouped, inline actions, dismiss), staff CRM badges on all lists
 
 ### Що залишилось доробити:
 1. Bulk create: PDF-друк паролів

@@ -10,11 +10,20 @@
 // ==========================================
 
 const ROLE_LABELS = {
+    creator: 'Творець', director: 'Директор', vice_director: 'Зам. директора',
+    senior_manager: 'Старший менеджер', manager: 'Менеджер',
+    accountant: 'Бухгалтер', art_director: 'Арт-директор', marketer: 'Маркетолог',
+    it_specialist: 'IT-спеціаліст', hr: 'HR-менеджер', hr_manager: 'HR-менеджер',
+    admin: 'Адмін', security: 'Охорона',
+    senior_instructor: 'Старший інструктор', instructor: 'Інструктор',
+    trampoline_instructor: 'Інструктор батутів',
+    head_chef: 'Шеф-повар', head_cook: 'Шеф-повар', cook: 'Повар',
+    head_pastry: 'Шеф-кондитер', pastry_chef: 'Кондитер',
     animator: 'Аніматор', host: 'Ведуча', technician: 'Технік',
-    admin: 'Адмін', cleaner: 'Прибиральник', manager: 'Менеджер', intern: 'Стажер',
-    trampoline_instructor: 'Інструктор батутів', waiter: 'Офіціант',
-    bartender: 'Бармен', cook: 'Повар', head_cook: 'Шеф-повар',
-    director: 'Директор', vice_director: 'Зам. директора', hr_manager: 'HR-менеджер'
+    reception: 'Рецепція', barista: 'Бариста', bartender: 'Бармен',
+    waiter: 'Офіціант', wardrobe: 'Гардеробник',
+    cleaning: 'Клінінг', cleaner: 'Прибиральник', maintenance: 'Технік',
+    dishwasher: 'Посудомийник', intern: 'Стажер'
 };
 
 const STATUS_LABELS = {

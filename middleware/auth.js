@@ -118,6 +118,10 @@ function authenticateToken(req, res, next) {
                     'UPDATE employee_profiles SET last_activity_at = NOW() WHERE user_id = $1',
                     [user.id]
                 ).catch(() => {});
+                pool.query(
+                    'UPDATE users SET last_seen_at = NOW() WHERE id = $1',
+                    [user.id]
+                ).catch(() => {});
             }
         }
 

@@ -125,9 +125,8 @@ function setupTabs() {
 
     // Auto-switch tab from URL hash (#catalogs, #collections, etc.)
     const hash = window.location.hash.replace('#', '');
-    if (hash && ['gallery', 'collections', 'price', 'calendar', 'catalogs'].includes(hash)) {
-        switchTab(hash);
-    }
+    const validTabs = ['gallery', 'collections', 'price', 'calendar', 'catalogs'];
+    switchTab(hash && validTabs.includes(hash) ? hash : 'gallery');
 
     // Listen for hash changes (sidebar navigation without page reload)
     window.addEventListener('hashchange', () => {

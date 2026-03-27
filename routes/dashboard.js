@@ -113,12 +113,14 @@ router.get('/widgets/:type', async (req, res) => {
 
             case 'team_online': {
                 const result = await pool.query(`
-                    SELECT u.id, u.name, u.role, ep.last_activity_at
+                    SELECT u.id, u.name, u.role, COALESCE(u.last_seen_at, ep.last_activity_at) as last_seen
                     FROM users u
-                    LEFT JOIN employee_profiles ep ON ep.user_id = u.id
+                    LEFT JOIN employee_profiles ep ON ep.user_id = u.id AND ep.is_active = true
                     WHERE u.is_active = true
-                    AND ep.last_activity_at > NOW() - INTERVAL '5 minutes'
-                    ORDER BY ep.last_activity_at DESC
+                    AND u.role NOT IN ('bot', 'viewer')
+                    AND (u.last_seen_at > NOW() - INTERVAL '5 minutes'
+                         OR ep.last_activity_at > NOW() - INTERVAL '5 minutes')
+                    ORDER BY COALESCE(u.last_seen_at, ep.last_activity_at) DESC
                 `, []);
                 data = { online: result.rows };
                 break;

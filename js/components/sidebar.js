@@ -394,27 +394,36 @@ const Sidebar = (() => {
             const link = e.target.closest('.sidebar-links .nav-link[href]');
             if (!link || link.getAttribute('onclick')) return;
             const href = link.getAttribute('href');
-            if (!href || href.startsWith('#') || href === window.location.pathname) return;
+            if (!href || href.startsWith('#')) return;
 
-            // Same-page hash navigation (e.g. /sound#library → /sound#announcements)
+            // Same-page hash navigation (e.g. /designs#catalogs while on /designs)
             const hrefBase = href.split('#')[0];
             const hrefHash = href.includes('#') ? href.split('#')[1] : '';
             const currentBase = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
-            if (hrefBase === currentBase && hrefHash) {
-                e.preventDefault();
-                window.location.hash = '#' + hrefHash;
-                // Update active states in sidebar
-                const container = link.closest('.sidebar-links');
-                if (container) {
-                    container.querySelectorAll('.nav-link').forEach(l => {
-                        const lHref = l.getAttribute('href') || '';
-                        const lBase = lHref.split('#')[0];
-                        const lHash = lHref.includes('#') ? lHref.split('#')[1] : '';
-                        if (lBase === hrefBase) {
-                            l.classList.toggle('active', lHash === hrefHash);
-                        }
-                    });
+            if (hrefBase === currentBase) {
+                if (hrefHash) {
+                    e.preventDefault();
+                    window.location.hash = '#' + hrefHash;
+                    // Update active states in sidebar
+                    const container = link.closest('.sidebar-links');
+                    if (container) {
+                        container.querySelectorAll('.nav-link').forEach(l => {
+                            const lHref = l.getAttribute('href') || '';
+                            const lBase = lHref.split('#')[0];
+                            const lHash = lHref.includes('#') ? lHref.split('#')[1] : '';
+                            if (lBase === hrefBase) {
+                                l.classList.toggle('active', lHash === hrefHash);
+                            }
+                        });
+                    }
+                    return;
                 }
+                // Same path, no hash — already on page, do nothing
+                if (!window.location.hash) return;
+                // Had hash, clicking base link — clear hash and reload to reset tab
+                e.preventDefault();
+                window.location.hash = '';
+                window.location.reload();
                 return;
             }
 

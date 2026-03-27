@@ -396,18 +396,25 @@ router.post('/library/generate-tts', requireRole('admin', 'creator', 'director',
 
         const payload = JSON.stringify({
             model: 'elevenlabs/text-to-speech-multilingual-v2',
-            text: text.substring(0, 5000),
-            voice: voice || 'Rachel',
-            language: language || 'uk'
+            input: {
+                text: text.substring(0, 5000),
+                voice: voice || 'Rachel',
+                language: language || 'uk'
+            }
         });
 
         const kieRes = await new Promise((resolve, reject) => {
             const r = require('https').request({
-                hostname: 'api.kie.ai', path: '/api/v1/audio/speech', method: 'POST',
+                hostname: 'api.kie.ai', path: '/api/v1/jobs/createTask', method: 'POST',
                 headers: { 'Authorization': `Bearer ${KIE_KEY}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
             }, resp => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); } }); });
             r.on('error', reject); r.write(payload); r.end();
         });
+
+        const taskId = kieRes.data?.taskId || kieRes.taskId;
+        if (taskId) {
+            return res.json({ success: true, taskId, status: 'generating', name: name || `TTS: ${text.substring(0, 50)}`, category: category || 'effects' });
+        }
 
         if (kieRes.url || kieRes.data?.url) {
             const audioUrl = kieRes.url || kieRes.data.url;
@@ -435,10 +442,16 @@ router.post('/library/generate-tts', requireRole('admin', 'creator', 'director',
     }
 });
 
-// v39.8: Music Generation via Suno (Kie.ai proxy)
+// v40: Music Generation — Suno not available via Kie.ai, use TTS for voice content
 router.post('/library/generate-music', requireRole('admin', 'creator', 'director', 'art_director'), async (req, res) => {
     const { prompt, name, category, duration } = req.body;
     if (!prompt) return res.status(400).json({ error: 'Потрібен prompt' });
+    // Kie.ai only supports image (nano-banana-2) and TTS (elevenlabs) models
+    // Suno/Udio/MusicGen not available through Kie.ai proxy
+    return res.status(501).json({
+        error: 'Генерація музики тимчасово недоступна. Kie.ai підтримує тільки TTS (голос). Використовуйте «Створити голос» або завантажте музику вручну.',
+        suggestion: 'upload'
+    });
     try {
         const KIE_KEY = process.env.KIE_API_KEY;
         if (!KIE_KEY) return res.status(501).json({ error: 'KIE_API_KEY не налаштовано' });

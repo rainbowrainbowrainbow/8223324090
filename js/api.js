@@ -5,6 +5,25 @@
 
 const API_BASE = '/api';
 
+// v39.9: Global safe fetch wrapper — auto-checks response.ok, handles auth errors
+async function safeFetch(url, opts = {}) {
+    if (!opts.headers) opts.headers = {};
+    if (!opts.headers['Authorization']) {
+        const token = localStorage.getItem('pzp_token');
+        if (token) opts.headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetch(url, opts);
+    if (res.status === 401 || res.status === 403) {
+        if (typeof handleAuthError === 'function') handleAuthError(res);
+        return null;
+    }
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    return res;
+}
+
 function getAuthHeaders(withContentType = true) {
     const token = localStorage.getItem('pzp_token');
     const headers = {};

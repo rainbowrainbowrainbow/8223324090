@@ -1087,6 +1087,27 @@ function downloadBulkCsv() {
     URL.revokeObjectURL(url);
 }
 
+// v39.9: PDF download of credentials
+async function downloadBulkPdf() {
+    if (!StaffState.bulkResults?.created?.length) return;
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch('/api/staff/bulk-pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ accounts: StaffState.bulkResults.created })
+        });
+        if (!res.ok) { if (typeof showNotification === 'function') showNotification('Помилка генерації PDF', 'error'); return; }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `accounts_${new Date().toISOString().slice(0, 10)}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch { if (typeof showNotification === 'function') showNotification('Помилка', 'error'); }
+}
+
 // Excel import
 function triggerExcelImport() {
     document.getElementById('excelImportInput')?.click();
@@ -1307,6 +1328,7 @@ async function initPage() {
     document.getElementById('bulkCloseBtn')?.addEventListener('click', closeBulkResults);
     document.getElementById('bulkCopyBtn')?.addEventListener('click', copyBulkResults);
     document.getElementById('bulkCsvBtn')?.addEventListener('click', downloadBulkCsv);
+    document.getElementById('bulkPdfBtn')?.addEventListener('click', downloadBulkPdf);
     document.getElementById('bulkResultsOverlay')?.addEventListener('click', (e) => {
         if (e.target === e.currentTarget) closeBulkResults();
     });

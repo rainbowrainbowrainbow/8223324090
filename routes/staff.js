@@ -773,6 +773,66 @@ router.post('/bulk-create-accounts', requireRole('creator', 'director'), async (
     }
 });
 
+// POST /api/staff/bulk-pdf — generate PDF with credentials
+router.post('/bulk-pdf', requireRole('creator', 'director'), async (req, res) => {
+    try {
+        const { accounts } = req.body;
+        if (!accounts || !accounts.length) return res.status(400).json({ error: 'No accounts data' });
+
+        const PDFDocument = require('pdfkit');
+        const doc = new PDFDocument({ size: 'A4', margin: 40 });
+        const chunks = [];
+        doc.on('data', c => chunks.push(c));
+        doc.on('end', () => {
+            const pdf = Buffer.concat(chunks);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', 'attachment; filename=crm-accounts.pdf');
+            res.send(pdf);
+        });
+
+        // Header
+        doc.fontSize(20).font('Helvetica-Bold').text('Event Genix CRM', { align: 'center' });
+        doc.fontSize(12).font('Helvetica').text('Loginy ta paroli spivrobitnykiv', { align: 'center' });
+        doc.moveDown(0.5);
+        doc.fontSize(9).fillColor('#888').text(`Zgenerovano: ${new Date().toLocaleDateString('uk-UA')} | Kilkist: ${accounts.length}`, { align: 'center' });
+        doc.moveDown(1);
+
+        // Table header
+        const startX = 40;
+        const colWidths = [30, 160, 110, 100, 110];
+        const headers = ['#', 'PIB', 'Login', 'Parol', 'Rol'];
+        doc.fillColor('#fff').rect(startX, doc.y, 515, 22).fill('#4338ca');
+        let hY = doc.y + 6;
+        let hX = startX + 6;
+        doc.fillColor('#fff').fontSize(9).font('Helvetica-Bold');
+        headers.forEach((h, i) => { doc.text(h, hX, hY, { width: colWidths[i], align: 'left' }); hX += colWidths[i]; });
+        doc.y += 22;
+
+        // Rows
+        doc.font('Helvetica').fontSize(9).fillColor('#1a1a2e');
+        accounts.forEach((a, idx) => {
+            if (doc.y > 750) { doc.addPage(); doc.y = 40; }
+            const rowY = doc.y;
+            const bg = idx % 2 === 0 ? '#f8f7fc' : '#fff';
+            doc.fillColor(bg).rect(startX, rowY, 515, 20).fill(bg);
+            doc.fillColor('#1a1a2e');
+            let rX = startX + 6;
+            const vals = [String(idx + 1), a.name || '', a.username || '', a.password || '', a.role || ''];
+            vals.forEach((v, i) => { doc.text(v, rX, rowY + 5, { width: colWidths[i], align: 'left' }); rX += colWidths[i]; });
+            doc.y = rowY + 20;
+        });
+
+        // Footer
+        doc.moveDown(2);
+        doc.fontSize(8).fillColor('#999').text('Konfidentsiino. Pislia rozdachi — zminity paroli.', { align: 'center' });
+
+        doc.end();
+    } catch (err) {
+        log.error('bulk-pdf error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // POST /api/staff/import-excel — import staff from Excel file
 const multer = require('multer');
 const ExcelJS = require('exceljs');

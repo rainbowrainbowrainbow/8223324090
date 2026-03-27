@@ -838,8 +838,13 @@
         body:not(.dark-mode) .img-picker-section-title,
         body:not([data-theme="dark"]) .img-picker-section-title { color: #666; }
         body:not(.dark-mode) .img-picker-label,
-        body:not([data-theme="dark"]) .img-picker-label { color: #555; }
-        /* img-picker is ALWAYS dark — no light mode overrides needed */
+        body:not([data-theme="dark"]) .img-picker-label { color: #555 !important; }
+        body:not(.dark-mode) .img-picker-modal label,
+        body:not([data-theme="dark"]) .img-picker-modal label { color: #444 !important; }
+        body:not(.dark-mode) .img-picker-modal input,
+        body:not(.dark-mode) .img-picker-modal textarea,
+        body:not(.dark-mode) .img-picker-modal select { color: #1a1a2e !important; background: #fff !important; }
+        body:not(.dark-mode) .img-picker-modal .img-picker-section-title { color: #333 !important; }
 
         /* Light mode catalog cards */
         body:not(.dark-mode) .catalog-card,

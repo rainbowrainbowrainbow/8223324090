@@ -54,7 +54,7 @@
 .zoom-btn:last-child { border-right: none; }
 
 .zoom-btn.active {
-    background: var(--primary);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: var(--white);
     box-shadow: 0 1px 4px rgba(16,185,129,0.25);
 }
@@ -388,7 +388,7 @@ body.dark-mode .night-settings-select {
 }
 
 .period-btn.active {
-    background: var(--primary);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: #FFFFFF;
     box-shadow: 0 1px 3px rgba(16,185,129,0.3);
 }
@@ -445,7 +445,7 @@ body.dark-mode .night-settings-select {
 }
 
 .status-radio input:checked + .status-radio-label.confirmed {
-    background: var(--primary);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: #FFFFFF;
     box-shadow: 0 1px 3px rgba(16,185,129,0.3);
 }
@@ -704,7 +704,7 @@ body.dark-mode .night-settings-select {
 .recurring-actions .btn-primary {
     flex: 1;
     padding: 10px;
-    background: var(--primary);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: white;
     border: none;
     border-radius: var(--radius-sm);
@@ -812,7 +812,7 @@ body.dark-mode .night-settings-select {
     background: var(--primary-50, #EEF2FF);
 }
 .booking-tag-option.active {
-    background: var(--primary);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: #fff;
     border-color: var(--primary);
 }

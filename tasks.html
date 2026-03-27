@@ -109,7 +109,15 @@
         .task-card.cat-improvement { border-left-color: #0891B2; }
         .task-card.status-done { opacity: 0.5; }
         .task-card-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
-        .task-card-meta { font-size: 11px; color: var(--gray-500); display: flex; gap: 8px; flex-wrap: wrap; }
+        .task-card-meta { font-size: 11px; color: var(--gray-500); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .task-assignee-badge {
+            display: inline-flex; align-items: center; gap: 2px;
+            background: rgba(34,197,94,0.1); color: #16a34a; border: 1px solid rgba(34,197,94,0.2);
+            padding: 1px 6px; border-radius: 6px; font-weight: 700; font-size: 10px;
+        }
+        .task-no-assignee { color: var(--gray-300); font-style: italic; }
+        body.dark-mode .task-assignee-badge { background: rgba(34,197,94,0.15); color: #4ade80; }
+        body.dark-mode .task-no-assignee { color: var(--gray-500); }
         .task-card-actions { display: flex; gap: 4px; margin-top: 6px; }
         .task-card-actions button {
             padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px;
@@ -306,6 +314,9 @@
                     <option value="bot">Bot</option>
                 </select>
                 <input type="time" id="taskDeadlineTime" title="Дедлайн (час)" style="width:100px">
+                <select id="taskAssignedTo" title="Відповідальний" style="width:auto;max-width:140px">
+                    <option value="">— нікому —</option>
+                </select>
                 <button type="button" id="addTaskBtn">+ Додати</button>
             </div>
 

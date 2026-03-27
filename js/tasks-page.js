@@ -94,6 +94,7 @@ async function initPage() {
     AppState.currentUser = user;
     document.getElementById('currentUser').textContent = user.name;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
+    _loadAssigneeDropdown();
 
     document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('pzp_token');
@@ -513,7 +514,7 @@ function renderTaskCard(t) {
             <span>${catInfo.icon} ${catInfo.label}</span>
             ${t.date ? `<span>${formatDateShort(t.date)}</span>` : ''}
             ${deadlineHtml}
-            ${t.assigned_to ? `<span>${escapeHtml(t.assigned_to)}</span>` : ''}
+            ${t.assigned_to ? `<span class="task-assignee-badge" title="Відповідальний: ${escapeHtml(t.assigned_to)}">👤 ${escapeHtml(t.assigned_to)}</span>` : '<span class="task-no-assignee">— нікому</span>'}
             ${ownerHtml}
             ${t.type === 'recurring' ? '<span class="badge badge-normal">Повтор</span>' : ''}
             ${t.type === 'afisha' ? '<span class="badge badge-normal">Афіша</span>' : ''}
@@ -529,6 +530,21 @@ function renderTaskCard(t) {
 // TASK ACTIONS
 // ==========================================
 
+let _assigneeList = [];
+async function _loadAssigneeDropdown() {
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch('/api/hr/staff?active=true', { headers: { 'Authorization': `Bearer ${token}` } });
+        const data = await res.json();
+        _assigneeList = (data.data || []).filter(s => s.name).sort((a, b) => a.name.localeCompare(b.name, 'uk'));
+        const sel = document.getElementById('taskAssignedTo');
+        if (sel) {
+            sel.innerHTML = '<option value="">— нікому —</option>' +
+                _assigneeList.map(s => `<option value="${s.name}">${s.name}${s.role_type ? ' (' + s.role_type + ')' : ''}</option>`).join('');
+        }
+    } catch {}
+}
+
 async function addTask() {
     const title = document.getElementById('taskTitle')?.value.trim();
     if (!title) {
@@ -540,9 +556,10 @@ async function addTask() {
     const priority = document.getElementById('taskPriority')?.value;
     const taskType = document.getElementById('taskType')?.value || 'human';
     const deadlineTime = document.getElementById('taskDeadlineTime')?.value || '';
+    const assignedTo = document.getElementById('taskAssignedTo')?.value || null;
     const today = getTodayStr();
 
-    const data = { title, date: today, priority, category, task_type: taskType, source_type: 'manual' };
+    const data = { title, date: today, priority, category, task_type: taskType, source_type: 'manual', assigned_to: assignedTo };
 
     // Build deadline if time specified
     if (deadlineTime) {
@@ -768,7 +785,10 @@ async function openTaskDetail(taskId) {
                 </div>
                 <div style="display:flex;gap:8px">
                     <div style="flex:1"><label ${_lbl}>Дедлайн${isOverdue ? ' ⚠️' : ''}</label><input id="_tdDeadline" type="datetime-local" value="${dlIso}" ${_inp}></div>
-                    <div style="flex:1"><label ${_lbl}>Призначено</label><input id="_tdAssigned" value="${escapeHtml(t.assigned_to || '')}" placeholder="username" ${_inp}></div>
+                    <div style="flex:1"><label ${_lbl}>Призначено</label><select id="_tdAssigned" ${_inp} style="width:100%;padding:8px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit">
+                        <option value="">— нікому —</option>
+                        ${_assigneeList.map(s => `<option value="${escapeHtml(s.name)}"${t.assigned_to === s.name ? ' selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
+                    </select></div>
                 </div>
                 <div><label ${_lbl}>Категорія</label><select id="_tdCategory" ${_inp} style="width:100%;padding:8px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit">
                     <option value="admin" ${t.category==='admin'?'selected':''}>Адмін</option>
@@ -780,7 +800,7 @@ async function openTaskDetail(taskId) {
                 </select></div>
             </div>
             <div style="padding:12px 20px;border-top:1px solid var(--gray-100);display:flex;gap:8px">
-                <button onclick="saveTaskDetail(${t.id})" style="flex:2;padding:10px;border:none;border-radius:10px;background:#10B981;color:#fff;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">💾 Зберегти</button>
+                <button onclick="saveTaskDetail(${t.id})" style="flex:2;padding:10px;border:none;border-radius:10px;background:linear-gradient(135deg,#10B981,#059669);color:#fff;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">💾 Зберегти</button>
                 <button onclick="document.getElementById('taskDetailOverlay').remove()" style="flex:1;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:none;cursor:pointer;font-family:inherit;font-size:13px">Скасувати</button>
             </div>
         </div>`;

@@ -9,7 +9,7 @@ const router  = require('express').Router();
 const https   = require('https');
 const { pool }  = require('../db');
 const { uploadFromUrl, makeFilename } = require('../services/imageStorage');
-const { requireRole } = require('../middleware/auth');
+const { requireRole, authenticateToken } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Catalogs');
 
@@ -727,7 +727,17 @@ router.put('/:catalogId/pages/:pageNumber', requireRole('admin', 'creator', 'dir
             `UPDATE catalog_pages SET ${sets.join(',')} WHERE catalog_id=$1 AND page_number=$2 RETURNING *`, vals
         );
         if (!r.rowCount) return res.status(404).json({ error: 'Page not found' });
-        res.json({ success: true, page: r.rows[0] });
+        // Save version history (fire-and-forget)
+        const updated = r.rows[0];
+        pool.query(
+            `INSERT INTO catalog_page_history (catalog_page_id, version, title, subtitle, description, price_label, image_url, items, theme, details, changed_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            [updated.id, (updated.version || 1), updated.title, updated.subtitle, updated.description, updated.price_label, updated.image_url,
+             JSON.stringify(updated.items || []), updated.theme, JSON.stringify(updated.details || {}), req.user?.username || 'unknown']
+        ).catch(() => {});
+        // Increment version
+        pool.query('UPDATE catalog_pages SET version = COALESCE(version,1) + 1 WHERE id = $1', [updated.id]).catch(() => {});
+        res.json({ success: true, page: updated });
     } catch (err) {
         log.error('PUT /pages error', err);
         res.status(500).json({ error: err.message });
@@ -810,6 +820,89 @@ router.post('/:catalogId/pages/:pageNumber/duplicate', requireRole('admin', 'cre
         log.error('POST /duplicate error', err);
         res.status(500).json({ error: err.message });
     }
+});
+
+// ─── Automations CRUD ──────────────────────────────
+// GET /api/catalogs/:catalogId/automations
+router.get('/:catalogId/automations', authenticateToken, async (req, res) => {
+    try {
+        const r = await pool.query('SELECT * FROM catalog_automations WHERE catalog_id=$1 AND is_active=true ORDER BY created_at', [req.params.catalogId]);
+        res.json({ success: true, automations: r.rows });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/catalogs/:catalogId/automations
+router.post('/:catalogId/automations', requireRole('admin', 'creator', 'director', 'manager'), async (req, res) => {
+    try {
+        const { name, description, triggerType, assignedRole } = req.body;
+        if (!name) return res.status(400).json({ error: 'name required' });
+        const r = await pool.query(
+            'INSERT INTO catalog_automations (catalog_id, name, description, trigger_type, assigned_role) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+            [req.params.catalogId, name, description || null, triggerType || 'manual', assignedRole || 'admin']
+        );
+        res.json({ success: true, automation: r.rows[0] });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/catalogs/:catalogId/automations/:id/run — create task from automation
+router.post('/:catalogId/automations/:id/run', requireRole('admin', 'creator', 'director', 'manager'), async (req, res) => {
+    try {
+        const auto = await pool.query('SELECT * FROM catalog_automations WHERE id=$1 AND catalog_id=$2', [req.params.id, req.params.catalogId]);
+        if (!auto.rowCount) return res.status(404).json({ error: 'Automation not found' });
+        const a = auto.rows[0];
+        // Create task in tasks table
+        const taskR = await pool.query(
+            `INSERT INTO tasks (title, description, category, priority, status, assigned_role, created_by, created_at)
+             VALUES ($1, $2, 'catalog', 'normal', 'pending', $3, $4, NOW()) RETURNING id`,
+            [a.name, a.description || `Автозадача з каталогу ${req.params.catalogId}`, a.assigned_role, req.user?.username || 'system']
+        );
+        res.json({ success: true, taskId: taskR.rows[0].id });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// DELETE /api/catalogs/:catalogId/automations/:id
+router.delete('/:catalogId/automations/:id', requireRole('admin', 'creator', 'director'), async (req, res) => {
+    try {
+        await pool.query('UPDATE catalog_automations SET is_active=false WHERE id=$1 AND catalog_id=$2', [req.params.id, req.params.catalogId]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Bulk image generation ──────────────────────────────
+// POST /api/catalogs/:catalogId/bulk-generate-images
+router.post('/:catalogId/bulk-generate-images', requireRole('admin', 'creator', 'director', 'art_director'), async (req, res) => {
+    try {
+        const pages = await pool.query(
+            "SELECT * FROM catalog_pages WHERE catalog_id=$1 AND is_active=true AND (image_url IS NULL OR image_url='') AND page_number > 0 ORDER BY page_number",
+            [req.params.catalogId]
+        );
+        if (!pages.rowCount) return res.json({ success: true, started: 0, message: 'Всі сторінки вже мають фото' });
+        const tasks = [];
+        const _tr = {'а':'a','б':'b','в':'v','г':'h','ґ':'g','д':'d','е':'e','є':'ye','ж':'zh','з':'z','и':'y','і':'i','ї':'yi','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ь':'','ю':'yu','я':'ya'};
+        for (const page of pages.rows) {
+            const enTitle = (page.title || '').split('').map(c => _tr[c.toLowerCase()] || c).join('');
+            const prompt = `Professional product photo of "${enTitle}", children entertainment park catalog, studio lighting, clean background, vibrant colors, no text, 4K`;
+            try {
+                const r = await kieRequest('POST', '/api/v1/jobs/createTask', {
+                    model: 'nano-banana-2',
+                    input: { prompt, aspect_ratio: '1:1', resolution: '1K', output_format: 'png' }
+                });
+                if (r?.data?.taskId) tasks.push({ pageNumber: page.page_number, taskId: r.data.taskId, title: page.title });
+            } catch (e) { /* skip failed */ }
+        }
+        res.json({ success: true, started: tasks.length, total: pages.rowCount, tasks });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Page version history ──────────────────────────────
+// GET /api/catalogs/:catalogId/pages/:pageNumber/history
+router.get('/:catalogId/pages/:pageNumber/history', authenticateToken, async (req, res) => {
+    try {
+        const page = await pool.query('SELECT id FROM catalog_pages WHERE catalog_id=$1 AND page_number=$2', [req.params.catalogId, parseInt(req.params.pageNumber)]);
+        if (!page.rowCount) return res.status(404).json({ error: 'Page not found' });
+        const h = await pool.query('SELECT * FROM catalog_page_history WHERE catalog_page_id=$1 ORDER BY version DESC LIMIT 20', [page.rows[0].id]);
+        res.json({ success: true, history: h.rows });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = router;

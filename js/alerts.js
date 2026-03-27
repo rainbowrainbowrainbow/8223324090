@@ -45,7 +45,9 @@ async function loadAlertBell() {
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
         const res = await fetch('/api/dashboard/alerts', { headers: { 'Authorization': `Bearer ${token}` } });
-        const { alerts = [] } = await res.json();
+        if (!res.ok) return;
+        const data = await res.json();
+        const alerts = data.alerts || [];
         const dismissed = _getDismissed();
         _alertsData = alerts.filter(a => !dismissed.has(a.id));
         const read = _getRead();
@@ -80,7 +82,9 @@ async function _renderPanel() {
     try {
         const token = localStorage.getItem('pzp_token');
         const res = await fetch('/api/dashboard/alerts', { headers: { 'Authorization': `Bearer ${token}` } });
-        const { alerts = [] } = await res.json();
+        if (!res.ok) throw new Error('API error');
+        const data = await res.json();
+        const alerts = data.alerts || [];
         const dismissed = _getDismissed();
         _alertsData = alerts.filter(a => !dismissed.has(a.id));
 

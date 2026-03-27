@@ -37,8 +37,11 @@ const { pool } = require('../db');
 const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
 const { createLogger } = require('../utils/logger');
 
-const { requireRole } = require('../middleware/auth');
+const { requireRole, authenticateToken } = require('../middleware/auth');
 const log = createLogger('Staff');
+
+// v39.8: Security — require authentication for all staff endpoints
+router.use(authenticateToken);
 
 const STATUS_UK = { working: 'Робочий', dayoff: 'Вихідний', vacation: 'Відпустка', sick: 'Лікарняний', remote: 'Віддалено' };
 

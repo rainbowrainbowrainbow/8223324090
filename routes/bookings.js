@@ -13,8 +13,11 @@ try { _triggerAlertBroadcast = require('./dashboard').triggerAlertBroadcast; } c
 function _alertPush() { if (_triggerAlertBroadcast) _triggerAlertBroadcast(); }
 const { createLogger } = require('../utils/logger');
 
-const { requireAction } = require('../middleware/auth');
+const { requireAction, authenticateToken } = require('../middleware/auth');
 const log = createLogger('Bookings');
+
+// v39.8: Security — require authentication for all booking endpoints
+router.use(authenticateToken);
 
 // Resolve animator line name for notifications
 async function getLineName(lineId, date) {

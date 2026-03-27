@@ -17,9 +17,12 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { requireMinRole } = require('../middleware/auth');
+const { requireMinRole, authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('Center');
+
+// v39.8: Security — require authentication for all center endpoints
+router.use(authenticateToken);
 
 // ==========================================
 // HELPERS

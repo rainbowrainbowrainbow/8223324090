@@ -8,6 +8,10 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Warehouse');
 
+// v39.8: Security — require authentication for all warehouse endpoints
+const { authenticateToken } = require('../middleware/auth');
+router.use(authenticateToken);
+
 const VALID_CATEGORIES = ['consumable', 'craft', 'props', 'food', 'decor', 'prizes', 'office', 'tech'];
 const VALID_UNITS = ['шт', 'рул', 'уп', 'кг', 'л', 'м', 'компл', 'набір'];
 

@@ -78,21 +78,17 @@ function formatDateShort(dateStr) {
 // ==========================================
 
 async function initPage() {
+    try {
     initDarkMode();
     const token = localStorage.getItem('pzp_token');
-    if (!token) {
-        window.location.href = '/';
-        throw new Error('Unauthorized');
-    }
+    if (!token) { window.location.href = '/'; return; }
 
     const user = await apiVerifyToken();
-    if (!user) {
-        window.location.href = '/';
-        throw new Error('Unauthorized');
-    }
+    if (!user) { window.location.href = '/'; return; }
 
     AppState.currentUser = user;
-    document.getElementById('currentUser').textContent = user.name;
+    const userEl = document.getElementById('currentUser');
+    if (userEl) userEl.textContent = user.name;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     _loadAssigneeDropdown();
 
@@ -154,6 +150,7 @@ async function initPage() {
 
     await loadAllTasks();
     await loadMyPoints();
+    } catch (err) { console.error('Page init failed:', err); window.location.href = '/'; }
 }
 
 // v20.9.16: Hide/show UI elements based on role permissions
@@ -535,6 +532,7 @@ async function _loadAssigneeDropdown() {
     try {
         const token = localStorage.getItem('pzp_token');
         const res = await fetch('/api/hr/staff?active=true', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) return;
         const data = await res.json();
         _assigneeList = (data.data || []).filter(s => s.name).sort((a, b) => a.name.localeCompare(b.name, 'uk'));
         const sel = document.getElementById('taskAssignedTo');

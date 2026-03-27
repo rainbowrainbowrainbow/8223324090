@@ -13,6 +13,10 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Designs');
 
+// v39.8: Security — require authentication for all design endpoints
+const { authenticateToken } = require('../middleware/auth');
+router.use(authenticateToken);
+
 // --- Multer setup ---
 const UPLOADS_DIR = path.join(__dirname, '..', 'uploads', 'designs');
 if (!fs.existsSync(UPLOADS_DIR)) {

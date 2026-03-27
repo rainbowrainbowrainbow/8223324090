@@ -130,21 +130,17 @@ async function hrFetch(path, options = {}) {
 // ==========================================
 
 async function initPage() {
+    try {
     initDarkMode();
     const token = localStorage.getItem('pzp_token');
-    if (!token) {
-        window.location.href = '/';
-        throw new Error('Unauthorized');
-    }
+    if (!token) { window.location.href = '/'; return; }
 
     const user = await apiVerifyToken();
-    if (!user) {
-        window.location.href = '/';
-        throw new Error('Unauthorized');
-    }
+    if (!user) { window.location.href = '/'; return; }
 
     AppState.currentUser = user;
-    document.getElementById('currentUser').textContent = user.name;
+    const userEl = document.getElementById('currentUser');
+    if (userEl) userEl.textContent = user.name;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     canManage = MANAGE_ROLES.includes(user.role);
@@ -196,6 +192,7 @@ function initTabs() {
             loaders[target]?.();
         });
     });
+    } catch (err) { console.error('HR init failed:', err); window.location.href = '/'; }
 }
 
 // ==========================================

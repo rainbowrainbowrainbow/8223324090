@@ -772,7 +772,7 @@ body.dark-mode .chat-theme-select {
     font-weight: 800;
 }
 
-.chat-wallpaper-option[data-wp="none"] { background: white; }
+.chat-wallpaper-option[data-wp="none"] { background: var(--white); }
 .chat-wallpaper-option[data-wp="bubbles"] {
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(16, 185, 129, 0.1));
 }
@@ -1437,7 +1437,7 @@ body.dark-mode .chat-theme-select {
     position: absolute;
     bottom: 100%;
     right: 12px;
-    background: white;
+    background: var(--white);
     border: 1px solid rgba(0,0,0,0.1);
     border-radius: 12px;
     box-shadow: 0 -4px 16px rgba(0,0,0,0.12);
@@ -1549,7 +1549,7 @@ body.dark-mode .chat-theme-select {
     animation: fadeIn 0.2s;
 }
 .chat-stats-panel {
-    background: white;
+    background: var(--white);
     border-radius: 16px;
     width: 420px;
     max-width: 95vw;
@@ -1682,7 +1682,7 @@ body.dark-mode .chat-theme-select {
     left: 0;
     right: 0;
     height: 280px;
-    background: white;
+    background: var(--white);
     border: 1px solid rgba(0,0,0,0.1);
     border-radius: 12px 12px 0 0;
     box-shadow: 0 -4px 16px rgba(0,0,0,0.1);
@@ -1747,7 +1747,7 @@ body.dark-mode .chat-theme-select {
     left: 0;
     right: 0;
     height: 320px;
-    background: white;
+    background: var(--white);
     border: 1px solid rgba(0,0,0,0.1);
     border-radius: 12px 12px 0 0;
     box-shadow: 0 -4px 16px rgba(0,0,0,0.1);
@@ -1950,7 +1950,7 @@ body.dark-mode .chat-theme-select {
     bottom: 100%;
     left: 12px;
     right: 12px;
-    background: white;
+    background: var(--white);
     border: 1px solid rgba(0,0,0,0.1);
     border-radius: 12px;
     box-shadow: 0 -4px 16px rgba(0,0,0,0.1);
@@ -2002,7 +2002,7 @@ body.dark-mode .chat-theme-select {
     top: 0;
     bottom: 0;
     width: 340px;
-    background: white;
+    background: var(--white);
     border-left: 1px solid rgba(0,0,0,0.1);
     z-index: 20;
     box-shadow: -4px 0 16px rgba(0,0,0,0.08);
@@ -2104,7 +2104,7 @@ body.dark-mode .chat-theme-select {
     top: 100%;
     left: 0;
     right: 0;
-    background: white;
+    background: var(--white);
     border: 1px solid rgba(0,0,0,0.1);
     border-radius: 0 0 12px 12px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.12);
@@ -7548,7 +7548,7 @@ body.dark-mode .guardian-digest-generate-btn {
     height: 12px;
     left: 3px;
     top: 3px;
-    background: #fff;
+    background: var(--white);
     border-radius: 50%;
     transition: transform 0.2s;
 }
@@ -7604,7 +7604,7 @@ body.dark-mode .guardian-digest-generate-btn {
 .chat-mute-slider::after {
     content: ''; position: absolute;
     width: 16px; height: 16px; border-radius: 50%;
-    top: 2px; left: 2px; background: #fff;
+    top: 2px; left: 2px; background: var(--white);
     transition: transform 0.2s;
 }
 .chat-mute-toggle input:checked + .chat-mute-slider::after { transform: translateX(16px); }

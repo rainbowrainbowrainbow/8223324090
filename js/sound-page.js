@@ -60,7 +60,7 @@
         container.innerHTML = '<div class="sound-empty"><div class="sound-empty-icon">⏳</div><p>Завантаження...</p></div>';
 
         try {
-            const data = await apiCall('GET', '/sound-library');
+            const data = await apiCall('GET', '/music/library');
             _allSounds = data?.sounds || [];
             _loadedTabs.library = true;
             renderLibraryStats();
@@ -288,7 +288,7 @@
         container.innerHTML = '<div class="sound-empty"><div class="sound-empty-icon">⏳</div><p>Завантаження...</p></div>';
 
         try {
-            const data = await apiCall('GET', '/sound-library/projects');
+            const data = await apiCall('GET', '/music/projects');
             _projects = data?.projects || [];
             _loadedTabs.projects = true;
             renderProjects();

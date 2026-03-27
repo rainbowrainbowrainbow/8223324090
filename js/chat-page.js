@@ -1276,6 +1276,24 @@
             var action = btn.dataset.action;
 
             switch (action) {
+                case 'copy':
+                    if (_contextMsg) {
+                        var contentEl = _contextMsg.el.querySelector('.chat-bubble-content');
+                        var text = contentEl ? contentEl.textContent.trim() : '';
+                        if (text) {
+                            navigator.clipboard.writeText(text).then(function() {
+                                if (typeof showNotification === 'function') showNotification('Скопійовано', 'success');
+                            }).catch(function() {
+                                // Fallback
+                                var ta = document.createElement('textarea');
+                                ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+                                document.body.appendChild(ta); ta.select();
+                                try { document.execCommand('copy'); if (typeof showNotification === 'function') showNotification('Скопійовано', 'success'); } catch {}
+                                document.body.removeChild(ta);
+                            });
+                        }
+                    }
+                    break;
                 case 'reply':
                     _startReplyFromContext();
                     break;

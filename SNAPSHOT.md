@@ -3,25 +3,25 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v38.17.0**. package.json: `38.17.0`. Бранч `claude/continue-project-work-pdpKD`.
+Версія **v38.18.0**. package.json: `38.18.0`. Бранч `claude/continue-event-genix-crm-q4yHw`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **package.json**: `"version": "38.17.0"`
-- **Бранч**: `claude/continue-project-work-pdpKD`
+- **package.json**: `"version": "38.18.0"`
+- **Бранч**: `claude/continue-event-genix-crm-q4yHw`
 - **origin/main**: v28.2.0 (далеко позаду — наш бранч має merge v38.13.0)
-- **Зміни v38.14.0-v38.17.0**:
+- **Зміни v38.14.0-v38.18.0**:
   - v38.14.0: Каталоги UX (Image Picker 4 варіанти, Premium Catalog Viewer, 81 changelog)
   - v38.15.0: Match-3 спецефекти (bomb/lightning/cross/rainbow) + profile API route
   - v38.16.0: Profile (hero glassmorphism, inventory cards, shop seed, quests seed, Кімнату прибрано)
   - v38.17.0: Leaderboard seed, daily badge, tasks preview
+  - v38.18.0: Profile polish — dark mode fix, confirm→modal, streaks per profession, season pass
 
 ### Що залишилось доробити:
-1. Profile: стріки по професіях, equip/unequip UI, confirm()→модалки
-2. Match-3: білий фон пофіксити (клітинки фіолетовий тінт є)
-3. Рейтинг: потребує реальних даних
-4. Міграція 129: може фейлитись якщо prod DB має неповні таблиці
+1. Match-3: білий фон пофіксити (клітинки фіолетовий тінт є)
+2. Profile: equip/unequip UI покращити
+3. Міграція 129: може фейлитись якщо prod DB має неповні таблиці
 
 ### Тести
 - **296+ тестів** (api.test.js)
@@ -34,7 +34,16 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Останні зміни (v38.14.0 → v38.17.0)
+## Останні зміни (v38.14.0 → v38.18.0)
+
+### v38.18.0 (Claude Code, 27.03.2026)
+- **Dark mode fix** — `[data-theme="dark"]` → `body.dark-mode` на profile.html (20+ селекторів)
+- **confirm() → confirmModal()** — buyItem, buyStreakFreeze, leaveMyTeam (3 виклики)
+- **Streaks по професіях** — animator (🎭), manager (📋), director (👑) з унікальними титулами та кольорами
+- **Room cleanup** — видалено renderRoom(), updateMood(), room API load (dead code)
+- **Tasks preview v2** — inline картки квестів з прогресом та кнопкою "Забрати"
+- **Season pass** — 6 весняних квестів seeded (booking_count, task_count, streak_days, xp_earned, minigame_count, season_complete)
+- **Migration 131** — season_pass_content.sql
 
 ### v38.17.0 (Claude Code, 26.03.2026)
 - **Leaderboard seed** — рейтинг заповнений для всіх юзерів (XP, coins, level)
@@ -83,20 +92,20 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - **v24.0–v24.3: Role Panel, Sidebar Rebuild, Dashboard Per-Role, QA**
 - **v25–v37: Continuous CRM improvements**
 - **v38.0–v38.13: Sound, HR, Operations, Security, Sidebar, Catalogs, Supabase**
-- **v38.14–v38.17: Image Picker, Match-3 FX, Profile Redesign, Leaderboard (ПОТОЧНА СЕСІЯ)**
+- **v38.14–v38.18: Image Picker, Match-3 FX, Profile Redesign, Leaderboard, Profile Polish (ПОТОЧНА СЕСІЯ)**
 
 ## Стан гілок (26.03.2026)
 | Гілка | Версія | Статус |
 |-------|--------|--------|
-| `claude/continue-project-work-pdpKD` | **v38.17.0** | Головна робоча гілка |
-| `claude/continue-event-genix-crm-REaqT` | **v38.17.0** | Поточна сесія |
+| `claude/continue-project-work-pdpKD` | **v38.17.1** | Попередня робоча гілка |
+| `claude/continue-event-genix-crm-q4yHw` | **v38.18.0** | Поточна сесія |
 | `origin/main` | v28.2.0 | Стара |
 
 ## Незроблені баги
 - **BUG-001** — Лєо бот: зайвий текст при decline/other — НЕ ЗРОБЛЕНО
 - **CRM-VAL-001** — Минула дата в бронюванні — НЕ ЗРОБЛЕНО (бекенд валідація)
 - **VERSION-SYNC** — ВИПРАВЛЕНО в v23.0.0
-- **3 confirm()** — profile-page.js (рядки 613, 959, 1147) — потребують модалки
+- **confirm() → confirmModal()** — виправлено в v38.18.0
 - **Streaks** — coin_transactions NOT NULL violation (давній баг)
 - **Migration 129** — може фейлитись на prod якщо таблиці неповні (додано ALTER TABLE фікси)
 
@@ -137,4 +146,4 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 - НІКОЛИ не push в `deployed` напряму
 
 ---
-*Оновлено: 2026-03-26, v38.17.0 + version sync + test deploy, сесія claude-code*
+*Оновлено: 2026-03-27, v38.18.0, сесія claude-code*

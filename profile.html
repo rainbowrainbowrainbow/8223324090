@@ -6,14 +6,14 @@
     <title>Event Genix | Профіль</title>
     <meta name="description" content="Event Genix — Особистий кабінет з ачивками та геймифікацією">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=38.17.1">
-    <link rel="stylesheet" href="css/layout.css?v=38.17.1">
-    <link rel="stylesheet" href="css/pages.css?v=38.17.1">
-    <link rel="stylesheet" href="css/modals.css?v=38.17.1">
-    <link rel="stylesheet" href="css/controls.css?v=38.17.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=38.17.1">
-    <link rel="stylesheet" href="css/responsive.css?v=38.17.1">
-    <link rel="stylesheet" href="css/role-panel.css?v=38.17.1">
+    <link rel="stylesheet" href="css/base.css?v=38.18.0">
+    <link rel="stylesheet" href="css/layout.css?v=38.18.0">
+    <link rel="stylesheet" href="css/pages.css?v=38.18.0">
+    <link rel="stylesheet" href="css/modals.css?v=38.18.0">
+    <link rel="stylesheet" href="css/controls.css?v=38.18.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=38.18.0">
+    <link rel="stylesheet" href="css/responsive.css?v=38.18.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=38.18.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -762,37 +762,37 @@
         .streak-label { font-size: 11px; color: var(--gray-400); text-transform: uppercase; }
 
         /* --- Dark mode overrides --- */
-        [data-theme="dark"] .profile-header {
+        body.dark-mode .profile-header {
             background: linear-gradient(135deg, #4338ca, #312e81);
         }
 
-        [data-theme="dark"] .achievement-card,
-        [data-theme="dark"] .inventory-item,
-        [data-theme="dark"] .shop-card,
-        [data-theme="dark"] .streak-card,
-        [data-theme="dark"] .leaderboard-list,
-        [data-theme="dark"] .coin-history-list,
-        [data-theme="dark"] .profile-edit-form {
+        body.dark-mode .achievement-card,
+        body.dark-mode .inventory-item,
+        body.dark-mode .shop-card,
+        body.dark-mode .streak-card,
+        body.dark-mode .leaderboard-list,
+        body.dark-mode .coin-history-list,
+        body.dark-mode .profile-edit-form {
             background: rgba(255,255,255,0.05);
             border-color: rgba(255,255,255,0.1);
         }
 
-        [data-theme="dark"] .achievement-card.unlocked {
+        body.dark-mode .achievement-card.unlocked {
             background: linear-gradient(135deg, rgba(251,191,36,0.1), rgba(255,255,255,0.05));
             border-color: rgba(251,191,36,0.3);
         }
 
-        [data-theme="dark"] .profile-tab {
+        body.dark-mode .profile-tab {
             background: rgba(255,255,255,0.08);
             color: rgba(255,255,255,0.6);
         }
 
-        [data-theme="dark"] .profile-tab.active {
+        body.dark-mode .profile-tab.active {
             background: var(--primary);
             color: white;
         }
 
-        [data-theme="dark"] .leaderboard-item:hover {
+        body.dark-mode .leaderboard-item:hover {
             background: rgba(255,255,255,0.05);
         }
 
@@ -1306,42 +1306,42 @@
         .quest-toast-exit { opacity: 0; transform: translateX(-50%) translateY(20px); }
 
         /* --- Dark mode overrides for v3 components --- */
-        [data-theme="dark"] .level-progress-card,
-        [data-theme="dark"] .season-quest-card,
-        [data-theme="dark"] .team-card,
-        [data-theme="dark"] .challenge-card,
-        [data-theme="dark"] .referral-stat-card,
-        [data-theme="dark"] .referral-milestone,
-        [data-theme="dark"] .referral-list {
+        body.dark-mode .level-progress-card,
+        body.dark-mode .season-quest-card,
+        body.dark-mode .team-card,
+        body.dark-mode .challenge-card,
+        body.dark-mode .referral-stat-card,
+        body.dark-mode .referral-milestone,
+        body.dark-mode .referral-list {
             background: rgba(255,255,255,0.05);
             border-color: rgba(255,255,255,0.1);
         }
 
-        [data-theme="dark"] .referral-code-card {
+        body.dark-mode .referral-code-card {
             background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1));
             border-color: rgba(99,102,241,0.3);
         }
 
-        [data-theme="dark"] .team-card.my-team {
+        body.dark-mode .team-card.my-team {
             background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(139,92,246,0.1));
             border-color: rgba(99,102,241,0.4);
         }
 
-        [data-theme="dark"] .season-quest-card.completed {
+        body.dark-mode .season-quest-card.completed {
             background: rgba(34,197,94,0.1);
             border-color: rgba(34,197,94,0.3);
         }
 
-        [data-theme="dark"] .achievement-modal {
+        body.dark-mode .achievement-modal {
             background: #1e1e2e;
             color: #e0e0e0;
         }
 
-        [data-theme="dark"] .streak-day {
+        body.dark-mode .streak-day {
             background: rgba(255,255,255,0.08);
         }
 
-        [data-theme="dark"] .streak-day.active {
+        body.dark-mode .streak-day.active {
             background: #22c55e;
         }
 
@@ -1404,12 +1404,12 @@
         </div>
     </div>
 
-    <script src="js/config.js?v=38.17.1"></script>
-    <script src="js/api.js?v=38.17.1"></script>
-    <script src="js/auth.js?v=38.17.1"></script>
-    <script src="js/ui.js?v=38.17.1"></script>
-    <script src="js/achievement-popup.js?v=38.17.1"></script>
-    <script src="js/profile-page.js?v=38.17.1"></script>
-    <script src="js/role-panel.js?v=38.17.1"></script>
+    <script src="js/config.js?v=38.18.0"></script>
+    <script src="js/api.js?v=38.18.0"></script>
+    <script src="js/auth.js?v=38.18.0"></script>
+    <script src="js/ui.js?v=38.18.0"></script>
+    <script src="js/achievement-popup.js?v=38.18.0"></script>
+    <script src="js/profile-page.js?v=38.18.0"></script>
+    <script src="js/role-panel.js?v=38.18.0"></script>
 </body>
 </html>

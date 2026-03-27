@@ -13,7 +13,7 @@ let myNotes = [];
 let walletData = null;
 let currentUserId = null;
 let isOwnProfile = true;
-let roomData = null;
+let roomData = null; // deprecated — Room tab removed
 let questsData = null;
 let titlesData = null;
 let shopItems = [];
@@ -134,7 +134,7 @@ async function loadProfileData(userId) {
         isOwnProfile ? apiGet('/inventory') : null,
         apiGet('/achievements'),
         isOwnProfile ? apiGet('/notes') : null,
-        isOwnProfile ? apiGet('/room') : apiGet(`/room/${userId}`),
+        null, // room removed
         isOwnProfile ? apiGet('/quests/daily') : null,
         isOwnProfile ? apiGet('/quests/titles') : null
     ]);
@@ -413,97 +413,7 @@ function renderNotes() {
     </div>`;
 }
 
-// ==========================================
-// ROOM
-// ==========================================
-function renderRoom() {
-    if (!roomData) return '<div style="text-align:center;padding:40px;color:var(--gray-500)">Кімната завантажується...</div>';
-
-    const ROWS = 6, COLS = 8;
-    const layout = roomData.layout || {};
-    const wallCode = roomData.wallpaper?.code || 'wall_default';
-    const floorCode = roomData.floor?.code || 'floor_wood';
-    const mood = roomData.mood || 'happy';
-
-    // Place furniture on grid
-    const grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
-    // Place avatar in center
-    grid[2][3] = { type: 'avatar' };
-
-    // Place items from layout
-    for (const [itemId, pos] of Object.entries(layout)) {
-        const r = parseInt(pos.row), c = parseInt(pos.col);
-        if (r >= 0 && r < ROWS && c >= 0 && c < COLS && !grid[r][c]) {
-            const item = roomData.furniture?.find(f => String(f.itemId) === String(itemId));
-            if (item) grid[r][c] = { type: 'item', ...item, itemId };
-        }
-    }
-
-    // Auto-place unplaced furniture
-    const placedIds = new Set(Object.keys(layout));
-    const unplaced = (roomData.furniture || []).filter(f => !placedIds.has(String(f.itemId)));
-    for (const item of unplaced) {
-        let placed = false;
-        for (let r = 0; r < ROWS && !placed; r++) {
-            for (let c = 0; c < COLS && !placed; c++) {
-                if (!grid[r][c]) {
-                    grid[r][c] = { type: 'item', ...item };
-                    placed = true;
-                }
-            }
-        }
-    }
-
-    let cellsHtml = '';
-    for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-            const cell = grid[r][c];
-            if (cell?.type === 'avatar') {
-                const avatarLetter = (profileData?.displayName || profileData?.username || '?')[0].toUpperCase();
-                cellsHtml += `<div class="room-cell avatar-cell" style="grid-row:${r + 1};grid-column:${c + 1}">${avatarLetter}</div>`;
-            } else if (cell?.type === 'item') {
-                const emoji = FURNITURE_EMOJIS[cell.code] || '📦';
-                cellsHtml += `
-                <div class="room-cell has-item rarity-${cell.rarity || 'common'}"
-                     style="grid-row:${r + 1};grid-column:${c + 1}"
-                     data-room-item="${cell.itemId || ''}" data-row="${r}" data-col="${c}">
-                    ${emoji}
-                    <div class="room-item-tooltip">${escapeHtml(cell.name)}</div>
-                </div>`;
-            } else {
-                cellsHtml += `<div class="room-cell" style="grid-row:${r + 1};grid-column:${c + 1}"></div>`;
-            }
-        }
-    }
-
-    const moodEmoji = MOOD_EMOJIS[mood] || '😊';
-
-    return `
-    <div style="margin-top:16px">
-        <div class="room-container">
-            <div class="room-scene">
-                <div class="room-wallpaper ${escapeHtml(wallCode)}"></div>
-                <div class="room-floor ${escapeHtml(floorCode)}"></div>
-                ${cellsHtml}
-            </div>
-            <div class="room-info">
-                <div class="room-mood">${moodEmoji} ${escapeHtml(mood)}</div>
-                <div class="room-visitors">\ud83d\udc41 ${roomData.visitorCount || 0} відвідувачів</div>
-            </div>
-        </div>
-        ${isOwnProfile ? `
-        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;justify-content:center">
-            <select id="moodSelect" style="padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--gray-300);font-size:13px">
-                <option value="happy" ${mood === 'happy' ? 'selected' : ''}>😊 Щасливий</option>
-                <option value="working" ${mood === 'working' ? 'selected' : ''}>💼 Працює</option>
-                <option value="tired" ${mood === 'tired' ? 'selected' : ''}>😴 Втомлений</option>
-                <option value="excited" ${mood === 'excited' ? 'selected' : ''}>🤩 Збуджений</option>
-                <option value="chill" ${mood === 'chill' ? 'selected' : ''}>😎 Чіл</option>
-            </select>
-            <button onclick="updateMood()" class="shop-buy-btn" style="font-size:12px;padding:6px 12px">Змінити настрій</button>
-        </div>` : ''}
-    </div>`;
-}
+// Room tab removed in v38.16.0 — renderRoom() deleted
 
 // ==========================================
 // QUESTS
@@ -513,17 +423,44 @@ function renderDailyPreview() {
     const unclaimed = questsData.quests.filter(q => q.completed && !q.claimed).length;
     const done = questsData.quests.filter(q => q.completed).length;
     const total = questsData.quests.length;
+    const totalCoins = questsData.quests.reduce((s, q) => s + (q.rewardCoins || 0), 0);
+    const earnedCoins = questsData.quests.filter(q => q.claimed).reduce((s, q) => s + (q.rewardCoins || 0), 0);
+
+    // Show first 3 incomplete quests as preview
+    const preview = questsData.quests.filter(q => !q.claimed).slice(0, 3);
+    const previewHtml = preview.map(q => {
+        const icon = QUEST_ICONS[q.questType] || '📋';
+        const pct = q.targetValue > 0 ? Math.min(100, Math.round((q.progress / q.targetValue) * 100)) : 0;
+        const canClaim = q.completed && !q.claimed;
+        return `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;${canClaim ? 'opacity:1' : ''}">
+            <span style="font-size:18px;flex-shrink:0">${icon}</span>
+            <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:600;color:var(--gray-700);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(q.title)}</div>
+                <div style="height:4px;background:var(--gray-200);border-radius:2px;margin-top:3px;overflow:hidden">
+                    <div style="height:100%;width:${pct}%;background:${canClaim ? '#22c55e' : 'var(--primary)'};border-radius:2px;transition:width 0.4s"></div>
+                </div>
+            </div>
+            <span style="font-size:11px;color:var(--gray-400);flex-shrink:0">${q.progress}/${q.targetValue}</span>
+            ${canClaim ? `<button onclick="event.stopPropagation();claimQuest(${q.id})" style="padding:4px 10px;border:none;border-radius:6px;background:#22c55e;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">Забрати</button>` : ''}
+        </div>`;
+    }).join('');
+
     return `
     <div style="margin-bottom:16px;padding:16px;background:var(--gray-50,#f9fafb);border-radius:12px;border:1px solid var(--gray-100,#f3f4f6)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
             <h3 style="margin:0;font-size:15px;font-weight:700">📋 Щоденні завдання</h3>
-            <span style="font-size:13px;color:var(--gray-500)">${done}/${total}</span>
+            <div style="display:flex;gap:12px;align-items:center">
+                <span style="font-size:12px;color:var(--gray-400)">💰 ${earnedCoins}/${totalCoins}</span>
+                <span style="font-size:13px;font-weight:700;color:var(--primary)">${done}/${total}</span>
+            </div>
         </div>
         <div style="height:6px;background:var(--gray-200);border-radius:3px;overflow:hidden;margin-bottom:10px">
             <div style="height:100%;width:${total > 0 ? Math.round(done/total*100) : 0}%;background:var(--primary);border-radius:3px;transition:width 0.4s"></div>
         </div>
-        ${unclaimed > 0 ? `<div style="color:#ef4444;font-size:13px;font-weight:600;margin-bottom:8px">🎁 ${unclaimed} нагород готові до збору!</div>` : ''}
-        <button onclick="switchTab('quests')" style="padding:8px 16px;border:none;border-radius:8px;background:var(--primary);color:#fff;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px">Переглянути завдання</button>
+        ${unclaimed > 0 ? `<div style="color:#22c55e;font-size:13px;font-weight:600;margin-bottom:8px;animation:badge-pulse 1.5s infinite">🎁 ${unclaimed} нагород готові до збору!</div>` : ''}
+        ${previewHtml}
+        ${questsData.quests.length > 3 ? `<button onclick="switchTab('quests')" style="margin-top:8px;width:100%;padding:8px 16px;border:none;border-radius:8px;background:var(--primary);color:#fff;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px">Всі завдання →</button>` : ''}
     </div>`;
 }
 
@@ -637,7 +574,7 @@ function renderShopTab() {
 }
 
 async function buyItem(itemId, itemName) {
-    if (!confirm(`Купити "${itemName}"?`)) return;
+    if (!await confirmModal(`Купити "${itemName}"?`, { okText: 'Купити', cancelText: 'Скасувати' })) return;
     const result = await apiPost('/gamification/shop/buy', { itemId });
     if (result?.success) {
         if (typeof showNotification === 'function') showNotification(`Придбано: ${itemName}!`, 'success');
@@ -843,14 +780,7 @@ async function setTitle(titleCode) {
     renderProfile();
 }
 
-async function updateMood() {
-    const select = document.getElementById('moodSelect');
-    if (!select) return;
-    await apiPut('/room/decorate', { mood: select.value });
-    roomData = await apiGet('/room');
-    const tabContent = document.getElementById('tabContent');
-    if (tabContent && activeTab === 'room') tabContent.innerHTML = renderTabContent();
-}
+// updateMood() removed — Room tab removed in v38.16.0
 
 async function showAddNote() {
     const title = prompt('Заголовок нотатки:');
@@ -931,19 +861,53 @@ function renderStreakWidget() {
     const streaks = profileData?.streaks || {};
     const currentStreak = streaks.current_streak || streaks.currentStreak || 0;
     const longestStreak = streaks.longest_streak || streaks.longestStreak || 0;
+    const role = (profileData?.role || '').toLowerCase();
 
-    const milestones = [3, 7, 14, 30, 60, 100];
-    const nextMilestone = milestones.find(m => m > currentStreak) || 100;
+    // Profession-based streak config
+    const STREAK_PROFILES = {
+        animator: {
+            icon: '🎭', label: 'Аніматор',
+            milestones: [3, 7, 14, 30, 60, 100],
+            titles: { 3: 'Новачок сцени', 7: 'Зірка вечірок', 14: 'Майстер шоу', 30: 'Легенда анімації', 60: 'Гранд-аніматор', 100: 'Безсмертний шоумен' },
+            color: '#f59e0b'
+        },
+        manager: {
+            icon: '📋', label: 'Менеджер',
+            milestones: [3, 7, 14, 30, 60, 100],
+            titles: { 3: 'Організатор', 7: 'Координатор', 14: 'Стратег', 30: 'Операційний ас', 60: 'Топ-менеджер', 100: 'Бізнес-гуру' },
+            color: '#3b82f6'
+        },
+        director: {
+            icon: '👑', label: 'Директор',
+            milestones: [5, 10, 20, 40, 70, 100],
+            titles: { 5: 'Візіонер', 10: 'Лідер', 20: 'Стратегічний розум', 40: 'Залізний директор', 70: 'Легенда бізнесу', 100: 'Незламний' },
+            color: '#a855f7'
+        }
+    };
+
+    const prof = STREAK_PROFILES[role] || STREAK_PROFILES.animator;
+    const milestones = prof.milestones;
+    const nextMilestone = milestones.find(m => m > currentStreak) || milestones[milestones.length - 1];
     const pct = Math.min(100, Math.round((currentStreak / nextMilestone) * 100));
+
+    // Current title based on streak
+    const reachedMilestones = milestones.filter(m => currentStreak >= m);
+    const currentTitle = reachedMilestones.length > 0 ? prof.titles[reachedMilestones[reachedMilestones.length - 1]] : '';
+    const nextTitle = prof.titles[nextMilestone] || '';
 
     const last30 = [];
     for (let i = 29; i >= 0; i--) {
         const active = i < currentStreak;
-        last30.push(`<div class="streak-day ${active ? 'active' : ''}" title="${active ? '🔥' : '⬜'}"></div>`);
+        last30.push(`<div class="streak-day ${active ? 'active' : ''}" title="${active ? '🔥' : '⬜'}" ${active ? `style="background:${prof.color}"` : ''}></div>`);
     }
 
     return `
     <div class="streak-section" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span style="font-size:20px">${prof.icon}</span>
+            <span style="font-size:13px;font-weight:700;color:${prof.color}">${escapeHtml(prof.label)}</span>
+            ${currentTitle ? `<span style="font-size:12px;color:var(--gray-500);font-style:italic">— ${escapeHtml(currentTitle)}</span>` : ''}
+        </div>
         <div class="streak-widget">
             <div class="streak-card">
                 <div class="streak-icon">🔥</div>
@@ -958,16 +922,16 @@ function renderStreakWidget() {
             <div class="streak-card">
                 <div class="streak-icon">🎯</div>
                 <div class="streak-value">${nextMilestone}</div>
-                <div class="streak-label">Наступна мета</div>
+                <div class="streak-label">${nextTitle ? escapeHtml(nextTitle) : 'Наступна мета'}</div>
                 <div class="streak-milestone-bar" style="margin-top:6px">
-                    <div class="streak-milestone-fill" style="width:${pct}%"></div>
+                    <div class="streak-milestone-fill" style="width:${pct}%;background:${prof.color}"></div>
                 </div>
             </div>
         </div>
         <div class="streak-roadmap">
             ${milestones.map(m => `
                 <div class="streak-milestone ${currentStreak >= m ? 'reached' : ''} ${m === nextMilestone ? 'next' : ''}">
-                    <div class="milestone-dot">${currentStreak >= m ? '✅' : m}</div>
+                    <div class="milestone-dot" ${currentStreak >= m ? `style="color:${prof.color}"` : ''}>${currentStreak >= m ? '✅' : m}</div>
                     <div class="milestone-label">${m}д</div>
                 </div>
             `).join('<div class="milestone-line"></div>')}
@@ -983,7 +947,7 @@ function renderStreakWidget() {
 }
 
 async function buyStreakFreeze() {
-    if (!confirm('Заморозити streak за 50 монет? (1 раз/тиждень)')) return;
+    if (!await confirmModal('Заморозити streak за 50 монет? (1 раз/тиждень)', { okText: 'Заморозити', cancelText: 'Скасувати' })) return;
     const result = await apiPost('/gamification/streak/freeze');
     if (result?.success) {
         if (typeof showNotification === 'function') showNotification('❄️ Streak заморожено!', 'success');
@@ -1171,7 +1135,7 @@ async function joinTeamById(teamId) {
 }
 
 async function leaveMyTeam() {
-    if (!confirm('Вийти з команди?')) return;
+    if (!await confirmModal('Вийти з команди?', { type: 'danger', okText: 'Вийти', cancelText: 'Скасувати' })) return;
     const result = await apiPost('/gamification/teams/leave');
     if (result?.success) {
         if (typeof showNotification === 'function') showNotification('Ви вийшли з команди', 'success');

@@ -495,7 +495,7 @@ router.get('/health', async (req, res) => {
                 gch.channel_id, cc.name AS channel_name, gch.score, gch.level
             FROM guardian_channel_health gch
             LEFT JOIN chat_channels cc ON cc.id = gch.channel_id
-            ORDER BY gch.channel_id, gch.recorded_at DESC
+            ORDER BY gch.channel_id, gch.calculated_at DESC
         `);
         res.json(result.rows.map(r => ({
             channelId: r.channel_id,
@@ -892,7 +892,7 @@ router.get('/analytics/overview', async (req, res) => {
                 (SELECT COUNT(*) FROM guardian_actions WHERE action_type = 'mask') AS total_masks,
                 (SELECT COUNT(*) FROM guardian_actions WHERE action_type = 'conflict') AS total_conflicts,
                 (SELECT COUNT(DISTINCT channel_id) FROM chat_messages WHERE created_at > NOW() - INTERVAL '24 hours') AS active_channels,
-                (SELECT AVG(score) FROM guardian_channel_health WHERE recorded_at > NOW() - INTERVAL '24 hours') AS health_avg,
+                (SELECT AVG(score) FROM guardian_channel_health WHERE calculated_at > NOW() - INTERVAL '24 hours') AS health_avg,
                 (SELECT AVG(score) FROM guardian_mood_tracking WHERE analyzed_at > NOW() - INTERVAL '24 hours') AS mood_avg
         `);
 

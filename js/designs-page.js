@@ -128,6 +128,14 @@ function setupTabs() {
     if (hash && ['gallery', 'collections', 'price', 'calendar', 'catalogs'].includes(hash)) {
         switchTab(hash);
     }
+
+    // Listen for hash changes (sidebar navigation without page reload)
+    window.addEventListener('hashchange', () => {
+        const h = window.location.hash.replace('#', '');
+        if (h && ['gallery', 'collections', 'price', 'calendar', 'catalogs'].includes(h)) {
+            switchTab(h);
+        }
+    });
 }
 
 // ==========================================

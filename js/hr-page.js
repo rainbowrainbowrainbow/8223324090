@@ -717,7 +717,7 @@ function renderTeam(staff) {
             <div class="hr-team-avatar" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}">${avatar}</div>
             <div class="hr-team-details">
                 <div class="hr-team-name">${escapeHtml(s.name)} ${typeof staffAccountBadge === 'function' ? staffAccountBadge(s.id) : ''} ${s.is_active ? '' : '<span style="color:var(--gray-400);">(звільнений)</span>'}</div>
-                <div class="hr-team-role">${roleLabel}${hireStr ? ' · з ' + hireStr : ''}</div>
+                <div class="hr-team-role">${s.position ? escapeHtml(s.position) + ' · ' : ''}${roleLabel}${hireStr ? ' · з ' + hireStr : ''}</div>
                 <div class="hr-team-contact">
                     ${phone ? '📞 ' + escapeHtml(phone) + '<br>' : ''}
                     ${emergency ? '⚡ ' + emergency : ''}

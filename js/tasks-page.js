@@ -19,7 +19,7 @@ const CAT_LABELS = {
 
 const STATUS_CYCLE = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
 const STATUS_ICONS = { todo: '', in_progress: '', done: '' };
-const STATUS_LABELS = { todo: 'Todo', in_progress: 'В роботі', done: 'Готово' };
+const STATUS_LABELS = { todo: 'До виконання', in_progress: 'В роботі', done: 'Готово' };
 const PRIORITY_ICONS = { high: '', normal: '', low: '' };
 const PATTERN_LABELS = { daily: 'Щоденно', weekdays: 'Будні', weekly: 'Щотижня (пн)', custom: 'Обрані дні' };
 
@@ -445,7 +445,7 @@ function renderKanbanView(container) {
         <div class="kanban">
             <div class="kanban-col">
                 <div class="kanban-col-header">
-                    Todo <span class="kanban-col-count">${todo.length}</span>
+                    До виконання <span class="kanban-col-count">${todo.length}</span>
                 </div>
                 ${todo.length ? todo.map(t => renderTaskCard(t)).join('') : '<div class="empty-state">Порожньо</div>'}
             </div>
@@ -480,7 +480,7 @@ function renderTaskCard(t) {
 
     // v10.0: Task type badge
     const taskType = t.task_type || 'human';
-    const typeBadge = `<span class="badge-type badge-${taskType}">${taskType === 'bot' ? 'BOT' : 'HUMAN'}</span>`;
+    const typeBadge = `<span class="badge-type badge-${taskType}">${taskType === 'bot' ? 'Бот' : 'Людина'}</span>`;
 
     // v10.0: Deadline display
     let deadlineHtml = '';

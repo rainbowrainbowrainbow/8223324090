@@ -109,6 +109,7 @@
             const size = s.file_size ? formatSize(s.file_size) : '';
             const date = s.created_at ? new Date(s.created_at).toLocaleDateString('uk', { day: 'numeric', month: 'short' }) : '';
 
+            const playable = s.file_path && (s.file_path.startsWith('http') || s.file_path.startsWith('/uploads'));
             html += `<div class="sound-card" data-id="${s.id}">
                 <div class="sound-card-icon">${icon}</div>
                 <div class="sound-card-body">
@@ -120,6 +121,7 @@
                     </div>
                 </div>
                 <div class="sound-card-actions">
+                    ${playable ? `<button class="sound-play-btn" onclick="event.stopPropagation();_playSound('${_esc(s.file_path)}',this)" title="Відтворити">▶</button>` : ''}
                     ${date ? `<span class="sound-card-date">${date}</span>` : ''}
                 </div>
             </div>`;
@@ -550,6 +552,108 @@
     }
 
     document.addEventListener('DOMContentLoaded', init);
+
+    // ==========================================
+    // AUDIO PLAYER (v39.8)
+    // ==========================================
+    let _currentAudio = null;
+
+    window._playSound = function(url, btn) {
+        if (_currentAudio) { _currentAudio.pause(); document.querySelectorAll('.sound-play-btn.playing').forEach(b => { b.textContent = '▶'; b.classList.remove('playing'); }); }
+        if (btn?.classList.contains('playing')) { _currentAudio = null; return; }
+        _currentAudio = new Audio(url);
+        _currentAudio.play().catch(() => { if (typeof showNotification === 'function') showNotification('Не вдалось відтворити', 'error'); });
+        if (btn) { btn.textContent = '⏸'; btn.classList.add('playing'); }
+        _currentAudio.addEventListener('ended', () => { if (btn) { btn.textContent = '▶'; btn.classList.remove('playing'); } _currentAudio = null; });
+        _currentAudio.addEventListener('error', () => { if (btn) { btn.textContent = '▶'; btn.classList.remove('playing'); } _currentAudio = null; });
+    };
+
+    // ==========================================
+    // TTS + MUSIC GENERATION (v39.8)
+    // ==========================================
+    window._openTTSModal = async function() {
+        if (typeof formModal !== 'function') return;
+        const result = await formModal('🎙️ Створити голосовий звук (ElevenLabs)', [
+            { key: 'text', label: 'Текст для озвучки', type: 'textarea', required: true, placeholder: 'Ласкаво просимо до Парку Закревського Періоду!' },
+            { key: 'name', label: 'Назва файлу', placeholder: 'Привітання' },
+            { key: 'voice', label: 'Голос', type: 'select', defaultValue: 'Rachel', options: [
+                { value: 'Rachel', label: 'Rachel (жінка, EN)' },
+                { value: 'Adam', label: 'Adam (чоловік, EN)' },
+                { value: 'Bella', label: 'Bella (жінка, soft)' },
+                { value: 'Antoni', label: 'Antoni (чоловік, warm)' },
+                { value: 'Elli', label: 'Elli (жінка, young)' },
+                { value: 'Josh', label: 'Josh (чоловік, deep)' }
+            ]},
+            { key: 'category', label: 'Категорія', type: 'select', defaultValue: 'announcement', options: [
+                { value: 'announcement', label: '📢 Оголошення' },
+                { value: 'effects', label: '💥 Ефекти' },
+                { value: 'atmosphere', label: '🌿 Атмосфера' },
+                { value: 'quest', label: '🧩 Квести' }
+            ]}
+        ], { icon: '🎙️', okText: 'Згенерувати' });
+        if (!result) return;
+
+        if (typeof showNotification === 'function') showNotification('⏳ Генерація голосу...', 'info');
+        try {
+            const data = await apiCall('POST', '/music/library/generate-tts', result);
+            if (data?.success && data.status === 'ready') {
+                if (typeof showNotification === 'function') showNotification('✅ Голос створено!', 'success');
+                _loadedTabs.library = false; loadLibrary();
+            } else if (data?.taskId) {
+                if (typeof showNotification === 'function') showNotification('⏳ Генерація... Зачекайте.', 'info');
+                _pollGeneration(data.taskId, result.name, result.category, 'elevenlabs');
+            } else {
+                if (typeof showNotification === 'function') showNotification(data?.error || 'Помилка TTS', 'error');
+            }
+        } catch (err) { if (typeof showNotification === 'function') showNotification(err.message, 'error'); }
+    };
+
+    window._openMusicModal = async function() {
+        if (typeof formModal !== 'function') return;
+        const result = await formModal('🎶 Створити музику (Suno AI)', [
+            { key: 'prompt', label: 'Опис музики', type: 'textarea', required: true, placeholder: 'Весела дитяча мелодія для парку розваг, динозаври, пригоди' },
+            { key: 'name', label: 'Назва', placeholder: 'Тема парку' },
+            { key: 'duration', label: 'Тривалість (сек)', type: 'number', defaultValue: '30', placeholder: '30' },
+            { key: 'category', label: 'Категорія', type: 'select', defaultValue: 'music', options: [
+                { value: 'music', label: '🎶 Музика' },
+                { value: 'atmosphere', label: '🌿 Атмосфера' },
+                { value: 'quest', label: '🧩 Квести' }
+            ]}
+        ], { icon: '🎶', okText: 'Згенерувати' });
+        if (!result) return;
+
+        if (typeof showNotification === 'function') showNotification('⏳ Генерація музики (~1-2 хв)...', 'info');
+        try {
+            const data = await apiCall('POST', '/music/library/generate-music', result);
+            if (data?.taskId) {
+                _pollGeneration(data.taskId, result.name || data.name, result.category, 'suno');
+            } else {
+                if (typeof showNotification === 'function') showNotification(data?.error || 'Помилка генерації', 'error');
+            }
+        } catch (err) { if (typeof showNotification === 'function') showNotification(err.message, 'error'); }
+    };
+
+    function _pollGeneration(taskId, name, category, provider) {
+        let attempts = 0;
+        const poll = setInterval(async () => {
+            attempts++;
+            if (attempts > 60) { clearInterval(poll); if (typeof showNotification === 'function') showNotification('Генерація зайняла надто багато часу', 'error'); return; }
+            try {
+                const data = await apiCall('GET', `/music/library/generate-status/${taskId}`);
+                if (data?.done && data.audioUrl) {
+                    clearInterval(poll);
+                    const apply = await apiCall('POST', '/music/library/apply-generated', { audioUrl: data.audioUrl, name, category, provider });
+                    if (apply?.success) {
+                        if (typeof showNotification === 'function') showNotification(`✅ ${provider === 'suno' ? 'Музику' : 'Голос'} створено!`, 'success');
+                        _loadedTabs.library = false; loadLibrary();
+                    }
+                } else if (data?.state === 'failed') {
+                    clearInterval(poll);
+                    if (typeof showNotification === 'function') showNotification('❌ Генерація не вдалась', 'error');
+                }
+            } catch { /* continue polling */ }
+        }, 3000);
+    }
 
     window.SoundPage = { loadLibrary, loadAnnouncements, loadProjects, loadLog };
 })();

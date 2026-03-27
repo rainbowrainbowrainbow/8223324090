@@ -382,4 +382,138 @@ router.delete('/projects/:id', requireRole('admin', 'director'), async (req, res
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ============================================
+// v39.8: TTS Creation (ElevenLabs via Kie.ai) + Supabase storage
+// ============================================
+const { uploadAudioFromUrl, uploadAudioBuffer, makeAudioFilename } = require('../services/audioStorage');
+
+router.post('/library/generate-tts', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
+    const { text, name, category, voice, language } = req.body;
+    if (!text) return res.status(400).json({ error: 'Потрібен text' });
+    try {
+        const KIE_KEY = process.env.KIE_API_KEY;
+        if (!KIE_KEY) return res.status(501).json({ error: 'KIE_API_KEY не налаштовано' });
+
+        const payload = JSON.stringify({
+            model: 'elevenlabs/text-to-speech-multilingual-v2',
+            text: text.substring(0, 5000),
+            voice: voice || 'Rachel',
+            language: language || 'uk'
+        });
+
+        const kieRes = await new Promise((resolve, reject) => {
+            const r = require('https').request({
+                hostname: 'api.kie.ai', path: '/api/v1/audio/speech', method: 'POST',
+                headers: { 'Authorization': `Bearer ${KIE_KEY}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+            }, resp => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); } }); });
+            r.on('error', reject); r.write(payload); r.end();
+        });
+
+        if (kieRes.url || kieRes.data?.url) {
+            const audioUrl = kieRes.url || kieRes.data.url;
+            const filename = makeAudioFilename(category || 'tts', name || 'voice');
+            const permanentUrl = await uploadAudioFromUrl(audioUrl, filename);
+            const finalUrl = permanentUrl || audioUrl;
+
+            const r = await pool.query(
+                `INSERT INTO sounds (name, filename, file_path, category, uploaded_by)
+                 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+                [name || `TTS: ${text.substring(0, 50)}`, filename, finalUrl, category || 'effects', req.user?.username]
+            );
+            await pool.query(`INSERT INTO music_log (action, details) VALUES ('tts', $1)`,
+                [JSON.stringify({ sound_id: r.rows[0].id, text: text.substring(0, 200), voice, provider: 'elevenlabs' })]);
+
+            return res.json({ success: true, id: r.rows[0].id, url: finalUrl, status: 'ready' });
+        }
+        if (kieRes.taskId || kieRes.data?.taskId) {
+            return res.json({ success: true, taskId: kieRes.taskId || kieRes.data.taskId, status: 'generating' });
+        }
+        res.status(502).json({ error: 'TTS не вдалось', detail: kieRes });
+    } catch (err) {
+        log.error('generate-tts error', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// v39.8: Music Generation via Suno (Kie.ai proxy)
+router.post('/library/generate-music', requireRole('admin', 'creator', 'director', 'art_director'), async (req, res) => {
+    const { prompt, name, category, duration } = req.body;
+    if (!prompt) return res.status(400).json({ error: 'Потрібен prompt' });
+    try {
+        const KIE_KEY = process.env.KIE_API_KEY;
+        if (!KIE_KEY) return res.status(501).json({ error: 'KIE_API_KEY не налаштовано' });
+
+        const payload = JSON.stringify({
+            model: 'suno/v4',
+            input: {
+                prompt: prompt.substring(0, 1000),
+                duration: duration || 30,
+                make_instrumental: false
+            }
+        });
+
+        const kieRes = await new Promise((resolve, reject) => {
+            const r = require('https').request({
+                hostname: 'api.kie.ai', path: '/api/v1/jobs/createTask', method: 'POST',
+                headers: { 'Authorization': `Bearer ${KIE_KEY}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+            }, resp => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({ raw: d }); } }); });
+            r.on('error', reject); r.write(payload); r.end();
+        });
+
+        const taskId = kieRes.data?.taskId || kieRes.taskId;
+        if (!taskId) return res.status(502).json({ error: 'Suno не створив задачу', detail: kieRes });
+
+        res.json({ success: true, taskId, status: 'generating', name: name || `Music: ${prompt.substring(0, 50)}` });
+    } catch (err) {
+        log.error('generate-music error', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// v39.8: Poll generation status + save to Supabase
+router.get('/library/generate-status/:taskId', async (req, res) => {
+    try {
+        const KIE_KEY = process.env.KIE_API_KEY;
+        if (!KIE_KEY) return res.status(501).json({ error: 'KIE_API_KEY not configured' });
+
+        const kieRes = await new Promise((resolve, reject) => {
+            require('https').get(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${req.params.taskId}`, {
+                headers: { 'Authorization': `Bearer ${KIE_KEY}` }
+            }, resp => { let d = ''; resp.on('data', c => d += c); resp.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({}); } }); }).on('error', reject);
+        });
+
+        const data = kieRes.data || {};
+        const state = data.state;
+        let audioUrl = null;
+        if (state === 'success') {
+            const result = data.resultJson || data.result;
+            if (typeof result === 'string') try { audioUrl = JSON.parse(result).resultUrls?.[0]; } catch { audioUrl = result; }
+            else if (result?.resultUrls) audioUrl = result.resultUrls[0];
+            else if (result?.url) audioUrl = result.url;
+        }
+        res.json({ success: true, state, done: state === 'success' && !!audioUrl, audioUrl, error: state === 'failed' ? 'Генерація не вдалась' : null });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// v39.8: Apply generated audio — save to Supabase + DB
+router.post('/library/apply-generated', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
+    const { audioUrl, name, category, provider } = req.body;
+    if (!audioUrl) return res.status(400).json({ error: 'audioUrl required' });
+    try {
+        const filename = makeAudioFilename(category || 'music', name || 'generated');
+        const permanentUrl = await uploadAudioFromUrl(audioUrl, filename);
+        const finalUrl = permanentUrl || audioUrl;
+
+        const r = await pool.query(
+            `INSERT INTO sounds (name, filename, file_path, category, uploaded_by)
+             VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+            [name || 'AI Generated', filename, finalUrl, category || 'music', req.user?.username]
+        );
+        await pool.query(`INSERT INTO music_log (action, details) VALUES ('upload', $1)`,
+            [JSON.stringify({ sound_id: r.rows[0].id, provider: provider || 'ai', source: audioUrl.substring(0, 100) })]);
+
+        res.json({ success: true, id: r.rows[0].id, url: finalUrl });
+    } catch (err) { log.error('apply-generated error', err); res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

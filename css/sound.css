@@ -42,6 +42,39 @@
 .sound-card-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .sound-card-date { font-size: var(--font-xs, 11px); color: var(--gray-400); font-weight: 600; }
 
+/* Play button (v39.8) */
+.sound-play-btn {
+    width: 36px; height: 36px; border-radius: 50%; border: none;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: #fff; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s; flex-shrink: 0;
+}
+.sound-play-btn:hover { transform: scale(1.1); box-shadow: 0 2px 8px rgba(16,185,129,0.3); }
+.sound-play-btn.playing { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); animation: pulse-play 1s ease infinite; }
+@keyframes pulse-play { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.3)} 50%{box-shadow:0 0 0 8px rgba(239,68,68,0)} }
+
+/* Create bar (v39.8) */
+.sound-create-bar {
+    display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;
+}
+.sound-create-btn {
+    padding: 10px 20px; border-radius: 12px; border: 2px dashed;
+    font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit;
+    transition: all 0.2s; min-width: 200px; text-align: center;
+}
+.sound-create-btn.tts {
+    border-color: rgba(139,92,246,0.3); color: #7c3aed; background: rgba(139,92,246,0.05);
+}
+.sound-create-btn.tts:hover { background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.5); transform: translateY(-1px); }
+.sound-create-btn.music {
+    border-color: rgba(245,158,11,0.3); color: #d97706; background: rgba(245,158,11,0.05);
+}
+.sound-create-btn.music:hover { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.5); transform: translateY(-1px); }
+
+/* Dark mode */
+body.dark-mode .sound-create-btn.tts { background: rgba(139,92,246,0.1); color: #a78bfa; border-color: rgba(139,92,246,0.25); }
+body.dark-mode .sound-create-btn.music { background: rgba(245,158,11,0.1); color: #fbbf24; border-color: rgba(245,158,11,0.25); }
+
 /* ═══ Announcements ═══ */
 .sound-ann-list { display: flex; flex-direction: column; gap: 6px; }
 .sound-ann-card { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: var(--radius-card, 12px); background: var(--white); border: 1px solid var(--gray-100); transition: all 0.15s; }

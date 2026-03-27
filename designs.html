@@ -697,6 +697,28 @@
         .catalog-card-body { padding: 14px 16px; }
         .catalog-card-title { font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 4px; }
         .catalog-card-desc { font-size: 13px; color: rgba(255,255,255,0.5); line-height: 1.4; }
+        .catalog-cover-gen-btn {
+            margin-top: 6px;
+            background: rgba(139,92,246,0.15);
+            border: 1px solid rgba(139,92,246,0.3);
+            color: #7c3aed;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+        .catalog-cover-gen-btn:hover {
+            background: rgba(139,92,246,0.25);
+            border-color: rgba(139,92,246,0.5);
+        }
+        body.dark-mode .catalog-cover-gen-btn {
+            background: rgba(139,92,246,0.2);
+            color: #a78bfa;
+            border-color: rgba(139,92,246,0.3);
+        }
         .catalog-card-footer {
             display: flex; justify-content: space-between; align-items: center;
             padding: 10px 16px;
@@ -1270,6 +1292,7 @@
     <script src="js/auth.js?v=39.6.0"></script>
     <script src="js/components/sidebar.js?v=39.6.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/catalogs.js?v=39.7.0"></script>
     <script src="js/designs-page.js?v=39.6.0"></script>
     <script src="js/role-panel.js?v=39.6.0"></script>
     <script>
@@ -1342,7 +1365,8 @@
                 card.style.cursor = 'pointer';
                 card.onclick = (function(catId) { return function() { openCatalogPages(catId); }; })(c.id);
                 card.innerHTML = coverHtml +
-                    '<div class="catalog-card-body"><div class="catalog-card-title">' + (c.name || c.id) + '</div><div class="catalog-card-meta">' + count + ' сторінок</div></div>';
+                    '<div class="catalog-card-body"><div class="catalog-card-title">' + (c.name || c.id) + '</div><div class="catalog-card-meta">' + count + ' сторінок</div>' +
+                    '<button class="catalog-cover-gen-btn" onclick="event.stopPropagation();generateCatalogCover(\'' + c.id + '\')" title="AI-обкладинка">🎨 Обкладинка</button></div>';
                 listContainer.appendChild(card);
             });
             // Add "+ Create" card at the end

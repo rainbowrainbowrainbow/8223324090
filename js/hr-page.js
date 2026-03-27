@@ -1239,7 +1239,11 @@ function renderLeaves(leaves) {
 }
 
 window.reviewLeave = async function(id, status) {
-    const comment = status === 'rejected' ? prompt('Причина відхилення:') : '';
+    let comment = '';
+    if (status === 'rejected') {
+        comment = await promptModal('Причина відхилення:', { placeholder: 'Вкажіть причину...' });
+        if (comment === null) return;
+    }
     const data = await hrFetch(`/leave-requests/${id}/review`, 'PUT', { status, comment });
     if (data?.success) { showNotification(status === 'approved' ? 'Заявку затверджено' : 'Заявку відхилено', 'success'); loadLeaves(); }
 };
@@ -1247,14 +1251,22 @@ window.reviewLeave = async function(id, status) {
 window.showNewLeaveForm = async function() {
     const staff = await hrFetch('/staff?active=true');
     if (!staff?.success) return;
-    const staffId = prompt('ID співробітника:\n' + staff.data.map(s => `${s.id} — ${s.name}`).join('\n'));
-    if (!staffId) return;
-    const type = prompt('Тип (vacation/sick/day_off/unpaid):') || 'vacation';
-    const dateFrom = prompt('Дата з (YYYY-MM-DD):');
-    const dateTo = prompt('Дата по (YYYY-MM-DD):');
-    if (!dateFrom || !dateTo) return;
-    const reason = prompt('Причина:') || '';
-    const data = await hrFetch('/leave-requests', 'POST', { staff_id: parseInt(staffId), type, date_from: dateFrom, date_to: dateTo, reason });
+    const staffOptions = staff.data.map(s => ({ value: String(s.id), label: `${s.name}` }));
+    const typeOptions = [
+        { value: 'vacation', label: 'Відпустка' },
+        { value: 'sick', label: 'Лікарняний' },
+        { value: 'day_off', label: 'Відгул' },
+        { value: 'unpaid', label: 'За свій рахунок' }
+    ];
+    const result = await formModal('Нова заявка на відпустку', [
+        { key: 'staffId', label: 'Співробітник', type: 'select', options: staffOptions, required: true },
+        { key: 'type', label: 'Тип', type: 'select', options: typeOptions, defaultValue: 'vacation' },
+        { key: 'dateFrom', label: 'Дата з', type: 'date', required: true },
+        { key: 'dateTo', label: 'Дата по', type: 'date', required: true },
+        { key: 'reason', label: 'Причина', placeholder: 'Необов\'язково' }
+    ], { icon: '🏖️' });
+    if (!result) return;
+    const data = await hrFetch('/leave-requests', 'POST', { staff_id: parseInt(result.staffId), type: result.type, date_from: result.dateFrom, date_to: result.dateTo, reason: result.reason || '' });
     if (data?.success) { showNotification('Заявку створено', 'success'); loadLeaves(); }
 };
 
@@ -1313,14 +1325,24 @@ function renderSalary(data) {
 window.showAdjustmentForm = async function() {
     const staff = await hrFetch('/staff?active=true');
     if (!staff?.success) return;
-    const staffId = prompt('ID співробітника:\n' + staff.data.map(s => `${s.id} — ${s.name}`).join('\n'));
-    if (!staffId) return;
-    const type = prompt('Тип (bonus/deduction/penalty/tip):') || 'bonus';
-    const amount = parseInt(prompt('Сума (₴):') || '0');
+    const staffOptions = staff.data.map(s => ({ value: String(s.id), label: `${s.name}` }));
+    const typeOptions = [
+        { value: 'bonus', label: 'Бонус' },
+        { value: 'deduction', label: 'Утримання' },
+        { value: 'penalty', label: 'Штраф' },
+        { value: 'tip', label: 'Чайові' }
+    ];
+    const result = await formModal('Коригування зарплати', [
+        { key: 'staffId', label: 'Співробітник', type: 'select', options: staffOptions, required: true },
+        { key: 'type', label: 'Тип', type: 'select', options: typeOptions, defaultValue: 'bonus' },
+        { key: 'amount', label: 'Сума (₴)', type: 'number', required: true, placeholder: '500' },
+        { key: 'reason', label: 'Причина', placeholder: 'Необов\'язково' }
+    ], { icon: '💰' });
+    if (!result) return;
+    const amount = parseInt(result.amount);
     if (!amount) return;
-    const reason = prompt('Причина:') || '';
     const month = document.getElementById('salaryMonth')?.value || '';
-    const data = await hrFetch('/salary/adjustment', 'POST', { staff_id: parseInt(staffId), month, type, amount, reason });
+    const data = await hrFetch('/salary/adjustment', 'POST', { staff_id: parseInt(result.staffId), month, type: result.type, amount, reason: result.reason || '' });
     if (data?.success) { showNotification('Коригування додано', 'success'); loadSalary(); }
 };
 
@@ -1425,11 +1447,14 @@ window.showStartOnboarding = async function() {
         hrFetch('/onboarding/templates')
     ]);
     if (!staff?.success || !templates?.success) return;
-    const staffId = prompt('ID співробітника:\n' + staff.data.map(s => `${s.id} — ${s.name}`).join('\n'));
-    if (!staffId) return;
-    const templateId = prompt('ID шаблону:\n' + templates.data.map(t => `${t.id} — ${t.name}`).join('\n'));
-    if (!templateId) return;
-    const data = await hrFetch('/onboarding/start', 'POST', { staff_id: parseInt(staffId), template_id: parseInt(templateId) });
+    const staffOptions = staff.data.map(s => ({ value: String(s.id), label: `${s.name}` }));
+    const templateOptions = templates.data.map(t => ({ value: String(t.id), label: `${t.name}` }));
+    const result = await formModal('Запустити онбординг', [
+        { key: 'staffId', label: 'Співробітник', type: 'select', options: staffOptions, required: true },
+        { key: 'templateId', label: 'Шаблон', type: 'select', options: templateOptions, required: true }
+    ], { icon: '🚀' });
+    if (!result) return;
+    const data = await hrFetch('/onboarding/start', 'POST', { staff_id: parseInt(result.staffId), template_id: parseInt(result.templateId) });
     if (data?.success) { showNotification('Онбординг запущено', 'success'); loadOnboarding(); }
 };
 
@@ -1472,11 +1497,13 @@ function renderCostumes(costumes) {
 }
 
 window.showAddCostume = async function() {
-    const name = prompt('Назва костюму:');
-    if (!name) return;
-    const category = prompt('Категорія (наприклад: піратський, казковий, спортивний):') || 'general';
-    const size = prompt('Розмір:') || '';
-    const data = await hrFetch('/costumes', 'POST', { name, category, size });
+    const result = await formModal('Додати костюм', [
+        { key: 'name', label: 'Назва костюму', required: true, placeholder: 'Наприклад: Пірат Джек' },
+        { key: 'category', label: 'Категорія', placeholder: 'піратський, казковий, спортивний', defaultValue: 'general' },
+        { key: 'size', label: 'Розмір', placeholder: 'S / M / L або 42-44' }
+    ], { icon: '🦸' });
+    if (!result) return;
+    const data = await hrFetch('/costumes', 'POST', { name: result.name, category: result.category || 'general', size: result.size || '' });
     if (data?.success) { showNotification('Костюм додано', 'success'); loadCostumes(); }
 };
 
@@ -1628,33 +1655,42 @@ async function hireCandidate(id) {
 }
 
 async function addCandidatePrompt(vacancyId) {
-    const name = prompt('Ім\'я кандидата *:');
-    if (!name?.trim()) return;
-    const phone = prompt('Телефон (або Enter щоб пропустити):');
-    const tg = prompt('Telegram username (або Enter):');
+    const result = await formModal('Додати кандидата', [
+        { key: 'name', label: 'Ім\'я кандидата', required: true, placeholder: 'Іван Петренко' },
+        { key: 'phone', label: 'Телефон', placeholder: '+380...' },
+        { key: 'tg', label: 'Telegram username', placeholder: '@username' }
+    ], { icon: '👤' });
+    if (!result) return;
     await hrFetch(`/vacancies/${vacancyId}/applications`, {
         method: 'POST',
-        body: JSON.stringify({ name: name.trim(), phone: phone || null, telegram_username: tg || null })
+        body: JSON.stringify({ name: result.name.trim(), phone: result.phone || null, telegram_username: result.tg || null })
     });
     refreshCandidates();
 }
 
 // Vacancy create button
 document.getElementById('btnAddVacancy')?.addEventListener('click', async () => {
-    const title = prompt('Назва вакансії *:');
-    if (!title?.trim()) return;
     const roleKeys = Object.keys(ROLE_LABELS);
-    const roleList = roleKeys.map((k, i) => `${i + 1}. ${ROLE_LABELS[k]}`).join('\n');
-    const roleNum = prompt(`Роль (введи номер):\n${roleList}`);
-    const roleKey = roleKeys[parseInt(roleNum) - 1];
-    if (!roleKey) return alert('Невірний номер ролі');
-    const salary_from = parseInt(prompt('Зарплата від (₴, або 0):')) || null;
-    const salary_to = parseInt(prompt('Зарплата до (₴, або 0):')) || null;
-    const schedule = prompt('Графік (або Enter):');
+    const roleOptions = roleKeys.map(k => ({ value: k, label: ROLE_LABELS[k] }));
+    const result = await formModal('Нова вакансія', [
+        { key: 'title', label: 'Назва вакансії', required: true, placeholder: 'Аніматор на свята' },
+        { key: 'role_type', label: 'Роль', type: 'select', options: roleOptions, required: true },
+        { key: 'salary_from', label: 'Зарплата від (₴)', type: 'number', placeholder: '0' },
+        { key: 'salary_to', label: 'Зарплата до (₴)', type: 'number', placeholder: '0' },
+        { key: 'schedule', label: 'Графік', placeholder: 'Пн-Пт 10:00-18:00' }
+    ], { icon: '📋' });
+    if (!result) return;
     const priority = (await confirmModal('Терміново?', { type: 'danger' })) ? 'urgent' : 'normal';
     hrFetch('/vacancies', {
         method: 'POST',
-        body: JSON.stringify({ title: title.trim(), role_type: roleKey, salary_from, salary_to, schedule: schedule || null, priority })
+        body: JSON.stringify({
+            title: result.title.trim(),
+            role_type: result.role_type,
+            salary_from: parseInt(result.salary_from) || null,
+            salary_to: parseInt(result.salary_to) || null,
+            schedule: result.schedule || null,
+            priority
+        })
     }).then(r => { if (r?.success) loadVacancies(); });
 });
 

@@ -334,11 +334,11 @@ function renderKanbanCard(item, col) {
 }
 
 async function changeStatus(id, newStatus) {
-    const comment = (newStatus === 'rejected')
-        ? prompt('Причина відхилення:')
-        : null;
-
-    if (newStatus === 'rejected' && comment === null) return; // Cancelled
+    let comment = null;
+    if (newStatus === 'rejected') {
+        comment = await promptModal('Причина відхилення:', { placeholder: 'Вкажіть причину...' });
+        if (comment === null) return; // Cancelled
+    }
 
     const result = await apiPost(`/content/${id}/status`, {
         status: newStatus,

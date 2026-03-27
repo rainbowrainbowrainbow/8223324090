@@ -656,6 +656,13 @@ initDatabase().then(() => {
 
         // WebSocket: attach to HTTP server for live-sync
         initWebSocket(server);
+
+        // v39.7.0 — Alert broadcaster via WebSocket (every 60s, replaces client-side polling)
+        try {
+            const { startAlertBroadcaster } = require('./routes/dashboard');
+            startAlertBroadcaster(60000);
+            log.info('Alert broadcaster started (60s interval)');
+        } catch (e) { log.warn('Alert broadcaster init failed:', e.message); }
     });
 });
 

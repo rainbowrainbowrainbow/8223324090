@@ -23,6 +23,7 @@ let leaderboardSort = 'xp';
 let activeTab = 'profile';
 
 // v30.8.0 — Gamification v3 state
+let allStreaks = null;
 let seasonalQuests = null;
 let teamsData = null;
 let challengesData = null;
@@ -136,7 +137,8 @@ async function loadProfileData(userId) {
         isOwnProfile ? apiGet('/notes') : null,
         null, // room removed
         isOwnProfile ? apiGet('/quests/daily') : null,
-        isOwnProfile ? apiGet('/quests/titles') : null
+        isOwnProfile ? apiGet('/quests/titles') : null,
+        isOwnProfile ? apiGet('/streaks') : null
     ]);
 
     profileData = results[0];
@@ -147,6 +149,7 @@ async function loadProfileData(userId) {
     roomData = results[5];
     questsData = results[6];
     titlesData = results[7];
+    allStreaks = results[8];
 }
 
 // ==========================================
@@ -783,10 +786,12 @@ async function setTitle(titleCode) {
 // updateMood() removed — Room tab removed in v38.16.0
 
 async function showAddNote() {
-    const title = prompt('Заголовок нотатки:');
-    if (title === null) return;
-    const content = prompt('Текст:');
-    if (content === null) return;
+    const result = await formModal('Нова нотатка', [
+        { key: 'title', label: 'Заголовок', required: true, placeholder: 'Заголовок нотатки' },
+        { key: 'content', label: 'Текст', type: 'textarea', placeholder: 'Текст нотатки...' }
+    ], { icon: '📝' });
+    if (!result) return;
+    const { title, content } = result;
     const color = NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)];
 
     const result = await apiPost('/notes', { title, content, color });
@@ -855,89 +860,113 @@ function renderLevelProgress() {
 }
 
 // ==========================================
-// STREAK WIDGET (v30.8.0)
+// STREAK WIDGET (v39.7.0 — multi-type with profession titles)
 // ==========================================
 function renderStreakWidget() {
-    const streaks = profileData?.streaks || {};
-    const currentStreak = streaks.current_streak || streaks.currentStreak || 0;
-    const longestStreak = streaks.longest_streak || streaks.longestStreak || 0;
     const role = (profileData?.role || '').toLowerCase();
 
-    // Profession-based streak config
+    // Profession-based config for role title & overall streak flavor
     const STREAK_PROFILES = {
-        animator: {
-            icon: '🎭', label: 'Аніматор',
-            milestones: [3, 7, 14, 30, 60, 100],
-            titles: { 3: 'Новачок сцени', 7: 'Зірка вечірок', 14: 'Майстер шоу', 30: 'Легенда анімації', 60: 'Гранд-аніматор', 100: 'Безсмертний шоумен' },
-            color: '#f59e0b'
-        },
-        manager: {
-            icon: '📋', label: 'Менеджер',
-            milestones: [3, 7, 14, 30, 60, 100],
-            titles: { 3: 'Організатор', 7: 'Координатор', 14: 'Стратег', 30: 'Операційний ас', 60: 'Топ-менеджер', 100: 'Бізнес-гуру' },
-            color: '#3b82f6'
-        },
-        director: {
-            icon: '👑', label: 'Директор',
-            milestones: [5, 10, 20, 40, 70, 100],
-            titles: { 5: 'Візіонер', 10: 'Лідер', 20: 'Стратегічний розум', 40: 'Залізний директор', 70: 'Легенда бізнесу', 100: 'Незламний' },
-            color: '#a855f7'
-        }
+        animator: { icon: '🎭', label: 'Аніматор', color: '#f59e0b',
+            titles: { 3: 'Новачок сцени', 7: 'Зірка вечірок', 14: 'Майстер шоу', 30: 'Легенда анімації', 60: 'Гранд-аніматор', 100: 'Безсмертний шоумен' } },
+        manager: { icon: '📋', label: 'Менеджер', color: '#3b82f6',
+            titles: { 3: 'Організатор', 7: 'Координатор', 14: 'Стратег', 30: 'Операційний ас', 60: 'Топ-менеджер', 100: 'Бізнес-гуру' } },
+        director: { icon: '👑', label: 'Директор', color: '#a855f7',
+            titles: { 5: 'Візіонер', 10: 'Лідер', 20: 'Стратегічний розум', 40: 'Залізний директор', 70: 'Легенда бізнесу', 100: 'Незламний' } },
+        admin: { icon: '⚙️', label: 'Адміністратор', color: '#6366f1',
+            titles: { 3: 'Сисадмін', 7: 'Девопс', 14: 'Архітектор', 30: 'Хранитель системи', 60: 'Невидимий герой', 100: 'Цифровий бог' } },
+        creator: { icon: '🔮', label: 'Творець', color: '#ec4899',
+            titles: { 3: 'Натхненний', 7: 'Творець', 14: 'Візіонер', 30: 'Деміург', 60: 'Майстер світів', 100: 'Абсолют' } }
+    };
+
+    const STREAK_TYPE_META = {
+        login:    { icon: '📅', label: 'Щоденний вхід', color: '#22c55e' },
+        task:     { icon: '✅', label: 'Завдання', color: '#3b82f6' },
+        booking:  { icon: '📋', label: 'Бронювання', color: '#f59e0b' },
+        quiz:     { icon: '🧠', label: 'Вікторина', color: '#a855f7' },
+        minigame: { icon: '🎮', label: 'Гра', color: '#ec4899' }
     };
 
     const prof = STREAK_PROFILES[role] || STREAK_PROFILES.animator;
-    const milestones = prof.milestones;
-    const nextMilestone = milestones.find(m => m > currentStreak) || milestones[milestones.length - 1];
-    const pct = Math.min(100, Math.round((currentStreak / nextMilestone) * 100));
 
-    // Current title based on streak
-    const reachedMilestones = milestones.filter(m => currentStreak >= m);
-    const currentTitle = reachedMilestones.length > 0 ? prof.titles[reachedMilestones[reachedMilestones.length - 1]] : '';
-    const nextTitle = prof.titles[nextMilestone] || '';
+    // Build streak cards from API data
+    const streakEntries = allStreaks && typeof allStreaks === 'object' ? Object.entries(allStreaks) : [];
+    const totalCurrent = streakEntries.reduce((sum, [, s]) => sum + (s.current || 0), 0);
+    const bestOverall = streakEntries.reduce((max, [, s]) => Math.max(max, s.best || 0), 0);
+    const activeToday = streakEntries.filter(([, s]) => s.activeToday).length;
 
+    // Role title from best individual streak
+    const longestCurrent = streakEntries.reduce((max, [, s]) => Math.max(max, s.current || 0), 0);
+    const titleKeys = Object.keys(prof.titles).map(Number).sort((a, b) => a - b);
+    const earnedKey = titleKeys.filter(k => longestCurrent >= k).pop();
+    const currentTitle = earnedKey ? prof.titles[earnedKey] : '';
+    const nextTitleKey = titleKeys.find(k => longestCurrent < k);
+    const nextTitle = nextTitleKey ? prof.titles[nextTitleKey] : '';
+
+    // Streak type cards
+    const typeCardsHtml = streakEntries.map(([type, s]) => {
+        const meta = STREAK_TYPE_META[type] || { icon: '❓', label: type, color: '#6b7280' };
+        const current = s.current || 0;
+        const best = s.best || 0;
+        const nextM = s.nextMilestone;
+        const pct = nextM ? Math.min(100, Math.round((current / nextM.days) * 100)) : 100;
+        return `
+        <div class="streak-type-card ${s.activeToday ? 'active-today' : ''}" style="--streak-color:${meta.color}">
+            <div class="streak-type-header">
+                <span class="streak-type-icon">${meta.icon}</span>
+                <span class="streak-type-label">${meta.label}</span>
+                ${s.activeToday ? '<span class="streak-today-badge">✓ сьогодні</span>' : ''}
+            </div>
+            <div class="streak-type-stats">
+                <div class="streak-type-current" style="color:${meta.color}">🔥 ${current}</div>
+                <div class="streak-type-best">🏅 ${best}</div>
+            </div>
+            ${nextM ? `
+            <div class="streak-type-progress">
+                <div class="streak-type-bar"><div class="streak-type-fill" style="width:${pct}%;background:${meta.color}"></div></div>
+                <span class="streak-type-target">${nextM.days}д → +${nextM.coins}🪙</span>
+            </div>` : '<div class="streak-type-max">🏆 Макс!</div>'}
+        </div>`;
+    }).join('');
+
+    // Heatmap for last 30 days (based on login streak)
+    const loginStreak = allStreaks?.login?.current || profileData?.streaks?.current_streak || profileData?.streaks?.currentStreak || 0;
     const last30 = [];
     for (let i = 29; i >= 0; i--) {
-        const active = i < currentStreak;
+        const active = i < loginStreak;
         last30.push(`<div class="streak-day ${active ? 'active' : ''}" title="${active ? '🔥' : '⬜'}" ${active ? `style="background:${prof.color}"` : ''}></div>`);
     }
 
     return `
     <div class="streak-section" style="margin-bottom:16px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-            <span style="font-size:20px">${prof.icon}</span>
-            <span style="font-size:13px;font-weight:700;color:${prof.color}">${escapeHtml(prof.label)}</span>
-            ${currentTitle ? `<span style="font-size:12px;color:var(--gray-500);font-style:italic">— ${escapeHtml(currentTitle)}</span>` : ''}
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+            <span style="font-size:22px">${prof.icon}</span>
+            <span style="font-size:14px;font-weight:700;color:${prof.color}">${escapeHtml(prof.label)}</span>
+            ${currentTitle ? `<span style="font-size:12px;background:${prof.color}20;color:${prof.color};padding:2px 10px;border-radius:10px;font-weight:600">— ${escapeHtml(currentTitle)}</span>` : ''}
+            ${nextTitle ? `<span style="font-size:11px;color:var(--gray-400)">→ ${escapeHtml(nextTitle)} (${nextTitleKey}д)</span>` : ''}
         </div>
         <div class="streak-widget">
             <div class="streak-card">
                 <div class="streak-icon">🔥</div>
-                <div class="streak-value">${currentStreak}</div>
-                <div class="streak-label">Поточний streak</div>
+                <div class="streak-value">${totalCurrent}</div>
+                <div class="streak-label">Загальний streak</div>
             </div>
             <div class="streak-card">
                 <div class="streak-icon">🏅</div>
-                <div class="streak-value">${longestStreak}</div>
-                <div class="streak-label">Рекорд</div>
+                <div class="streak-value">${bestOverall}</div>
+                <div class="streak-label">Найкращий рекорд</div>
             </div>
             <div class="streak-card">
-                <div class="streak-icon">🎯</div>
-                <div class="streak-value">${nextMilestone}</div>
-                <div class="streak-label">${nextTitle ? escapeHtml(nextTitle) : 'Наступна мета'}</div>
-                <div class="streak-milestone-bar" style="margin-top:6px">
-                    <div class="streak-milestone-fill" style="width:${pct}%;background:${prof.color}"></div>
-                </div>
+                <div class="streak-icon">⚡</div>
+                <div class="streak-value">${activeToday}/${streakEntries.length}</div>
+                <div class="streak-label">Активних сьогодні</div>
             </div>
         </div>
-        <div class="streak-roadmap">
-            ${milestones.map(m => `
-                <div class="streak-milestone ${currentStreak >= m ? 'reached' : ''} ${m === nextMilestone ? 'next' : ''}">
-                    <div class="milestone-dot" ${currentStreak >= m ? `style="color:${prof.color}"` : ''}>${currentStreak >= m ? '✅' : m}</div>
-                    <div class="milestone-label">${m}д</div>
-                </div>
-            `).join('<div class="milestone-line"></div>')}
+        <div class="streak-types-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-top:12px">
+            ${typeCardsHtml}
         </div>
-        <div class="streak-heatmap" style="margin-top:10px">
-            <div style="font-size:11px;color:var(--gray-400);margin-bottom:4px">Останні 30 днів:</div>
+        <div class="streak-heatmap" style="margin-top:12px">
+            <div style="font-size:11px;color:var(--gray-400);margin-bottom:4px">Вхід за останні 30 днів:</div>
             <div class="heatmap-grid">${last30.join('')}</div>
         </div>
         <div style="margin-top:8px;text-align:center">
@@ -979,9 +1008,40 @@ function renderSeasonTab() {
     const season = quests[0]?.season || 'spring';
     const seasonNames = { winter: '❄️ Зимовий сезон', spring: '🌸 Весняний сезон', summer: '☀️ Літній сезон', autumn: '🍂 Осінній сезон' };
     const seasonColors = { winter: '#60a5fa', spring: '#34d399', summer: '#fbbf24', autumn: '#f97316' };
+    const seasonGradients = {
+        winter: 'linear-gradient(135deg, #1e40af, #3b82f6, #60a5fa)',
+        spring: 'linear-gradient(135deg, #059669, #10b981, #34d399)',
+        summer: 'linear-gradient(135deg, #d97706, #f59e0b, #fbbf24)',
+        autumn: 'linear-gradient(135deg, #c2410c, #ea580c, #f97316)'
+    };
 
     const endDate = quests[0]?.end_date;
     const daysLeft = endDate ? Math.max(0, Math.ceil((new Date(endDate) - new Date()) / 86400000)) : 0;
+
+    // Season Pass tier progression
+    const completedCount = quests.filter(q => q.completed).length;
+    const claimedCount = quests.filter(q => q.claimed).length;
+    const totalQuests = quests.length;
+    const passPct = totalQuests > 0 ? Math.round((completedCount / totalQuests) * 100) : 0;
+
+    const PASS_TIERS = [
+        { name: 'Бронзовий', icon: '🥉', threshold: 0.25, color: '#cd7f32' },
+        { name: 'Срібний', icon: '🥈', threshold: 0.5, color: '#c0c0c0' },
+        { name: 'Золотий', icon: '🥇', threshold: 0.75, color: '#ffd700' },
+        { name: 'Діамантовий', icon: '💎', threshold: 1.0, color: '#60a5fa' }
+    ];
+    const currentTier = PASS_TIERS.filter(t => (completedCount / totalQuests) >= t.threshold).pop();
+    const nextTier = PASS_TIERS.find(t => (completedCount / totalQuests) < t.threshold);
+
+    // Season pass timeline
+    const timelineHtml = quests.map((q, i) => {
+        const done = q.completed;
+        const claimed = q.claimed;
+        const tierForThis = PASS_TIERS.find(t => ((i + 1) / totalQuests) <= t.threshold) || PASS_TIERS[3];
+        return `<div class="pass-node ${done ? 'done' : ''} ${claimed ? 'claimed' : ''}" style="--node-color:${done ? (seasonColors[season] || '#6366f1') : 'var(--gray-300)'}" title="${escapeHtml(q.title)}">
+            <div class="pass-node-dot">${done ? (claimed ? '✅' : '🎁') : (i + 1)}</div>
+        </div>`;
+    }).join('<div class="pass-connector"></div>');
 
     let cardsHtml = quests.map(q => {
         const progress = q.progress || 0;
@@ -1013,11 +1073,44 @@ function renderSeasonTab() {
         </div>`;
     }).join('');
 
+    const totalCoins = quests.reduce((s, q) => s + (q.reward_coins || 0), 0);
+    const totalXP = quests.reduce((s, q) => s + (q.reward_xp || 0), 0);
+
     return `
     <div style="margin-top:16px">
-        <div class="season-banner" style="background:linear-gradient(135deg,${seasonColors[season] || '#6366f1'},${seasonColors[season] || '#6366f1'}99);color:white;border-radius:var(--radius-md);padding:20px;margin-bottom:16px;text-align:center">
-            <h3 style="margin:0 0 4px;font-size:20px">${seasonNames[season] || season}</h3>
-            <div style="font-size:13px;opacity:0.9">Залишилось ${daysLeft} днів</div>
+        <div class="season-banner" style="background:${seasonGradients[season] || seasonGradients.spring};color:white;border-radius:var(--radius-md);padding:24px 20px;margin-bottom:16px;text-align:center;position:relative;overflow:hidden">
+            <div style="position:absolute;top:0;left:0;right:0;bottom:0;background:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2220%22 cy=%2230%22 r=%2240%22 fill=%22rgba(255,255,255,0.05)%22/><circle cx=%2280%22 cy=%2270%22 r=%2260%22 fill=%22rgba(255,255,255,0.03)%22/></svg>')"></div>
+            <div style="position:relative;z-index:1">
+                <h3 style="margin:0 0 4px;font-size:22px;font-weight:800">${seasonNames[season] || season}</h3>
+                <div style="font-size:13px;opacity:0.9;margin-bottom:12px">Залишилось ${daysLeft} днів</div>
+                <div style="display:flex;justify-content:center;gap:20px;font-size:13px;font-weight:600">
+                    <span>${currentTier ? `${currentTier.icon} ${currentTier.name}` : '🏁 Старт'}</span>
+                    <span>🪙 ${totalCoins} монет</span>
+                    <span>⚡ ${totalXP} XP</span>
+                </div>
+            </div>
+        </div>
+        <div class="season-pass-progress" style="background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius-md);padding:16px;margin-bottom:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <span style="font-size:13px;font-weight:700">Сезонний пас</span>
+                <span style="font-size:13px;color:var(--gray-500)">${completedCount}/${totalQuests} завершено (${passPct}%)</span>
+            </div>
+            <div style="height:8px;background:var(--gray-100);border-radius:4px;overflow:hidden;margin-bottom:12px">
+                <div style="height:100%;width:${passPct}%;background:${seasonColors[season] || '#6366f1'};border-radius:4px;transition:width 0.4s"></div>
+            </div>
+            <div class="pass-tiers" style="display:flex;justify-content:space-between;margin-bottom:12px">
+                ${PASS_TIERS.map(t => {
+                    const reached = (completedCount / totalQuests) >= t.threshold;
+                    return `<div style="text-align:center;opacity:${reached ? 1 : 0.4}">
+                        <div style="font-size:20px">${t.icon}</div>
+                        <div style="font-size:10px;font-weight:600;color:${reached ? t.color : 'var(--gray-400)'}">${t.name}</div>
+                        <div style="font-size:9px;color:var(--gray-400)">${Math.round(t.threshold * 100)}%</div>
+                    </div>`;
+                }).join('')}
+            </div>
+            <div class="pass-timeline" style="display:flex;align-items:center;overflow-x:auto;gap:0;padding:4px 0">
+                ${timelineHtml}
+            </div>
         </div>
         ${cardsHtml}
     </div>`;

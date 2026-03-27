@@ -4,6 +4,11 @@
  * Depends on: api.js (apiCall), ui.js (showToast, closeModal)
  */
 
+// Ensure showToast works on all pages (fallback to showNotification)
+if (typeof showToast !== 'function') {
+    var showToast = function(msg, type) { if (typeof showNotification === 'function') showNotification(msg, type); };
+}
+
 // ─── State ───────────────────────────────────────
 let _catImgUrl    = null;
 let _catPollTimer = null;
@@ -297,6 +302,127 @@ function _escHtml(str) {
 function _escAttr(str) {
     if (!str) return '';
     return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── Cover image generation (v39.7.0) ───────────
+let _coverPollTimer = null;
+let _coverPollStop = null;
+
+async function generateCatalogCover(catalogId) {
+    if (!catalogId) { showToast('Оберіть каталог', 'warning'); return; }
+    _stopCoverPoll();
+
+    // Show cover generation modal
+    const def = _catalogDefs.find(c => c.id === catalogId);
+    const name = def?.name || catalogId;
+    const emoji = def?.emoji || '🗂️';
+
+    const coverModal = document.createElement('div');
+    coverModal.className = 'confirm-overlay';
+    coverModal.id = 'coverGenModal';
+    coverModal.innerHTML = `
+        <div class="confirm-dialog success" style="max-width:440px">
+            <div class="confirm-icon">🎨</div>
+            <div class="confirm-message" style="font-size:17px;font-weight:700">AI Cover: ${emoji} ${_escHtml(name)}</div>
+            <div id="coverGenStatus" style="display:flex;align-items:center;gap:8px;justify-content:center;margin:12px 0;color:var(--primary)">
+                <div class="spinner" style="width:16px;height:16px;border:2px solid rgba(0,0,0,0.1);border-top-color:var(--primary);border-radius:50%;animation:spin 1s linear infinite"></div>
+                Генерація обкладинки...
+            </div>
+            <div id="coverPreview" style="display:none;text-align:center;margin:12px 0">
+                <img id="coverPreviewImg" src="" style="max-width:100%;max-height:250px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,0.15)">
+            </div>
+            <div id="coverError" style="display:none;color:#ef4444;font-size:13px;margin:8px 0"></div>
+            <div class="confirm-actions">
+                <button class="confirm-btn confirm-cancel" onclick="closeCoverModal()">Скасувати</button>
+                <button class="confirm-btn confirm-ok success" id="coverApplyBtn" disabled onclick="applyCoverImage('${catalogId}')">✅ Застосувати</button>
+                <button class="confirm-btn" id="coverRegenBtn" style="display:none;background:var(--gray-100);color:var(--gray-700)" onclick="generateCatalogCover('${catalogId}')">🔄 Ще раз</button>
+            </div>
+        </div>`;
+    document.body.appendChild(coverModal);
+
+    try {
+        const d = await apiCall('POST', `/catalogs/${catalogId}/generate-cover`);
+        if (!d?.taskId) throw new Error(d?.error || 'Немає taskId');
+        coverModal._taskId = d.taskId;
+        coverModal._catalogId = catalogId;
+        _startCoverPoll(d.taskId, catalogId);
+    } catch (e) {
+        _showCoverError(e.message);
+    }
+}
+
+function _startCoverPoll(taskId, catalogId) {
+    _coverPollTimer = setInterval(async () => {
+        try {
+            const d = await apiCall('GET', `/catalogs/generate-image/${encodeURIComponent(taskId)}`);
+            if (d?.done && d.imageUrl) {
+                _stopCoverPoll();
+                const modal = document.getElementById('coverGenModal');
+                if (modal) modal._imageUrl = d.imageUrl;
+                const status = document.getElementById('coverGenStatus');
+                if (status) status.style.display = 'none';
+                const img = document.getElementById('coverPreviewImg');
+                if (img) img.src = d.imageUrl;
+                const preview = document.getElementById('coverPreview');
+                if (preview) preview.style.display = 'block';
+                const applyBtn = document.getElementById('coverApplyBtn');
+                if (applyBtn) applyBtn.disabled = false;
+                const regenBtn = document.getElementById('coverRegenBtn');
+                if (regenBtn) regenBtn.style.display = 'inline-flex';
+            } else if (d?.state === 'failed') {
+                _stopCoverPoll();
+                _showCoverError(d.error || 'Генерація не вдалась');
+            }
+        } catch { /* continue polling */ }
+    }, 3000);
+    _coverPollStop = setTimeout(() => { _stopCoverPoll(); _showCoverError('Генерація >3 хв. Спробуйте знову.'); }, 180000);
+}
+
+function _stopCoverPoll() {
+    if (_coverPollTimer) { clearInterval(_coverPollTimer); _coverPollTimer = null; }
+    if (_coverPollStop) { clearTimeout(_coverPollStop); _coverPollStop = null; }
+}
+
+function _showCoverError(msg) {
+    const status = document.getElementById('coverGenStatus');
+    if (status) status.style.display = 'none';
+    const errEl = document.getElementById('coverError');
+    if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+    const regenBtn = document.getElementById('coverRegenBtn');
+    if (regenBtn) regenBtn.style.display = 'inline-flex';
+}
+
+async function applyCoverImage(catalogId) {
+    const modal = document.getElementById('coverGenModal');
+    if (!modal?._taskId) return;
+    const btn = document.getElementById('coverApplyBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Збереження...'; }
+    try {
+        const d = await apiCall('POST', `/catalogs/${catalogId}/apply-cover`, { taskId: modal._taskId });
+        if (d?.done && d.imageUrl) {
+            showToast('Обкладинку збережено!');
+            closeCoverModal();
+            // Update catalog card if visible
+            const card = document.querySelector(`[data-catalog-id="${catalogId}"] .catalog-cover-img`);
+            if (card) card.src = d.imageUrl;
+            _loadRecentCatalogItems();
+        } else {
+            showToast('Зображення ще обробляється', 'warning');
+            if (btn) { btn.disabled = false; btn.textContent = '✅ Застосувати'; }
+        }
+    } catch (e) {
+        showToast(e.message, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = '✅ Застосувати'; }
+    }
+}
+
+function closeCoverModal() {
+    _stopCoverPoll();
+    const modal = document.getElementById('coverGenModal');
+    if (modal) {
+        modal.classList.add('confirm-exit');
+        setTimeout(() => modal.remove(), 200);
+    }
 }
 
 // ─── Init ────────────────────────────────────────

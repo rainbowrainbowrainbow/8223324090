@@ -308,6 +308,13 @@ var ParkWS = (function () {
                 }));
                 break;
 
+            // Alert events (v39.7.0 — WS push replaces polling)
+            case 'alert:updated':
+                window.dispatchEvent(new CustomEvent('ws:alert', {
+                    detail: { eventType: message.type, payload: message.payload }
+                }));
+                break;
+
             default:
                 _debug('[WS] Unknown event:', message.type);
                 break;

@@ -2217,19 +2217,21 @@ async function updateLeadStatus(id, status) {
     } catch { /* silent */ }
 }
 
-// Add Lead modal (simple prompt-based)
+// Add Lead modal
 function initAddLeadBtn() {
     const btn = document.getElementById('addLeadBtn');
     if (!btn) return;
     btn.addEventListener('click', async () => {
-        const name = prompt("Ім'я клієнта:");
-        if (!name) return;
-        const phone = prompt('Телефон (необов\'язково):');
+        const result = await formModal('Новий лід', [
+            { key: 'name', label: 'Ім\'я клієнта', required: true, placeholder: 'Іван Петренко' },
+            { key: 'phone', label: 'Телефон', placeholder: '+380...' }
+        ], { icon: '👤' });
+        if (!result) return;
         try {
             await fetch('/api/leads', {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token'), 'Content-Type': 'application/json' },
-                body: JSON.stringify({ client_name: name, phone: phone || null })
+                body: JSON.stringify({ client_name: result.name, phone: result.phone || null })
             });
             loadHotLeads();
         } catch { /* silent */ }

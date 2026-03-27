@@ -261,6 +261,153 @@ function confirmModal(message, options = {}) {
     });
 }
 
+/**
+ * promptModal — заміна native prompt().
+ * Returns Promise<string|null> (null = cancelled).
+ * Usage: const val = await promptModal('Назва:', { defaultValue: 'hello', placeholder: 'Введіть...' });
+ */
+function promptModal(message, options = {}) {
+    return new Promise((resolve) => {
+        const { defaultValue = '', placeholder = '', okText = 'OK', cancelText = 'Скасувати', type = 'warning', inputType = 'text' } = options;
+        const icons = { danger: '🗑️', success: '✅', warning: '✏️', info: 'ℹ️' };
+        const icon = icons[type] || '✏️';
+        const safeMsg = String(message).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/\n/g,'<br>');
+        const safeDef = String(defaultValue).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        const safePh = String(placeholder).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-overlay';
+        overlay.innerHTML = `
+            <div class="confirm-dialog ${type}">
+                <div class="confirm-icon">${icon}</div>
+                <div class="confirm-message">${safeMsg}</div>
+                <div class="prompt-input-wrap" style="margin: 12px 0 4px;">
+                    <input type="${inputType}" class="prompt-input" value="${safeDef}" placeholder="${safePh}"
+                        style="width:100%;padding:10px 14px;border:2px solid rgba(139,92,246,0.3);border-radius:10px;font-size:15px;font-family:inherit;background:var(--surface,#fff);color:var(--text,#1a1a2e);outline:none;transition:border-color 0.2s;">
+                </div>
+                <div class="confirm-actions">
+                    <button class="confirm-btn confirm-cancel">${cancelText}</button>
+                    <button class="confirm-btn confirm-ok ${type}">${okText}</button>
+                </div>
+            </div>`;
+
+        let closed = false;
+        const close = (val) => {
+            if (closed) return;
+            closed = true;
+            overlay.classList.add('confirm-exit');
+            document.removeEventListener('keydown', onKey);
+            setTimeout(() => overlay.remove(), 200);
+            resolve(val);
+        };
+
+        const input = overlay.querySelector('.prompt-input');
+        input.addEventListener('focus', () => { input.style.borderColor = 'rgba(139,92,246,0.6)'; });
+        input.addEventListener('blur', () => { input.style.borderColor = 'rgba(139,92,246,0.3)'; });
+
+        overlay.querySelector('.confirm-cancel').addEventListener('click', () => close(null));
+        overlay.querySelector('.confirm-ok').addEventListener('click', () => close(input.value));
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') close(input.value); });
+
+        const onKey = (e) => { if (e.key === 'Escape') close(null); };
+        document.addEventListener('keydown', onKey);
+
+        document.body.appendChild(overlay);
+        requestAnimationFrame(() => { input.focus(); input.select(); });
+    });
+}
+
+/**
+ * formModal — multi-field form modal.
+ * fields: [{ key, label, type?, defaultValue?, placeholder?, options?, required? }]
+ * options = [{ value, label }] for select type
+ * Returns Promise<Object|null> (null = cancelled).
+ */
+function formModal(title, fields, options = {}) {
+    return new Promise((resolve) => {
+        const { okText = 'Зберегти', cancelText = 'Скасувати', type = 'success', icon: customIcon } = options;
+        const icons = { danger: '🗑️', success: '✅', warning: '⚠️', info: 'ℹ️' };
+        const icon = customIcon || icons[type] || '📝';
+        const safeTitle = String(title).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+        const fieldsHtml = fields.map(f => {
+            const id = 'fm_' + f.key;
+            const req = f.required ? ' *' : '';
+            const label = `<label for="${id}" style="display:block;font-size:13px;font-weight:600;color:var(--text-secondary,#666);margin-bottom:4px;">${f.label}${req}</label>`;
+            const defVal = (f.defaultValue != null ? String(f.defaultValue) : '').replace(/"/g,'&quot;');
+            const ph = (f.placeholder || '').replace(/"/g,'&quot;');
+            const baseStyle = 'width:100%;padding:10px 14px;border:2px solid rgba(139,92,246,0.3);border-radius:10px;font-size:15px;font-family:inherit;background:var(--surface,#fff);color:var(--text,#1a1a2e);outline:none;transition:border-color 0.2s;';
+
+            if (f.type === 'select' && f.options) {
+                const opts = f.options.map(o => `<option value="${String(o.value).replace(/"/g,'&quot;')}"${o.value === f.defaultValue ? ' selected' : ''}>${o.label}</option>`).join('');
+                return `<div style="margin-bottom:10px;">${label}<select id="${id}" data-key="${f.key}" class="fm-field" style="${baseStyle}">${opts}</select></div>`;
+            }
+            if (f.type === 'textarea') {
+                return `<div style="margin-bottom:10px;">${label}<textarea id="${id}" data-key="${f.key}" class="fm-field" placeholder="${ph}" rows="3" style="${baseStyle}resize:vertical;">${defVal}</textarea></div>`;
+            }
+            const inputType = f.type || 'text';
+            return `<div style="margin-bottom:10px;">${label}<input type="${inputType}" id="${id}" data-key="${f.key}" class="fm-field" value="${defVal}" placeholder="${ph}" style="${baseStyle}"></div>`;
+        }).join('');
+
+        const overlay = document.createElement('div');
+        overlay.className = 'confirm-overlay';
+        overlay.innerHTML = `
+            <div class="confirm-dialog ${type}" style="max-width:420px;">
+                <div class="confirm-icon">${icon}</div>
+                <div class="confirm-message" style="font-size:17px;font-weight:700;">${safeTitle}</div>
+                <div class="form-modal-fields" style="text-align:left;margin:8px 0;">${fieldsHtml}</div>
+                <div class="confirm-actions">
+                    <button class="confirm-btn confirm-cancel">${cancelText}</button>
+                    <button class="confirm-btn confirm-ok ${type}">${okText}</button>
+                </div>
+            </div>`;
+
+        let closed = false;
+        const close = (result) => {
+            if (closed) return;
+            closed = true;
+            overlay.classList.add('confirm-exit');
+            document.removeEventListener('keydown', onKey);
+            setTimeout(() => overlay.remove(), 200);
+            resolve(result);
+        };
+
+        const getValues = () => {
+            const vals = {};
+            overlay.querySelectorAll('.fm-field').forEach(el => { vals[el.dataset.key] = el.value; });
+            return vals;
+        };
+
+        overlay.querySelector('.confirm-cancel').addEventListener('click', () => close(null));
+        overlay.querySelector('.confirm-ok').addEventListener('click', () => {
+            const vals = getValues();
+            for (const f of fields) {
+                if (f.required && !vals[f.key]?.trim()) {
+                    const el = overlay.querySelector(`#fm_${f.key}`);
+                    if (el) { el.style.borderColor = '#ef4444'; el.focus(); }
+                    return;
+                }
+            }
+            close(vals);
+        });
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+
+        // Focus management
+        overlay.querySelectorAll('.fm-field').forEach(el => {
+            el.addEventListener('focus', () => { el.style.borderColor = 'rgba(139,92,246,0.6)'; });
+            el.addEventListener('blur', () => { el.style.borderColor = 'rgba(139,92,246,0.3)'; });
+        });
+
+        const onKey = (e) => { if (e.key === 'Escape') close(null); };
+        document.addEventListener('keydown', onKey);
+
+        document.body.appendChild(overlay);
+        const firstField = overlay.querySelector('.fm-field');
+        if (firstField) requestAnimationFrame(() => firstField.focus());
+    });
+}
+
 function showNotification(message, type = '') {
     const container = document.getElementById('toastContainer');
     if (!container) return;

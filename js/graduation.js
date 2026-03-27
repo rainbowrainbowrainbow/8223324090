@@ -1509,10 +1509,13 @@
 
     // #22: Convert quote to booking
     async function convertToBooking(id) {
-        const date = prompt('Дата бронювання (YYYY-MM-DD):');
-        if (!date) return;
-        const time = prompt('Час початку (HH:MM):', '10:00');
-        if (!time) return;
+        const result2 = await formModal('Конвертувати в бронювання', [
+            { key: 'date', label: 'Дата бронювання', type: 'date', required: true },
+            { key: 'time', label: 'Час початку', type: 'time', defaultValue: '10:00', required: true }
+        ], { icon: '📅' });
+        if (!result2) return;
+        const date = result2.date;
+        const time = result2.time;
 
         try {
             const result = await gradApi('POST', `/graduation/quotes/${id}/booking`, { date, time });
@@ -1572,7 +1575,7 @@
     async function editServicePrice(id) {
         const svc = services.find(s => s.id === id);
         if (!svc) return;
-        const newPrice = prompt(`Нова ціна за дитину для "${svc.name}":`, getEffectivePrice(svc));
+        const newPrice = await promptModal(`Нова ціна за дитину для "${svc.name}":`, { defaultValue: String(getEffectivePrice(svc)), inputType: 'number' });
         if (newPrice === null) return;
         const val = parseFloat(newPrice);
         if (isNaN(val) || val < 0) return;

@@ -10,6 +10,9 @@ const { getPermissions } = require('../config/roles');
 const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
 const { formatTaskNotification } = require('../services/templates');
 const log = createLogger('Tasks');
+let _triggerAlertBroadcast;
+try { _triggerAlertBroadcast = require('./dashboard').triggerAlertBroadcast; } catch {}
+function _alertPush() { if (_triggerAlertBroadcast) _triggerAlertBroadcast(); }
 
 // Lazy require to avoid circular dependency
 function getKleshnya() {
@@ -231,6 +234,7 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         });
 
         res.json({ success: true, task });
+        _alertPush();
     } catch (err) {
         log.error('Create error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -334,6 +338,7 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         }
 
         res.json({ success: true, task: result.rows[0] });
+        _alertPush();
     } catch (err) {
         log.error('Update error', err);
         res.status(500).json({ error: 'Internal server error' });

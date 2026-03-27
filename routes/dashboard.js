@@ -584,4 +584,84 @@ router.get('/alerts', async (req, res) => {
     }
 });
 
+// v39.7.0 — WebSocket alert push: broadcast alerts to all connected users periodically
+let _alertBroadcastTimer = null;
+let _lastAlertHash = '';
+
+async function broadcastAlerts() {
+    try {
+        const { broadcast } = require('../services/websocket');
+        const today = getKyivDateStr();
+        const [overdue, unconfirmed, lowStock, coldLeads, shiftCheck] = await Promise.all([
+            pool.query(`SELECT id, title, deadline FROM tasks WHERE deadline < NOW() AND status NOT IN ('done','cancelled') ORDER BY deadline ASC LIMIT 5`),
+            pool.query(`SELECT id, label, time FROM bookings WHERE date = $1 AND status = 'preliminary' ORDER BY time LIMIT 5`, [today]),
+            pool.query(`SELECT name, quantity, min_quantity, unit FROM warehouse_stock WHERE quantity <= min_quantity AND is_active = true LIMIT 3`),
+            pool.query(`SELECT COUNT(*) as c FROM leads WHERE status='new' AND created_at < NOW() - INTERVAL '48 hours'`),
+            pool.query(`SELECT (SELECT COUNT(*) FROM cash_register_shifts WHERE status='open') AS open_shifts,
+                               (SELECT COUNT(*) FROM bookings WHERE date=$1 AND status='confirmed') AS today_bk`, [today])
+        ]);
+        const alerts = [];
+        overdue.rows.forEach(t => {
+            alerts.push({ id: `overdue_${t.id}`, level: 'warning', icon: '⚠️',
+                title: `Прострочена: "${(t.title || '').slice(0, 40)}"`,
+                link: `/tasks?open=${t.id}`, taskId: t.id,
+                action: { label: '📋 Відкрити задачу', prompt: `Задача прострочена: "${t.title}". Що робимо?` }
+            });
+        });
+        unconfirmed.rows.forEach(b => {
+            alerts.push({ id: `unconfirmed_${b.id}`, level: 'info', icon: '📋',
+                title: `Непідтверджене: ${(b.time || '').slice(0, 5)} ${b.label || ''}`,
+                link: `/?date=${today}&highlight=${b.id}`, bookingId: b.id,
+                action: { label: '✅ Підтвердити', prompt: `Бронювання ${b.id} очікує підтвердження.` }
+            });
+        });
+        lowStock.rows.forEach(s => {
+            alerts.push({ id: `stock_${s.name}_${s.quantity}`, level: 'warning', icon: '📦',
+                title: `Мало: ${s.name} (${s.quantity} ${s.unit})`,
+                link: '/warehouse#procurement', stockItem: s.name,
+                action: { label: '📋 Замовити', prompt: `Замовити ${s.name} (залишок: ${s.quantity}/${s.min_quantity} ${s.unit})`, assignRole: 'manager' }
+            });
+        });
+        const cl = parseInt(coldLeads.rows[0].c);
+        if (cl > 0) {
+            alerts.push({ id: 'cold_leads', level: 'warning', icon: '🥶',
+                title: `${cl} лідів без відповіді >48год`, link: '/sales-funnel',
+                action: { label: '📋 Обдзвін', prompt: `${cl} лідів без відповіді >48год. Обдзвонити.`, assignRole: 'manager' }
+            });
+        }
+        const os = parseInt(shiftCheck.rows[0].open_shifts);
+        const tb = parseInt(shiftCheck.rows[0].today_bk);
+        if (os === 0 && tb > 0) {
+            alerts.push({ id: 'no_shift', level: 'critical', icon: '🔴',
+                title: `Каса не відкрита! (${tb} броні)`, link: '/finance',
+                action: { label: '💰 Відкрити касу', prompt: 'Каса не відкрита — відкрити.', assignRole: 'admin' }
+            });
+        }
+
+        // Only broadcast if alerts changed
+        const hash = JSON.stringify(alerts.map(a => a.id).sort());
+        if (hash !== _lastAlertHash) {
+            _lastAlertHash = hash;
+            broadcast('alert:updated', { alerts, count: alerts.length });
+        }
+    } catch (err) {
+        // Silent — don't crash on periodic check
+    }
+}
+
+function startAlertBroadcaster(intervalMs = 60000) {
+    if (_alertBroadcastTimer) clearInterval(_alertBroadcastTimer);
+    _alertBroadcastTimer = setInterval(broadcastAlerts, intervalMs);
+    // Initial broadcast after 5s delay
+    setTimeout(broadcastAlerts, 5000);
+}
+
+function triggerAlertBroadcast() {
+    // Debounce: wait 2s to batch rapid changes
+    if (triggerAlertBroadcast._timer) clearTimeout(triggerAlertBroadcast._timer);
+    triggerAlertBroadcast._timer = setTimeout(broadcastAlerts, 2000);
+}
+
 module.exports = router;
+module.exports.startAlertBroadcaster = startAlertBroadcaster;
+module.exports.triggerAlertBroadcast = triggerAlertBroadcast;

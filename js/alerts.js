@@ -189,8 +189,36 @@ document.addEventListener('click', e => {
 
 document.addEventListener('DOMContentLoaded', () => {
     loadAlertBell();
-    const _alertInterval = setInterval(loadAlertBell, 300000);
+
+    // v39.7.0 — WebSocket push for real-time alerts (fallback polling every 30 min)
+    const _alertInterval = setInterval(loadAlertBell, 1800000);
     window.addEventListener('beforeunload', () => clearInterval(_alertInterval));
+
+    // Listen for WS alert push events
+    window.addEventListener('ws:alert', (e) => {
+        const { payload } = e.detail || {};
+        if (payload && payload.alerts) {
+            // Direct alert data from WS — update immediately
+            _alertsData = payload.alerts;
+            const badge = document.getElementById('alertBadge');
+            if (badge) {
+                const read = _getRead();
+                const unread = _alertsData.filter(a => !read.has(a.id));
+                if (!unread.length) { badge.style.display = 'none'; }
+                else {
+                    badge.style.display = 'flex';
+                    badge.textContent = unread.length > 99 ? '99+' : unread.length;
+                    badge.className = 'alert-badge' + (unread.some(a => a.level === 'critical') ? ' critical' : '');
+                }
+            }
+            // Re-render panel if it's open
+            const p = document.getElementById('alertsPanel');
+            if (p && p.classList.contains('open')) _renderPanel();
+        } else {
+            // No inline data — refetch
+            loadAlertBell();
+        }
+    });
 
     // Auto-open task from URL ?open=ID
     const params = new URLSearchParams(window.location.search);

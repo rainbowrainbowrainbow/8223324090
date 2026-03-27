@@ -699,7 +699,7 @@ async function loadCommunications(customerId) {
 }
 
 window.addCommunication = async function(customerId) {
-    const summary = prompt('Нотатка:');
+    const summary = await promptModal('Нотатка:', { placeholder: 'Введіть нотатку...' });
     if (!summary) return;
     const token = localStorage.getItem('pzp_token');
     await fetch(`/api/customers/${customerId}/communications`, {

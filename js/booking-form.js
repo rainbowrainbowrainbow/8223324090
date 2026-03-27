@@ -247,7 +247,7 @@ window.BookingForm = {
         const programSel = document.getElementById('selectedProgram');
         const roomSel = document.getElementById('roomSelect');
 
-        const name = prompt('Назва шаблону:');
+        const name = await promptModal('Назва шаблону:', { placeholder: 'Наприклад: День народження стандарт' });
         if (!name || !name.trim()) return;
 
         const body = {

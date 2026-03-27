@@ -8,6 +8,9 @@ const { notifyTelegram } = require('../services/telegram');
 const { processBookingAutomation } = require('../services/bookingAutomation');
 const { broadcast } = require('../services/websocket');
 const { publish: publishEvent } = require('../services/eventBus');
+let _triggerAlertBroadcast;
+try { _triggerAlertBroadcast = require('./dashboard').triggerAlertBroadcast; } catch {}
+function _alertPush() { if (_triggerAlertBroadcast) _triggerAlertBroadcast(); }
 const { createLogger } = require('../utils/logger');
 
 const { requireAction } = require('../middleware/auth');
@@ -274,6 +277,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         // WebSocket: notify other clients
         broadcast('booking:created', booking, req.user?.id?.toString(), b.date);
+        _alertPush();
 
         // v19.1: Publish to event queue
         if (!b.linkedTo) {
@@ -671,6 +675,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
 
         // WebSocket: notify other clients
         broadcast('booking:deleted', { id, date: booking.date, permanent }, req.user?.id?.toString(), booking.date);
+        _alertPush();
 
         // v19.1: Publish to event queue
         publishEvent('booking.cancelled', {
@@ -970,6 +975,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 
         // WebSocket: notify other clients
         broadcast('booking:updated', savedBooking, req.user?.id?.toString(), b.date);
+        _alertPush();
 
         // v19.1: Publish status change events to event queue
         if (statusChanged) {

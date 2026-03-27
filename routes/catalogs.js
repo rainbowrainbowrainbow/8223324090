@@ -374,6 +374,60 @@ router.get('/kie-balance', requireRole('admin', 'creator', 'director', 'art_dire
     } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
+// ─── Cover image generation (v39.7.0) ───────────────────────
+const _tr = {'а':'a','б':'b','в':'v','г':'h','ґ':'g','д':'d','е':'e','є':'ye','ж':'zh','з':'z','и':'y','і':'i','ї':'yi','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ь':'','ю':'yu','я':'ya'};
+function _transliterate(text) { return text.split('').map(c => _tr[c.toLowerCase()] || c).join(''); }
+
+router.post('/:catalogId/generate-cover', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
+    try {
+        const { catalogId } = req.params;
+        const { customPrompt } = req.body;
+        const catRow = await pool.query('SELECT * FROM catalog_definitions WHERE id = $1', [catalogId]);
+        if (!catRow.rowCount) return res.status(404).json({ error: 'Каталог не знайдено' });
+        const cat = catRow.rows[0];
+        const aiStyle = cat.ai_style || DEFAULT_AI_STYLE;
+        const enName = _transliterate(cat.name || catalogId);
+        const prompt = customPrompt || `${aiStyle}. Professional catalog cover design for "${enName}" collection. Modern, elegant, eye-catching catalog front page, children's entertainment park.`;
+        const r = await kieRequest('POST', '/api/v1/jobs/createTask', {
+            model: 'nano-banana-2',
+            input: { prompt, aspect_ratio: '4:3', resolution: '2K', output_format: 'png' }
+        });
+        const taskId = r?.data?.taskId;
+        if (!taskId) {
+            return res.status(502).json({ error: `Kie.ai не створив задачу: ${r?.message || 'unknown'}` });
+        }
+        res.json({ success: true, taskId, status: 'processing' });
+    } catch (err) {
+        log.error('generate-cover error', err);
+        res.status(502).json({ success: false, error: err.message });
+    }
+});
+
+router.post('/:catalogId/apply-cover', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
+    try {
+        const { catalogId } = req.params;
+        const { taskId } = req.body;
+        if (!taskId) return res.status(400).json({ error: 'taskId required' });
+        const r = await kieRequest('GET', `/api/v1/jobs/recordInfo?taskId=${taskId}`);
+        const kieUrl = parseKieImageUrl(r?.data);
+        if (!kieUrl) return res.json({ success: false, done: false, state: r?.data?.state });
+
+        const filename = makeFilename(catalogId, 'cover');
+        const permanentUrl = await uploadFromUrl(kieUrl, filename);
+        const finalUrl = permanentUrl || kieUrl;
+
+        await pool.query('UPDATE catalog_definitions SET cover_image_url = $1 WHERE id = $2', [finalUrl, catalogId]);
+
+        // Also update cover page (page_number=0) if exists
+        await pool.query('UPDATE catalog_pages SET background_url = $1, image_url = $1, updated_at = NOW() WHERE catalog_id = $2 AND page_number = 0', [finalUrl, catalogId]);
+
+        res.json({ success: true, done: true, imageUrl: finalUrl });
+    } catch (err) {
+        log.error('apply-cover error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // ─── Telegram share ──────────────────────────────────────────
 router.post('/items/:id/telegram', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     try {

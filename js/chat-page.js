@@ -1572,27 +1572,24 @@
         }
     }
 
-    function _createTaskFromMessage() {
+    async function _createTaskFromMessage() {
         if (!_contextMsg) return;
         var contentEl = _contextMsg.el.querySelector('.chat-bubble-content');
         var usernameEl = _contextMsg.el.querySelector('.chat-bubble-username');
         var msgText = contentEl ? contentEl.textContent.trim() : '';
         var author = usernameEl ? usernameEl.textContent.trim() : '';
 
-        // Show prompt for task description
-        var prompt = window.prompt(
-            '📋 Створити задачу з повідомлення\n\nОпишіть задачу (або залиште текст повідомлення):',
-            msgText.substring(0, 200)
-        );
-        if (!prompt) return;
+        // Show modal for task description
+        var taskDesc = await promptModal('📋 Створити задачу з повідомлення\n\nОпишіть задачу:', { defaultValue: msgText.substring(0, 200), placeholder: 'Опис задачі...' });
+        if (!taskDesc) return;
 
         // Create task via API
         fetch('/api/tasks', {
             method: 'POST',
             headers: _headers(),
             body: JSON.stringify({
-                title: prompt.substring(0, 100),
-                description: 'З чату від @' + author + ':\n\n' + msgText + '\n\n---\nЗадача: ' + prompt,
+                title: taskDesc.substring(0, 100),
+                description: 'З чату від @' + author + ':\n\n' + msgText + '\n\n---\nЗадача: ' + taskDesc,
                 priority: 'medium',
                 sourceType: 'chat'
             })
@@ -4337,12 +4334,13 @@
         if (_slashPopup) _slashPopup.style.display = 'none';
     }
 
-    function _showCreateTemplate() {
-        var shortcut = prompt('Шорткат (наприклад: ціна)');
-        if (!shortcut) return;
-        var content = prompt('Текст шаблону');
-        if (!content) return;
-        _api('POST', '/templates', { shortcut: shortcut, content: content }).then(function () {
+    async function _showCreateTemplate() {
+        var result = await formModal('Новий шаблон відповіді', [
+            { key: 'shortcut', label: 'Шорткат', required: true, placeholder: 'наприклад: ціна' },
+            { key: 'content', label: 'Текст шаблону', type: 'textarea', required: true, placeholder: 'Текст шаблону...' }
+        ], { icon: '💬' });
+        if (!result) return;
+        _api('POST', '/templates', { shortcut: result.shortcut, content: result.content }).then(function () {
             _loadTemplates();
         }).catch(function (err) { console.error('Template save error:', err); });
     }

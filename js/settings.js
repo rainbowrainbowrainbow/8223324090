@@ -323,13 +323,12 @@ async function deleteProduct(productId) {
 
 // v3.9: Modal instead of prompt() for note input
 function showNoteModal() {
+    const modal = document.getElementById('noteModal');
+    const input = document.getElementById('noteModalInput');
+    if (!modal || !input) {
+        return promptModal('Примітка (опціонально):').then(v => v || '');
+    }
     return new Promise((resolve) => {
-        const modal = document.getElementById('noteModal');
-        const input = document.getElementById('noteModalInput');
-        if (!modal || !input) {
-            resolve(prompt('Примітка (опціонально):') || '');
-            return;
-        }
         input.value = '';
         modal.classList.remove('hidden');
 
@@ -2488,7 +2487,7 @@ async function copyContractorInvite(id) {
         await navigator.clipboard.writeText(link);
         showNotification('Посилання скопійовано!', 'success');
     } catch (e) {
-        prompt('Invite посилання:', link);
+        await promptModal('Invite посилання:', { defaultValue: link });
     }
 }
 
@@ -2872,7 +2871,7 @@ async function showCertDetail(id) {
 async function changeCertStatus(id, newStatus) {
     let reason = null;
     if (newStatus === 'revoked' || newStatus === 'blocked') {
-        reason = prompt('Причина (опціонально):');
+        reason = await promptModal('Причина (опціонально):', { placeholder: 'Вкажіть причину...' });
     }
 
     const result = await apiUpdateCertificateStatus(id, newStatus, reason);

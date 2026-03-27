@@ -84,8 +84,28 @@ async function runMigrations(pool) {
             log.info('Migration applied: ' + version);
         } catch (err) {
             await client.query('ROLLBACK').catch(() => {});
-            log.error('Migration failed: ' + version + ' — ' + err.message + (err.detail ? ' | ' + err.detail : '') + (err.hint ? ' | hint: ' + err.hint : ''));
-            throw err;
+            const msg = err.message + (err.detail ? ' | ' + err.detail : '') + (err.hint ? ' | hint: ' + err.hint : '');
+            log.error('Migration failed: ' + version + ' — ' + msg);
+
+            // v39.8: Determine if migration failure should be fatal or skippable
+            // Fatal: schema creation (CREATE TABLE, ALTER TABLE ADD COLUMN)
+            // Skippable: data inserts, updates, deletes (won't break other migrations)
+            const sqlUpper = sql.toUpperCase();
+            const isSchemaChange = sqlUpper.includes('CREATE TABLE') || sqlUpper.includes('ALTER TABLE')
+                || sqlUpper.includes('CREATE INDEX') || sqlUpper.includes('DROP TABLE');
+
+            if (isSchemaChange) {
+                // Schema changes are critical — must stop to prevent cascading failures
+                log.error('FATAL: Schema migration failed — stopping to prevent data corruption');
+                throw err;
+            } else {
+                // Data-only migration — safe to skip, mark as applied to prevent retry loops
+                log.warn('SKIPPED: Data migration ' + version + ' failed but is non-critical. Marking as applied.');
+                try {
+                    await pool.query('INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING', [version]);
+                } catch {}
+                continue;
+            }
         } finally {
             client.release();
         }

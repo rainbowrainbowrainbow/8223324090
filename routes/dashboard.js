@@ -414,6 +414,72 @@ router.get('/widgets/:type', async (req, res) => {
                 break;
             }
 
+            // v39.10: Staff on shift today
+            case 'staff_today': {
+                const today = getKyivDateStr();
+                const result = await pool.query(`
+                    SELECT s.id, s.name, s.department, s.position, s.color,
+                           ss.shift_start, ss.shift_end, ss.status,
+                           CASE WHEN u.last_seen_at > NOW() - INTERVAL '5 minutes' THEN true ELSE false END AS is_online
+                    FROM staff_schedule ss
+                    JOIN staff s ON s.id = ss.staff_id
+                    LEFT JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active = true
+                    LEFT JOIN users u ON u.id = ep.user_id
+                    WHERE ss.date = $1 AND s.is_active = true AND ss.status = 'working'
+                    ORDER BY ss.shift_start, s.department, s.name
+                `, [today]);
+                const absent = await pool.query(`
+                    SELECT s.name, ss.status FROM staff_schedule ss
+                    JOIN staff s ON s.id = ss.staff_id
+                    WHERE ss.date = $1 AND s.is_active = true AND ss.status IN ('sick', 'vacation')
+                    ORDER BY s.name
+                `, [today]);
+                data = { onShift: result.rows, absent: absent.rows, date: today };
+                break;
+            }
+
+            // v39.10: Bookings this week (7 days)
+            case 'week_bookings': {
+                const today = getKyivDateStr();
+                const weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 6);
+                const to = weekEnd.toISOString().split('T')[0];
+                const result = await pool.query(`
+                    SELECT date, COUNT(*)::int AS count,
+                           COUNT(*) FILTER (WHERE status = 'confirmed')::int AS confirmed,
+                           COUNT(*) FILTER (WHERE status = 'preliminary')::int AS pending,
+                           COALESCE(SUM(CASE WHEN status = 'confirmed' THEN price ELSE 0 END), 0)::int AS revenue
+                    FROM bookings WHERE date >= $1 AND date <= $2 AND linked_to IS NULL AND status != 'cancelled'
+                    GROUP BY date ORDER BY date
+                `, [today, to]);
+                data = { days: result.rows, from: today, to };
+                break;
+            }
+
+            // v39.10: Team tasks (for managers — all team's tasks)
+            case 'team_tasks': {
+                const today = getKyivDateStr();
+                const result = await pool.query(`
+                    SELECT id, title, assigned_to, status, priority, deadline,
+                           CASE WHEN deadline < NOW() THEN true ELSE false END AS is_overdue
+                    FROM tasks
+                    WHERE status NOT IN ('done', 'cancelled')
+                    ORDER BY
+                        CASE WHEN deadline < NOW() THEN 0 ELSE 1 END,
+                        CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+                        deadline ASC NULLS LAST
+                    LIMIT 15
+                `);
+                const stats = await pool.query(`
+                    SELECT
+                        COUNT(*) FILTER (WHERE status = 'todo')::int AS todo,
+                        COUNT(*) FILTER (WHERE status = 'in_progress')::int AS in_progress,
+                        COUNT(*) FILTER (WHERE deadline < NOW() AND status NOT IN ('done','cancelled'))::int AS overdue
+                    FROM tasks
+                `);
+                data = { tasks: result.rows, stats: stats.rows[0] };
+                break;
+            }
+
             default:
                 return res.status(400).json({ error: 'Unknown widget type' });
         }

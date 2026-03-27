@@ -21,6 +21,9 @@ const DashboardPage = (() => {
         reports_today:  { icon: '📋', title: 'Звіти сьогодні', minRole: 'senior_manager' },
         catalogs:       { icon: '📚', title: 'Авто-каталоги', minRole: 'admin' },
         account_stats:  { icon: '🔗', title: 'Акаунти CRM', minRole: 'manager' },
+        staff_today:    { icon: '👷', title: 'Хто на зміні', minRole: 'manager' },
+        week_bookings:  { icon: '📆', title: 'Бронювання на тиждень', minRole: 'admin' },
+        team_tasks:     { icon: '📝', title: 'Задачі команди', minRole: 'manager' },
     };
 
     let _config = { widgets: [], layout: {}, theme: 'default' };
@@ -219,6 +222,15 @@ const DashboardPage = (() => {
                 break;
             case 'account_stats':
                 renderAccountStats(data, container);
+                break;
+            case 'staff_today':
+                renderStaffToday(data, container);
+                break;
+            case 'week_bookings':
+                renderWeekBookings(data, container);
+                break;
+            case 'team_tasks':
+                renderTeamTasks(data, container);
                 break;
             default:
                 container.innerHTML = '<div class="widget-empty">Невідомий віджет</div>';
@@ -586,6 +598,102 @@ const DashboardPage = (() => {
                 <a href="/staff" style="font-size:12px;color:var(--primary);font-weight:700;text-decoration:none">Переглянути →</a>
             </div>
         `;
+    }
+
+    // v39.10: Staff on shift today
+    function renderStaffToday(data, container) {
+        if (!data.onShift?.length && !data.absent?.length) {
+            container.innerHTML = '<div class="widget-empty">Немає даних про зміни</div>';
+            return;
+        }
+        const deptGroups = {};
+        (data.onShift || []).forEach(s => {
+            const dept = s.department || 'інше';
+            if (!deptGroups[dept]) deptGroups[dept] = [];
+            deptGroups[dept].push(s);
+        });
+        const DEPT_LABELS = { animators: '🎭 Аніматори', admin: '📋 Адмін', cafe: '☕ Кафе', cleaning: '🧹 Господарчі', security: '🔒 Охорона', trampoline: '🤸 Батути' };
+        let html = `<div style="font-size:12px;color:var(--gray-500);margin-bottom:8px">На зміні: <b>${data.onShift?.length || 0}</b></div>`;
+        for (const [dept, staff] of Object.entries(deptGroups)) {
+            html += `<div style="font-size:11px;font-weight:700;color:var(--gray-400);margin:6px 0 2px">${DEPT_LABELS[dept] || dept}</div>`;
+            staff.forEach(s => {
+                const initials = (s.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2);
+                html += `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px">
+                    <div style="width:24px;height:24px;border-radius:50%;background:${s.color || '#6366f1'}30;color:${s.color || '#6366f1'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${initials}</div>
+                    <span style="flex:1;${s.is_online ? 'font-weight:600' : ''}">${escapeHtml(s.name)}</span>
+                    <span style="color:var(--gray-400);font-size:11px">${s.shift_start || ''}–${s.shift_end || ''}</span>
+                    ${s.is_online ? '<span style="width:6px;height:6px;border-radius:50%;background:#22c55e;flex-shrink:0" title="Онлайн"></span>' : ''}
+                </div>`;
+            });
+        }
+        if (data.absent?.length) {
+            html += `<div style="font-size:11px;font-weight:700;color:#ef4444;margin:8px 0 2px">🏥 Відсутні (${data.absent.length})</div>`;
+            data.absent.forEach(s => {
+                const labels = { sick: '🏥 Лікарняний', vacation: '🌴 Відпустка' };
+                html += `<div style="font-size:12px;color:var(--gray-500);padding:2px 0">${escapeHtml(s.name)} — ${labels[s.status] || s.status}</div>`;
+            });
+        }
+        html += `<div style="text-align:center;margin-top:8px"><a href="/staff" style="font-size:12px;color:var(--primary);font-weight:700;text-decoration:none">Графік →</a></div>`;
+        container.innerHTML = html;
+    }
+
+    // v39.10: Week bookings
+    function renderWeekBookings(data, container) {
+        if (!data.days?.length) {
+            container.innerHTML = '<div class="widget-empty">Немає бронювань на тиждень</div>';
+            return;
+        }
+        const dayNames = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+        const totalRev = data.days.reduce((s, d) => s + (d.revenue || 0), 0);
+        const totalCount = data.days.reduce((s, d) => s + (d.count || 0), 0);
+        let html = `<div class="stats-grid" style="margin-bottom:8px">
+            <div class="stat-item"><div class="stat-value">${totalCount}</div><div class="stat-label">Бронювань</div></div>
+            <div class="stat-item"><div class="stat-value">${formatCurrency(totalRev)}</div><div class="stat-label">Виручка</div></div>
+        </div>`;
+        html += '<div style="display:flex;gap:4px;align-items:flex-end;height:80px;margin-top:8px">';
+        const maxCount = Math.max(...data.days.map(d => d.count || 0), 1);
+        data.days.forEach(d => {
+            const dt = new Date(d.date + 'T12:00:00');
+            const dayName = dayNames[dt.getDay()];
+            const dayNum = dt.getDate();
+            const h = Math.max(8, Math.round(((d.count || 0) / maxCount) * 60));
+            const isToday = d.date === data.from;
+            html += `<div style="flex:1;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:flex-end">
+                <div style="font-size:10px;font-weight:700;color:var(--gray-500);margin-bottom:2px">${d.count || 0}</div>
+                <div style="width:100%;max-width:28px;height:${h}px;border-radius:4px 4px 0 0;background:${isToday ? 'linear-gradient(135deg,var(--primary),var(--primary-dark))' : d.pending > 0 ? '#f59e0b' : 'var(--gray-200)'};transition:height 0.3s" title="${d.confirmed || 0} підтв. / ${d.pending || 0} очік."></div>
+                <div style="font-size:10px;color:${isToday ? 'var(--primary)' : 'var(--gray-400)'};font-weight:${isToday ? '800' : '400'};margin-top:2px">${dayName}<br>${dayNum}</div>
+            </div>`;
+        });
+        html += '</div>';
+        html += `<div style="text-align:center;margin-top:8px"><a href="/" style="font-size:12px;color:var(--primary);font-weight:700;text-decoration:none">Таймлайн →</a></div>`;
+        container.innerHTML = html;
+    }
+
+    // v39.10: Team tasks
+    function renderTeamTasks(data, container) {
+        const s = data.stats || {};
+        let html = `<div class="stats-grid" style="margin-bottom:8px">
+            <div class="stat-item"><div class="stat-value" style="color:#f59e0b">${s.todo || 0}</div><div class="stat-label">Очікують</div></div>
+            <div class="stat-item"><div class="stat-value" style="color:var(--primary)">${s.in_progress || 0}</div><div class="stat-label">В роботі</div></div>
+            <div class="stat-item"><div class="stat-value" style="color:#ef4444">${s.overdue || 0}</div><div class="stat-label">Прострочено</div></div>
+        </div>`;
+        if (data.tasks?.length) {
+            html += '<div style="max-height:200px;overflow-y:auto">';
+            data.tasks.slice(0, 10).forEach(t => {
+                const overdue = t.is_overdue ? ' style="border-left:3px solid #ef4444"' : '';
+                const pIcon = t.priority === 'high' ? '🔴 ' : '';
+                html += `<div style="padding:6px 8px;border-radius:6px;margin-bottom:4px;background:var(--gray-50,rgba(0,0,0,0.02));font-size:12px;cursor:pointer"${overdue} onclick="window.location='/tasks?open=${t.id}'">
+                    <div style="font-weight:600">${pIcon}${escapeHtml(t.title?.slice(0, 50) || '')}</div>
+                    <div style="color:var(--gray-400);font-size:11px;margin-top:2px">
+                        ${t.assigned_to ? '👤 ' + escapeHtml(t.assigned_to) : '— нікому'}
+                        ${t.deadline ? ' · ⏰ ' + new Date(t.deadline).toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' }) : ''}
+                    </div>
+                </div>`;
+            });
+            html += '</div>';
+        }
+        html += `<div style="text-align:center;margin-top:8px"><a href="/tasks" style="font-size:12px;color:var(--primary);font-weight:700;text-decoration:none">Всі задачі →</a></div>`;
+        container.innerHTML = html;
     }
 
     // Onboarding wizard

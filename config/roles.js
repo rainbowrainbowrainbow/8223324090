@@ -61,12 +61,12 @@ const ROLE_DEPARTMENTS = {
 // v24.3.0: Default dashboard widgets per role (all 24 roles)
 const DEFAULT_WIDGETS = {
     // Executive — full overview
-    creator:        ['quick_stats', 'exceptions', 'tasks', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'catalogs', 'weather', 'currency', 'announcements'],
-    director:       ['quick_stats', 'exceptions', 'tasks', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'catalogs', 'weather', 'currency', 'announcements'],
-    vice_director:  ['quick_stats', 'exceptions', 'tasks', 'team_online', 'bookings_today', 'finance_today', 'weather', 'announcements'],
+    creator:        ['quick_stats', 'staff_today', 'week_bookings', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'catalogs', 'weather', 'currency', 'announcements'],
+    director:       ['quick_stats', 'staff_today', 'week_bookings', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'catalogs', 'weather', 'currency', 'announcements'],
+    vice_director:  ['quick_stats', 'staff_today', 'week_bookings', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'finance_today', 'weather', 'announcements'],
     // Management
-    senior_manager: ['quick_stats', 'exceptions', 'tasks', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements'],
-    manager:        ['exceptions', 'tasks', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements'],
+    senior_manager: ['quick_stats', 'staff_today', 'week_bookings', 'team_tasks', 'exceptions', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements'],
+    manager:        ['staff_today', 'week_bookings', 'exceptions', 'tasks', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements'],
     // Specialists
     accountant:     ['finance_today', 'tasks', 'quick_stats', 'currency', 'weather'],
     art_director:   ['tasks', 'my_schedule', 'bookings_today', 'weather', 'announcements'],

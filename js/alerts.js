@@ -1,10 +1,42 @@
 /**
- * js/alerts.js — Global Alert Bell v2.0
- * Підключити: <script src="js/alerts.js?v=39.4.1"></script>
- * Потрібно: #alertBell (button), #alertBadge (span), #alertsPanel (div)
+ * js/alerts.js — Global Alert Bell v3.0 (self-injecting)
+ * Підключити: <script src="js/alerts.js?v=39.7.0"></script>
+ * Auto-creates #alertBell + #alertBadge + #alertsPanel if missing.
  */
 const _ALERTS_KEY = 'crm_alerts_read_v1';
 let _alertsData = []; // cached alerts
+
+function _ensureAlertElements() {
+    if (document.getElementById('alertBell')) return; // already exists
+    // Find header area — look for common patterns
+    const header = document.querySelector('.header-actions, .page-header .user-panel, .top-bar, header')
+        || document.querySelector('[id$="Header"] .user-panel, .page-header');
+    if (!header) return; // no suitable place
+
+    // Insert bell before user panel or at end of header
+    const userPanel = header.querySelector('.user-panel') || header.querySelector('[id="currentUser"]')?.parentElement;
+    const bellHtml = `<button type="button" class="alert-bell-btn" id="alertBell" onclick="toggleAlertsPanel(event)" title="Алерти" style="position:relative;background:none;border:none;cursor:pointer;padding:6px;color:inherit;font-size:18px">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="alert-badge" id="alertBadge" style="display:none;position:absolute;top:0;right:0;min-width:16px;height:16px;background:#ef4444;color:#fff;font-size:10px;font-weight:800;border-radius:8px;line-height:16px;text-align:center;padding:0 3px">0</span>
+    </button>`;
+    const bellEl = document.createElement('span');
+    bellEl.innerHTML = bellHtml;
+    const btn = bellEl.firstElementChild;
+    if (userPanel) {
+        userPanel.parentElement.insertBefore(btn, userPanel);
+    } else {
+        header.appendChild(btn);
+    }
+
+    // Add alerts panel if missing
+    if (!document.getElementById('alertsPanel')) {
+        const panel = document.createElement('div');
+        panel.className = 'alerts-panel';
+        panel.id = 'alertsPanel';
+        panel.style.cssText = 'position:fixed;top:56px;right:16px;width:360px;max-height:70vh;overflow-y:auto;background:var(--surface,#fff);border:1px solid var(--gray-200,#e5e7eb);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:9999;display:none;padding:8px';
+        document.body.appendChild(panel);
+    }
+}
 
 function _getRead() {
     try { return new Set(JSON.parse(localStorage.getItem(_ALERTS_KEY) || '[]')); }
@@ -36,8 +68,15 @@ function toggleAlertsPanel(e) {
     if (e) e.stopPropagation();
     const p = document.getElementById('alertsPanel');
     if (!p) return;
-    p.classList.toggle('open');
-    if (p.classList.contains('open')) _renderPanel();
+    const isOpen = p.classList.contains('open') || p.style.display === 'block';
+    if (isOpen) {
+        p.classList.remove('open');
+        p.style.display = 'none';
+    } else {
+        p.classList.add('open');
+        p.style.display = 'block';
+        _renderPanel();
+    }
 }
 
 async function _renderPanel() {
@@ -183,11 +222,14 @@ async function _submitAlertTask(btn, alertId) {
 document.addEventListener('click', e => {
     const p = document.getElementById('alertsPanel');
     const b = document.getElementById('alertBell');
-    if (p && b && !b.contains(e.target) && !p.contains(e.target))
+    if (p && b && !b.contains(e.target) && !p.contains(e.target)) {
         p.classList.remove('open');
+        p.style.display = 'none';
+    }
 });
 
 document.addEventListener('DOMContentLoaded', () => {
+    _ensureAlertElements();
     loadAlertBell();
 
     // v39.7.0 — WebSocket push for real-time alerts (fallback polling every 30 min)

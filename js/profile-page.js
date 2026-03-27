@@ -863,7 +863,7 @@ function renderLevelProgress() {
 // STREAK WIDGET (v39.7.0 — multi-type with profession titles)
 // ==========================================
 function renderStreakWidget() {
-    const role = (profileData?.role || '').toLowerCase();
+    const role = (profileData?.user?.role || profileData?.role || '').toLowerCase();
 
     // Profession-based config for role title & overall streak flavor
     const STREAK_PROFILES = {
@@ -930,7 +930,7 @@ function renderStreakWidget() {
     }).join('');
 
     // Heatmap for last 30 days (based on login streak)
-    const loginStreak = allStreaks?.login?.current || profileData?.streaks?.current_streak || profileData?.streaks?.currentStreak || 0;
+    const loginStreak = allStreaks?.login?.current || profileData?.streak?.current || profileData?.streak?.current_streak || 0;
     const last30 = [];
     for (let i = 29; i >= 0; i--) {
         const active = i < loginStreak;

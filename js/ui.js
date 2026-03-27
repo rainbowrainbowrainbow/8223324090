@@ -409,8 +409,14 @@ function formModal(title, fields, options = {}) {
 }
 
 function showNotification(message, type = '') {
-    const container = document.getElementById('toastContainer');
-    if (!container) return;
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toastContainer';
+        container.className = 'toast-container';
+        container.style.cssText = 'position:fixed;top:16px;right:16px;z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none';
+        document.body.appendChild(container);
+    }
 
     // Remove oldest if at max
     const existing = container.querySelectorAll('.toast');

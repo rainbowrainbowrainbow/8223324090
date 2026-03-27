@@ -548,11 +548,26 @@
 
         .img-picker-modal {
             background: #1a1a1a;
+            color: #e5e5e5;
             border: 1px solid rgba(255,255,255,0.12);
             border-radius: 16px;
             width: 100%; max-width: 480px; max-height: 85vh;
             overflow-y: auto; padding: 0;
         }
+        /* Force dark theme inside picker regardless of page theme */
+        .img-picker-modal * { color-scheme: dark; }
+        .img-picker-modal select,
+        .img-picker-modal input:not([type="file"]),
+        .img-picker-modal textarea {
+            background: rgba(255,255,255,0.08) !important;
+            border-color: rgba(255,255,255,0.15) !important;
+            color: #fff !important;
+        }
+        .img-picker-modal select option { background: #2a2a2a; color: #fff; }
+        .img-picker-modal label { color: rgba(255,255,255,0.6) !important; }
+        .img-picker-modal h3 { color: #fff !important; }
+        .img-picker-modal .alert-task-form { background: rgba(255,255,255,0.06) !important; }
+        .img-picker-modal .alert-task-form textarea { color: #fff !important; }
         .img-picker-header {
             display: flex; justify-content: space-between; align-items: center;
             padding: 16px 20px;
@@ -802,16 +817,7 @@
         body:not([data-theme="dark"]) .img-picker-section-title { color: #666; }
         body:not(.dark-mode) .img-picker-label,
         body:not([data-theme="dark"]) .img-picker-label { color: #555; }
-        body:not(.dark-mode) .img-picker-btn-secondary,
-        body:not([data-theme="dark"]) .img-picker-btn-secondary {
-            background: #f0f0f0; border-color: #ddd; color: #333;
-        }
-        body:not(.dark-mode) .img-picker-close,
-        body:not([data-theme="dark"]) .img-picker-close { color: #999; }
-        body:not(.dark-mode) .img-picker-btn-cancel,
-        body:not([data-theme="dark"]) .img-picker-btn-cancel {
-            background: #f5f5f5; color: #999;
-        }
+        /* img-picker is ALWAYS dark — no light mode overrides needed */
 
         /* Light mode catalog cards */
         body:not(.dark-mode) .catalog-card,
@@ -1055,9 +1061,9 @@
         </div>
         <!-- Tabs -->
         <div class="img-picker-tabs" id="imgPickerTabs">
-          <button type="button" class="img-picker-tab active" data-img-tab="generate" onclick="switchImgTab('generate')">🎨 Генерація</button>
-          <button type="button" class="img-picker-tab" data-img-tab="reference" onclick="switchImgTab('reference')">📸 Референс</button>
-          <button type="button" class="img-picker-tab" data-img-tab="upload" onclick="switchImgTab('upload')">📁 Завантажити</button>
+          <button type="button" class="img-picker-tab active" data-img-tab="generate" onclick="switchImgTab('generate')"><span style="margin-right:4px">🎨</span> Генерація</button>
+          <button type="button" class="img-picker-tab" data-img-tab="reference" onclick="switchImgTab('reference')"><span style="margin-right:4px">📸</span> Референс</button>
+          <button type="button" class="img-picker-tab" data-img-tab="upload" onclick="switchImgTab('upload')"><span style="margin-right:4px">📁</span> Завантажити</button>
         </div>
         <!-- Tab 1: Text-to-Image -->
         <div id="imgTabGenerate" class="img-tab-content">

@@ -97,6 +97,7 @@ async function notifyBulkScheduleChange(staffIdSet, count) {
 
 const DEPARTMENTS = {
     animators: 'Аніматори',
+    trampoline: 'Батутисти',
     admin: 'Адміністрація',
     cafe: 'Кафе',
     tech: 'Технічний відділ',
@@ -553,7 +554,7 @@ const EXCEL_TO_CRM_ROLE = {
     'Аніматори': { dept: 'animators', role: 'animator' },
     'Арт отдел': { dept: 'admin', role: 'art_director' },
     'Бармени': { dept: 'cafe', role: 'barista' },
-    'Батутисти': { dept: 'animators', role: 'instructor' },
+    'Батутисти': { dept: 'trampoline', role: 'instructor' },
     'Бухгалтер': { dept: 'admin', role: 'accountant' },
     'Гардеробщиці': { dept: 'cleaning', role: 'wardrobe' },
     'Ейчар': { dept: 'admin', role: 'hr' },

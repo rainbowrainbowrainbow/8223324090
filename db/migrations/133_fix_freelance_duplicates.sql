@@ -1,8 +1,9 @@
 -- Migration 133: Fix freelance duplicates + add named freelance animators
 -- Duplicate freelance slots created by both initDatabase and migration 132
 
--- 1. Deactivate older duplicate freelance slots (from migration 132, lower IDs)
+-- 1. Deactivate older duplicate unnamed "Фріланс" slots (from migration 132, lower IDs)
 -- Keep the ones from initDatabase (higher IDs) as they're consistent
+-- ONLY deactivate unnamed "Фріланс" entries — never deactivate named freelancers!
 UPDATE staff SET is_active = false
 WHERE id IN (
     SELECT s1.id FROM staff s1
@@ -10,6 +11,7 @@ WHERE id IN (
         AND s1.position = s2.position
         AND s1.is_freelance = true AND s2.is_freelance = true
         AND s1.is_active = true AND s2.is_active = true
+        AND s1.name = 'Фріланс' AND s2.name = 'Фріланс'
         AND s1.id < s2.id
 );
 

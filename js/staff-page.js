@@ -40,6 +40,7 @@ const StaffState = {
 
 const DEPT_ICONS = {
     animators: '🎭',
+    trampoline: '🤸',
     admin: '💼',
     cafe: '☕',
     tech: '🔧',
@@ -277,7 +278,7 @@ function renderSchedule() {
     }
 
     let bodyHtml = '';
-    const deptOrder = ['animators', 'admin', 'cafe', 'tech', 'cleaning', 'security'];
+    const deptOrder = ['animators', 'trampoline', 'admin', 'cafe', 'tech', 'cleaning', 'security'];
 
     for (const dept of deptOrder) {
         if (!grouped[dept]) continue;
@@ -682,7 +683,7 @@ function renderLoadView() {
 
     // Department breakdown (if showing all departments)
     if (StaffState.activeDept === 'all') {
-        const deptOrder = ['animators', 'admin', 'cafe', 'tech', 'cleaning', 'security'];
+        const deptOrder = ['animators', 'trampoline', 'admin', 'cafe', 'tech', 'cleaning', 'security'];
         bodyHtml += `<tr><td colspan="${dates.length + 2}" style="padding:8px 16px;font-weight:800;font-size:12px;color:var(--gray-500);background:var(--gray-50);border-top:2px solid var(--gray-200)">По відділах (на роботі + віддалено)</td></tr>`;
 
         for (const dept of deptOrder) {

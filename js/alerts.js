@@ -151,9 +151,11 @@ async function _submitAlertTask(btn, alertId) {
                 if (match) assignedTo = match.username;
             } catch {}
         }
+        const today = new Date().toISOString().slice(0, 10);
         const body = {
             title: text.slice(0, 100),
             description: text,
+            date: today,
             priority: alert?.level === 'critical' ? 'high' : 'normal',
             category: alertId.startsWith('stock') ? 'purchase' : alertId.startsWith('cold') ? 'admin' : 'admin',
             source_type: 'alert',
@@ -166,10 +168,13 @@ async function _submitAlertTask(btn, alertId) {
         });
         if (resp.ok) {
             const data = await resp.json();
-            form.innerHTML = `<div style="color:#10B981;font-size:12px;padding:4px">✅ Задачу #${data.id || ''} поставлено${assignedTo ? ' → ' + assignedTo : ''}!</div>`;
-            setTimeout(() => form.remove(), 3000);
+            const taskId = data.task?.id || data.id || '';
+            form.innerHTML = `<div style="color:#10B981;font-size:12px;padding:4px">✅ Задачу #${taskId} поставлено${assignedTo ? ' → ' + assignedTo : ''}! <a href="/tasks?open=${taskId}" style="color:#10B981;text-decoration:underline">Відкрити</a></div>`;
+            setTimeout(() => form.remove(), 5000);
         } else {
-            btn.disabled = false; btn.textContent = '📋 Поставити задачу';
+            const errData = await resp.json().catch(() => ({}));
+            form.innerHTML = `<div style="color:#EF4444;font-size:12px;padding:4px">❌ ${errData.error || 'Помилка створення (HTTP ' + resp.status + ')'}</div>`;
+            setTimeout(() => { btn.disabled = false; btn.textContent = '📋 Спробувати ще'; form.querySelector('div')?.remove(); }, 3000);
         }
     } catch { btn.disabled = false; btn.textContent = '📋 Поставити задачу'; }
 }

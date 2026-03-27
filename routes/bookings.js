@@ -711,7 +711,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 
         // v40: Support partial updates — merge missing fields from existing booking
         const existing = await client.query('SELECT * FROM bookings WHERE id = $1', [id]);
-        if (!existing.rows.length) { client.release(); return res.status(404).json({ error: 'Booking not found' }); }
+        if (!existing.rows.length) { return res.status(404).json({ error: 'Booking not found' }); }
         const old = existing.rows[0];
         if (!b.date) b.date = old.date;
         if (!b.time) b.time = old.time;
@@ -722,8 +722,8 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         if (b.status === undefined) b.status = old.status;
         if (b.price === undefined) b.price = old.price;
 
-        if (!validateDate(b.date)) { client.release(); return res.status(400).json({ error: 'Invalid date format' }); }
-        if (!validateTime(b.time)) { client.release(); return res.status(400).json({ error: 'Invalid time format' }); }
+        if (!validateDate(b.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
+        if (!validateTime(b.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
 
         // v19.14: Input length validation
         if (b.notes && b.notes.length > 2000) { return res.status(400).json({ error: 'Нотатки: макс. 2000 символів' }); }

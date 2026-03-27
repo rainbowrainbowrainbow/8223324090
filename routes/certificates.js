@@ -4,7 +4,7 @@
  */
 const router = require('express').Router();
 const { pool, generateCertCode } = require('../db');
-const { requireRole } = require('../middleware/auth');
+const { requireRole, authenticateToken } = require('../middleware/auth'); 
 const { mapCertificateRow, calculateValidUntil, validateCertificateInput, getCurrentSeason, VALID_STATUSES, VALID_SEASONS } = require('../services/certificates');
 const { sendTelegramMessage, sendTelegramPhoto, getConfiguredChatId, getBotUsername } = require('../services/telegram');
 const { formatCertificateNotification, formatBatchCertificateNotification } = require('../services/templates');
@@ -15,6 +15,8 @@ const QRCode = require('qrcode');
 const log = createLogger('Certificates');
 
 // GET /api/certificates — List with filters
+// v39.8: Security — require authentication
+router.use(authenticateToken);
 router.get('/', async (req, res) => {
     try {
         const { status, search, limit, offset } = req.query;

@@ -23,7 +23,7 @@ async function apiRequest(method, url, body) {
     if (res.status === 401 || res.status === 403) {
         localStorage.removeItem('pzp_token');
         window.location.href = '/';
-        throw new Error('Unauthorized');
+        return;
     }
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -785,7 +785,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!user) throw new Error('Invalid token');
 
         AppState.currentUser = user;
-        document.getElementById('currentUser').textContent = user.name || user.username;
+        const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name || user.username;
 
         // Role-based visibility
         const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];

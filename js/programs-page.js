@@ -24,9 +24,9 @@ async function initPage() {
         const sidebar = document.getElementById('sidebarNav');
         const header = document.querySelector('.header');
         window.location.href = '/';
-        throw new Error('Unauthorized');
+        return;
         window.location.href = '/';
-        throw new Error('Unauthorized');
+        return;
     }
 
     const token = localStorage.getItem('pzp_token');
@@ -38,7 +38,7 @@ async function initPage() {
             return;
         }
         window.location.href = '/';
-        throw new Error('Unauthorized');
+        return;
     }
 
     const user = await apiVerifyToken();
@@ -50,11 +50,11 @@ async function initPage() {
             return;
         }
         window.location.href = '/';
-        throw new Error('Unauthorized');
+        return;
     }
 
     AppState.currentUser = user;
-    document.getElementById('currentUser').textContent = user.name;
+    const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
     // v20.8.0: Embedded mode — read-only (no edit/delete/add)

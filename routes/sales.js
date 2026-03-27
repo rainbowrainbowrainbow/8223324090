@@ -4,12 +4,14 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireMinRole } = require('../middleware/auth');
+const { requireMinRole, authenticateToken } = require('../middleware/auth'); 
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Sales');
 
 // GET /api/sales/call-script — active call script
+// v39.8: Security — require authentication
+router.use(authenticateToken);
 router.get('/call-script', async (req, res) => {
     try {
         const result = await pool.query(

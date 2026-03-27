@@ -59,17 +59,17 @@ async function initPage() {
     const token = localStorage.getItem('pzp_token');
     if (!token) {
         window.location.href = '/';
-        throw new Error('Unauthorized');
+        return;
     }
 
     const user = await apiVerifyToken();
     if (!user) {
         window.location.href = '/';
-        throw new Error('Unauthorized');
+        return;
     }
 
     AppState.currentUser = user;
-    document.getElementById('currentUser').textContent = user.name;
+    const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];

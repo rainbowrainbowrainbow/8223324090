@@ -4,7 +4,7 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireRole } = require('../middleware/auth');
+const { requireRole, authenticateToken } = require('../middleware/auth'); 
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Subscription');
@@ -33,6 +33,8 @@ async function ensureTable() {
 }
 
 // GET /api/subscription/status
+// v39.8: Security — require authentication
+router.use(authenticateToken);
 router.get('/status', async (req, res) => {
     try {
         await ensureTable();

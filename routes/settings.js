@@ -8,10 +8,12 @@ const { createLogger } = require('../utils/logger');
 const { logAdminAction } = require('../services/adminAudit');
 const { settingsCache } = require('../services/cache');
 
-const { requireRole, requireMinRole } = require('../middleware/auth');
+const { requireRole, requireMinRole, authenticateToken } = require('../middleware/auth'); 
 const log = createLogger('Settings');
 
 // Stats
+// v39.8: Security — require authentication
+router.use(authenticateToken);
 router.get('/stats/:dateFrom/:dateTo', async (req, res) => {
     try {
         const { dateFrom, dateTo } = req.params;

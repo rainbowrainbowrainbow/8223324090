@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const { authenticateToken } = require('../middleware/auth');
+router.use(authenticateToken);
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Search');

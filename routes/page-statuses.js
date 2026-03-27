@@ -8,11 +8,13 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireMinRole } = require('../middleware/auth');
+const { requireMinRole, authenticateToken } = require('../middleware/auth'); 
 const { createLogger } = require('../utils/logger');
 const log = createLogger('PageStatuses');
 
 // GET /api/page-statuses — all statuses (for sidebar rendering)
+// v39.8: Security — require authentication
+router.use(authenticateToken);
 router.get('/', async (req, res) => {
     try {
         const result = await pool.query('SELECT page_path, status FROM page_statuses ORDER BY page_path');

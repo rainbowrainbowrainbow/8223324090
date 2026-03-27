@@ -3,7 +3,7 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireRole } = require('../middleware/auth');
+const { requireRole, authenticateToken } = require('../middleware/auth'); 
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Products');
@@ -61,6 +61,8 @@ function validateProduct(body) {
 }
 
 // GET /api/products — List all products (optional ?active=true filter)
+// v39.8: Security — require authentication
+router.use(authenticateToken);
 router.get('/', async (req, res) => {
     try {
         const activeOnly = req.query.active === 'true';

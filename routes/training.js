@@ -4,7 +4,7 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireMinRole } = require('../middleware/auth');
+const { requireMinRole, authenticateToken } = require('../middleware/auth'); 
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Training');
@@ -21,6 +21,8 @@ function categorizeContent(text) {
 }
 
 // GET /api/training/weekly-pending — pending responses for a week
+// v39.8: Security — require authentication
+router.use(authenticateToken);
 router.get('/weekly-pending', requireMinRole('manager'), async (req, res) => {
     try {
         const week = parseInt(req.query.week) || getISOWeek(new Date());

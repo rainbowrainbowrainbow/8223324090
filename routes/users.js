@@ -5,12 +5,14 @@
 const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
-const { requireRole, ROLE_HIERARCHY, PAGE_ACCESS, ACTION_PERMISSIONS } = require('../middleware/auth');
+const { requireRole, authenticateToken, ROLE_HIERARCHY, PAGE_ACCESS, ACTION_PERMISSIONS } = require('../middleware/auth'); 
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Users');
 
 // GET /api/users — list all users (creator + director only)
+// v39.8: Security — require authentication
+router.use(authenticateToken);
 router.get('/', requireRole('creator', 'director'), async (req, res) => {
     try {
         const result = await pool.query(

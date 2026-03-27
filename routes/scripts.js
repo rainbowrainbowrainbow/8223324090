@@ -10,9 +10,11 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireMinRole } = require('../middleware/auth');
+const { requireMinRole, authenticateToken } = require('../middleware/auth'); 
 
 // GET /api/scripts — all active scripts grouped by category
+// v39.8: Security — require authentication
+router.use(authenticateToken);
 router.get('/', async (req, res) => {
     try {
         const result = await pool.query(

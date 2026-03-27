@@ -7,6 +7,8 @@
  *   GET /api/points/:username/history — point transactions history
  */
 const router = require('express').Router();
+const { authenticateToken } = require('../middleware/auth');
+router.use(authenticateToken);
 const { pool } = require('../db');
 const { getUserPoints, getAllPoints } = require('../services/kleshnya');
 const { createLogger } = require('../utils/logger');

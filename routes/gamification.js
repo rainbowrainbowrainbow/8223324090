@@ -17,13 +17,15 @@
  *   GET  /api/gamification/leaderboard          — leaderboard
  */
 const router = require('express').Router();
-const { requireRole } = require('../middleware/auth');
+const { requireRole, authenticateToken } = require('../middleware/auth'); 
 const gamification = require('../services/gamification');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('GamificationAPI');
 
 // GET /profile/:username — full profile
+// v39.8: Security — require authentication
+router.use(authenticateToken);
 router.get('/profile/:username', async (req, res) => {
     try {
         const { username } = req.params;

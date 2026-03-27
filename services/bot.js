@@ -214,7 +214,7 @@ async function handleDaySummary(chatId, threadId, date, label) {
 async function handlePrograms(chatId, threadId) {
     try {
         const result = await pool.query(
-            'SELECT * FROM products WHERE is_active = true ORDER BY category, sort_order'
+            'SELECT * FROM products WHERE is_active = true ORDER BY category, sort_order LIMIT 500'
         );
 
         if (result.rows.length === 0) {
@@ -385,7 +385,7 @@ async function handleTasks(chatId, threadId, fromUsername) {
         if (userResult.rows.length > 0) {
             const username = userResult.rows[0].username;
             tasks = await pool.query(
-                `SELECT * FROM tasks WHERE assigned_to = $1 AND (date = $2 OR (date IS NULL AND status != 'done'))
+                `SELECT * FROM tasks WHERE assigned_to = $1 AND (date = $2 OR (date IS NULL AND status != 'done')) LIMIT 200
                  AND status != 'done'
                  ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END, created_at`,
                 [username, today]
@@ -393,7 +393,7 @@ async function handleTasks(chatId, threadId, fromUsername) {
         } else {
             // Fallback: show all undone tasks for today
             tasks = await pool.query(
-                `SELECT * FROM tasks WHERE date = $1 AND status != 'done'
+                `SELECT * FROM tasks WHERE date = $1 AND status != 'done' LIMIT 200
                  ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END, created_at`,
                 [today]
             );
@@ -468,7 +468,7 @@ async function handleAllTasks(chatId, threadId) {
     try {
         const today = formatDate(getKyivNow());
         const tasks = await pool.query(
-            `SELECT * FROM tasks WHERE (date = $1 OR (date IS NULL AND status != 'done'))
+            `SELECT * FROM tasks WHERE (date = $1 OR (date IS NULL AND status != 'done')) LIMIT 200
              AND status != 'done'
              ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END,
                       assigned_to NULLS LAST, created_at`,

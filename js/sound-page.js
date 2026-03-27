@@ -225,7 +225,7 @@
                 await apiCall('POST', `/music/announcements/${playBtn.dataset.id}/play`);
             } catch {}
         } else if (deleteBtn) {
-            if (!confirm('Видалити оголошення?')) return;
+            if (!await confirmModal('Видалити оголошення?', { type: 'danger' })) return;
             try {
                 await apiCall('DELETE', `/music/announcements/${deleteBtn.dataset.id}`);
                 loadAnnouncements();

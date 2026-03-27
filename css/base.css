@@ -218,7 +218,8 @@ body {
     font-weight: 700;
     font-size: var(--font-sm);
     animation: notifEnter 0.35s var(--ease-spring) both;
-    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     pointer-events: auto;
     background: linear-gradient(135deg, #374151 0%, #1F2937 100%);

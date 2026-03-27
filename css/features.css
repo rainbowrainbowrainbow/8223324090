@@ -1673,7 +1673,7 @@ body.dark-mode .filter-mode-banner-text p { color: #FBBF24; }
     inset: 0;
     background: rgba(0,0,0,0.5);
     -webkit-backdrop-filter: blur(4px);
-    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
     z-index: 10000;
     display: flex;
     align-items: flex-start;
@@ -2145,7 +2145,7 @@ body.dark-mode .room-load-close:hover {
     height: 100vh;
     background: rgba(10, 10, 20, 0.94);
     -webkit-backdrop-filter: blur(16px);
-    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
     border-left: 1px solid rgba(99, 179, 237, 0.2);
     box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
     color: #e2e8f0;

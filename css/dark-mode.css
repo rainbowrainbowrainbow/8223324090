@@ -154,7 +154,7 @@ body.dark-mode .skeleton {
 
 /* Toast dark — slightly transparent */
 body.dark-mode .toast {
-    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
 }
 
@@ -1329,7 +1329,7 @@ body.dark-mode .btn-invite-copy {
 body.dark-mode .kanban-col {
     background: rgba(255,255,255,0.05);
     -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
 }
 body.dark-mode .kanban-col-header {
     border-bottom-color: var(--gray-300);
@@ -1342,7 +1342,7 @@ body.dark-mode .kanban-col-count {
 body.dark-mode .task-card {
     background: rgba(255,255,255,0.08);
     -webkit-backdrop-filter: blur(20px);
-    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
     border-left-color: var(--gray-300);
 }
 body.dark-mode .task-card:hover {

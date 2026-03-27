@@ -648,7 +648,7 @@ const ReportsPage = (() => {
     }
 
     async function deleteReport(id) {
-        if (!confirm('Видалити звіт?')) return;
+        if (!await confirmModal('Видалити звіт?', { type: 'danger' })) return;
         try {
             await apiRequest('DELETE', `/api/reports/${id}`);
             showNotification('Звіт видалено');

@@ -12,7 +12,7 @@
     padding: 8px 16px; border: none; border-radius: 10px;
     font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
     background: rgba(255,255,255,0.3); color: var(--gray-600);
-    transition: all 0.2s; backdrop-filter: blur(10px);
+    transition: all 0.2s; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
 }
 .design-tab.active { background: var(--primary); color: #fff; }
 .design-tab .tab-count {
@@ -25,7 +25,7 @@
 /* Filter bar */
 .design-filters {
     display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;
-    background: rgba(255,255,255,0.3); backdrop-filter: blur(10px);
+    background: rgba(255,255,255,0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
     padding: 10px; border-radius: 12px;
 }
 .design-filters input, .design-filters select {
@@ -78,7 +78,7 @@
 /* Design card */
 .design-card {
     background: rgba(255,255,255,0.5); border-radius: 14px;
-    overflow: hidden; backdrop-filter: blur(20px);
+    overflow: hidden; -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
     transition: all 0.2s; border: 1px solid rgba(0,0,0,0.06);
     position: relative;
 }
@@ -132,7 +132,7 @@
 }
 .collection-card {
     background: rgba(255,255,255,0.5); border-radius: 12px;
-    padding: 16px; backdrop-filter: blur(20px);
+    padding: 16px; -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
     border-left: 4px solid var(--primary); cursor: pointer;
     transition: all 0.15s;
 }
@@ -149,7 +149,7 @@
 
 .add-collection-bar {
     display: flex; gap: 8px; margin-bottom: 16px;
-    background: rgba(255,255,255,0.3); backdrop-filter: blur(10px);
+    background: rgba(255,255,255,0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
     padding: 10px; border-radius: 12px;
 }
 .add-collection-bar input {
@@ -172,7 +172,7 @@
 }
 .price-table {
     width: 100%; border-collapse: collapse; background: rgba(255,255,255,0.5);
-    backdrop-filter: blur(20px); border-radius: 12px; overflow: hidden;
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border-radius: 12px; overflow: hidden;
 }
 .price-table th {
     text-align: left; padding: 10px 14px; font-size: 12px; font-weight: 800;
@@ -203,7 +203,7 @@
 }
 .calendar-day {
     min-height: 80px; padding: 6px; border-radius: 8px;
-    background: rgba(255,255,255,0.3); backdrop-filter: blur(10px);
+    background: rgba(255,255,255,0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
     cursor: pointer; transition: all 0.15s; position: relative;
 }
 .calendar-day:hover { background: rgba(255,255,255,0.6); }
@@ -233,7 +233,7 @@
 }
 .calendar-nav button:hover { background: rgba(255,255,255,0.7); }
 .calendar-day-detail {
-    background: rgba(255,255,255,0.4); backdrop-filter: blur(10px);
+    background: rgba(255,255,255,0.4); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
     border-radius: 12px; padding: 16px; margin-top: 12px;
 }
 .calendar-day-detail h4 { font-weight: 800; margin-bottom: 10px; }

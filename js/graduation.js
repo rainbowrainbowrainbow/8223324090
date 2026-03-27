@@ -1270,8 +1270,8 @@
     }
 
     // #10: Clear all
-    function clearAll() {
-        if (!confirm('Очистити всі обрані послуги?')) return;
+    async function clearAll() {
+        if (!await confirmModal('Очистити всі обрані послуги?', { type: 'danger' })) return;
         selectedServiceIds.clear();
         autoAddEntry();
         recalc();
@@ -1606,7 +1606,7 @@
     }
 
     async function resetPrices() {
-        if (!confirm('Скинути всі ціни до стандартних?')) return;
+        if (!await confirmModal('Скинути всі ціни до стандартних?', { type: 'danger' })) return;
         try {
             services = await gradApi('GET', '/graduation/services');
             settings = await gradApi('GET', '/graduation/settings');

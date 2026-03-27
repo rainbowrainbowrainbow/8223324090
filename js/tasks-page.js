@@ -195,7 +195,7 @@ async function apiCreateTask(data) {
         // v33.3: Handle duplicate (409)
         if (response.status === 409) {
             const err = await response.json();
-            if (confirm(`⚠️ ${err.message || 'Задача вже існує'}\nВсе одно додати дубль?`)) {
+            if (await confirmModal(`⚠️ ${err.message || 'Задача вже існує'}\nВсе одно додати дубль?`, { type: 'warning', okText: 'Додати' })) {
                 return apiCreateTask({ ...data, force: true });
             }
             return null;
@@ -691,7 +691,7 @@ async function bulkAction(action) {
     const ids = getSelectedTaskIds();
     if (!ids.length) return;
     const labels = { done: 'Виконати', archive: 'Архівувати' };
-    if (!confirm(`${labels[action] || action} ${ids.length} задач?`)) return;
+    if (!await confirmModal(`${labels[action] || action} ${ids.length} задач?`, { type: 'danger' })) return;
     const result = await apiBulkTasks(ids, action);
     if (result && result.success) {
         showNotification(`${labels[action] || action}: ${result.affected || ids.length} задач`, 'success');
@@ -739,30 +739,49 @@ async function openTaskDetail(taskId) {
         }
         overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
 
+        const dlIso = t.deadline ? new Date(t.deadline).toISOString().slice(0, 16) : '';
+        const _lbl = 'style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:3px"';
+        const _inp = 'style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box"';
+
         overlay.innerHTML = `<div style="background:var(--white,#fff);border-radius:16px;max-width:520px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-            <div style="padding:20px 24px;border-bottom:1px solid var(--gray-100,#f3f4f6);display:flex;align-items:center;gap:12px">
+            <div style="padding:16px 20px;border-bottom:1px solid var(--gray-100);display:flex;align-items:center;gap:12px">
                 <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${statusColor}"></span>
-                <h3 style="margin:0;font-size:18px;font-weight:800;flex:1">${escapeHtml(t.title)}</h3>
-                <button onclick="document.getElementById('taskDetailOverlay').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--gray-400);padding:4px">✕</button>
+                <h3 style="margin:0;font-size:16px;font-weight:800;flex:1">Задача #${t.id}</h3>
+                <span style="font-size:11px;color:var(--gray-400)">Автор: ${escapeHtml(t.created_by || '—')}</span>
+                <button onclick="document.getElementById('taskDetailOverlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--gray-400);padding:4px">✕</button>
             </div>
-            <div style="padding:20px 24px">
-                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-                    <span style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:${statusColor}22;color:${statusColor}">${STATUS_LABELS[t.status] || t.status}</span>
-                    <span style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:${prioColor}22;color:${prioColor}">${PRIORITY_LABELS[t.priority] || t.priority}</span>
-                    ${t.category ? `<span style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:var(--gray-100);color:var(--gray-600)">${escapeHtml(t.category)}</span>` : ''}
+            <div style="padding:16px 20px;display:flex;flex-direction:column;gap:10px">
+                <div><label ${_lbl}>Назва</label><input id="_tdTitle" value="${escapeHtml(t.title || '')}" ${_inp}></div>
+                <div><label ${_lbl}>Опис</label><textarea id="_tdDesc" rows="3" ${_inp} style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box;resize:vertical">${escapeHtml(t.description || '')}</textarea></div>
+                <div style="display:flex;gap:8px">
+                    <div style="flex:1"><label ${_lbl}>Статус</label><select id="_tdStatus" ${_inp} style="width:100%;padding:8px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit">
+                        <option value="todo" ${t.status==='todo'?'selected':''}>📋 До виконання</option>
+                        <option value="in_progress" ${t.status==='in_progress'?'selected':''}>▶ В роботі</option>
+                        <option value="done" ${t.status==='done'?'selected':''}>✅ Виконано</option>
+                        <option value="cancelled" ${t.status==='cancelled'?'selected':''}>✕ Скасовано</option>
+                    </select></div>
+                    <div style="flex:1"><label ${_lbl}>Пріоритет</label><select id="_tdPriority" ${_inp} style="width:100%;padding:8px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit">
+                        <option value="low" ${t.priority==='low'?'selected':''}>Низький</option>
+                        <option value="normal" ${t.priority==='normal'?'selected':''}>Звичайний</option>
+                        <option value="high" ${t.priority==='high'?'selected':''}>🔴 Високий</option>
+                    </select></div>
                 </div>
-                ${t.description ? `<div style="font-size:14px;line-height:1.6;color:var(--gray-600);margin-bottom:16px;white-space:pre-wrap">${escapeHtml(t.description)}</div>` : ''}
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
-                    <div><span style="color:var(--gray-400)">Дедлайн:</span> <span style="font-weight:700;${isOverdue ? 'color:#EF4444' : ''}">${deadlineStr}${isOverdue ? ' ⚠️' : ''}</span></div>
-                    <div><span style="color:var(--gray-400)">Призначено:</span> <span style="font-weight:700">${escapeHtml(t.assigned_to || '—')}</span></div>
-                    <div><span style="color:var(--gray-400)">Автор:</span> <span style="font-weight:700">${escapeHtml(t.created_by || '—')}</span></div>
-                    <div><span style="color:var(--gray-400)">Створено:</span> <span>${t.created_at ? new Date(t.created_at).toLocaleDateString('uk-UA') : '—'}</span></div>
+                <div style="display:flex;gap:8px">
+                    <div style="flex:1"><label ${_lbl}>Дедлайн${isOverdue ? ' ⚠️' : ''}</label><input id="_tdDeadline" type="datetime-local" value="${dlIso}" ${_inp}></div>
+                    <div style="flex:1"><label ${_lbl}>Призначено</label><input id="_tdAssigned" value="${escapeHtml(t.assigned_to || '')}" placeholder="username" ${_inp}></div>
                 </div>
+                <div><label ${_lbl}>Категорія</label><select id="_tdCategory" ${_inp} style="width:100%;padding:8px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit">
+                    <option value="admin" ${t.category==='admin'?'selected':''}>Адмін</option>
+                    <option value="event" ${t.category==='event'?'selected':''}>Подія</option>
+                    <option value="purchase" ${t.category==='purchase'?'selected':''}>Закупка</option>
+                    <option value="trampoline" ${t.category==='trampoline'?'selected':''}>Батут</option>
+                    <option value="personal" ${t.category==='personal'?'selected':''}>Особисте</option>
+                    <option value="improvement" ${t.category==='improvement'?'selected':''}>Покращення</option>
+                </select></div>
             </div>
-            <div style="padding:12px 24px;border-top:1px solid var(--gray-100);display:flex;gap:8px">
-                ${t.status !== 'done' ? `<button onclick="quickChangeStatus(${t.id},'${t.status === 'todo' ? 'in_progress' : 'done'}')" style="flex:1;padding:10px;border:none;border-radius:10px;background:#10B981;color:#fff;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">${t.status === 'todo' ? '▶ Почати' : '✅ Завершити'}</button>` : ''}
-                ${t.status === 'done' ? `<button onclick="quickChangeStatus(${t.id},'todo')" style="flex:1;padding:10px;border:none;border-radius:10px;background:var(--gray-100);color:var(--gray-600);font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">↩ Повернути</button>` : ''}
-                <button onclick="document.getElementById('taskDetailOverlay').remove()" style="flex:1;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:none;cursor:pointer;font-family:inherit;font-size:13px">Закрити</button>
+            <div style="padding:12px 20px;border-top:1px solid var(--gray-100);display:flex;gap:8px">
+                <button onclick="saveTaskDetail(${t.id})" style="flex:2;padding:10px;border:none;border-radius:10px;background:#10B981;color:#fff;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">💾 Зберегти</button>
+                <button onclick="document.getElementById('taskDetailOverlay').remove()" style="flex:1;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:none;cursor:pointer;font-family:inherit;font-size:13px">Скасувати</button>
             </div>
         </div>`;
 
@@ -773,6 +792,37 @@ async function openTaskDetail(taskId) {
     } catch (err) { showNotification('Помилка: ' + err.message, 'error'); }
 }
 window.openTaskDetail = openTaskDetail;
+
+async function saveTaskDetail(taskId) {
+    const title = document.getElementById('_tdTitle')?.value.trim();
+    if (!title) { showNotification('Назва обов\'язкова', 'error'); return; }
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const body = {
+            title,
+            description: document.getElementById('_tdDesc')?.value.trim() || null,
+            status: document.getElementById('_tdStatus')?.value || 'todo',
+            priority: document.getElementById('_tdPriority')?.value || 'normal',
+            category: document.getElementById('_tdCategory')?.value || 'admin',
+            assigned_to: document.getElementById('_tdAssigned')?.value.trim() || null,
+            deadline: document.getElementById('_tdDeadline')?.value || null
+        };
+        const res = await fetch(`/api/tasks/${taskId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(body)
+        });
+        if (res.ok) {
+            document.getElementById('taskDetailOverlay')?.remove();
+            showNotification('Задачу збережено');
+            if (typeof loadTasks === 'function') loadTasks();
+        } else {
+            const data = await res.json().catch(() => ({}));
+            showNotification(data.error || 'Помилка збереження', 'error');
+        }
+    } catch (err) { showNotification('Помилка: ' + err.message, 'error'); }
+}
+window.saveTaskDetail = saveTaskDetail;
 
 async function quickChangeStatus(taskId, newStatus) {
     try {

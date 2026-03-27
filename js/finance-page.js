@@ -1398,7 +1398,7 @@ async function saveAccount() {
 
 async function toggleAccount(id, active) {
     try {
-        if (!active && !confirm('Деактивувати рахунок?')) return;
+        if (!active && !await confirmModal('Деактивувати рахунок?', { type: 'danger' })) return;
         await apiRequest('PATCH', `/api/finance/accounts/${id}`, { isActive: active });
         showNotification(active ? 'Рахунок активовано' : 'Рахунок деактивовано');
         loadAccounts();

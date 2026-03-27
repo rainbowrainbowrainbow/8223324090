@@ -1618,7 +1618,7 @@ async function moveCandidate(id, status) {
 }
 
 async function hireCandidate(id) {
-    if (!confirm('Найняти кандидата? Буде створений запис у команді.')) return;
+    if (!await confirmModal('Найняти кандидата? Буде створений запис у команді.', { type: 'danger' })) return;
     const res = await hrFetch(`/applications/${id}/hire`, { method: 'POST', body: JSON.stringify({}) });
     if (res?.success) {
         alert(`✅ ${res.message}`);
@@ -1640,7 +1640,7 @@ async function addCandidatePrompt(vacancyId) {
 }
 
 // Vacancy create button
-document.getElementById('btnAddVacancy')?.addEventListener('click', () => {
+document.getElementById('btnAddVacancy')?.addEventListener('click', async () => {
     const title = prompt('Назва вакансії *:');
     if (!title?.trim()) return;
     const roleKeys = Object.keys(ROLE_LABELS);
@@ -1651,7 +1651,7 @@ document.getElementById('btnAddVacancy')?.addEventListener('click', () => {
     const salary_from = parseInt(prompt('Зарплата від (₴, або 0):')) || null;
     const salary_to = parseInt(prompt('Зарплата до (₴, або 0):')) || null;
     const schedule = prompt('Графік (або Enter):');
-    const priority = confirm('Терміново?') ? 'urgent' : 'normal';
+    const priority = (await confirmModal('Терміново?', { type: 'danger' })) ? 'urgent' : 'normal';
     hrFetch('/vacancies', {
         method: 'POST',
         body: JSON.stringify({ title: title.trim(), role_type: roleKey, salary_from, salary_to, schedule: schedule || null, priority })

@@ -1996,7 +1996,7 @@
             btn.addEventListener('click', async function(e) {
                 e.stopPropagation();
                 var uid = btn.dataset.removeUid;
-                if (!confirm('Видалити учасника з каналу?')) return;
+                if (!await confirmModal('Видалити учасника з каналу?', { type: 'danger' })) return;
                 try {
                     await _api('DELETE', '/channels/' + _currentChannel.id + '/members/' + uid);
                     _renderInfoPanel();
@@ -2023,7 +2023,7 @@
         var archiveBtn = body.querySelector('#_infoPanelArchive');
         if (archiveBtn) {
             archiveBtn.addEventListener('click', async function() {
-                if (!confirm('Архівувати канал "' + _currentChannel.name + '"?')) return;
+                if (!await confirmModal('Архівувати канал "' + _currentChannel.name + '"?', { type: 'danger' })) return;
                 try {
                     await _api('PATCH', '/channels/' + _currentChannel.id, { isArchived: true });
                     _infoPanel.classList.remove('open');
@@ -2037,7 +2037,7 @@
         var deleteBtn = body.querySelector('#_infoPanelDelete');
         if (deleteBtn) {
             deleteBtn.addEventListener('click', async function() {
-                if (!confirm('Видалити канал "' + _currentChannel.name + '"? Це незворотньо!')) return;
+                if (!await confirmModal('Видалити канал "' + _currentChannel.name + '"? Це незворотньо!', { type: 'danger' })) return;
                 try {
                     await _api('DELETE', '/channels/' + _currentChannel.id);
                     _infoPanel.classList.remove('open');

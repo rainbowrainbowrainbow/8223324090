@@ -305,7 +305,7 @@ async function saveProduct() {
 
 // v7.1: Delete (deactivate) product
 async function deleteProduct(productId) {
-    if (!confirm('Деактивувати цю програму? Вона зникне з каталогу бронювань.')) return;
+    if (!await confirmModal('Деактивувати цю програму? Вона зникне з каталогу бронювань.', { type: 'danger' })) return;
 
     const result = await apiDeleteProduct(productId);
     if (result.success) {
@@ -2886,7 +2886,7 @@ async function changeCertStatus(id, newStatus) {
 }
 
 async function deleteCertificate(id) {
-    if (!confirm('Видалити сертифікат назавжди?')) return;
+    if (!await confirmModal('Видалити сертифікат назавжди?', { type: 'danger' })) return;
 
     const result = await apiDeleteCertificate(id);
     if (result.success) {

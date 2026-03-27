@@ -56,7 +56,8 @@
     max-height: 480px;
     overflow-y: auto;
     background: rgba(255, 255, 255, 0.97);
-    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid rgba(0, 0, 0, 0.1);
     border-radius: 16px;
@@ -222,7 +223,8 @@
     justify-content: center;
     gap: 8px;
     background: rgba(99, 102, 241, 0.85);
-    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     color: #fff;
     box-shadow: -4px 0 24px rgba(99, 102, 241, 0.3);
@@ -292,7 +294,8 @@ body.sidebar-open .role-panel-fab {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.3);
-    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
     z-index: 940;
     opacity: 0;
     visibility: hidden;
@@ -317,7 +320,8 @@ body.sidebar-open .role-panel-fab {
     width: 360px;
     height: 100vh;
     background: rgba(255, 255, 255, 0.92);
-    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-left: 1px solid rgba(0, 0, 0, 0.08);
     z-index: 950;

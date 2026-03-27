@@ -448,6 +448,17 @@ function switchPageTab(tab) {
     if (pinataEl) pinataEl.style.display = tab === 'pinata' ? '' : 'none';
     if (tab === 'procurement' && procLists.length === 0) loadProcLists();
 }
+// Hash-based tab switch (from alerts: /warehouse#procurement)
+(function() {
+    var hash = window.location.hash.replace('#', '');
+    if (hash === 'procurement' || hash === 'pinata') {
+        document.addEventListener('DOMContentLoaded', function() { setTimeout(function() { switchPageTab(hash); }, 100); });
+    }
+    window.addEventListener('hashchange', function() {
+        var h = window.location.hash.replace('#', '');
+        if (h === 'procurement' || h === 'pinata' || h === 'stock') switchPageTab(h);
+    });
+})();
 
 // ==========================================
 // v17.0: PROCUREMENT

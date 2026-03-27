@@ -356,7 +356,7 @@ body.dark-mode .chat-theme-select {
     background: var(--white);
     border-bottom: 1px solid rgba(0,0,0,0.06);
     flex-shrink: 0;
-    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
 }
 
 .chat-header-toggle {
@@ -2246,7 +2246,7 @@ body.dark-mode .chat-theme-select {
     padding: 3px 8px;
     border-radius: 12px;
     background: rgba(0,0,0,0.04);
-    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
     font-size: 17px;
     cursor: pointer;
     border: 1.5px solid rgba(0,0,0,0.06);
@@ -3272,7 +3272,7 @@ body.dark-mode .chat-theme-select {
     padding: 5px;
     min-width: 170px;
     animation: chatPop 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
 }
 
 .chat-context-item {
@@ -3593,7 +3593,7 @@ body.dark-mode .chat-theme-select {
     align-items: center;
     justify-content: center;
     background: rgba(15, 15, 35, 0.55);
-    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
     animation: muteOverlayIn 0.5s ease both;
 }
 .chat-mute-overlay.mute-out {
@@ -6121,7 +6121,7 @@ body.dark-mode .guardian-digest-generate-btn {
 
 .chat-date-divider span {
     background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     padding: 4px 14px;
     border-radius: 12px;

@@ -1235,7 +1235,8 @@ body.dark-mode .grad-pop-bar-container { background: var(--gray-200); }
     gap: 16px;
     padding: 10px 20px;
     background: rgba(255,255,255,0.92);
-    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
     border-bottom: 1px solid rgba(0,0,0,0.08);
 }
 .catalog-nav-btn {
@@ -1364,7 +1365,8 @@ body.dark-mode .grad-pop-bar-container { background: var(--gray-200); }
 /* --- Info Card --- */
 .catalog-info-card {
     background: rgba(255,255,255,0.92);
-    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
     border-radius: 18px;
     padding: 20px 16px;
     margin-bottom: 12px;
@@ -1455,7 +1457,8 @@ body.dark-mode .grad-pop-bar-container { background: var(--gray-200); }
 /* --- Description Card --- */
 .catalog-desc-card {
     background: rgba(255,255,255,0.88);
-    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
     border-radius: 16px;
     padding: 16px 18px;
     border: 2px solid rgba(255,255,255,0.5);

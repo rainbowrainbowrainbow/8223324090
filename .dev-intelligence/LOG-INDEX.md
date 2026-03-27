@@ -13,3 +13,4 @@
 | 2026-03-27 | q4yHw | v39.3.2: Каталоги Етап 3 — Image Picker 3 таби + Image2Image | catalogs,image-picker,image2image,ai | none | feature |
 | 2026-03-27 | q4yHw | v39.3.3: Каталоги Етап 4 — drag-n-drop + public links | catalogs,drag-drop,public-link,reorder | none | feature |
 | 2026-03-27 | q4yHw | v39.4.0: Каталоги Етап 5 — автоматизації + bulk gen + history | catalogs,automations,bulk-gen,history | none | feature |
+| 2026-03-27 | q4yHw | v39.4.1: Bugfixes — sidebar nav + team online + catalog clicks | bugfix,sidebar,navigation,team-online,catalogs | none | bugfix |

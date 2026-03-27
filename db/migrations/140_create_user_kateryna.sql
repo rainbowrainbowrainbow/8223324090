@@ -1,13 +1,15 @@
 -- Migration 140: Create user account for Касян Катерина (HR)
--- v39.8.0: Link existing staff ID 54 to new CRM account
+-- v39.8.0: Safe version — checks if staff exists before linking
 
 -- Create user (skip if exists)
 INSERT INTO users (username, password_hash, name, role, is_active)
 VALUES ('Kateryna', '$2b$10$u85LwAEkwqpCtVom0E0nhuSROmPX5N1SKG3qeHfkHvdBO7Ram3ldO', 'Касян Катерина', 'hr', true)
 ON CONFLICT (username) DO NOTHING;
 
--- Link to staff record (staff_id=54, HR-менеджер)
+-- Link to staff record ONLY if staff_id=54 exists (won't exist on production yet)
 INSERT INTO employee_profiles (user_id, staff_id, full_name, is_active)
 SELECT u.id, 54, 'Касян Катерина', true
-FROM users u WHERE u.username = 'Kateryna'
-AND NOT EXISTS (SELECT 1 FROM employee_profiles ep WHERE ep.staff_id = 54 AND ep.is_active = true);
+FROM users u
+WHERE u.username = 'Kateryna'
+  AND EXISTS (SELECT 1 FROM staff WHERE id = 54)
+  AND NOT EXISTS (SELECT 1 FROM employee_profiles ep WHERE ep.staff_id = 54 AND ep.is_active = true);

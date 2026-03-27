@@ -1,10 +1,12 @@
 /**
- * staff-page.js — Staff schedule page (v7.10)
+ * staff-page.js — Staff schedule page (v39.1)
  *
  * LLM HINT: This is the frontend for the /staff page.
  * Shows a weekly schedule grid: rows = employees grouped by department, columns = days.
  * Click on a cell to edit shift via modal (status, time, note).
- * API used: GET /api/staff, GET /api/staff/schedule, PUT /api/staff/schedule.
+ * v39.1: Account linking — ✅/⚠️ indicators, link modal, bulk create, Excel import.
+ * API used: GET /api/staff, GET /api/staff/schedule, PUT /api/staff/schedule,
+ *   GET /api/staff/link-status, POST /api/staff/:id/link, POST /api/staff/bulk-create-accounts.
  * State is in StaffState object (weekStart, staff[], schedule{}, activeDept).
  */
 
@@ -27,6 +29,13 @@ const StaffState = {
     hoursData: null,    // { staffId: { totalHours, workingDays, ... } }
     showHours: false,
     showLoadView: false,
+    showLinkView: false,    // v39.1: account linking overlay
+    linkData: [],           // v39.1: link-status data
+    linkStats: null,        // v39.1: { total, linked, unlinked, freelance }
+    allUsers: [],           // v39.1: all users for linking
+    linkingStaffId: null,   // v39.1: staff being linked
+    selectedUserId: null,   // v39.1: selected user in link modal
+    bulkResults: null,      // v39.1: bulk create results
 };
 
 const DEPT_ICONS = {
@@ -281,13 +290,16 @@ function renderSchedule() {
             const initials = emp.name.split(' ').map(w => w[0]).join('').slice(0, 2);
             const hoursData = StaffState.hoursData?.[emp.id];
             const hoursLabel = hoursData ? `${hoursData.totalHours}г / ${hoursData.workingDays}д` : '';
-            bodyHtml += `<tr>`;
+            const isFreelance = emp.is_freelance;
+            const linkBadge = renderLinkBadge(emp);
+            const hrLink = renderHrCrosslink(emp);
+            bodyHtml += `<tr class="${isFreelance ? 'emp-freelance' : ''}">`;
             bodyHtml += `<td>
                 <div class="emp-cell">
-                    <div class="emp-avatar" style="background:${escapeHtml(emp.color || '#94A3B8')}">${escapeHtml(initials)}</div>
+                    <div class="emp-avatar" style="background:${escapeHtml(emp.color || (isFreelance ? '#94A3B8' : '#94A3B8'))}">${isFreelance ? '~' : escapeHtml(initials)}</div>
                     <div class="emp-info">
-                        <span class="emp-name">${escapeHtml(emp.name)}</span>
-                        <span class="emp-position">${escapeHtml(emp.position)}</span>
+                        <span class="emp-name">${escapeHtml(emp.name)}${hrLink}</span>
+                        <span class="emp-position">${escapeHtml(emp.position)} ${linkBadge}</span>
                         <span class="emp-hours">${hoursLabel}</span>
                     </div>
                 </div>
@@ -337,6 +349,14 @@ function renderSchedule() {
     tbody.querySelectorAll('.sch-cell').forEach(cell => {
         cell.addEventListener('click', () => {
             openEditModal(parseInt(cell.dataset.staff), cell.dataset.date);
+        });
+    });
+
+    // Link badge click handlers (v39.1)
+    tbody.querySelectorAll('.link-badge.unlinked').forEach(badge => {
+        badge.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openLinkModal(parseInt(badge.dataset.linkStaff));
         });
     });
 }
@@ -700,6 +720,326 @@ function renderLoadView() {
     tbody.innerHTML = bodyHtml;
 }
 
+// ==========================================
+// ACCOUNT LINKING (v39.1)
+// ==========================================
+
+async function fetchLinkStatus() {
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch('/api/staff/link-status', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+            StaffState.linkData = data.data;
+            StaffState.linkStats = data.stats;
+        }
+        return data;
+    } catch (err) {
+        console.error('fetchLinkStatus error:', err);
+        return { success: false };
+    }
+}
+
+async function fetchAllUsers() {
+    try {
+        const token = localStorage.getItem('pzp_token');
+        const res = await fetch('/api/users', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        StaffState.allUsers = Array.isArray(data) ? data : (data.data || []);
+        return StaffState.allUsers;
+    } catch (err) {
+        console.error('fetchAllUsers error:', err);
+        return [];
+    }
+}
+
+function getLinkInfo(staffId) {
+    return StaffState.linkData.find(r => r.id === staffId);
+}
+
+async function toggleLinkView() {
+    StaffState.showLinkView = !StaffState.showLinkView;
+    const btn = document.getElementById('toggleLinkViewBtn');
+
+    if (StaffState.showLinkView) {
+        btn.style.background = 'var(--primary)';
+        btn.style.color = '#fff';
+        btn.style.borderColor = 'var(--primary)';
+        await fetchLinkStatus();
+        renderLinkStatsBar();
+    } else {
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.borderColor = '';
+        const bar = document.getElementById('linkStatsBar');
+        if (bar) bar.remove();
+    }
+    renderSchedule();
+}
+
+function renderLinkStatsBar() {
+    let bar = document.getElementById('linkStatsBar');
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'linkStatsBar';
+        bar.className = 'link-stats-bar';
+        const summary = document.getElementById('scheduleSummary');
+        summary.parentNode.insertBefore(bar, summary);
+    }
+
+    const s = StaffState.linkStats || { total: 0, linked: 0, unlinked: 0, freelance: 0 };
+    bar.innerHTML = `
+        <div class="link-stat">🔗 Акаунти CRM:</div>
+        <div class="link-stat"><span class="link-stat-value" style="color:#22c55e">${s.linked}</span> з акаунтом</div>
+        <div class="link-stat"><span class="link-stat-value" style="color:#f59e0b">${s.unlinked}</span> без акаунту</div>
+        <div class="link-stat"><span class="link-stat-value" style="color:var(--gray-400)">${s.freelance}</span> фріланс</div>
+    `;
+}
+
+function renderLinkBadge(emp) {
+    if (!StaffState.showLinkView) return '';
+    const info = getLinkInfo(emp.id);
+    if (!info) return '';
+
+    if (info.is_freelance) {
+        return '<span class="link-badge freelance-badge" title="Фріланс-слот">~</span>';
+    }
+    if (info.user_id) {
+        return `<span class="link-badge linked" title="Акаунт: ${escapeHtml(info.username)} (${escapeHtml(info.user_role)})">✅ ${escapeHtml(info.username)}</span>`;
+    }
+    return `<span class="link-badge unlinked" title="Немає акаунту — натисніть для зв'язки" data-link-staff="${emp.id}">⚠️ Зв'язати</span>`;
+}
+
+function renderHrCrosslink(emp) {
+    return `<a href="/hr?employee=${emp.id}" class="hr-crosslink" title="HR профіль">👤</a>`;
+}
+
+// Open link modal for a specific staff member
+async function openLinkModal(staffId) {
+    const info = getLinkInfo(staffId);
+    if (!info) return;
+
+    StaffState.linkingStaffId = staffId;
+    StaffState.selectedUserId = null;
+
+    document.getElementById('linkModalTitle').textContent = `🔗 Зв'язати: ${info.name}`;
+    document.getElementById('linkModalSubtitle').textContent = `${info.department} — ${info.position}`;
+    document.getElementById('linkConfirmBtn').disabled = true;
+    document.getElementById('linkSearchInput').value = '';
+
+    // Fetch users if not loaded
+    if (StaffState.allUsers.length === 0) await fetchAllUsers();
+
+    renderLinkUsersList('');
+    document.getElementById('linkModalOverlay')?.classList.add('visible');
+    document.getElementById('linkSearchInput')?.focus();
+}
+
+function closeLinkModal() {
+    document.getElementById('linkModalOverlay')?.classList.remove('visible');
+    StaffState.linkingStaffId = null;
+    StaffState.selectedUserId = null;
+}
+
+function renderLinkUsersList(searchTerm) {
+    const container = document.getElementById('linkUsersList');
+    const term = searchTerm.toLowerCase().trim();
+
+    // Filter users — exclude system accounts
+    const systemUsers = ['openclaw', 'guardian', 'system'];
+    let users = StaffState.allUsers.filter(u =>
+        !systemUsers.includes(u.username) && u.role !== 'bot' && u.role !== 'viewer'
+    );
+
+    if (term) {
+        users = users.filter(u =>
+            (u.name || '').toLowerCase().includes(term) ||
+            (u.username || '').toLowerCase().includes(term)
+        );
+    }
+
+    // Mark which users are already linked
+    const linkedUserIds = new Set(StaffState.linkData.filter(r => r.user_id).map(r => r.user_id));
+
+    let html = '';
+    for (const u of users) {
+        const isLinked = linkedUserIds.has(u.id);
+        const linkedTo = isLinked ? StaffState.linkData.find(r => r.user_id === u.id) : null;
+        const linkedLabel = isLinked ? ` (→ ${linkedTo?.name || '?'})` : '';
+        const selected = StaffState.selectedUserId === u.id;
+
+        html += `<div class="link-user-item ${selected ? 'selected' : ''} ${isLinked ? 'opacity-50' : ''}" data-user-id="${u.id}">
+            <input type="radio" name="linkUser" class="user-radio" ${selected ? 'checked' : ''} value="${u.id}">
+            <div class="link-user-info">
+                <span class="link-user-name">${escapeHtml(u.name)} ${isLinked ? '🔗' : ''}</span>
+                <span class="link-user-role">@${escapeHtml(u.username)} · ${escapeHtml(u.role)}${linkedLabel}</span>
+            </div>
+        </div>`;
+    }
+
+    if (users.length === 0) {
+        html = '<div style="padding:16px;text-align:center;color:var(--gray-400);font-size:13px">Нічого не знайдено</div>';
+    }
+
+    container.innerHTML = html;
+
+    // Click handlers
+    container.querySelectorAll('.link-user-item').forEach(item => {
+        item.addEventListener('click', () => {
+            StaffState.selectedUserId = parseInt(item.dataset.userId);
+            document.getElementById('linkConfirmBtn').disabled = false;
+            renderLinkUsersList(document.getElementById('linkSearchInput')?.value || '');
+        });
+    });
+}
+
+async function confirmLinkAccount() {
+    if (!StaffState.linkingStaffId || !StaffState.selectedUserId) return;
+
+    const token = localStorage.getItem('pzp_token');
+    const res = await fetch(`/api/staff/${StaffState.linkingStaffId}/link`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: StaffState.selectedUserId })
+    });
+    const data = await res.json();
+
+    if (data.warning) {
+        if (!await confirmModal(data.error + '\n\nПродовжити?', { type: 'warning', okText: 'Так' })) return;
+    }
+
+    if (data.success) {
+        showNotification('Акаунт зв\'язано');
+        closeLinkModal();
+        await fetchLinkStatus();
+        renderLinkStatsBar();
+        renderSchedule();
+    } else if (!data.warning) {
+        showNotification(data.error || 'Помилка зв\'язування', 'error');
+    }
+}
+
+// Bulk create accounts
+async function handleBulkCreate() {
+    const unlinked = StaffState.linkStats?.unlinked || 0;
+    if (unlinked === 0) {
+        showNotification('Всі працівники вже мають акаунти', 'success');
+        return;
+    }
+
+    if (!await confirmModal(`Створити акаунти для ${unlinked} працівників без акаунтів?\n\nБуде згенеровано логіни та паролі.`, { type: 'warning', okText: 'Створити' })) return;
+
+    showNotification('Створюємо акаунти...');
+    const token = localStorage.getItem('pzp_token');
+    const res = await fetch('/api/staff/bulk-create-accounts', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+
+    if (data.success) {
+        StaffState.bulkResults = data;
+        showBulkResults(data);
+        await fetchLinkStatus();
+        renderLinkStatsBar();
+        renderSchedule();
+    } else {
+        showNotification(data.error || 'Помилка створення', 'error');
+    }
+}
+
+function showBulkResults(data) {
+    const body = document.getElementById('bulkResultsBody');
+    let html = `<p style="margin:0 0 8px;font-size:14px;font-weight:700">Створено: ${data.created.length} акаунтів</p>`;
+
+    if (data.skipped.length > 0) {
+        html += `<p style="margin:0 0 8px;font-size:12px;color:var(--gray-500)">Пропущено: ${data.skipped.length} (дублі)</p>`;
+    }
+
+    html += `<table class="bulk-results-table">
+        <thead><tr><th>Ім'я</th><th>Логін</th><th>Пароль</th><th>Роль</th></tr></thead>
+        <tbody>`;
+
+    for (const c of data.created) {
+        html += `<tr>
+            <td style="font-family:inherit;font-weight:600">${escapeHtml(c.name)}</td>
+            <td>${escapeHtml(c.username)}</td>
+            <td>${escapeHtml(c.password)}</td>
+            <td>${escapeHtml(c.role)}</td>
+        </tr>`;
+    }
+    html += '</tbody></table>';
+    body.innerHTML = html;
+    document.getElementById('bulkResultsOverlay')?.classList.add('visible');
+}
+
+function closeBulkResults() {
+    document.getElementById('bulkResultsOverlay')?.classList.remove('visible');
+}
+
+function copyBulkResults() {
+    if (!StaffState.bulkResults) return;
+    const lines = ['Ім\'я\tЛогін\tПароль\tРоль'];
+    for (const c of StaffState.bulkResults.created) {
+        lines.push(`${c.name}\t${c.username}\t${c.password}\t${c.role}`);
+    }
+    navigator.clipboard.writeText(lines.join('\n')).then(() => {
+        showNotification('Скопійовано в буфер обміну');
+    });
+}
+
+function downloadBulkCsv() {
+    if (!StaffState.bulkResults) return;
+    const lines = ['Ім\'я,Логін,Пароль,Роль,Відділ'];
+    for (const c of StaffState.bulkResults.created) {
+        lines.push(`"${c.name}","${c.username}","${c.password}","${c.role}","${c.department}"`);
+    }
+    const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `accounts_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// Excel import
+function triggerExcelImport() {
+    document.getElementById('excelImportInput')?.click();
+}
+
+async function handleExcelImport(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    showNotification('Імпортуємо з Excel...');
+    const token = localStorage.getItem('pzp_token');
+    const res = await fetch('/api/staff/import-excel', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+    });
+    const data = await res.json();
+
+    if (data.success) {
+        showNotification(`Імпорт: ${data.created} створено, ${data.updated} оновлено, ${data.skipped} пропущено`);
+        await fetchStaff();
+        await fetchLinkStatus();
+        renderSchedule();
+        renderLinkStatsBar();
+    } else {
+        showNotification(data.error || 'Помилка імпорту', 'error');
+    }
+    e.target.value = '';
+}
+
 // Dark mode: handled by shared initDarkMode() from config.js
 
 // ==========================================
@@ -727,6 +1067,8 @@ async function initPage() {
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     const canManage = MANAGE_ROLES.includes(user.role);
+    const ADMIN_ROLES = ['creator', 'director'];
+    const isAdmin = ADMIN_ROLES.includes(user.role);
     const addBtn = document.getElementById('addStaffBtn');
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
 
@@ -735,6 +1077,12 @@ async function initPage() {
     const fillBtn = document.getElementById('fillWeekBtn');
     if (copyBtn) copyBtn.style.display = canManage ? '' : 'none';
     if (fillBtn) fillBtn.style.display = canManage ? '' : 'none';
+
+    // v39.1: Show bulk create and import buttons only for creator/director
+    const bulkBtn = document.getElementById('bulkCreateBtn');
+    const importBtn = document.getElementById('importExcelBtn');
+    if (bulkBtn) bulkBtn.style.display = isAdmin ? '' : 'none';
+    if (importBtn) importBtn.style.display = isAdmin ? '' : 'none';
 
     document.getElementById('logoutBtn')?.addEventListener('click', () => {
         localStorage.removeItem('pzp_token');
@@ -784,10 +1132,36 @@ async function initPage() {
     // Load view toggle
     document.getElementById('toggleLoadViewBtn')?.addEventListener('click', toggleLoadView);
 
+    // v39.1: Account linking
+    document.getElementById('toggleLinkViewBtn')?.addEventListener('click', toggleLinkView);
+    document.getElementById('bulkCreateBtn')?.addEventListener('click', handleBulkCreate);
+    document.getElementById('importExcelBtn')?.addEventListener('click', triggerExcelImport);
+    document.getElementById('excelImportInput')?.addEventListener('change', handleExcelImport);
+
+    // Link modal
+    document.getElementById('linkConfirmBtn')?.addEventListener('click', confirmLinkAccount);
+    document.getElementById('linkCancelBtn')?.addEventListener('click', closeLinkModal);
+    document.getElementById('linkSearchInput')?.addEventListener('input', (e) => {
+        renderLinkUsersList(e.target.value);
+    });
+    document.getElementById('linkModalOverlay')?.addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeLinkModal();
+    });
+
+    // Bulk results modal
+    document.getElementById('bulkCloseBtn')?.addEventListener('click', closeBulkResults);
+    document.getElementById('bulkCopyBtn')?.addEventListener('click', copyBulkResults);
+    document.getElementById('bulkCsvBtn')?.addEventListener('click', downloadBulkCsv);
+    document.getElementById('bulkResultsOverlay')?.addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeBulkResults();
+    });
+
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeEditModal();
             closeFillWeekModal();
+            closeLinkModal();
+            closeBulkResults();
         }
     });
 }

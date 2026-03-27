@@ -20,6 +20,7 @@ const DashboardPage = (() => {
         announcements:  { icon: '📢', title: 'Оголошення', minRole: null },
         reports_today:  { icon: '📋', title: 'Звіти сьогодні', minRole: 'senior_manager' },
         catalogs:       { icon: '📚', title: 'Авто-каталоги', minRole: 'admin' },
+        account_stats:  { icon: '🔗', title: 'Акаунти CRM', minRole: 'manager' },
     };
 
     let _config = { widgets: [], layout: {}, theme: 'default' };
@@ -215,6 +216,9 @@ const DashboardPage = (() => {
                 break;
             case 'catalogs':
                 renderCatalogs(data, container);
+                break;
+            case 'account_stats':
+                renderAccountStats(data, container);
                 break;
             default:
                 container.innerHTML = '<div class="widget-empty">Невідомий віджет</div>';
@@ -547,6 +551,39 @@ const DashboardPage = (() => {
             <a href="/designs" style="font-size:12px;color:var(--primary);font-weight:700;text-decoration:none;line-height:32px">Каталоги →</a>
         </div>`;
         container.innerHTML = html;
+    }
+
+    function renderAccountStats(data, container) {
+        const total = parseInt(data.total_staff) || 0;
+        const linked = parseInt(data.with_account) || 0;
+        const unlinked = parseInt(data.without_account) || 0;
+        const freelance = parseInt(data.freelance_slots) || 0;
+        const pct = total > 0 ? Math.round(linked / total * 100) : 0;
+        container.innerHTML = `
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value" style="color:#22c55e">${linked}</div>
+                    <div class="stat-label">З акаунтом</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" style="color:#f59e0b">${unlinked}</div>
+                    <div class="stat-label">Без акаунту</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" style="color:var(--gray-400)">${freelance}</div>
+                    <div class="stat-label">Фріланс</div>
+                </div>
+            </div>
+            <div style="margin-top:8px;text-align:center">
+                <div style="background:var(--gray-200);border-radius:8px;height:6px;overflow:hidden;margin-bottom:6px">
+                    <div style="background:#22c55e;height:100%;width:${pct}%;border-radius:8px;transition:width 0.3s"></div>
+                </div>
+                <span style="font-size:11px;color:var(--gray-500)">${pct}% зв'язано</span>
+            </div>
+            <div style="text-align:center;margin-top:8px">
+                <a href="/staff" style="font-size:12px;color:var(--primary);font-weight:700;text-decoration:none">Переглянути →</a>
+            </div>
+        `;
     }
 
     // Onboarding wizard

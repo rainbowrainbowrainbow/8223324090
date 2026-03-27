@@ -305,7 +305,7 @@ function renderToday(data) {
         return `<div class="hr-staff-row" data-staff-id="${item.staff_id}" oncontextmenu="showContext(event, ${item.staff_id})">
             <div class="hr-staff-indicator ${indicator}"></div>
             <div class="hr-staff-info">
-                <div class="hr-staff-name">${escapeHtml(item.staff_name)}</div>
+                <div class="hr-staff-name">${escapeHtml(item.staff_name)} <a href="/staff?highlight=${item.staff_id}" class="hr-crosslink" title="Графік" style="font-size:14px;text-decoration:none;opacity:0.5">📅</a></div>
                 <div class="hr-staff-meta">${roleLabel}${meta ? ' · ' + meta : ''}</div>
             </div>
             <button class="hr-clock-btn ${btnClass}" ${disabled}

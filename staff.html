@@ -7,13 +7,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=38.18.0">
-    <link rel="stylesheet" href="css/layout.css?v=38.18.0">
-    <link rel="stylesheet" href="css/pages.css?v=38.18.0">
-    <link rel="stylesheet" href="css/modals.css?v=38.18.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=38.18.0">
-    <link rel="stylesheet" href="css/responsive.css?v=38.18.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=38.18.0">
+    <link rel="stylesheet" href="css/base.css?v=39.1.0">
+    <link rel="stylesheet" href="css/layout.css?v=39.1.0">
+    <link rel="stylesheet" href="css/pages.css?v=39.1.0">
+    <link rel="stylesheet" href="css/modals.css?v=39.1.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=39.1.0">
+    <link rel="stylesheet" href="css/responsive.css?v=39.1.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=39.1.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -568,6 +568,125 @@
             }
             .emp-position { display: none; }
         }
+
+        /* Account linking (v39.1) */
+        .link-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            font-size: 11px;
+            cursor: pointer;
+            padding: 1px 4px;
+            border-radius: 4px;
+            transition: background 0.15s;
+            white-space: nowrap;
+        }
+        .link-badge:hover {
+            background: var(--gray-100);
+        }
+        .link-badge.linked {
+            color: #22c55e;
+        }
+        .link-badge.unlinked {
+            color: #f59e0b;
+        }
+        .link-badge.freelance-badge {
+            color: var(--gray-400);
+            cursor: default;
+            font-style: italic;
+        }
+        .link-stats-bar {
+            display: flex;
+            gap: 12px;
+            padding: 8px 16px;
+            background: var(--gray-50);
+            border-radius: var(--radius-sm);
+            margin-bottom: 12px;
+            font-size: 13px;
+            font-weight: 700;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .link-stat {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .link-stat-value {
+            font-size: 16px;
+            font-weight: 900;
+        }
+        .link-user-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--gray-100);
+            transition: background 0.15s;
+        }
+        .link-user-item:hover {
+            background: var(--gray-50);
+        }
+        .link-user-item.selected {
+            background: rgba(212,175,55,0.12);
+            border-left: 3px solid var(--primary);
+        }
+        .link-user-item .user-radio {
+            width: 16px; height: 16px;
+        }
+        .link-user-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .link-user-name {
+            font-weight: 700;
+            font-size: 13px;
+        }
+        .link-user-role {
+            font-size: 11px;
+            color: var(--gray-500);
+        }
+        .hr-crosslink {
+            font-size: 14px;
+            text-decoration: none;
+            opacity: 0.6;
+            transition: opacity 0.15s;
+            margin-left: 4px;
+        }
+        .hr-crosslink:hover {
+            opacity: 1;
+        }
+        .emp-freelance .emp-name {
+            color: var(--gray-400);
+            font-style: italic;
+        }
+        .bulk-results-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            margin: 8px 0;
+        }
+        .bulk-results-table th {
+            background: var(--gray-100);
+            padding: 6px 8px;
+            text-align: left;
+            font-weight: 800;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        .bulk-results-table td {
+            padding: 5px 8px;
+            border-bottom: 1px solid var(--gray-100);
+            font-family: monospace;
+        }
+        [data-theme="dark"] .link-badge:hover { background: var(--gray-700); }
+        [data-theme="dark"] .link-stats-bar { background: var(--gray-800); }
+        [data-theme="dark"] .link-user-item { border-bottom-color: var(--gray-700); }
+        [data-theme="dark"] .link-user-item:hover { background: var(--gray-700); }
+        [data-theme="dark"] .link-user-item.selected { background: rgba(212,175,55,0.15); }
+        [data-theme="dark"] .bulk-results-table th { background: var(--gray-700); }
+        [data-theme="dark"] .bulk-results-table td { border-bottom-color: var(--gray-700); }
     </style>
 </head>
 <body data-page-group="hr">
@@ -640,6 +759,10 @@
                     <button type="button" id="fillWeekBtn" class="btn-page-secondary" style="display:none" title="Масове заповнення тижня">Заповнити тиждень</button>
                     <button type="button" id="toggleHoursBtn" class="btn-page-secondary" title="Показати/сховати години">Години</button>
                     <button type="button" id="toggleLoadViewBtn" class="btn-page-secondary" title="Навантаження по дням">Навантаження</button>
+                    <button type="button" id="toggleLinkViewBtn" class="btn-page-secondary" title="Зв'язки з акаунтами CRM">🔗 Акаунти</button>
+                    <button type="button" id="bulkCreateBtn" class="btn-page-secondary" style="display:none" title="Створити акаунти всім без акаунту">👥 Масове створення</button>
+                    <button type="button" id="importExcelBtn" class="btn-page-secondary" style="display:none" title="Імпорт з Excel">📥 Excel</button>
+                    <input type="file" id="excelImportInput" accept=".xlsx,.xls" style="display:none">
                 </div>
                 <div id="deptFilter" class="dept-filter"></div>
             </div>
@@ -751,6 +874,36 @@
         </div>
     </div>
 
+    <!-- Link account modal (v39.1) -->
+    <div id="linkModalOverlay" class="sch-modal-overlay">
+        <div class="sch-modal" style="max-width:480px">
+            <h3 id="linkModalTitle">🔗 Зв'язати акаунт</h3>
+            <p id="linkModalSubtitle" style="margin:0 0 12px;color:var(--gray-500);font-size:13px"></p>
+            <div class="form-group">
+                <label>Пошук акаунту</label>
+                <input type="text" id="linkSearchInput" placeholder="Пошук по імені або логіну..." style="font-size:16px">
+            </div>
+            <div id="linkUsersList" style="max-height:240px;overflow-y:auto;margin:8px 0;border:1px solid var(--gray-200);border-radius:var(--radius-sm)"></div>
+            <div class="modal-actions">
+                <button type="button" id="linkConfirmBtn" class="btn-page-primary" style="flex:1" disabled>Зв'язати</button>
+                <button type="button" id="linkCancelBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk create results modal (v39.1) -->
+    <div id="bulkResultsOverlay" class="sch-modal-overlay">
+        <div class="sch-modal" style="max-width:640px;max-height:80vh;overflow-y:auto">
+            <h3 id="bulkResultsTitle">👥 Результати створення</h3>
+            <div id="bulkResultsBody"></div>
+            <div class="modal-actions" style="margin-top:12px">
+                <button type="button" id="bulkCopyBtn" class="btn-page-secondary" style="flex:1">📋 Копіювати</button>
+                <button type="button" id="bulkCsvBtn" class="btn-page-secondary" style="flex:1">📥 CSV</button>
+                <button type="button" id="bulkCloseBtn" class="btn-page-primary" style="flex:1">Закрити</button>
+            </div>
+        </div>
+    </div>
+
     <!-- v10.4: Особистий кабінет -->
     <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
         <div class="modal-content modal-medium" role="dialog" aria-modal="true">
@@ -766,13 +919,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=38.18.0"></script>
-    <script src="js/notification.js?v=38.18.0"></script>
-    <script src="js/api.js?v=38.18.0"></script>
-    <script src="js/auth.js?v=38.18.0"></script>
-    <script src="js/components/sidebar.js?v=38.18.0"></script>
+    <script src="js/config.js?v=39.1.0"></script>
+    <script src="js/notification.js?v=39.1.0"></script>
+    <script src="js/api.js?v=39.1.0"></script>
+    <script src="js/auth.js?v=39.1.0"></script>
+    <script src="js/components/sidebar.js?v=39.1.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/staff-page.js?v=38.18.0"></script>
+    <script src="js/staff-page.js?v=39.1.0"></script>
     <script>
     // Sidebar toggle for mobile
     (function(){
@@ -781,6 +934,6 @@
         if(o&&s){o.addEventListener('click',function(){s.classList.remove('open');o.classList.add('hidden')})}
     })();
     </script>
-    <script src="js/role-panel.js?v=38.18.0"></script>
+    <script src="js/role-panel.js?v=39.1.0"></script>
 </body>
 </html>

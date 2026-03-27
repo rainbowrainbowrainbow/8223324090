@@ -398,6 +398,20 @@ router.get('/widgets/:type', async (req, res) => {
                 break;
             }
 
+            case 'account_stats': {
+                const stats = await pool.query(`
+                    SELECT
+                        COUNT(*) FILTER (WHERE s.is_active AND NOT COALESCE(s.is_freelance, false)) as total_staff,
+                        COUNT(*) FILTER (WHERE s.is_active AND NOT COALESCE(s.is_freelance, false) AND ep.user_id IS NOT NULL) as with_account,
+                        COUNT(*) FILTER (WHERE s.is_active AND NOT COALESCE(s.is_freelance, false) AND ep.user_id IS NULL) as without_account,
+                        COUNT(*) FILTER (WHERE s.is_active AND COALESCE(s.is_freelance, false)) as freelance_slots
+                    FROM staff s
+                    LEFT JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active = true
+                `).catch(() => ({ rows: [{ total_staff: 0, with_account: 0, without_account: 0, freelance_slots: 0 }] }));
+                data = stats.rows[0];
+                break;
+            }
+
             default:
                 return res.status(400).json({ error: 'Unknown widget type' });
         }

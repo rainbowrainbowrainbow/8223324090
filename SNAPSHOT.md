@@ -3,28 +3,30 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v38.18.0**. package.json: `38.18.0`. Бранч `claude/continue-event-genix-crm-q4yHw`.
+Версія **v39.1.0**. package.json: `39.1.0`. Бранч `claude/continue-event-genix-crm-q4yHw`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **package.json**: `"version": "38.18.0"`
+- **package.json**: `"version": "39.1.0"`
 - **Бранч**: `claude/continue-event-genix-crm-q4yHw`
 - **origin/main**: v28.2.0 (далеко позаду — наш бранч має merge v38.13.0)
-- **Зміни v38.14.0-v38.18.0**:
+- **Зміни v38.14.0-v39.1.0**:
   - v38.14.0: Каталоги UX (Image Picker 4 варіанти, Premium Catalog Viewer, 81 changelog)
   - v38.15.0: Match-3 спецефекти (bomb/lightning/cross/rainbow) + profile API route
   - v38.16.0: Profile (hero glassmorphism, inventory cards, shop seed, quests seed, Кімнату прибрано)
   - v38.17.0: Leaderboard seed, daily badge, tasks preview
   - v38.18.0: Profile polish — dark mode fix, confirm→modal, streaks per profession, season pass
+  - v39.1.0: Графік — реальні співробітники + зв'язка акаунтів CRM
 
 ### Що залишилось доробити:
 1. Match-3: білий фон пофіксити (клітинки фіолетовий тінт є)
 2. Profile: equip/unequip UI покращити
 3. Міграція 129: може фейлитись якщо prod DB має неповні таблиці
+4. Bulk create: PDF-друк паролів для видачі співробітникам
 
 ### Тести
-- **296+ тестів** (api.test.js)
+- **346 тестів** (api.test.js) — 346 pass / 0 fail
 - Запуск: `PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MAX=5000 node --test tests/api.test.js`
 - automation.test.js — 28 тестів ЗАВЖДИ фейляться (pre-existing, НЕ наші)
 
@@ -34,7 +36,18 @@ PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MA
 ```
 Порт 3000. PostgreSQL: `pg_ctlcluster 16 main start`
 
-## Останні зміни (v38.14.0 → v38.18.0)
+## Останні зміни (v38.14.0 → v39.1.0)
+
+### v39.1.0 (Claude Code, 27.03.2026)
+- **Migration 132**: `is_freelance`, `excel_department`, `unique_person_key` columns + 65 real staff from Excel
+- **Link status**: `GET /api/staff/link-status` — ✅/⚠️ індикатори зв'язки
+- **Link accounts**: `POST /api/staff/:id/link` + модалка з пошуком юзерів
+- **Bulk create**: `POST /api/staff/bulk-create-accounts` — масове створення + CSV + буфер
+- **Excel import**: `POST /api/staff/import-excel` — xlsx парсинг з маппінгом 16 відділів
+- **HR crosslinks**: 📅 на HR → графік, 👤 на графіку → HR
+- **Dashboard widget**: «Акаунти CRM» — linked/unlinked/freelance + прогрес-бар
+- **Staff page**: 🔗 Акаунти toggle, link modal, bulk results modal, Excel import button
+- **Freelance**: `is_freelance` flag, сірий стиль, без ⚠️ індикатора
 
 ### v38.18.0 (Claude Code, 27.03.2026)
 - **Dark mode fix** — `[data-theme="dark"]` → `body.dark-mode` на profile.html (20+ селекторів)

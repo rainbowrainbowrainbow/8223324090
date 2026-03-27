@@ -1,5 +1,5 @@
 /**
- * routes/staff.js — Staff & schedule management API (v7.10)
+ * routes/staff.js — Staff & schedule management API (v39.1)
  *
  * LLM HINT FOR SCHEDULE MANAGEMENT:
  * This API manages employee schedules for a children's entertainment park.
@@ -541,6 +541,326 @@ router.get('/checkins', async (req, res) => {
         if (err.message.includes('does not exist')) return res.json([]);
         log.error('GET /checkins error', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ==========================================
+// ACCOUNT LINKING (v39.1)
+// ==========================================
+
+const EXCEL_TO_CRM_ROLE = {
+    'Адміністратор': { dept: 'admin', role: 'admin' },
+    'Аніматори': { dept: 'animators', role: 'animator' },
+    'Арт отдел': { dept: 'admin', role: 'art_director' },
+    'Бармени': { dept: 'cafe', role: 'barista' },
+    'Батутисти': { dept: 'animators', role: 'instructor' },
+    'Бухгалтер': { dept: 'admin', role: 'accountant' },
+    'Гардеробщиці': { dept: 'cleaning', role: 'wardrobe' },
+    'Ейчар': { dept: 'admin', role: 'hr' },
+    'Керівник': { dept: 'admin', role: 'vice_director' },
+    'Кухня повара': { dept: 'cafe', role: 'cook' },
+    'Менеджер з продажу': { dept: 'admin', role: 'manager' },
+    'Мийка біла та чорна': { dept: 'cleaning', role: 'dishwasher' },
+    'Офіціанти': { dept: 'cafe', role: 'waiter' },
+    'Охорона': { dept: 'security', role: 'maintenance' },
+    'Тех-директор': { dept: 'tech', role: 'it_specialist' },
+    'Хозяюшки залу': { dept: 'cleaning', role: 'cleaning' }
+};
+
+function transliterate(name) {
+    const map = {
+        'а':'a','б':'b','в':'v','г':'h','ґ':'g','д':'d','е':'e','є':'ye',
+        'ж':'zh','з':'z','и':'y','і':'i','ї':'yi','й':'y','к':'k','л':'l',
+        'м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u',
+        'ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ь':'',
+        'ю':'yu','я':'ya','ъ':'','э':'e','ы':'y'
+    };
+    return name.toLowerCase().split('').map(c => map[c] || c).join('')
+        .replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.').replace(/^\.+|\.+$/g, '');
+}
+
+function generateUsername(fullName) {
+    const parts = fullName.trim().split(/\s+/);
+    if (parts.length >= 2) {
+        return transliterate(parts[1]) + '.' + transliterate(parts[0].charAt(0));
+    }
+    return transliterate(parts[0]);
+}
+
+function generatePassword(length = 8) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    let pwd = '';
+    for (let i = 0; i < length; i++) {
+        pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return pwd;
+}
+
+// GET /api/staff/link-status — account linking status for all active staff
+router.get('/link-status', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT s.id, s.name, s.department, s.position, s.role_type,
+                   s.is_freelance, s.excel_department, s.unique_person_key,
+                   ep.user_id, ep.id as profile_id,
+                   u.username, u.role as user_role, u.name as user_name
+            FROM staff s
+            LEFT JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active = true
+            LEFT JOIN users u ON u.id = ep.user_id
+            WHERE s.is_active = true
+            ORDER BY s.department, s.is_freelance, s.name
+        `);
+        const stats = {
+            total: result.rows.length,
+            linked: result.rows.filter(r => r.user_id).length,
+            unlinked: result.rows.filter(r => !r.user_id && !r.is_freelance).length,
+            freelance: result.rows.filter(r => r.is_freelance).length
+        };
+        res.json({ success: true, data: result.rows, stats });
+    } catch (err) {
+        log.error('GET /staff/link-status error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// POST /api/staff/:id/link — link staff record to existing user account
+router.post('/:id/link', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'), async (req, res) => {
+    try {
+        const staffId = parseInt(req.params.id);
+        const { userId } = req.body;
+        if (!userId) return res.status(400).json({ success: false, error: 'userId обов\'язковий' });
+
+        // Check if user is already linked to another staff
+        const existing = await pool.query(
+            'SELECT ep.id, ep.staff_id, s.name FROM employee_profiles ep JOIN staff s ON s.id = ep.staff_id WHERE ep.user_id = $1 AND ep.is_active = true',
+            [userId]
+        );
+        if (existing.rows.length > 0) {
+            return res.json({
+                success: false,
+                warning: true,
+                error: `Цей акаунт вже зв'язаний з: ${existing.rows[0].name} (staff #${existing.rows[0].staff_id})`
+            });
+        }
+
+        // Get staff info
+        const staff = await pool.query('SELECT * FROM staff WHERE id = $1', [staffId]);
+        if (staff.rows.length === 0) return res.status(404).json({ success: false, error: 'Staff не знайдено' });
+        const s = staff.rows[0];
+
+        // Check if profile exists for this staff
+        const profile = await pool.query('SELECT * FROM employee_profiles WHERE staff_id = $1', [staffId]);
+        if (profile.rows.length > 0) {
+            await pool.query('UPDATE employee_profiles SET user_id = $1, is_active = true WHERE staff_id = $2', [userId, staffId]);
+        } else {
+            await pool.query(
+                'INSERT INTO employee_profiles (staff_id, user_id, full_name, department, role, is_active) VALUES ($1, $2, $3, $4, $5, true)',
+                [staffId, userId, s.name, s.department, s.role_type || 'employee']
+            );
+        }
+
+        log.info(`Staff #${staffId} (${s.name}) linked to user #${userId}`);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('POST /staff/:id/link error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// POST /api/staff/:id/unlink — unlink staff from user account
+router.post('/:id/unlink', requireRole('creator', 'director'), async (req, res) => {
+    try {
+        const staffId = parseInt(req.params.id);
+        await pool.query('UPDATE employee_profiles SET user_id = NULL WHERE staff_id = $1', [staffId]);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('POST /staff/:id/unlink error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// POST /api/staff/bulk-create-accounts — create user accounts for all unlinked staff
+const bcrypt = require('bcryptjs');
+router.post('/bulk-create-accounts', requireRole('creator', 'director'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Find all active non-freelance staff without user accounts
+        const unlinked = await client.query(`
+            SELECT s.id, s.name, s.department, s.role_type, s.unique_person_key
+            FROM staff s
+            LEFT JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active = true AND ep.user_id IS NOT NULL
+            WHERE s.is_active = true AND s.is_freelance = false AND ep.id IS NULL
+            ORDER BY s.department, s.name
+        `);
+
+        const created = [];
+        const skipped = [];
+        const seenPersonKeys = new Set();
+
+        for (const staff of unlinked.rows) {
+            // Skip duplicates (same person in multiple departments)
+            const personKey = staff.unique_person_key?.replace(/\.\w+$/, ''); // strip .mgr suffix
+            if (personKey && seenPersonKeys.has(personKey)) {
+                skipped.push({ name: staff.name, reason: 'Дубль (вже створено для іншого відділу)' });
+                continue;
+            }
+            if (personKey) seenPersonKeys.add(personKey);
+
+            let username = generateUsername(staff.name);
+            // Ensure unique username
+            const existingUser = await client.query('SELECT id FROM users WHERE username = $1', [username]);
+            if (existingUser.rows.length > 0) {
+                username = username + '.' + staff.id;
+            }
+
+            const password = generatePassword();
+            const passwordHash = await bcrypt.hash(password, 10);
+            const role = staff.role_type || 'user';
+
+            const userResult = await client.query(
+                'INSERT INTO users (username, password_hash, role, name) VALUES ($1, $2, $3, $4) RETURNING id',
+                [username, passwordHash, role, staff.name]
+            );
+            const userId = userResult.rows[0].id;
+
+            // Create/update employee profile
+            const profile = await client.query('SELECT id FROM employee_profiles WHERE staff_id = $1', [staff.id]);
+            if (profile.rows.length > 0) {
+                await client.query('UPDATE employee_profiles SET user_id = $1, is_active = true WHERE staff_id = $2', [userId, staff.id]);
+            } else {
+                await client.query(
+                    'INSERT INTO employee_profiles (staff_id, user_id, full_name, department, role, is_active) VALUES ($1, $2, $3, $4, $5, true)',
+                    [staff.id, userId, staff.name, staff.department, role]
+                );
+            }
+
+            // Also link duplicate staff entries (same person, different dept)
+            if (personKey) {
+                const dupes = unlinked.rows.filter(r =>
+                    r.id !== staff.id && r.unique_person_key?.replace(/\.\w+$/, '') === personKey
+                );
+                for (const dupe of dupes) {
+                    const dupeProfile = await client.query('SELECT id FROM employee_profiles WHERE staff_id = $1', [dupe.id]);
+                    if (dupeProfile.rows.length > 0) {
+                        await client.query('UPDATE employee_profiles SET user_id = $1, is_active = true WHERE staff_id = $2', [userId, dupe.id]);
+                    } else {
+                        await client.query(
+                            'INSERT INTO employee_profiles (staff_id, user_id, full_name, department, role, is_active) VALUES ($1, $2, $3, $4, $5, true)',
+                            [dupe.id, userId, dupe.name, dupe.department, dupe.role_type || 'employee']
+                        );
+                    }
+                }
+            }
+
+            created.push({ staffId: staff.id, name: staff.name, username, password, role, department: staff.department });
+        }
+
+        await client.query('COMMIT');
+        log.info(`Bulk create: ${created.length} accounts created, ${skipped.length} skipped`);
+        res.json({ success: true, created, skipped });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        log.error('POST /staff/bulk-create-accounts error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
+    }
+});
+
+// POST /api/staff/import-excel — import staff from Excel file
+const multer = require('multer');
+const ExcelJS = require('exceljs');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+router.post('/import-excel', requireRole('creator', 'director'), upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ success: false, error: 'Файл не завантажено' });
+
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(req.file.buffer);
+        const sheet = workbook.worksheets[0];
+        if (!sheet) return res.status(400).json({ success: false, error: 'Порожній Excel файл' });
+
+        const results = { created: 0, updated: 0, skipped: 0, errors: [], entries: [] };
+        let currentDept = null;
+
+        sheet.eachRow((row, rowNum) => {
+            const cellA = row.getCell(1).text?.trim();
+            if (!cellA) return;
+
+            // Check if this is a department header
+            const deptMatch = Object.keys(EXCEL_TO_CRM_ROLE).find(d =>
+                cellA.toLowerCase().includes(d.toLowerCase())
+            );
+            if (deptMatch) {
+                currentDept = deptMatch;
+                return;
+            }
+
+            // Skip "Фріланс" rows and headers
+            if (cellA.toLowerCase().includes('фріланс') || cellA.toLowerCase().includes('прізвище')) return;
+
+            if (currentDept) {
+                const mapping = EXCEL_TO_CRM_ROLE[currentDept];
+                results.entries.push({
+                    name: cellA,
+                    excelDept: currentDept,
+                    department: mapping.dept,
+                    role: mapping.role,
+                    position: currentDept
+                });
+            }
+        });
+
+        // Insert into DB
+        for (const entry of results.entries) {
+            try {
+                const existing = await pool.query(
+                    'SELECT id FROM staff WHERE name = $1 AND department = $2 AND is_active = true',
+                    [entry.name, entry.department]
+                );
+                if (existing.rows.length > 0) {
+                    results.updated++;
+                } else {
+                    const uKey = transliterate(entry.name);
+                    await pool.query(
+                        `INSERT INTO staff (name, department, position, role_type, excel_department, unique_person_key, is_active)
+                         VALUES ($1, $2, $3, $4, $5, $6, true)`,
+                        [entry.name, entry.department, entry.position, entry.role, entry.excelDept, uKey]
+                    );
+                    results.created++;
+                }
+            } catch (err) {
+                results.errors.push(`${entry.name}: ${err.message}`);
+                results.skipped++;
+            }
+        }
+
+        res.json({ success: true, ...results });
+    } catch (err) {
+        log.error('POST /staff/import-excel error', err);
+        res.status(500).json({ success: false, error: 'Помилка парсингу Excel' });
+    }
+});
+
+// GET /api/staff/account-stats — dashboard widget data
+router.get('/account-stats', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                COUNT(*) FILTER (WHERE s.is_active AND NOT s.is_freelance) as total_staff,
+                COUNT(*) FILTER (WHERE s.is_active AND NOT s.is_freelance AND ep.user_id IS NOT NULL) as with_account,
+                COUNT(*) FILTER (WHERE s.is_active AND NOT s.is_freelance AND ep.user_id IS NULL) as without_account,
+                COUNT(*) FILTER (WHERE s.is_active AND s.is_freelance) as freelance_slots
+            FROM staff s
+            LEFT JOIN employee_profiles ep ON ep.staff_id = s.id AND ep.is_active = true
+        `);
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('GET /staff/account-stats error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
 });
 

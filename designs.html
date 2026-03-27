@@ -7,15 +7,15 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=39.2.1">
-    <link rel="stylesheet" href="css/layout.css?v=39.2.1">
-    <link rel="stylesheet" href="css/pages.css?v=39.2.1">
-    <link rel="stylesheet" href="css/modals.css?v=39.2.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=39.2.1">
-    <link rel="stylesheet" href="css/responsive.css?v=39.2.1">
-    <link rel="stylesheet" href="css/role-panel.css?v=39.2.1">
-    <link rel="stylesheet" href="css/designs.css?v=39.2.1">
-    <link rel="stylesheet" href="css/catalog.css?v=39.2.1">
+    <link rel="stylesheet" href="css/base.css?v=39.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=39.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=39.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=39.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=39.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=39.3.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=39.3.0">
+    <link rel="stylesheet" href="css/designs.css?v=39.3.0">
+    <link rel="stylesheet" href="css/catalog.css?v=39.3.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -950,37 +950,26 @@
                     </button>
                 </div>
 
-                <!-- Section: Ready catalogs -->
-                <div class="catalog-section-header">
-                    <h3 style="margin:0;font-size:13px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:1px">Готові каталоги</h3>
-                </div>
+                <!-- All catalogs in one grid -->
                 <div class="catalog-list" id="catalogList">
-                    <!-- Graduation card -->
+                    <!-- Graduation card (v39.3 redesigned) -->
                     <div class="catalog-card" data-catalog="graduation" data-status="ready">
-                        <div class="catalog-cover">
-                            <div class="catalog-cover-placeholder">
-                                <span class="catalog-cover-icon">🎓</span>
-                                <span class="catalog-cover-year">2026</span>
-                            </div>
+                        <div class="catalog-card-cover-empty" style="background:linear-gradient(135deg,#f5dca0,#e0c060)">
+                            <span class="catalog-card-cover-icon">🎓</span>
+                            <span class="catalog-card-status ready">✅ Ready</span>
                         </div>
-                        <div class="catalog-info">
-                            <h3>Випускні 2026</h3>
-                            <span class="catalog-meta">7 пакетів · <span id="catalogUpdated">—</span></span>
+                        <div class="catalog-card-body">
+                            <div class="catalog-card-title">Випускні 2026</div>
+                            <div class="catalog-card-meta">7 пакетів · <span id="catalogUpdated">—</span></div>
                         </div>
-                        <div class="catalog-actions">
-                            <button type="button" class="btn-catalog" onclick="openCatalog('graduation')">Переглянути</button>
-                            <button type="button" class="btn-catalog btn-catalog-print" onclick="printCatalog('graduation')">Друк</button>
+                        <div class="catalog-card-actions">
+                            <button type="button" class="catalog-card-btn catalog-card-btn-primary" onclick="openCatalog('graduation')">Переглянути</button>
+                            <button type="button" class="catalog-card-btn" onclick="printCatalog('graduation')">🖨 Друк</button>
                         </div>
                     </div>
+                    <!-- Dynamic catalog cards rendered here by JS -->
                 </div>
-
-                <!-- Section: Dynamic catalogs (from catalog_definitions) -->
-                <div class="catalog-section-header" style="margin-top:20px">
-                    <h3 style="margin:0;font-size:14px;font-weight:700;color:var(--gray-700)">Каталоги товарів</h3>
-                </div>
-                <div class="catalog-list" id="dynamicCatalogCards">
-                    <div style="color:var(--gray-400);padding:12px;font-size:13px">Завантаження...</div>
-                </div>
+                <div id="dynamicCatalogCards"></div>
 
                 <!-- Fullscreen catalog viewer -->
                 <div class="catalog-viewer" id="catalogViewer" style="display:none;">
@@ -1185,14 +1174,14 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/config.js?v=39.2.1"></script>
-    <script src="js/notification.js?v=39.2.1"></script>
-    <script src="js/api.js?v=39.2.1"></script>
-    <script src="js/auth.js?v=39.2.1"></script>
-    <script src="js/components/sidebar.js?v=39.2.1"></script>
+    <script src="js/config.js?v=39.3.0"></script>
+    <script src="js/notification.js?v=39.3.0"></script>
+    <script src="js/api.js?v=39.3.0"></script>
+    <script src="js/auth.js?v=39.3.0"></script>
+    <script src="js/components/sidebar.js?v=39.3.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/designs-page.js?v=39.2.1"></script>
-    <script src="js/role-panel.js?v=39.2.1"></script>
+    <script src="js/designs-page.js?v=39.3.0"></script>
+    <script src="js/role-panel.js?v=39.3.0"></script>
     <script>
     // v38.9.0: Create catalog modal functions
     function openCreateCatalogModal() {
@@ -1228,29 +1217,53 @@
     }
     </script>
     <script>
-    // v33.5+v38.10: Dynamic catalog cards + inline catalog view
+    // v39.3: Dynamic catalog cards — redesigned with cover images + status badges
     async function loadDynamicCatalogCards() {
-        var container = document.getElementById('dynamicCatalogCards');
-        if (!container) return;
+        var listContainer = document.getElementById('catalogList');
+        var dynContainer = document.getElementById('dynamicCatalogCards');
+        if (!listContainer) return;
         try {
             var r = await apiFetch('/api/catalogs/definitions');
             if (!r || !r.ok) return;
             var d = await r.json();
             var catalogs = d.catalogs || [];
-            var itemsR = await apiFetch('/api/catalogs/items');
-            var items = [];
-            if (itemsR && itemsR.ok) { var id2 = await itemsR.json(); items = id2.items || id2 || []; }
-            if (catalogs.length === 0) {
-                container.innerHTML = '<div style="color:var(--gray-400);padding:12px;font-size:13px">Немає каталогів товарів</div>';
-                return;
-            }
-            container.innerHTML = catalogs.map(function(c) {
-                var count = Array.isArray(items) ? items.filter(function(i) { return i.catalog_id === c.id; }).length : 0;
-                return '<div class="catalog-card" data-catalog="' + c.id + '">' +
-                    '<div class="catalog-cover"><div class="catalog-cover-placeholder"><span class="catalog-cover-icon">' + (c.emoji || '📂') + '</span></div></div>' +
-                    '<div class="catalog-info"><h3>' + (c.name || c.id) + '</h3><span class="catalog-meta">' + count + ' товарів</span></div>' +
-                    '<div class="catalog-actions"><button type="button" class="btn-catalog" onclick="openCatalogPages(\'' + c.id + '\')">Сторінки</button></div></div>';
-            }).join('');
+            // Count pages per catalog
+            var pageCounts = {};
+            try {
+                for (var c of catalogs) {
+                    var pr = await apiFetch('/api/catalogs/' + c.id + '/pages');
+                    if (pr && pr.ok) { var pd = await pr.json(); pageCounts[c.id] = (pd.pages || []).length; }
+                }
+            } catch(e) {}
+            // Remove old dynamic cards (keep graduation + create card)
+            listContainer.querySelectorAll('.catalog-card[data-catalog]:not([data-catalog="graduation"])').forEach(function(el) { el.remove(); });
+            listContainer.querySelectorAll('.catalog-card-create').forEach(function(el) { el.remove(); });
+            // Add catalog cards
+            catalogs.forEach(function(c) {
+                var count = pageCounts[c.id] || 0;
+                var status = (c.status === 'ready') ? 'ready' : 'draft';
+                var statusLabel = status === 'ready' ? '✅ Ready' : '🔄 Draft';
+                var coverHtml = c.cover_image_url
+                    ? '<div class="catalog-card-cover" style="background-image:url(\'' + c.cover_image_url + '\')"><span class="catalog-card-status ' + status + '">' + statusLabel + '</span></div>'
+                    : '<div class="catalog-card-cover-empty"><span class="catalog-card-cover-icon">' + (c.emoji || '📂') + '</span><span class="catalog-card-status ' + status + '">' + statusLabel + '</span></div>';
+                var card = document.createElement('div');
+                card.className = 'catalog-card';
+                card.dataset.catalog = c.id;
+                card.innerHTML = coverHtml +
+                    '<div class="catalog-card-body"><div class="catalog-card-title">' + (c.name || c.id) + '</div><div class="catalog-card-meta">' + count + ' сторінок</div></div>' +
+                    '<div class="catalog-card-actions">' +
+                    '<button type="button" class="catalog-card-btn catalog-card-btn-primary" onclick="openCatalog(\'' + c.id + '\')">Переглянути</button>' +
+                    '<button type="button" class="catalog-card-btn" onclick="openCatalogPages(\'' + c.id + '\')">Сторінки</button>' +
+                    '</div>';
+                listContainer.appendChild(card);
+            });
+            // Add "+ Create" card at the end
+            var createCard = document.createElement('div');
+            createCard.className = 'catalog-card catalog-card-create';
+            createCard.onclick = function() { openCreateCatalogModal(); };
+            createCard.innerHTML = '<span class="catalog-card-create-icon">+</span><span class="catalog-card-create-text">Створити каталог</span>';
+            listContainer.appendChild(createCard);
+            if (dynContainer) dynContainer.style.display = 'none';
         } catch (err) { console.error('loadDynamicCatalogCards:', err); }
     }
 

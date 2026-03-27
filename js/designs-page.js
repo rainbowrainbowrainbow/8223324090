@@ -109,7 +109,7 @@ function setupTabs() {
             if (activeTab === 'price') loadPriceList();
             if (activeTab === 'calendar') renderCalendar();
             if (activeTab === 'collections') renderCollections();
-            if (activeTab === 'catalogs') loadCatalogs();
+            if (activeTab === 'catalogs') { loadCatalogs(); if (typeof loadDynamicCatalogCards === 'function') loadDynamicCatalogCards(); }
         });
     });
 }
@@ -953,8 +953,20 @@ const SERVICE_DESCRIPTIONS = {
     'Програма "Гра в кальмара" Ч.2': 'Фінальний раунд з новими випробуваннями! Сюрпризи, адреналін та подарунки для переможців.'
 };
 
+// Auto-catalog color themes (for non-graduation catalogs)
+const PAGE_THEMES = {
+    gold:    { bg1: '#2d2006', bg2: '#3d2e0a', bg3: '#4d3c12', accent: '#C9A84C', priceColor: '#6EE7B7' },
+    purple:  { bg1: '#1a0a2e', bg2: '#2d1654', bg3: '#3f2272', accent: '#a855f7', priceColor: '#6EE7B7' },
+    cyan:    { bg1: '#0a1a2e', bg2: '#0e2a4a', bg3: '#123a66', accent: '#06b6d4', priceColor: '#6EE7B7' },
+    green:   { bg1: '#0a2e1a', bg2: '#0e4a2a', bg3: '#12663a', accent: '#22c55e', priceColor: '#6EE7B7' },
+    red:     { bg1: '#2e0a0a', bg2: '#4a1616', bg3: '#662222', accent: '#ef4444', priceColor: '#FDE68A' },
+    pink:    { bg1: '#2e0a1a', bg2: '#4a1630', bg3: '#662246', accent: '#ec4899', priceColor: '#6EE7B7' },
+    orange:  { bg1: '#2e1a0a', bg2: '#4a2e16', bg3: '#664222', accent: '#f97316', priceColor: '#6EE7B7' },
+};
+
 let catalogPackages = [];
 let currentCatalogPage = 0;
+let _viewerCatalogType = 'graduation'; // 'graduation' or auto-catalog slug
 
 async function loadCatalogs() {
     try {
@@ -969,14 +981,29 @@ async function loadCatalogs() {
     }
 }
 
-function openCatalog(catalogId) {
-    if (catalogPackages.length === 0) {
-        loadCatalogs().then(() => {
-            if (catalogPackages.length > 0) renderCatalogViewer();
-        });
-        return;
+async function openCatalog(catalogId) {
+    if (catalogId === 'graduation') {
+        _viewerCatalogType = 'graduation';
+        if (catalogPackages.length === 0) await loadCatalogs();
+        if (catalogPackages.length > 0) renderCatalogViewer();
+    } else {
+        // Auto-catalog: fetch pages from API
+        _viewerCatalogType = catalogId;
+        try {
+            const res = await apiFetch(`/api/catalogs/${catalogId}/pages`);
+            if (!res || !res.ok) return;
+            const data = await res.json();
+            const pages = (data.pages || []).filter(p => p.is_active !== false);
+            if (pages.length === 0) {
+                if (typeof showNotification === 'function') showNotification('Каталог порожній — додайте сторінки', 'error');
+                return;
+            }
+            catalogPackages = pages;
+            renderCatalogViewer();
+        } catch (err) {
+            console.error('openCatalog auto error:', err);
+        }
     }
-    renderCatalogViewer();
 }
 function renderCatalogViewer() {
     currentCatalogPage = 0;
@@ -997,8 +1024,12 @@ function renderCatalogViewer() {
 function renderCurrentPage() {
     const pkg = catalogPackages[currentCatalogPage];
     if (!pkg) return;
-    document.getElementById('catalogPages').innerHTML = buildCatalogPageHtml(pkg);
-    document.getElementById('catalogPageIndicator').textContent =         `${currentCatalogPage + 1} / ${catalogPackages.length}`;
+    const html = _viewerCatalogType === 'graduation'
+        ? buildCatalogPageHtml(pkg)
+        : buildAutoPageHtml(pkg);
+    document.getElementById('catalogPages').innerHTML = html;
+    document.getElementById('catalogPageIndicator').textContent =
+        `${currentCatalogPage + 1} / ${catalogPackages.length}`;
 }
 
 function catalogNext() {
@@ -1042,7 +1073,8 @@ function doPrintCatalog() {
     document.body.classList.add('printing-catalog');
 
     const container = document.getElementById('catalogPages');
-    container.innerHTML = catalogPackages.map(pkg => buildCatalogPageHtml(pkg)).join('');
+    const renderFn = _viewerCatalogType === 'graduation' ? buildCatalogPageHtml : buildAutoPageHtml;
+    container.innerHTML = catalogPackages.map(pkg => renderFn(pkg)).join('');
 
     setTimeout(() => {
         window.print();
@@ -1130,8 +1162,109 @@ function buildCatalogPageHtml(pkg) {
     `;
 }
 
-function printCatalogPage(catalogId, slug) {
-    const pkg = catalogPackages.find(p => p.slug === slug);
+/**
+ * buildAutoPageHtml — renders auto-catalog pages using SAME CSS as graduation.
+ * Uses .cat-page, .cat-hero, .cat-stats, .cat-services, .cat-footer classes.
+ * @param {Object} page - catalog_pages row (title, subtitle, description, price_label, image_url, items, theme, details)
+ */
+function buildAutoPageHtml(page) {
+    const theme = PAGE_THEMES[page.theme || 'gold'] || PAGE_THEMES.gold;
+    const det = page.details || {};
+    const layoutStyle = page.layout_style === 'product' ? ' cat-style-product' : '';
+    const imageUrl = page.image_url || '';
+    const title = page.title || '';
+    const subtitle = page.subtitle || '';
+    const priceLabel = page.price_label || (page.price ? `${Number(page.price).toLocaleString('uk-UA')} ₴` : '');
+
+    // Items grid (same .csvc-card as graduation services)
+    let itemsHtml = '';
+    const items = Array.isArray(page.items) ? page.items : [];
+    if (items.length > 0) {
+        itemsHtml = items.map(item => `
+            <div class="csvc-card">
+                <span class="csvc-icon">${item.icon || '🎯'}</span>
+                <span class="csvc-name">${esc(item.name || '')}</span>
+                ${item.detail ? `<span class="csvc-dur">${esc(item.detail)}</span>` : ''}
+            </div>`).join('');
+    }
+
+    // Stats row
+    let statsHtml = '';
+    const statParts = [];
+    if (det.duration) statParts.push({ val: det.duration, lbl: 'тривалість' });
+    if (det.kids) statParts.push({ val: det.kids, lbl: 'дітей' });
+    if (det.age) statParts.push({ val: det.age, lbl: 'вік' });
+    if (priceLabel) statParts.push({ val: priceLabel, lbl: det.price_note || '', isPrice: true });
+    if (statParts.length > 0) {
+        statsHtml = statParts.map((s, i) => {
+            const divider = i < statParts.length - 1 ? '<div class="cat-stat-divider"></div>' : '';
+            return `<div class="cat-stat${s.isPrice ? ' cat-stat-price' : ''}">
+                <span class="${s.isPrice ? 'cat-price-val' : 'cat-stat-val'}">${s.val}</span>
+                <span class="cat-stat-lbl">${s.lbl}</span>
+            </div>${divider}`;
+        }).join('');
+    }
+
+    // Cover page (page_number === 0)
+    if (page.page_number === 0) {
+        const bgUrl = page.background_url || page.image_url || '';
+        return `
+        <div class="cat-page" style="--cat-bg1:${theme.bg1};--cat-bg2:${theme.bg2};--cat-bg3:${theme.bg3};--cat-accent:${theme.accent};--cat-price:${theme.priceColor}">
+            <div class="cat-page-cover">
+                ${bgUrl ? `<div class="cat-page-cover-bg" style="background-image:url('${bgUrl}')"></div>` : ''}
+                <div class="cat-page-cover-content">
+                    <div style="font-size:48px;margin-bottom:16px;opacity:0.8">🏰</div>
+                    <h1>${esc(title)}</h1>
+                    ${subtitle ? `<p>${esc(subtitle)}</p>` : ''}
+                    <div class="catalog-cover-contacts" style="margin-top:24px;opacity:0.7;font-size:14px">
+                        <p>📞 0800 75 35 53</p>
+                        <p>📍 вул. Закревського 61/2, Київ</p>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    // Regular content page
+    return `
+        <div class="cat-page${layoutStyle}" style="--cat-bg1:${theme.bg1};--cat-bg2:${theme.bg2};--cat-bg3:${theme.bg3};--cat-accent:${theme.accent};--cat-price:${theme.priceColor}">
+            <div class="cat-hero">
+                ${imageUrl ? `<img class="cat-hero-img" src="${imageUrl}" alt="${esc(title)}" onerror="this.style.display='none'">` : ''}
+                <div class="cat-hero-content">
+                    <h1 class="cat-title">${esc(title).toUpperCase()}</h1>
+                    ${subtitle ? `<p class="cat-subtitle">${esc(subtitle)}</p>` : ''}
+                </div>
+            </div>
+            ${statsHtml ? `<div class="cat-stats">${statsHtml}</div>` : ''}
+            <div class="cat-body">
+                ${itemsHtml ? `<div class="cat-section-title">Що входить</div><div class="cat-services">${itemsHtml}</div>` : ''}
+                ${page.description && !itemsHtml ? `<div class="cat-desc">${esc(page.description)}</div>` : ''}
+                ${page.description && itemsHtml ? `<div class="cat-desc" style="margin-top:12px">${esc(page.description)}</div>` : ''}
+            </div>
+            <div class="cat-footer">
+                <img src="/images/logo_element.png?v=39.2.1" alt="Парк Закревського" class="cat-footer-logo">
+                <div class="cat-footer-info">
+                    <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
+                    <span>📞 0800 75 35 53</span>
+                </div>
+            </div>
+            <div class="cat-actions">
+                <button class="cat-btn cat-btn-print" onclick="printCatalogPage('${_viewerCatalogType}', '${page.page_number}')">🖨️ Друк / PDF</button>
+            </div>
+        </div>
+    `;
+}
+
+function printCatalogPage(catalogId, slugOrPageNum) {
+    let pkg;
+    let renderFn;
+    if (catalogId === 'graduation') {
+        pkg = catalogPackages.find(p => p.slug === slugOrPageNum);
+        renderFn = buildCatalogPageHtml;
+    } else {
+        pkg = catalogPackages.find(p => String(p.page_number) === String(slugOrPageNum));
+        renderFn = buildAutoPageHtml;
+    }
     if (!pkg) return;
 
     const container = document.getElementById('catalogPages');
@@ -1139,7 +1272,7 @@ function printCatalogPage(catalogId, slug) {
     const viewer = document.getElementById('catalogViewer');
     const wasHidden = viewer.style.display === 'none';
 
-    container.innerHTML = buildCatalogPageHtml(pkg);
+    container.innerHTML = renderFn(pkg);
     if (wasHidden) viewer.style.display = 'flex';
     document.body.classList.add('printing-catalog');
 
@@ -1161,6 +1294,7 @@ try {
     window.catalogPrev = catalogPrev;
     window.printCatalog = printCatalog;
     window.printCatalogPage = printCatalogPage;
+    window.buildAutoPageHtml = buildAutoPageHtml;
     window.downloadDesign = downloadDesign;
     window.copyDesign = copyDesign;
     window.togglePin = togglePin;

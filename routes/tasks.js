@@ -250,18 +250,23 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
     try {
         const { id } = req.params;
         const b = req.body;
-        const title = b.title;
-        const description = b.description;
-        const date = b.date;
-        const status = b.status;
-        const priority = b.priority;
-        const assigned_to = b.assigned_to || b.assignedTo;
-        const owner = b.owner;
-        const category = b.category;
-        const task_type = b.task_type || b.taskType;
-        const deadline = b.deadline;
-        const time_window_start = b.time_window_start || b.timeWindowStart;
-        const time_window_end = b.time_window_end || b.timeWindowEnd;
+        // v40: Support partial updates — merge with existing task
+        const existing = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
+        if (!existing.rows.length) return res.status(404).json({ error: 'Task not found' });
+        const old = existing.rows[0];
+
+        const title = b.title || old.title;
+        const description = b.description !== undefined ? b.description : old.description;
+        const date = b.date !== undefined ? b.date : old.date;
+        const status = b.status || old.status;
+        const priority = b.priority || old.priority;
+        const assigned_to = b.assigned_to || b.assignedTo || old.assigned_to;
+        const owner = b.owner !== undefined ? b.owner : old.owner;
+        const category = b.category || old.category;
+        const task_type = b.task_type || b.taskType || old.task_type;
+        const deadline = b.deadline !== undefined ? b.deadline : old.deadline;
+        const time_window_start = b.time_window_start || b.timeWindowStart || old.time_window_start;
+        const time_window_end = b.time_window_end || b.timeWindowEnd || old.time_window_end;
         const clientVersion = b.version !== undefined ? parseInt(b.version) : null;
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
 

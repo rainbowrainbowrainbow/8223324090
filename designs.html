@@ -1356,7 +1356,9 @@
         var html = '<div class="cat-editor-header">' +
             '<button type="button" onclick="closeInlineCatalogView()" class="catalog-card-btn" style="width:auto;flex:none">← Назад</button>' +
             '<h3 style="margin:0;font-size:18px;font-weight:800">' + (cat ? cat.emoji + ' ' + cat.name : catalogId) + ' — Сторінки</h3>' +
-            '<div style="margin-left:auto;display:flex;gap:6px">' +
+            '<div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">' +
+            '<button type="button" onclick="generatePublicLink(\'' + catalogId + '\')" class="catalog-card-btn" style="width:auto;flex:none">🔗 Посилання</button>' +
+            '<button type="button" onclick="printCatalogFromEditor(\'' + catalogId + '\')" class="catalog-card-btn" style="width:auto;flex:none">🖨 Друк</button>' +
             '<button type="button" onclick="openCatalog(\'' + catalogId + '\')" class="catalog-card-btn" style="width:auto;flex:none">👁 Перегляд</button>' +
             '<button type="button" onclick="addCatalogPage()" class="catalog-card-btn catalog-card-btn-primary" style="width:auto;flex:none">+ Сторінка</button></div></div>';
 
@@ -1370,7 +1372,99 @@
         viewEl.innerHTML = html;
         // Attach inline edit handlers
         viewEl.querySelectorAll('[data-inline-edit]').forEach(attachInlineEdit);
+        // Attach drag-n-drop
+        attachDragDrop(viewEl, catalogId);
     }
+
+    // Drag-n-drop page reorder
+    function attachDragDrop(container, catalogId) {
+        var cards = container.querySelectorAll('.cat-page-card[draggable]');
+        var draggedEl = null;
+        cards.forEach(function(card) {
+            card.addEventListener('dragstart', function(e) {
+                draggedEl = card;
+                card.style.opacity = '0.4';
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', card.dataset.pageNumber);
+            });
+            card.addEventListener('dragend', function() {
+                card.style.opacity = '1';
+                cards.forEach(function(c) { c.style.borderTop = ''; });
+                draggedEl = null;
+            });
+            card.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (draggedEl && card !== draggedEl) {
+                    card.style.borderTop = '3px solid #C9A84C';
+                }
+            });
+            card.addEventListener('dragleave', function() {
+                card.style.borderTop = '';
+            });
+            card.addEventListener('drop', async function(e) {
+                e.preventDefault();
+                card.style.borderTop = '';
+                if (!draggedEl || card === draggedEl) return;
+                var from = parseInt(draggedEl.dataset.pageNumber);
+                var to = parseInt(card.dataset.pageNumber);
+                try {
+                    var r = await apiFetch('/api/catalogs/' + catalogId + '/reorder', { method: 'POST', body: JSON.stringify({ from: from, to: to }), headers: { 'Content-Type': 'application/json' } });
+                    if (r && r.ok) { showNotification('Порядок змінено'); openCatalogPages(catalogId); }
+                    else { showNotification('Помилка reorder', 'error'); }
+                } catch(err) { showNotification('Помилка', 'error'); }
+            });
+        });
+        // Touch fallback
+        var touchDragged = null, touchStartY = 0;
+        cards.forEach(function(card) {
+            card.addEventListener('touchstart', function(e) {
+                if (e.touches.length !== 1) return;
+                touchDragged = card;
+                touchStartY = e.touches[0].clientY;
+                setTimeout(function() { if (touchDragged === card) card.style.opacity = '0.4'; }, 300);
+            }, { passive: true });
+        });
+        container.addEventListener('touchmove', function(e) { if (touchDragged) e.preventDefault(); }, { passive: false });
+        container.addEventListener('touchend', async function(e) {
+            if (!touchDragged) return;
+            touchDragged.style.opacity = '1';
+            var touch = e.changedTouches[0];
+            var dropTarget = document.elementFromPoint(touch.clientX, touch.clientY)?.closest('.cat-page-card[draggable]');
+            if (dropTarget && dropTarget !== touchDragged) {
+                var from = parseInt(touchDragged.dataset.pageNumber);
+                var to = parseInt(dropTarget.dataset.pageNumber);
+                try {
+                    var r = await apiFetch('/api/catalogs/' + catalogId + '/reorder', { method: 'POST', body: JSON.stringify({ from: from, to: to }), headers: { 'Content-Type': 'application/json' } });
+                    if (r && r.ok) { showNotification('Порядок змінено'); openCatalogPages(catalogId); }
+                } catch(err) {}
+            }
+            touchDragged = null;
+        });
+    }
+
+    // Public link generation
+    async function generatePublicLink(catalogId) {
+        try {
+            var r = await apiFetch('/api/catalogs/' + catalogId + '/public-link', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+            if (!r || !r.ok) { showNotification('Помилка', 'error'); return; }
+            var data = await r.json();
+            if (data.url) {
+                var fullUrl = window.location.origin + data.url;
+                await navigator.clipboard.writeText(fullUrl);
+                showNotification('Посилання скопійовано: ' + fullUrl);
+            }
+        } catch(err) { showNotification('Помилка: ' + err.message, 'error'); }
+    }
+    window.generatePublicLink = generatePublicLink;
+
+    // Print from editor
+    function printCatalogFromEditor(catalogId) {
+        openCatalog(catalogId).then(function() {
+            setTimeout(function() { doPrintCatalog(); }, 500);
+        });
+    }
+    window.printCatalogFromEditor = printCatalogFromEditor;
 
     function renderPageEditorCard(p, catalogId) {
         var imgHtml = p.image_url
@@ -1383,7 +1477,7 @@
         var isCover = p.page_number === 0;
         var pageLabel = isCover ? 'Обкладинка' : 'Сторінка ' + p.page_number;
 
-        var html = '<div class="cat-page-card" data-page-number="' + p.page_number + '" style="border-left:4px solid ' + themeColor + '">';
+        var html = '<div class="cat-page-card" data-page-number="' + p.page_number + '" draggable="true" style="border-left:4px solid ' + themeColor + ';cursor:grab">';
         html += '<div style="padding:10px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--gray-100,rgba(0,0,0,0.06));background:var(--gray-50,#fafafa)">' +
             '<span style="font-size:12px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px">' + pageLabel + '</span>' +
             '<span style="font-size:11px;color:var(--gray-400)">' + (p.theme || 'gold') + '</span>' +
@@ -1489,15 +1583,10 @@
     }
     window.changePageTheme = changePageTheme;
 
-    // Duplicate page
+    // Duplicate page (uses backend endpoint)
     async function duplicateCatalogPage(catalogId, pageNumber) {
-        var page = _pagesData.find(function(p) { return p.page_number === pageNumber; });
-        if (!page) return;
-        var maxPage = Math.max.apply(null, _pagesData.map(function(p) { return p.page_number; }));
-        var newNum = maxPage + 1;
         try {
-            var body = { title: page.title + ' (копія)', subtitle: page.subtitle, description: page.description, price: page.price, price_label: page.price_label, image_url: page.image_url, details: page.details, items: page.items, theme: page.theme };
-            var r = await apiFetch('/api/catalogs/' + catalogId + '/pages', { method: 'POST', body: JSON.stringify(Object.assign({ page_number: newNum }, body)), headers: { 'Content-Type': 'application/json' } });
+            var r = await apiFetch('/api/catalogs/' + catalogId + '/pages/' + pageNumber + '/duplicate', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
             if (r && r.ok) { showNotification('Сторінку дубльовано'); openCatalogPages(catalogId); }
             else { showNotification('Помилка дублювання', 'error'); }
         } catch(err) { showNotification('Помилка', 'error'); }

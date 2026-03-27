@@ -748,4 +748,68 @@ router.delete('/:catalogId/pages/:pageNumber', requireRole('admin', 'creator', '
     }
 });
 
+// POST /api/catalogs/:catalogId/reorder — swap two page numbers
+router.post('/:catalogId/reorder', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { from, to } = req.body;
+        const catalogId = req.params.catalogId;
+        if (from === undefined || to === undefined) return res.status(400).json({ error: 'from and to required' });
+        const fromNum = parseInt(from);
+        const toNum = parseInt(to);
+        await client.query('BEGIN');
+        // Swap: from→temp(-1), to→from, temp→to
+        await client.query('UPDATE catalog_pages SET page_number = -1 WHERE catalog_id=$1 AND page_number=$2', [catalogId, fromNum]);
+        await client.query('UPDATE catalog_pages SET page_number = $1 WHERE catalog_id=$2 AND page_number=$3', [fromNum, catalogId, toNum]);
+        await client.query('UPDATE catalog_pages SET page_number = $1 WHERE catalog_id=$2 AND page_number=-1', [toNum, catalogId]);
+        await client.query('COMMIT');
+        res.json({ success: true });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        log.error('POST /reorder error', err);
+        res.status(500).json({ error: err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// POST /api/catalogs/:catalogId/public-link — generate public sharing token
+router.post('/:catalogId/public-link', requireRole('admin', 'creator', 'director', 'manager'), async (req, res) => {
+    try {
+        const catalogId = req.params.catalogId;
+        const crypto = require('crypto');
+        const token = crypto.randomBytes(16).toString('hex');
+        await pool.query('UPDATE catalog_definitions SET public_token=$1 WHERE id=$2', [token, catalogId]);
+        res.json({ success: true, token, url: `/catalog/${catalogId}/${token}` });
+    } catch (err) {
+        log.error('POST /public-link error', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/catalogs/:catalogId/pages/:pageNumber/duplicate — duplicate a page
+router.post('/:catalogId/pages/:pageNumber/duplicate', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
+    try {
+        const catalogId = req.params.catalogId;
+        const pageNumber = parseInt(req.params.pageNumber);
+        // Get source page
+        const src = await pool.query('SELECT * FROM catalog_pages WHERE catalog_id=$1 AND page_number=$2', [catalogId, pageNumber]);
+        if (!src.rowCount) return res.status(404).json({ error: 'Page not found' });
+        // Find next page number
+        const maxR = await pool.query('SELECT COALESCE(MAX(page_number),0) as mx FROM catalog_pages WHERE catalog_id=$1', [catalogId]);
+        const newNum = (maxR.rows[0].mx || 0) + 1;
+        const p = src.rows[0];
+        const r = await pool.query(
+            `INSERT INTO catalog_pages (catalog_id, page_number, title, subtitle, description, price, price_label, image_url, background_url, details, items, theme, reference_url)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+            [catalogId, newNum, (p.title || '') + ' (копія)', p.subtitle, p.description, p.price, p.price_label, p.image_url, p.background_url,
+             JSON.stringify(p.details || {}), JSON.stringify(p.items || []), p.theme, p.reference_url]
+        );
+        res.json({ success: true, page: r.rows[0] });
+    } catch (err) {
+        log.error('POST /duplicate error', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;

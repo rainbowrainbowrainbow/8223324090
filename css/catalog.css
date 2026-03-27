@@ -176,6 +176,10 @@
     flex-wrap: wrap;
 }
 
+/* Drag-n-drop states */
+.cat-page-card[draggable] { transition: opacity 0.2s, border-top 0.15s; }
+.cat-page-card[draggable]:active { cursor: grabbing; }
+
 /* Inline edit hover hint */
 [data-inline-edit]:hover {
     border-bottom-color: var(--gray-300) !important;

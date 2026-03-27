@@ -390,6 +390,53 @@ app.get('/sound', (req, res) => {
     res.sendFile(path.join(__dirname, 'sound.html'));
 });
 
+// v39.3: Public catalog viewer (no auth required)
+app.get('/catalog/:slug/:token', async (req, res) => {
+    try {
+        const { pool } = require('./db');
+        const cat = await pool.query('SELECT * FROM catalog_definitions WHERE id=$1 AND public_token=$2', [req.params.slug, req.params.token]);
+        if (!cat.rowCount) return res.status(404).send('Каталог не знайдено');
+        const pages = await pool.query('SELECT * FROM catalog_pages WHERE catalog_id=$1 AND is_active=true ORDER BY page_number', [req.params.slug]);
+        const catalog = cat.rows[0];
+        const pagesData = pages.rows;
+        // Render simple HTML viewer
+        const PAGE_THEMES = {
+            gold: { bg1:'#2d2006',bg2:'#3d2e0a',bg3:'#4d3c12',accent:'#C9A84C',price:'#6EE7B7' },
+            purple: { bg1:'#1a0a2e',bg2:'#2d1654',bg3:'#3f2272',accent:'#a855f7',price:'#6EE7B7' },
+            cyan: { bg1:'#0a1a2e',bg2:'#0e2a4a',bg3:'#123a66',accent:'#06b6d4',price:'#6EE7B7' },
+            green: { bg1:'#0a2e1a',bg2:'#0e4a2a',bg3:'#12663a',accent:'#22c55e',price:'#6EE7B7' },
+            red: { bg1:'#2e0a0a',bg2:'#4a1616',bg3:'#662222',accent:'#ef4444',price:'#FDE68A' },
+            pink: { bg1:'#2e0a1a',bg2:'#4a1630',bg3:'#662246',accent:'#ec4899',price:'#6EE7B7' },
+            orange: { bg1:'#2e1a0a',bg2:'#4a2e16',bg3:'#664222',accent:'#f97316',price:'#6EE7B7' },
+        };
+        const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        let pagesHtml = pagesData.map(p => {
+            const t = PAGE_THEMES[p.theme||'gold']||PAGE_THEMES.gold;
+            const items = Array.isArray(p.items) ? p.items : (typeof p.items === 'string' ? JSON.parse(p.items||'[]') : []);
+            const det = typeof p.details === 'string' ? JSON.parse(p.details||'{}') : (p.details||{});
+            const price = p.price_label || (p.price ? `від ${p.price} ₴` : '');
+            if (p.page_number === 0) {
+                const bg = p.background_url || p.image_url || '';
+                return `<div class="cat-page"><div class="cat-page-cover">${bg?`<div class="cat-page-cover-bg" style="background-image:url('${bg}')"></div>`:''}<div class="cat-page-cover-content"><div style="font-size:48px;margin-bottom:16px;opacity:0.8">🏰</div><h1>${esc(p.title)}</h1>${p.subtitle?`<p>${esc(p.subtitle)}</p>`:''}<div style="margin-top:24px;opacity:0.7;font-size:14px"><p>📞 0800 75 35 53</p><p>📍 вул. Закревського 61/2, Київ</p></div></div></div></div>`;
+            }
+            const itemsHtml = items.map(i=>`<div class="csvc-card"><span class="csvc-icon">${i.icon||'🎯'}</span><span class="csvc-name">${esc(i.name)}</span>${i.detail?`<span class="csvc-dur">${esc(i.detail)}</span>`:''}</div>`).join('');
+            let statsHtml = '';
+            const parts = [];
+            if(det.duration) parts.push({v:det.duration,l:'тривалість'});
+            if(det.kids) parts.push({v:det.kids,l:'дітей'});
+            if(price) parts.push({v:price,l:'',isP:true});
+            if(parts.length) statsHtml = '<div class="cat-stats">'+parts.map((s,i)=>{
+                const div = i<parts.length-1?'<div class="cat-stat-divider"></div>':'';
+                return `<div class="cat-stat${s.isP?' cat-stat-price':''}"><span class="${s.isP?'cat-price-val':'cat-stat-val'}">${s.v}</span><span class="cat-stat-lbl">${s.l}</span></div>${div}`;
+            }).join('')+'</div>';
+            return `<div class="cat-page" style="--cat-bg1:${t.bg1};--cat-bg2:${t.bg2};--cat-bg3:${t.bg3};--cat-accent:${t.accent};--cat-price:${t.price}"><div class="cat-hero">${p.image_url?`<img class="cat-hero-img" src="${p.image_url}" alt="${esc(p.title)}">`:''}<div class="cat-hero-content"><h1 class="cat-title">${esc(p.title||'').toUpperCase()}</h1>${p.subtitle?`<p class="cat-subtitle">${esc(p.subtitle)}</p>`:''}</div></div>${statsHtml}<div class="cat-body">${itemsHtml?`<div class="cat-section-title">Що входить</div><div class="cat-services">${itemsHtml}</div>`:''}${p.description?`<div class="cat-desc">${esc(p.description)}</div>`:''}</div><div class="cat-footer"><div class="cat-footer-info"><span>📍 Парк Закревського · Київ</span><span>📞 0800 75 35 53</span></div></div></div>`;
+        }).join('');
+        res.send(`<!DOCTYPE html><html lang="uk"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(catalog.name)} — Event Genix</title><link rel="stylesheet" href="/css/catalog.css?v=39.3.3"><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet"><style>body{margin:0;background:#1a1a2e;font-family:'Nunito',sans-serif;padding:24px 16px;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:24px}h2{color:#fff;text-align:center;margin:0 0 8px}.cat-page{margin:0 auto}</style></head><body><h2>${esc(catalog.emoji||'')} ${esc(catalog.name)}</h2>${pagesHtml}<p style="text-align:center;color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">Event Genix CRM · Парк Закревського Періоду</p></body></html>`);
+    } catch (err) {
+        res.status(500).send('Помилка сервера');
+    }
+});
+
 // v38.4.0: API 404 handler — return JSON instead of HTML for unknown API routes
 app.use('/api', (req, res) => {
     res.status(404).json({ error: 'Not found' });

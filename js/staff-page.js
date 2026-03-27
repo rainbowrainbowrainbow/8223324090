@@ -53,7 +53,8 @@ const STATUS_LABELS = {
     dayoff: 'Вихідний',
     vacation: 'Відпустка',
     sick: 'Лікарняний',
-    remote: 'Віддалено'
+    remote: 'Віддалено',
+    unset: 'Не заповнено'
 };
 
 const STATUS_ICONS = {
@@ -61,7 +62,8 @@ const STATUS_ICONS = {
     dayoff: '○',
     vacation: '✈',
     sick: '✚',
-    remote: '◉'
+    remote: '◉',
+    unset: '·'
 };
 
 // Sub-groups within large departments (by role_type)
@@ -259,10 +261,11 @@ function renderSummary() {
         ? StaffState.staff
         : StaffState.staff.filter(s => s.department === StaffState.activeDept);
 
-    let working = 0, dayoff = 0, vacation = 0, sick = 0, remote = 0;
+    let working = 0, dayoff = 0, vacation = 0, sick = 0, remote = 0, unset = 0;
     for (const s of filtered) {
         const entry = StaffState.schedule[`${s.id}_${today}`];
-        if (!entry || entry.status === 'working') working++;
+        if (!entry) unset++;
+        else if (entry.status === 'working') working++;
         else if (entry.status === 'dayoff') dayoff++;
         else if (entry.status === 'vacation') vacation++;
         else if (entry.status === 'sick') sick++;
@@ -275,6 +278,7 @@ function renderSummary() {
         <div class="summary-chip"><span class="chip-dot" style="background:#3B82F6"></span> Відпустка: <span class="chip-count">${vacation}</span></div>
         <div class="summary-chip"><span class="chip-dot" style="background:#EF4444"></span> Лікарняний: <span class="chip-count">${sick}</span></div>
         <div class="summary-chip"><span class="chip-dot" style="background:#F59E0B"></span> Віддалено: <span class="chip-count">${remote}</span></div>
+        ${unset > 0 ? `<div class="summary-chip"><span class="chip-dot" style="background:#CBD5E1"></span> Не заповнено: <span class="chip-count">${unset}</span></div>` : ''}
     `;
 }
 
@@ -302,7 +306,7 @@ function renderEmpRow(emp, dates, today) {
         const ds = formatDateStr(d);
         const isToday = ds === today;
         const entry = StaffState.schedule[`${emp.id}_${ds}`];
-        const status = entry ? entry.status : 'working';
+        const status = entry ? entry.status : 'unset';
         const shiftStart = entry?.shift_start;
         const shiftEnd = entry?.shift_end;
         const icon = STATUS_ICONS[status] || '';
@@ -313,6 +317,8 @@ function renderEmpRow(emp, dates, today) {
             if (status === 'remote') cellContent += `<span class="sch-label"><span class="sch-icon">${icon}</span> Відд.</span>`;
         } else if (status === 'working') {
             cellContent = `<span class="sch-label"><span class="sch-icon">${icon}</span> Роб.</span>`;
+        } else if (status === 'unset') {
+            cellContent = `<span class="sch-label sch-unset"><span class="sch-icon">${icon}</span></span>`;
         } else {
             cellContent = `<span class="sch-label"><span class="sch-icon">${icon}</span> ${STATUS_LABELS[status] || status}</span>`;
         }
@@ -440,8 +446,8 @@ function openEditModal(staffId, date) {
 
     document.getElementById('schModalTitle').textContent = `${emp.name} — ${date}`;
     document.getElementById('schStatus').value = entry?.status || 'working';
-    document.getElementById('schStart').value = entry?.shift_start || '09:00';
-    document.getElementById('schEnd').value = entry?.shift_end || '18:00';
+    document.getElementById('schStart').value = entry?.shift_start || '10:00';
+    document.getElementById('schEnd').value = entry?.shift_end || '20:00';
     document.getElementById('schNote').value = entry?.note || '';
 
     toggleTimeFields();
@@ -522,8 +528,8 @@ function openFillWeekModal() {
     }
 
     document.getElementById('fillStatus').value = 'working';
-    document.getElementById('fillStart').value = '09:00';
-    document.getElementById('fillEnd').value = '18:00';
+    document.getElementById('fillStart').value = '10:00';
+    document.getElementById('fillEnd').value = '20:00';
     document.getElementById('fillNote').value = '';
     toggleFillTimeFields();
     document.getElementById('fillWeekOverlay')?.classList.add('visible');
@@ -705,18 +711,18 @@ function renderLoadView() {
     thead.innerHTML = headHtml;
 
     // Calculate stats per day
-    const statuses = ['working', 'remote', 'dayoff', 'vacation', 'sick'];
-    const statusNames = { working: 'На роботі', remote: 'Віддалено', dayoff: 'Вихідні', vacation: 'Відпустка', sick: 'Лікарняний' };
-    const statusCss = { working: 'working', remote: 'remote', dayoff: 'dayoff', vacation: 'vacation', sick: 'sick' };
+    const statuses = ['working', 'remote', 'dayoff', 'vacation', 'sick', 'unset'];
+    const statusNames = { working: 'На роботі', remote: 'Віддалено', dayoff: 'Вихідні', vacation: 'Відпустка', sick: 'Лікарняний', unset: 'Не заповнено' };
+    const statusCss = { working: 'working', remote: 'remote', dayoff: 'dayoff', vacation: 'vacation', sick: 'sick', unset: 'unset' };
 
     const dayStats = dates.map(d => {
         const ds = formatDateStr(d);
-        const counts = { working: 0, remote: 0, dayoff: 0, vacation: 0, sick: 0, total: filtered.length };
+        const counts = { working: 0, remote: 0, dayoff: 0, vacation: 0, sick: 0, unset: 0, total: filtered.length };
         for (const emp of filtered) {
             const entry = StaffState.schedule[`${emp.id}_${ds}`];
-            const status = entry ? entry.status : 'working';
+            const status = entry ? entry.status : 'unset';
             if (counts[status] !== undefined) counts[status]++;
-            else counts.working++; // unknown status defaults to working
+            else counts.unset++;
         }
         return counts;
     });
@@ -762,7 +768,7 @@ function renderLoadView() {
                 let active = 0;
                 for (const emp of deptStaff) {
                     const entry = StaffState.schedule[`${emp.id}_${ds}`];
-                    const status = entry ? entry.status : 'working';
+                    const status = entry ? entry.status : 'unset';
                     if (status === 'working' || status === 'remote') active++;
                 }
                 const ratio = active / deptStaff.length;

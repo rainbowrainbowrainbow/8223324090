@@ -7,13 +7,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=39.2.0">
-    <link rel="stylesheet" href="css/layout.css?v=39.2.0">
-    <link rel="stylesheet" href="css/pages.css?v=39.2.0">
-    <link rel="stylesheet" href="css/modals.css?v=39.2.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=39.2.0">
-    <link rel="stylesheet" href="css/responsive.css?v=39.2.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=39.2.0">
+    <link rel="stylesheet" href="css/base.css?v=39.2.1">
+    <link rel="stylesheet" href="css/layout.css?v=39.2.1">
+    <link rel="stylesheet" href="css/pages.css?v=39.2.1">
+    <link rel="stylesheet" href="css/modals.css?v=39.2.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=39.2.1">
+    <link rel="stylesheet" href="css/responsive.css?v=39.2.1">
+    <link rel="stylesheet" href="css/role-panel.css?v=39.2.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -112,6 +112,8 @@
         .dept-chip[data-dept="tech"].active { background: #DC2626; color: #fff; }
         .dept-chip[data-dept="cleaning"] { color: #7C3AED; }
         .dept-chip[data-dept="cleaning"].active { background: #7C3AED; color: #fff; }
+        .dept-chip[data-dept="trampoline"] { color: #0891B2; }
+        .dept-chip[data-dept="trampoline"].active { background: #0891B2; color: #fff; }
         .dept-chip[data-dept="security"] { color: #64748B; }
         .dept-chip[data-dept="security"].active { background: #64748B; color: #fff; }
 
@@ -225,6 +227,7 @@
         .dept-row[data-dept="cafe"] td { border-left: 4px solid #D97706; }
         .dept-row[data-dept="tech"] td { border-left: 4px solid #DC2626; }
         .dept-row[data-dept="cleaning"] td { border-left: 4px solid #7C3AED; }
+        .dept-row[data-dept="trampoline"] td { border-left: 4px solid #0891B2; }
         .dept-row[data-dept="security"] td { border-left: 4px solid #64748B; }
 
         .dept-row .dept-icon {
@@ -447,6 +450,21 @@
             color: #B45309;
         }
 
+        .sch-cell.status-unset {
+            background: transparent;
+        }
+        .sch-cell.status-unset .sch-label {
+            color: var(--gray-300);
+            background: transparent;
+        }
+        .sch-cell.status-unset .sch-unset {
+            font-size: 16px;
+            opacity: 0.4;
+        }
+        .sch-cell.status-unset:hover {
+            background: rgba(148,163,184,0.08);
+        }
+
         .sch-cell.today-col {
             box-shadow: inset 0 0 0 2px rgba(16,185,129,0.15);
         }
@@ -554,6 +572,8 @@
             border-color: var(--gray-700);
         }
         [data-theme="dark"] .sch-cell .sch-time { color: var(--gray-300); }
+        [data-theme="dark"] .sch-cell.status-unset .sch-label { color: var(--gray-600); }
+        [data-theme="dark"] .sch-cell.status-unset:hover { background: rgba(100,116,139,0.1); }
         [data-theme="dark"] .sch-cell.status-dayoff {
             background: rgba(100,116,139,0.1);
         }
@@ -609,6 +629,7 @@
         .load-cell-vacation { color: #2563EB; background: rgba(59,130,246,0.08); }
         .load-cell-sick { color: #DC2626; background: rgba(239,68,68,0.08); }
         .load-cell-remote { color: #D97706; background: rgba(245,158,11,0.08); }
+        .load-cell-unset { color: #94A3B8; background: rgba(148,163,184,0.05); }
         .load-cell-total { font-weight: 800; }
         [data-theme="dark"] .load-table .load-total td { background: var(--gray-700); border-top-color: var(--gray-600); }
 
@@ -917,7 +938,7 @@
     </div>
 
     <!-- Edit schedule modal -->
-    <div id="schModalOverlay" class="sch-modal-overlay">
+    <div id="schModalOverlay" class="sch-modal-overlay" role="dialog" aria-modal="true" aria-label="Редагувати зміну">
         <div class="sch-modal">
             <h3 id="schModalTitle">Редагувати зміну</h3>
             <div class="form-group">
@@ -933,18 +954,18 @@
             <div id="schTimeFields">
                 <div class="form-group">
                     <label>Початок зміни</label>
-                    <input type="time" id="schStart" value="09:00">
+                    <input type="time" id="schStart" value="10:00">
                 </div>
                 <div class="form-group">
                     <label>Кінець зміни</label>
-                    <input type="time" id="schEnd" value="18:00">
+                    <input type="time" id="schEnd" value="20:00">
                 </div>
             </div>
             <div class="form-group">
                 <label>Примітка</label>
                 <input type="text" id="schNote" aria-label="Необов'язково" placeholder="Необов'язково">
             </div>
-            <div class="modal-actions" role="dialog" aria-modal="true">
+            <div class="modal-actions">
                 <button type="button" id="schSaveBtn" class="btn-page-primary" style="flex:1">Зберегти</button>
                 <button type="button" id="schCancelBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
             </div>
@@ -952,7 +973,7 @@
     </div>
 
     <!-- Fill week modal -->
-    <div id="fillWeekOverlay" class="sch-modal-overlay">
+    <div id="fillWeekOverlay" class="sch-modal-overlay" role="dialog" aria-modal="true" aria-label="Заповнити тиждень">
         <div class="sch-modal" style="max-width:440px">
             <h3>Заповнити тиждень</h3>
             <div class="form-group">
@@ -984,18 +1005,18 @@
             <div id="fillTimeFields">
                 <div class="form-group">
                     <label>Початок зміни</label>
-                    <input type="time" id="fillStart" value="09:00">
+                    <input type="time" id="fillStart" value="10:00">
                 </div>
                 <div class="form-group">
                     <label>Кінець зміни</label>
-                    <input type="time" id="fillEnd" value="18:00">
+                    <input type="time" id="fillEnd" value="20:00">
                 </div>
             </div>
             <div class="form-group">
                 <label>Примітка</label>
                 <input type="text" id="fillNote" aria-label="Необов'язково" placeholder="Необов'язково">
             </div>
-            <div class="modal-actions" role="dialog" aria-modal="true">
+            <div class="modal-actions">
                 <button type="button" id="fillSaveBtn" class="btn-page-primary" style="flex:1">Заповнити</button>
                 <button type="button" id="fillCancelBtn" class="btn-page-secondary" style="flex:1">Скасувати</button>
             </div>
@@ -1047,13 +1068,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=39.2.0"></script>
-    <script src="js/notification.js?v=39.2.0"></script>
-    <script src="js/api.js?v=39.2.0"></script>
-    <script src="js/auth.js?v=39.2.0"></script>
-    <script src="js/components/sidebar.js?v=39.2.0"></script>
+    <script src="js/config.js?v=39.2.1"></script>
+    <script src="js/notification.js?v=39.2.1"></script>
+    <script src="js/api.js?v=39.2.1"></script>
+    <script src="js/auth.js?v=39.2.1"></script>
+    <script src="js/components/sidebar.js?v=39.2.1"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/staff-page.js?v=39.2.0"></script>
+    <script src="js/staff-page.js?v=39.2.1"></script>
     <script>
     // Sidebar toggle for mobile
     (function(){
@@ -1062,6 +1083,6 @@
         if(o&&s){o.addEventListener('click',function(){s.classList.remove('open');o.classList.add('hidden')})}
     })();
     </script>
-    <script src="js/role-panel.js?v=39.2.0"></script>
+    <script src="js/role-panel.js?v=39.2.1"></script>
 </body>
 </html>

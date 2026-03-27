@@ -323,9 +323,11 @@ const DashboardPage = (() => {
 
         const items = data.online.map(m => {
             const initial = (m.name || '?').charAt(0).toUpperCase();
-            return `<div class="team-member">
+            const profileLink = m.username ? ` onclick="openStaffProfile('${m.username}')" style="cursor:pointer" title="Профіль: ${m.username}"` : '';
+            return `<div class="team-member"${profileLink}>
                 <div class="team-avatar">${initial}</div>
                 ${escapeHtml(m.name)}
+                ${m.username ? '<span class="staff-crm-badge has-account" style="margin-left:2px;padding:0 4px;font-size:9px">👤</span>' : ''}
                 <div class="team-online-dot"></div>
             </div>`;
         }).join('');

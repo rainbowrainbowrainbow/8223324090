@@ -305,7 +305,7 @@ function renderToday(data) {
         return `<div class="hr-staff-row" data-staff-id="${item.staff_id}" oncontextmenu="showContext(event, ${item.staff_id})">
             <div class="hr-staff-indicator ${indicator}"></div>
             <div class="hr-staff-info">
-                <div class="hr-staff-name">${escapeHtml(item.staff_name)} <a href="/staff?highlight=${item.staff_id}" class="hr-crosslink" title="Графік" style="font-size:14px;text-decoration:none;opacity:0.5">📅</a></div>
+                <div class="hr-staff-name">${escapeHtml(item.staff_name)} ${typeof staffAccountBadge === 'function' ? staffAccountBadge(item.staff_id, {compact:true}) : ''} <a href="/staff?highlight=${item.staff_id}" class="hr-crosslink" title="Графік" style="font-size:14px;text-decoration:none;opacity:0.5">📅</a></div>
                 <div class="hr-staff-meta">${roleLabel}${meta ? ' · ' + meta : ''}</div>
             </div>
             <button class="hr-clock-btn ${btnClass}" ${disabled}
@@ -652,6 +652,7 @@ async function copyWeek() {
 let teamStaff = [];
 
 async function loadTeam() {
+    if (typeof _loadStaffLinks === 'function') _loadStaffLinks().catch(() => {});
     const activeOnly = document.getElementById('teamActiveOnly')?.checked ?? true;
     const grid = document.getElementById('teamGrid');
     if (grid) grid.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:32px">⏳ Завантаження...</div>';
@@ -715,7 +716,7 @@ function renderTeam(staff) {
         return `<div class="hr-team-card ${s.is_active ? '' : 'inactive'}">
             <div class="hr-team-avatar" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}">${avatar}</div>
             <div class="hr-team-details">
-                <div class="hr-team-name">${escapeHtml(s.name)} ${s.is_active ? '' : '<span style="color:var(--gray-400);">(звільнений)</span>'}</div>
+                <div class="hr-team-name">${escapeHtml(s.name)} ${typeof staffAccountBadge === 'function' ? staffAccountBadge(s.id) : ''} ${s.is_active ? '' : '<span style="color:var(--gray-400);">(звільнений)</span>'}</div>
                 <div class="hr-team-role">${roleLabel}${hireStr ? ' · з ' + hireStr : ''}</div>
                 <div class="hr-team-contact">
                     ${phone ? '📞 ' + escapeHtml(phone) + '<br>' : ''}

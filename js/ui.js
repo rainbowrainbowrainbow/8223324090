@@ -3,6 +3,44 @@
  */
 
 // ==========================================
+// STAFF ACCOUNT BADGE (v39.8.0)
+// ==========================================
+let _staffLinkCache = null;
+async function _loadStaffLinks() {
+    if (_staffLinkCache) return _staffLinkCache;
+    try {
+        const token = localStorage.getItem('pzp_token');
+        if (!token) return [];
+        const res = await fetch('/api/staff/link-status', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) return [];
+        const data = await res.json();
+        _staffLinkCache = Array.isArray(data) ? data : (data.data || []);
+        return _staffLinkCache;
+    } catch { return []; }
+}
+
+function staffAccountBadge(staffId, opts = {}) {
+    if (!_staffLinkCache) return '';
+    const link = _staffLinkCache.find(r => r.id === staffId);
+    if (!link) return '';
+    const { compact = false } = opts;
+    if (link.user_id) {
+        const username = link.username || '';
+        if (compact) {
+            return `<span class="staff-crm-badge has-account" title="Кабінет: ${username}" onclick="event.stopPropagation();openStaffProfile('${username}')">👤</span>`;
+        }
+        return `<span class="staff-crm-badge has-account" onclick="event.stopPropagation();openStaffProfile('${username}')" title="Відкрити профіль">👤 ${username}</span>`;
+    }
+    if (link.is_freelance) return compact ? '' : '<span class="staff-crm-badge freelance">~</span>';
+    return compact ? '' : '<span class="staff-crm-badge no-account" title="Немає кабінету">—</span>';
+}
+
+function openStaffProfile(username) {
+    if (!username) return;
+    window.open('/profile?user=' + encodeURIComponent(username), '_blank');
+}
+
+// ==========================================
 // ДОПОМІЖНІ УТИЛІТИ
 // ==========================================
 

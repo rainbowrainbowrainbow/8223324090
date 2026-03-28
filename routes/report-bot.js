@@ -278,7 +278,7 @@ router.get('/summary', requireBotApiKey, async (req, res) => {
                     COALESCE(SUM(CASE WHEN type='income'  THEN amount ELSE 0 END),0) AS income,
                     COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END),0) AS expense
                 FROM finance_transactions
-                WHERE date >= CURRENT_DATE - INTERVAL '7 days'
+                WHERE date::date >= CURRENT_DATE - INTERVAL '7 days'
                 AND source = 'report_bot' AND object_name IS NOT NULL
                 GROUP BY object_name ORDER BY (
                     SUM(CASE WHEN type='income' THEN amount ELSE 0 END) -

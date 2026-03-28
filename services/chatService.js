@@ -979,7 +979,7 @@ async function getChatActivityStats(userId, days = 30) {
             COALESCE(AVG(helpfulness_score), 0) AS avg_helpfulness,
             COUNT(DISTINCT date) AS active_days
         FROM chat_activity_stats
-        WHERE user_id = $1 AND date >= CURRENT_DATE - INTERVAL '1 day' * $2
+        WHERE user_id = $1 AND date::date >= CURRENT_DATE - INTERVAL '1 day' * $2
     `, [userId, days]);
     return result.rows[0];
 }

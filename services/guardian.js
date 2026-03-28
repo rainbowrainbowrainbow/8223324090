@@ -3268,7 +3268,7 @@ async function getActivityHeatmap(channelId, days) {
         const result = await pool.query(`
             SELECT date, hour, message_count, conflict_count, mute_count
             FROM guardian_activity_heatmap
-            WHERE channel_id = $1 AND date >= CURRENT_DATE - $2::int
+            WHERE channel_id = $1 AND date::date >= CURRENT_DATE - $2::int
             ORDER BY date, hour
         `, [channelId, days]);
 

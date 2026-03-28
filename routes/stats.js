@@ -739,7 +739,7 @@ router.get('/pulse', async (req, res) => {
             SELECT date, ROUND(AVG(score), 1)::float AS avg_score,
                    COUNT(*)::int AS responses
             FROM team_pulse
-            WHERE date >= CURRENT_DATE - ($1 || ' days')::interval
+            WHERE date::date >= CURRENT_DATE - ($1 || ' days')::interval
             GROUP BY date
             ORDER BY date
         `, [days]);
@@ -748,7 +748,7 @@ router.get('/pulse', async (req, res) => {
             SELECT ROUND(AVG(score), 1)::float AS avg_score,
                    COUNT(*)::int AS total_responses
             FROM team_pulse
-            WHERE date >= CURRENT_DATE - ($1 || ' days')::interval
+            WHERE date::date >= CURRENT_DATE - ($1 || ' days')::interval
         `, [days]);
 
         const todayPulse = await pool.query(`

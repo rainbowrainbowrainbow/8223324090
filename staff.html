@@ -826,12 +826,27 @@
                 display: block;
                 font-size: 16px;
                 font-weight: 800;
-                margin-bottom: 8px;
+                margin-bottom: 4px;
             }
+            body::after {
+                content: "Надруковано: " attr(data-print-date);
+                display: block;
+                font-size: 10px;
+                color: #888;
+                margin-top: 8px;
+                text-align: right;
+            }
+            /* v40.3: Better print — hide all non-essential, force white bg */
+            * { color: #000 !important; }
+            .sch-cell[data-status="working"] { background: #e8f5e9 !important; }
+            .sch-cell[data-status="day_off"] { background: #f5f5f5 !important; }
+            .sch-cell[data-status="vacation"] { background: #e3f2fd !important; }
+            .sch-cell[data-status="sick"] { background: #fff3e0 !important; }
+            .dept-row { background: #f0f0f0 !important; page-break-inside: avoid; }
 
             @page {
                 size: landscape;
-                margin: 10mm;
+                margin: 8mm;
             }
         }
     </style>

@@ -1043,3 +1043,95 @@
         text-align: center;
     }
 }
+
+/* ==========================================
+   v40.3: Mobile Timeline for animators (375px-414px)
+   ========================================== */
+@media (max-width: 480px) {
+    /* Timeline: bigger booking blocks for touch */
+    .booking-block {
+        min-height: 36px;
+        padding: 4px 6px;
+        font-size: 10px;
+        border-radius: 6px;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .booking-block .title {
+        font-size: 10px;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .booking-block .time-label {
+        font-size: 9px;
+    }
+    /* Booking block hover — disable on touch */
+    .booking-block:hover {
+        transform: none;
+    }
+    
+    /* Timeline rows — taller for touch */
+    .timeline-row {
+        min-height: 50px;
+    }
+    
+    /* Line header — compact but readable */
+    .line-header .animator-name {
+        font-size: 11px;
+        line-height: 1.2;
+    }
+    
+    /* Add line button — bigger touch target */
+    .btn-add-line-big {
+        min-height: 48px;
+        font-size: 13px;
+    }
+    
+    /* Day section header — compact */
+    .day-section-header {
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+    .day-section-header .day-stats {
+        font-size: 11px;
+    }
+
+    /* Bottom nav padding for iOS safe area */
+    .main-content {
+        padding-bottom: env(safe-area-inset-bottom, 16px);
+    }
+}
+
+@media (max-width: 375px) {
+    /* iPhone SE / small phones */
+    .booking-block {
+        padding: 3px 4px;
+        font-size: 9px;
+        border-left-width: 2px;
+    }
+    .timeline-row {
+        min-height: 44px;
+    }
+    .line-header {
+        width: 45px;
+        min-width: 45px;
+        font-size: 9px;
+    }
+    .time-scale {
+        margin-left: 45px;
+    }
+    .time-scale .time-marker {
+        font-size: 8px;
+    }
+    /* Control panel: stack vertically */
+    .control-panel {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .v32-controls {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+}

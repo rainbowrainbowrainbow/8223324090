@@ -119,7 +119,7 @@ router.get('/overview', async (req, res) => {
                     COUNT(*) FILTER (WHERE status='confirmed')::int AS confirmed,
                     COUNT(*) FILTER (WHERE status='preliminary')::int AS preliminary,
                     COALESCE(ROUND(AVG(price)), 0)::int AS avg_check
-                FROM bookings WHERE date >= $1 AND date <= $2
+                FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date
                 AND linked_to IS NULL AND status != 'cancelled'
             `, [from, to]),
             // Bookings — previous
@@ -128,7 +128,7 @@ router.get('/overview', async (req, res) => {
                     COALESCE(SUM(CASE WHEN status='confirmed' THEN price ELSE 0 END), 0)::int AS revenue,
                     COUNT(*)::int AS total,
                     COALESCE(ROUND(AVG(price)), 0)::int AS avg_check
-                FROM bookings WHERE date >= $1 AND date <= $2
+                FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date
                 AND linked_to IS NULL AND status != 'cancelled'
             `, [prev.from, prev.to]),
             // Finance — current
@@ -138,14 +138,14 @@ router.get('/overview', async (req, res) => {
                     COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0)::int AS expense,
                     COUNT(*) FILTER (WHERE type='income')::int AS income_count,
                     COUNT(*) FILTER (WHERE type='expense')::int AS expense_count
-                FROM finance_transactions WHERE date >= $1 AND date <= $2
+                FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date
             `, [from, to]),
             // Finance — previous
             pool.query(`
                 SELECT
                     COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0)::int AS income,
                     COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0)::int AS expense
-                FROM finance_transactions WHERE date >= $1 AND date <= $2
+                FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date
             `, [prev.from, prev.to]),
             // Customers — current period new
             pool.query(`
@@ -228,7 +228,7 @@ router.get('/charts', async (req, res) => {
             // Daily bookings
             pool.query(`
                 SELECT date, COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
-                FROM bookings WHERE date >= $1 AND date <= $2
+                FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date
                 AND linked_to IS NULL AND status = 'confirmed'
                 GROUP BY date ORDER BY date
             `, [from, to]),
@@ -237,14 +237,14 @@ router.get('/charts', async (req, res) => {
                 SELECT date,
                     COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0)::int AS income,
                     COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0)::int AS expense
-                FROM finance_transactions WHERE date >= $1 AND date <= $2
+                FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date
                 GROUP BY date ORDER BY date
             `, [from, to]),
             // Top programs
             pool.query(`
                 SELECT program_name, category, COUNT(*)::int AS count,
                     COALESCE(SUM(price), 0)::int AS revenue
-                FROM bookings WHERE date >= $1 AND date <= $2
+                FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date
                 AND linked_to IS NULL AND status = 'confirmed'
                 GROUP BY program_name, category
                 ORDER BY revenue DESC LIMIT 10
@@ -255,7 +255,7 @@ router.get('/charts', async (req, res) => {
                     COALESCE(SUM(ft.amount), 0)::int AS total
                 FROM finance_transactions ft
                 JOIN finance_categories fc ON ft.category_id = fc.id
-                WHERE ft.date >= $1 AND ft.date <= $2
+                WHERE ft.date::date >= $1::date AND ft.date::date <= $2::date
                 GROUP BY fc.id, fc.name, fc.icon, fc.color
                 ORDER BY total DESC
             `, [from, to]),
@@ -263,7 +263,7 @@ router.get('/charts', async (req, res) => {
             pool.query(`
                 SELECT EXTRACT(ISODOW FROM date::date)::int AS dow,
                     COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
-                FROM bookings WHERE date >= $1 AND date <= $2
+                FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date
                 AND linked_to IS NULL AND status = 'confirmed'
                 GROUP BY dow ORDER BY dow
             `, [from, to]),
@@ -323,10 +323,10 @@ router.get('/comparison', async (req, res) => {
         if (cached) return res.json(cached);
 
         const metrics = [
-            { key: 'bookingRevenue', label: 'Виручка бронювань', sql: `SELECT COALESCE(SUM(CASE WHEN status='confirmed' THEN price ELSE 0 END), 0)::int AS val FROM bookings WHERE date >= $1 AND date <= $2 AND linked_to IS NULL AND status != 'cancelled'` },
-            { key: 'bookingCount', label: 'Кількість бронювань', sql: `SELECT COUNT(*)::int AS val FROM bookings WHERE date >= $1 AND date <= $2 AND linked_to IS NULL AND status != 'cancelled'` },
-            { key: 'finIncome', label: 'Фінанси: доходи', sql: `SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0)::int AS val FROM finance_transactions WHERE date >= $1 AND date <= $2` },
-            { key: 'finExpense', label: 'Фінанси: витрати', sql: `SELECT COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0)::int AS val FROM finance_transactions WHERE date >= $1 AND date <= $2` },
+            { key: 'bookingRevenue', label: 'Виручка бронювань', sql: `SELECT COALESCE(SUM(CASE WHEN status='confirmed' THEN price ELSE 0 END), 0)::int AS val FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND linked_to IS NULL AND status != 'cancelled'` },
+            { key: 'bookingCount', label: 'Кількість бронювань', sql: `SELECT COUNT(*)::int AS val FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND linked_to IS NULL AND status != 'cancelled'` },
+            { key: 'finIncome', label: 'Фінанси: доходи', sql: `SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0)::int AS val FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date` },
+            { key: 'finExpense', label: 'Фінанси: витрати', sql: `SELECT COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0)::int AS val FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date` },
             { key: 'newCustomers', label: 'Нових клієнтів', sql: `SELECT COUNT(*)::int AS val FROM customers WHERE created_at::date >= $1::date AND created_at::date <= $2::date` },
             { key: 'hrHours', label: 'Робочих годин', sql: `SELECT COALESCE(ROUND(SUM(total_worked_minutes) / 60.0, 1), 0)::numeric AS val FROM hr_time_records WHERE record_date >= $1 AND record_date <= $2` }
         ];
@@ -395,7 +395,7 @@ router.get('/conversion', async (req, res) => {
                 COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.price ELSE 0 END), 0)::int AS revenue,
                 COALESCE(ROUND(AVG(CASE WHEN b.status = 'confirmed' THEN b.price END)), 0)::int AS avg_check
             FROM bookings b
-            WHERE b.date >= $1 AND b.date <= $2
+            WHERE b.date::date >= $1::date AND b.date::date <= $2::date
               AND b.created_by IS NOT NULL
               AND b.linked_to IS NULL
               AND b.status != 'cancelled'
@@ -465,32 +465,32 @@ router.get('/bookings', async (req, res) => {
                        ROUND(COALESCE(AVG(price), 0))::int AS avg_check,
                        COUNT(*) FILTER (WHERE status = 'confirmed')::int AS confirmed,
                        COUNT(*) FILTER (WHERE status = 'preliminary')::int AS preliminary
-                FROM bookings WHERE date >= $1 AND date <= $2
+                FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date
                 AND status != 'cancelled' AND linked_to IS NULL
             `, [from, to]),
             pool.query(`
                 SELECT program_name AS name, program_code AS code, category,
                        COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
-                FROM bookings WHERE date >= $1 AND date <= $2
+                FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date
                 AND status != 'cancelled' AND linked_to IS NULL
                 GROUP BY program_name, program_code, category ORDER BY revenue DESC LIMIT 15
             `, [from, to]),
             pool.query(`
                 SELECT date, COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
-                FROM bookings WHERE date >= $1 AND date <= $2
+                FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date
                 AND status != 'cancelled' AND linked_to IS NULL
                 GROUP BY date ORDER BY date
             `, [from, to]),
             pool.query(`
                 SELECT category, COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
-                FROM bookings WHERE date >= $1 AND date <= $2
+                FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date
                 AND status != 'cancelled' AND linked_to IS NULL AND category IS NOT NULL
                 GROUP BY category ORDER BY revenue DESC
             `, [from, to]),
             pool.query(`
                 SELECT EXTRACT(ISODOW FROM date::date)::int AS dow, COUNT(*)::int AS count,
                        COALESCE(SUM(price), 0)::int AS revenue
-                FROM bookings WHERE date >= $1 AND date <= $2
+                FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date
                 AND status != 'cancelled' AND linked_to IS NULL
                 GROUP BY EXTRACT(ISODOW FROM date::date) ORDER BY dow
             `, [from, to])
@@ -532,21 +532,21 @@ router.get('/revenue', async (req, res) => {
             pool.query(`
                 SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0)::int AS total_income,
                        COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0)::int AS total_expense
-                FROM finance_transactions WHERE date >= $1 AND date <= $2
+                FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date
             `, [from, to]),
             pool.query(`
                 SELECT fc.name AS category, fc.type, fc.icon, fc.color,
                        COUNT(*)::int AS count, COALESCE(SUM(ft.amount), 0)::int AS total
                 FROM finance_transactions ft
                 LEFT JOIN finance_categories fc ON ft.category_id = fc.id
-                WHERE ft.date >= $1 AND ft.date <= $2
+                WHERE ft.date::date >= $1::date AND ft.date::date <= $2::date
                 GROUP BY fc.id, fc.name, fc.type, fc.icon, fc.color ORDER BY total DESC
             `, [from, to]),
             pool.query(`
                 SELECT TO_CHAR(date::date, 'YYYY-MM') AS month,
                        COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE 0 END), 0)::int AS income,
                        COALESCE(SUM(CASE WHEN type='expense' THEN amount ELSE 0 END), 0)::int AS expense
-                FROM finance_transactions WHERE date >= $1 AND date <= $2
+                FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date
                 GROUP BY TO_CHAR(date::date, 'YYYY-MM') ORDER BY month
             `, [from, to])
         ]);

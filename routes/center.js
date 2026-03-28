@@ -81,16 +81,16 @@ router.get('/overview', async (req, res) => {
         ] = await Promise.all([
             // Revenue
             pool.query(`SELECT COALESCE(SUM(price), 0) AS revenue FROM bookings WHERE date = $1 AND status != 'cancelled'`, [today]),
-            pool.query(`SELECT COALESCE(SUM(price), 0) AS revenue FROM bookings WHERE date >= $1 AND date <= $2 AND status != 'cancelled'`, [weekStart, today]),
-            pool.query(`SELECT COALESCE(SUM(price), 0) AS revenue FROM bookings WHERE date >= $1 AND date <= $2 AND status != 'cancelled'`, [monthStart, today]),
+            pool.query(`SELECT COALESCE(SUM(price), 0) AS revenue FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled'`, [weekStart, today]),
+            pool.query(`SELECT COALESCE(SUM(price), 0) AS revenue FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled'`, [monthStart, today]),
             // Bookings count
             pool.query(`SELECT COUNT(*) AS cnt FROM bookings WHERE date = $1 AND status != 'cancelled'`, [today]),
-            pool.query(`SELECT COUNT(*) AS cnt FROM bookings WHERE date >= $1 AND date <= $2 AND status != 'cancelled'`, [weekStart, today]),
-            pool.query(`SELECT COUNT(*) AS cnt FROM bookings WHERE date >= $1 AND date <= $2 AND status != 'cancelled'`, [monthStart, today]),
+            pool.query(`SELECT COUNT(*) AS cnt FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled'`, [weekStart, today]),
+            pool.query(`SELECT COUNT(*) AS cnt FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled'`, [monthStart, today]),
             // Top program
             pool.query(`SELECT program_name, COUNT(*) AS cnt FROM bookings WHERE date = $1 AND status != 'cancelled' GROUP BY program_name ORDER BY cnt DESC LIMIT 1`, [today]),
-            pool.query(`SELECT program_name, COUNT(*) AS cnt FROM bookings WHERE date >= $1 AND date <= $2 AND status != 'cancelled' GROUP BY program_name ORDER BY cnt DESC LIMIT 1`, [weekStart, today]),
-            pool.query(`SELECT program_name, COUNT(*) AS cnt FROM bookings WHERE date >= $1 AND date <= $2 AND status != 'cancelled' GROUP BY program_name ORDER BY cnt DESC LIMIT 1`, [monthStart, today]),
+            pool.query(`SELECT program_name, COUNT(*) AS cnt FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled' GROUP BY program_name ORDER BY cnt DESC LIMIT 1`, [weekStart, today]),
+            pool.query(`SELECT program_name, COUNT(*) AS cnt FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled' GROUP BY program_name ORDER BY cnt DESC LIMIT 1`, [monthStart, today]),
             // Workers
             pool.query('SELECT id, name, display_name, type, purpose, is_active, updated_at FROM worker_roles ORDER BY created_at').catch(err => { log.warn('Worker roles fetch failed', err.message); return { rows: [] }; }),
             // Tasks stats
@@ -585,7 +585,7 @@ router.get('/briefing', async (req, res) => {
             pool.query(`
                 SELECT date, time, program_name, category, price, status, room, kids_count, customer_id
                 FROM bookings
-                WHERE date >= $1 AND date <= $2 AND status != 'cancelled' AND linked_to IS NULL
+                WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled' AND linked_to IS NULL
                 ORDER BY date, time
             `, [from, to]),
             pool.query(`
@@ -604,7 +604,7 @@ router.get('/briefing', async (req, res) => {
                 SELECT ss.date, s.name, ss.shift_start, ss.shift_end, ss.status
                 FROM staff_schedule ss
                 JOIN staff s ON ss.staff_id = s.id
-                WHERE ss.date >= $1 AND ss.date <= $2 AND s.department = 'animators'
+                WHERE ss.date::date >= $1::date AND ss.date::date <= $2::date AND s.department = 'animators'
                 ORDER BY ss.date, ss.shift_start
             `, [from, to]).catch(() => ({ rows: [] }))
         ]);
@@ -665,7 +665,7 @@ router.get('/reconciliation', async (req, res) => {
                     COUNT(*) FILTER (WHERE status = 'preliminary')::int AS preliminary,
                     COALESCE(SUM(CASE WHEN status = 'preliminary' THEN price ELSE 0 END), 0)::int AS preliminary_revenue
                 FROM bookings
-                WHERE date >= $1 AND date <= $2 AND linked_to IS NULL AND status != 'cancelled'
+                WHERE date::date >= $1::date AND date::date <= $2::date AND linked_to IS NULL AND status != 'cancelled'
             `, [from, to]),
             pool.query(`
                 SELECT
@@ -674,7 +674,7 @@ router.get('/reconciliation', async (req, res) => {
                     COUNT(*) FILTER (WHERE type = 'income')::int AS income_count,
                     COUNT(*) FILTER (WHERE type = 'expense')::int AS expense_count
                 FROM finance_transactions
-                WHERE date >= $1 AND date <= $2
+                WHERE date::date >= $1::date AND date::date <= $2::date
             `, [from, to]).catch(() => ({ rows: [{ total_income: 0, total_expense: 0, income_count: 0, expense_count: 0 }] }))
         ]);
 
@@ -716,7 +716,7 @@ router.get('/heatmap', async (req, res) => {
                 COUNT(*)::int AS count,
                 COALESCE(SUM(price), 0)::int AS revenue
             FROM bookings
-            WHERE date >= $1 AND date <= $2 AND status != 'cancelled' AND linked_to IS NULL
+            WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled' AND linked_to IS NULL
             GROUP BY date
             ORDER BY date
         `, [from, to]);
@@ -750,7 +750,7 @@ router.get('/program-performance', async (req, res) => {
                 COALESCE(ROUND(AVG(CASE WHEN status = 'confirmed' THEN price END)), 0)::int AS avg_price,
                 COALESCE(ROUND(AVG(kids_count)), 0)::int AS avg_kids
             FROM bookings
-            WHERE date >= $1 AND date <= $2 AND linked_to IS NULL AND status != 'cancelled'
+            WHERE date::date >= $1::date AND date::date <= $2::date AND linked_to IS NULL AND status != 'cancelled'
             GROUP BY program_id, program_name, category
             ORDER BY revenue DESC
         `, [from, to]);
@@ -795,7 +795,7 @@ router.get('/cross-sell', async (req, res) => {
         const addons = await pool.query(`
             SELECT program_name, COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
             FROM bookings
-            WHERE date >= $1 AND date <= $2 AND linked_to IS NOT NULL AND status != 'cancelled'
+            WHERE date::date >= $1::date AND date::date <= $2::date AND linked_to IS NOT NULL AND status != 'cancelled'
             GROUP BY program_name
             ORDER BY count DESC
             LIMIT 10

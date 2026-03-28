@@ -52,7 +52,7 @@
 
 .dashboard-btn.primary {
     background: var(--primary, #C9A84C);
-    color: #1a202c;
+    color: var(--text, #1a202c);
 }
 
 /* Widget grid */

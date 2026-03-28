@@ -3048,7 +3048,7 @@
         // Sticker content type
         if (msg.contentType === 'sticker') {
             if (msg.content && msg.content.startsWith('http')) {
-                return '<div class="chat-sticker-message"><img src="' + _esc(msg.content) + '" alt="sticker" class="chat-sticker-img"></div>';
+                return '<div class="chat-sticker-message"><img loading="lazy" src="-img"></div>';
             }
             return '<div class="chat-sticker-message"><span class="chat-sticker-emoji">' + _esc(msg.content) + '</span></div>';
         }

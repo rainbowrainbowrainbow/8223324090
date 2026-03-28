@@ -43,7 +43,7 @@ router.get('/occupancy', async (req, res) => {
             SELECT line_id, COUNT(*)::int AS bookings_count,
                    COALESCE(SUM(duration), 0)::int AS total_minutes
             FROM bookings
-            WHERE date >= $1 AND date <= $2
+            WHERE date::date >= $1::date AND date::date <= $2::date
               AND status != 'cancelled' AND linked_to IS NULL
             GROUP BY line_id
         `, [from, to]);

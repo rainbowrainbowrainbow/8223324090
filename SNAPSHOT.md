@@ -3,28 +3,30 @@
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
 
 ## Де ми
-Версія **v40.0.0**. package.json: `39.10.0`. Бранч `claude/continue-event-genix-crm-k7nfY`.
+Версія **v40.4.0**. package.json: `40.4.0`. Бранч `claude/continue-event-genix-crm-k7nfY`.
 
 ## Актуальний стан
 
 ### Версія та бранч
-- **package.json**: `"version": "39.10.0"`
+- **package.json**: `"version": "40.4.0"`
 - **Бранч**: `claude/continue-event-genix-crm-k7nfY`
 - **origin/main**: v28.2.0 (далеко позаду — наш бранч має все)
-- **Зміни v39.1.0-v39.7.0** (сесія 27.03.2026):
-  - v39.1.0: Графік — реальні 65 співробітників + зв'язка акаунтів CRM
-  - v39.2.0: Графік підгрупи + іконки + CSV експорт + друк
-  - v39.2.1: Графік UX polish — unset статус, trampoline chip, час 10-20
-  - v39.3.0-v39.4.0: Каталоги повний редизайн (5 етапів): картки, inline edit, Image2Image, drag-n-drop, public links, автоматизації, bulk gen, version history
-  - v39.4.1: Bugfixes — sidebar navigation, team online, catalog clicks
-  - v39.5.0: System-wide: confirm→confirmModal (15), -webkit-backdrop-filter (45), error handling (15 fixes), task edit modal, warehouse hash
-  - v39.5.1: Image generation error handling + debug log + smart AI prompts
-  - v39.6.0: System consistency — 10 HTML sidebar fixes, profileModal на 17 pages, skip-links, headers, ?v= tags
-  - v39.7.0: 5 features — prompt→modals (20), streaks by profession, WS alerts, catalog AI covers, Match-3 fix
-  - v40.0.0: Interactive alerts v4 (grouped, inline actions, dismiss), staff CRM badges on all lists
-
+- **Тести**: 387 (346 api.test.js + 41 v40-features.test.js), 0 fail
+- **Сесії 27-28.03.2026** (v39.7→v40.4):
+  - v39.7.0: prompt→modals (20), streaks, WS alerts, AI covers, Match-3 fix
+  - v39.8.0: Interactive alerts v4, staff CRM badges, HR/schedule sync
+  - v39.9.0: Security audit (19 routes, 107 err.message, pool leak, XSS, races)
+  - v39.10.0: PDF passwords, safeFetch, mobile fix, dashboard 7 widgets
+  - v39.11.0: Staff cleanup, add staff button, HR permissions
+  - v40.0.0: «Повний контроль» — partial updates, designer fix, center empty states
+  - v40.1.0: Pinata date cast, full button audit (400+)
+  - v40.2.0: CSS audit (dark mode, iOS zoom, touch targets, lazy loading)
+  - v40.3.0: Certs iPhone 11, search+staff, WS toasts, escapeHtml global
+  - v40.4.0: Mobile timeline, 41 tests, print CSS, 17 date casts
 ### Що залишилось доробити:
-1. Bulk create: PDF-друк паролів
+1. PDF-друк паролів ✅ (v39.10)
+2. Мобільний таймлайн ✅ (v40.4)
+3. Тести v40 ✅ (41 новий)
 
 ### Міграції (останні)
 - 132: staff_accounts_linking (реальні співробітники)

@@ -2096,3 +2096,15 @@ body.dark-mode .automation-rule.rule-inactive { opacity: 0.5; border-left-color:
 /* v38.3.0: Exceptions Inbox widget dark mode */
 body.dark-mode .exc-summary { border-bottom-color: rgba(255,255,255,0.08); }
 body.dark-mode .exc-cat-badge { background: rgba(255,255,255,0.08); color: #CBD5E1; }
+
+/* v40.1: Dark mode for alerts v4 + staff badges (missing overrides) */
+body.dark-mode .ap-mark-all { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.6); border-color: rgba(255,255,255,0.1); }
+body.dark-mode .ap-mark-all:hover { background: var(--primary); color: #fff; }
+body.dark-mode .ap-group-count { background: rgba(255,255,255,0.1); }
+body.dark-mode .ap-act-secondary { background: rgba(99,102,241,0.15); }
+body.dark-mode .ap-act-ghost { color: rgba(255,255,255,0.4); }
+body.dark-mode .ap-act-ghost:hover { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.08); }
+body.dark-mode .ap-task-input { background: rgba(255,255,255,0.06); color: #e2e8f0; border-color: rgba(99,102,241,0.3); }
+body.dark-mode .task-assignee-badge { background: rgba(34,197,94,0.15); color: #4ade80; border-color: rgba(34,197,94,0.25); }
+body.dark-mode .task-no-assignee { color: rgba(255,255,255,0.3); }
+body.dark-mode .prompt-input { background: rgba(255,255,255,0.06) !important; color: #e2e8f0 !important; border-color: rgba(139,92,246,0.4) !important; }

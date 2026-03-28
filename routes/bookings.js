@@ -702,28 +702,29 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
 
 // Update booking — requires edit_booking action permission
 router.put('/:id', requireAction('edit_booking'), async (req, res) => {
+    const { id } = req.params;
+    const b = req.body;
+    const clientUpdatedAt = b.updatedAt || null;
+    if (!validateId(id)) { return res.status(400).json({ error: 'Invalid booking ID' }); }
+
+    // v40: Merge missing fields from existing booking (before pool.connect to avoid leaks)
+    const existing = await pool.query('SELECT * FROM bookings WHERE id = $1', [id]);
+    if (!existing.rows.length) { return res.status(404).json({ error: 'Booking not found' }); }
+    const old = existing.rows[0];
+    if (!b.date) b.date = old.date;
+    if (!b.time) b.time = old.time;
+    if (b.lineId === undefined) b.lineId = old.line_id;
+    if (b.duration === undefined) b.duration = old.duration;
+    if (b.room === undefined) b.room = old.room;
+    if (b.label === undefined) b.label = old.label;
+    if (b.status === undefined) b.status = old.status;
+    if (b.price === undefined) b.price = old.price;
+
+    if (!validateDate(b.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
+    if (!validateTime(b.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
+
     const client = await pool.connect();
     try {
-        const { id } = req.params;
-        const b = req.body;
-        const clientUpdatedAt = b.updatedAt || null; // optimistic locking
-        if (!validateId(id)) { return res.status(400).json({ error: 'Invalid booking ID' }); }
-
-        // v40: Support partial updates — merge missing fields from existing booking
-        const existing = await client.query('SELECT * FROM bookings WHERE id = $1', [id]);
-        if (!existing.rows.length) { return res.status(404).json({ error: 'Booking not found' }); }
-        const old = existing.rows[0];
-        if (!b.date) b.date = old.date;
-        if (!b.time) b.time = old.time;
-        if (b.lineId === undefined) b.lineId = old.line_id;
-        if (b.duration === undefined) b.duration = old.duration;
-        if (b.room === undefined) b.room = old.room;
-        if (b.label === undefined) b.label = old.label;
-        if (b.status === undefined) b.status = old.status;
-        if (b.price === undefined) b.price = old.price;
-
-        if (!validateDate(b.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
-        if (!validateTime(b.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
 
         // v19.14: Input length validation
         if (b.notes && b.notes.length > 2000) { return res.status(400).json({ error: 'Нотатки: макс. 2000 символів' }); }

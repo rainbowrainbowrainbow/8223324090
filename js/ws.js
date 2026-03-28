@@ -344,6 +344,14 @@ var ParkWS = (function () {
         window.dispatchEvent(new CustomEvent('ws:booking', {
             detail: { eventType: message.type, payload: message.payload }
         }));
+
+        // v40.2: Toast notification for booking events (non-current-page)
+        if (typeof showNotification === 'function' && window.location.pathname !== '/') {
+            var p = message.payload || {};
+            var label = p.label || p.programName || '';
+            if (message.type === 'booking:created') showNotification('📅 Нове бронювання: ' + label);
+            else if (message.type === 'booking:deleted') showNotification('🗑️ Скасовано: ' + label, 'warning');
+        }
     }
 
     /**

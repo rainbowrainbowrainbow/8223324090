@@ -15,8 +15,8 @@ router.get('/', async (req, res) => {
         const limit = Math.min(parseInt(req.query.limit) || 20, 50);
         const pattern = `%${q}%`;
 
-        // Search across bookings, customers, tasks, products in parallel
-        const [bookings, customers, tasks, products] = await Promise.all([
+        // Search across bookings, customers, tasks, products, staff in parallel
+        const [bookings, customers, tasks, products, staff] = await Promise.all([
             // Bookings: search by ID, label, program_name, group_name, notes
             pool.query(`
                 SELECT id, date, time, label, program_name, status, line_id, group_name, price
@@ -53,6 +53,16 @@ router.get('/', async (req, res) => {
                 WHERE (name ILIKE $1 OR label ILIKE $1 OR code ILIKE $1 OR description ILIKE $1)
                 AND is_active = true
                 ORDER BY sort_order ASC, name ASC
+                LIMIT $2
+            `, [pattern, limit]),
+
+            // v40.2: Staff search by name, phone, position
+            pool.query(`
+                SELECT id, name, department, position, phone, role_type
+                FROM staff
+                WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL)
+                AND (name ILIKE $1 OR phone ILIKE $1 OR position ILIKE $1)
+                ORDER BY name
                 LIMIT $2
             `, [pattern, limit])
         ]);
@@ -91,8 +101,15 @@ router.get('/', async (req, res) => {
                     meta: { code: r.code, category: r.category }
                 }))
             },
+            staff: staff.rows.map(r => ({
+                type: 'staff',
+                id: r.id,
+                title: r.name,
+                subtitle: [r.position, r.department, r.phone].filter(Boolean).join(' | '),
+                meta: { department: r.department, roleType: r.role_type }
+            })),
             query: q,
-            total: bookings.rows.length + customers.rows.length + tasks.rows.length + products.rows.length
+            total: bookings.rows.length + customers.rows.length + tasks.rows.length + products.rows.length + staff.rows.length
         });
     } catch (err) {
         log.error('Search error:', err.message);

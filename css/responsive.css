@@ -1017,3 +1017,29 @@
         min-height: 48px;
     }
 }
+
+/* v40.2: iPhone 11 (414px) certificate panel */
+@media (max-width: 430px) {
+    .certificates-panel {
+        width: 100vw;
+        right: 0;
+        border-radius: 0;
+    }
+    .cert-card {
+        padding: 12px;
+    }
+    .cert-season-btn {
+        min-width: 70px;
+        padding: 10px 8px;
+        font-size: 13px;
+    }
+    .cert-detail-actions {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .cert-detail-actions .btn-sm {
+        flex: 1;
+        min-width: 120px;
+        text-align: center;
+    }
+}

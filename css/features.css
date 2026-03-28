@@ -2721,3 +2721,30 @@ input:checked + .toggle-slider-sm::after { transform: translateX(12px); }
 .dark-mode .catalog-mini-item { border-bottom-color: rgba(255,255,255,0.06); }
 .dark-mode .catalog-item-card { background: var(--dark-card, #1E1E2E); border-color: rgba(255,255,255,0.08); }
 .dark-mode .catalog-item-img { background: rgba(255,255,255,0.04); }
+
+/* v40.2: iPhone 11 certificate fixes */
+#certificateForm .form-group input,
+#certificateForm .form-group select,
+#certificateForm .form-group textarea,
+#batchCertForm .form-group input,
+#batchCertForm .form-group select { 
+    font-size: var(--font-input, 16px); 
+    min-height: 44px;
+    border-radius: 10px;
+    padding: 10px 14px;
+    box-sizing: border-box;
+}
+.cert-detail-actions .btn-sm {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.cert-season-btn {
+    min-height: 44px;
+}
+.cert-filter-select,
+.cert-filter-input {
+    font-size: 16px !important;
+    min-height: 44px;
+}

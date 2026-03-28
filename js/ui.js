@@ -3,6 +3,16 @@
  */
 
 // ==========================================
+// GLOBAL UTILITIES (v40.2 — single source of truth)
+// ==========================================
+if (typeof escapeHtml !== 'function') {
+    window.escapeHtml = function(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    };
+}
+
+// ==========================================
 // STAFF ACCOUNT BADGE (v39.8.0)
 // ==========================================
 let _staffLinkCache = null;

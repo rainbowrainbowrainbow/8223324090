@@ -481,7 +481,7 @@
                 flex-direction: row; align-items: center; gap: 6px;
                 padding: 8px; flex-wrap: nowrap;
             }
-            .design-filters input[type="search"] { min-width: 0; flex: 1; font-size: 13px; padding: 8px 10px; }
+            .design-filters input[type="search"] { min-width: 0; flex: 1; font-size: 16px; padding: 8px 10px; }
             .design-filters select { width: auto; min-width: 100px; flex-shrink: 1; font-size: 13px; padding: 8px 6px; }
 
             /* Drop zone: compact bar */
@@ -1125,7 +1125,7 @@
             <textarea id="imgGenPrompt" placeholder="Опишіть зображення..." class="img-picker-input" rows="3" style="resize:vertical;font-size:16px" autocomplete="off"></textarea>
             <button type="button" id="imgGenBtn" class="img-picker-btn-primary" style="width:100%;margin-top:8px" onclick="generatePageImage()">🎨 Згенерувати</button>
             <div id="imgGenStatus" style="display:none;margin-top:8px;font-size:13px;color:var(--primary,#a855f7)"></div>
-            <img id="imgGenPreview" style="display:none;margin-top:8px;max-width:100%;border-radius:10px" alt="Preview">
+            <img id="imgGenPreview" loading="lazy" style="display:none;margin-top:8px;max-width:100%;border-radius:10px" alt="Preview">
             <div id="imgGenActions" style="display:none;margin-top:6px;gap:6px">
               <button type="button" class="img-picker-btn-primary" onclick="useGeneratedImage()">✅ Використати</button>
               <button type="button" class="img-picker-btn-secondary" onclick="generatePageImage()">🔄 Перегенерувати</button>
@@ -1144,14 +1144,14 @@
               <input type="text" id="refUrlInput" placeholder="або вставте URL зображення..." class="img-picker-input" style="flex:1;font-size:16px" autocomplete="off">
               <button type="button" class="img-picker-btn-secondary" onclick="loadRefFromUrl()">OK</button>
             </div>
-            <img id="refPreview" style="display:none;margin-top:8px;max-width:100%;max-height:200px;border-radius:10px;object-fit:contain" alt="Reference">
+            <img id="refPreview" loading="lazy" style="display:none;margin-top:8px;max-width:100%;max-height:200px;border-radius:10px;object-fit:contain" alt="Reference">
           </div>
           <div class="img-picker-section">
             <div class="img-picker-section-title">ПРОМПТ ТРАНСФОРМАЦІЇ</div>
             <textarea id="refPrompt" placeholder="Збережи стиль, зміни фон на білий..." class="img-picker-input" rows="2" style="resize:vertical;font-size:16px" autocomplete="off"></textarea>
             <button type="button" id="refGenBtn" class="img-picker-btn-primary" style="width:100%;margin-top:8px" onclick="generateFromRef()">📸 Згенерувати з референсу</button>
             <div id="refGenStatus" style="display:none;margin-top:8px;font-size:13px;color:var(--primary,#a855f7)"></div>
-            <img id="refGenPreview" style="display:none;margin-top:8px;max-width:100%;border-radius:10px" alt="Result">
+            <img id="refGenPreview" loading="lazy" style="display:none;margin-top:8px;max-width:100%;border-radius:10px" alt="Result">
             <div id="refGenActions" style="display:none;margin-top:6px;gap:6px">
               <button type="button" class="img-picker-btn-primary" onclick="useRefGeneratedImage()">✅ Використати</button>
               <button type="button" class="img-picker-btn-secondary" onclick="generateFromRef()">🔄 Перегенерувати</button>

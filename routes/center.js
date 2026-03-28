@@ -98,7 +98,7 @@ router.get('/overview', async (req, res) => {
                 COUNT(*) FILTER (WHERE status = 'done') AS done,
                 COUNT(*) FILTER (WHERE status != 'done') AS open,
                 COUNT(*) AS total
-                FROM tasks WHERE date >= $1`, [monthStart])
+                FROM tasks WHERE date::date >= $1::date`, [monthStart])
         ]);
 
         // Avg check
@@ -783,7 +783,7 @@ router.get('/cross-sell', async (req, res) => {
                 AND b1.customer_id = b2.customer_id
                 AND b1.id < b2.id
                 AND b1.linked_to IS NULL AND b2.linked_to IS NULL
-            WHERE b1.date >= $1 AND b1.date <= $2
+            WHERE b1.date::date >= $1::date AND b1.date::date <= $2::date
                 AND b1.status != 'cancelled' AND b2.status != 'cancelled'
             GROUP BY b1.program_name, b2.program_name
             HAVING COUNT(*) >= 2

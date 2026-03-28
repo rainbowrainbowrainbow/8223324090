@@ -1385,7 +1385,7 @@ body.dark-mode .grad-pop-bar-container { background: var(--gray-200); }
 .catalog-pkg-title {
     font-size: 26px;
     font-weight: 900;
-    color: #1a1a1a;
+    color: var(--text, #1a1a1a);
     line-height: 1.1;
     margin-bottom: 16px;
     text-transform: uppercase;
@@ -1411,7 +1411,7 @@ body.dark-mode .grad-pop-bar-container { background: var(--gray-200); }
 .catalog-info-value {
     font-size: 26px;
     font-weight: 900;
-    color: #1a1a1a;
+    color: var(--text, #1a1a1a);
 }
 .catalog-info-unit {
     font-size: 10px;
@@ -1443,7 +1443,7 @@ body.dark-mode .grad-pop-bar-container { background: var(--gray-200); }
 .catalog-services-list li {
     font-size: 13px;
     font-weight: 700;
-    color: #1a1a1a;
+    color: var(--text, #1a1a1a);
     padding: 5px 0;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -1474,7 +1474,7 @@ body.dark-mode .grad-pop-bar-container { background: var(--gray-200); }
 .catalog-desc-item:last-child { margin-bottom: 0; }
 .catalog-desc-item strong {
     font-weight: 900;
-    color: #1a1a1a;
+    color: var(--text, #1a1a1a);
     text-transform: uppercase;
     font-size: 12px;
 }
@@ -1495,7 +1495,7 @@ body.dark-mode .grad-pop-bar-container { background: var(--gray-200); }
     border-radius: 14px;
     border: none;
     background: linear-gradient(135deg, #C9A84C, #D4AF37);
-    color: #1a1a1a;
+    color: var(--text, #1a1a1a);
     font-size: 16px;
     font-weight: 800;
     cursor: pointer;

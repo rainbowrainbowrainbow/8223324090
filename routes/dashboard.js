@@ -103,7 +103,7 @@ router.get('/widgets/:type', async (req, res) => {
                     SELECT ss.date, ss.status, ss.shift_start as start_time, ss.shift_end as end_time, ss.note
                     FROM staff_schedule ss
                     JOIN employee_profiles ep ON ep.staff_id = ss.staff_id
-                    WHERE ep.user_id = $1 AND ss.date >= $2
+                    WHERE ep.user_id = $1 AND ss.date::date >= $2::date
                     ORDER BY ss.date ASC
                     LIMIT 7
                 `, [req.user.id, today]);
@@ -448,7 +448,7 @@ router.get('/widgets/:type', async (req, res) => {
                            COUNT(*) FILTER (WHERE status = 'confirmed')::int AS confirmed,
                            COUNT(*) FILTER (WHERE status = 'preliminary')::int AS pending,
                            COALESCE(SUM(CASE WHEN status = 'confirmed' THEN price ELSE 0 END), 0)::int AS revenue
-                    FROM bookings WHERE date >= $1 AND date <= $2 AND linked_to IS NULL AND status != 'cancelled'
+                    FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND linked_to IS NULL AND status != 'cancelled'
                     GROUP BY date ORDER BY date
                 `, [today, to]);
                 data = { days: result.rows, from: today, to };
@@ -514,10 +514,10 @@ router.get('/widgets/:type', async (req, res) => {
                 const ws = weekStart.toISOString().split('T')[0];
                 const monthStart = today.slice(0, 7) + '-01';
                 const [weekRev, monthRev, weekExp, monthExp, staffCost] = await Promise.all([
-                    pool.query(`SELECT COALESCE(SUM(price),0)::int AS rev FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL`, [ws, today]),
-                    pool.query(`SELECT COALESCE(SUM(price),0)::int AS rev FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND linked_to IS NULL`, [monthStart, today]),
-                    pool.query(`SELECT COALESCE(SUM(amount),0)::int AS exp FROM finance_transactions WHERE date >= $1 AND date <= $2 AND type = 'expense'`, [ws, today]),
-                    pool.query(`SELECT COALESCE(SUM(amount),0)::int AS exp FROM finance_transactions WHERE date >= $1 AND date <= $2 AND type = 'expense'`, [monthStart, today]),
+                    pool.query(`SELECT COALESCE(SUM(price),0)::int AS rev FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND status = 'confirmed' AND linked_to IS NULL`, [ws, today]),
+                    pool.query(`SELECT COALESCE(SUM(price),0)::int AS rev FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND status = 'confirmed' AND linked_to IS NULL`, [monthStart, today]),
+                    pool.query(`SELECT COALESCE(SUM(amount),0)::int AS exp FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date AND type = 'expense'`, [ws, today]),
+                    pool.query(`SELECT COALESCE(SUM(amount),0)::int AS exp FROM finance_transactions WHERE date::date >= $1::date AND date::date <= $2::date AND type = 'expense'`, [monthStart, today]),
                     pool.query(`SELECT COUNT(*)::int AS staff, COALESCE(SUM(hourly_rate),0)::int AS daily_cost FROM staff WHERE is_active = true AND (is_freelance = false OR is_freelance IS NULL)`).catch(() => ({ rows: [{ staff: 0, daily_cost: 0 }] }))
                 ]);
                 data = {

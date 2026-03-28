@@ -2302,7 +2302,7 @@ body.dark-mode .room-load-close:hover {
 .cmd-btn-save-note {
     padding: 5px 12px;
     background: #63b3ed;
-    color: #1a202c;
+    color: var(--text, #1a202c);
     border: none;
     border-radius: 6px;
     font-weight: 600;

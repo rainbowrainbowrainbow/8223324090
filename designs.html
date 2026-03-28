@@ -285,7 +285,7 @@
         }
         .design-edit-overlay.visible { display: flex; }
         .design-edit-modal {
-            background: #fff; border-radius: 16px; padding: 24px;
+            background: var(--white); border-radius: 16px; padding: 24px;
             width: 90%; max-width: 480px; max-height: 90vh; overflow-y: auto;
             box-shadow: 0 4px 40px rgba(0,0,0,0.2);
         }
@@ -300,7 +300,7 @@
         .design-edit-modal textarea {
             width: 100%; padding: 10px 14px; border: 1.5px solid var(--gray-200);
             border-radius: 8px; font-family: inherit; font-size: 14px;
-            background: #fff; color: var(--gray-800); min-height: 44px;
+            background: var(--white); color: var(--gray-800); min-height: 44px;
             box-sizing: border-box;
         }
         .design-edit-modal textarea { min-height: 70px; resize: vertical; }
@@ -326,7 +326,7 @@
         .tag-input-container {
             display: flex; flex-wrap: wrap; gap: 4px; padding: 8px;
             border: 1.5px solid var(--gray-200); border-radius: 8px;
-            background: #fff; min-height: 44px; align-items: center; cursor: text;
+            background: var(--white); min-height: 44px; align-items: center; cursor: text;
         }
         .tag-input-container:focus-within {
             border-color: var(--primary); box-shadow: 0 0 0 3px rgba(16,185,129,0.1);
@@ -361,7 +361,7 @@
             .header, .design-tabs, .design-filters, .drop-zone,
             .tag-chips, .price-actions, .lightbox, .design-edit-overlay,
             .user-panel, .notification, .skip-link, .page-login-overlay { display: none !important; }
-            body { background: #fff !important; }
+            body { background: var(--white) !important; }
             .page-container { padding: 0 !important; max-width: none !important; }
             .price-table { page-break-inside: avoid; }
             .price-section { page-break-inside: avoid; }
@@ -827,7 +827,7 @@
         /* Light mode overrides for modals */
         body:not(.dark-mode) .img-picker-modal,
         body:not([data-theme="dark"]) .img-picker-modal {
-            background: #fff; border-color: rgba(0,0,0,0.1);
+            background: var(--white); border-color: rgba(0,0,0,0.1);
         }
         body:not(.dark-mode) .img-picker-header h3,
         body:not([data-theme="dark"]) .img-picker-header h3 { color: #1a1a1a; }
@@ -843,13 +843,13 @@
         body:not([data-theme="dark"]) .img-picker-modal label { color: #444 !important; }
         body:not(.dark-mode) .img-picker-modal input,
         body:not(.dark-mode) .img-picker-modal textarea,
-        body:not(.dark-mode) .img-picker-modal select { color: #1a1a2e !important; background: #fff !important; }
+        body:not(.dark-mode) .img-picker-modal select { color: #1a1a2e !important; background: var(--white) !important; }
         body:not(.dark-mode) .img-picker-modal .img-picker-section-title { color: #333 !important; }
 
         /* Light mode catalog cards */
         body:not(.dark-mode) .catalog-card,
         body:not([data-theme="dark"]) .catalog-card {
-            background: #fff; border-color: #e5e5e5;
+            background: var(--white); border-color: #e5e5e5;
         }
         body:not(.dark-mode) .catalog-card-title,
         body:not([data-theme="dark"]) .catalog-card-title { color: #1a1a1a; }
@@ -859,7 +859,7 @@
         /* Light mode catalog page preview */
         body:not(.dark-mode) .cat-page-card,
         body:not([data-theme="dark"]) .cat-page-card {
-            background: #fff; border-color: #e5e5e5;
+            background: var(--white); border-color: #e5e5e5;
         }
         body:not(.dark-mode) .cat-page-info h3,
         body:not([data-theme="dark"]) .cat-page-info h3 { color: #1a1a1a; }
@@ -893,7 +893,7 @@
         <aside class="sidebar-nav" id="sidebarNav">
             <div class="sidebar-header" id="sidebarHeader">
                 <div class="sidebar-brand">
-                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
                     <div class="em-logo">
                         <span class="em-logo-title">Event Genix</span>
                         <span class="em-logo-sub">AI First CRM</span>
@@ -921,7 +921,7 @@
             <div class="header-content">
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <div class="logo">
-                    <img src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
                 </div>
                 <nav class="header-nav">
                     <a href="/" class="nav-link"><span class="nav-icon">Т</span> <span class="nav-text">Таймлайн</span></a>
@@ -1052,7 +1052,7 @@
     <!-- Lightbox -->
     <div class="lightbox" id="lightbox">
         <button class="lightbox-close">&times;</button>
-        <img id="lightboxImg" src="" alt="Превʼю">
+        <img id="lightboxImg" loading="lazy" src="" alt="Превʼю">
         <div class="lightbox-info" id="lightboxInfo"></div>
     </div>
 
@@ -1536,7 +1536,7 @@
 
     function renderPageEditorCard(p, catalogId) {
         var imgHtml = p.image_url
-            ? '<img src="' + p.image_url + '" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">'
+            ? '<img loading="lazy" src="' + p.image_url + '" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'">'
             : '<div style="color:var(--gray-300);font-size:13px;text-align:center">Натисніть «Фото»<br>щоб додати</div>';
         var det = p.details || {};
         var items = Array.isArray(p.items) ? p.items : [];

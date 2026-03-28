@@ -341,6 +341,7 @@ function renderBoard() {
         case 'week': renderWeekView(container); break;
         case 'my': renderMyView(container); break;
         case 'board': renderKanbanView(container); break;
+        case 'archive': renderArchiveView(container); break;
         default: renderTodayView(container);
     }
 }
@@ -462,6 +463,58 @@ function renderKanbanView(container) {
 }
 
 // ==========================================
+// VIEW: ARCHIVE (v40.5)
+// ==========================================
+function renderArchiveView(container) {
+    const archived = allTasks.filter(t => t.status === 'archived');
+    if (!archived.length) {
+        container.innerHTML = '<div class="empty-state" style="padding:40px;text-align:center;color:var(--gray-400)"><div style="font-size:40px;margin-bottom:8px">📦</div>Архів порожній</div>';
+        return;
+    }
+    container.innerHTML = `<div style="margin-bottom:12px;color:var(--gray-500);font-size:13px">📦 Архівованих задач: ${archived.length}</div>` +
+        archived.slice(0, 50).map(t => {
+            const reason = t.archive_reason === 'auto_expired' ? 'Прострочена' : t.archive_reason === 'auto_duplicate' ? 'Дублікат' : t.archive_reason || 'Архів';
+            return `<div class="task-card status-done" style="opacity:0.7" data-task-id="${t.id}">
+                <div class="task-card-title">${escapeHtml(t.title)}</div>
+                <div class="task-card-meta">
+                    <span>📦 ${reason}</span>
+                    ${t.date ? `<span>${formatDateShort(t.date)}</span>` : ''}
+                    ${t.archived_at ? `<span>Архів: ${new Date(t.archived_at).toLocaleDateString('uk-UA')}</span>` : ''}
+                </div>
+                <div class="task-card-actions">
+                    <button class="btn-status" onclick="restoreTask(${t.id})" style="background:var(--primary);color:#fff">🔄 Відновити</button>
+                </div>
+            </div>`;
+        }).join('');
+}
+
+async function restoreTask(taskId) {
+    const result = await apiPatchTaskStatus(taskId, 'todo');
+    if (result?.success) {
+        // Clear archive fields
+        const token = localStorage.getItem('pzp_token');
+        await fetch(`/api/tasks/${taskId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ status: 'todo', health_score: 50 })
+        }).catch(() => {});
+        if (typeof showNotification === 'function') showNotification('Задачу відновлено', 'success');
+        await loadAllTasks();
+    }
+}
+
+// ==========================================
+// HEALTH BADGE (v40.5)
+// ==========================================
+function getHealthBadge(score) {
+    if (score === undefined || score === null) return '';
+    if (score > 70) return '';
+    if (score > 40) return '<span style="color:#f97316;font-size:10px;margin-left:4px" title="Потребує уваги">⚠️</span>';
+    if (score > 0) return '<span style="color:#ef4444;font-size:10px;margin-left:4px" title="Критично">🔴</span>';
+    return '<span style="color:#6b7280;font-size:10px;margin-left:4px" title="Архівована">📦</span>';
+}
+
+// ==========================================
 // TASK CARD
 // ==========================================
 
@@ -505,7 +558,7 @@ function renderTaskCard(t) {
         <label class="task-checkbox-wrap" onclick="event.stopPropagation()">
             <input type="checkbox" class="task-bulk-cb" data-id="${t.id}" onchange="updateBulkSelection()">
         </label>
-        <div class="task-card-title">${escHtml}${priorityIcon ? priorityIcon + ' ' : ''}${escapeHtml(t.title)}</div>
+        <div class="task-card-title">${escHtml}${priorityIcon ? priorityIcon + ' ' : ''}${escapeHtml(t.title)}${getHealthBadge(t.health_score)}</div>
         <div class="task-card-meta">
             ${typeBadge}
             <span>${catInfo.icon} ${catInfo.label}</span>

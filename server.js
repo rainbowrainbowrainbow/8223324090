@@ -663,6 +663,14 @@ initDatabase().then(() => {
             startAlertBroadcaster(60000);
             log.info('Alert broadcaster started (60s interval)');
         } catch (e) { log.warn('Alert broadcaster init failed:', e.message); }
+
+        // v40.5: Task lifecycle — run daily at midnight + once on startup
+        try {
+            const { runTaskLifecycle } = require('./services/taskLifecycle');
+            setTimeout(() => runTaskLifecycle().catch(() => {}), 30000); // 30s after boot
+            setInterval(() => runTaskLifecycle().catch(() => {}), 24 * 60 * 60 * 1000); // daily
+            log.info('Task lifecycle scheduler started');
+        } catch (e) { log.warn('Task lifecycle init failed:', e.message); }
     });
 });
 

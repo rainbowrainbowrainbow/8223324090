@@ -142,6 +142,15 @@ async function executeAction(action, payload, event) {
         case 'create_task': {
             const title = interpolate(action.title || 'Auto-task', payload);
             const description = interpolate(action.description || '', payload);
+            // v40.5: Dedup guard — don't create if same title+date already exists
+            const existing = await pool.query(
+                `SELECT id FROM tasks WHERE title = $1 AND date = CURRENT_DATE AND status NOT IN ('done','cancelled','archived') LIMIT 1`,
+                [title]
+            );
+            if (existing.rows.length > 0) {
+                log.info(`Action: skip duplicate task "${title}" (exists: #${existing.rows[0].id})`);
+                break;
+            }
             await pool.query(
                 `INSERT INTO tasks (title, description, date, priority, assigned_to, created_by, type, category)
                  VALUES ($1, $2, CURRENT_DATE, $3, $4, 'rule_engine', 'auto', $5)`,

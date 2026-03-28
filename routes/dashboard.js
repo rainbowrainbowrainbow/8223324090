@@ -546,6 +546,21 @@ router.get('/widgets/:type', async (req, res) => {
                 break;
             }
 
+            // v40.5: Task health widget
+            case 'task_health': {
+                const stats = await pool.query(`
+                    SELECT
+                        COUNT(*) FILTER (WHERE health_score > 70 AND status NOT IN ('done','cancelled','archived'))::int AS healthy,
+                        COUNT(*) FILTER (WHERE health_score BETWEEN 41 AND 70 AND status NOT IN ('done','cancelled','archived'))::int AS warning,
+                        COUNT(*) FILTER (WHERE health_score BETWEEN 1 AND 40 AND status NOT IN ('done','cancelled','archived'))::int AS critical,
+                        COUNT(*) FILTER (WHERE status = 'archived')::int AS archived,
+                        COALESCE(AVG(health_score) FILTER (WHERE status NOT IN ('done','cancelled','archived')), 0)::int AS avg_score
+                    FROM tasks
+                `).catch(() => ({ rows: [{ healthy: 0, warning: 0, critical: 0, archived: 0, avg_score: 0 }] }));
+                data = stats.rows[0];
+                break;
+            }
+
             // v39.10: Vice director operations overview
             case 'operations': {
                 const today = getKyivDateStr();

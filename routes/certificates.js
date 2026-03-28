@@ -17,6 +17,8 @@ const log = createLogger('Certificates');
 // GET /api/certificates — List with filters
 // v39.8: Security — require authentication
 router.use(authenticateToken);
+// v40: Validate :id param is numeric
+router.param('id', (req, res, next, val) => { if (val && !/^\d+$/.test(val)) return res.status(400).json({ error: 'Invalid ID format' }); next(); });
 router.get('/', async (req, res) => {
     try {
         const { status, search, limit, offset } = req.query;

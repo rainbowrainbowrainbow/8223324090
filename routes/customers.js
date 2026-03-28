@@ -15,6 +15,8 @@ const log = createLogger('Customers');
 
 // All customer routes require authentication
 router.use(authenticateToken);
+// v40: Validate :id param is numeric
+router.param('id', (req, res, next, val) => { if (val && !/^\d+$/.test(val)) return res.status(400).json({ error: 'Invalid ID format' }); next(); });
 
 // v30.4: Predefined tag templates
 const PREDEFINED_TAGS = [

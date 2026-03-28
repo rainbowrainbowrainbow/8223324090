@@ -13,6 +13,8 @@ const { requireRole } = require('../middleware/auth');
 
 // RBAC: HR module — management + HR + security + admin + manager
 router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin', 'security'));
+// v40: Validate numeric ID params
+router.param('id', (req, res, next, val) => { if (val && !/^[0-9]+$/.test(val)) return res.status(400).json({ error: 'Invalid ID' }); next(); });
 
 const log = createLogger('HR');
 

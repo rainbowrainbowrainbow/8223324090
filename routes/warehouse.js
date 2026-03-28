@@ -11,6 +11,8 @@ const log = createLogger('Warehouse');
 // v39.8: Security — require authentication for all warehouse endpoints
 const { authenticateToken } = require('../middleware/auth');
 router.use(authenticateToken);
+// v40: Validate :id param is numeric
+router.param('id', (req, res, next, val) => { if (val && !/^\d+$/.test(val)) return res.status(400).json({ error: 'Invalid ID format' }); next(); });
 
 const VALID_CATEGORIES = ['consumable', 'craft', 'props', 'food', 'decor', 'prizes', 'office', 'tech'];
 const VALID_UNITS = ['шт', 'рул', 'уп', 'кг', 'л', 'м', 'компл', 'набір'];

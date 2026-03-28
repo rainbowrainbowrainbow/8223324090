@@ -7,6 +7,8 @@ const { requireRole, authenticateToken } = require('../middleware/auth');
 
 // v39.8: Security — require authentication for all task endpoints
 router.use(authenticateToken);
+// v40: Validate :id param is numeric
+router.param('id', (req, res, next, val) => { if (val && !/^\d+$/.test(val)) return res.status(400).json({ error: 'Invalid ID format' }); next(); });
 const { createLogger } = require('../utils/logger');
 const { getPermissions } = require('../config/roles');
 

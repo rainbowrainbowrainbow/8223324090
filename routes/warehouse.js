@@ -172,8 +172,8 @@ router.get('/pinata-status', async (req, res) => {
                  FROM bookings
                  WHERE pinata_filler IS NOT NULL
                    AND pinata_filler != ''
-                   AND date >= CURRENT_DATE
-                   AND date <= CURRENT_DATE + INTERVAL '14 days'
+                   AND date::date >= CURRENT_DATE
+                   AND date::date <= CURRENT_DATE + INTERVAL '14 days'
                    AND status != 'cancelled'
                  ORDER BY date, time`
             ),

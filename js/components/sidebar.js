@@ -29,6 +29,7 @@ const Sidebar = (() => {
         { href: '/staff',        icon: '📋', label: 'Команда',        access: 'staff',          group: 'hr', staffView: 'team', noActive: true },
         { href: '/hr',           icon: '🤝', label: 'Кадри',          access: 'hr_page',        group: 'hr' },
         { href: '/training',     icon: '🎓', label: 'Навчання',       access: 'training',       group: 'hr' },
+        { href: '/checkin',      icon: '📸', label: 'Check-in',       access: 'hr_page',        group: 'hr' },
 
         // ─── GROUP: Арт (розваги, програми, автоматизація) ────────
         { type: 'group', key: 'art', label: 'Арт', icon: '🎨', defaultOpen: true },

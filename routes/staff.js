@@ -467,7 +467,7 @@ router.get('/face-descriptors', async (req, res) => {
 });
 
 // POST /api/staff/:id/face-descriptor — register face descriptor for staff
-router.post('/:id/face-descriptor', async (req, res) => {
+router.post('/:id/face-descriptor', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr', 'admin'), async (req, res) => {
     try {
         const staffId = parseInt(req.params.id);
         const { descriptor } = req.body;

@@ -453,16 +453,15 @@
         // Init
         async function init() {
             if (!token) {
-                // Try auto-login for kiosk mode
-                try {
-                    var resp = await fetch(API_BASE + '/auth/login', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username: 'admin', password: 'admin123' })
-                    });
-                    var data = await resp.json();
-                    if (data.token) { token = data.token; localStorage.setItem('token', token); }
-                } catch(e) {}
+                // Check main app token (pzp_token)
+                token = localStorage.getItem('pzp_token');
+                if (token) localStorage.setItem('token', token);
+            }
+            if (!token) {
+                setStatus('Необхідна авторизація', 'error');
+                document.getElementById('statusText').innerHTML =
+                    'Увійдіть в систему для використання. <a href="/" style="color:#A78BFA;text-decoration:underline">Увійти →</a>';
+                return;
             }
 
             await loadModels();

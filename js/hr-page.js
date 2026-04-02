@@ -210,6 +210,7 @@ function initTabs() {
 // ==========================================
 
 async function loadToday() {
+    if (typeof _loadStaffLinks === 'function') _loadStaffLinks().catch(() => {});
     const data = await hrFetch('/today');
     if (!data || !data.success) return;
     todayData = data;
@@ -659,7 +660,6 @@ async function copyWeek() {
 let teamStaff = [];
 
 async function loadTeam() {
-    if (typeof _loadStaffLinks === 'function') _loadStaffLinks().catch(() => {});
     const activeOnly = document.getElementById('teamActiveOnly')?.checked ?? true;
     const grid = document.getElementById('teamGrid');
     if (grid) grid.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:32px">⏳ Завантаження...</div>';
@@ -739,7 +739,7 @@ function renderTeam(staff) {
         return `<div class="hr-team-card ${s.is_active ? '' : 'inactive'}">
             <div class="hr-team-avatar" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}">${avatar}</div>
             <div class="hr-team-details">
-                <div class="hr-team-name">${escapeHtml(s.name)} ${typeof staffAccountBadge === 'function' ? staffAccountBadge(s.id) : ''} ${s.is_active ? '' : '<span style="color:var(--gray-400);">(звільнений)</span>'}</div>
+                <div class="hr-team-name">${escapeHtml(s.name)} ${s.is_active ? '' : '<span style="color:var(--gray-400);">(звільнений)</span>'}</div>
                 <div class="hr-team-role">${s.position ? escapeHtml(s.position) + ' · ' : ''}${roleLabel}${hireStr ? ' · з ' + hireStr : ''}</div>
                 <div class="hr-team-badges">${s.has_face_descriptor ? '<span class="hr-badge hr-badge--ok" title="Фото для камери: є">📸</span>' : '<span class="hr-badge hr-badge--warn" title="Фото для камери: немає">📸❌</span>'} ${s.has_account ? '<span class="hr-badge hr-badge--ok" title="Акаунт CRM: є">🔑</span>' : '<span class="hr-badge hr-badge--warn" title="Акаунт CRM: немає">🔑❌</span>'}</div>
                 <div class="hr-team-contact">

@@ -332,6 +332,27 @@
     resize: vertical;
     font-size: 16px;
 }
+.content-filter-select {
+    padding: 8px 12px;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-xs, 6px);
+    font-size: 13px;
+    font-family: inherit;
+    min-height: 44px;
+    background: var(--glass-bg);
+    color: inherit;
+    transition: border-color 0.2s;
+}
+.content-filter-select:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+.content-filters-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
 .content-char-count {
     font-size: 11px;
     color: var(--gray-400);
@@ -530,7 +551,8 @@ body.dark-mode .content-modal { background: #1E1E38; color: #E2E8F0; }
 body.dark-mode .content-modal-close { background: #3D3D5C; color: #E2E8F0; }
 body.dark-mode .content-field input,
 body.dark-mode .content-field textarea,
-body.dark-mode .content-field select { background: #2A2A4A; border-color: #3D3D5C; color: #E2E8F0; }
+body.dark-mode .content-field select,
+body.dark-mode .content-filter-select { background: #2A2A4A; border-color: #3D3D5C; color: #E2E8F0; }
 body.dark-mode .content-field label { color: #9CA3AF; }
 body.dark-mode .content-btn--secondary { background: #3D3D5C; color: #E2E8F0; }
 body.dark-mode .content-week-nav button,

@@ -7,14 +7,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=42.0.0">
-    <link rel="stylesheet" href="css/layout.css?v=42.0.0">
-    <link rel="stylesheet" href="css/pages.css?v=42.0.0">
-    <link rel="stylesheet" href="css/modals.css?v=42.0.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=42.0.0">
-    <link rel="stylesheet" href="css/responsive.css?v=42.0.0">
-    <link rel="stylesheet" href="css/content.css?v=42.0.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=42.0.0">
+    <link rel="stylesheet" href="css/base.css?v=42.1.0">
+    <link rel="stylesheet" href="css/layout.css?v=42.1.0">
+    <link rel="stylesheet" href="css/pages.css?v=42.1.0">
+    <link rel="stylesheet" href="css/modals.css?v=42.1.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=42.1.0">
+    <link rel="stylesheet" href="css/responsive.css?v=42.1.0">
+    <link rel="stylesheet" href="css/content.css?v=42.1.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=42.1.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 </head>
@@ -70,8 +70,8 @@
 
         <!-- TAB: All Posts -->
         <div id="tab-posts" class="content-tab-content" style="display:none">
-            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-                <select id="postsStatusFilter" onchange="ContentPage.loadAllPosts()" style="padding:8px 12px;border:1px solid var(--glass-border);border-radius:var(--radius-xs);font-size:13px;font-family:inherit;min-height:44px;background:var(--glass-bg)">
+            <div class="content-filters-row">
+                <select id="postsStatusFilter" class="content-filter-select" onchange="ContentPage.loadAllPosts()">
                     <option value="">Всі статуси</option>
                     <option value="draft">Чернетка</option>
                     <option value="pending_approval">На затвердженні</option>
@@ -80,7 +80,7 @@
                     <option value="published">Опубліковано</option>
                     <option value="failed">Помилка</option>
                 </select>
-                <select id="postsPlatformFilter" onchange="ContentPage.loadAllPosts()" style="padding:8px 12px;border:1px solid var(--glass-border);border-radius:var(--radius-xs);font-size:13px;font-family:inherit;min-height:44px;background:var(--glass-bg)">
+                <select id="postsPlatformFilter" class="content-filter-select" onchange="ContentPage.loadAllPosts()">
                     <option value="">Всі платформи</option>
                     <option value="instagram">Instagram</option>
                     <option value="telegram">Telegram</option>
@@ -219,15 +219,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=42.0.0"></script>
-    <script src="js/config.js?v=42.0.0"></script>
-    <script src="js/notification.js?v=42.0.0"></script>
-    <script src="js/api.js?v=42.0.0"></script>
-    <script src="js/auth.js?v=42.0.0"></script>
-    <script src="js/components/sidebar.js?v=42.0.0"></script>
+    <script src="js/ui.js?v=42.1.0"></script>
+    <script src="js/config.js?v=42.1.0"></script>
+    <script src="js/notification.js?v=42.1.0"></script>
+    <script src="js/api.js?v=42.1.0"></script>
+    <script src="js/auth.js?v=42.1.0"></script>
+    <script src="js/components/sidebar.js?v=42.1.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/content-page.js?v=42.0.0"></script>
-    <script src="js/role-panel.js?v=42.0.0"></script>
-    <script src="js/alerts.js?v=42.0.0"></script>
+    <script src="js/content-page.js?v=42.1.0"></script>
+    <script src="js/role-panel.js?v=42.1.0"></script>
+    <script src="js/alerts.js?v=42.1.0"></script>
 </body>
 </html>

@@ -217,6 +217,18 @@ router.post('/generate-week', async (req, res) => {
         const { week_number, year, platforms = ['instagram', 'telegram'], topics } = req.body;
         if (!week_number || !year) return res.status(400).json({ success: false, error: 'Тиждень і рік обовʼязкові' });
 
+        // Guard: check if week already has posts
+        const existing = await pool.query(
+            'SELECT COUNT(*) AS cnt FROM content_posts WHERE week_number = $1 AND year = $2',
+            [week_number, year]
+        );
+        if (parseInt(existing.rows[0].cnt) > 0) {
+            return res.status(400).json({
+                success: false,
+                error: `Тиждень ${week_number}/${year} вже має ${existing.rows[0].cnt} постів. Видаліть існуючі або оберіть інший тиждень.`
+            });
+        }
+
         const topicList = topics && topics.length ? topics : ['animation', 'quest', 'birthday', 'show', 'masterclass'];
         const dayNames = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', 'Пʼятниця', 'Субота', 'Неділя'];
         const posts = [];
@@ -253,7 +265,7 @@ router.get('/templates', async (req, res) => {
         const params = []; const conds = ['is_active = true'];
         if (platform) { params.push(platform); conds.push(`platform = $${params.length}`); }
         if (topic) { params.push(topic); conds.push(`topic = $${params.length}`); }
-        const result = await pool.query(`SELECT * FROM content_templates WHERE ${conds.join(' AND ')} ORDER BY name`, params);
+        const result = await pool.query(`SELECT * FROM content_post_templates WHERE ${conds.join(' AND ')} ORDER BY name`, params);
         res.json({ success: true, data: result.rows });
     } catch (err) {
         log.error('GET /templates error', err);
@@ -266,7 +278,7 @@ router.post('/templates', requireRole('creator', 'director', 'art_director'), as
         const { name, platform, topic, body_template, hashtags, media_type } = req.body;
         if (!name || !platform) return res.status(400).json({ success: false, error: 'Назва і платформа обовʼязкові' });
         const result = await pool.query(
-            `INSERT INTO content_templates (name, platform, topic, body_template, hashtags, media_type)
+            `INSERT INTO content_post_templates (name, platform, topic, body_template, hashtags, media_type)
              VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
             [name, platform, topic, body_template, hashtags || '{}', media_type]
         );

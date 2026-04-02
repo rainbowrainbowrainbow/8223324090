@@ -17,3 +17,4 @@
 | 2026-04-02 | lMoie | v41.0.0: Face Check-in Infrastructure + HR Fix | face-checkin,hr-fix,badges,chat-channel,migration-149 | 0/53 face descriptors, 7/53 employee_profiles | feature |
 | 2026-04-02 | lMoie | v41.1.0: Systemic Fixes — badge dedup, security, sidebar, linking | security,badge-dedup,sidebar,migration-150,staff-linking | CSS badge classes not unified | fix |
 | 2026-04-02 | lMoie | v42.0.0: Content Matrix — social media content planning | content,social-media,marketing,calendar,migration-151-153 | AI regeneration is mock | feature |
+| 2026-04-02 | lMoie | v42.1.0: Content Matrix audit fixes — templates, auth, CSS, guard | content-fix,auth,css-cleanup,migration-154 | none | fix |

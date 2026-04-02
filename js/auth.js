@@ -118,6 +118,7 @@ const PAGE_ACCESS = {
     '/chat':      _ALL_STAFF,
     '/center':    _MANAGER_UP,
     '/art':       [..._MANAGER_UP, 'art_director', 'marketer'],
+    '/content':   [..._MANAGER_UP, 'art_director', 'marketer'],
     '/graduation': [..._MANAGER_UP, 'admin', 'art_director', 'marketer'],
     '/customers': [..._ADMIN_UP, 'reception'],
     '/staff':     [..._MANAGER_UP, 'hr', 'security'],

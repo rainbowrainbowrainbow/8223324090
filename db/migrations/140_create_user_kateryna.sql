@@ -8,8 +8,9 @@ ON CONFLICT (username) DO NOTHING;
 
 -- Link to staff record ONLY if staff_id=54 exists (won't exist on production yet)
 INSERT INTO employee_profiles (user_id, staff_id, full_name, is_active)
-SELECT u.id, 54, 'Касян Катерина', true
+SELECT u.id, s.id, 'Касян Катерина', true
 FROM users u
+CROSS JOIN staff s
 WHERE u.username = 'Kateryna'
-  AND EXISTS (SELECT 1 FROM staff WHERE id = 54)
-  AND NOT EXISTS (SELECT 1 FROM employee_profiles ep WHERE ep.staff_id = 54 AND ep.is_active = true);
+  AND s.name = 'Касян Катерина' AND s.is_active = true
+  AND NOT EXISTS (SELECT 1 FROM employee_profiles ep WHERE ep.staff_id = s.id AND ep.is_active = true);

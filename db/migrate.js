@@ -99,11 +99,10 @@ async function runMigrations(pool) {
                 log.error('FATAL: Schema migration failed — stopping to prevent data corruption');
                 throw err;
             } else {
-                // Data-only migration — safe to skip, mark as applied to prevent retry loops
-                log.warn('SKIPPED: Data migration ' + version + ' failed but is non-critical. Marking as applied.');
-                try {
-                    await pool.query('INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING', [version]);
-                } catch {}
+                // v40.5: Data migration failed — log but DON'T mark as applied.
+                // Server continues starting, migration will retry on next restart.
+                // This prevents silent data loss from failed migrations.
+                log.warn('WARN: Data migration ' + version + ' failed — will retry on next restart. Server continues.');
                 continue;
             }
         } finally {

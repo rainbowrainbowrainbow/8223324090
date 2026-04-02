@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Контент</title>
+    <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
+    <meta property="og:title" content="Event Genix">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=42.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=42.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=42.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=42.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=42.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=42.0.0">
+    <link rel="stylesheet" href="css/content.css?v=42.0.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=42.0.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body data-page-group="mgmt">
+    <div class="content-page">
+        <h1>📱 Контент-матриця <button class="content-btn content-btn--primary content-btn--small" onclick="ContentPage.openNewPost()">+ Пост</button></h1>
+
+        <!-- Tabs -->
+        <div class="content-tabs">
+            <button class="content-tab active" data-tab="calendar">📅 Календар</button>
+            <button class="content-tab" data-tab="posts">📝 Всі пости</button>
+            <button class="content-tab" data-tab="analytics">📊 Аналітика</button>
+            <button class="content-tab" data-tab="accounts">⚙️ Акаунти</button>
+        </div>
+
+        <!-- TAB: Calendar -->
+        <div id="tab-calendar" class="content-tab-content active">
+            <div class="content-controls">
+                <div class="content-week-nav">
+                    <button onclick="ContentPage.prevWeek()">←</button>
+                    <span class="content-week-label" id="weekLabel">Тиждень 14</span>
+                    <button onclick="ContentPage.nextWeek()">→</button>
+                    <button class="content-btn content-btn--secondary content-btn--small" onclick="ContentPage.goToday()">Сьогодні</button>
+                </div>
+                <div class="content-view-toggle">
+                    <button class="content-view-btn active" data-view="week" onclick="ContentPage.setView('week')">Тиждень</button>
+                    <button class="content-view-btn" data-view="month" onclick="ContentPage.setView('month')">Місяць</button>
+                </div>
+            </div>
+
+            <!-- Platform Filters -->
+            <div class="content-platforms" id="platformFilters">
+                <button class="content-platform-btn active" data-platform="all" onclick="ContentPage.filterPlatform('all')">Всі</button>
+                <button class="content-platform-btn" data-platform="instagram" onclick="ContentPage.filterPlatform('instagram')">📸 Instagram</button>
+                <button class="content-platform-btn" data-platform="telegram" onclick="ContentPage.filterPlatform('telegram')">📱 Telegram</button>
+                <button class="content-platform-btn" data-platform="tiktok" onclick="ContentPage.filterPlatform('tiktok')">🎵 TikTok</button>
+                <button class="content-platform-btn" data-platform="facebook" onclick="ContentPage.filterPlatform('facebook')">📘 Facebook</button>
+                <button class="content-platform-btn" data-platform="threads" onclick="ContentPage.filterPlatform('threads')">🧵 Threads</button>
+                <button class="content-platform-btn" data-platform="viber" onclick="ContentPage.filterPlatform('viber')">📲 Viber</button>
+            </div>
+
+            <!-- Stats row -->
+            <div class="content-stats" id="weekStats"></div>
+
+            <!-- Calendar Grid -->
+            <div class="content-calendar" id="calendarGrid"></div>
+
+            <!-- Generate button -->
+            <div style="text-align:center;margin-top:12px">
+                <button class="content-btn content-btn--primary" onclick="ContentPage.openGenerate()">🧠 Згенерувати план на тиждень</button>
+            </div>
+        </div>
+
+        <!-- TAB: All Posts -->
+        <div id="tab-posts" class="content-tab-content" style="display:none">
+            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+                <select id="postsStatusFilter" onchange="ContentPage.loadAllPosts()" style="padding:8px 12px;border:1px solid var(--glass-border);border-radius:var(--radius-xs);font-size:13px;font-family:inherit;min-height:44px;background:var(--glass-bg)">
+                    <option value="">Всі статуси</option>
+                    <option value="draft">Чернетка</option>
+                    <option value="pending_approval">На затвердженні</option>
+                    <option value="approved">Затверджено</option>
+                    <option value="scheduled">Заплановано</option>
+                    <option value="published">Опубліковано</option>
+                    <option value="failed">Помилка</option>
+                </select>
+                <select id="postsPlatformFilter" onchange="ContentPage.loadAllPosts()" style="padding:8px 12px;border:1px solid var(--glass-border);border-radius:var(--radius-xs);font-size:13px;font-family:inherit;min-height:44px;background:var(--glass-bg)">
+                    <option value="">Всі платформи</option>
+                    <option value="instagram">Instagram</option>
+                    <option value="telegram">Telegram</option>
+                    <option value="tiktok">TikTok</option>
+                    <option value="facebook">Facebook</option>
+                    <option value="threads">Threads</option>
+                    <option value="viber">Viber</option>
+                </select>
+            </div>
+            <div class="content-table-wrap" id="postsTable"></div>
+        </div>
+
+        <!-- TAB: Analytics -->
+        <div id="tab-analytics" class="content-tab-content" style="display:none">
+            <div class="content-stats" id="analyticsStats" style="margin-bottom:24px"></div>
+            <div id="analyticsDetails" class="content-empty">Оберіть період для перегляду аналітики</div>
+        </div>
+
+        <!-- TAB: Accounts -->
+        <div id="tab-accounts" class="content-tab-content" style="display:none">
+            <div class="content-accounts-grid" id="accountsGrid"></div>
+        </div>
+    </div>
+
+    <!-- Post Modal -->
+    <div class="content-modal-overlay" id="postModal">
+        <div class="content-modal" style="position:relative">
+            <button class="content-modal-close" onclick="ContentPage.closeModal()">&times;</button>
+            <h2 id="modalTitle">Новий пост</h2>
+            <input type="hidden" id="postId">
+            <div class="content-field">
+                <label for="postTitle">Назва</label>
+                <input type="text" id="postTitle" placeholder="Назва посту...">
+            </div>
+            <div class="content-field">
+                <label for="postBody">Текст посту</label>
+                <textarea id="postBody" placeholder="Текст для соцмереж..." oninput="ContentPage.updateCharCount()"></textarea>
+                <div class="content-char-count" id="charCount">0 символів</div>
+            </div>
+            <div class="content-field">
+                <label>Платформи</label>
+                <div class="content-platforms-select" id="modalPlatforms">
+                    <label><input type="checkbox" value="instagram"> 📸 Instagram</label>
+                    <label><input type="checkbox" value="telegram"> 📱 Telegram</label>
+                    <label><input type="checkbox" value="tiktok"> 🎵 TikTok</label>
+                    <label><input type="checkbox" value="facebook"> 📘 Facebook</label>
+                    <label><input type="checkbox" value="threads"> 🧵 Threads</label>
+                    <label><input type="checkbox" value="viber"> 📲 Viber</label>
+                </div>
+            </div>
+            <div class="content-field">
+                <label for="postTopic">Тема</label>
+                <select id="postTopic">
+                    <option value="general">Загальне</option>
+                    <option value="animation">🎭 Анімація</option>
+                    <option value="quest">🔍 Квест</option>
+                    <option value="birthday">🎂 День народження</option>
+                    <option value="show">🎪 Шоу</option>
+                    <option value="masterclass">🎨 Майстер-клас</option>
+                    <option value="promo">🔥 Промо</option>
+                    <option value="event">🎉 Подія</option>
+                    <option value="review">⭐ Відгук</option>
+                </select>
+            </div>
+            <div class="content-field">
+                <label for="postHashtags">Хештеги (через кому)</label>
+                <input type="text" id="postHashtags" placeholder="#парк_закревського, #дітям, ...">
+            </div>
+            <div class="content-field">
+                <label for="postSchedule">Дата та час публікації</label>
+                <input type="datetime-local" id="postSchedule">
+            </div>
+            <div class="content-field">
+                <label for="postNotes">Нотатки для команди</label>
+                <textarea id="postNotes" placeholder="Внутрішні нотатки..." style="min-height:60px"></textarea>
+            </div>
+            <div class="content-field" id="postStatusDisplay" style="display:none">
+                <label>Статус</label>
+                <div id="postCurrentStatus"></div>
+            </div>
+            <div class="content-modal-actions" id="modalActions"></div>
+        </div>
+    </div>
+
+    <!-- Generate Modal -->
+    <div class="content-modal-overlay" id="generateModal">
+        <div class="content-modal" style="position:relative;max-width:480px">
+            <button class="content-modal-close" onclick="ContentPage.closeGenerate()">&times;</button>
+            <h2>🧠 Згенерувати план</h2>
+            <div class="content-field">
+                <label>Тиждень</label>
+                <input type="number" id="genWeek" min="1" max="53">
+            </div>
+            <div class="content-field">
+                <label>Рік</label>
+                <input type="number" id="genYear" min="2024" max="2030">
+            </div>
+            <div class="content-field">
+                <label>Платформи</label>
+                <div class="content-gen-option" id="genPlatforms">
+                    <label><input type="checkbox" value="instagram" checked> 📸 Instagram</label>
+                    <label><input type="checkbox" value="telegram" checked> 📱 Telegram</label>
+                    <label><input type="checkbox" value="tiktok"> 🎵 TikTok</label>
+                    <label><input type="checkbox" value="facebook"> 📘 Facebook</label>
+                </div>
+            </div>
+            <div class="content-field">
+                <label>Теми</label>
+                <div class="content-gen-option" id="genTopics">
+                    <label><input type="checkbox" value="animation" checked> 🎭 Анімація</label>
+                    <label><input type="checkbox" value="quest" checked> 🔍 Квест</label>
+                    <label><input type="checkbox" value="birthday" checked> 🎂 ДН</label>
+                    <label><input type="checkbox" value="show" checked> 🎪 Шоу</label>
+                    <label><input type="checkbox" value="masterclass" checked> 🎨 МК</label>
+                </div>
+            </div>
+            <div class="content-modal-actions">
+                <button class="content-btn content-btn--primary" onclick="ContentPage.generateWeek()">🧠 Згенерувати</button>
+                <button class="content-btn content-btn--secondary" onclick="ContentPage.closeGenerate()">Скасувати</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profile Modal -->
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-medium" role="dialog" aria-modal="true">
+            <span class="modal-close">&times;</span>
+            <h3>Особистий кабінет</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Завантаження...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/ui.js?v=42.0.0"></script>
+    <script src="js/config.js?v=42.0.0"></script>
+    <script src="js/notification.js?v=42.0.0"></script>
+    <script src="js/api.js?v=42.0.0"></script>
+    <script src="js/auth.js?v=42.0.0"></script>
+    <script src="js/components/sidebar.js?v=42.0.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/content-page.js?v=42.0.0"></script>
+    <script src="js/role-panel.js?v=42.0.0"></script>
+    <script src="js/alerts.js?v=42.0.0"></script>
+</body>
+</html>

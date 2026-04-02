@@ -197,6 +197,9 @@ app.use('/api/quests', require('./routes/quests'));
 app.use('/api/quiz', require('./routes/quiz'));
 app.use('/api/streaks', require('./routes/streaks'));
 
+// Content Matrix — social media content planning
+app.use('/api/content', require('./routes/content'));
+
 // OmniClaw — omnichannel communication
 app.use('/api/omni', require('./routes/omnichannel'));
 
@@ -323,6 +326,10 @@ app.get('/art-director.html', (req, res) => res.redirect(301, '/art'));
 // v30.0.0: Graduation Event Builder
 app.get('/graduation', (req, res) => {
     res.sendFile(path.join(__dirname, 'graduation.html'));
+});
+// v42.0: Content Matrix
+app.get('/content', (req, res) => {
+    res.sendFile(path.join(__dirname, 'content.html'));
 });
 app.get('/checkin', (req, res) => {
     res.sendFile(path.join(__dirname, 'checkin.html'));

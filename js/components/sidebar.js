@@ -33,6 +33,7 @@ const Sidebar = (() => {
 
         // ─── GROUP: Арт (розваги, програми, автоматизація) ────────
         { type: 'group', key: 'art', label: 'Арт', icon: '🎨', defaultOpen: true },
+        { href: '/content',      icon: '📱', label: 'Контент',         access: 'content',        group: 'art' },
         { href: '/programs',     icon: '🎪', label: 'Програми',       access: 'programs',       group: 'art' },
         { href: '/art',          icon: '🎨', label: 'Арт директор',   access: 'art',            group: 'art' },
         { href: '/graduation',   icon: '🎓', label: 'Випускний',      access: 'graduation',     group: 'art' },
@@ -84,6 +85,7 @@ const Sidebar = (() => {
         center:         _MGR_UP,
         graduation:     [..._MGR_UP, 'admin', 'art_director', 'marketer'],
         art:            [..._MGR_UP, 'art_director', 'marketer'],
+        content:        [..._MGR_UP, 'art_director', 'marketer'],
         sound:          [..._MGR_UP, 'art_director'],
         demo:           _MGR_UP,
         settings:       ['creator','director'],

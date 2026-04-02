@@ -200,6 +200,7 @@ app.use('/api/streaks', require('./routes/streaks'));
 // Content Matrix — social media content planning
 app.use('/api/content', require('./routes/content'));
 app.use('/api/business-cards', require('./routes/business-cards'));
+app.use('/api/marketing-agent', require('./routes/marketing-agent'));
 
 // OmniClaw — omnichannel communication
 app.use('/api/omni', require('./routes/omnichannel'));
@@ -661,6 +662,15 @@ initDatabase().then(() => {
         schedulerIntervals.push(setInterval(guardScheduler('cleanupRefreshTokens', cleanupRefreshTokens, { dedup: 'daily' }), 60000));
 
         log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training + guardian + ai-learn + agent-tracker + outbox + token-cleanup');
+
+        // v42.3: Marketing agent — auto-publish scheduled posts every 5 min
+        try {
+            const { publishScheduled } = require('./lib/marketing-agent');
+            schedulerIntervals.push(setInterval(async () => {
+                try { await publishScheduled(); } catch (e) { log.warn('Marketing auto-publish error:', e.message); }
+            }, 5 * 60 * 1000));
+            log.info('Marketing auto-publish scheduler started (5 min interval)');
+        } catch (e) { log.warn('Marketing scheduler init failed:', e.message); }
 
         // WebSocket: attach to HTTP server for live-sync
         initWebSocket(server);

@@ -425,6 +425,9 @@ const ContentPage = (() => {
             if (['draft', 'approved'].includes(post.status)) {
                 html += `<button class="content-btn content-btn--secondary" onclick="ContentPage.schedulePost(${post.id})">📅 Запланувати</button>`;
             }
+            if (['approved', 'scheduled'].includes(post.status)) {
+                html += `<button class="content-btn content-btn--primary" onclick="ContentPage.publishPostNow(${post.id})">🚀 Опублікувати</button>`;
+            }
             html += `<button class="content-btn content-btn--secondary" onclick="ContentPage.regeneratePost(${post.id})">🔄 Перегенерувати</button>`;
             html += `<button class="content-btn content-btn--danger" onclick="ContentPage.deletePost(${post.id})">🗑️ Видалити</button>`;
         }
@@ -491,9 +494,33 @@ const ContentPage = (() => {
 
     async function regeneratePost(id) {
         try {
-            await api('/posts/' + id + '/regenerate', { method: 'PUT' });
-            notify('Текст перегенеровано');
+            const token = getToken();
+            const res = await fetch('/api/marketing-agent/regenerate/' + id, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Помилка');
+            notify('🔄 Текст перегенеровано');
             openPost(id);
+        } catch (err) { notify('Помилка: ' + err.message, 'error'); }
+    }
+
+    async function publishPostNow(id) {
+        try {
+            const token = getToken();
+            const res = await fetch('/api/marketing-agent/publish/' + id, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Помилка');
+            const published = Object.keys(data.results || {}).join(', ');
+            const failed = Object.keys(data.errors || {});
+            if (failed.length) notify(`⚠️ Опубліковано (з помилками: ${failed.join(', ')})`, 'warning');
+            else notify(`🚀 Опубліковано: ${published}`);
+            closeModal();
+            loadCalendar();
         } catch (err) { notify('Помилка: ' + err.message, 'error'); }
     }
 
@@ -533,11 +560,15 @@ const ContentPage = (() => {
         if (!platforms.length) { notify('Оберіть хоча б одну платформу', 'error'); return; }
 
         try {
-            const data = await api('/generate-week', {
+            const token = getToken();
+            const res = await fetch('/api/marketing-agent/generate-plan', {
                 method: 'POST',
-                body: JSON.stringify({ week_number: week, year, platforms, topics })
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ week, year, platforms, topics })
             });
-            notify(`Згенеровано ${data.count || 0} постів`);
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Помилка');
+            notify(`🧠 Згенеровано ${data.count || 0} постів`);
             closeGenerate();
             // Navigate to generated week
             const jan1 = new Date(year, 0, 1);
@@ -768,7 +799,7 @@ const ContentPage = (() => {
         prevWeek, nextWeek, goToday, setView, filterPlatform,
         openNewPost, openPost, closeModal, savePost,
         submitForApproval, approvePost, rejectPost,
-        schedulePost, regeneratePost, deletePost,
+        schedulePost, regeneratePost, deletePost, publishPostNow,
         openGenerate, closeGenerate, generateWeek,
         loadAllPosts, loadAccounts, toggleAccount,
         updateCharCount,

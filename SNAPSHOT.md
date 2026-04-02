@@ -48,3 +48,28 @@
 - **hashchange listener** — для sidebar tab navigation
 - **users.last_seen_at** — оновлюється при кожному auth запиті
 - **Sidebar standard** — staff.html = еталон структури для всіх сторінок
+
+## Промпт для наступної сесії
+```
+Продовження роботи над Event Genix CRM.
+Бранч: claude/continue-event-genix-crm-k7nfY
+Версія: v40.5.0
+
+Прочитай CLAUDE.md, SNAPSHOT.md, package.json для контексту.
+
+## Що було зроблено (v39.7→v40.5, сесії 27-28.03.2026):
+- 21 dashboard widget (7 role-specific)
+- Task Lifecycle: health_score, auto-archive, dedup guard (1798→14 задач)
+- Security: 19 routes auth, 107 err.message, pool leak, XSS, races
+- Role system: security role, creator=full, sidebar sync, 30 labels
+- CSS audit: dark mode, iOS zoom, touch targets, lazy loading
+- Mobile timeline, сертифікати iPhone 11
+- Partial updates bookings/tasks
+- PDF passwords, TTS/Suno, alerts v4
+- Staff cleanup, Kateryna account, графік 01.04 з паперу
+- 387 тестів (0 fail), ~55 комітів
+
+## Production:
+- Railway: v40.5.0, DB connected
+- Гілка: claude/continue-event-genix-crm-k7nfY (авто-деплой)
+```

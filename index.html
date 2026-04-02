@@ -1152,62 +1152,53 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v40.5.0 — Task Lifecycle + очищення 1798→14 (28.03.2026)</h4>
+                    <h4>🚀 v40.5.0 — Task Lifecycle + System Health (28.03.2026)</h4>
                     <ul>
-                        <li><b>Мобільний таймлайн</b> — touch-optimized блоки, 50px рядки, no hover на touch, iOS safe area, iPhone SE compact</li>
+                        <li><b>Task Lifecycle</b> — health_score для задач (0-100), auto-archive прострочених, badge ⚠️🔴📦, tab «Архів» з відновленням</li>
+                        <li><b>Очищення задач</b> — 1798→14 активних (дедуплікація, видалення сміття, архівація старих)</li>
+                        <li><b>Rule Engine dedup</b> — guard проти дублів: перевіряє існуючу задачу перед створенням</li>
+                        <li><b>Графік 01.04</b> — реальні дані з паперу (14 співробітників, час приходу)</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v40.1–v40.4 — CSS audit + Mobile + iPhone + Tests (28.03.2026)</h4>
+                    <ul>
+                        <li><b>Мобільний таймлайн</b> — touch-optimized блоки, 50px рядки, iOS safe area</li>
                         <li><b>41 новий тест</b> — всі 21 widget, partial updates, alerts, search, ID validation</li>
-                        <li><b>Сертифікати iPhone 11</b> — inputs 16px/44px, season buttons, detail actions flex-wrap</li>
-                        <li><b>CSS audit</b> — dark mode gaps, background:#fff→var(--white), iOS zoom fix, touch targets 44px, lazy loading</li>
-                        <li><b>Пошук +staff</b> — тепер шукає по ПІБ, телефону, посаді співробітників</li>
+                        <li><b>Сертифікати iPhone 11</b> — inputs 16px/44px, season buttons, detail actions</li>
+                        <li><b>CSS audit</b> — 20+ dark mode fixes, background:#fff→var(--white), lazy loading 44 imgs</li>
+                        <li><b>Пошук +staff</b> — шукає по ПІБ, телефону, посаді</li>
                         <li><b>WS toast</b> — сповіщення про бронювання на всіх сторінках</li>
-                        <li><b>Друк графіку</b> — кольорові статуси, page-break, дата друку</li>
                         <li><b>17 VARCHAR date bugs</b> — ::date cast по всій системі</li>
-                        <li><b>Pinata tab</b> — crash fix (date comparison)</li>
+                        <li><b>Pinata tab fix</b> — crash on date comparison</li>
+                        <li><b>Друк графіку</b> — кольорові статуси, page-break, landscape</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>🚀 v40.0.0 — «Повний контроль» (27.03.2026)</h4>
                     <ul>
                         <li><b>21 віджет дашборду</b> — кожна роль бачить своє: HR дайджест, P&L директора, контент-пайплайн, операції зама, хто на зміні, тижневі бронювання, задачі команди</li>
-                        <li><b>Безпека</b> — 19 API routes закрито, 107 error disclosure, pool leak fix, XSS escaping, race conditions, user enumeration prevention</li>
-                        <li><b>Partial updates</b> — бронювання та задачі тепер підтримують часткове оновлення (не треба слати всі поля)</li>
+                        <li><b>Безпека</b> — 19 API routes закрито, 107 error disclosure, pool leak fix, XSS escaping, race conditions</li>
+                        <li><b>Partial updates</b> — бронювання та задачі підтримують часткове оновлення</li>
                         <li><b>Рольова система</b> — security role, creator full access, sidebar↔PAGE_ACCESS sync, 30 role labels</li>
-                        <li><b>PDF паролі</b> — масове створення акаунтів + PDF для роздачі на планерці</li>
-                        <li><b>Звукова бібліотека</b> — TTS через ElevenLabs, музика через Suno AI, плеєр</li>
+                        <li><b>PDF паролі</b> — масове створення акаунтів + PDF для роздачі</li>
+                        <li><b>Звукова бібліотека</b> — TTS через ElevenLabs, плеєр на кожному звуку</li>
                         <li><b>Сповіщення v4</b> — групування, inline дії, dismiss, fixed overlay</li>
-                        <li><b>Designer</b> — Brand Book та шаблони тепер відображаються (було eternal loading)</li>
-                        <li><b>Центр</b> — empty states замість вічного «Завантаження...»</li>
+                        <li><b>Чат: копіювати</b> — кнопка в контекстному меню</li>
                         <li><b>Staff cleanup</b> — оновлено дані хозяюшок, кнопка «Додати співробітника»</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v39.11.0 — Staff Cleanup + додавання співробітників (27.03.2026)</h4>
+                    <h4>v39.7–v39.11 — Модалки + стріки + алерти + каталоги (27.03.2026)</h4>
                     <ul>
-                        <li><b>Дані співробітників</b> — оновлено ПІБ хозяюшок (Атаманенко, Сінгаєвська), деактивовано 3 звільнених</li>
-                        <li><b>Додати співробітника</b> — кнопка тепер працює, відкриває форму (ПІБ, відділ, посада, роль, телефон)</li>
-                        <li><b>HR доступ</b> — розширено для ролі HR: тепер бачить Навчання, може додавати співробітників</li>
-                        <li><b>Графік cleaning</b> — будні 12-20, вихідні 09-20 для всіх активних хозяюшок</li>
-                    </ul>
-                </div>
-                <div class="changelog-section">
-                    <h4>v39.10.0 — PDF паролі + mobile fix + safeFetch (27.03.2026)</h4>
-                    <ul>
-                        <li><b>Сповіщення v4</b> — повний редизайн: групування (Терміново/Увага/Інфо), inline дії (✅ Підтвердити, 📅 Перенести, 🛒 Замовити), dismiss, mark all read</li>
-                        <li><b>Швидкі дії</b> — підтвердження бронювань, перенос дедлайнів, замовлення товару — все прямо з панелі сповіщень без переходу на іншу сторінку</li>
-                        <li><b>Бейджі кабінетів</b> — 👤 мітка біля кожного співробітника з CRM-акаунтом, клік відкриває публічний профіль</li>
-                        <li><b>Self-inject</b> — сповіщення та ui.js автоматично інтегруються на всіх сторінках</li>
-                        <li><b>Toast auto-create</b> — showNotification тепер працює на всіх сторінках навіть без #toastContainer</li>
-                    </ul>
-                </div>
-                <div class="changelog-section">
-                    <h4>v39.7.0 — 5 фіч (27.03.2026)</h4>
-                    <ul>
-                        <li><b>prompt() → модалки</b> — 20 native prompt() замінені на красиві formModal/promptModal з валідацією (HR, каталоги, чат, профіль)</li>
-                        <li><b>Стріки по професіях</b> — 5 типів стріків (вхід, задачі, бронювання, вікторина, гра) з картками та прогресом, професійні титули</li>
-                        <li><b>Сезонний пас</b> — тіри Бронза/Срібло/Золото/Діамант, timeline вузлів, загальна статистика сезону</li>
-                        <li><b>WebSocket alerts</b> — реальтайм оновлення badge через WS замість 5-хв polling, миттєві тригери після бронювань/задач</li>
-                        <li><b>AI обкладинки</b> — генерація cover через Kie.ai для кожного каталогу, кнопка на картках</li>
-                        <li><b>Match-3 fix</b> — фіолетовий тінт клітинок замість білого фону, dark mode сумісність</li>
+                        <li><b>prompt()→модалки</b> — 20 замін на formModal/promptModal</li>
+                        <li><b>Стріки по професіях</b> — 5 типів, професійні титули, сезонний пас з тірами</li>
+                        <li><b>WebSocket alerts</b> — реальтайм badge, 30хв fallback polling</li>
+                        <li><b>AI обкладинки каталогів</b> — генерація через Kie.ai, Supabase storage</li>
+                        <li><b>Match-3 fix</b> — фіолетовий тінт замість білого фону</li>
+                        <li><b>Бейджі кабінетів</b> — 👤 мітка на співробітниках з CRM акаунтом</li>
+                        <li><b>HR sync</b> — реальний графік 57 співробітників, міграція 139</li>
+                        <li><b>Інтерактивні сповіщення</b> — підтвердити бронювання, перенести дедлайн прямо з панелі</li>
                     </ul>
                 </div>
                 <div class="changelog-section">

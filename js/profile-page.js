@@ -794,9 +794,9 @@ async function showAddNote() {
     const { title, content } = result;
     const color = NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)];
 
-    const result = await apiPost('/notes', { title, content, color });
-    if (result && result.id) {
-        myNotes.push(result);
+    const res = await apiPost('/notes', { title, content, color });
+    if (res && res.id) {
+        myNotes.push(res);
         renderProfile();
     }
 }

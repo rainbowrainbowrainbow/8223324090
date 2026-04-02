@@ -614,7 +614,8 @@
             showNotification('Генерація музики через Suno тимчасово недоступна. Використовуйте «Створити голос» для TTS або завантажте музику вручну.', 'info');
         }
         return;
-        /* Future: коли Suno API стане доступний
+    };
+    /* Future: коли Suno API стане доступний
         if (typeof formModal !== 'function') return;
         const result = await formModal('🎶 Створити музику (Suno AI)', [
             { key: 'prompt', label: 'Опис музики', type: 'textarea', required: true, placeholder: 'Весела дитяча мелодія для парку розваг, динозаври, пригоди' },
@@ -638,6 +639,7 @@
             }
         } catch (err) { if (typeof showNotification === 'function') showNotification(err.message, 'error'); }
     };
+    */
 
     function _pollGeneration(taskId, name, category, provider) {
         let attempts = 0;

@@ -14,3 +14,5 @@
 | 2026-03-27 | q4yHw | v39.3.3: Каталоги Етап 4 — drag-n-drop + public links | catalogs,drag-drop,public-link,reorder | none | feature |
 | 2026-03-27 | q4yHw | v39.4.0: Каталоги Етап 5 — автоматизації + bulk gen + history | catalogs,automations,bulk-gen,history | none | feature |
 | 2026-03-27 | q4yHw | v39.4.1: Bugfixes — sidebar nav + team online + catalog clicks | bugfix,sidebar,navigation,team-online,catalogs | none | bugfix |
+| 2026-04-02 | lMoie | v41.0.0: Face Check-in Infrastructure + HR Fix | face-checkin,hr-fix,badges,chat-channel,migration-149 | 0/53 face descriptors, 7/53 employee_profiles | feature |
+| 2026-04-02 | lMoie | v41.1.0: Systemic Fixes — badge dedup, security, sidebar, linking | security,badge-dedup,sidebar,migration-150,staff-linking | CSS badge classes not unified | fix |

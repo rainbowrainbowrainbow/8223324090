@@ -7,14 +7,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=42.1.0">
-    <link rel="stylesheet" href="css/layout.css?v=42.1.0">
-    <link rel="stylesheet" href="css/pages.css?v=42.1.0">
-    <link rel="stylesheet" href="css/modals.css?v=42.1.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=42.1.0">
-    <link rel="stylesheet" href="css/responsive.css?v=42.1.0">
-    <link rel="stylesheet" href="css/content.css?v=42.1.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=42.1.0">
+    <link rel="stylesheet" href="css/base.css?v=42.2.0">
+    <link rel="stylesheet" href="css/layout.css?v=42.2.0">
+    <link rel="stylesheet" href="css/pages.css?v=42.2.0">
+    <link rel="stylesheet" href="css/modals.css?v=42.2.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=42.2.0">
+    <link rel="stylesheet" href="css/responsive.css?v=42.2.0">
+    <link rel="stylesheet" href="css/content.css?v=42.2.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=42.2.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 </head>
@@ -26,6 +26,7 @@
         <div class="content-tabs">
             <button class="content-tab active" data-tab="calendar">📅 Календар</button>
             <button class="content-tab" data-tab="posts">📝 Всі пости</button>
+            <button class="content-tab" data-tab="cards">📇 Картки</button>
             <button class="content-tab" data-tab="analytics">📊 Аналітика</button>
             <button class="content-tab" data-tab="accounts">⚙️ Акаунти</button>
         </div>
@@ -91,6 +92,27 @@
                 </select>
             </div>
             <div class="content-table-wrap" id="postsTable"></div>
+        </div>
+
+        <!-- TAB: Business Cards -->
+        <div id="tab-cards" class="content-tab-content" style="display:none">
+            <div class="content-controls">
+                <div class="content-filters-row">
+                    <select id="cardsCategoryFilter" class="content-filter-select" onchange="ContentPage.loadCards()">
+                        <option value="">Всі категорії</option>
+                        <option value="general">Загальне</option>
+                        <option value="service">Послуги</option>
+                        <option value="event">Події</option>
+                        <option value="product">Товари</option>
+                    </select>
+                    <button class="content-btn content-btn--primary content-btn--small" onclick="ContentPage.openNewCard()">+ Нова картка</button>
+                </div>
+            </div>
+            <div class="content-cards-grid" id="cardsGrid"></div>
+            <div style="margin-top:24px">
+                <h3 style="font-size:15px;font-weight:700;margin-bottom:12px">📱 Правила соцмереж</h3>
+                <div class="content-platforms" id="socialRulesButtons"></div>
+            </div>
         </div>
 
         <!-- TAB: Analytics -->
@@ -204,6 +226,126 @@
         </div>
     </div>
 
+    <!-- Business Card Modal -->
+    <div class="content-modal-overlay" id="cardModal">
+        <div class="content-modal" style="position:relative;max-width:720px">
+            <button class="content-modal-close" onclick="ContentPage.closeCardModal()">&times;</button>
+            <h2 id="cardModalTitle">Нова бізнес-картка</h2>
+            <input type="hidden" id="cardId">
+            <div class="content-field">
+                <label for="cardSlug">Slug (латиницею)</label>
+                <input type="text" id="cardSlug" placeholder="animation, quest-minecraft...">
+            </div>
+            <div class="content-field">
+                <label for="cardTitle">Назва</label>
+                <input type="text" id="cardTitle" placeholder="Дитяча анімація">
+            </div>
+            <div class="content-field">
+                <label for="cardCategory">Категорія</label>
+                <select id="cardCategory">
+                    <option value="service">Послуга</option>
+                    <option value="event">Подія</option>
+                    <option value="general">Загальне</option>
+                    <option value="product">Товар</option>
+                </select>
+            </div>
+            <div class="content-field">
+                <label for="cardShortDesc">Короткий опис (1-2 речення)</label>
+                <input type="text" id="cardShortDesc" placeholder="Яскраві аніматори для вашого свята">
+            </div>
+            <div class="content-field">
+                <label for="cardFullDesc">Повний опис</label>
+                <textarea id="cardFullDesc" placeholder="Детальний опис послуги..."></textarea>
+            </div>
+            <div class="content-field">
+                <label for="cardAudience">Цільова аудиторія</label>
+                <input type="text" id="cardAudience" placeholder="Діти 3-12 років, батьки">
+            </div>
+            <div class="content-field">
+                <label for="cardPrice">Ціна</label>
+                <input type="text" id="cardPrice" placeholder="від 2500₴/год">
+            </div>
+            <div class="content-field">
+                <label for="cardFeatures">Ключові переваги (через кому)</label>
+                <input type="text" id="cardFeatures" placeholder="Професійні аніматори, власні костюми, ...">
+            </div>
+            <div class="content-field">
+                <label for="cardHashtagsIG">Хештеги Instagram</label>
+                <input type="text" id="cardHashtagsIG" placeholder="#анімація, #дітям, ...">
+            </div>
+            <div class="content-field">
+                <label for="cardHashtagsTT">Хештеги TikTok</label>
+                <input type="text" id="cardHashtagsTT" placeholder="#fyp, #animation, ...">
+            </div>
+            <div class="content-field">
+                <label for="cardHashtagsFB">Хештеги Facebook</label>
+                <input type="text" id="cardHashtagsFB" placeholder="#ПаркЗакревського, ...">
+            </div>
+            <div class="content-field">
+                <label for="cardTone">Тон комунікації</label>
+                <input type="text" id="cardTone" placeholder="Яскраво, динамічно, з емоджі">
+            </div>
+            <div class="content-field">
+                <label for="cardRules">Правила контенту</label>
+                <input type="text" id="cardRules" placeholder="Фокус на безпеку, не згадувати ціну в IG">
+            </div>
+            <div class="content-field">
+                <label for="cardCTA">Заклик до дії (CTA)</label>
+                <input type="text" id="cardCTA" placeholder="Бронюйте за ☎️ 0800-XXX-XXXX">
+            </div>
+            <div class="content-field">
+                <label for="cardDoNot">Не писати (через кому)</label>
+                <input type="text" id="cardDoNot" placeholder="знижки більше 20%, порівняння з конкурентами">
+            </div>
+            <div class="content-modal-actions" id="cardModalActions"></div>
+        </div>
+    </div>
+
+    <!-- Social Rules Modal -->
+    <div class="content-modal-overlay" id="rulesModal">
+        <div class="content-modal" style="position:relative;max-width:520px">
+            <button class="content-modal-close" onclick="ContentPage.closeRulesModal()">&times;</button>
+            <h2 id="rulesModalTitle">Правила платформи</h2>
+            <input type="hidden" id="rulesPlatform">
+            <div class="content-field">
+                <label for="rulesMaxLength">Максимум символів</label>
+                <input type="number" id="rulesMaxLength">
+            </div>
+            <div class="content-field">
+                <label for="rulesMediaRequired">Медіа обовʼязкове</label>
+                <select id="rulesMediaRequired"><option value="true">Так</option><option value="false">Ні</option></select>
+            </div>
+            <div class="content-field">
+                <label for="rulesHashtagLimit">Ліміт хештегів</label>
+                <input type="number" id="rulesHashtagLimit">
+            </div>
+            <div class="content-field">
+                <label for="rulesTone">Тон</label>
+                <input type="text" id="rulesTone">
+            </div>
+            <div class="content-field">
+                <label for="rulesFormatting">Правила форматування</label>
+                <textarea id="rulesFormatting" style="min-height:60px"></textarea>
+            </div>
+            <div class="content-field">
+                <label for="rulesImageRatio">Формат зображення</label>
+                <input type="text" id="rulesImageRatio" placeholder="1:1, 4:5, 9:16">
+            </div>
+            <div class="content-field">
+                <label for="rulesHashtagPlacement">Розміщення хештегів</label>
+                <select id="rulesHashtagPlacement"><option value="end">В кінці</option><option value="inline">В тексті</option><option value="none">Без хештегів</option></select>
+            </div>
+            <div class="content-field">
+                <label for="rulesDefHashtags">Базові хештеги (через кому)</label>
+                <input type="text" id="rulesDefHashtags">
+            </div>
+            <div class="content-modal-actions">
+                <button class="content-btn content-btn--primary" onclick="ContentPage.saveRules()">💾 Зберегти</button>
+                <button class="content-btn content-btn--secondary" onclick="ContentPage.closeRulesModal()">Скасувати</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Profile Modal -->
     <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
         <div class="modal-content modal-medium" role="dialog" aria-modal="true">
@@ -219,15 +361,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=42.1.0"></script>
-    <script src="js/config.js?v=42.1.0"></script>
-    <script src="js/notification.js?v=42.1.0"></script>
-    <script src="js/api.js?v=42.1.0"></script>
-    <script src="js/auth.js?v=42.1.0"></script>
-    <script src="js/components/sidebar.js?v=42.1.0"></script>
+    <script src="js/ui.js?v=42.2.0"></script>
+    <script src="js/config.js?v=42.2.0"></script>
+    <script src="js/notification.js?v=42.2.0"></script>
+    <script src="js/api.js?v=42.2.0"></script>
+    <script src="js/auth.js?v=42.2.0"></script>
+    <script src="js/components/sidebar.js?v=42.2.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/content-page.js?v=42.1.0"></script>
-    <script src="js/role-panel.js?v=42.1.0"></script>
-    <script src="js/alerts.js?v=42.1.0"></script>
+    <script src="js/content-page.js?v=42.2.0"></script>
+    <script src="js/role-panel.js?v=42.2.0"></script>
+    <script src="js/alerts.js?v=42.2.0"></script>
 </body>
 </html>

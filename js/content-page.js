@@ -98,6 +98,7 @@ const ContentPage = (() => {
                 if (panel) { panel.style.display = ''; panel.classList.add('active'); }
                 if (target === 'calendar') loadCalendar();
                 else if (target === 'posts') loadAllPosts();
+                else if (target === 'cards') loadCards();
                 else if (target === 'analytics') loadAnalytics();
                 else if (target === 'accounts') loadAccounts();
             });
@@ -549,6 +550,212 @@ const ContentPage = (() => {
         }
     }
 
+    // ══════════════════════════════════════
+    // BUSINESS CARDS
+    // ══════════════════════════════════════
+
+    async function bcApi(url, opts = {}) {
+        const token = getToken();
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+        const res = await fetch('/api/business-cards' + url, { ...opts, headers });
+        if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
+        return await res.json();
+    }
+
+    const CAT_LABELS = { general: 'Загальне', service: 'Послуга', event: 'Подія', product: 'Товар' };
+
+    async function loadCards() {
+        const grid = document.getElementById('cardsGrid');
+        if (!grid) return;
+        grid.innerHTML = '<div class="content-empty">⏳ Завантаження...</div>';
+        const cat = document.getElementById('cardsCategoryFilter')?.value || '';
+
+        try {
+            let url = '/?active=true';
+            if (cat) url += '&category=' + cat;
+            const data = await bcApi(url);
+            const cards = data.data || [];
+            if (!cards.length) { grid.innerHTML = '<div class="content-empty">Немає карток. Створіть першу!</div>'; loadSocialRulesButtons(); return; }
+
+            grid.innerHTML = cards.map(c => {
+                const hashCount = (c.hashtags_instagram || []).length;
+                return `<div class="content-bcard" onclick="ContentPage.openCard(${c.id})">
+                    <div class="content-bcard-title">${escapeHtml(c.title)}</div>
+                    <div class="content-bcard-slug">${escapeHtml(c.slug)}</div>
+                    <div class="content-bcard-desc">${escapeHtml(c.short_description || c.full_description || '—')}</div>
+                    <div class="content-bcard-meta">
+                        <span class="content-bcard-cat">${CAT_LABELS[c.category] || c.category}</span>
+                        ${hashCount ? `<span>${hashCount} хештегів IG</span>` : ''}
+                        <span>${c.is_active ? '✅ Активна' : '⏸️ Неактивна'}</span>
+                    </div>
+                </div>`;
+            }).join('');
+            loadSocialRulesButtons();
+        } catch (err) {
+            grid.innerHTML = `<div class="content-empty">❌ ${escapeHtml(err.message)}</div>`;
+        }
+    }
+
+    async function loadSocialRulesButtons() {
+        const container = document.getElementById('socialRulesButtons');
+        if (!container) return;
+        try {
+            const data = await bcApi('/social-rules');
+            const rules = data.data || [];
+            container.innerHTML = rules.map(r => {
+                const icon = PLATFORM_ICONS[r.platform] || '📱';
+                return `<button class="content-platform-btn" onclick="ContentPage.openRules('${r.platform}')">${icon} ${r.platform}</button>`;
+            }).join('');
+        } catch { container.innerHTML = ''; }
+    }
+
+    function openNewCard() {
+        document.getElementById('cardId').value = '';
+        document.getElementById('cardModalTitle').textContent = 'Нова бізнес-картка';
+        document.getElementById('cardSlug').value = '';
+        document.getElementById('cardTitle').value = '';
+        document.getElementById('cardCategory').value = 'service';
+        document.getElementById('cardShortDesc').value = '';
+        document.getElementById('cardFullDesc').value = '';
+        document.getElementById('cardAudience').value = '';
+        document.getElementById('cardPrice').value = '';
+        document.getElementById('cardFeatures').value = '';
+        document.getElementById('cardHashtagsIG').value = '';
+        document.getElementById('cardHashtagsTT').value = '';
+        document.getElementById('cardHashtagsFB').value = '';
+        document.getElementById('cardTone').value = '';
+        document.getElementById('cardRules').value = '';
+        document.getElementById('cardCTA').value = '';
+        document.getElementById('cardDoNot').value = '';
+        document.getElementById('cardModalActions').innerHTML =
+            `<button class="content-btn content-btn--primary" onclick="ContentPage.saveCard()">💾 Зберегти</button>
+             <button class="content-btn content-btn--secondary" onclick="ContentPage.closeCardModal()">Скасувати</button>`;
+        document.getElementById('cardModal').classList.add('open');
+    }
+
+    async function openCard(id) {
+        try {
+            const data = await bcApi('/' + id);
+            const c = data.data;
+            document.getElementById('cardId').value = c.id;
+            document.getElementById('cardModalTitle').textContent = 'Редагування: ' + c.title;
+            document.getElementById('cardSlug').value = c.slug || '';
+            document.getElementById('cardTitle').value = c.title || '';
+            document.getElementById('cardCategory').value = c.category || 'service';
+            document.getElementById('cardShortDesc').value = c.short_description || '';
+            document.getElementById('cardFullDesc').value = c.full_description || '';
+            document.getElementById('cardAudience').value = c.target_audience || '';
+            document.getElementById('cardPrice').value = c.price_info || '';
+            document.getElementById('cardFeatures').value = (c.key_features || []).join(', ');
+            document.getElementById('cardHashtagsIG').value = (c.hashtags_instagram || []).join(', ');
+            document.getElementById('cardHashtagsTT').value = (c.hashtags_tiktok || []).join(', ');
+            document.getElementById('cardHashtagsFB').value = (c.hashtags_facebook || []).join(', ');
+            document.getElementById('cardTone').value = c.tone_of_voice || '';
+            document.getElementById('cardRules').value = c.content_rules || '';
+            document.getElementById('cardCTA').value = c.call_to_action || '';
+            document.getElementById('cardDoNot').value = (c.do_not || []).join(', ');
+            document.getElementById('cardModalActions').innerHTML =
+                `<button class="content-btn content-btn--primary" onclick="ContentPage.saveCard()">💾 Зберегти</button>
+                 <button class="content-btn content-btn--danger" onclick="ContentPage.deleteCard(${c.id})">🗑️ Видалити</button>
+                 <button class="content-btn content-btn--secondary" onclick="ContentPage.closeCardModal()">Скасувати</button>`;
+            document.getElementById('cardModal').classList.add('open');
+        } catch (err) { notify('Помилка: ' + err.message, 'error'); }
+    }
+
+    function closeCardModal() { document.getElementById('cardModal').classList.remove('open'); }
+
+    function splitComma(val) { return val ? val.split(',').map(s => s.trim()).filter(Boolean) : []; }
+
+    async function saveCard() {
+        const id = document.getElementById('cardId')?.value;
+        const body = {
+            slug: document.getElementById('cardSlug')?.value?.trim(),
+            title: document.getElementById('cardTitle')?.value?.trim(),
+            category: document.getElementById('cardCategory')?.value,
+            short_description: document.getElementById('cardShortDesc')?.value || null,
+            full_description: document.getElementById('cardFullDesc')?.value || null,
+            target_audience: document.getElementById('cardAudience')?.value || null,
+            price_info: document.getElementById('cardPrice')?.value || null,
+            key_features: splitComma(document.getElementById('cardFeatures')?.value),
+            hashtags_instagram: splitComma(document.getElementById('cardHashtagsIG')?.value),
+            hashtags_tiktok: splitComma(document.getElementById('cardHashtagsTT')?.value),
+            hashtags_facebook: splitComma(document.getElementById('cardHashtagsFB')?.value),
+            tone_of_voice: document.getElementById('cardTone')?.value || null,
+            content_rules: document.getElementById('cardRules')?.value || null,
+            call_to_action: document.getElementById('cardCTA')?.value || null,
+            do_not: splitComma(document.getElementById('cardDoNot')?.value),
+        };
+        if (!body.slug || !body.title) { notify('Slug та назва обовʼязкові', 'error'); return; }
+        try {
+            if (id) {
+                await bcApi('/' + id, { method: 'PUT', body: JSON.stringify(body) });
+                notify('Картку оновлено');
+            } else {
+                await bcApi('/', { method: 'POST', body: JSON.stringify(body) });
+                notify('Картку створено');
+            }
+            closeCardModal();
+            loadCards();
+        } catch (err) { notify('Помилка: ' + err.message, 'error'); }
+    }
+
+    async function deleteCard(id) {
+        if (typeof confirmModal === 'function') {
+            const ok = await confirmModal('Видалити цю картку?', { confirmText: 'Видалити', danger: true });
+            if (!ok) return;
+        }
+        try {
+            await bcApi('/' + id, { method: 'DELETE' });
+            notify('Картку видалено');
+            closeCardModal();
+            loadCards();
+        } catch (err) { notify('Помилка: ' + err.message, 'error'); }
+    }
+
+    // ── Social Rules ──
+    async function openRules(platform) {
+        try {
+            const data = await bcApi('/social-rules');
+            const rule = (data.data || []).find(r => r.platform === platform);
+            if (!rule) { notify('Правила не знайдено', 'error'); return; }
+            const icon = PLATFORM_ICONS[platform] || '📱';
+            document.getElementById('rulesModalTitle').textContent = icon + ' ' + platform;
+            document.getElementById('rulesPlatform').value = platform;
+            document.getElementById('rulesMaxLength').value = rule.max_text_length || '';
+            document.getElementById('rulesMediaRequired').value = rule.media_required ? 'true' : 'false';
+            document.getElementById('rulesHashtagLimit').value = rule.hashtag_limit || '';
+            document.getElementById('rulesTone').value = rule.tone || '';
+            document.getElementById('rulesFormatting').value = rule.formatting_rules || '';
+            document.getElementById('rulesImageRatio').value = rule.image_ratio || '';
+            document.getElementById('rulesHashtagPlacement').value = rule.hashtag_placement || 'end';
+            document.getElementById('rulesDefHashtags').value = (rule.default_hashtags || []).join(', ');
+            document.getElementById('rulesModal').classList.add('open');
+        } catch (err) { notify('Помилка: ' + err.message, 'error'); }
+    }
+
+    function closeRulesModal() { document.getElementById('rulesModal').classList.remove('open'); }
+
+    async function saveRules() {
+        const platform = document.getElementById('rulesPlatform')?.value;
+        if (!platform) return;
+        const body = {
+            max_text_length: parseInt(document.getElementById('rulesMaxLength')?.value) || null,
+            media_required: document.getElementById('rulesMediaRequired')?.value === 'true',
+            hashtag_limit: parseInt(document.getElementById('rulesHashtagLimit')?.value) || null,
+            tone: document.getElementById('rulesTone')?.value || null,
+            formatting_rules: document.getElementById('rulesFormatting')?.value || null,
+            image_ratio: document.getElementById('rulesImageRatio')?.value || null,
+            hashtag_placement: document.getElementById('rulesHashtagPlacement')?.value || null,
+            default_hashtags: splitComma(document.getElementById('rulesDefHashtags')?.value),
+        };
+        try {
+            await bcApi('/social-rules/' + platform, { method: 'PUT', body: JSON.stringify(body) });
+            notify('Правила оновлено');
+            closeRulesModal();
+        } catch (err) { notify('Помилка: ' + err.message, 'error'); }
+    }
+
     // ── Init on load ──
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
@@ -565,5 +772,7 @@ const ContentPage = (() => {
         openGenerate, closeGenerate, generateWeek,
         loadAllPosts, loadAccounts, toggleAccount,
         updateCharCount,
+        loadCards, openNewCard, openCard, closeCardModal, saveCard, deleteCard,
+        openRules, closeRulesModal, saveRules,
     };
 })();

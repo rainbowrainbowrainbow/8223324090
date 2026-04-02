@@ -199,6 +199,7 @@ app.use('/api/streaks', require('./routes/streaks'));
 
 // Content Matrix — social media content planning
 app.use('/api/content', require('./routes/content'));
+app.use('/api/business-cards', require('./routes/business-cards'));
 
 // OmniClaw — omnichannel communication
 app.use('/api/omni', require('./routes/omnichannel'));

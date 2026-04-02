@@ -357,7 +357,10 @@ router.get('/schedule/check/:date', async (req, res) => {
 router.get('/', async (req, res) => {
     try {
         const { department, active } = req.query;
-        let sql = 'SELECT * FROM staff';
+        let sql = `SELECT staff.*,
+            (EXISTS(SELECT 1 FROM staff_face_descriptors sfd WHERE sfd.staff_id = staff.id)) AS has_face_descriptor,
+            (EXISTS(SELECT 1 FROM employee_profiles ep WHERE ep.staff_id = staff.id AND ep.is_active = true)) AS has_account
+            FROM staff`;
         const params = [];
         const conditions = [];
 
@@ -501,6 +504,18 @@ router.post('/checkin', async (req, res) => {
         const name = staff.rows[0]?.name || 'Unknown';
         log.info(`Check-in: ${name} (staff #${staffId}) via ${method || 'face'}`);
         res.json({ success: true, checkin: result.rows[0], staffName: name });
+        // Send check-in notification to chat channel (fire-and-forget after response)
+        try {
+            const { sendBotMessage } = require('../services/chatService');
+            const { broadcastToChannel } = require('../services/websocket');
+            const ch = await pool.query("SELECT id FROM chat_channels WHERE slug = 'checkin-log' LIMIT 1");
+            if (ch.rows[0]) {
+                const channelId = ch.rows[0].id;
+                const timeStr = new Date().toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' });
+                const msg = await sendBotMessage(channelId, `✅ ${name} — прихід ${timeStr}`);
+                broadcastToChannel(channelId, 'chat:message', { channelId, message: msg });
+            }
+        } catch (chatErr) { log.warn('Check-in chat notify failed', chatErr.message); }
     } catch (err) {
         log.error('POST /checkin error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -523,6 +538,20 @@ router.post('/checkout', async (req, res) => {
             return res.status(404).json({ error: 'No check-in found for today' });
         }
         res.json({ success: true, checkin: result.rows[0] });
+        // Send checkout notification to chat channel (fire-and-forget after response)
+        try {
+            const { sendBotMessage } = require('../services/chatService');
+            const { broadcastToChannel } = require('../services/websocket');
+            const staffRes = await pool.query('SELECT name FROM staff WHERE id = $1', [staffId]);
+            const name = staffRes.rows[0]?.name || 'Unknown';
+            const ch = await pool.query("SELECT id FROM chat_channels WHERE slug = 'checkin-log' LIMIT 1");
+            if (ch.rows[0]) {
+                const channelId = ch.rows[0].id;
+                const timeStr = new Date().toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' });
+                const msg = await sendBotMessage(channelId, `🚪 ${name} — вихід ${timeStr}`);
+                broadcastToChannel(channelId, 'chat:message', { channelId, message: msg });
+            }
+        } catch (chatErr) { log.warn('Checkout chat notify failed', chatErr.message); }
     } catch (err) {
         log.error('POST /checkout error', err);
         res.status(500).json({ error: 'Internal server error' });

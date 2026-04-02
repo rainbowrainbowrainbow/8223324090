@@ -67,7 +67,9 @@ router.get('/staff', async (req, res) => {
         let sql = `SELECT id, name, department, position, phone, emergency_contact, emergency_phone,
                     role_type, hire_date, birth_date, is_active, hourly_rate, photo_url, notes,
                     telegram_id, telegram_username, color, contract_type, skills,
-                    is_freelance, unique_person_key
+                    is_freelance, unique_person_key,
+                    (EXISTS(SELECT 1 FROM staff_face_descriptors sfd WHERE sfd.staff_id = staff.id)) AS has_face_descriptor,
+                    (EXISTS(SELECT 1 FROM employee_profiles ep WHERE ep.staff_id = staff.id AND ep.is_active = true)) AS has_account
                     FROM staff`;
         const params = [];
         const conds = [];

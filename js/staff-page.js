@@ -288,6 +288,9 @@ function renderEmpRow(emp, dates, today) {
     const hoursLabel = hoursData ? `${hoursData.totalHours}г / ${hoursData.workingDays}д` : '';
     const isFreelance = emp.is_freelance;
     const linkBadge = renderLinkBadge(emp);
+    const faceBadge = emp.has_face_descriptor
+        ? '<span class="link-badge linked" title="Фото для камери: є">📸</span>'
+        : '<span class="link-badge unlinked" title="Фото для камери: немає">📸❌</span>';
     const hrLink = renderHrCrosslink(emp);
     const avatarColor = emp.color || (isFreelance ? '#94A3B8' : '#6366F1');
     let html = `<tr class="${isFreelance ? 'emp-freelance' : ''}">`;
@@ -296,7 +299,7 @@ function renderEmpRow(emp, dates, today) {
             <div class="emp-avatar" style="background:${escapeHtml(avatarColor)}">${isFreelance ? '~' : escapeHtml(initials)}</div>
             <div class="emp-info">
                 <span class="emp-name">${escapeHtml(emp.name)}${hrLink}</span>
-                <span class="emp-position">${escapeHtml(emp.position)} ${linkBadge}</span>
+                <span class="emp-position">${escapeHtml(emp.position)} ${linkBadge} ${faceBadge}</span>
                 <span class="emp-hours">${hoursLabel}</span>
             </div>
         </div>

@@ -183,6 +183,7 @@ function initNewTabs() {
 // ==========================================
 
 function initTabs() {
+    try {
     document.querySelectorAll('.hr-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             document.querySelectorAll('.hr-tab').forEach(t => t.classList.remove('active'));
@@ -672,6 +673,22 @@ async function loadTeam() {
         return;
     }
     teamStaff = data.data || [];
+    // Show missing data banner
+    const activeStaff = teamStaff.filter(s => s.is_active);
+    const missingFace = activeStaff.filter(s => !s.has_face_descriptor).length;
+    const missingAccount = activeStaff.filter(s => !s.has_account).length;
+    const banner = document.getElementById('teamMissingBanner');
+    if (banner) {
+        if (missingFace > 0 || missingAccount > 0) {
+            const msgs = [];
+            if (missingFace) msgs.push(`📸 ${missingFace} без фото для камери`);
+            if (missingAccount) msgs.push(`🔑 ${missingAccount} без акаунту CRM`);
+            banner.innerHTML = `<div class="hr-missing-banner">⚠️ ${msgs.join(' · ')}</div>`;
+            banner.style.display = '';
+        } else {
+            banner.style.display = 'none';
+        }
+    }
     filterAndRenderTeam();
     // Attach filter listeners (idempotent)
     const searchEl = document.getElementById('teamSearch');
@@ -724,6 +741,7 @@ function renderTeam(staff) {
             <div class="hr-team-details">
                 <div class="hr-team-name">${escapeHtml(s.name)} ${typeof staffAccountBadge === 'function' ? staffAccountBadge(s.id) : ''} ${s.is_active ? '' : '<span style="color:var(--gray-400);">(звільнений)</span>'}</div>
                 <div class="hr-team-role">${s.position ? escapeHtml(s.position) + ' · ' : ''}${roleLabel}${hireStr ? ' · з ' + hireStr : ''}</div>
+                <div class="hr-team-badges">${s.has_face_descriptor ? '<span class="hr-badge hr-badge--ok" title="Фото для камери: є">📸</span>' : '<span class="hr-badge hr-badge--warn" title="Фото для камери: немає">📸❌</span>'} ${s.has_account ? '<span class="hr-badge hr-badge--ok" title="Акаунт CRM: є">🔑</span>' : '<span class="hr-badge hr-badge--warn" title="Акаунт CRM: немає">🔑❌</span>'}</div>
                 <div class="hr-team-contact">
                     ${phone ? '📞 ' + escapeHtml(phone) + '<br>' : ''}
                     ${emergency ? '⚡ ' + emergency : ''}

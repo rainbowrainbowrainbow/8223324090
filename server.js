@@ -665,11 +665,31 @@ initDatabase().then(() => {
 
         // v42.3: Marketing agent — auto-publish scheduled posts every 5 min
         try {
-            const { publishScheduled } = require('./lib/marketing-agent');
+            const { publishScheduled, generateWeeklyPlan } = require('./lib/marketing-agent');
             schedulerIntervals.push(setInterval(async () => {
                 try { await publishScheduled(); } catch (e) { log.warn('Marketing auto-publish error:', e.message); }
             }, 5 * 60 * 1000));
             log.info('Marketing auto-publish scheduler started (5 min interval)');
+
+            // Weekly plan auto-generation: every minute check if Wednesday 08:00 UTC (10:00 Kyiv)
+            let lastWeeklyGenDate = null;
+            schedulerIntervals.push(setInterval(async () => {
+                const now = new Date();
+                const todayStr = now.toISOString().split('T')[0];
+                if (now.getUTCDay() !== 3) return; // Wednesday only
+                if (now.getUTCHours() !== 8 || now.getUTCMinutes() > 5) return; // 08:00-08:05 UTC
+                if (lastWeeklyGenDate === todayStr) return; // Already ran today
+                lastWeeklyGenDate = todayStr;
+                try {
+                    const nextWeekDate = new Date(now); nextWeekDate.setDate(nextWeekDate.getDate() + 7);
+                    const jan1 = new Date(nextWeekDate.getFullYear(), 0, 1);
+                    const dayNum = nextWeekDate.getUTCDay() || 7;
+                    const weekNum = Math.ceil((((new Date(Date.UTC(nextWeekDate.getFullYear(), nextWeekDate.getMonth(), nextWeekDate.getDate())) - jan1) / 86400000) + jan1.getUTCDay() + 1) / 7);
+                    const posts = await generateWeeklyPlan(weekNum, nextWeekDate.getFullYear(), ['instagram', 'telegram'], ['animation', 'quest', 'birthday', 'show', 'masterclass'], null);
+                    log.info(`Weekly plan auto-generated: ${posts.length} posts for week ${weekNum}`);
+                } catch (e) { log.warn('Weekly plan auto-gen skipped:', e.message); }
+            }, 60 * 1000));
+            log.info('Weekly plan auto-gen scheduler started (Wednesday 10:00 Kyiv)');
         } catch (e) { log.warn('Marketing scheduler init failed:', e.message); }
 
         // WebSocket: attach to HTTP server for live-sync

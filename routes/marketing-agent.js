@@ -43,7 +43,7 @@ router.post('/generate-post', requireRole('creator', 'director', 'vice_director'
 });
 
 // POST /api/marketing-agent/regenerate/:id
-router.post('/regenerate/:id', async (req, res) => {
+router.post('/regenerate/:id', requireRole('creator', 'director', 'vice_director', 'art_director', 'marketer'), async (req, res) => {
     try {
         const post = await agent.regeneratePost(parseInt(req.params.id));
         res.json({ success: true, data: post });

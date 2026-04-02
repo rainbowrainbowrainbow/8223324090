@@ -167,6 +167,7 @@ async function initPage() {
     initNewTabs();
     await loadToday();
     startPolling();
+    } catch (err) { console.error('HR initPage failed:', err); }
 }
 
 function initNewTabs() {

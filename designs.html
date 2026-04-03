@@ -719,6 +719,33 @@
             color: #a78bfa;
             border-color: rgba(139,92,246,0.3);
         }
+        .catalog-download-btn {
+            margin-top: 4px;
+            background: rgba(16,185,129,0.15);
+            border: 1px solid rgba(16,185,129,0.3);
+            color: #10b981;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+        .catalog-download-btn:hover {
+            background: rgba(16,185,129,0.25);
+            border-color: rgba(16,185,129,0.5);
+        }
+        body.dark-mode .catalog-download-btn {
+            background: rgba(16,185,129,0.2);
+            color: #34d399;
+        }
+        .catalog-card-btns {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
         .catalog-card-footer {
             display: flex; justify-content: space-between; align-items: center;
             padding: 10px 16px;
@@ -1029,6 +1056,9 @@
                         <div class="catalog-card-body">
                             <div class="catalog-card-title">Випускні 2026</div>
                             <div class="catalog-card-meta">7 пакетів · <span id="catalogUpdated">—</span></div>
+                            <div class="catalog-card-btns">
+                                <button class="catalog-download-btn" onclick="event.stopPropagation();downloadCatalog('graduation','Випускні 2026')" title="Завантажити каталог">⬇️ Завантажити</button>
+                            </div>
                         </div>
                     </div>
                     <!-- Dynamic catalog cards rendered here by JS -->
@@ -1336,6 +1366,40 @@
     }
     </script>
     <script>
+    // v42.3: Download catalog as HTML file
+    async function downloadCatalog(catalogId, catalogName) {
+        try {
+            if (typeof showNotification === 'function') showNotification('⏳ Готую каталог...', 'info');
+            var token = localStorage.getItem('pzp_token');
+            // Get or create public link
+            var linkRes = await apiFetch('/api/catalogs/' + catalogId + '/public-link', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
+            });
+            if (!linkRes || !linkRes.ok) throw new Error('Не вдалося створити посилання');
+            var linkData = await linkRes.json();
+            var publicUrl = linkData.url;
+            // Fetch the rendered HTML
+            var htmlRes = await fetch(publicUrl);
+            if (!htmlRes.ok) throw new Error('Не вдалося завантажити каталог');
+            var html = await htmlRes.text();
+            // Download as file
+            var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = (catalogName || catalogId) + '.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            if (typeof showNotification === 'function') showNotification('✅ Каталог завантажено!', 'success');
+        } catch (err) {
+            console.error('Download catalog error:', err);
+            if (typeof showNotification === 'function') showNotification('❌ ' + err.message, 'error');
+        }
+    }
+
     // v39.3: Dynamic catalog cards — redesigned with cover images + status badges
     async function loadDynamicCatalogCards() {
         var listContainer = document.getElementById('catalogList');
@@ -1370,9 +1434,13 @@
                 card.dataset.catalog = c.id;
                 card.style.cursor = 'pointer';
                 card.onclick = (function(catId) { return function() { openCatalogPages(catId); }; })(c.id);
+                var cName = (c.name || c.id).replace(/'/g, "\\'");
                 card.innerHTML = coverHtml +
                     '<div class="catalog-card-body"><div class="catalog-card-title">' + (c.name || c.id) + '</div><div class="catalog-card-meta">' + count + ' сторінок</div>' +
-                    '<button class="catalog-cover-gen-btn" onclick="event.stopPropagation();generateCatalogCover(\'' + c.id + '\')" title="AI-обкладинка">🎨 Обкладинка</button></div>';
+                    '<div class="catalog-card-btns">' +
+                    '<button class="catalog-cover-gen-btn" onclick="event.stopPropagation();generateCatalogCover(\'' + c.id + '\')" title="AI-обкладинка">🎨 Обкладинка</button>' +
+                    '<button class="catalog-download-btn" onclick="event.stopPropagation();downloadCatalog(\'' + c.id + '\',\'' + cName + '\')" title="Завантажити каталог">⬇️ Завантажити</button>' +
+                    '</div></div>';
                 listContainer.appendChild(card);
             });
             // Add "+ Create" card at the end

@@ -1057,7 +1057,7 @@
                             <div class="catalog-card-title">Випускні 2026</div>
                             <div class="catalog-card-meta">7 пакетів · <span id="catalogUpdated">—</span></div>
                             <div class="catalog-card-btns">
-                                <button class="catalog-download-btn" onclick="event.stopPropagation();downloadCatalog('graduation','Випускні 2026')" title="Завантажити каталог">⬇️ Завантажити</button>
+                                <button class="catalog-download-btn" onclick="event.stopPropagation();downloadCatalog('graduation','Випускні 2026')" title="Зберегти як PDF">📄 PDF</button>
                             </div>
                         </div>
                     </div>
@@ -1366,10 +1366,10 @@
     }
     </script>
     <script>
-    // v42.3: Download catalog as self-contained HTML file with inlined CSS
+    // v42.3: Download catalog as PDF — opens print dialog in new tab
     async function downloadCatalog(catalogId, catalogName) {
         try {
-            if (typeof showNotification === 'function') showNotification('⏳ Готую каталог...', 'info');
+            if (typeof showNotification === 'function') showNotification('⏳ Готую PDF...', 'info');
             var token = localStorage.getItem('pzp_token');
             // Get or create public link
             var linkRes = await apiFetch('/api/catalogs/' + catalogId + '/public-link', {
@@ -1379,36 +1379,37 @@
             if (!linkRes || !linkRes.ok) throw new Error('Не вдалося створити посилання');
             var linkData = await linkRes.json();
             var publicUrl = linkData.url;
-            // Fetch the rendered HTML + CSS
-            var [htmlRes, cssRes, fontCssRes] = await Promise.all([
+            // Open in new window with print-optimized styles + auto print
+            var printWin = window.open('', '_blank');
+            if (!printWin) { throw new Error('Браузер заблокував popup. Дозвольте popup для цього сайту.'); }
+            printWin.document.write('<html><head><title>Завантаження...</title></head><body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;background:#1a1a2e;color:#fff"><h2>⏳ Готую PDF каталогу...</h2></body></html>');
+            // Fetch catalog HTML + CSS
+            var [htmlRes, cssRes] = await Promise.all([
                 fetch(publicUrl),
-                fetch('/css/catalog.css'),
-                fetch('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap').catch(function() { return null; })
+                fetch('/css/catalog.css')
             ]);
             if (!htmlRes.ok) throw new Error('Не вдалося завантажити каталог');
             var html = await htmlRes.text();
             var css = cssRes.ok ? await cssRes.text() : '';
-            var fontCss = fontCssRes && fontCssRes.ok ? await fontCssRes.text() : '';
-            // Inline CSS: replace <link> tags with <style> blocks
-            html = html.replace(/<link[^>]*catalog\.css[^>]*>/, '<style>' + css + '</style>');
-            if (fontCss) {
-                html = html.replace(/<link[^>]*fonts\.googleapis[^>]*>/, '<style>' + fontCss + '</style>');
-            }
-            // Also inline the body background style for standalone viewing
-            if (html.indexOf('<style>body{') === -1) {
-                html = html.replace('</head>', '<style>@media print{body{background:#fff !important;color:#000 !important}.cat-page{break-inside:avoid;page-break-inside:avoid;margin-bottom:20px}}</style></head>');
-            }
-            // Download as file
-            var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-            var url = URL.createObjectURL(blob);
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = (catalogName || catalogId) + '.html';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            if (typeof showNotification === 'function') showNotification('✅ Каталог завантажено!', 'success');
+            // Inject print-optimized CSS
+            var printCss = '\n@media print {\n' +
+                '  @page { size: A4; margin: 10mm; }\n' +
+                '  body { background: #1a1a2e !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }\n' +
+                '  .cat-page { break-inside: avoid; page-break-inside: avoid; margin-bottom: 16px; }\n' +
+                '}\n';
+            // Replace <link> with <style> for self-contained rendering
+            html = html.replace(/<link[^>]*catalog\.css[^>]*>/, '<style>' + css + printCss + '</style>');
+            // Write to new window and trigger print
+            printWin.document.open();
+            printWin.document.write(html);
+            printWin.document.close();
+            // Wait for images to load, then print
+            printWin.onload = function() {
+                setTimeout(function() { printWin.print(); }, 500);
+            };
+            // Fallback if onload doesn't fire
+            setTimeout(function() { try { printWin.print(); } catch(e) {} }, 3000);
+            if (typeof showNotification === 'function') showNotification('📄 Оберіть "Зберегти як PDF" у вікні друку', 'success');
         } catch (err) {
             console.error('Download catalog error:', err);
             if (typeof showNotification === 'function') showNotification('❌ ' + err.message, 'error');
@@ -1454,7 +1455,7 @@
                     '<div class="catalog-card-body"><div class="catalog-card-title">' + (c.name || c.id) + '</div><div class="catalog-card-meta">' + count + ' сторінок</div>' +
                     '<div class="catalog-card-btns">' +
                     '<button class="catalog-cover-gen-btn" onclick="event.stopPropagation();generateCatalogCover(\'' + c.id + '\')" title="AI-обкладинка">🎨 Обкладинка</button>' +
-                    '<button class="catalog-download-btn" onclick="event.stopPropagation();downloadCatalog(\'' + c.id + '\',\'' + cName + '\')" title="Завантажити каталог">⬇️ Завантажити</button>' +
+                    '<button class="catalog-download-btn" onclick="event.stopPropagation();downloadCatalog(\'' + c.id + '\',\'' + cName + '\')" title="Зберегти як PDF">📄 PDF</button>' +
                     '</div></div>';
                 listContainer.appendChild(card);
             });

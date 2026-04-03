@@ -1366,7 +1366,7 @@
     }
     </script>
     <script>
-    // v42.3: Download catalog as HTML file
+    // v42.3: Download catalog as self-contained HTML file with inlined CSS
     async function downloadCatalog(catalogId, catalogName) {
         try {
             if (typeof showNotification === 'function') showNotification('⏳ Готую каталог...', 'info');
@@ -1379,10 +1379,25 @@
             if (!linkRes || !linkRes.ok) throw new Error('Не вдалося створити посилання');
             var linkData = await linkRes.json();
             var publicUrl = linkData.url;
-            // Fetch the rendered HTML
-            var htmlRes = await fetch(publicUrl);
+            // Fetch the rendered HTML + CSS
+            var [htmlRes, cssRes, fontCssRes] = await Promise.all([
+                fetch(publicUrl),
+                fetch('/css/catalog.css'),
+                fetch('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap').catch(function() { return null; })
+            ]);
             if (!htmlRes.ok) throw new Error('Не вдалося завантажити каталог');
             var html = await htmlRes.text();
+            var css = cssRes.ok ? await cssRes.text() : '';
+            var fontCss = fontCssRes && fontCssRes.ok ? await fontCssRes.text() : '';
+            // Inline CSS: replace <link> tags with <style> blocks
+            html = html.replace(/<link[^>]*catalog\.css[^>]*>/, '<style>' + css + '</style>');
+            if (fontCss) {
+                html = html.replace(/<link[^>]*fonts\.googleapis[^>]*>/, '<style>' + fontCss + '</style>');
+            }
+            // Also inline the body background style for standalone viewing
+            if (html.indexOf('<style>body{') === -1) {
+                html = html.replace('</head>', '<style>@media print{body{background:#fff !important;color:#000 !important}.cat-page{break-inside:avoid;page-break-inside:avoid;margin-bottom:20px}}</style></head>');
+            }
             // Download as file
             var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
             var url = URL.createObjectURL(blob);

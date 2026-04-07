@@ -631,4 +631,233 @@ router.get('/data/:file', (req, res) => {
     res.json(data);
 });
 
+// ==========================================
+// v43.3: AI WORKFLOW ENGINE
+// ==========================================
+
+// GET /api/copilot/workflow/flag — check if workflow v2 enabled
+router.get('/workflow/flag', async (req, res) => {
+    try {
+        const r = await pool.query("SELECT is_enabled FROM feature_flags WHERE code = 'ai_workflow_v2'");
+        res.json({ enabled: r.rows[0]?.is_enabled || false });
+    } catch { res.json({ enabled: false }); }
+});
+
+// POST /api/copilot/workflow/run — main workflow endpoint
+router.post('/workflow/run', requireRole(...MANAGER_ROLES), rateLimitAI, async (req, res) => {
+    try {
+        const { prompt, mode = 'quick', role, context, task_context, case_id } = req.body;
+        if (!prompt) return res.status(400).json({ success: false, error: 'prompt обовʼязковий' });
+
+        // Check feature flag
+        const flag = await pool.query("SELECT is_enabled FROM feature_flags WHERE code = 'ai_workflow_v2'");
+        if (!flag.rows[0]?.is_enabled) return res.status(403).json({ success: false, error: 'AI Workflow V2 вимкнено' });
+
+        // Build case context if case_id provided
+        let caseContext = '';
+        if (case_id) {
+            const c = await pool.query('SELECT title, business_context, constraints, last_summary FROM ai_cases WHERE id = $1', [case_id]);
+            if (c.rows[0]) {
+                const cs = c.rows[0];
+                caseContext = `\n\nКОНТЕКСТ КЕЙСУ: ${cs.title}\n${cs.business_context || ''}\n${cs.constraints ? 'Обмеження: ' + cs.constraints : ''}\n${cs.last_summary ? 'Попередній підсумок: ' + cs.last_summary : ''}`;
+            }
+        }
+
+        // Detect research-worthy queries
+        const researchKeywords = ['аналіз', 'дослідження', 'конкурент', 'район', 'ніша', 'ринок', 'стратегія', 'оцін', 'порівнян', 'кав\'ярня', 'відкрити', 'запустити'];
+        const needsResearch = researchKeywords.some(k => prompt.toLowerCase().includes(k));
+
+        // Build system prompt based on mode
+        let systemPrompt = 'Ти — AI-асистент CRM Event Genix для бізнес-аналізу та прийняття рішень. Відповідай УКРАЇНСЬКОЮ.';
+        if (role) systemPrompt += `\nТвоя роль: ${role}`;
+        if (context) systemPrompt += `\nКонтекст: ${context}`;
+        if (task_context) systemPrompt += `\nЗадача: ${task_context}`;
+
+        if (mode === 'research') {
+            systemPrompt += '\n\nРежим: ДОСЛІДЖЕННЯ. Проведи глибокий аналіз. Структуруй відповідь: 1) Огляд ситуації 2) Ключові факти 3) Ризики 4) Можливості 5) Рекомендації. Будь об\'єктивним.';
+        } else if (mode === 'task') {
+            systemPrompt += '\n\nРежим: ЗАДАЧА. На основі запиту сформуй: 1) Назву задачі 2) Опис 3) Чеклист кроків 4) Очікуваний результат 5) Кому призначити. Будь конкретним.';
+        } else {
+            systemPrompt += '\n\nРежим: ШВИДКИЙ. Дай коротку чітку відповідь. Без зайвого.';
+        }
+        systemPrompt += caseContext;
+
+        let result;
+        try {
+            const { openRouterChat } = require('../services/copilot');
+            result = await openRouterChat({
+                system: systemPrompt,
+                messages: [{ role: 'user', content: prompt }],
+                temperature: mode === 'research' ? 0.4 : 0.7,
+                max_tokens: mode === 'research' ? 2000 : mode === 'task' ? 1500 : 800
+            });
+        } catch (llmErr) {
+            // Fallback mock when no API key
+            log.warn('Workflow LLM fallback:', llmErr.message);
+            const mocks = {
+                quick: `На основі вашого запиту: "${prompt.substring(0, 50)}..."\n\nОсновні рекомендації:\n1. Визначте цільову аудиторію\n2. Проаналізуйте конкурентів\n3. Складіть план дій\n\n⚠️ Це mock-відповідь. Підключіть OPENROUTER_API_KEY для реального AI.`,
+                research: `## Дослідження: ${prompt.substring(0, 40)}\n\n### Огляд\nТема потребує глибокого аналізу.\n\n### Ключові факти\n- Потрібно зібрати дані з ринку\n- Визначити цільові метрики\n\n### Ризики\n- Недостатньо даних для точних висновків\n\n### Рекомендації\n1. Провести детальне дослідження\n2. Зібрати реальні дані\n\n⚠️ Mock-відповідь.`,
+                task: `## Задача\n**Назва:** ${prompt.substring(0, 50)}\n\n**Опис:** На основі запиту потрібно виконати аналіз і підготувати план.\n\n**Чеклист:**\n1. Зібрати вхідні дані\n2. Проаналізувати\n3. Сформувати рекомендації\n\n⚠️ Mock-відповідь.`
+            };
+            result = mocks[mode] || mocks.quick;
+        }
+
+        // Update case summary if case_id
+        if (case_id && result) {
+            await pool.query(
+                'UPDATE ai_cases SET last_summary = $1, updated_at = NOW() WHERE id = $2',
+                [result.substring(0, 500), case_id]
+            ).catch(() => {});
+        }
+
+        res.json({ success: true, response: result, mode, needsResearch, case_id });
+    } catch (err) {
+        log.error('POST /workflow/run error', err);
+        res.status(500).json({ success: false, error: 'AI помилка: ' + err.message });
+    }
+});
+
+// POST /api/copilot/workflow/self-check — re-analyze/improve response
+router.post('/workflow/self-check', requireRole(...MANAGER_ROLES), rateLimitAI, async (req, res) => {
+    try {
+        const { original_response, action } = req.body;
+        if (!original_response || !action) return res.status(400).json({ success: false, error: 'Потрібні original_response та action' });
+
+        const actions = {
+            verify: 'Перевір цю відповідь на фактичні помилки, слабкі місця та неточності. Вкажи що виправити.',
+            weaknesses: 'Знайди 3-5 слабких місць у цій відповіді. Запропонуй покращення для кожного.',
+            shorten: 'Перепиши цю відповідь коротше і сильніше. Збережи ключові пункти, видали воду.'
+        };
+        const prompt = actions[action] || actions.verify;
+
+        let result;
+        try {
+            const { openRouterChat } = require('../services/copilot');
+            result = await openRouterChat({
+                system: 'Ти — критичний рецензент. Аналізуй відповіді AI на якість. Відповідай УКРАЇНСЬКОЮ.',
+                messages: [{ role: 'user', content: `${prompt}\n\n---\nОригінальна відповідь:\n${original_response}` }],
+                temperature: 0.3,
+                max_tokens: 1500
+            });
+        } catch {
+            result = `${action === 'verify' ? '✅ Перевірка' : action === 'weaknesses' ? '🔍 Аналіз слабких місць' : '✂️ Скорочення'}:\n\nМock self-check для тестування. Підключіть OPENROUTER_API_KEY.`;
+        }
+        res.json({ success: true, response: result, action });
+    } catch (err) {
+        log.error('POST /workflow/self-check error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// POST /api/copilot/workflow/task-preview — generate task from AI response
+router.post('/workflow/task-preview', requireRole(...MANAGER_ROLES), async (req, res) => {
+    try {
+        const { ai_response, context } = req.body;
+        if (!ai_response) return res.status(400).json({ success: false, error: 'ai_response обовʼязковий' });
+
+        let result;
+        try {
+            const { openRouterChat } = require('../services/copilot');
+            result = await openRouterChat({
+                system: 'Ти конвертуєш AI-відповідь у структуровану задачу для CRM. Відповідай JSON: {"title":"...","description":"...","checklist":["..."],"expected_result":"...","suggested_assignee":"...","priority":"normal"}. Відповідай УКРАЇНСЬКОЮ.',
+                messages: [{ role: 'user', content: `Перетвори цю AI-відповідь у задачу:\n\n${ai_response}\n\n${context ? 'Контекст: ' + context : ''}` }],
+                temperature: 0.3,
+                max_tokens: 800
+            });
+        } catch {
+            result = JSON.stringify({ title: ai_response.substring(0, 60), description: ai_response, checklist: ['Визначити вхідні дані', 'Проаналізувати', 'Підготувати результат'], expected_result: 'Завершена задача', suggested_assignee: '', priority: 'normal' });
+        }
+
+        // Parse JSON from response
+        let taskPreview;
+        try {
+            const jsonMatch = result.match(/\{[\s\S]*\}/);
+            taskPreview = jsonMatch ? JSON.parse(jsonMatch[0]) : { title: 'Нова задача', description: result };
+        } catch {
+            taskPreview = { title: 'Нова задача', description: result };
+        }
+        res.json({ success: true, preview: taskPreview });
+    } catch (err) {
+        log.error('POST /workflow/task-preview error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// === AI Cases CRUD ===
+
+// GET /api/copilot/cases — list user's cases
+router.get('/cases', requireRole(...MANAGER_ROLES), async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT id, title, case_type, status, last_summary, updated_at FROM ai_cases
+             WHERE created_by = $1 AND status != 'deleted' ORDER BY updated_at DESC LIMIT 50`,
+            [req.user?.username]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        log.error('GET /cases error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// POST /api/copilot/cases — create case
+router.post('/cases', requireRole(...MANAGER_ROLES), async (req, res) => {
+    try {
+        const { title, case_type, business_context, constraints } = req.body;
+        if (!title) return res.status(400).json({ success: false, error: 'title обовʼязковий' });
+        const result = await pool.query(
+            `INSERT INTO ai_cases (title, case_type, business_context, constraints, created_by)
+             VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+            [title, case_type || 'research', business_context || null, constraints || null, req.user?.username]
+        );
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('POST /cases error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// GET /api/copilot/cases/:id
+router.get('/cases/:id', requireRole(...MANAGER_ROLES), async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM ai_cases WHERE id = $1 AND created_by = $2', [req.params.id, req.user?.username]);
+        if (!result.rows.length) return res.status(404).json({ success: false, error: 'Кейс не знайдено' });
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('GET /cases/:id error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// PUT /api/copilot/cases/:id
+router.put('/cases/:id', requireRole(...MANAGER_ROLES), async (req, res) => {
+    try {
+        const { title, business_context, constraints, messages, last_summary } = req.body;
+        const result = await pool.query(
+            `UPDATE ai_cases SET title = COALESCE($1, title), business_context = COALESCE($2, business_context),
+             constraints = COALESCE($3, constraints), messages = COALESCE($4, messages),
+             last_summary = COALESCE($5, last_summary), updated_at = NOW()
+             WHERE id = $6 AND created_by = $7 RETURNING *`,
+            [title, business_context, constraints, messages ? JSON.stringify(messages) : null,
+             last_summary, req.params.id, req.user?.username]
+        );
+        if (!result.rows.length) return res.status(404).json({ success: false, error: 'Кейс не знайдено' });
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('PUT /cases/:id error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// DELETE /api/copilot/cases/:id
+router.delete('/cases/:id', requireRole(...MANAGER_ROLES), async (req, res) => {
+    try {
+        await pool.query("UPDATE ai_cases SET status = 'deleted', updated_at = NOW() WHERE id = $1 AND created_by = $2", [req.params.id, req.user?.username]);
+        res.json({ success: true });
+    } catch (err) {
+        log.error('DELETE /cases/:id error', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 module.exports = router;

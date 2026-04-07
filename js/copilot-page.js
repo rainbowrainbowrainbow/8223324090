@@ -45,6 +45,15 @@ const CopilotPage = (() => {
 
         // Render default module
         switchModule('coach');
+
+        // v43.3: Check workflow feature flag
+        try {
+            const flagRes = await apiGet('/workflow/flag');
+            if (flagRes?.enabled) {
+                const navWf = document.getElementById('navWorkflow');
+                if (navWf) navWf.style.display = '';
+            }
+        } catch {}
     }
 
     async function waitForAuth() {
@@ -121,6 +130,7 @@ const CopilotPage = (() => {
             'meeting-prep': renderMeetingPrep,
             'pipeline':     renderPipeline,
             'writer':       renderWriter,
+            'workflow':     renderWorkflow,
         };
 
         const fn = renderers[module];
@@ -1566,6 +1576,262 @@ const CopilotPage = (() => {
         if (diff < 86400000) return `${Math.round(diff/3600000)} год тому`;
         return d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // v43.3: AI WORKFLOW ENGINE — Stage 2-7
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    let _wfState = { mode: 'quick', caseId: null, lastResponse: '', demoMode: false };
+
+    function renderWorkflow() {
+        const c = document.getElementById('copilotContent');
+        if (!c) return;
+        c.innerHTML = `
+            <div class="wf-container">
+                <div class="wf-header">
+                    <h2 style="margin:0;font-size:20px;font-weight:800">🧠 AI Workflow Engine</h2>
+                    <div class="wf-controls">
+                        <button class="wf-demo-btn" onclick="CopilotPage.toggleDemo()">
+                            ${_wfState.demoMode ? '🔙 Звичайний' : '🎬 Demo Mode'}
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Intake Frame -->
+                <div class="wf-intake ${_wfState.demoMode ? 'wf-demo' : ''}">
+                    <div class="wf-modes">
+                        <button class="wf-mode-btn ${_wfState.mode==='quick'?'active':''}" onclick="CopilotPage.setWfMode('quick')">⚡ Швидкий</button>
+                        <button class="wf-mode-btn ${_wfState.mode==='research'?'active':''}" onclick="CopilotPage.setWfMode('research')">🔎 Дослідження</button>
+                        <button class="wf-mode-btn ${_wfState.mode==='task'?'active':''}" onclick="CopilotPage.setWfMode('task')">📋 Задача</button>
+                    </div>
+
+                    <div class="wf-frame" id="wfFrame" style="display:${_wfState.mode==='quick'?'none':'grid'}">
+                        <div class="wf-field"><label>Роль</label><input id="wfRole" placeholder="Бізнес-аналітик, маркетолог..." style="min-height:44px"></div>
+                        <div class="wf-field"><label>Контекст</label><input id="wfContext" placeholder="Кав'ярня на Оболоні, бюджет 500к..." style="min-height:44px"></div>
+                    </div>
+
+                    <div class="wf-prompt-row">
+                        <textarea id="wfPrompt" placeholder="Що потрібно дослідити, проаналізувати або створити?" rows="3" style="font-size:16px"></textarea>
+                        <button class="wf-send-btn" onclick="CopilotPage.runWorkflow()" id="wfSendBtn">▶</button>
+                    </div>
+
+                    <!-- Case selector -->
+                    <div class="wf-case-row">
+                        <select id="wfCaseSelect" style="flex:1;padding:8px;border:1px solid rgba(255,255,255,0.1);border-radius:10px;background:rgba(255,255,255,0.04);color:#CBD5E1;font-size:13px;min-height:44px">
+                            <option value="">Без кейсу</option>
+                        </select>
+                        <button class="wf-case-btn" onclick="CopilotPage.newCase()">+ Кейс</button>
+                    </div>
+                </div>
+
+                <!-- Research nudge -->
+                <div id="wfNudge" class="wf-nudge" style="display:none">
+                    <span>🔎 Цей запит виглядає як дослідження. Розпочати глибокий аналіз?</span>
+                    <div style="display:flex;gap:8px;margin-top:8px">
+                        <button class="wf-nudge-btn primary" onclick="CopilotPage.setWfMode('research');CopilotPage.runWorkflow()">Так, research mode</button>
+                        <button class="wf-nudge-btn" onclick="document.getElementById('wfNudge').style.display='none';CopilotPage.runWorkflow()">Ні, швидко</button>
+                    </div>
+                </div>
+
+                <!-- Response area -->
+                <div id="wfResponse" class="wf-response" style="display:none"></div>
+
+                <!-- Self-check actions -->
+                <div id="wfActions" class="wf-actions" style="display:none">
+                    <button onclick="CopilotPage.selfCheck('verify')">✅ Перевірити</button>
+                    <button onclick="CopilotPage.selfCheck('weaknesses')">🔍 Слабкі місця</button>
+                    <button onclick="CopilotPage.selfCheck('shorten')">✂️ Коротше</button>
+                    <button onclick="CopilotPage.taskPreview()">📋 → Задача</button>
+                </div>
+
+                <!-- Task preview modal -->
+                <div id="wfTaskPreview" class="wf-task-preview" style="display:none"></div>
+            </div>`;
+
+        loadCases();
+    }
+
+    async function loadCases() {
+        try {
+            const data = await apiGet('/cases');
+            const sel = document.getElementById('wfCaseSelect');
+            if (!sel || !data?.data) return;
+            sel.innerHTML = '<option value="">Без кейсу</option>' +
+                data.data.map(c => `<option value="${c.id}" ${_wfState.caseId==c.id?'selected':''}>${esc(c.title)} (${c.case_type})</option>`).join('');
+        } catch {}
+    }
+
+    function setWfMode(mode) {
+        _wfState.mode = mode;
+        document.querySelectorAll('.wf-mode-btn').forEach(b => b.classList.toggle('active', b.textContent.includes(mode === 'quick' ? 'Швидкий' : mode === 'research' ? 'Дослідження' : 'Задача')));
+        const frame = document.getElementById('wfFrame');
+        if (frame) frame.style.display = mode === 'quick' ? 'none' : 'grid';
+    }
+
+    async function runWorkflow() {
+        const prompt = document.getElementById('wfPrompt')?.value?.trim();
+        if (!prompt) return;
+
+        // Research nudge check (only first time in quick mode)
+        const researchKeywords = ['аналіз', 'досліджен', 'конкурент', 'район', 'ніша', 'ринок', 'стратегі', 'оцін', 'порівнян', 'кав\'ярня', 'відкрити', 'запустити'];
+        if (_wfState.mode === 'quick' && researchKeywords.some(k => prompt.toLowerCase().includes(k))) {
+            const nudge = document.getElementById('wfNudge');
+            if (nudge && nudge.style.display === 'none') { nudge.style.display = ''; return; }
+        }
+        document.getElementById('wfNudge').style.display = 'none';
+
+        const respEl = document.getElementById('wfResponse');
+        const actionsEl = document.getElementById('wfActions');
+        respEl.style.display = '';
+        respEl.innerHTML = '<div style="text-align:center;padding:24px;color:rgba(255,255,255,0.4)"><div class="spinner spinner-light"></div><br>AI думає...</div>';
+        actionsEl.style.display = 'none';
+        document.getElementById('wfSendBtn').disabled = true;
+
+        const caseId = document.getElementById('wfCaseSelect')?.value || null;
+        _wfState.caseId = caseId;
+
+        try {
+            const data = await apiPost('/workflow/run', {
+                prompt,
+                mode: _wfState.mode,
+                role: document.getElementById('wfRole')?.value || '',
+                context: document.getElementById('wfContext')?.value || '',
+                case_id: caseId || undefined
+            });
+
+            if (data?.success) {
+                _wfState.lastResponse = data.response;
+                respEl.innerHTML = `<div class="wf-response-text">${formatAIResponse(data.response)}</div>`;
+                actionsEl.style.display = '';
+
+                // Save to case messages if case selected
+                if (caseId) {
+                    const caseData = await apiGet('/cases/' + caseId);
+                    if (caseData?.data) {
+                        const msgs = caseData.data.messages || [];
+                        msgs.push({ role: 'user', content: prompt, ts: Date.now() });
+                        msgs.push({ role: 'assistant', content: data.response, ts: Date.now() });
+                        await apiPost('/cases/' + caseId, { messages: msgs, last_summary: data.response.substring(0, 500) });
+                    }
+                }
+            } else {
+                respEl.innerHTML = `<div style="color:#fca5a5;padding:16px">❌ ${esc(data?.error || 'Помилка')}</div>`;
+            }
+        } catch (err) {
+            respEl.innerHTML = `<div style="color:#fca5a5;padding:16px">❌ ${esc(err.message)}</div>`;
+        }
+        document.getElementById('wfSendBtn').disabled = false;
+    }
+
+    async function selfCheck(action) {
+        if (!_wfState.lastResponse) return;
+        const respEl = document.getElementById('wfResponse');
+        respEl.innerHTML += '<div style="border-top:1px solid rgba(255,255,255,0.08);margin-top:16px;padding-top:16px"><div style="color:rgba(255,255,255,0.4)"><div class="spinner spinner-light" style="display:inline-block;width:16px;height:16px;margin-right:8px"></div>Перевіряю...</div></div>';
+
+        try {
+            const data = await apiPost('/workflow/self-check', { original_response: _wfState.lastResponse, action });
+            if (data?.success) {
+                const label = action === 'verify' ? '✅ Перевірка' : action === 'weaknesses' ? '🔍 Слабкі місця' : '✂️ Скорочена версія';
+                respEl.innerHTML += `<div style="border-top:1px solid rgba(255,255,255,0.08);margin-top:16px;padding-top:16px"><div style="font-weight:700;margin-bottom:8px;color:#a78bfa">${label}</div><div class="wf-response-text">${formatAIResponse(data.response)}</div></div>`;
+                if (action === 'shorten') _wfState.lastResponse = data.response;
+            }
+        } catch (err) {
+            respEl.innerHTML += `<div style="color:#fca5a5;margin-top:12px">❌ ${esc(err.message)}</div>`;
+        }
+    }
+
+    async function taskPreview() {
+        if (!_wfState.lastResponse) return;
+        const previewEl = document.getElementById('wfTaskPreview');
+        previewEl.style.display = '';
+        previewEl.innerHTML = '<div style="text-align:center;padding:16px;color:rgba(255,255,255,0.4)">Генерую задачу...</div>';
+
+        try {
+            const data = await apiPost('/workflow/task-preview', {
+                ai_response: _wfState.lastResponse,
+                context: document.getElementById('wfContext')?.value || ''
+            });
+            if (data?.success && data.preview) {
+                const p = data.preview;
+                previewEl.innerHTML = `
+                    <div class="wf-task-card">
+                        <h3 style="margin:0 0 12px">📋 Попередній перегляд задачі</h3>
+                        <div class="wf-field"><label>Назва</label><input id="wfTaskTitle" value="${esc(p.title || '')}" style="min-height:44px"></div>
+                        <div class="wf-field"><label>Опис</label><textarea id="wfTaskDesc" rows="3" style="font-size:16px">${esc(p.description || '')}</textarea></div>
+                        ${p.checklist?.length ? '<div class="wf-field"><label>Чеклист</label><div>' + p.checklist.map(i => '<div style="padding:3px 0;font-size:13px;color:#CBD5E1">☐ ' + esc(i) + '</div>').join('') + '</div></div>' : ''}
+                        ${p.expected_result ? '<div class="wf-field"><label>Очікуваний результат</label><div style="font-size:13px;color:#CBD5E1">' + esc(p.expected_result) + '</div></div>' : ''}
+                        <div class="wf-field"><label>Призначити</label><input id="wfTaskAssign" value="${esc(p.suggested_assignee || '')}" style="min-height:44px"></div>
+                        <div style="display:flex;gap:8px;margin-top:12px">
+                            <button class="wf-send-btn" style="flex:1;border-radius:12px;padding:12px" onclick="CopilotPage.confirmTask()">✅ Створити задачу</button>
+                            <button class="wf-case-btn" style="padding:12px 20px" onclick="document.getElementById('wfTaskPreview').style.display='none'">Скасувати</button>
+                        </div>
+                    </div>`;
+            }
+        } catch (err) {
+            previewEl.innerHTML = `<div style="color:#fca5a5;padding:16px">❌ ${esc(err.message)}</div>`;
+        }
+    }
+
+    async function confirmTask() {
+        const title = document.getElementById('wfTaskTitle')?.value;
+        const description = document.getElementById('wfTaskDesc')?.value;
+        const assignee = document.getElementById('wfTaskAssign')?.value;
+        if (!title) return;
+
+        try {
+            const token = localStorage.getItem('pzp_token');
+            const res = await fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({
+                    title, description,
+                    assigned_to: assignee || undefined,
+                    priority: 'normal',
+                    category: 'operational',
+                    source_type: 'auto',
+                    date: new Date().toISOString().split('T')[0]
+                })
+            });
+            const data = await res.json();
+            if (data.id || data.success) {
+                document.getElementById('wfTaskPreview').style.display = 'none';
+                if (typeof showNotification === 'function') showNotification('✅ Задачу створено: ' + title, 'success');
+            } else {
+                if (typeof showNotification === 'function') showNotification('❌ ' + (data.error || 'Помилка'), 'error');
+            }
+        } catch (err) {
+            if (typeof showNotification === 'function') showNotification('❌ ' + err.message, 'error');
+        }
+    }
+
+    async function newCase() {
+        const title = prompt('Назва кейсу:');
+        if (!title) return;
+        try {
+            const data = await apiPost('/cases', { title, case_type: _wfState.mode || 'research' });
+            if (data?.success) {
+                _wfState.caseId = data.data.id;
+                await loadCases();
+                if (typeof showNotification === 'function') showNotification('📁 Кейс створено', 'success');
+            }
+        } catch {}
+    }
+
+    function toggleDemo() {
+        _wfState.demoMode = !_wfState.demoMode;
+        renderWorkflow();
+    }
+
+    function formatAIResponse(text) {
+        if (!text) return '';
+        return esc(text).replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>');
+    }
+
+    // Expose workflow API
+    window.CopilotPage = window.CopilotPage || {};
+    Object.assign(window.CopilotPage, {
+        setWfMode, runWorkflow, selfCheck, taskPreview, confirmTask, newCase, toggleDemo
+    });
 
     // ─── Start ───────────────────────────────────────────────────────────────
 

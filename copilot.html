@@ -6,14 +6,60 @@
     <title>Event Genix | 🤖 Менеджер AI Copilot</title>
     <meta name="description" content="Event Genix — Manager AI Copilot для продажників">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=43.2.0">
-    <link rel="stylesheet" href="css/layout.css?v=43.2.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=43.2.0">
-    <link rel="stylesheet" href="css/responsive.css?v=43.2.0">
-    <link rel="stylesheet" href="css/pages.css?v=43.2.0">
-    <link rel="stylesheet" href="css/modals.css?v=43.2.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=43.2.0">
-    <link rel="stylesheet" href="css/copilot.css?v=43.2.0">
+    <link rel="stylesheet" href="css/base.css?v=43.3.0">
+    <link rel="stylesheet" href="css/layout.css?v=43.3.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=43.3.0">
+    <link rel="stylesheet" href="css/responsive.css?v=43.3.0">
+    <link rel="stylesheet" href="css/pages.css?v=43.3.0">
+    <link rel="stylesheet" href="css/modals.css?v=43.3.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=43.3.0">
+    <link rel="stylesheet" href="css/copilot.css?v=43.3.0">
+    <style>
+    /* v43.3: AI Workflow Engine styles */
+    .wf-container { max-width: 800px; margin: 0 auto; padding: 16px; }
+    .wf-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .wf-demo-btn { padding: 8px 16px; border-radius: 10px; border: 1px solid rgba(168,85,247,0.3); background: rgba(168,85,247,0.1); color: #c084fc; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; min-height: 44px; transition: all 0.15s; }
+    .wf-demo-btn:hover { background: rgba(168,85,247,0.2); }
+    .wf-intake { padding: 20px; border-radius: 16px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); }
+    .wf-intake.wf-demo { background: rgba(0,0,0,0.3); border-color: rgba(168,85,247,0.2); }
+    .wf-modes { display: flex; gap: 6px; margin-bottom: 16px; }
+    .wf-mode-btn { padding: 10px 18px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: #94A3B8; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; transition: all 0.15s; min-height: 44px; }
+    .wf-mode-btn.active { background: rgba(99,102,241,0.2); border-color: rgba(99,102,241,0.4); color: #a5b4fc; }
+    .wf-mode-btn:hover { border-color: rgba(255,255,255,0.2); }
+    .wf-frame { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .wf-field { display: flex; flex-direction: column; gap: 4px; }
+    .wf-field label { font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em; }
+    .wf-field input, .wf-field textarea { padding: 10px 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; background: rgba(255,255,255,0.04); color: #E2E8F0; font-size: 14px; font-family: inherit; transition: border-color 0.15s; }
+    .wf-field input:focus, .wf-field textarea:focus { outline: none; border-color: rgba(99,102,241,0.5); }
+    .wf-prompt-row { display: flex; gap: 8px; margin-bottom: 10px; }
+    .wf-prompt-row textarea { flex: 1; padding: 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; background: rgba(255,255,255,0.04); color: #E2E8F0; font-family: inherit; resize: vertical; min-height: 44px; }
+    .wf-prompt-row textarea:focus { outline: none; border-color: rgba(99,102,241,0.5); }
+    .wf-send-btn { width: 48px; min-height: 48px; border-radius: 12px; border: none; background: #6366F1; color: #fff; font-size: 18px; cursor: pointer; transition: all 0.15s; }
+    .wf-send-btn:hover { background: #4F46E5; }
+    .wf-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .wf-case-row { display: flex; gap: 8px; }
+    .wf-case-btn { padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: #94A3B8; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; white-space: nowrap; min-height: 44px; transition: all 0.15s; }
+    .wf-case-btn:hover { border-color: rgba(255,255,255,0.2); }
+    .wf-nudge { padding: 14px 16px; border-radius: 14px; background: rgba(250,204,21,0.08); border: 1px solid rgba(250,204,21,0.2); margin: 12px 0; color: #FDE68A; font-size: 13px; }
+    .wf-nudge-btn { padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(250,204,21,0.3); background: transparent; color: #FDE68A; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; min-height: 36px; transition: all 0.15s; }
+    .wf-nudge-btn.primary { background: rgba(250,204,21,0.15); }
+    .wf-response { margin-top: 16px; padding: 20px; border-radius: 16px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); }
+    .wf-response-text { font-size: 14px; line-height: 1.7; color: #E2E8F0; }
+    .wf-response-text strong { color: #a5b4fc; }
+    .wf-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+    .wf-actions button { padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: #94A3B8; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; min-height: 36px; transition: all 0.15s; }
+    .wf-actions button:hover { border-color: rgba(99,102,241,0.4); color: #a5b4fc; }
+    .wf-task-preview { margin-top: 16px; }
+    .wf-task-card { padding: 20px; border-radius: 16px; background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.2); }
+    @media (max-width: 768px) {
+        .wf-frame { grid-template-columns: 1fr; }
+        .wf-modes { flex-wrap: wrap; }
+        .wf-prompt-row { flex-direction: column; }
+        .wf-send-btn { width: 100%; }
+        .wf-actions { flex-direction: column; }
+        .wf-actions button { width: 100%; }
+    }
+    </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -126,6 +172,10 @@
                         <span class="nav-icon">✍️</span>
                         <span>Message Writer</span>
                     </a>
+                    <a class="copilot-nav-item" data-module="workflow" id="navWorkflow" style="display:none">
+                        <span class="nav-icon">🧠</span>
+                        <span>AI Workflow</span>
+                    </a>
                 </nav>
             </aside>
 
@@ -159,15 +209,15 @@
         <span id="notificationText"></span>
     </div>
 
-<script src="js/config.js?v=43.2.0"></script>
-    <script src="js/notification.js?v=43.2.0"></script>
-<script src="js/api.js?v=43.2.0"></script>
-<script src="js/auth.js?v=43.2.0"></script>
-<script src="js/components/sidebar.js?v=43.2.0"></script>
+<script src="js/config.js?v=43.3.0"></script>
+    <script src="js/notification.js?v=43.3.0"></script>
+<script src="js/api.js?v=43.3.0"></script>
+<script src="js/auth.js?v=43.3.0"></script>
+<script src="js/components/sidebar.js?v=43.3.0"></script>
 <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-<script src="js/copilot-page.js?v=43.2.0"></script>
-<script src="js/ui.js?v=43.2.0"></script>
-<script src="js/role-panel.js?v=43.2.0"></script>
-    <script src="js/alerts.js?v=43.2.0"></script>
+<script src="js/copilot-page.js?v=43.3.0"></script>
+<script src="js/ui.js?v=43.3.0"></script>
+<script src="js/role-panel.js?v=43.3.0"></script>
+    <script src="js/alerts.js?v=43.3.0"></script>
 </body>
 </html>

@@ -1369,7 +1369,7 @@ router.get('/salary', async (req, res) => {
 // POST /api/hr/salary/adjustment — add bonus/deduction/depremium
 router.post('/salary/adjustment', async (req, res) => {
     try {
-        const { staff_id, month, type, amount, reason, template_id } = req.body;
+        const { staff_id, month, type, amount, reason, template_id, violation_date, evidence_note, evidence_url } = req.body;
         if (!staff_id || !month || !type || amount === undefined) {
             return res.status(400).json({ success: false, error: 'Обовʼязкові: staff_id, month, type, amount' });
         }
@@ -1412,10 +1412,12 @@ router.post('/salary/adjustment', async (req, res) => {
         const status = needsReview ? 'pending_review' : 'applied';
         const result = await pool.query(
             `INSERT INTO salary_adjustments (staff_id, month, type, amount, reason, created_by,
-             template_id, rule_code, discipline_category, severity, repeat_index, decision_mode, status)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+             template_id, rule_code, discipline_category, severity, repeat_index, decision_mode, status,
+             violation_date, evidence_note, evidence_url)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
             [staff_id, month, type, finalAmount, finalReason, req.user?.username,
-             tplId, ruleCode, disciplineCategory, severity, repeatIndex, decisionMode, status]
+             tplId, ruleCode, disciplineCategory, severity, repeatIndex, decisionMode, status,
+             violation_date || null, evidence_note || null, evidence_url || null]
         );
         const adj = result.rows[0];
 
@@ -1428,6 +1430,25 @@ router.post('/salary/adjustment', async (req, res) => {
         ).catch(e => log.warn('Discipline log failed:', e.message));
 
         await auditLog('salary_adjustment', staff_id, req.user?.username, { type, amount: finalAmount, reason: finalReason, template_id: tplId }, req.ip);
+
+        // Dry notification to staff (fire-and-forget, no word "штраф")
+        if ((type === 'penalty' || type === 'deduction') && status === 'applied') {
+            setImmediate(async () => {
+                try {
+                    const staffRow = await pool.query('SELECT telegram_id FROM staff WHERE id = $1', [staff_id]);
+                    const tgId = staffRow.rows[0]?.telegram_id;
+                    if (tgId) {
+                        const msg = [
+                            `📋 Депреміювання${finalAmount ? ` -${Number(finalAmount).toFixed(0)}₴` : ''}`,
+                            `Причина: ${finalReason}`,
+                            repeatIndex > 1 ? `Повторність: ${repeatIndex}-й зафіксований випадок` : null
+                        ].filter(Boolean).join('\n');
+                        await sendTelegramMessage(tgId, msg);
+                    }
+                } catch (e) { log.warn('Depremium TG notify failed:', e.message); }
+            });
+        }
+
         res.json({ success: true, data: adj, needsReview });
     } catch (err) {
         log.error('POST /hr/salary/adjustment error', err);

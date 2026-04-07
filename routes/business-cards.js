@@ -3,6 +3,7 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
+const { stripTags, sanitizeArray } = require('../utils/sanitize');
 const { requireRole, authenticateToken } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 
@@ -124,17 +125,21 @@ router.post('/', requireRole('creator', 'director', 'vice_director', 'art_direct
 
         if (!slug || !title) return res.status(400).json({ success: false, error: 'slug та title обовʼязкові' });
 
+        // Sanitize text inputs
+        const s = (v) => v ? stripTags(v) : v;
+        const sa = (v) => v ? sanitizeArray(v) : v;
+
         const result = await pool.query(
             `INSERT INTO business_cards (slug, title, category, short_description, full_description,
              target_audience, key_features, price_info, price_details, photo_urls, video_urls,
              instagram_refs, hashtags_instagram, hashtags_tiktok, hashtags_facebook,
              tone_of_voice, content_rules, call_to_action, do_not, sort_order)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
-            [slug, title, category || 'service', short_description, full_description,
-             target_audience, key_features || '{}', price_info, price_details ? JSON.stringify(price_details) : '{}',
+            [s(slug), s(title), category || 'service', s(short_description), s(full_description),
+             s(target_audience), sa(key_features) || '{}', s(price_info), price_details ? JSON.stringify(price_details) : '{}',
              photo_urls || '{}', video_urls || '{}', instagram_refs || '{}',
-             hashtags_instagram || '{}', hashtags_tiktok || '{}', hashtags_facebook || '{}',
-             tone_of_voice, content_rules, call_to_action, do_not || '{}', sort_order || 0]
+             sa(hashtags_instagram) || '{}', sa(hashtags_tiktok) || '{}', sa(hashtags_facebook) || '{}',
+             s(tone_of_voice), s(content_rules), s(call_to_action), sa(do_not) || '{}', sort_order || 0]
         );
         log.info(`Business card created: ${slug}`);
         res.status(201).json({ success: true, data: result.rows[0] });

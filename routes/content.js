@@ -3,6 +3,7 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
+const { stripTags, sanitizeArray } = require('../utils/sanitize');
 const { requireRole, authenticateToken } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 
@@ -75,15 +76,19 @@ router.post('/posts', async (req, res) => {
         const { title, body, media_urls, platforms, topic, hashtags, status,
                 scheduled_at, week_number, year, day_of_week, notes, ai_generated } = req.body;
         if (!title) return res.status(400).json({ success: false, error: 'Назва обовʼязкова' });
+        const safeTitle = stripTags(title);
+        const safeBody = stripTags(body || '');
+        const safeNotes = stripTags(notes || null);
+        const safeHashtags = sanitizeArray(hashtags || []);
 
         const result = await pool.query(
             `INSERT INTO content_posts (title, body, media_urls, platforms, topic, hashtags, status,
              scheduled_at, week_number, year, day_of_week, notes, ai_generated, created_by)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-            [title, body || '', media_urls || '{}', platforms || '{}', topic || 'general',
-             hashtags || '{}', status || 'draft', scheduled_at || null,
+            [safeTitle, safeBody, media_urls || '{}', platforms || '{}', topic || 'general',
+             safeHashtags.length ? safeHashtags : '{}', status || 'draft', scheduled_at || null,
              week_number || null, year || null, day_of_week || null,
-             notes || null, ai_generated || false, req.user?.id || null]
+             safeNotes, ai_generated || false, req.user?.id || null]
         );
         log.info(`Post created: "${title}" by user ${req.user?.id}`);
         res.status(201).json({ success: true, data: result.rows[0] });
@@ -96,8 +101,12 @@ router.post('/posts', async (req, res) => {
 // PUT /api/content/posts/:id — update
 router.put('/posts/:id', async (req, res) => {
     try {
-        const { title, body, media_urls, platforms, topic, hashtags, status,
-                scheduled_at, week_number, year, day_of_week, notes } = req.body;
+        const raw = req.body;
+        const title = raw.title ? stripTags(raw.title) : undefined;
+        const body = raw.body ? stripTags(raw.body) : undefined;
+        const notes = raw.notes !== undefined ? stripTags(raw.notes) : undefined;
+        const hashtags = raw.hashtags ? sanitizeArray(raw.hashtags) : undefined;
+        const { media_urls, platforms, topic, status, scheduled_at, week_number, year, day_of_week } = raw;
 
         const result = await pool.query(
             `UPDATE content_posts SET

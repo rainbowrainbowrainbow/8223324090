@@ -61,11 +61,16 @@ async function buildAndSendDigest(date) {
     // Auto-distribute afisha events to animators before building digest
     try { await getDistributeAfisha()(date); } catch (e) { log.warn('Auto-distribute before digest skipped', e.message); }
 
-    const bookingsResult = await pool.query("SELECT * FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time", [date]);
+    const bookingsResult = await pool.query(
+        `SELECT id, date, time, duration, line_id, program_name, program_code, label, category, price,
+                hosts, second_animator, pinata_filler, costume, room, notes, linked_to, status, kids_count, group_name
+         FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time LIMIT 500`, [date]);
     const bookings = bookingsResult.rows;
 
     // Fetch afisha events for the same date
-    const afishaResult = await pool.query('SELECT * FROM afisha WHERE date = $1 ORDER BY time', [date]);
+    const afishaResult = await pool.query(
+        `SELECT id, date, time, duration, title, description, type, line_id, template_id, original_time
+         FROM afisha WHERE date = $1 ORDER BY time LIMIT 200`, [date]);
     const afishaEvents = afishaResult.rows;
 
     if (bookings.length === 0 && afishaEvents.length === 0) {
@@ -75,7 +80,7 @@ async function buildAndSendDigest(date) {
     }
 
     await ensureDefaultLines(date);
-    const linesResult = await pool.query('SELECT * FROM lines_by_date WHERE date = $1 ORDER BY id', [date]);
+    const linesResult = await pool.query('SELECT id, date, line_id, name, color FROM lines_by_date WHERE date = $1 ORDER BY id LIMIT 100', [date]);
     const lines = linesResult.rows;
 
     // v8.1: Redesigned digest format with tree structure
@@ -168,7 +173,9 @@ async function sendTomorrowReminder(todayStr) {
 
         // v7.9.3: Fetch ALL bookings including linked (for second animator display)
         const bookingsResult = await pool.query(
-            "SELECT * FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time",
+            `SELECT id, date, time, duration, line_id, program_name, program_code, label, category, price,
+                    hosts, second_animator, pinata_filler, costume, room, notes, linked_to, status, kids_count, group_name
+             FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time LIMIT 500`,
             [tomorrowStr]
         );
         const mainBookingsCount = bookingsResult.rows.filter(b => !b.linked_to).length;

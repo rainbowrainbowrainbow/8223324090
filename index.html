@@ -15,19 +15,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=42.3.0">
-    <link rel="stylesheet" href="css/auth.css?v=42.3.0">
-    <link rel="stylesheet" href="css/layout.css?v=42.3.0">
-    <link rel="stylesheet" href="css/timeline.css?v=42.3.0">
-    <link rel="stylesheet" href="css/panel.css?v=42.3.0">
-    <link rel="stylesheet" href="css/modals.css?v=42.3.0">
-    <link rel="stylesheet" href="css/controls.css?v=42.3.0">
-    <link rel="stylesheet" href="css/features.css?v=42.3.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=42.3.0">
-    <link rel="stylesheet" href="css/responsive.css?v=42.3.0">
-    <link rel="stylesheet" href="css/pages.css?v=42.3.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=42.3.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=42.3.0">
+    <link rel="stylesheet" href="css/base.css?v=42.4.0">
+    <link rel="stylesheet" href="css/auth.css?v=42.4.0">
+    <link rel="stylesheet" href="css/layout.css?v=42.4.0">
+    <link rel="stylesheet" href="css/timeline.css?v=42.4.0">
+    <link rel="stylesheet" href="css/panel.css?v=42.4.0">
+    <link rel="stylesheet" href="css/modals.css?v=42.4.0">
+    <link rel="stylesheet" href="css/controls.css?v=42.4.0">
+    <link rel="stylesheet" href="css/features.css?v=42.4.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=42.4.0">
+    <link rel="stylesheet" href="css/responsive.css?v=42.4.0">
+    <link rel="stylesheet" href="css/pages.css?v=42.4.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=42.4.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=42.4.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -44,9 +44,9 @@
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v42.3.0 — Marketing Subagent</p>
+                <p class="tagline">AI First CRM v42.4.0 — Performance + Security</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v42.3.0</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v42.4.0</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1152,6 +1152,15 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>⚡ v42.4.0 — Performance + Security optimization (07.04.2026)</h4>
+                    <ul>
+                        <li><b>🗃️ DB Indexes</b> — 6 нових індексів: bookings(date,status), leads(assigned_to), chat_members, staff_schedule, tasks</li>
+                        <li><b>⚡ Batch queries</b> — stock deduction переписано з N+1 на batch UPDATE+INSERT (unnest)</li>
+                        <li><b>📊 Scheduler</b> — SELECT * замінено на explicit columns + LIMIT 500</li>
+                        <li><b>🔒 Demo rate limit</b> — max 5 спроб demo login за 10 хв на IP</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>🤖 v42.3.0 — Marketing Subagent: автогенерація та постинг (02.04.2026)</h4>
                     <ul>
                         <li><b>🤖 Субагент-маркетолог</b> — окремий бот для генерації контенту (дешева LLM)</li>
@@ -1555,7 +1564,7 @@
                     <h4>v37.4.0 — Системний QA Чекап (Claude Code, 22.03.2026)</h4>
                     <ul>
                         <li><b>Безпека</b> — sound-library.js: додано authenticateToken (був незахищений API!)</li>
-                        <li><b>Cache-bust</b> — синхронізовано ?v=42.3.0 на всіх 30 HTML сторінках</li>
+                        <li><b>Cache-bust</b> — синхронізовано ?v=42.4.0 на всіх 30 HTML сторінках</li>
                         <li><b>Production cleanup</b> — прибрано 19 console.log з decision-screen, dashboard, timeline, chat, api</li>
                         <li><b>Accessibility</b> — prefers-reduced-motion для decision-screen анімацій</li>
                         <li><b>Decision Screen</b> — центр прийняття рішень: overlay на dashboard, approve/reject/defer</li>
@@ -1893,7 +1902,7 @@
                         <li><b>Scheduler</b> — виправлено "value too long for varchar(10)" для hourly schedulers (міграція 094)</li>
                         <li><b>Рахунки</b> — finance_accounts таблиця, CRUD API, report-bot sync, вкладка «Рахунки» у фінансах</li>
                         <li><b>Report Bot</b> — account_id/account_name в submit, GET /report-bot/accounts для синхронізації</li>
-                        <li><b>Cache Busting</b> — ?v=42.3.0 на всіх 25 HTML сторінках (321 оновлення)</li>
+                        <li><b>Cache Busting</b> — ?v=42.4.0 на всіх 25 HTML сторінках (321 оновлення)</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -2488,7 +2497,7 @@
                         <li><b>Version Sync</b> — повна синхронізація версій по всіх 25+ HTML файлах, package.json, swagger.js, SNAPSHOT, CHANGELOG</li>
                         <li><b>Landing Carousel</b> — команда з каруселлю, Anli Lektor, swipe/dots/arrows [kleshnya]</li>
                         <li><b>Manager Guide</b> — нова сторінка для менеджерів з продажу [kleshnya]</li>
-                        <li><b>Cache Busting</b> — ?v=42.3.0 на всіх CSS/JS ресурсах (25 файлів)</li>
+                        <li><b>Cache Busting</b> — ?v=42.4.0 на всіх CSS/JS ресурсах (25 файлів)</li>
                         <li><b>Swagger API</b> — оновлена версія OpenAPI spec до v23.0.0</li>
                     </ul>
                 </div>
@@ -5244,27 +5253,27 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=42.3.0"></script>
-    <script src="js/api.js?v=42.3.0"></script>
-    <script src="js/ui.js?v=42.3.0"></script>
-    <script src="js/auth.js?v=42.3.0"></script>
-    <script src="js/timeline.js?v=42.3.0"></script>
-    <script src="js/booking.js?v=42.3.0"></script>
-    <script src="js/settings.js?v=42.3.0"></script>
-    <script src="js/booking-form.js?v=42.3.0"></script>
-    <script src="js/booking-linked.js?v=42.3.0"></script>
-    <script src="js/settings-dashboard.js?v=42.3.0"></script>
-    <script src="js/settings-history.js?v=42.3.0"></script>
-    <script src="js/settings-afisha.js?v=42.3.0"></script>
-    <script src="js/settings-certificates.js?v=42.3.0"></script>
-    <script src="js/offline.js?v=42.3.0"></script>
-    <script src="js/search.js?v=42.3.0"></script>
-    <script src="js/ws.js?v=42.3.0"></script>
-    <script src="js/app.js?v=42.3.0"></script>
-    <script src="js/kleshnya-widget.js?v=42.3.0"></script>
-    <script src="js/components/sidebar.js?v=42.3.0"></script>
+    <script src="js/config.js?v=42.4.0"></script>
+    <script src="js/api.js?v=42.4.0"></script>
+    <script src="js/ui.js?v=42.4.0"></script>
+    <script src="js/auth.js?v=42.4.0"></script>
+    <script src="js/timeline.js?v=42.4.0"></script>
+    <script src="js/booking.js?v=42.4.0"></script>
+    <script src="js/settings.js?v=42.4.0"></script>
+    <script src="js/booking-form.js?v=42.4.0"></script>
+    <script src="js/booking-linked.js?v=42.4.0"></script>
+    <script src="js/settings-dashboard.js?v=42.4.0"></script>
+    <script src="js/settings-history.js?v=42.4.0"></script>
+    <script src="js/settings-afisha.js?v=42.4.0"></script>
+    <script src="js/settings-certificates.js?v=42.4.0"></script>
+    <script src="js/offline.js?v=42.4.0"></script>
+    <script src="js/search.js?v=42.4.0"></script>
+    <script src="js/ws.js?v=42.4.0"></script>
+    <script src="js/app.js?v=42.4.0"></script>
+    <script src="js/kleshnya-widget.js?v=42.4.0"></script>
+    <script src="js/components/sidebar.js?v=42.4.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=42.3.0"></script>
-    <script src="js/alerts.js?v=42.3.0"></script>
+    <script src="js/role-panel.js?v=42.4.0"></script>
+    <script src="js/alerts.js?v=42.4.0"></script>
 </body>
 </html>

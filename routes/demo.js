@@ -15,8 +15,26 @@ const log = createLogger('Demo');
 // DEMO LOGIN (guest access without registration)
 // ==========================================
 
+// Rate limit for demo login: max 5 per IP per 10 min
+const _demoLoginAttempts = new Map();
+function demoRateLimit(req, res, next) {
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+    const now = Date.now();
+    const windowMs = 10 * 60 * 1000; // 10 min
+    const maxAttempts = 5;
+    const attempts = (_demoLoginAttempts.get(ip) || []).filter(t => now - t < windowMs);
+    if (attempts.length >= maxAttempts) {
+        return res.status(429).json({ success: false, error: 'Забагато спроб. Спробуйте через 10 хв.' });
+    }
+    attempts.push(now);
+    _demoLoginAttempts.set(ip, attempts);
+    next();
+}
+// Cleanup old entries every 30 min
+setInterval(() => { const now = Date.now(); for (const [ip, arr] of _demoLoginAttempts) { const fresh = arr.filter(t => now - t < 600000); if (fresh.length === 0) _demoLoginAttempts.delete(ip); else _demoLoginAttempts.set(ip, fresh); } }, 30 * 60 * 1000);
+
 // POST /api/demo/login — Create a temporary demo session
-router.post('/login', async (req, res) => {
+router.post('/login', demoRateLimit, async (req, res) => {
     try {
         const { name, company } = req.body;
 

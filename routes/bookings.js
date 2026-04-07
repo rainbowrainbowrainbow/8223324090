@@ -303,17 +303,33 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                          WHERE psr.product_id = $1 AND ws.is_active = true`,
                         [b.programId]
                     );
-                    for (const req of reqs.rows) {
-                        if (req.current_qty < req.quantity) {
-                            log.warn(`[StockDeduct] Low stock: ${req.name} (${req.current_qty} < ${req.quantity}) for booking ${insertResult.rows[0].id}`);
+                    // Batch stock deductions in fewer queries
+                    if (reqs.rows.length > 0) {
+                        const stockIds = reqs.rows.map(r => r.stock_id);
+                        const quantities = reqs.rows.map(r => r.quantity);
+                        const bookingId = insertResult.rows[0].id;
+
+                        // Log warnings for low stock
+                        for (const req of reqs.rows) {
+                            if (req.current_qty < req.quantity) {
+                                log.warn(`[StockDeduct] Low stock: ${req.name} (${req.current_qty} < ${req.quantity}) for booking ${bookingId}`);
+                            }
                         }
+
+                        // Batch UPDATE using unnest
                         await pool.query(
-                            `UPDATE warehouse_stock SET quantity = GREATEST(0, quantity - $1), updated_at = NOW(), updated_by = 'booking' WHERE id = $2`,
-                            [req.quantity, req.stock_id]
+                            `UPDATE warehouse_stock SET quantity = GREATEST(0, quantity - batch.qty), updated_at = NOW(), updated_by = 'booking'
+                             FROM (SELECT unnest($1::int[]) AS sid, unnest($2::int[]) AS qty) batch
+                             WHERE warehouse_stock.id = batch.sid`,
+                            [stockIds, quantities]
                         );
+
+                        // Batch INSERT history
+                        const histValues = reqs.rows.map((r, i) => `($${i*3+1}, $${i*3+2}, $${i*3+3}, 'booking', NOW())`).join(',');
+                        const histParams = reqs.rows.flatMap(r => [r.stock_id, -r.quantity, `Бронювання ${bookingId}`]);
                         await pool.query(
-                            `INSERT INTO warehouse_history (stock_id, change, reason, created_by, created_at) VALUES ($1, $2, $3, 'booking', NOW())`,
-                            [req.stock_id, -req.quantity, `Бронювання ${insertResult.rows[0].id}`]
+                            `INSERT INTO warehouse_history (stock_id, change, reason, created_by, created_at) VALUES ${histValues}`,
+                            histParams
                         );
                     }
                 } catch (e) { log.warn('[StockDeduct] Error:', e.message); }

@@ -109,7 +109,8 @@ app.use('/api', (req, res, next) => {
 // Login rate limiter (stricter: 5 attempts per minute)
 app.use('/api/auth/login', loginRateLimiter);
 // v25.3: Rate limiters for sensitive endpoints
-app.use('/api/auth/change-password', sensitiveActionLimiter);
+app.use('/api/auth/password', sensitiveActionLimiter);
+app.use('/api/auth/refresh', sensitiveActionLimiter);
 app.use('/api/auth/impersonate', sensitiveActionLimiter);
 app.use('/api/shop/buy', shopBuyLimiter);
 app.use('/api/gamification/shop/buy', shopBuyLimiter);

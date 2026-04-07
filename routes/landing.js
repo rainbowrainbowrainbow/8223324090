@@ -15,7 +15,7 @@ router.post('/demo-request', async (req, res) => {
     }
 
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = '674972415'; // Serhiy
+    const chatId = process.env.TELEGRAM_ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '674972415';
 
     const text = `\u{1F195} *Нова заявка на демо Event Genix!*\n\n` +
         `\u{1F464} Ім'я: ${name}\n` +

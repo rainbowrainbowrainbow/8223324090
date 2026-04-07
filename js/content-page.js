@@ -363,7 +363,7 @@ const ContentPage = (() => {
                 cb.checked = (p.platforms || []).includes(cb.value);
             });
             document.getElementById('postStatusDisplay').style.display = '';
-            document.getElementById('postCurrentStatus').innerHTML = `<span class="content-status content-status--${p.status}">${STATUS_LABELS[p.status] || p.status}</span>`;
+            document.getElementById('postCurrentStatus').innerHTML = `<span class="content-status content-status--${escapeHtml(p.status)}">${escapeHtml(STATUS_LABELS[p.status] || p.status)}</span>`;
             updateCharCount();
             renderModalActions(p);
             document.getElementById('postModal').classList.add('open');

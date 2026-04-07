@@ -1391,14 +1391,18 @@
             if (!htmlRes.ok) throw new Error('Не вдалося завантажити каталог');
             var html = await htmlRes.text();
             var css = cssRes.ok ? await cssRes.text() : '';
-            // Inject print-optimized CSS
-            var printCss = '\n@media print {\n' +
-                '  @page { size: A4; margin: 10mm; }\n' +
-                '  body { background: #1a1a2e !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }\n' +
-                '  .cat-page { break-inside: avoid; page-break-inside: avoid; margin-bottom: 16px; }\n' +
+            // Inject print-optimized CSS that overrides catalog.css print rules
+            var printCss = '\n' +
+                '@media print {\n' +
+                '  @page { size: A4 portrait; margin: 0; }\n' +
+                '  html, body { width: 100%; height: auto; overflow: visible !important; background: #1a1a2e !important; color: #fff !important; margin: 0 !important; padding: 0 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }\n' +
+                '  .cat-page { break-after: page; page-break-after: always; break-inside: avoid; page-break-inside: avoid; width: 100% !important; max-width: 100% !important; border-radius: 0 !important; box-shadow: none !important; margin: 0 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }\n' +
+                '  .cat-page:last-child { break-after: auto; page-break-after: auto; }\n' +
+                '  .cat-hero, .cat-hero-overlay, .cat-hero::before, .cat-page-cover, .cat-stats, .cat-body, .cat-footer { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }\n' +
+                '  .cat-hero-img, .cat-page-cover-bg { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }\n' +
                 '}\n';
-            // Replace <link> with <style> for self-contained rendering
-            html = html.replace(/<link[^>]*catalog\.css[^>]*>/, '<style>' + css + printCss + '</style>');
+            // Inline catalog CSS + append our print overrides AFTER (higher priority)
+            html = html.replace(/<link[^>]*catalog\.css[^>]*>/, '<style>' + css + '</style><style>' + printCss + '</style>');
             // Write to new window and trigger print
             printWin.document.open();
             printWin.document.write(html);

@@ -1366,20 +1366,69 @@ router.get('/salary', async (req, res) => {
     }
 });
 
-// POST /api/hr/salary/adjustment — add bonus/deduction
+// POST /api/hr/salary/adjustment — add bonus/deduction/depremium
 router.post('/salary/adjustment', async (req, res) => {
     try {
-        const { staff_id, month, type, amount, reason } = req.body;
-        if (!staff_id || !month || !type || !amount) {
+        const { staff_id, month, type, amount, reason, template_id } = req.body;
+        if (!staff_id || !month || !type || amount === undefined) {
             return res.status(400).json({ success: false, error: 'Обовʼязкові: staff_id, month, type, amount' });
         }
+
+        let finalReason = reason;
+        let finalAmount = Number(amount);
+        let ruleCode = null, disciplineCategory = null, severity = null;
+        let repeatIndex = 0, decisionMode = 'custom', needsReview = false;
+        let tplId = template_id || null;
+
+        // Template-based depremium flow
+        if ((type === 'penalty' || type === 'deduction') && tplId) {
+            const tplRes = await pool.query('SELECT * FROM depremium_templates WHERE id = $1 AND active = true', [tplId]);
+            if (!tplRes.rows.length) return res.status(400).json({ success: false, error: 'Шаблон не знайдено' });
+            const tpl = tplRes.rows[0];
+
+            finalReason = tpl.official_reason;
+            ruleCode = tpl.code;
+            disciplineCategory = tpl.discipline_category;
+            severity = tpl.severity;
+            decisionMode = 'template';
+            needsReview = !!tpl.requires_manual_review;
+
+            if (!amount && tpl.amount) finalAmount = Number(tpl.amount);
+            if (!tpl.can_be_edited && amount && Number(amount) !== Number(tpl.amount || 0)) {
+                return res.status(400).json({ success: false, error: 'Суму критичного порушення не можна змінювати' });
+            }
+
+            // Repeat detection
+            const repeatRes = await pool.query(
+                `SELECT COUNT(*)::int AS c FROM salary_adjustments
+                 WHERE staff_id = $1 AND type IN ('penalty','deduction')
+                 AND (template_id = $2 OR rule_code = $3 OR discipline_category = $4)`,
+                [staff_id, tpl.id, tpl.code, tpl.discipline_category]
+            );
+            repeatIndex = (repeatRes.rows[0]?.c || 0) + 1;
+            if (tpl.is_repeat_offense || repeatIndex > 1 || severity === 'critical') needsReview = true;
+        }
+
+        const status = needsReview ? 'pending_review' : 'applied';
         const result = await pool.query(
-            `INSERT INTO salary_adjustments (staff_id, month, type, amount, reason, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-            [staff_id, month, type, amount, reason, req.user?.username]
+            `INSERT INTO salary_adjustments (staff_id, month, type, amount, reason, created_by,
+             template_id, rule_code, discipline_category, severity, repeat_index, decision_mode, status)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+            [staff_id, month, type, finalAmount, finalReason, req.user?.username,
+             tplId, ruleCode, disciplineCategory, severity, repeatIndex, decisionMode, status]
         );
-        await auditLog('salary_adjustment', staff_id, req.user?.username, { type, amount, reason }, req.ip);
-        res.json({ success: true, data: result.rows[0] });
+        const adj = result.rows[0];
+
+        // Audit log
+        await pool.query(
+            `INSERT INTO discipline_actions_log (adjustment_id, staff_id, action_type, actor_username, actor_role, template_id, payload)
+             VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+            [adj.id, staff_id, 'create', req.user?.username, req.user?.role, tplId,
+             JSON.stringify({ amount: finalAmount, reason: finalReason, severity, repeatIndex, needsReview })]
+        ).catch(e => log.warn('Discipline log failed:', e.message));
+
+        await auditLog('salary_adjustment', staff_id, req.user?.username, { type, amount: finalAmount, reason: finalReason, template_id: tplId }, req.ip);
+        res.json({ success: true, data: adj, needsReview });
     } catch (err) {
         log.error('POST /hr/salary/adjustment error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
@@ -1821,6 +1870,147 @@ router.post('/applications/:id/hire', async (req, res) => {
              a.telegram_username||null, a.telegram_id||null, salary||0]);
         res.json({ success: true, staff_id: staffResult.rows[0].id, message: `${a.name} найнятий як ${a.role_type}` });
     } catch (err) { log.error('POST /applications/:id/hire', err); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ==========================================
+// v43.0: DEPREMIUM COMPLIANCE SYSTEM
+// ==========================================
+
+// GET /api/hr/depremium-templates — catalog of official rules
+router.get('/depremium-templates', async (req, res) => {
+    try {
+        const { q, category, severity, active = 'true' } = req.query;
+        const params = []; const conds = [];
+        if (active !== 'all') { params.push(active === 'true'); conds.push(`active = $${params.length}`); }
+        if (category) { params.push(category); conds.push(`discipline_category = $${params.length}`); }
+        if (severity) { params.push(severity); conds.push(`severity = $${params.length}`); }
+        if (q) { params.push(`%${q}%`); conds.push(`(code ILIKE $${params.length} OR title ILIKE $${params.length} OR official_reason ILIKE $${params.length})`); }
+        let sql = 'SELECT * FROM depremium_templates';
+        if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
+        sql += ' ORDER BY sort_order, id';
+        const result = await pool.query(sql, params);
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        log.error('GET /depremium-templates error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// GET /api/hr/depremium-templates/:id/staff-history/:staffId — repeat detection
+router.get('/depremium-templates/:templateId/staff-history/:staffId', async (req, res) => {
+    try {
+        const { templateId, staffId } = req.params;
+        const result = await pool.query(
+            `SELECT sa.id, sa.created_at, sa.amount, sa.reason, sa.status, sa.rule_code, sa.repeat_index
+             FROM salary_adjustments sa
+             WHERE sa.staff_id = $1 AND sa.type IN ('penalty','deduction')
+             AND (sa.template_id = $2 OR sa.template_id IN (SELECT id FROM depremium_templates WHERE repeat_of_template_id = $2))
+             ORDER BY sa.created_at DESC LIMIT 20`,
+            [staffId, templateId]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        log.error('GET /depremium-templates/:id/staff-history/:staffId error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// GET /api/hr/depremium-summary — analytics for period
+router.get('/depremium-summary', requireRole('creator', 'director', 'vice_director', 'hr'), async (req, res) => {
+    try {
+        const { month } = req.query;
+        if (!month) return res.status(400).json({ success: false, error: 'month обовʼязковий (YYYY-MM)' });
+        const topReasons = await pool.query(
+            `SELECT COALESCE(rule_code,'CUSTOM') AS rule_code, COUNT(*)::int AS count, SUM(COALESCE(amount,0))::int AS total
+             FROM salary_adjustments WHERE type IN ('penalty','deduction') AND month = $1
+             GROUP BY COALESCE(rule_code,'CUSTOM') ORDER BY count DESC LIMIT 10`, [month]);
+        const repeatStaff = await pool.query(
+            `SELECT sa.staff_id, s.name AS staff_name, COUNT(*)::int AS cnt
+             FROM salary_adjustments sa JOIN staff s ON s.id = sa.staff_id
+             WHERE sa.type IN ('penalty','deduction') AND sa.month = $1
+             GROUP BY sa.staff_id, s.name HAVING COUNT(*) > 1 ORDER BY cnt DESC LIMIT 10`, [month]);
+        const criticalCount = await pool.query(
+            `SELECT COUNT(*)::int AS c FROM salary_adjustments
+             WHERE type IN ('penalty','deduction') AND month = $1 AND severity = 'critical'`, [month]);
+        const totalCount = await pool.query(
+            `SELECT COUNT(*)::int AS c, SUM(COALESCE(amount,0))::int AS total
+             FROM salary_adjustments WHERE type IN ('penalty','deduction') AND month = $1`, [month]);
+        res.json({
+            success: true,
+            data: {
+                total: totalCount.rows[0]?.c || 0,
+                totalAmount: totalCount.rows[0]?.total || 0,
+                critical: criticalCount.rows[0]?.c || 0,
+                topReasons: topReasons.rows,
+                repeatStaff: repeatStaff.rows
+            }
+        });
+    } catch (err) {
+        log.error('GET /depremium-summary error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// PUT /api/hr/salary/adjustment/:id/approve — approve pending review
+router.put('/salary/adjustment/:id/approve', requireRole('creator', 'director', 'vice_director'), async (req, res) => {
+    try {
+        const result = await pool.query(
+            `UPDATE salary_adjustments SET status = 'applied', approved_by = $1, approved_at = NOW()
+             WHERE id = $2 AND status = 'pending_review' RETURNING *`,
+            [req.user?.username, req.params.id]
+        );
+        if (!result.rows.length) return res.status(400).json({ success: false, error: 'Не знайдено або вже затверджено' });
+        await pool.query(
+            `INSERT INTO discipline_actions_log (adjustment_id, staff_id, action_type, actor_username, actor_role, template_id, payload)
+             VALUES ($1,$2,'approve',$3,$4,$5,'{}')`,
+            [result.rows[0].id, result.rows[0].staff_id, req.user?.username, req.user?.role, result.rows[0].template_id]
+        ).catch(e => log.warn('Discipline approve log failed:', e.message));
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('PUT /salary/adjustment/:id/approve error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// PUT /api/hr/salary/adjustment/:id/reject — reject pending review
+router.put('/salary/adjustment/:id/reject', requireRole('creator', 'director', 'vice_director'), async (req, res) => {
+    try {
+        const result = await pool.query(
+            `UPDATE salary_adjustments SET status = 'rejected', approved_by = $1, approved_at = NOW()
+             WHERE id = $2 AND status = 'pending_review' RETURNING *`,
+            [req.user?.username, req.params.id]
+        );
+        if (!result.rows.length) return res.status(400).json({ success: false, error: 'Не знайдено або вже оброблено' });
+        await pool.query(
+            `INSERT INTO discipline_actions_log (adjustment_id, staff_id, action_type, actor_username, actor_role, template_id, payload)
+             VALUES ($1,$2,'reject',$3,$4,$5,$6)`,
+            [result.rows[0].id, result.rows[0].staff_id, req.user?.username, req.user?.role, result.rows[0].template_id, JSON.stringify({ reason: req.body.reason || '' })]
+        ).catch(e => log.warn('Discipline reject log failed:', e.message));
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('PUT /salary/adjustment/:id/reject error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// GET /api/hr/discipline-log — audit trail
+router.get('/discipline-log', requireRole('creator', 'director', 'vice_director', 'hr'), async (req, res) => {
+    try {
+        const { staff_id, limit = 50 } = req.query;
+        const params = [parseInt(limit)];
+        let where = '';
+        if (staff_id) { params.push(staff_id); where = `WHERE dal.staff_id = $${params.length}`; }
+        const result = await pool.query(
+            `SELECT dal.*, s.name AS staff_name, dt.code AS template_code, dt.title AS template_title
+             FROM discipline_actions_log dal
+             LEFT JOIN staff s ON s.id = dal.staff_id
+             LEFT JOIN depremium_templates dt ON dt.id = dal.template_id
+             ${where} ORDER BY dal.created_at DESC LIMIT $1`, params);
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        log.error('GET /discipline-log error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
 });
 
 module.exports = router;

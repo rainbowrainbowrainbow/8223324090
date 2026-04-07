@@ -7,13 +7,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=42.5.0">
-    <link rel="stylesheet" href="css/layout.css?v=42.5.0">
-    <link rel="stylesheet" href="css/pages.css?v=42.5.0">
-    <link rel="stylesheet" href="css/modals.css?v=42.5.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=42.5.0">
-    <link rel="stylesheet" href="css/responsive.css?v=42.5.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=42.5.0">
+    <link rel="stylesheet" href="css/base.css?v=43.0.0">
+    <link rel="stylesheet" href="css/layout.css?v=43.0.0">
+    <link rel="stylesheet" href="css/pages.css?v=43.0.0">
+    <link rel="stylesheet" href="css/modals.css?v=43.0.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=43.0.0">
+    <link rel="stylesheet" href="css/responsive.css?v=43.0.0">
+    <link rel="stylesheet" href="css/role-panel.css?v=43.0.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -734,6 +734,12 @@
         body.dark-mode .hr-badge--ok { background: rgba(34, 197, 94, 0.1); }
         body.dark-mode .hr-badge--warn { background: rgba(245, 158, 11, 0.1); }
 
+        /* v43.0: Depremium severity colors */
+        .severity-low { color: #86efac; }
+        .severity-medium { color: #fde68a; }
+        .severity-high { color: #fdba74; }
+        .severity-critical { color: #fca5a5; }
+
         /* ==========================================
            RESPONSIVE
            ========================================== */
@@ -1156,7 +1162,7 @@
             <div id="tab-salary" class="hr-tab-content">
                 <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
                     <select id="salaryMonth" class="hr-team-select" style="min-width:160px;"></select>
-                    <button type="button" id="btnAddAdjustment" class="btn-add">+ Бонус/Штраф</button>
+                    <button type="button" id="btnAddAdjustment" class="btn-add">+ Бонус / Депреміювання</button>
                     <button type="button" id="btnCommitSalary" class="btn-add" style="background:var(--success,#00b894);color:#fff" onclick="commitSalaries()">💰 Нарахувати зарплати</button>
                 </div>
                 <div id="salaryTotals" style="margin-bottom:16px;"></div>
@@ -1397,16 +1403,16 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=42.5.0"></script>
-    <script src="js/config.js?v=42.5.0"></script>
-    <script src="js/notification.js?v=42.5.0"></script>
-    <script src="js/api.js?v=42.5.0"></script>
-    <script src="js/auth.js?v=42.5.0"></script>
-    <script src="js/components/sidebar.js?v=42.5.0"></script>
+    <script src="js/ui.js?v=43.0.0"></script>
+    <script src="js/config.js?v=43.0.0"></script>
+    <script src="js/notification.js?v=43.0.0"></script>
+    <script src="js/api.js?v=43.0.0"></script>
+    <script src="js/auth.js?v=43.0.0"></script>
+    <script src="js/components/sidebar.js?v=43.0.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=42.5.0"></script>
-    <script src="js/alerts.js?v=42.5.0"></script>
-    <script src="js/role-panel.js?v=42.5.0"></script>
+    <script src="js/hr-page.js?v=43.0.0"></script>
+    <script src="js/alerts.js?v=43.0.0"></script>
+    <script src="js/role-panel.js?v=43.0.0"></script>
     <script>
     // ─── Shifts Summary (v33.5) ──────────
     async function loadShiftsSummary() {

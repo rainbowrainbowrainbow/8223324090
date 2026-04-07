@@ -20,3 +20,4 @@
 | 2026-04-02 | lMoie | v42.1.0: Content Matrix audit fixes — templates, auth, CSS, guard | content-fix,auth,css-cleanup,migration-154 | none | fix |
 | 2026-04-02 | lMoie | v42.2.0: Business Cards — service docs for AI content gen | business-cards,social-rules,ai-context,migration-155-157 | none | feature |
 | 2026-04-02 | lMoie | v42.3.0: Marketing Subagent — AI gen + publishers + cron | subagent,marketing,publishers,cron,automation | IG needs FB verification, TT/FB/Threads/Viber stubs | feature |
+| 2026-04-07 | lMoie | v43.0.0: Payroll Compliance — depremium templates + audit trail | payroll,depremium,hr,audit,compliance,migration-159 | legacy salary_adjustments compat | feature |

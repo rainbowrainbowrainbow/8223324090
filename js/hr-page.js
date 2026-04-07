@@ -1355,7 +1355,7 @@ window.showAdjustmentForm = async function() {
     const typeOptions = [
         { value: 'bonus', label: 'Бонус' },
         { value: 'deduction', label: 'Утримання' },
-        { value: 'penalty', label: 'Штраф' },
+        { value: 'penalty', label: 'Депреміювання' },
         { value: 'tip', label: 'Чайові' }
     ];
     const result = await formModal('Коригування зарплати', [
@@ -1368,8 +1368,134 @@ window.showAdjustmentForm = async function() {
     const amount = parseInt(result.amount);
     if (!amount) return;
     const month = document.getElementById('salaryMonth')?.value || '';
+
+    // For penalty/deduction — show template picker
+    if (result.type === 'penalty' || result.type === 'deduction') {
+        const tplResult = await showDepremiumPicker(parseInt(result.staffId), amount, result.reason, month);
+        if (tplResult === false) return; // cancelled
+        if (tplResult) {
+            const data = await hrFetch('/salary/adjustment', 'POST', {
+                staff_id: parseInt(result.staffId), month, type: result.type,
+                amount: tplResult.amount, reason: tplResult.reason, template_id: tplResult.template_id
+            });
+            if (data?.success) {
+                if (data.needsReview) showNotification('Депреміювання створено — потрібне погодження директора', 'warning');
+                else showNotification('Депреміювання застосовано', 'success');
+                loadSalary();
+            }
+            return;
+        }
+    }
+
     const data = await hrFetch('/salary/adjustment', 'POST', { staff_id: parseInt(result.staffId), month, type: result.type, amount, reason: result.reason || '' });
     if (data?.success) { showNotification('Коригування додано', 'success'); loadSalary(); }
+};
+
+// v43.0: Depremium template picker with decision panel
+const SEVERITY_LABELS = { low: '🟢 Низький', medium: '🟡 Середній', high: '🟠 Високий', critical: '🔴 Критичний' };
+const CATEGORY_LABELS = { attendance: 'Відвідуваність', behavior: 'Поведінка', appearance: 'Зовнішній вигляд', service: 'Обслуговування', safety: 'Безпека', theft: 'Крадіжка', substance: 'Речовини', workplace: 'Робоче місце', phone: 'Телефон', general: 'Загальне' };
+
+async function showDepremiumPicker(staffId, initialAmount, initialReason, month) {
+    const tplData = await hrFetch('/depremium-templates');
+    if (!tplData?.success || !tplData.data?.length) return null; // no templates, use custom
+
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'hr-modal-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9500;display:flex;align-items:center;justify-content:center;padding:16px';
+
+        const modal = document.createElement('div');
+        modal.style.cssText = 'background:#1E1E38;border-radius:16px;max-width:600px;width:100%;max-height:85vh;overflow-y:auto;padding:24px;color:#E2E8F0;box-shadow:0 20px 60px rgba(0,0,0,0.4)';
+
+        let selectedTpl = null;
+        const templates = tplData.data;
+
+        function render(filter = '') {
+            const filtered = templates.filter(t => !filter || t.title.toLowerCase().includes(filter) || t.code.toLowerCase().includes(filter) || t.official_reason.toLowerCase().includes(filter));
+            modal.innerHTML = `
+                <h3 style="margin:0 0 16px;font-size:18px;font-weight:800">📋 Офіційне правило депреміювання</h3>
+                <div style="display:grid;grid-template-columns:1.4fr .8fr;gap:8px;margin-bottom:12px">
+                    <input id="dpSearch" class="eg-input" placeholder="Пошук: запізнення, телефон..." value="${escapeHtml(filter)}" style="padding:10px 12px;border:1px solid #3D3D5C;border-radius:10px;background:#2A2A4A;color:#E2E8F0;font-size:14px;min-height:44px">
+                    <select id="dpCatFilter" style="padding:10px;border:1px solid #3D3D5C;border-radius:10px;background:#2A2A4A;color:#E2E8F0;font-size:13px;min-height:44px">
+                        <option value="">Всі категорії</option>
+                        ${Object.entries(CATEGORY_LABELS).map(([k,v]) => '<option value="'+k+'">'+v+'</option>').join('')}
+                    </select>
+                </div>
+                <div style="max-height:280px;overflow-y:auto;display:grid;gap:8px;margin-bottom:16px">
+                    ${filtered.map(t => `<button class="dp-tpl-item" data-id="${t.id}" style="width:100%;text-align:left;padding:12px 14px;border-radius:12px;border:1px solid ${selectedTpl?.id===t.id?'#a78bfa':'rgba(255,255,255,0.08)'};background:${selectedTpl?.id===t.id?'rgba(168,85,247,0.15)':'rgba(255,255,255,0.03)'};cursor:pointer;transition:all .15s;color:#E2E8F0">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                            <span style="font-size:11px;font-weight:800;letter-spacing:.08em;color:#c084fc">${escapeHtml(t.code)}</span>
+                            <span style="font-size:11px;font-weight:600" class="severity-${t.severity}">${SEVERITY_LABELS[t.severity]||t.severity}</span>
+                        </div>
+                        <div style="font-size:14px;font-weight:700;margin-bottom:3px">${escapeHtml(t.title)}</div>
+                        <div style="font-size:12px;color:#94A3B8;line-height:1.4">${escapeHtml(t.official_reason)}</div>
+                        ${t.amount ? '<div style="margin-top:6px;font-size:13px;font-weight:700;color:#fda4af">-'+t.amount+' ₴</div>' : '<div style="margin-top:6px;font-size:12px;color:#fca5a5;font-weight:600">Повне ненарахування / звільнення</div>'}
+                    </button>`).join('')}
+                    ${!filtered.length ? '<div style="text-align:center;color:#6B7280;padding:20px">Нічого не знайдено</div>' : ''}
+                </div>
+                <div id="dpDecisionPanel" style="display:${selectedTpl?'block':'none'}">
+                    ${selectedTpl ? renderDecisionPanel(selectedTpl) : ''}
+                </div>
+                <div style="display:flex;gap:8px;margin-top:16px">
+                    <button id="dpApply" style="flex:1;padding:12px;border:none;border-radius:12px;background:${selectedTpl?'#7c3aed':'#3D3D5C'};color:#fff;font-size:14px;font-weight:700;cursor:pointer;min-height:44px;transition:all .15s" ${selectedTpl?'':'disabled'}>✅ Застосувати</button>
+                    <button id="dpCustom" style="padding:12px 20px;border:1px solid #3D3D5C;border-radius:12px;background:transparent;color:#9CA3AF;font-size:13px;cursor:pointer;min-height:44px">Довільна причина</button>
+                    <button id="dpCancel" style="padding:12px 20px;border:1px solid #3D3D5C;border-radius:12px;background:transparent;color:#9CA3AF;font-size:13px;cursor:pointer;min-height:44px">Скасувати</button>
+                </div>`;
+
+            // Bind events
+            modal.querySelector('#dpSearch')?.addEventListener('input', (e) => render(e.target.value.toLowerCase()));
+            modal.querySelectorAll('.dp-tpl-item').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    selectedTpl = templates.find(t => t.id === parseInt(btn.dataset.id));
+                    render(modal.querySelector('#dpSearch')?.value?.toLowerCase() || '');
+                    // Load staff history for this template
+                    loadStaffHistory(staffId, selectedTpl.id);
+                });
+            });
+            modal.querySelector('#dpApply')?.addEventListener('click', () => {
+                if (!selectedTpl) return;
+                overlay.remove();
+                resolve({ template_id: selectedTpl.id, amount: selectedTpl.amount || initialAmount, reason: selectedTpl.official_reason });
+            });
+            modal.querySelector('#dpCustom')?.addEventListener('click', () => { overlay.remove(); resolve(null); });
+            modal.querySelector('#dpCancel')?.addEventListener('click', () => { overlay.remove(); resolve(false); });
+        }
+
+        function renderDecisionPanel(tpl) {
+            let warnings = '';
+            if (tpl.severity === 'critical') warnings += '<div style="margin-top:8px;padding:8px 12px;border-radius:10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);color:#fca5a5;font-size:12px">🔴 Критичне порушення — потрібне погодження директора</div>';
+            if (tpl.requires_manual_review) warnings += '<div style="margin-top:8px;padding:8px 12px;border-radius:10px;background:rgba(250,204,21,0.1);border:1px solid rgba(250,204,21,0.2);color:#fde68a;font-size:12px">⚠️ Потрібне ручне погодження</div>';
+            if (tpl.is_repeat_offense) warnings += '<div style="margin-top:8px;padding:8px 12px;border-radius:10px;background:rgba(250,204,21,0.1);border:1px solid rgba(250,204,21,0.2);color:#fde68a;font-size:12px">🔁 Це повторне порушення</div>';
+            if (!tpl.can_be_edited) warnings += '<div style="margin-top:8px;padding:8px 12px;border-radius:10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171;font-size:12px">🔒 Суму не можна змінювати</div>';
+
+            return `<div style="padding:14px;border-radius:14px;background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.2)">
+                <div style="font-size:12px;font-weight:800;color:#c084fc;letter-spacing:.08em;margin-bottom:4px">${escapeHtml(tpl.code)}</div>
+                <div style="font-size:15px;font-weight:700;margin-bottom:4px">${escapeHtml(tpl.title)}</div>
+                <div style="font-size:13px;color:#94A3B8;line-height:1.4;margin-bottom:8px">${escapeHtml(tpl.official_reason)}</div>
+                <div style="display:flex;gap:12px;font-size:12px;flex-wrap:wrap">
+                    ${tpl.amount ? '<span style="color:#fda4af;font-weight:700">-'+tpl.amount+' ₴</span>' : '<span style="color:#fca5a5;font-weight:700">Повне ненарахування</span>'}
+                    <span class="severity-${tpl.severity}">${SEVERITY_LABELS[tpl.severity]||''}</span>
+                    <span style="color:#94A3B8">${CATEGORY_LABELS[tpl.discipline_category]||''}</span>
+                </div>
+                ${warnings}
+                <div id="dpStaffHistory" style="margin-top:10px"></div>
+            </div>`;
+        }
+
+        async function loadStaffHistory(sId, tplId) {
+            const el = modal.querySelector('#dpStaffHistory');
+            if (!el) return;
+            const hist = await hrFetch('/depremium-templates/' + tplId + '/staff-history/' + sId);
+            if (!hist?.success || !hist.data?.length) { el.innerHTML = '<div style="font-size:11px;color:#6B7280;margin-top:4px">Попередніх порушень не знайдено</div>'; return; }
+            el.innerHTML = '<div style="font-size:11px;font-weight:700;color:#fde68a;margin-bottom:4px">⚠️ Попередні порушення (' + hist.data.length + '):</div>' +
+                hist.data.slice(0, 3).map(h => '<div style="font-size:11px;color:#94A3B8;padding:2px 0">' + new Date(h.created_at).toLocaleDateString('uk-UA') + ' — ' + (h.amount || 0) + '₴ — ' + escapeHtml(h.reason || '').substring(0, 50) + '</div>').join('');
+        }
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.remove(); resolve(false); } });
+        render();
+    });
 };
 
 // ==========================================

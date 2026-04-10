@@ -1,119 +1,192 @@
-const content = {
-  painCards: [
+const landingContent = {
+  pain: [
     {
       title: 'Тривога і напруга',
-      text: 'Коли ніби все тримається, але всередині постійний шум, страх і перенавантаження.'
+      text: 'Коли ніби все тримається, але всередині постійний шум, страх, перенавантаження і немає відчуття опори.'
     },
     {
       title: 'Вигорання',
-      text: 'Коли сил дедалі менше, а вимог до себе дедалі більше.'
+      text: 'Коли сил дедалі менше, а вимог до себе — дедалі більше. Зовні ніби все нормально, а всередині порожньо.'
     },
     {
       title: 'Емоційне виснаження',
-      text: 'Коли ви довго були сильними — і більше не можете витримувати той самий режим.'
+      text: 'Коли ви довго були сильними, відповідальними і зібраними — і більше не можете витримувати цей режим.'
     },
     {
-      title: 'Стосунки, самотність, сенс',
-      text: 'Коли питання вже не тільки «що зі мною?», а «хто я зараз?» і «куди я йду?». '
+      title: 'Стосунки, самотність, втрата сенсу',
+      text: 'Коли питання вже не тільки «що зі мною?», а «хто я зараз?» і «чому так важко?». '
     }
   ],
   changes: [
-    'краще розуміти свій стан і причини внутрішньої напруги',
-    'вийти з автоматичних сценаріїв виснаження',
-    'відновити контакт із собою, межами і потребами',
-    'повернути собі внутрішню опору',
-    'рухатись до змін не хаотично, а усвідомлено'
+    'Краще розуміти свій стан і причини внутрішньої напруги.',
+    'Вийти з автоматичних сценаріїв виснаження.',
+    'Відновити контакт із собою, межами і потребами.',
+    'Повернути собі внутрішню опору.',
+    'Рухатись до змін не хаотично, а усвідомлено.'
   ],
   pricing: [
-    { name: 'Разова сесія', meta: '90 хв', price: '2400 грн', text: 'Перший крок, прояснення стану і подальшого шляху.' },
-    { name: 'Цикл «Фокус»', meta: '4 сесії', price: '9400 грн', text: 'Стабілізація стану і старт системних змін.' },
-    { name: 'Цикл «Опора»', meta: '8 сесій', price: '18400 грн', text: 'Глибша робота і стійка внутрішня перебудова.' },
-    { name: 'Цикл «Глибина»', meta: '12 сесій', price: '27000 грн', text: 'Повна трансформація, а не лише зняття симптому.' }
+    {
+      name: 'Разова сесія',
+      meta: '90 хвилин',
+      price: '2400 грн',
+      description: 'Підійде, щоб почати, прояснити стан, побачити ключовий вузол напруги та визначити подальший шлях.'
+    },
+    {
+      name: 'Цикл «Фокус»',
+      meta: '4 сесії',
+      price: '9400 грн',
+      description: 'Коли потрібно зібратися, стабілізувати стан і почати системні зміни.'
+    },
+    {
+      name: 'Цикл «Опора»',
+      meta: '8 сесій',
+      price: '18400 грн',
+      description: 'Для глибшої роботи, коли точкового втручання вже недостатньо.'
+    },
+    {
+      name: 'Цикл «Глибина»',
+      meta: '12 сесій',
+      price: '27000 грн',
+      description: 'Для серйозної внутрішньої роботи і повної трансформації, а не лише зняття симптомів.'
+    }
   ],
   steps: [
-    'Ви залишаєте заявку й коротко описуєте запит.',
-    'Ми погоджуємо формат: разова сесія або цикл.',
+    'Ви залишаєте заявку та коротко описуєте свій запит.',
+    'Узгоджуємо формат: разова сесія або цикл роботи.',
     'Оплата проходить офіційно через інвойс / реквізити / QR.',
     'Проводимо онлайн-сесію у погоджений час.',
-    'За потреби продовжуємо системну роботу з цілями і фокусом.'
+    'За потреби продовжуємо системну роботу з логікою і чітким фокусом.'
   ],
   safety: [
-    'Конфіденційно',
-    'Онлайн-формат для України та діаспори',
-    'Офіційна безготівкова оплата',
-    'Обережна, але ефективна робота',
-    'Фокус на реальних змінах'
+    'Конфіденційність як базовий стандарт.',
+    'Онлайн-формат для України і діаспори.',
+    'Офіційна безготівкова оплата, ФОП-модель.',
+    'Обережний та відповідальний підхід без агресивних обіцянок.',
+    'Робота спрямована на реальні зміни, а не разове «полегшення на вечір». '
   ],
   faq: [
-    { q: 'Чи підходить цей формат, якщо я ніколи не працювала з психологом?', a: 'Так. Важлива не підготовка, а ваш реальний запит.' },
-    { q: 'Чи можна працювати онлайн, якщо я не в Україні?', a: 'Так. Онлайн-робота з українцями за кордоном передбачена.' },
-    { q: 'Який формат краще обрати?', a: 'Разова сесія — для першого кроку. Цикли — для глибших і триваліших змін.' },
-    { q: 'Чи все конфіденційно?', a: 'Так. Конфіденційність — обов’язкова частина формату.' },
-    { q: 'Як відбувається оплата?', a: 'Офіційно, безготівково, через інвойс/реквізити/QR на умовах публічної оферти.' }
+    {
+      question: 'Чи підходить цей формат, якщо я ніколи не працювала з психологом?',
+      answer: 'Так. Важлива не підготовка, а ваш реальний запит і готовність почати рух до змін.'
+    },
+    {
+      question: 'Чи можна працювати онлайн, якщо я не в Україні?',
+      answer: 'Так, онлайн-робота з українцями за кордоном передбачена.'
+    },
+    {
+      question: 'Що краще обрати: разову сесію чи пакет?',
+      answer: 'Разова сесія — для першого кроку і прояснення. Якщо запит давній або глибокий, краще одразу дивитися в бік циклів.'
+    },
+    {
+      question: 'Як відбувається оплата?',
+      answer: 'Оплата офіційна, безготівкова, через інвойс/реквізити/QR, на умовах публічної оферти.'
+    }
   ]
 };
 
-const mountCards = (id, items) => {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.innerHTML = items.map(item => `<article class="card"><h3>${item.title}</h3><p>${item.text}</p></article>`).join('');
-};
+function renderCards(id, items) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.innerHTML = items
+    .map((item) => `<article class="card"><h3>${item.title}</h3><p>${item.text}</p></article>`)
+    .join('');
+}
 
-const mountList = (id, items) => {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.innerHTML = items.map(item => `<li>${item}</li>`).join('');
-};
+function renderList(id, items) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.innerHTML = items.map((item) => `<li>${item}</li>`).join('');
+}
 
-const mountPricing = () => {
-  const el = document.getElementById('pricingCards');
-  if (!el) return;
-  el.innerHTML = content.pricing.map(item => `
-    <article class="price-card">
-      <h3>${item.name}</h3>
-      <p class="meta">${item.meta}</p>
-      <p class="price">${item.price}</p>
-      <p>${item.text}</p>
-      <a class="btn btn--ghost" href="#contact">Обрати формат</a>
-    </article>
-  `).join('');
-};
+function renderPricing(id, items) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.innerHTML = items
+    .map(
+      (item) => `
+      <article class="price">
+        <h3>${item.name}</h3>
+        <p class="price__meta">${item.meta}</p>
+        <p class="price__tag">${item.price}</p>
+        <p>${item.description}</p>
+        <a class="btn btn--line" href="#contact">Обрати формат</a>
+      </article>`
+    )
+    .join('');
+}
 
-const mountFaq = () => {
-  const el = document.getElementById('faqItems');
-  if (!el) return;
-  el.innerHTML = content.faq.map(({ q, a }) => `
-    <article class="faq-item">
-      <button class="faq-q" type="button">${q}</button>
-      <div class="faq-a">${a}</div>
-    </article>
-  `).join('');
+function renderFaq(id, items) {
+  const node = document.getElementById(id);
+  if (!node) return;
 
-  el.querySelectorAll('.faq-q').forEach(btn => {
-    btn.addEventListener('click', () => {
-      btn.closest('.faq-item')?.classList.toggle('open');
+  node.innerHTML = items
+    .map(
+      (item) => `
+      <article class="faq-item">
+        <button class="faq-q" type="button" aria-expanded="false">${item.question}</button>
+        <div class="faq-a">${item.answer}</div>
+      </article>`
+    )
+    .join('');
+
+  node.querySelectorAll('.faq-q').forEach((button) => {
+    button.addEventListener('click', () => {
+      const parent = button.closest('.faq-item');
+      const isOpen = parent.classList.toggle('open');
+      button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
     });
   });
-};
+}
 
-const init = () => {
-  mountCards('painCards', content.painCards);
-  mountList('changesList', content.changes);
-  mountPricing();
-  mountList('timelineList', content.steps);
-  mountList('safetyList', content.safety);
-  mountFaq();
+function setupForm() {
+  const form = document.getElementById('leadForm');
+  const statusNode = document.getElementById('formStatus');
+  if (!form || !statusNode) return;
 
-  const form = document.querySelector('.form');
-  form?.addEventListener('submit', (e) => {
-    e.preventDefault();
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+
     if (!form.checkValidity()) {
+      statusNode.textContent = 'Будь ласка, заповніть обовʼязкові поля і підтвердьте згоду з умовами.';
       form.reportValidity();
       return;
     }
-    alert('Дякуємо! Заявку отримано. Ми зв’яжемося з вами найближчим часом.');
+
+    statusNode.textContent = 'Дякуємо! Заявку отримано. Ми зв’яжемося з вами найближчим часом.';
     form.reset();
   });
-};
+}
 
-document.addEventListener('DOMContentLoaded', init);
+function setupMobileMenu() {
+  const toggle = document.getElementById('menuToggle');
+  const nav = document.getElementById('mainNav');
+  if (!toggle || !nav) return;
+
+  toggle.addEventListener('click', () => {
+    const isOpen = nav.classList.toggle('open');
+    toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  });
+
+  nav.querySelectorAll('a').forEach((link) => {
+    link.addEventListener('click', () => {
+      nav.classList.remove('open');
+      toggle.setAttribute('aria-expanded', 'false');
+    });
+  });
+}
+
+function initLanding() {
+  renderCards('painCards', landingContent.pain);
+  renderList('changesList', landingContent.changes);
+  renderPricing('pricingCards', landingContent.pricing);
+  renderList('stepsList', landingContent.steps);
+  renderList('safetyList', landingContent.safety);
+  renderFaq('faqList', landingContent.faq);
+  setupForm();
+  setupMobileMenu();
+
+  const yearNode = document.getElementById('year');
+  if (yearNode) yearNode.textContent = String(new Date().getFullYear());
+}
+
+document.addEventListener('DOMContentLoaded', initLanding);

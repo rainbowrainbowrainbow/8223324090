@@ -4,36 +4,50 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Майстерня долі — психологічний простір Олександра</title>
-  <meta name="description" content="Онлайн-психологія: тривога, вигорання, емоційне виснаження, стосунки, сенс та ідентичність. Конфіденційно, офіційна оплата." />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@600;700&display=swap" rel="stylesheet">
+  <meta name="description" content="Онлайн-робота з тривогою, вигоранням та емоційним виснаженням. Майстерня долі — простір, де ви повертаєтесь до себе." />
+  <meta name="theme-color" content="#a58a57" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="header">
+  <header class="header" id="top">
     <div class="container header__inner">
-      <a href="#hero" class="logo">Майстерня долі</a>
-      <nav class="nav" aria-label="Головна навігація">
+      <a class="logo" href="#hero" aria-label="На головний екран">Майстерня долі</a>
+      <button class="menu-toggle" id="menuToggle" aria-expanded="false" aria-controls="mainNav" aria-label="Відкрити меню">☰</button>
+      <nav class="nav" id="mainNav" aria-label="Основна навігація">
+        <a href="#pain">Запити</a>
         <a href="#about">Про Олександра</a>
         <a href="#formats">Формати</a>
         <a href="#faq">FAQ</a>
+        <a class="btn btn--small btn--gold" href="#contact">Записатися</a>
       </nav>
-      <a class="btn btn--primary" href="#contact">Записатися</a>
     </div>
   </header>
 
   <main>
     <section class="hero" id="hero">
-      <div class="container">
-        <p class="eyebrow">Онлайн · Конфіденційно</p>
-        <h1>Майстерня долі — психологічний простір, де ви повертаєтесь до себе</h1>
-        <p class="hero__lead">Робота з тривогою, вигоранням, емоційним виснаженням, стосунками, сенсом та внутрішньою опорою.</p>
-        <div class="hero__actions">
-          <a class="btn btn--primary" href="#contact">Записатися на консультацію</a>
-          <a class="btn btn--ghost" href="#formats">Переглянути формати роботи</a>
+      <div class="container hero__grid">
+        <div>
+          <p class="eyebrow">Онлайн · Конфіденційно · Офіційно</p>
+          <h1>Психологічний простір, де ви повертаєтесь до себе</h1>
+          <p class="lead">Робота з тривогою, вигоранням, емоційним виснаженням, стосунками, самотністю, сенсом та ідентичністю.</p>
+          <div class="hero__actions">
+            <a class="btn btn--gold" href="#contact">Записатися на консультацію</a>
+            <a class="btn btn--line" href="#formats">Переглянути формати</a>
+          </div>
+          <p class="note">Онлайн для клієнтів з України та українців за кордоном.</p>
         </div>
-        <p class="hero__meta">Онлайн для клієнтів з України та українців за кордоном.</p>
+        <aside class="hero__card">
+          <h2>Майстерня долі</h2>
+          <p>«Допомагаю людям знову знайти себе»</p>
+          <ul>
+            <li>30+ років досвіду роботи з людьми та бізнесами</li>
+            <li>Магістр психології (053), коуч ICU ISTA</li>
+            <li>КПТ · НЛП · Соціальна панорама · Еріксонівський гіпноз</li>
+          </ul>
+        </aside>
       </div>
     </section>
 
@@ -44,36 +58,36 @@
       </div>
     </section>
 
-    <section class="section section--muted" id="changes">
+    <section class="section section--soft" id="changes">
       <div class="container narrow">
         <h2>Що змінюється в роботі</h2>
-        <p>Це не просто розмова про проблему. Це простір для системних змін, у якому ви можете згадати, хто ви є насправді.</p>
-        <ul class="checklist" id="changesList"></ul>
+        <p class="center">Це не просто розмова про проблему. Це робота над системними змінами — без тиску, без «швидких обіцянок», з повагою до вашого темпу.</p>
+        <ul class="check-list" id="changesList"></ul>
       </div>
     </section>
 
     <section class="section" id="about">
       <div class="container about">
-        <div>
+        <article>
           <p class="eyebrow">Хто буде з вами в цій роботі</p>
           <h2>Про Олександра</h2>
-          <p>Психолог, коуч і засновник простору «Майстерня долі». Магістр психології (053), професійний коуч ICU ISTA.</p>
-          <p>3 вищі освіти: економіка, менеджмент, психологія. 30+ років досвіду роботи з людьми, проєктами та бізнесами.</p>
-          <p>У роботі використовує КПТ, НЛП, Соціальну панораму та Еріксонівський гіпноз. Особистий досвід втрат, складних операцій, реанімацій і довгого відновлення став основою глибокої, відповідальної практики.</p>
-        </div>
-        <aside class="about__box">
-          <h3>Принципи роботи</h3>
+          <p>Психолог, коуч і засновник простору «Майстерня долі». Має 3 вищі освіти (економіка, менеджмент, психологія), ступінь магістра психології (053) і кваліфікацію ICU ISTA.</p>
+          <p>За плечима — 30+ років роботи з людьми, управління проєктами, створення та ведення бізнесів.</p>
+          <p>Особистий досвід втрат, складних операцій, реанімацій і тривалого відновлення став основою підходу, у якому підтримка поєднана з відповідальністю та реальними змінами.</p>
+        </article>
+        <aside class="about__panel">
+          <h3>Принципи</h3>
           <ul>
-            <li>Емпатія та людяність</li>
+            <li>Довіра та емпатія</li>
             <li>Конфіденційність</li>
-            <li>Реальні зміни замість «швидких обіцянок»</li>
-            <li>Обережний професійний підхід</li>
+            <li>Обережна, але ефективна робота</li>
+            <li>Фокус на результаті, а не демонстрації технік</li>
           </ul>
         </aside>
       </div>
     </section>
 
-    <section class="section section--muted" id="formats">
+    <section class="section section--soft" id="formats">
       <div class="container">
         <h2>Формати роботи</h2>
         <div class="pricing" id="pricingCards"></div>
@@ -83,49 +97,63 @@
     <section class="section" id="steps">
       <div class="container narrow">
         <h2>Як проходить робота</h2>
-        <ol class="timeline" id="timelineList"></ol>
+        <ol class="timeline" id="stepsList"></ol>
       </div>
     </section>
 
-    <section class="section section--muted" id="safety">
+    <section class="section section--soft" id="safety">
       <div class="container narrow">
         <h2>Чому це безпечно</h2>
-        <ul class="checklist" id="safetyList"></ul>
+        <ul class="check-list" id="safetyList"></ul>
       </div>
     </section>
 
     <section class="section" id="faq">
       <div class="container narrow">
         <h2>Часті запитання</h2>
-        <div class="faq" id="faqItems"></div>
+        <div class="faq" id="faqList"></div>
       </div>
     </section>
 
-    <section class="section section--muted" id="legal">
+    <section class="section section--soft" id="legal">
       <div class="container narrow">
         <h2>Оплата і юридичні умови</h2>
-        <p>Оплата — офіційно, безготівково, через інвойс / реквізити / QR на умовах публічної оферти.</p>
+        <p>Оплата проходить офіційно: інвойс / реквізити / QR. Безготівковий сценарій є основним.</p>
+        <p class="note">Сценарій: клієнт читає умови → залишає заявку або отримує інвойс → оплачує безготівково → оплата означає згоду з умовами оферти.</p>
         <div class="legal-links">
           <a href="#" aria-disabled="true">TODO: Публічна оферта</a>
           <a href="#" aria-disabled="true">TODO: Політика конфіденційності</a>
           <a href="#" aria-disabled="true">TODO: Умови оплати</a>
+          <a href="#" aria-disabled="true">TODO: Реквізити / QR</a>
         </div>
-        <p class="note">Переказ на бізнес-карту не використовується як основний сценарій.</p>
       </div>
     </section>
 
     <section class="section cta" id="contact">
       <div class="container narrow">
         <h2>Якщо вже час не просто триматися, а змінюватися — почнімо роботу</h2>
-        <form class="form" novalidate>
-          <label>Ім’я<input type="text" name="name" required></label>
-          <label>Телефон або Telegram<input type="text" name="contact" required></label>
-          <label>Email<input type="email" name="email" required></label>
-          <label>Коротко про запит<textarea name="request" rows="4" required></textarea></label>
-          <label>Зручний час для зв’язку<input type="text" name="time" placeholder="Напр. 10:00–13:00"></label>
-          <label class="checkbox"><input type="checkbox" required> Погоджуюсь з публічною офертою і політикою конфіденційності</label>
-          <button class="btn btn--primary" type="submit">Надіслати заявку</button>
-          <p class="note">Після відправки: заявка → узгодження формату → інвойс → безготівкова оплата.</p>
+        <form class="form" id="leadForm" novalidate>
+          <label>Ім’я
+            <input type="text" name="name" required />
+          </label>
+          <label>Телефон або Telegram
+            <input type="text" name="phone_or_telegram" required />
+          </label>
+          <label>Email
+            <input type="email" name="email" required />
+          </label>
+          <label>Коротко про запит
+            <textarea name="request" rows="4" required></textarea>
+          </label>
+          <label>Зручний час для зв’язку
+            <input type="text" name="time" placeholder="Напр.: 08:00–11:00" />
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" name="consent" required />
+            Погоджуюсь з публічною офертою і політикою конфіденційності
+          </label>
+          <button class="btn btn--gold" type="submit">Надіслати заявку</button>
+          <p class="note" id="formStatus" role="status" aria-live="polite"></p>
         </form>
       </div>
     </section>
@@ -140,9 +168,10 @@
       </div>
       <div>
         <p>Email: <a href="mailto:dyvozir@gmail.com">dyvozir@gmail.com</a></p>
-        <p><a href="#">TODO: Telegram</a></p>
+        <p><a href="#" aria-disabled="true">TODO: Telegram / WhatsApp</a></p>
       </div>
     </div>
+    <p class="footer__copy">© <span id="year"></span> Майстерня долі. Всі права захищено.</p>
   </footer>
 
   <script src="script.js"></script>

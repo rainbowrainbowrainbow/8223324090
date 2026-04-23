@@ -1853,6 +1853,9 @@ async function _endAfishaDrag() {
     if (s.rangeEl && s.rangeEl.parentNode) s.rangeEl.remove();
     if (s.timeEl && s.timeEl.parentNode) s.timeEl.remove();
 
+    // Release state BEFORE async fetch so new drags aren't blocked while saving
+    _afishaDragState = null;
+
     if (s.moved && s.newMin !== s.currentMin) {
         const newTime = minutesToTime(s.newMin);
         try {
@@ -1863,7 +1866,6 @@ async function _endAfishaDrag() {
             });
             if (!resp.ok) throw new Error('API error');
             const subtitle = s.block.querySelector('.subtitle');
-            const dur = s.event.duration || 60;
             if (subtitle) subtitle.textContent = newTime;
             s.block.dataset.eventTime = newTime;
             showNotification(`Час афіші оновлено: ${newTime}`);
@@ -1874,8 +1876,6 @@ async function _endAfishaDrag() {
     } else if (!s.moved) {
         editAfishaItem(s.event.id);
     }
-
-    _afishaDragState = null;
 }
 
 // v20.8.0: Context menu for moving afisha to another line
@@ -1959,6 +1959,28 @@ document.addEventListener('touchmove', (e) => {
     _moveAfishaDrag(e.touches[0].clientX);
 }, { passive: false });
 document.addEventListener('touchend', () => _endAfishaDrag());
+
+// Safety cleanup: if user switches tabs or phone screen locks during drag,
+// pointercancel may never fire — reset all drag states to prevent invisible lock
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (_bookingDragState) {
+        _rollbackDragVisuals(_bookingDragState);
+        _bookingDragState = null;
+    }
+    if (_resizeState) {
+        _handleResizeCancel(null);
+    }
+    if (_afishaDragState) {
+        const s = _afishaDragState;
+        s.block.classList.remove('dragging');
+        if (s.rangeEl && s.rangeEl.parentNode) s.rangeEl.remove();
+        if (s.timeEl && s.timeEl.parentNode) s.timeEl.remove();
+        s.block.style.left = `${s.startLeft}px`;
+        _afishaDragState = null;
+    }
+    document.body.classList.remove('dragging-active');
+});
 
 // ==========================================
 // РЕЖИМ ДЕКІЛЬКОХ ДНІВ

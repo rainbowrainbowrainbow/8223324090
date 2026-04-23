@@ -1238,6 +1238,11 @@ async function _handleBookingDragEnd(e) {
         return;
     }
 
+    // Release state BEFORE async save so new drags aren't blocked while saving
+    if (s.timeLabel) s.timeLabel.remove();
+    if (s.countLabel) s.countLabel.remove();
+    _bookingDragState = null;
+
     // --- Save to server ---
     const saved = await _saveDragResult(s, timeDelta, lineChanged);
 
@@ -1246,11 +1251,6 @@ async function _handleBookingDragEnd(e) {
     } else {
         _triggerHaptic('success');
     }
-
-    // Remove time label and count label
-    if (s.timeLabel) s.timeLabel.remove();
-    if (s.countLabel) s.countLabel.remove();
-    _bookingDragState = null;
 }
 
 // --- Handle pointer cancel ---
@@ -1406,7 +1406,7 @@ async function _saveDragResult(state, timeDelta, lineChanged) {
         await renderTimeline();
 
         // 6. Show undo toast
-        _showDragUndoToast(s.booking, timeDelta, lineChanged);
+        _showDragUndoToast(s.booking, timeDelta, lineChanged, s.newLineId);
 
         return true;
     } catch (error) {
@@ -1447,7 +1447,7 @@ function _rollbackDragVisuals(state) {
 }
 
 // --- Undo toast ---
-function _showDragUndoToast(booking, timeDelta, lineChanged) {
+function _showDragUndoToast(booking, timeDelta, lineChanged, newLineId) {
     // Remove existing toast
     const existingToast = document.querySelector('.drag-undo-toast');
     if (existingToast) existingToast.remove();
@@ -1455,13 +1455,12 @@ function _showDragUndoToast(booking, timeDelta, lineChanged) {
     const label = booking.label || booking.programCode;
     let message;
     if (lineChanged && timeDelta !== 0) {
-        // v12.6: Show target line name in undo toast
-        const targetHeader = document.querySelector(`.line-header[data-line-id="${_bookingDragState?.newLineId || ''}"] .line-name`) ||
-            document.querySelector(`.line-grid[data-line-id="${_bookingDragState?.newLineId || ''}"]`)?.parentElement?.querySelector('.line-name');
+        const targetHeader = document.querySelector(`.line-header[data-line-id="${newLineId || ''}"] .line-name`) ||
+            document.querySelector(`.line-grid[data-line-id="${newLineId || ''}"]`)?.parentElement?.querySelector('.line-name');
         const targetName = targetHeader ? targetHeader.textContent : 'іншу лінію';
         message = `${label} → ${targetName} (${timeDelta > 0 ? '+' : ''}${timeDelta} хв)`;
     } else if (lineChanged) {
-        const targetHeader = document.querySelector(`.line-grid[data-line-id="${_bookingDragState?.newLineId || ''}"]`)?.parentElement?.querySelector('.line-name');
+        const targetHeader = document.querySelector(`.line-grid[data-line-id="${newLineId || ''}"]`)?.parentElement?.querySelector('.line-name');
         const targetName = targetHeader ? targetHeader.textContent : 'іншу лінію';
         message = `${label} → ${targetName}`;
     } else {
@@ -1628,6 +1627,9 @@ async function _handleResizeEnd(e) {
         return;
     }
 
+    // Release state BEFORE async save so new resizes/drags aren't blocked while saving
+    _resizeState = null;
+
     // Save to server
     const updated = { ...s.booking, duration: s.newDuration };
     const result = await apiUpdateBooking(s.booking.id, updated);
@@ -1658,8 +1660,6 @@ async function _handleResizeEnd(e) {
         showNotification(`Тривалість: ${s.newDuration} хв`, 'success');
         _triggerHaptic('success');
     }
-
-    _resizeState = null;
 }
 
 function _handleResizeCancel(e) {

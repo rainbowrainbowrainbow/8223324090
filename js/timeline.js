@@ -1239,6 +1239,8 @@ async function _handleBookingDragEnd(e) {
     }
 
     // --- Save to server ---
+    // Null state BEFORE await so new drags aren't blocked during async save
+    _bookingDragState = null;
     const saved = await _saveDragResult(s, timeDelta, lineChanged);
 
     if (!saved) {
@@ -1250,7 +1252,6 @@ async function _handleBookingDragEnd(e) {
     // Remove time label and count label
     if (s.timeLabel) s.timeLabel.remove();
     if (s.countLabel) s.countLabel.remove();
-    _bookingDragState = null;
 }
 
 // --- Handle pointer cancel ---
@@ -1629,6 +1630,8 @@ async function _handleResizeEnd(e) {
     }
 
     // Save to server
+    // Null state BEFORE await so new resizes aren't blocked during async save
+    _resizeState = null;
     const updated = { ...s.booking, duration: s.newDuration };
     const result = await apiUpdateBooking(s.booking.id, updated);
 
@@ -1658,8 +1661,6 @@ async function _handleResizeEnd(e) {
         showNotification(`Тривалість: ${s.newDuration} хв`, 'success');
         _triggerHaptic('success');
     }
-
-    _resizeState = null;
 }
 
 function _handleResizeCancel(e) {
@@ -1853,6 +1854,9 @@ async function _endAfishaDrag() {
     if (s.rangeEl && s.rangeEl.parentNode) s.rangeEl.remove();
     if (s.timeEl && s.timeEl.parentNode) s.timeEl.remove();
 
+    // Null state BEFORE await so new afisha drags aren't blocked during async save
+    _afishaDragState = null;
+
     if (s.moved && s.newMin !== s.currentMin) {
         const newTime = minutesToTime(s.newMin);
         try {
@@ -1874,8 +1878,6 @@ async function _endAfishaDrag() {
     } else if (!s.moved) {
         editAfishaItem(s.event.id);
     }
-
-    _afishaDragState = null;
 }
 
 // v20.8.0: Context menu for moving afisha to another line
@@ -1953,6 +1955,29 @@ async function _moveAfishaToLine(afishaId, lineId) {
 
 document.addEventListener('mousemove', (e) => _moveAfishaDrag(e.clientX));
 document.addEventListener('mouseup', () => _endAfishaDrag());
+
+// Safety: if user switches tab or phone locks during drag — reset all states on return
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (_bookingDragState) {
+        _rollbackDragVisuals(_bookingDragState);
+        if (_bookingDragState.timeLabel) _bookingDragState.timeLabel.remove();
+        if (_bookingDragState.countLabel) _bookingDragState.countLabel.remove();
+        _bookingDragState = null;
+    }
+    if (_resizeState) {
+        _handleResizeCancel(null);
+    }
+    if (_afishaDragState) {
+        const s = _afishaDragState;
+        s.block.classList.remove('dragging');
+        if (s.rangeEl && s.rangeEl.parentNode) s.rangeEl.remove();
+        if (s.timeEl && s.timeEl.parentNode) s.timeEl.remove();
+        _afishaDragState = null;
+    }
+    document.body.classList.remove('dragging-active');
+});
+
 document.addEventListener('touchmove', (e) => {
     if (!_afishaDragState) return;
     e.preventDefault();

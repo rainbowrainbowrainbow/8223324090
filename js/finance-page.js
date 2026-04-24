@@ -188,6 +188,8 @@ async function fetchSalaryReport() {
 }
 
 async function saveTransaction() {
+    const btn = document.getElementById('saveTransBtn');
+    if (btn && btn.disabled) return;
     const type = document.getElementById('editType')?.value;
     const categoryId = document.getElementById('editCategory')?.value;
     const amount = parseInt(document.getElementById('editAmount')?.value);
@@ -206,6 +208,7 @@ async function saveTransaction() {
 
     const data = { type, categoryId: categoryId ? parseInt(categoryId) : null, amount, date, paymentMethod: paymentMethod || null, description: description || null };
 
+    if (btn) btn.disabled = true;
     try {
         if (FinState.editingId) {
             await apiRequest('PUT', `/api/finance/transactions/${FinState.editingId}`, data);
@@ -218,6 +221,8 @@ async function saveTransaction() {
         refreshData();
     } catch (err) {
         showNotification('Помилка збереження', 'error');
+    } finally {
+        if (btn) btn.disabled = false;
     }
 }
 

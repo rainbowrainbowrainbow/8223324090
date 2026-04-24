@@ -374,13 +374,16 @@ function closeTelegramCaption() {
 
 async function submitTelegramCaption() {
     if (!_telegramDesignId) return;
+    // Capture id + null state BEFORE await to prevent duplicate sends on double-click
+    const designId = _telegramDesignId;
+    _telegramDesignId = null;
+    document.getElementById('telegramCaptionOverlay').classList.add('hidden');
     const caption = document.getElementById('telegramCaption').value.trim();
 
-    const res = await apiFetch(`${API}/${_telegramDesignId}/telegram`, {
+    const res = await apiFetch(`${API}/${designId}/telegram`, {
         method: 'POST',
         body: JSON.stringify({ caption })
     });
-    closeTelegramCaption();
     if (res && res.ok) {
         showNotification('Надіслано в Telegram');
     } else {

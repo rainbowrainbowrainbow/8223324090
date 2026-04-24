@@ -971,7 +971,9 @@ function showAddDiscountForm() {
     `;
 }
 
+let _submitDiscountBusy = false;
 async function submitNewDiscount() {
+    if (_submitDiscountBusy) return;
     const code = document.getElementById('dcCode').value.trim();
     const name = document.getElementById('dcName').value.trim();
     const type = document.getElementById('dcType').value;
@@ -987,13 +989,18 @@ async function submitNewDiscount() {
         return;
     }
 
-    const result = await apiCreateDiscount({ code, name, type, value, min_order, max_uses, valid_from, valid_until, category });
-    if (result.id) {
-        showNotification(`Промокод ${code.toUpperCase()} створено`, 'success');
-        document.getElementById('addDiscountForm')?.classList.add('hidden');
-        loadDiscounts();
-    } else {
-        showNotification(result.error || 'Помилка створення', 'error');
+    _submitDiscountBusy = true;
+    try {
+        const result = await apiCreateDiscount({ code, name, type, value, min_order, max_uses, valid_from, valid_until, category });
+        if (result.id) {
+            showNotification(`Промокод ${code.toUpperCase()} створено`, 'success');
+            document.getElementById('addDiscountForm')?.classList.add('hidden');
+            loadDiscounts();
+        } else {
+            showNotification(result.error || 'Помилка створення', 'error');
+        }
+    } finally {
+        _submitDiscountBusy = false;
     }
 }
 
@@ -1111,7 +1118,9 @@ function showAddProposalForm() {
     container.insertAdjacentHTML('beforebegin', formHtml);
 }
 
+let _submitProposalBusy = false;
 async function submitNewProposal() {
+    if (_submitProposalBusy) return;
     const title = document.getElementById('propTitle').value.trim();
     const description = document.getElementById('propDesc').value.trim() || null;
     const discount_code_id = parseInt(document.getElementById('propCodeId').value) || null;
@@ -1125,14 +1134,19 @@ async function submitNewProposal() {
         return;
     }
 
-    const result = await apiCreateProposal({ title, description, discount_code_id, target_segment, start_date, end_date, banner_color });
-    if (result.id) {
-        showNotification('Пропозицію створено', 'success');
-        const form = document.getElementById('proposalFormInline');
-        if (form) form.remove();
-        loadProposals();
-    } else {
-        showNotification(result.error || 'Помилка створення', 'error');
+    _submitProposalBusy = true;
+    try {
+        const result = await apiCreateProposal({ title, description, discount_code_id, target_segment, start_date, end_date, banner_color });
+        if (result.id) {
+            showNotification('Пропозицію створено', 'success');
+            const form = document.getElementById('proposalFormInline');
+            if (form) form.remove();
+            loadProposals();
+        } else {
+            showNotification(result.error || 'Помилка створення', 'error');
+        }
+    } finally {
+        _submitProposalBusy = false;
     }
 }
 

@@ -242,13 +242,19 @@ window.BookingForm = {
         }
     }
 
+    let _savingTemplate = false;
     async function saveTemplate() {
+        if (_savingTemplate) return;
         const formData = BookingForm.getFormData ? BookingForm.getFormData() : null;
         const programSel = document.getElementById('selectedProgram');
         const roomSel = document.getElementById('roomSelect');
 
         const name = await promptModal('Назва шаблону:', { placeholder: 'Наприклад: День народження стандарт' });
         if (!name || !name.trim()) return;
+        if (_savingTemplate) return;
+        _savingTemplate = true;
+        const saveBtn = document.getElementById('saveTemplateBtn');
+        if (saveBtn) saveBtn.disabled = true;
 
         const body = {
             name: name.trim(),
@@ -292,6 +298,9 @@ window.BookingForm = {
             if (typeof showNotification === 'function') {
                 showNotification('Помилка збереження шаблону', 'error');
             }
+        } finally {
+            _savingTemplate = false;
+            if (saveBtn) saveBtn.disabled = false;
         }
     }
 

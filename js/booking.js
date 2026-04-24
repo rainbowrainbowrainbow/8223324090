@@ -1874,6 +1874,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (form) {
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
+            // Prevent double-submit during async request
+            if (form._submitting) return;
+            form._submitting = true;
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = true;
+            try {
             const bookingId = document.getElementById('recurringBookingId')?.value;
             const bookings = await getBookingsForDate(AppState.selectedDate);
             const booking = bookings.find(b => b.id === bookingId);
@@ -1929,6 +1935,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (error) {
                 handleError('Recurring creation', error);
+            }
+            } finally {
+                form._submitting = false;
+                if (submitBtn) submitBtn.disabled = false;
             }
         });
     }
@@ -1988,40 +1998,53 @@ const BulkOps = {
     },
 
     async bulkDelete() {
+        if (this._busy) return;
         if (!await customConfirm(`Видалити ${this.selected.size} бронювань?`)) return;
-        const ids = Array.from(this.selected);
-        const undoData = [];
+        if (this._busy) return;
+        this._busy = true;
+        try {
+            const ids = Array.from(this.selected);
+            const undoData = [];
 
-        for (const id of ids) {
-            try {
-                const bookings = await getBookingsForDate(AppState.selectedDate);
-                const b = bookings.find(x => x.id === id);
-                if (b) undoData.push(b);
-                await apiDeleteBooking(id);
-            } catch (e) { /* continue */ }
+            for (const id of ids) {
+                try {
+                    const bookings = await getBookingsForDate(AppState.selectedDate);
+                    const b = bookings.find(x => x.id === id);
+                    if (b) undoData.push(b);
+                    await apiDeleteBooking(id);
+                } catch (e) { /* continue */ }
+            }
+
+            if (undoData.length > 0) pushUndo('delete', undoData);
+            this.clear();
+            AppState.cachedBookings = {};
+            await renderTimeline();
+            showNotification(`Видалено ${ids.length} бронювань`, 'warning');
+        } finally {
+            this._busy = false;
         }
-
-        if (undoData.length > 0) pushUndo('delete', undoData);
-        this.clear();
-        AppState.cachedBookings = {};
-        await renderTimeline();
-        showNotification(`Видалено ${ids.length} бронювань`, 'warning');
     },
 
     async bulkStatus(status) {
-        const ids = Array.from(this.selected);
-        for (const id of ids) {
-            try {
-                const bookings = await getBookingsForDate(AppState.selectedDate);
-                const b = bookings.find(x => x.id === id);
-                if (b) await apiUpdateBooking(id, { ...b, status });
-            } catch (e) { /* continue */ }
-        }
+        if (this._busy) return;
+        this._busy = true;
+        try {
+            const ids = Array.from(this.selected);
+            for (const id of ids) {
+                try {
+                    const bookings = await getBookingsForDate(AppState.selectedDate);
+                    const b = bookings.find(x => x.id === id);
+                    if (b) await apiUpdateBooking(id, { ...b, status });
+                } catch (e) { /* continue */ }
+            }
 
-        this.clear();
-        AppState.cachedBookings = {};
-        await renderTimeline();
-        showNotification(`Статус змінено для ${ids.length} бронювань`, 'success');
+            this.clear();
+            AppState.cachedBookings = {};
+            await renderTimeline();
+            showNotification(`Статус змінено для ${ids.length} бронювань`, 'success');
+        } finally {
+            this._busy = false;
+        }
     }
 };
 

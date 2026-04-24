@@ -823,16 +823,22 @@ window.previewBulk = async function() {
     } catch { showNotification('Помилка перегляду', 'error'); }
 };
 
+let _sendBulkBusy = false;
 window.sendBulk = async function() {
+    if (_sendBulkBusy) return;
     if (!await confirmModal('Надіслати повідомлення всім обраним клієнтам?', { type: 'warning', okText: 'Надіслати' })) return;
+    if (_sendBulkBusy) return;
+    const template = document.getElementById('bulkTemplate')?.value;
+    if (!template.trim()) { showNotification('Введіть шаблон повідомлення', 'error'); return; }
+    _sendBulkBusy = true;
+    const btn = document.querySelector('[onclick="sendBulk()"]');
+    if (btn) btn.disabled = true;
     const token = localStorage.getItem('pzp_token');
     const filters = {
         tags: document.getElementById('bulkTagFilter')?.value ? [document.getElementById('bulkTagFilter')?.value] : [],
         minVisits: parseInt(document.getElementById('bulkMinVisits')?.value) || 0,
         source: document.getElementById('bulkSourceFilter')?.value || undefined
     };
-    const template = document.getElementById('bulkTemplate')?.value;
-    if (!template.trim()) { showNotification('Введіть шаблон повідомлення', 'error'); return; }
     try {
         const res = await fetch('/api/customers/bulk-message', {
             method: 'POST',
@@ -846,6 +852,10 @@ window.sendBulk = async function() {
             showNotification(data.error || 'Помилка розсилки', 'error');
         }
     } catch { showNotification('Помилка розсилки', 'error'); }
+    finally {
+        _sendBulkBusy = false;
+        if (btn) btn.disabled = false;
+    }
 };
 
 // ==========================================

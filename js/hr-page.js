@@ -582,6 +582,8 @@ function openShiftModal(staffId, date) {
 
 async function saveShift() {
     if (!editingShift) return;
+    const btn = document.getElementById('shiftSave');
+    if (btn && btn.disabled) return;
     const body = {
         staff_id: editingShift.staffId,
         shift_date: editingShift.date,
@@ -597,25 +599,30 @@ async function saveShift() {
         return;
     }
 
-    let data;
-    if (editingShift.existing) {
-        data = await hrFetch(`/shifts/${editingShift.existing.id}`, {
-            method: 'PUT',
-            body: JSON.stringify(body)
-        });
-    } else {
-        data = await hrFetch('/shifts', {
-            method: 'POST',
-            body: JSON.stringify(body)
-        });
-    }
+    if (btn) btn.disabled = true;
+    try {
+        let data;
+        if (editingShift.existing) {
+            data = await hrFetch(`/shifts/${editingShift.existing.id}`, {
+                method: 'PUT',
+                body: JSON.stringify(body)
+            });
+        } else {
+            data = await hrFetch('/shifts', {
+                method: 'POST',
+                body: JSON.stringify(body)
+            });
+        }
 
-    if (data && data.success) {
-        showNotification('Зміну збережено', 'success');
-        document.getElementById('shiftModal').style.display = 'none';
-        await loadSchedule();
-    } else {
-        showNotification(data?.error || 'Помилка', 'error');
+        if (data && data.success) {
+            showNotification('Зміну збережено', 'success');
+            document.getElementById('shiftModal').style.display = 'none';
+            await loadSchedule();
+        } else {
+            showNotification(data?.error || 'Помилка', 'error');
+        }
+    } finally {
+        if (btn) btn.disabled = false;
     }
 }
 

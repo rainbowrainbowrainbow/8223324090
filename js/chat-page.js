@@ -697,8 +697,10 @@
     }
     if (_newChannelCreate) {
         _newChannelCreate.addEventListener('click', async function () {
+            if (_newChannelCreate.disabled) return;
             var name = _newChannelName.value.trim();
             if (!name) return;
+            _newChannelCreate.disabled = true;
             try {
                 var channel = await _api('POST', '/channels', { name: name, description: _newChannelDesc.value.trim() });
                 if (channel) {
@@ -716,6 +718,8 @@
                 }
             } catch (err) {
                 if (typeof showNotification === 'function') showNotification(err.message || 'Помилка створення каналу', 'error');
+            } finally {
+                _newChannelCreate.disabled = false;
             }
         });
     }

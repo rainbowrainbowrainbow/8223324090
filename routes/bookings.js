@@ -812,34 +812,6 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             }
         }
 
-        // v33.3: Animator conflict detection
-        if (b.hosts && !b.linkedTo) {
-            const animId = parseInt(b.hosts);
-            if (animId) {
-                const startMinutes = timeToMinutes(b.time);
-                const endMinutes = startMinutes + (parseInt(b.duration) || 0);
-                const animConflict = await client.query(`
-                    SELECT id, time, duration, label, program_code FROM bookings
-                    WHERE (hosts = $1 OR second_animator = $1::text)
-                      AND date = $2 AND id != $3
-                      AND status != 'cancelled' AND linked_to IS NULL
-                `, [animId, b.date, id]);
-
-                for (const ac of animConflict.rows) {
-                    const acStart = timeToMinutes(ac.time);
-                    const acEnd = acStart + (ac.duration || 0);
-                    if (startMinutes < acEnd && endMinutes > acStart) {
-                        await client.query('ROLLBACK');
-                        return res.status(409).json({
-                            success: false,
-                            error: `Аніматор вже зайнятий о ${ac.time} (${ac.label || ac.program_code})`,
-                            conflictBookingId: ac.id
-                        });
-                    }
-                }
-            }
-        }
-
         // v38.5.0: Status whitelist — prevent invalid status values and transitions
         const VALID_STATUSES = ['confirmed', 'preliminary', 'cancelled'];
         const newStatus = VALID_STATUSES.includes(b.status) ? b.status : (oldBooking.status || 'confirmed');

@@ -184,6 +184,10 @@ async function getConfiguredThreadId() {
 }
 
 async function sendTelegramMessage(chatId, text, options = {}) {
+    // v43.7.0: Short-circuit when no token to avoid log spam
+    if (!TELEGRAM_BOT_TOKEN) {
+        return { ok: false, description: 'No bot token configured' };
+    }
     const maxRetries = options.retries || 3;
     const threadId = await getConfiguredThreadId();
     for (let attempt = 1; attempt <= maxRetries; attempt++) {

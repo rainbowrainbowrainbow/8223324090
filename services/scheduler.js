@@ -1061,7 +1061,7 @@ async function checkUpcomingBookings() {
                    c.name AS customer_name, c.phone AS customer_phone
             FROM bookings b
             LEFT JOIN customers c ON b.customer_id = c.id
-            WHERE b.date = CURRENT_DATE + INTERVAL '3 days'
+            WHERE b.date = to_char(CURRENT_DATE + INTERVAL '3 days', 'YYYY-MM-DD')
               AND b.status IN ('confirmed', 'pending')
               AND b.linked_to IS NULL
         `);

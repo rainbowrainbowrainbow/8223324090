@@ -2708,11 +2708,27 @@ async function handleBatchCertSubmit(event) {
 function copyBatchCodes() {
     const codesDiv = document.getElementById('batchCertCodes');
     const codes = Array.from(codesDiv.querySelectorAll('b')).map(b => b.textContent).join('\n');
-    navigator.clipboard.writeText(codes).then(() => {
-        showNotification('Коди скопійовано', 'success');
-    }).catch(() => {
-        showNotification('Не вдалось скопіювати', 'error');
-    });
+    // v43.8.0: navigator.clipboard requires HTTPS — fallback to execCommand for iOS Safari on HTTP
+    const fallbackCopy = () => {
+        const ta = document.createElement('textarea');
+        ta.value = codes;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        showNotification(ok ? 'Коди скопійовано' : 'Не вдалось скопіювати', ok ? 'success' : 'error');
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(codes)
+            .then(() => showNotification('Коди скопійовано', 'success'))
+            .catch(fallbackCopy);
+    } else {
+        fallbackCopy();
+    }
 }
 
 function onCertDisplayModeChange() {

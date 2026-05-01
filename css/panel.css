@@ -590,6 +590,8 @@
     right: 0;
     width: 380px;
     height: 100vh;
+    /* v43.8.0: iOS Safari — dvh accounts for URL bar, prevents bottom buttons being unreachable */
+    height: 100dvh;
     background: var(--white);
     box-shadow: -4px 0 24px rgba(0,0,0,0.1);
     z-index: var(--z-panel);
@@ -604,6 +606,8 @@
     flex: 1;
     overflow-y: auto;
     padding: 16px 20px;
+    /* v43.8.0: iOS — respect home indicator safe area so bottom buttons remain tappable */
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -658,6 +662,15 @@
     padding: 12px;
     font-size: 14px;
     border-radius: 10px;
+    /* v43.8.0: iOS Safari fix — multiple sticky buttons overlap and intercept taps.
+       Force static positioning so each button has its own hit area. */
+    position: static;
+}
+
+/* v43.8.0: same fix for batch cert modal — submit + copy buttons both have
+   .btn-submit with position:sticky which overlap on iOS Safari */
+#batchCertModal .btn-submit {
+    position: static;
 }
 
 /* ==========================================

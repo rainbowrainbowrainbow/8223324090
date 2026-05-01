@@ -732,7 +732,8 @@ async function checkDuplicateProgram(programId, program, time, duration, exclude
     });
 
     if (duplicate) {
-        showNotification(`❌ ПОМИЛКА: ${program.name} вже є о ${duplicate.time}!`, 'error');
+        showNotification(`❌ ${program.name} вже є о ${duplicate.time}`, 'error');
+        if (duplicate.id) revealHiddenBooking(duplicate.id);
         return false;
     }
     return true;
@@ -1009,6 +1010,7 @@ async function handleBookingSubmit(e) {
                     return;
                 }
                 showNotification(updateResult.error || 'Помилка оновлення бронювання', 'error');
+                if (updateResult.conflictBookingId) revealHiddenBooking(updateResult.conflictBookingId);
                 unlockSubmitBtn(); return;
             }
             // Update stored updatedAt from server response
@@ -1735,7 +1737,9 @@ async function shiftBookingTime(bookingId, minutes) {
             const end = start + other.duration;
 
             if (newStart < end && newEnd > start) {
-                showNotification('Неможливо перенести - є накладка з іншим бронюванням!', 'error');
+                const detail = ` ("${other.label || other.programCode || ''}" о ${other.time})`;
+                showNotification(`Неможливо перенести — накладка${detail}`, 'error');
+                if (other.id) revealHiddenBooking(other.id);
                 return;
             }
         }
@@ -1753,7 +1757,9 @@ async function shiftBookingTime(bookingId, minutes) {
                 const start = timeToMinutes(other.time);
                 const end = start + other.duration;
                 if (linkedNewStart < end && linkedNewEnd > start) {
-                    showNotification(`Неможливо перенести - накладка у пов'язаного аніматора!`, 'error');
+                    const detail = ` ("${other.label || other.programCode || ''}" о ${other.time})`;
+                    showNotification(`Неможливо перенести — накладка у пов'язаного аніматора${detail}`, 'error');
+                    if (other.id) revealHiddenBooking(other.id);
                     return;
                 }
             }
@@ -1771,6 +1777,7 @@ async function shiftBookingTime(bookingId, minutes) {
                 return;
             }
             showNotification(shiftResult.error || 'Помилка переносу бронювання', 'error');
+            if (shiftResult.conflictBookingId) revealHiddenBooking(shiftResult.conflictBookingId);
             return;
         }
 
@@ -1828,6 +1835,7 @@ async function switchBookingLine(bookingId, targetLineId) {
             const end = start + other.duration;
             if (myStart < end && myEnd > start) {
                 showNotification(`Неможливо — накладка з "${other.label || other.programCode}" о ${other.time}`, 'error');
+                if (other.id) revealHiddenBooking(other.id);
                 return;
             }
         }
@@ -1843,6 +1851,7 @@ async function switchBookingLine(bookingId, targetLineId) {
                 return;
             }
             showNotification(result.error || 'Помилка переключення лінії', 'error');
+            if (result.conflictBookingId) revealHiddenBooking(result.conflictBookingId);
             return;
         }
 

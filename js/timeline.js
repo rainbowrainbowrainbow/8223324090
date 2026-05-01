@@ -1644,6 +1644,7 @@ async function _handleResizeEnd(e) {
 
     if (result && result.success === false) {
         showNotification(result.error || 'Помилка зміни тривалості', 'error');
+        if (result.conflictBookingId && typeof revealHiddenBooking === 'function') revealHiddenBooking(result.conflictBookingId);
         // Rollback
         const origWidth = (s.originalDuration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
         s.block.style.width = `${origWidth}px`;

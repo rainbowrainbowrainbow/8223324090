@@ -100,7 +100,7 @@ async function apiCreateBooking(booking) {
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error' };
+            return { success: false, error: body.error || 'API error', conflictBookingId: body.conflictBookingId || null };
         }
         return await response.json();
     } catch (err) {
@@ -120,7 +120,7 @@ async function apiCreateBookingFull(main, linked) {
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
-            return { success: false, error: body.error || 'API error' };
+            return { success: false, error: body.error || 'API error', conflictBookingId: body.conflictBookingId || null };
         }
         return await response.json();
     } catch (err) {
@@ -162,7 +162,8 @@ async function apiUpdateBooking(id, booking) {
                 success: false,
                 conflict: body.conflict || false,
                 error: body.error || 'Конфлікт даних',
-                currentData: body.currentData || null
+                currentData: body.currentData || null,
+                conflictBookingId: body.conflictBookingId || null
             };
         }
         if (!response.ok) {

@@ -1303,7 +1303,10 @@ function _validateDragDrop(state, timeDelta) {
         const otherStart = timeToMinutes(other.time);
         const otherEnd = otherStart + other.duration;
         if (newMin < otherEnd && newEnd > otherStart) {
-            return { valid: false, error: `Час зайнятий на цій лінії!` };
+            // v43.5.0: Reveal blocker so user sees what's interfering
+            if (other.id && typeof revealHiddenBooking === 'function') revealHiddenBooking(other.id);
+            const detail = ` (${other.label || other.programCode || ''} о ${other.time})`;
+            return { valid: false, error: `Час зайнятий на цій лінії${detail}` };
         }
     }
 
@@ -1608,17 +1611,21 @@ async function _handleResizeEnd(e) {
     );
 
     let conflict = false;
+    let conflictWith = null;
     for (const other of lineBookings) {
         const otherStart = timeToMinutes(other.time);
         const otherEnd = otherStart + other.duration;
         if (myStartMin < otherEnd && newEndMin > otherStart) {
             conflict = true;
+            conflictWith = other;
             break;
         }
     }
 
     if (conflict) {
-        showNotification('Неможливо змінити тривалість — накладка з наступним бронюванням', 'error');
+        const detail = conflictWith ? ` (${conflictWith.label || conflictWith.programCode || ''} о ${conflictWith.time})` : '';
+        showNotification(`Неможливо змінити тривалість — накладка${detail}`, 'error');
+        if (conflictWith && conflictWith.id && typeof revealHiddenBooking === 'function') revealHiddenBooking(conflictWith.id);
         _triggerHaptic('error');
         // Rollback visual
         const origWidth = (s.originalDuration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;

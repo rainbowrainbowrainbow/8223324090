@@ -683,7 +683,11 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
     const conflict = await checkConflicts(lineId, time, duration, excludeId);
 
     if (conflict.overlap) {
-        showNotification('❌ ПОМИЛКА: Цей час вже зайнятий!', 'error');
+        // v43.5.0: Show details + reveal hidden block instead of generic message
+        const cw = conflict.conflictWith;
+        const detail = cw ? ` (${cw.label || cw.programCode || 'бронювання'} о ${cw.time})` : '';
+        showNotification(`❌ Час зайнятий${detail}`, 'error');
+        if (cw && cw.id) revealHiddenBooking(cw.id);
         return false;
     }
 
@@ -696,7 +700,10 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
             const linkedId = allBookings.find(b => b.linkedTo === excludeId && b.lineId === secondLine.id)?.id || null;
             const secondConflict = await checkConflicts(secondLine.id, time, duration, linkedId);
             if (secondConflict.overlap) {
-                showNotification(`❌ ПОМИЛКА: Час зайнятий у ${secondAnimator}!`, 'error');
+                const cw2 = secondConflict.conflictWith;
+                const detail2 = cw2 ? ` (${cw2.label || cw2.programCode || 'бронювання'} о ${cw2.time})` : '';
+                showNotification(`❌ Час зайнятий у ${secondAnimator}${detail2}`, 'error');
+                if (cw2 && cw2.id) revealHiddenBooking(cw2.id);
                 return false;
             }
         }
@@ -1124,6 +1131,7 @@ async function checkConflicts(lineId, time, duration, excludeId = null) {
 
     let overlap = false;
     let noPause = false;
+    let conflictWith = null;
 
     for (const b of bookings) {
         const start = timeToMinutes(b.time);
@@ -1131,6 +1139,7 @@ async function checkConflicts(lineId, time, duration, excludeId = null) {
 
         if (newStart < end && newEnd > start) {
             overlap = true;
+            conflictWith = b;
             break;
         }
 
@@ -1145,7 +1154,25 @@ async function checkConflicts(lineId, time, duration, excludeId = null) {
         }
     }
 
-    return { overlap, noPause };
+    return { overlap, noPause, conflictWith };
+}
+
+// v43.5.0: Reveal a booking that is currently hidden by status filter
+// so user can see what's blocking the slot.
+function revealHiddenBooking(bookingId) {
+    const block = document.querySelector(`.booking-block[data-booking-id="${bookingId}"]`);
+    if (!block) return;
+    if (block.classList.contains('status-hidden')) {
+        block.classList.remove('status-hidden');
+        block.classList.add('conflict-flash');
+        setTimeout(() => {
+            block.classList.remove('conflict-flash');
+            applyStatusFilter();
+        }, 3000);
+    } else {
+        block.classList.add('conflict-flash');
+        setTimeout(() => block.classList.remove('conflict-flash'), 1500);
+    }
 }
 
 // ==========================================

@@ -353,6 +353,19 @@ body.dark-mode .night-settings-select {
     display: none !important;
 }
 
+/* v43.5.0: Flash highlight for booking that's blocking a slot */
+.booking-block.conflict-flash {
+    animation: conflict-flash-pulse 0.6s ease-in-out 3;
+    outline: 3px solid #ef4444;
+    outline-offset: 2px;
+    z-index: 50;
+}
+
+@keyframes conflict-flash-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+    50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+
 /* ==========================================
    v5.19: PERIOD SELECTOR (segmented control)
    ========================================== */

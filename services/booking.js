@@ -101,6 +101,8 @@ async function checkServerConflicts(client, date, lineId, time, duration, exclud
 
 async function checkServerDuplicate(client, date, programId, time, duration, excludeId = null) {
     if (!programId) return null;
+    // v43.10.0: custom programs ("Інше") share programId but are independent — never dedupe
+    if (programId === 'custom') return null;
     const params = excludeId ? [date, programId, excludeId] : [date, programId];
     // v19.12: Include time+duration in initial SELECT to eliminate N+1 queries
     const result = await client.query(
@@ -112,7 +114,7 @@ async function checkServerDuplicate(client, date, programId, time, duration, exc
     const newEnd = newStart + duration;
 
     for (const b of result.rows) {
-        if (b.category === 'animation') continue;
+        if (b.category === 'animation' || b.category === 'custom') continue;
         const bStart = timeToMinutes(b.time);
         const bEnd = bStart + (b.duration || 0);
         if (newStart < bEnd && newEnd > bStart) {

@@ -717,7 +717,10 @@ async function validateBookingConflicts(lineId, time, duration, program, secondA
 }
 
 async function checkDuplicateProgram(programId, program, time, duration, excludeId = null) {
-    if (program.category === 'animation' || programId === 'anim_extra') return true;
+    // v43.10.0: skip duplicate check for animation extras AND custom "Інше" programs.
+    // Two custom bookings (e.g. аквагрим + фотозона) share programId='custom' but
+    // are conceptually different — must not block each other.
+    if (program.category === 'animation' || program.category === 'custom' || program.isCustom || programId === 'anim_extra' || programId === 'custom') return true;
 
     const allBookings = await getBookingsForDate(AppState.selectedDate);
     const newStart = timeToMinutes(time);

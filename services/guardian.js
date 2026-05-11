@@ -16,6 +16,7 @@
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { broadcastToChannel, sendToUser, broadcast } = require('./websocket');
+const { provisionGuardianDirectorDm } = require('./guardianDmProvisioning');
 
 const log = createLogger('Guardian');
 
@@ -1961,26 +1962,7 @@ async function alertDirectorWithActions(content, actions) {
         const guardianId = await getGuardianUserId();
         if (!guardianId) return;
 
-        let dmChannel = await pool.query(`
-            SELECT c.id FROM chat_channels c
-            JOIN chat_channel_members m1 ON m1.channel_id = c.id AND m1.user_id = $1
-            JOIN chat_channel_members m2 ON m2.channel_id = c.id AND m2.user_id = $2
-            WHERE c.is_dm = true
-            LIMIT 1
-        `, [guardianId, directorId]);
-
-        let channelId;
-        if (dmChannel.rows.length > 0) {
-            channelId = dmChannel.rows[0].id;
-        } else {
-            const ch = await pool.query(`
-                INSERT INTO chat_channels (name, slug, is_dm, created_by)
-                VALUES ('Guardian → Director', 'dm-guardian-director', true, $1)
-                RETURNING id
-            `, [guardianId]);
-            channelId = ch.rows[0].id;
-            await pool.query('INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2), ($1, $3)', [channelId, guardianId, directorId]);
-        }
+        const { channelId } = await provisionGuardianDirectorDm({ pool, guardianId, directorId });
 
         // Send message with action metadata
         const client = await pool.connect();
@@ -2032,31 +2014,10 @@ async function alertDirector(content) {
         const directorId = await getDirectorUserId();
         if (!directorId) return;
 
-        // Find or create DM channel with Guardian
         const guardianId = await getGuardianUserId();
         if (!guardianId) return;
 
-        let dmChannel = await pool.query(`
-            SELECT c.id FROM chat_channels c
-            JOIN chat_channel_members m1 ON m1.channel_id = c.id AND m1.user_id = $1
-            JOIN chat_channel_members m2 ON m2.channel_id = c.id AND m2.user_id = $2
-            WHERE c.is_dm = true
-            LIMIT 1
-        `, [guardianId, directorId]);
-
-        let channelId;
-        if (dmChannel.rows.length > 0) {
-            channelId = dmChannel.rows[0].id;
-        } else {
-            // Create DM channel
-            const ch = await pool.query(`
-                INSERT INTO chat_channels (name, slug, is_dm, created_by)
-                VALUES ('Guardian → Director', 'dm-guardian-director', true, $1)
-                RETURNING id
-            `, [guardianId]);
-            channelId = ch.rows[0].id;
-            await pool.query('INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2), ($1, $3)', [channelId, guardianId, directorId]);
-        }
+        const { channelId } = await provisionGuardianDirectorDm({ pool, guardianId, directorId });
 
         // Send DM message
         await sendGuardianMessage(channelId, content);
@@ -2367,10 +2328,16 @@ async function cmdMood(channelId) {
 async function cmdHealth(channelId) {
     try {
         const r = await pool.query(
-            `SELECT score, toxicity_score, spam_score, conflict_score, engagement_score, updated_at
+            `SELECT
+                score,
+                COALESCE((factors->>'masksToday')::int, 0) AS masks_today,
+                COALESCE((factors->>'spamToday')::int, 0) AS spam_today,
+                COALESCE((factors->>'conflictsToday')::int, 0) AS conflicts_today,
+                COALESCE((factors->>'cleanMessages')::int, 0) AS clean_messages,
+                calculated_at AS updated_at
              FROM guardian_channel_health
              WHERE channel_id = $1
-             ORDER BY updated_at DESC LIMIT 1`,
+             ORDER BY calculated_at DESC LIMIT 1`,
             [channelId]
         );
 
@@ -2387,10 +2354,10 @@ async function cmdHealth(channelId) {
         const scoreEmoji = h.score >= 80 ? '💚' : h.score >= 50 ? '💛' : '❤️';
 
         return `${scoreEmoji} **Здоровʼя каналу: ${h.score}/100**\n\n` +
-            `🧪 Токсичність: ${h.toxicity_score ?? '—'}/100\n` +
-            `📨 Спам: ${h.spam_score ?? '—'}/100\n` +
-            `⚔️ Конфлікти: ${h.conflict_score ?? '—'}/100\n` +
-            `💬 Залученість: ${h.engagement_score ?? '—'}/100\n` +
+            `🧪 Маски: ${h.masks_today ?? '—'}\n` +
+            `📨 Спам: ${h.spam_today ?? '—'}\n` +
+            `⚔️ Конфлікти: ${h.conflicts_today ?? '—'}\n` +
+            `💬 Чисті повідомлення: ${h.clean_messages ?? '—'}\n` +
             `🕐 Оновлено: ${h.updated_at ? new Date(h.updated_at).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv' }) : '—'}`;
     } catch (err) {
         return `⚠️ Не вдалося отримати здоровʼя каналу: ${err.message}`;
@@ -2403,11 +2370,12 @@ async function cmdTop(channelId, type) {
     if (category === 'helpers') {
         try {
             const r = await pool.query(
-                `SELECT username, AVG(sentiment)::numeric(3,2) AS avg_sent, COUNT(*)::int AS cnt
-                 FROM guardian_mood_tracking
-                 WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
-                   AND sentiment > 0
-                 GROUP BY username
+                `SELECT u.username, AVG(gmt.score)::numeric(3,2) AS avg_sent, COUNT(*)::int AS cnt
+                 FROM guardian_mood_tracking gmt
+                 JOIN users u ON u.id = gmt.user_id
+                 WHERE gmt.analyzed_at >= CURRENT_DATE - INTERVAL '7 days'
+                   AND gmt.score > 0
+                 GROUP BY u.username
                  ORDER BY avg_sent DESC, cnt DESC
                  LIMIT 5`
             );
@@ -2471,7 +2439,16 @@ async function cmdHistory(usernameArg) {
         let trustScore = null;
         try {
             const tr = await pool.query(
-                'SELECT score, reason, updated_at FROM guardian_trust_scores WHERE user_id = $1',
+                `SELECT gts.trust_score AS score, th.reason, gts.updated_at
+                 FROM guardian_trust_scores gts
+                 LEFT JOIN LATERAL (
+                    SELECT reason
+                    FROM guardian_trust_history
+                    WHERE user_id = gts.user_id
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                 ) th ON true
+                 WHERE gts.user_id = $1`,
                 [targetId]
             );
             if (tr.rows.length) trustScore = tr.rows[0];
@@ -2584,17 +2561,24 @@ async function cmdTrust(args) {
         const targetId = ur.rows[0].id;
 
         const r = await pool.query(
-            `INSERT INTO guardian_trust_scores (user_id, username, score, reason, updated_at)
-             VALUES ($1, $2, $3, $4, NOW())
+            `INSERT INTO guardian_trust_scores (user_id, trust_score, level, updated_at)
+             VALUES ($1, GREATEST(0, LEAST(100, 50 + $2)), $3, NOW())
              ON CONFLICT (user_id)
-             DO UPDATE SET score = guardian_trust_scores.score + $3,
-                           reason = COALESCE($4, guardian_trust_scores.reason),
+             DO UPDATE SET trust_score = GREATEST(0, LEAST(100, guardian_trust_scores.trust_score + $2)),
                            updated_at = NOW()
-             RETURNING score`,
-            [targetId, uname, delta, reason]
+             RETURNING trust_score AS score`,
+            [targetId, delta, getTrustLevel(50 + delta)]
         );
 
-        const newScore = r.rows[0].score;
+        const newScore = parseInt(r.rows[0].score);
+        await pool.query(
+            'UPDATE guardian_trust_scores SET level = $1 WHERE user_id = $2',
+            [getTrustLevel(newScore), targetId]
+        );
+        await pool.query(
+            'INSERT INTO guardian_trust_history (user_id, delta, reason) VALUES ($1, $2, $3)',
+            [targetId, delta, reason || (direction === '+' ? 'manual_increase' : 'manual_decrease')]
+        );
         const emoji = direction === '+' ? '📈' : '📉';
         return `${emoji} Довіра @${uname}: ${newScore} (${direction === '+' ? '+' : ''}${delta})${reason ? `\nПричина: ${reason}` : ''}`;
     } catch (err) {
@@ -2753,16 +2737,23 @@ async function calculateChannelHealth(channelId) {
         // Update in-memory cache
         _channelHealth[channelId] = { score, level, updatedAt: new Date().toISOString() };
 
+        const factors = {
+            conflictsToday: conflicts,
+            masksToday: masks,
+            spamToday: spamIncidents,
+            activeMutes,
+            cleanMessages
+        };
+
         // Upsert into guardian_channel_health
         await pool.query(`
-            INSERT INTO guardian_channel_health (channel_id, score, level, conflicts_today, masks_today, spam_today, active_mutes, clean_messages)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            INSERT INTO guardian_channel_health (channel_id, score, level, factors, calculated_at)
+            VALUES ($1, $2, $3, $4, NOW())
             ON CONFLICT (channel_id) DO UPDATE SET
                 score = EXCLUDED.score, level = EXCLUDED.level,
-                conflicts_today = EXCLUDED.conflicts_today, masks_today = EXCLUDED.masks_today,
-                spam_today = EXCLUDED.spam_today, active_mutes = EXCLUDED.active_mutes,
-                clean_messages = EXCLUDED.clean_messages, updated_at = NOW()
-        `, [channelId, score, level, conflicts, masks, spamIncidents, activeMutes, cleanMessages]);
+                factors = EXCLUDED.factors,
+                calculated_at = NOW()
+        `, [channelId, score, level, JSON.stringify(factors)]);
 
         // Store history
         await pool.query(`
@@ -2890,11 +2881,13 @@ async function analyzeSentiment(channelId, userId, messageId, content) {
         }
         if (emotions.length === 0) emotions.push('neutral');
 
+        const sentiment = score > 0.3 ? 'positive' : score < -0.3 ? 'negative' : 'neutral';
+
         // Store in guardian_mood_tracking
         await pool.query(`
-            INSERT INTO guardian_mood_tracking (channel_id, user_id, message_id, sentiment_score, emotions, positive_count, negative_count)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-        `, [channelId, userId, messageId, score, JSON.stringify(emotions), positiveCount, negativeCount]);
+            INSERT INTO guardian_mood_tracking (channel_id, user_id, message_id, sentiment, score, emotions)
+            VALUES ($1, $2, $3, $4, $5, $6)
+        `, [channelId, userId, messageId, sentiment, score, JSON.stringify(emotions)]);
 
         // If positive mood, award trust
         if (score > 0.5) {
@@ -2917,20 +2910,20 @@ async function getChannelMoodSummary(channelId, period) {
     try {
         let dateFilter;
         if (period === 'today') {
-            dateFilter = "created_at::date = CURRENT_DATE";
+            dateFilter = "analyzed_at::date = CURRENT_DATE";
         } else if (period === 'week') {
-            dateFilter = "created_at >= NOW() - INTERVAL '7 days'";
+            dateFilter = "analyzed_at >= NOW() - INTERVAL '7 days'";
         } else {
-            dateFilter = "created_at::date = CURRENT_DATE";
+            dateFilter = "analyzed_at::date = CURRENT_DATE";
         }
 
         const result = await pool.query(`
             SELECT
                 COUNT(*) AS total_messages,
-                AVG(sentiment_score) AS avg_sentiment,
-                COUNT(*) FILTER (WHERE sentiment_score > 0.3) AS positive_count,
-                COUNT(*) FILTER (WHERE sentiment_score < -0.3) AS negative_count,
-                COUNT(*) FILTER (WHERE sentiment_score BETWEEN -0.3 AND 0.3) AS neutral_count
+                AVG(score) AS avg_sentiment,
+                COUNT(*) FILTER (WHERE score > 0.3) AS positive_count,
+                COUNT(*) FILTER (WHERE score < -0.3) AS negative_count,
+                COUNT(*) FILTER (WHERE score BETWEEN -0.3 AND 0.3) AS neutral_count
             FROM guardian_mood_tracking
             WHERE channel_id = $1 AND ${dateFilter}
         `, [channelId]);
@@ -2979,11 +2972,11 @@ async function getUserMoodProfile(userId) {
         const result = await pool.query(`
             SELECT
                 COUNT(*) AS total_messages,
-                AVG(sentiment_score) AS avg_sentiment,
-                MIN(sentiment_score) AS min_sentiment,
-                MAX(sentiment_score) AS max_sentiment,
-                COUNT(*) FILTER (WHERE sentiment_score > 0.3) AS positive_count,
-                COUNT(*) FILTER (WHERE sentiment_score < -0.3) AS negative_count
+                AVG(score) AS avg_sentiment,
+                MIN(score) AS min_sentiment,
+                MAX(score) AS max_sentiment,
+                COUNT(*) FILTER (WHERE score > 0.3) AS positive_count,
+                COUNT(*) FILTER (WHERE score < -0.3) AS negative_count
             FROM guardian_mood_tracking
             WHERE user_id = $1
         `, [userId]);
@@ -2993,8 +2986,8 @@ async function getUserMoodProfile(userId) {
         // Recent trend (last 7 days vs previous 7 days)
         const trendResult = await pool.query(`
             SELECT
-                AVG(sentiment_score) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days') AS recent_avg,
-                AVG(sentiment_score) FILTER (WHERE created_at >= NOW() - INTERVAL '14 days' AND created_at < NOW() - INTERVAL '7 days') AS prev_avg
+                AVG(score) FILTER (WHERE analyzed_at >= NOW() - INTERVAL '7 days') AS recent_avg,
+                AVG(score) FILTER (WHERE analyzed_at >= NOW() - INTERVAL '14 days' AND analyzed_at < NOW() - INTERVAL '7 days') AS prev_avg
             FROM guardian_mood_tracking
             WHERE user_id = $1
         `, [userId]);
@@ -3111,10 +3104,10 @@ async function generateWeeklyReport() {
 
         // Top 5 positive contributors
         const positiveRes = await pool.query(`
-            SELECT u.username, AVG(gmt.sentiment_score) avg_score, COUNT(*) msg_count
+            SELECT u.username, AVG(gmt.score) avg_score, COUNT(*) msg_count
             FROM guardian_mood_tracking gmt
             JOIN users u ON u.id = gmt.user_id
-            WHERE gmt.created_at::date BETWEEN $1 AND $2
+            WHERE gmt.analyzed_at::date BETWEEN $1 AND $2
             GROUP BY u.username
             HAVING COUNT(*) >= 5
             ORDER BY avg_score DESC
@@ -3173,10 +3166,34 @@ async function generateWeeklyReport() {
         }
 
         // Save to DB
+        const statsPayload = {
+            totalMessages,
+            conflicts,
+            mutes,
+            masks,
+            newToxicWords,
+            trends: { messages: msgTrend, conflicts: conflictTrend }
+        };
         await pool.query(`
-            INSERT INTO guardian_weekly_reports (period_start, period_end, report_html, total_messages, conflicts, mutes, masks, new_toxic_words)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        `, [periodStart, periodEnd, report, totalMessages, conflicts, mutes, masks, newToxicWords]);
+            INSERT INTO guardian_weekly_reports (week_start, week_end, summary, stats, channel_breakdown, top_offenders, recommendations)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (week_start) DO UPDATE SET
+                week_end = EXCLUDED.week_end,
+                summary = EXCLUDED.summary,
+                stats = EXCLUDED.stats,
+                channel_breakdown = EXCLUDED.channel_breakdown,
+                top_offenders = EXCLUDED.top_offenders,
+                recommendations = EXCLUDED.recommendations,
+                created_at = NOW()
+        `, [
+            periodStart,
+            periodEnd,
+            report,
+            JSON.stringify(statsPayload),
+            JSON.stringify(channelBreakdown.rows),
+            JSON.stringify(offendersRes.rows),
+            JSON.stringify([])
+        ]);
 
         // Send via Telegram
         await sendWeeklyReportTelegram(report);
@@ -3236,8 +3253,7 @@ async function updateActivityHeatmap(channelId, eventType) {
         const now = new Date();
         const kyivStr = now.toLocaleString('en-US', { timeZone: 'Europe/Kyiv' });
         const kyivDate = new Date(kyivStr);
-        const dateStr = kyivDate.toLocaleDateString('sv-SE');
-        const hour = kyivDate.getHours();
+        kyivDate.setMinutes(0, 0, 0);
 
         // Determine which column to increment
         let messageInc = 0, conflictInc = 0, muteInc = 0;
@@ -3246,14 +3262,13 @@ async function updateActivityHeatmap(channelId, eventType) {
         else if (eventType === 'mute') muteInc = 1;
 
         await pool.query(`
-            INSERT INTO guardian_activity_heatmap (channel_id, date, hour, message_count, conflict_count, mute_count)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (channel_id, date, hour) DO UPDATE SET
+            INSERT INTO guardian_activity_heatmap (channel_id, hour_bucket, message_count, conflict_count, mute_count)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (channel_id, hour_bucket) DO UPDATE SET
                 message_count = guardian_activity_heatmap.message_count + EXCLUDED.message_count,
                 conflict_count = guardian_activity_heatmap.conflict_count + EXCLUDED.conflict_count,
-                mute_count = guardian_activity_heatmap.mute_count + EXCLUDED.mute_count,
-                updated_at = NOW()
-        `, [channelId, dateStr, hour, messageInc, conflictInc, muteInc]);
+                mute_count = guardian_activity_heatmap.mute_count + EXCLUDED.mute_count
+        `, [channelId, kyivDate, messageInc, conflictInc, muteInc]);
     } catch (err) {
         log.error('Failed to update activity heatmap', err);
     }
@@ -3266,21 +3281,27 @@ async function getActivityHeatmap(channelId, days) {
     try {
         days = days || 7;
         const result = await pool.query(`
-            SELECT date, hour, message_count, conflict_count, mute_count
+            SELECT
+                TO_CHAR(hour_bucket AT TIME ZONE 'Europe/Kyiv', 'YYYY-MM-DD') AS date,
+                EXTRACT(HOUR FROM hour_bucket AT TIME ZONE 'Europe/Kyiv')::int AS hour,
+                message_count,
+                conflict_count,
+                mute_count,
+                avg_sentiment
             FROM guardian_activity_heatmap
-            WHERE channel_id = $1 AND date::date >= CURRENT_DATE - $2::int
-            ORDER BY date, hour
+            WHERE channel_id = $1 AND hour_bucket >= NOW() - ($2 || ' days')::interval
+            ORDER BY hour_bucket
         `, [channelId, days]);
 
         // Also get avg sentiment per hour bucket from mood tracking
         const sentimentResult = await pool.query(`
             SELECT
-                created_at::date AS date,
-                EXTRACT(HOUR FROM created_at AT TIME ZONE 'Europe/Kyiv') AS hour,
-                AVG(sentiment_score) AS avg_sentiment
+                TO_CHAR(analyzed_at AT TIME ZONE 'Europe/Kyiv', 'YYYY-MM-DD') AS date,
+                EXTRACT(HOUR FROM analyzed_at AT TIME ZONE 'Europe/Kyiv')::int AS hour,
+                AVG(score) AS avg_sentiment
             FROM guardian_mood_tracking
-            WHERE channel_id = $1 AND created_at >= NOW() - ($2 || ' days')::interval
-            GROUP BY created_at::date, EXTRACT(HOUR FROM created_at AT TIME ZONE 'Europe/Kyiv')
+            WHERE channel_id = $1 AND analyzed_at >= NOW() - ($2 || ' days')::interval
+            GROUP BY TO_CHAR(analyzed_at AT TIME ZONE 'Europe/Kyiv', 'YYYY-MM-DD'), EXTRACT(HOUR FROM analyzed_at AT TIME ZONE 'Europe/Kyiv')
             ORDER BY date, hour
         `, [channelId, days]);
 
@@ -3297,7 +3318,7 @@ async function getActivityHeatmap(channelId, days) {
             messageCount: parseInt(r.message_count || 0),
             conflictCount: parseInt(r.conflict_count || 0),
             muteCount: parseInt(r.mute_count || 0),
-            avgSentiment: sentimentMap[`${r.date}:${r.hour}`] || 0
+            avgSentiment: sentimentMap[`${r.date}:${r.hour}`] || parseFloat(r.avg_sentiment || 0)
         }));
     } catch (err) {
         log.error('Failed to get activity heatmap', err);
@@ -3326,7 +3347,7 @@ async function checkEscalation(userId, channelId) {
         let levels;
         try {
             const configRes = await pool.query(`
-                SELECT level, min_incidents, action, mute_duration_minutes, notify_telegram
+                SELECT level, threshold AS min_incidents, action, mute_duration_minutes, notify_telegram
                 FROM guardian_escalation_config
                 ORDER BY level ASC
             `);
@@ -3416,17 +3437,17 @@ async function updateTrustScore(userId, delta, reason) {
 
         // Upsert trust score
         await pool.query(`
-            INSERT INTO guardian_trust_scores (user_id, score, level)
+            INSERT INTO guardian_trust_scores (user_id, trust_score, level)
             VALUES ($1, GREATEST(0, LEAST(100, 50 + $2)), $3)
             ON CONFLICT (user_id) DO UPDATE SET
-                score = GREATEST(0, LEAST(100, guardian_trust_scores.score + $2)),
+                trust_score = GREATEST(0, LEAST(100, guardian_trust_scores.trust_score + $2)),
                 level = $3,
                 updated_at = NOW()
         `, [userId, delta, getTrustLevel(50 + delta)]);
 
         // Update the level based on actual score
         const currentRes = await pool.query(
-            'SELECT score FROM guardian_trust_scores WHERE user_id = $1',
+            'SELECT trust_score AS score FROM guardian_trust_scores WHERE user_id = $1',
             [userId]
         );
         if (currentRes.rows.length > 0) {
@@ -3456,7 +3477,7 @@ async function updateTrustScore(userId, delta, reason) {
 async function getTrustScore(userId) {
     try {
         const result = await pool.query(
-            'SELECT score, level, updated_at FROM guardian_trust_scores WHERE user_id = $1',
+            'SELECT trust_score AS score, level, updated_at FROM guardian_trust_scores WHERE user_id = $1',
             [userId]
         );
         if (result.rows.length === 0) {

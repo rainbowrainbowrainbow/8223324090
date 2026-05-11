@@ -492,19 +492,19 @@ router.get('/health/:channelId', async (req, res) => {
         // Fallback: query DB directly
         if (!health) {
             const latest = await pool.query(`
-                SELECT score, level, factors, trend
+                SELECT score, level, factors, calculated_at
                 FROM guardian_channel_health
                 WHERE channel_id = $1
-                ORDER BY recorded_at DESC LIMIT 1
+                ORDER BY calculated_at DESC LIMIT 1
             `, [channelId]);
             health = latest.rows[0]
-                ? { score: latest.rows[0].score, level: latest.rows[0].level, factors: latest.rows[0].factors, trend: latest.rows[0].trend }
-                : { score: 100, level: 'healthy', factors: {}, trend: 'stable' };
+                ? { score: latest.rows[0].score, level: latest.rows[0].level, factors: latest.rows[0].factors, trend: 'stable' }
+                : { score: 100, level: 'green', factors: {}, trend: 'stable' };
         }
 
         const history = await pool.query(`
             SELECT score, level, recorded_at
-            FROM guardian_channel_health
+            FROM guardian_health_history
             WHERE channel_id = $1
             ORDER BY recorded_at DESC LIMIT 30
         `, [channelId]);

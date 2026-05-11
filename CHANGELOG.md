@@ -4,6 +4,36 @@
 
 ---
 
+## v0.45.2 - Guardian director DM provisioning integrity (2026-05-11)
+
+### Guardian DM provisioning [codex]
+- **Atomic director DM** - Guardian/director DM creation now uses one transactional helper instead of separate check-then-insert paths.
+- **Deterministic reuse** - provisioning reuses the stable `dm-guardian-director` slug and also preserves legacy DM channels that already connect Guardian and the director.
+- **Atomic membership** - Guardian and director membership initialization commits in the same transaction as channel provisioning, with rollback on member setup failure.
+- **Focused tests** - added deterministic coverage for repeated provisioning, legacy DM reuse, slug-shell repair, and rollback behavior.
+
+---
+
+## v0.45.1 - Guardian phase3 schema compatibility (2026-05-11)
+
+### Guardian schema compatibility [codex]
+- **Phase3 alignment** - Guardian service queries now use the column names defined by the phase3 migrations for mood, health, heatmap, weekly reports, escalation, and trust scores.
+- **Compatibility migration** - added guarded schema support for `guardian_trust_history` and `guardian_escalation_config.updated_at` without deleting or rewriting production data.
+- **Route fallback fix** - Guardian health fallback now reads current health from `guardian_channel_health` and history from `guardian_health_history`.
+- **Focused guardrail** - added a static Guardian phase3 schema compatibility test so stale phantom-column patterns are caught in the fast unit baseline.
+
+---
+
+## v0.45.0 - Start of the 0.45 release line (2026-05-11)
+
+### Versioning policy [codex]
+- **New release train** - Event Genix now uses `0.45.x` as the active version line.
+- **Canonical source** - `package.json` remains the version source of truth, with version-sync propagating the release to UI labels, cache-bust tags, and service-worker cache names.
+- **Future mini updates** - follow-up releases should increment patch only as `0.45.1`, `0.45.2`, `0.45.3`, etc. until another explicit version-policy transition.
+- **Historical lines** - `0.44.x` and older changelog entries remain historical references and are not active release markers.
+
+---
+
 ## v0.44.17 - Booking and room chat provisioning integrity (2026-05-11)
 
 ### Chat channel provisioning [codex]

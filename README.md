@@ -103,8 +103,10 @@ The CI gate covers:
 - version and cache-bust consistency through `npm run check:version`;
 - migration duplicate/gap/governance checks through `npm run check:migrations`;
 - JavaScript parser checks through `npm run check:syntax`;
-- self-contained unit and auth-boundary smoke tests through `npm run test:unit`;
+- self-contained unit, auth-boundary, and route-level safety smoke tests through `npm run test:unit`;
 - static UI smoke through `npm run test:ui`.
+
+The route smoke layer is intentionally shallow: it checks public/protected/custom-secret/API-key boundaries and cheap route contracts such as version, landing, packages, task permissions, user role metadata, and chat-adjacent auth fallback. It does not exercise full PostgreSQL-backed route behavior.
 
 The UI smoke is intentionally shallow: it checks key pages, critical script loading/static structure, navigation exports, and shared page wiring. It does not fully exercise browser rendering, loading/error/disabled states, keyboard behavior, or accessibility; those still need focused manual or browser automation checks when touched.
 

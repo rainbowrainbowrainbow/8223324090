@@ -11,7 +11,7 @@
  *   1. package.json version (source of truth)
  *   2. package-lock.json root package versions
  *   3. HTML/CSS/JS/image asset query strings in href/src attributes and quoted asset refs
- *   4. index.html first-screen version and changelog button
+ *   4. first-screen version and changelog button on login-capable pages
  *   5. index.html latest changelog modal entry version
  *   6. CHANGELOG.md latest heading version
  *   7. sw.js CACHE_NAME and API_CACHE_NAME
@@ -163,8 +163,9 @@ function syncPackageLock(version) {
     if (FIX && changed) writeJson(file, lock);
 }
 
-function syncIndexLabels(version) {
-    const file = 'index.html';
+function syncFirstScreenLabels(file, version, { checkLatestModal = false } = {}) {
+    if (!exists(file)) return;
+
     let html = read(file);
 
     const taglineRegex = /(<p class="tagline">AI First CRM v)([\d.]+)([^<]*<\/p>)/;
@@ -185,13 +186,15 @@ function syncIndexLabels(version) {
         ok(file, 'changelog button');
     }
 
-    const latestModalRegex = /(<div class="changelog-list">[\s\S]*?<h4>[\s\S]*?v)([\d.]+)/;
-    const latestModalMatch = html.match(latestModalRegex);
-    if (latestModalMatch && latestModalMatch[2] !== version) {
-        report(file, 'latest changelog modal entry', latestModalMatch[2], version);
-        if (FIX) html = html.replace(latestModalRegex, `$1${version}`);
-    } else if (latestModalMatch) {
-        ok(file, 'latest changelog modal entry');
+    if (checkLatestModal) {
+        const latestModalRegex = /(<div class="changelog-list">[\s\S]*?<h4>[\s\S]*?v)([\d.]+)/;
+        const latestModalMatch = html.match(latestModalRegex);
+        if (latestModalMatch && latestModalMatch[2] !== version) {
+            report(file, 'latest changelog modal entry', latestModalMatch[2], version);
+            if (FIX) html = html.replace(latestModalRegex, `$1${version}`);
+        } else if (latestModalMatch) {
+            ok(file, 'latest changelog modal entry');
+        }
     }
 
     if (FIX) write(file, html);
@@ -261,7 +264,8 @@ console.log(`${BOLD}Version sync: v${version}${RESET} (source: package.json)\n`)
 
 syncPackageLock(version);
 syncAssetVersions('index.html', version);
-syncIndexLabels(version);
+syncFirstScreenLabels('index.html', version, { checkLatestModal: true });
+syncFirstScreenLabels('dashboard.html', version);
 syncServiceWorker(version);
 
 for (const file of collectVersionedAssetFiles()) {

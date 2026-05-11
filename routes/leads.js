@@ -28,9 +28,6 @@ const { authenticateToken, requireMinRole } = require('../middleware/auth');
 
 const log = createLogger('Leads');
 
-// All leads routes require authentication
-router.use(authenticateToken);
-
 // Auto-sync status when pipeline_stage changes
 const STAGE_TO_STATUS = {
     new: 'new',

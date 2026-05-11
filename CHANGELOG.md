@@ -4,6 +4,18 @@
 
 ---
 
+## v0.44.1 - Sound storage pilot on Supabase Storage (2026-05-11)
+
+### Storage [codex]
+- **Manual sound uploads** - `/api/music/library/upload` now attempts to store new manual audio files in Supabase Storage under the `audio-library` bucket instead of relying first on Railway-local `uploads/sounds`.
+- **Legacy fallback** - if Supabase is not configured or upload fails, the route falls back to the existing local `/uploads/sounds` behavior so operators are not blocked during rollout.
+- **Explicit storage metadata** - added nullable `sounds.storage_provider`, `storage_bucket`, `storage_key`, `storage_url`, and `storage_migrated_at` fields for backfill-safe tracking and remote delete cleanup.
+- **Delete cleanup** - sound deletion now removes Supabase objects when a storage key exists and still removes legacy local files for old records.
+- **Focused coverage** - added `tests/audio-storage.test.js` and wired it into `npm run test:unit` / CI.
+- **First screen** - updated the login version marker and "Що нового" entry for the sound storage pilot.
+
+---
+
 ## v0.44.0 - Versioning convention transition to 0.44.x (2026-05-11)
 
 ### Version policy [codex]

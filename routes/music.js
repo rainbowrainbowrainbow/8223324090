@@ -10,23 +10,56 @@ const multer = require('multer');
 const { createLogger } = require('../utils/logger');
 const { deliverAnnouncement } = require('../services/music-delivery');
 const { authenticateToken, requireRole } = require('../middleware/auth');
+const {
+    uploadAudioFromUrl,
+    uploadAudioBufferWithMetadata,
+    removeAudioObject,
+    makeAudioFilename
+} = require('../services/audioStorage');
 const log = createLogger('Music');
 
 // File upload for sound library
 const uploadSound = multer({
-    storage: multer.diskStorage({
-        destination: (req, file, cb) => {
-            const dir = path.join(__dirname, '../uploads/sounds');
-            fs.mkdirSync(dir, { recursive: true });
-            cb(null, dir);
-        },
-        filename: (req, file, cb) =>
-            cb(null, Date.now() + '-' + file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_'))
-    }),
+    storage: multer.memoryStorage(),
     limits: { fileSize: 50 * 1024 * 1024 },
     fileFilter: (req, file, cb) =>
         cb(null, /\.(mp3|wav|ogg|m4a|aac)$/i.test(path.extname(file.originalname)))
 });
+
+function _safeSoundExt(originalName) {
+    const ext = path.extname(originalName || '').replace('.', '').toLowerCase();
+    return ['mp3', 'wav', 'ogg', 'm4a', 'aac'].includes(ext) ? ext : 'mp3';
+}
+
+function _soundBaseName(originalName) {
+    return path.basename(originalName || 'sound', path.extname(originalName || ''));
+}
+
+function _writeLegacySoundFile(filename, buffer) {
+    const dir = path.join(__dirname, '../uploads/sounds');
+    fs.mkdirSync(dir, { recursive: true });
+    const localPath = path.join(dir, filename);
+    fs.writeFileSync(localPath, buffer);
+    return {
+        provider: 'local',
+        filename,
+        filePath: `/uploads/sounds/${filename}`,
+        localPath
+    };
+}
+
+async function _cleanupStoredSound(stored) {
+    try {
+        if (!stored) return;
+        if (stored.provider === 'supabase' && stored.storageKey) {
+            await removeAudioObject(stored.storageKey, stored.storageBucket);
+        } else if (stored.provider === 'local' && stored.localPath && fs.existsSync(stored.localPath)) {
+            fs.unlinkSync(stored.localPath);
+        }
+    } catch (err) {
+        log.warn('Sound upload cleanup failed', err.message);
+    }
+}
 
 // All music routes require authentication
 router.use(authenticateToken);
@@ -323,24 +356,74 @@ router.get('/library', async (req, res) => {
 
 router.post('/library/upload', uploadSound.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'Файл не обрано' });
+    let stored = null;
     try {
+        const category = req.body.category || 'general';
+        const displayName = (req.body.name || req.file.originalname || 'Sound').trim();
+        const filename = makeAudioFilename(category, displayName || _soundBaseName(req.file.originalname), _safeSoundExt(req.file.originalname));
+        const remote = await uploadAudioBufferWithMetadata(req.file.buffer, filename, {
+            contentType: req.file.mimetype,
+            folder: 'sounds/manual'
+        });
+
+        if (remote) {
+            stored = {
+                provider: 'supabase',
+                filename: remote.filename || filename,
+                filePath: remote.publicUrl,
+                publicUrl: remote.publicUrl,
+                storageBucket: remote.bucket,
+                storageKey: remote.path
+            };
+        } else {
+            stored = _writeLegacySoundFile(filename, req.file.buffer);
+        }
+
         const r = await pool.query(
-            `INSERT INTO sounds (name, filename, file_path, category, file_size, uploaded_by)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-            [req.body.name || req.file.originalname, req.file.filename,
-             `/uploads/sounds/${req.file.filename}`, req.body.category || 'general',
-             req.file.size, req.user?.username || null]
+            `INSERT INTO sounds (
+                name, filename, file_path, url, category, file_size, uploaded_by,
+                storage_provider, storage_bucket, storage_key, storage_url, storage_migrated_at
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CASE WHEN $8 = 'supabase' THEN NOW() ELSE NULL END)
+             RETURNING id`,
+            [
+                displayName,
+                stored.filename,
+                stored.filePath,
+                stored.publicUrl || null,
+                category,
+                req.file.size,
+                req.user?.username || null,
+                stored.provider,
+                stored.storageBucket || null,
+                stored.storageKey || null,
+                stored.publicUrl || null
+            ]
         );
-        res.json({ ok: true, id: r.rows[0].id, filename: req.file.filename });
-    } catch (err) { log.error('Upload sound error', err); res.status(500).json({ error: 'Internal server error' }); }
+        res.json({
+            ok: true,
+            id: r.rows[0].id,
+            filename: stored.filename,
+            filePath: stored.filePath,
+            storageProvider: stored.provider,
+            storageKey: stored.storageKey || null
+        });
+    } catch (err) {
+        await _cleanupStoredSound(stored);
+        log.error('Upload sound error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 router.delete('/library/:id', requireRole('admin', 'director'), async (req, res) => {
     try {
         const r = await pool.query('SELECT * FROM sounds WHERE id=$1', [req.params.id]);
         if (!r.rows.length) return res.status(404).json({ error: 'Не знайдено' });
-        if (r.rows[0].filename) {
-            const fp = path.join(__dirname, '../uploads/sounds', r.rows[0].filename);
+        const sound = r.rows[0];
+        if (sound.storage_provider === 'supabase' && sound.storage_key) {
+            await removeAudioObject(sound.storage_key, sound.storage_bucket);
+        } else if (sound.filename && sound.file_path?.startsWith('/uploads/sounds/')) {
+            const fp = path.join(__dirname, '../uploads/sounds', sound.filename);
             if (fs.existsSync(fp)) fs.unlinkSync(fp);
         }
         await pool.query('DELETE FROM sounds WHERE id=$1', [req.params.id]);
@@ -388,7 +471,6 @@ router.delete('/projects/:id', requireRole('admin', 'director'), async (req, res
 // ============================================
 // v39.8: TTS Creation (ElevenLabs via Kie.ai) + Supabase storage
 // ============================================
-const { uploadAudioFromUrl, uploadAudioBuffer, makeAudioFilename } = require('../services/audioStorage');
 
 router.post('/library/generate-tts', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
     const { text, name, category, voice, language } = req.body;

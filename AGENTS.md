@@ -53,6 +53,7 @@ stale handoff notes.
 - Version consistency check: `npm run check:version`
 - JavaScript parser check: `npm run check:syntax`
 - Unit tests that do not need a live server: `npm run test:unit`
+- Route smoke in the fast baseline is intentionally shallow: public/protected/custom-secret/API-key boundaries and cheap route contracts. It does not replace PostgreSQL-backed API/integration tests.
 - UI/static smoke check: `npm run test:ui`
 - API smoke suite against a running app/DB: `npm run test:api`
 - Broader Node test sweep against a running app/DB: `npm run test:integration`
@@ -74,7 +75,7 @@ Notes:
 - GitHub Actions workflow: `.github/workflows/ci.yml`.
 - CI runs on push and pull request with Node 22 from `.node-version` and npm `10.9.8`.
 - CI installs with `npm ci` and runs `npm test`.
-- The CI gate covers runtime alignment, version sync, migration governance, JavaScript parser checks, self-contained unit/auth-boundary tests, and static UI smoke.
+- The CI gate covers runtime alignment, version sync, migration governance, JavaScript parser checks, self-contained unit/auth-boundary/route-smoke tests, and static UI smoke.
 - CI does not run PostgreSQL-backed API or integration tests. Use `npm run test:api` or `npm run test:integration` against a configured live app/database when touching DB-backed route behavior.
 - CI does not provide a style lint, TypeScript typecheck, production deploy proof, browser automation, or manual UX/accessibility review.
 

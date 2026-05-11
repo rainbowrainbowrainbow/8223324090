@@ -43,7 +43,7 @@ pg_ctlcluster 16 main start
 PGUSER=postgres PGDATABASE=park_booking PGHOST=/var/run/postgresql RATE_LIMIT_MAX=5000 node server.js &
 node --test tests/api.test.js
 ```
-Test user: admin / admin123
+Live API tests require explicit `TEST_USER` and `TEST_PASS` env vars. The repo no longer documents or seeds shared default credentials.
 
 ## File Structure
 ```

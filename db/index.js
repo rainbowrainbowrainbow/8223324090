@@ -4,6 +4,13 @@
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const { createLogger } = require('../utils/logger');
+const {
+    isProductionLikeEnv,
+    getDevSeedUser,
+    getBootstrapCreator,
+    legacyPasswordResetAllowed,
+    openclawBootstrapUser
+} = require('./userSeedPolicy');
 
 const log = createLogger('DB');
 
@@ -31,6 +38,64 @@ async function safeQuery(sql) {
         }
         throw err;
     }
+}
+
+async function markSchemaMigration(version) {
+    await pool.query(
+        'INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT (version) DO NOTHING',
+        [version]
+    );
+}
+
+async function insertLoginUserIfMissing(user, sourceLabel) {
+    const hash = await bcrypt.hash(user.password, 10);
+    await pool.query(
+        `INSERT INTO users (username, password_hash, role, name)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (username) DO NOTHING`,
+        [user.username, hash, user.role, user.name]
+    );
+    log.info(`Login user ensured from ${sourceLabel}: ${user.username}`);
+}
+
+async function ensureInitialLoginUser() {
+    const userCount = await pool.query('SELECT COUNT(*) FROM users');
+    if (parseInt(userCount.rows[0].count, 10) !== 0) {
+        return;
+    }
+
+    const bootstrapUser = getBootstrapCreator(process.env);
+    if (bootstrapUser.enabled) {
+        await insertLoginUserIfMissing(bootstrapUser, 'BOOTSTRAP_CREATOR_* env');
+        return;
+    }
+    if (bootstrapUser.error) {
+        log.error(`Bootstrap creator skipped: ${bootstrapUser.error}`);
+    }
+
+    const devSeedUser = getDevSeedUser(process.env);
+    if (devSeedUser.enabled) {
+        await insertLoginUserIfMissing(devSeedUser, 'ALLOW_DEV_USER_SEED');
+        return;
+    }
+    if (devSeedUser.error) {
+        log.error(`Dev user seed skipped: ${devSeedUser.error}`);
+    }
+
+    if (isProductionLikeEnv(process.env)) {
+        log.error('No users found. Default credential seeding is blocked in production-like environments. Set explicit BOOTSTRAP_CREATOR_* env vars for first-user bootstrap.');
+    } else {
+        log.warn('No users found. Set BOOTSTRAP_CREATOR_* env vars or ALLOW_DEV_USER_SEED=true with DEV_SEED_ADMIN_PASSWORD for local bootstrap.');
+    }
+}
+
+async function skipLegacyCredentialMigration(version, label) {
+    if (legacyPasswordResetAllowed(process.env)) {
+        log.warn(`${label} uses removed hardcoded credentials; explicit reset flag was ignored. Use authenticated user-management or an operator script instead.`);
+    } else {
+        log.warn(`${label} skipped. Hardcoded credential seed/reset logic is disabled.`);
+    }
+    await markSchemaMigration(version);
 }
 
 async function initDatabase() {
@@ -201,34 +266,6 @@ async function initDatabase() {
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)');
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active)');
 
-        // Seed default users if table is empty
-        // LLM HINT: Test user is admin/admin123. Real users have Ukrainian names.
-        // Roles: admin (full access), user (standard), viewer (read-only timeline).
-        const userCount = await pool.query('SELECT COUNT(*) FROM users');
-        if (parseInt(userCount.rows[0].count) === 0) {
-            const defaultUsers = [
-                { username: 'admin', password: 'admin123', role: 'creator', name: 'Адмін' },
-                { username: 'Vitalina', password: 'Vitalina109', role: 'director', name: 'Віталіна' },
-                { username: 'Dasha', password: 'Dasha743', role: 'manager', name: 'Даша' },
-                { username: 'Natalia', password: 'Natalia875', role: 'director', name: 'Наталія' },
-                { username: 'Sergey', password: 'Sergey232', role: 'creator', name: 'Сергій' },
-                { username: 'Animator', password: 'Animator612', role: 'animator', name: 'Аніматор' },
-                { username: 'Anli', password: 'Anli384', role: 'manager', name: 'Анлі' },
-                { username: 'Zhenya', password: 'Zhenya527', role: 'animator', name: 'Женя' },
-                { username: 'Lera', password: 'Lera691', role: 'animator', name: 'Лера' },
-                { username: 'Anna', password: 'Anna321', role: 'animator', name: 'Анна' },
-                { username: 'Artem', password: 'Arte529', role: 'admin', name: 'Артем' }
-            ];
-            for (const u of defaultUsers) {
-                const hash = await bcrypt.hash(u.password, 10);
-                await pool.query(
-                    'INSERT INTO users (username, password_hash, role, name) VALUES ($1, $2, $3, $4) ON CONFLICT (username) DO NOTHING',
-                    [u.username, hash, u.role, u.name]
-                );
-            }
-            log.info('Default users seeded');
-        }
-
         // v12.3: schema_migrations table
         await safeQuery(`
             CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -237,68 +274,26 @@ async function initDatabase() {
             )
         `);
 
-        // v12.5: UPSERT all default users (create if missing + reset passwords)
+        await ensureInitialLoginUser();
+
+        // v12.5 legacy default-user reset is intentionally disabled.
         const resetVersion = '007_upsert_users_v12_5';
         const resetCheck = await pool.query(
             'SELECT 1 FROM schema_migrations WHERE version = $1', [resetVersion]
         );
         if (resetCheck.rows.length === 0) {
-            const defaultUsers = [
-                { username: 'admin', password: 'admin123', role: 'creator', name: 'Адмін' },
-                { username: 'Vitalina', password: 'Vitalina109', role: 'director', name: 'Віталіна' },
-                { username: 'Dasha', password: 'Dasha743', role: 'manager', name: 'Даша' },
-                { username: 'Natalia', password: 'Natalia875', role: 'director', name: 'Наталія' },
-                { username: 'Sergey', password: 'Sergey232', role: 'creator', name: 'Сергій' },
-                { username: 'Animator', password: 'Animator612', role: 'animator', name: 'Аніматор' },
-                { username: 'Anli', password: 'Anli384', role: 'manager', name: 'Анлі' },
-                { username: 'Zhenya', password: 'Zhenya527', role: 'animator', name: 'Женя' },
-                { username: 'Lera', password: 'Lera691', role: 'animator', name: 'Лера' }
-            ];
-            let created = 0, updated = 0;
-            for (const u of defaultUsers) {
-                const hash = await bcrypt.hash(u.password, 10);
-                const res = await pool.query(
-                    `INSERT INTO users (username, password_hash, role, name)
-                     VALUES ($1, $2, $3, $4)
-                     ON CONFLICT (username) DO UPDATE SET password_hash = $2
-                     RETURNING (xmax = 0) AS inserted`,
-                    [u.username, hash, u.role, u.name]
-                );
-                if (res.rows[0].inserted) { created++; } else { updated++; }
-                log.info(`User upsert: ${u.username} → ${res.rows[0].inserted ? 'CREATED' : 'password UPDATED'}`);
-            }
-            await pool.query(
-                'INSERT INTO schema_migrations (version) VALUES ($1)', [resetVersion]
-            );
-            log.info(`Users upsert complete: ${created} created, ${updated} updated (v12.5)`);
+            await skipLegacyCredentialMigration(resetVersion, 'Users upsert v12.5');
         } else {
             log.info('Users upsert v12.5 already applied, skipping');
         }
 
-        // Add new admin users: Anna, Artem
+        // Legacy Anna/Artem seed is intentionally disabled.
         const newUsersVersion = '008_add_anna_artem';
         const newUsersCheck = await pool.query(
             'SELECT 1 FROM schema_migrations WHERE version = $1', [newUsersVersion]
         );
         if (newUsersCheck.rows.length === 0) {
-            const newUsers = [
-                { username: 'Anna', password: 'Anna321', role: 'admin', name: 'Анна' },
-                { username: 'Artem', password: 'Arte529', role: 'admin', name: 'Артем' }
-            ];
-            for (const u of newUsers) {
-                const hash = await bcrypt.hash(u.password, 10);
-                await pool.query(
-                    `INSERT INTO users (username, password_hash, role, name)
-                     VALUES ($1, $2, $3, $4)
-                     ON CONFLICT (username) DO UPDATE SET password_hash = $2`,
-                    [u.username, hash, u.role, u.name]
-                );
-                log.info(`User added: ${u.username}`);
-            }
-            await pool.query(
-                'INSERT INTO schema_migrations (version) VALUES ($1)', [newUsersVersion]
-            );
-            log.info('Users Anna, Artem added');
+            await skipLegacyCredentialMigration(newUsersVersion, 'Anna/Artem seed');
         }
 
         await safeQuery(`
@@ -796,23 +791,22 @@ async function initDatabase() {
             log.info('Test contractor seeded: Євгенія (@armonia_del_mundo)');
         }
 
-        // v12.6: Seed openclaw API user
+        // v12.6: OpenClaw API user is now opt-in via OPENCLAW_BOOTSTRAP_PASSWORD.
         const openclawSeedVersion = '009_seed_user_openclaw';
         const openclawSeedCheck = await pool.query(
             'SELECT 1 FROM schema_migrations WHERE version = $1', [openclawSeedVersion]
         );
         if (openclawSeedCheck.rows.length === 0) {
-            const openclawHash = await bcrypt.hash('OpenClaw2026', 10);
-            await pool.query(
-                `INSERT INTO users (username, password_hash, role, name)
-                 VALUES ($1, $2, $3, $4)
-                 ON CONFLICT (username) DO UPDATE SET password_hash = $2`,
-                ['openclaw', openclawHash, 'user', 'OpenClaw 🦞']
-            );
-            await pool.query(
-                'INSERT INTO schema_migrations (version) VALUES ($1)', [openclawSeedVersion]
-            );
-            log.info('User seeded: openclaw (role: user)');
+            const openclawUser = openclawBootstrapUser(process.env);
+            if (openclawUser.enabled) {
+                await insertLoginUserIfMissing(openclawUser, 'OPENCLAW_BOOTSTRAP_PASSWORD');
+                log.info('OpenClaw user ensured without password reset');
+            } else if (openclawUser.error) {
+                log.error(`OpenClaw bootstrap skipped: ${openclawUser.error}`);
+            } else {
+                log.warn('OpenClaw user seed skipped. Set OPENCLAW_BOOTSTRAP_PASSWORD explicitly if this integration needs JWT login.');
+            }
+            await markSchemaMigration(openclawSeedVersion);
         }
 
         // v16.0: Finance module — categories

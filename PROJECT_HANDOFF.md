@@ -218,17 +218,18 @@ pending_animators (id SERIAL PK, date, note, status DEFAULT 'pending', created_a
 
 ---
 
-## 6. ДЕФОЛТНІ КОРИСТУВАЧІ
+## 6. USER BOOTSTRAP
 
-```
-Vitalina / Vitalina109  — role: user   — Віталіна
-Dasha    / Dasha743      — role: user   — Даша
-Natalia  / Natalia875    — role: admin  — Наталія
-Sergey   / Sergey232     — role: admin  — Сергій
-Animator / Animator612   — role: viewer — Аніматор
-```
+The repo no longer documents or seeds shared default user passwords. First-user
+bootstrap must be explicit:
 
-**Тестовий користувач** (для `tests/api.test.js`): `admin / admin123`
+- production/new environment: set `BOOTSTRAP_CREATOR_USERNAME`,
+  `BOOTSTRAP_CREATOR_PASSWORD`, and optionally `BOOTSTRAP_CREATOR_NAME`;
+- local/dev-only seed: set `ALLOW_DEV_USER_SEED=true` and
+  `DEV_SEED_ADMIN_PASSWORD`;
+- live API tests: set `TEST_USER` and `TEST_PASS`.
+
+Do not reintroduce shared credentials into docs, fixtures, or startup seed code.
 
 ---
 
@@ -413,8 +414,8 @@ node --test tests/api.test.js
 ```
 
 ### Тестовий користувач
-- Створюється автоматично при першому seed, або:
-- `admin / admin123` — для тестів
+- Не створюється автоматично зі спільним паролем.
+- Для live API тестів задайте `TEST_USER` і `TEST_PASS` у середовищі.
 
 ### Що тестується (157 тестів, 50 suites)
 - Auth: login, register, token validation

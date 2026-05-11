@@ -95,6 +95,9 @@ Notes:
 - Prefer explicit SQL migrations for durable schema changes.
 - Do not run destructive migrations or data cleanup without explicit user approval.
 - If generated or seeded data is involved, identify the source-of-truth script or migration before editing output.
+- Do not add shared/default user passwords to code, migrations, docs, tests, or examples.
+- First-user bootstrap must be explicit through `BOOTSTRAP_CREATOR_*` env vars. Local-only seed requires `ALLOW_DEV_USER_SEED=true` and `DEV_SEED_ADMIN_PASSWORD`; it must remain blocked in production-like environments.
+- Legacy startup code must not reset existing `users.password_hash` values. Use authenticated user-management or an operator-run script for intentional rotation.
 
 ## Shared UI, Auth, And Navigation
 

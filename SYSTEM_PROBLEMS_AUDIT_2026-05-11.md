@@ -18,7 +18,7 @@ Event Genix зараз працює і production відповідає `v43.13.0
 
 1. **Runtime mismatch:** локально тестувалось на Node `v24.13.0`, Railway будує на Node `v18.20.8`, але частина dependency tree вимагає Node `>=20`. Railway build вже показує багато `EBADENGINE`.
 2. **Публічний landing demo endpoint фактично закритий auth middleware:** `POST /api/landing/demo-request` визначений як public lead endpoint, але production повертає `401`.
-3. **Hardcoded default credentials у `db/index.js`:** у коді є реальні seeded passwords (`admin/admin123`, `Sergey232`, тощо) і reset/upsert логіка.
+3. **Hardcoded default credentials у `db/index.js`:** у коді були реальні seeded passwords (redacted shared credentials) і reset/upsert логіка.
 4. **Access rules дублюються у кількох місцях:** `middleware/auth.js`, `js/auth.js`, `js/components/sidebar.js`, `config/roles.js`.
 5. **JWT query-token дозволений глобально для будь-якого protected API endpoint:** це зручно для `window.open`, але ризиково для leakage через URL/logs/referrers.
 6. **Uploads зберігаються в локальному filesystem (`uploads/chat`, `uploads/designs`, `uploads/sounds`) без явного Railway volume для service:** ризик втрати файлів при redeploy/restart.
@@ -188,7 +188,7 @@ Recommended task group:
 
 Evidence:
 
-- `db/index.js` contains default user credentials such as `admin/admin123`, `Sergey232`, `Dasha743`, etc.
+- `db/index.js` contained default user credentials (redacted shared credentials) and startup reset/upsert logic.
 - There is an upsert/reset path (`007_upsert_users_v12_5`) that can update passwords.
 - Historical docs also publish test credentials.
 

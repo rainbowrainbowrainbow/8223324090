@@ -38,7 +38,7 @@ const swaggerSpec = {
         required: ['username', 'password'],
         properties: {
           username: { type: 'string', example: 'admin' },
-          password: { type: 'string', example: 'admin123' }
+          password: { type: 'string', example: '<set via BOOTSTRAP_CREATOR_PASSWORD>' }
         }
       },
       LoginResponse: {

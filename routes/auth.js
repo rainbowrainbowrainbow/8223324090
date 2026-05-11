@@ -2,9 +2,8 @@
  * routes/auth.js — Login & token verification
  *
  * LLM HINT: This handles user authentication with bcrypt password verification.
- * Users are stored in the `users` table (seeded in db/index.js).
- * Test user: admin / admin123 (role: admin).
- * Seeded users: Vitalina, Dasha, Natalia (admin), Sergey (admin), Animator (viewer).
+ * Users are stored in the `users` table.
+ * The repo does not ship shared default credentials; local bootstrap must be explicit via env.
  * JWT token expires in 24h. Role is embedded in token payload.
  */
 const router = require('express').Router();

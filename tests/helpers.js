@@ -4,13 +4,16 @@
  */
 
 const BASE_URL = process.env.TEST_URL || 'http://localhost:3000';
-const TEST_USER = process.env.TEST_USER || 'admin';
-const TEST_PASS = process.env.TEST_PASS || 'admin123';
+const TEST_USER = process.env.TEST_USER;
+const TEST_PASS = process.env.TEST_PASS;
 
 let cachedToken = null;
 
 async function getToken() {
     if (cachedToken) return cachedToken;
+    if (!TEST_USER || !TEST_PASS) {
+        throw new Error('TEST_USER and TEST_PASS must be set for live API tests; the repo no longer ships shared default credentials');
+    }
     const res = await request('POST', '/api/auth/login', {
         username: TEST_USER,
         password: TEST_PASS

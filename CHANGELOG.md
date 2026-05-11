@@ -4,6 +4,17 @@
 
 ---
 
+## v43.16.0 - Credential seed guard and safe user bootstrap (2026-05-11)
+
+### Security [codex]
+- **Default credentials removed** - startup no longer seeds shared user passwords from code or silently resets existing `users.password_hash` values.
+- **Explicit bootstrap** - fresh environments must use `BOOTSTRAP_CREATOR_*` env vars for the first creator; local-only dev seed requires `ALLOW_DEV_USER_SEED=true` plus `DEV_SEED_ADMIN_PASSWORD`.
+- **Legacy seed guardrails** - v12.5 user upsert, Anna/Artem, and OpenClaw seed paths are marked without password updates; OpenClaw JWT login now requires `OPENCLAW_BOOTSTRAP_PASSWORD`.
+- **Docs/tests cleaned** - removed published shared credentials from repo docs and examples; live API tests now require explicit `TEST_USER` and `TEST_PASS`.
+- **Focused coverage** - added `tests/user-seed-policy.test.js` to lock the production/dev seed boundary.
+
+---
+
 ## v43.15.0 - Auth boundary fix for public landing and query tokens (2026-05-11)
 
 ### Security and behavior [codex]

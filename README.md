@@ -46,6 +46,20 @@ npm run dev
 
 The server uses `PORT` or defaults to `3000`. It expects PostgreSQL through `DATABASE_URL` or standard `PGHOST`/`PGUSER`/`PGDATABASE` variables. In production, `JWT_SECRET` is required by startup validation. Telegram, report-bot, Supabase, and AI integrations are optional unless you are working on those areas.
 
+## User Bootstrap And Credential Safety
+
+The repository does not ship shared default user credentials. Startup must not create or reset production passwords from hardcoded values.
+
+For a fresh environment, bootstrap the first creator explicitly through env:
+
+```bash
+BOOTSTRAP_CREATOR_USERNAME=owner
+BOOTSTRAP_CREATOR_PASSWORD=<private-long-password>
+BOOTSTRAP_CREATOR_NAME="Owner"
+```
+
+For local-only development seeding, set `ALLOW_DEV_USER_SEED=true` and `DEV_SEED_ADMIN_PASSWORD` with a private local password. This path is blocked in production-like Railway environments. Live API tests require `TEST_USER` and `TEST_PASS`; they no longer fall back to shared credentials.
+
 ## Verification Commands
 
 Use the commands that are actually present in `package.json` and scripts:

@@ -1,9 +1,10 @@
 -- Migration 140: Create user account for Касян Катерина (HR)
 -- v39.8.0: Safe version — checks if staff exists before linking
 
--- Create user (skip if exists)
+-- Create the account shell only. Keep login disabled until an operator sets a
+-- private password through the authenticated user-management flow.
 INSERT INTO users (username, password_hash, name, role, is_active)
-VALUES ('Kateryna', '$2b$10$u85LwAEkwqpCtVom0E0nhuSROmPX5N1SKG3qeHfkHvdBO7Ram3ldO', 'Касян Катерина', 'hr', true)
+VALUES ('Kateryna', '$2b$10$disabled_account_hash', 'Касян Катерина', 'hr', false)
 ON CONFLICT (username) DO NOTHING;
 
 -- Link to staff record ONLY if staff_id=54 exists (won't exist on production yet)

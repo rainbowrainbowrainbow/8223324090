@@ -2925,7 +2925,8 @@
                     action: action,
                     channelId: parseInt(btn.dataset.channel) || null,
                     userId: parseInt(btn.dataset.user) || null,
-                    username: btn.dataset.username || null
+                    username: btn.dataset.username || null,
+                    actionToken: btn.dataset.actionToken || null
                 };
                 btn.disabled = true;
                 btn.textContent = '⏳...';
@@ -3151,6 +3152,7 @@
                 (act.channelId ? ' data-channel="' + act.channelId + '"' : '') +
                 (act.userId ? ' data-user="' + act.userId + '"' : '') +
                 (act.username ? ' data-username="' + _esc(act.username) + '"' : '') +
+                (act.actionToken ? ' data-action-token="' + _esc(act.actionToken) + '"' : '') +
                 '>' + _esc(act.label) + '</button>';
         });
         html += '</div>';

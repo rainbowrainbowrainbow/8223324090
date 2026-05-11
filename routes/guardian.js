@@ -16,6 +16,12 @@ const {
 } = require('../services/guardian');
 
 const { authenticateToken } = require('../middleware/auth');
+const {
+    buildGuardianActionIdempotencyKey,
+    claimGuardianDirectorAction,
+    normalizeNullableId,
+    recordGuardianDirectorAction
+} = require('../services/guardianIdempotency');
 
 const log = createLogger('GuardianRoute');
 
@@ -384,6 +390,7 @@ router.delete('/rules/:id', requireGuardianAdmin, async (req, res) => {
  * Actions: mute_both, warn, watch, unmute
  */
 router.post('/action', requireGuardianAdmin, async (req, res) => {
+    let client;
     try {
         const { action, channelId, userId, username } = req.body;
         if (!action) {
@@ -391,22 +398,51 @@ router.post('/action', requireGuardianAdmin, async (req, res) => {
         }
 
         const adminUser = req.user;
+        const actionChannelId = normalizeNullableId(channelId);
+        const actionUserId = normalizeNullableId(userId);
+        const idempotencyKey = req.body.actionToken || req.body.idempotencyKey || buildGuardianActionIdempotencyKey({
+            action,
+            channelId: actionChannelId,
+            targetUserId: actionUserId
+        });
         let response = '';
+        let afterCommit = null;
+
+        client = await pool.connect();
+        await client.query('BEGIN');
+
+        const claim = await claimGuardianDirectorAction({
+            client,
+            action,
+            channelId: actionChannelId,
+            targetUserId: actionUserId,
+            idempotencyKey,
+            singleUse: Boolean(req.body.actionToken)
+        });
+
+        if (claim.duplicate) {
+            await client.query('COMMIT');
+            return res.json({
+                success: true,
+                duplicate: true,
+                message: claim.response || 'Action already processed'
+            });
+        }
 
         switch (action) {
             case 'mute_both': {
                 // Mute both parties in the channel (find recent conflict aggressors)
-                const recentMutes = await pool.query(`
+                const recentMutes = await client.query(`
                     SELECT DISTINCT user_id, (details->>'username')::text AS username
                     FROM guardian_actions
                     WHERE channel_id = $1 AND action_type = 'mute'
                     AND created_at > NOW() - INTERVAL '10 minutes'
                     ORDER BY created_at DESC LIMIT 2
-                `, [channelId]);
+                `, [actionChannelId]);
                 for (const mute of recentMutes.rows) {
-                    await pool.query(
+                    await client.query(
                         'INSERT INTO chat_mutes (channel_id, user_id, reason, muted_until) VALUES ($1, $2, $3, NOW() + INTERVAL \'10 minutes\')',
-                        [channelId, mute.user_id, 'Директор: мютити обох']
+                        [actionChannelId, mute.user_id, 'Директор: мютити обох']
                     );
                 }
                 response = `🔇 Обох учасників замютовано на 10 хв (${adminUser.username})`;
@@ -414,7 +450,7 @@ router.post('/action', requireGuardianAdmin, async (req, res) => {
             }
             case 'warn': {
                 // Send warning to user
-                await alertDirector(
+                afterCommit = () => alertDirector(
                     `⚠️ <b>Попередження від директора</b>\n` +
                     `@${username}, будь ласка, дотримуйтесь правил спілкування.\n` +
                     `Наступне порушення — блокування на довший термін.`
@@ -427,27 +463,41 @@ router.post('/action', requireGuardianAdmin, async (req, res) => {
                 break;
             }
             case 'unmute': {
-                if (userId) {
-                    await pool.query('UPDATE chat_mutes SET muted_until = NOW() WHERE user_id = $1 AND channel_id = $2 AND muted_until > NOW()', [userId, channelId]);
-                    clearMuteCache(channelId, userId);
+                if (actionUserId) {
+                    await client.query('UPDATE chat_mutes SET muted_until = NOW() WHERE user_id = $1 AND channel_id = $2 AND muted_until > NOW()', [actionUserId, actionChannelId]);
+                    afterCommit = () => clearMuteCache(actionChannelId, actionUserId);
                     response = `🔊 @${username || userId} розмютовано (${adminUser.username})`;
                 }
                 break;
             }
             default:
+                await client.query('ROLLBACK');
                 return res.status(400).json({ error: `Невідома дія: ${action}` });
         }
 
-        // Log the director's action
-        await pool.query(
-            'INSERT INTO guardian_actions (action_type, channel_id, target_user_id, details) VALUES ($1, $2, $3, $4)',
-            [`director_${action}`, channelId || null, userId || null, JSON.stringify({ response, adminId: adminUser.id })]
-        );
+        // Log the director's action inside the same idempotent transaction.
+        await recordGuardianDirectorAction({
+            client,
+            actionType: claim.actionType,
+            channelId: actionChannelId,
+            targetUserId: actionUserId,
+            response,
+            adminId: adminUser.id,
+            idempotencyKey
+        });
+
+        await client.query('COMMIT');
+        if (afterCommit) await afterCommit();
 
         res.json({ success: true, message: response });
     } catch (err) {
+        if (client) {
+            try { await client.query('ROLLBACK'); } catch {}
+        }
         log.error('POST /action error', err);
         res.status(500).json({ error: 'Не вдалось виконати дію' });
+    } finally {
+        if (client) client.release();
     }
 });
 

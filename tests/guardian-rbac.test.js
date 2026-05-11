@@ -47,7 +47,12 @@ function resetState() {
             { id: 2, channel_id: 10, user_id: 2, username: 'animator', display_name: 'Animator', channel_name: 'Ops', reason: 'own mute', muted_until: new Date(Date.now() + 60000).toISOString(), created_at: new Date().toISOString() }
         ],
         writes: [],
+        guardianActions: [
+            { id: 100, action_type: 'mute', channel_id: 10, target_user_id: 1, details: { username: 'owner' } },
+            { id: 101, action_type: 'mute', channel_id: 10, target_user_id: 2, details: { username: 'animator' } }
+        ],
         clearMuteCalls: [],
+        directorAlerts: [],
         reportGenerations: [],
         commandCalls: [],
         emergencyStop: false
@@ -82,9 +87,17 @@ async function request(method, pathname, body, role = 'creator', userId = 1) {
 }
 
 function fakePool() {
-    return {
+    const pool = {
         async query(sql, params = []) {
             const text = String(sql).replace(/\s+/g, ' ').trim();
+            if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(text)) {
+                state.writes.push({ type: text.toLowerCase() });
+                return { rows: [], rowCount: 0 };
+            }
+            if (text.startsWith('SELECT pg_advisory_xact_lock')) {
+                state.writes.push({ type: 'advisory-lock', params });
+                return { rows: [], rowCount: 1 };
+            }
             if (text.startsWith('UPDATE employee_profiles') || text.startsWith('UPDATE users SET last_seen_at')) {
                 return { rows: [], rowCount: 0 };
             }
@@ -103,6 +116,35 @@ function fakePool() {
                 state.writes.push({ type: 'unmute', id: params[0] });
                 return { rows: [], rowCount: 1 };
             }
+            if (text.startsWith('SELECT id, details FROM guardian_actions')) {
+                const [actionType, channelId, targetUserId, idempotencyKey] = params;
+                const row = state.guardianActions.find(action =>
+                    action.action_type === actionType &&
+                    String(action.channel_id ?? '') === String(channelId ?? '') &&
+                    String(action.target_user_id ?? '') === String(targetUserId ?? '') &&
+                    action.details?.idempotencyKey === idempotencyKey
+                );
+                return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+            }
+            if (text.startsWith('SELECT DISTINCT user_id')) {
+                const rows = state.guardianActions
+                    .filter(action => action.action_type === 'mute' && String(action.channel_id) === String(params[0]))
+                    .map(action => ({ user_id: action.target_user_id, username: action.details?.username }))
+                    .filter(row => row.user_id)
+                    .slice(0, 2);
+                return { rows, rowCount: rows.length };
+            }
+            if (text.startsWith('INSERT INTO chat_mutes')) {
+                state.writes.push({ type: 'mute-create', params });
+                state.mutes.push({
+                    id: state.mutes.length + 1,
+                    channel_id: params[0],
+                    user_id: params[1],
+                    reason: params[2],
+                    muted_until: new Date(Date.now() + 600000).toISOString()
+                });
+                return { rows: [], rowCount: 1 };
+            }
             if (text.startsWith('UPDATE chat_channels SET')) {
                 state.writes.push({ type: 'toggle', params });
                 return { rows: [], rowCount: 1 };
@@ -112,6 +154,17 @@ function fakePool() {
                 return { rows: [{ id: 1, rule_type: params[0], name: params[1], pattern: params[2], action: params[3], severity: params[4], is_active: true }], rowCount: 1 };
             }
             if (text.startsWith('INSERT INTO guardian_actions')) {
+                let details = params[params.length - 1];
+                if (typeof details === 'string') {
+                    try { details = JSON.parse(details); } catch {}
+                }
+                state.guardianActions.push({
+                    id: state.guardianActions.length + 1,
+                    action_type: params[0],
+                    channel_id: params[1],
+                    target_user_id: params[2],
+                    details
+                });
                 state.writes.push({ type: 'guardian-action', params });
                 return { rows: [], rowCount: 1 };
             }
@@ -129,8 +182,15 @@ function fakePool() {
             }
 
             return { rows: [], rowCount: 0 };
+        },
+        async connect() {
+            return {
+                query: pool.query.bind(pool),
+                release: () => {}
+            };
         }
     };
+    return pool;
 }
 
 function fakeGuardianService() {
@@ -146,7 +206,9 @@ function fakeGuardianService() {
         getMood: () => ({ emoji: 'ok', label: 'OK' }),
         getGuardianState: () => ({ mood: 'ok', memory: {} }),
         clearMuteCache: (channelId, userId) => state.clearMuteCalls.push({ channelId, userId }),
-        alertDirector: async () => {},
+        alertDirector: async content => {
+            state.directorAlerts.push(content);
+        },
         setEmergencyStop: stop => { state.emergencyStop = !!stop; },
         getEmergencyStop: () => state.emergencyStop,
         getChannelSettings: async channelId => ({ guardian_enabled: true, contour2_enabled: false, channelId }),
@@ -230,6 +292,71 @@ describe('Guardian route RBAC', () => {
 
         const manager = await request('POST', '/api/guardian/rules', { name: 'manager rule', action: 'watch' }, 'manager', 20);
         assert.equal(manager.status, 403);
+    });
+
+    it('treats repeated director mute_both actions as stale taps without duplicate mutes', async () => {
+        let res = await request('POST', '/api/guardian/action', { action: 'mute_both', channelId: 10 }, 'director', 2);
+        assert.equal(res.status, 200);
+        assert.equal(state.writes.filter(w => w.type === 'mute-create').length, 2);
+        assert.equal(state.guardianActions.filter(a => a.action_type === 'director_mute_both').length, 1);
+
+        res = await request('POST', '/api/guardian/action', { action: 'mute_both', channelId: 10 }, 'director', 2);
+        assert.equal(res.status, 200);
+        assert.equal(res.data.duplicate, true);
+        assert.equal(state.writes.filter(w => w.type === 'mute-create').length, 2);
+        assert.equal(state.guardianActions.filter(a => a.action_type === 'director_mute_both').length, 1);
+    });
+
+    it('claims repeated director warnings before sending duplicate alert side effects', async () => {
+        let res = await request('POST', '/api/guardian/action', {
+            action: 'warn',
+            channelId: 10,
+            userId: 2,
+            username: 'animator'
+        }, 'director', 2);
+        assert.equal(res.status, 200);
+        assert.equal(state.directorAlerts.length, 1);
+        assert.equal(state.guardianActions.filter(a => a.action_type === 'director_warn').length, 1);
+
+        res = await request('POST', '/api/guardian/action', {
+            action: 'warn',
+            channelId: 10,
+            userId: 2,
+            username: 'animator'
+        }, 'director', 2);
+        assert.equal(res.status, 200);
+        assert.equal(res.data.duplicate, true);
+        assert.equal(state.directorAlerts.length, 1);
+        assert.equal(state.guardianActions.filter(a => a.action_type === 'director_warn').length, 1);
+    });
+
+    it('treats actionToken controls as single-use while allowing separate alerts to use separate tokens', async () => {
+        let res = await request('POST', '/api/guardian/action', {
+            action: 'watch',
+            channelId: 10,
+            userId: 2,
+            actionToken: 'guardian-action:alert-a:0'
+        }, 'director', 2);
+        assert.equal(res.status, 200);
+
+        res = await request('POST', '/api/guardian/action', {
+            action: 'watch',
+            channelId: 10,
+            userId: 2,
+            actionToken: 'guardian-action:alert-a:0'
+        }, 'director', 2);
+        assert.equal(res.status, 200);
+        assert.equal(res.data.duplicate, true);
+
+        res = await request('POST', '/api/guardian/action', {
+            action: 'watch',
+            channelId: 10,
+            userId: 2,
+            actionToken: 'guardian-action:alert-b:0'
+        }, 'director', 2);
+        assert.equal(res.status, 200);
+
+        assert.equal(state.guardianActions.filter(a => a.action_type === 'director_watch').length, 2);
     });
 
     it('keeps owner-only controls narrower than general Guardian admin controls', async () => {

@@ -14,14 +14,24 @@
  */
 
 const { pool } = require('../db');
+const crypto = require('node:crypto');
 const { createLogger } = require('../utils/logger');
 const { broadcastToChannel, sendToUser, broadcast } = require('./websocket');
 const { provisionGuardianDirectorDm } = require('./guardianDmProvisioning');
+const { claimGuardianMute } = require('./guardianIdempotency');
 
 const log = createLogger('Guardian');
 
 const GUARDIAN_USERNAME = 'guardian';
 const MUTE_DURATION_MS = 1 * 60 * 1000; // 1 minute
+
+function buildGuardianActionMetadata(actions) {
+    const groupId = crypto.randomUUID();
+    return (actions || []).map((action, index) => ({
+        ...action,
+        actionToken: `guardian-action:${groupId}:${index}`
+    }));
+}
 
 // ==========================================
 // EMERGENCY STOP — миттєве вимкнення Guardian
@@ -523,18 +533,28 @@ async function muteUser(channelId, userId, username, reason) {
         const mutedUntil = new Date(Date.now() + muteDurationMs);
         const muteDurationMinutes = Math.round(muteDurationMs / 60000);
         const key = `${channelId}:${userId}`;
-        _activeMutes[key] = mutedUntil.getTime();
-
-        await pool.query(
-            'INSERT INTO chat_mutes (channel_id, user_id, reason, muted_until) VALUES ($1, $2, $3, $4)',
-            [channelId, userId, reason, mutedUntil]
-        );
-
-        await logAction('mute', channelId, userId, null, {
-            reason, until: mutedUntil, username,
-            escalationLevel: escalation.level,
-            trustLevel: trust.level
+        const muteClaim = await claimGuardianMute({
+            pool,
+            channelId,
+            userId,
+            reason,
+            mutedUntil,
+            details: {
+                reason, until: mutedUntil, username,
+                escalationLevel: escalation.level,
+                trustLevel: trust.level
+            }
         });
+
+        if (muteClaim.duplicate) {
+            if (muteClaim.mutedUntil) {
+                _activeMutes[key] = new Date(muteClaim.mutedUntil).getTime();
+            }
+            log.info(`Skipped duplicate mute for ${username} (id:${userId}) in ch:${channelId}; active mute already exists`);
+            return muteClaim;
+        }
+
+        _activeMutes[key] = mutedUntil.getTime();
 
         // NO public message — just broadcast mute event (user sees mute countdown overlay)
         broadcastToChannel(channelId, 'chat:user-muted', {
@@ -608,8 +628,10 @@ async function muteUser(channelId, userId, username, reason) {
         }
 
         log.info(`Muted ${username} (id:${userId}) in ch:${channelId} for ${muteDurationMinutes}min (escalation:${escalation.level}, trust:${trust.level}) until ${mutedUntil.toISOString()}`);
+        return muteClaim;
     } catch (err) {
         log.error('Failed to mute user', err);
+        return { muted: false, duplicate: false, error: err };
     }
 }
 
@@ -1758,9 +1780,11 @@ async function preCheckMessage({ channelId, userId, username, content }) {
         const reason = isRussian
             ? '🇷🇺 Російська мова заборонена. Спілкуйтесь українською!'
             : `Нецензурна лексика: ${toxicWords.slice(0, 2).join(', ')}`;
-        await muteUser(channelId, userId, username, reason);
-        _trackLLMFinding(channelId, username, 'keyword', reason, toxicWords);
-        await logAction('block_precheck', channelId, userId, null, { reason, words: toxicWords, username, source: 'keyword' });
+        const muteClaim = await muteUser(channelId, userId, username, reason);
+        if (!muteClaim?.duplicate) {
+            _trackLLMFinding(channelId, username, 'keyword', reason, toxicWords);
+            await logAction('block_precheck', channelId, userId, null, { reason, words: toxicWords, username, source: 'keyword' });
+        }
         return { blocked: true, reason, message: '🛡️ ' + reason };
     }
 
@@ -1769,10 +1793,12 @@ async function preCheckMessage({ channelId, userId, username, content }) {
         const llmResult = await llmProfanityCheck(content);
         if (llmResult && llmResult.toxic) {
             const reason = `AI: ${llmResult.reason || 'Нецензурна лексика (обхід фільтру)'}`;
-            await muteUser(channelId, userId, username, reason);
-            _learnWordsFromLLM(llmResult.words);
-            _trackLLMFinding(channelId, username, 'llm-realtime', reason, llmResult.words || []);
-            await logAction('block_precheck', channelId, userId, null, { reason, words: llmResult.words, username, source: 'llm' });
+            const muteClaim = await muteUser(channelId, userId, username, reason);
+            if (!muteClaim?.duplicate) {
+                _learnWordsFromLLM(llmResult.words);
+                _trackLLMFinding(channelId, username, 'llm-realtime', reason, llmResult.words || []);
+                await logAction('block_precheck', channelId, userId, null, { reason, words: llmResult.words, username, source: 'llm' });
+            }
             return { blocked: true, reason, message: '🛡️ ' + reason };
         }
     }
@@ -1971,7 +1997,8 @@ async function alertDirectorWithActions(content, actions) {
             const seqResult = await client.query('SELECT next_chat_seq($1) AS seq', [channelId]);
             const seq = seqResult.rows[0].seq;
 
-            const metadata = JSON.stringify({ source: 'guardian', actions: actions || [] });
+            const actionMetadata = buildGuardianActionMetadata(actions);
+            const metadata = JSON.stringify({ source: 'guardian', actions: actionMetadata });
             const result = await client.query(`
                 INSERT INTO chat_messages (channel_id, user_id, seq, content, is_bot, content_type, metadata)
                 VALUES ($1, $2, $3, $4, true, 'bot', $5)
@@ -1990,7 +2017,7 @@ async function alertDirectorWithActions(content, actions) {
                     content: msg.content,
                     isBot: true,
                     contentType: 'bot',
-                    metadata: { source: 'guardian', actions: actions || [] },
+                    metadata: { source: 'guardian', actions: actionMetadata },
                     createdAt: msg.created_at,
                     username: GUARDIAN_USERNAME,
                     displayName: 'Guardian 🛡️'

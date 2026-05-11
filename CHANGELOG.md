@@ -4,6 +4,26 @@
 
 ---
 
+## v0.45.5 - Guardian single-use action controls (2026-05-12)
+
+### Guardian stale-tap safety [codex]
+- **Single-use controls** - Guardian DM action buttons now carry per-alert action tokens, so stale repeated taps are consumed at the server boundary.
+- **UI contract** - the chat UI sends the action token with `/api/guardian/action` and still replaces the button group with the server result after completion.
+- **Duplicate-safe fallback** - older clients without action tokens continue using the existing deterministic idempotency fallback.
+- **Focused tests** - added coverage for consumed tokens, repeated taps, and separate alerts using separate tokens.
+
+---
+
+## v0.45.3 - Guardian mute/action idempotency (2026-05-12)
+
+### Guardian integrity [codex]
+- **Duplicate-safe auto mute** - Guardian mute creation now uses an advisory-lock transaction and skips duplicate side effects when an active channel/user mute already exists.
+- **Single-use director actions** - repeated `/api/guardian/action` taps are claimed with deterministic idempotency keys before muting, warning, watching, or unmuting side effects run.
+- **Scoped side-effect reduction** - duplicate mute rows, duplicate director action logs, duplicate director warning alerts, repeated trust penalties, and repeated heatmap updates are reduced in the covered flows.
+- **Focused tests** - added helper and route coverage for repeated mute claims, rollback on action-log failure, stale `mute_both` taps, and duplicate director warning taps.
+
+---
+
 ## v0.45.2 - Guardian director DM provisioning integrity (2026-05-11)
 
 ### Guardian DM provisioning [codex]

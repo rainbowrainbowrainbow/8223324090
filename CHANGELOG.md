@@ -4,6 +4,16 @@
 
 ---
 
+## v43.13.0 - Codex stabilization pack (2026-05-11)
+
+### Stabilization [codex]
+- **Repo rules** - added `AGENTS.md` and refreshed `README.md` with Codex-ready rules for dirty worktrees, deploy boundaries, version/changelog discipline, verification, and shared UI/access patterns.
+- **Version source of truth** - aligned package, package-lock, visible UI version, cache-bust tags, service-worker cache names, changelog markers, and inline asset refs around `package.json`.
+- **Verification baseline** - made `npm test` an honest fast local baseline and split live server/database checks into `test:api` and `test:integration`.
+- **Telegram callbacks** - isolated and committed the single-use inline callback fix for contractor and report-bot choices.
+
+---
+
 ## v43.12.0 - Codex version source-of-truth sync (2026-05-11)
 
 ### Versioning [codex]

@@ -283,6 +283,8 @@ var ParkWS = (function () {
             case 'chat:typing_stop':
             case 'chat:reaction':
             case 'chat:read':
+            case 'chat:poll-update':
+            case 'chat:poll-closed':
             case 'chat:mention':
             case 'chat:member-added':
             case 'chat:channel-invite':

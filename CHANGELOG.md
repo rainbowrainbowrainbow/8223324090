@@ -4,6 +4,16 @@
 
 ---
 
+## v0.44.10 - Chat poll authz and realtime broadcast fix (2026-05-11)
+
+### Chat polls [codex]
+- **Poll broadcast contract** - poll create/vote/close paths now call `broadcastToChannel(channelId, eventType, payload)` with explicit `chat:message`, `chat:poll-update`, and `chat:poll-closed` events.
+- **Poll create realtime** - new poll messages are broadcast with the same `chat:message` contract as regular chat messages and use mapped message fields.
+- **Poll authz coverage** - added focused tests for poll create, vote, results visibility, close, non-member denial, and realtime payload shape.
+- **Client event bridge** - `js/ws.js` now forwards poll update/close events through the existing `ws:chat` channel for chat listeners.
+
+---
+
 ## v0.44.9 - Root media cleanup and landing-page redirects (2026-05-11)
 
 ### Static asset cleanup [codex]

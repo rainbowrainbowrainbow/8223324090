@@ -1704,10 +1704,10 @@ router.post('/channels/:id/poll', requireChannelMember, async (req, res) => {
 
         // Broadcast via WebSocket
         try {
-            broadcastToChannel(channelId, {
-                type: 'new_message',
-                message: { ...message, poll: pollResult.rows[0] }
-            });
+            broadcastToChannel(channelId, 'chat:message', {
+                channelId,
+                message: { ...chat.mapMessageRow(message), poll: pollResult.rows[0] }
+            }, String(userId));
         } catch (e) { /* ws not ready */ }
 
         res.json({ success: true, poll: pollResult.rows[0], message });
@@ -1764,8 +1764,8 @@ router.post('/polls/:pollId/vote', async (req, res) => {
 
         // Broadcast vote update
         try {
-            broadcastToChannel(poll.channel_id, {
-                type: 'poll_update',
+            broadcastToChannel(poll.channel_id, 'chat:poll-update', {
+                channelId: poll.channel_id,
                 pollId,
                 options: updatedOptions
             });
@@ -1793,9 +1793,9 @@ router.post('/polls/:pollId/close', async (req, res) => {
         if (result.rows.length === 0) return res.status(404).json({ error: 'Опитування не знайдено' });
 
         try {
-            broadcastToChannel(result.rows[0].channel_id, {
-                type: 'poll_closed',
-                pollId: parseInt(req.params.pollId)
+            broadcastToChannel(result.rows[0].channel_id, 'chat:poll-closed', {
+                channelId: result.rows[0].channel_id,
+                pollId
             });
         } catch (e) { /* ok */ }
 

@@ -81,6 +81,8 @@ Notes:
 ## Versioning And Changelog
 
 - `package.json` is the version source of truth.
+- Active release train: `0.44.x`. The base release is `0.44.0`; mini updates increment the patch only (`0.44.1`, `0.44.2`, `0.44.3`, etc.) unless the user explicitly requests a new version-policy transition.
+- Do not return active release markers to the old `43.x.x` line or jump to `44.x.x` without an explicit version-policy task. Existing `v43.*` changelog entries, comments, migrations, and audit notes are historical references, not current source-of-truth markers.
 - `scripts/version-sync.js` checks/synchronizes version references from `package.json` into `package-lock.json`, HTML asset cache tags, first-screen version text, latest changelog markers, service-worker cache names, and known inline asset references.
 - For user-visible or deployable product changes:
   - update `package.json` version intentionally;

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.44.0 - Versioning convention transition to 0.44.x (2026-05-11)
+
+### Version policy [codex]
+- **Canonical version reset** - `package.json` now starts the active release train at `0.44.0`; `package-lock.json`, visible UI markers, asset cache-bust strings, service-worker cache names, and `/api/version` derive from that source.
+- **Mini-update rule** - future small releases on this train must increment patch as `0.44.1`, `0.44.2`, `0.44.3`, and so on. Do not return to `43.x.x` or jump to `44.x.x` without an explicit version-policy task.
+- **History preserved** - existing `v43.*` changelog entries, code comments, and migration notes remain historical references to earlier CRM work; they are not the active version source.
+- **Version-sync discipline** - `scripts/version-sync.js` continues to enforce the single source of truth from `package.json` across package-lock, HTML asset tags, first-screen labels, latest changelog marker, service-worker cache names, and inline asset refs.
+- **First screen** - updated the login version marker and "Що нового" entry for the new `0.44.x` line.
+
+---
+
 ## v43.20.0 - Service Worker privacy cache and offline replay guardrails (2026-05-11)
 
 ### Client safety [codex]

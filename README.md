@@ -69,6 +69,7 @@ npm test
 npm run verify
 npm run check:runtime
 npm run check:version
+npm run check:migrations
 npm run check:syntax
 npm run test:unit
 npm run test:ui
@@ -82,6 +83,7 @@ Notes:
 - `npm run verify` is the same baseline command spelled explicitly for agents.
 - `npm run check:runtime` requires Node 22.x and npm 10.x so local verification matches the Railway baseline.
 - `npm run check:version` checks version references without editing files.
+- `npm run check:migrations` statically checks migration numbering, known legacy gaps/duplicates, and required governance headers for new migrations.
 - `npm run check:syntax` parses repository JavaScript with Node; it is not a style lint, typecheck, or build.
 - `npm run test:unit` runs self-contained Node tests that do not need a live server.
 - `npm run test:ui` runs the jsdom static/UI smoke check for key pages, critical JS syntax, navigation exports, and shared page structure.
@@ -126,6 +128,12 @@ The project is documented as Railway-hosted, but historical docs disagree on the
 - Avoid broad refactors unless the task explicitly calls for them.
 - Treat old audits, handoffs, and plans as evidence, not guaranteed truth.
 
+## Database Migration Governance
+
+Schema ownership is currently split between startup bootstrap in `db/index.js` and SQL migrations in `db/migrations/`. Do not add new schema ownership to startup code. New durable schema changes should be explicit SQL migrations, and new migrations from `162_*.sql` onward must include the governance headers described in [DB_MIGRATION_GOVERNANCE.md](DB_MIGRATION_GOVERNANCE.md).
+
+Run `npm run check:migrations` after adding or renaming migrations. Destructive, date-scoped, or staff/customer/finance/payroll data-fix migrations require explicit scope, rollback notes, and operator approval.
+
 ## Shared UI And Access Patterns
 
 Navigation and access logic is shared across server and frontend code:
@@ -141,6 +149,7 @@ When changing pages, roles, navigation, or shared UI, inspect all related areas.
 - [AGENTS.md](AGENTS.md) - operational rules for Codex and other agents
 - [CLAUDE.md](CLAUDE.md) - older Claude/OpenClaw-oriented project guidance
 - [PROJECT_PASSPORT.md](PROJECT_PASSPORT.md) - historical project map and environment notes
+- [DB_MIGRATION_GOVERNANCE.md](DB_MIGRATION_GOVERNANCE.md) - current database migration ownership and safety rules
 - [CHANGELOG.md](CHANGELOG.md) - historical changelog, currently not always in sync with `index.html`
 - [SNAPSHOT.md](SNAPSHOT.md) - historical session snapshot, may be stale
 - [OPENCLAW_INTEGRATION.md](OPENCLAW_INTEGRATION.md) - OpenClaw integration notes, partially stale

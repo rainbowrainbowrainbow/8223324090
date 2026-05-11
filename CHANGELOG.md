@@ -4,6 +4,17 @@
 
 ---
 
+## v43.17.0 - DB migration governance and static migration guard (2026-05-11)
+
+### Database governance [codex]
+- **Migration check** - added `npm run check:migrations` to detect new duplicate migration numbers, undocumented numbering gaps, invalid future migration filenames, and missing safety metadata.
+- **Governance rules** - added `DB_MIGRATION_GOVERNANCE.md` to document the current `initDatabase()` vs `db/migrations/` split and the intended source of truth for future schema changes.
+- **Legacy baseline** - documented the existing duplicate `026_*` migration number, known numbering gaps, and risky legacy data/date/user migrations as controlled debt instead of a pattern to copy.
+- **Verification baseline** - `npm test` now includes the migration governance check so future Codex work cannot quietly add unsafe schema/data migrations.
+- **First screen** - updated the login version marker and "Що нового" entry for the database governance release.
+
+---
+
 ## v43.16.0 - Credential seed guard and safe user bootstrap (2026-05-11)
 
 ### Security [codex]

@@ -58,11 +58,12 @@ stale handoff notes.
 - Broader Node test sweep against a running app/DB: `npm run test:integration`
 - Focused Node tests: `node --test tests/<file>.test.js`
 - DB migrations standalone: `node db/migrate.js`
+- Static migration governance check: `npm run check:migrations`
 - Version auto-fix: `npm run version:sync`
 - Health check against a running server: `npm run health`
 
 Notes:
-- `npm test` intentionally runs the fast local baseline: runtime check, version sync, syntax check, unit tests, and UI smoke.
+- `npm test` intentionally runs the fast local baseline: runtime check, version sync, migration governance, syntax check, unit tests, and UI smoke.
 - `npm run check:runtime` enforces Node 22.x / npm 10.x. Switch runtimes before interpreting other test results.
 - `npm run test:api` and `npm run test:integration` expect a running PostgreSQL-backed app at `TEST_URL` or `http://localhost:3000`.
 - `npm run check:syntax` is parser-only. It is not a style lint, typecheck, or build.
@@ -93,6 +94,9 @@ Notes:
 - Startup currently runs a two-phase DB flow: `initDatabase()`, then `runMigrations(pool)`, then `initDatabase()` again.
 - Before schema work, inspect both `db/index.js` and `db/migrations/`.
 - Prefer explicit SQL migrations for durable schema changes.
+- Follow `DB_MIGRATION_GOVERNANCE.md` for migration ownership, metadata, data-fix, and cleanup rules.
+- Run `npm run check:migrations` after adding or renaming migration files.
+- New migrations numbered `162_*.sql` or higher must include `MIGRATION_KIND`, `SAFETY`, and `ROLLBACK` headers; destructive or date-scoped migrations need the extra headers documented in `DB_MIGRATION_GOVERNANCE.md`.
 - Do not run destructive migrations or data cleanup without explicit user approval.
 - If generated or seeded data is involved, identify the source-of-truth script or migration before editing output.
 - Do not add shared/default user passwords to code, migrations, docs, tests, or examples.

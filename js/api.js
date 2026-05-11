@@ -40,9 +40,14 @@ function handleAuthError(response) {
             || (window.self !== window.top);
         if (isEmbedded) return true;
 
-        localStorage.removeItem('pzp_token');
-        localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
-        localStorage.removeItem(CONFIG.STORAGE.SESSION);
+        if (typeof clearAuthStorage === 'function') {
+            clearAuthStorage();
+        } else {
+            localStorage.removeItem('pzp_token');
+            localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
+            localStorage.removeItem(CONFIG.STORAGE.SESSION);
+        }
+        if (typeof clearPrivateClientCaches === 'function') clearPrivateClientCaches();
         if (typeof showLoginScreen === 'function') showLoginScreen();
         return true;
     }

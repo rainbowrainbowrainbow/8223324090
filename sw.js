@@ -1,6 +1,9 @@
 /**
  * sw.js — Service Worker for Event Genix
- * Feature #9: Offline support with App Shell caching and API data caching
+ * Feature #9: Offline support with App Shell caching.
+ *
+ * Security note: authenticated CRM API data is network-only by default. Do not
+ * add API cache or mutation replay paths without checking data sensitivity.
  *
  * Integration: In index.html, add before </body>:
  *   <script>
@@ -16,8 +19,8 @@
  *   <script src="js/ws.js"></script>
  */
 
-const CACHE_NAME = 'event-genix-v43.19.0';
-const API_CACHE_NAME = 'event-genix-api-v43.19.0';
+const CACHE_NAME = 'event-genix-v43.20.0';
+const API_CACHE_NAME = 'event-genix-api-v43.20.0';
 
 // App Shell — static assets to pre-cache on install
 const APP_SHELL = [
@@ -61,12 +64,84 @@ const APP_SHELL = [
     '/images/icon-pinata.png'
 ];
 
-// API paths that should NEVER be cached
-const NEVER_CACHE_PATHS = [
-    '/api/auth/',
-    '/api/telegram/',
-    '/api/backup/'
+const API_CACHE_PREFIX = 'event-genix-api-';
+const OFFLINE_DB_NAME = 'park-offline';
+
+// Public, non-user-specific API GET responses that are safe to cache.
+// Everything else under /api is network-only by default.
+const API_CACHE_ALLOWLIST = [
+    { type: 'exact', path: '/api/version' },
+    { type: 'exact', path: '/api/status/public' }
 ];
+
+// Explicit sensitive modules. This list is documentation and a guardrail;
+// the real cache policy is still default-deny for API GET requests.
+const SENSITIVE_API_PATH_PREFIXES = [
+    '/api/auth',
+    '/api/backup',
+    '/api/telegram',
+    '/api/report-bot',
+    '/api/finance',
+    '/api/chat',
+    '/api/hr',
+    '/api/customers',
+    '/api/reports',
+    '/api/report-agent',
+    '/api/dashboard',
+    '/api/analytics',
+    '/api/leads',
+    '/api/staff',
+    '/api/tasks',
+    '/api/bookings',
+    '/api/warehouse',
+    '/api/designs',
+    '/api/sound',
+    '/api/profile',
+    '/api/users',
+    '/api/settings',
+    '/api/search',
+    '/api/notifications',
+    '/api/push',
+    '/api/kleshnya',
+    '/api/copilot',
+    '/api/omni'
+];
+
+// Offline mutation replay is disabled until a specific endpoint is reviewed and
+// added here with user-visible conflict handling. Never queue auth/chat/finance/
+// HR/customer/report/uploads data by default.
+const MUTATION_QUEUE_ALLOWLIST = [];
+
+function matchesPathPolicy(pathname, policies) {
+    return policies.some((policy) => {
+        if (policy.type === 'exact') return pathname === policy.path;
+        if (policy.type === 'prefix') return pathname === policy.path || pathname.startsWith(`${policy.path}/`);
+        return false;
+    });
+}
+
+function requestHasAuthorization(request) {
+    return request.headers.has('authorization') || request.headers.has('Authorization');
+}
+
+function isSensitiveApiPath(pathname) {
+    return SENSITIVE_API_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+function isApiCacheAllowed(request, url = new URL(request.url)) {
+    if (request.method !== 'GET') return false;
+    if (!url.pathname.startsWith('/api/')) return false;
+    if (requestHasAuthorization(request)) return false;
+    if (isSensitiveApiPath(url.pathname)) return false;
+    return matchesPathPolicy(url.pathname, API_CACHE_ALLOWLIST);
+}
+
+function isMutationQueueAllowed(request, url = new URL(request.url)) {
+    if (!url.pathname.startsWith('/api/')) return false;
+    if (request.method === 'GET') return false;
+    if (isSensitiveApiPath(url.pathname)) return false;
+    return matchesPathPolicy(url.pathname, MUTATION_QUEUE_ALLOWLIST);
+}
 
 // ==========================================
 // INSTALL — Pre-cache App Shell
@@ -111,6 +186,7 @@ self.addEventListener('activate', (event) => {
                         })
                 );
             })
+            .then(() => clearOfflineMutationQueue())
             .then(() => self.clients.claim())
     );
 });
@@ -138,17 +214,17 @@ self.addEventListener('fetch', (event) => {
 
     // --- API GET requests ---
     if (isApiRequest && method === 'GET') {
-        // Never cache auth, telegram, backup endpoints
-        if (NEVER_CACHE_PATHS.some((p) => url.pathname.startsWith(p))) {
-            return; // Let browser handle normally (network only)
+        if (isApiCacheAllowed(event.request, url)) {
+            event.respondWith(networkFirstWithCache(event.request));
+        } else {
+            event.respondWith(networkOnly(event.request));
         }
-        event.respondWith(networkFirstWithCache(event.request));
         return;
     }
 
     // --- Page navigations — network-first (never serve stale redirects from cache) ---
     if (event.request.mode === 'navigate') {
-        event.respondWith(networkFirstWithCache(event.request));
+        event.respondWith(networkFirstPage(event.request));
         return;
     }
 
@@ -188,7 +264,51 @@ async function cacheFirstWithNetwork(request) {
 }
 
 /**
- * Network-first strategy for API GET requests.
+ * Network-only strategy for sensitive API requests.
+ * Do not fall back to Cache Storage for private CRM data.
+ */
+async function networkOnly(request) {
+    try {
+        return await fetch(request);
+    } catch (err) {
+        return new Response(
+            JSON.stringify({ error: 'Offline', offline: true, cached: false }),
+            {
+                status: 503,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-store'
+                }
+            }
+        );
+    }
+}
+
+/**
+ * Network-first strategy for navigations.
+ * Cache shell pages separately from API data and fall back to the shell only.
+ */
+async function networkFirstPage(request) {
+    try {
+        const networkResponse = await fetch(request);
+        if (networkResponse.ok) {
+            const cache = await caches.open(CACHE_NAME);
+            cache.put(request, networkResponse.clone());
+        }
+        return networkResponse;
+    } catch (err) {
+        const cachedResponse = await caches.match(request);
+        if (cachedResponse) return cachedResponse;
+
+        const shell = await caches.match('/index.html');
+        if (shell) return shell;
+
+        return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+    }
+}
+
+/**
+ * Network-first strategy for allowlisted public API GET requests.
  * Try network, cache successful responses, fall back to cache on failure.
  */
 async function networkFirstWithCache(request) {
@@ -226,6 +346,24 @@ async function handleMutation(request) {
         const response = await fetch(request.clone());
         return response;
     } catch (err) {
+        if (!isMutationQueueAllowed(request)) {
+            return new Response(
+                JSON.stringify({
+                    success: false,
+                    offline: true,
+                    queued: false,
+                    error: 'Офлайн-черга вимкнена для цього запиту. Підключіться до інтернету і повторіть дію.'
+                }),
+                {
+                    status: 503,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-store'
+                    }
+                }
+            );
+        }
+
         // Network failed — queue the mutation for later sync
         console.log('[SW] Mutation failed (offline), queuing:', request.method, request.url);
 
@@ -292,6 +430,30 @@ async function notifyClientsToSync() {
     for (const client of clients) {
         client.postMessage({ type: 'SYNC_PENDING' });
     }
+}
+
+async function clearOfflineMutationQueue() {
+    if (typeof indexedDB === 'undefined') return;
+
+    await new Promise((resolve) => {
+        const request = indexedDB.deleteDatabase(OFFLINE_DB_NAME);
+        request.onsuccess = () => resolve();
+        request.onerror = () => resolve();
+        request.onblocked = () => resolve();
+    });
+}
+
+async function clearPrivateCaches() {
+    const cacheNames = await caches.keys();
+    await Promise.all(
+        cacheNames
+            .filter((name) => name === API_CACHE_NAME || name.startsWith(API_CACHE_PREFIX))
+            .map((name) => {
+                console.log('[SW] Clearing private API cache:', name);
+                return caches.delete(name);
+            })
+    );
+    await clearOfflineMutationQueue();
 }
 
 // ==========================================
@@ -362,6 +524,11 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
+    }
+
+    if (event.data && event.data.type === 'CLEAR_PRIVATE_CACHES') {
+        const clearPromise = clearPrivateCaches();
+        if (event.waitUntil) event.waitUntil(clearPromise);
     }
 
     // Allow client to request cache invalidation for a specific API path

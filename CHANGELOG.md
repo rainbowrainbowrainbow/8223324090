@@ -4,6 +4,18 @@
 
 ---
 
+## v43.20.0 - Service Worker privacy cache and offline replay guardrails (2026-05-11)
+
+### Client safety [codex]
+- **API cache allowlist** - Service Worker now caches only public non-user-specific `/api/version` and `/api/status/public` GET responses; authenticated or sensitive API GETs are network-only.
+- **Sensitive CRM exclusions** - finance, chat, HR, customers, reports, dashboard, analytics, leads, staff, tasks, bookings, warehouse, settings, auth-adjacent, and bot endpoints are explicitly classified as sensitive.
+- **Logout cache clearing** - logout/token invalidation now clears `event-genix-api-*` caches and asks the Service Worker to clear private API caches plus the offline mutation DB.
+- **Offline replay boundary** - generic offline mutation replay is disabled by default until a route is explicitly reviewed and allowlisted; private mutation bodies/auth headers are not queued broadly.
+- **Focused coverage** - added `tests/service-worker-policy.test.js` and wired it into `npm run test:unit` / CI.
+- **First screen** - updated the login version marker and "Що нового" entry for the Service Worker privacy cache release.
+
+---
+
 ## v43.19.0 - Telegram callback idempotency and keyboard cleanup (2026-05-11)
 
 ### Bot flow safety [codex]

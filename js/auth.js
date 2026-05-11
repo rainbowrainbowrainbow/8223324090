@@ -26,8 +26,8 @@ async function checkSession() {
             return;
         }
         // Token expired or invalid
-        localStorage.removeItem('pzp_token');
-        localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
+        clearAuthStorage();
+        clearPrivateClientCaches();
     }
     showLoginScreen();
 }
@@ -61,10 +61,41 @@ function logout() {
     if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
 
     AppState.currentUser = null;
+    clearAuthStorage();
+    clearPrivateClientCaches();
+    showLoginScreen();
+}
+
+function clearAuthStorage() {
     localStorage.removeItem('pzp_token');
     localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
     localStorage.removeItem(CONFIG.STORAGE.SESSION);
-    showLoginScreen();
+}
+
+function clearPrivateClientCaches() {
+    try {
+        if (typeof OfflineQueue !== 'undefined' && OfflineQueue.clearQueue) {
+            OfflineQueue.clearQueue().catch(() => {});
+        }
+    } catch (err) {}
+
+    try {
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_PRIVATE_CACHES' });
+        }
+    } catch (err) {}
+
+    try {
+        if ('caches' in window) {
+            caches.keys()
+                .then((keys) => Promise.all(
+                    keys
+                        .filter((key) => key.startsWith('event-genix-api-'))
+                        .map((key) => caches.delete(key))
+                ))
+                .catch(() => {});
+        }
+    } catch (err) {}
 }
 
 function showLoginScreen() {

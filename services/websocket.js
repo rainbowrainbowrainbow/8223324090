@@ -117,7 +117,10 @@ function _handleConnection(ws, req) {
     }, 10000);
 
     ws.on('message', (data) => {
-        _handleMessage(ws, data, authTimeout);
+        _handleMessage(ws, data, authTimeout).catch(err => {
+            log.error('WebSocket message handler error:', err.message);
+            _sendError(ws, 'Internal server error');
+        });
     });
 
     ws.on('pong', () => {
@@ -141,7 +144,7 @@ function _handleConnection(ws, req) {
 /**
  * Handle incoming WebSocket message.
  */
-function _handleMessage(ws, rawData, authTimeout) {
+async function _handleMessage(ws, rawData, authTimeout) {
     let message;
     try {
         message = JSON.parse(rawData.toString());
@@ -181,25 +184,15 @@ function _handleMessage(ws, rawData, authTimeout) {
 
         // Chat channel subscription
         case 'CHAT_JOIN':
-            if (message.channelId) {
-                ws._pzp.subscribedChannels.add(Number(message.channelId));
-            }
+            await _handleChatJoin(ws, message.channelId);
             break;
 
         case 'CHAT_LEAVE':
-            if (message.channelId) {
-                ws._pzp.subscribedChannels.delete(Number(message.channelId));
-            }
+            _handleChatLeave(ws, message.channelId);
             break;
 
         case 'CHAT_TYPING':
-            if (message.channelId) {
-                broadcastToChannel(Number(message.channelId), 'chat:typing', {
-                    channelId: Number(message.channelId),
-                    userId: ws._pzp.userId,
-                    username: ws._pzp.username
-                }, ws._pzp.userId);
-            }
+            await _handleChatTyping(ws, message.channelId);
             break;
 
         default:
@@ -239,6 +232,68 @@ function _authenticateClient(ws, token, authTimeout) {
         _sendError(ws, 'Invalid or expired token');
         ws.close(4001, 'Invalid token');
     }
+}
+
+function _parseChannelId(channelId) {
+    const parsed = Number(channelId);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function _isChannelMember(channelId, userId) {
+    const chat = require('./chatService');
+    return chat.isMember(channelId, userId);
+}
+
+async function _requireChannelMember(ws, channelId) {
+    const parsedChannelId = _parseChannelId(channelId);
+    if (!parsedChannelId) {
+        _sendError(ws, 'Invalid channel ID');
+        return null;
+    }
+
+    const isMember = await _isChannelMember(parsedChannelId, ws._pzp.userId);
+    if (!isMember) {
+        _sendError(ws, 'Not a member of this channel');
+        return null;
+    }
+
+    return parsedChannelId;
+}
+
+async function _handleChatJoin(ws, channelId) {
+    const parsedChannelId = await _requireChannelMember(ws, channelId);
+    if (!parsedChannelId) return;
+
+    ws._pzp.subscribedChannels.add(parsedChannelId);
+    _send(ws, {
+        type: 'chat:joined',
+        payload: { channelId: parsedChannelId }
+    });
+}
+
+function _handleChatLeave(ws, channelId) {
+    const parsedChannelId = _parseChannelId(channelId);
+    if (!parsedChannelId) {
+        _sendError(ws, 'Invalid channel ID');
+        return;
+    }
+
+    ws._pzp.subscribedChannels.delete(parsedChannelId);
+    _send(ws, {
+        type: 'chat:left',
+        payload: { channelId: parsedChannelId }
+    });
+}
+
+async function _handleChatTyping(ws, channelId) {
+    const parsedChannelId = await _requireChannelMember(ws, channelId);
+    if (!parsedChannelId) return;
+
+    broadcastToChannel(parsedChannelId, 'chat:typing', {
+        channelId: parsedChannelId,
+        userId: ws._pzp.userId,
+        username: ws._pzp.username
+    }, ws._pzp.userId);
 }
 
 // ==========================================

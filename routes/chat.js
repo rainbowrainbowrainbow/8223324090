@@ -144,10 +144,73 @@ const chatUpload = multer({
     }
 });
 
+function getCurrentUserId(req) {
+    return req.user.id || req.user.userId;
+}
+
+function parseId(value) {
+    const id = parseInt(value, 10);
+    return Number.isNaN(id) ? null : id;
+}
+
+async function requireChannelMemberOrRespond(channelId, userId, res) {
+    if (!await chat.isMember(channelId, userId)) {
+        res.status(403).json({ error: 'Not a member of this channel' });
+        return false;
+    }
+    return true;
+}
+
+async function requireChannelMember(req, res, next) {
+    try {
+        const channelId = parseId(req.params.id);
+        if (!channelId) return res.status(400).json({ error: 'Invalid channel ID' });
+
+        const userId = getCurrentUserId(req);
+        if (!await requireChannelMemberOrRespond(channelId, userId, res)) return;
+
+        req.chatChannelId = channelId;
+        next();
+    } catch (err) {
+        log.error('Chat membership guard error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+}
+
+async function getMessageForChannelMember(messageId, userId, res) {
+    if (!messageId) {
+        res.status(400).json({ error: 'Invalid message ID' });
+        return null;
+    }
+    const msg = await chat.getMessageById(messageId);
+    if (!msg) {
+        res.status(404).json({ error: 'Message not found' });
+        return null;
+    }
+    if (!await requireChannelMemberOrRespond(msg.channel_id, userId, res)) return null;
+    return msg;
+}
+
+async function getPollForChannelMember(pollId, userId, res) {
+    if (!pollId) {
+        res.status(400).json({ error: 'Invalid poll ID' });
+        return null;
+    }
+    const pool = require('../db').pool;
+    const pollResult = await pool.query('SELECT * FROM chat_polls WHERE id = $1', [pollId]);
+    if (pollResult.rows.length === 0) {
+        res.status(404).json({ error: 'Опитування не знайдено' });
+        return null;
+    }
+    const poll = pollResult.rows[0];
+    if (!await requireChannelMemberOrRespond(poll.channel_id, userId, res)) return null;
+    return { poll, pool };
+}
+
 // GET /api/chat/channels — list user's channels + unread counts
 router.get('/channels', async (req, res) => {
     try {
-        const userId = req.user.id || req.user.userId;
+        const userId = getCurrentUserId(req);
         await chat.ensureDefaultMemberships(userId);
         const channels = await chat.getChannels(userId);
         res.json(channels);
@@ -315,10 +378,10 @@ router.post('/channels/:id/messages', async (req, res) => {
 });
 
 // POST /api/chat/channels/:id/upload — upload file to channel
-router.post('/channels/:id/upload', chatUpload.single('file'), async (req, res) => {
+router.post('/channels/:id/upload', requireChannelMember, chatUpload.single('file'), async (req, res) => {
     try {
-        const userId = req.user.id || req.user.userId;
-        const channelId = parseInt(req.params.id, 10);
+        const userId = getCurrentUserId(req);
+        const channelId = req.chatChannelId;
         if (isNaN(channelId) || !req.file) {
             return res.status(400).json({ error: 'Invalid channel ID or missing file' });
         }
@@ -363,10 +426,10 @@ router.post('/channels/:id/upload', chatUpload.single('file'), async (req, res) 
 });
 
 // PUT /api/chat/channels/:id/read — mark channel as read
-router.put('/channels/:id/read', async (req, res) => {
+router.put('/channels/:id/read', requireChannelMember, async (req, res) => {
     try {
-        const userId = req.user.id || req.user.userId;
-        const channelId = parseInt(req.params.id, 10);
+        const userId = getCurrentUserId(req);
+        const channelId = req.chatChannelId;
         const { seq } = req.body;
         if (isNaN(channelId) || !seq) {
             return res.status(400).json({ error: 'Invalid channel ID or seq' });
@@ -389,9 +452,9 @@ router.put('/channels/:id/read', async (req, res) => {
 });
 
 // GET /api/chat/channels/:id/read-receipts — get who read what
-router.get('/channels/:id/read-receipts', async (req, res) => {
+router.get('/channels/:id/read-receipts', requireChannelMember, async (req, res) => {
     try {
-        const channelId = parseInt(req.params.id, 10);
+        const channelId = req.chatChannelId;
         if (isNaN(channelId)) {
             return res.status(400).json({ error: 'Invalid channel ID' });
         }
@@ -406,15 +469,15 @@ router.get('/channels/:id/read-receipts', async (req, res) => {
 // POST /api/chat/messages/:id/reactions — add reaction
 router.post('/messages/:id/reactions', async (req, res) => {
     try {
-        const userId = req.user.id || req.user.userId;
+        const userId = getCurrentUserId(req);
         const messageId = parseInt(req.params.id, 10);
         const { emoji } = req.body;
         if (isNaN(messageId) || !emoji) {
             return res.status(400).json({ error: 'Invalid message ID or emoji' });
         }
 
-        const msg = await chat.getMessageById(messageId);
-        if (!msg) return res.status(404).json({ error: 'Message not found' });
+        const msg = await getMessageForChannelMember(messageId, userId, res);
+        if (!msg) return;
 
         const reactions = await chat.addReaction(messageId, userId, emoji);
 
@@ -441,13 +504,13 @@ router.post('/messages/:id/reactions', async (req, res) => {
 // DELETE /api/chat/messages/:id/reactions/:emoji — remove reaction
 router.delete('/messages/:id/reactions/:emoji', async (req, res) => {
     try {
-        const userId = req.user.id || req.user.userId;
+        const userId = getCurrentUserId(req);
         const messageId = parseInt(req.params.id, 10);
         const emoji = decodeURIComponent(req.params.emoji);
         if (isNaN(messageId)) return res.status(400).json({ error: 'Invalid message ID' });
 
-        const msg = await chat.getMessageById(messageId);
-        if (!msg) return res.status(404).json({ error: 'Message not found' });
+        const msg = await getMessageForChannelMember(messageId, userId, res);
+        if (!msg) return;
 
         const reactions = await chat.removeReaction(messageId, userId, emoji);
 
@@ -559,9 +622,9 @@ router.delete('/messages/:id', async (req, res) => {
 });
 
 // GET /api/chat/channels/:id/pinned — get pinned messages
-router.get('/channels/:id/pinned', async (req, res) => {
+router.get('/channels/:id/pinned', requireChannelMember, async (req, res) => {
     try {
-        const channelId = parseInt(req.params.id, 10);
+        const channelId = req.chatChannelId;
         if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
         const pinned = await chat.getPinnedMessages(channelId);
         res.json(pinned);
@@ -572,13 +635,18 @@ router.get('/channels/:id/pinned', async (req, res) => {
 });
 
 // POST /api/chat/channels/:id/pinned — pin a message
-router.post('/channels/:id/pinned', async (req, res) => {
+router.post('/channels/:id/pinned', requireChannelMember, async (req, res) => {
     try {
-        const userId = req.user.id || req.user.userId;
-        const channelId = parseInt(req.params.id, 10);
+        const userId = getCurrentUserId(req);
+        const channelId = req.chatChannelId;
         const { messageId } = req.body;
         if (isNaN(channelId) || !messageId) {
             return res.status(400).json({ error: 'Invalid channel or message ID' });
+        }
+        const msg = await getMessageForChannelMember(parseInt(messageId, 10), userId, res);
+        if (!msg) return;
+        if (msg.channel_id !== channelId) {
+            return res.status(400).json({ error: 'Message does not belong to this channel' });
         }
         await chat.pinMessage(channelId, messageId, userId);
 
@@ -592,12 +660,18 @@ router.post('/channels/:id/pinned', async (req, res) => {
 });
 
 // DELETE /api/chat/channels/:id/pinned/:messageId — unpin a message
-router.delete('/channels/:id/pinned/:messageId', async (req, res) => {
+router.delete('/channels/:id/pinned/:messageId', requireChannelMember, async (req, res) => {
     try {
-        const channelId = parseInt(req.params.id, 10);
+        const userId = getCurrentUserId(req);
+        const channelId = req.chatChannelId;
         const messageId = parseInt(req.params.messageId, 10);
         if (isNaN(channelId) || isNaN(messageId)) {
             return res.status(400).json({ error: 'Invalid IDs' });
+        }
+        const msg = await getMessageForChannelMember(messageId, userId, res);
+        if (!msg) return;
+        if (msg.channel_id !== channelId) {
+            return res.status(400).json({ error: 'Message does not belong to this channel' });
         }
         await chat.unpinMessage(channelId, messageId);
 
@@ -611,10 +685,10 @@ router.delete('/channels/:id/pinned/:messageId', async (req, res) => {
 });
 
 // PUT /api/chat/channels/:id/mute — toggle mute
-router.put('/channels/:id/mute', async (req, res) => {
+router.put('/channels/:id/mute', requireChannelMember, async (req, res) => {
     try {
-        const userId = req.user.id || req.user.userId;
-        const channelId = parseInt(req.params.id, 10);
+        const userId = getCurrentUserId(req);
+        const channelId = req.chatChannelId;
         if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
         const muted = await chat.toggleMute(channelId, userId);
         res.json({ muted });
@@ -625,9 +699,9 @@ router.put('/channels/:id/mute', async (req, res) => {
 });
 
 // GET /api/chat/channels/:id/members — channel members
-router.get('/channels/:id/members', async (req, res) => {
+router.get('/channels/:id/members', requireChannelMember, async (req, res) => {
     try {
-        const channelId = parseInt(req.params.id, 10);
+        const channelId = req.chatChannelId;
         if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
         const members = await chat.getChannelMembers(channelId);
         res.json(members);
@@ -668,9 +742,9 @@ router.post('/dm', async (req, res) => {
 });
 
 // POST /api/chat/channels/:id/members — add member to channel
-router.post('/channels/:id/members', async (req, res) => {
+router.post('/channels/:id/members', requireChannelMember, async (req, res) => {
     try {
-        const channelId = parseInt(req.params.id, 10);
+        const channelId = req.chatChannelId;
         let targetUserId = req.body.userId;
         // Support adding by username (e.g., guardian invite)
         if (!targetUserId && req.body.username) {
@@ -700,9 +774,9 @@ router.post('/channels/:id/members', async (req, res) => {
 });
 
 // DELETE /api/chat/channels/:id/members/:userId — remove member from channel
-router.delete('/channels/:id/members/:userId', async (req, res) => {
+router.delete('/channels/:id/members/:userId', requireChannelMember, async (req, res) => {
     try {
-        const channelId = parseInt(req.params.id, 10);
+        const channelId = req.chatChannelId;
         const targetUserId = parseInt(req.params.userId, 10);
         if (isNaN(channelId) || isNaN(targetUserId)) {
             return res.status(400).json({ error: 'Invalid IDs' });
@@ -746,9 +820,9 @@ router.patch('/users/me/avatar', async (req, res) => {
 });
 
 // PATCH /api/chat/channels/:id — update channel name/description
-router.patch('/channels/:id', async (req, res) => {
+router.patch('/channels/:id', requireChannelMember, async (req, res) => {
     try {
-        const channelId = parseInt(req.params.id, 10);
+        const channelId = req.chatChannelId;
         if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
         const { name, description, isArchived } = req.body;
         // Archive via dedicated method if requested
@@ -766,9 +840,9 @@ router.patch('/channels/:id', async (req, res) => {
 });
 
 // DELETE /api/chat/channels/:id — archive channel
-router.delete('/channels/:id', async (req, res) => {
+router.delete('/channels/:id', requireChannelMember, async (req, res) => {
     try {
-        const channelId = parseInt(req.params.id, 10);
+        const channelId = req.chatChannelId;
         if (isNaN(channelId)) return res.status(400).json({ error: 'Invalid channel ID' });
         await chat.archiveChannel(channelId);
         res.json({ success: true });
@@ -816,10 +890,25 @@ router.get('/tasks', async (req, res) => {
 // POST /api/chat/tasks — create task from chat
 router.post('/tasks', async (req, res) => {
     try {
-        const userId = req.user.id || req.user.userId;
+        const userId = getCurrentUserId(req);
         const { channelId, messageId, assignedTo, title, deadline } = req.body;
         if (!title || !title.trim()) {
             return res.status(400).json({ error: 'Task title is required' });
+        }
+        if (channelId) {
+            const parsedChannelId = parseId(channelId);
+            if (!parsedChannelId) return res.status(400).json({ error: 'Invalid channel ID' });
+            if (!await requireChannelMemberOrRespond(parsedChannelId, userId, res)) return;
+            if (messageId) {
+                const msg = await getMessageForChannelMember(parseId(messageId), userId, res);
+                if (!msg) return;
+                if (msg.channel_id !== parsedChannelId) {
+                    return res.status(400).json({ error: 'Message does not belong to this channel' });
+                }
+            }
+        } else if (messageId) {
+            const msg = await getMessageForChannelMember(parseId(messageId), userId, res);
+            if (!msg) return;
         }
         const task = await chat.createTask({
             channelId: channelId || null,
@@ -868,8 +957,12 @@ router.patch('/tasks/:id', async (req, res) => {
 // GET /api/chat/messages/:id/thread — get thread messages
 router.get('/messages/:id/thread', async (req, res) => {
     try {
+        const userId = getCurrentUserId(req);
         const messageId = parseInt(req.params.id, 10);
         if (isNaN(messageId)) return res.status(400).json({ error: 'Invalid message ID' });
+
+        const rootMessage = await getMessageForChannelMember(messageId, userId, res);
+        if (!rootMessage) return;
 
         const pool = require('../db').pool;
         const result = await pool.query(`
@@ -891,7 +984,7 @@ router.get('/messages/:id/thread', async (req, res) => {
 // POST /api/chat/messages/:id/thread — reply in thread
 router.post('/messages/:id/thread', async (req, res) => {
     try {
-        const userId = req.user.id || req.user.userId;
+        const userId = getCurrentUserId(req);
         const rootMessageId = parseInt(req.params.id, 10);
         const { content } = req.body;
         if (isNaN(rootMessageId) || !content || !content.trim()) {
@@ -899,11 +992,9 @@ router.post('/messages/:id/thread', async (req, res) => {
         }
 
         const pool = require('../db').pool;
-
-        // Get the root message's channel
-        const rootMsg = await pool.query('SELECT channel_id FROM chat_messages WHERE id = $1', [rootMessageId]);
-        if (rootMsg.rows.length === 0) return res.status(404).json({ error: 'Message not found' });
-        const channelId = rootMsg.rows[0].channel_id;
+        const rootMsg = await getMessageForChannelMember(rootMessageId, userId, res);
+        if (!rootMsg) return;
+        const channelId = rootMsg.channel_id;
 
         const client = await pool.connect();
         try {
@@ -964,9 +1055,11 @@ router.post('/messages/:id/thread', async (req, res) => {
 // POST /api/chat/bookmarks — save message bookmark
 router.post('/bookmarks', async (req, res) => {
     try {
-        const userId = req.user.id || req.user.userId;
+        const userId = getCurrentUserId(req);
         const { messageId, category, note } = req.body;
         if (!messageId) return res.status(400).json({ error: 'Missing messageId' });
+        const msg = await getMessageForChannelMember(parseId(messageId), userId, res);
+        if (!msg) return;
 
         const pool = require('../db').pool;
         await pool.query(
@@ -995,6 +1088,7 @@ router.get('/bookmarks', async (req, res) => {
             JOIN chat_messages cm ON cm.id = b.message_id
             JOIN users u ON u.id = cm.user_id
             JOIN chat_channels cc ON cc.id = cm.channel_id
+            JOIN chat_channel_members ccm ON ccm.channel_id = cm.channel_id AND ccm.user_id = b.user_id
             WHERE b.user_id = $1`;
         const params = [userId];
 
@@ -1042,10 +1136,10 @@ router.delete('/bookmarks/:id', async (req, res) => {
 // ==========================================
 
 // POST /api/chat/channels/:id/ephemeral — send message that auto-deletes
-router.post('/channels/:id/ephemeral', async (req, res) => {
+router.post('/channels/:id/ephemeral', requireChannelMember, async (req, res) => {
     try {
-        const userId = req.user.id || req.user.userId;
-        const channelId = parseInt(req.params.id, 10);
+        const userId = getCurrentUserId(req);
+        const channelId = req.chatChannelId;
         const { content, expiresInMinutes } = req.body;
         if (isNaN(channelId) || !content || !expiresInMinutes) {
             return res.status(400).json({ error: 'Missing parameters' });
@@ -1097,10 +1191,10 @@ router.post('/channels/:id/ephemeral', async (req, res) => {
 // ==========================================
 
 // POST /api/chat/channels/:id/schedule — schedule a message
-router.post('/channels/:id/schedule', async (req, res) => {
+router.post('/channels/:id/schedule', requireChannelMember, async (req, res) => {
     try {
-        const userId = req.user.id || req.user.userId;
-        const channelId = parseInt(req.params.id, 10);
+        const userId = getCurrentUserId(req);
+        const channelId = req.chatChannelId;
         const { content, scheduledAt } = req.body;
         if (isNaN(channelId) || !content || !scheduledAt) {
             return res.status(400).json({ error: 'Missing parameters' });
@@ -1578,10 +1672,10 @@ router.get('/push/vapid-key', async (req, res) => {
 // ============================================================
 
 // POST /api/chat/channels/:id/poll — create poll in channel
-router.post('/channels/:id/poll', async (req, res) => {
+router.post('/channels/:id/poll', requireChannelMember, async (req, res) => {
     try {
-        const channelId = parseInt(req.params.id);
-        const userId = req.user.id || req.user.userId;
+        const channelId = req.chatChannelId;
+        const userId = getCurrentUserId(req);
         const { question, options, pollType, isAnonymous, expiresInMinutes } = req.body;
 
         if (!question || !Array.isArray(options) || options.length < 2 || options.length > 10) {
@@ -1626,17 +1720,15 @@ router.post('/channels/:id/poll', async (req, res) => {
 // POST /api/chat/polls/:pollId/vote — vote on a poll
 router.post('/polls/:pollId/vote', async (req, res) => {
     try {
-        const pollId = parseInt(req.params.pollId);
-        const userId = req.user.id || req.user.userId;
+        const pollId = parseId(req.params.pollId);
+        const userId = getCurrentUserId(req);
         const { optionIndex } = req.body;
 
-        const pool = require('../db').pool;
+        const loaded = await getPollForChannelMember(pollId, userId, res);
+        if (!loaded) return;
+        const { poll, pool } = loaded;
 
-        // Check poll exists and is open
-        const pollResult = await pool.query('SELECT * FROM chat_polls WHERE id = $1', [pollId]);
-        if (pollResult.rows.length === 0) return res.status(404).json({ error: 'Опитування не знайдено' });
-
-        const poll = pollResult.rows[0];
+        // Check poll is open
         if (poll.is_closed) return res.status(400).json({ error: 'Опитування закрито' });
         if (poll.expires_at && new Date(poll.expires_at) < new Date()) {
             return res.status(400).json({ error: 'Час опитування вичерпано' });
@@ -1689,10 +1781,14 @@ router.post('/polls/:pollId/vote', async (req, res) => {
 // POST /api/chat/polls/:pollId/close — close a poll
 router.post('/polls/:pollId/close', async (req, res) => {
     try {
-        const pool = require('../db').pool;
+        const userId = getCurrentUserId(req);
+        const pollId = parseId(req.params.pollId);
+        const loaded = await getPollForChannelMember(pollId, userId, res);
+        if (!loaded) return;
+        const { pool } = loaded;
         const result = await pool.query(
             `UPDATE chat_polls SET is_closed = true WHERE id = $1 AND created_by = $2 RETURNING *`,
-            [req.params.pollId, req.user.id || req.user.userId]
+            [pollId, userId]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Опитування не знайдено' });
 
@@ -1713,14 +1809,14 @@ router.post('/polls/:pollId/close', async (req, res) => {
 // GET /api/chat/polls/:pollId/results — poll results with percentages
 router.get('/polls/:pollId/results', async (req, res) => {
     try {
-        const pool = require('../db').pool;
-        const pollResult = await pool.query('SELECT * FROM chat_polls WHERE id = $1', [req.params.pollId]);
-        if (pollResult.rows.length === 0) return res.status(404).json({ error: 'Опитування не знайдено' });
-
-        const poll = pollResult.rows[0];
+        const userId = getCurrentUserId(req);
+        const pollId = parseId(req.params.pollId);
+        const loaded = await getPollForChannelMember(pollId, userId, res);
+        if (!loaded) return;
+        const { poll, pool } = loaded;
         const totalVotes = await pool.query(
             'SELECT COUNT(DISTINCT user_id) AS total FROM chat_poll_votes WHERE poll_id = $1',
-            [req.params.pollId]
+            [pollId]
         );
         const total = parseInt(totalVotes.rows[0].total);
 
@@ -1735,7 +1831,7 @@ router.get('/polls/:pollId/results', async (req, res) => {
             const voterResult = await pool.query(
                 `SELECT v.option_index, u.name, u.id AS user_id FROM chat_poll_votes v
                  JOIN users u ON u.id = v.user_id WHERE v.poll_id = $1`,
-                [req.params.pollId]
+                [pollId]
             );
             voters = voterResult.rows;
         }
@@ -1897,7 +1993,10 @@ router.post('/booking-channel', async (req, res) => {
         const existing = await pool.query(
             'SELECT * FROM chat_channels WHERE linked_booking_id = $1', [bookingId]
         );
-        if (existing.rowCount) return res.json({ success: true, channel: existing.rows[0], isNew: false });
+        if (existing.rowCount) {
+            if (!await requireChannelMemberOrRespond(existing.rows[0].id, getCurrentUserId(req), res)) return;
+            return res.json({ success: true, channel: existing.rows[0], isNew: false });
+        }
 
         const bk = await pool.query(
             'SELECT id, date, program_name, label FROM bookings WHERE id = $1', [bookingId]
@@ -1937,7 +2036,9 @@ router.get('/booking-channel/:bookingId', async (req, res) => {
             'SELECT * FROM chat_channels WHERE linked_booking_id = $1',
             [req.params.bookingId]
         );
-        res.json({ success: true, channel: r.rows[0] || null });
+        const channel = r.rows[0] || null;
+        if (channel && !await requireChannelMemberOrRespond(channel.id, getCurrentUserId(req), res)) return;
+        res.json({ success: true, channel });
     } catch (err) {
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
@@ -1995,6 +2096,7 @@ router.post('/messages/:id/remind', async (req, res) => {
         );
         if (!msgRes.rowCount) return res.status(404).json({ error: 'Message not found' });
         const m = msgRes.rows[0];
+        if (!await requireChannelMemberOrRespond(m.channel_id, getCurrentUserId(req), res)) return;
 
         // Create task via kleshnya service
         let taskId = null;
@@ -2049,6 +2151,8 @@ router.patch('/messages/:id/important', async (req, res) => {
         }
 
         const { important } = req.body;
+        const msg = await getMessageForChannelMember(messageId, getCurrentUserId(req), res);
+        if (!msg) return;
         const r = await pool.query(
             `UPDATE chat_messages SET is_important = $1 WHERE id = $2 RETURNING channel_id`,
             [important === true, messageId]
@@ -2114,6 +2218,9 @@ router.get('/room-channels/:lineId/history', async (req, res) => {
         const { lineId } = req.params;
         const limit = Math.min(parseInt(req.query.limit || '50'), 200);
 
+        const chanRow = await pool.query('SELECT id FROM chat_channels WHERE line_id = $1 LIMIT 1', [lineId]);
+        if (chanRow.rowCount && !await requireChannelMemberOrRespond(chanRow.rows[0].id, getCurrentUserId(req), res)) return;
+
         // Bookings in this room
         const bookings = await pool.query(
             `SELECT 'booking' AS source_type, id AS source_id,
@@ -2126,7 +2233,6 @@ router.get('/room-channels/:lineId/history', async (req, res) => {
         );
 
         // Chat messages in room channel
-        const chanRow = await pool.query('SELECT id FROM chat_channels WHERE line_id = $1 LIMIT 1', [lineId]);
         let chatMsgs = { rows: [] };
         if (chanRow.rowCount) {
             chatMsgs = await pool.query(
@@ -2198,9 +2304,15 @@ router.post('/messages/:id/super-reaction', async (req, res) => {
         const pool = require('../db').pool;
         const { emoji } = req.body;
         if (!emoji) return res.status(400).json({ error: 'emoji required' });
-        const userId = req.user.id || req.user.userId;
+        const userId = getCurrentUserId(req);
         const username = req.user.username;
         const COST = 5;
+
+        const messageId = parseInt(req.params.id, 10);
+        if (isNaN(messageId)) return res.status(400).json({ error: 'Invalid message ID' });
+        const superMsgRes = await pool.query('SELECT channel_id FROM chat_messages WHERE id = $1', [messageId]);
+        if (!superMsgRes.rowCount) return res.status(404).json({ error: 'Message not found' });
+        if (!await requireChannelMemberOrRespond(superMsgRes.rows[0].channel_id, userId, res)) return;
 
         const gamification = require('../services/gamification');
         try {
@@ -2209,17 +2321,16 @@ router.post('/messages/:id/super-reaction', async (req, res) => {
             return res.status(402).json({ error: `Недостатньо монет (потрібно ${COST})` });
         }
 
-        const msgRes = await pool.query('SELECT channel_id FROM chat_messages WHERE id = $1', [parseInt(req.params.id)]);
-        if (!msgRes.rowCount) return res.status(404).json({ error: 'Message not found' });
+        const msgRes = superMsgRes;
 
         await pool.query(
             `INSERT INTO chat_reactions (message_id, user_id, emoji) VALUES ($1, $2, $3) ON CONFLICT (message_id, user_id, emoji) DO NOTHING`,
-            [parseInt(req.params.id), userId, emoji]
+            [messageId, userId, emoji]
         );
 
         broadcastToChannel(msgRes.rows[0].channel_id, 'chat:super-reaction', {
             channelId: msgRes.rows[0].channel_id,
-            messageId: parseInt(req.params.id),
+            messageId,
             emoji, username, fromUserId: String(userId)
         });
 

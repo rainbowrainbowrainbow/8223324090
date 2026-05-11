@@ -14,7 +14,7 @@
     "check:access": "node scripts/check-access-matrix.js",
     "check:migrations": "node scripts/check-migrations.js",
     "check:syntax": "node scripts/check-js-syntax.js",
-    "test:unit": "node --test tests/sql-safety.test.js tests/auth-boundary.test.js tests/route-smoke.test.js tests/user-seed-policy.test.js tests/telegram-callbacks.test.js tests/service-worker-policy.test.js tests/audio-storage.test.js tests/booking-linked-atomic.test.js tests/report-bot-submit.test.js",
+    "test:unit": "node --test tests/sql-safety.test.js tests/auth-boundary.test.js tests/route-smoke.test.js tests/user-seed-policy.test.js tests/telegram-callbacks.test.js tests/service-worker-policy.test.js tests/audio-storage.test.js tests/booking-linked-atomic.test.js tests/report-bot-submit.test.js tests/chat-membership-guards.test.js tests/websocket-membership.test.js",
     "test:ui": "node tests/ui-check.js",
     "test:api": "node --test tests/api.test.js",
     "test:integration": "node --test tests/*.test.js",

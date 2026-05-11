@@ -4,6 +4,18 @@
 
 ---
 
+## v0.44.7 - Chat render safety tests and URL guards (2026-05-11)
+
+### Chat render safety [codex]
+- **Render test harness** - added focused jsdom coverage for `js/chat-page.js` message rendering helpers without initializing the full chat app.
+- **Plain text and links** - tests now cover escaping for core message text, markdown/link formatting, and injected tag payloads.
+- **Bot content** - tests lock down the limited safe bot tags while keeping injected HTML escaped.
+- **File and preview surfaces** - attachment names, unsafe attachment URLs, and link-preview metadata now have explicit XSS regression coverage.
+- **Attribute safety** - chat escaping now also encodes quotes, preventing user text from breaking out of HTML attributes.
+- **URL guard** - file, GIF, voice, and link-preview renderers now strip unsafe non-http/non-relative URLs such as `javascript:`.
+
+---
+
 ## v0.44.6 - Report-bot submit transaction and idempotency (2026-05-11)
 
 ### Finance/report integrity [codex]

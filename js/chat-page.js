@@ -2154,7 +2154,17 @@
     });
 
     // Init
-    _checkAuthAndInit();
+    if (window.__EVENT_GENIX_CHAT_RENDER_TEST__) {
+        window.__chatRenderSafetyHooks = Object.freeze({
+            formatContent: _formatContent,
+            formatBotContent: _formatBotContent,
+            renderFileAttachment: _renderFileAttachment,
+            renderLinkPreview: _renderLinkPreview,
+            createMessageEl: _createMessageEl
+        });
+    } else {
+        _checkAuthAndInit();
+    }
 
     // ==========================================
     // DARK MODE TOGGLE (chat page)
@@ -3047,7 +3057,8 @@
     function _renderFileAttachment(msg) {
         // GIF content type
         if (msg.contentType === 'gif' && msg.content && msg.content.startsWith('http')) {
-            return '<div class="chat-gif-message"><img src="' + _esc(msg.content) + '" alt="GIF" class="chat-attached-gif" loading="lazy"></div>';
+            var gifUrl = _safeUrl(msg.content, { allowRelative: false });
+            return gifUrl ? '<div class="chat-gif-message"><img src="' + _esc(gifUrl) + '" alt="GIF" class="chat-attached-gif" loading="lazy"></div>' : '';
         }
         // Sticker content type
         if (msg.contentType === 'sticker') {
@@ -3060,8 +3071,9 @@
         if (!meta || !meta.file) return '';
         var f = meta.file;
         if (f.type === 'image') {
+            var imageUrl = _safeUrl(f.url);
             return '<div class="chat-file-attachment chat-image-attachment">' +
-                '<img src="' + _esc(f.url) + '" alt="' + _esc(f.name) + '" class="chat-attached-image" loading="lazy" style="cursor:zoom-in">' +
+                '<img src="' + _esc(imageUrl) + '" alt="' + _esc(f.name) + '" class="chat-attached-image" loading="lazy" style="cursor:zoom-in">' +
             '</div>';
         }
         // Audio/voice message — Telegram-style player
@@ -3076,7 +3088,8 @@
                 var bh = 4 + Math.floor(Math.abs(Math.sin(bi * 1.7 + vmId)) * 20);
                 vmBars += '<div class="chat-voice-bar" style="height:' + bh + 'px" data-bar="' + bi + '"></div>';
             }
-            return '<div class="chat-voice-player" data-voice-url="' + _esc(f.url) + '" data-voice-duration="' + vmDuration + '" data-voice-id="' + vmId + '" onclick="_handleVoiceClick(this)">' +
+            var voiceUrl = _safeUrl(f.url);
+            return '<div class="chat-voice-player" data-voice-url="' + _esc(voiceUrl) + '" data-voice-duration="' + vmDuration + '" data-voice-id="' + vmId + '" onclick="_handleVoiceClick(this)">' +
                 '<button class="chat-voice-play-btn" data-voice-id="' + vmId + '"></button>' +
                 '<div class="chat-voice-waveform-bars">' + vmBars + '</div>' +
                 '<span class="chat-voice-duration">' + _esc(vmDurStr) + '</span>' +
@@ -3092,7 +3105,8 @@
         else if (/\.(mp4|webm)$/i.test(f.name)) icon = '🎬';
 
         var sizeStr = f.size ? ' (' + (f.size < 1024*1024 ? (f.size/1024).toFixed(1)+' КБ' : (f.size/(1024*1024)).toFixed(1)+' МБ') + ')' : '';
-        return '<a class="chat-file-attachment" href="' + _esc(f.url) + '" target="_blank" rel="noopener" download>' +
+        var fileUrl = _safeUrl(f.url);
+        return '<a class="chat-file-attachment" href="' + _esc(fileUrl) + '" target="_blank" rel="noopener" download>' +
             '<span class="chat-file-icon">' + icon + '</span>' +
             '<div class="chat-file-info">' +
                 '<div class="chat-file-name">' + _esc(f.name) + '</div>' +
@@ -3108,8 +3122,11 @@
         var lp = meta.linkPreview;
         if (!lp.title && !lp.description) return '';
 
-        var imageHtml = lp.image ? '<img class="chat-link-preview-img" src="' + _esc(lp.image) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : '';
-        return '<a class="chat-link-preview" href="' + _esc(lp.url) + '" target="_blank" rel="noopener">' +
+        var previewUrl = _safeUrl(lp.url, { allowRelative: false });
+        if (!previewUrl) return '';
+        var previewImageUrl = _safeUrl(lp.image, { allowRelative: false });
+        var imageHtml = previewImageUrl ? '<img class="chat-link-preview-img" src="' + _esc(previewImageUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : '';
+        return '<a class="chat-link-preview" href="' + _esc(previewUrl) + '" target="_blank" rel="noopener">' +
             imageHtml +
             '<div class="chat-link-preview-text">' +
                 '<div class="chat-link-preview-site">' + _esc(lp.siteName || '') + '</div>' +
@@ -5454,7 +5471,23 @@
         if (!str) return '';
         var div = document.createElement('div');
         div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function _safeUrl(url, options) {
+        if (!url) return '';
+        var raw = String(url).trim();
+        if (!raw) return '';
+        var allowRelative = !options || options.allowRelative !== false;
+        try {
+            var parsed = new URL(raw, window.location.origin);
+            var protocol = parsed.protocol.toLowerCase();
+            if (protocol === 'http:' || protocol === 'https:') return raw;
+            if (allowRelative && raw.charAt(0) === '/') return raw;
+        } catch (e) {
+            if (allowRelative && raw.charAt(0) === '/') return raw;
+        }
+        return '';
     }
 
     function _truncate(str, max) {

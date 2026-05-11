@@ -691,3 +691,4 @@ git push -u origin claude/theme-park-booking-pZL5g
 
 *Цей документ створено 2026-02-07, версія v5.32.0*
 *Для продовження роботи — скопіювати весь цей файл в новий чат як контекст.*
+> ARCHIVED HISTORICAL DOC. Do not use as current operating authority. Use root `AGENTS.md` and `README.md` first.

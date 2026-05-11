@@ -128,7 +128,7 @@ For user-visible or deployable product changes:
 
 Documentation-only changes normally do not need a product version bump unless a release marker is explicitly requested.
 
-If `package.json`, `index.html`, `CHANGELOG.md`, `SNAPSHOT.md`, standalone page cache tags, or service-worker cache names disagree, trust `package.json` first and report the mismatch.
+If `package.json`, `index.html`, `CHANGELOG.md`, archived snapshots, standalone page cache tags, or service-worker cache names disagree, trust `package.json` first and report the mismatch.
 
 ## Deploy And Branch Policy
 
@@ -168,11 +168,13 @@ When changing pages, roles, navigation, or shared UI, inspect all related areas.
 ## Key Docs
 
 - [AGENTS.md](AGENTS.md) - operational rules for Codex and other agents
-- [CLAUDE.md](CLAUDE.md) - older Claude/OpenClaw-oriented project guidance
-- [PROJECT_PASSPORT.md](PROJECT_PASSPORT.md) - historical project map and environment notes
 - [DB_MIGRATION_GOVERNANCE.md](DB_MIGRATION_GOVERNANCE.md) - current database migration ownership and safety rules
-- [CHANGELOG.md](CHANGELOG.md) - historical changelog, currently not always in sync with `index.html`
-- [SNAPSHOT.md](SNAPSHOT.md) - historical session snapshot, may be stale
-- [OPENCLAW_INTEGRATION.md](OPENCLAW_INTEGRATION.md) - OpenClaw integration notes, partially stale
+- [CHANGELOG.md](CHANGELOG.md) - release history
+- [docs/archive/README.md](docs/archive/README.md) - archive index for historical, non-authoritative docs
+- [docs/archive/CLAUDE.md](docs/archive/CLAUDE.md) - older Claude/OpenClaw-oriented project guidance
+- [docs/archive/PROJECT_PASSPORT.md](docs/archive/PROJECT_PASSPORT.md) - historical project map and environment notes
+- [docs/archive/PROJECT_HANDOFF.md](docs/archive/PROJECT_HANDOFF.md) - historical handoff notes
+- [docs/archive/SNAPSHOT.md](docs/archive/SNAPSHOT.md) - historical session snapshot
+- [docs/archive/OPENCLAW_INTEGRATION.md](docs/archive/OPENCLAW_INTEGRATION.md) - OpenClaw integration notes
 
-When these files conflict with current code or `package.json`, prefer current repo evidence and update the relevant docs as part of a focused documentation task.
+Archived docs are context only. When they conflict with current code, `AGENTS.md`, `README.md`, or `package.json`, prefer current repo evidence and update active docs as part of a focused documentation task.

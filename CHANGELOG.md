@@ -4,6 +4,16 @@
 
 ---
 
+## v0.44.8 - Historical docs archive and static doc guard (2026-05-11)
+
+### Docs/static exposure hardening [codex]
+- **Historical archive** - moved stale Claude/OpenClaw handoff docs into `docs/archive/` and marked them as non-authoritative history.
+- **Current docs clarified** - `README.md` and `AGENTS.md` now point to active sources of truth first and label archived docs as context only.
+- **Static doc guard** - root static serving now blocks direct public access to root/archive `.md` and `.txt` docs while leaving intended HTML/assets and upload-style paths available.
+- **Focused coverage** - added `tests/static-doc-guard.test.js` to prove README/archive docs and root `.txt` proofs are not publicly served through broad static middleware.
+
+---
+
 ## v0.44.7 - Chat render safety tests and URL guards (2026-05-11)
 
 ### Chat render safety [codex]

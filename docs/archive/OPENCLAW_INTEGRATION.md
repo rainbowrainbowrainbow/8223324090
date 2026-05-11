@@ -1260,3 +1260,4 @@ wss://your-domain/ws
 
 *Документ згенерований на основі аналізу 19 route-файлів, 13 сервісів та 32 таблиць БД.*
 *CRM v12.7.1 | 2026-02-17*
+> ARCHIVED HISTORICAL DOC. Do not use as current operating authority. Use root `AGENTS.md` and `README.md` first.

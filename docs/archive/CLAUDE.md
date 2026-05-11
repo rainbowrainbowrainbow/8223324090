@@ -158,3 +158,4 @@ git fetch origin && git rebase origin/main
 3. `index.html` — tagline text
 4. `index.html` — changelog button text
 5. `index.html` — new changelog entry in modal
+> ARCHIVED HISTORICAL DOC. Do not use as current operating authority. Use root `AGENTS.md` and `README.md` first.

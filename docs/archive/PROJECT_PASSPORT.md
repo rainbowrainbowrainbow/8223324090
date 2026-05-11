@@ -354,3 +354,4 @@ swagger.js             — OpenAPI 3.0 spec
 ---
 
 > Актуальна версія: v38.13.0. Копіюй в новий чат — тут все для продовження.
+> ARCHIVED HISTORICAL DOC. Do not use as current operating authority. Use root `AGENTS.md` and `README.md` first.

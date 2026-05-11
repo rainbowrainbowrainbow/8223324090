@@ -17,6 +17,7 @@ const { rateLimiter, loginRateLimiter, sensitiveActionLimiter, shopBuyLimiter, l
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { apiVersionRewrite } = require('./middleware/apiVersioning');
+const { staticDocGuard } = require('./middleware/staticDocGuard');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount, processRetryQueue } = require('./services/telegram');
 const { ensureReportBotWebhook, REPORT_BOT_TOKEN } = require('./services/report-bot');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders, checkStaleCatalogImages, checkChatDailyDigest, checkRecurringAnnouncements, checkEventPipeline, checkNpsFollowUp, checkCleaningTasks } = require('./services/scheduler');
@@ -65,6 +66,7 @@ app.use(securityHeaders);
 app.use(cacheControl);
 // v19.10: API versioning — /api/v1/* → /api/*
 app.use(apiVersionRewrite);
+app.use(staticDocGuard);
 app.use(express.static(path.join(__dirname)));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -435,7 +437,7 @@ app.get('/catalog/:slug/:token', async (req, res) => {
             }).join('')+'</div>';
             return `<div class="cat-page" style="--cat-bg1:${t.bg1};--cat-bg2:${t.bg2};--cat-bg3:${t.bg3};--cat-accent:${t.accent};--cat-price:${t.price}"><div class="cat-hero">${p.image_url?`<img class="cat-hero-img" src="${p.image_url}" alt="${esc(p.title)}">`:''}<div class="cat-hero-content"><h1 class="cat-title">${esc(p.title||'').toUpperCase()}</h1>${p.subtitle?`<p class="cat-subtitle">${esc(p.subtitle)}</p>`:''}</div></div>${statsHtml}<div class="cat-body">${itemsHtml?`<div class="cat-section-title">Що входить</div><div class="cat-services">${itemsHtml}</div>`:''}${p.description?`<div class="cat-desc">${esc(p.description)}</div>`:''}</div><div class="cat-footer"><div class="cat-footer-info"><span>📍 Парк Закревського · Київ</span><span>📞 0800 75 35 53</span></div></div></div>`;
         }).join('');
-        res.send(`<!DOCTYPE html><html lang="uk"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(catalog.name)} — Event Genix</title><link rel="stylesheet" href="/css/catalog.css?v=0.44.7"><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet"><style>body{margin:0;background:#1a1a2e;font-family:'Nunito',sans-serif;padding:24px 16px;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:24px}h2{color:#fff;text-align:center;margin:0 0 8px}.cat-page{margin:0 auto}</style></head><body><h2>${esc(catalog.emoji||'')} ${esc(catalog.name)}</h2>${pagesHtml}<p style="text-align:center;color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">Event Genix CRM · Парк Закревського Періоду</p></body></html>`);
+        res.send(`<!DOCTYPE html><html lang="uk"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(catalog.name)} — Event Genix</title><link rel="stylesheet" href="/css/catalog.css?v=0.44.8"><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet"><style>body{margin:0;background:#1a1a2e;font-family:'Nunito',sans-serif;padding:24px 16px;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:24px}h2{color:#fff;text-align:center;margin:0 0 8px}.cat-page{margin:0 auto}</style></head><body><h2>${esc(catalog.emoji||'')} ${esc(catalog.name)}</h2>${pagesHtml}<p style="text-align:center;color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">Event Genix CRM · Парк Закревського Періоду</p></body></html>`);
     } catch (err) {
         res.status(500).send('Помилка сервера');
     }

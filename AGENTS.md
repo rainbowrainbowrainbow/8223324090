@@ -93,7 +93,7 @@ Notes:
   - add/update the `index.html` changelog modal entry;
   - update `CHANGELOG.md` if the change is release-relevant.
 - Pure documentation-only changes normally do not need a product version bump unless the user explicitly asks for a release marker.
-- If `package.json`, `index.html`, `CHANGELOG.md`, `SNAPSHOT.md`, or service-worker cache versions disagree, trust `package.json` first and report the mismatch instead of guessing.
+- If `package.json`, `index.html`, `CHANGELOG.md`, archived snapshots, or service-worker cache versions disagree, trust `package.json` first and report the mismatch instead of guessing.
 
 ## Deploy And Branch Boundaries
 
@@ -139,6 +139,6 @@ Notes:
 ## Documentation Sources
 
 - `README.md` is the human entrypoint.
-- `CLAUDE.md`, `PROJECT_PASSPORT.md`, `SNAPSHOT.md`, and `OPENCLAW_INTEGRATION.md` contain useful history but may be stale.
+- `docs/archive/` contains useful history from older Claude/OpenClaw workflows, including `CLAUDE.md`, `PROJECT_HANDOFF.md`, `PROJECT_PASSPORT.md`, `SNAPSHOT.md`, and `OPENCLAW_INTEGRATION.md`. These files are not current operating authority.
 - Treat old task, handoff, and audit files as evidence, not authority.
 - If docs conflict with code or `package.json`, document the conflict and prefer current repo evidence.

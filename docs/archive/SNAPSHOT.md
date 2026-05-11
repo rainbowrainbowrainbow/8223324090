@@ -74,3 +74,4 @@
 - Railway: v40.5.0, DB connected
 - Гілка: claude/continue-event-genix-crm-k7nfY (авто-деплой)
 ```
+> ARCHIVED HISTORICAL DOC. Do not use as current operating authority. Use root `AGENTS.md` and `README.md` first.

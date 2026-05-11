@@ -1,0 +1,113 @@
+# Event Genix CRM - Codex Working Rules
+
+These rules are for Codex and other coding agents working in this repository.
+They are intentionally operational and should be followed before local habits or
+stale handoff notes.
+
+## Project Shape
+
+- Event Genix is a Node.js 18+ Express CRM for event and entertainment-center operations.
+- Runtime entrypoint: `server.js`.
+- Package manager: npm, with `package-lock.json` committed.
+- Database: PostgreSQL through raw `pg`; no ORM or TypeScript.
+- Frontend: static HTML, CSS, and vanilla JavaScript.
+- Important runtime areas:
+  - API routes in `routes/`
+  - business logic in `services/`
+  - shared auth and request middleware in `middleware/`
+  - DB pool/init in `db/index.js`
+  - SQL migrations in `db/migrations/`
+  - shared frontend helpers in `js/`
+  - static pages at repo root
+
+## Before Editing
+
+- Run `git status --short --branch`.
+- Read the relevant diffs before touching a dirty file.
+- Do not revert, overwrite, or reformat local changes you did not make.
+- If the worktree is dirty:
+  - classify the dirty files first;
+  - keep unrelated dirty files out of your diff;
+  - ask before destructive cleanup, stash, reset, or checkout;
+  - prefer a small isolated commit or explicit handoff over mixing changes.
+- Inspect nearby routes, services, frontend files, tests, and docs before editing.
+- Keep changes focused. Do not bundle repo cleanup, style churn, or broad refactors with product fixes.
+
+## Commands That Exist
+
+- Install dependencies: `npm install`
+- Start server: `npm start`
+- Watch mode: `npm run dev`
+- Fast local verification baseline: `npm test`
+- Full local baseline explicitly: `npm run verify`
+- Version consistency check: `npm run check:version`
+- JavaScript parser check: `npm run check:syntax`
+- Unit tests that do not need a live server: `npm run test:unit`
+- UI/static smoke check: `npm run test:ui`
+- API smoke suite against a running app/DB: `npm run test:api`
+- Broader Node test sweep against a running app/DB: `npm run test:integration`
+- Focused Node tests: `node --test tests/<file>.test.js`
+- DB migrations standalone: `node db/migrate.js`
+- Version auto-fix: `npm run version:sync`
+- Health check against a running server: `npm run health`
+
+Notes:
+- `npm test` intentionally runs the fast local baseline: version sync, syntax check, unit tests, and UI smoke.
+- `npm run test:api` and `npm run test:integration` expect a running PostgreSQL-backed app at `TEST_URL` or `http://localhost:3000`.
+- `npm run check:syntax` is parser-only. It is not a style lint, typecheck, or build.
+- There is currently no style lint, TypeScript typecheck, build, or GitHub Actions CI pipeline.
+
+## Versioning And Changelog
+
+- `package.json` is the version source of truth.
+- `scripts/version-sync.js` checks/synchronizes version references from `package.json` into `package-lock.json`, HTML asset cache tags, first-screen version text, latest changelog markers, service-worker cache names, and known inline asset references.
+- For user-visible or deployable product changes:
+  - update `package.json` version intentionally;
+  - run `node scripts/version-sync.js` to check current state;
+  - use `npm run version:sync` only when you intend to update version references;
+  - add/update the `index.html` changelog modal entry;
+  - update `CHANGELOG.md` if the change is release-relevant.
+- Pure documentation-only changes normally do not need a product version bump unless the user explicitly asks for a release marker.
+- If `package.json`, `index.html`, `CHANGELOG.md`, `SNAPSHOT.md`, or service-worker cache versions disagree, trust `package.json` first and report the mismatch instead of guessing.
+
+## Deploy And Branch Boundaries
+
+- Historical docs mention Railway and a `deployed` production branch, but older docs disagree on the exact deploy source.
+- Codex must not deploy, push to `deployed`, or alter production settings unless the user explicitly asks and confirms the target branch/environment.
+- Never upload files through the GitHub UI.
+- If a task depends on knowing the production branch, Railway project, or deploy owner, stop and ask instead of inferring from stale docs.
+
+## Database And Migrations
+
+- Startup currently runs a two-phase DB flow: `initDatabase()`, then `runMigrations(pool)`, then `initDatabase()` again.
+- Before schema work, inspect both `db/index.js` and `db/migrations/`.
+- Prefer explicit SQL migrations for durable schema changes.
+- Do not run destructive migrations or data cleanup without explicit user approval.
+- If generated or seeded data is involved, identify the source-of-truth script or migration before editing output.
+
+## Shared UI, Auth, And Navigation
+
+- Shared access/navigation state is split across:
+  - `middleware/auth.js` server `PAGE_ACCESS`
+  - `js/auth.js` frontend `PAGE_ACCESS`
+  - `js/components/sidebar.js` `NAV_ITEMS` and `SIDEBAR_ACCESS`
+- When changing pages, roles, navigation, or access rules, inspect all three areas and keep them consistent.
+- Preserve existing loading, error, empty, disabled, focus, keyboard, and ARIA behavior when touching shared UI.
+- Prefer existing helpers and patterns in `js/ui.js`, `js/api.js`, `js/auth.js`, and `js/components/sidebar.js`.
+- Do not replace shared UI patterns with one-off behavior unless the surrounding code already does that.
+
+## Testing Expectations
+
+- Run the smallest relevant focused tests first.
+- For repo-wide sanity, run `npm test`; it does not require a live app or database.
+- For route/service changes, prefer `node --test tests/<related>.test.js` when a related test exists.
+- For frontend/static changes, run `npm run test:ui` when relevant.
+- For broad API changes, run `npm run test:api` or `npm run test:integration` against a configured local server and DB when feasible.
+- If a test cannot be run because the environment is missing PostgreSQL, env vars, or a running server, report that explicitly.
+
+## Documentation Sources
+
+- `README.md` is the human entrypoint.
+- `CLAUDE.md`, `PROJECT_PASSPORT.md`, `SNAPSHOT.md`, and `OPENCLAW_INTEGRATION.md` contain useful history but may be stale.
+- Treat old task, handoff, and audit files as evidence, not authority.
+- If docs conflict with code or `package.json`, document the conflict and prefer current repo evidence.

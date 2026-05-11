@@ -4,6 +4,18 @@
 
 ---
 
+## v43.19.0 - Telegram callback idempotency and keyboard cleanup (2026-05-11)
+
+### Bot flow safety [codex]
+- **Callback classification** - audited Telegram callback families and treated animator, certificate use, task transitions, training approval/rejection, review rating, and auto-order decisions as single-use; kept `pulse:*` multi-use for shared group mood collection.
+- **Keyboard cleanup** - completed single-use callbacks now clear or rewrite inline keyboards after success, and stale callbacks clear old buttons where the message can still be edited.
+- **Task stale guard** - new task inline buttons include expected status tokens (`todo` / `in_progress`) so stale buttons from older task states cannot trigger conflicting transitions.
+- **Decision idempotency** - training, review, and auto-order callbacks now check pending/duplicate state before creating side effects or sending contractor notifications.
+- **Focused tests** - added `tests/telegram-callbacks.test.js` and wired it into `npm run test:unit` / CI to cover stale/double taps and the intentionally multi-use pulse path.
+- **First screen** - updated the login version marker and "Що нового" entry for the Telegram callback safety release.
+
+---
+
 ## v43.18.0 - CI baseline guardrails for push and pull requests (2026-05-11)
 
 ### Verification and CI [codex]

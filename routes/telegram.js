@@ -25,6 +25,85 @@ function safeParseInt(str) {
     return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function callbackMessageTarget(message) {
+    if (!message?.chat?.id || !message?.message_id) return null;
+    return { chat_id: message.chat.id, message_id: message.message_id };
+}
+
+async function answerCallback(callbackQueryId, text, options = {}) {
+    return telegramRequest('answerCallbackQuery', {
+        callback_query_id: callbackQueryId,
+        text,
+        ...options
+    });
+}
+
+async function clearInlineKeyboard(message, context = 'callback') {
+    const target = callbackMessageTarget(message);
+    if (!target) return;
+
+    try {
+        await telegramRequest('editMessageReplyMarkup', {
+            ...target,
+            reply_markup: { inline_keyboard: [] }
+        });
+    } catch (err) {
+        log.warn(`${context} keyboard cleanup failed: ${err.message}`);
+    }
+}
+
+async function editCallbackMessageFinal(message, finalText, context = 'callback') {
+    const target = callbackMessageTarget(message);
+    if (!target) return;
+
+    const baseText = message.text || message.caption || '';
+    const text = baseText ? `${baseText}\n\n${finalText}` : finalText;
+
+    try {
+        await telegramRequest('editMessageText', {
+            ...target,
+            text,
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: [] }
+        });
+    } catch (err) {
+        log.warn(`${context} final message edit failed: ${err.message}`);
+        await clearInlineKeyboard(message, context);
+    }
+}
+
+async function answerStaleCallback(callbackQueryId, message, text = 'Вже оброблено') {
+    await answerCallback(callbackQueryId, text);
+    await clearInlineKeyboard(message, 'stale callback');
+}
+
+function parseTaskCallback(data) {
+    const parts = data.split(':');
+    return {
+        action: parts[0],
+        taskId: safeParseInt(parts[1]),
+        expectedStatus: parts[2] || null
+    };
+}
+
+async function ensureTaskCallbackStatus(taskId, allowedStatuses, expectedStatus, callbackQueryId, message) {
+    const allowed = expectedStatus ? [expectedStatus] : allowedStatuses;
+    const statusResult = await pool.query('SELECT status FROM tasks WHERE id = $1', [taskId]);
+    if (statusResult.rows.length === 0) {
+        await answerCallback(callbackQueryId, 'Задачу не знайдено', { show_alert: true });
+        await clearInlineKeyboard(message, 'task callback');
+        return false;
+    }
+
+    const currentStatus = statusResult.rows[0].status;
+    if (!allowed.includes(currentStatus)) {
+        await answerStaleCallback(callbackQueryId, message, 'Задачу вже оброблено');
+        return false;
+    }
+
+    return true;
+}
+
 router.get('/chats', authenticateToken, async (req, res) => {
     try {
         const chats = await getTelegramChatId();
@@ -253,14 +332,14 @@ router.post('/webhook', async (req, res) => {
 
             if (data.startsWith('add_anim:')) {
                 const requestId = safeParseInt(data.split(':')[1]);
-                if (!requestId) { await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' }); return res.sendStatus(200); }
+                if (!requestId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
 
                 const pending = await pool.query(
                     'UPDATE pending_animators SET status = $1 WHERE id = $2 AND status = $3 RETURNING *',
                     ['approved', requestId, 'pending']
                 );
                 if (pending.rows.length === 0) {
-                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Запит вже оброблено' });
+                    await answerStaleCallback(id, message, 'Запит вже оброблено');
                     return res.sendStatus(200);
                 }
 
@@ -285,57 +364,47 @@ router.post('/webhook', async (req, res) => {
                     [date, newLineId, newName, colors[linesResult.rows.length % colors.length]]
                 );
 
-                await telegramRequest('answerCallbackQuery', {
-                    callback_query_id: id,
-                    text: 'Аніматора додано!'
-                });
-
-                await telegramRequest('editMessageText', {
-                    chat_id: chatId,
-                    message_id: message.message_id,
-                    text: message.text + `\n\n✅ <b>Додано: ${newName}</b>`,
-                    parse_mode: 'HTML'
-                });
+                await answerCallback(id, 'Аніматора додано!');
+                await editCallbackMessageFinal(message, `✅ <b>Додано: ${newName}</b>`, 'add_anim');
 
             } else if (data.startsWith('cert_use:')) {
                 const certId = safeParseInt(data.split(':')[1]);
-                if (!certId) { await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' }); return res.sendStatus(200); }
+                if (!certId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
                 const threadId = message.message_thread_id || null;
                 await handleCertUse(certId, id, chatId, threadId);
+                await clearInlineKeyboard(message, 'cert_use');
                 return res.sendStatus(200);
 
             } else if (data.startsWith('task_confirm:')) {
                 // v10.0: Kleshnya task confirmation
-                const taskId = safeParseInt(data.split(':')[1]);
-                if (!taskId) { await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' }); return res.sendStatus(200); }
+                const { taskId, expectedStatus } = parseTaskCallback(data);
+                if (!taskId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
                 const { updateTaskStatus } = require('../services/kleshnya');
                 try {
+                    const canProcess = await ensureTaskCallbackStatus(taskId, ['todo'], expectedStatus, id, message);
+                    if (!canProcess) return res.sendStatus(200);
+
                     await updateTaskStatus(taskId, 'in_progress', 'telegram');
-                    await telegramRequest('answerCallbackQuery', {
-                        callback_query_id: id,
-                        text: 'Задачу підтверджено!'
-                    });
-                    await telegramRequest('editMessageText', {
-                        chat_id: chatId,
-                        message_id: message.message_id,
-                        text: message.text + '\n\n✅ <b>Підтверджено</b>',
-                        parse_mode: 'HTML'
-                    });
+                    await answerCallback(id, 'Задачу підтверджено!');
+                    await editCallbackMessageFinal(message, '✅ <b>Підтверджено</b>', 'task_confirm');
                 } catch (err) {
                     log.error('task_confirm error', err);
-                    await telegramRequest('answerCallbackQuery', {
-                        callback_query_id: id,
-                        text: 'Помилка підтвердження',
-                        show_alert: true
-                    });
+                    if (err.message?.startsWith('Conflict:')) {
+                        await answerStaleCallback(id, message, 'Задачу вже оброблено');
+                    } else {
+                        await answerCallback(id, 'Помилка підтвердження', { show_alert: true });
+                    }
                 }
 
             } else if (data.startsWith('task_done:')) {
                 // v11.1: Kleshnya task completion via inline button
-                const taskId = safeParseInt(data.split(':')[1]);
-                if (!taskId) { await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' }); return res.sendStatus(200); }
+                const { taskId, expectedStatus } = parseTaskCallback(data);
+                if (!taskId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
                 const { updateTaskStatus } = require('../services/kleshnya');
                 try {
+                    const canProcess = await ensureTaskCallbackStatus(taskId, ['todo', 'in_progress'], expectedStatus, id, message);
+                    if (!canProcess) return res.sendStatus(200);
+
                     const cbFrom = update.callback_query.from;
                     const actor = await resolveActorName(
                         cbFrom?.username || null,
@@ -343,48 +412,41 @@ router.post('/webhook', async (req, res) => {
                         cbFrom?.first_name || null
                     );
                     await updateTaskStatus(taskId, 'done', actor);
-                    await telegramRequest('answerCallbackQuery', {
-                        callback_query_id: id,
-                        text: 'Задачу завершено!'
-                    });
-                    await telegramRequest('editMessageText', {
-                        chat_id: chatId,
-                        message_id: message.message_id,
-                        text: message.text + `\n\n✅ <b>Виконано</b> (${actor})`,
-                        parse_mode: 'HTML'
-                    });
+                    await answerCallback(id, 'Задачу завершено!');
+                    await editCallbackMessageFinal(message, `✅ <b>Виконано</b> (${actor})`, 'task_done');
                 } catch (err) {
                     log.error('task_done error', err);
-                    await telegramRequest('answerCallbackQuery', {
-                        callback_query_id: id,
-                        text: err.message === 'Task not found' ? 'Задачу не знайдено' : 'Помилка завершення',
-                        show_alert: true
-                    });
+                    if (err.message?.startsWith('Conflict:')) {
+                        await answerStaleCallback(id, message, 'Задачу вже оброблено');
+                    } else {
+                        await answerCallback(id, err.message === 'Task not found' ? 'Задачу не знайдено' : 'Помилка завершення', { show_alert: true });
+                    }
                 }
 
             } else if (data.startsWith('task_reject:')) {
                 // v10.0: Kleshnya task rejection (fixed: cancelled instead of done)
-                const taskId = safeParseInt(data.split(':')[1]);
-                if (!taskId) { await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' }); return res.sendStatus(200); }
+                const { taskId, expectedStatus } = parseTaskCallback(data);
+                if (!taskId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
                 try {
-                    await pool.query("UPDATE tasks SET status = 'cancelled', updated_at = NOW() WHERE id = $1", [taskId]);
-                    await telegramRequest('answerCallbackQuery', {
-                        callback_query_id: id,
-                        text: 'Задачу скасовано'
-                    });
-                    await telegramRequest('editMessageText', {
-                        chat_id: chatId,
-                        message_id: message.message_id,
-                        text: message.text + '\n\n❌ <b>Скасовано</b>',
-                        parse_mode: 'HTML'
-                    });
+                    const params = expectedStatus ? [taskId, expectedStatus] : [taskId];
+                    const whereStatus = expectedStatus ? 'status = $2' : "status IN ('todo', 'in_progress')";
+                    const cancelled = await pool.query(
+                        `UPDATE tasks
+                            SET status = 'cancelled', updated_at = NOW()
+                          WHERE id = $1 AND ${whereStatus}
+                          RETURNING id`,
+                        params
+                    );
+                    if (cancelled.rows.length === 0) {
+                        await answerStaleCallback(id, message, 'Задачу вже оброблено');
+                        return res.sendStatus(200);
+                    }
+
+                    await answerCallback(id, 'Задачу скасовано');
+                    await editCallbackMessageFinal(message, '❌ <b>Скасовано</b>', 'task_reject');
                 } catch (err) {
                     log.error('task_reject error', err);
-                    await telegramRequest('answerCallbackQuery', {
-                        callback_query_id: id,
-                        text: 'Помилка',
-                        show_alert: true
-                    });
+                    await answerCallback(id, 'Помилка', { show_alert: true });
                 }
 
             } else if (data.startsWith('ctr_accept:') || data.startsWith('ctr_reject:')) {
@@ -394,7 +456,7 @@ router.post('/webhook', async (req, res) => {
                 const bookingId = parts[1] || null;
                 const contractorId = safeParseInt(parts[2]);
                 if (!bookingId || !contractorId) {
-                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' });
+                    await answerCallback(id, 'Невалідний запит');
                     return res.sendStatus(200);
                 }
                 await handleContractorCallback(action, bookingId, contractorId, id, chatId, message.message_id);
@@ -402,49 +464,47 @@ router.post('/webhook', async (req, res) => {
 
             } else if (data.startsWith('no_anim:')) {
                 const requestId = safeParseInt(data.split(':')[1]);
-                if (!requestId) { await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' }); return res.sendStatus(200); }
+                if (!requestId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
 
                 const rejected = await pool.query(
                     'UPDATE pending_animators SET status = $1 WHERE id = $2 AND status = $3 RETURNING *',
                     ['rejected', requestId, 'pending']
                 );
                 if (rejected.rows.length === 0) {
-                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Запит вже оброблено' });
+                    await answerStaleCallback(id, message, 'Запит вже оброблено');
                     return res.sendStatus(200);
                 }
 
-                await telegramRequest('answerCallbackQuery', {
-                    callback_query_id: id,
-                    text: 'Відхилено'
-                });
-
-                await telegramRequest('editMessageText', {
-                    chat_id: chatId,
-                    message_id: message.message_id,
-                    text: message.text + '\n\n❌ <b>Відхилено</b>',
-                    parse_mode: 'HTML'
-                });
+                await answerCallback(id, 'Відхилено');
+                await editCallbackMessageFinal(message, '❌ <b>Відхилено</b>', 'no_anim');
             // v20.4.0: Training approve/reject callbacks
             } else if (data.startsWith('training_approve_') || data.startsWith('training_reject_')) {
                 try {
                     const inputId = safeParseInt(data.split('_')[2]);
                     if (!inputId) {
-                        await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний ID' });
+                        await answerCallback(id, 'Невалідний ID');
                         return res.sendStatus(200);
                     }
                     const isApprove = data.startsWith('training_approve_');
                     const { categorizeContent } = require('../services/training');
+                    const newStatus = isApprove ? 'approved' : 'rejected';
 
+                    const inputRes = await pool.query(
+                        `UPDATE staff_training_inputs
+                            SET status = $1,
+                                approved_at = CASE WHEN $1 = 'approved' THEN NOW() ELSE approved_at END,
+                                rejected_at = CASE WHEN $1 = 'rejected' THEN NOW() ELSE rejected_at END
+                          WHERE id = $2 AND status = 'pending'
+                          RETURNING *`,
+                        [newStatus, inputId]
+                    );
+                    if (inputRes.rows.length === 0) {
+                        await answerStaleCallback(id, message, 'Вже оброблено');
+                        return res.sendStatus(200);
+                    }
+
+                    const input = inputRes.rows[0];
                     if (isApprove) {
-                        const inputRes = await pool.query(
-                            'SELECT * FROM staff_training_inputs WHERE id = $1 AND status = $2',
-                            [inputId, 'pending']
-                        );
-                        if (inputRes.rows.length === 0) {
-                            await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Вже оброблено' });
-                            return res.sendStatus(200);
-                        }
-                        const input = inputRes.rows[0];
                         const category = categorizeContent(input.content);
                         const title = input.content.substring(0, 100);
 
@@ -453,23 +513,16 @@ router.post('/webhook', async (req, res) => {
                              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
                             [category, title, input.content, input.id, input.staff_id, input.staff_name, input.week_number, input.year, update.callback_query.from?.id]
                         );
-                        await pool.query('UPDATE staff_training_inputs SET status = $1, approved_at = NOW() WHERE id = $2', ['approved', inputId]);
-                        await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: '✅ Підтверджено' });
+                        await answerCallback(id, '✅ Підтверджено');
                     } else {
-                        await pool.query('UPDATE staff_training_inputs SET status = $1, rejected_at = NOW() WHERE id = $2', ['rejected', inputId]);
-                        await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: '❌ Відхилено' });
+                        await answerCallback(id, '❌ Відхилено');
                     }
 
                     const statusEmoji = isApprove ? '✅' : '❌';
-                    await telegramRequest('editMessageText', {
-                        chat_id: chatId,
-                        message_id: message.message_id,
-                        text: message.text + `\n\n${statusEmoji} <b>${isApprove ? 'Підтверджено' : 'Відхилено'}</b>`,
-                        parse_mode: 'HTML'
-                    });
+                    await editCallbackMessageFinal(message, `${statusEmoji} <b>${isApprove ? 'Підтверджено' : 'Відхилено'}</b>`, 'training callback');
                 } catch (err) {
                     log.error('training callback error', err);
-                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Помилка', show_alert: true });
+                    await answerCallback(id, 'Помилка', { show_alert: true });
                 }
 
             // v22.18: Review rating callback
@@ -478,38 +531,38 @@ router.post('/webhook', async (req, res) => {
                 const bookingId = safeParseInt(parts[1]);
                 const rating = safeParseInt(parts[2]);
                 if (!bookingId || !rating || rating < 1 || rating > 5) {
-                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' });
+                    await answerCallback(id, 'Невалідний запит');
                     return res.sendStatus(200);
                 }
                 try {
                     const fromName = update.callback_query.from?.first_name || '';
-                    await pool.query(
+                    const review = await pool.query(
                         `INSERT INTO event_reviews (booking_id, customer_name, telegram_chat_id, rating)
-                         VALUES ($1, $2, $3, $4)
-                         ON CONFLICT DO NOTHING`,
+                         SELECT $1, $2, $3, $4
+                         WHERE NOT EXISTS (
+                             SELECT 1 FROM event_reviews
+                              WHERE booking_id = $1 AND telegram_chat_id = $3
+                         )
+                         RETURNING id`,
                         [bookingId, fromName, update.callback_query.from?.id, rating]
                     );
+                    if (review.rows.length === 0) {
+                        await answerStaleCallback(id, message, 'Оцінку вже збережено');
+                        return res.sendStatus(200);
+                    }
                     const stars = '⭐'.repeat(rating);
-                    await telegramRequest('answerCallbackQuery', {
-                        callback_query_id: id,
-                        text: `Дякуємо за оцінку! ${stars}`
-                    });
-                    await telegramRequest('editMessageText', {
-                        chat_id: chatId,
-                        message_id: message.message_id,
-                        text: message.text + `\n\n✅ <b>Оцінено: ${stars}</b>\nДякуємо за відгук!`,
-                        parse_mode: 'HTML'
-                    });
+                    await answerCallback(id, `Дякуємо за оцінку! ${stars}`);
+                    await editCallbackMessageFinal(message, `✅ <b>Оцінено: ${stars}</b>\nДякуємо за відгук!`, 'review callback');
                 } catch (err) {
                     log.error('review callback error', err);
-                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Помилка', show_alert: true });
+                    await answerCallback(id, 'Помилка', { show_alert: true });
                 }
 
             // v22.18: Team pulse callback (anonymous)
             } else if (data.startsWith('pulse:')) {
                 const score = safeParseInt(data.split(':')[1]);
                 if (!score || score < 1 || score > 5) {
-                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' });
+                    await answerCallback(id, 'Невалідний запит');
                     return res.sendStatus(200);
                 }
                 try {
@@ -518,13 +571,10 @@ router.post('/webhook', async (req, res) => {
                         [score]
                     );
                     const moods = ['', '😫', '😕', '😐', '🙂', '🤩'];
-                    await telegramRequest('answerCallbackQuery', {
-                        callback_query_id: id,
-                        text: `Записано! ${moods[score]} Дякуємо!`
-                    });
+                    await answerCallback(id, `Записано! ${moods[score]} Дякуємо!`);
                 } catch (err) {
                     log.error('pulse callback error', err);
-                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Помилка', show_alert: true });
+                    await answerCallback(id, 'Помилка', { show_alert: true });
                 }
 
             // v22.18: Auto-order approve/reject
@@ -533,7 +583,7 @@ router.post('/webhook', async (req, res) => {
                 const action = parts[0];
                 const requestId = safeParseInt(parts[1]);
                 if (!requestId) {
-                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Невалідний запит' });
+                    await answerCallback(id, 'Невалідний запит');
                     return res.sendStatus(200);
                 }
                 try {
@@ -541,10 +591,14 @@ router.post('/webhook', async (req, res) => {
                     const newStatus = isApprove ? 'approved' : 'rejected';
                     const actorName = update.callback_query.from?.first_name || 'manager';
 
-                    await pool.query(
-                        'UPDATE auto_order_requests SET status = $1, approved_by = $2, updated_at = NOW() WHERE id = $3 AND status = $4',
+                    const updated = await pool.query(
+                        'UPDATE auto_order_requests SET status = $1, approved_by = $2, updated_at = NOW() WHERE id = $3 AND status = $4 RETURNING *',
                         [newStatus, actorName, requestId, 'pending']
                     );
+                    if (updated.rows.length === 0) {
+                        await answerStaleCallback(id, message, 'Замовлення вже оброблено');
+                        return res.sendStatus(200);
+                    }
 
                     if (isApprove) {
                         // Send order to contractor if configured
@@ -571,22 +625,17 @@ router.post('/webhook', async (req, res) => {
                             );
                         }
 
-                        await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: '✅ Замовлення підтверджено та відправлено!' });
+                        await answerCallback(id, '✅ Замовлення підтверджено та відправлено!');
                     } else {
-                        await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: '❌ Замовлення відхилено' });
+                        await answerCallback(id, '❌ Замовлення відхилено');
                     }
 
                     const emoji = isApprove ? '✅' : '❌';
                     const label = isApprove ? 'Підтверджено та замовлено' : 'Відхилено';
-                    await telegramRequest('editMessageText', {
-                        chat_id: chatId,
-                        message_id: message.message_id,
-                        text: message.text + `\n\n${emoji} <b>${label}</b> (${actorName})`,
-                        parse_mode: 'HTML'
-                    });
+                    await editCallbackMessageFinal(message, `${emoji} <b>${label}</b> (${actorName})`, 'order callback');
                 } catch (err) {
                     log.error('order callback error', err);
-                    await telegramRequest('answerCallbackQuery', { callback_query_id: id, text: 'Помилка', show_alert: true });
+                    await answerCallback(id, 'Помилка', { show_alert: true });
                 }
             }
         }

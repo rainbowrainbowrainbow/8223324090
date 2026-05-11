@@ -396,12 +396,12 @@ function getTaskInlineButtons(task) {
     const buttons = [];
     if (task.status === 'todo') {
         buttons.push([
-            { text: '🔄 В роботу', callback_data: `task_confirm:${task.id}` },
-            { text: '✅ Виконано', callback_data: `task_done:${task.id}` }
+            { text: '🔄 В роботу', callback_data: `task_confirm:${task.id}:todo` },
+            { text: '✅ Виконано', callback_data: `task_done:${task.id}:todo` }
         ]);
     } else if (task.status === 'in_progress') {
         buttons.push([
-            { text: '✅ Виконано', callback_data: `task_done:${task.id}` }
+            { text: '✅ Виконано', callback_data: `task_done:${task.id}:in_progress` }
         ]);
     }
     return buttons.length > 0 ? buttons : null;

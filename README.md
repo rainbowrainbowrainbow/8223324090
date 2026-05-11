@@ -46,6 +46,15 @@ npm run dev
 
 The server uses `PORT` or defaults to `3000`. It expects PostgreSQL through `DATABASE_URL` or standard `PGHOST`/`PGUSER`/`PGDATABASE` variables. In production, `JWT_SECRET` is required by startup validation. Telegram, report-bot, Supabase, and AI integrations are optional unless you are working on those areas.
 
+## Public Landing Materials
+
+Current public sales/manager materials live under `landing/`:
+
+- `/landing/manager-guide.html`
+- `/landing/sales-deck.html`
+
+Legacy root URLs `/manager-guide`, `/manager-guide.html`, `/sales-deck`, and `/sales-deck.html` are kept as temporary 302 redirects to those canonical landing pages. Do not add new loose root HTML pages unless the route, docs, and static-exposure intent are explicit.
+
 ## User Bootstrap And Credential Safety
 
 The repository does not ship shared default user credentials. Startup must not create or reset production passwords from hardcoded values.

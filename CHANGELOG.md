@@ -4,6 +4,16 @@
 
 ---
 
+## v0.44.9 - Root media cleanup and landing-page redirects (2026-05-11)
+
+### Static asset cleanup [codex]
+- **Duplicate root media removed** - exact duplicate banner/branding PNGs were removed from repo root; canonical copies remain under `images/banners/` and `images/branding/`.
+- **Loose HTML resolved** - `sales-deck.html` now lives under `landing/sales-deck.html`, matching the existing landing manager guide pattern.
+- **Legacy URL compatibility** - `/manager-guide`, `/manager-guide.html`, `/sales-deck`, and `/sales-deck.html` now 302 to canonical `landing/` pages instead of depending on loose root files.
+- **Cleanup coverage** - added `tests/static-cleanup.test.js` and wired it into `test:unit` to catch duplicate root media returning or landing guide/deck routes drifting.
+
+---
+
 ## v0.44.8 - Historical docs archive and static doc guard (2026-05-11)
 
 ### Docs/static exposure hardening [codex]

@@ -15,6 +15,19 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Automation');
 
+async function clearContractorInlineKeyboard(chatId, messageId) {
+    if (!chatId || !messageId) return;
+    try {
+        await telegramRequest('editMessageReplyMarkup', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: { inline_keyboard: [] }
+        });
+    } catch (err) {
+        log.warn(`Contractor callback reply markup cleanup failed: ${err.message}`);
+    }
+}
+
 /**
  * Replace placeholders in template strings with booking data.
  * Placeholders: {date}, {time}, {programName}, {pinataFiller}, {kidsCount},
@@ -198,11 +211,21 @@ async function handleContractorCallback(action, bookingId, contractorId, callbac
         const statusText = action === 'ctr_accept' ? '✅ Прийнято' : '❌ Відхилено';
 
         // Update notification status
-        await pool.query(
+        const updateResult = await pool.query(
             `UPDATE contractor_notifications SET status = $1, responded_at = NOW()
-             WHERE contractor_id = $2 AND booking_id = $3 AND status = 'sent'`,
+             WHERE contractor_id = $2 AND booking_id = $3 AND status = 'sent'
+             RETURNING id`,
             [status, contractorId, bookingId]
         );
+        const updatedCount = updateResult?.rowCount ?? updateResult?.rows?.length ?? 0;
+        if (updatedCount === 0) {
+            await telegramRequest('answerCallbackQuery', {
+                callback_query_id: callbackQueryId,
+                text: 'Запит вже оброблено'
+            });
+            await clearContractorInlineKeyboard(chatId, messageId);
+            return;
+        }
 
         // Get contractor name
         const contractorResult = await pool.query('SELECT name FROM contractors WHERE id = $1', [contractorId]);
@@ -214,18 +237,7 @@ async function handleContractorCallback(action, bookingId, contractorId, callbac
             text: statusText
         });
 
-        // Edit message to remove buttons and show response
-        if (messageId && chatId) {
-            // Get original message text
-            // Since we can't get the original text from Telegram, we edit with status suffix
-            await telegramRequest('editMessageReplyMarkup', {
-                chat_id: chatId,
-                message_id: messageId,
-                reply_markup: { inline_keyboard: [[
-                    { text: statusText, callback_data: 'noop' }
-                ]] }
-            });
-        }
+        await clearContractorInlineKeyboard(chatId, messageId);
 
         // Notify admin group about contractor response
         const groupChatId = await getConfiguredChatId();

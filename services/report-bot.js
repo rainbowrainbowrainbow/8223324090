@@ -126,6 +126,25 @@ async function answerCallback(callbackQueryId, text) {
     return reportBotRequest('answerCallbackQuery', { callback_query_id: callbackQueryId, text });
 }
 
+async function clearInlineKeyboard(chatId, messageId) {
+    if (!chatId || !messageId) return null;
+    try {
+        return await reportBotRequest('editMessageReplyMarkup', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: { inline_keyboard: [] }
+        });
+    } catch (err) {
+        log.warn(`Report bot editMessageReplyMarkup failed: ${err.message}`);
+        return null;
+    }
+}
+
+function isCallbackForStep(session, step, messageIdKey, messageId) {
+    if (!session || session.step !== step) return false;
+    return String(session[messageIdKey]) === String(messageId);
+}
+
 // ==========================================
 // SESSION STATE (in-memory, per chat)
 // ==========================================
@@ -340,7 +359,7 @@ async function handleQuickReport(chatId, type, args, fromUsername, fromChatId, f
 async function handleInteractiveReport(chatId) {
     setSession(chatId, { step: 'type' });
 
-    return sendMessage(chatId, '📝 <b>Новий звіт</b>\n\nОберіть тип:', {
+    const sent = await sendMessage(chatId, '📝 <b>Новий звіт</b>\n\nОберіть тип:', {
         reply_markup: {
             inline_keyboard: [
                 [
@@ -353,6 +372,11 @@ async function handleInteractiveReport(chatId) {
             ]
         }
     });
+    const messageId = sent?.result?.message_id;
+    if (messageId) {
+        setSession(chatId, { step: 'type', typeMessageId: messageId });
+    }
+    return sent;
 }
 
 async function handleSummary(chatId, period = 'today') {
@@ -530,18 +554,28 @@ async function handleVoice(chatId, message) {
 async function handleCallback(callbackQuery) {
     const { id, data, message } = callbackQuery;
     const chatId = message.chat.id;
+    const messageId = message.message_id;
 
     // Type selection: rtype:income / rtype:expense / rtype:cancel
     if (data.startsWith('rtype:')) {
         const type = data.split(':')[1];
+        const session = getSession(chatId);
+        if (!isCallbackForStep(session, 'type', 'typeMessageId', messageId)) {
+            await answerCallback(id, 'Вибір уже неактивний');
+            await clearInlineKeyboard(chatId, messageId);
+            return null;
+        }
+
         if (type === 'cancel') {
             clearSession(chatId);
             await answerCallback(id, 'Скасовано');
+            await clearInlineKeyboard(chatId, messageId);
             return sendMessage(chatId, '❌ Скасовано.');
         }
 
-        setSession(chatId, { step: 'amount', type });
+        setSession(chatId, { ...session, step: 'amount', type });
         await answerCallback(id, type === 'income' ? 'Дохід' : 'Витрата');
+        await clearInlineKeyboard(chatId, messageId);
         return sendMessage(chatId, `${type === 'income' ? '💰' : '💸'} Тип: <b>${type === 'income' ? 'Дохід' : 'Витрата'}</b>\n\nВведіть суму (число):`);
     }
 
@@ -549,11 +583,13 @@ async function handleCallback(callbackQuery) {
     if (data.startsWith('rcat:')) {
         const category = data.split(':')[1];
         const session = getSession(chatId);
-        if (!session || session.step !== 'category') {
-            await answerCallback(id, 'Сесія закінчилась');
-            return sendMessage(chatId, '⚠️ Сесія створення звіту закінчилась. Почніть знову: /report');
+        if (!isCallbackForStep(session, 'category', 'categoryMessageId', messageId)) {
+            await answerCallback(id, 'Вибір уже неактивний');
+            await clearInlineKeyboard(chatId, messageId);
+            return null;
         }
 
+        setSession(chatId, { ...session, step: 'saving', category });
         await answerCallback(id, category);
 
         const fromUsername = message.chat?.username || null;
@@ -572,6 +608,7 @@ async function handleCallback(callbackQuery) {
             });
 
             clearSession(chatId);
+            await clearInlineKeyboard(chatId, messageId);
 
             const emoji = session.type === 'income' ? '💰' : '💸';
             const typeLabel = session.type === 'income' ? 'Дохід' : 'Витрата';
@@ -585,6 +622,7 @@ async function handleCallback(callbackQuery) {
         } catch (err) {
             log.error('Interactive report save error', err);
             clearSession(chatId);
+            await clearInlineKeyboard(chatId, messageId);
             return sendMessage(chatId, '❌ Помилка збереження. Спробуйте ще.');
         }
     }
@@ -623,9 +661,17 @@ async function handleTextMessage(chatId, text, message) {
             buttons.push(row);
         }
 
-        return sendMessage(chatId, `Опис: ${escapeHtml(description) || '—'}\n\nОберіть категорію:`, {
+        const sent = await sendMessage(chatId, `Опис: ${escapeHtml(description) || '—'}\n\nОберіть категорію:`, {
             reply_markup: { inline_keyboard: buttons }
         });
+        const messageId = sent?.result?.message_id;
+        if (messageId) {
+            const latestSession = getSession(chatId);
+            if (latestSession && latestSession.step === 'category') {
+                setSession(chatId, { ...latestSession, categoryMessageId: messageId });
+            }
+        }
+        return sent;
     }
 }
 

@@ -20,10 +20,10 @@ const RolePanel = (() => {
     // Role hierarchy levels for block visibility
     const ROLE_LEVEL = {
         waiter: 0, dishwasher: 1, maintenance: 2, cleaning: 3, wardrobe: 4, barista: 5,
-        reception: 6, animator: 7, pastry_chef: 8, head_pastry: 9, cook: 10, head_chef: 11,
-        instructor: 12, senior_instructor: 13, admin: 14, hr: 15, it_specialist: 16,
-        marketer: 17, art_director: 18, accountant: 19, manager: 20, senior_manager: 21,
-        vice_director: 22, director: 23, creator: 24
+        security: 6, reception: 7, animator: 8, pastry_chef: 9, head_pastry: 10, cook: 11, head_chef: 12,
+        instructor: 13, senior_instructor: 14, admin: 15, hr: 16, it_specialist: 17,
+        marketer: 18, art_director: 19, accountant: 20, manager: 21, senior_manager: 22,
+        vice_director: 23, director: 24, creator: 25
     };
 
     const ROLE_NAMES = {
@@ -34,7 +34,7 @@ const RolePanel = (() => {
         senior_instructor: 'Старший інструктор', instructor: 'Інструктор',
         head_chef: 'Шеф-кухар', cook: 'Кухар', head_pastry: 'Шеф-кондитер',
         pastry_chef: 'Кондитер', animator: 'Аніматор', reception: 'Рецепція',
-        barista: 'Бариста', wardrobe: 'Гардеробник', cleaning: 'Клінінг',
+        barista: 'Бариста', security: 'Охорона', wardrobe: 'Гардеробник', cleaning: 'Клінінг',
         maintenance: 'Технік', dishwasher: 'Посудомийник', waiter: 'Офіціант'
     };
 

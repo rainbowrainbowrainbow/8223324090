@@ -16,19 +16,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.44.1">
-    <link rel="stylesheet" href="css/auth.css?v=0.44.1">
-    <link rel="stylesheet" href="css/layout.css?v=0.44.1">
-    <link rel="stylesheet" href="css/timeline.css?v=0.44.1">
-    <link rel="stylesheet" href="css/panel.css?v=0.44.1">
-    <link rel="stylesheet" href="css/modals.css?v=0.44.1">
-    <link rel="stylesheet" href="css/controls.css?v=0.44.1">
-    <link rel="stylesheet" href="css/features.css?v=0.44.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.44.1">
-    <link rel="stylesheet" href="css/responsive.css?v=0.44.1">
-    <link rel="stylesheet" href="css/pages.css?v=0.44.1">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.44.1">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.44.1">
+    <link rel="stylesheet" href="css/base.css?v=0.44.6">
+    <link rel="stylesheet" href="css/auth.css?v=0.44.6">
+    <link rel="stylesheet" href="css/layout.css?v=0.44.6">
+    <link rel="stylesheet" href="css/timeline.css?v=0.44.6">
+    <link rel="stylesheet" href="css/panel.css?v=0.44.6">
+    <link rel="stylesheet" href="css/modals.css?v=0.44.6">
+    <link rel="stylesheet" href="css/controls.css?v=0.44.6">
+    <link rel="stylesheet" href="css/features.css?v=0.44.6">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.44.6">
+    <link rel="stylesheet" href="css/responsive.css?v=0.44.6">
+    <link rel="stylesheet" href="css/pages.css?v=0.44.6">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.44.6">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.44.6">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -45,9 +45,9 @@
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.44.1 — 0.44 release line</p>
+                <p class="tagline">AI First CRM v0.44.6 — 0.44 release line</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.44.1</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.44.6</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1152,6 +1152,56 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.44.6 - Report-bot submit: transaction + idempotency (11.05.2026)</h4>
+                    <ul>
+                        <li><b>Submit transaction</b> - <code>/api/report-bot/submit</code> writes submission, finance transaction, and legacy report row together</li>
+                        <li><b>Duplicate guard</b> - repeated bot submit with the same idempotency/update key now returns the existing result instead of creating duplicate money/report rows</li>
+                        <li><b>Rollback</b> - if the legacy report write fails, finance/report-bot writes roll back together and do not leave split state</li>
+                        <li><b>Date safety</b> - submit uses explicit date or Europe/Kyiv today instead of UTC-only day slicing</li>
+                        <li><b>Tests</b> - added focused submit tests for success, duplicate delivery, and partial failure rollback</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>🔗 v0.44.5 — Atomic linked booking moves (11.05.2026)</h4>
+                    <ul>
+                        <li><b>Timeline drag</b> — main + linked бронювання тепер рухаються через один backend transaction</li>
+                        <li><b>Resize</b> — зміна тривалості main і linked більше не розʼїжджається при помилці другого запиту</li>
+                        <li><b>Shift / undo / redo</b> — перенос часу та скасування використовують новий атомарний шлях</li>
+                        <li><b>Rollback</b> — server перевіряє конфлікти до будь-якого update, тому partial move не лишається в базі</li>
+                        <li><b>Tests</b> — додані focused route тести для success, conflict rollback і неповного linked payload</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>🔐 v0.44.4 — Route guards: designs, music, reports, chat (11.05.2026)</h4>
+                    <ul>
+                        <li><b>Designs API</b> — <code>/api/designs</code> тепер вимагає manager-up / art-director / marketer доступ</li>
+                        <li><b>Music API</b> — <code>/api/music</code> вирівняний з доступом сторінки Sound, а не просто будь-яким JWT</li>
+                        <li><b>Reports API</b> — <code>/api/reports</code> більше не відкритий для manager/admin, якщо page access цього не дає</li>
+                        <li><b>Chat API</b> — actual chat router тепер блокує waiter на backend так само, як сторінка <code>/chat</code></li>
+                        <li><b>Tests</b> — route smoke покриває allow/deny для designs, music, reports і chat-adjacent router</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>🧭 v0.44.3 — Access source-of-truth + sidebar drift guard (11.05.2026)</h4>
+                    <ul>
+                        <li><b>Access check</b> — додано <code>npm run check:access</code> для backend/frontend/sidebar role drift</li>
+                        <li><b>Unknown pages</b> — <code>canAccessPage()</code> більше не дозволяє невідомі маршрути за замовчуванням</li>
+                        <li><b>Leads alias</b> — <code>/sales-funnel</code> і <code>/leads</code> тепер мають однакову access matrix</li>
+                        <li><b>Waiter visibility</b> — tasks/chat/Kleshnya/Afisha/Certificates більше не йдуть через broad sidebar <code>all</code></li>
+                        <li><b>Security role</b> — роль <code>security</code> додана у permissions, departments, default widgets і shared role UI metadata</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>📊 v0.44.2 — Dashboard auth + version-sync guardrails (11.05.2026)</h4>
+                    <ul>
+                        <li><b>/analytics access</b> — backend тепер пускає manager-up ролі так само, як frontend/sidebar навігація</li>
+                        <li><b>Dashboard widgets</b> — sensitive віджети перевіряються на сервері, а не тільки ховаються у UI</li>
+                        <li><b>Saved config guard</b> — неавторизовані віджети фільтруються при збереженні dashboard layout</li>
+                        <li><b>Version sync</b> — dashboard first-screen/changelog labels тепер входять у <code>scripts/version-sync.js</code></li>
+                        <li><b>Tests</b> — додані route smoke перевірки для analytics access і dashboard widget permissions</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>🎵 v0.44.1 — Sound storage pilot: manual uploads у Supabase Storage (11.05.2026)</h4>
                     <ul>
@@ -5464,27 +5514,27 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.44.1"></script>
-    <script src="js/api.js?v=0.44.1"></script>
-    <script src="js/ui.js?v=0.44.1"></script>
-    <script src="js/auth.js?v=0.44.1"></script>
-    <script src="js/timeline.js?v=0.44.1"></script>
-    <script src="js/booking.js?v=0.44.1"></script>
-    <script src="js/settings.js?v=0.44.1"></script>
-    <script src="js/booking-form.js?v=0.44.1"></script>
-    <script src="js/booking-linked.js?v=0.44.1"></script>
-    <script src="js/settings-dashboard.js?v=0.44.1"></script>
-    <script src="js/settings-history.js?v=0.44.1"></script>
-    <script src="js/settings-afisha.js?v=0.44.1"></script>
-    <script src="js/settings-certificates.js?v=0.44.1"></script>
-    <script src="js/offline.js?v=0.44.1"></script>
-    <script src="js/search.js?v=0.44.1"></script>
-    <script src="js/ws.js?v=0.44.1"></script>
-    <script src="js/app.js?v=0.44.1"></script>
-    <script src="js/kleshnya-widget.js?v=0.44.1"></script>
-    <script src="js/components/sidebar.js?v=0.44.1"></script>
+    <script src="js/config.js?v=0.44.6"></script>
+    <script src="js/api.js?v=0.44.6"></script>
+    <script src="js/ui.js?v=0.44.6"></script>
+    <script src="js/auth.js?v=0.44.6"></script>
+    <script src="js/timeline.js?v=0.44.6"></script>
+    <script src="js/booking.js?v=0.44.6"></script>
+    <script src="js/settings.js?v=0.44.6"></script>
+    <script src="js/booking-form.js?v=0.44.6"></script>
+    <script src="js/booking-linked.js?v=0.44.6"></script>
+    <script src="js/settings-dashboard.js?v=0.44.6"></script>
+    <script src="js/settings-history.js?v=0.44.6"></script>
+    <script src="js/settings-afisha.js?v=0.44.6"></script>
+    <script src="js/settings-certificates.js?v=0.44.6"></script>
+    <script src="js/offline.js?v=0.44.6"></script>
+    <script src="js/search.js?v=0.44.6"></script>
+    <script src="js/ws.js?v=0.44.6"></script>
+    <script src="js/app.js?v=0.44.6"></script>
+    <script src="js/kleshnya-widget.js?v=0.44.6"></script>
+    <script src="js/components/sidebar.js?v=0.44.6"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=0.44.1"></script>
-    <script src="js/alerts.js?v=0.44.1"></script>
+    <script src="js/role-panel.js?v=0.44.6"></script>
+    <script src="js/alerts.js?v=0.44.6"></script>
 </body>
 </html>

@@ -112,7 +112,7 @@ function showLoginScreen() {
     if (sidebarToggle) sidebarToggle.classList.add('hidden');
 }
 
-// v22.0.0: Role hierarchy — 25 roles (higher index = more permissions)
+// v22.0.0: Role hierarchy — 26 roles (higher index = more permissions)
 const ROLE_HIERARCHY = [
     'waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista',
     'security', 'reception', 'animator', 'pastry_chef', 'head_pastry', 'cook', 'head_chef',
@@ -141,37 +141,46 @@ const _MANAGEMENT_UP = ['creator', 'director', 'vice_director', 'senior_manager'
 const _MANAGER_UP = [..._MANAGEMENT_UP, 'manager'];
 const _ADMIN_UP = [..._MANAGER_UP, 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'];
 const _ALL_STAFF = ROLE_HIERARCHY.filter(r => r !== 'waiter');
+const _LEADS_ACCESS = [..._MANAGER_UP, 'marketer'];
+const _ART_ACCESS = [..._MANAGER_UP, 'art_director', 'marketer'];
+const _PROGRAMS_ACCESS = [..._MANAGER_UP, 'admin', 'senior_instructor', 'instructor', 'art_director'];
+const _STAFF_PAGE_ACCESS = [..._MANAGER_UP, 'admin', 'hr', 'senior_instructor', 'instructor', 'it_specialist', 'security'];
+const _HR_PAGE_ACCESS = [..._MANAGER_UP, 'hr', 'admin', 'security'];
+const _TRAINING_ACCESS = [..._MANAGER_UP, 'hr', 'senior_instructor', 'instructor'];
 
 const PAGE_ACCESS = {
     '/dashboard': ROLE_HIERARCHY.slice(),
     '/':          _ALL_STAFF,
     '/tasks':     _ALL_STAFF,
     '/chat':      _ALL_STAFF,
+    '/kleshnya':  _ALL_STAFF,
     '/center':    _MANAGER_UP,
-    '/art':       [..._MANAGER_UP, 'art_director', 'marketer'],
-    '/content':   [..._MANAGER_UP, 'art_director', 'marketer'],
+    '/art':       _ART_ACCESS,
+    '/content':   _ART_ACCESS,
     '/graduation': [..._MANAGER_UP, 'admin', 'art_director', 'marketer'],
     '/customers': [..._ADMIN_UP, 'reception'],
-    '/staff':     [..._MANAGER_UP, 'hr', 'security'],
+    '/staff':     _STAFF_PAGE_ACCESS,
     '/warehouse': [..._MANAGER_UP, 'admin'],
-    '/training':  [..._MANAGER_UP, 'hr', 'senior_instructor', 'instructor'],
+    '/training':  _TRAINING_ACCESS,
     '/settings':  ['creator', 'director'],
     '/demo':      _MANAGER_UP,
-    '/programs':  [..._ADMIN_UP, 'senior_instructor'],
-    '/hr':        [..._MANAGER_UP, 'hr', 'admin', 'security'],
+    '/programs':  _PROGRAMS_ACCESS,
+    '/hr':        _HR_PAGE_ACCESS,
+    '/checkin':   _HR_PAGE_ACCESS,
     '/finance':   ['creator', 'director', 'accountant'],
     '/analytics': _MANAGER_UP,
     '/status':    _MANAGER_UP,
     '/omni':      _MANAGER_UP,
     '/copilot':   _MANAGER_UP,
-    '/designer':  [..._MANAGER_UP, 'art_director', 'marketer'],
+    '/designer':  _ART_ACCESS,
     '/sound':     [..._MANAGER_UP, 'art_director'],
     '/afisha':    _ALL_STAFF,
     '/certificates': _ALL_STAFF,
-    '/art-director': ['creator', 'director', 'vice_director', 'art_director'],
-    '/designs': ['creator', 'director', 'vice_director', 'art_director', 'senior_manager', 'manager'],
+    '/art-director': _ART_ACCESS,
+    '/designs': _ART_ACCESS,
     '/game': null, // all authenticated users
-    '/leads': ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'marketer'],
+    '/sales-funnel': _LEADS_ACCESS,
+    '/leads': _LEADS_ACCESS,
     '/profile': null, // all authenticated users
     '/quiz': null, // all authenticated users
     '/report-agent': ['creator', 'director', 'vice_director'],
@@ -211,11 +220,25 @@ function canAccess(action) {
     return role && allowed && allowed.includes(role);
 }
 
+function _normalizePagePath(page) {
+    if (!page) return null;
+    const raw = String(page);
+    if (raw.startsWith('#')) return null;
+    return raw.split('#')[0].replace(/\.html$/, '').replace(/\/$/, '') || '/';
+}
+
+function _isPageAllowedForRole(page, role) {
+    const normalized = _normalizePagePath(page);
+    if (!normalized) return null;
+    if (!Object.prototype.hasOwnProperty.call(PAGE_ACCESS, normalized)) return false;
+    const allowed = PAGE_ACCESS[normalized];
+    if (allowed === null) return Boolean(role);
+    return Boolean(role && allowed.includes(role));
+}
+
 function canAccessPage(page) {
     const role = getUserRole();
-    const allowed = PAGE_ACCESS[page];
-    if (!allowed) return true; // unknown page = allow
-    return role && allowed.includes(role);
+    return _isPageAllowedForRole(page, role) === true;
 }
 
 function isViewer() {
@@ -280,7 +303,8 @@ function showMainApp() {
     // v20.1.0: Sidebar role-based visibility via page access matrix
     const role = getUserRole();
     document.querySelectorAll('[data-page-access]').forEach(el => {
-        const page = el.dataset.pageAccess;
+        const page = _normalizePagePath(el.dataset.pageAccess);
+        if (!page) return;
         el.classList.toggle('hidden', !canAccessPage(page));
     });
     // Legacy classes for backward compat
@@ -1449,11 +1473,9 @@ const RoleSwitcher = (() => {
 
         // Apply visibility rules
         document.querySelectorAll('[data-page-access]').forEach(el => {
-            const page = el.dataset.pageAccess;
-            const allowed = PAGE_ACCESS[page];
-            if (allowed) {
-                el.classList.toggle('hidden', !allowed.includes(role));
-            }
+            const page = _normalizePagePath(el.dataset.pageAccess);
+            if (!page) return;
+            el.classList.toggle('hidden', _isPageAllowedForRole(page, role) !== true);
         });
 
         document.querySelectorAll('.sidebar-admin-only').forEach(el => {

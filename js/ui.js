@@ -779,15 +779,22 @@ async function handleUndo() {
         const booking = bookings.find(b => b.id === bookingId);
         if (booking) {
             const revertedTime = addMinutesToTime(booking.time, minutes);
-            await apiUpdateBooking(bookingId, { ...booking, time: revertedTime });
-            for (const linkedId of linked) {
-                const lb = bookings.find(b => b.id === linkedId);
-                if (lb) {
-                    const lbTime = addMinutesToTime(lb.time, minutes);
-                    await apiUpdateBooking(linkedId, { ...lb, time: lbTime });
+            const result = await apiUpdateLinkedBookingsAtomic(bookingId, {
+                main: { time: revertedTime },
+                linked: linked
+                    .map(linkedId => bookings.find(b => b.id === linkedId))
+                    .filter(Boolean)
+                    .map(lb => ({ id: lb.id, time: addMinutesToTime(lb.time, minutes) })),
+                historyAction: 'undo_shift',
+                historyData: { ...booking, time: revertedTime, shiftMinutes: minutes }
+            });
+            if (result && result.success === false) {
+                showNotification(result.error || 'Помилка скасування переносу часу', 'error');
+                if (result.conflictBookingId && typeof revealHiddenBooking === 'function') {
+                    revealHiddenBooking(result.conflictBookingId);
                 }
+                return;
             }
-            await apiAddHistory('undo_shift', AppState.currentUser?.username, { ...booking, time: revertedTime, shiftMinutes: minutes });
         }
         showNotification('Перенос часу скасовано', 'warning');
     }
@@ -831,13 +838,21 @@ async function handleRedo() {
         if (booking) {
             // Re-apply the shift (opposite of undo direction)
             const newTime = addMinutesToTime(booking.time, -minutes);
-            await apiUpdateBooking(bookingId, { ...booking, time: newTime });
-            for (const linkedId of linked) {
-                const lb = bookings.find(b => b.id === linkedId);
-                if (lb) {
-                    const lbTime = addMinutesToTime(lb.time, -minutes);
-                    await apiUpdateBooking(linkedId, { ...lb, time: lbTime });
+            const result = await apiUpdateLinkedBookingsAtomic(bookingId, {
+                main: { time: newTime },
+                linked: linked
+                    .map(linkedId => bookings.find(b => b.id === linkedId))
+                    .filter(Boolean)
+                    .map(lb => ({ id: lb.id, time: addMinutesToTime(lb.time, -minutes) })),
+                historyAction: 'shift',
+                historyData: { ...booking, time: newTime, shiftMinutes: -minutes }
+            });
+            if (result && result.success === false) {
+                showNotification(result.error || 'Помилка повтору переносу часу', 'error');
+                if (result.conflictBookingId && typeof revealHiddenBooking === 'function') {
+                    revealHiddenBooking(result.conflictBookingId);
                 }
+                return;
             }
         }
         showNotification('Перенос часу повторено', 'info');
@@ -1335,6 +1350,7 @@ const POINTS_ROLE_HIERARCHY = [
     { key: 'senior_instructor', name: 'Ст. інструктор', icon: '🎓', tier: 'operational' },
     { key: 'instructor', name: 'Інструктор', icon: '📚', tier: 'field' },
     { key: 'animator', name: 'Аніматор', icon: '🎭', tier: 'field' },
+    { key: 'security', name: 'Охорона', icon: '🛡️', tier: 'field' },
     { key: 'waiter', name: 'Офіціант', icon: '🍽️', tier: 'field' }
 ];
 

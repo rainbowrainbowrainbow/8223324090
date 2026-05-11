@@ -53,8 +53,21 @@ async function request(method, path, body, headers = {}) {
     return { status: res.status, data, text };
 }
 
-function withAuth(headers = {}) {
-    return { ...headers, Authorization: `Bearer ${authToken}` };
+function tokenFor(role = 'creator') {
+    return jwt.sign(
+        {
+            id: role === 'creator' ? 1 : role.length + 10,
+            username: role === 'creator' ? 'route-smoke' : `${role}-user`,
+            name: role === 'creator' ? 'Route Smoke' : `${role} user`,
+            role
+        },
+        TEST_JWT_SECRET,
+        { expiresIn: '1h' }
+    );
+}
+
+function withAuth(headers = {}, role = 'creator') {
+    return { ...headers, Authorization: `Bearer ${role === 'creator' ? authToken : tokenFor(role)}` };
 }
 
 function installMock(modulePath, exports) {
@@ -69,12 +82,23 @@ function clearModules() {
         '../services/leadNotifier',
         '../services/report-bot',
         '../services/telegram',
+        '../services/chatService',
+        '../services/websocket',
+        '../services/chat-bot',
+        '../services/guardian',
+        '../services/linkPreview',
         '../routes/settings',
         '../routes/landing',
         '../routes/leads',
         '../routes/packages',
         '../routes/tasks',
         '../routes/users',
+        '../routes/designs',
+        '../routes/music',
+        '../routes/reports',
+        '../routes/dashboard',
+        '../routes/analytics',
+        '../routes/chat',
         '../routes/report-bot',
         '../routes/telegram'
     ].forEach(modulePath => {
@@ -116,6 +140,57 @@ function createFakePool() {
                     ]
                 };
             }
+            if (/SELECT tag, COUNT\(\*\) as count FROM design_tags GROUP BY tag ORDER BY count DESC, tag ASC/i.test(text)) {
+                return { rows: [] };
+            }
+            if (/FROM announcements/i.test(text) && /total_plays/i.test(text)) {
+                return { rows: [{ active: 0, draft: 0, scheduled: 0, total_plays: 0 }] };
+            }
+            if (/FROM playlists/i.test(text) && /COUNT\(\*\)::int AS total/i.test(text)) {
+                return { rows: [{ active: 0, total: 0 }] };
+            }
+            if (/FROM music_log WHERE action='play' AND created_at>CURRENT_DATE/i.test(text)) {
+                return { rows: [{ plays_today: 0 }] };
+            }
+            if (/SELECT \* FROM accountants ORDER BY is_on_duty DESC, name/i.test(text)) {
+                return { rows: [] };
+            }
+            if (/FROM bookings WHERE date::date >= \$1::date AND date::date <= \$2::date/i.test(text)) {
+                return {
+                    rows: [{
+                        revenue: 0,
+                        total: 0,
+                        confirmed: 0,
+                        preliminary: 0,
+                        avg_check: 0
+                    }]
+                };
+            }
+            if (/FROM finance_transactions WHERE date::date >= \$1::date AND date::date <= \$2::date/i.test(text)) {
+                return {
+                    rows: [{
+                        income: 0,
+                        expense: 0,
+                        income_count: 0,
+                        expense_count: 0
+                    }]
+                };
+            }
+            if (/FROM customers WHERE created_at::date >= \$1::date AND created_at::date <= \$2::date/i.test(text)) {
+                return { rows: [{ new_customers: 0 }] };
+            }
+            if (/FROM hr_time_records WHERE record_date >= \$1 AND record_date <= \$2/i.test(text)) {
+                return { rows: [{ total_minutes: 0, active_staff: 0 }] };
+            }
+            if (/SELECT COALESCE\(SUM\(price\), 0\) as total FROM bookings WHERE date = \$1 AND status = 'confirmed'/i.test(text)) {
+                return { rows: [{ total: 0 }] };
+            }
+            if (/SELECT COALESCE\(SUM\(amount\), 0\) as total FROM finance_transactions WHERE date = \$1 AND type = 'expense'/i.test(text)) {
+                return { rows: [{ total: 0 }] };
+            }
+            if (/SELECT COUNT\(\*\) as count FROM bookings WHERE date = \$1 AND status != 'cancelled'/i.test(text)) {
+                return { rows: [{ count: 0 }] };
+            }
 
             throw new Error(`Unexpected route-smoke DB query: ${text}`);
         }
@@ -139,13 +214,20 @@ describe('route-level API safety smoke', () => {
         installMock('../services/leadNotifier', {
             notifyNewLead: async lead => { notifiedLeads.push(lead); }
         });
+        installMock('../services/chatService', {
+            ensureDefaultMemberships: async () => {},
+            getChannels: async () => [{ id: 1, name: 'General', unread: 0 }]
+        });
+        installMock('../services/websocket', {
+            broadcastToChannel: () => {},
+            sendToUser: () => {}
+        });
+        installMock('../services/chat-bot', { processMessage: async () => null });
+        installMock('../services/guardian', {});
+        installMock('../services/linkPreview', {});
 
         const { authenticateToken } = require('../middleware/auth');
-        authToken = jwt.sign(
-            { id: 1, username: 'route-smoke', name: 'Route Smoke', role: 'creator' },
-            TEST_JWT_SECRET,
-            { expiresIn: '1h' }
-        );
+        authToken = tokenFor('creator');
 
         const app = express();
         app.use(express.json());
@@ -155,6 +237,12 @@ describe('route-level API safety smoke', () => {
         app.use('/api/packages', require('../routes/packages'));
         app.use('/api/tasks', require('../routes/tasks'));
         app.use('/api/users', require('../routes/users'));
+        app.use('/api/designs', require('../routes/designs'));
+        app.use('/api/music', require('../routes/music'));
+        app.use('/api/reports', require('../routes/reports'));
+        app.use('/api/dashboard', require('../routes/dashboard'));
+        app.use('/api/analytics', require('../routes/analytics'));
+        app.use('/api/chat-real', require('../routes/chat'));
         app.use('/api/report-bot', require('../routes/report-bot'));
         app.use('/api/telegram', require('../routes/telegram'));
 
@@ -250,8 +338,63 @@ describe('route-level API safety smoke', () => {
         const roles = await request('GET', '/api/users/roles', undefined, withAuth());
         assert.equal(roles.status, 200, JSON.stringify(roles.data));
         assert.ok(roles.data.hierarchy.includes('creator'));
+        assert.ok(roles.data.hierarchy.includes('security'));
         assert.ok(roles.data.pageAccess['/dashboard']);
+        assert.deepEqual(roles.data.pageAccess['/sales-funnel'], roles.data.pageAccess['/leads']);
+        assert.ok(roles.data.pageAccess['/staff'].includes('security'));
+        assert.ok(!roles.data.pageAccess['/tasks'].includes('waiter'));
         assert.ok(roles.data.actionPermissions.create_booking);
+    });
+
+    it('keeps analytics API access aligned to manager-up roles', async () => {
+        const path = '/api/analytics/overview?from=2099-01-01&to=2099-01-01';
+
+        const blocked = await request('GET', path, undefined, withAuth({}, 'admin'));
+        assert.equal(blocked.status, 403, JSON.stringify(blocked.data));
+
+        const manager = await request('GET', path, undefined, withAuth({}, 'manager'));
+        assert.equal(manager.status, 200, JSON.stringify(manager.data));
+        assert.ok(manager.data.bookings, 'manager should receive analytics data');
+        assert.ok(manager.data.finance, 'manager should receive finance analytics section');
+    });
+
+    it('enforces sensitive dashboard widget permissions server-side', async () => {
+        const managerFinance = await request('GET', '/api/dashboard/widgets/finance_today', undefined, withAuth({}, 'manager'));
+        assert.equal(managerFinance.status, 403, JSON.stringify(managerFinance.data));
+
+        const managerDirectorPnl = await request('GET', '/api/dashboard/widgets/director_pnl', undefined, withAuth({}, 'manager'));
+        assert.equal(managerDirectorPnl.status, 403, JSON.stringify(managerDirectorPnl.data));
+
+        const accountantFinance = await request('GET', '/api/dashboard/widgets/finance_today', undefined, withAuth({}, 'accountant'));
+        assert.equal(accountantFinance.status, 200, JSON.stringify(accountantFinance.data));
+        assert.equal(accountantFinance.data.success, true);
+        assert.equal(accountantFinance.data.data.profit, 0);
+    });
+
+    it('keeps exposed module APIs aligned with page-level role access', async () => {
+        const waiterDesigns = await request('GET', '/api/designs/tags', undefined, withAuth({}, 'waiter'));
+        assert.equal(waiterDesigns.status, 403, JSON.stringify(waiterDesigns.data));
+        const artDesigns = await request('GET', '/api/designs/tags', undefined, withAuth({}, 'art_director'));
+        assert.equal(artDesigns.status, 200, JSON.stringify(artDesigns.data));
+        assert.deepEqual(artDesigns.data, []);
+
+        const waiterMusic = await request('GET', '/api/music/overview', undefined, withAuth({}, 'waiter'));
+        assert.equal(waiterMusic.status, 403, JSON.stringify(waiterMusic.data));
+        const artMusic = await request('GET', '/api/music/overview', undefined, withAuth({}, 'art_director'));
+        assert.equal(artMusic.status, 200, JSON.stringify(artMusic.data));
+        assert.equal(artMusic.data.success, true);
+
+        const managerReports = await request('GET', '/api/reports/accountants', undefined, withAuth({}, 'manager'));
+        assert.equal(managerReports.status, 403, JSON.stringify(managerReports.data));
+        const accountantReports = await request('GET', '/api/reports/accountants', undefined, withAuth({}, 'accountant'));
+        assert.equal(accountantReports.status, 200, JSON.stringify(accountantReports.data));
+        assert.deepEqual(accountantReports.data, []);
+
+        const waiterChat = await request('GET', '/api/chat-real/channels', undefined, withAuth({}, 'waiter'));
+        assert.equal(waiterChat.status, 403, JSON.stringify(waiterChat.data));
+        const animatorChat = await request('GET', '/api/chat-real/channels', undefined, withAuth({}, 'animator'));
+        assert.equal(animatorChat.status, 200, JSON.stringify(animatorChat.data));
+        assert.equal(animatorChat.data[0].name, 'General');
     });
 
     it('does not allow broad query-token fallback on chat-adjacent protected routes', async () => {

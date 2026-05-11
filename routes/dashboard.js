@@ -5,8 +5,8 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
-const { authenticateToken } = require('../middleware/auth');
-const { getDefaultWidgets } = require('../config/roles');
+const { authenticateToken, ROLE_LEVEL } = require('../middleware/auth');
+const { getDefaultWidgets, canAccessDashboardWidget } = require('../config/roles');
 const { createLogger } = require('../utils/logger');
 const { getKyivDateStr } = require('../services/booking');
 
@@ -48,12 +48,15 @@ router.get('/config', async (req, res) => {
 router.put('/config', async (req, res) => {
     try {
         const { layout, widgets, theme } = req.body;
+        const safeWidgets = Array.isArray(widgets)
+            ? widgets.filter(type => canAccessDashboardWidget(req.user.role, type, ROLE_LEVEL) === true)
+            : [];
         await pool.query(`
             INSERT INTO dashboard_configs (user_id, layout, widgets, theme, updated_at)
             VALUES ($1, $2, $3, $4, NOW())
             ON CONFLICT (user_id)
             DO UPDATE SET layout = $2, widgets = $3, theme = $4, updated_at = NOW()
-        `, [req.user.id, JSON.stringify(layout || {}), JSON.stringify(widgets || []), theme || 'default']);
+        `, [req.user.id, JSON.stringify(layout || {}), JSON.stringify(safeWidgets), theme || 'default']);
 
         res.json({ success: true });
     } catch (err) {
@@ -66,6 +69,11 @@ router.put('/config', async (req, res) => {
 router.get('/widgets/:type', async (req, res) => {
     try {
         const { type } = req.params;
+        const widgetAccess = canAccessDashboardWidget(req.user.role, type, ROLE_LEVEL);
+        if (widgetAccess === false) {
+            return res.status(403).json({ error: 'Insufficient widget permissions' });
+        }
+
         let data = {};
 
         switch (type) {

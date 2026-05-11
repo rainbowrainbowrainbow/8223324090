@@ -8,6 +8,7 @@
  *   GET  /api/report-bot/summary  — Quick summary for bot (API key auth)
  */
 
+const crypto = require('crypto');
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
@@ -38,6 +39,125 @@ function requireBotApiKey(req, res, next) {
         return res.status(403).json({ error: 'Invalid API key' });
     }
     next();
+}
+
+function getKyivDateString(inputDate) {
+    if (typeof inputDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(inputDate)) {
+        return inputDate;
+    }
+
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(new Date());
+}
+
+function normalizeRawData(rawData) {
+    if (!rawData) return {};
+    if (typeof rawData === 'object' && !Array.isArray(rawData)) return { ...rawData };
+    if (Array.isArray(rawData)) return { items: rawData };
+    if (typeof rawData === 'string') {
+        try {
+            const parsed = JSON.parse(rawData);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return { ...parsed };
+            return { value: parsed };
+        } catch {
+            return { value: rawData };
+        }
+    }
+    return { value: rawData };
+}
+
+function stableValue(value) {
+    if (Array.isArray(value)) return value.map(stableValue);
+    if (value && typeof value === 'object') {
+        return Object.keys(value).sort().reduce((acc, key) => {
+            if (value[key] !== undefined) acc[key] = stableValue(value[key]);
+            return acc;
+        }, {});
+    }
+    return value;
+}
+
+function stableJson(value) {
+    return JSON.stringify(stableValue(value));
+}
+
+function firstNonBlank(...values) {
+    for (const value of values) {
+        if (value === undefined || value === null) continue;
+        const text = String(value).trim();
+        if (text) return text;
+    }
+    return null;
+}
+
+function buildSubmitIdempotencyKey(body, normalized) {
+    const raw = normalized.rawData || {};
+    const explicit = firstNonBlank(
+        body.idempotency_key,
+        body.idempotencyKey,
+        body.external_id,
+        body.externalId,
+        raw.idempotency_key,
+        raw.idempotencyKey,
+        raw.external_id,
+        raw.externalId,
+        raw.update_id,
+        raw.updateId
+    );
+
+    if (explicit) return `explicit:${explicit.slice(0, 180)}`;
+
+    const messageId = firstNonBlank(raw.message_id, raw.messageId);
+    if (messageId) {
+        const chatId = firstNonBlank(body.submitted_by_id, raw.chat_id, raw.chatId, 'unknown-chat');
+        return `telegram-message:${chatId.slice(0, 80)}:${messageId.slice(0, 80)}`;
+    }
+
+    const fingerprint = stableJson({
+        type: normalized.type,
+        amount: normalized.amountInt,
+        description: normalized.description || null,
+        category: normalized.category || null,
+        submitted_by: normalized.submitted_by || null,
+        submitted_by_id: normalized.tgId || null,
+        submitted_via: normalized.submitted_via || null,
+        photo_url: normalized.photo_url || null,
+        ocr_text: normalized.ocr_text || null,
+        voice_transcript: normalized.voice_transcript || null,
+        account_id: normalized.account_id || null,
+        account_name: normalized.account_name || null,
+        object_name: normalized.object_name || null,
+        date: normalized.reportDate,
+        raw_data: normalized.rawData
+    });
+
+    return `payload:${crypto.createHash('sha256').update(fingerprint).digest('hex')}`;
+}
+
+function duplicateSubmitResponse(row) {
+    const payload = {
+        ok: true,
+        duplicate: true,
+        id: row.id,
+        status: row.status
+    };
+
+    if (row.status === 'personal') {
+        payload.routed = 'personal';
+        payload.personalTxId = row.personal_tx_id || null;
+    } else if (row.status === 'processed' || row.finance_transaction_id || row.report_id) {
+        payload.routed = 'finance';
+        payload.transactionId = row.finance_transaction_id || null;
+        payload.reportId = row.report_id || null;
+    } else {
+        payload.routed = 'pending';
+    }
+
+    return payload;
 }
 
 // ==========================================
@@ -110,41 +230,85 @@ router.post('/webhook', async (req, res) => {
 //         otherwise → finance_transactions + reports (legacy)
 // ==========================================
 router.post('/submit', requireBotApiKey, async (req, res) => {
+    let client;
     try {
         const {
             type, amount, description, category,
             submitted_by, submitted_by_id, submitted_via = 'bot',
             photo_url, ocr_text, voice_transcript, raw_data, status = 'new',
+            date,
             account_id, account_name, object_name
         } = req.body;
 
         if (!type || !['income', 'expense'].includes(type)) {
             return res.status(400).json({ error: 'Invalid type (income/expense)' });
         }
-        if (!amount || parseFloat(amount) <= 0) {
+        const numericAmount = parseFloat(amount);
+        if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
             return res.status(400).json({ error: 'Amount must be > 0' });
         }
 
-        const amountInt = Math.round(parseFloat(amount));
-        const today = new Date().toISOString().slice(0, 10);
-        const tgId = submitted_by_id ? parseInt(submitted_by_id, 10) : null;
+        const amountInt = Math.round(numericAmount);
+        const reportDate = getKyivDateString(date);
+        const parsedTelegramId = submitted_by_id ? parseInt(submitted_by_id, 10) : null;
+        const tgId = Number.isFinite(parsedTelegramId) ? parsedTelegramId : null;
+        const rawPayload = normalizeRawData(raw_data);
+        const idempotencyKey = buildSubmitIdempotencyKey(req.body, {
+            type,
+            amountInt,
+            description,
+            category,
+            submitted_by,
+            tgId,
+            submitted_via,
+            photo_url,
+            ocr_text,
+            voice_transcript,
+            account_id,
+            account_name,
+            object_name,
+            reportDate,
+            rawData: rawPayload
+        });
+
+        client = await pool.connect();
+        await client.query('BEGIN');
 
         // 1. Save to submissions queue
-        const sub = await pool.query(`
+        const sub = await client.query(`
             INSERT INTO report_bot_submissions
                 (raw_type, amount, description, category, account_name, object_name,
-                 submitted_by, submitted_by_id, photo_url, ocr_text, voice_transcript)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                 submitted_by, submitted_by_id, photo_url, ocr_text, voice_transcript,
+                 idempotency_key)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+            ON CONFLICT (idempotency_key) DO NOTHING
             RETURNING id
         `, [type, amountInt, description || null, category || null,
             account_name || null, object_name || null,
             submitted_by || null, tgId,
-            photo_url || null, ocr_text || null, voice_transcript || null]);
+            photo_url || null, ocr_text || null, voice_transcript || null,
+            idempotencyKey]);
+
+        if (sub.rows.length === 0) {
+            const existing = await client.query(`
+                SELECT id, status, finance_transaction_id, personal_tx_id, report_id
+                FROM report_bot_submissions
+                WHERE idempotency_key = $1
+                LIMIT 1
+            `, [idempotencyKey]);
+
+            if (existing.rows.length === 0) {
+                throw new Error('Report-bot idempotency conflict without existing submission');
+            }
+
+            await client.query('COMMIT');
+            return res.status(200).json(duplicateSubmitResponse(existing.rows[0]));
+        }
         const subId = sub.rows[0].id;
 
         // 2. Personal → personal_account_transactions (isolated from company P&L)
         if (object_name === 'Особисте') {
-            const accRow = await pool.query(`
+            const accRow = await client.query(`
                 SELECT id FROM finance_accounts
                 WHERE owner_telegram_id = $1
                 AND (name = $2 OR $2 IS NULL)
@@ -154,23 +318,24 @@ router.post('/submit', requireBotApiKey, async (req, res) => {
 
             let personalTxId = null;
             if (accRow.rows.length) {
-                const r = await pool.query(`
+                const r = await client.query(`
                     INSERT INTO personal_account_transactions
                         (account_id, type, amount, description, category,
                          date, source, submitted_by_telegram)
                     VALUES ($1,$2,$3,$4,$5,$6,'report_bot',$7)
                     RETURNING id
                 `, [accRow.rows[0].id, type, amountInt, description || null,
-                    category || null, today, tgId]);
+                    category || null, reportDate, tgId]);
                 personalTxId = r.rows[0].id;
             }
 
-            await pool.query(
+            await client.query(
                 `UPDATE report_bot_submissions SET status='personal', personal_tx_id=$1 WHERE id=$2`,
                 [personalTxId, subId]
             );
 
             log.info(`Bot report #${subId} → personal (txId: ${personalTxId})`);
+            await client.query('COMMIT');
             return res.status(201).json({
                 ok: true, id: subId, routed: 'personal', personalTxId
             });
@@ -180,7 +345,7 @@ router.post('/submit', requireBotApiKey, async (req, res) => {
         // Map category via report_bot_category_map
         let categoryId = null;
         if (category) {
-            const map = await pool.query(
+            const map = await client.query(
                 'SELECT finance_category_id FROM report_bot_category_map WHERE bot_category = $1',
                 [category.toLowerCase()]
             );
@@ -190,38 +355,45 @@ router.post('/submit', requireBotApiKey, async (req, res) => {
         const payMethod = (account_name || '').toLowerCase().includes('готівка')
             || (account_name || '').toLowerCase().includes('каса') ? 'cash' : 'card';
 
-        const ft = await pool.query(`
+        const ft = await client.query(`
             INSERT INTO finance_transactions
                 (type, category_id, amount, description, date, payment_method,
                  object_name, account_name, source, created_by)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'report_bot',$9)
             RETURNING id
-        `, [type, categoryId, amountInt, description || null, today, payMethod,
+        `, [type, categoryId, amountInt, description || null, reportDate, payMethod,
             object_name || null, account_name || null, submitted_by || null]);
 
-        await pool.query(
-            `UPDATE report_bot_submissions SET status='processed', finance_transaction_id=$1 WHERE id=$2`,
-            [ft.rows[0].id, subId]
-        );
-
         // Also save to reports table (legacy compatibility)
-        const accountIdInt = account_id ? parseInt(account_id, 10) : null;
-        const botRawData = raw_data || {};
+        const parsedAccountId = account_id ? parseInt(account_id, 10) : null;
+        const accountIdInt = Number.isFinite(parsedAccountId) ? parsedAccountId : null;
+        const botRawData = {
+            ...rawPayload,
+            report_bot_submission_id: subId,
+            report_bot_idempotency_key: idempotencyKey,
+            report_bot_date: reportDate
+        };
         if (submitted_by_id) botRawData.telegram_chat_id = submitted_by_id;
 
-        const reportResult = await pool.query(`
+        const reportResult = await client.query(`
             INSERT INTO reports (type, amount, description, category, submitted_by,
                 submitted_via, photo_url, ocr_text, voice_transcript, raw_data, status,
                 account_id, account_name)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             RETURNING id
-        `, [type, parseFloat(amount), description || null, category || null,
+        `, [type, numericAmount, description || null, category || null,
             submitted_by || 'Bot', submitted_via,
             photo_url || null, ocr_text || null, voice_transcript || null,
             JSON.stringify(botRawData), status,
             accountIdInt, account_name || null]);
 
         log.info(`Bot report #${subId} → finance_transactions #${ft.rows[0].id}`);
+        await client.query(
+            `UPDATE report_bot_submissions SET status='processed', finance_transaction_id=$1, report_id=$2 WHERE id=$3`,
+            [ft.rows[0].id, reportResult.rows[0].id, subId]
+        );
+
+        await client.query('COMMIT');
         res.status(201).json({
             ok: true, id: subId,
             transactionId: ft.rows[0].id,
@@ -229,8 +401,15 @@ router.post('/submit', requireBotApiKey, async (req, res) => {
             routed: 'finance'
         });
     } catch (err) {
+        if (client) {
+            await client.query('ROLLBACK').catch(rollbackErr => {
+                log.error('POST /report-bot/submit rollback failed', rollbackErr);
+            });
+        }
         log.error('POST /report-bot/submit error', err);
         res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        if (client) client.release();
     }
 });
 

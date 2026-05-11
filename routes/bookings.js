@@ -32,6 +32,138 @@ async function getLineName(lineId, date) {
     }
 }
 
+const ATOMIC_LINKED_FIELDS = new Map([
+    ['date', 'date'],
+    ['time', 'time'],
+    ['lineId', 'line_id'],
+    ['duration', 'duration']
+]);
+
+const ATOMIC_LINKED_HISTORY_ACTIONS = new Set([
+    'drag', 'undo_drag',
+    'resize', 'undo_resize',
+    'shift', 'undo_shift'
+]);
+
+function pickAtomicLinkedPatch(input) {
+    const patch = {};
+    if (!input || typeof input !== 'object') return patch;
+    for (const [apiField, dbField] of ATOMIC_LINKED_FIELDS) {
+        if (Object.prototype.hasOwnProperty.call(input, apiField) && input[apiField] !== undefined) {
+            patch[dbField] = apiField === 'duration' ? parseInt(input[apiField], 10) : input[apiField];
+        }
+    }
+    return patch;
+}
+
+function buildAtomicLinkedCandidate(row, patch = {}) {
+    return {
+        id: row.id,
+        date: Object.prototype.hasOwnProperty.call(patch, 'date') ? patch.date : row.date,
+        time: Object.prototype.hasOwnProperty.call(patch, 'time') ? patch.time : row.time,
+        line_id: Object.prototype.hasOwnProperty.call(patch, 'line_id') ? patch.line_id : row.line_id,
+        duration: Object.prototype.hasOwnProperty.call(patch, 'duration') ? patch.duration : row.duration,
+        room: row.room,
+        hosts: row.hosts,
+        label: row.label,
+        program_code: row.program_code,
+        linked_to: row.linked_to,
+        status: row.status
+    };
+}
+
+function validateAtomicLinkedCandidate(candidate) {
+    if (!validateDate(candidate.date)) return 'Invalid date format';
+    if (!validateTime(candidate.time)) return 'Invalid time format';
+    const duration = Number(candidate.duration);
+    if (!Number.isFinite(duration) || duration < 0 || duration > 1440) return 'Duration must be between 0 and 1440 minutes';
+    const start = timeToMinutes(candidate.time);
+    if (start + duration > 1440) return 'Booking cannot exceed midnight';
+    return null;
+}
+
+function isRealRoom(room) {
+    return Boolean(room && room !== 'Інше' && room !== 'Р†РЅС€Рµ' && room !== 'Other');
+}
+
+async function findAtomicLineConflict(client, candidate, excludeIds) {
+    const result = await client.query(
+        `SELECT id, time, duration, label, program_code
+         FROM bookings
+         WHERE date = $1 AND line_id = $2 AND status != 'cancelled'
+           AND id != ALL($3::text[])`,
+        [candidate.date, candidate.line_id, excludeIds]
+    );
+    const start = timeToMinutes(candidate.time);
+    const end = start + (parseInt(candidate.duration, 10) || 0);
+    return result.rows.find(other => {
+        const otherStart = timeToMinutes(other.time);
+        const otherEnd = otherStart + (parseInt(other.duration, 10) || 0);
+        return start < otherEnd && end > otherStart;
+    }) || null;
+}
+
+async function findAtomicRoomConflict(client, candidate, excludeIds) {
+    if (!isRealRoom(candidate.room)) return null;
+    const result = await client.query(
+        `SELECT id, time, duration, label, program_code
+         FROM bookings
+         WHERE date = $1 AND room = $2 AND status != 'cancelled'
+           AND id != ALL($3::text[])`,
+        [candidate.date, candidate.room, excludeIds]
+    );
+    const start = timeToMinutes(candidate.time);
+    const end = start + (parseInt(candidate.duration, 10) || 0);
+    return result.rows.find(other => {
+        const otherStart = timeToMinutes(other.time);
+        const otherEnd = otherStart + (parseInt(other.duration, 10) || 0);
+        return start < otherEnd && end > otherStart;
+    }) || null;
+}
+
+async function findAtomicAnimatorConflict(client, candidate, excludeIds) {
+    const animId = parseInt(candidate.hosts, 10);
+    if (!animId) return null;
+    const result = await client.query(
+        `SELECT id, time, duration, label, program_code
+         FROM bookings
+         WHERE (hosts = $1 OR second_animator = $1::text)
+           AND date = $2 AND status != 'cancelled' AND linked_to IS NULL
+           AND id != ALL($3::text[])`,
+        [animId, candidate.date, excludeIds]
+    );
+    const start = timeToMinutes(candidate.time);
+    const end = start + (parseInt(candidate.duration, 10) || 0);
+    return result.rows.find(other => {
+        const otherStart = timeToMinutes(other.time);
+        const otherEnd = otherStart + (parseInt(other.duration, 10) || 0);
+        return start < otherEnd && end > otherStart;
+    }) || null;
+}
+
+async function updateAtomicLinkedBookingFields(client, id, patch) {
+    const entries = Object.entries(patch);
+    if (!entries.length) {
+        const current = await client.query('SELECT * FROM bookings WHERE id = $1', [id]);
+        return current.rows[0] || null;
+    }
+
+    const assignments = [];
+    const params = [];
+    for (const [field, value] of entries) {
+        params.push(value);
+        assignments.push(`${field} = $${params.length}`);
+    }
+    assignments.push('updated_at = NOW()');
+    params.push(id);
+
+    const result = await client.query(
+        `UPDATE bookings SET ${assignments.join(', ')} WHERE id = $${params.length} RETURNING *`,
+        params
+    );
+    return result.rows[0] || null;
+}
+
 // v33.3: GET /api/bookings/occupancy — Line occupancy stats
 router.get('/occupancy', async (req, res) => {
     try {
@@ -717,6 +849,200 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
 });
 
 // Update booking — requires edit_booking action permission
+router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res) => {
+    const { id } = req.params;
+    const body = req.body || {};
+    if (!validateId(id)) return res.status(400).json({ error: 'Invalid booking ID' });
+    if (body.main && typeof body.main !== 'object') return res.status(400).json({ error: 'Invalid main payload' });
+    if (body.linked !== undefined && !Array.isArray(body.linked)) {
+        return res.status(400).json({ error: 'Invalid linked payload' });
+    }
+    if (body.historyAction && !ATOMIC_LINKED_HISTORY_ACTIONS.has(body.historyAction)) {
+        return res.status(400).json({ error: 'Invalid history action' });
+    }
+
+    const mainPatch = pickAtomicLinkedPatch(body.main || {});
+    const linkedInput = Array.isArray(body.linked) ? body.linked : [];
+    const linkedPatches = linkedInput.map(item => ({
+        id: item && item.id,
+        patch: pickAtomicLinkedPatch(item)
+    }));
+
+    const hasMainPatch = Object.keys(mainPatch).length > 0;
+    const hasLinkedPatch = linkedPatches.some(item => Object.keys(item.patch).length > 0);
+    if (!hasMainPatch && !hasLinkedPatch) {
+        return res.status(400).json({ error: 'No atomic booking fields to update' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const mainResult = await client.query('SELECT * FROM bookings WHERE id = $1 FOR UPDATE', [id]);
+        const oldMain = mainResult.rows[0];
+        if (!oldMain) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Booking not found' });
+        }
+        if (oldMain.linked_to) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Atomic linked update must target the main booking' });
+        }
+
+        const linkedResult = await client.query(
+            "SELECT * FROM bookings WHERE linked_to = $1 AND status != 'cancelled' FOR UPDATE",
+            [id]
+        );
+        const linkedRows = linkedResult.rows;
+        const linkedById = new Map(linkedRows.map(row => [row.id, row]));
+        const linkedPatchById = new Map();
+        for (const item of linkedPatches) {
+            if (!validateId(item.id) || !linkedById.has(item.id)) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Linked booking does not belong to the main booking' });
+            }
+            linkedPatchById.set(item.id, item.patch);
+        }
+
+        const mainTimeShapeChanged = ['date', 'time', 'duration'].some(field =>
+            Object.prototype.hasOwnProperty.call(mainPatch, field)
+        );
+        if (mainTimeShapeChanged && linkedRows.length > 0 && linkedPatchById.size !== linkedRows.length) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'All linked bookings must be included for time or duration changes' });
+        }
+        if (mainTimeShapeChanged && linkedRows.length > 0) {
+            const requiredLinkedFields = ['date', 'time', 'duration'].filter(field =>
+                Object.prototype.hasOwnProperty.call(mainPatch, field)
+            );
+            for (const row of linkedRows) {
+                const patch = linkedPatchById.get(row.id) || {};
+                const missingField = requiredLinkedFields.find(field =>
+                    !Object.prototype.hasOwnProperty.call(patch, field)
+                );
+                if (missingField) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ error: `Linked booking ${row.id} is missing ${missingField}` });
+                }
+            }
+        }
+
+        const groupIds = [oldMain.id, ...linkedRows.map(row => row.id)];
+        const mainCandidate = buildAtomicLinkedCandidate(oldMain, mainPatch);
+        const mainValidationError = validateAtomicLinkedCandidate(mainCandidate);
+        if (mainValidationError) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: mainValidationError });
+        }
+
+        const linkedCandidates = [];
+        for (const row of linkedRows) {
+            const patch = linkedPatchById.get(row.id) || {};
+            const candidate = buildAtomicLinkedCandidate(row, patch);
+            const validationError = validateAtomicLinkedCandidate(candidate);
+            if (validationError) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: validationError, conflictBookingId: row.id });
+            }
+            if (Object.keys(patch).length > 0) linkedCandidates.push(candidate);
+        }
+
+        const mainLineConflict = await findAtomicLineConflict(client, mainCandidate, groupIds);
+        if (mainLineConflict) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                error: `Час зайнятий: ${mainLineConflict.label || mainLineConflict.program_code || mainLineConflict.id}`,
+                conflictBookingId: mainLineConflict.id
+            });
+        }
+
+        const mainRoomConflict = await findAtomicRoomConflict(client, mainCandidate, groupIds);
+        if (mainRoomConflict) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                error: `Кімната зайнята: ${mainRoomConflict.label || mainRoomConflict.program_code || mainRoomConflict.id}`,
+                conflictBookingId: mainRoomConflict.id
+            });
+        }
+
+        const mainAnimatorConflict = await findAtomicAnimatorConflict(client, mainCandidate, groupIds);
+        if (mainAnimatorConflict) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                error: `Аніматор зайнятий: ${mainAnimatorConflict.label || mainAnimatorConflict.program_code || mainAnimatorConflict.id}`,
+                conflictBookingId: mainAnimatorConflict.id
+            });
+        }
+
+        for (const candidate of linkedCandidates) {
+            const linkedLineConflict = await findAtomicLineConflict(client, candidate, groupIds);
+            if (linkedLineConflict) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false,
+                    error: `Час зайнятий у пов'язаного бронювання: ${linkedLineConflict.label || linkedLineConflict.program_code || linkedLineConflict.id}`,
+                    conflictBookingId: linkedLineConflict.id
+                });
+            }
+        }
+
+        const savedMainRow = await updateAtomicLinkedBookingFields(client, id, mainPatch);
+        const savedLinkedRows = [];
+        const updatedLinkedRows = [];
+        for (const row of linkedRows) {
+            const patch = linkedPatchById.get(row.id) || {};
+            const savedRow = await updateAtomicLinkedBookingFields(client, row.id, patch);
+            if (savedRow) savedLinkedRows.push(savedRow);
+            if (savedRow && Object.keys(patch).length > 0) updatedLinkedRows.push(savedRow);
+        }
+
+        if (body.historyAction) {
+            await client.query(
+                'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
+                [body.historyAction, req.user?.username, JSON.stringify(body.historyData || {
+                    bookingId: id,
+                    main: body.main || {},
+                    linked: linkedInput
+                })]
+            );
+        }
+
+        await client.query('COMMIT');
+
+        const mainBooking = savedMainRow ? mapBookingRow(savedMainRow) : mapBookingRow(oldMain);
+        const linkedBookings = savedLinkedRows.map(mapBookingRow);
+
+        broadcast('booking:updated', mainBooking, req.user?.id?.toString(), mainBooking.date);
+        for (const linkedRow of updatedLinkedRows) {
+            const linkedBooking = mapBookingRow(linkedRow);
+            broadcast('booking:updated', linkedBooking, req.user?.id?.toString(), linkedBooking.date);
+        }
+        _alertPush();
+
+        if (mainBooking.status !== 'preliminary') {
+            getLineName(mainBooking.lineId, mainBooking.date).then(lineName => notifyTelegram('edit', {
+                ...mainBooking,
+                program_code: mainBooking.programCode,
+                program_name: mainBooking.programName,
+                kids_count: mainBooking.kidsCount,
+                created_by: mainBooking.createdBy
+            }, { username: req.user?.username, bookingId: id, lineName }))
+                .catch(err => log.error(`Telegram notify failed (linked-atomic): ${err.message}`));
+        }
+
+        res.json({ success: true, booking: mainBooking, linkedBookings });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(rbErr => log.error('Rollback failed (linked-atomic)', rbErr));
+        log.error('Error updating linked booking group atomically', err);
+        res.status(500).json({ error: 'Failed to update linked bookings atomically' });
+    } finally {
+        client.release();
+    }
+});
+
 router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     const { id } = req.params;
     const b = req.body;

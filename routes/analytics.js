@@ -12,8 +12,8 @@ const { createLogger } = require('../utils/logger');
 const { requireRole } = require('../middleware/auth');
 const log = createLogger('Analytics');
 
-// RBAC: Analytics — management only (creator, director, vice_director, senior_manager)
-router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager'));
+// RBAC: Analytics - manager-up, aligned with middleware/js/sidebar page access.
+router.use(requireRole('manager'));
 
 // ==========================================
 // CACHE (5-minute TTL)

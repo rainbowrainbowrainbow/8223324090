@@ -182,6 +182,34 @@ async function apiUpdateBooking(id, booking) {
     }
 }
 
+async function apiUpdateLinkedBookingsAtomic(id, payload) {
+    try {
+        const response = await fetch(`${API_BASE}/bookings/${id}/linked-atomic`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (response.status === 409) {
+            const body = await response.json().catch(() => ({}));
+            return {
+                success: false,
+                conflict: true,
+                error: body.error || 'Конфлікт даних',
+                conflictBookingId: body.conflictBookingId || null
+            };
+        }
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API updateLinkedBookingsAtomic error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
 async function apiGetLines(date) {
     try {
         const response = await fetch(`${API_BASE}/lines/${date}`, { headers: getAuthHeaders(false) });

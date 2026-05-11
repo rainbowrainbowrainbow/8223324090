@@ -4,6 +4,60 @@
 
 ---
 
+## v0.44.6 - Report-bot submit transaction and idempotency (2026-05-11)
+
+### Finance/report integrity [codex]
+- **Transactional submit** - `POST /api/report-bot/submit` now writes the submission queue row, finance transaction, and legacy report row in one DB transaction.
+- **Duplicate guard** - submit uses a durable idempotency key from explicit request/raw payload IDs, with a stable payload fallback for repeat deliveries.
+- **Rollback safety** - if the legacy report write fails after the finance write, the whole submit is rolled back instead of leaving split finance/report state.
+- **Kyiv date** - the submit path now uses an explicit request date or Europe/Kyiv today instead of UTC-only `toISOString()` day slicing.
+- **Focused coverage** - added tests for success, duplicate submit, and partial failure rollback.
+
+---
+
+## v0.44.5 - Atomic linked booking move/resize/shift (2026-05-11)
+
+### Booking integrity [codex]
+- **Atomic linked endpoint** - added `POST /api/bookings/:id/linked-atomic` so main + linked timeline updates commit together or roll back together.
+- **Timeline drag/resize** - drag, cross-line move, resize, and their undo paths now use the atomic server path instead of serial linked `PUT`s.
+- **Time shift undo/redo** - booking time shift, undo shift, and redo shift now update linked bookings in one bounded transaction.
+- **Conflict rollback** - server-side conflict checks validate main and linked targets before any update, preventing partial linked-booking moves.
+- **Focused coverage** - added self-contained tests for success, linked conflict rollback, and incomplete linked payload rejection.
+
+---
+
+## v0.44.4 - Route guard hardening for designs, music, reports, and chat (2026-05-11)
+
+### Authz [codex]
+- **Designs API guard** - `routes/designs.js` now requires the same manager-up/art-director/marketer access used by the design/art pages.
+- **Music API guard** - `routes/music.js` now requires sound-page access instead of accepting any authenticated role.
+- **Reports API guard** - `routes/reports.js` now matches the reports page matrix: creator/director/vice-director/senior-manager/accountant only.
+- **Chat API guard** - `routes/chat.js` now blocks waiter-level users at the API boundary, aligned with `/chat` page access.
+- **Focused coverage** - route smoke now covers allow/deny cases for designs, music, reports, and the actual chat router.
+
+---
+
+## v0.44.3 - Access source-of-truth and sidebar drift guard (2026-05-11)
+
+### Access/Auth [codex]
+- **Access drift check** - added `npm run check:access` and wired it into `npm test` to compare backend `PAGE_ACCESS`, frontend `PAGE_ACCESS`, sidebar access keys, and role metadata.
+- **Unknown page deny** - frontend `canAccessPage()` now rejects unknown routes instead of allowing them by default, while normalizing hash/page aliases safely.
+- **Sidebar reconciliation** - `/sales-funnel` and `/leads` share the same lead access; tasks/chat/Kleshnya/Afisha/Certificates no longer use broad sidebar `all` access where waiter should not see them.
+- **Security role metadata** - added `security` to role permissions/departments/default widgets and shared role UI metadata.
+- **Focused coverage** - route smoke checks security role exposure, `/sales-funnel` alias parity, and waiter exclusion from task page access.
+
+---
+
+## v0.44.2 - Dashboard auth and version-sync guardrails (2026-05-11)
+
+### Dashboard/Auth [codex]
+- **Analytics access** - `/api/analytics` now uses manager-up access, aligned with frontend/sidebar page access.
+- **Widget backend guard** - `/api/dashboard/widgets/:type` enforces server-side role checks for sensitive widgets, and saved dashboard config filters unauthorized widgets.
+- **Version sync guard** - `scripts/version-sync.js` checks dashboard first-screen version/changelog labels so dashboard-specific stale markers are caught.
+- **Focused coverage** - route smoke covers analytics manager-up access and sensitive widget 403s; UI smoke checks dashboard labels against `package.json`.
+
+---
+
 ## v0.44.1 - Sound storage pilot on Supabase Storage (2026-05-11)
 
 ### Storage [codex]

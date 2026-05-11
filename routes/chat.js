@@ -11,12 +11,15 @@ const guardian = require('../services/guardian');
 const linkPreview = require('../services/linkPreview');
 const { createLogger } = require('../utils/logger');
 
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireRole, ROLE_HIERARCHY } = require('../middleware/auth');
 
 const log = createLogger('ChatAPI');
 
-// All chat routes require authentication
+const CHAT_ACCESS_ROLES = ROLE_HIERARCHY.filter(role => role !== 'waiter');
+
+// All chat routes require authentication and /chat page-level access.
 router.use(authenticateToken);
+router.use(requireRole(...CHAT_ACCESS_ROLES));
 
 // Chat message rate limiter: max 1 msg per 500ms per user, 60 msgs/min per channel
 const _chatRateLimits = new Map(); // userId → { lastSent, channelCounts: Map<channelId, {count, resetAt}> }
@@ -49,7 +52,7 @@ function _checkChatRateLimit(userId, channelId) {
 }
 
 // Cleanup rate limit maps every 5 minutes
-setInterval(() => {
+const _chatRateLimitCleanup = setInterval(() => {
     const now = Date.now();
     for (const [userId, data] of _chatRateLimits) {
         if (now - data.lastSent > 120000) {
@@ -57,6 +60,7 @@ setInterval(() => {
         }
     }
 }, 300000);
+if (_chatRateLimitCleanup.unref) _chatRateLimitCleanup.unref();
 
 // Auto-generate VAPID keys if not set
 let _vapidReady = false;

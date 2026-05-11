@@ -1768,40 +1768,28 @@ async function shiftBookingTime(bookingId, minutes) {
             }
         }
 
-        // v3.9: Use PUT for atomic update instead of DELETE+CREATE
         const newBooking = { ...booking, time: newTime };
-        const shiftResult = await apiUpdateBooking(bookingId, newBooking);
+        const shiftResult = await apiUpdateLinkedBookingsAtomic(bookingId, {
+            main: { time: newTime },
+            linked: linkedBookings.map(linked => ({
+                id: linked.id,
+                time: addMinutesToTime(linked.time, minutes)
+            })),
+            historyAction: 'shift',
+            historyData: { ...newBooking, shiftMinutes: minutes }
+        });
         if (shiftResult && shiftResult.success === false) {
             if (shiftResult.conflict) {
                 delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
                 closeAllModals();
                 await renderTimeline();
-                showNotification('Бронювання змінено іншим користувачем. Оновіть таймлайн.', 'error');
+                showNotification(shiftResult.error || 'Бронювання змінено іншим користувачем. Оновіть таймлайн.', 'error');
                 return;
             }
             showNotification(shiftResult.error || 'Помилка переносу бронювання', 'error');
             if (shiftResult.conflictBookingId) revealHiddenBooking(shiftResult.conflictBookingId);
             return;
         }
-
-        // Оновити пов'язані
-        for (const linked of linkedBookings) {
-            const linkedNewTime = addMinutesToTime(linked.time, minutes);
-            const updatedLinked = { ...linked, time: linkedNewTime, linkedTo: newBooking.id };
-            const linkedResult = await apiUpdateBooking(linked.id, updatedLinked);
-            if (linkedResult && linkedResult.success === false) {
-                if (linkedResult.conflict) {
-                    delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
-                    closeAllModals();
-                    await renderTimeline();
-                    showNotification('Пов\'язане бронювання змінено іншим користувачем. Оновіть таймлайн.', 'error');
-                    return;
-                }
-                console.warn(`Failed to shift linked booking ${linked.id}`);
-            }
-        }
-
-        await apiAddHistory('shift', AppState.currentUser?.username, { ...newBooking, shiftMinutes: minutes });
 
         // v5.51: Push undo for shift (stores bookingId, reverse minutes, linked bookings)
         pushUndo('shift', { bookingId, minutes: -minutes, linked: linkedBookings.map(l => l.id) });

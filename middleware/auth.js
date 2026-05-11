@@ -1,6 +1,6 @@
 /**
  * middleware/auth.js — JWT authentication + Role-based access control
- * v22.0.0: Expanded role system — 25 roles with hierarchy and access matrix
+ * v22.0.0: Expanded role system — 26 roles with hierarchy and access matrix
  */
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
@@ -14,7 +14,7 @@ if (!process.env.JWT_SECRET) {
     log.warn('JWT_SECRET not set in environment! Sessions will be lost on restart. Set JWT_SECRET env variable.');
 }
 
-// v22.0.0: Role hierarchy — 25 roles (higher index = more permissions)
+// v22.0.0: Role hierarchy — 26 roles (higher index = more permissions)
 const ROLE_HIERARCHY = [
     'waiter',            // 0
     'dishwasher',        // 1
@@ -52,26 +52,51 @@ const ALL_STAFF = ROLE_HIERARCHY.filter(r => r !== 'waiter');
 const MANAGEMENT_UP = ['creator', 'director', 'vice_director', 'senior_manager'];
 const MANAGER_UP = [...MANAGEMENT_UP, 'manager'];
 const ADMIN_UP = [...MANAGER_UP, 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'];
+const LEADS_ACCESS = [...MANAGER_UP, 'marketer'];
+const ART_ACCESS = [...MANAGER_UP, 'art_director', 'marketer'];
+const PROGRAMS_ACCESS = [...MANAGER_UP, 'admin', 'senior_instructor', 'instructor', 'art_director'];
+const STAFF_PAGE_ACCESS = [...MANAGER_UP, 'admin', 'hr', 'senior_instructor', 'instructor', 'it_specialist', 'security'];
+const HR_PAGE_ACCESS = [...MANAGER_UP, 'hr', 'admin', 'security'];
+const TRAINING_ACCESS = [...MANAGER_UP, 'hr', 'senior_instructor', 'instructor'];
 const PAGE_ACCESS = {
     '/dashboard': ROLE_HIERARCHY,  // Everyone
     '/':          ALL_STAFF,
     '/tasks':     ALL_STAFF,
+    '/chat':      ALL_STAFF,
+    '/kleshnya':  ALL_STAFF,
     '/center':    MANAGER_UP,
-    '/art':       [...MANAGER_UP, 'art_director', 'marketer'],
+    '/art':       ART_ACCESS,
+    '/art-director': ART_ACCESS,
+    '/content':   ART_ACCESS,
+    '/designer':  ART_ACCESS,
+    '/designs':   ART_ACCESS,
     '/graduation': [...MANAGER_UP, 'admin', 'art_director', 'marketer'],
     '/customers': [...ADMIN_UP, 'reception'],
-    '/staff':     [...MANAGER_UP, 'hr'],
+    '/staff':     STAFF_PAGE_ACCESS,
     '/warehouse': [...MANAGER_UP, 'admin'],
-    '/training':  [...MANAGER_UP, 'senior_instructor', 'instructor'],
+    '/training':  TRAINING_ACCESS,
     '/settings':  ['creator', 'director'],
     '/demo':      MANAGER_UP,
-    '/programs':  [...ADMIN_UP, 'senior_instructor'],
-    '/hr':        [...MANAGER_UP, 'hr'],
-    '/chat':      ALL_STAFF,
+    '/programs':  PROGRAMS_ACCESS,
+    '/hr':        HR_PAGE_ACCESS,
+    '/checkin':   HR_PAGE_ACCESS,
     '/finance':   ['creator', 'director', 'accountant'],
     '/analytics': MANAGER_UP,
     '/status':    MANAGER_UP,
+    '/omni':      MANAGER_UP,
+    '/copilot':   MANAGER_UP,
     '/sound':     [...MANAGER_UP, 'art_director'],
+    '/afisha':    ALL_STAFF,
+    '/certificates': ALL_STAFF,
+    '/sales-funnel': LEADS_ACCESS,
+    '/leads':     LEADS_ACCESS,
+    '/report-agent': ['creator', 'director', 'vice_director'],
+    '/reports':   ['creator', 'director', 'vice_director', 'senior_manager', 'accountant'],
+    '/game':      ROLE_HIERARCHY,
+    '/profile':   ROLE_HIERARCHY,
+    '/quiz':      ROLE_HIERARCHY,
+    '/room':      ROLE_HIERARCHY,
+    '/shop':      ROLE_HIERARCHY,
 };
 
 // v22.0.0: Action permissions matrix for timeline

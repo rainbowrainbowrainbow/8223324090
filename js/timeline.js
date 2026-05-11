@@ -1359,28 +1359,7 @@ async function _saveDragResult(state, timeDelta, lineChanged) {
     const newTime = minutesToTime(s.currentMin);
 
     try {
-        // 1. Update main booking
         const mainUpdate = { ...s.booking, time: newTime, lineId: s.newLineId };
-        const mainResult = await apiUpdateBooking(s.booking.id, mainUpdate);
-        if (mainResult && mainResult.success === false) {
-            showNotification(mainResult.error || 'Помилка переміщення', 'error');
-            return false;
-        }
-
-        // 2. Update all related bookings
-        for (const rb of s.relatedBookings) {
-            if (!rb.moveWith) continue;
-            const rbNewMin = timeToMinutes(rb.booking.time) + timeDelta;
-            const rbNewTime = minutesToTime(rbNewMin);
-            const rbUpdate = { ...rb.booking, time: rbNewTime };
-            // Linked bookings stay on their own line (not switched)
-            const rbResult = await apiUpdateBooking(rb.booking.id, rbUpdate);
-            if (rbResult && rbResult.success === false) {
-                console.warn(`Failed to move related booking ${rb.booking.id}`);
-            }
-        }
-
-        // 3. History entry
         const historyData = {
             ...mainUpdate,
             shiftMinutes: timeDelta,
@@ -1388,9 +1367,26 @@ async function _saveDragResult(state, timeDelta, lineChanged) {
             oldLineId: s.startLineId,
             oldTime: minutesToTime(s.startMin)
         };
-        await apiAddHistory('drag', AppState.currentUser?.username, historyData);
+        const linked = s.relatedBookings
+            .filter(rb => rb.moveWith)
+            .map(rb => ({
+                id: rb.booking.id,
+                time: minutesToTime(timeToMinutes(rb.booking.time) + timeDelta)
+            }));
+        const atomicResult = await apiUpdateLinkedBookingsAtomic(s.booking.id, {
+            main: { time: newTime, lineId: s.newLineId },
+            linked,
+            historyAction: 'drag',
+            historyData
+        });
+        if (atomicResult && atomicResult.success === false) {
+            showNotification(atomicResult.error || 'Помилка переміщення', 'error');
+            if (atomicResult.conflictBookingId && typeof revealHiddenBooking === 'function') {
+                revealHiddenBooking(atomicResult.conflictBookingId);
+            }
+            return false;
+        }
 
-        // 4. Undo support
         pushUndo('drag', {
             bookingId: s.booking.id,
             oldTime: minutesToTime(s.startMin),
@@ -1405,11 +1401,9 @@ async function _saveDragResult(state, timeDelta, lineChanged) {
             }))
         });
 
-        // 5. Invalidate cache & re-render
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
         await renderTimeline();
 
-        // 6. Show undo toast
         _showDragUndoToast(s.booking, timeDelta, lineChanged);
 
         return true;
@@ -1639,8 +1633,18 @@ async function _handleResizeEnd(e) {
     // Save to server
     // Null state BEFORE await so new resizes aren't blocked during async save
     _resizeState = null;
-    const updated = { ...s.booking, duration: s.newDuration };
-    const result = await apiUpdateBooking(s.booking.id, updated);
+    const linked = allBookings.filter(b => b.linkedTo === s.booking.id);
+    const result = await apiUpdateLinkedBookingsAtomic(s.booking.id, {
+        main: { duration: s.newDuration },
+        linked: linked.map(lb => ({ id: lb.id, duration: s.newDuration })),
+        historyAction: 'resize',
+        historyData: {
+            bookingId: s.booking.id,
+            oldDuration: s.originalDuration,
+            newDuration: s.newDuration,
+            linked: linked.map(l => l.id)
+        }
+    });
 
     if (result && result.success === false) {
         showNotification(result.error || 'Помилка зміни тривалості', 'error');
@@ -1651,12 +1655,6 @@ async function _handleResizeEnd(e) {
         const badge = s.block.querySelector('.duration-badge');
         if (badge) badge.textContent = `${s.originalDuration}хв`;
     } else {
-        // Update linked bookings duration too
-        const linked = allBookings.filter(b => b.linkedTo === s.booking.id);
-        for (const lb of linked) {
-            await apiUpdateBooking(lb.id, { ...lb, duration: s.newDuration });
-        }
-
         pushUndo('resize', {
             bookingId: s.booking.id,
             oldDuration: s.originalDuration,
@@ -1706,18 +1704,21 @@ handleUndo = async function() {
         const bookings = await getBookingsForDate(AppState.selectedDate);
         const booking = bookings.find(b => b.id === bookingId);
         if (booking) {
-            // Restore main booking
-            await apiUpdateBooking(bookingId, { ...booking, time: oldTime, lineId: oldLineId });
-            // Restore linked bookings
-            for (const lb of linked) {
-                const lbBooking = bookings.find(b => b.id === lb.id);
-                if (lbBooking) {
-                    await apiUpdateBooking(lb.id, { ...lbBooking, time: lb.oldTime });
-                }
-            }
-            await apiAddHistory('undo_drag', AppState.currentUser?.username, {
-                ...booking, time: oldTime, lineId: oldLineId
+            const result = await apiUpdateLinkedBookingsAtomic(bookingId, {
+                main: { time: oldTime, lineId: oldLineId },
+                linked: linked
+                    .filter(lb => bookings.some(b => b.id === lb.id))
+                    .map(lb => ({ id: lb.id, time: lb.oldTime })),
+                historyAction: 'undo_drag',
+                historyData: { ...booking, time: oldTime, lineId: oldLineId }
             });
+            if (result && result.success === false) {
+                showNotification(result.error || 'Помилка скасування перетягування', 'error');
+                if (result.conflictBookingId && typeof revealHiddenBooking === 'function') {
+                    revealHiddenBooking(result.conflictBookingId);
+                }
+                return;
+            }
         }
         showNotification('Перетягування скасовано', 'warning');
         AppState.cachedBookings = {};
@@ -1732,10 +1733,20 @@ handleUndo = async function() {
         const bookings = await getBookingsForDate(AppState.selectedDate);
         const booking = bookings.find(b => b.id === bookingId);
         if (booking) {
-            await apiUpdateBooking(bookingId, { ...booking, duration: oldDuration });
-            for (const lbId of linked) {
-                const lb = bookings.find(b => b.id === lbId);
-                if (lb) await apiUpdateBooking(lbId, { ...lb, duration: oldDuration });
+            const result = await apiUpdateLinkedBookingsAtomic(bookingId, {
+                main: { duration: oldDuration },
+                linked: linked
+                    .filter(lbId => bookings.some(b => b.id === lbId))
+                    .map(lbId => ({ id: lbId, duration: oldDuration })),
+                historyAction: 'undo_resize',
+                historyData: { ...booking, duration: oldDuration }
+            });
+            if (result && result.success === false) {
+                showNotification(result.error || 'Помилка скасування зміни тривалості', 'error');
+                if (result.conflictBookingId && typeof revealHiddenBooking === 'function') {
+                    revealHiddenBooking(result.conflictBookingId);
+                }
+                return;
             }
         }
         showNotification('Зміну тривалості скасовано', 'warning');

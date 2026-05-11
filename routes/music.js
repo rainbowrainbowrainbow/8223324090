@@ -61,8 +61,9 @@ async function _cleanupStoredSound(stored) {
     }
 }
 
-// All music routes require authentication
+// All music routes require authentication and sound-page-level access.
 router.use(authenticateToken);
+router.use(requireRole('manager', 'art_director'));
 
 // ============================================
 // Announcements — CRUD

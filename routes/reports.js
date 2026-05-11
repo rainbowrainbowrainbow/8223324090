@@ -12,8 +12,8 @@ const { requireRole } = require('../middleware/auth');
 
 const log = createLogger('Reports');
 
-// RBAC: Reports access
-router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin', 'accountant'));
+// RBAC: Reports access — aligned with /reports page/sidebar visibility.
+router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'accountant'));
 
 // ==========================================
 // HELPERS

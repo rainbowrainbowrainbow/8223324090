@@ -25,6 +25,7 @@ const ROLE_PERMISSIONS = {
     hr:                 { taskVisibility: 'department', canCreateTasks: true, canDeleteTasks: false, canAssignAnyone: false },
     // Operations
     admin:              { taskVisibility: 'own', canCreateTasks: true, canDeleteTasks: false, canAssignAnyone: false },
+    security:           { taskVisibility: 'own', canCreateTasks: false, canDeleteTasks: false, canAssignAnyone: false },
     // Programs
     senior_instructor:  { taskVisibility: 'own', canCreateTasks: false, canDeleteTasks: false, canAssignAnyone: false },
     instructor:         { taskVisibility: 'own', canCreateTasks: false, canDeleteTasks: false, canAssignAnyone: false },
@@ -54,7 +55,7 @@ const ROLE_DEPARTMENTS = {
     senior_instructor: 'programs', instructor: 'programs', animator: 'programs',
     head_chef: 'kitchen', cook: 'kitchen', head_pastry: 'kitchen',
     pastry_chef: 'kitchen', barista: 'kitchen', dishwasher: 'kitchen',
-    reception: 'operations', wardrobe: 'operations', cleaning: 'operations',
+    reception: 'operations', security: 'operations', wardrobe: 'operations', cleaning: 'operations',
     maintenance: 'operations', waiter: 'service',
 };
 
@@ -75,6 +76,7 @@ const DEFAULT_WIDGETS = {
     hr:             ['hr_overview', 'staff_today', 'tasks', 'team_online', 'my_schedule', 'announcements', 'weather'],
     // Operations
     admin:          ['exceptions', 'tasks', 'bookings_today', 'my_schedule', 'weather', 'announcements'],
+    security:       ['my_schedule', 'tasks', 'alerts', 'weather'],
     // Programs
     senior_instructor: ['my_schedule', 'tasks', 'bookings_today', 'weather', 'announcements'],
     instructor:     ['my_schedule', 'tasks', 'bookings_today', 'weather'],
@@ -96,6 +98,34 @@ const DEFAULT_WIDGETS = {
     _default:       ['tasks', 'my_schedule', 'weather', 'announcements'],
 };
 
+// Frontend mirrors these thresholds in js/dashboard-page.js.
+// Server routes use them as the authoritative guard for direct widget API calls.
+const DASHBOARD_WIDGET_MIN_ROLES = {
+    tasks: null,
+    bookings_today: 'admin',
+    my_schedule: null,
+    team_online: 'manager',
+    quick_stats: 'admin',
+    alerts: null,
+    leads_new: 'manager',
+    finance_today: 'senior_manager',
+    announcements: null,
+    weather: null,
+    currency: 'manager',
+    reports_today: 'senior_manager',
+    exceptions: 'admin',
+    catalogs: 'admin',
+    account_stats: 'manager',
+    staff_today: 'manager',
+    week_bookings: 'admin',
+    team_tasks: 'manager',
+    hr_overview: 'hr',
+    director_pnl: 'director',
+    content_pipeline: 'art_director',
+    task_health: 'manager',
+    operations: 'vice_director',
+};
+
 // Default for unknown roles
 const DEFAULT_PERMISSIONS = { taskVisibility: 'own', canCreateTasks: false, canDeleteTasks: false, canAssignAnyone: false };
 
@@ -107,4 +137,30 @@ function getDefaultWidgets(role) {
     return DEFAULT_WIDGETS[role] || DEFAULT_WIDGETS._default;
 }
 
-module.exports = { ROLE_PERMISSIONS, DEFAULT_PERMISSIONS, ROLE_DEPARTMENTS, DEFAULT_WIDGETS, getPermissions, getDefaultWidgets };
+function canAccessDashboardWidget(role, widgetType, roleLevel = {}) {
+    if (!Object.prototype.hasOwnProperty.call(DASHBOARD_WIDGET_MIN_ROLES, widgetType)) {
+        return null;
+    }
+
+    if (getDefaultWidgets(role).includes(widgetType)) {
+        return true;
+    }
+
+    const minRole = DASHBOARD_WIDGET_MIN_ROLES[widgetType];
+    if (!minRole) return true;
+
+    const userLevel = roleLevel[role];
+    const minLevel = roleLevel[minRole];
+    return Number.isInteger(userLevel) && Number.isInteger(minLevel) && userLevel >= minLevel;
+}
+
+module.exports = {
+    ROLE_PERMISSIONS,
+    DEFAULT_PERMISSIONS,
+    ROLE_DEPARTMENTS,
+    DEFAULT_WIDGETS,
+    DASHBOARD_WIDGET_MIN_ROLES,
+    getPermissions,
+    getDefaultWidgets,
+    canAccessDashboardWidget
+};

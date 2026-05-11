@@ -9,8 +9,8 @@ const Sidebar = (() => {
         { type: 'group', key: 'crm', label: 'CRM', icon: '📋', defaultOpen: true },
         { href: '/dashboard',    icon: '🏠', label: 'Дашборд',       access: 'all',            group: 'crm' },
         { href: '/',             icon: '📅', label: 'Таймлайн',       access: 'timeline',       group: 'crm' },
-        { href: '/tasks',        icon: '✅', label: 'Задачі',         access: 'all',            group: 'crm' },
-        { href: '/chat',         icon: '💬', label: 'Чат',            access: 'all',            group: 'crm' },
+        { href: '/tasks',        icon: '✅', label: 'Задачі',         access: 'tasks',          group: 'crm' },
+        { href: '/chat',         icon: '💬', label: 'Чат',            access: 'chat',           group: 'crm' },
         { href: '/warehouse',    icon: '📦', label: 'Склад',          access: 'warehouse',      group: 'crm' },
         { href: '/center',       icon: '🎛️', label: 'Центр керування', access: 'center',         group: 'crm' },
 
@@ -37,9 +37,9 @@ const Sidebar = (() => {
         { href: '/programs',     icon: '🎪', label: 'Програми',       access: 'programs',       group: 'art' },
         { href: '/art',          icon: '🎨', label: 'Арт директор',   access: 'art',            group: 'art' },
         { href: '/graduation',   icon: '🎓', label: 'Випускний',      access: 'graduation',     group: 'art' },
-        { href: '#afisha',       icon: '🎭', label: 'Афіша',          access: 'all',            group: 'art',
+        { href: '#afisha',       icon: '🎭', label: 'Афіша',          access: 'afisha',         group: 'art',
           action: 'sidebarOpenAfisha',       isHashLink: true },
-        { href: '#certificates', icon: '🎫', label: 'Сертифікати',    access: 'all',            group: 'art',
+        { href: '#certificates', icon: '🎫', label: 'Сертифікати',    access: 'certificates',   group: 'art',
           action: 'sidebarOpenCertificates', isHashLink: true },
 
         // ─── GROUP: Дизайнер (візуал, каталоги, стайлгайд) ─────
@@ -57,7 +57,7 @@ const Sidebar = (() => {
 
         // ─── GROUP: Система ──────────────────────────────────────
         { type: 'group', key: 'system', label: 'Система', icon: '⚙️', defaultOpen: true },
-        { href: '/kleshnya',     icon: '🦞', label: 'Клешня',         access: 'all',            group: 'system' },
+        { href: '/kleshnya',     icon: '🦞', label: 'Клешня',         access: 'chat',           group: 'system' },
         { href: '/game',         icon: '🎮', label: 'Гра',            access: 'all',            group: 'system' },
         { href: '/demo',         icon: '🎬', label: 'Demo',           access: 'demo',           group: 'system' },
         { href: '#settings',     icon: '⚙️', label: 'Налаштування',   access: 'settings',       group: 'system',
@@ -67,10 +67,14 @@ const Sidebar = (() => {
     // ═══ ACCESS MATRIX ════════════════════════════════════════════
     const ALL = true;
     // v39.10: Sidebar access aligned with PAGE_ACCESS + security/reception roles added
+    const _ROLE_HIERARCHY = ['waiter','dishwasher','maintenance','cleaning','wardrobe','barista','security','reception','animator','pastry_chef','head_pastry','cook','head_chef','instructor','senior_instructor','admin','hr','it_specialist','marketer','art_director','accountant','manager','senior_manager','vice_director','director','creator'];
+    const _ALL_STAFF = _ROLE_HIERARCHY.filter(r => r !== 'waiter');
     const _MGR_UP = ['creator','director','vice_director','senior_manager','manager'];
     const _ADMIN_UP = [..._MGR_UP, 'admin', 'hr', 'accountant', 'art_director', 'marketer', 'it_specialist'];
     const SIDEBAR_ACCESS = {
         all:            ALL,
+        tasks:          _ALL_STAFF,
+        chat:           _ALL_STAFF,
         timeline:       [..._ADMIN_UP, 'reception', 'senior_instructor', 'instructor', 'security'],
         management:     [..._MGR_UP, 'admin', 'marketer'],
         leads:          [..._MGR_UP, 'marketer'],
@@ -87,6 +91,8 @@ const Sidebar = (() => {
         art:            [..._MGR_UP, 'art_director', 'marketer'],
         content:        [..._MGR_UP, 'art_director', 'marketer'],
         sound:          [..._MGR_UP, 'art_director'],
+        afisha:         _ALL_STAFF,
+        certificates:   _ALL_STAFF,
         demo:           _MGR_UP,
         settings:       ['creator','director'],
         schedule_daily: [..._MGR_UP, 'admin', 'hr', 'senior_instructor', 'instructor', 'it_specialist', 'security'],

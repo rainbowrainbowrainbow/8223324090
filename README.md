@@ -79,7 +79,7 @@ npm run health
 ```
 
 Notes:
-- `npm test` runs the fast local baseline: runtime check, version sync check, migration governance check, JavaScript parser check, unit tests, and UI/static smoke.
+- `npm test` runs the fast local baseline: runtime check, version sync check, access/sidebar drift check, migration governance check, JavaScript parser check, unit tests, and UI/static smoke.
 - `npm run verify` is the same baseline command spelled explicitly for agents.
 - `npm run check:runtime` requires Node 22.x and npm 10.x so local verification matches the Railway baseline.
 - `npm run check:version` checks version references without editing files.

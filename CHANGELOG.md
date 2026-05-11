@@ -4,6 +4,17 @@
 
 ---
 
+## v0.44.12 - Guardian RBAC hardening for control routes (2026-05-11)
+
+### Guardian authz [codex]
+- **Exact-role guards** - Guardian admin/control routes now use explicit `creator` / `director` / `admin` role sets instead of generic authentication or legacy role expansion.
+- **Owner-only controls** - channel Guardian toggles are limited to `creator` and `director`, while emergency stop is limited to `creator`.
+- **Mute safety** - regular users can only see and clear their own active mute; Guardian admins can still view and manage all active mutes.
+- **Command context** - `/api/guardian/command` now passes the authenticated user identity and exact admin flag into the Guardian command handler.
+- **Focused tests** - added Guardian RBAC coverage for non-admin denial, admin allow, owner-only controls, self-unmute behavior, and command identity propagation.
+
+---
+
 ## v0.44.11 - Chat upload durability and file safety (2026-05-11)
 
 ### Chat uploads [codex]

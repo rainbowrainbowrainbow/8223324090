@@ -22,6 +22,36 @@ const log = createLogger('GuardianRoute');
 // All guardian routes require authentication
 router.use(authenticateToken);
 
+const GUARDIAN_ADMIN_ROLES = ['creator', 'director', 'admin'];
+const GUARDIAN_OWNER_ROLES = ['creator', 'director'];
+const GUARDIAN_EMERGENCY_ROLES = ['creator'];
+
+function getCurrentUserId(req) {
+    return req.user?.id || req.user?.userId;
+}
+
+function hasExactRole(req, roles) {
+    return Boolean(req.user && roles.includes(req.user.role));
+}
+
+function requireExactRoles(roles) {
+    return (req, res, next) => {
+        if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+        if (!roles.includes(req.user.role)) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+        }
+        next();
+    };
+}
+
+const requireGuardianAdmin = requireExactRoles(GUARDIAN_ADMIN_ROLES);
+const requireGuardianOwner = requireExactRoles(GUARDIAN_OWNER_ROLES);
+const requireGuardianEmergency = requireExactRoles(GUARDIAN_EMERGENCY_ROLES);
+
+// Intentionally broader authenticated reads remain for ambient chat UI:
+// /reports, /mood, /health, and channel mood feed digest/mood indicators.
+// Control-plane writes and sensitive admin logs/configs below use exact-role RBAC.
+
 // Phase 3 functions — optional, may not be available yet
 let handleGuardianCommand, calculateChannelHealth, getChannelMoodSummary, getUserMoodProfile, generateWeeklyReport, getActivityHeatmap, getTrustScore, updateTrustScore, checkEscalation;
 try {
@@ -73,7 +103,7 @@ router.get('/reports', async (req, res) => {
  * POST /api/guardian/reports/generate
  * Manually trigger report generation for a channel/date
  */
-router.post('/reports/generate', async (req, res) => {
+router.post('/reports/generate', requireGuardianAdmin, async (req, res) => {
     try {
         const { channelId, date } = req.body;
         const dateStr = date || new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Kyiv' });
@@ -95,7 +125,7 @@ router.post('/reports/generate', async (req, res) => {
  * GET /api/guardian/actions
  * List guardian actions (mutes, masks, warns)
  */
-router.get('/actions', async (req, res) => {
+router.get('/actions', requireGuardianAdmin, async (req, res) => {
     try {
         const { type, channelId, limit = 50 } = req.query;
         let query = `
@@ -143,14 +173,21 @@ router.get('/actions', async (req, res) => {
  */
 router.get('/mutes/active', async (req, res) => {
     try {
-        const result = await pool.query(`
+        const params = [];
+        let query = `
             SELECT cm.*, u.username, u.name AS display_name, cc.name AS channel_name
             FROM chat_mutes cm
             JOIN users u ON u.id = cm.user_id
             LEFT JOIN chat_channels cc ON cc.id = cm.channel_id
             WHERE cm.muted_until > NOW()
-            ORDER BY cm.muted_until ASC
-        `);
+        `;
+        if (!hasExactRole(req, GUARDIAN_ADMIN_ROLES)) {
+            params.push(getCurrentUserId(req));
+            query += ` AND cm.user_id = $${params.length}`;
+        }
+        query += ' ORDER BY cm.muted_until ASC';
+
+        const result = await pool.query(query, params);
         res.json(result.rows.map(r => ({
             id: r.id,
             channelId: r.channel_id,
@@ -176,12 +213,17 @@ router.delete('/mutes/:id', async (req, res) => {
     try {
         // Get mute info before clearing (need channelId + userId for cache)
         const muteInfo = await pool.query('SELECT channel_id, user_id FROM chat_mutes WHERE id = $1', [req.params.id]);
+        if (muteInfo.rows.length === 0) {
+            return res.status(404).json({ error: 'Mute not found' });
+        }
+        const { channel_id, user_id } = muteInfo.rows[0];
+        if (!hasExactRole(req, GUARDIAN_ADMIN_ROLES) && String(user_id) !== String(getCurrentUserId(req))) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+        }
+
         await pool.query('UPDATE chat_mutes SET muted_until = NOW() WHERE id = $1', [req.params.id]);
         // Clear in-memory cache so user can send messages immediately
-        if (muteInfo.rows.length > 0) {
-            const { channel_id, user_id } = muteInfo.rows[0];
-            clearMuteCache(channel_id, user_id);
-        }
+        clearMuteCache(channel_id, user_id);
         res.json({ success: true });
     } catch (err) {
         log.error('DELETE /mutes error', err);
@@ -193,7 +235,7 @@ router.delete('/mutes/:id', async (req, res) => {
  * GET /api/guardian/stats
  * Guardian statistics summary
  */
-router.get('/stats', async (req, res) => {
+router.get('/stats', requireGuardianAdmin, async (req, res) => {
     try {
         const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Kyiv' });
         const [todayActions, totalActions, activeMutes] = await Promise.all([
@@ -235,7 +277,7 @@ router.get('/stats', async (req, res) => {
  * GET /api/guardian/rules
  * List all guardian rules (active by default).
  */
-router.get('/rules', async (req, res) => {
+router.get('/rules', requireGuardianAdmin, async (req, res) => {
     try {
         const { active } = req.query;
         let query = 'SELECT * FROM guardian_rules';
@@ -268,7 +310,7 @@ router.get('/rules', async (req, res) => {
  * POST /api/guardian/rules
  * Create a new guardian rule.
  */
-router.post('/rules', async (req, res) => {
+router.post('/rules', requireGuardianAdmin, async (req, res) => {
     try {
         const { ruleType, name, pattern, action, severity, channelScope, metadata } = req.body;
         if (!name || !action) {
@@ -295,7 +337,7 @@ router.post('/rules', async (req, res) => {
  * PUT /api/guardian/rules/:id
  * Update a guardian rule.
  */
-router.put('/rules/:id', async (req, res) => {
+router.put('/rules/:id', requireGuardianAdmin, async (req, res) => {
     try {
         const { name, pattern, action, severity, channelScope, isActive, metadata } = req.body;
         const result = await pool.query(
@@ -326,7 +368,7 @@ router.put('/rules/:id', async (req, res) => {
  * DELETE /api/guardian/rules/:id
  * Delete a guardian rule.
  */
-router.delete('/rules/:id', async (req, res) => {
+router.delete('/rules/:id', requireGuardianAdmin, async (req, res) => {
     try {
         await pool.query('DELETE FROM guardian_rules WHERE id = $1', [req.params.id]);
         res.json({ success: true });
@@ -341,7 +383,7 @@ router.delete('/rules/:id', async (req, res) => {
  * Handle inline action buttons from Guardian DM alerts.
  * Actions: mute_both, warn, watch, unmute
  */
-router.post('/action', async (req, res) => {
+router.post('/action', requireGuardianAdmin, async (req, res) => {
     try {
         const { action, channelId, userId, username } = req.body;
         if (!action) {
@@ -421,7 +463,7 @@ router.get('/mood', (req, res) => {
  * GET /api/guardian/state
  * Get full guardian state (mood, health, memory summary)
  */
-router.get('/state', (req, res) => {
+router.get('/state', requireGuardianAdmin, (req, res) => {
     res.json(getGuardianState());
 });
 
@@ -569,7 +611,7 @@ router.get('/mood/channel/:channelId', async (req, res) => {
  * GET /api/guardian/mood/user/:userId
  * Get user mood profile
  */
-router.get('/mood/user/:userId', async (req, res) => {
+router.get('/mood/user/:userId', requireGuardianAdmin, async (req, res) => {
     try {
         const { userId } = req.params;
 
@@ -616,7 +658,7 @@ router.get('/mood/user/:userId', async (req, res) => {
  * GET /api/guardian/mood/team
  * Get team-wide mood summary
  */
-router.get('/mood/team', async (req, res) => {
+router.get('/mood/team', requireGuardianAdmin, async (req, res) => {
     try {
         const { period = 'today' } = req.query;
         const interval = period === 'week' ? '7 days' : '1 day';
@@ -676,7 +718,7 @@ router.get('/mood/team', async (req, res) => {
  * GET /api/guardian/trust/:userId
  * Get trust score for a specific user
  */
-router.get('/trust/:userId', async (req, res) => {
+router.get('/trust/:userId', requireGuardianAdmin, async (req, res) => {
     try {
         const { userId } = req.params;
 
@@ -718,7 +760,7 @@ router.get('/trust/:userId', async (req, res) => {
  * GET /api/guardian/trust
  * Get all users trust scores sorted by score
  */
-router.get('/trust', async (req, res) => {
+router.get('/trust', requireGuardianAdmin, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT gts.user_id, u.username, gts.trust_score, gts.level, gts.negative_actions
@@ -747,7 +789,7 @@ router.get('/trust', async (req, res) => {
  * GET /api/guardian/analytics/heatmap/:channelId
  * Get activity heatmap for a channel
  */
-router.get('/analytics/heatmap/:channelId', async (req, res) => {
+router.get('/analytics/heatmap/:channelId', requireGuardianAdmin, async (req, res) => {
     try {
         const { channelId } = req.params;
         const { days = 7 } = req.query;
@@ -797,7 +839,7 @@ router.get('/analytics/heatmap/:channelId', async (req, res) => {
  * GET /api/guardian/analytics/top-offenders
  * Get top offenders by mute count
  */
-router.get('/analytics/top-offenders', async (req, res) => {
+router.get('/analytics/top-offenders', requireGuardianAdmin, async (req, res) => {
     try {
         const { period = 'week', limit = 10 } = req.query;
         const interval = period === 'month' ? '30 days' : '7 days';
@@ -830,7 +872,7 @@ router.get('/analytics/top-offenders', async (req, res) => {
  * GET /api/guardian/analytics/effectiveness
  * Get guardian effectiveness metrics
  */
-router.get('/analytics/effectiveness', async (req, res) => {
+router.get('/analytics/effectiveness', requireGuardianAdmin, async (req, res) => {
     try {
         const { period = 'week' } = req.query;
         const interval = period === 'month' ? '30 days' : '7 days';
@@ -883,7 +925,7 @@ router.get('/analytics/effectiveness', async (req, res) => {
  * GET /api/guardian/analytics/overview
  * Get guardian analytics overview
  */
-router.get('/analytics/overview', async (req, res) => {
+router.get('/analytics/overview', requireGuardianAdmin, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT
@@ -920,7 +962,7 @@ router.get('/analytics/overview', async (req, res) => {
  * GET /api/guardian/escalation
  * Get all escalation config levels
  */
-router.get('/escalation', async (req, res) => {
+router.get('/escalation', requireGuardianAdmin, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT id, level, name, threshold, action, mute_duration_minutes, notify_telegram, is_active
@@ -947,7 +989,7 @@ router.get('/escalation', async (req, res) => {
  * PUT /api/guardian/escalation/:id
  * Update an escalation config level
  */
-router.put('/escalation/:id', async (req, res) => {
+router.put('/escalation/:id', requireGuardianOwner, async (req, res) => {
     try {
         const { threshold, muteDurationMinutes, notifyTelegram, isActive } = req.body;
         const result = await pool.query(`
@@ -978,7 +1020,7 @@ router.put('/escalation/:id', async (req, res) => {
  * GET /api/guardian/weekly-reports
  * List recent weekly reports
  */
-router.get('/weekly-reports', async (req, res) => {
+router.get('/weekly-reports', requireGuardianAdmin, async (req, res) => {
     try {
         const { limit = 4 } = req.query;
         const result = await pool.query(`
@@ -1008,7 +1050,7 @@ router.get('/weekly-reports', async (req, res) => {
  * POST /api/guardian/weekly-reports/generate
  * Manually trigger weekly report generation
  */
-router.post('/weekly-reports/generate', async (req, res) => {
+router.post('/weekly-reports/generate', requireGuardianAdmin, async (req, res) => {
     try {
         if (!generateWeeklyReport) {
             return res.status(501).json({ error: 'generateWeeklyReport not yet available' });
@@ -1038,7 +1080,13 @@ router.post('/command', async (req, res) => {
         if (!handleGuardianCommand) {
             return res.status(501).json({ error: 'handleGuardianCommand not yet available' });
         }
-        const response = await handleGuardianCommand(channelId, command);
+        const response = await handleGuardianCommand(
+            channelId,
+            getCurrentUserId(req),
+            req.user?.username,
+            command,
+            hasExactRole(req, GUARDIAN_ADMIN_ROLES)
+        );
         res.json({ success: true, response });
     } catch (err) {
         log.error('POST /command error', err);
@@ -1056,7 +1104,7 @@ router.post('/command', async (req, res) => {
  * Body: { channelId, guardianEnabled, contour2Enabled }
  * Auth: creator/director only
  */
-router.post('/toggle', async (req, res) => {
+router.post('/toggle', requireGuardianOwner, async (req, res) => {
     try {
         const { channelId, guardianEnabled, contour2Enabled } = req.body;
         if (!channelId) {
@@ -1110,7 +1158,7 @@ router.post('/toggle', async (req, res) => {
  * GET /api/guardian/toggle/:channelId
  * Get current toggle state for a channel.
  */
-router.get('/toggle/:channelId', async (req, res) => {
+router.get('/toggle/:channelId', requireGuardianAdmin, async (req, res) => {
     try {
         const { channelId } = req.params;
         const settings = await getChannelSettings(parseInt(channelId));
@@ -1135,7 +1183,7 @@ router.get('/toggle/:channelId', async (req, res) => {
  * Body: { stop: true/false }
  * Auth: creator only
  */
-router.post('/emergency-stop', async (req, res) => {
+router.post('/emergency-stop', requireGuardianEmergency, async (req, res) => {
     try {
         const { stop } = req.body;
         if (stop === undefined) {
@@ -1179,7 +1227,7 @@ router.post('/emergency-stop', async (req, res) => {
  * GET /api/guardian/emergency-stop
  * Get current Emergency Stop state.
  */
-router.get('/emergency-stop', async (req, res) => {
+router.get('/emergency-stop', requireGuardianAdmin, async (req, res) => {
     res.json({ emergencyStop: getEmergencyStop() });
 });
 
@@ -1191,7 +1239,7 @@ router.get('/emergency-stop', async (req, res) => {
  * GET /api/guardian/whitelist
  * List all whitelist phrases.
  */
-router.get('/whitelist', async (req, res) => {
+router.get('/whitelist', requireGuardianAdmin, async (req, res) => {
     try {
         const result = await pool.query(
             'SELECT gw.*, u.username AS added_by_username FROM guardian_whitelist gw LEFT JOIN users u ON u.id = gw.added_by ORDER BY gw.created_at DESC'
@@ -1208,7 +1256,7 @@ router.get('/whitelist', async (req, res) => {
  * Add a phrase to the whitelist.
  * Body: { phrase }
  */
-router.post('/whitelist', async (req, res) => {
+router.post('/whitelist', requireGuardianAdmin, async (req, res) => {
     try {
         const { phrase } = req.body;
         if (!phrase || !phrase.trim()) {
@@ -1235,7 +1283,7 @@ router.post('/whitelist', async (req, res) => {
  * DELETE /api/guardian/whitelist/:id
  * Remove a phrase from the whitelist.
  */
-router.delete('/whitelist/:id', async (req, res) => {
+router.delete('/whitelist/:id', requireGuardianAdmin, async (req, res) => {
     try {
         const { id } = req.params;
         await pool.query('DELETE FROM guardian_whitelist WHERE id = $1', [parseInt(id)]);

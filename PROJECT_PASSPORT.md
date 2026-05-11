@@ -1,6 +1,7 @@
 # PROJECT PASSPORT — Event Genix CRM
 
 > Паспорт проекту для передачі в новий чат. Оновлено: 2026-03-25, v38.13.0
+> Runtime note (2026-05-11): current Codex/Railway baseline is Node.js `22.x` with npm `10.x`. Use `AGENTS.md` and `README.md` for current runtime/deploy rules; this passport contains historical branch/version notes.
 
 ---
 

@@ -6,7 +6,7 @@ stale handoff notes.
 
 ## Project Shape
 
-- Event Genix is a Node.js 18+ Express CRM for event and entertainment-center operations.
+- Event Genix is a Node.js 22.x / npm 10.x Express CRM for event and entertainment-center operations.
 - Runtime entrypoint: `server.js`.
 - Package manager: npm, with `package-lock.json` committed.
 - Database: PostgreSQL through raw `pg`; no ORM or TypeScript.
@@ -19,6 +19,15 @@ stale handoff notes.
   - SQL migrations in `db/migrations/`
   - shared frontend helpers in `js/`
   - static pages at repo root
+
+## Runtime Baseline
+
+- Canonical runtime: Node.js `22.x`.
+- Canonical package manager: npm `10.x`, recorded as `packageManager` in `package.json`.
+- Runtime pins live in `package.json` `engines`, `.nvmrc`, and `.node-version`.
+- Railway/Nixpacks should use Node 22 from the package engines or `.nvmrc`; a Railway build falling back to Node 18 is a configuration bug.
+- Do not run verification, install, or deploy work on Node 18 or Node 24 and report it as representative.
+- Run `npm run check:runtime` before trusting local results if there is any doubt.
 
 ## Before Editing
 
@@ -40,6 +49,7 @@ stale handoff notes.
 - Watch mode: `npm run dev`
 - Fast local verification baseline: `npm test`
 - Full local baseline explicitly: `npm run verify`
+- Runtime baseline check: `npm run check:runtime`
 - Version consistency check: `npm run check:version`
 - JavaScript parser check: `npm run check:syntax`
 - Unit tests that do not need a live server: `npm run test:unit`
@@ -52,7 +62,8 @@ stale handoff notes.
 - Health check against a running server: `npm run health`
 
 Notes:
-- `npm test` intentionally runs the fast local baseline: version sync, syntax check, unit tests, and UI smoke.
+- `npm test` intentionally runs the fast local baseline: runtime check, version sync, syntax check, unit tests, and UI smoke.
+- `npm run check:runtime` enforces Node 22.x / npm 10.x. Switch runtimes before interpreting other test results.
 - `npm run test:api` and `npm run test:integration` expect a running PostgreSQL-backed app at `TEST_URL` or `http://localhost:3000`.
 - `npm run check:syntax` is parser-only. It is not a style lint, typecheck, or build.
 - There is currently no style lint, TypeScript typecheck, build, or GitHub Actions CI pipeline.

@@ -6,8 +6,8 @@ For agent-specific working rules, start with [AGENTS.md](AGENTS.md).
 
 ## Runtime Shape
 
-- Runtime: Node.js `>=18.0.0`
-- Package manager: npm with `package-lock.json`
+- Runtime: Node.js `22.x`
+- Package manager: npm `10.x` with `package-lock.json`
 - Entrypoint: `server.js`
 - Backend: Express routes in `routes/`, services in `services/`, middleware in `middleware/`
 - Database: PostgreSQL through raw `pg`, with `db/index.js` and SQL migrations in `db/migrations/`
@@ -17,6 +17,14 @@ For agent-specific working rules, start with [AGENTS.md](AGENTS.md).
 Startup initializes the DB, runs migrations, mounts API/static routes, configures Telegram/report-bot hooks when env vars are present, starts schedulers, and initializes WebSocket support.
 
 ## Local Setup
+
+Use Node 22 before installing or verifying. The repo pins this in `package.json` `engines`, `.nvmrc`, and `.node-version`; Railway/Nixpacks should read the same baseline instead of falling back to Node 18.
+
+Check the active runtime:
+
+```bash
+npm run check:runtime
+```
 
 Install dependencies:
 
@@ -45,6 +53,7 @@ Use the commands that are actually present in `package.json` and scripts:
 ```bash
 npm test
 npm run verify
+npm run check:runtime
 npm run check:version
 npm run check:syntax
 npm run test:unit
@@ -55,8 +64,9 @@ npm run health
 ```
 
 Notes:
-- `npm test` runs the fast local baseline: version sync check, JavaScript parser check, unit tests, and UI/static smoke.
+- `npm test` runs the fast local baseline: runtime check, version sync check, JavaScript parser check, unit tests, and UI/static smoke.
 - `npm run verify` is the same baseline command spelled explicitly for agents.
+- `npm run check:runtime` requires Node 22.x and npm 10.x so local verification matches the Railway baseline.
 - `npm run check:version` checks version references without editing files.
 - `npm run check:syntax` parses repository JavaScript with Node; it is not a style lint, typecheck, or build.
 - `npm run test:unit` runs self-contained Node tests that do not need a live server.
@@ -91,6 +101,7 @@ The project is documented as Railway-hosted, but historical docs disagree on the
 - Do not push to `deployed` unless the user confirms the target branch/environment.
 - Do not change Railway settings or production env vars without explicit confirmation.
 - Do not upload files through GitHub UI.
+- Railway builds must use Node 22.x. If build logs show Node 18 or engine warnings for Node 20+/22+ dependencies, stop and fix the runtime baseline before treating the deployment as valid.
 
 ## Worktree And Change Hygiene
 

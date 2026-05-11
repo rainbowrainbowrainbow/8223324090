@@ -4,6 +4,16 @@
 
 ---
 
+## v43.14.0 - Node 22 runtime and Railway baseline (2026-05-11)
+
+### Platform baseline [codex]
+- **Canonical runtime** - pinned Event Genix to Node `22.x` and npm `10.x` through `package.json`, `.nvmrc`, and `.node-version`.
+- **Railway alignment** - documented that Railway/Nixpacks must use Node 22 and that any fallback to Node 18 or EBADENGINE warnings is a deploy-blocking runtime drift.
+- **Verification guard** - added `npm run check:runtime` and made `npm test` run it before version, syntax, unit, and UI checks.
+- **First screen** - updated the login version marker and "Що нового" entry for the runtime baseline release.
+
+---
+
 ## v43.13.0 - Codex stabilization pack (2026-05-11)
 
 ### Stabilization [codex]

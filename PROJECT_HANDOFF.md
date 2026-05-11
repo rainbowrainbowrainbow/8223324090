@@ -1,5 +1,7 @@
 # Парк Закревського Періоду — Повний профіль проекту для нового чату
 
+> Runtime note (2026-05-11): current Codex/Railway baseline is Node.js `22.x` with npm `10.x`. Use `AGENTS.md` and `README.md` for current runtime/deploy rules; older Node 18 and branch notes below are historical.
+
 ## Хто я (замовник)
 Організатор свят у дитячому парку розваг. Не програміст. Пояснення мають бути простими — як для організатора свят, не для кодера. Формат: аргументуй, навчай принципам, пропонуй варіанти A/B/C коли є сумніви.
 

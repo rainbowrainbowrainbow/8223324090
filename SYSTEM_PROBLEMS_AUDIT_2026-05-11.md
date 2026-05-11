@@ -8,6 +8,8 @@ Production Railway service: `8223324090`
 
 Цей документ є діагностичним handoff-звітом. Він не є списком готових задач, але написаний так, щоб інший агент міг швидко перетворити його на окремі task prompts.
 
+> Update after audit (2026-05-11): runtime baseline work started after this report. Current intended baseline is Node.js `22.x` / npm `10.x`, pinned in repo config and guarded by `npm run check:runtime`. The original runtime mismatch findings below remain as audit evidence until a Railway deploy confirms build logs no longer use Node 18.
+
 ## 1. Executive Summary
 
 Event Genix зараз працює і production відповідає `v43.13.0`, але система вже має характер великого монолітного CRM без достатнього safety-net. Головна небезпека для наступного етапу не в одному багу, а в тому, що зміни легко зачеплять shared auth, shared UI, DB migrations, service worker cache, Telegram callbacks, chat uploads або scheduler side effects.

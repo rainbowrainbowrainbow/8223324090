@@ -1,5 +1,7 @@
 # Парк Закревського Періоду — Booking System
 
+> Runtime note (2026-05-11): current Codex/Railway baseline is Node.js `22.x` with npm `10.x`. Use `AGENTS.md` and `README.md` as current operating rules; older Node 18 references below are historical.
+
 ## Project Overview
 Event Genix — AI-first CRM для дитячих розважальних центрів. Таймлайн аніматорів, Telegram сповіщення, каталог програм, гейміфікація, дашборд, HR, фінанси, аналітика, Match-3 гра, AI-координатор Клешня.
 

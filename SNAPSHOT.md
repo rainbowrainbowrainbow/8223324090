@@ -1,6 +1,7 @@
 # SNAPSHOT — Event Genix CRM
 
 > Швидкий контекст для продовження роботи. Деталі → PROJECT_PASSPORT.md, зміни → CHANGELOG.md, план покращень → ROADMAP.md
+> Runtime note (2026-05-11): current Codex/Railway baseline is Node.js `22.x` with npm `10.x`; this snapshot is historical and does not override `AGENTS.md`/`README.md`.
 
 ## Де ми
 Версія **v40.4.0**. package.json: `40.4.0`. Бранч `claude/continue-event-genix-crm-k7nfY`.

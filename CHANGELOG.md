@@ -4,6 +4,17 @@
 
 ---
 
+## v0.44.11 - Chat upload durability and file safety (2026-05-11)
+
+### Chat uploads [codex]
+- **Durable storage path** - new chat uploads now prefer Supabase Storage bucket `chat-uploads` and store explicit provider/bucket/key/url metadata on the chat message.
+- **Legacy fallback** - if Supabase is not configured or temporarily unavailable, uploads fall back to the existing `/uploads/chat` path so current chat attachment behavior remains usable.
+- **File safety policy** - upload validation now rejects SVG and extension/MIME mismatches before storage or message creation.
+- **Cleanup coverage** - deleting a chat message now removes the Supabase object when available, while preserving legacy local-file cleanup.
+- **Focused tests** - added storage and route tests for Supabase metadata, local fallback, SVG rejection, MIME mismatch rejection, member upload success, and non-member denial.
+
+---
+
 ## v0.44.10 - Chat poll authz and realtime broadcast fix (2026-05-11)
 
 ### Chat polls [codex]

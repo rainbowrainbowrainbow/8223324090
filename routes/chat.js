@@ -2,10 +2,13 @@
  * routes/chat.js — Team messenger REST API
  */
 const router = require('express').Router();
-const path = require('path');
 const multer = require('multer');
 const chat = require('../services/chatService');
 const { broadcastToChannel, sendToUser } = require('../services/websocket');
+const {
+    uploadChatFileWithFallback,
+    validateChatUploadFile
+} = require('../services/chatUploadStorage');
 const { processMessage: processBotMessage } = require('../services/chat-bot');
 const guardian = require('../services/guardian');
 const linkPreview = require('../services/linkPreview');
@@ -123,26 +126,26 @@ async function sendPushToChannel(channelId, senderUserId, title, body) {
 }
 
 // File upload config
-const chatStorage = multer.diskStorage({
-    destination: path.join(__dirname, '..', 'uploads', 'chat'),
-    filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname);
-        const name = Date.now() + '-' + Math.random().toString(36).slice(2, 8) + ext;
-        cb(null, name);
-    }
-});
 const chatUpload = multer({
-    storage: chatStorage,
+    storage: multer.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
     fileFilter: (req, file, cb) => {
-        const allowed = /\.(jpg|jpeg|png|gif|webp|svg|pdf|doc|docx|xls|xlsx|txt|zip|mp3|mp4|ogg|wav|webm)$/i;
-        if (allowed.test(path.extname(file.originalname))) {
+        try {
+            validateChatUploadFile(file);
             cb(null, true);
-        } else {
-            cb(new Error('Непідтримуваний формат файлу'));
+        } catch (err) {
+            return cb(err);
         }
     }
 });
+
+function handleChatUpload(req, res, next) {
+    chatUpload.single('file')(req, res, (err) => {
+        if (!err) return next();
+        const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : (err.statusCode || 400);
+        res.status(status).json({ error: err.message || 'Unsupported file upload' });
+    });
+}
 
 function getCurrentUserId(req) {
     return req.user.id || req.user.userId;
@@ -378,7 +381,7 @@ router.post('/channels/:id/messages', async (req, res) => {
 });
 
 // POST /api/chat/channels/:id/upload — upload file to channel
-router.post('/channels/:id/upload', requireChannelMember, chatUpload.single('file'), async (req, res) => {
+router.post('/channels/:id/upload', requireChannelMember, handleChatUpload, async (req, res) => {
     try {
         const userId = getCurrentUserId(req);
         const channelId = req.chatChannelId;
@@ -387,10 +390,10 @@ router.post('/channels/:id/upload', requireChannelMember, chatUpload.single('fil
         }
 
         const file = req.file;
-        const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(file.originalname);
-        const isAudio = /\.(webm|ogg|mp3|wav|m4a)$/i.test(file.originalname);
-        const fileUrl = '/uploads/chat/' + file.filename;
-        const contentType = isImage ? 'image' : (isAudio ? 'voice' : 'file');
+        const stored = await uploadChatFileWithFallback(file, { channelId });
+        const fileUrl = stored.publicUrl;
+        const contentType = stored.kind;
+        const isImage = contentType === 'image';
         const caption = req.body.caption || '';
 
         const metadata = {
@@ -398,9 +401,14 @@ router.post('/channels/:id/upload', requireChannelMember, chatUpload.single('fil
                 url: fileUrl,
                 name: file.originalname,
                 size: file.size,
-                mimeType: file.mimetype,
+                mimeType: stored.contentType || file.mimetype,
                 type: contentType,
-                duration: parseInt(req.body.duration) || 0
+                duration: parseInt(req.body.duration) || 0,
+                storageProvider: stored.provider,
+                storageBucket: stored.bucket,
+                storageKey: stored.key,
+                storagePath: stored.path,
+                storageUrl: stored.publicUrl
             },
             duration: parseInt(req.body.duration) || 0
         };

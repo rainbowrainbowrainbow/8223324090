@@ -19,6 +19,11 @@ const { createLogger } = require('../utils/logger');
 const { broadcastToChannel, sendToUser, broadcast } = require('./websocket');
 const { provisionGuardianDirectorDm } = require('./guardianDmProvisioning');
 const { claimGuardianMute } = require('./guardianIdempotency');
+const {
+    GUARDIAN_DIRECTOR_DM_REQUESTED,
+    GUARDIAN_TELEGRAM_ALERT_REQUESTED,
+    buildGuardianDeliveryIdempotencyKey
+} = require('./guardianDelivery');
 
 const log = createLogger('Guardian');
 
@@ -65,19 +70,10 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const _telegramAlertCooldowns = {};
 const TELEGRAM_COOLDOWN_MS = 30 * 1000;
 
-// Repeat offender tracker: { userId: { count, lastIncident } }
-const _repeatOffenders = {};
-const REPEAT_OFFENDER_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 1 week
-const REPEAT_OFFENDER_THRESHOLD = 3;
-
 // Spam tracker: { userId: { timestamps[] } }
 const _spamTracker = {};
 const SPAM_WINDOW_MS = 30 * 1000;
 const SPAM_THRESHOLD = 10;
-
-// Hourly block tracker: { `${userId}:${hour}`: count }
-const _hourlyBlocks = {};
-const HOURLY_BLOCK_THRESHOLD = 5;
 
 // AI setup — OpenRouter (cheap models) or Anthropic fallback
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
@@ -182,34 +178,6 @@ async function alertDirectorTelegram(htmlContent, alertType) {
 }
 
 /**
- * Track repeat offender (3+ incidents per week → alert).
- */
-function trackRepeatOffender(userId, username, channelId) {
-    const now = Date.now();
-    if (!_repeatOffenders[userId]) {
-        _repeatOffenders[userId] = { count: 0, lastIncident: 0, username };
-    }
-    const offender = _repeatOffenders[userId];
-    // Reset if outside window
-    if (now - offender.lastIncident > REPEAT_OFFENDER_WINDOW_MS) {
-        offender.count = 0;
-    }
-    offender.count++;
-    offender.lastIncident = now;
-    offender.username = username;
-
-    if (offender.count === REPEAT_OFFENDER_THRESHOLD) {
-        alertDirectorTelegram(
-            `🔴 <b>Повторний порушник!</b>\n` +
-            `Користувач: @${username}\n` +
-            `Порушень за тиждень: ${offender.count}\n` +
-            `Потрібне втручання директора`,
-            `repeat-offender-${userId}`
-        );
-    }
-}
-
-/**
  * Track spam (10+ messages in 30s → alert).
  */
 function trackSpam(userId, username, channelId) {
@@ -227,24 +195,6 @@ function trackSpam(userId, username, channelId) {
             `spam-${userId}`
         );
         _spamTracker[userId] = []; // Reset after alert
-    }
-}
-
-/**
- * Track hourly blocks (5+ from same user → Telegram alert).
- */
-function trackHourlyBlocks(userId, username) {
-    const hour = new Date().toISOString().substring(0, 13); // "2026-03-11T14"
-    const key = `${userId}:${hour}`;
-    _hourlyBlocks[key] = (_hourlyBlocks[key] || 0) + 1;
-
-    if (_hourlyBlocks[key] === HOURLY_BLOCK_THRESHOLD) {
-        alertDirectorTelegram(
-            `🔴 <b>5+ блокувань за годину!</b>\n` +
-            `Користувач: @${username}\n` +
-            `Блокувань: ${_hourlyBlocks[key]}`,
-            `hourly-blocks-${key}`
-        );
     }
 }
 
@@ -290,20 +240,11 @@ setInterval(() => {
     for (const k in _telegramAlertCooldowns) {
         if (now - _telegramAlertCooldowns[k] > TELEGRAM_COOLDOWN_MS * 2) delete _telegramAlertCooldowns[k];
     }
-    // _repeatOffenders — remove old offenders
-    for (const k in _repeatOffenders) {
-        if (_repeatOffenders[k]?.lastIncident && now - _repeatOffenders[k].lastIncident > REPEAT_OFFENDER_WINDOW_MS) delete _repeatOffenders[k];
-    }
     // _spamTracker — remove empty/stale entries
     for (const k in _spamTracker) {
         if (!_spamTracker[k]?.length) { delete _spamTracker[k]; continue; }
         _spamTracker[k] = _spamTracker[k].filter(ts => now - ts < SPAM_WINDOW_MS * 2);
         if (!_spamTracker[k].length) delete _spamTracker[k];
-    }
-    // _hourlyBlocks — remove old hour keys
-    const currentHour = new Date().toISOString().substring(0, 13);
-    for (const k in _hourlyBlocks) {
-        if (!k.includes(currentHour.substring(5))) delete _hourlyBlocks[k]; // different hour
     }
     // _guardianMemory — cap events per channel
     for (const k in _guardianMemory) {
@@ -533,6 +474,122 @@ async function muteUser(channelId, userId, username, reason) {
         const mutedUntil = new Date(Date.now() + muteDurationMs);
         const muteDurationMinutes = Math.round(muteDurationMs / 60000);
         const key = `${channelId}:${userId}`;
+        const slug = await getChannelSlug(channelId);
+        const directorAlertContent =
+            `🚨 <b>Блокування користувача</b>\n` +
+            `Канал: #${slug}\n` +
+            `Користувач: @${username}\n` +
+            `Причина: ${reason}\n` +
+            `Рівень ескалації: ${escalation.level} (інцидентів: ${escalation.incidentCount})\n` +
+            `Довіра: ${trust.score}/100 (${trust.level})\n` +
+            `До: ${mutedUntil.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })} (${muteDurationMinutes} хв)`;
+        const directorActions = [
+            { action: 'mute_both', label: '🔇 Мютити обох', channelId, userId },
+            { action: 'warn', label: '⚠️ Попередження', channelId, userId, username },
+            { action: 'watch', label: '👀 Спостерігаю', channelId, userId }
+        ];
+        const deliveryEvents = [{
+            eventType: GUARDIAN_DIRECTOR_DM_REQUESTED,
+            aggregateType: 'guardian_mute',
+            aggregateId: ({ muteId }) => String(muteId),
+            idempotencyKey: ({ muteId }) => buildGuardianDeliveryIdempotencyKey('mute.dm', muteId),
+            payload: ({ muteId }) => {
+                const deliveryKey = buildGuardianDeliveryIdempotencyKey('mute.dm', muteId);
+                return {
+                    deliveryKey,
+                    deliveryType: 'guardian_mute_director_dm',
+                    sourceType: 'guardian_mute',
+                    sourceId: String(muteId),
+                    channelId,
+                    userId,
+                    username,
+                    content: directorAlertContent,
+                    actions: directorActions
+                };
+            }
+        }];
+
+        if (escalation.notifyTelegram) {
+            deliveryEvents.push({
+                eventType: GUARDIAN_TELEGRAM_ALERT_REQUESTED,
+                aggregateType: 'guardian_mute',
+                aggregateId: ({ muteId }) => String(muteId),
+                idempotencyKey: ({ muteId }) => buildGuardianDeliveryIdempotencyKey('mute.telegram', muteId),
+                payload: ({ muteId }) => {
+                    const deliveryKey = buildGuardianDeliveryIdempotencyKey('mute.telegram', muteId);
+                    return {
+                        deliveryKey,
+                        deliveryType: 'guardian_mute_telegram',
+                        sourceType: 'guardian_mute',
+                        sourceId: String(muteId),
+                        channelId,
+                        userId,
+                        username,
+                        alertType: `escalation-${userId}`,
+                        content:
+                            `🚨 <b>Ескалація рівень ${escalation.level}!</b>\n` +
+                            `Користувач: @${username}\n` +
+                            `Канал: #${slug}\n` +
+                            `Інцидентів за 24г: ${escalation.incidentCount}\n` +
+                            `Мут: ${muteDurationMinutes} хв`
+                    };
+                }
+            });
+        }
+
+        deliveryEvents.push({
+            eventType: GUARDIAN_TELEGRAM_ALERT_REQUESTED,
+            aggregateType: 'guardian_moderation_counter',
+            aggregateId: ({ moderationState }) => `repeat:${userId}:${moderationState?.repeatOffender?.windowKey || 'rolling-7d'}`,
+            idempotencyKey: ({ moderationState }) => moderationState?.repeatOffender?.alert
+                ? buildGuardianDeliveryIdempotencyKey('repeat-offender.telegram', `${userId}:${moderationState.repeatOffender.windowKey}`)
+                : null,
+            payload: ({ moderationState }) => {
+                const repeat = moderationState?.repeatOffender;
+                if (!repeat?.alert) return null;
+                return {
+                    deliveryKey: buildGuardianDeliveryIdempotencyKey('repeat-offender.telegram', `${userId}:${repeat.windowKey}`),
+                    deliveryType: 'guardian_repeat_offender_telegram',
+                    sourceType: 'guardian_moderation_counter',
+                    sourceId: `repeat:${userId}:${repeat.windowKey}`,
+                    channelId,
+                    userId,
+                    username,
+                    alertType: `repeat-offender-${userId}`,
+                    content:
+                        `🔴 <b>Повторний порушник!</b>\n` +
+                        `Користувач: @${username}\n` +
+                        `Порушень за тиждень: ${repeat.count}\n` +
+                        `Потрібне втручання директора`
+                };
+            }
+        }, {
+            eventType: GUARDIAN_TELEGRAM_ALERT_REQUESTED,
+            aggregateType: 'guardian_moderation_counter',
+            aggregateId: ({ moderationState }) => `hourly:${userId}:${moderationState?.hourlyBlocks?.windowKey || 'unknown'}`,
+            idempotencyKey: ({ moderationState }) => moderationState?.hourlyBlocks?.alert
+                ? buildGuardianDeliveryIdempotencyKey('hourly-blocks.telegram', `${userId}:${moderationState.hourlyBlocks.windowKey}`)
+                : null,
+            payload: ({ moderationState }) => {
+                const hourly = moderationState?.hourlyBlocks;
+                if (!hourly?.alert) return null;
+                return {
+                    deliveryKey: buildGuardianDeliveryIdempotencyKey('hourly-blocks.telegram', `${userId}:${hourly.windowKey}`),
+                    deliveryType: 'guardian_hourly_blocks_telegram',
+                    sourceType: 'guardian_moderation_counter',
+                    sourceId: `hourly:${userId}:${hourly.windowKey}`,
+                    channelId,
+                    userId,
+                    username,
+                    alertType: `hourly-blocks-${userId}:${hourly.windowKey}`,
+                    content:
+                        `🔴 <b>5+ блокувань за годину!</b>\n` +
+                        `Користувач: @${username}\n` +
+                        `Блокувань: ${hourly.count}`
+                };
+            }
+        });
+
         const muteClaim = await claimGuardianMute({
             pool,
             channelId,
@@ -543,7 +600,8 @@ async function muteUser(channelId, userId, username, reason) {
                 reason, until: mutedUntil, username,
                 escalationLevel: escalation.level,
                 trustLevel: trust.level
-            }
+            },
+            deliveryEvents
         });
 
         if (muteClaim.duplicate) {
@@ -577,38 +635,7 @@ async function muteUser(channelId, userId, username, reason) {
             severity: 'danger'
         });
 
-        // DM director about mute — with inline action buttons
-        const slug = await getChannelSlug(channelId);
-        await alertDirectorWithActions(
-            `🚨 <b>Блокування користувача</b>\n` +
-            `Канал: #${slug}\n` +
-            `Користувач: @${username}\n` +
-            `Причина: ${reason}\n` +
-            `Рівень ескалації: ${escalation.level} (інцидентів: ${escalation.incidentCount})\n` +
-            `Довіра: ${trust.score}/100 (${trust.level})\n` +
-            `До: ${mutedUntil.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' })} (${muteDurationMinutes} хв)`,
-            [
-                { action: 'mute_both', label: '🔇 Мютити обох', channelId, userId },
-                { action: 'warn', label: '⚠️ Попередження', channelId, userId, username },
-                { action: 'watch', label: '👀 Спостерігаю', channelId, userId }
-            ]
-        );
-
-        // Telegram alert for high escalation levels
-        if (escalation.notifyTelegram) {
-            alertDirectorTelegram(
-                `🚨 <b>Ескалація рівень ${escalation.level}!</b>\n` +
-                `Користувач: @${username}\n` +
-                `Канал: #${slug}\n` +
-                `Інцидентів за 24г: ${escalation.incidentCount}\n` +
-                `Мут: ${muteDurationMinutes} хв`,
-                `escalation-${userId}`
-            );
-        }
-
-        // Track repeat offender + hourly blocks for Telegram alerts
-        trackRepeatOffender(userId, username, channelId);
-        trackHourlyBlocks(userId, username);
+        log.info(`Guardian mute delivery queued via outbox for ${username} (id:${userId}) in ch:${channelId}`);
 
         // Update trust score on mute
         updateTrustScore(userId, -10, 'mute').catch(err => {

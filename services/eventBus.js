@@ -72,6 +72,9 @@ async function publish(eventType, payload, idempotencyKey) {
 async function processEventRules(event) {
     let applied = 0;
     try {
+        const internalApplied = await processInternalEventHandler(event);
+        if (internalApplied) applied++;
+
         const rules = await pool.query(
             `SELECT * FROM rule_definitions WHERE trigger_event = $1 AND is_active = true ORDER BY priority DESC`,
             [event.event_type]
@@ -129,6 +132,12 @@ async function processEventRules(event) {
         ).catch(() => {});
     }
     return applied;
+}
+
+async function processInternalEventHandler(event) {
+    if (!event?.event_type || !event.event_type.startsWith('guardian.')) return false;
+    const { processGuardianDeliveryEvent } = require('./guardianDelivery');
+    return processGuardianDeliveryEvent(event);
 }
 
 /**

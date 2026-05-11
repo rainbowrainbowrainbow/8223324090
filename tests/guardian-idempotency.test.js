@@ -12,6 +12,9 @@ function makePool({ failActionInsert = false } = {}) {
     const state = {
         mutes: [],
         actions: [],
+        outbox: [],
+        moderationEvents: [],
+        moderationCounters: [],
         queries: [],
         committed: 0,
         rolledBack: 0
@@ -68,6 +71,84 @@ function makePool({ failActionInsert = false } = {}) {
                 state.actions.push(row);
                 return { rows: [], rowCount: 1 };
             }
+            if (text.startsWith('INSERT INTO outbox_events')) {
+                const row = {
+                    aggregate_type: params[0],
+                    aggregate_id: params[1],
+                    event_type: params[2],
+                    payload: typeof params[3] === 'string' ? JSON.parse(params[3]) : params[3],
+                    idempotency_key: params[4]
+                };
+                if (!state.outbox.some(event => event.idempotency_key === row.idempotency_key)) {
+                    state.outbox.push(row);
+                    return { rows: [row], rowCount: 1 };
+                }
+                return { rows: [], rowCount: 0 };
+            }
+            if (text.startsWith('INSERT INTO guardian_moderation_events')) {
+                const row = {
+                    id: state.moderationEvents.length + 1,
+                    counter_type: params[0],
+                    user_id: params[1],
+                    channel_id: params[2],
+                    source_type: params[3],
+                    source_id: params[4],
+                    username: params[5],
+                    occurred_at: params[6]
+                };
+                const exists = state.moderationEvents.some(event =>
+                    event.counter_type === row.counter_type &&
+                    event.source_type === row.source_type &&
+                    event.source_id === row.source_id
+                );
+                if (exists) return { rows: [], rowCount: 0 };
+                state.moderationEvents.push(row);
+                return { rows: [{ id: row.id }], rowCount: 1 };
+            }
+            if (text.startsWith('SELECT id, count, alerted_at, window_start, window_end FROM guardian_moderation_counters')) {
+                const row = state.moderationCounters.find(counter =>
+                    counter.counter_type === params[0] &&
+                    String(counter.user_id) === String(params[1]) &&
+                    counter.window_key === params[2]
+                );
+                return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+            }
+            if (text.startsWith('INSERT INTO guardian_moderation_counters')) {
+                const row = {
+                    id: state.moderationCounters.length + 1,
+                    counter_type: params[0],
+                    user_id: params[1],
+                    window_key: params[2],
+                    window_start: params[3],
+                    window_end: params[4],
+                    count: params[5],
+                    last_channel_id: params[6],
+                    last_username: params[7],
+                    last_source_type: params[8],
+                    last_source_id: params[9],
+                    alerted_at: null
+                };
+                state.moderationCounters.push(row);
+                return { rows: [{ id: row.id, count: row.count, alerted_at: row.alerted_at }], rowCount: 1 };
+            }
+            if (text.startsWith('UPDATE guardian_moderation_counters SET count')) {
+                const row = state.moderationCounters.find(counter => String(counter.id) === String(params[8]));
+                row.count = params[0];
+                row.window_start = params[1];
+                row.window_end = params[2];
+                if (params[3]) row.alerted_at = null;
+                row.last_channel_id = params[4];
+                row.last_username = params[5];
+                row.last_source_type = params[6];
+                row.last_source_id = params[7];
+                return { rows: [{ id: row.id, count: row.count, alerted_at: row.alerted_at }], rowCount: 1 };
+            }
+            if (text.startsWith('UPDATE guardian_moderation_counters SET alerted_at')) {
+                const row = state.moderationCounters.find(counter => String(counter.id) === String(params[0]));
+                if (!row || row.alerted_at) return { rows: [], rowCount: 0 };
+                row.alerted_at = new Date().toISOString();
+                return { rows: [{ alerted_at: row.alerted_at }], rowCount: 1 };
+            }
             if (text.startsWith('SELECT id, details FROM guardian_actions')) {
                 const [actionType, channelId, targetUserId, idempotencyKey] = params;
                 const row = state.actions.find(action =>
@@ -105,7 +186,14 @@ describe('Guardian mute/action idempotency helpers', () => {
             userId: 2,
             reason: 'toxic',
             mutedUntil,
-            details: { username: 'animator' }
+            details: { username: 'animator' },
+            deliveryEvents: [{
+                eventType: 'guardian.director_dm.requested',
+                aggregateType: 'guardian_mute',
+                aggregateId: ({ muteId }) => String(muteId),
+                idempotencyKey: ({ muteId }) => `guardian.mute.dm:${muteId}`,
+                payload: ({ muteId }) => ({ sourceId: String(muteId), content: 'mute alert' })
+            }]
         });
         const second = await claimGuardianMute({
             pool,
@@ -120,6 +208,11 @@ describe('Guardian mute/action idempotency helpers', () => {
         assert.equal(second.duplicate, true);
         assert.equal(state.mutes.length, 1);
         assert.equal(state.actions.filter(action => action.action_type === 'mute').length, 1);
+        assert.equal(state.outbox.length, 1);
+        assert.equal(state.outbox[0].event_type, 'guardian.director_dm.requested');
+        assert.equal(state.outbox[0].idempotency_key, 'guardian.mute.dm:1');
+        assert.equal(state.moderationEvents.length, 2);
+        assert.equal(state.moderationCounters.length, 2);
         assert.equal(state.queries.some(query => query.text.includes('pg_advisory_xact_lock')), true);
     });
 

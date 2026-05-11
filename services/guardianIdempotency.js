@@ -1,3 +1,6 @@
+const { publishInTransaction } = require('./eventBus');
+const { recordGuardianMuteModerationStateInTransaction } = require('./guardianModerationState');
+
 function normalizeNullableId(value) {
     if (value === undefined || value === null || value === '') return null;
     const parsed = Number(value);
@@ -14,7 +17,7 @@ async function lockGuardianScope(client, scope) {
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [String(scope)]);
 }
 
-async function claimGuardianMute({ pool, channelId, userId, reason, mutedUntil, details = {} }) {
+async function claimGuardianMute({ pool, channelId, userId, reason, mutedUntil, details = {}, deliveryEvents = [] }) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -54,6 +57,45 @@ async function claimGuardianMute({ pool, channelId, userId, reason, mutedUntil, 
              VALUES ($1, $2, $3, $4, $5)`,
             ['mute', channelId, userId, null, JSON.stringify(details)]
         );
+
+        const muteId = muteResult.rows[0]?.id;
+        const moderationState = await recordGuardianMuteModerationStateInTransaction(client, {
+            muteId,
+            userId,
+            channelId,
+            username: details.username,
+            occurredAt: new Date()
+        });
+
+        for (const deliveryEvent of deliveryEvents) {
+            const context = {
+                muteId,
+                channelId,
+                userId,
+                mutedUntil: muteResult.rows[0]?.muted_until || mutedUntil,
+                moderationState
+            };
+            const payload = typeof deliveryEvent.payload === 'function'
+                ? deliveryEvent.payload(context)
+                : deliveryEvent.payload;
+            if (!payload) continue;
+            const idempotencyKey = typeof deliveryEvent.idempotencyKey === 'function'
+                ? deliveryEvent.idempotencyKey(context)
+                : deliveryEvent.idempotencyKey;
+            if (!idempotencyKey) continue;
+            const aggregateId = typeof deliveryEvent.aggregateId === 'function'
+                ? deliveryEvent.aggregateId(context)
+                : (deliveryEvent.aggregateId || String(muteId || `${channelId}:${userId}`));
+
+            await publishInTransaction(
+                client,
+                deliveryEvent.eventType,
+                payload,
+                deliveryEvent.aggregateType || 'guardian_mute',
+                aggregateId,
+                idempotencyKey
+            );
+        }
 
         await client.query('COMMIT');
         return {

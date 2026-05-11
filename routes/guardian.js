@@ -9,11 +9,16 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const {
     generateDailyReport, runDailyReports, ensureGuardianMemberships,
-    getMood, getGuardianState, clearMuteCache, alertDirector,
+    getMood, getGuardianState, clearMuteCache,
     setEmergencyStop, getEmergencyStop,
     getChannelSettings, invalidateChannelSettingsCache,
     alertDirectorTelegram
 } = require('../services/guardian');
+const { publishInTransaction } = require('../services/eventBus');
+const {
+    GUARDIAN_DIRECTOR_DM_REQUESTED,
+    buildGuardianDeliveryIdempotencyKey
+} = require('../services/guardianDelivery');
 
 const { authenticateToken } = require('../middleware/auth');
 const {
@@ -407,6 +412,7 @@ router.post('/action', requireGuardianAdmin, async (req, res) => {
         });
         let response = '';
         let afterCommit = null;
+        let directorDelivery = null;
 
         client = await pool.connect();
         await client.query('BEGIN');
@@ -449,12 +455,14 @@ router.post('/action', requireGuardianAdmin, async (req, res) => {
                 break;
             }
             case 'warn': {
-                // Send warning to user
-                afterCommit = () => alertDirector(
-                    `⚠️ <b>Попередження від директора</b>\n` +
-                    `@${username}, будь ласка, дотримуйтесь правил спілкування.\n` +
-                    `Наступне порушення — блокування на довший термін.`
-                );
+                directorDelivery = {
+                    content:
+                        `⚠️ <b>Попередження від директора</b>\n` +
+                        `@${username}, будь ласка, дотримуйтесь правил спілкування.\n` +
+                        `Наступне порушення — блокування на довший термін.`,
+                    deliveryType: 'guardian_action_warn_followup',
+                    sourceType: 'guardian_action'
+                };
                 response = `⚠️ Попередження відправлено @${username} (${adminUser.username})`;
                 break;
             }
@@ -485,6 +493,25 @@ router.post('/action', requireGuardianAdmin, async (req, res) => {
             adminId: adminUser.id,
             idempotencyKey
         });
+
+        if (directorDelivery) {
+            const deliveryKey = buildGuardianDeliveryIdempotencyKey('action.dm', idempotencyKey);
+            await publishInTransaction(
+                client,
+                GUARDIAN_DIRECTOR_DM_REQUESTED,
+                {
+                    ...directorDelivery,
+                    deliveryKey,
+                    sourceId: idempotencyKey,
+                    channelId: actionChannelId,
+                    userId: actionUserId,
+                    username
+                },
+                'guardian_action',
+                deliveryKey,
+                deliveryKey
+            );
+        }
 
         await client.query('COMMIT');
         if (afterCommit) await afterCommit();

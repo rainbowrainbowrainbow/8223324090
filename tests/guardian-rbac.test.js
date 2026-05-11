@@ -34,7 +34,9 @@ function clearModules() {
         '../db',
         '../middleware/auth',
         '../routes/guardian',
-        '../services/guardian'
+        '../services/guardian',
+        '../services/eventBus',
+        '../services/guardianDelivery'
     ].forEach(modulePath => {
         try { delete require.cache[require.resolve(modulePath)]; } catch {}
     });
@@ -51,6 +53,7 @@ function resetState() {
             { id: 100, action_type: 'mute', channel_id: 10, target_user_id: 1, details: { username: 'owner' } },
             { id: 101, action_type: 'mute', channel_id: 10, target_user_id: 2, details: { username: 'animator' } }
         ],
+        outbox: [],
         clearMuteCalls: [],
         directorAlerts: [],
         reportGenerations: [],
@@ -166,6 +169,20 @@ function fakePool() {
                     details
                 });
                 state.writes.push({ type: 'guardian-action', params });
+                return { rows: [], rowCount: 1 };
+            }
+            if (text.startsWith('INSERT INTO outbox_events')) {
+                const row = {
+                    aggregate_type: params[0],
+                    aggregate_id: params[1],
+                    event_type: params[2],
+                    payload: typeof params[3] === 'string' ? JSON.parse(params[3]) : params[3],
+                    idempotency_key: params[4]
+                };
+                if (!state.outbox.some(item => item.idempotency_key === row.idempotency_key)) {
+                    state.outbox.push(row);
+                }
+                state.writes.push({ type: 'outbox-event', params });
                 return { rows: [], rowCount: 1 };
             }
             if (text.startsWith('SELECT action_type, COUNT')) {
@@ -315,7 +332,8 @@ describe('Guardian route RBAC', () => {
             username: 'animator'
         }, 'director', 2);
         assert.equal(res.status, 200);
-        assert.equal(state.directorAlerts.length, 1);
+        assert.equal(state.directorAlerts.length, 0);
+        assert.equal(state.outbox.filter(event => event.event_type === 'guardian.director_dm.requested').length, 1);
         assert.equal(state.guardianActions.filter(a => a.action_type === 'director_warn').length, 1);
 
         res = await request('POST', '/api/guardian/action', {
@@ -326,7 +344,8 @@ describe('Guardian route RBAC', () => {
         }, 'director', 2);
         assert.equal(res.status, 200);
         assert.equal(res.data.duplicate, true);
-        assert.equal(state.directorAlerts.length, 1);
+        assert.equal(state.directorAlerts.length, 0);
+        assert.equal(state.outbox.filter(event => event.event_type === 'guardian.director_dm.requested').length, 1);
         assert.equal(state.guardianActions.filter(a => a.action_type === 'director_warn').length, 1);
     });
 

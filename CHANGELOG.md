@@ -4,6 +4,27 @@
 
 ---
 
+## v0.45.7 - Guardian durable moderation state (2026-05-12)
+
+### Guardian reliability phase 2 [codex]
+- **Durable counters** - repeat-offender and hourly-block escalation tracking now use database-backed moderation events and counters instead of module-scoped memory.
+- **Replay safety** - Guardian mute events now record stable source identities so repeated processing of the same mute does not inflate escalation counters.
+- **Escalation coupling** - repeat-offender and hourly-block Telegram alert requests are published from the same mute transaction when their durable thresholds are crossed.
+- **Restart-safe baseline** - added focused tests for duplicate source suppression, rolling-window reset, and one-alert-per-window behavior.
+
+---
+
+## v0.45.6 - Guardian outbox-backed alert delivery foundation (2026-05-12)
+
+### Guardian delivery reliability [codex]
+- **Durable delivery envelope** - Guardian critical alert requests now use explicit outbox/event types for director DM and Telegram alert delivery.
+- **Mute alert coupling** - successful Guardian mute claims publish director DM and Telegram escalation requests in the same transaction as `chat_mutes` and `guardian_actions`.
+- **Action follow-up coupling** - `/api/guardian/action` warning follow-ups now enqueue director DM delivery inside the action transaction instead of relying on only a post-commit direct call.
+- **Duplicate-safe processing** - director DM delivery uses stable delivery keys in message metadata to avoid duplicate user-visible alerts on retry.
+- **Focused tests** - added mocked delivery coverage for enqueue semantics, duplicate suppression, provider failure, and Telegram request handling without live provider calls.
+
+---
+
 ## v0.45.5 - Guardian single-use action controls (2026-05-12)
 
 ### Guardian stale-tap safety [codex]

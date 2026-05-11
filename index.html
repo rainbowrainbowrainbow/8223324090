@@ -16,19 +16,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.44.15">
-    <link rel="stylesheet" href="css/auth.css?v=0.44.15">
-    <link rel="stylesheet" href="css/layout.css?v=0.44.15">
-    <link rel="stylesheet" href="css/timeline.css?v=0.44.15">
-    <link rel="stylesheet" href="css/panel.css?v=0.44.15">
-    <link rel="stylesheet" href="css/modals.css?v=0.44.15">
-    <link rel="stylesheet" href="css/controls.css?v=0.44.15">
-    <link rel="stylesheet" href="css/features.css?v=0.44.15">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.44.15">
-    <link rel="stylesheet" href="css/responsive.css?v=0.44.15">
-    <link rel="stylesheet" href="css/pages.css?v=0.44.15">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.44.15">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.44.15">
+    <link rel="stylesheet" href="css/base.css?v=0.44.17">
+    <link rel="stylesheet" href="css/auth.css?v=0.44.17">
+    <link rel="stylesheet" href="css/layout.css?v=0.44.17">
+    <link rel="stylesheet" href="css/timeline.css?v=0.44.17">
+    <link rel="stylesheet" href="css/panel.css?v=0.44.17">
+    <link rel="stylesheet" href="css/modals.css?v=0.44.17">
+    <link rel="stylesheet" href="css/controls.css?v=0.44.17">
+    <link rel="stylesheet" href="css/features.css?v=0.44.17">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.44.17">
+    <link rel="stylesheet" href="css/responsive.css?v=0.44.17">
+    <link rel="stylesheet" href="css/pages.css?v=0.44.17">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.44.17">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.44.17">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -45,9 +45,9 @@
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.44.15 — 0.44 release line</p>
+                <p class="tagline">AI First CRM v0.44.17 — 0.44 release line</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.44.15</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.44.17</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1152,6 +1152,25 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.44.17 - Booking and room chat provisioning integrity (11.05.2026)</h4>
+                    <ul>
+                        <li><b>Booking channels</b> - booking-linked chat channel provisioning now uses one transactional duplicate-safe helper</li>
+                        <li><b>Room channels</b> - room/line channel init now uses deterministic slug conflict handling instead of check-then-insert</li>
+                        <li><b>Unique support</b> - added guarded partial unique indexes for active booking and room channels when existing data is clean</li>
+                        <li><b>Membership</b> - newly provisioned booking/room channels initialize creator membership inside the same transaction</li>
+                        <li><b>Tests</b> - added focused coverage for repeat provisioning, slug-conflict reuse, room init, and membership setup</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.44.16 - Chat poll transactional writes (11.05.2026)</h4>
+                    <ul>
+                        <li><b>Poll creation</b> - poll message and <code>chat_polls</code> rows now commit or roll back together</li>
+                        <li><b>Vote locking</b> - vote updates lock the poll row before delete/insert/recount/update work</li>
+                        <li><b>Recount safety</b> - single-choice replacement and vote counts are updated inside one transaction</li>
+                        <li><b>Tests</b> - expanded poll coverage for create rollback, vote replacement, and recount rollback</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.44.15 - Scheduled chat dispatch atomic claim (11.05.2026)</h4>
                     <ul>
@@ -5551,27 +5570,27 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.44.15"></script>
-    <script src="js/api.js?v=0.44.15"></script>
-    <script src="js/ui.js?v=0.44.15"></script>
-    <script src="js/auth.js?v=0.44.15"></script>
-    <script src="js/timeline.js?v=0.44.15"></script>
-    <script src="js/booking.js?v=0.44.15"></script>
-    <script src="js/settings.js?v=0.44.15"></script>
-    <script src="js/booking-form.js?v=0.44.15"></script>
-    <script src="js/booking-linked.js?v=0.44.15"></script>
-    <script src="js/settings-dashboard.js?v=0.44.15"></script>
-    <script src="js/settings-history.js?v=0.44.15"></script>
-    <script src="js/settings-afisha.js?v=0.44.15"></script>
-    <script src="js/settings-certificates.js?v=0.44.15"></script>
-    <script src="js/offline.js?v=0.44.15"></script>
-    <script src="js/search.js?v=0.44.15"></script>
-    <script src="js/ws.js?v=0.44.15"></script>
-    <script src="js/app.js?v=0.44.15"></script>
-    <script src="js/kleshnya-widget.js?v=0.44.15"></script>
-    <script src="js/components/sidebar.js?v=0.44.15"></script>
+    <script src="js/config.js?v=0.44.17"></script>
+    <script src="js/api.js?v=0.44.17"></script>
+    <script src="js/ui.js?v=0.44.17"></script>
+    <script src="js/auth.js?v=0.44.17"></script>
+    <script src="js/timeline.js?v=0.44.17"></script>
+    <script src="js/booking.js?v=0.44.17"></script>
+    <script src="js/settings.js?v=0.44.17"></script>
+    <script src="js/booking-form.js?v=0.44.17"></script>
+    <script src="js/booking-linked.js?v=0.44.17"></script>
+    <script src="js/settings-dashboard.js?v=0.44.17"></script>
+    <script src="js/settings-history.js?v=0.44.17"></script>
+    <script src="js/settings-afisha.js?v=0.44.17"></script>
+    <script src="js/settings-certificates.js?v=0.44.17"></script>
+    <script src="js/offline.js?v=0.44.17"></script>
+    <script src="js/search.js?v=0.44.17"></script>
+    <script src="js/ws.js?v=0.44.17"></script>
+    <script src="js/app.js?v=0.44.17"></script>
+    <script src="js/kleshnya-widget.js?v=0.44.17"></script>
+    <script src="js/components/sidebar.js?v=0.44.17"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=0.44.15"></script>
-    <script src="js/alerts.js?v=0.44.15"></script>
+    <script src="js/role-panel.js?v=0.44.17"></script>
+    <script src="js/alerts.js?v=0.44.17"></script>
 </body>
 </html>

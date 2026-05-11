@@ -74,7 +74,12 @@ function resetState() {
         nextPollId: 200,
         memberships: new Set(['1:1']),
         broadcasts: [],
+        messages: [],
         votes: [],
+        tx: [],
+        releases: 0,
+        failPollInsert: false,
+        failPollOptionsUpdate: false,
         polls: new Map([
             [8, {
                 id: 8,
@@ -116,8 +121,12 @@ function pollOptionCounts(pollId) {
 }
 
 function fakePool() {
-    return {
-        query: async (sql, params = []) => {
+    function clonePoll(poll) {
+        return poll ? { ...poll, options: JSON.parse(JSON.stringify(poll.options)) } : null;
+    }
+
+    function queryRunner(txState = null) {
+        return async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
 
             if (/UPDATE employee_profiles SET last_activity_at/i.test(text) ||
@@ -125,8 +134,22 @@ function fakePool() {
                 return { rows: [], rowCount: 0 };
             }
 
-            if (/SELECT \* FROM chat_polls WHERE id = \$1/i.test(text)) {
-                const poll = state.polls.get(Number(params[0]));
+            if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') {
+                state.tx.push(text);
+                if (txState && text === 'COMMIT') {
+                    state.messages.push(...txState.messages);
+                    for (const poll of txState.polls) state.polls.set(poll.id, poll);
+                    if (txState.votes) state.votes = txState.votes;
+                    for (const [pollId, options] of txState.pollOptions) {
+                        const poll = state.polls.get(pollId);
+                        if (poll) poll.options = options;
+                    }
+                }
+                return { rows: [], rowCount: 0 };
+            }
+
+            if (/SELECT \* FROM chat_polls WHERE id = \$1(?: FOR UPDATE)?$/i.test(text)) {
+                const poll = clonePoll(state.polls.get(Number(params[0])));
                 return { rows: poll ? [poll] : [], rowCount: poll ? 1 : 0 };
             }
 
@@ -142,10 +165,13 @@ function fakePool() {
                     username: `user-${params[1]}`,
                     display_name: `User ${params[1]}`
                 };
+                if (txState) txState.messages.push(row);
+                else state.messages.push(row);
                 return { rows: [row], rowCount: 1 };
             }
 
             if (/INSERT INTO chat_polls \(channel_id, message_id, question, options, poll_type, is_anonymous, expires_at, created_by\)/i.test(text)) {
+                if (state.failPollInsert) throw new Error('simulated poll insert failure');
                 const poll = {
                     id: state.nextPollId++,
                     channel_id: Number(params[0]),
@@ -157,30 +183,45 @@ function fakePool() {
                     expires_at: params[6],
                     created_by: Number(params[7])
                 };
-                state.polls.set(poll.id, poll);
+                if (txState) txState.polls.push(poll);
+                else state.polls.set(poll.id, poll);
                 return { rows: [poll], rowCount: 1 };
             }
 
             if (/DELETE FROM chat_poll_votes WHERE poll_id = \$1 AND user_id = \$2/i.test(text)) {
-                state.votes = state.votes.filter(v => !(v.pollId === Number(params[0]) && v.userId === Number(params[1])));
+                const votes = txState ? (txState.votes ||= state.votes.map(v => ({ ...v }))) : state.votes;
+                const filtered = votes.filter(v => !(v.pollId === Number(params[0]) && v.userId === Number(params[1])));
+                if (txState) txState.votes = filtered;
+                else state.votes = filtered;
                 return { rows: [], rowCount: 1 };
             }
 
             if (/INSERT INTO chat_poll_votes \(poll_id, user_id, option_index\)/i.test(text)) {
                 const vote = { pollId: Number(params[0]), userId: Number(params[1]), optionIndex: Number(params[2]) };
-                if (!state.votes.some(v => v.pollId === vote.pollId && v.userId === vote.userId && v.optionIndex === vote.optionIndex)) {
-                    state.votes.push(vote);
+                const votes = txState ? (txState.votes ||= state.votes.map(v => ({ ...v }))) : state.votes;
+                if (!votes.some(v => v.pollId === vote.pollId && v.userId === vote.userId && v.optionIndex === vote.optionIndex)) {
+                    votes.push(vote);
                 }
                 return { rows: [], rowCount: 1 };
             }
 
             if (/SELECT option_index, COUNT\(\*\) AS cnt FROM chat_poll_votes WHERE poll_id = \$1 GROUP BY option_index/i.test(text)) {
-                return { rows: pollOptionCounts(params[0]), rowCount: pollOptionCounts(params[0]).length };
+                const votes = txState?.votes || state.votes;
+                const counts = new Map();
+                for (const vote of votes.filter(v => v.pollId === Number(params[0]))) {
+                    counts.set(vote.optionIndex, (counts.get(vote.optionIndex) || 0) + 1);
+                }
+                const rows = Array.from(counts, ([optionIndex, count]) => ({ option_index: optionIndex, cnt: String(count) }));
+                return { rows, rowCount: rows.length };
             }
 
             if (/UPDATE chat_polls SET options = \$1 WHERE id = \$2/i.test(text)) {
-                const poll = state.polls.get(Number(params[1]));
-                if (poll) poll.options = typeof params[0] === 'string' ? JSON.parse(params[0]) : params[0];
+                if (state.failPollOptionsUpdate) throw new Error('simulated poll options update failure');
+                const pollId = Number(params[1]);
+                const poll = state.polls.get(pollId);
+                const options = typeof params[0] === 'string' ? JSON.parse(params[0]) : params[0];
+                if (txState && poll) txState.pollOptions.set(pollId, options);
+                else if (poll) poll.options = options;
                 return { rows: [], rowCount: poll ? 1 : 0 };
             }
 
@@ -204,6 +245,24 @@ function fakePool() {
             }
 
             throw new Error(`Unexpected chat poll test query: ${text}`);
+        };
+    }
+
+    return {
+        query: queryRunner(),
+        connect: async () => {
+            const txState = {
+                messages: [],
+                polls: [],
+                votes: null,
+                pollOptions: new Map()
+            };
+            return {
+                query: queryRunner(txState),
+                release: () => {
+                    state.releases += 1;
+                }
+            };
         }
     };
 }
@@ -282,6 +341,24 @@ describe('chat poll authorization and broadcasts', () => {
         assert.equal(payload.message.channelId, 1);
         assert.equal(payload.message.poll.question, 'Choose?');
         assert.equal(excludeUserId, '1');
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+        assert.equal(state.messages.length, 1);
+    });
+
+    it('rolls back poll message creation when poll insert fails', async () => {
+        state.failPollInsert = true;
+
+        const res = await request('POST', '/api/chat/channels/1/poll', {
+            question: 'Rollback?',
+            options: ['A', 'B']
+        });
+
+        assert.equal(res.status, 500);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+        assert.equal(state.messages.length, 0);
+        assert.equal(state.polls.has(200), false);
+        assert.deepEqual(state.broadcasts, []);
+        assert.equal(state.releases, 1);
     });
 
     it('denies non-members before creating poll rows or broadcasts', async () => {
@@ -309,6 +386,37 @@ describe('chat poll authorization and broadcasts', () => {
         assert.equal(payload.channelId, 1);
         assert.equal(payload.pollId, 8);
         assert.equal(payload.options[1].votes, 1);
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+        assert.equal(state.releases, 1);
+    });
+
+    it('replaces a single-choice vote atomically and recounts from committed votes', async () => {
+        state.votes.push({ pollId: 8, userId: 1, optionIndex: 0 });
+        state.polls.get(8).options = [{ text: 'A', votes: 1 }, { text: 'B', votes: 0 }];
+
+        const res = await request('POST', '/api/chat/polls/8/vote', { optionIndex: 1 });
+
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.deepEqual(state.votes, [{ pollId: 8, userId: 1, optionIndex: 1 }]);
+        assert.deepEqual(state.polls.get(8).options, [{ text: 'A', votes: 0 }, { text: 'B', votes: 1 }]);
+        assert.deepEqual(res.data.options, [{ text: 'A', votes: 0 }, { text: 'B', votes: 1 }]);
+        assert.deepEqual(state.tx, ['BEGIN', 'COMMIT']);
+        assert.equal(state.broadcasts.length, 1);
+    });
+
+    it('rolls back vote replacement if recount update fails', async () => {
+        state.votes.push({ pollId: 8, userId: 1, optionIndex: 0 });
+        state.polls.get(8).options = [{ text: 'A', votes: 1 }, { text: 'B', votes: 0 }];
+        state.failPollOptionsUpdate = true;
+
+        const res = await request('POST', '/api/chat/polls/8/vote', { optionIndex: 1 });
+
+        assert.equal(res.status, 500);
+        assert.deepEqual(state.tx, ['BEGIN', 'ROLLBACK']);
+        assert.deepEqual(state.votes, [{ pollId: 8, userId: 1, optionIndex: 0 }]);
+        assert.deepEqual(state.polls.get(8).options, [{ text: 'A', votes: 1 }, { text: 'B', votes: 0 }]);
+        assert.deepEqual(state.broadcasts, []);
+        assert.equal(state.releases, 1);
     });
 
     it('denies non-members from voting or viewing results', async () => {

@@ -4,6 +4,27 @@
 
 ---
 
+## v0.44.17 - Booking and room chat provisioning integrity (2026-05-11)
+
+### Chat channel provisioning [codex]
+- **Atomic booking channels** - booking-linked chat channel provisioning now uses one transactional helper and deterministic slug conflict handling.
+- **Atomic room channels** - room/line channel initialization now uses the same duplicate-safe provisioning pattern instead of check-then-insert.
+- **Unique support** - added guarded partial unique index migration for active booking and room channels when production data is already duplicate-free.
+- **Membership initialization** - newly provisioned booking/room channels initialize creator membership in the same transaction as channel creation.
+- **Focused tests** - added coverage for repeated booking provisioning, deterministic slug conflict reuse, repeated room init, and membership initialization.
+
+---
+
+## v0.44.16 - Chat poll transactional writes (2026-05-11)
+
+### Chat polls [codex]
+- **Transactional poll creation** - poll message and `chat_polls` rows now commit or roll back together.
+- **Locked vote updates** - voting now locks the poll row with `FOR UPDATE` before delete/insert/recount/update work.
+- **Recount safety** - single-choice vote replacement and option vote counts are recalculated and stored inside the same transaction.
+- **Rollback coverage** - focused tests prove poll creation rollback and vote replacement rollback do not leave split message/poll or vote/count state.
+
+---
+
 ## v0.44.15 - Scheduled chat dispatch atomic claim (2026-05-11)
 
 ### Scheduled chat messages [codex]

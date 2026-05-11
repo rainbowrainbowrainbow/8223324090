@@ -289,6 +289,133 @@ async function getPollForChannelMember(pollId, userId, res) {
     return { poll, pool };
 }
 
+function getPollOptions(poll) {
+    return typeof poll.options === 'string' ? JSON.parse(poll.options) : poll.options;
+}
+
+function buildProvisioningSlug(prefix, value) {
+    const raw = String(value || '').trim();
+    const digest = crypto.createHash('sha1').update(raw).digest('hex').slice(0, 8);
+    const normalized = raw
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .replace(/-+/g, '-') || digest;
+    const maxBaseLength = Math.max(1, 50 - prefix.length - digest.length - 2);
+    return `${prefix}-${normalized.slice(0, maxBaseLength)}-${digest}`;
+}
+
+function readInsertedFlag(row) {
+    return row?.inserted === true || row?.inserted === 't' || row?.inserted === 'true';
+}
+
+async function provisionBookingChatChannel({ pool, bookingId, userId }) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const existing = await client.query(`
+            SELECT *
+            FROM chat_channels
+            WHERE linked_booking_id = $1
+              AND COALESCE(is_archived, false) = false
+            ORDER BY id ASC
+            LIMIT 1
+            FOR UPDATE
+        `, [bookingId]);
+        if (existing.rows.length > 0) {
+            await client.query('COMMIT');
+            return { channel: existing.rows[0], isNew: false, existingByLink: true };
+        }
+
+        const booking = await client.query(
+            'SELECT id, date, program_name, label FROM bookings WHERE id = $1',
+            [bookingId]
+        );
+        if (!booking.rowCount) {
+            await client.query('ROLLBACK');
+            return { notFound: true };
+        }
+
+        const b = booking.rows[0];
+        const slug = buildProvisioningSlug('bk', bookingId);
+        const name = `🎉 ${b.date} ${b.program_name || bookingId}`;
+        const description = `Координація: ${b.label || bookingId}`;
+        const inserted = await client.query(`
+            INSERT INTO chat_channels (slug, name, description, type, linked_booking_id, created_by)
+            VALUES ($1, $2, $3, 'booking', $4, $5)
+            ON CONFLICT (slug) DO UPDATE SET
+                linked_booking_id = COALESCE(chat_channels.linked_booking_id, EXCLUDED.linked_booking_id),
+                type = CASE
+                    WHEN chat_channels.type IS NULL OR chat_channels.type = 'general' THEN EXCLUDED.type
+                    ELSE chat_channels.type
+                END,
+                updated_at = NOW()
+            RETURNING *, (xmax = 0) AS inserted
+        `, [slug, name, description, bookingId, userId]);
+        const channel = inserted.rows[0];
+        await client.query(
+            'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2) ON CONFLICT (channel_id, user_id) DO NOTHING',
+            [channel.id, userId]
+        );
+
+        await client.query('COMMIT');
+        return { channel, isNew: readInsertedFlag(channel), existingByLink: false };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+async function provisionRoomChatChannel({ pool, lineId, userId }) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const existing = await client.query(`
+            SELECT *
+            FROM chat_channels
+            WHERE line_id = $1
+              AND type = 'room'
+              AND COALESCE(is_archived, false) = false
+            ORDER BY id ASC
+            LIMIT 1
+            FOR UPDATE
+        `, [lineId]);
+        if (existing.rows.length > 0) {
+            await client.query('COMMIT');
+            return { channel: existing.rows[0], isNew: false, existingByLine: true };
+        }
+
+        const slug = buildProvisioningSlug('room', lineId);
+        const inserted = await client.query(`
+            INSERT INTO chat_channels (slug, name, type, line_id, description, created_by)
+            VALUES ($1, $2, 'room', $3, $4, $5)
+            ON CONFLICT (slug) DO UPDATE SET
+                line_id = COALESCE(chat_channels.line_id, EXCLUDED.line_id),
+                type = CASE
+                    WHEN chat_channels.type IS NULL OR chat_channels.type = 'general' THEN EXCLUDED.type
+                    ELSE chat_channels.type
+                END,
+                updated_at = NOW()
+            RETURNING *, (xmax = 0) AS inserted
+        `, [slug, `🏠 ${lineId}`, lineId, `Хронологія кімнати ${lineId}`, userId]);
+        const channel = inserted.rows[0];
+        await client.query(
+            'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2) ON CONFLICT (channel_id, user_id) DO NOTHING',
+            [channel.id, userId]
+        );
+
+        await client.query('COMMIT');
+        return { channel, isNew: readInsertedFlag(channel), existingByLine: false };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
 // GET /api/chat/channels — list user's channels + unread counts
 router.get('/channels', async (req, res) => {
     try {
@@ -1776,35 +1903,46 @@ router.post('/channels/:id/poll', requireChannelMember, async (req, res) => {
             return res.status(400).json({ error: 'Потрібно питання та 2-10 варіантів' });
         }
 
-        const pool = require('../db').pool;
-
-        // Create poll message
-        const msgResult = await pool.query(
-            `INSERT INTO chat_messages (channel_id, user_id, content, type)
-             VALUES ($1, $2, $3, 'poll') RETURNING *`,
-            [channelId, userId, question]
-        );
-        const message = msgResult.rows[0];
-
         const pollOptions = options.map(o => ({ text: typeof o === 'string' ? o : o.text, votes: 0 }));
         const expiresAt = expiresInMinutes ? new Date(Date.now() + expiresInMinutes * 60000) : null;
 
-        const pollResult = await pool.query(
-            `INSERT INTO chat_polls (channel_id, message_id, question, options, poll_type, is_anonymous, expires_at, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-            [channelId, message.id, question, JSON.stringify(pollOptions),
-             pollType || 'single', isAnonymous || false, expiresAt, userId]
-        );
+        const pool = require('../db').pool;
+        const client = await pool.connect();
+        let message;
+        let poll;
+        try {
+            await client.query('BEGIN');
+            const msgResult = await client.query(
+                `INSERT INTO chat_messages (channel_id, user_id, content, type)
+                 VALUES ($1, $2, $3, 'poll') RETURNING *`,
+                [channelId, userId, question]
+            );
+            message = msgResult.rows[0];
+
+            const pollResult = await client.query(
+                `INSERT INTO chat_polls (channel_id, message_id, question, options, poll_type, is_anonymous, expires_at, created_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+                [channelId, message.id, question, JSON.stringify(pollOptions),
+                 pollType || 'single', isAnonymous || false, expiresAt, userId]
+            );
+            poll = pollResult.rows[0];
+            await client.query('COMMIT');
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
 
         // Broadcast via WebSocket
         try {
             broadcastToChannel(channelId, 'chat:message', {
                 channelId,
-                message: { ...chat.mapMessageRow(message), poll: pollResult.rows[0] }
+                message: { ...chat.mapMessageRow(message), poll }
             }, String(userId));
         } catch (e) { /* ws not ready */ }
 
-        res.json({ success: true, poll: pollResult.rows[0], message });
+        res.json({ success: true, poll, message });
     } catch (err) {
         log.error('Create poll error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1817,49 +1955,76 @@ router.post('/polls/:pollId/vote', async (req, res) => {
         const pollId = parseId(req.params.pollId);
         const userId = getCurrentUserId(req);
         const { optionIndex } = req.body;
+        const parsedOptionIndex = Number(optionIndex);
+        if (!Number.isInteger(parsedOptionIndex)) {
+            return res.status(400).json({ error: 'Invalid option index' });
+        }
 
         const loaded = await getPollForChannelMember(pollId, userId, res);
         if (!loaded) return;
-        const { poll, pool } = loaded;
+        const { pool } = loaded;
 
-        // Check poll is open
-        if (poll.is_closed) return res.status(400).json({ error: 'Опитування закрито' });
-        if (poll.expires_at && new Date(poll.expires_at) < new Date()) {
-            return res.status(400).json({ error: 'Час опитування вичерпано' });
+        const client = await pool.connect();
+        let updatedOptions;
+        let channelId;
+        try {
+            await client.query('BEGIN');
+            const pollResult = await client.query('SELECT * FROM chat_polls WHERE id = $1 FOR UPDATE', [pollId]);
+            if (pollResult.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ error: 'Опитування не знайдено' });
+            }
+            const poll = pollResult.rows[0];
+            channelId = poll.channel_id;
+
+            // Check poll is open under the row lock so close/expiry races cannot split writes.
+            if (poll.is_closed) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Опитування закрито' });
+            }
+            if (poll.expires_at && new Date(poll.expires_at) < new Date()) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Час опитування вичерпано' });
+            }
+
+            const options = getPollOptions(poll);
+            if (parsedOptionIndex < 0 || parsedOptionIndex >= options.length) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Невірний варіант' });
+            }
+
+            if (poll.poll_type === 'single') {
+                await client.query('DELETE FROM chat_poll_votes WHERE poll_id = $1 AND user_id = $2', [pollId, userId]);
+            }
+
+            await client.query(
+                `INSERT INTO chat_poll_votes (poll_id, user_id, option_index)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (poll_id, user_id, option_index) DO NOTHING`,
+                [pollId, userId, parsedOptionIndex]
+            );
+
+            const voteCounts = await client.query(
+                `SELECT option_index, COUNT(*) AS cnt FROM chat_poll_votes WHERE poll_id = $1 GROUP BY option_index`,
+                [pollId]
+            );
+            updatedOptions = options.map((opt, i) => {
+                const vc = voteCounts.rows.find(r => Number(r.option_index) === i);
+                return { ...opt, votes: vc ? parseInt(vc.cnt, 10) : 0 };
+            });
+            await client.query('UPDATE chat_polls SET options = $1 WHERE id = $2', [JSON.stringify(updatedOptions), pollId]);
+            await client.query('COMMIT');
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
         }
-
-        const options = poll.options;
-        if (optionIndex < 0 || optionIndex >= options.length) {
-            return res.status(400).json({ error: 'Невірний варіант' });
-        }
-
-        // For single-choice, remove previous votes
-        if (poll.poll_type === 'single') {
-            await pool.query('DELETE FROM chat_poll_votes WHERE poll_id = $1 AND user_id = $2', [pollId, userId]);
-        }
-
-        await pool.query(
-            `INSERT INTO chat_poll_votes (poll_id, user_id, option_index)
-             VALUES ($1, $2, $3)
-             ON CONFLICT (poll_id, user_id, option_index) DO NOTHING`,
-            [pollId, userId, optionIndex]
-        );
-
-        // Update vote counts in options JSONB
-        const voteCounts = await pool.query(
-            `SELECT option_index, COUNT(*) AS cnt FROM chat_poll_votes WHERE poll_id = $1 GROUP BY option_index`,
-            [pollId]
-        );
-        const updatedOptions = options.map((opt, i) => {
-            const vc = voteCounts.rows.find(r => r.option_index === i);
-            return { ...opt, votes: vc ? parseInt(vc.cnt) : 0 };
-        });
-        await pool.query('UPDATE chat_polls SET options = $1 WHERE id = $2', [JSON.stringify(updatedOptions), pollId]);
 
         // Broadcast vote update
         try {
-            broadcastToChannel(poll.channel_id, 'chat:poll-update', {
-                channelId: poll.channel_id,
+            broadcastToChannel(channelId, 'chat:poll-update', {
+                channelId,
                 pollId,
                 options: updatedOptions
             });
@@ -2084,38 +2249,12 @@ router.post('/booking-channel', async (req, res) => {
         const { bookingId } = req.body;
         if (!bookingId || typeof bookingId !== 'string') return res.status(400).json({ error: 'bookingId required' });
 
-        const existing = await pool.query(
-            'SELECT * FROM chat_channels WHERE linked_booking_id = $1', [bookingId]
-        );
-        if (existing.rowCount) {
-            if (!await requireChannelMemberOrRespond(existing.rows[0].id, getCurrentUserId(req), res)) return;
-            return res.json({ success: true, channel: existing.rows[0], isNew: false });
-        }
-
-        const bk = await pool.query(
-            'SELECT id, date, program_name, label FROM bookings WHERE id = $1', [bookingId]
-        );
-        if (!bk.rowCount) return res.status(404).json({ error: 'Booking not found' });
-        const b = bk.rows[0];
-
-        const slugBase = 'bk-' + bookingId.toLowerCase().replace(/[^a-z0-9]/g, '-');
-        const slug = slugBase + '-' + Date.now().toString(36);
-        const name = `🎉 ${b.date} ${b.program_name}`;
         const userId = req.user.id || req.user.userId;
+        const result = await provisionBookingChatChannel({ pool, bookingId, userId });
+        if (result.notFound) return res.status(404).json({ error: 'Booking not found' });
+        if (result.existingByLink && !await requireChannelMemberOrRespond(result.channel.id, userId, res)) return;
 
-        const r = await pool.query(
-            `INSERT INTO chat_channels (slug, name, description, type, linked_booking_id, created_by)
-             VALUES ($1, $2, $3, 'booking', $4, $5) RETURNING *`,
-            [slug, name, `Координація: ${b.label}`, bookingId, userId]
-        );
-        const channel = r.rows[0];
-
-        await pool.query(
-            'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2) ON CONFLICT (channel_id, user_id) DO NOTHING',
-            [channel.id, userId]
-        );
-
-        res.json({ success: true, channel, isNew: true });
+        res.json({ success: true, channel: result.channel, isNew: result.isNew });
     } catch (err) {
         log.error('[BookingChannel] Error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
@@ -2263,20 +2402,9 @@ router.post('/room-channels/init', async (req, res) => {
         );
         const created = [];
         for (const room of rooms.rows) {
-            const slug = 'room-' + room.line_id.toLowerCase().replace(/[^a-z0-9а-яіїєґ]/gi, '-').replace(/-+/g, '-');
-            const existing = await pool.query('SELECT id FROM chat_channels WHERE line_id = $1', [room.line_id]);
-            if (existing.rowCount) {
-                created.push({ lineId: room.line_id, channelId: existing.rows[0].id, isNew: false });
-                continue;
-            }
             const userId = req.user.id || req.user.userId;
-            const r = await pool.query(
-                `INSERT INTO chat_channels (slug, name, type, line_id, description, created_by)
-                 VALUES ($1, $2, 'room', $3, $4, $5)
-                 ON CONFLICT (slug) DO NOTHING RETURNING id`,
-                [slug + '-' + Date.now().toString(36), `🏠 ${room.line_id}`, room.line_id, `Хронологія кімнати ${room.line_id}`, userId]
-            );
-            if (r.rowCount) created.push({ lineId: room.line_id, channelId: r.rows[0].id, isNew: true });
+            const result = await provisionRoomChatChannel({ pool, lineId: room.line_id, userId });
+            created.push({ lineId: room.line_id, channelId: result.channel.id, isNew: result.isNew });
         }
         res.json({ success: true, channels: created });
     } catch (err) {

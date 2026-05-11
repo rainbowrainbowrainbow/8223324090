@@ -2,6 +2,7 @@
  * routes/chat.js — Team messenger REST API
  */
 const router = require('express').Router();
+const crypto = require('crypto');
 const multer = require('multer');
 const chat = require('../services/chatService');
 const { broadcastToChannel, sendToUser } = require('../services/websocket');
@@ -154,6 +155,84 @@ function getCurrentUserId(req) {
 function parseId(value) {
     const id = parseInt(value, 10);
     return Number.isNaN(id) ? null : id;
+}
+
+function buildChatReminderSourceId(messageId, userId, remindAtIso) {
+    const digest = crypto
+        .createHash('sha1')
+        .update(`${messageId}:${userId}:${remindAtIso}`)
+        .digest('hex')
+        .slice(0, 32);
+    return `chat-rem:${digest}`;
+}
+
+async function createChatReminderTask({ pool, message, user, remindAtIso }) {
+    const userId = user.id || user.userId;
+    const sourceId = buildChatReminderSourceId(message.id, userId, remindAtIso);
+    const titleText = String(message.content || '').slice(0, 80);
+    const title = `⏰ Нагадування: "${titleText}"`;
+    const description = `Нагадування з чату (канал #${message.channel_id}, msg #${message.id})`;
+    const controlPolicy = JSON.stringify({
+        reminder_minutes: [60, 30, 10],
+        escalation_after_minutes: 120
+    });
+    const createdBy = user.username || user.name || String(userId);
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query(
+            'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
+            ['chat_reminder', sourceId]
+        );
+
+        const existing = await client.query(`
+            SELECT id
+            FROM tasks
+            WHERE source_type = 'chat_reminder'
+              AND source_id = $1
+              AND COALESCE(status, 'todo') NOT IN ('done', 'archived', 'cancelled')
+            ORDER BY id DESC
+            LIMIT 1
+        `, [sourceId]);
+
+        if (existing.rows.length > 0) {
+            await client.query('COMMIT');
+            return { taskId: existing.rows[0].id, sourceId, duplicate: true };
+        }
+
+        const taskRes = await client.query(`
+            INSERT INTO tasks (
+                title, description, deadline, priority, status, created_by, category,
+                task_type, dependency_ids, control_policy, source_type, source_id, type
+            )
+            VALUES (
+                $1, $2, $3, 'normal', 'todo', $4, 'admin',
+                'human', ARRAY[]::INTEGER[], $5::jsonb, 'chat_reminder', $6, 'manual'
+            )
+            RETURNING id
+        `, [title, description, remindAtIso, createdBy, controlPolicy, sourceId]);
+
+        const taskId = taskRes.rows[0].id;
+        await client.query(`
+            INSERT INTO task_logs (task_id, action, old_value, new_value, actor)
+            VALUES ($1, $2, $3, $4, $5)
+        `, [
+            taskId,
+            'created_from_chat_reminder',
+            null,
+            JSON.stringify({ message_id: message.id, channel_id: message.channel_id, remind_at: remindAtIso, source_id: sourceId }),
+            createdBy
+        ]);
+
+        await client.query('COMMIT');
+        return { taskId, sourceId, duplicate: false };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
 }
 
 async function requireChannelMemberOrRespond(channelId, userId, res) {
@@ -903,36 +982,43 @@ router.post('/tasks', async (req, res) => {
         if (!title || !title.trim()) {
             return res.status(400).json({ error: 'Task title is required' });
         }
+        const parsedChannelId = channelId ? parseId(channelId) : null;
+        const parsedMessageId = messageId ? parseId(messageId) : null;
+        const parsedAssignedTo = assignedTo ? parseId(assignedTo) : null;
+        if (channelId && !parsedChannelId) return res.status(400).json({ error: 'Invalid channel ID' });
+        if (messageId && !parsedMessageId) return res.status(400).json({ error: 'Invalid message ID' });
+        if (assignedTo && !parsedAssignedTo) return res.status(400).json({ error: 'Invalid assignee ID' });
         if (channelId) {
-            const parsedChannelId = parseId(channelId);
-            if (!parsedChannelId) return res.status(400).json({ error: 'Invalid channel ID' });
             if (!await requireChannelMemberOrRespond(parsedChannelId, userId, res)) return;
             if (messageId) {
-                const msg = await getMessageForChannelMember(parseId(messageId), userId, res);
+                const msg = await getMessageForChannelMember(parsedMessageId, userId, res);
                 if (!msg) return;
                 if (msg.channel_id !== parsedChannelId) {
                     return res.status(400).json({ error: 'Message does not belong to this channel' });
                 }
             }
         } else if (messageId) {
-            const msg = await getMessageForChannelMember(parseId(messageId), userId, res);
+            const msg = await getMessageForChannelMember(parsedMessageId, userId, res);
             if (!msg) return;
         }
-        const task = await chat.createTask({
-            channelId: channelId || null,
-            messageId: messageId || null,
-            assignedTo: assignedTo || null,
+        const taskResult = await chat.createTask({
+            channelId: parsedChannelId,
+            messageId: parsedMessageId,
+            assignedTo: parsedAssignedTo,
             assignedBy: userId,
             title: title.trim(),
             deadline: deadline || null
         });
+        const hasCreateMeta = taskResult && Object.prototype.hasOwnProperty.call(taskResult, 'task');
+        const task = hasCreateMeta ? taskResult.task : taskResult;
+        const created = hasCreateMeta ? taskResult.created !== false : true;
 
         // Broadcast task to channel
-        if (channelId) {
-            broadcastToChannel(channelId, 'chat:task', { channelId, task });
+        if (parsedChannelId && created) {
+            broadcastToChannel(parsedChannelId, 'chat:task', { channelId: parsedChannelId, task });
         }
 
-        res.status(201).json(task);
+        res.status(created ? 201 : 200).json(created ? task : { ...task, duplicate: true });
     } catch (err) {
         log.error('Error creating task', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -949,7 +1035,7 @@ router.patch('/tasks/:id', async (req, res) => {
         if (!['open', 'in_progress', 'done'].includes(status)) {
             return res.status(400).json({ error: 'Invalid status' });
         }
-        const task = await chat.updateTask(taskId, userId, { status });
+        const task = await chat.updateTask(taskId, userId, { status, role: req.user.role });
         if (!task) return res.status(404).json({ error: 'Task not found' });
         res.json(task);
     } catch (err) {
@@ -2098,45 +2184,25 @@ router.post('/messages/:id/remind', async (req, res) => {
         if (isNaN(remindDate.getTime()) || remindDate <= new Date()) {
             return res.status(400).json({ error: 'remindAt must be a future datetime' });
         }
+        const remindAtIso = remindDate.toISOString();
 
         const msgRes = await pool.query(
             'SELECT id, channel_id, content FROM chat_messages WHERE id = $1', [messageId]
         );
         if (!msgRes.rowCount) return res.status(404).json({ error: 'Message not found' });
         const m = msgRes.rows[0];
-        if (!await requireChannelMemberOrRespond(m.channel_id, getCurrentUserId(req), res)) return;
+        const userId = getCurrentUserId(req);
+        if (!await requireChannelMemberOrRespond(m.channel_id, userId, res)) return;
 
-        // Create task via kleshnya service
-        let taskId = null;
-        try {
-            const kleshnya = require('../services/kleshnya');
-            const task = await kleshnya.createTask({
-                title: `⏰ Нагадування: "${m.content.slice(0, 80)}"`,
-                description: `Нагадування з чату (канал #${m.channel_id}, msg #${m.id})`,
-                deadline: remindAt,
-                priority: 'normal',
-                source_type: 'chat_reminder',
-                category: 'admin',
-                created_by: req.user.username
-            });
-            taskId = task.id;
-        } catch (e) {
-            // Fallback: insert task directly
-            const taskRes = await pool.query(
-                `INSERT INTO tasks (title, description, deadline, priority, status, created_by, category)
-                 VALUES ($1, $2, $3, 'normal', 'todo', $4, 'admin') RETURNING id`,
-                [
-                    `⏰ Нагадування: "${m.content.slice(0, 80)}"`,
-                    `Нагадування з чату (канал #${m.channel_id}, msg #${m.id})`,
-                    remindAt,
-                    req.user.username
-                ]
-            );
-            taskId = taskRes.rows[0].id;
-        }
+        const result = await createChatReminderTask({
+            pool,
+            message: m,
+            user: req.user,
+            remindAtIso
+        });
 
-        log.info(`[Remind] Task #${taskId} created for msg #${messageId} at ${remindAt}`);
-        res.json({ success: true, taskId, remindAt });
+        log.info(`[Remind] Task #${result.taskId} ${result.duplicate ? 'reused' : 'created'} for msg #${messageId} at ${remindAtIso}`);
+        res.json({ success: true, taskId: result.taskId, remindAt: remindAtIso, duplicate: result.duplicate, sourceId: result.sourceId });
     } catch (err) {
         log.error('[Remind] Error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });

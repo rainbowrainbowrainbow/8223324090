@@ -16,19 +16,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.44.12">
-    <link rel="stylesheet" href="css/auth.css?v=0.44.12">
-    <link rel="stylesheet" href="css/layout.css?v=0.44.12">
-    <link rel="stylesheet" href="css/timeline.css?v=0.44.12">
-    <link rel="stylesheet" href="css/panel.css?v=0.44.12">
-    <link rel="stylesheet" href="css/modals.css?v=0.44.12">
-    <link rel="stylesheet" href="css/controls.css?v=0.44.12">
-    <link rel="stylesheet" href="css/features.css?v=0.44.12">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.44.12">
-    <link rel="stylesheet" href="css/responsive.css?v=0.44.12">
-    <link rel="stylesheet" href="css/pages.css?v=0.44.12">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.44.12">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.44.12">
+    <link rel="stylesheet" href="css/base.css?v=0.44.15">
+    <link rel="stylesheet" href="css/auth.css?v=0.44.15">
+    <link rel="stylesheet" href="css/layout.css?v=0.44.15">
+    <link rel="stylesheet" href="css/timeline.css?v=0.44.15">
+    <link rel="stylesheet" href="css/panel.css?v=0.44.15">
+    <link rel="stylesheet" href="css/modals.css?v=0.44.15">
+    <link rel="stylesheet" href="css/controls.css?v=0.44.15">
+    <link rel="stylesheet" href="css/features.css?v=0.44.15">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.44.15">
+    <link rel="stylesheet" href="css/responsive.css?v=0.44.15">
+    <link rel="stylesheet" href="css/pages.css?v=0.44.15">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.44.15">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.44.15">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -45,9 +45,9 @@
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.44.12 — 0.44 release line</p>
+                <p class="tagline">AI First CRM v0.44.15 — 0.44 release line</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.44.12</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.44.15</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1152,6 +1152,35 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.44.15 - Scheduled chat dispatch atomic claim (11.05.2026)</h4>
+                    <ul>
+                        <li><b>Atomic claim</b> - due scheduled chat messages are claimed with transactional <code>FOR UPDATE SKIP LOCKED</code></li>
+                        <li><b>Duplicate-send safety</b> - concurrent scheduler workers skip already claimed rows instead of sending the same scheduled message twice</li>
+                        <li><b>Failure semantics</b> - DB claim failures roll back for retry; websocket failures after claim leave the message visible and avoid duplicate retries</li>
+                        <li><b>Tests</b> - added focused scheduler coverage for success, claim rollback, and post-claim broadcast failure</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.44.14 - Chat reminder idempotency (11.05.2026)</h4>
+                    <ul>
+                        <li><b>Source identity</b> - chat reminders now create tasks with a stable <code>chat_reminder</code> <code>source_id</code></li>
+                        <li><b>Duplicate guard</b> - repeating the same message/user/time reminder reuses the existing active task</li>
+                        <li><b>Transactional write</b> - task creation and task log insertion now commit or roll back together</li>
+                        <li><b>Fallback safety</b> - removed the ambiguous Kleshnya/direct-insert fallback that could create duplicate tasks after partial failure</li>
+                        <li><b>Tests</b> - added focused reminder coverage for duplicate, distinct-time, and rollback behavior</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.44.13 - Chat task authz and duplicate-safe creation (11.05.2026)</h4>
+                    <ul>
+                        <li><b>Update authz</b> - chat-task status changes now require the assignee, creator, or an elevated role</li>
+                        <li><b>Mutation safety</b> - unrelated authenticated users can no longer update <code>chat_tasks</code> by id alone</li>
+                        <li><b>Duplicate guard</b> - repeated task creation from the same chat message/title/creator/assignee returns the existing active task</li>
+                        <li><b>Scope</b> - channel-only tasks stay repeatable, so recurring operational tasks are not blocked by title alone</li>
+                        <li><b>Tests</b> - added focused coverage for allow/deny updates, elevated roles, duplicate message tasks, and repeatable channel tasks</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.44.12 - Guardian RBAC hardening for control routes (11.05.2026)</h4>
                     <ul>
@@ -5522,27 +5551,27 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.44.12"></script>
-    <script src="js/api.js?v=0.44.12"></script>
-    <script src="js/ui.js?v=0.44.12"></script>
-    <script src="js/auth.js?v=0.44.12"></script>
-    <script src="js/timeline.js?v=0.44.12"></script>
-    <script src="js/booking.js?v=0.44.12"></script>
-    <script src="js/settings.js?v=0.44.12"></script>
-    <script src="js/booking-form.js?v=0.44.12"></script>
-    <script src="js/booking-linked.js?v=0.44.12"></script>
-    <script src="js/settings-dashboard.js?v=0.44.12"></script>
-    <script src="js/settings-history.js?v=0.44.12"></script>
-    <script src="js/settings-afisha.js?v=0.44.12"></script>
-    <script src="js/settings-certificates.js?v=0.44.12"></script>
-    <script src="js/offline.js?v=0.44.12"></script>
-    <script src="js/search.js?v=0.44.12"></script>
-    <script src="js/ws.js?v=0.44.12"></script>
-    <script src="js/app.js?v=0.44.12"></script>
-    <script src="js/kleshnya-widget.js?v=0.44.12"></script>
-    <script src="js/components/sidebar.js?v=0.44.12"></script>
+    <script src="js/config.js?v=0.44.15"></script>
+    <script src="js/api.js?v=0.44.15"></script>
+    <script src="js/ui.js?v=0.44.15"></script>
+    <script src="js/auth.js?v=0.44.15"></script>
+    <script src="js/timeline.js?v=0.44.15"></script>
+    <script src="js/booking.js?v=0.44.15"></script>
+    <script src="js/settings.js?v=0.44.15"></script>
+    <script src="js/booking-form.js?v=0.44.15"></script>
+    <script src="js/booking-linked.js?v=0.44.15"></script>
+    <script src="js/settings-dashboard.js?v=0.44.15"></script>
+    <script src="js/settings-history.js?v=0.44.15"></script>
+    <script src="js/settings-afisha.js?v=0.44.15"></script>
+    <script src="js/settings-certificates.js?v=0.44.15"></script>
+    <script src="js/offline.js?v=0.44.15"></script>
+    <script src="js/search.js?v=0.44.15"></script>
+    <script src="js/ws.js?v=0.44.15"></script>
+    <script src="js/app.js?v=0.44.15"></script>
+    <script src="js/kleshnya-widget.js?v=0.44.15"></script>
+    <script src="js/components/sidebar.js?v=0.44.15"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=0.44.12"></script>
-    <script src="js/alerts.js?v=0.44.12"></script>
+    <script src="js/role-panel.js?v=0.44.15"></script>
+    <script src="js/alerts.js?v=0.44.15"></script>
 </body>
 </html>

@@ -4,6 +4,38 @@
 
 ---
 
+## v0.44.15 - Scheduled chat dispatch atomic claim (2026-05-11)
+
+### Scheduled chat messages [codex]
+- **Atomic claim** - due scheduled chat messages are now claimed with a transactional `FOR UPDATE SKIP LOCKED` update before dispatch.
+- **Duplicate-send safety** - concurrent scheduler workers skip already claimed rows instead of selecting and sending the same message twice.
+- **Failure semantics** - DB claim failures roll back so messages can retry; websocket broadcast failures after claim leave the message visible in DB and are not retried to avoid duplicate sends.
+- **Focused tests** - added deterministic coverage for successful claim/broadcast, claim rollback, and post-claim broadcast failure behavior.
+
+---
+
+## v0.44.14 - Chat reminder idempotency (2026-05-11)
+
+### Chat reminders [codex]
+- **Stable source identity** - reminder-created tasks now use a deterministic `chat_reminder` `source_id` based on message, user, and canonical reminder time.
+- **Duplicate-safe reminders** - repeating the same reminder request reuses the active task instead of creating a second task.
+- **Transactional write path** - reminder task creation and task log creation now run in one DB transaction with an advisory lock.
+- **No ambiguous fallback** - the old Kleshnya/direct-insert fallback path was removed for chat reminders, so partial failures roll back instead of creating duplicate follow-up work.
+- **Focused tests** - added coverage for duplicate reminders, distinct reminder times, and rollback after simulated partial failure.
+
+---
+
+## v0.44.13 - Chat task authz and duplicate-safe creation (2026-05-11)
+
+### Chat tasks [codex]
+- **Update authorization** - chat-task status changes now require the assignee, creator, or an elevated chat-task manager role (`creator`, `director`, `admin`, `senior_manager`).
+- **No broad task mutation** - unrelated authenticated users no longer update `chat_tasks` by id alone.
+- **Duplicate-safe message tasks** - repeated task creation from the same chat message, title, creator, and assignee returns the existing active task instead of creating a duplicate.
+- **Scoped repeatability** - channel-only tasks remain repeatable so legitimate recurring operational tasks are not blocked by title alone.
+- **Focused tests** - added unit coverage for allow/deny update paths, elevated-role updates, duplicate message-task creation, and repeatable channel-only tasks.
+
+---
+
 ## v0.44.12 - Guardian RBAC hardening for control routes (2026-05-11)
 
 ### Guardian authz [codex]

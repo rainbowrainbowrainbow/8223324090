@@ -823,16 +823,80 @@ async function sendBotMessage(channelId, content, { contentType = 'system', meta
 // CHAT TASKS
 // ==========================================
 
+const CHAT_TASK_MANAGER_ROLES = new Set(['creator', 'director', 'admin', 'senior_manager']);
+
+function canManageAllChatTasks(role) {
+    return CHAT_TASK_MANAGER_ROLES.has(String(role || '').trim());
+}
+
 /**
  * Create a task from chat.
+ *
+ * Message-scoped tasks are protected from duplicate double-submit by an
+ * advisory transaction lock plus an active-task lookup. Channel-only tasks
+ * stay repeatable because the product may legitimately need repeated titles.
  */
 async function createTask({ channelId, messageId, assignedTo, assignedBy, title, deadline }) {
-    const result = await pool.query(`
-        INSERT INTO chat_tasks (channel_id, message_id, assigned_to, assigned_by, title, deadline)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING *
-    `, [channelId, messageId || null, assignedTo || null, assignedBy, title, deadline || null]);
-    return result.rows[0];
+    const normalizedTitle = String(title || '').trim();
+    const normalizedAssignedTo = assignedTo || null;
+    const normalizedMessageId = messageId || null;
+    const normalizedChannelId = channelId || null;
+
+    if (!normalizedMessageId) {
+        const result = await pool.query(`
+            INSERT INTO chat_tasks (channel_id, message_id, assigned_to, assigned_by, title, deadline)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *
+        `, [normalizedChannelId, null, normalizedAssignedTo, assignedBy, normalizedTitle, deadline || null]);
+        return { task: result.rows[0], created: true };
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const dedupeKey = [
+            'chat_task',
+            normalizedMessageId,
+            assignedBy,
+            normalizedAssignedTo || '',
+            normalizedTitle.toLowerCase()
+        ].join(':');
+        await client.query(
+            'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
+            ['chat_task', dedupeKey]
+        );
+
+        const duplicate = await client.query(`
+            SELECT *
+            FROM chat_tasks
+            WHERE message_id = $1
+              AND assigned_by = $2
+              AND assigned_to IS NOT DISTINCT FROM $3
+              AND LOWER(BTRIM(title)) = LOWER(BTRIM($4))
+              AND status IN ('open', 'in_progress')
+            ORDER BY id DESC
+            LIMIT 1
+        `, [normalizedMessageId, assignedBy, normalizedAssignedTo, normalizedTitle]);
+
+        if (duplicate.rows.length > 0) {
+            await client.query('COMMIT');
+            return { task: duplicate.rows[0], created: false };
+        }
+
+        const result = await client.query(`
+            INSERT INTO chat_tasks (channel_id, message_id, assigned_to, assigned_by, title, deadline)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *
+        `, [normalizedChannelId, normalizedMessageId, normalizedAssignedTo, assignedBy, normalizedTitle, deadline || null]);
+
+        await client.query('COMMIT');
+        return { task: result.rows[0], created: true };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
 }
 
 /**
@@ -857,14 +921,21 @@ async function getTasks(userId) {
 /**
  * Update task status.
  */
-async function updateTask(taskId, userId, { status }) {
+async function updateTask(taskId, userId, { status, role } = {}) {
     const updates = ['status = $2'];
     const params = [taskId, status];
     if (status === 'done') {
         updates.push('completed_at = NOW()');
     }
+
+    let authClause = '';
+    if (!canManageAllChatTasks(role)) {
+        params.push(userId);
+        authClause = ` AND (assigned_to = $${params.length} OR assigned_by = $${params.length})`;
+    }
+
     const result = await pool.query(
-        `UPDATE chat_tasks SET ${updates.join(', ')} WHERE id = $1 RETURNING *`,
+        `UPDATE chat_tasks SET ${updates.join(', ')} WHERE id = $1${authClause} RETURNING *`,
         params
     );
     return result.rows[0] || null;

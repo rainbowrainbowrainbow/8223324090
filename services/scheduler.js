@@ -1525,25 +1525,48 @@ async function checkHotLeads() {
 /**
  * Send scheduled chat messages that are due.
  */
+async function claimDueScheduledChatMessages(now, limit = 20) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const result = await client.query(`
+            WITH due AS (
+                SELECT id
+                FROM chat_messages
+                WHERE is_scheduled = true
+                  AND scheduled_at <= $1
+                  AND deleted_at IS NULL
+                ORDER BY scheduled_at ASC, id ASC
+                LIMIT $2
+                FOR UPDATE SKIP LOCKED
+            )
+            UPDATE chat_messages cm
+            SET is_scheduled = false
+            FROM due
+            WHERE cm.id = due.id
+            RETURNING cm.*
+        `, [now, limit]);
+        await client.query('COMMIT');
+        return result.rows;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
 async function checkScheduledChatMessages() {
     try {
         const now = new Date().toISOString();
-        const result = await pool.query(
-            `SELECT * FROM chat_messages WHERE is_scheduled = true AND scheduled_at <= $1 LIMIT 20`,
-            [now]
-        );
-        if (result.rows.length === 0) return;
+        const rows = await claimDueScheduledChatMessages(now, 20);
+        if (rows.length === 0) return;
 
         const { broadcastToChannel } = require('./websocket');
         const chatService = require('./chatService');
 
-        for (const row of result.rows) {
+        for (const row of rows) {
             try {
-                // Mark as sent (not scheduled anymore)
-                await pool.query(
-                    'UPDATE chat_messages SET is_scheduled = false WHERE id = $1', [row.id]
-                );
-                // Broadcast to channel
                 const fullMsg = await pool.query(`
                     SELECT cm.*, u.username, u.name AS display_name
                     FROM chat_messages cm JOIN users u ON u.id = cm.user_id WHERE cm.id = $1
@@ -1557,7 +1580,7 @@ async function checkScheduledChatMessages() {
                 }
                 log.info(`Scheduled chat message ${row.id} sent`);
             } catch (err) {
-                log.error(`Scheduled message ${row.id} error: ${err.message}`);
+                log.error(`Scheduled message ${row.id} broadcast error after atomic claim: ${err.message}; message remains visible in DB and will not be retried to avoid duplicate sends`);
             }
         }
     } catch (err) {

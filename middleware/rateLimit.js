@@ -147,6 +147,13 @@ const shopBuyLimiter = createWriteRateLimiter('shop-buy', {
     methods: ['POST']
 });
 
+// Public landing/demo lead forms: keep enough room for real traffic, block bursts.
+const landingLeadLimiter = createWriteRateLimiter('landing-lead', {
+    windowMs: 600000,
+    max: 8,
+    methods: ['POST']
+});
+
 module.exports = {
     rateLimiter,
     loginRateLimiter,
@@ -157,5 +164,6 @@ module.exports = {
     createWriteRateLimiter,
     exportLimiter,
     sensitiveActionLimiter,
-    shopBuyLimiter
+    shopBuyLimiter,
+    landingLeadLimiter
 };

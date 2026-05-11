@@ -4,6 +4,16 @@
 
 ---
 
+## v43.15.0 - Auth boundary fix for public landing and query tokens (2026-05-11)
+
+### Security and behavior [codex]
+- **Public landing access** - `POST /api/landing/demo-request` and the active landing form path `POST /api/leads/landing` now bypass JWT auth intentionally instead of being blocked by the global API guard.
+- **Query-token hardening** - global `?token=` JWT fallback is restricted to the approved graduation proposal/export `window.open` endpoints instead of every protected API route.
+- **Boundary tests** - added focused tests for public endpoints, protected no-auth rejection, generic query-token rejection, allowed query-token paths, and report-bot/Telegram missing or wrong secrets.
+- **Abuse guard** - added a burst limiter for public landing/demo lead submissions.
+
+---
+
 ## v43.14.0 - Node 22 runtime and Railway baseline (2026-05-11)
 
 ### Platform baseline [codex]

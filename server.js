@@ -12,7 +12,8 @@ const compression = require('compression');
 // --- Core modules ---
 const { pool, initDatabase } = require('./db');
 const { authenticateToken } = require('./middleware/auth');
-const { rateLimiter, loginRateLimiter, sensitiveActionLimiter, shopBuyLimiter } = require('./middleware/rateLimit');
+const { apiAuthBoundary } = require('./middleware/apiAuthBoundary');
+const { rateLimiter, loginRateLimiter, sensitiveActionLimiter, shopBuyLimiter, landingLeadLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { apiVersionRewrite } = require('./middleware/apiVersioning');
@@ -93,18 +94,11 @@ app.get('/api-docs.json', (req, res) => res.json(swaggerSpec));
 
 // Rate limiter for all API routes
 app.use('/api', rateLimiter);
+app.use('/api/landing/demo-request', landingLeadLimiter);
+app.use('/api/leads/landing', landingLeadLimiter);
 
 // Auth middleware: protect all API endpoints except public ones
-app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/auth/') || req.path === '/health' || req.path === '/version' || req.path.startsWith('/telegram/webhook') || req.path.startsWith('/report-bot/') || req.path.startsWith('/personal-accounts/') || req.path === '/kleshnya/webhook' || req.path === '/kleshnya/pending-messages' || req.path === '/kleshnya/sync-chat' || req.path === '/demo/login' || req.path === '/demo/scenarios' || req.path === '/packages' || req.path === '/status/public' || req.path.startsWith('/leads/webhook/') || (req.path === '/leads/landing' && req.method === 'POST')) {
-        return next();
-    }
-    // Support token in query string for proposal/print endpoints opened via window.open()
-    if (!req.headers['authorization'] && req.query.token) {
-        req.headers['authorization'] = `Bearer ${req.query.token}`;
-    }
-    authenticateToken(req, res, next);
-});
+app.use('/api', apiAuthBoundary(authenticateToken));
 
 // Login rate limiter (stricter: 5 attempts per minute)
 app.use('/api/auth/login', loginRateLimiter);
@@ -441,7 +435,7 @@ app.get('/catalog/:slug/:token', async (req, res) => {
             }).join('')+'</div>';
             return `<div class="cat-page" style="--cat-bg1:${t.bg1};--cat-bg2:${t.bg2};--cat-bg3:${t.bg3};--cat-accent:${t.accent};--cat-price:${t.price}"><div class="cat-hero">${p.image_url?`<img class="cat-hero-img" src="${p.image_url}" alt="${esc(p.title)}">`:''}<div class="cat-hero-content"><h1 class="cat-title">${esc(p.title||'').toUpperCase()}</h1>${p.subtitle?`<p class="cat-subtitle">${esc(p.subtitle)}</p>`:''}</div></div>${statsHtml}<div class="cat-body">${itemsHtml?`<div class="cat-section-title">Що входить</div><div class="cat-services">${itemsHtml}</div>`:''}${p.description?`<div class="cat-desc">${esc(p.description)}</div>`:''}</div><div class="cat-footer"><div class="cat-footer-info"><span>📍 Парк Закревського · Київ</span><span>📞 0800 75 35 53</span></div></div></div>`;
         }).join('');
-        res.send(`<!DOCTYPE html><html lang="uk"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(catalog.name)} — Event Genix</title><link rel="stylesheet" href="/css/catalog.css?v=43.14.0"><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet"><style>body{margin:0;background:#1a1a2e;font-family:'Nunito',sans-serif;padding:24px 16px;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:24px}h2{color:#fff;text-align:center;margin:0 0 8px}.cat-page{margin:0 auto}</style></head><body><h2>${esc(catalog.emoji||'')} ${esc(catalog.name)}</h2>${pagesHtml}<p style="text-align:center;color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">Event Genix CRM · Парк Закревського Періоду</p></body></html>`);
+        res.send(`<!DOCTYPE html><html lang="uk"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(catalog.name)} — Event Genix</title><link rel="stylesheet" href="/css/catalog.css?v=43.15.0"><link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet"><style>body{margin:0;background:#1a1a2e;font-family:'Nunito',sans-serif;padding:24px 16px;min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:24px}h2{color:#fff;text-align:center;margin:0 0 8px}.cat-page{margin:0 auto}</style></head><body><h2>${esc(catalog.emoji||'')} ${esc(catalog.name)}</h2>${pagesHtml}<p style="text-align:center;color:rgba(255,255,255,0.3);font-size:12px;margin-top:24px">Event Genix CRM · Парк Закревського Періоду</p></body></html>`);
     } catch (err) {
         res.status(500).send('Помилка сервера');
     }

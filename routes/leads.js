@@ -80,6 +80,9 @@ router.post('/landing', async (req, res) => {
     }
 });
 
+// All remaining leads routes require authentication.
+router.use(authenticateToken);
+
 // GET /api/leads — list all leads with optional filters
 router.get('/', async (req, res) => {
     try {

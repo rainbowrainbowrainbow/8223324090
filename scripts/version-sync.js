@@ -1,19 +1,21 @@
 #!/usr/bin/env node
 /**
- * scripts/version-sync.js — Single source of truth: package.json → everywhere
+ * scripts/version-sync.js - Single source of truth: package.json -> derived version markers.
  *
  * Usage:
- *   node scripts/version-sync.js              # Check mode — reports mismatches
- *   node scripts/version-sync.js --fix        # Fix mode — updates all files
- *   node scripts/version-sync.js --bump patch # Bump + fix (patch/minor/major)
+ *   node scripts/version-sync.js              # Check mode
+ *   node scripts/version-sync.js --fix        # Fix mode
+ *   node scripts/version-sync.js --bump patch # Bump package.json + derived markers
  *
- * What it syncs:
- *   1. package.json          → version (source of truth)
- *   2. index.html            → all ?v=X.X.X on CSS/JS tags
- *   3. index.html            → tagline text
- *   4. index.html            → changelog button text
- *   5. sw.js                 → CACHE_NAME + API_CACHE_NAME
- *   6. All standalone .html  → ?v=X.X.X on CSS/JS tags
+ * Synced/checked surfaces:
+ *   1. package.json version (source of truth)
+ *   2. package-lock.json root package versions
+ *   3. HTML/CSS/JS/image asset query strings in href/src attributes and quoted asset refs
+ *   4. index.html first-screen version and changelog button
+ *   5. index.html latest changelog modal entry version
+ *   6. CHANGELOG.md latest heading version
+ *   7. sw.js CACHE_NAME and API_CACHE_NAME
+ *   8. server.js inline versioned asset references
  */
 
 const fs = require('fs');
@@ -24,10 +26,8 @@ const FIX = process.argv.includes('--fix');
 const BUMP = process.argv.indexOf('--bump');
 const BUMP_TYPE = BUMP !== -1 ? process.argv[BUMP + 1] : null;
 
-// ═══ Colors ═══
 const RED = '\x1b[31m';
 const GREEN = '\x1b[32m';
-const YELLOW = '\x1b[33m';
 const CYAN = '\x1b[36m';
 const RESET = '\x1b[0m';
 const BOLD = '\x1b[1m';
@@ -35,19 +35,35 @@ const BOLD = '\x1b[1m';
 let issues = 0;
 let fixed = 0;
 
+function abs(file) {
+    return path.join(ROOT, file);
+}
+
+function exists(file) {
+    return fs.existsSync(abs(file));
+}
+
 function read(file) {
-    return fs.readFileSync(path.join(ROOT, file), 'utf-8');
+    return fs.readFileSync(abs(file), 'utf-8');
 }
 
 function write(file, content) {
-    fs.writeFileSync(path.join(ROOT, file), content, 'utf-8');
+    fs.writeFileSync(abs(file), content, 'utf-8');
 }
 
-function report(file, what, actual, expected) {
+function readJson(file) {
+    return JSON.parse(read(file));
+}
+
+function writeJson(file, value) {
+    write(file, JSON.stringify(value, null, 2) + '\n');
+}
+
+function report(file, what, actual, expected, fixable = true) {
     issues++;
-    if (FIX) {
-        console.log(`  ${GREEN}FIXED${RESET}  ${file}: ${what} ${RED}${actual}${RESET} → ${GREEN}${expected}${RESET}`);
+    if (FIX && fixable) {
         fixed++;
+        console.log(`  ${GREEN}FIXED${RESET}  ${file}: ${what} ${RED}${actual}${RESET} -> ${GREEN}${expected}${RESET}`);
     } else {
         console.log(`  ${RED}MISMATCH${RESET}  ${file}: ${what} is ${RED}${actual}${RESET}, expected ${GREEN}${expected}${RESET}`);
     }
@@ -57,125 +73,211 @@ function ok(file, what) {
     console.log(`  ${GREEN}OK${RESET}     ${file}: ${what}`);
 }
 
-// ═══ 1. Read / bump package.json version ═══
-const pkgPath = 'package.json';
-let pkg = JSON.parse(read(pkgPath));
+function bumpVersion(version, type) {
+    const parts = version.split('.').map(Number);
+    if (parts.length !== 3 || parts.some(Number.isNaN)) {
+        throw new Error(`Cannot bump non-semver version: ${version}`);
+    }
+
+    const [major, minor, patch] = parts;
+    if (type === 'patch') return `${major}.${minor}.${patch + 1}`;
+    if (type === 'minor') return `${major}.${minor + 1}.0`;
+    if (type === 'major') return `${major + 1}.0.0`;
+    throw new Error(`Unknown bump type: ${type}. Use patch/minor/major`);
+}
+
+function syncAssetVersions(file, version) {
+    if (!exists(file)) return;
+
+    let content = read(file);
+    const assetVersionRegex = /((?:href|src)=["'][^"']+\?v=|["'][^"']+\.(?:css|js|png|jpe?g|svg|webp|ico)\?v=)([\d.]+)(["'])/g;
+    let wrong = 0;
+    let total = 0;
+    let firstWrong = null;
+
+    content = content.replace(assetVersionRegex, (match, prefix, found, suffix) => {
+        total++;
+        if (found !== version) {
+            wrong++;
+            if (!firstWrong) firstWrong = found;
+            return FIX ? `${prefix}${version}${suffix}` : match;
+        }
+        return match;
+    });
+
+    if (wrong > 0) {
+        report(file, `${wrong} asset ?v= tags`, firstWrong, version);
+        if (FIX) write(file, content);
+    } else if (total > 0) {
+        ok(file, 'asset ?v= tags');
+    }
+}
+
+function collectVersionedAssetFiles(dir = ROOT, files = []) {
+    const skipDirs = new Set(['.git', 'node_modules']);
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+            if (!skipDirs.has(entry.name)) collectVersionedAssetFiles(path.join(dir, entry.name), files);
+            continue;
+        }
+
+        if (!entry.isFile()) continue;
+        const ext = path.extname(entry.name);
+        if (ext !== '.html' && ext !== '.js') continue;
+
+        const fullPath = path.join(dir, entry.name);
+        const rel = path.relative(ROOT, fullPath).replace(/\\/g, '/');
+        if (rel === 'scripts/version-sync.js') continue;
+        files.push(rel);
+    }
+    return files.sort();
+}
+
+function syncPackageLock(version) {
+    const file = 'package-lock.json';
+    if (!exists(file)) return;
+
+    const lock = readJson(file);
+    let changed = false;
+
+    if (lock.version !== version) {
+        report(file, 'top-level version', lock.version, version);
+        if (FIX) {
+            lock.version = version;
+            changed = true;
+        }
+    } else {
+        ok(file, 'top-level version');
+    }
+
+    if (lock.packages && lock.packages[''] && lock.packages[''].version !== version) {
+        report(file, 'root package version', lock.packages[''].version, version);
+        if (FIX) {
+            lock.packages[''].version = version;
+            changed = true;
+        }
+    } else if (lock.packages && lock.packages['']) {
+        ok(file, 'root package version');
+    }
+
+    if (FIX && changed) writeJson(file, lock);
+}
+
+function syncIndexLabels(version) {
+    const file = 'index.html';
+    let html = read(file);
+
+    const taglineRegex = /(<p class="tagline">AI First CRM v)([\d.]+)([^<]*<\/p>)/;
+    const taglineMatch = html.match(taglineRegex);
+    if (taglineMatch && taglineMatch[2] !== version) {
+        report(file, 'tagline version', taglineMatch[2], version);
+        if (FIX) html = html.replace(taglineRegex, `$1${version}$3`);
+    } else if (taglineMatch) {
+        ok(file, 'tagline version');
+    }
+
+    const changelogButtonRegex = /(<button[^>]*id="changelogBtn"[^>]*>[^<]*v)([\d.]+)/;
+    const buttonMatch = html.match(changelogButtonRegex);
+    if (buttonMatch && buttonMatch[2] !== version) {
+        report(file, 'changelog button', buttonMatch[2], version);
+        if (FIX) html = html.replace(changelogButtonRegex, `$1${version}`);
+    } else if (buttonMatch) {
+        ok(file, 'changelog button');
+    }
+
+    const latestModalRegex = /(<div class="changelog-list">[\s\S]*?<h4>[\s\S]*?v)([\d.]+)/;
+    const latestModalMatch = html.match(latestModalRegex);
+    if (latestModalMatch && latestModalMatch[2] !== version) {
+        report(file, 'latest changelog modal entry', latestModalMatch[2], version);
+        if (FIX) html = html.replace(latestModalRegex, `$1${version}`);
+    } else if (latestModalMatch) {
+        ok(file, 'latest changelog modal entry');
+    }
+
+    if (FIX) write(file, html);
+}
+
+function checkMarkdownChangelog(version) {
+    const file = 'CHANGELOG.md';
+    if (!exists(file)) return;
+
+    const markdown = read(file);
+    const latestHeading = markdown.match(/^## v([\d.]+)/m);
+    if (!latestHeading) {
+        report(file, 'latest heading', 'missing', `v${version}`, false);
+        return;
+    }
+
+    if (latestHeading[1] !== version) {
+        report(file, 'latest heading version', latestHeading[1], version, false);
+    } else {
+        ok(file, 'latest heading version');
+    }
+}
+
+function syncServiceWorker(version) {
+    const file = 'sw.js';
+    if (!exists(file)) return;
+
+    let sw = read(file);
+    const expectedCache = `event-genix-v${version}`;
+    const expectedApiCache = `event-genix-api-v${version}`;
+
+    const cacheMatch = sw.match(/CACHE_NAME = '([^']+)'/);
+    if (cacheMatch && cacheMatch[1] !== expectedCache) {
+        report(file, 'CACHE_NAME', cacheMatch[1], expectedCache);
+        if (FIX) sw = sw.replace(/CACHE_NAME = '[^']+'/, `CACHE_NAME = '${expectedCache}'`);
+    } else if (cacheMatch) {
+        ok(file, 'CACHE_NAME');
+    }
+
+    const apiCacheMatch = sw.match(/API_CACHE_NAME = '([^']+)'/);
+    if (apiCacheMatch && apiCacheMatch[1] !== expectedApiCache) {
+        report(file, 'API_CACHE_NAME', apiCacheMatch[1], expectedApiCache);
+        if (FIX) sw = sw.replace(/API_CACHE_NAME = '[^']+'/, `API_CACHE_NAME = '${expectedApiCache}'`);
+    } else if (apiCacheMatch) {
+        ok(file, 'API_CACHE_NAME');
+    }
+
+    if (FIX) write(file, sw);
+}
+
+let pkg = readJson('package.json');
 let version = pkg.version;
 
-if (BUMP_TYPE) {
-    const [major, minor, patch] = version.split('.').map(Number);
-    if (BUMP_TYPE === 'patch') version = `${major}.${minor}.${patch + 1}`;
-    else if (BUMP_TYPE === 'minor') version = `${major}.${minor + 1}.0`;
-    else if (BUMP_TYPE === 'major') version = `${major + 1}.0.0`;
-    else {
-        console.error(`${RED}Unknown bump type: ${BUMP_TYPE}. Use patch/minor/major${RESET}`);
-        process.exit(1);
+try {
+    if (BUMP_TYPE) {
+        version = bumpVersion(version, BUMP_TYPE);
+        pkg.version = version;
+        writeJson('package.json', pkg);
+        console.log(`${CYAN}Bumped${RESET} package.json -> ${BOLD}v${version}${RESET}\n`);
     }
-    pkg.version = version;
-    write(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
-    console.log(`${CYAN}Bumped${RESET} package.json → ${BOLD}v${version}${RESET}\n`);
+} catch (err) {
+    console.error(`${RED}${err.message}${RESET}`);
+    process.exit(1);
 }
 
 console.log(`${BOLD}Version sync: v${version}${RESET} (source: package.json)\n`);
 
-// ═══ 2. index.html — cache busters ?v=X.X.X ═══
-let indexHtml = read('index.html');
-const vTagRegex = /\?v=[\d.]+/g;
-const vTags = indexHtml.match(vTagRegex) || [];
-const wrongTags = vTags.filter(t => t !== `?v=${version}`);
+syncPackageLock(version);
+syncAssetVersions('index.html', version);
+syncIndexLabels(version);
+syncServiceWorker(version);
 
-if (wrongTags.length > 0) {
-    report('index.html', `${wrongTags.length}/${vTags.length} ?v= tags`, wrongTags[0], `?v=${version}`);
-    if (FIX) {
-        indexHtml = indexHtml.replace(vTagRegex, `?v=${version}`);
-    }
-} else if (vTags.length > 0) {
-    ok('index.html', `${vTags.length} ?v= tags all correct`);
+for (const file of collectVersionedAssetFiles()) {
+    if (file !== 'index.html') syncAssetVersions(file, version);
 }
+checkMarkdownChangelog(version);
 
-// ═══ 3. index.html — tagline ═══
-const taglineRegex = /(<p class="tagline">AI First CRM v)([\d.]+)( —[^<]*<\/p>)/;
-const taglineMatch = indexHtml.match(taglineRegex);
-if (taglineMatch) {
-    if (taglineMatch[2] !== version) {
-        report('index.html', 'tagline version', taglineMatch[2], version);
-        if (FIX) {
-            indexHtml = indexHtml.replace(taglineRegex, `$1${version}$3`);
-        }
-    } else {
-        ok('index.html', 'tagline version');
-    }
-}
-
-// ═══ 4. index.html — changelog button ═══
-const changelogBtnRegex = /(Що нового у v)([\d.]+)/;
-const changelogMatch = indexHtml.match(changelogBtnRegex);
-if (changelogMatch) {
-    if (changelogMatch[2] !== version) {
-        report('index.html', 'changelog button', changelogMatch[2], version);
-        if (FIX) {
-            indexHtml = indexHtml.replace(changelogBtnRegex, `$1${version}`);
-        }
-    } else {
-        ok('index.html', 'changelog button');
-    }
-}
-
-if (FIX) write('index.html', indexHtml);
-
-// ═══ 5. sw.js — CACHE_NAME ═══
-const swPath = 'sw.js';
-if (fs.existsSync(path.join(ROOT, swPath))) {
-    let sw = read(swPath);
-    const majorVersion = version.split('.')[0];
-    const expectedCache = `event-genix-v${majorVersion}`;
-    const expectedApiCache = `event-genix-api-v${majorVersion}`;
-
-    const cacheMatch = sw.match(/CACHE_NAME = '([^']+)'/);
-    const apiCacheMatch = sw.match(/API_CACHE_NAME = '([^']+)'/);
-
-    if (cacheMatch && cacheMatch[1] !== expectedCache) {
-        report('sw.js', 'CACHE_NAME', cacheMatch[1], expectedCache);
-        if (FIX) sw = sw.replace(/CACHE_NAME = '[^']+'/, `CACHE_NAME = '${expectedCache}'`);
-    } else if (cacheMatch) {
-        ok('sw.js', 'CACHE_NAME');
-    }
-
-    if (apiCacheMatch && apiCacheMatch[1] !== expectedApiCache) {
-        report('sw.js', 'API_CACHE_NAME', apiCacheMatch[1], expectedApiCache);
-        if (FIX) sw = sw.replace(/API_CACHE_NAME = '[^']+'/, `API_CACHE_NAME = '${expectedApiCache}'`);
-    } else if (apiCacheMatch) {
-        ok('sw.js', 'API_CACHE_NAME');
-    }
-
-    if (FIX) write(swPath, sw);
-}
-
-// ═══ 6. Standalone HTML pages — ?v= tags ═══
-const standalonePages = fs.readdirSync(ROOT)
-    .filter(f => f.endsWith('.html') && f !== 'index.html')
-    .filter(f => !fs.statSync(path.join(ROOT, f)).isDirectory());
-
-for (const page of standalonePages) {
-    let html = read(page);
-    const pageTags = html.match(vTagRegex) || [];
-    const pageWrong = pageTags.filter(t => t !== `?v=${version}`);
-    if (pageWrong.length > 0) {
-        report(page, `${pageWrong.length} ?v= tags`, pageWrong[0], `?v=${version}`);
-        if (FIX) {
-            html = html.replace(vTagRegex, `?v=${version}`);
-            write(page, html);
-        }
-    }
-}
-
-// ═══ Summary ═══
 console.log('');
 if (issues === 0) {
     console.log(`${GREEN}${BOLD}All version references are in sync!${RESET}`);
-} else if (FIX) {
+} else if (FIX && fixed === issues) {
     console.log(`${GREEN}${BOLD}Fixed ${fixed} issue(s).${RESET} Run ${CYAN}node scripts/version-sync.js${RESET} to verify.`);
+} else if (FIX) {
+    console.log(`${RED}${BOLD}Fixed ${fixed} issue(s), ${issues - fixed} issue(s) require manual updates.${RESET}`);
+    process.exit(1);
 } else {
-    console.log(`${RED}${BOLD}Found ${issues} issue(s).${RESET} Run ${CYAN}node scripts/version-sync.js --fix${RESET} to auto-fix.`);
+    console.log(`${RED}${BOLD}Found ${issues} issue(s).${RESET} Run ${CYAN}node scripts/version-sync.js --fix${RESET} for fixable issues.`);
     process.exit(1);
 }

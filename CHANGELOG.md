@@ -4,6 +4,20 @@
 
 ---
 
+## v43.12.0 - Codex version source-of-truth sync (2026-05-11)
+
+### Versioning [codex]
+- **Canonical version** - `package.json` and `package-lock.json` now carry `43.12.0`, matching the visible first-screen Codex test marker.
+- **Cache/version sync** - asset `?v=` tags, service-worker cache names, and the public catalog CSS reference are aligned through `scripts/version-sync.js`.
+- **Guardrail** - `scripts/version-sync.js` now checks package-lock, latest changelog markers, `sw.js`, standalone pages, and the inline catalog asset reference in `server.js`.
+
+### Verification [codex]
+- **Package scripts** - `npm test` now runs the fast local verification baseline via `npm run verify`.
+- **Honest scopes** - unit/UI/version/syntax checks are separate from server+DB API and integration suites.
+- **Syntax guard** - `scripts/check-js-syntax.js` adds a dependency-free Node parser check for repository JavaScript.
+
+---
+
 ## v38.17.0 — Leaderboard + Daily Badge + Tasks Preview (2026-03-26)
 
 ### Profile Leaderboard [claude-code]

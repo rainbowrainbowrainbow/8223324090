@@ -4,6 +4,17 @@
 
 ---
 
+## v43.18.0 - CI baseline guardrails for push and pull requests (2026-05-11)
+
+### Verification and CI [codex]
+- **GitHub Actions baseline** - added `.github/workflows/ci.yml` for push and pull request verification.
+- **Runtime alignment** - CI uses Node 22 from `.node-version`, aligns npm to `10.9.8`, installs with `npm ci`, and runs `npm test`.
+- **Safety checks automated** - the CI gate now covers runtime drift, version sync, migration duplicate/gap/governance checks, JavaScript syntax, unit/auth-boundary smoke, and static UI smoke.
+- **Honest scope documented** - README and AGENTS now state that CI does not replace PostgreSQL integration tests, live Railway health checks, browser automation, or manual UX/accessibility review.
+- **First screen** - updated the login version marker and "Що нового" entry for the CI baseline release.
+
+---
+
 ## v43.17.0 - DB migration governance and static migration guard (2026-05-11)
 
 ### Database governance [codex]

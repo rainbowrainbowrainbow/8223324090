@@ -79,7 +79,7 @@ npm run health
 ```
 
 Notes:
-- `npm test` runs the fast local baseline: runtime check, version sync check, JavaScript parser check, unit tests, and UI/static smoke.
+- `npm test` runs the fast local baseline: runtime check, version sync check, migration governance check, JavaScript parser check, unit tests, and UI/static smoke.
 - `npm run verify` is the same baseline command spelled explicitly for agents.
 - `npm run check:runtime` requires Node 22.x and npm 10.x so local verification matches the Railway baseline.
 - `npm run check:version` checks version references without editing files.
@@ -91,7 +91,24 @@ Notes:
 - `npm run test:integration` runs the broader `tests/*.test.js` suite and also expects a configured local app/database.
 - `node --test tests/<file>.test.js` is still preferred for focused service or route tests.
 - `npm run version:sync` runs the same version tool in fix mode and edits files.
-- There is no current style lint, TypeScript typecheck, build, or GitHub Actions CI pipeline.
+- There is no current style lint, TypeScript typecheck, or build pipeline.
+
+## CI Baseline
+
+GitHub Actions lives in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). It runs on push and pull request using Node 22 from `.node-version`, aligns npm to `10.9.8`, installs with `npm ci`, and runs `npm test`.
+
+The CI gate covers:
+
+- Node/npm runtime alignment through `npm run check:runtime`;
+- version and cache-bust consistency through `npm run check:version`;
+- migration duplicate/gap/governance checks through `npm run check:migrations`;
+- JavaScript parser checks through `npm run check:syntax`;
+- self-contained unit and auth-boundary smoke tests through `npm run test:unit`;
+- static UI smoke through `npm run test:ui`.
+
+The UI smoke is intentionally shallow: it checks key pages, critical script loading/static structure, navigation exports, and shared page wiring. It does not fully exercise browser rendering, loading/error/disabled states, keyboard behavior, or accessibility; those still need focused manual or browser automation checks when touched.
+
+CI does not run PostgreSQL-backed API/integration suites, production deploy verification, or live Railway health checks. Use `npm run test:api`, `npm run test:integration`, and manual health checks against a configured app/database for those scopes.
 
 ## Version And Changelog Discipline
 

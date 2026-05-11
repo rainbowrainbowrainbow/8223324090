@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast-baseline:
+    name: Fast baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js from repo baseline
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Align npm baseline
+        run: npm install -g npm@10.9.8
+
+      - name: Show runtime
+        run: |
+          node --version
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run fast verification baseline
+        run: npm test

@@ -67,7 +67,16 @@ Notes:
 - `npm run check:runtime` enforces Node 22.x / npm 10.x. Switch runtimes before interpreting other test results.
 - `npm run test:api` and `npm run test:integration` expect a running PostgreSQL-backed app at `TEST_URL` or `http://localhost:3000`.
 - `npm run check:syntax` is parser-only. It is not a style lint, typecheck, or build.
-- There is currently no style lint, TypeScript typecheck, build, or GitHub Actions CI pipeline.
+- There is currently no style lint, TypeScript typecheck, or build pipeline.
+
+## CI Baseline
+
+- GitHub Actions workflow: `.github/workflows/ci.yml`.
+- CI runs on push and pull request with Node 22 from `.node-version` and npm `10.9.8`.
+- CI installs with `npm ci` and runs `npm test`.
+- The CI gate covers runtime alignment, version sync, migration governance, JavaScript parser checks, self-contained unit/auth-boundary tests, and static UI smoke.
+- CI does not run PostgreSQL-backed API or integration tests. Use `npm run test:api` or `npm run test:integration` against a configured live app/database when touching DB-backed route behavior.
+- CI does not provide a style lint, TypeScript typecheck, production deploy proof, browser automation, or manual UX/accessibility review.
 
 ## Versioning And Changelog
 

@@ -105,6 +105,9 @@ Status: inventory command added; auth classification remains a later pack.
   pages, and legacy redirects.
 - Added `npm run check:static-surface` to the full `npm test` baseline so new
   root HTML pages or route changes must update the map in the same commit.
+- Added `docs/API_SURFACE.md`, `config/apiSurface.js`, and
+  `npm run check:api-surface` so every `routes/*.js` file must be mounted and
+  broad `/api` mounts must be explicit.
 
 ### 3. Safety Net Before Deletion
 
@@ -118,6 +121,8 @@ What to do:
   guard.
 - Keep `npm run check:static-surface` as the ownership guard for root HTML,
   landing pages, and legacy static redirects.
+- Keep `npm run check:api-surface` as the ownership guard for backend route
+  files, broad `/api` route mounts, and server-level API routes.
 - Extend `tests/route-smoke.test.js` when public/protected boundaries change.
 - Add focused tests before deleting or redirecting any page, asset, or API
   alias.
@@ -134,6 +139,8 @@ Status: existing guards present; expand per pack.
 
 - Static surface guard added to prevent repeating manual root HTML
   classification work.
+- API surface guard added to prevent unmounted route files and undocumented
+  broad `/api` route mounts.
 
 ### 4. Security And Deploy-Risk Cleanup
 
@@ -309,6 +316,7 @@ Status: active rule for all packs.
 | P1 | Query-token auth restriction | Reduces JWT leakage through URLs | `tests/auth-boundary.test.js`, `tests/route-smoke.test.js` |
 | P1 | Upload storage inventory | Clarifies Railway persistence risk | `tests/chat-upload-storage.test.js`, `tests/audio-storage.test.js` |
 | Done | Root HTML ownership map | Prevents accidental live page deletion | `npm run check:static-surface`, `npm run test:ui` |
+| Done | API route ownership guard | Prevents orphan route files and undocumented broad mounts | `npm run check:api-surface`, `tests/route-smoke.test.js` |
 | P1 | Access/sidebar drift expansion | Keeps UI and backend permission rules aligned | `npm run check:access` |
 | P2 | Scheduler side-effect map | Finds duplicate-prone background jobs | scheduler-focused tests |
 | P2 | DB startup ownership slice | Reduces `initDatabase()`/migration split-brain | `npm run check:migrations` |

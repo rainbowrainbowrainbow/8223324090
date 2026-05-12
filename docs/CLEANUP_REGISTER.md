@@ -30,7 +30,7 @@ Known high-change areas from the latest manual snapshot:
 - `routes/`: 76 files, API ownership and auth boundaries.
 - `services/`: 49 files, business logic and scheduler side effects.
 - `js/`: 54 files, large vanilla frontend modules.
-- `css/`: 25 files, shared UI and page-specific styling.
+- `css/`: 25 files plus `landing/style.css`, shared UI and page-specific styling.
 - `tests/`: 85 files, mixed unit, route smoke, UI smoke, and live API tests.
 - `db/migrations/`: 159 migrations, with documented legacy duplicate/gap debt.
 - `landing/`: public landing materials and static assets.
@@ -39,6 +39,9 @@ Large files that should not be casually reformatted:
 
 - `js/chat-page.js`
 - `css/chat.css`
+- `landing/style.css`
+- `css/features.css`
+- `css/modals.css`
 - `index.html`
 - `services/guardian.js`
 - `js/settings.js`
@@ -129,6 +132,8 @@ What to do:
   documented modal/public/embedded exceptions.
 - Keep `npm run check:static-surface` as the ownership guard for root HTML,
   landing pages, and legacy static redirects.
+- Keep `npm run check:css-surface` as the ownership guard for CSS files,
+  runtime references, owners, docs, and Service Worker app-shell CSS precache.
 - Keep `npm run check:api-surface` as the ownership guard for backend route
   files, broad `/api` route mounts, and server-level API routes.
 - Keep `npm run check:storage-surface` as the ownership guard for local
@@ -166,6 +171,8 @@ Status: existing guards present; expand per pack.
   hooks from being added to `db/index.js` without explicit ownership.
 - Service Worker cache/offline policy guard added to prevent private CRM API
   data or mutation replay from being cached without an explicit review.
+- CSS surface guard added to prevent new, renamed, or removed CSS files from
+  bypassing ownership docs and UI verification.
 
 ### 4. Security And Deploy-Risk Cleanup
 
@@ -273,6 +280,8 @@ What to do:
   deletion candidate.
 - Avoid broad CSS rewrites; prefer page-scoped removals with visual checks.
 - Split large JS only when a stable domain boundary already exists.
+- Keep `npm run check:css-surface` green when adding, removing, renaming, or
+  consolidating CSS files.
 - Keep shared helpers in `js/ui.js`, `js/api.js`, `js/auth.js`, and
   `js/components/sidebar.js` consistent.
 
@@ -282,7 +291,16 @@ What this gives:
 - Reduces duplicate styling and script drift.
 - Avoids breaking standalone pages that depend on shared globals.
 
-Status: open.
+Status: CSS ownership guard added; large CSS consolidation remains open.
+
+2026-05-12 CSS update:
+
+- Added `docs/CSS_SURFACE.md`, `config/cssSurface.js`, and
+  `npm run check:css-surface`.
+- Current CSS surface is explicit: 25 files under `css/` plus
+  `landing/style.css`.
+- Current Service Worker CSS app-shell precache entries are tied to the same
+  manifest so cache-sensitive CSS changes require docs and verification.
 
 ### 7. Backend Domain Cleanup
 
@@ -411,6 +429,7 @@ Status: active rule for all packs.
 | Done | DB startup ownership slice | Reduces `initDatabase()`/migration split-brain | `npm run check:db-startup-surface`, `npm run check:migrations` |
 | Done | Old root markdown archive pass | Reduces stale instruction risk | `tests/static-doc-guard.test.js` |
 | Done | Service Worker cache policy guard | Prevents stale/private CRM API data from being cached offline | `npm run check:service-worker-policy`, `tests/service-worker-policy.test.js` |
+| Done | CSS surface ownership guard | Prevents frontend cleanup from deleting or renaming live styles blindly | `npm run check:css-surface`, `npm run test:ui` |
 | P3 | Large CSS consolidation | Reduces UI drift | `npm run test:ui` plus browser smoke |
 
 ## Open Questions To Resolve Before Destructive Cleanup

@@ -81,6 +81,7 @@ npm run check:version
 npm run check:access
 npm run check:auth-boundary
 npm run check:static-surface
+npm run check:css-surface
 npm run check:api-surface
 npm run check:storage-surface
 npm run check:service-worker-policy
@@ -97,13 +98,14 @@ npm run health
 ```
 
 Notes:
-- `npm test` runs the fast local baseline: runtime check, version sync check, access/sidebar drift check, auth-boundary ownership, static/API/storage/service-worker/scheduler/DB-startup surface ownership, migration governance check, JavaScript parser check, unit tests, and UI/static smoke.
+- `npm test` runs the fast local baseline: runtime check, version sync check, access/sidebar drift check, auth-boundary ownership, static/CSS/API/storage/service-worker/scheduler/DB-startup surface ownership, migration governance check, JavaScript parser check, unit tests, and UI/static smoke.
 - `npm run verify` is the same baseline command spelled explicitly for agents.
 - `npm run check:runtime` requires Node 22.x and npm 10.x so local verification matches the Railway baseline.
 - `npm run check:version` checks version references without editing files.
 - `npm run check:access` verifies role metadata, backend/frontend page access, sidebar navigation access, static page access ownership, and documented modal/public/embedded exceptions.
 - `npm run check:auth-boundary` verifies that public API exceptions and approved `?token=` JWT routes stay documented and tested.
 - `npm run check:static-surface` verifies that root HTML pages, landing pages, legacy redirects, and the documented static surface map stay aligned.
+- `npm run check:css-surface` verifies that CSS files, runtime references, owners, docs, and Service Worker app-shell CSS precache entries stay aligned.
 - `npm run check:api-surface` verifies that every `routes/*.js` file is mounted from `server.js`, broad `/api` route mounts are explicit, and direct server-level API routes are documented.
 - `npm run check:storage-surface` verifies that local `/uploads` paths, Supabase Storage buckets, tests, docs, and ignore rules stay aligned.
 - `npm run check:service-worker-policy` verifies that `sw.js` keeps private CRM API data network-only by default and keeps offline mutation replay disabled unless explicitly reviewed.
@@ -132,6 +134,7 @@ The CI gate covers:
 - API auth-boundary ownership through `npm run check:auth-boundary`;
 - migration duplicate/gap/governance checks through `npm run check:migrations`;
 - static surface ownership through `npm run check:static-surface`;
+- CSS surface ownership through `npm run check:css-surface`;
 - API route surface ownership through `npm run check:api-surface`;
 - upload/storage surface ownership through `npm run check:storage-surface`;
 - Service Worker cache/offline policy ownership through `npm run check:service-worker-policy`;
@@ -209,6 +212,7 @@ The current ownership map and intentional exceptions live in [docs/ACCESS_SURFAC
 - [docs/ACCESS_SURFACE.md](docs/ACCESS_SURFACE.md) - role/page/sidebar/static access ownership and approved exceptions
 - [docs/AUTH_BOUNDARY.md](docs/AUTH_BOUNDARY.md) - public API and query-token auth exception ownership
 - [docs/API_SURFACE.md](docs/API_SURFACE.md) - API route-file mounting and server-level API ownership
+- [docs/CSS_SURFACE.md](docs/CSS_SURFACE.md) - CSS file, owner, reference, and Service Worker CSS precache ownership
 - [docs/DB_STARTUP_SURFACE.md](docs/DB_STARTUP_SURFACE.md) - legacy DB startup schema and data-hook ownership
 - [docs/SCHEDULER_SURFACE.md](docs/SCHEDULER_SURFACE.md) - background job, interval, dedup, and side-effect ownership
 - [docs/SERVICE_WORKER_CACHE_POLICY.md](docs/SERVICE_WORKER_CACHE_POLICY.md) - Service Worker API cache and offline mutation policy

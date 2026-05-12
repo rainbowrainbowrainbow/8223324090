@@ -15,6 +15,7 @@ const {
     alertDirectorTelegram
 } = require('../services/guardian');
 const { publishInTransaction } = require('../services/eventBus');
+const { logAdminAction } = require('../services/adminAudit');
 const {
     GUARDIAN_DIRECTOR_DM_REQUESTED,
     buildGuardianDeliveryIdempotencyKey
@@ -27,6 +28,10 @@ const {
     normalizeNullableId,
     recordGuardianDirectorAction
 } = require('../services/guardianIdempotency');
+const {
+    previewGuardianUserModerationRepair,
+    repairGuardianUserModerationState
+} = require('../services/guardianRepair');
 
 const log = createLogger('GuardianRoute');
 
@@ -34,8 +39,10 @@ const log = createLogger('GuardianRoute');
 router.use(authenticateToken);
 
 const GUARDIAN_ADMIN_ROLES = ['creator', 'director', 'admin'];
+const GUARDIAN_OPS_ROLES = ['creator', 'director', 'admin', 'security'];
 const GUARDIAN_OWNER_ROLES = ['creator', 'director'];
 const GUARDIAN_EMERGENCY_ROLES = ['creator'];
+const GUARDIAN_EVENT_PREFIX = 'guardian.';
 
 function getCurrentUserId(req) {
     return req.user?.id || req.user?.userId;
@@ -56,6 +63,7 @@ function requireExactRoles(roles) {
 }
 
 const requireGuardianAdmin = requireExactRoles(GUARDIAN_ADMIN_ROLES);
+const requireGuardianOps = requireExactRoles(GUARDIAN_OPS_ROLES);
 const requireGuardianOwner = requireExactRoles(GUARDIAN_OWNER_ROLES);
 const requireGuardianEmergency = requireExactRoles(GUARDIAN_EMERGENCY_ROLES);
 
@@ -69,6 +77,111 @@ try {
     ({ handleGuardianCommand, calculateChannelHealth, getChannelMoodSummary, getUserMoodProfile, generateWeeklyReport, getActivityHeatmap, getTrustScore, updateTrustScore, checkEscalation } = require('../services/guardian'));
 } catch (e) {
     log.warn('Some guardian phase3 functions not yet available');
+}
+
+function clampLimit(value, fallback = 25, max = 100) {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    return Math.min(parsed, max);
+}
+
+function parseJsonValue(value) {
+    if (!value) return {};
+    if (typeof value === 'string') {
+        try { return JSON.parse(value); } catch { return {}; }
+    }
+    return value;
+}
+
+function summarizeGuardianPayload(payload) {
+    const parsed = parseJsonValue(payload);
+    const summary = {
+        deliveryKey: parsed.deliveryKey || null,
+        deliveryType: parsed.deliveryType || null,
+        sourceType: parsed.sourceType || null,
+        sourceId: parsed.sourceId || null,
+        channelId: parsed.channelId || null,
+        userId: parsed.userId || null,
+        username: parsed.username || null,
+        hasContent: Boolean(parsed.content)
+    };
+    return summary;
+}
+
+function mapOutboxRow(row) {
+    return {
+        id: row.id,
+        eventType: row.event_type,
+        aggregateType: row.aggregate_type,
+        aggregateId: row.aggregate_id,
+        idempotencyKey: row.idempotency_key,
+        status: row.published_at
+            ? 'published'
+            : (Number(row.publish_attempts || 0) >= 5 ? 'blocked' : (row.last_error ? 'retry_needed' : 'pending')),
+        publishAttempts: Number(row.publish_attempts || 0),
+        lastError: row.last_error || null,
+        occurredAt: row.occurred_at,
+        createdAt: row.created_at,
+        publishedAt: row.published_at,
+        payloadSummary: summarizeGuardianPayload(row.payload)
+    };
+}
+
+function mapEventQueueRow(row) {
+    return {
+        id: row.id,
+        eventType: row.event_type,
+        status: row.status,
+        convergenceStatus: row.convergence_status || null,
+        failureClass: row.failure_class || null,
+        attempts: Number(row.attempts || 0),
+        maxAttempts: Number(row.max_attempts || 0),
+        lastError: row.last_error || null,
+        nextRetryAt: row.next_retry_at,
+        createdAt: row.created_at,
+        processedAt: row.processed_at,
+        terminalAt: row.terminal_at || null,
+        idempotencyKey: row.idempotency_key,
+        payloadSummary: summarizeGuardianPayload(row.payload)
+    };
+}
+
+function mapDeadLetterRow(row) {
+    return {
+        id: row.id,
+        originalEventId: row.original_event_id,
+        eventType: row.event_type,
+        status: row.requeued_at ? 'replayed' : 'dead_letter',
+        idempotencyKey: row.idempotency_key,
+        attempts: Number(row.attempts || 0),
+        maxAttempts: Number(row.max_attempts || 0),
+        failureClass: row.failure_class || null,
+        terminalReason: row.terminal_reason || row.error || null,
+        error: row.error || null,
+        movedAt: row.moved_at,
+        requeuedAt: row.requeued_at || null,
+        requeuedEventId: row.requeued_event_id || null,
+        payloadSummary: summarizeGuardianPayload(row.payload)
+    };
+}
+
+function isGuardianEventType(eventType) {
+    return typeof eventType === 'string' && eventType.startsWith(GUARDIAN_EVENT_PREFIX);
+}
+
+function parsePositiveInt(value) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function auditGuardianOps(action, req, target, details) {
+    logAdminAction(action, 'guardian_ops', {
+        username: req.user?.username,
+        target,
+        details,
+        ip: req.ip,
+        requestId: req.headers['x-request-id']
+    });
 }
 
 /**
@@ -277,6 +390,435 @@ router.get('/stats', requireGuardianAdmin, async (req, res) => {
     } catch (err) {
         log.error('GET /stats error', err);
         res.status(500).json({ error: 'Failed to fetch stats' });
+    }
+});
+
+/**
+ * GET /api/guardian/ops/reliability
+ * Operator snapshot for Guardian delivery and moderation recovery.
+ */
+router.get('/ops/reliability', requireGuardianOps, async (req, res) => {
+    try {
+        const limit = clampLimit(req.query.limit, 25, 100);
+        const [
+            outboxSummary,
+            outboxEvents,
+            eventQueueSummary,
+            eventQueueEvents,
+            deadLetterSummary,
+            deadLetterEvents,
+            activeMutes,
+            recentActions,
+            moderationCounters
+        ] = await Promise.all([
+            pool.query(`
+                SELECT
+                    COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE published_at IS NULL AND COALESCE(publish_attempts, 0) = 0 AND last_error IS NULL)::int AS pending,
+                    COUNT(*) FILTER (WHERE published_at IS NULL AND (COALESCE(publish_attempts, 0) > 0 OR last_error IS NOT NULL))::int AS retry_needed,
+                    COUNT(*) FILTER (WHERE published_at IS NULL AND COALESCE(publish_attempts, 0) >= 5)::int AS blocked,
+                    COUNT(*) FILTER (WHERE published_at IS NOT NULL)::int AS published
+                FROM outbox_events
+                WHERE event_type LIKE 'guardian.%'
+            `),
+            pool.query(`
+                SELECT id, aggregate_type, aggregate_id, event_type, payload, idempotency_key,
+                       occurred_at, published_at, publish_attempts, last_error, created_at
+                FROM outbox_events
+                WHERE event_type LIKE 'guardian.%'
+                  AND (published_at IS NULL OR last_error IS NOT NULL OR publish_attempts > 0)
+                ORDER BY COALESCE(occurred_at, created_at) DESC
+                LIMIT $1
+            `, [limit]),
+            pool.query(`
+                SELECT status, COUNT(*)::int AS count
+                FROM event_queue
+                WHERE event_type LIKE 'guardian.%'
+                GROUP BY status
+            `),
+            pool.query(`
+                SELECT id, event_type, payload, idempotency_key, status, attempts, max_attempts,
+                       last_error, created_at, processed_at, next_retry_at,
+                       convergence_status, failure_class, terminal_at
+                FROM event_queue
+                WHERE event_type LIKE 'guardian.%'
+                  AND status IN ('pending', 'failed', 'terminal_failed')
+                ORDER BY created_at DESC
+                LIMIT $1
+            `, [limit]),
+            pool.query(`
+                SELECT COALESCE(failure_class, 'unknown') AS failure_class, COUNT(*)::int AS count
+                FROM event_dead_letter
+                WHERE event_type LIKE 'guardian.%'
+                  AND requeued_at IS NULL
+                GROUP BY COALESCE(failure_class, 'unknown')
+            `),
+            pool.query(`
+                SELECT id, original_event_id, event_type, payload, error, idempotency_key,
+                       attempts, max_attempts, failure_class, terminal_reason,
+                       moved_at, requeued_at, requeued_event_id
+                FROM event_dead_letter
+                WHERE event_type LIKE 'guardian.%'
+                ORDER BY moved_at DESC
+                LIMIT $1
+            `, [limit]),
+            pool.query(`
+                SELECT cm.id, cm.channel_id, cc.name AS channel_name, cm.user_id,
+                       u.username, u.name AS display_name, cm.reason, cm.muted_until, cm.created_at
+                FROM chat_mutes cm
+                JOIN users u ON u.id = cm.user_id
+                LEFT JOIN chat_channels cc ON cc.id = cm.channel_id
+                WHERE cm.muted_until > NOW()
+                ORDER BY cm.muted_until ASC
+                LIMIT $1
+            `, [limit]),
+            pool.query(`
+                SELECT ga.id, ga.action_type, ga.channel_id, cc.name AS channel_name,
+                       ga.target_user_id, u.username AS target_username, ga.message_id,
+                       ga.details, ga.created_at
+                FROM guardian_actions ga
+                LEFT JOIN users u ON u.id = ga.target_user_id
+                LEFT JOIN chat_channels cc ON cc.id = ga.channel_id
+                ORDER BY ga.created_at DESC
+                LIMIT $1
+            `, [limit]),
+            pool.query(`
+                SELECT gmc.id, gmc.counter_type, gmc.user_id, u.username, gmc.window_key,
+                       gmc.window_start, gmc.window_end, gmc.count, gmc.alerted_at,
+                       gmc.last_channel_id, cc.name AS last_channel_name,
+                       gmc.last_source_type, gmc.last_source_id, gmc.updated_at
+                FROM guardian_moderation_counters gmc
+                LEFT JOIN users u ON u.id = gmc.user_id
+                LEFT JOIN chat_channels cc ON cc.id = gmc.last_channel_id
+                ORDER BY gmc.updated_at DESC
+                LIMIT $1
+            `, [limit])
+        ]);
+
+        const queueByStatus = {};
+        for (const row of eventQueueSummary.rows) {
+            queueByStatus[row.status || 'unknown'] = Number(row.count || 0);
+        }
+        const deadLetterByClass = {};
+        for (const row of deadLetterSummary.rows) {
+            deadLetterByClass[row.failure_class || 'unknown'] = Number(row.count || 0);
+        }
+
+        res.json({
+            generatedAt: new Date().toISOString(),
+            limit,
+            outbox: {
+                summary: outboxSummary.rows[0] || { total: 0, pending: 0, retry_needed: 0, blocked: 0, published: 0 },
+                events: outboxEvents.rows.map(mapOutboxRow)
+            },
+            eventQueue: {
+                summary: queueByStatus,
+                events: eventQueueEvents.rows.map(mapEventQueueRow)
+            },
+            deadLetter: {
+                summary: deadLetterByClass,
+                events: deadLetterEvents.rows.map(mapDeadLetterRow)
+            },
+            moderation: {
+                activeMutes: activeMutes.rows.map(r => ({
+                    id: r.id,
+                    channelId: r.channel_id,
+                    channelName: r.channel_name,
+                    userId: r.user_id,
+                    username: r.username,
+                    displayName: r.display_name,
+                    reason: r.reason,
+                    mutedUntil: r.muted_until,
+                    createdAt: r.created_at
+                })),
+                recentActions: recentActions.rows.map(r => ({
+                    id: r.id,
+                    actionType: r.action_type,
+                    channelId: r.channel_id,
+                    channelName: r.channel_name,
+                    targetUserId: r.target_user_id,
+                    targetUsername: r.target_username,
+                    messageId: r.message_id,
+                    details: parseJsonValue(r.details),
+                    createdAt: r.created_at
+                })),
+                counters: moderationCounters.rows.map(r => ({
+                    id: r.id,
+                    counterType: r.counter_type,
+                    userId: r.user_id,
+                    username: r.username,
+                    windowKey: r.window_key,
+                    windowStart: r.window_start,
+                    windowEnd: r.window_end,
+                    count: Number(r.count || 0),
+                    alertedAt: r.alerted_at,
+                    lastChannelId: r.last_channel_id,
+                    lastChannelName: r.last_channel_name,
+                    lastSourceType: r.last_source_type,
+                    lastSourceId: r.last_source_id,
+                    updatedAt: r.updated_at
+                }))
+            }
+        });
+    } catch (err) {
+        log.error('GET /ops/reliability error', err);
+        res.status(500).json({ error: 'Failed to fetch Guardian reliability snapshot' });
+    }
+});
+
+/**
+ * POST /api/guardian/ops/outbox/:id/requeue
+ * Reset one unpublished Guardian outbox event for relay retry.
+ */
+router.post('/ops/outbox/:id/requeue', requireGuardianOps, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const selected = await client.query(
+            `SELECT id, event_type, aggregate_type, aggregate_id, idempotency_key,
+                    published_at, publish_attempts, last_error
+             FROM outbox_events
+             WHERE id = $1
+             FOR UPDATE`,
+            [req.params.id]
+        );
+        const row = selected.rows[0];
+        if (!row) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Outbox event not found' });
+        }
+        if (!isGuardianEventType(row.event_type)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Only Guardian outbox events can be requeued here' });
+        }
+        if (row.published_at) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'Outbox event is already published' });
+        }
+
+        const updated = await client.query(
+            `UPDATE outbox_events
+             SET publish_attempts = 0,
+                 last_error = NULL
+             WHERE id = $1
+             RETURNING id, event_type, aggregate_type, aggregate_id, idempotency_key,
+                       occurred_at, published_at, publish_attempts, last_error, created_at, payload`,
+            [row.id]
+        );
+        await client.query('COMMIT');
+
+        auditGuardianOps('guardian_outbox_requeue', req, `outbox:${row.id}`, {
+            eventType: row.event_type,
+            idempotencyKey: row.idempotency_key,
+            previousAttempts: row.publish_attempts,
+            previousError: row.last_error || null
+        });
+
+        res.json({ success: true, event: mapOutboxRow(updated.rows[0]) });
+    } catch (err) {
+        try { await client.query('ROLLBACK'); } catch {}
+        log.error('POST /ops/outbox/:id/requeue error', err);
+        res.status(500).json({ error: 'Failed to requeue Guardian outbox event' });
+    } finally {
+        client.release();
+    }
+});
+
+/**
+ * POST /api/guardian/ops/events/:id/requeue
+ * Reset one failed Guardian event_queue event for processing retry.
+ */
+router.post('/ops/events/:id/requeue', requireGuardianOps, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const selected = await client.query(
+            `SELECT id, event_type, status, attempts, max_attempts, last_error, idempotency_key,
+                    convergence_status, failure_class
+             FROM event_queue
+             WHERE id = $1
+             FOR UPDATE`,
+            [req.params.id]
+        );
+        const row = selected.rows[0];
+        if (!row) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Event queue item not found' });
+        }
+        if (!isGuardianEventType(row.event_type)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Only Guardian event_queue items can be requeued here' });
+        }
+        if (!['failed', 'terminal_failed'].includes(row.status)) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'Only failed or terminal Guardian event_queue items can be requeued' });
+        }
+
+        const updated = await client.query(
+            `UPDATE event_queue
+             SET status = 'pending',
+                 attempts = 0,
+                 last_error = NULL,
+                 next_retry_at = NULL,
+                 convergence_status = 'replayed',
+                 failure_class = NULL,
+                 terminal_at = NULL,
+                 last_convergence_at = NOW()
+             WHERE id = $1
+             RETURNING id, event_type, payload, idempotency_key, status, attempts, max_attempts,
+                       last_error, created_at, processed_at, next_retry_at,
+                       convergence_status, failure_class, terminal_at`,
+            [row.id]
+        );
+        await client.query('COMMIT');
+
+        auditGuardianOps('guardian_event_requeue', req, `event_queue:${row.id}`, {
+            eventType: row.event_type,
+            idempotencyKey: row.idempotency_key,
+            previousStatus: row.status,
+            previousAttempts: row.attempts,
+            previousError: row.last_error || null,
+            previousFailureClass: row.failure_class || null
+        });
+
+        res.json({ success: true, event: mapEventQueueRow(updated.rows[0]) });
+    } catch (err) {
+        try { await client.query('ROLLBACK'); } catch {}
+        log.error('POST /ops/events/:id/requeue error', err);
+        res.status(500).json({ error: 'Failed to requeue Guardian event' });
+    } finally {
+        client.release();
+    }
+});
+
+/**
+ * POST /api/guardian/ops/dead-letter/:id/requeue
+ * Replay one Guardian dead-letter event by creating a new pending event_queue row.
+ */
+router.post('/ops/dead-letter/:id/requeue', requireGuardianOps, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const selected = await client.query(
+            `SELECT id, original_event_id, event_type, payload, error, idempotency_key,
+                    attempts, max_attempts, failure_class, terminal_reason,
+                    moved_at, requeued_at, requeued_event_id
+             FROM event_dead_letter
+             WHERE id = $1
+             FOR UPDATE`,
+            [req.params.id]
+        );
+        const row = selected.rows[0];
+        if (!row) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Dead-letter event not found' });
+        }
+        if (!isGuardianEventType(row.event_type)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Only Guardian dead-letter events can be requeued here' });
+        }
+        if (row.requeued_at) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'Dead-letter event was already replayed' });
+        }
+
+        const replayKey = row.idempotency_key
+            ? `${row.idempotency_key}:replay:${row.id}`
+            : `${row.event_type}:dead-letter:${row.id}`;
+        const inserted = await client.query(
+            `INSERT INTO event_queue (
+                event_type, payload, idempotency_key, status, attempts, max_attempts,
+                convergence_status, failure_class, last_error, next_retry_at
+             )
+             VALUES ($1, $2, $3, 'pending', 0, GREATEST(COALESCE($4, 3), 1),
+                     'replayed', NULL, NULL, NULL)
+             ON CONFLICT (idempotency_key) DO NOTHING
+             RETURNING id, event_type, payload, idempotency_key, status, attempts, max_attempts,
+                       last_error, created_at, processed_at, next_retry_at,
+                       convergence_status, failure_class, terminal_at`,
+            [row.event_type, row.payload, replayKey, row.max_attempts || 3]
+        );
+
+        if (inserted.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'A replay event already exists for this dead-letter item' });
+        }
+
+        await client.query(
+            `UPDATE event_dead_letter
+             SET requeued_at = NOW(),
+                 requeued_event_id = $1
+             WHERE id = $2`,
+            [inserted.rows[0].id, row.id]
+        );
+        await client.query('COMMIT');
+
+        auditGuardianOps('guardian_dead_letter_requeue', req, `dead_letter:${row.id}`, {
+            eventType: row.event_type,
+            idempotencyKey: row.idempotency_key,
+            replayKey,
+            failureClass: row.failure_class || null,
+            previousError: row.error || row.terminal_reason || null
+        });
+
+        res.json({
+            success: true,
+            deadLetterId: row.id,
+            event: mapEventQueueRow(inserted.rows[0])
+        });
+    } catch (err) {
+        try { await client.query('ROLLBACK'); } catch {}
+        log.error('POST /ops/dead-letter/:id/requeue error', err);
+        res.status(500).json({ error: 'Failed to replay Guardian dead-letter event' });
+    } finally {
+        client.release();
+    }
+});
+
+/**
+ * GET /api/guardian/ops/reconcile/users/:userId
+ * Explain Guardian moderation counter drift for one user without mutating data.
+ */
+router.get('/ops/reconcile/users/:userId', requireGuardianOps, async (req, res) => {
+    try {
+        const userId = parsePositiveInt(req.params.userId);
+        if (!userId) return res.status(400).json({ error: 'Valid userId is required' });
+
+        const preview = await previewGuardianUserModerationRepair(pool, userId);
+        res.json({ success: true, dryRun: true, preview });
+    } catch (err) {
+        log.error('GET /ops/reconcile/users/:userId error', err);
+        res.status(err.statusCode || 500).json({
+            error: err.statusCode === 404 ? 'Guardian user not found' : 'Failed to preview Guardian moderation repair'
+        });
+    }
+});
+
+/**
+ * POST /api/guardian/ops/reconcile/users/:userId
+ * Apply the repairable part of a one-user Guardian moderation counter reconciliation.
+ */
+router.post('/ops/reconcile/users/:userId', requireGuardianOps, async (req, res) => {
+    try {
+        const userId = parsePositiveInt(req.params.userId);
+        if (!userId) return res.status(400).json({ error: 'Valid userId is required' });
+        if (req.body?.apply !== true) {
+            const preview = await previewGuardianUserModerationRepair(pool, userId);
+            return res.json({ success: true, dryRun: true, preview });
+        }
+
+        const result = await repairGuardianUserModerationState(pool, userId);
+        auditGuardianOps('guardian_user_moderation_repair', req, `user:${userId}`, {
+            issueCount: result.issueCount,
+            repairableIssueCount: result.repairableIssueCount,
+            appliedCount: result.appliedCount
+        });
+        res.json({ success: true, dryRun: false, result });
+    } catch (err) {
+        log.error('POST /ops/reconcile/users/:userId error', err);
+        res.status(err.statusCode || 500).json({
+            error: err.statusCode === 404 ? 'Guardian user not found' : 'Failed to repair Guardian moderation state'
+        });
     }
 });
 

@@ -5,6 +5,7 @@ const {
     GUARDIAN_DIRECTOR_DM_REQUESTED,
     GUARDIAN_TELEGRAM_ALERT_REQUESTED,
     buildGuardianDeliveryIdempotencyKey,
+    classifyGuardianDeliveryError,
     processGuardianDeliveryEvent
 } = require('../services/guardianDelivery');
 
@@ -121,13 +122,14 @@ describe('Guardian outbox-backed delivery', () => {
             }
         };
 
-        const handled = await processGuardianDeliveryEvent(event, {
+        const result = await processGuardianDeliveryEvent(event, {
             pool,
             provisionGuardianDirectorDm: async () => ({ channelId: 200 }),
             broadcastToChannel: (...args) => state.broadcasts.push(args)
         });
 
-        assert.equal(handled, true);
+        assert.equal(result.handled, true);
+        assert.equal(result.outcome, 'delivered');
         assert.equal(state.messages.length, 1);
         assert.equal(state.messages[0].metadata.deliveryKey, 'guardian.mute.dm:77');
         assert.match(state.messages[0].metadata.actions[0].actionToken, /^guardian-action:/);
@@ -148,7 +150,7 @@ describe('Guardian outbox-backed delivery', () => {
             }
         };
 
-        const handled = await processGuardianDeliveryEvent(event, {
+        const result = await processGuardianDeliveryEvent(event, {
             pool,
             provisionGuardianDirectorDm: async () => {
                 throw new Error('provision should not run for duplicate delivery');
@@ -156,7 +158,9 @@ describe('Guardian outbox-backed delivery', () => {
             broadcastToChannel: (...args) => state.broadcasts.push(args)
         });
 
-        assert.equal(handled, true);
+        assert.equal(result.handled, true);
+        assert.equal(result.outcome, 'duplicate_noop');
+        assert.equal(result.duplicate, true);
         assert.equal(state.messages.length, 1);
         assert.equal(state.broadcasts.length, 0);
         assert.deepEqual(state.tx, []);
@@ -193,7 +197,7 @@ describe('Guardian outbox-backed delivery', () => {
             payload: { deliveryKey: 'guardian.mute.telegram:77', content: '<b>alert</b>' }
         };
 
-        const handled = await processGuardianDeliveryEvent(event, {
+        const result = await processGuardianDeliveryEvent(event, {
             telegramBotToken: 'test-token',
             bossTelegramId: '12345',
             fetchImpl: async (url, options) => {
@@ -202,7 +206,8 @@ describe('Guardian outbox-backed delivery', () => {
             }
         });
 
-        assert.equal(handled, true);
+        assert.equal(result.handled, true);
+        assert.equal(result.outcome, 'delivered');
         assert.equal(requests.length, 1);
         assert.match(requests[0].url, /test-token\/sendMessage$/);
         assert.equal(requests[0].body.chat_id, '12345');
@@ -213,5 +218,85 @@ describe('Guardian outbox-backed delivery', () => {
         const key = buildGuardianDeliveryIdempotencyKey('action.dm', 'x'.repeat(400));
         assert.ok(key.length <= 100);
         assert.match(key, /^guardian\.action\.dm:/);
+    });
+
+    it('classifies malformed payloads as terminal failures', async () => {
+        await assert.rejects(
+            () => processGuardianDeliveryEvent({
+                id: 3,
+                event_type: GUARDIAN_DIRECTOR_DM_REQUESTED,
+                idempotency_key: 'guardian.bad:1',
+                payload: '{bad json'
+            }),
+            err => {
+                const classification = classifyGuardianDeliveryError(err);
+                assert.equal(classification.terminal, true);
+                assert.equal(classification.failureClass, 'malformed_payload');
+                return true;
+            }
+        );
+    });
+
+    it('classifies missing Telegram configuration as terminal instead of processed skip', async () => {
+        await assert.rejects(
+            () => processGuardianDeliveryEvent({
+                id: 4,
+                event_type: GUARDIAN_TELEGRAM_ALERT_REQUESTED,
+                idempotency_key: 'guardian.mute.telegram:missing-config',
+                payload: { deliveryKey: 'guardian.mute.telegram:missing-config', content: 'alert' }
+            }, {
+                telegramBotToken: '',
+                bossTelegramId: '',
+                fetchImpl: async () => {
+                    throw new Error('provider should not be called');
+                }
+            }),
+            err => {
+                const classification = classifyGuardianDeliveryError(err);
+                assert.equal(classification.terminal, true);
+                assert.equal(classification.failureClass, 'configuration_missing');
+                return true;
+            }
+        );
+    });
+
+    it('classifies Telegram provider failures as retryable or terminal by status', async () => {
+        await assert.rejects(
+            () => processGuardianDeliveryEvent({
+                id: 5,
+                event_type: GUARDIAN_TELEGRAM_ALERT_REQUESTED,
+                idempotency_key: 'guardian.mute.telegram:retry',
+                payload: { deliveryKey: 'guardian.mute.telegram:retry', content: 'alert' }
+            }, {
+                telegramBotToken: 'test-token',
+                bossTelegramId: '12345',
+                fetchImpl: async () => ({ ok: false, status: 500, text: async () => 'provider down' })
+            }),
+            err => {
+                const classification = classifyGuardianDeliveryError(err);
+                assert.equal(classification.retryable, true);
+                assert.equal(classification.failureClass, 'transient_provider_failure');
+                return true;
+            }
+        );
+
+        await assert.rejects(
+            () => processGuardianDeliveryEvent({
+                id: 6,
+                event_type: GUARDIAN_TELEGRAM_ALERT_REQUESTED,
+                idempotency_key: 'guardian.mute.telegram:rejected',
+                payload: { deliveryKey: 'guardian.mute.telegram:rejected', content: 'alert' }
+            }, {
+                telegramBotToken: 'test-token',
+                bossTelegramId: '12345',
+                fetchImpl: async () => ({ ok: false, status: 400, text: async () => 'bad payload' })
+            }),
+            err => {
+                const classification = classifyGuardianDeliveryError(err);
+                assert.equal(classification.terminal, true);
+                assert.equal(classification.failureClass, 'provider_rejected');
+                return true;
+            }
+        );
     });
 });

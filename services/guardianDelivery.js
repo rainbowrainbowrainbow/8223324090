@@ -13,9 +13,64 @@ const GUARDIAN_DELIVERY_EVENT_TYPES = new Set([
     GUARDIAN_TELEGRAM_ALERT_REQUESTED
 ]);
 
+class GuardianDeliveryError extends Error {
+    constructor(message, options = {}) {
+        super(message);
+        this.name = 'GuardianDeliveryError';
+        this.failureClass = options.failureClass || 'unknown_retryable';
+        this.retryable = options.retryable !== false;
+        this.providerStatus = options.providerStatus || null;
+    }
+}
+
+function classifyGuardianDeliveryError(err) {
+    if (err instanceof GuardianDeliveryError) {
+        return {
+            retryable: err.retryable,
+            terminal: !err.retryable,
+            failureClass: err.failureClass,
+            message: err.message,
+            providerStatus: err.providerStatus || null
+        };
+    }
+
+    return {
+        retryable: true,
+        terminal: false,
+        failureClass: 'unknown_retryable',
+        message: err?.message || 'Unknown Guardian delivery failure',
+        providerStatus: null
+    };
+}
+
+function terminalDeliveryError(message, failureClass, options = {}) {
+    return new GuardianDeliveryError(message, {
+        ...options,
+        failureClass,
+        retryable: false
+    });
+}
+
+function retryableDeliveryError(message, failureClass = 'transient_provider_failure', options = {}) {
+    return new GuardianDeliveryError(message, {
+        ...options,
+        failureClass,
+        retryable: true
+    });
+}
+
 function parsePayload(payload) {
     if (!payload) return {};
-    if (typeof payload === 'string') return JSON.parse(payload);
+    if (typeof payload === 'string') {
+        try {
+            return JSON.parse(payload);
+        } catch (err) {
+            throw terminalDeliveryError(
+                `Malformed Guardian delivery payload: ${err.message}`,
+                'malformed_payload'
+            );
+        }
+    }
     return payload;
 }
 
@@ -64,7 +119,16 @@ async function deliverDirectorDm(payload, event, deps = {}) {
     const deliveryKey = event.idempotency_key || payload.deliveryKey;
 
     if (!deliveryKey) {
-        throw new Error('Guardian director DM delivery requires a delivery key');
+        throw terminalDeliveryError(
+            'Guardian director DM delivery requires a delivery key',
+            'malformed_payload'
+        );
+    }
+    if (!payload.content) {
+        throw terminalDeliveryError(
+            'Guardian director DM delivery requires content',
+            'malformed_payload'
+        );
     }
 
     const existing = await dbPool.query(
@@ -76,17 +140,23 @@ async function deliverDirectorDm(payload, event, deps = {}) {
     );
     if (existing.rows.length > 0) {
         log.info(`Guardian director DM duplicate skipped: ${deliveryKey}`);
-        return { delivered: false, duplicate: true, messageId: existing.rows[0].id };
+        return { handled: true, outcome: 'duplicate_noop', delivered: false, duplicate: true, messageId: existing.rows[0].id };
     }
 
     const directorId = await getDirectorUserId(dbPool);
     if (!directorId) {
-        throw new Error('Guardian director DM delivery cannot find director user');
+        throw terminalDeliveryError(
+            'Guardian director DM delivery cannot find director user',
+            'missing_target'
+        );
     }
 
     const guardianId = await getGuardianUserId(dbPool);
     if (!guardianId) {
-        throw new Error('Guardian director DM delivery cannot find guardian user');
+        throw terminalDeliveryError(
+            'Guardian director DM delivery cannot find guardian user',
+            'missing_target'
+        );
     }
 
     const { channelId } = await provisionGuardianDirectorDm({ pool: dbPool, guardianId, directorId });
@@ -113,7 +183,7 @@ async function deliverDirectorDm(payload, event, deps = {}) {
         );
         if (duplicate.rows.length > 0) {
             await client.query('COMMIT');
-            return { delivered: false, duplicate: true, messageId: duplicate.rows[0].id };
+            return { handled: true, outcome: 'duplicate_noop', delivered: false, duplicate: true, messageId: duplicate.rows[0].id };
         }
 
         const seqResult = await client.query('SELECT next_chat_seq($1) AS seq', [channelId]);
@@ -145,7 +215,7 @@ async function deliverDirectorDm(payload, event, deps = {}) {
         });
 
         log.info(`Guardian director DM delivered: ${deliveryKey}`);
-        return { delivered: true, duplicate: false, messageId: msg.id };
+        return { handled: true, outcome: 'delivered', delivered: true, duplicate: false, messageId: msg.id };
     } catch (err) {
         try { await client.query('ROLLBACK'); } catch {}
         throw err;
@@ -160,31 +230,54 @@ async function deliverTelegramAlert(payload, event, deps = {}) {
     const bossTelegramId = deps.bossTelegramId ?? process.env.BOSS_TELEGRAM_ID ?? process.env.TELEGRAM_CHAT_ID;
     const deliveryKey = event.idempotency_key || payload.deliveryKey;
 
-    if (!telegramBotToken || !bossTelegramId) {
-        log.warn(`Guardian Telegram delivery skipped, Telegram env is not configured: ${deliveryKey || 'unknown'}`);
-        return { delivered: false, skipped: true };
+    if (!payload.content) {
+        throw terminalDeliveryError(
+            'Guardian Telegram delivery requires content',
+            'malformed_payload'
+        );
     }
 
-    const response = await fetchImpl(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            chat_id: bossTelegramId,
-            text: payload.content,
-            parse_mode: payload.parseMode || 'HTML'
-        })
-    });
+    if (!telegramBotToken || !bossTelegramId) {
+        throw terminalDeliveryError(
+            `Guardian Telegram delivery cannot run because Telegram env is not configured: ${deliveryKey || 'unknown'}`,
+            'configuration_missing'
+        );
+    }
+
+    let response;
+    try {
+        response = await fetchImpl(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: bossTelegramId,
+                text: payload.content,
+                parse_mode: payload.parseMode || 'HTML'
+            })
+        });
+    } catch (err) {
+        throw retryableDeliveryError(
+            `Guardian Telegram delivery provider call failed: ${err.message}`,
+            'transient_provider_failure'
+        );
+    }
 
     if (!response || response.ok === false) {
         let detail = '';
         try {
             detail = typeof response?.text === 'function' ? await response.text() : '';
         } catch {}
-        throw new Error(`Guardian Telegram delivery failed (${response?.status || 'no-status'}): ${detail}`.slice(0, 500));
+        const status = Number(response?.status || 0);
+        const retryable = status === 0 || status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+        const message = `Guardian Telegram delivery failed (${response?.status || 'no-status'}): ${detail}`.slice(0, 500);
+        if (retryable) {
+            throw retryableDeliveryError(message, 'transient_provider_failure', { providerStatus: response?.status || null });
+        }
+        throw terminalDeliveryError(message, 'provider_rejected', { providerStatus: response?.status || null });
     }
 
     log.info(`Guardian Telegram delivered: ${deliveryKey || payload.alertType || 'unknown'}`);
-    return { delivered: true };
+    return { handled: true, outcome: 'delivered', delivered: true };
 }
 
 async function processGuardianDeliveryEvent(event, deps = {}) {
@@ -192,21 +285,27 @@ async function processGuardianDeliveryEvent(event, deps = {}) {
 
     const payload = parsePayload(event.payload);
     if (event.event_type === GUARDIAN_DIRECTOR_DM_REQUESTED) {
-        await deliverDirectorDm(payload, event, deps);
-        return true;
+        return {
+            eventType: event.event_type,
+            ...(await deliverDirectorDm(payload, event, deps))
+        };
     }
     if (event.event_type === GUARDIAN_TELEGRAM_ALERT_REQUESTED) {
-        await deliverTelegramAlert(payload, event, deps);
-        return true;
+        return {
+            eventType: event.event_type,
+            ...(await deliverTelegramAlert(payload, event, deps))
+        };
     }
     return false;
 }
 
 module.exports = {
+    GuardianDeliveryError,
     GUARDIAN_DELIVERY_EVENT_TYPES,
     GUARDIAN_DIRECTOR_DM_REQUESTED,
     GUARDIAN_TELEGRAM_ALERT_REQUESTED,
     buildGuardianDeliveryIdempotencyKey,
+    classifyGuardianDeliveryError,
     deliverDirectorDm,
     deliverTelegramAlert,
     processGuardianDeliveryEvent,

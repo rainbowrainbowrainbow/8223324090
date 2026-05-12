@@ -99,6 +99,19 @@ checkPage('designer.html', (doc) => {
     check('sidebar exists', !!doc.getElementById('sidebarNav'));
 });
 
+checkPage('guardian-ops.html', (doc, html) => {
+    check('Guardian ops title exists', !!doc.getElementById('guardianOpsTitle'));
+    check('Guardian ops status live region exists', doc.getElementById('guardianOpsStatus')?.getAttribute('aria-live') === 'polite');
+    check('Guardian ops refresh button exists', !!doc.getElementById('guardianOpsRefreshBtn'));
+    check('Guardian outbox list exists', !!doc.getElementById('guardianOutboxList'));
+    check('Guardian event queue list exists', !!doc.getElementById('guardianEventQueueList'));
+    check('Guardian dead-letter list exists', !!doc.getElementById('guardianDeadLetterList'));
+    check('Guardian repair user input exists', !!doc.getElementById('guardianRepairUserId'));
+    check('Guardian repair result region exists', !!doc.getElementById('guardianRepairResult'));
+    check('Guardian active mutes list exists', !!doc.getElementById('guardianMutesList'));
+    check('Guardian ops script included', html.includes('js/guardian-ops-page.js'));
+});
+
 // ═══════════════════════════════════════════════════
 // JS FILE CHECKS
 // ═══════════════════════════════════════════════════
@@ -113,7 +126,7 @@ const criticalJS = [
     'js/tasks-page.js', 'js/leads-page.js', 'js/chat-page.js',
     'js/warehouse-page.js', 'js/reports-page.js',
     'js/booking.js', 'js/timeline.js', 'js/settings.js',
-    'js/graduation.js', 'js/sound-page.js',
+    'js/graduation.js', 'js/sound-page.js', 'js/guardian-ops-page.js',
 ];
 
 for (const f of criticalJS) {
@@ -131,6 +144,7 @@ const sidebarCode = fs.readFileSync(path.join(ROOT, 'js/components/sidebar.js'),
 check('Sidebar has /designs', sidebarCode.includes("href: '/designs'"));
 check('Sidebar has /designs#catalogs', sidebarCode.includes("href: '/designs#catalogs'"));
 check('Sidebar has /designer', sidebarCode.includes("href: '/designer'"));
+check('Sidebar has /guardian-ops', sidebarCode.includes("href: '/guardian-ops'"));
 check('Sidebar has Центр керування', sidebarCode.includes('Центр керування'));
 
 // ═══════════════════════════════════════════════════

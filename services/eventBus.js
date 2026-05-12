@@ -72,8 +72,14 @@ async function publish(eventType, payload, idempotencyKey) {
 async function processEventRules(event) {
     let applied = 0;
     try {
+        let internalResult = null;
         const internalApplied = await processInternalEventHandler(event);
-        if (internalApplied) applied++;
+        if (internalApplied) {
+            applied++;
+            internalResult = typeof internalApplied === 'object'
+                ? internalApplied
+                : { outcome: 'processed' };
+        }
 
         const rules = await pool.query(
             `SELECT * FROM rule_definitions WHERE trigger_event = $1 AND is_active = true ORDER BY priority DESC`,
@@ -121,14 +127,40 @@ async function processEventRules(event) {
 
         // Mark event as processed
         await pool.query(
-            `UPDATE event_queue SET status = 'processed', processed_at = NOW() WHERE id = $1`,
-            [event.id]
+            `UPDATE event_queue
+             SET status = 'processed',
+                 processed_at = NOW(),
+                 convergence_status = COALESCE($2, convergence_status, 'processed'),
+                 failure_class = NULL,
+                 terminal_at = NULL,
+                 last_error = NULL,
+                 last_convergence_at = NOW()
+             WHERE id = $1`,
+            [event.id, internalResult?.outcome || 'processed']
         );
     } catch (err) {
         log.error('Process rules error', err);
+        const classification = classifyEventProcessingError(event, err);
+        const status = classification.terminal ? 'terminal_failed' : 'failed';
+        const convergenceStatus = classification.terminal ? 'terminal_failed' : 'retryable_failed';
         await pool.query(
-            `UPDATE event_queue SET status = 'failed', last_error = $1, attempts = attempts + 1 WHERE id = $2`,
-            [err.message, event.id]
+            `UPDATE event_queue
+             SET status = $1,
+                 convergence_status = $2,
+                 failure_class = $3,
+                 last_error = $4,
+                 attempts = attempts + 1,
+                 terminal_at = CASE WHEN $5 THEN NOW() ELSE terminal_at END,
+                 last_convergence_at = NOW()
+             WHERE id = $6`,
+            [
+                status,
+                convergenceStatus,
+                classification.failureClass,
+                classification.message,
+                classification.terminal,
+                event.id
+            ]
         ).catch(() => {});
     }
     return applied;
@@ -138,6 +170,19 @@ async function processInternalEventHandler(event) {
     if (!event?.event_type || !event.event_type.startsWith('guardian.')) return false;
     const { processGuardianDeliveryEvent } = require('./guardianDelivery');
     return processGuardianDeliveryEvent(event);
+}
+
+function classifyEventProcessingError(event, err) {
+    if (event?.event_type?.startsWith('guardian.')) {
+        const { classifyGuardianDeliveryError } = require('./guardianDelivery');
+        return classifyGuardianDeliveryError(err);
+    }
+    return {
+        retryable: true,
+        terminal: false,
+        failureClass: 'rule_processing_failed',
+        message: err?.message || 'Event processing failed'
+    };
 }
 
 /**
@@ -280,7 +325,12 @@ async function processFailedEvents() {
             // Exponential backoff: 2^attempts minutes
             const backoffMinutes = Math.pow(2, event.attempts);
             await pool.query(
-                `UPDATE event_queue SET status = 'pending', next_retry_at = NOW() + INTERVAL '1 minute' * $1 WHERE id = $2`,
+                `UPDATE event_queue
+                 SET status = 'pending',
+                     convergence_status = 'retry_scheduled',
+                     next_retry_at = NOW() + INTERVAL '1 minute' * $1,
+                     last_convergence_at = NOW()
+                 WHERE id = $2`,
                 [backoffMinutes, event.id]
             );
 
@@ -293,15 +343,32 @@ async function processFailedEvents() {
         // Move permanently failed events to dead letter
         const deadResult = await pool.query(
             `DELETE FROM event_queue
-             WHERE status = 'failed' AND attempts >= max_attempts
-             RETURNING id, event_type, payload, last_error`
+             WHERE status = 'terminal_failed'
+                OR (status = 'failed' AND attempts >= max_attempts)
+             RETURNING id, event_type, payload, last_error, idempotency_key,
+                       attempts, max_attempts, failure_class, status`
         );
 
         for (const dead of deadResult.rows) {
+            const failureClass = dead.failure_class
+                || (dead.status === 'failed' ? 'max_attempts_exceeded' : 'terminal_failed');
             await pool.query(
-                `INSERT INTO event_dead_letter (original_event_id, event_type, payload, error)
-                 VALUES ($1, $2, $3, $4)`,
-                [dead.id, dead.event_type, dead.payload, dead.last_error]
+                `INSERT INTO event_dead_letter (
+                    original_event_id, event_type, payload, error, idempotency_key,
+                    attempts, max_attempts, failure_class, terminal_reason
+                 )
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                [
+                    dead.id,
+                    dead.event_type,
+                    dead.payload,
+                    dead.last_error,
+                    dead.idempotency_key,
+                    dead.attempts || 0,
+                    dead.max_attempts || 0,
+                    failureClass,
+                    dead.last_error || failureClass
+                ]
             );
             log.warn(`Event ${dead.id} moved to dead letter: ${dead.event_type}`);
         }
@@ -382,7 +449,12 @@ async function processOutbox() {
 
                 // Fire-and-forget: process rules for the newly created event
                 if (eqResult.rows.length > 0) {
-                    const event = { id: eqResult.rows[0].id, event_type: row.event_type, payload: row.payload };
+                    const event = {
+                        id: eqResult.rows[0].id,
+                        event_type: row.event_type,
+                        payload: row.payload,
+                        idempotency_key: row.idempotency_key
+                    };
                     setImmediate(() => {
                         processEventRules(event).catch(err =>
                             log.error(`Outbox rule processing failed for event ${event.id}: ${err.message}`)

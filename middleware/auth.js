@@ -58,6 +58,7 @@ const PROGRAMS_ACCESS = [...MANAGER_UP, 'admin', 'senior_instructor', 'instructo
 const STAFF_PAGE_ACCESS = [...MANAGER_UP, 'admin', 'hr', 'senior_instructor', 'instructor', 'it_specialist', 'security'];
 const HR_PAGE_ACCESS = [...MANAGER_UP, 'hr', 'admin', 'security'];
 const TRAINING_ACCESS = [...MANAGER_UP, 'hr', 'senior_instructor', 'instructor'];
+const GUARDIAN_OPS_ACCESS = ['creator', 'director', 'admin', 'security'];
 const PAGE_ACCESS = {
     '/dashboard': ROLE_HIERARCHY,  // Everyone
     '/':          ALL_STAFF,
@@ -83,6 +84,7 @@ const PAGE_ACCESS = {
     '/finance':   ['creator', 'director', 'accountant'],
     '/analytics': MANAGER_UP,
     '/status':    MANAGER_UP,
+    '/guardian-ops': GUARDIAN_OPS_ACCESS,
     '/omni':      MANAGER_UP,
     '/copilot':   MANAGER_UP,
     '/sound':     [...MANAGER_UP, 'art_director'],

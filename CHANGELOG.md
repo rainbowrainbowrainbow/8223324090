@@ -4,6 +4,50 @@
 
 ---
 
+## v0.46.1 - Guardian moderation repair tooling (2026-05-12)
+
+### Guardian repair and reconciliation [codex]
+- **Explain-first repair** - added a one-user Guardian moderation-state preview that compares durable event facts with derived `guardian_moderation_counters`.
+- **Bounded apply path** - privileged operators can repair only missing or mismatched `repeat_offender` / `hourly_blocks` counter rows for one user at a time.
+- **Safety guardrails** - stale/orphan counter rows are reported but not deleted automatically, keeping historical state changes explicit.
+- **Ops console controls** - Guardian Ops includes a user-id repair panel with preview/apply actions, loading/error states, and issue explanations.
+- **Audited recovery** - applied repairs write a Guardian ops audit record with issue and applied-row counts.
+
+---
+
+## v0.46.0 - Guardian delivery convergence (2026-05-12)
+
+### Guardian reliability convergence [codex]
+- **Explicit lifecycle states** - Guardian delivery events now distinguish delivered, duplicate no-op, retryable failure, terminal failure, replayed, and dead-letter outcomes.
+- **Failure classification** - Telegram/director delivery paths classify malformed payloads, missing targets, missing configuration, provider rejection, and transient provider failures.
+- **Dead-letter metadata** - `event_queue` and `event_dead_letter` store Guardian convergence status, failure class, attempts, idempotency key, terminal reason, and replay linkage.
+- **Operator replay** - Guardian Ops now surfaces dead-lettered Guardian delivery events separately and allows one privileged single-event replay.
+- **Focused tests** - added convergence, delivery classification, and ops replay coverage for retry, terminal, duplicate/no-op, and dead-letter behavior.
+
+---
+
+## v0.45.9 - Guardian ops console (2026-05-12)
+
+### Guardian operator surface [codex]
+- **Protected console** - added `/guardian-ops` as an internal operator page for Guardian reliability state.
+- **Operational visibility** - console shows pending/failed Guardian outbox work, event-queue failures, active mutes, durable escalation counters, and recent Guardian actions.
+- **Bounded recovery controls** - operators can requeue one Guardian outbox or failed event-queue item from the console without exposing bulk replay.
+- **Access alignment** - backend page access, frontend access, and sidebar metadata now expose Guardian Ops only to creator/director/admin/security roles.
+- **UI safety states** - added loading, empty, error, disabled, and live-region states for the operator surface.
+
+---
+
+## v0.45.8 - Guardian operator reliability controls (2026-05-12)
+
+### Guardian reliability phase 3 [codex]
+- **Operator snapshot** - added protected Guardian reliability inspection for pending/failed Guardian outbox events, event-queue failures, active mutes, recent actions, and durable moderation counters.
+- **Bounded recovery** - operators can requeue one unpublished Guardian outbox row or one failed Guardian event-queue item without exposing bulk replay controls.
+- **Permission boundary** - Guardian ops endpoints are limited to creator/director/admin/security roles and refuse non-Guardian recovery targets.
+- **Audit trail** - requeue actions log a Guardian ops admin-audit entry with previous attempts/error context.
+- **Focused tests** - added authz and recovery coverage for inspection, outbox requeue, event-queue requeue, and unsafe target rejection.
+
+---
+
 ## v0.45.7 - Guardian durable moderation state (2026-05-12)
 
 ### Guardian reliability phase 2 [codex]

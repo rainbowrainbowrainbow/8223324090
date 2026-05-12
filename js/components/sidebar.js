@@ -58,6 +58,7 @@ const Sidebar = (() => {
         // ─── GROUP: Система ──────────────────────────────────────
         { type: 'group', key: 'system', label: 'Система', icon: '⚙️', defaultOpen: true },
         { href: '/kleshnya',     icon: '🦞', label: 'Клешня',         access: 'chat',           group: 'system' },
+        { href: '/guardian-ops', icon: '🛡️', label: 'Guardian Ops',   access: 'guardian_ops',   group: 'system' },
         { href: '/game',         icon: '🎮', label: 'Гра',            access: 'all',            group: 'system' },
         { href: '/demo',         icon: '🎬', label: 'Demo',           access: 'demo',           group: 'system' },
         { href: '#settings',     icon: '⚙️', label: 'Налаштування',   access: 'settings',       group: 'system',
@@ -95,6 +96,7 @@ const Sidebar = (() => {
         certificates:   _ALL_STAFF,
         demo:           _MGR_UP,
         settings:       ['creator','director'],
+        guardian_ops:   ['creator','director','admin','security'],
         schedule_daily: [..._MGR_UP, 'admin', 'hr', 'senior_instructor', 'instructor', 'it_specialist', 'security'],
         customers:      [..._ADMIN_UP, 'reception'],
         warehouse:      [..._MGR_UP, 'admin'],

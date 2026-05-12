@@ -147,6 +147,7 @@ const _PROGRAMS_ACCESS = [..._MANAGER_UP, 'admin', 'senior_instructor', 'instruc
 const _STAFF_PAGE_ACCESS = [..._MANAGER_UP, 'admin', 'hr', 'senior_instructor', 'instructor', 'it_specialist', 'security'];
 const _HR_PAGE_ACCESS = [..._MANAGER_UP, 'hr', 'admin', 'security'];
 const _TRAINING_ACCESS = [..._MANAGER_UP, 'hr', 'senior_instructor', 'instructor'];
+const _GUARDIAN_OPS_ACCESS = ['creator', 'director', 'admin', 'security'];
 
 const PAGE_ACCESS = {
     '/dashboard': ROLE_HIERARCHY.slice(),
@@ -170,6 +171,7 @@ const PAGE_ACCESS = {
     '/finance':   ['creator', 'director', 'accountant'],
     '/analytics': _MANAGER_UP,
     '/status':    _MANAGER_UP,
+    '/guardian-ops': _GUARDIAN_OPS_ACCESS,
     '/omni':      _MANAGER_UP,
     '/copilot':   _MANAGER_UP,
     '/designer':  _ART_ACCESS,

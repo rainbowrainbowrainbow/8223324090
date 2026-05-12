@@ -16,19 +16,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.45.7">
-    <link rel="stylesheet" href="css/auth.css?v=0.45.7">
-    <link rel="stylesheet" href="css/layout.css?v=0.45.7">
-    <link rel="stylesheet" href="css/timeline.css?v=0.45.7">
-    <link rel="stylesheet" href="css/panel.css?v=0.45.7">
-    <link rel="stylesheet" href="css/modals.css?v=0.45.7">
-    <link rel="stylesheet" href="css/controls.css?v=0.45.7">
-    <link rel="stylesheet" href="css/features.css?v=0.45.7">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.45.7">
-    <link rel="stylesheet" href="css/responsive.css?v=0.45.7">
-    <link rel="stylesheet" href="css/pages.css?v=0.45.7">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.45.7">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.45.7">
+    <link rel="stylesheet" href="css/base.css?v=0.46.1">
+    <link rel="stylesheet" href="css/auth.css?v=0.46.1">
+    <link rel="stylesheet" href="css/layout.css?v=0.46.1">
+    <link rel="stylesheet" href="css/timeline.css?v=0.46.1">
+    <link rel="stylesheet" href="css/panel.css?v=0.46.1">
+    <link rel="stylesheet" href="css/modals.css?v=0.46.1">
+    <link rel="stylesheet" href="css/controls.css?v=0.46.1">
+    <link rel="stylesheet" href="css/features.css?v=0.46.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.46.1">
+    <link rel="stylesheet" href="css/responsive.css?v=0.46.1">
+    <link rel="stylesheet" href="css/pages.css?v=0.46.1">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.46.1">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.46.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -45,9 +45,9 @@
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.45.7 — 0.45 release line</p>
+                <p class="tagline">AI First CRM v0.46.1 — 0.45 release line</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.45.7</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.46.1</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1152,6 +1152,42 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.46.1 - Guardian moderation repair tooling (12.05.2026)</h4>
+                    <ul>
+                        <li><b>Explain-first repair</b> - Guardian Ops can preview one user's moderation counter drift before changing data</li>
+                        <li><b>Bounded apply</b> - privileged operators can repair missing or mismatched repeat-offender and hourly-block counter rows for one user</li>
+                        <li><b>Safe limits</b> - stale/orphan historical counters are reported but not deleted automatically</li>
+                        <li><b>Audit trail</b> - applied repairs record Guardian ops audit context with issue and applied-row counts</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.46.0 - Guardian delivery convergence (12.05.2026)</h4>
+                    <ul>
+                        <li><b>Lifecycle states</b> - Guardian delivery now distinguishes delivered, duplicate no-op, retryable failure, terminal failure, replayed, and dead-letter outcomes</li>
+                        <li><b>Failure classes</b> - Telegram and director delivery paths classify malformed payloads, missing targets, provider rejection, missing configuration, and transient provider failures</li>
+                        <li><b>Dead-letter visibility</b> - Guardian Ops shows dead-lettered delivery events separately with failure class, attempts, terminal reason, and source metadata</li>
+                        <li><b>Single-event replay</b> - privileged operators can replay one Guardian dead-letter event through a bounded, audited recovery path</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.45.9 - Guardian ops console (12.05.2026)</h4>
+                    <ul>
+                        <li><b>Protected console</b> - added <code>/guardian-ops</code> for privileged Guardian reliability inspection</li>
+                        <li><b>Operator view</b> - shows Guardian outbox work, event-queue failures, active mutes, durable counters, and recent actions</li>
+                        <li><b>Bounded recovery</b> - single-item requeue controls are available from the console with disabled/loading/error states</li>
+                        <li><b>Access alignment</b> - backend, frontend, and sidebar metadata limit the page to creator/director/admin/security roles</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.45.8 - Guardian operator reliability controls (12.05.2026)</h4>
+                    <ul>
+                        <li><b>Ops snapshot</b> - protected Guardian reliability view now shows delivery queues, active mutes, recent actions, and moderation counters</li>
+                        <li><b>Safe recovery</b> - operators can requeue one failed Guardian outbox or event-queue item at a time</li>
+                        <li><b>Permission boundary</b> - ops controls are limited to creator/director/admin/security roles and reject non-Guardian targets</li>
+                        <li><b>Audit trail</b> - requeue actions record previous attempts and errors in the admin audit log</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.45.7 - Guardian durable moderation state (12.05.2026)</h4>
                     <ul>
@@ -5633,27 +5669,27 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.45.7"></script>
-    <script src="js/api.js?v=0.45.7"></script>
-    <script src="js/ui.js?v=0.45.7"></script>
-    <script src="js/auth.js?v=0.45.7"></script>
-    <script src="js/timeline.js?v=0.45.7"></script>
-    <script src="js/booking.js?v=0.45.7"></script>
-    <script src="js/settings.js?v=0.45.7"></script>
-    <script src="js/booking-form.js?v=0.45.7"></script>
-    <script src="js/booking-linked.js?v=0.45.7"></script>
-    <script src="js/settings-dashboard.js?v=0.45.7"></script>
-    <script src="js/settings-history.js?v=0.45.7"></script>
-    <script src="js/settings-afisha.js?v=0.45.7"></script>
-    <script src="js/settings-certificates.js?v=0.45.7"></script>
-    <script src="js/offline.js?v=0.45.7"></script>
-    <script src="js/search.js?v=0.45.7"></script>
-    <script src="js/ws.js?v=0.45.7"></script>
-    <script src="js/app.js?v=0.45.7"></script>
-    <script src="js/kleshnya-widget.js?v=0.45.7"></script>
-    <script src="js/components/sidebar.js?v=0.45.7"></script>
+    <script src="js/config.js?v=0.46.1"></script>
+    <script src="js/api.js?v=0.46.1"></script>
+    <script src="js/ui.js?v=0.46.1"></script>
+    <script src="js/auth.js?v=0.46.1"></script>
+    <script src="js/timeline.js?v=0.46.1"></script>
+    <script src="js/booking.js?v=0.46.1"></script>
+    <script src="js/settings.js?v=0.46.1"></script>
+    <script src="js/booking-form.js?v=0.46.1"></script>
+    <script src="js/booking-linked.js?v=0.46.1"></script>
+    <script src="js/settings-dashboard.js?v=0.46.1"></script>
+    <script src="js/settings-history.js?v=0.46.1"></script>
+    <script src="js/settings-afisha.js?v=0.46.1"></script>
+    <script src="js/settings-certificates.js?v=0.46.1"></script>
+    <script src="js/offline.js?v=0.46.1"></script>
+    <script src="js/search.js?v=0.46.1"></script>
+    <script src="js/ws.js?v=0.46.1"></script>
+    <script src="js/app.js?v=0.46.1"></script>
+    <script src="js/kleshnya-widget.js?v=0.46.1"></script>
+    <script src="js/components/sidebar.js?v=0.46.1"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=0.45.7"></script>
-    <script src="js/alerts.js?v=0.45.7"></script>
+    <script src="js/role-panel.js?v=0.46.1"></script>
+    <script src="js/alerts.js?v=0.46.1"></script>
 </body>
 </html>

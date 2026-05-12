@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <script type="text/javascript">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","w841e2emn0");</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Genix | Guardian Ops</title>
+    <meta name="description" content="Event Genix Guardian operator console">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=0.46.1">
+    <link rel="stylesheet" href="css/layout.css?v=0.46.1">
+    <link rel="stylesheet" href="css/pages.css?v=0.46.1">
+    <link rel="stylesheet" href="css/modals.css?v=0.46.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.46.1">
+    <link rel="stylesheet" href="css/responsive.css?v=0.46.1">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.46.1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        .guardian-ops-page {
+            color: var(--gray-800);
+        }
+
+        .guardian-ops-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 18px;
+        }
+
+        .guardian-ops-eyebrow {
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0;
+            text-transform: uppercase;
+        }
+
+        .guardian-ops-header h2 {
+            margin: 4px 0 6px;
+            font-size: 28px;
+            font-weight: 900;
+            color: var(--gray-900);
+        }
+
+        .guardian-ops-header p {
+            max-width: 780px;
+            color: var(--gray-600);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .ops-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .ops-filter-group {
+            display: inline-flex;
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            overflow: hidden;
+            background: var(--white);
+        }
+
+        .ops-filter-btn {
+            min-height: 36px;
+            border: 0;
+            border-right: 1px solid var(--gray-200);
+            padding: 0 12px;
+            background: transparent;
+            color: var(--gray-600);
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .ops-filter-btn:last-child {
+            border-right: 0;
+        }
+
+        .ops-filter-btn.active,
+        .ops-filter-btn:focus-visible {
+            background: var(--primary-50);
+            color: var(--primary-700);
+            outline: 2px solid transparent;
+        }
+
+        .ops-refresh-btn,
+        .ops-requeue-btn {
+            min-height: 36px;
+            border: 0;
+            border-radius: 8px;
+            padding: 0 14px;
+            background: var(--primary);
+            color: var(--white);
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .ops-refresh-btn:disabled,
+        .ops-requeue-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.55;
+        }
+
+        .ops-requeue-btn {
+            min-width: 88px;
+            background: var(--gray-800);
+        }
+
+        .ops-banner {
+            min-height: 42px;
+            margin-bottom: 16px;
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            padding: 12px 14px;
+            background: var(--white);
+            color: var(--gray-600);
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .ops-banner.error {
+            border-color: rgba(239,68,68,0.35);
+            background: rgba(239,68,68,0.08);
+            color: #B91C1C;
+        }
+
+        .ops-banner.success {
+            border-color: rgba(16,185,129,0.35);
+            background: rgba(16,185,129,0.08);
+            color: var(--primary-700);
+        }
+
+        .ops-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .ops-kpi {
+            min-height: 104px;
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            padding: 14px;
+            background: var(--white);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .ops-kpi-label {
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .ops-kpi-value {
+            margin-top: 8px;
+            color: var(--gray-900);
+            font-size: 30px;
+            font-weight: 900;
+            line-height: 1;
+        }
+
+        .ops-kpi-sub {
+            margin-top: 8px;
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .ops-section-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 16px;
+        }
+
+        .ops-section {
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            background: var(--white);
+            box-shadow: var(--shadow-sm);
+            overflow: hidden;
+        }
+
+        .ops-section.full {
+            grid-column: 1 / -1;
+        }
+
+        .ops-section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            border-bottom: 1px solid var(--gray-200);
+            padding: 14px 16px;
+        }
+
+        .ops-section-title {
+            margin: 0;
+            color: var(--gray-900);
+            font-size: 16px;
+            font-weight: 900;
+        }
+
+        .ops-section-meta {
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .ops-list {
+            display: grid;
+            gap: 0;
+        }
+
+        .ops-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 12px;
+            border-bottom: 1px solid var(--gray-100);
+            padding: 14px 16px;
+        }
+
+        .ops-row:last-child {
+            border-bottom: 0;
+        }
+
+        .ops-row-title {
+            color: var(--gray-900);
+            font-size: 14px;
+            font-weight: 900;
+        }
+
+        .ops-row-meta,
+        .ops-row-error {
+            margin-top: 5px;
+            color: var(--gray-500);
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        .ops-row-error {
+            color: #B91C1C;
+            overflow-wrap: anywhere;
+        }
+
+        .ops-badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            border-radius: 999px;
+            padding: 0 9px;
+            background: var(--gray-100);
+            color: var(--gray-700);
+            font-size: 12px;
+            font-weight: 900;
+            white-space: nowrap;
+        }
+
+        .ops-badge.pending { background: rgba(59,130,246,0.12); color: #1D4ED8; }
+        .ops-badge.failed,
+        .ops-badge.terminal_failed,
+        .ops-badge.dead_letter,
+        .ops-badge.blocked,
+        .ops-badge.retry_needed { background: rgba(239,68,68,0.12); color: #B91C1C; }
+        .ops-badge.replayed,
+        .ops-badge.published,
+        .ops-badge.processed { background: rgba(16,185,129,0.12); color: var(--primary-700); }
+
+        .ops-empty {
+            padding: 22px 16px;
+            color: var(--gray-500);
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .ops-action-cell {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .ops-muted {
+            color: var(--gray-500);
+        }
+
+        .ops-repair-form {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--gray-100);
+        }
+
+        .ops-repair-input {
+            min-height: 36px;
+            width: min(220px, 100%);
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            padding: 0 12px;
+            color: var(--gray-800);
+            font-weight: 800;
+        }
+
+        @media (max-width: 980px) {
+            .ops-kpi-grid,
+            .ops-section-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .ops-section.full {
+                grid-column: auto;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .guardian-ops-header,
+            .ops-toolbar,
+            .ops-row {
+                display: block;
+            }
+
+            .ops-refresh-btn,
+            .ops-filter-group {
+                width: 100%;
+            }
+
+            .ops-filter-btn {
+                flex: 1;
+            }
+
+            .ops-action-cell {
+                margin-top: 10px;
+            }
+        }
+    </style>
+</head>
+<body data-page-group="system">
+    <script>
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
+    <a href="#main-content" class="skip-link">Skip to Guardian operations</a>
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Sign in to Event Genix</a>
+    </div>
+
+    <div id="mainApp">
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+            <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Toggle menu">
+                <span class="collapse-icon">◀</span>
+                <span class="collapse-text">Collapse</span>
+            </button>
+        </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
+
+        <header class="header">
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Menu" aria-label="Open or close menu">☰</button>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button type="button" id="logoutBtn" class="btn-logout">Logout</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="main-content" class="page-container guardian-ops-page">
+            <section class="guardian-ops-header" aria-labelledby="guardianOpsTitle">
+                <div>
+                    <div class="guardian-ops-eyebrow">Internal operator surface</div>
+                    <h2 id="guardianOpsTitle">Guardian Ops</h2>
+                    <p>Inspect Guardian delivery queues, active moderation state, recent actions, and requeue one failed delivery item at a time.</p>
+                </div>
+                <button type="button" class="ops-refresh-btn" id="guardianOpsRefreshBtn" aria-label="Refresh Guardian ops snapshot">Refresh</button>
+            </section>
+
+            <div class="ops-toolbar" aria-label="Guardian ops filters">
+                <div class="ops-filter-group" role="group" aria-label="Event status filter">
+                    <button type="button" class="ops-filter-btn active" data-ops-filter="attention">Needs attention</button>
+                    <button type="button" class="ops-filter-btn" data-ops-filter="all">All loaded</button>
+                </div>
+                <div id="guardianOpsGeneratedAt" class="ops-section-meta" aria-live="polite">Not loaded</div>
+            </div>
+
+            <div id="guardianOpsStatus" class="ops-banner" role="status" aria-live="polite">Loading Guardian reliability snapshot...</div>
+
+            <section class="ops-kpi-grid" aria-label="Guardian reliability summary">
+                <div class="ops-kpi">
+                    <div class="ops-kpi-label">Outbox needs retry</div>
+                    <div class="ops-kpi-value" id="guardianOutboxRetryCount">0</div>
+                    <div class="ops-kpi-sub" id="guardianOutboxTotalCount">0 total loaded</div>
+                </div>
+                <div class="ops-kpi">
+                    <div class="ops-kpi-label">Event queue failed</div>
+                    <div class="ops-kpi-value" id="guardianEventFailedCount">0</div>
+                    <div class="ops-kpi-sub" id="guardianEventPendingCount">0 pending</div>
+                </div>
+                <div class="ops-kpi">
+                    <div class="ops-kpi-label">Dead letter</div>
+                    <div class="ops-kpi-value" id="guardianDeadLetterCount">0</div>
+                    <div class="ops-kpi-sub" id="guardianDeadLetterSub">0 terminal</div>
+                </div>
+                <div class="ops-kpi">
+                    <div class="ops-kpi-label">Active mutes</div>
+                    <div class="ops-kpi-value" id="guardianActiveMuteCount">0</div>
+                    <div class="ops-kpi-sub">Currently enforced</div>
+                </div>
+                <div class="ops-kpi">
+                    <div class="ops-kpi-label">Recent actions</div>
+                    <div class="ops-kpi-value" id="guardianRecentActionCount">0</div>
+                    <div class="ops-kpi-sub">Latest moderation interventions</div>
+                </div>
+            </section>
+
+            <section class="ops-section-grid">
+                <article class="ops-section full" aria-labelledby="guardianOutboxTitle">
+                    <div class="ops-section-header">
+                        <h3 class="ops-section-title" id="guardianOutboxTitle">Guardian outbox delivery</h3>
+                        <span class="ops-section-meta">Single unpublished event retry</span>
+                    </div>
+                    <div class="ops-list" id="guardianOutboxList"></div>
+                </article>
+
+                <article class="ops-section" aria-labelledby="guardianEventQueueTitle">
+                    <div class="ops-section-header">
+                        <h3 class="ops-section-title" id="guardianEventQueueTitle">Event queue</h3>
+                        <span class="ops-section-meta">Failed items can be requeued</span>
+                    </div>
+                    <div class="ops-list" id="guardianEventQueueList"></div>
+                </article>
+
+                <article class="ops-section" aria-labelledby="guardianDeadLetterTitle">
+                    <div class="ops-section-header">
+                        <h3 class="ops-section-title" id="guardianDeadLetterTitle">Dead letter</h3>
+                        <span class="ops-section-meta">Single terminal item replay</span>
+                    </div>
+                    <div class="ops-list" id="guardianDeadLetterList"></div>
+                </article>
+
+                <article class="ops-section full" aria-labelledby="guardianRepairTitle">
+                    <div class="ops-section-header">
+                        <h3 class="ops-section-title" id="guardianRepairTitle">Moderation state repair</h3>
+                        <span class="ops-section-meta">One-user dry-run before repair</span>
+                    </div>
+                    <div class="ops-repair-form" aria-label="Guardian user moderation repair">
+                        <input class="ops-repair-input" id="guardianRepairUserId" inputmode="numeric" pattern="[0-9]*" placeholder="User ID" aria-label="Guardian repair user id">
+                        <button type="button" class="ops-requeue-btn" id="guardianRepairPreviewBtn">Preview</button>
+                        <button type="button" class="ops-requeue-btn" id="guardianRepairApplyBtn">Apply repair</button>
+                    </div>
+                    <div class="ops-list" id="guardianRepairResult">
+                        <div class="ops-empty">Enter a user id to preview Guardian moderation-state drift.</div>
+                    </div>
+                </article>
+
+                <article class="ops-section" aria-labelledby="guardianMutesTitle">
+                    <div class="ops-section-header">
+                        <h3 class="ops-section-title" id="guardianMutesTitle">Active mutes</h3>
+                        <span class="ops-section-meta">Current moderation state</span>
+                    </div>
+                    <div class="ops-list" id="guardianMutesList"></div>
+                </article>
+
+                <article class="ops-section" aria-labelledby="guardianCountersTitle">
+                    <div class="ops-section-header">
+                        <h3 class="ops-section-title" id="guardianCountersTitle">Escalation counters</h3>
+                        <span class="ops-section-meta">Durable state model</span>
+                    </div>
+                    <div class="ops-list" id="guardianCountersList"></div>
+                </article>
+
+                <article class="ops-section" aria-labelledby="guardianActionsTitle">
+                    <div class="ops-section-header">
+                        <h3 class="ops-section-title" id="guardianActionsTitle">Recent actions</h3>
+                        <span class="ops-section-meta">Latest Guardian interventions</span>
+                    </div>
+                    <div class="ops-list" id="guardianActionsList"></div>
+                </article>
+            </section>
+        </main>
+    </div>
+
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Profile">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Profile</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/config.js?v=0.46.1"></script>
+    <script src="js/notification.js?v=0.46.1"></script>
+    <script src="js/api.js?v=0.46.1"></script>
+    <script src="js/auth.js?v=0.46.1"></script>
+    <script src="js/components/sidebar.js?v=0.46.1"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/guardian-ops-page.js?v=0.46.1"></script>
+    <script src="js/role-panel.js?v=0.46.1"></script>
+    <script src="js/alerts.js?v=0.46.1"></script>
+    <script src="js/ui.js?v=0.46.1"></script>
+</body>
+</html>

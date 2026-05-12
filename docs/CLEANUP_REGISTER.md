@@ -108,6 +108,9 @@ Status: inventory command added; auth classification remains a later pack.
 - Added `docs/API_SURFACE.md`, `config/apiSurface.js`, and
   `npm run check:api-surface` so every `routes/*.js` file must be mounted and
   broad `/api` mounts must be explicit.
+- Added `docs/ACCESS_SURFACE.md`, `config/accessSurface.js`, and expanded
+  `npm run check:access` so static pages, page aliases, sidebar links,
+  hash-modal bridges, and public/embedded access exceptions stay aligned.
 
 ### 3. Safety Net Before Deletion
 
@@ -121,6 +124,9 @@ What to do:
   guard.
 - Keep `npm run check:auth-boundary` as the ownership guard for public API
   exceptions and approved `?token=` JWT routes.
+- Keep `npm run check:access` as the ownership guard for role metadata,
+  backend/frontend `PAGE_ACCESS`, sidebar access, static page access, and
+  documented modal/public/embedded exceptions.
 - Keep `npm run check:static-surface` as the ownership guard for root HTML,
   landing pages, and legacy static redirects.
 - Keep `npm run check:api-surface` as the ownership guard for backend route
@@ -149,6 +155,8 @@ Status: existing guards present; expand per pack.
   Supabase buckets from being introduced without ownership and tests.
 - Auth-boundary guard added to prevent new public API or query-token exceptions
   from bypassing the documented manifest and focused tests.
+- Access-surface guard expanded to prevent new pages, aliases, sidebar links,
+  or hash-modal access paths from bypassing documented ownership.
 
 ### 4. Security And Deploy-Risk Cleanup
 
@@ -353,7 +361,7 @@ Status: active rule for all packs.
 | Done | Upload storage inventory | Clarifies Railway persistence risk | `npm run check:storage-surface`, `tests/chat-upload-storage.test.js`, `tests/audio-storage.test.js`, `tests/image-storage.test.js` |
 | Done | Root HTML ownership map | Prevents accidental live page deletion | `npm run check:static-surface`, `npm run test:ui` |
 | Done | API route ownership guard | Prevents orphan route files and undocumented broad mounts | `npm run check:api-surface`, `tests/route-smoke.test.js` |
-| P1 | Access/sidebar drift expansion | Keeps UI and backend permission rules aligned | `npm run check:access` |
+| Done | Access/sidebar drift expansion | Keeps UI and backend permission rules aligned | `npm run check:access` |
 | P2 | Scheduler side-effect map | Finds duplicate-prone background jobs | scheduler-focused tests |
 | P2 | DB startup ownership slice | Reduces `initDatabase()`/migration split-brain | `npm run check:migrations` |
 | Done | Old root markdown archive pass | Reduces stale instruction risk | `tests/static-doc-guard.test.js` |

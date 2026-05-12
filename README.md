@@ -78,6 +78,7 @@ npm test
 npm run verify
 npm run check:runtime
 npm run check:version
+npm run check:access
 npm run check:auth-boundary
 npm run check:static-surface
 npm run check:api-surface
@@ -97,6 +98,7 @@ Notes:
 - `npm run verify` is the same baseline command spelled explicitly for agents.
 - `npm run check:runtime` requires Node 22.x and npm 10.x so local verification matches the Railway baseline.
 - `npm run check:version` checks version references without editing files.
+- `npm run check:access` verifies role metadata, backend/frontend page access, sidebar navigation access, static page access ownership, and documented modal/public/embedded exceptions.
 - `npm run check:auth-boundary` verifies that public API exceptions and approved `?token=` JWT routes stay documented and tested.
 - `npm run check:static-surface` verifies that root HTML pages, landing pages, legacy redirects, and the documented static surface map stay aligned.
 - `npm run check:api-surface` verifies that every `routes/*.js` file is mounted from `server.js`, broad `/api` route mounts are explicit, and direct server-level API routes are documented.
@@ -120,6 +122,7 @@ The CI gate covers:
 
 - Node/npm runtime alignment through `npm run check:runtime`;
 - version and cache-bust consistency through `npm run check:version`;
+- access/sidebar/static page access drift through `npm run check:access`;
 - API auth-boundary ownership through `npm run check:auth-boundary`;
 - migration duplicate/gap/governance checks through `npm run check:migrations`;
 - static surface ownership through `npm run check:static-surface`;
@@ -187,12 +190,14 @@ Navigation and access logic is shared across server and frontend code:
 - `js/components/sidebar.js` `NAV_ITEMS` and `SIDEBAR_ACCESS`
 
 When changing pages, roles, navigation, or shared UI, inspect all related areas. Preserve loading, error, empty, disabled, focus, keyboard, and ARIA behavior when touching shared components.
+The current ownership map and intentional exceptions live in [docs/ACCESS_SURFACE.md](docs/ACCESS_SURFACE.md).
 
 ## Key Docs
 
 - [AGENTS.md](AGENTS.md) - operational rules for Codex and other agents
 - [DB_MIGRATION_GOVERNANCE.md](DB_MIGRATION_GOVERNANCE.md) - current database migration ownership and safety rules
 - [docs/CLEANUP_REGISTER.md](docs/CLEANUP_REGISTER.md) - active cleanup map, cleanup tracks, and backlog
+- [docs/ACCESS_SURFACE.md](docs/ACCESS_SURFACE.md) - role/page/sidebar/static access ownership and approved exceptions
 - [docs/AUTH_BOUNDARY.md](docs/AUTH_BOUNDARY.md) - public API and query-token auth exception ownership
 - [docs/API_SURFACE.md](docs/API_SURFACE.md) - API route-file mounting and server-level API ownership
 - [docs/STATIC_SURFACE.md](docs/STATIC_SURFACE.md) - root HTML, landing page, and legacy static route ownership

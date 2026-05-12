@@ -157,6 +157,8 @@ Status: existing guards present; expand per pack.
   from bypassing the documented manifest and focused tests.
 - Access-surface guard expanded to prevent new pages, aliases, sidebar links,
   or hash-modal access paths from bypassing documented ownership.
+- Scheduler-surface guard added to prevent background jobs, raw intervals,
+  dedup settings, or test anchors from drifting without ownership.
 
 ### 4. Security And Deploy-Risk Cleanup
 
@@ -299,6 +301,17 @@ What this gives:
 Status: Guardian has recent convergence/repair work; broader scheduler cleanup
 remains open.
 
+2026-05-12 update:
+
+- Added `docs/SCHEDULER_SURFACE.md`, `config/schedulerSurface.js`, and
+  `npm run check:scheduler-surface`.
+- Current `server.js` scheduler startup now has an explicit manifest for
+  guarded jobs, raw intervals/starters, dedup cadence, owners, side-effect
+  classes, and test anchors.
+- `checkBookingPushReminders` is documented as a runtime-risk follow-up: it is
+  scheduled every minute but currently relies on `guardScheduler` default
+  `daily` dedup. Do not change it without notification-focused tests.
+
 ### 9. Documentation Cleanup
 
 Goal: make active docs trustworthy and old docs clearly historical.
@@ -362,7 +375,7 @@ Status: active rule for all packs.
 | Done | Root HTML ownership map | Prevents accidental live page deletion | `npm run check:static-surface`, `npm run test:ui` |
 | Done | API route ownership guard | Prevents orphan route files and undocumented broad mounts | `npm run check:api-surface`, `tests/route-smoke.test.js` |
 | Done | Access/sidebar drift expansion | Keeps UI and backend permission rules aligned | `npm run check:access` |
-| P2 | Scheduler side-effect map | Finds duplicate-prone background jobs | scheduler-focused tests |
+| Done | Scheduler side-effect map | Finds duplicate-prone background jobs | `npm run check:scheduler-surface`, scheduler-focused tests |
 | P2 | DB startup ownership slice | Reduces `initDatabase()`/migration split-brain | `npm run check:migrations` |
 | Done | Old root markdown archive pass | Reduces stale instruction risk | `tests/static-doc-guard.test.js` |
 | P3 | Large CSS consolidation | Reduces UI drift | `npm run test:ui` plus browser smoke |

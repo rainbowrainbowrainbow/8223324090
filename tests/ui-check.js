@@ -156,6 +156,14 @@ checkPage('leads.html', (doc, html) => {
 // JS FILE CHECKS
 // ═══════════════════════════════════════════════════
 
+console.log('\nbase CSS');
+const baseCss = fs.readFileSync(path.join(ROOT, 'css', 'base.css'), 'utf8');
+check('Notifications dark mode defines local text contrast tokens', baseCss.includes('body.dark-mode .alerts-panel-v4') && baseCss.includes('--ap-text-primary: #F8FAFC') && baseCss.includes('--ap-text-secondary: #CBD5E1') && baseCss.includes('--ap-text-muted: #94A3B8'));
+check('Notifications dark mode overrides primary text color', baseCss.includes('body.dark-mode .ap-title') && baseCss.includes('body.dark-mode .ap-item-title') && baseCss.includes('body.dark-mode .ap-empty-text'));
+check('Notifications dark mode overrides secondary and meta text color', baseCss.includes('body.dark-mode .ap-item-desc') && baseCss.includes('body.dark-mode .ap-count') && baseCss.includes('body.dark-mode .ap-group-title'));
+check('Notifications dark mode keeps read items readable', baseCss.includes('body.dark-mode .ap-item.read') && baseCss.includes('opacity: 1') && baseCss.includes('body.dark-mode .ap-item.read .ap-item-title'));
+check('Notifications dark mode covers alert variants', baseCss.includes('body.dark-mode .ap-item.warning .ap-icon') && baseCss.includes('body.dark-mode .ap-item.critical .ap-icon') && baseCss.includes('body.dark-mode .ap-item.info .ap-icon'));
+
 const criticalJS = [
     'js/config.js', 'js/api.js', 'js/auth.js', 'js/app.js',
     'js/components/sidebar.js',

@@ -75,6 +75,8 @@ let leadsData = [];
 let pipelineData = {};
 let usersData = [];
 let modalInitialState = '';
+let leadModalLastTouchAt = 0;
+let leadSaveInFlight = false;
 
 // Auth helpers
 function getToken() { return localStorage.getItem('pzp_token'); }
@@ -108,9 +110,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check TEST_MODE badge
     checkTestMode();
 
+    setupEvents();
     await loadUsers();
     await loadLeads();
-    setupEvents();
 });
 
 async function checkTestMode() {
@@ -740,7 +742,29 @@ async function deleteMailingEntry(id) {
 // ==========================================
 // SETUP
 // ==========================================
+function bindLeadModalButton(id, action) {
+    const btn = document.getElementById(id);
+    if (!btn || btn.dataset.leadModalBound === 'true') return;
+    btn.dataset.leadModalBound = 'true';
+
+    const run = (event) => {
+        if (event.type === 'touchend') {
+            leadModalLastTouchAt = Date.now();
+            event.preventDefault();
+        } else if (event.type === 'click' && Date.now() - leadModalLastTouchAt < 700) {
+            return;
+        }
+        action();
+    };
+
+    btn.addEventListener('click', run);
+    btn.addEventListener('touchend', run, { passive: false });
+}
+
 function setupEvents() {
+    if (setupEvents.bound) return;
+    setupEvents.bound = true;
+
     // View toggle buttons
     document.querySelectorAll('.view-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -797,10 +821,8 @@ function setupEvents() {
     // Add lead button
     const addBtn = document.getElementById('addLeadBtn');
     if (addBtn) addBtn.addEventListener('click', openAddModal);
-    const cancelBtn = document.getElementById('leadModalCancel');
-    if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
-    const saveBtn = document.getElementById('leadModalSave');
-    if (saveBtn) saveBtn.addEventListener('click', saveLead);
+    bindLeadModalButton('leadModalCancel', closeLeadModal);
+    bindLeadModalButton('leadModalSave', saveLead);
 
     // Close modals on overlay click
     document.querySelectorAll('.lead-modal-overlay').forEach(overlay => {
@@ -871,7 +893,7 @@ function isModalDirty() {
     return getModalState() !== modalInitialState;
 }
 
-async function closeModal(force = false) {
+async function closeLeadModal(force = false) {
     if (!force && isModalDirty()) {
         if (typeof confirmModal === 'function') {
             if (!await confirmModal('Є незбережені дані. Закрити?', { type: 'warning', okText: 'Закрити' })) return;
@@ -884,6 +906,7 @@ async function saveLead() {
     const editId = document.getElementById('leadEditId')?.value;
     const name = document.getElementById('leadName')?.value.trim();
     if (!name) { if (typeof showNotification === 'function') showNotification("Ім'я обов'язкове", 'error'); return; }
+    if (leadSaveInFlight) return;
 
     const body = {
         client_name: name,
@@ -904,7 +927,13 @@ async function saveLead() {
         if (typeEl) body.lead_type = typeEl.value;
     }
 
+    const saveBtn = document.getElementById('leadModalSave');
     try {
+        leadSaveInFlight = true;
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Збереження...';
+        }
         let res;
         if (editId) {
             res = await apiFetch(`/api/leads/${editId}`, { method: 'PATCH', body: JSON.stringify(body) });
@@ -913,11 +942,17 @@ async function saveLead() {
         }
         const data = await res.json();
         if (!data.success) { if (typeof showNotification === 'function') showNotification(data.error || 'Помилка', 'error'); return; }
-        closeModal(true);
+        closeLeadModal(true);
         await loadLeads();
     } catch (err) {
         console.error('Save lead error', err);
         if (typeof showNotification === 'function') showNotification('Помилка збереження', 'error');
+    } finally {
+        leadSaveInFlight = false;
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Зберегти';
+        }
     }
 }
 

@@ -137,8 +137,12 @@ checkPage('leads.html', (doc, html) => {
     const leadChildren = doc.getElementById('leadChildrenCount');
     const customerDate = doc.getElementById('ccEventDate');
     const customerChildren = doc.getElementById('ccChildrenCount');
+    const cancelBtn = doc.getElementById('leadModalCancel');
+    const saveBtn = doc.getElementById('leadModalSave');
     check('Lead edit modal date input exists', leadDate?.type === 'date');
     check('Lead edit modal children input exists', leadChildren?.type === 'number');
+    check('Lead edit modal cancel button exists', cancelBtn?.type === 'button');
+    check('Lead edit modal save button exists', saveBtn?.type === 'button');
     check('Customer card modal date input exists', customerDate?.type === 'date');
     check('Customer card modal children input exists', customerChildren?.type === 'number');
     check('Lead modal grid allows narrow WebKit date inputs', html.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)'));
@@ -182,6 +186,13 @@ check('Sidebar has /designs#catalogs', sidebarCode.includes("href: '/designs#cat
 check('Sidebar has /designer', sidebarCode.includes("href: '/designer'"));
 check('Sidebar has /guardian-ops', sidebarCode.includes("href: '/guardian-ops'"));
 check('Sidebar has Центр керування', sidebarCode.includes('Центр керування'));
+
+// Check lead modal action binding
+const leadsCode = fs.readFileSync(path.join(ROOT, 'js/leads-page.js'), 'utf8');
+check('Lead modal buttons bind before async data loads', leadsCode.indexOf('setupEvents();') < leadsCode.indexOf('await loadUsers();'));
+check('Lead modal buttons support touchend taps', leadsCode.includes("btn.addEventListener('touchend', run, { passive: false })"));
+check('Lead modal close avoids shared closeModal collision', leadsCode.includes('function closeLeadModal') && !leadsCode.includes('function closeModal'));
+check('Lead save has duplicate-submit guard', leadsCode.includes('leadSaveInFlight'));
 
 // ═══════════════════════════════════════════════════
 // RESULTS

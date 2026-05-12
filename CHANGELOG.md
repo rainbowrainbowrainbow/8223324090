@@ -4,6 +4,16 @@
 
 ---
 
+## v0.46.5 - Lead modal action buttons hardening (2026-05-13)
+
+### Lead edit modal actions [codex]
+- **Immediate binding** - lead modal controls now bind before async user/lead loading, so save/cancel cannot be skipped by a slow or failed data request.
+- **iPad tap support** - the lead modal save and cancel buttons now handle touchend taps with duplicate synthetic-click protection.
+- **Duplicate-save guard** - save disables while the lead update request is in flight to prevent repeated submissions.
+- **Regression guard** - UI smoke checks now cover the edit modal action buttons and their touch binding.
+
+---
+
 ## v0.46.4 - iPad Safari lead date row stack (2026-05-13)
 
 ### Lead modal iPad Safari fix [codex]

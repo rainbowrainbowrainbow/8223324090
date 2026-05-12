@@ -80,6 +80,7 @@ npm run check:runtime
 npm run check:version
 npm run check:static-surface
 npm run check:api-surface
+npm run check:storage-surface
 npm run check:migrations
 npm run check:syntax
 npm run cleanup:inventory
@@ -91,12 +92,13 @@ npm run health
 ```
 
 Notes:
-- `npm test` runs the fast local baseline: runtime check, version sync check, access/sidebar drift check, migration governance check, JavaScript parser check, unit tests, and UI/static smoke.
+- `npm test` runs the fast local baseline: runtime check, version sync check, access/sidebar drift check, static/API/storage surface ownership, migration governance check, JavaScript parser check, unit tests, and UI/static smoke.
 - `npm run verify` is the same baseline command spelled explicitly for agents.
 - `npm run check:runtime` requires Node 22.x and npm 10.x so local verification matches the Railway baseline.
 - `npm run check:version` checks version references without editing files.
 - `npm run check:static-surface` verifies that root HTML pages, landing pages, legacy redirects, and the documented static surface map stay aligned.
 - `npm run check:api-surface` verifies that every `routes/*.js` file is mounted from `server.js`, broad `/api` route mounts are explicit, and direct server-level API routes are documented.
+- `npm run check:storage-surface` verifies that local `/uploads` paths, Supabase Storage buckets, tests, docs, and ignore rules stay aligned.
 - `npm run check:migrations` statically checks migration numbering, known legacy gaps/duplicates, and required governance headers for new migrations.
 - `npm run check:syntax` parses repository JavaScript with Node; it is not a style lint, typecheck, or build.
 - `npm run cleanup:inventory` prints a read-only cleanup inventory: directory sizes, largest files, API mounts, page routes, root HTML exposure, docs, and migration numbering. Use it before starting cleanup packs.
@@ -119,6 +121,7 @@ The CI gate covers:
 - migration duplicate/gap/governance checks through `npm run check:migrations`;
 - static surface ownership through `npm run check:static-surface`;
 - API route surface ownership through `npm run check:api-surface`;
+- upload/storage surface ownership through `npm run check:storage-surface`;
 - JavaScript parser checks through `npm run check:syntax`;
 - self-contained unit, auth-boundary, and route-level safety smoke tests through `npm run test:unit`;
 - static UI smoke through `npm run test:ui`.
@@ -189,6 +192,7 @@ When changing pages, roles, navigation, or shared UI, inspect all related areas.
 - [docs/CLEANUP_REGISTER.md](docs/CLEANUP_REGISTER.md) - active cleanup map, cleanup tracks, and backlog
 - [docs/API_SURFACE.md](docs/API_SURFACE.md) - API route-file mounting and server-level API ownership
 - [docs/STATIC_SURFACE.md](docs/STATIC_SURFACE.md) - root HTML, landing page, and legacy static route ownership
+- [docs/STORAGE_SURFACE.md](docs/STORAGE_SURFACE.md) - local upload path and Supabase Storage bucket ownership
 - [CHANGELOG.md](CHANGELOG.md) - release history
 - [docs/archive/README.md](docs/archive/README.md) - archive index for historical, non-authoritative docs
 - [docs/archive/CLAUDE.md](docs/archive/CLAUDE.md) - older Claude/OpenClaw-oriented project guidance

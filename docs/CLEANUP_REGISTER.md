@@ -123,6 +123,8 @@ What to do:
   landing pages, and legacy static redirects.
 - Keep `npm run check:api-surface` as the ownership guard for backend route
   files, broad `/api` route mounts, and server-level API routes.
+- Keep `npm run check:storage-surface` as the ownership guard for local
+  `/uploads` paths, Supabase Storage buckets, tests, docs, and ignore rules.
 - Extend `tests/route-smoke.test.js` when public/protected boundaries change.
 - Add focused tests before deleting or redirecting any page, asset, or API
   alias.
@@ -141,6 +143,8 @@ Status: existing guards present; expand per pack.
   classification work.
 - API surface guard added to prevent unmounted route files and undocumented
   broad `/api` route mounts.
+- Storage surface guard added to prevent undocumented local upload paths or
+  Supabase buckets from being introduced without ownership and tests.
 
 ### 4. Security And Deploy-Risk Cleanup
 
@@ -152,7 +156,9 @@ What to do:
 - Continue tightening public endpoint allowlists and rate limits.
 - Restrict query-token auth to explicitly approved download/export routes.
 - Keep bootstrap credentials explicit through environment variables only.
-- Audit local upload fallback behavior against Railway persistence.
+- Keep local upload fallback behavior documented against Railway persistence.
+- Keep `npm run check:storage-surface` green when adding or changing upload
+  paths or Supabase buckets.
 - Keep service worker cache behavior away from private or stale API data.
 
 What this gives:
@@ -161,8 +167,19 @@ What this gives:
 - Makes Railway deploy behavior match local test behavior.
 - Prevents cleanup from re-opening old auth/storage/cache problems.
 
-Status: partially addressed by previous packs; query-token/storage/cache remain
+Status: partially addressed by previous packs; query-token/cache remain
 high-value review areas.
+
+2026-05-12 update:
+
+- Added `docs/STORAGE_SURFACE.md`, `config/storageSurface.js`, and
+  `npm run check:storage-surface`.
+- Current local upload paths are now explicit: `/uploads/chat`,
+  `/uploads/sounds`, and `/uploads/designs`.
+- Current Supabase Storage buckets are now explicit: `chat-uploads`,
+  `audio-library`, and `catalog-images`.
+- `/uploads/designs` is documented as the main local-only legacy storage risk
+  and a later migration candidate.
 
 ### 5. Database And Migration Cleanup
 
@@ -314,7 +331,7 @@ Status: active rule for all packs.
 | Priority | Pack | Why It Matters | Suggested First Check |
 | --- | --- | --- | --- |
 | P1 | Query-token auth restriction | Reduces JWT leakage through URLs | `tests/auth-boundary.test.js`, `tests/route-smoke.test.js` |
-| P1 | Upload storage inventory | Clarifies Railway persistence risk | `tests/chat-upload-storage.test.js`, `tests/audio-storage.test.js` |
+| Done | Upload storage inventory | Clarifies Railway persistence risk | `npm run check:storage-surface`, `tests/chat-upload-storage.test.js`, `tests/audio-storage.test.js`, `tests/image-storage.test.js` |
 | Done | Root HTML ownership map | Prevents accidental live page deletion | `npm run check:static-surface`, `npm run test:ui` |
 | Done | API route ownership guard | Prevents orphan route files and undocumented broad mounts | `npm run check:api-surface`, `tests/route-smoke.test.js` |
 | P1 | Access/sidebar drift expansion | Keeps UI and backend permission rules aligned | `npm run check:access` |
@@ -327,7 +344,8 @@ Status: active rule for all packs.
 
 - Which Railway branch/environment is the production deploy source?
 - Which root HTML pages are intentionally public entrypoints?
-- Which uploaded file categories must survive app redeploys?
+- Which legacy design upload files should be migrated from local disk to
+  Supabase Storage first?
 - Which historical planning docs should remain at repo root for humans?
 - Which DB seed/bootstrap responsibilities are still required for fresh
   customer environments?

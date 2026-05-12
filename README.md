@@ -80,6 +80,7 @@ npm run check:runtime
 npm run check:version
 npm run check:migrations
 npm run check:syntax
+npm run cleanup:inventory
 npm run test:unit
 npm run test:ui
 npm run test:api
@@ -94,6 +95,7 @@ Notes:
 - `npm run check:version` checks version references without editing files.
 - `npm run check:migrations` statically checks migration numbering, known legacy gaps/duplicates, and required governance headers for new migrations.
 - `npm run check:syntax` parses repository JavaScript with Node; it is not a style lint, typecheck, or build.
+- `npm run cleanup:inventory` prints a read-only cleanup inventory: directory sizes, largest files, API mounts, page routes, root HTML exposure, docs, and migration numbering. Use it before starting cleanup packs.
 - `npm run test:unit` runs self-contained Node tests that do not need a live server.
 - `npm run test:ui` runs the jsdom static/UI smoke check for key pages, critical JS syntax, navigation exports, and shared page structure.
 - `npm run test:api` runs `tests/api.test.js` and expects a configured local app/database.
@@ -178,6 +180,7 @@ When changing pages, roles, navigation, or shared UI, inspect all related areas.
 
 - [AGENTS.md](AGENTS.md) - operational rules for Codex and other agents
 - [DB_MIGRATION_GOVERNANCE.md](DB_MIGRATION_GOVERNANCE.md) - current database migration ownership and safety rules
+- [docs/CLEANUP_REGISTER.md](docs/CLEANUP_REGISTER.md) - active cleanup map, cleanup tracks, and backlog
 - [CHANGELOG.md](CHANGELOG.md) - release history
 - [docs/archive/README.md](docs/archive/README.md) - archive index for historical, non-authoritative docs
 - [docs/archive/CLAUDE.md](docs/archive/CLAUDE.md) - older Claude/OpenClaw-oriented project guidance

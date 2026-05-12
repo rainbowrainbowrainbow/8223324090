@@ -131,7 +131,7 @@ async function checkTestMode() {
 
 async function loadUsers() {
     try {
-        const res = await apiFetch('/api/users');
+        const res = await apiFetch('/api/leads/assignees');
         if (res.ok) {
         if (!res) return;
             const data = await res.json();

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.46.6 - Lead assignee update repair (2026-05-13)
+
+### Lead responsible manager flow [codex]
+- **Lead-scoped assignees** - the lead modal now loads responsible managers from `/api/leads/assignees` instead of the creator/director-only user-management endpoint.
+- **Manager-safe access** - manager and marketer lead users can load assignable users without opening `/api/users`.
+- **Assignee validation** - lead create/update now validates `assigned_to` as an active assignable user and returns a clear 400 for invalid values.
+- **Regression guard** - route smoke and UI checks now cover lead assignee loading and updates.
+
+---
+
 ## v0.46.5 - Lead modal action buttons hardening (2026-05-13)
 
 ### Lead edit modal actions [codex]

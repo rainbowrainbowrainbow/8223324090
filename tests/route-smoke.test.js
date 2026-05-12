@@ -133,6 +133,27 @@ function createFakePool() {
                     }]
                 };
             }
+            if (/SELECT id, username, name, role FROM users WHERE is_active = true AND role = ANY\(\$1::text\[\]\)/i.test(text)) {
+                return {
+                    rows: [
+                        { id: 2, username: 'dasha', name: 'Даша', role: 'manager' },
+                        { id: 3, username: 'marketing', name: 'Маркетинг', role: 'marketer' }
+                    ]
+                };
+            }
+            if (/SELECT id FROM users WHERE id = \$1 AND is_active = true AND role = ANY\(\$2::text\[\]\)/i.test(text)) {
+                return { rows: params[0] === 2 ? [{ id: 2 }] : [] };
+            }
+            if (/UPDATE leads SET .* WHERE id = \$\d+ RETURNING \*/i.test(text)) {
+                return {
+                    rows: [{
+                        id: params[params.length - 1],
+                        client_name: 'Lead Smoke',
+                        assigned_to: params[0] ?? null,
+                        status: 'new'
+                    }]
+                };
+            }
             if (/SELECT \* FROM packages WHERE is_active = true/i.test(text)) {
                 return {
                     rows: [
@@ -344,6 +365,32 @@ describe('route-level API safety smoke', () => {
         assert.ok(roles.data.pageAccess['/staff'].includes('security'));
         assert.ok(!roles.data.pageAccess['/tasks'].includes('waiter'));
         assert.ok(roles.data.actionPermissions.create_booking);
+    });
+
+    it('lets lead roles load assignable users without opening user management', async () => {
+        const assignees = await request('GET', '/api/leads/assignees', undefined, withAuth({}, 'manager'));
+        assert.equal(assignees.status, 200, JSON.stringify(assignees.data));
+        assert.equal(assignees.data.success, true);
+        assert.deepEqual(assignees.data.users.map(u => u.id), [2, 3]);
+
+        const users = await request('GET', '/api/users', undefined, withAuth({}, 'manager'));
+        assert.equal(users.status, 403);
+    });
+
+    it('validates and applies lead assignee updates', async () => {
+        const invalid = await request('PATCH', '/api/leads/501', { assigned_to: 'not-a-user' }, withAuth({}, 'manager'));
+        assert.equal(invalid.status, 400, JSON.stringify(invalid.data));
+        assert.match(invalid.data.error, /assigned_to/);
+
+        const missing = await request('PATCH', '/api/leads/501', { assigned_to: 999 }, withAuth({}, 'manager'));
+        assert.equal(missing.status, 400, JSON.stringify(missing.data));
+        assert.match(missing.data.error, /Відповідального/);
+
+        const valid = await request('PATCH', '/api/leads/501', { assigned_to: '2' }, withAuth({}, 'manager'));
+        assert.equal(valid.status, 200, JSON.stringify(valid.data));
+        assert.equal(valid.data.success, true);
+        assert.equal(valid.data.lead.assigned_to, 2);
+        assert.ok(queries.some(q => /UPDATE leads SET assigned_to = \$1 WHERE id = \$2 RETURNING \*/i.test(q.text) && q.params[0] === 2));
     });
 
     it('keeps analytics API access aligned to manager-up roles', async () => {

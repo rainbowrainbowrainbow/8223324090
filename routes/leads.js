@@ -28,6 +28,8 @@ const { authenticateToken, requireMinRole } = require('../middleware/auth');
 
 const log = createLogger('Leads');
 
+const LEAD_ASSIGNEE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'marketer', 'admin'];
+
 // Auto-sync status when pipeline_stage changes
 const STAGE_TO_STATUS = {
     new: 'new',
@@ -43,6 +45,32 @@ const STAGE_TO_STATUS = {
 
 const UNIVERSAL_WEBHOOK_TOKEN = process.env.UNIVERSAL_WEBHOOK_TOKEN || '';
 const FB_VERIFY_TOKEN         = process.env.FB_VERIFY_TOKEN         || '';
+
+function parseOptionalPositiveInt(value, fieldName) {
+    if (value === undefined) return { provided: false };
+    if (value === null || value === '') return { provided: true, value: null };
+
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        return { provided: true, error: `${fieldName} повинен бути додатним числом` };
+    }
+
+    return { provided: true, value: parsed };
+}
+
+async function ensureAssignableUser(userId) {
+    if (userId === null) return true;
+    const result = await pool.query(
+        `SELECT id
+         FROM users
+         WHERE id = $1
+           AND is_active = true
+           AND role = ANY($2::text[])
+         LIMIT 1`,
+        [userId, LEAD_ASSIGNEE_ROLES]
+    );
+    return result.rows.length > 0;
+}
 const FB_PAGE_ACCESS_TOKEN    = process.env.FB_PAGE_ACCESS_TOKEN    || '';
 const VIBER_AUTH_TOKEN        = process.env.VIBER_AUTH_TOKEN        || '';
 
@@ -79,6 +107,35 @@ router.post('/landing', async (req, res) => {
 
 // All remaining leads routes require authentication.
 router.use(authenticateToken);
+
+// GET /api/leads/assignees — active users that can own leads
+router.get('/assignees', async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT id, username, name, role
+             FROM users
+             WHERE is_active = true
+               AND role = ANY($1::text[])
+             ORDER BY
+               CASE role
+                 WHEN 'creator' THEN 1
+                 WHEN 'director' THEN 2
+                 WHEN 'vice_director' THEN 3
+                 WHEN 'senior_manager' THEN 4
+                 WHEN 'manager' THEN 5
+                 WHEN 'marketer' THEN 6
+                 WHEN 'admin' THEN 7
+                 ELSE 99
+               END,
+               COALESCE(NULLIF(name, ''), username)`,
+            [LEAD_ASSIGNEE_ROLES]
+        );
+        res.json({ success: true, users: result.rows });
+    } catch (err) {
+        log.error('GET /leads/assignees error', err);
+        res.status(500).json({ success: false, error: 'Помилка завантаження відповідальних' });
+    }
+});
 
 // GET /api/leads — list all leads with optional filters
 router.get('/', async (req, res) => {
@@ -202,13 +259,21 @@ router.post('/', async (req, res) => {
         if (!client_name) {
             return res.status(400).json({ success: false, error: "Ім'я клієнта обов'язкове" });
         }
+        const assignedTo = parseOptionalPositiveInt(assigned_to, 'assigned_to');
+        if (assignedTo.error) {
+            return res.status(400).json({ success: false, error: assignedTo.error });
+        }
+        if (assignedTo.provided && !(await ensureAssignableUser(assignedTo.value))) {
+            return res.status(400).json({ success: false, error: 'Відповідального не знайдено або він неактивний' });
+        }
         const result = await pool.query(`
             INSERT INTO leads (client_name, phone, telegram_id, instagram, source, program_id, event_date, children_count, child_age, notes, assigned_to)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING *
         `, [client_name, phone || null, telegram_id || null, instagram || null, source || null,
             program_id || null, event_date || null,
-            children_count || null, child_age || null, notes || null, assigned_to || null]);
+            children_count || null, child_age || null, notes || null,
+            assignedTo.provided ? assignedTo.value : null]);
 
         log.info(`Lead created: ${client_name} by ${req.user.username}`);
         res.json({ success: true, lead: result.rows[0] });
@@ -224,6 +289,14 @@ router.patch('/:id', async (req, res) => {
         const { status, notes, assigned_to, last_contact_at, booking_id, lost_reason, client_name, phone, instagram, source, source_channel, event_date, children_count, child_age, program_id, pipeline_stage, milestone_tags, lead_type, quality_category, potential_value } = req.body;
         const updates = [];
         const params = [];
+        const assignedTo = parseOptionalPositiveInt(assigned_to, 'assigned_to');
+
+        if (assignedTo.error) {
+            return res.status(400).json({ success: false, error: assignedTo.error });
+        }
+        if (assignedTo.provided && !(await ensureAssignableUser(assignedTo.value))) {
+            return res.status(400).json({ success: false, error: 'Відповідального не знайдено або він неактивний' });
+        }
 
         if (status) {
             params.push(status);
@@ -231,7 +304,7 @@ router.patch('/:id', async (req, res) => {
             if (status === 'booked') updates.push(`booked_at = NOW()`);
         }
         if (notes !== undefined) { params.push(notes); updates.push(`notes = $${params.length}`); }
-        if (assigned_to !== undefined) { params.push(assigned_to); updates.push(`assigned_to = $${params.length}`); }
+        if (assignedTo.provided) { params.push(assignedTo.value); updates.push(`assigned_to = $${params.length}`); }
         if (booking_id !== undefined) { params.push(booking_id); updates.push(`booking_id = $${params.length}`); }
         if (lost_reason !== undefined) { params.push(lost_reason); updates.push(`lost_reason = $${params.length}`); }
         if (client_name !== undefined) { params.push(client_name); updates.push(`client_name = $${params.length}`); }

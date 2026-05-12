@@ -193,6 +193,7 @@ check('Lead modal buttons bind before async data loads', leadsCode.indexOf('setu
 check('Lead modal buttons support touchend taps', leadsCode.includes("btn.addEventListener('touchend', run, { passive: false })"));
 check('Lead modal close avoids shared closeModal collision', leadsCode.includes('function closeLeadModal') && !leadsCode.includes('function closeModal'));
 check('Lead save has duplicate-submit guard', leadsCode.includes('leadSaveInFlight'));
+check('Lead assignees use lead-scoped endpoint', leadsCode.includes("apiFetch('/api/leads/assignees')"));
 
 // ═══════════════════════════════════════════════════
 // RESULTS

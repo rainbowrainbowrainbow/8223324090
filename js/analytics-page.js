@@ -446,11 +446,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
-    // Logout
-    document.getElementById('logoutBtn')?.addEventListener('click', () => {
-        localStorage.removeItem('pzp_token');
-        window.location.href = '/';
-    });
+    if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
     // Period tabs
     document.querySelectorAll('.an-period-tab').forEach(btn => {

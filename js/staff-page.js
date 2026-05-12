@@ -1317,11 +1317,7 @@ async function initPage() {
     if (bulkBtn) bulkBtn.style.display = isAdmin ? '' : 'none';
     if (importBtn) importBtn.style.display = isAdmin ? '' : 'none';
 
-    document.getElementById('logoutBtn')?.addEventListener('click', () => {
-        localStorage.removeItem('pzp_token');
-        localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
-        window.location = '/';
-    });
+    if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
     // Load data
     await fetchStaff();

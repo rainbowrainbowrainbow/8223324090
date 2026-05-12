@@ -51,6 +51,25 @@ function checkJSFile(filename) {
     return code;
 }
 
+function getHtmlScripts(html) {
+    return [...html.matchAll(/<script\s+src=["']([^"']+)["']/g)]
+        .map(m => m[1].split('?')[0]);
+}
+
+function getInlineScripts(html) {
+    return [...html.matchAll(/<script(?!\s+src)[^>]*>([\s\S]*?)<\/script>/g)]
+        .map(m => m[1]);
+}
+
+function walkFiles(dir, matcher) {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    return entries.flatMap(entry => {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) return walkFiles(full, matcher);
+        return matcher(full) ? [full] : [];
+    });
+}
+
 // ═══════════════════════════════════════════════════
 // PAGE CHECKS
 // ═══════════════════════════════════════════════════
@@ -198,6 +217,26 @@ const copilotCode = fs.readFileSync(path.join(ROOT, 'js/copilot-page.js'), 'utf8
 check('CopilotPage has selectScript', copilotCode.includes('selectScript'));
 check('CopilotPage has showAddInteractionForm', copilotCode.includes('showAddInteractionForm'));
 check('CopilotPage has loadTrackerAlerts', copilotCode.includes('loadTrackerAlerts'));
+
+// Check shared logout binding ownership
+console.log('\nshared logout binding');
+const authCode = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
+const htmlFiles = fs.readdirSync(ROOT).filter(file => file.endsWith('.html'));
+const pagesWithLogoutButton = htmlFiles
+    .map(file => ({ file, html: fs.readFileSync(path.join(ROOT, file), 'utf8') }))
+    .filter(page => /id=["']logoutBtn["']/.test(page.html));
+const nonAuthJsLogoutOwners = walkFiles(path.join(ROOT, 'js'), file => file.endsWith('.js') && path.basename(file) !== 'auth.js')
+    .filter(file => fs.readFileSync(file, 'utf8').includes('logoutBtn'));
+const inlineLogoutOwners = pagesWithLogoutButton.filter(page => (
+    getInlineScripts(page.html).some(code => code.includes('logoutBtn') && code.includes('addEventListener'))
+));
+
+check('Auth exposes shared bindLogoutButton', authCode.includes('function bindLogoutButton()') && authCode.includes("btn.dataset.logoutBound === '1'"));
+check('Shared logout binding calls canonical logout', authCode.includes('event.preventDefault();') && authCode.includes('logout();'));
+check('Shared logout binding auto-initializes', authCode.includes('initSharedLogoutBinding();') && authCode.includes("document.addEventListener('DOMContentLoaded', bindLogoutButton"));
+check('All logout button pages load auth.js', pagesWithLogoutButton.every(page => getHtmlScripts(page.html).includes('js/auth.js')));
+check('No page JS owns logoutBtn directly outside auth.js', nonAuthJsLogoutOwners.length === 0);
+check('No inline logoutBtn click handlers remain', inlineLogoutOwners.length === 0);
 
 // Check sidebar nav items
 const sidebarCode = fs.readFileSync(path.join(ROOT, 'js/components/sidebar.js'), 'utf8');

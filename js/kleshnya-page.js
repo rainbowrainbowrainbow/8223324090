@@ -875,13 +875,7 @@
         if (typeof ParkWS !== 'undefined') ParkWS.connect();
     }
 
-    document.getElementById('logoutBtn')?.addEventListener('click', function () {
-        if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
-        localStorage.removeItem('pzp_token');
-        localStorage.removeItem('pzp_current_user');
-        localStorage.removeItem('pzp_session');
-        window.location.href = '/';
-    });
+    if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
     // Keyboard shortcut: Escape closes modals/sidebar
     document.addEventListener('keydown', function (e) {

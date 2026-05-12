@@ -154,11 +154,7 @@ async function initPage() {
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     canManage = MANAGE_ROLES.includes(user.role);
 
-    document.getElementById('logoutBtn')?.addEventListener('click', () => {
-        localStorage.removeItem('pzp_token');
-        localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
-        location.href = '/';
-    });
+    if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
     initTabs();
     initScheduleControls();

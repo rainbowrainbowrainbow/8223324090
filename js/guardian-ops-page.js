@@ -411,13 +411,7 @@
         $('guardianOpsRefreshBtn')?.addEventListener('click', loadSnapshot);
         $('guardianRepairPreviewBtn')?.addEventListener('click', event => reconcileUser(false, event.currentTarget));
         $('guardianRepairApplyBtn')?.addEventListener('click', event => reconcileUser(true, event.currentTarget));
-        $('logoutBtn')?.addEventListener('click', () => {
-            if (typeof logout === 'function') logout();
-            else {
-                localStorage.removeItem('pzp_token');
-                window.location.href = '/';
-            }
-        });
+        if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
         document.querySelectorAll('[data-ops-filter]').forEach(btn => {
             btn.addEventListener('click', () => {

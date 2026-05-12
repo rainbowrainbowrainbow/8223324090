@@ -204,17 +204,7 @@
         _init();
     }
 
-    // Logout handler
-    var _logoutBtn = document.getElementById('logoutBtn');
-    if (_logoutBtn) {
-        _logoutBtn.addEventListener('click', function () {
-            if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
-            localStorage.removeItem('pzp_token');
-            localStorage.removeItem('pzp_current_user');
-            localStorage.removeItem('pzp_session');
-            window.location.href = '/';
-        });
-    }
+    if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
     // Sidebar toggle (mobile)
     var _toggleBtn = document.getElementById('chatToggleSidebar');

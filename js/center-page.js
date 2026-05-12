@@ -2340,15 +2340,7 @@ async function initAuth() {
     const userEl = document.getElementById('currentUser');
     if (userEl) userEl.textContent = user.name;
 
-    // Logout
-    const logoutBtn = document.getElementById('logoutBtn');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', () => {
-            localStorage.removeItem('pzp_token');
-            localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
-            window.location.href = '/';
-        });
-    }
+    if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
     // Role-based sidebar visibility
     document.querySelectorAll('.sidebar-admin-only').forEach(el => {

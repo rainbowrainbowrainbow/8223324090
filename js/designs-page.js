@@ -47,11 +47,7 @@ let editTags = [];
         return;
     }
 
-    document.getElementById('logoutBtn').addEventListener('click', () => {
-        localStorage.removeItem('pzp_token');
-        localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
-        window.location.href = '/';
-    });
+    if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
     // v20.8.0: Embedded mode — hide chrome when inside Art page
     if (new URLSearchParams(window.location.search).get('embedded') === '1') {
@@ -1180,7 +1176,7 @@ function buildCatalogPageHtml(pkg) {
             </div>
             <!-- FOOTER -->
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.46.9" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.46.10" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>
@@ -1274,7 +1270,7 @@ function buildAutoPageHtml(page) {
                 ${page.description && itemsHtml ? `<div class="cat-desc" style="margin-top:12px">${esc(page.description)}</div>` : ''}
             </div>
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.46.9" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.46.10" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>

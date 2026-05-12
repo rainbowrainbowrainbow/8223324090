@@ -4,6 +4,17 @@
 
 ---
 
+## v0.46.10 - Єдиний вихід зі сторінок CRM (2026-05-13)
+
+### Shared logout binding [codex]
+- **Авторизація** - `js/auth.js` тепер централізовано прив'язує кнопку "Вийти" до canonical `logout()` на всіх сторінках, де є `#logoutBtn`.
+- **Ліди** - виправлено сторінку лідів, де кнопка виходу була присутня в DOM, але не мала click handler без `js/app.js`.
+- **CRM Shell** - локальні page-specific logout handlers замінено на shared binding, щоб не було розсинхрону між сторінками.
+- **Сесія** - вихід всюди проходить через однаковий cleanup token/current user/session/private caches.
+- **Захист від регресій** - UI smoke перевіряє, що сторінки з `#logoutBtn` підключають `auth.js`, а direct logout ownership лишається в shared auth layer.
+
+---
+
 ## v0.46.9 - Аудит контрасту темної теми (2026-05-13)
 
 ### Аудит контрасту темної теми [codex]

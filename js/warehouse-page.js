@@ -77,11 +77,7 @@ async function initPage() {
     const addBtn = document.getElementById('addItemBtn');
     if (addBtn) addBtn.style.display = canManage ? '' : 'none';
 
-    document.getElementById('logoutBtn')?.addEventListener('click', () => {
-        localStorage.removeItem('pzp_token');
-        localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
-        window.location = '/';
-    });
+    if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
     renderCategoryTabs();
     setupEventListeners();

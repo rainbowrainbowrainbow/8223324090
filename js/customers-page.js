@@ -990,12 +990,7 @@ async function initPage() {
     document.getElementById('exportVcfBtn').style.display = canManage ? '' : 'none';
     document.getElementById('importVcfBtn').style.display = canManage ? '' : 'none';
 
-    // Logout
-    document.getElementById('logoutBtn')?.addEventListener('click', () => {
-        localStorage.removeItem('pzp_token');
-        localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
-        window.location = '/';
-    });
+    if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
     // Tabs
     document.querySelectorAll('.crm-tab').forEach(tab => {

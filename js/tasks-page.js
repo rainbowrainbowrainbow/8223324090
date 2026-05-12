@@ -92,11 +92,7 @@ async function initPage() {
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     _loadAssigneeDropdown();
 
-    document.getElementById('logoutBtn')?.addEventListener('click', () => {
-        localStorage.removeItem('pzp_token');
-        localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
-        window.location = '/';
-    });
+    if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
     // Board tab switching
     document.querySelectorAll('.board-tab').forEach(tab => {

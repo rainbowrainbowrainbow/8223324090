@@ -436,14 +436,7 @@ async function initAuth() {
     isAdminUser = ADMIN_ROLES.includes(user.role);
     const userEl = document.getElementById('currentUser');
     if (userEl) userEl.textContent = user.name;
-    const logoutBtn = document.getElementById('logoutBtn');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', () => {
-            localStorage.removeItem('pzp_token');
-            localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
-            window.location.href = '/';
-        });
-    }
+    if (typeof bindLogoutButton === 'function') bindLogoutButton();
     document.querySelectorAll('.sidebar-admin-only').forEach(el => el.classList.toggle('hidden', !isAdminUser));
     document.querySelectorAll('.sidebar-no-viewer').forEach(el => el.classList.toggle('hidden', user.role === 'viewer'));
     return true;

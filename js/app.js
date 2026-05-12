@@ -208,7 +208,7 @@ function initAuthListeners() {
             document.getElementById('loginError').textContent = result.error || 'Невірний логін або пароль';
         }
     });
-    document.getElementById('logoutBtn')?.addEventListener('click', logout);
+    if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
     const changelogBtn = document.getElementById('changelogBtn');
     if (changelogBtn) {

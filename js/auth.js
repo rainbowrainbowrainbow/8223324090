@@ -66,6 +66,27 @@ function logout() {
     showLoginScreen();
 }
 
+function bindLogoutButton() {
+    const btn = document.getElementById('logoutBtn');
+    if (!btn || btn.dataset.logoutBound === '1') return;
+
+    btn.dataset.logoutBound = '1';
+    btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        logout();
+    });
+}
+
+function initSharedLogoutBinding() {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bindLogoutButton, { once: true });
+        return;
+    }
+    bindLogoutButton();
+}
+
+initSharedLogoutBinding();
+
 function clearAuthStorage() {
     localStorage.removeItem('pzp_token');
     localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);

@@ -810,11 +810,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
-    // Logout
-    document.getElementById('logoutBtn')?.addEventListener('click', () => {
-        localStorage.removeItem('pzp_token');
-        window.location.href = '/';
-    });
+    if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
     // Set default dates to current month
     const range = getCurrentMonthRange();

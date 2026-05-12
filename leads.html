@@ -7,13 +7,13 @@
     <title>Event Genix | Воронка продажів</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.46.3">
-    <link rel="stylesheet" href="css/layout.css?v=0.46.3">
-    <link rel="stylesheet" href="css/pages.css?v=0.46.3">
-    <link rel="stylesheet" href="css/modals.css?v=0.46.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.46.3">
-    <link rel="stylesheet" href="css/responsive.css?v=0.46.3">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.46.3">
+    <link rel="stylesheet" href="css/base.css?v=0.46.4">
+    <link rel="stylesheet" href="css/layout.css?v=0.46.4">
+    <link rel="stylesheet" href="css/pages.css?v=0.46.4">
+    <link rel="stylesheet" href="css/modals.css?v=0.46.4">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.46.4">
+    <link rel="stylesheet" href="css/responsive.css?v=0.46.4">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.46.4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -249,6 +249,12 @@
 
         /* Two-column form row */
         .lead-modal .form-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+        @media (hover: none) and (pointer: coarse) {
+            .lead-modal .form-row { grid-template-columns: 1fr; }
+        }
+        @supports (-webkit-touch-callout: none) {
+            .lead-modal .form-row { grid-template-columns: 1fr; }
+        }
 
         /* Dark mode */
         body.dark-mode .leads-stat, body.dark-mode .leads-table-wrap { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
@@ -689,15 +695,15 @@
         });
     }
     </script>
-    <script src="js/config.js?v=0.46.3"></script>
-    <script src="js/notification.js?v=0.46.3"></script>
-    <script src="js/api.js?v=0.46.3"></script>
-    <script src="js/auth.js?v=0.46.3"></script>
-    <script src="js/components/sidebar.js?v=0.46.3"></script>
+    <script src="js/config.js?v=0.46.4"></script>
+    <script src="js/notification.js?v=0.46.4"></script>
+    <script src="js/api.js?v=0.46.4"></script>
+    <script src="js/auth.js?v=0.46.4"></script>
+    <script src="js/components/sidebar.js?v=0.46.4"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/leads-page.js?v=0.46.3"></script>
-    <script src="js/ui.js?v=0.46.3"></script>
-    <script src="js/alerts.js?v=0.46.3"></script>
-    <script src="js/role-panel.js?v=0.46.3"></script>
+    <script src="js/leads-page.js?v=0.46.4"></script>
+    <script src="js/ui.js?v=0.46.4"></script>
+    <script src="js/alerts.js?v=0.46.4"></script>
+    <script src="js/role-panel.js?v=0.46.4"></script>
 </body>
 </html>

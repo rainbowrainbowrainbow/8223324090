@@ -4,6 +4,16 @@
 
 ---
 
+## v0.46.4 - iPad Safari lead date row stack (2026-05-13)
+
+### Lead modal iPad Safari fix [codex]
+- **Touch WebKit fallback** - lead modal form rows now stack to one column on touch/WebKit devices.
+- **Confirmed field fix** - the desired date and children count fields no longer share a row on iPad, preventing Safari native date-control paint overlap.
+- **Customer-card safety** - customer-card form rows inherit the same iPad-safe layout behavior.
+- **Regression guard** - UI smoke checks now assert the touch/WebKit row-stacking rules directly.
+
+---
+
 ## v0.46.3 - Shared modal WebKit layout hardening (2026-05-13)
 
 ### Responsive modal forms [codex]

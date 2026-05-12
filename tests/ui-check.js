@@ -164,6 +164,18 @@ check('Notifications dark mode overrides secondary and meta text color', baseCss
 check('Notifications dark mode keeps read items readable', baseCss.includes('body.dark-mode .ap-item.read') && baseCss.includes('opacity: 1') && baseCss.includes('body.dark-mode .ap-item.read .ap-item-title'));
 check('Notifications dark mode covers alert variants', baseCss.includes('body.dark-mode .ap-item.warning .ap-icon') && baseCss.includes('body.dark-mode .ap-item.critical .ap-icon') && baseCss.includes('body.dark-mode .ap-item.info .ap-icon'));
 
+console.log('\ndark mode contrast CSS');
+const darkModeCss = fs.readFileSync(path.join(ROOT, 'css', 'dark-mode.css'), 'utf8');
+const catalogCss = fs.readFileSync(path.join(ROOT, 'css', 'catalog.css'), 'utf8');
+const contentCss = fs.readFileSync(path.join(ROOT, 'css', 'content.css'), 'utf8');
+const achievementsCss = fs.readFileSync(path.join(ROOT, 'css', 'achievements.css'), 'utf8');
+check('Dark mode defines shared text aliases', darkModeCss.includes('--text: #F8FAFC;') && darkModeCss.includes('--text-primary: #F8FAFC;') && darkModeCss.includes('--text-secondary: #CBD5E1;') && darkModeCss.includes('--text-muted: #94A3B8;'));
+check('Dark mode defines shared surface/card aliases', darkModeCss.includes('--surface: #1E1E38;') && darkModeCss.includes('--card-bg: #1E1E38;') && darkModeCss.includes('--bg-card: #1E1E38;') && darkModeCss.includes('--border-color: rgba(255,255,255,0.12);'));
+check('Dark placeholders and empty states use readable muted token', darkModeCss.includes('body.dark-mode .program-search-input::placeholder { color: var(--text-muted); }') && darkModeCss.includes('body.dark-mode .login-form input::placeholder') && darkModeCss.includes('body.dark-mode .empty-state-hint { color: var(--text-muted); }'));
+check('Dark customer/task muted labels avoid low-contrast gray', darkModeCss.includes('body.dark-mode .customer-age { color: var(--text-muted); }') && darkModeCss.includes('body.dark-mode .task-no-assignee { color: var(--text-muted); }') && !darkModeCss.includes('body.dark-mode .customer-age { color: #64748B; }'));
+check('Dark catalog muted text avoids low-alpha white', catalogCss.includes('body.dark-mode .catalog-card-meta { color: var(--text-muted, #94A3B8); }') && catalogCss.includes('body.dark-mode .cat-page-detail { color: var(--text-muted, #94A3B8); }') && !catalogCss.includes('body.dark-mode .catalog-card-meta { color: rgba(255,255,255,0.4); }'));
+check('Dark content/profile muted CTAs use readable muted token', contentCss.includes('body.dark-mode .content-bcard-slug { color: var(--text-muted, #94A3B8); }') && achievementsCss.includes('body.dark-mode .add-note-btn { border-color: #3D3D5C; color: var(--text-muted, #94A3B8); }'));
+
 const criticalJS = [
     'js/config.js', 'js/api.js', 'js/auth.js', 'js/app.js',
     'js/components/sidebar.js',

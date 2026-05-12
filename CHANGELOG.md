@@ -4,6 +4,16 @@
 
 ---
 
+## v0.46.9 - Аудит контрасту темної теми (2026-05-13)
+
+### Аудит контрасту темної теми [codex]
+- **Токени теми** - темна тема тепер явно задає shared `--text*`, `--surface`, `--card-bg`, `--bg-*` і `--border-color` aliases, щоб нові картки, форми, dropdowns і модалки не падали у світлі fallback-кольори.
+- **Приглушений текст** - підсилено читабельність secondary/helper тексту в каталогах, контент-картках, нотатках профілю, порожніх станах, placeholders і task/notification muted controls.
+- **Компонентні групи** - перевірено сповіщення, картки/списки, badges/pills, модалки/overlays, таблиці/рядки, форми, sidebar/topbar widgets і status states на очевидні dark-mode contrast провали.
+- **Захист від регресій** - UI smoke тепер контролює shared dark-mode contrast tokens і найризиковіші muted selectors.
+
+---
+
 ## v0.46.8 - Контраст сповіщень у темній темі (2026-05-13)
 
 ### Dropdown сповіщень [codex]

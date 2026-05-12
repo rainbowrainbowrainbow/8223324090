@@ -700,7 +700,7 @@ body.dark-mode .shop-card-desc { color: #9CA3AF; }
 
 body.dark-mode .note-card { box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
 body.dark-mode .note-content { color: #374151; }
-body.dark-mode .add-note-btn { border-color: #3D3D5C; color: #6B7280; }
+body.dark-mode .add-note-btn { border-color: #3D3D5C; color: var(--text-muted, #94A3B8); }
 body.dark-mode .add-note-btn:hover { border-color: var(--primary); color: var(--primary); }
 
 /* Room dark mode */

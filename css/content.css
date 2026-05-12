@@ -624,7 +624,7 @@ body.dark-mode .content-bcard { background: #2A2A4A; border-color: #3D3D5C; }
 body.dark-mode .content-bcard:hover { border-color: var(--primary); }
 body.dark-mode .content-bcard-title { color: #E2E8F0; }
 body.dark-mode .content-bcard-desc { color: #9CA3AF; }
-body.dark-mode .content-bcard-slug { color: #6B7280; }
+body.dark-mode .content-bcard-slug { color: var(--text-muted, #94A3B8); }
 body.dark-mode .content-modal-overlay { background: rgba(0,0,0,0.7); }
 
 /* ==========================================

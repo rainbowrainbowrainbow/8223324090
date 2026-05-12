@@ -614,7 +614,7 @@ body.dark-mode .catalog-card {
 }
 body.dark-mode .catalog-card:hover { box-shadow: 0 8px 30px rgba(0,0,0,0.3); border-color: var(--primary, #10B981); }
 body.dark-mode .catalog-card-title { color: #fff; }
-body.dark-mode .catalog-card-meta { color: rgba(255,255,255,0.4); }
+body.dark-mode .catalog-card-meta { color: var(--text-muted, #94A3B8); }
 body.dark-mode .catalog-card-actions { border-color: rgba(255,255,255,0.06); }
 body.dark-mode .catalog-card-btn {
     background: rgba(255,255,255,0.04);
@@ -624,8 +624,8 @@ body.dark-mode .catalog-card-btn {
 body.dark-mode .catalog-card-btn:hover { background: rgba(255,255,255,0.08); color: #fff; }
 body.dark-mode .catalog-card-create { border-color: rgba(255,255,255,0.15); }
 body.dark-mode .catalog-card-create:hover { border-color: var(--primary); background: rgba(16,185,129,0.05); }
-body.dark-mode .catalog-card-create-icon { color: rgba(255,255,255,0.3); }
-body.dark-mode .catalog-card-create-text { color: rgba(255,255,255,0.4); }
+body.dark-mode .catalog-card-create-icon { color: var(--text-muted, #94A3B8); }
+body.dark-mode .catalog-card-create-text { color: var(--text-muted, #94A3B8); }
 body.dark-mode .catalog-info h3 { color: var(--gray-200); }
 body.dark-mode .btn-catalog-print { background: rgba(255,255,255,0.08); color: var(--gray-300); }
 body.dark-mode .catalog-viewer { background: #141418; }
@@ -845,11 +845,11 @@ body.dark-mode .cat-page-card {
 body.dark-mode .cat-page-img {
     background: linear-gradient(135deg, #1a1a2e, #16213e);
 }
-body.dark-mode .cat-page-img-empty { color: rgba(255,255,255,0.3); }
+body.dark-mode .cat-page-img-empty { color: var(--text-muted, #94A3B8); }
 body.dark-mode .cat-page-info h3 { color: #fff; }
 body.dark-mode .cat-page-info .subtitle { color: rgba(255,255,255,0.5); }
 body.dark-mode .cat-page-info .desc { color: rgba(255,255,255,0.6); }
-body.dark-mode .cat-page-detail { color: rgba(255,255,255,0.4); }
+body.dark-mode .cat-page-detail { color: var(--text-muted, #94A3B8); }
 body.dark-mode .cat-page-actions { border-color: rgba(255,255,255,0.06); }
 
 /* Mobile */

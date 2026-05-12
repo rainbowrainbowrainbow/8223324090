@@ -1,6 +1,7 @@
 const { describe, it, after } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
+const fs = require('node:fs');
 const path = require('node:path');
 const { staticDocGuard } = require('../middleware/staticDocGuard');
 
@@ -62,5 +63,20 @@ describe('static documentation exposure guard', () => {
         const uploadText = await fetch(`${baseUrl}/uploads/example.txt`);
         assert.equal(uploadText.status, 200);
         assert.equal(await uploadText.text(), 'upload text ok');
+    });
+
+    it('keeps root markdown limited to current operating docs', () => {
+        const allowedRootDocs = new Set([
+            'AGENTS.md',
+            'CHANGELOG.md',
+            'DB_MIGRATION_GOVERNANCE.md',
+            'README.md'
+        ]);
+
+        const rootMarkdown = fs.readdirSync(ROOT)
+            .filter(name => name.endsWith('.md'))
+            .sort();
+
+        assert.deepEqual(rootMarkdown, [...allowedRootDocs].sort());
     });
 });

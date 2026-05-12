@@ -68,6 +68,14 @@ What this gives:
 
 Status: started.
 
+2026-05-12 update:
+
+- Added `npm run cleanup:inventory`.
+- Moved stale root planning/audit markdown files into `docs/archive/`.
+- Root markdown is now intentionally limited to active operating documents:
+  `AGENTS.md`, `README.md`, `DB_MIGRATION_GOVERNANCE.md`, and `CHANGELOG.md`.
+- Added a static-doc guard test so old root planning docs do not drift back.
+
 ### 2. Route, Page, And Ownership Map
 
 Goal: know which backend route, frontend page, and test owns each product area.
@@ -245,6 +253,12 @@ What this gives:
 
 Status: started with this register.
 
+2026-05-12 update:
+
+- Archived historical root plan/audit documents and documented them in
+  `docs/archive/README.md`.
+- Added root markdown coverage in `tests/static-doc-guard.test.js`.
+
 ### 10. Cleanup Pack Verification Rhythm
 
 Goal: make every cleanup pack shippable.
@@ -282,7 +296,7 @@ Status: active rule for all packs.
 | P1 | Access/sidebar drift expansion | Keeps UI and backend permission rules aligned | `npm run check:access` |
 | P2 | Scheduler side-effect map | Finds duplicate-prone background jobs | scheduler-focused tests |
 | P2 | DB startup ownership slice | Reduces `initDatabase()`/migration split-brain | `npm run check:migrations` |
-| P2 | Old root markdown archive pass | Reduces stale instruction risk | `tests/static-doc-guard.test.js` |
+| Done | Old root markdown archive pass | Reduces stale instruction risk | `tests/static-doc-guard.test.js` |
 | P3 | Large CSS consolidation | Reduces UI drift | `npm run test:ui` plus browser smoke |
 
 ## Open Questions To Resolve Before Destructive Cleanup

@@ -78,6 +78,7 @@ npm test
 npm run verify
 npm run check:runtime
 npm run check:version
+npm run check:static-surface
 npm run check:migrations
 npm run check:syntax
 npm run cleanup:inventory
@@ -93,6 +94,7 @@ Notes:
 - `npm run verify` is the same baseline command spelled explicitly for agents.
 - `npm run check:runtime` requires Node 22.x and npm 10.x so local verification matches the Railway baseline.
 - `npm run check:version` checks version references without editing files.
+- `npm run check:static-surface` verifies that root HTML pages, landing pages, legacy redirects, and the documented static surface map stay aligned.
 - `npm run check:migrations` statically checks migration numbering, known legacy gaps/duplicates, and required governance headers for new migrations.
 - `npm run check:syntax` parses repository JavaScript with Node; it is not a style lint, typecheck, or build.
 - `npm run cleanup:inventory` prints a read-only cleanup inventory: directory sizes, largest files, API mounts, page routes, root HTML exposure, docs, and migration numbering. Use it before starting cleanup packs.
@@ -113,6 +115,7 @@ The CI gate covers:
 - Node/npm runtime alignment through `npm run check:runtime`;
 - version and cache-bust consistency through `npm run check:version`;
 - migration duplicate/gap/governance checks through `npm run check:migrations`;
+- static surface ownership through `npm run check:static-surface`;
 - JavaScript parser checks through `npm run check:syntax`;
 - self-contained unit, auth-boundary, and route-level safety smoke tests through `npm run test:unit`;
 - static UI smoke through `npm run test:ui`.
@@ -181,6 +184,7 @@ When changing pages, roles, navigation, or shared UI, inspect all related areas.
 - [AGENTS.md](AGENTS.md) - operational rules for Codex and other agents
 - [DB_MIGRATION_GOVERNANCE.md](DB_MIGRATION_GOVERNANCE.md) - current database migration ownership and safety rules
 - [docs/CLEANUP_REGISTER.md](docs/CLEANUP_REGISTER.md) - active cleanup map, cleanup tracks, and backlog
+- [docs/STATIC_SURFACE.md](docs/STATIC_SURFACE.md) - root HTML, landing page, and legacy static route ownership
 - [CHANGELOG.md](CHANGELOG.md) - release history
 - [docs/archive/README.md](docs/archive/README.md) - archive index for historical, non-authoritative docs
 - [docs/archive/CLAUDE.md](docs/archive/CLAUDE.md) - older Claude/OpenClaw-oriented project guidance

@@ -97,6 +97,15 @@ What this gives:
 
 Status: inventory command added; auth classification remains a later pack.
 
+2026-05-12 update:
+
+- Added `config/staticSurface.js` as the machine-readable static surface
+  manifest.
+- Added `docs/STATIC_SURFACE.md` as the human map for root HTML pages, landing
+  pages, and legacy redirects.
+- Added `npm run check:static-surface` to the full `npm test` baseline so new
+  root HTML pages or route changes must update the map in the same commit.
+
 ### 3. Safety Net Before Deletion
 
 Goal: make dead-code removal measurable before deleting files.
@@ -107,6 +116,8 @@ What to do:
   guard.
 - Keep `tests/static-doc-guard.test.js` as the accidental public-doc exposure
   guard.
+- Keep `npm run check:static-surface` as the ownership guard for root HTML,
+  landing pages, and legacy static redirects.
 - Extend `tests/route-smoke.test.js` when public/protected boundaries change.
 - Add focused tests before deleting or redirecting any page, asset, or API
   alias.
@@ -118,6 +129,11 @@ What this gives:
 - Lets old files be removed with confidence.
 
 Status: existing guards present; expand per pack.
+
+2026-05-12 update:
+
+- Static surface guard added to prevent repeating manual root HTML
+  classification work.
 
 ### 4. Security And Deploy-Risk Cleanup
 
@@ -292,7 +308,7 @@ Status: active rule for all packs.
 | --- | --- | --- | --- |
 | P1 | Query-token auth restriction | Reduces JWT leakage through URLs | `tests/auth-boundary.test.js`, `tests/route-smoke.test.js` |
 | P1 | Upload storage inventory | Clarifies Railway persistence risk | `tests/chat-upload-storage.test.js`, `tests/audio-storage.test.js` |
-| P1 | Root HTML ownership map | Prevents accidental live page deletion | `npm run cleanup:inventory`, `npm run test:ui` |
+| Done | Root HTML ownership map | Prevents accidental live page deletion | `npm run check:static-surface`, `npm run test:ui` |
 | P1 | Access/sidebar drift expansion | Keeps UI and backend permission rules aligned | `npm run check:access` |
 | P2 | Scheduler side-effect map | Finds duplicate-prone background jobs | scheduler-focused tests |
 | P2 | DB startup ownership slice | Reduces `initDatabase()`/migration split-brain | `npm run check:migrations` |

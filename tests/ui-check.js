@@ -79,9 +79,12 @@ checkPage('designs.html', (doc, html) => {
     check('No misplaced <script> in function', !html.match(/w\.document\.write[\s\S]*?<script>/));
 });
 
-checkPage('art-director.html', (doc) => {
+checkPage('art-director.html', (doc, html) => {
     check('tabs exist', doc.querySelectorAll('.artdir-tab').length > 0);
     check('sidebar exists', !!doc.getElementById('sidebarNav'));
+    check('Art director content due date exists', doc.getElementById('contentDueDate')?.type === 'date');
+    check('Art director content modal uses shrink-safe grid', html.includes('grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px'));
+    check('Art director modal controls are bounded', html.includes('id="contentDueDate" style="width:100%; min-width:0; max-width:100%;'));
 });
 
 checkPage('center.html', (doc) => {
@@ -90,8 +93,11 @@ checkPage('center.html', (doc) => {
 });
 
 checkPage('copilot.html', (doc) => {
+    const copilotCss = fs.readFileSync(path.join(ROOT, 'css', 'copilot.css'), 'utf8');
     check('copilotApp exists', !!doc.getElementById('copilotApp'));
     check('nav items exist', doc.querySelectorAll('.copilot-nav-item').length > 0);
+    check('Copilot form rows use shrink-safe grid', copilotCss.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)'));
+    check('Copilot form controls are bounded inside grid rows', copilotCss.includes('.form-row .copilot-input'));
 });
 
 checkPage('designer.html', (doc) => {
@@ -110,6 +116,20 @@ checkPage('guardian-ops.html', (doc, html) => {
     check('Guardian repair result region exists', !!doc.getElementById('guardianRepairResult'));
     check('Guardian active mutes list exists', !!doc.getElementById('guardianMutesList'));
     check('Guardian ops script included', html.includes('js/guardian-ops-page.js'));
+});
+
+checkPage('customers.html', (doc, html) => {
+    check('Customer edit modal exists', !!doc.getElementById('customerEditModal'));
+    check('Customer child birthday date input exists', doc.getElementById('editChildBirthday')?.type === 'date');
+    check('Customer edit modal uses shrink-safe grid', html.includes('grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px'));
+    check('Customer edit date input is bounded', html.includes('id="editChildBirthday" style="width:100%;min-width:0;max-width:100%;'));
+});
+
+checkPage('finance.html', (doc, html) => {
+    check('Finance transaction edit modal exists', !!doc.getElementById('transEditModal'));
+    check('Finance transaction date input exists', doc.getElementById('editDate')?.type === 'date');
+    check('Finance transaction modal uses shrink-safe grid', html.includes('grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px'));
+    check('Finance transaction date input is bounded', html.includes('id="editDate" style="width:100%;min-width:0;max-width:100%;'));
 });
 
 checkPage('leads.html', (doc, html) => {

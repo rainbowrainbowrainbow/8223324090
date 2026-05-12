@@ -968,11 +968,18 @@
 
 .form-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 12px;
 }
 
-.form-group { margin-bottom: 14px; }
+.form-group { margin-bottom: 14px; min-width: 0; }
+
+.form-row .copilot-input,
+.form-row .copilot-select,
+.form-row .copilot-textarea {
+    min-width: 0;
+    max-width: 100%;
+}
 
 .hidden { display: none !important; }
 

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.46.3 - Shared modal WebKit layout hardening (2026-05-13)
+
+### Responsive modal forms [codex]
+- **Adjacent modal hardening** - customer, finance, art-director, and Copilot two-column form rows now use shrink-safe grid tracks.
+- **Native control bounds** - date, number, select, and text controls in those rows now stay within their grid columns on tablet WebKit layouts.
+- **Regression coverage** - UI smoke checks now cover the additional modal form surfaces so future releases catch stale `1fr 1fr` regressions.
+- **Browser sweep** - iPad-sized layout verification covers lead, customer-card, customer edit, transaction edit, and content edit modals.
+
+---
+
 ## v0.46.2 - Lead modal iPad layout fix (2026-05-12)
 
 ### Leads responsive UI [codex]

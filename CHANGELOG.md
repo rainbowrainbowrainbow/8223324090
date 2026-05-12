@@ -4,168 +4,178 @@
 
 ---
 
-## v0.46.6 - Lead assignee update repair (2026-05-13)
+## v0.46.7 - Українські релізні нотатки (2026-05-13)
 
-### Lead responsible manager flow [codex]
-- **Lead-scoped assignees** - the lead modal now loads responsible managers from `/api/leads/assignees` instead of the creator/director-only user-management endpoint.
-- **Manager-safe access** - manager and marketer lead users can load assignable users without opening `/api/users`.
-- **Assignee validation** - lead create/update now validates `assigned_to` as an active assignable user and returns a clear 400 for invalid values.
-- **Regression guard** - route smoke and UI checks now cover lead assignee loading and updates.
-
----
-
-## v0.46.5 - Lead modal action buttons hardening (2026-05-13)
-
-### Lead edit modal actions [codex]
-- **Immediate binding** - lead modal controls now bind before async user/lead loading, so save/cancel cannot be skipped by a slow or failed data request.
-- **iPad tap support** - the lead modal save and cancel buttons now handle touchend taps with duplicate synthetic-click protection.
-- **Duplicate-save guard** - save disables while the lead update request is in flight to prevent repeated submissions.
-- **Regression guard** - UI smoke checks now cover the edit modal action buttons and their touch binding.
+### Мова релізних описів [codex]
+- **Українська в UI** - записи модалки "Що нового" для актуальної релізної лінії переведені українською.
+- **Правило на майбутнє** - `AGENTS.md` тепер прямо вимагає українські релізні описи для `index.html` і `CHANGELOG.md`.
+- **Технічні назви** - endpoints, file paths, role ids, package names і API names залишаються у канонічному написанні, коли це потрібно для точності.
+- **Контроль версії** - перший екран, cache tags і service worker cache names оновлюються через стандартний version sync.
 
 ---
 
-## v0.46.4 - iPad Safari lead date row stack (2026-05-13)
+## v0.46.6 - Виправлення відповідального в ліді (2026-05-13)
 
-### Lead modal iPad Safari fix [codex]
-- **Touch WebKit fallback** - lead modal form rows now stack to one column on touch/WebKit devices.
-- **Confirmed field fix** - the desired date and children count fields no longer share a row on iPad, preventing Safari native date-control paint overlap.
-- **Customer-card safety** - customer-card form rows inherit the same iPad-safe layout behavior.
-- **Regression guard** - UI smoke checks now assert the touch/WebKit row-stacking rules directly.
-
----
-
-## v0.46.3 - Shared modal WebKit layout hardening (2026-05-13)
-
-### Responsive modal forms [codex]
-- **Adjacent modal hardening** - customer, finance, art-director, and Copilot two-column form rows now use shrink-safe grid tracks.
-- **Native control bounds** - date, number, select, and text controls in those rows now stay within their grid columns on tablet WebKit layouts.
-- **Regression coverage** - UI smoke checks now cover the additional modal form surfaces so future releases catch stale `1fr 1fr` regressions.
-- **Browser sweep** - iPad-sized layout verification covers lead, customer-card, customer edit, transaction edit, and content edit modals.
+### Потік відповідального менеджера ліда [codex]
+- **Список відповідальних для лідів** - модалка ліда тепер завантажує менеджерів з `/api/leads/assignees`, а не з creator/director-only endpoint керування користувачами.
+- **Доступ без адмінки** - manager і marketer користувачі, які працюють з лідами, можуть завантажувати assignable users без відкриття `/api/users`.
+- **Валідація відповідального** - lead create/update перевіряє `assigned_to` як активного assignable user і повертає зрозумілий 400 для неправильних значень.
+- **Захист від регресій** - route smoke та UI checks покривають завантаження й оновлення відповідального ліда.
 
 ---
 
-## v0.46.2 - Lead modal iPad layout fix (2026-05-12)
+## v0.46.5 - Відновлення кнопок модалки ліда (2026-05-13)
 
-### Leads responsive UI [codex]
-- **iPad date field fix** - lead edit modal date inputs now stay inside their grid column instead of overlapping the children count field on tablet WebKit layouts.
-- **Shared modal grid guard** - lead modal two-column rows now use shrink-safe grid tracks and form controls with explicit min/max widths.
-- **Adjacent form coverage** - customer-card modal rows that reuse the same lead modal layout are covered by the same responsive fix.
-- **UI smoke guard** - static UI checks now assert the lead/customer date and children fields plus the WebKit-safe grid rules.
+### Дії модалки редагування ліда [codex]
+- **Раннє підключення кнопок** - controls модалки ліда прив'язуються до async user/lead loading, тому save/cancel не губляться через повільний або невдалий data request.
+- **Підтримка тапів iPad** - кнопки "Зберегти" і "Скасувати" обробляють touchend taps із захистом від duplicate synthetic click.
+- **Захист від подвійного збереження** - save вимикається, поки триває lead update request, щоб не було повторних submissions.
+- **Захист від регресій** - UI smoke checks покривають кнопки edit modal і їхній touch binding.
 
 ---
 
-## v0.46.1 - Guardian moderation repair tooling (2026-05-12)
+## v0.46.4 - Одноколонкові рядки ліда на iPad Safari (2026-05-13)
+
+### Фікс модалки ліда для iPad Safari [codex]
+- **Резервне правило Touch WebKit** - рядки форми ліда складаються в одну колонку на touch/WebKit пристроях.
+- **Підтверджений фікс поля** - бажана дата й кількість дітей більше не ділять один рядок на iPad, що прибирає paint-overlap нативного Safari date-control.
+- **Безпека картки клієнта** - customer-card form rows успадковують таку саму iPad-safe layout behavior.
+- **Захист від регресій** - UI smoke checks прямо перевіряють touch/WebKit row-stacking rules.
+
+---
+
+## v0.46.3 - Посилення tablet/WebKit розмітки модалок (2026-05-13)
+
+### Адаптивні форми модалок [codex]
+- **Суміжні модалки** - customer, finance, art-director і Copilot two-column form rows використовують shrink-safe grid tracks.
+- **Межі нативних контролів** - date, number, select і text controls у цих рядках залишаються всередині grid columns на tablet WebKit layouts.
+- **Покриття регресій** - UI smoke checks покривають додаткові modal form surfaces, щоб майбутні релізи ловили stale `1fr 1fr` regressions.
+- **Браузерна перевірка** - iPad-sized layout verification покриває lead, customer-card, customer edit, transaction edit і content edit modals.
+
+---
+
+## v0.46.2 - Виправлення iPad-розмітки модалки ліда (2026-05-12)
+
+### Адаптивний UI для лідів [codex]
+- **Фікс поля дати на iPad** - date inputs у lead edit modal залишаються всередині своєї grid column замість накладання на поле кількості дітей у tablet WebKit layouts.
+- **Захист спільної сітки модалок** - двоколонкові рядки модалки ліда використовують shrink-safe grid tracks і form controls з явними min/max widths.
+- **Покриття суміжної форми** - customer-card modal rows, які повторно використовують ту саму lead modal layout, покриті тим самим responsive fix.
+- **Захист UI smoke** - static UI checks перевіряють поля date/children у lead/customer і WebKit-safe grid rules.
+
+---
+
+## v0.46.1 - Інструменти ремонту Guardian moderation (2026-05-12)
 
 ### Guardian repair and reconciliation [codex]
-- **Explain-first repair** - added a one-user Guardian moderation-state preview that compares durable event facts with derived `guardian_moderation_counters`.
-- **Bounded apply path** - privileged operators can repair only missing or mismatched `repeat_offender` / `hourly_blocks` counter rows for one user at a time.
-- **Safety guardrails** - stale/orphan counter rows are reported but not deleted automatically, keeping historical state changes explicit.
-- **Ops console controls** - Guardian Ops includes a user-id repair panel with preview/apply actions, loading/error states, and issue explanations.
-- **Audited recovery** - applied repairs write a Guardian ops audit record with issue and applied-row counts.
+- **Ремонт із попереднім поясненням** - додано preview moderation-state для одного користувача, який порівнює durable event facts із derived `guardian_moderation_counters`.
+- **Обмежене застосування** - privileged operators можуть ремонтувати тільки missing/mismatched `repeat_offender` / `hourly_blocks` counter rows для одного користувача за раз.
+- **Безпечні межі** - stale/orphan counter rows показуються у звіті, але не видаляються автоматично, щоб історичні state changes лишалися явними.
+- **Контроли Ops-консолі** - Guardian Ops має user-id repair panel із preview/apply actions, loading/error states і поясненнями issues.
+- **Аудит відновлення** - applied repairs записують Guardian ops audit record з issue і applied-row counts.
 
 ---
 
-## v0.46.0 - Guardian delivery convergence (2026-05-12)
+## v0.46.0 - Узгодження Guardian delivery (2026-05-12)
 
 ### Guardian reliability convergence [codex]
-- **Explicit lifecycle states** - Guardian delivery events now distinguish delivered, duplicate no-op, retryable failure, terminal failure, replayed, and dead-letter outcomes.
-- **Failure classification** - Telegram/director delivery paths classify malformed payloads, missing targets, missing configuration, provider rejection, and transient provider failures.
-- **Dead-letter metadata** - `event_queue` and `event_dead_letter` store Guardian convergence status, failure class, attempts, idempotency key, terminal reason, and replay linkage.
-- **Operator replay** - Guardian Ops now surfaces dead-lettered Guardian delivery events separately and allows one privileged single-event replay.
-- **Focused tests** - added convergence, delivery classification, and ops replay coverage for retry, terminal, duplicate/no-op, and dead-letter behavior.
+- **Явні стани життєвого циклу** - Guardian delivery events розрізняють delivered, duplicate no-op, retryable failure, terminal failure, replayed і dead-letter outcomes.
+- **Класифікація помилок** - Telegram/director delivery paths класифікують malformed payloads, missing targets, missing configuration, provider rejection і transient provider failures.
+- **Dead-letter metadata** - `event_queue` і `event_dead_letter` зберігають Guardian convergence status, failure class, attempts, idempotency key, terminal reason і replay linkage.
+- **Replay для оператора** - Guardian Ops окремо показує dead-lettered Guardian delivery events і дозволяє один privileged single-event replay.
+- **Цільові тести** - додано convergence, delivery classification і ops replay coverage для retry, terminal, duplicate/no-op і dead-letter behavior.
 
 ---
 
-## v0.45.9 - Guardian ops console (2026-05-12)
+## v0.45.9 - Консоль Guardian Ops (2026-05-12)
 
-### Guardian operator surface [codex]
-- **Protected console** - added `/guardian-ops` as an internal operator page for Guardian reliability state.
-- **Operational visibility** - console shows pending/failed Guardian outbox work, event-queue failures, active mutes, durable escalation counters, and recent Guardian actions.
-- **Bounded recovery controls** - operators can requeue one Guardian outbox or failed event-queue item from the console without exposing bulk replay.
-- **Access alignment** - backend page access, frontend access, and sidebar metadata now expose Guardian Ops only to creator/director/admin/security roles.
-- **UI safety states** - added loading, empty, error, disabled, and live-region states for the operator surface.
+### Операторська поверхня Guardian [codex]
+- **Захищена консоль** - додано `/guardian-ops` як internal operator page для Guardian reliability state.
+- **Операційна видимість** - консоль показує pending/failed Guardian outbox work, event-queue failures, active mutes, durable escalation counters і recent Guardian actions.
+- **Обмежене відновлення** - operators можуть requeue один Guardian outbox або failed event-queue item з консолі без bulk replay.
+- **Вирівнювання доступу** - backend page access, frontend access і sidebar metadata відкривають Guardian Ops тільки ролям creator/director/admin/security.
+- **Безпечні стани UI** - додано loading, empty, error, disabled і live-region states для operator surface.
 
 ---
 
-## v0.45.8 - Guardian operator reliability controls (2026-05-12)
+## v0.45.8 - Операторські контроли надійності Guardian (2026-05-12)
 
 ### Guardian reliability phase 3 [codex]
-- **Operator snapshot** - added protected Guardian reliability inspection for pending/failed Guardian outbox events, event-queue failures, active mutes, recent actions, and durable moderation counters.
-- **Bounded recovery** - operators can requeue one unpublished Guardian outbox row or one failed Guardian event-queue item without exposing bulk replay controls.
-- **Permission boundary** - Guardian ops endpoints are limited to creator/director/admin/security roles and refuse non-Guardian recovery targets.
-- **Audit trail** - requeue actions log a Guardian ops admin-audit entry with previous attempts/error context.
-- **Focused tests** - added authz and recovery coverage for inspection, outbox requeue, event-queue requeue, and unsafe target rejection.
+- **Операторський знімок** - додано protected Guardian reliability inspection для pending/failed Guardian outbox events, event-queue failures, active mutes, recent actions і durable moderation counters.
+- **Обмежене відновлення** - operators можуть requeue один unpublished Guardian outbox row або failed event-queue item без bulk replay controls.
+- **Межа прав** - Guardian ops endpoints обмежені ролями creator/director/admin/security і відхиляють non-Guardian recovery targets.
+- **Аудит** - requeue actions пишуть Guardian ops admin-audit entry з previous attempts/error context.
+- **Цільові тести** - додано authz і recovery coverage для inspection, outbox requeue, event-queue requeue і unsafe target rejection.
 
 ---
 
-## v0.45.7 - Guardian durable moderation state (2026-05-12)
+## v0.45.7 - Стійкий стан Guardian moderation (2026-05-12)
 
 ### Guardian reliability phase 2 [codex]
-- **Durable counters** - repeat-offender and hourly-block escalation tracking now use database-backed moderation events and counters instead of module-scoped memory.
-- **Replay safety** - Guardian mute events now record stable source identities so repeated processing of the same mute does not inflate escalation counters.
-- **Escalation coupling** - repeat-offender and hourly-block Telegram alert requests are published from the same mute transaction when their durable thresholds are crossed.
-- **Restart-safe baseline** - added focused tests for duplicate source suppression, rolling-window reset, and one-alert-per-window behavior.
+- **Стійкі лічильники** - repeat-offender і hourly-block escalation tracking використовують database-backed moderation events і counters замість module-scoped memory.
+- **Безпечний replay** - Guardian mute events записують stable source identities, щоб repeated processing того самого mute не збільшував escalation counters.
+- **Зв'язка escalation** - repeat-offender і hourly-block Telegram alert requests публікуються з тієї самої mute transaction, коли перетинаються durable thresholds.
+- **Restart-safe baseline** - додано focused tests для duplicate source suppression, rolling-window reset і one-alert-per-window behavior.
 
 ---
 
-## v0.45.6 - Guardian outbox-backed alert delivery foundation (2026-05-12)
+## v0.45.6 - Фундамент доставки Guardian alerts через outbox (2026-05-12)
 
 ### Guardian delivery reliability [codex]
-- **Durable delivery envelope** - Guardian critical alert requests now use explicit outbox/event types for director DM and Telegram alert delivery.
-- **Mute alert coupling** - successful Guardian mute claims publish director DM and Telegram escalation requests in the same transaction as `chat_mutes` and `guardian_actions`.
-- **Action follow-up coupling** - `/api/guardian/action` warning follow-ups now enqueue director DM delivery inside the action transaction instead of relying on only a post-commit direct call.
-- **Duplicate-safe processing** - director DM delivery uses stable delivery keys in message metadata to avoid duplicate user-visible alerts on retry.
-- **Focused tests** - added mocked delivery coverage for enqueue semantics, duplicate suppression, provider failure, and Telegram request handling without live provider calls.
+- **Стійкий delivery envelope** - Guardian critical alert requests використовують явні outbox/event types для director DM і Telegram alert delivery.
+- **Зв'язка mute alerts** - successful Guardian mute claims публікують director DM і Telegram escalation requests у тій самій transaction, що й `chat_mutes` та `guardian_actions`.
+- **Зв'язка action follow-up** - `/api/guardian/action` warning follow-ups додають director DM delivery всередині action transaction замість лише post-commit direct call.
+- **Duplicate-safe processing** - director DM delivery використовує stable delivery keys у message metadata, щоб уникати duplicate user-visible alerts на retry.
+- **Цільові тести** - додано mocked delivery coverage для enqueue semantics, duplicate suppression, provider failure і Telegram request handling без live provider calls.
 
 ---
 
-## v0.45.5 - Guardian single-use action controls (2026-05-12)
+## v0.45.5 - Одноразові action controls Guardian (2026-05-12)
 
 ### Guardian stale-tap safety [codex]
-- **Single-use controls** - Guardian DM action buttons now carry per-alert action tokens, so stale repeated taps are consumed at the server boundary.
-- **UI contract** - the chat UI sends the action token with `/api/guardian/action` and still replaces the button group with the server result after completion.
-- **Duplicate-safe fallback** - older clients without action tokens continue using the existing deterministic idempotency fallback.
-- **Focused tests** - added coverage for consumed tokens, repeated taps, and separate alerts using separate tokens.
+- **Одноразові контроли** - Guardian DM action buttons несуть per-alert action tokens, тому stale repeated taps поглинаються на server boundary.
+- **UI-контракт** - chat UI надсилає action token з `/api/guardian/action` і замінює button group результатом сервера після завершення.
+- **Duplicate-safe fallback** - старі клієнти без action tokens зберігають existing deterministic idempotency fallback.
+- **Цільові тести** - додано coverage для consumed tokens, repeated taps і separate alerts із separate tokens.
 
 ---
 
-## v0.45.3 - Guardian mute/action idempotency (2026-05-12)
+## v0.45.3 - Ідемпотентність Guardian mute/action (2026-05-12)
 
-### Guardian integrity [codex]
-- **Duplicate-safe auto mute** - Guardian mute creation now uses an advisory-lock transaction and skips duplicate side effects when an active channel/user mute already exists.
-- **Single-use director actions** - repeated `/api/guardian/action` taps are claimed with deterministic idempotency keys before muting, warning, watching, or unmuting side effects run.
-- **Scoped side-effect reduction** - duplicate mute rows, duplicate director action logs, duplicate director warning alerts, repeated trust penalties, and repeated heatmap updates are reduced in the covered flows.
-- **Focused tests** - added helper and route coverage for repeated mute claims, rollback on action-log failure, stale `mute_both` taps, and duplicate director warning taps.
+### Цілісність Guardian [codex]
+- **Duplicate-safe auto mute** - Guardian mute creation використовує advisory-lock transaction і пропускає duplicate side effects, коли active channel/user mute вже існує.
+- **Одноразові дії директора** - repeated `/api/guardian/action` taps claim-яться через deterministic idempotency keys до запуску muting, warning, watching або unmuting side effects.
+- **Зменшення side effects** - duplicate mute rows, duplicate director action logs, duplicate director warning alerts, repeated trust penalties і repeated heatmap updates зменшені в покритих flows.
+- **Цільові тести** - додано helper і route coverage для repeated mute claims, rollback on action-log failure, stale `mute_both` taps і duplicate director warning taps.
 
 ---
 
-## v0.45.2 - Guardian director DM provisioning integrity (2026-05-11)
+## v0.45.2 - Цілісність Guardian director DM provisioning (2026-05-11)
 
 ### Guardian DM provisioning [codex]
-- **Atomic director DM** - Guardian/director DM creation now uses one transactional helper instead of separate check-then-insert paths.
-- **Deterministic reuse** - provisioning reuses the stable `dm-guardian-director` slug and also preserves legacy DM channels that already connect Guardian and the director.
-- **Atomic membership** - Guardian and director membership initialization commits in the same transaction as channel provisioning, with rollback on member setup failure.
-- **Focused tests** - added deterministic coverage for repeated provisioning, legacy DM reuse, slug-shell repair, and rollback behavior.
+- **Атомарний director DM** - Guardian/director DM creation використовує один transactional helper замість окремих check-then-insert paths.
+- **Детерміноване повторне використання** - provisioning повторно використовує stable `dm-guardian-director` slug і зберігає legacy DM channels, які вже з'єднують Guardian і director.
+- **Атомарний membership** - Guardian і director membership initialization комітиться в тій самій transaction, що й channel provisioning, з rollback on member setup failure.
+- **Цільові тести** - додано deterministic coverage для repeated provisioning, legacy DM reuse, slug-shell repair і rollback behavior.
 
 ---
 
-## v0.45.1 - Guardian phase3 schema compatibility (2026-05-11)
+## v0.45.1 - Сумісність Guardian phase3 schema (2026-05-11)
 
 ### Guardian schema compatibility [codex]
-- **Phase3 alignment** - Guardian service queries now use the column names defined by the phase3 migrations for mood, health, heatmap, weekly reports, escalation, and trust scores.
-- **Compatibility migration** - added guarded schema support for `guardian_trust_history` and `guardian_escalation_config.updated_at` without deleting or rewriting production data.
-- **Route fallback fix** - Guardian health fallback now reads current health from `guardian_channel_health` and history from `guardian_health_history`.
-- **Focused guardrail** - added a static Guardian phase3 schema compatibility test so stale phantom-column patterns are caught in the fast unit baseline.
+- **Вирівнювання phase3** - Guardian service queries використовують column names, визначені phase3 migrations для mood, health, heatmap, weekly reports, escalation і trust scores.
+- **Міграція сумісності** - додано guarded schema support для `guardian_trust_history` і `guardian_escalation_config.updated_at` без видалення чи переписування production data.
+- **Фікс резервного health path** - Guardian health fallback читає current health з `guardian_channel_health`, а history з `guardian_health_history`.
+- **Цільовий guardrail** - додано static Guardian phase3 schema compatibility test, щоб stale phantom-column patterns ловились у fast unit baseline.
 
 ---
 
-## v0.45.0 - Start of the 0.45 release line (2026-05-11)
+## v0.45.0 - Старт релізної лінії 0.45 (2026-05-11)
 
-### Versioning policy [codex]
-- **New release train** - Event Genix now uses `0.45.x` as the active version line.
-- **Canonical source** - `package.json` remains the version source of truth, with version-sync propagating the release to UI labels, cache-bust tags, and service-worker cache names.
-- **Future mini updates** - follow-up releases should increment patch only as `0.45.1`, `0.45.2`, `0.45.3`, etc. until another explicit version-policy transition.
-- **Historical lines** - `0.44.x` and older changelog entries remain historical references and are not active release markers.
+### Політика версій [codex]
+- **Нова релізна лінія** - Event Genix використовує `0.45.x` як активну version line.
+- **Канонічне джерело** - `package.json` залишається version source of truth, а version-sync переносить реліз у UI labels, cache-bust tags і service-worker cache names.
+- **Майбутні мініоновлення** - наступні releases мають піднімати тільки patch: `0.45.1`, `0.45.2`, `0.45.3` тощо до наступного explicit version-policy transition.
+- **Історичні лінії** - `0.44.x` і старші changelog entries лишаються historical references, а не active release markers.
 
 ---
 

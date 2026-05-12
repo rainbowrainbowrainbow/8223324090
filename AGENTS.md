@@ -41,6 +41,7 @@ stale handoff notes.
   - prefer a small isolated commit or explicit handoff over mixing changes.
 - Inspect nearby routes, services, frontend files, tests, and docs before editing.
 - Keep changes focused. Do not bundle repo cleanup, style churn, or broad refactors with product fixes.
+- Write user-facing progress summaries, release notes, changelog entries, and deploy summaries in Ukrainian unless the user explicitly asks for another language.
 
 ## Commands That Exist
 
@@ -100,6 +101,10 @@ Notes:
   - use `npm run version:sync` only when you intend to update version references;
   - add/update the `index.html` changelog modal entry;
   - update `CHANGELOG.md` if the change is release-relevant.
+- User-facing release notes must be written in Ukrainian:
+  - write `index.html` "Що нового" modal headings and bullet explanations in Ukrainian;
+  - write new `CHANGELOG.md` release summaries in Ukrainian;
+  - keep technical tokens such as endpoints, file paths, role ids, package names, and API names in their canonical form when needed.
 - Pure documentation-only changes normally do not need a product version bump unless the user explicitly asks for a release marker.
 - If `package.json`, `index.html`, `CHANGELOG.md`, archived snapshots, or service-worker cache versions disagree, trust `package.json` first and report the mismatch instead of guessing.
 

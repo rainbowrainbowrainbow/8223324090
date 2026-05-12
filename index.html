@@ -16,19 +16,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.46.6">
-    <link rel="stylesheet" href="css/auth.css?v=0.46.6">
-    <link rel="stylesheet" href="css/layout.css?v=0.46.6">
-    <link rel="stylesheet" href="css/timeline.css?v=0.46.6">
-    <link rel="stylesheet" href="css/panel.css?v=0.46.6">
-    <link rel="stylesheet" href="css/modals.css?v=0.46.6">
-    <link rel="stylesheet" href="css/controls.css?v=0.46.6">
-    <link rel="stylesheet" href="css/features.css?v=0.46.6">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.46.6">
-    <link rel="stylesheet" href="css/responsive.css?v=0.46.6">
-    <link rel="stylesheet" href="css/pages.css?v=0.46.6">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.46.6">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.46.6">
+    <link rel="stylesheet" href="css/base.css?v=0.46.7">
+    <link rel="stylesheet" href="css/auth.css?v=0.46.7">
+    <link rel="stylesheet" href="css/layout.css?v=0.46.7">
+    <link rel="stylesheet" href="css/timeline.css?v=0.46.7">
+    <link rel="stylesheet" href="css/panel.css?v=0.46.7">
+    <link rel="stylesheet" href="css/modals.css?v=0.46.7">
+    <link rel="stylesheet" href="css/controls.css?v=0.46.7">
+    <link rel="stylesheet" href="css/features.css?v=0.46.7">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.46.7">
+    <link rel="stylesheet" href="css/responsive.css?v=0.46.7">
+    <link rel="stylesheet" href="css/pages.css?v=0.46.7">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.46.7">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.46.7">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -45,9 +45,9 @@
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.46.6 — 0.45 release line</p>
+                <p class="tagline">AI First CRM v0.46.7 — 0.45 release line</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.46.6</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.46.7</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1153,147 +1153,156 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.46.6 - Lead assignee update repair (13.05.2026)</h4>
+                    <h4>v0.46.7 - Українські релізні нотатки (13.05.2026)</h4>
                     <ul>
-                        <li><b>Lead-scoped assignees</b> - lead modal now loads responsible managers from the lead API</li>
-                        <li><b>Manager-safe access</b> - lead users can load assignees without opening creator/director user management</li>
-                        <li><b>Assignee validation</b> - lead create/update validates responsible users before saving</li>
-                        <li><b>Regression guard</b> - route smoke and UI checks now cover lead assignee loading and updates</li>
+                        <li><b>Українська в UI</b> - записи модалки "Що нового" переведені українською</li>
+                        <li><b>Правило на майбутнє</b> - інструкції для агентів тепер прямо вимагають українські релізні описи</li>
+                        <li><b>Технічні назви</b> - endpoints, файли, ролі та API залишаються у канонічному написанні, якщо це потрібно для точності</li>
+                        <li><b>Контроль версії</b> - кеш-теги та перший екран оновлені до актуальної версії</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.46.5 - Lead modal action buttons hardening (13.05.2026)</h4>
+                    <h4>v0.46.6 - Виправлення відповідального в ліді (13.05.2026)</h4>
                     <ul>
-                        <li><b>Immediate binding</b> - lead modal save/cancel controls bind before async user and lead loading</li>
-                        <li><b>iPad tap support</b> - save and cancel now handle touchend taps with duplicate-click protection</li>
-                        <li><b>Duplicate-save guard</b> - save disables while the update request is in flight</li>
-                        <li><b>Regression guard</b> - UI smoke checks now cover the edit modal action buttons and touch binding</li>
+                        <li><b>Список відповідальних для лідів</b> - модалка ліда тепер завантажує менеджерів через lead API</li>
+                        <li><b>Доступ без адмінки</b> - користувачі, які працюють з лідами, можуть бачити відповідальних без відкриття creator/director user management</li>
+                        <li><b>Валідація відповідального</b> - створення й оновлення ліда перевіряє відповідального перед збереженням</li>
+                        <li><b>Захист від регресій</b> - route smoke та UI-перевірки покривають завантаження й оновлення відповідального</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.46.4 - iPad Safari lead date row stack (13.05.2026)</h4>
+                    <h4>v0.46.5 - Відновлення кнопок модалки ліда (13.05.2026)</h4>
                     <ul>
-                        <li><b>iPad Safari fallback</b> - lead modal form rows now stack to one column on touch/WebKit devices</li>
-                        <li><b>Desired date fix</b> - the desired date and children count fields no longer share a row on iPad</li>
-                        <li><b>Customer-card safety</b> - customer-card form rows inherit the same iPad-safe behavior</li>
-                        <li><b>Regression guard</b> - UI smoke checks now assert the touch/WebKit row-stacking rule directly</li>
+                        <li><b>Раннє підключення кнопок</b> - "Зберегти" і "Скасувати" прив'язуються до завантаження користувачів та лідів</li>
+                        <li><b>Підтримка тапів iPad</b> - кнопки обробляють touchend і захищені від дубльованого click</li>
+                        <li><b>Захист від подвійного збереження</b> - кнопка збереження вимикається, поки триває запит оновлення</li>
+                        <li><b>Захист від регресій</b> - UI smoke перевіряє кнопки редагування ліда та touch-binding</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.46.3 - Shared modal WebKit layout hardening (13.05.2026)</h4>
+                    <h4>v0.46.4 - Одноколонкові рядки ліда на iPad Safari (13.05.2026)</h4>
                     <ul>
-                        <li><b>Adjacent modal hardening</b> - customer, finance, art-director, and Copilot two-column form rows now use tablet-safe grid tracks</li>
-                        <li><b>Native control bounds</b> - date, number, select, and text fields stay inside their columns on iPad/WebKit layouts</li>
-                        <li><b>Regression coverage</b> - UI smoke checks now guard the extra modal surfaces against stale two-column grid rules</li>
-                        <li><b>Browser sweep</b> - iPad-sized verification covers lead, customer-card, customer edit, transaction edit, and content edit modals</li>
+                        <li><b>Резервне правило для iPad Safari</b> - рядки форми ліда складаються в одну колонку на touch/WebKit пристроях</li>
+                        <li><b>Фікс бажаної дати</b> - поля бажаної дати й кількості дітей більше не стоять в одному рядку на iPad</li>
+                        <li><b>Безпека картки клієнта</b> - рядки картки клієнта успадковують таку саму iPad-safe поведінку</li>
+                        <li><b>Захист від регресій</b> - UI smoke прямо перевіряє правило складання рядків для touch/WebKit</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.46.2 - Lead modal iPad layout fix (12.05.2026)</h4>
+                    <h4>v0.46.3 - Посилення tablet/WebKit розмітки модалок (13.05.2026)</h4>
                     <ul>
-                        <li><b>iPad lead edit modal</b> - the desired date field no longer overlaps the children count field on tablet WebKit layouts</li>
-                        <li><b>Responsive grid hardening</b> - lead modal two-column rows now use shrink-safe tracks and bounded form controls</li>
-                        <li><b>Adjacent modal coverage</b> - customer-card form rows that reuse the same layout inherit the same tablet-safe behavior</li>
-                        <li><b>Regression guard</b> - UI smoke checks now cover the date/children fields and the WebKit-safe grid rules</li>
+                        <li><b>Суміжні модалки</b> - customer, finance, art-director і Copilot форми отримали tablet-safe grid tracks</li>
+                        <li><b>Межі нативних контролів</b> - date, number, select і text поля залишаються всередині колонок на iPad/WebKit</li>
+                        <li><b>Покриття регресій</b> - UI smoke захищає додаткові модалки від старих двоколонкових grid-правил</li>
+                        <li><b>Браузерна перевірка</b> - iPad-sized sweep покриває lead, customer-card, customer edit, transaction edit і content edit модалки</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.46.1 - Guardian moderation repair tooling (12.05.2026)</h4>
+                    <h4>v0.46.2 - Виправлення iPad-розмітки модалки ліда (12.05.2026)</h4>
                     <ul>
-                        <li><b>Explain-first repair</b> - Guardian Ops can preview one user's moderation counter drift before changing data</li>
-                        <li><b>Bounded apply</b> - privileged operators can repair missing or mismatched repeat-offender and hourly-block counter rows for one user</li>
-                        <li><b>Safe limits</b> - stale/orphan historical counters are reported but not deleted automatically</li>
-                        <li><b>Audit trail</b> - applied repairs record Guardian ops audit context with issue and applied-row counts</li>
+                        <li><b>Редагування ліда на iPad</b> - поле бажаної дати більше не накладається на кількість дітей у tablet WebKit</li>
+                        <li><b>Посилення адаптивної сітки</b> - двоколонкові рядки ліда використовують shrink-safe tracks і обмежені form controls</li>
+                        <li><b>Покриття суміжної модалки</b> - рядки customer-card із тією самою розміткою отримали tablet-safe поведінку</li>
+                        <li><b>Захист від регресій</b> - UI smoke перевіряє поля дати/дітей і WebKit-safe grid rules</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.46.0 - Guardian delivery convergence (12.05.2026)</h4>
+                    <h4>v0.46.1 - Інструменти ремонту Guardian moderation (12.05.2026)</h4>
                     <ul>
-                        <li><b>Lifecycle states</b> - Guardian delivery now distinguishes delivered, duplicate no-op, retryable failure, terminal failure, replayed, and dead-letter outcomes</li>
-                        <li><b>Failure classes</b> - Telegram and director delivery paths classify malformed payloads, missing targets, provider rejection, missing configuration, and transient provider failures</li>
-                        <li><b>Dead-letter visibility</b> - Guardian Ops shows dead-lettered delivery events separately with failure class, attempts, terminal reason, and source metadata</li>
-                        <li><b>Single-event replay</b> - privileged operators can replay one Guardian dead-letter event through a bounded, audited recovery path</li>
+                        <li><b>Ремонт із попереднім поясненням</b> - Guardian Ops показує drift moderation counters одного користувача до зміни даних</li>
+                        <li><b>Обмежене застосування</b> - privileged operators можуть ремонтувати missing/mismatched repeat-offender і hourly-block counters для одного користувача</li>
+                        <li><b>Безпечні межі</b> - stale/orphan historical counters показуються у звіті, але не видаляються автоматично</li>
+                        <li><b>Аудит</b> - застосовані ремонти записують Guardian ops audit context з кількістю issues і applied rows</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.45.9 - Guardian ops console (12.05.2026)</h4>
+                    <h4>v0.46.0 - Узгодження Guardian delivery (12.05.2026)</h4>
                     <ul>
-                        <li><b>Protected console</b> - added <code>/guardian-ops</code> for privileged Guardian reliability inspection</li>
-                        <li><b>Operator view</b> - shows Guardian outbox work, event-queue failures, active mutes, durable counters, and recent actions</li>
-                        <li><b>Bounded recovery</b> - single-item requeue controls are available from the console with disabled/loading/error states</li>
-                        <li><b>Access alignment</b> - backend, frontend, and sidebar metadata limit the page to creator/director/admin/security roles</li>
+                        <li><b>Стани життєвого циклу</b> - Guardian delivery розрізняє delivered, duplicate no-op, retryable failure, terminal failure, replayed і dead-letter outcomes</li>
+                        <li><b>Класи помилок</b> - Telegram і director delivery класифікують malformed payloads, missing targets, provider rejection, missing configuration і transient provider failures</li>
+                        <li><b>Видимість dead-letter</b> - Guardian Ops окремо показує dead-lettered delivery events з failure class, attempts, terminal reason і source metadata</li>
+                        <li><b>Replay однієї події</b> - privileged operators можуть відтворити один Guardian dead-letter event через обмежений audited recovery path</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.45.8 - Guardian operator reliability controls (12.05.2026)</h4>
+                    <h4>v0.45.9 - Консоль Guardian Ops (12.05.2026)</h4>
                     <ul>
-                        <li><b>Ops snapshot</b> - protected Guardian reliability view now shows delivery queues, active mutes, recent actions, and moderation counters</li>
-                        <li><b>Safe recovery</b> - operators can requeue one failed Guardian outbox or event-queue item at a time</li>
-                        <li><b>Permission boundary</b> - ops controls are limited to creator/director/admin/security roles and reject non-Guardian targets</li>
-                        <li><b>Audit trail</b> - requeue actions record previous attempts and errors in the admin audit log</li>
+                        <li><b>Захищена консоль</b> - додано <code>/guardian-ops</code> для privileged Guardian reliability inspection</li>
+                        <li><b>Операторський вигляд</b> - показує Guardian outbox work, event-queue failures, active mutes, durable counters і recent actions</li>
+                        <li><b>Обмежене відновлення</b> - single-item requeue controls доступні з disabled/loading/error states</li>
+                        <li><b>Вирівнювання доступу</b> - backend, frontend і sidebar metadata обмежують сторінку ролями creator/director/admin/security</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.45.7 - Guardian durable moderation state (12.05.2026)</h4>
+                    <h4>v0.45.8 - Операторські контроли надійності Guardian (12.05.2026)</h4>
                     <ul>
-                        <li><b>Durable counters</b> - repeat-offender and hourly-block escalation state now uses database-backed moderation events and counters</li>
-                        <li><b>Replay safety</b> - repeated processing of the same Guardian mute source does not inflate escalation windows</li>
-                        <li><b>Escalation coupling</b> - threshold Telegram alert requests are queued from the same mute transaction</li>
-                        <li><b>Tests</b> - added focused coverage for duplicates, rolling-window reset, and one-alert-per-window behavior</li>
+                        <li><b>Ops-знімок</b> - protected Guardian reliability view показує delivery queues, active mutes, recent actions і moderation counters</li>
+                        <li><b>Безпечне відновлення</b> - operators можуть requeue один failed Guardian outbox або event-queue item за раз</li>
+                        <li><b>Межа прав</b> - ops controls доступні тільки creator/director/admin/security і відхиляють non-Guardian targets</li>
+                        <li><b>Аудит</b> - requeue actions записують previous attempts і errors в admin audit log</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.45.6 - Guardian outbox-backed alert delivery (12.05.2026)</h4>
+                    <h4>v0.45.7 - Стійкий стан Guardian moderation (12.05.2026)</h4>
                     <ul>
-                        <li><b>Outbox delivery</b> - Guardian director DM and Telegram alert requests now have explicit durable delivery events</li>
-                        <li><b>Mute alerts</b> - mute claims enqueue director DM and Telegram escalation requests in the same transaction as the mute/action write</li>
-                        <li><b>Action follow-up</b> - director warning follow-ups from <code>/api/guardian/action</code> now enqueue through the same delivery path</li>
-                        <li><b>Retry safety</b> - director DM delivery suppresses duplicate visible alerts by stable delivery metadata</li>
+                        <li><b>Стійкі лічильники</b> - repeat-offender і hourly-block escalation state тепер спираються на database-backed moderation events і counters</li>
+                        <li><b>Безпечний replay</b> - повторна обробка того самого Guardian mute source не збільшує escalation windows</li>
+                        <li><b>Зв'язка escalation</b> - threshold Telegram alert requests ставляться в чергу з тієї самої mute transaction</li>
+                        <li><b>Тести</b> - додано focused coverage для duplicates, rolling-window reset і one-alert-per-window behavior</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.45.5 - Guardian single-use action controls (12.05.2026)</h4>
+                    <h4>v0.45.6 - Доставка Guardian alerts через outbox (12.05.2026)</h4>
                     <ul>
-                        <li><b>Single-use controls</b> - Guardian DM buttons now carry per-alert action tokens</li>
-                        <li><b>Server safety</b> - stale repeated taps are consumed at <code>/api/guardian/action</code> before side effects run again</li>
-                        <li><b>UI contract</b> - chat sends the token and replaces completed button groups with the server result</li>
-                        <li><b>Fallback</b> - older clients without tokens keep the deterministic duplicate-safe behavior</li>
+                        <li><b>Доставка через outbox</b> - Guardian director DM і Telegram alert requests тепер мають явні durable delivery events</li>
+                        <li><b>Сповіщення mute</b> - mute claims додають director DM і Telegram escalation requests у тій самій transaction, що й mute/action write</li>
+                        <li><b>Наступна дія</b> - director warning follow-ups з <code>/api/guardian/action</code> тепер проходять тим самим delivery path</li>
+                        <li><b>Безпечні retry</b> - director DM delivery приглушує дубльовані видимі alerts через stable delivery metadata</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.45.3 - Guardian mute/action idempotency (12.05.2026)</h4>
+                    <h4>v0.45.5 - Одноразові action controls Guardian (12.05.2026)</h4>
                     <ul>
-                        <li><b>Auto mute</b> - Guardian now claims channel/user mutes in one transaction before running mute side effects</li>
-                        <li><b>Director actions</b> - repeated action-button taps reuse deterministic idempotency keys instead of muting or warning twice</li>
-                        <li><b>Side effects</b> - duplicate action logs, warning alerts, trust penalties, and heatmap mute updates are skipped for covered stale repeats</li>
-                        <li><b>Tests</b> - added focused coverage for repeated mute claims, rollback, stale <code>mute_both</code>, and duplicate warning taps</li>
+                        <li><b>Одноразові контроли</b> - Guardian DM buttons тепер несуть per-alert action tokens</li>
+                        <li><b>Безпека сервера</b> - stale repeated taps поглинаються на <code>/api/guardian/action</code> до повторного запуску side effects</li>
+                        <li><b>UI-контракт</b> - чат надсилає token і замінює завершені button groups відповіддю сервера</li>
+                        <li><b>Резервна поведінка</b> - старі клієнти без tokens зберігають deterministic duplicate-safe behavior</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.45.2 - Guardian director DM provisioning integrity (11.05.2026)</h4>
+                    <h4>v0.45.3 - Ідемпотентність Guardian mute/action (12.05.2026)</h4>
                     <ul>
-                        <li><b>Atomic DM</b> - Guardian/director DM creation now uses one transactional provisioning helper</li>
-                        <li><b>Duplicate safety</b> - repeated alerts reuse the deterministic <code>dm-guardian-director</code> channel or an existing legacy DM</li>
-                        <li><b>Membership</b> - Guardian and director members are initialized inside the same transaction as channel provisioning</li>
-                        <li><b>Tests</b> - added focused coverage for repeated provisioning, legacy reuse, slug repair, and rollback</li>
+                        <li><b>Автоматичний mute</b> - Guardian claims channel/user mutes в одній transaction до запуску mute side effects</li>
+                        <li><b>Дії директора</b> - повторні taps по action buttons використовують deterministic idempotency keys замість подвійного mute/warning</li>
+                        <li><b>Побічні ефекти</b> - duplicate action logs, warning alerts, trust penalties і heatmap mute updates пропускаються для покритих stale repeats</li>
+                        <li><b>Тести</b> - додано focused coverage для repeated mute claims, rollback, stale <code>mute_both</code> і duplicate warning taps</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.45.1 - Guardian phase3 schema compatibility (11.05.2026)</h4>
+                    <h4>v0.45.2 - Цілісність Guardian director DM provisioning (11.05.2026)</h4>
                     <ul>
-                        <li><b>Guardian schema</b> - phase3 service queries now match the migration-defined health, mood, heatmap, weekly report, escalation, and trust-score model</li>
-                        <li><b>Compatibility migration</b> - added guarded support for <code>guardian_trust_history</code> and escalation <code>updated_at</code></li>
-                        <li><b>Health fallback</b> - current health and history now read from the correct Guardian phase3 tables</li>
-                        <li><b>Tests</b> - added a focused schema compatibility guard for stale Guardian column names</li>
+                        <li><b>Атомарний DM</b> - створення Guardian/director DM використовує один transactional provisioning helper</li>
+                        <li><b>Безпека від дублів</b> - repeated alerts повторно використовують deterministic <code>dm-guardian-director</code> channel або existing legacy DM</li>
+                        <li><b>Учасники</b> - Guardian і director members ініціалізуються всередині тієї самої transaction, що й channel provisioning</li>
+                        <li><b>Тести</b> - додано focused coverage для repeated provisioning, legacy reuse, slug repair і rollback</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.45.0 - Start of the 0.45 release line (11.05.2026)</h4>
+                    <h4>v0.45.1 - Сумісність Guardian phase3 schema (11.05.2026)</h4>
                     <ul>
-                        <li><b>Release line</b> - Event Genix now uses <code>0.45.x</code> as the active version line</li>
-                        <li><b>Source of truth</b> - <code>package.json</code> remains canonical and version-sync updates UI labels, cache tags, and service-worker caches</li>
-                        <li><b>Mini updates</b> - future releases continue as <code>0.45.1</code>, <code>0.45.2</code>, and later patch versions</li>
-                        <li><b>History</b> - <code>0.44.x</code> entries remain historical release notes, not the active line</li>
+                        <li><b>Схема Guardian</b> - phase3 service queries тепер відповідають migration-defined health, mood, heatmap, weekly report, escalation і trust-score model</li>
+                        <li><b>Міграція сумісності</b> - додано guarded support для <code>guardian_trust_history</code> і escalation <code>updated_at</code></li>
+                        <li><b>Резервне читання health</b> - current health і history тепер читаються з правильних Guardian phase3 tables</li>
+                        <li><b>Тести</b> - додано focused schema compatibility guard для stale Guardian column names</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.45.0 - Старт релізної лінії 0.45 (11.05.2026)</h4>
+                    <ul>
+                        <li><b>Релізна лінія</b> - Event Genix використовує <code>0.45.x</code> як активну версійну лінію</li>
+                        <li><b>Джерело правди</b> - <code>package.json</code> залишається канонічним, а version-sync оновлює UI labels, cache tags і service-worker caches</li>
+                        <li><b>Мініоновлення</b> - наступні релізи йдуть як <code>0.45.1</code>, <code>0.45.2</code> і подальші patch versions</li>
+                        <li><b>Історія</b> - записи <code>0.44.x</code> залишаються історичними релізними нотатками, не активною лінією</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -5714,27 +5723,27 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.46.6"></script>
-    <script src="js/api.js?v=0.46.6"></script>
-    <script src="js/ui.js?v=0.46.6"></script>
-    <script src="js/auth.js?v=0.46.6"></script>
-    <script src="js/timeline.js?v=0.46.6"></script>
-    <script src="js/booking.js?v=0.46.6"></script>
-    <script src="js/settings.js?v=0.46.6"></script>
-    <script src="js/booking-form.js?v=0.46.6"></script>
-    <script src="js/booking-linked.js?v=0.46.6"></script>
-    <script src="js/settings-dashboard.js?v=0.46.6"></script>
-    <script src="js/settings-history.js?v=0.46.6"></script>
-    <script src="js/settings-afisha.js?v=0.46.6"></script>
-    <script src="js/settings-certificates.js?v=0.46.6"></script>
-    <script src="js/offline.js?v=0.46.6"></script>
-    <script src="js/search.js?v=0.46.6"></script>
-    <script src="js/ws.js?v=0.46.6"></script>
-    <script src="js/app.js?v=0.46.6"></script>
-    <script src="js/kleshnya-widget.js?v=0.46.6"></script>
-    <script src="js/components/sidebar.js?v=0.46.6"></script>
+    <script src="js/config.js?v=0.46.7"></script>
+    <script src="js/api.js?v=0.46.7"></script>
+    <script src="js/ui.js?v=0.46.7"></script>
+    <script src="js/auth.js?v=0.46.7"></script>
+    <script src="js/timeline.js?v=0.46.7"></script>
+    <script src="js/booking.js?v=0.46.7"></script>
+    <script src="js/settings.js?v=0.46.7"></script>
+    <script src="js/booking-form.js?v=0.46.7"></script>
+    <script src="js/booking-linked.js?v=0.46.7"></script>
+    <script src="js/settings-dashboard.js?v=0.46.7"></script>
+    <script src="js/settings-history.js?v=0.46.7"></script>
+    <script src="js/settings-afisha.js?v=0.46.7"></script>
+    <script src="js/settings-certificates.js?v=0.46.7"></script>
+    <script src="js/offline.js?v=0.46.7"></script>
+    <script src="js/search.js?v=0.46.7"></script>
+    <script src="js/ws.js?v=0.46.7"></script>
+    <script src="js/app.js?v=0.46.7"></script>
+    <script src="js/kleshnya-widget.js?v=0.46.7"></script>
+    <script src="js/components/sidebar.js?v=0.46.7"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=0.46.6"></script>
-    <script src="js/alerts.js?v=0.46.6"></script>
+    <script src="js/role-panel.js?v=0.46.7"></script>
+    <script src="js/alerts.js?v=0.46.7"></script>
 </body>
 </html>

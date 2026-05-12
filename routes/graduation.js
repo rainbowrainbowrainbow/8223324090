@@ -522,13 +522,8 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
 });
 
 // GET /api/graduation/quotes/:id/proposal — генерація КП (HTML)
-// Support token in query string for window.open() usage
-router.get('/quotes/:id/proposal', (req, res, next) => {
-    if (!req.headers['authorization'] && req.query.token) {
-        req.headers['authorization'] = `Bearer ${req.query.token}`;
-    }
-    next();
-}, requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+// Query-token support for window.open lives in middleware/apiAuthBoundary.js.
+router.get('/quotes/:id/proposal', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
         const { id } = req.params;
         const quote = await pool.query('SELECT * FROM graduation_quotes WHERE id = $1', [id]);
@@ -777,13 +772,8 @@ async function onSettingsChanged(key, newValue, username) {
 }
 
 // GET /api/graduation/catalog/export — print-ready HTML catalog
-// Support token in query string for window.open() usage
-router.get('/catalog/export', (req, res, next) => {
-    if (!req.headers['authorization'] && req.query.token) {
-        req.headers['authorization'] = `Bearer ${req.query.token}`;
-    }
-    next();
-}, requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+// Query-token support for window.open lives in middleware/apiAuthBoundary.js.
+router.get('/catalog/export', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
         const pkgResult = await pool.query(
             'SELECT * FROM graduation_packages WHERE is_active = true ORDER BY sort_order'

@@ -119,6 +119,8 @@ What to do:
   guard.
 - Keep `tests/static-doc-guard.test.js` as the accidental public-doc exposure
   guard.
+- Keep `npm run check:auth-boundary` as the ownership guard for public API
+  exceptions and approved `?token=` JWT routes.
 - Keep `npm run check:static-surface` as the ownership guard for root HTML,
   landing pages, and legacy static redirects.
 - Keep `npm run check:api-surface` as the ownership guard for backend route
@@ -145,6 +147,8 @@ Status: existing guards present; expand per pack.
   broad `/api` route mounts.
 - Storage surface guard added to prevent undocumented local upload paths or
   Supabase buckets from being introduced without ownership and tests.
+- Auth-boundary guard added to prevent new public API or query-token exceptions
+  from bypassing the documented manifest and focused tests.
 
 ### 4. Security And Deploy-Risk Cleanup
 
@@ -154,7 +158,9 @@ What to do:
 
 - Keep runtime pinned to Node 22/npm 10 and verify with `check:runtime`.
 - Continue tightening public endpoint allowlists and rate limits.
-- Restrict query-token auth to explicitly approved download/export routes.
+- Restrict query-token auth to explicitly approved window-open routes.
+- Keep public API exceptions and query-token routes in
+  `config/authBoundary.js` and `docs/AUTH_BOUNDARY.md`.
 - Keep bootstrap credentials explicit through environment variables only.
 - Keep local upload fallback behavior documented against Railway persistence.
 - Keep `npm run check:storage-surface` green when adding or changing upload
@@ -167,10 +173,23 @@ What this gives:
 - Makes Railway deploy behavior match local test behavior.
 - Prevents cleanup from re-opening old auth/storage/cache problems.
 
-Status: partially addressed by previous packs; query-token/cache remain
-high-value review areas.
+Status: partially addressed by previous packs; service-worker cache remains a
+high-value review area.
 
 2026-05-12 update:
+
+- Added `docs/AUTH_BOUNDARY.md`, `config/authBoundary.js`, and
+  `npm run check:auth-boundary`.
+- Public API exceptions now have owners and reasons outside the middleware
+  implementation.
+- Query-token JWT auth remains limited to the two graduation `window.open`
+  endpoints: `GET /graduation/quotes/:id/proposal` and
+  `GET /graduation/catalog/export`.
+- Removed duplicate route-level `req.query.token` handling from
+  `routes/graduation.js`; query-token auth now has one implementation point in
+  `middleware/apiAuthBoundary.js`.
+
+Previous 2026-05-12 storage update:
 
 - Added `docs/STORAGE_SURFACE.md`, `config/storageSurface.js`, and
   `npm run check:storage-surface`.
@@ -330,7 +349,7 @@ Status: active rule for all packs.
 
 | Priority | Pack | Why It Matters | Suggested First Check |
 | --- | --- | --- | --- |
-| P1 | Query-token auth restriction | Reduces JWT leakage through URLs | `tests/auth-boundary.test.js`, `tests/route-smoke.test.js` |
+| Done | Query-token auth restriction | Reduces JWT leakage through URLs | `npm run check:auth-boundary`, `tests/auth-boundary.test.js`, `tests/route-smoke.test.js` |
 | Done | Upload storage inventory | Clarifies Railway persistence risk | `npm run check:storage-surface`, `tests/chat-upload-storage.test.js`, `tests/audio-storage.test.js`, `tests/image-storage.test.js` |
 | Done | Root HTML ownership map | Prevents accidental live page deletion | `npm run check:static-surface`, `npm run test:ui` |
 | Done | API route ownership guard | Prevents orphan route files and undocumented broad mounts | `npm run check:api-surface`, `tests/route-smoke.test.js` |

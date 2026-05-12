@@ -78,6 +78,7 @@ npm test
 npm run verify
 npm run check:runtime
 npm run check:version
+npm run check:auth-boundary
 npm run check:static-surface
 npm run check:api-surface
 npm run check:storage-surface
@@ -92,10 +93,11 @@ npm run health
 ```
 
 Notes:
-- `npm test` runs the fast local baseline: runtime check, version sync check, access/sidebar drift check, static/API/storage surface ownership, migration governance check, JavaScript parser check, unit tests, and UI/static smoke.
+- `npm test` runs the fast local baseline: runtime check, version sync check, access/sidebar drift check, auth-boundary ownership, static/API/storage surface ownership, migration governance check, JavaScript parser check, unit tests, and UI/static smoke.
 - `npm run verify` is the same baseline command spelled explicitly for agents.
 - `npm run check:runtime` requires Node 22.x and npm 10.x so local verification matches the Railway baseline.
 - `npm run check:version` checks version references without editing files.
+- `npm run check:auth-boundary` verifies that public API exceptions and approved `?token=` JWT routes stay documented and tested.
 - `npm run check:static-surface` verifies that root HTML pages, landing pages, legacy redirects, and the documented static surface map stay aligned.
 - `npm run check:api-surface` verifies that every `routes/*.js` file is mounted from `server.js`, broad `/api` route mounts are explicit, and direct server-level API routes are documented.
 - `npm run check:storage-surface` verifies that local `/uploads` paths, Supabase Storage buckets, tests, docs, and ignore rules stay aligned.
@@ -118,6 +120,7 @@ The CI gate covers:
 
 - Node/npm runtime alignment through `npm run check:runtime`;
 - version and cache-bust consistency through `npm run check:version`;
+- API auth-boundary ownership through `npm run check:auth-boundary`;
 - migration duplicate/gap/governance checks through `npm run check:migrations`;
 - static surface ownership through `npm run check:static-surface`;
 - API route surface ownership through `npm run check:api-surface`;
@@ -190,6 +193,7 @@ When changing pages, roles, navigation, or shared UI, inspect all related areas.
 - [AGENTS.md](AGENTS.md) - operational rules for Codex and other agents
 - [DB_MIGRATION_GOVERNANCE.md](DB_MIGRATION_GOVERNANCE.md) - current database migration ownership and safety rules
 - [docs/CLEANUP_REGISTER.md](docs/CLEANUP_REGISTER.md) - active cleanup map, cleanup tracks, and backlog
+- [docs/AUTH_BOUNDARY.md](docs/AUTH_BOUNDARY.md) - public API and query-token auth exception ownership
 - [docs/API_SURFACE.md](docs/API_SURFACE.md) - API route-file mounting and server-level API ownership
 - [docs/STATIC_SURFACE.md](docs/STATIC_SURFACE.md) - root HTML, landing page, and legacy static route ownership
 - [docs/STORAGE_SURFACE.md](docs/STORAGE_SURFACE.md) - local upload path and Supabase Storage bucket ownership

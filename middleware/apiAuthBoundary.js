@@ -7,38 +7,10 @@
  * /landing/demo-request instead of /api/landing/demo-request.
  */
 
-const PUBLIC_API_ROUTES = [
-    { prefix: '/auth/' },
-    { method: 'GET', path: '/health' },
-    { method: 'GET', path: '/version' },
-    { method: 'POST', path: '/telegram/webhook' },
-    { method: 'POST', path: '/report-bot/webhook' },
-    { method: 'POST', path: '/report-bot/submit' },
-    { method: 'GET', path: '/report-bot/on-duty' },
-    { method: 'GET', path: '/report-bot/summary' },
-    { method: 'GET', path: '/report-bot/accounts' },
-    { method: 'GET', path: '/report-bot/submissions' },
-    { method: 'POST', path: '/personal-accounts/sync' },
-    { method: 'GET', path: '/personal-accounts/my' },
-    { method: 'POST', regex: /^\/personal-accounts\/[^/]+\/grant$/ },
-    { method: 'DELETE', regex: /^\/personal-accounts\/[^/]+\/access\/[^/]+$/ },
-    { method: 'GET', regex: /^\/personal-accounts\/[^/]+\/transactions$/ },
-    { method: 'POST', regex: /^\/personal-accounts\/[^/]+\/transactions$/ },
-    { method: 'POST', path: '/kleshnya/webhook' },
-    { method: 'GET', path: '/kleshnya/pending-messages' },
-    { method: 'POST', path: '/kleshnya/sync-chat' },
-    { method: 'POST', path: '/demo/login' },
-    { method: 'GET', path: '/demo/scenarios' },
-    { method: 'GET', path: '/packages' },
-    { method: 'GET', path: '/status/public' },
-    { method: 'POST', path: '/leads/landing' },
-    { method: 'POST', path: '/landing/demo-request' }
-];
-
-const QUERY_TOKEN_AUTH_ROUTES = [
-    { method: 'GET', regex: /^\/graduation\/quotes\/[^/]+\/proposal$/ },
-    { method: 'GET', path: '/graduation/catalog/export' }
-];
+const {
+    PUBLIC_API_ROUTES,
+    QUERY_TOKEN_AUTH_ROUTES
+} = require('../config/authBoundary');
 
 function normalizePath(path) {
     if (!path) return '/';

@@ -52,6 +52,7 @@ stale handoff notes.
 - Runtime baseline check: `npm run check:runtime`
 - Version consistency check: `npm run check:version`
 - Access/sidebar drift check: `npm run check:access`
+- API auth-boundary ownership check: `npm run check:auth-boundary`
 - Static surface ownership check: `npm run check:static-surface`
 - API route surface ownership check: `npm run check:api-surface`
 - Upload/storage surface ownership check: `npm run check:storage-surface`
@@ -68,7 +69,7 @@ stale handoff notes.
 - Health check against a running server: `npm run health`
 
 Notes:
-- `npm test` intentionally runs the fast local baseline: runtime check, version sync, access/sidebar drift check, static surface ownership, API route surface ownership, upload/storage surface ownership, migration governance, syntax check, unit tests, and UI smoke.
+- `npm test` intentionally runs the fast local baseline: runtime check, version sync, access/sidebar drift check, auth-boundary ownership, static surface ownership, API route surface ownership, upload/storage surface ownership, migration governance, syntax check, unit tests, and UI smoke.
 - `npm run check:runtime` enforces Node 22.x / npm 10.x. Switch runtimes before interpreting other test results.
 - `npm run test:api` and `npm run test:integration` expect a running PostgreSQL-backed app at `TEST_URL` or `http://localhost:3000`.
 - `npm run check:syntax` is parser-only. It is not a style lint, typecheck, or build.
@@ -79,7 +80,7 @@ Notes:
 - GitHub Actions workflow: `.github/workflows/ci.yml`.
 - CI runs on push and pull request with Node 22 from `.node-version` and npm `10.9.8`.
 - CI installs with `npm ci` and runs `npm test`.
-- The CI gate covers runtime alignment, version sync, access/sidebar drift, static surface ownership, API route surface ownership, upload/storage surface ownership, migration governance, JavaScript parser checks, self-contained unit/auth-boundary/route-smoke tests, and static UI smoke.
+- The CI gate covers runtime alignment, version sync, access/sidebar drift, auth-boundary ownership, static surface ownership, API route surface ownership, upload/storage surface ownership, migration governance, JavaScript parser checks, self-contained unit/auth-boundary/route-smoke tests, and static UI smoke.
 - CI does not run PostgreSQL-backed API or integration tests. Use `npm run test:api` or `npm run test:integration` against a configured live app/database when touching DB-backed route behavior.
 - CI does not provide a style lint, TypeScript typecheck, production deploy proof, browser automation, or manual UX/accessibility review.
 

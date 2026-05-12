@@ -112,6 +112,20 @@ checkPage('guardian-ops.html', (doc, html) => {
     check('Guardian ops script included', html.includes('js/guardian-ops-page.js'));
 });
 
+checkPage('leads.html', (doc, html) => {
+    const leadDate = doc.getElementById('leadEventDate');
+    const leadChildren = doc.getElementById('leadChildrenCount');
+    const customerDate = doc.getElementById('ccEventDate');
+    const customerChildren = doc.getElementById('ccChildrenCount');
+    check('Lead edit modal date input exists', leadDate?.type === 'date');
+    check('Lead edit modal children input exists', leadChildren?.type === 'number');
+    check('Customer card modal date input exists', customerDate?.type === 'date');
+    check('Customer card modal children input exists', customerChildren?.type === 'number');
+    check('Lead modal grid allows narrow WebKit date inputs', html.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)'));
+    check('Lead modal controls can shrink inside grid columns', html.includes('min-width: 0; max-width: 100%'));
+    check('Lead modal responsive row is scoped', html.includes('.lead-modal .form-row { grid-template-columns: 1fr; }'));
+});
+
 // ═══════════════════════════════════════════════════
 // JS FILE CHECKS
 // ═══════════════════════════════════════════════════

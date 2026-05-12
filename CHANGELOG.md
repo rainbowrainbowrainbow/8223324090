@@ -4,6 +4,16 @@
 
 ---
 
+## v0.46.2 - Lead modal iPad layout fix (2026-05-12)
+
+### Leads responsive UI [codex]
+- **iPad date field fix** - lead edit modal date inputs now stay inside their grid column instead of overlapping the children count field on tablet WebKit layouts.
+- **Shared modal grid guard** - lead modal two-column rows now use shrink-safe grid tracks and form controls with explicit min/max widths.
+- **Adjacent form coverage** - customer-card modal rows that reuse the same lead modal layout are covered by the same responsive fix.
+- **UI smoke guard** - static UI checks now assert the lead/customer date and children fields plus the WebKit-safe grid rules.
+
+---
+
 ## v0.46.1 - Guardian moderation repair tooling (2026-05-12)
 
 ### Guardian repair and reconciliation [codex]

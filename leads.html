@@ -7,13 +7,13 @@
     <title>Event Genix | Воронка продажів</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.46.1">
-    <link rel="stylesheet" href="css/layout.css?v=0.46.1">
-    <link rel="stylesheet" href="css/pages.css?v=0.46.1">
-    <link rel="stylesheet" href="css/modals.css?v=0.46.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.46.1">
-    <link rel="stylesheet" href="css/responsive.css?v=0.46.1">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.46.1">
+    <link rel="stylesheet" href="css/base.css?v=0.46.2">
+    <link rel="stylesheet" href="css/layout.css?v=0.46.2">
+    <link rel="stylesheet" href="css/pages.css?v=0.46.2">
+    <link rel="stylesheet" href="css/modals.css?v=0.46.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.46.2">
+    <link rel="stylesheet" href="css/responsive.css?v=0.46.2">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.46.2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -223,9 +223,9 @@
         .lead-modal-overlay.active { display: flex; }
         .lead-modal { background: var(--white); border-radius: var(--radius); padding: 24px; width: min(92vw, 520px); max-height: 88vh; overflow-y: auto; box-shadow: var(--shadow-xl); }
         .lead-modal h2 { font-family: var(--font-heading); font-size: 20px; font-weight: 800; margin: 0 0 18px; }
-        .lead-modal .form-group { margin-bottom: 12px; }
+        .lead-modal .form-group { margin-bottom: 12px; min-width: 0; }
         .lead-modal label { display: block; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--gray-600); margin-bottom: 5px; }
-        .lead-modal input, .lead-modal select, .lead-modal textarea { width: 100%; padding: 10px 12px; border: 1.5px solid var(--gray-200); border-radius: var(--radius-sm); font-size: 16px; font-family: inherit; min-height: 44px; box-sizing: border-box; color: var(--gray-800); }
+        .lead-modal input, .lead-modal select, .lead-modal textarea { width: 100%; min-width: 0; max-width: 100%; padding: 10px 12px; border: 1.5px solid var(--gray-200); border-radius: var(--radius-sm); font-size: 16px; font-family: inherit; min-height: 44px; box-sizing: border-box; color: var(--gray-800); }
         .lead-modal input:focus, .lead-modal select:focus, .lead-modal textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(16,185,129,0.1); }
         .lead-modal textarea { min-height: 60px; resize: vertical; }
         .modal-btns { display: flex; gap: 10px; margin-top: 18px; justify-content: flex-end; }
@@ -248,7 +248,7 @@
         .empty-state { text-align: center; padding: 48px 20px; color: var(--gray-400); font-size: 15px; }
 
         /* Two-column form row */
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .lead-modal .form-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
 
         /* Dark mode */
         body.dark-mode .leads-stat, body.dark-mode .leads-table-wrap { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
@@ -292,7 +292,7 @@
             .leads-toolbar .btn-add { text-align: center; }
             .filter-btns { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
             .search-input { min-width: 0; }
-            .form-row { grid-template-columns: 1fr; }
+            .lead-modal .form-row { grid-template-columns: 1fr; }
             .quality-category-btns { grid-template-columns: 1fr; }
             #kanbanView { gap: 8px; }
             .kanban-column { min-width: 180px; }
@@ -689,15 +689,15 @@
         });
     }
     </script>
-    <script src="js/config.js?v=0.46.1"></script>
-    <script src="js/notification.js?v=0.46.1"></script>
-    <script src="js/api.js?v=0.46.1"></script>
-    <script src="js/auth.js?v=0.46.1"></script>
-    <script src="js/components/sidebar.js?v=0.46.1"></script>
+    <script src="js/config.js?v=0.46.2"></script>
+    <script src="js/notification.js?v=0.46.2"></script>
+    <script src="js/api.js?v=0.46.2"></script>
+    <script src="js/auth.js?v=0.46.2"></script>
+    <script src="js/components/sidebar.js?v=0.46.2"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/leads-page.js?v=0.46.1"></script>
-    <script src="js/ui.js?v=0.46.1"></script>
-    <script src="js/alerts.js?v=0.46.1"></script>
-    <script src="js/role-panel.js?v=0.46.1"></script>
+    <script src="js/leads-page.js?v=0.46.2"></script>
+    <script src="js/ui.js?v=0.46.2"></script>
+    <script src="js/alerts.js?v=0.46.2"></script>
+    <script src="js/role-panel.js?v=0.46.2"></script>
 </body>
 </html>

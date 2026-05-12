@@ -31,7 +31,7 @@ Known high-change areas from the latest manual snapshot:
 - `services/`: 49 files, business logic and scheduler side effects.
 - `js/`: 54 files, large vanilla frontend modules.
 - `css/`: 25 files, shared UI and page-specific styling.
-- `tests/`: 84 files, mixed unit, route smoke, UI smoke, and live API tests.
+- `tests/`: 85 files, mixed unit, route smoke, UI smoke, and live API tests.
 - `db/migrations/`: 159 migrations, with documented legacy duplicate/gap debt.
 - `landing/`: public landing materials and static assets.
 
@@ -133,6 +133,9 @@ What to do:
   files, broad `/api` route mounts, and server-level API routes.
 - Keep `npm run check:storage-surface` as the ownership guard for local
   `/uploads` paths, Supabase Storage buckets, tests, docs, and ignore rules.
+- Keep `npm run check:service-worker-policy` as the ownership guard for
+  Service Worker API cache allowlists, sensitive API prefixes, private cache
+  cleanup messages, and disabled offline mutation replay.
 - Extend `tests/route-smoke.test.js` when public/protected boundaries change.
 - Add focused tests before deleting or redirecting any page, asset, or API
   alias.
@@ -161,6 +164,8 @@ Status: existing guards present; expand per pack.
   dedup settings, or test anchors from drifting without ownership.
 - DB-startup surface guard added to prevent new legacy schema or startup data
   hooks from being added to `db/index.js` without explicit ownership.
+- Service Worker cache/offline policy guard added to prevent private CRM API
+  data or mutation replay from being cached without an explicit review.
 
 ### 4. Security And Deploy-Risk Cleanup
 
@@ -178,6 +183,8 @@ What to do:
 - Keep `npm run check:storage-surface` green when adding or changing upload
   paths or Supabase buckets.
 - Keep service worker cache behavior away from private or stale API data.
+- Keep `npm run check:service-worker-policy` green when changing `sw.js`
+  API cache, private cache cleanup, or offline mutation behavior.
 
 What this gives:
 
@@ -185,8 +192,8 @@ What this gives:
 - Makes Railway deploy behavior match local test behavior.
 - Prevents cleanup from re-opening old auth/storage/cache problems.
 
-Status: partially addressed by previous packs; service-worker cache remains a
-high-value review area.
+Status: partially addressed by previous packs; service-worker cache ownership
+is now guarded, while broader endpoint rate-limit review remains open.
 
 2026-05-12 update:
 
@@ -211,6 +218,18 @@ Previous 2026-05-12 storage update:
   `audio-library`, and `catalog-images`.
 - `/uploads/designs` is documented as the main local-only legacy storage risk
   and a later migration candidate.
+
+2026-05-12 Service Worker cache update:
+
+- Added `docs/SERVICE_WORKER_CACHE_POLICY.md`,
+  `config/serviceWorkerPolicy.js`, and
+  `npm run check:service-worker-policy`.
+- Current Service Worker API GET cache policy is explicit default-deny:
+  only `/api/version` and `/api/status/public` are cacheable, and only without
+  an `Authorization` header.
+- Offline mutation replay remains disabled by an empty
+  `MUTATION_QUEUE_ALLOWLIST`; any future endpoint requires conflict handling,
+  idempotency, docs, and focused tests in the same commit.
 
 ### 5. Database And Migration Cleanup
 
@@ -391,6 +410,7 @@ Status: active rule for all packs.
 | Done | Scheduler side-effect map | Finds duplicate-prone background jobs | `npm run check:scheduler-surface`, scheduler-focused tests |
 | Done | DB startup ownership slice | Reduces `initDatabase()`/migration split-brain | `npm run check:db-startup-surface`, `npm run check:migrations` |
 | Done | Old root markdown archive pass | Reduces stale instruction risk | `tests/static-doc-guard.test.js` |
+| Done | Service Worker cache policy guard | Prevents stale/private CRM API data from being cached offline | `npm run check:service-worker-policy`, `tests/service-worker-policy.test.js` |
 | P3 | Large CSS consolidation | Reduces UI drift | `npm run test:ui` plus browser smoke |
 
 ## Open Questions To Resolve Before Destructive Cleanup

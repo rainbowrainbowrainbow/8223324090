@@ -3,6 +3,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const {
+    API_CACHE_ALLOWLIST,
+    MUTATION_QUEUE_ALLOWLIST,
+    SENSITIVE_API_PATH_PREFIXES,
+    runtimeApiAllowlist
+} = require('../config/serviceWorkerPolicy');
 
 const ROOT = path.join(__dirname, '..');
 const swSource = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
@@ -75,10 +81,8 @@ describe('Service Worker cache safety policy', () => {
     const policy = loadPolicy();
 
     it('uses a small explicit allowlist for API GET cache', () => {
-        assert.deepEqual(JSON.parse(JSON.stringify(policy.API_CACHE_ALLOWLIST)), [
-            { type: 'exact', path: '/api/version' },
-            { type: 'exact', path: '/api/status/public' }
-        ]);
+        assert.deepEqual(JSON.parse(JSON.stringify(policy.API_CACHE_ALLOWLIST)), runtimeApiAllowlist());
+        assert.deepEqual(API_CACHE_ALLOWLIST.map(({ type, path }) => ({ type, path })), runtimeApiAllowlist());
     });
 
     it('does not cache sensitive CRM API GET responses', () => {
@@ -105,7 +109,8 @@ describe('Service Worker cache safety policy', () => {
     });
 
     it('keeps offline mutation replay disabled unless an endpoint is explicitly reviewed', () => {
-        assert.deepEqual(Array.from(policy.MUTATION_QUEUE_ALLOWLIST), []);
+        assert.deepEqual(Array.from(policy.MUTATION_QUEUE_ALLOWLIST), MUTATION_QUEUE_ALLOWLIST);
+        assert.deepEqual(MUTATION_QUEUE_ALLOWLIST, []);
         assert.equal(policy.isMutationQueueAllowed(post('/api/bookings')), false);
         assert.equal(policy.isMutationQueueAllowed(post('/api/finance/transactions')), false);
         assert.equal(policy.isMutationQueueAllowed(post('/api/chat/messages')), false);
@@ -128,6 +133,10 @@ describe('Service Worker cache safety policy', () => {
             assert.ok(
                 policy.SENSITIVE_API_PATH_PREFIXES.includes(requiredPrefix),
                 `${requiredPrefix} should be in SENSITIVE_API_PATH_PREFIXES`
+            );
+            assert.ok(
+                SENSITIVE_API_PATH_PREFIXES.includes(requiredPrefix),
+                `${requiredPrefix} should be in config/serviceWorkerPolicy`
             );
         }
     });

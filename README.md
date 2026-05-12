@@ -84,6 +84,7 @@ npm run check:static-surface
 npm run check:api-surface
 npm run check:storage-surface
 npm run check:scheduler-surface
+npm run check:db-startup-surface
 npm run check:migrations
 npm run check:syntax
 npm run cleanup:inventory
@@ -95,7 +96,7 @@ npm run health
 ```
 
 Notes:
-- `npm test` runs the fast local baseline: runtime check, version sync check, access/sidebar drift check, auth-boundary ownership, static/API/storage surface ownership, migration governance check, JavaScript parser check, unit tests, and UI/static smoke.
+- `npm test` runs the fast local baseline: runtime check, version sync check, access/sidebar drift check, auth-boundary ownership, static/API/storage/scheduler/DB-startup surface ownership, migration governance check, JavaScript parser check, unit tests, and UI/static smoke.
 - `npm run verify` is the same baseline command spelled explicitly for agents.
 - `npm run check:runtime` requires Node 22.x and npm 10.x so local verification matches the Railway baseline.
 - `npm run check:version` checks version references without editing files.
@@ -105,6 +106,7 @@ Notes:
 - `npm run check:api-surface` verifies that every `routes/*.js` file is mounted from `server.js`, broad `/api` route mounts are explicit, and direct server-level API routes are documented.
 - `npm run check:storage-surface` verifies that local `/uploads` paths, Supabase Storage buckets, tests, docs, and ignore rules stay aligned.
 - `npm run check:scheduler-surface` verifies that guarded scheduler jobs, raw background intervals, dedup settings, test anchors, and scheduler docs stay aligned.
+- `npm run check:db-startup-surface` verifies that legacy `initDatabase()` schema shims, startup data hooks, and the two-phase DB startup flow stay documented while durable changes move to SQL migrations.
 - `npm run check:migrations` statically checks migration numbering, known legacy gaps/duplicates, and required governance headers for new migrations.
 - `npm run check:syntax` parses repository JavaScript with Node; it is not a style lint, typecheck, or build.
 - `npm run cleanup:inventory` prints a read-only cleanup inventory: directory sizes, largest files, API mounts, page routes, root HTML exposure, docs, and migration numbering. Use it before starting cleanup packs.
@@ -131,6 +133,7 @@ The CI gate covers:
 - API route surface ownership through `npm run check:api-surface`;
 - upload/storage surface ownership through `npm run check:storage-surface`;
 - scheduler side-effect ownership through `npm run check:scheduler-surface`;
+- DB startup surface ownership through `npm run check:db-startup-surface`;
 - JavaScript parser checks through `npm run check:syntax`;
 - self-contained unit, auth-boundary, and route-level safety smoke tests through `npm run test:unit`;
 - static UI smoke through `npm run test:ui`.
@@ -203,6 +206,7 @@ The current ownership map and intentional exceptions live in [docs/ACCESS_SURFAC
 - [docs/ACCESS_SURFACE.md](docs/ACCESS_SURFACE.md) - role/page/sidebar/static access ownership and approved exceptions
 - [docs/AUTH_BOUNDARY.md](docs/AUTH_BOUNDARY.md) - public API and query-token auth exception ownership
 - [docs/API_SURFACE.md](docs/API_SURFACE.md) - API route-file mounting and server-level API ownership
+- [docs/DB_STARTUP_SURFACE.md](docs/DB_STARTUP_SURFACE.md) - legacy DB startup schema and data-hook ownership
 - [docs/SCHEDULER_SURFACE.md](docs/SCHEDULER_SURFACE.md) - background job, interval, dedup, and side-effect ownership
 - [docs/STATIC_SURFACE.md](docs/STATIC_SURFACE.md) - root HTML, landing page, and legacy static route ownership
 - [docs/STORAGE_SURFACE.md](docs/STORAGE_SURFACE.md) - local upload path and Supabase Storage bucket ownership

@@ -159,6 +159,8 @@ Status: existing guards present; expand per pack.
   or hash-modal access paths from bypassing documented ownership.
 - Scheduler-surface guard added to prevent background jobs, raw intervals,
   dedup settings, or test anchors from drifting without ownership.
+- DB-startup surface guard added to prevent new legacy schema or startup data
+  hooks from being added to `db/index.js` without explicit ownership.
 
 ### 4. Security And Deploy-Risk Cleanup
 
@@ -230,6 +232,17 @@ What this gives:
 - Lowers the risk of Railway startup surprises.
 
 Status: governance exists; gradual migration ownership cleanup remains open.
+
+2026-05-12 update:
+
+- Added `docs/DB_STARTUP_SURFACE.md`, `config/dbStartupSurface.js`, and
+  `npm run check:db-startup-surface`.
+- Current `initDatabase()` compatibility surface is now explicit: 39 startup
+  tables, 38 compatibility columns, 66 indexes, the bookings updated-at
+  trigger/function pair, and 10 startup data hooks.
+- Future DB work should add durable schema through `db/migrations/`; changing
+  the startup surface now requires updating the manifest and docs in the same
+  commit.
 
 ### 6. Static Frontend Cleanup
 
@@ -376,7 +389,7 @@ Status: active rule for all packs.
 | Done | API route ownership guard | Prevents orphan route files and undocumented broad mounts | `npm run check:api-surface`, `tests/route-smoke.test.js` |
 | Done | Access/sidebar drift expansion | Keeps UI and backend permission rules aligned | `npm run check:access` |
 | Done | Scheduler side-effect map | Finds duplicate-prone background jobs | `npm run check:scheduler-surface`, scheduler-focused tests |
-| P2 | DB startup ownership slice | Reduces `initDatabase()`/migration split-brain | `npm run check:migrations` |
+| Done | DB startup ownership slice | Reduces `initDatabase()`/migration split-brain | `npm run check:db-startup-surface`, `npm run check:migrations` |
 | Done | Old root markdown archive pass | Reduces stale instruction risk | `tests/static-doc-guard.test.js` |
 | P3 | Large CSS consolidation | Reduces UI drift | `npm run test:ui` plus browser smoke |
 

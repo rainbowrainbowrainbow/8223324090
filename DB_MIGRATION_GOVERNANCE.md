@@ -92,15 +92,20 @@ Run:
 
 ```bash
 npm run check:migrations
+npm run check:db-startup-surface
 ```
 
-The check is static and does not connect to PostgreSQL. It verifies:
+The migration check is static and does not connect to PostgreSQL. It verifies:
 
 - filenames use `NNN_lowercase_slug.sql`;
 - new duplicate migration numbers are blocked;
 - new undocumented gaps are blocked;
 - future migrations from `162_*.sql` onward include governance headers;
 - destructive/date-scoped future migrations include the extra approval/scope metadata.
+
+The DB startup surface check verifies that the legacy `initDatabase()` schema
+surface and startup data hooks stay documented in `docs/DB_STARTUP_SURFACE.md`
+while durable schema changes move to SQL migrations.
 
 `npm test` includes this check through `npm run verify`.
 

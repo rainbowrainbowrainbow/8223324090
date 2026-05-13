@@ -80,6 +80,109 @@ function formatMoney(amount) {
     return amount.toLocaleString('uk-UA') + ' ₴';
 }
 
+function formatDateTime(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return formatDate(value);
+    return date.toLocaleString('uk-UA', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function customerHubText(value, fallback = '—') {
+    return value ? escapeHtml(value) : fallback;
+}
+
+function customerHubAction(href, label, cls = '', options = {}) {
+    if (!href) {
+        return `<span class="customer-hub-action disabled ${cls}" aria-disabled="true">${escapeHtml(label)}</span>`;
+    }
+    const target = options.external ? ' target="_blank" rel="noopener"' : '';
+    return `<a class="customer-hub-action ${cls}" href="${escapeHtml(href)}"${target}>${escapeHtml(label)}</a>`;
+}
+
+function customerHubConversation(conversation) {
+    if (!conversation) return '';
+    const confidence = conversation.confidence || 'suggested';
+    const statusLabel = confidence === 'exact' ? 'Точний зв’язок' : 'Ймовірний збіг';
+    const sendNote = conversation.sendCapable === false
+        ? `<span class="customer-hub-warning">${escapeHtml(conversation.channelNote || 'Канал не позначено як готовий до відправки')}</span>`
+        : '';
+
+    return `<div class="customer-hub-conversation ${escapeHtml(confidence)}">
+        <div class="customer-hub-conversation-top">
+            <span class="customer-hub-channel">${customerHubText(conversation.channel)}</span>
+            <span class="customer-hub-pill ${escapeHtml(confidence)}">${statusLabel}</span>
+            ${conversation.unreadCount ? `<span class="customer-hub-unread">${conversation.unreadCount} нових</span>` : ''}
+        </div>
+        <div class="customer-hub-meta">${customerHubText(conversation.customerName || conversation.customerPhone || 'Omni')} · ${customerHubText(conversation.status)}</div>
+        <div class="customer-hub-preview">${customerHubText(conversation.lastMessage, 'Останнього повідомлення немає')}</div>
+        <div class="customer-hub-meta">${formatDateTime(conversation.lastMessageAt)} ${sendNote}</div>
+    </div>`;
+}
+
+function renderCustomerCommunicationHub(context) {
+    if (!context) {
+        return `<div class="customer-hub-empty">Комунікаційний контекст недоступний. Картка клієнта лишається доступною без live-каналу.</div>`;
+    }
+
+    const live = context.live || {};
+    const links = context.links || {};
+    const summary = context.summary || {};
+    const primary = live.primaryConversation || null;
+    const status = live.status || 'unavailable';
+    const statusLabel = status === 'exact'
+        ? 'Точна live-розмова'
+        : status === 'suggested'
+            ? 'Ймовірна live-розмова'
+            : 'Live-розмову не знайдено';
+    const statusText = live.explanation || 'Перевірте Omni або додайте CRM-нотатку нижче.';
+    const omniHref = links.omniExact || links.omniSuggested || links.omniSearch;
+    const omniClass = links.omniExact ? 'primary' : (links.omniSuggested ? 'suggested' : '');
+    const omniLabel = links.omniExact
+        ? 'Відкрити точну Omni-розмову'
+        : links.omniSuggested
+            ? 'Відкрити ймовірну Omni-розмову'
+            : links.omniSearch
+                ? 'Шукати в Omni'
+                : 'Omni недоступний';
+    const booking = context.primaryBooking || null;
+    const bookingText = booking
+        ? `${formatDate(booking.date)} ${customerHubText(booking.time, '')} · ${customerHubText(booking.programName || booking.label || booking.id)}`
+        : 'Пов’язаних бронювань не знайдено';
+
+    return `<div class="customer-comm-hub" data-comm-confidence="${escapeHtml(status)}">
+        <div class="customer-hub-status-row">
+            <span class="customer-hub-pill ${escapeHtml(status)}">${statusLabel}</span>
+            <span class="customer-hub-meta">${escapeHtml(statusText)}</span>
+        </div>
+        <div class="customer-hub-actions" aria-label="Комунікаційні дії клієнта">
+            ${customerHubAction(links.call, 'Подзвонити', 'success')}
+            ${customerHubAction(links.telegramExternal, 'Telegram зовнішньо', '', { external: true })}
+            ${customerHubAction(omniHref, omniLabel, omniClass)}
+            ${customerHubAction(links.leadWorkspace, 'Відкрити кейс ліда')}
+            ${customerHubAction(links.booking, 'Відкрити бронювання')}
+        </div>
+        <div class="customer-hub-grid">
+            <div class="customer-hub-card">
+                <div class="customer-hub-card-title">Live Omni</div>
+                ${primary ? customerHubConversation(primary) : '<div class="customer-hub-empty">Точної live-розмови немає. Якщо потрібен канал, відкрийте Omni через пошук і зв’яжіть розмову з клієнтом, коли точність підтверджена.</div>'}
+            </div>
+            <div class="customer-hub-card">
+                <div class="customer-hub-card-title">CRM-контекст</div>
+                <div class="customer-hub-row"><span>Лід</span><strong>${context.lead?.id ? `#${context.lead.id}` : 'не прив’язано'}</strong></div>
+                <div class="customer-hub-row"><span>Бронювання</span><strong>${escapeHtml(bookingText)}</strong></div>
+                <div class="customer-hub-row"><span>CRM-журнал</span><strong>${summary.crmLogCount || 0} записів</strong></div>
+                <div class="customer-hub-note">CRM-журнал нижче - це внутрішні нотатки/лог. Live-історія повідомлень лишається в Omni.</div>
+            </div>
+        </div>
+        <div class="customer-hub-policy">${escapeHtml(context.sendPolicy?.message || 'Хаб відкриває контекст і канали без прямої відправки з картки клієнта.')}</div>
+    </div>`;
+}
+
 function getCustomerDeepLinkId() {
     const params = new URLSearchParams(window.location.search);
     const fromQuery = parseInt(params.get('open') || params.get('highlight'), 10);
@@ -228,6 +331,16 @@ async function fetchCustomerDetail(id) {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     return await res.json();
+}
+
+async function fetchCustomerCommunicationContext(id) {
+    const token = localStorage.getItem('pzp_token');
+    const res = await fetch(`/api/customers/${id}/communication-context`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('communication context error');
+    const data = await res.json();
+    return data.context || null;
 }
 
 async function saveCustomer(data) {
@@ -465,8 +578,13 @@ async function showCustomerDetail(id) {
                         <div class="field-label">Останній візит</div>
                         <div class="field-value">${formatDate(customer.lastVisit)}</div>
                     </div>
-                </div>
+            </div>
             </div>`;
+
+        html += `<div class="detail-section customer-comm-hub-section">
+            <h4>Комунікаційний хаб</h4>
+            <div id="customerCommHub" class="customer-comm-hub-loading" aria-live="polite">Завантаження комунікаційного контексту...</div>
+        </div>`;
 
         // v30.4: Tags section
         html += `<div class="detail-section">
@@ -489,7 +607,8 @@ async function showCustomerDetail(id) {
 
         // v30.4: Communications timeline
         html += `<div class="detail-section">
-            <h4>Комунікації <button class="crm-tag-add-btn" onclick="addCommunication(${customer.id})" style="margin-left:8px">+ Нотатка</button></h4>
+            <h4>CRM-журнал комунікацій <button class="crm-tag-add-btn" onclick="addCommunication(${customer.id})" style="margin-left:8px">+ Нотатка</button></h4>
+            <div class="customer-hub-note">Це внутрішні записи CRM. Live-історія повідомлень відкривається окремо в Omni.</div>
             <div id="detailComms" class="comm-timeline"><div style="color:var(--gray-400);font-size:12px">Завантаження...</div></div>
         </div>`;
 
@@ -537,13 +656,15 @@ async function showCustomerDetail(id) {
 
         content.innerHTML = html;
 
+        loadCommunicationHub(customer.id);
+
         // Load communications timeline
         loadCommunications(customer.id).then(comms => {
             const commsEl = document.getElementById('detailComms');
             if (!commsEl) return;
             const COMM_ICONS = { call: '📞', sms: '💬', telegram: '💬', email: '📧', note: '📝', meeting: '🤝' };
             if (comms.length === 0) {
-                commsEl.innerHTML = '<div style="color:var(--gray-400);font-size:12px">Немає записів</div>';
+                commsEl.innerHTML = '<div class="customer-hub-empty">CRM-журнал поки порожній. Live-історія повідомлень відкривається в Omni.</div>';
                 return;
             }
             commsEl.innerHTML = comms.map(c => `<div class="comm-entry">
@@ -779,6 +900,18 @@ window.mergeCustomers = async function(primaryId, duplicateId) {
 // ==========================================
 // v30.4: COMMUNICATIONS
 // ==========================================
+
+async function loadCommunicationHub(customerId) {
+    const hubEl = document.getElementById('customerCommHub');
+    if (!hubEl) return;
+
+    try {
+        const context = await fetchCustomerCommunicationContext(customerId);
+        hubEl.innerHTML = renderCustomerCommunicationHub(context);
+    } catch (err) {
+        hubEl.innerHTML = `<div class="customer-hub-empty error">Комунікаційний контекст недоступний. Картка клієнта та CRM-журнал нижче лишаються доступними.</div>`;
+    }
+}
 
 async function loadCommunications(customerId) {
     const token = localStorage.getItem('pzp_token');

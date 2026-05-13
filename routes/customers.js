@@ -10,6 +10,7 @@ const { getSupabase } = require('../db/supabase');
 const { createLogger } = require('../utils/logger');
 const { exportLimiter } = require('../middleware/rateLimit');
 const { authenticateToken, requireMinRole } = require('../middleware/auth');
+const { getCustomerCommunicationContext } = require('../services/customerCommunicationHub');
 
 const log = createLogger('Customers');
 
@@ -665,6 +666,20 @@ router.get('/nps-stats', async (req, res) => {
 // ==========================================
 // v30.4: COMMUNICATIONS
 // ==========================================
+
+router.get('/:id/communication-context', async (req, res) => {
+    try {
+        const customerId = parseInt(req.params.id, 10);
+        const context = await getCustomerCommunicationContext(customerId);
+        if (!context) {
+            return res.status(404).json({ success: false, error: 'Клієнта не знайдено' });
+        }
+        res.json({ success: true, context });
+    } catch (err) {
+        log.error('GET /:id/communication-context error', err);
+        res.status(500).json({ success: false, error: 'Помилка завантаження комунікаційного контексту' });
+    }
+});
 
 router.get('/:id/communications', async (req, res) => {
     try {

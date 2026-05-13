@@ -16,6 +16,10 @@ function check(label, condition) {
     else { failed++; console.log(`  ❌ ${label}`); }
 }
 
+function htmlContains(filename, text) {
+    return fs.readFileSync(path.join(ROOT, filename), 'utf8').includes(text);
+}
+
 function checkPage(filename, checks) {
     const filepath = path.join(ROOT, filename);
     if (!fs.existsSync(filepath)) { console.log(`⚠️  ${filename} not found`); return; }
@@ -321,6 +325,8 @@ const uiCode = fs.readFileSync(path.join(ROOT, 'js/ui.js'), 'utf8');
 const omniHtml = fs.readFileSync(path.join(ROOT, 'omni.html'), 'utf8');
 const pagesCss = fs.readFileSync(path.join(ROOT, 'css/pages.css'), 'utf8');
 check('Customers page opens existing customer deep links', customersCode.includes('getCustomerDeepLinkId') && customersCode.includes("params.get('open')") && customersCode.includes("params.get('highlight')"));
+check('Customer card exposes communication hub context', customersCode.includes('fetchCustomerCommunicationContext') && customersCode.includes('/communication-context') && customersCode.includes('renderCustomerCommunicationHub') && customersCode.includes('customerCommHub'));
+check('Customer communication hub has exact/suggested/unavailable styling', htmlContains('customers.html', '.customer-hub-pill.exact') && htmlContains('customers.html', '.customer-hub-pill.suggested') && htmlContains('customers.html', '.customer-hub-pill.unavailable'));
 check('Tasks page opens task deep links', tasksCode.includes('getTaskDeepLinkId') && tasksCode.includes('openTaskDetail(taskId)'));
 check('Omni page applies contextual search query', omniHtml.includes('applyQueryContext') && omniHtml.includes("params.get('search')"));
 check('Center hot leads update canonical pipeline stage', centerCode.includes('JSON.stringify({ pipeline_stage: status })'));

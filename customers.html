@@ -14,13 +14,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.47.3">
-    <link rel="stylesheet" href="css/layout.css?v=0.47.3">
-    <link rel="stylesheet" href="css/pages.css?v=0.47.3">
-    <link rel="stylesheet" href="css/modals.css?v=0.47.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.3">
-    <link rel="stylesheet" href="css/responsive.css?v=0.47.3">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.47.3">
+    <link rel="stylesheet" href="css/base.css?v=0.47.4">
+    <link rel="stylesheet" href="css/layout.css?v=0.47.4">
+    <link rel="stylesheet" href="css/pages.css?v=0.47.4">
+    <link rel="stylesheet" href="css/modals.css?v=0.47.4">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.4">
+    <link rel="stylesheet" href="css/responsive.css?v=0.47.4">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.47.4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -480,6 +480,22 @@
         [data-theme="dark"] .customer-detail-header h3 { color: var(--gray-200); }
         [data-theme="dark"] .detail-field .field-value { color: var(--gray-200); }
         [data-theme="dark"] .detail-booking-row { border-bottom-color: var(--gray-700); }
+        [data-theme="dark"] .customer-comm-hub-loading,
+        [data-theme="dark"] .customer-hub-empty {
+            background: rgba(255,255,255,0.04);
+            border-color: var(--gray-700);
+            color: var(--gray-400);
+        }
+        [data-theme="dark"] .customer-hub-card,
+        [data-theme="dark"] .customer-hub-action {
+            background: var(--gray-800);
+            border-color: var(--gray-700);
+        }
+        [data-theme="dark"] .customer-hub-action { color: var(--gray-200); }
+        [data-theme="dark"] .customer-hub-channel,
+        [data-theme="dark"] .customer-hub-row strong { color: var(--gray-200); }
+        [data-theme="dark"] .customer-hub-preview { color: var(--gray-300); }
+        [data-theme="dark"] .customer-hub-row { border-bottom-color: var(--gray-700); }
 
         /* v30.4: Tag pills */
         .crm-tags-row {
@@ -611,6 +627,195 @@
         .dup-match {
             font-size: 20px;
             flex-shrink: 0;
+        }
+
+        /* v0.47.4: Customer communication hub */
+        .customer-comm-hub-loading,
+        .customer-hub-empty {
+            padding: 12px;
+            border: 1px dashed var(--gray-200);
+            border-radius: var(--radius-sm);
+            color: var(--gray-500);
+            font-size: 13px;
+            line-height: 1.45;
+            background: var(--gray-50);
+        }
+        .customer-hub-empty.error {
+            border-color: rgba(220, 38, 38, 0.25);
+            background: rgba(220, 38, 38, 0.06);
+            color: #B91C1C;
+        }
+        .customer-comm-hub {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .customer-hub-status-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .customer-hub-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 1;
+            white-space: nowrap;
+            background: var(--gray-100);
+            color: var(--gray-600);
+        }
+        .customer-hub-pill.exact {
+            background: rgba(5, 150, 105, 0.12);
+            color: #047857;
+        }
+        .customer-hub-pill.suggested {
+            background: rgba(217, 119, 6, 0.12);
+            color: #B45309;
+        }
+        .customer-hub-pill.unavailable {
+            background: rgba(100, 116, 139, 0.12);
+            color: #475569;
+        }
+        .customer-hub-meta {
+            color: var(--gray-500);
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .customer-hub-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .customer-hub-action {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 34px;
+            padding: 7px 10px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            background: var(--white);
+            color: var(--gray-700);
+            font-size: 12px;
+            font-weight: 800;
+            text-decoration: none;
+            transition: all 0.15s ease;
+        }
+        .customer-hub-action:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        .customer-hub-action.primary {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: var(--white);
+        }
+        .customer-hub-action.suggested {
+            border-color: rgba(217, 119, 6, 0.35);
+            background: rgba(217, 119, 6, 0.08);
+            color: #92400E;
+        }
+        .customer-hub-action.success {
+            border-color: rgba(5, 150, 105, 0.35);
+            background: rgba(5, 150, 105, 0.08);
+            color: #047857;
+        }
+        .customer-hub-action.disabled {
+            cursor: not-allowed;
+            opacity: 0.62;
+        }
+        .customer-hub-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 10px;
+        }
+        .customer-hub-card {
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius-sm);
+            background: var(--white);
+            padding: 12px;
+            min-width: 0;
+        }
+        .customer-hub-card-title {
+            color: var(--gray-500);
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        .customer-hub-conversation {
+            border-left: 3px solid var(--gray-200);
+            padding-left: 10px;
+        }
+        .customer-hub-conversation.exact { border-left-color: #059669; }
+        .customer-hub-conversation.suggested { border-left-color: #D97706; }
+        .customer-hub-conversation-top {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 4px;
+        }
+        .customer-hub-channel {
+            color: var(--gray-800);
+            font-size: 13px;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+        .customer-hub-unread {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 2px 6px;
+            background: rgba(220, 38, 38, 0.1);
+            color: #B91C1C;
+            font-size: 11px;
+            font-weight: 800;
+        }
+        .customer-hub-preview {
+            color: var(--gray-700);
+            font-size: 13px;
+            line-height: 1.4;
+            margin: 6px 0;
+            word-break: break-word;
+        }
+        .customer-hub-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 5px 0;
+            border-bottom: 1px solid var(--gray-50);
+            color: var(--gray-500);
+            font-size: 12px;
+        }
+        .customer-hub-row strong {
+            color: var(--gray-800);
+            text-align: right;
+            overflow-wrap: anywhere;
+        }
+        .customer-hub-note,
+        .customer-hub-policy {
+            color: var(--gray-500);
+            font-size: 12px;
+            line-height: 1.45;
+        }
+        .customer-hub-note { margin-top: 8px; }
+        .customer-hub-warning {
+            display: inline-flex;
+            margin-left: 6px;
+            color: #B45309;
+            font-weight: 800;
+        }
+
+        @media (max-width: 720px) {
+            .customer-hub-grid { grid-template-columns: 1fr; }
+            .customer-hub-action { flex: 1 1 140px; }
         }
 
         /* v30.4: Communications timeline */
@@ -1024,15 +1229,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.47.3"></script>
-    <script src="js/notification.js?v=0.47.3"></script>
-    <script src="js/api.js?v=0.47.3"></script>
-    <script src="js/auth.js?v=0.47.3"></script>
-    <script src="js/ui.js?v=0.47.3"></script>
-    <script src="js/components/sidebar.js?v=0.47.3"></script>
+    <script src="js/config.js?v=0.47.4"></script>
+    <script src="js/notification.js?v=0.47.4"></script>
+    <script src="js/api.js?v=0.47.4"></script>
+    <script src="js/auth.js?v=0.47.4"></script>
+    <script src="js/ui.js?v=0.47.4"></script>
+    <script src="js/components/sidebar.js?v=0.47.4"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/customers-page.js?v=0.47.3"></script>
-    <script src="js/role-panel.js?v=0.47.3"></script>
-    <script src="js/alerts.js?v=0.47.3"></script>
+    <script src="js/customers-page.js?v=0.47.4"></script>
+    <script src="js/role-panel.js?v=0.47.4"></script>
+    <script src="js/alerts.js?v=0.47.4"></script>
 </body>
 </html>

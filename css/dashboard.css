@@ -127,6 +127,166 @@
     color: #fff;
 }
 
+.reply-ops-console {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid rgba(37,99,235,0.16);
+    border-radius: 8px;
+    background: rgba(37,99,235,0.035);
+}
+
+.reply-ops-toolbar,
+.reply-ops-bulkbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.reply-ops-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 160px;
+}
+
+.reply-ops-title span {
+    font-size: 14px;
+    font-weight: 900;
+    color: #111827;
+}
+
+.reply-ops-title small {
+    color: var(--gray-500, #64748B);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.reply-ops-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.reply-ops-chip {
+    display: inline-flex;
+    min-height: 24px;
+    align-items: center;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: rgba(15,23,42,0.06);
+    color: #334155;
+    font-size: 11px;
+    font-weight: 850;
+}
+
+.reply-ops-chip.warning {
+    background: rgba(245,158,11,0.14);
+    color: #92400E;
+}
+
+.reply-ops-chip.danger {
+    background: rgba(239,68,68,0.13);
+    color: #B91C1C;
+}
+
+.reply-ops-chip.muted {
+    color: #64748B;
+}
+
+.reply-ops-filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+    gap: 8px;
+    align-items: end;
+}
+
+.reply-ops-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: #334155;
+    font-size: 11px;
+    font-weight: 850;
+}
+
+.reply-ops-filter select {
+    min-height: 34px;
+    border: 1px solid rgba(100,116,139,0.26);
+    border-radius: 7px;
+    background: #FFFFFF;
+    color: #111827;
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.reply-ops-link-btn {
+    min-height: 34px;
+    padding: 0 10px;
+    border: 1px solid rgba(100,116,139,0.25);
+    border-radius: 7px;
+    background: #FFFFFF;
+    color: #334155;
+    font-size: 12px;
+    font-weight: 850;
+    cursor: pointer;
+}
+
+.reply-ops-link-btn:hover,
+.reply-ops-link-btn:focus-visible,
+.reply-ops-filter select:focus-visible {
+    border-color: rgba(37,99,235,0.45);
+    outline: 2px solid rgba(37,99,235,0.18);
+    outline-offset: 1px;
+}
+
+.reply-ops-link-btn:disabled {
+    opacity: 0.52;
+    cursor: not-allowed;
+}
+
+.reply-ops-selection,
+.reply-ops-bulk-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.reply-ops-selection span {
+    color: #334155;
+    font-size: 12px;
+    font-weight: 850;
+}
+
+.reply-ops-feedback {
+    min-height: 18px;
+    flex-basis: 100%;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.reply-ops-feedback.success {
+    color: #047857;
+}
+
+.reply-ops-feedback.warning {
+    color: #B45309;
+}
+
+.reply-ops-feedback.error {
+    color: #B91C1C;
+}
+
+.reply-ops-empty {
+    grid-column: 1 / -1;
+}
+
 .work-queue-body {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -178,6 +338,7 @@
 }
 
 .work-queue-item-frame {
+    position: relative;
     border-bottom: 1px solid rgba(0,0,0,0.04);
 }
 
@@ -194,6 +355,34 @@
     color: inherit;
     text-decoration: none;
     border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+
+.work-queue-item-frame.is-waiting-reply .work-queue-item {
+    padding-left: 36px;
+}
+
+.work-queue-select {
+    position: absolute;
+    top: 9px;
+    left: 10px;
+    z-index: 2;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.work-queue-select input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: #2563EB;
+}
+
+.work-queue-select input:focus-visible {
+    outline: 2px solid rgba(37,99,235,0.55);
+    outline-offset: 2px;
 }
 
 .work-queue-item-frame .work-queue-item,
@@ -310,7 +499,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 0 10px 9px 28px;
+    padding: 0 10px 9px 36px;
 }
 
 .work-queue-reply-actions {

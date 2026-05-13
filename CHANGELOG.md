@@ -4,6 +4,17 @@
 
 ---
 
+## v0.47.18 - 💬 0.47 Комунікації: reply operations console v2 (2026-05-13)
+
+### Reply Operations Console v2 [codex]
+- **Console для reply debt** - Work Queue отримала єдиний manager-facing блок для `waiting_reply`: summary chips, preset-и, SLA/owner/escalation фільтри та швидкий reset.
+- **Bulk selection** - менеджер може обрати видимі reply items або окремі розмови; hidden rows не потрапляють у bulk action після зміни фільтрів.
+- **Bulk actions без нової truth model** - bulk reassign, `SLA +24г` і bulk clear працюють через canonical поля `reply_owner_user_id`, `reply_sla_at`, `reply_expected`.
+- **Escalation coherence** - bulk дії повторно використовують існуючі reply helpers, тому escalation tasks синхронізуються або закриваються без дублів.
+- **Без schema/RBAC розширення** - saved views зберігаються локально як preset/filter state; `reply_owner` лишається display label і не використовується для фільтрації чи mutation authority.
+
+---
+
 ## v0.47.17 - 💬 0.47 Комунікації: reply owner picker v1 (2026-05-13)
 
 ### Reply Owner Picker / Assignee UX v1 [codex]

@@ -121,15 +121,19 @@ function createFakePool() {
             }
 
             if (/UPDATE conversations/i.test(text) && /SET reply_owner_user_id =/i.test(text)) {
+                if (params[0] === 99) return { rows: [] };
                 return { rows: [replyRow({
+                    conversation_id: params[0],
                     reply_owner_user_id: params[1],
                     reply_owner: params[2]
                 })] };
             }
 
             if (/WITH target AS/i.test(text) && /SET reply_expected = false/i.test(text)) {
+                if (params[0] === 99) return { rows: [] };
                 return { rows: [{
                     ...replyRow({
+                        conversation_id: params[0],
                         reply_expected: false,
                         awaiting_reply_since: null,
                         reply_expected_message_id: null,
@@ -142,7 +146,9 @@ function createFakePool() {
             }
 
             if (/UPDATE conversations/i.test(text) && /SET reply_sla_at =/i.test(text)) {
+                if (params[0] === 99) return { rows: [] };
                 return { rows: [replyRow({
+                    conversation_id: params[0],
                     reply_sla_at: params[1],
                     due_at: params[1]
                 })] };
@@ -286,6 +292,18 @@ function createFakePool() {
                             lead_id: 43
                         })
                     ] };
+                }
+                if (/c\.reply_sla_at IS NOT NULL AND c\.reply_sla_at <= NOW\(\)/i.test(text)) {
+                    return { rows: [replyRow({
+                        conversation_id: 44,
+                        reply_expected_message_id: 1204,
+                        reply_owner: null,
+                        reply_owner_user_id: null,
+                        reply_sla_at: '2026-05-13T08:00:00Z',
+                        due_at: '2026-05-13T08:00:00Z',
+                        reply_escalation_task_id: 704,
+                        lead_id: 44
+                    })] };
                 }
                 return { rows: [replyRow()] };
             }
@@ -511,6 +529,45 @@ describe('work queue endpoint', () => {
         assert.doesNotMatch(waitingQuery.text, /reply_owner\s*=\s*\$/i);
     });
 
+    it('filters reply operations console by canonical SLA, owner, and escalation state', async () => {
+        const res = await request('/api/work-queue?replySla=overdue&replyOwner=without_owner&replyEscalation=escalated&limit=5', 'manager');
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        const buckets = bucketMap(res.data.queue);
+
+        assert.equal(buckets.waiting_reply.items.length, 1);
+        assert.equal(buckets.waiting_reply.items[0].sourceId, '44');
+        assert.equal(buckets.waiting_reply.items[0].meta.replyOwnerUserId, null);
+        assert.equal(buckets.waiting_reply.items[0].meta.replyEscalationTaskId, 704);
+        assert.deepEqual(res.data.queue.meta.replyBacklog.filters, {
+            sla: 'overdue',
+            owner: 'without_owner',
+            escalation: 'escalated'
+        });
+        assert.equal(res.data.queue.meta.replyBacklog.availableFilters.sla.includes('due_soon'), true);
+
+        const waitingQuery = latestWaitingQuery();
+        assert.match(waitingQuery.text, /c\.reply_sla_at IS NOT NULL AND c\.reply_sla_at <= NOW\(\)/i);
+        assert.match(waitingQuery.text, /c\.reply_owner_user_id IS NULL/i);
+        assert.match(waitingQuery.text, /rt\.id IS NOT NULL/i);
+        assert.doesNotMatch(waitingQuery.text, /reply_owner\s*=\s*\$/i);
+    });
+
+    it('normalizes unknown reply operations filters back to all', async () => {
+        const res = await request('/api/work-queue?replySla=fake&replyOwner=label&replyEscalation=maybe', 'manager');
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.deepEqual(res.data.queue.meta.replyBacklog.filters, {
+            sla: 'all',
+            owner: 'all',
+            escalation: 'all'
+        });
+
+        const waitingQuery = latestWaitingQuery();
+        assert.doesNotMatch(waitingQuery.text, /reply_sla_at <= NOW\(\)/i);
+        assert.doesNotMatch(waitingQuery.text, /reply_owner_user_id IS NULL/i);
+        assert.doesNotMatch(waitingQuery.text, /rt\.id IS NOT NULL/i);
+        assert.doesNotMatch(waitingQuery.text, /reply_owner\s*=\s*\$/i);
+    });
+
     it('lets managers reassign reply backlog owner by typed user id only', async () => {
         const res = await request('/api/work-queue/replies/41/owner', 'manager', {
             method: 'PATCH',
@@ -602,12 +659,83 @@ describe('work queue endpoint', () => {
         assert.ok(!queries.some(q => /UPDATE tasks/i.test(q.text) && /SET status = 'cancelled'/i.test(q.text)));
     });
 
+    it('bulk reassigns selected reply items through typed owner ids only', async () => {
+        const res = await request('/api/work-queue/replies/bulk/owner', 'manager', {
+            method: 'POST',
+            body: { conversationIds: [41, 44, 41], ownerUserId: 30, reply_owner: 'Ignored Label' }
+        });
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.action, 'reply_owner_bulk_reassign');
+        assert.equal(res.data.success, true);
+        assert.deepEqual(res.data.counts, { requested: 2, applied: 2, failed: 0 });
+
+        const ownerUpdates = queries.filter(q => /UPDATE conversations/i.test(q.text) && /SET reply_owner_user_id =/i.test(q.text));
+        assert.equal(ownerUpdates.length, 2);
+        assert.deepEqual(ownerUpdates.map(q => q.params[0]), [41, 44]);
+        assert.ok(ownerUpdates.every(q => q.params[1] === 30 && q.params[2] === 'New Owner'));
+        assert.ok(ownerUpdates.every(q => !/WHERE .*reply_owner\s*=/i.test(q.text)));
+    });
+
+    it('bulk SLA move reports partial failures without hiding applied items', async () => {
+        const res = await request('/api/work-queue/replies/bulk/sla', 'manager', {
+            method: 'POST',
+            body: { conversationIds: [41, 99], replySlaAt: '2099-05-15T10:00:00.000Z' }
+        });
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.action, 'reply_sla_bulk_move');
+        assert.equal(res.data.success, false);
+        assert.equal(res.data.partial, true);
+        assert.deepEqual(res.data.counts, { requested: 2, applied: 1, failed: 1 });
+        assert.equal(res.data.failed[0].conversationId, 99);
+        assert.equal(res.data.failed[0].code, 'REPLY_EXPECTATION_NOT_FOUND');
+
+        const slaUpdates = queries.filter(q => /UPDATE conversations/i.test(q.text) && /SET reply_sla_at =/i.test(q.text));
+        assert.equal(slaUpdates.length, 2);
+        assert.deepEqual(slaUpdates.map(q => q.params[0]), [41, 99]);
+        assert.ok(!queries.some(q => /follow_up_date/i.test(q.text)));
+    });
+
+    it('bulk clear closes linked escalation for applied items and reports stale rows', async () => {
+        const res = await request('/api/work-queue/replies/bulk/clear', 'manager', {
+            method: 'POST',
+            body: { conversationIds: [41, 99] }
+        });
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.action, 'reply_expectation_bulk_clear');
+        assert.equal(res.data.success, false);
+        assert.equal(res.data.partial, true);
+        assert.deepEqual(res.data.counts, { requested: 2, applied: 1, failed: 1 });
+
+        const clearUpdates = queries.filter(q => /WITH target AS/i.test(q.text) && /SET reply_expected = false/i.test(q.text));
+        assert.equal(clearUpdates.length, 2);
+        const taskClose = queries.find(q => /UPDATE tasks/i.test(q.text) && /SET status = 'cancelled'/i.test(q.text));
+        assert.ok(taskClose, 'bulk clear should use existing stale escalation close path');
+        assert.equal(taskClose.params[0], 'conversation_reply');
+        assert.equal(taskClose.params[1], '1201');
+    });
+
+    it('rejects invalid bulk selection before any mutation', async () => {
+        const res = await request('/api/work-queue/replies/bulk/clear', 'manager', {
+            method: 'POST',
+            body: { conversationIds: [] }
+        });
+        assert.equal(res.status, 400, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'INVALID_CONVERSATION_IDS');
+        assert.ok(!queries.some(q => /UPDATE conversations/i.test(q.text)));
+    });
+
     it('keeps reply backlog mutation routes manager-up only', async () => {
         const admin = await request('/api/work-queue/replies/41/clear', 'admin', {
             method: 'POST',
             body: {}
         });
         assert.equal(admin.status, 403);
+
+        const bulk = await request('/api/work-queue/replies/bulk/clear', 'admin', {
+            method: 'POST',
+            body: { conversationIds: [41] }
+        });
+        assert.equal(bulk.status, 403);
     });
 
     it('does not reuse stale status=new cold-lead logic as queue authority', async () => {
@@ -623,8 +751,22 @@ describe('work queue endpoint', () => {
 
         assert.match(dashboardJs, /item\.bucket === 'waiting_reply'/);
         assert.match(dashboardJs, /replyScope: _workQueueReplyScope/);
+        assert.match(dashboardJs, /replySla: _workQueueReplyFilters\.sla/);
+        assert.match(dashboardJs, /replyOwner: _workQueueReplyFilters\.owner/);
+        assert.match(dashboardJs, /replyEscalation: _workQueueReplyFilters\.escalation/);
         assert.match(dashboardJs, /setWorkQueueReplyScope/);
         assert.match(dashboardJs, /eg_reply_backlog_scope/);
+        assert.match(dashboardJs, /eg_reply_console_filters/);
+        assert.match(dashboardJs, /renderReplyOperationsConsole/);
+        assert.match(dashboardJs, /toggleReplySelection/);
+        assert.match(dashboardJs, /selectVisibleReplyItems/);
+        assert.match(dashboardJs, /bulkReassignReplyOwners/);
+        assert.match(dashboardJs, /bulkSnoozeReplySla/);
+        assert.match(dashboardJs, /bulkClearReplyExpectations/);
+        assert.match(dashboardJs, /\/api\/work-queue\/replies\/bulk\/owner/);
+        assert.match(dashboardJs, /\/api\/work-queue\/replies\/bulk\/sla/);
+        assert.match(dashboardJs, /\/api\/work-queue\/replies\/bulk\/clear/);
+        assert.match(dashboardJs, /data-reply-bulk-action/);
         assert.match(dashboardJs, /item\.meta\?\.awaitingReplySince/);
         assert.match(dashboardJs, /replySlaState/);
         assert.match(dashboardJs, /reassignReplyOwner/);
@@ -644,6 +786,10 @@ describe('work queue endpoint', () => {
         assert.match(dashboardCss, /bucket-waiting_reply/);
         assert.match(dashboardCss, /is-waiting-reply/);
         assert.match(dashboardCss, /work-queue-scope-btn/);
+        assert.match(dashboardCss, /reply-ops-console/);
+        assert.match(dashboardCss, /reply-ops-filters/);
+        assert.match(dashboardCss, /reply-ops-bulkbar/);
+        assert.match(dashboardCss, /work-queue-select/);
         assert.match(dashboardCss, /work-queue-action-btn/);
         assert.match(dashboardCss, /reply-owner-picker/);
         assert.match(dashboardCss, /reply-owner-picker-select:focus-visible/);

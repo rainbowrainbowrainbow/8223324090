@@ -33,6 +33,10 @@ const DashboardPage = (() => {
     let _config = { widgets: [], layout: {}, theme: 'default' };
     let _widgetData = {};
     let _workQueueReplyScope = normalizeWorkQueueReplyScope(localStorage.getItem('eg_reply_backlog_scope'));
+    let _workQueueReplyFilters = loadReplyConsoleFilters();
+    let _workQueueSelection = new Set();
+    let _workQueueVisibleReplyIds = [];
+    let _replyOpsFlash = null;
     let _replyOwnerPickerState = null;
 
     async function init() {
@@ -129,9 +133,16 @@ const DashboardPage = (() => {
         panel.hidden = false;
         body.innerHTML = '<div class="widget-loading">Завантаження черги...</div>';
         renderWorkQueueScopeControls();
+        _workQueueSelection.clear();
 
         try {
-            const params = new URLSearchParams({ replyScope: _workQueueReplyScope });
+            const params = new URLSearchParams({
+                replyScope: _workQueueReplyScope,
+                replySla: _workQueueReplyFilters.sla,
+                replyOwner: _workQueueReplyFilters.owner,
+                replyEscalation: _workQueueReplyFilters.escalation,
+                limit: '12'
+            });
             const resp = await fetch(`/api/work-queue?${params.toString()}`, {
                 headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
             });
@@ -151,6 +162,36 @@ const DashboardPage = (() => {
 
     function normalizeWorkQueueReplyScope(value) {
         return ['mine', 'team', 'all'].includes(value) ? value : 'all';
+    }
+
+    function normalizeReplyConsoleFilters(value = {}) {
+        const filters = value && typeof value === 'object' ? value : {};
+        return {
+            sla: ['all', 'overdue', 'due_soon', 'on_track', 'none'].includes(filters.sla) ? filters.sla : 'all',
+            owner: ['all', 'with_owner', 'without_owner'].includes(filters.owner) ? filters.owner : 'all',
+            escalation: ['all', 'escalated', 'not_escalated'].includes(filters.escalation) ? filters.escalation : 'all',
+            preset: ['all', 'mine_overdue', 'team_overdue', 'unassigned', 'escalated'].includes(filters.preset) ? filters.preset : 'all'
+        };
+    }
+
+    function loadReplyConsoleFilters() {
+        try {
+            return normalizeReplyConsoleFilters(JSON.parse(localStorage.getItem('eg_reply_console_filters') || '{}'));
+        } catch {
+            return normalizeReplyConsoleFilters();
+        }
+    }
+
+    function saveReplyConsoleFilters() {
+        localStorage.setItem('eg_reply_console_filters', JSON.stringify(_workQueueReplyFilters));
+    }
+
+    function clearWorkQueueSelection() {
+        _workQueueSelection.clear();
+        document.querySelectorAll('.work-queue-select input[type="checkbox"]').forEach(input => {
+            input.checked = false;
+        });
+        updateReplyOpsSelectionState();
     }
 
     function workQueueReplyScopeLabel(scope) {
@@ -176,9 +217,107 @@ const DashboardPage = (() => {
         `).join('');
     }
 
+    function replyConsoleFilterLabel(type, value) {
+        const labels = {
+            sla: {
+                all: 'Усі SLA',
+                overdue: 'Прострочені',
+                due_soon: 'Скоро спливає',
+                on_track: 'В нормі',
+                none: 'Без SLA'
+            },
+            owner: {
+                all: 'Усі власники',
+                with_owner: 'З власником',
+                without_owner: 'Без власника'
+            },
+            escalation: {
+                all: 'Усі escalation',
+                escalated: 'Тільки escalated',
+                not_escalated: 'Без escalation'
+            },
+            preset: {
+                all: 'Увесь backlog',
+                mine_overdue: 'Мої прострочені',
+                team_overdue: 'Команда прострочені',
+                unassigned: 'Без власника',
+                escalated: 'Escalated'
+            }
+        };
+        return labels[type]?.[value] || value || 'Усі';
+    }
+
+    function renderReplyConsoleSelect(id, label, type, options, value) {
+        const opts = options.map(option => `
+            <option value="${escapeHtml(option)}"${option === value ? ' selected' : ''}>${escapeHtml(replyConsoleFilterLabel(type, option))}</option>
+        `).join('');
+        return `
+            <label class="reply-ops-filter" for="${id}">
+                <span>${escapeHtml(label)}</span>
+                <select id="${id}" onchange="DashboardPage.setReplyConsoleFilter('${type}', this.value)">
+                    ${opts}
+                </select>
+            </label>
+        `;
+    }
+
+    function renderReplyOperationsConsole(queue, waitingItems) {
+        const items = Array.isArray(waitingItems) ? waitingItems : [];
+        const meta = queue.meta?.replyBacklog || {};
+        const filters = normalizeReplyConsoleFilters({ ..._workQueueReplyFilters, ...(meta.filters || {}) });
+        const visibleCount = items.length;
+        const overdueCount = items.filter(item => item.meta?.replySlaState === 'overdue').length;
+        const dueSoonCount = items.filter(item => item.meta?.replySlaState === 'due_soon').length;
+        const escalatedCount = items.filter(item => item.meta?.replyEscalationTaskId).length;
+        const unassignedCount = items.filter(item => !item.meta?.replyOwnerUserId).length;
+
+        return `
+            <section class="reply-ops-console" aria-label="Reply operations console">
+                <div class="reply-ops-toolbar">
+                    <div class="reply-ops-title">
+                        <span>Reply Operations</span>
+                        <small>${escapeHtml(workQueueReplyScopeLabel(_workQueueReplyScope))} · ${escapeHtml(replyConsoleFilterLabel('preset', filters.preset))}</small>
+                    </div>
+                    <div class="reply-ops-summary" aria-label="Підсумок видимого reply backlog">
+                        <span class="reply-ops-chip">Видимо ${visibleCount}</span>
+                        <span class="reply-ops-chip danger">Overdue ${overdueCount}</span>
+                        <span class="reply-ops-chip warning">Due soon ${dueSoonCount}</span>
+                        <span class="reply-ops-chip">Escalated ${escalatedCount}</span>
+                        <span class="reply-ops-chip muted">Без власника ${unassignedCount}</span>
+                    </div>
+                </div>
+                <div class="reply-ops-filters">
+                    ${renderReplyConsoleSelect('replyOpsPreset', 'Preset', 'preset', ['all', 'mine_overdue', 'team_overdue', 'unassigned', 'escalated'], filters.preset)}
+                    ${renderReplyConsoleSelect('replyOpsSla', 'SLA', 'sla', ['all', 'overdue', 'due_soon', 'on_track', 'none'], filters.sla)}
+                    ${renderReplyConsoleSelect('replyOpsOwner', 'Owner', 'owner', ['all', 'with_owner', 'without_owner'], filters.owner)}
+                    ${renderReplyConsoleSelect('replyOpsEscalation', 'Escalation', 'escalation', ['all', 'escalated', 'not_escalated'], filters.escalation)}
+                    <button type="button" class="reply-ops-link-btn" onclick="DashboardPage.resetReplyConsoleFilters()">Скинути</button>
+                </div>
+                <div class="reply-ops-bulkbar" aria-live="polite">
+                    <div class="reply-ops-selection">
+                        <button type="button" class="reply-ops-link-btn" onclick="DashboardPage.selectVisibleReplyItems()" ${visibleCount ? '' : 'disabled'}>Обрати видимі</button>
+                        <button type="button" class="reply-ops-link-btn" onclick="DashboardPage.clearWorkQueueSelection()">Зняти вибір</button>
+                        <span id="replyOpsSelectionCount">Обрано 0</span>
+                    </div>
+                    <div class="reply-ops-bulk-actions">
+                        <button type="button" class="work-queue-action-btn reply-ops-bulk-action" data-reply-bulk-action onclick="DashboardPage.bulkReassignReplyOwners(this)" disabled>Власник</button>
+                        <button type="button" class="work-queue-action-btn reply-ops-bulk-action" data-reply-bulk-action onclick="DashboardPage.bulkSnoozeReplySla(this)" disabled>SLA +24г</button>
+                        <button type="button" class="work-queue-action-btn danger reply-ops-bulk-action" data-reply-bulk-action onclick="DashboardPage.bulkClearReplyExpectations(this)" disabled>Очистити</button>
+                    </div>
+                    <div class="reply-ops-feedback${_replyOpsFlash?.tone ? ' ' + _replyOpsFlash.tone : ''}" id="replyOpsFeedback" role="status" aria-live="polite">${escapeHtml(_replyOpsFlash?.message || '')}</div>
+                </div>
+            </section>
+        `;
+    }
+
     function renderWorkQueue(queue, container) {
         const buckets = Array.isArray(queue.buckets) ? queue.buckets : [];
         const visibleBuckets = buckets.filter(bucket => bucket.count > 0 || (bucket.items && bucket.items.length > 0));
+        const waitingBucket = buckets.find(bucket => bucket.key === 'waiting_reply') || { items: [], count: 0 };
+        const visibleReplyItems = Array.isArray(waitingBucket.items) ? waitingBucket.items : [];
+        _workQueueVisibleReplyIds = visibleReplyItems
+            .map(item => Number(item.meta?.conversationId || item.sourceId || 0))
+            .filter(id => Number.isInteger(id) && id > 0);
         const subtitle = document.getElementById('workQueueSubtitle');
         if (subtitle && queue.date) {
             subtitle.textContent = `Сьогодні ${formatQueueDate(queue.date.today)} · сформовано ${formatQueueDateTime(queue.generatedAt)}`;
@@ -187,12 +326,14 @@ const DashboardPage = (() => {
         renderWorkQueueExplainability(queue, buckets, visibleBuckets.length);
 
         if (!visibleBuckets.length) {
-            container.innerHTML = '<div class="widget-empty">Немає термінових пунктів у доступних buckets черги. Waiting reply зʼявиться лише для розмов із явним reply expectation.</div>';
+            container.innerHTML = `${renderReplyOperationsConsole(queue, visibleReplyItems)}
+                <div class="widget-empty reply-ops-empty">Немає термінових пунктів у доступних buckets черги. Waiting reply зʼявиться лише для розмов із явним reply expectation.</div>`;
             return;
         }
 
-        container.innerHTML = visibleBuckets.map(bucket => {
-            const items = (bucket.items || []).slice(0, 4).map(renderWorkQueueItem).join('');
+        container.innerHTML = `${renderReplyOperationsConsole(queue, visibleReplyItems)}${visibleBuckets.map(bucket => {
+            const maxItems = bucket.key === 'waiting_reply' ? 12 : 4;
+            const items = (bucket.items || []).slice(0, maxItems).map(renderWorkQueueItem).join('');
             return `
                 <div class="work-queue-bucket bucket-${bucket.key}">
                     <div class="work-queue-bucket-head">
@@ -202,7 +343,8 @@ const DashboardPage = (() => {
                     <div class="work-queue-items">${items}</div>
                 </div>
             `;
-        }).join('');
+        }).join('')}`;
+        updateReplyOpsSelectionState();
     }
 
     function renderWorkQueueExplainability(queue, buckets, visibleCount) {
@@ -263,6 +405,15 @@ const DashboardPage = (() => {
         const href = item.href || '/dashboard';
         const conversationId = Number(item.meta?.conversationId || item.sourceId || 0);
         const currentOwnerUserId = Number(item.meta?.replyOwnerUserId || 0);
+        const selected = isWaitingReply && conversationId > 0 && _workQueueSelection.has(conversationId);
+        const selectionControl = isWaitingReply && conversationId > 0 ? `
+            <label class="work-queue-select" onclick="event.stopPropagation()">
+                <input type="checkbox"
+                    aria-label="Обрати reply backlog item ${conversationId}"
+                    onchange="DashboardPage.toggleReplySelection(${conversationId}, this.checked)"
+                    ${selected ? 'checked' : ''}>
+            </label>
+        ` : '';
         const actions = isWaitingReply && conversationId > 0 ? `
             <span class="work-queue-reply-actions" aria-label="Дії reply backlog">
                 <button type="button" class="work-queue-action-btn" onclick="DashboardPage.reassignReplyOwner(${conversationId}, this, ${currentOwnerUserId})">Власник</button>
@@ -275,6 +426,7 @@ const DashboardPage = (() => {
             : '';
         return `
             <div class="work-queue-item-frame${waitingCls}">
+                ${selectionControl}
                 <a class="work-queue-item${priorityCls}${bucketCls}${waitingCls}" href="${escapeHtml(href)}">
                     <span class="work-queue-dot" aria-hidden="true"></span>
                     <span class="work-queue-text">
@@ -1447,8 +1599,172 @@ const DashboardPage = (() => {
     function setWorkQueueReplyScope(scope) {
         _workQueueReplyScope = normalizeWorkQueueReplyScope(scope);
         localStorage.setItem('eg_reply_backlog_scope', _workQueueReplyScope);
+        _replyOpsFlash = null;
+        clearWorkQueueSelection();
         renderWorkQueueScopeControls({ replyBacklog: { scope: _workQueueReplyScope } });
         loadWorkQueue();
+    }
+
+    function setReplyConsoleFilter(type, value) {
+        if (type === 'preset') {
+            applyReplyConsolePreset(value);
+            return;
+        }
+
+        _workQueueReplyFilters = normalizeReplyConsoleFilters({
+            ..._workQueueReplyFilters,
+            [type]: value,
+            preset: 'all'
+        });
+        saveReplyConsoleFilters();
+        _replyOpsFlash = null;
+        clearWorkQueueSelection();
+        loadWorkQueue();
+    }
+
+    function applyReplyConsolePreset(preset) {
+        const map = {
+            all: { scope: 'all', sla: 'all', owner: 'all', escalation: 'all', preset: 'all' },
+            mine_overdue: { scope: 'mine', sla: 'overdue', owner: 'all', escalation: 'all', preset: 'mine_overdue' },
+            team_overdue: { scope: 'team', sla: 'overdue', owner: 'all', escalation: 'all', preset: 'team_overdue' },
+            unassigned: { scope: 'all', sla: 'all', owner: 'without_owner', escalation: 'all', preset: 'unassigned' },
+            escalated: { scope: 'all', sla: 'all', owner: 'all', escalation: 'escalated', preset: 'escalated' }
+        };
+        const next = map[preset] || map.all;
+        _workQueueReplyScope = normalizeWorkQueueReplyScope(next.scope);
+        localStorage.setItem('eg_reply_backlog_scope', _workQueueReplyScope);
+        _workQueueReplyFilters = normalizeReplyConsoleFilters(next);
+        saveReplyConsoleFilters();
+        _replyOpsFlash = null;
+        clearWorkQueueSelection();
+        loadWorkQueue();
+    }
+
+    function resetReplyConsoleFilters() {
+        _workQueueReplyScope = 'all';
+        localStorage.setItem('eg_reply_backlog_scope', _workQueueReplyScope);
+        _workQueueReplyFilters = normalizeReplyConsoleFilters();
+        saveReplyConsoleFilters();
+        _replyOpsFlash = null;
+        clearWorkQueueSelection();
+        loadWorkQueue();
+    }
+
+    function getSelectedReplyConversationIds() {
+        const visible = new Set(_workQueueVisibleReplyIds);
+        return [..._workQueueSelection].filter(id => visible.has(id));
+    }
+
+    function updateReplyOpsSelectionState() {
+        const selected = getSelectedReplyConversationIds();
+        const countEl = document.getElementById('replyOpsSelectionCount');
+        if (countEl) countEl.textContent = `Обрано ${selected.length}`;
+        document.querySelectorAll('[data-reply-bulk-action]').forEach(button => {
+            button.disabled = selected.length === 0;
+        });
+    }
+
+    function toggleReplySelection(conversationId, checked) {
+        const id = Number(conversationId);
+        if (!Number.isInteger(id) || id <= 0 || !_workQueueVisibleReplyIds.includes(id)) return;
+        if (checked) _workQueueSelection.add(id);
+        else _workQueueSelection.delete(id);
+        updateReplyOpsSelectionState();
+    }
+
+    function selectVisibleReplyItems() {
+        _workQueueVisibleReplyIds.forEach(id => _workQueueSelection.add(id));
+        document.querySelectorAll('.work-queue-select input[type="checkbox"]').forEach(input => {
+            input.checked = true;
+        });
+        updateReplyOpsSelectionState();
+    }
+
+    function setReplyOpsFeedback(message, tone = '') {
+        _replyOpsFlash = message ? { message, tone } : null;
+        const el = document.getElementById('replyOpsFeedback');
+        if (!el) return;
+        el.className = `reply-ops-feedback${tone ? ' ' + tone : ''}`;
+        el.textContent = message || '';
+    }
+
+    function summarizeBulkResult(data) {
+        const counts = data?.counts || {};
+        const applied = Number(counts.applied || 0);
+        const failed = Number(counts.failed || 0);
+        if (failed > 0 && applied > 0) return `Частково виконано: ${applied} успішно, ${failed} з помилкою.`;
+        if (failed > 0) return `Не вдалося виконати для ${failed} item.`;
+        return `Готово: оновлено ${applied} item.`;
+    }
+
+    async function runReplyBulkAction(button, path, payload) {
+        const token = localStorage.getItem('pzp_token');
+        if (!token) throw new Error('Немає активної сесії');
+
+        if (button) {
+            button.disabled = true;
+            button.setAttribute('aria-busy', 'true');
+        }
+        setReplyOpsFeedback('Виконуємо bulk action...');
+        try {
+            const resp = await fetch(path, {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+            setReplyOpsFeedback(summarizeBulkResult(data), data.success ? 'success' : 'warning');
+            await loadWorkQueue();
+            return data;
+        } catch (err) {
+            console.error('Reply backlog bulk action error:', err);
+            setReplyOpsFeedback(err.message || 'Не вдалося виконати bulk action', 'error');
+            alert(err.message || 'Не вдалося виконати bulk action');
+            throw err;
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.removeAttribute('aria-busy');
+            }
+            updateReplyOpsSelectionState();
+        }
+    }
+
+    function bulkReassignReplyOwners(button) {
+        const ids = getSelectedReplyConversationIds();
+        if (!ids.length) return;
+        const modal = ensureReplyOwnerPickerModal();
+        _replyOwnerPickerState = {
+            conversationIds: ids,
+            currentOwnerUserId: null,
+            trigger: button || null,
+            users: []
+        };
+        modal.classList.remove('hidden');
+        document.addEventListener('keydown', handleReplyOwnerPickerKeydown);
+        loadReplyOwnerPickerUsers();
+    }
+
+    function bulkSnoozeReplySla(button) {
+        const ids = getSelectedReplyConversationIds();
+        if (!ids.length) return;
+        return runReplyBulkAction(button, '/api/work-queue/replies/bulk/sla', {
+            conversationIds: ids,
+            snoozeHours: 24
+        });
+    }
+
+    function bulkClearReplyExpectations(button) {
+        const ids = getSelectedReplyConversationIds();
+        if (!ids.length) return;
+        if (!window.confirm(`Очистити очікування відповіді для ${ids.length} видимих item без позначки, що клієнти відповіли?`)) return;
+        return runReplyBulkAction(button, '/api/work-queue/replies/bulk/clear', {
+            conversationIds: ids
+        });
     }
 
     async function runReplyBacklogAction(button, path, method, payload) {
@@ -1639,12 +1955,20 @@ const DashboardPage = (() => {
             return;
         }
 
-        await runReplyBacklogAction(
-            button,
-            `/api/work-queue/replies/${encodeURIComponent(state.conversationId)}/owner`,
-            'PATCH',
-            { ownerUserId }
-        );
+        if (Array.isArray(state.conversationIds) && state.conversationIds.length) {
+            await runReplyBulkAction(
+                button,
+                '/api/work-queue/replies/bulk/owner',
+                { conversationIds: state.conversationIds, ownerUserId }
+            );
+        } else {
+            await runReplyBacklogAction(
+                button,
+                `/api/work-queue/replies/${encodeURIComponent(state.conversationId)}/owner`,
+                'PATCH',
+                { ownerUserId }
+            );
+        }
         closeReplyOwnerPicker();
     }
 
@@ -1699,6 +2023,14 @@ const DashboardPage = (() => {
         init,
         refreshWorkQueue,
         setWorkQueueReplyScope,
+        setReplyConsoleFilter,
+        resetReplyConsoleFilters,
+        toggleReplySelection,
+        selectVisibleReplyItems,
+        clearWorkQueueSelection,
+        bulkReassignReplyOwners,
+        bulkSnoozeReplySla,
+        bulkClearReplyExpectations,
         reassignReplyOwner,
         reloadReplyOwnerPicker,
         closeReplyOwnerPicker,

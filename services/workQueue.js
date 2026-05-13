@@ -14,6 +14,9 @@ const BUCKETS = [
 ];
 
 const REPLY_BACKLOG_SCOPES = ['all', 'mine', 'team'];
+const REPLY_SLA_FILTERS = ['all', 'overdue', 'due_soon', 'on_track', 'none'];
+const REPLY_OWNER_FILTERS = ['all', 'with_owner', 'without_owner'];
+const REPLY_ESCALATION_FILTERS = ['all', 'escalated', 'not_escalated'];
 const CLOSED_LEAD_STAGES = ['completed', 'closed', 'lost'];
 const ACTIVE_TASK_STATUS_SQL = "COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')";
 const PRIORITY_WEIGHT = { critical: 0, high: 1, normal: 2, medium: 2, low: 3 };
@@ -58,6 +61,21 @@ function normalizeReplyBacklogScope(value) {
     return REPLY_BACKLOG_SCOPES.includes(raw) ? raw : 'all';
 }
 
+function normalizeReplySlaFilter(value) {
+    const raw = String(value || 'all').toLowerCase();
+    return REPLY_SLA_FILTERS.includes(raw) ? raw : 'all';
+}
+
+function normalizeReplyOwnerFilter(value) {
+    const raw = String(value || 'all').toLowerCase();
+    return REPLY_OWNER_FILTERS.includes(raw) ? raw : 'all';
+}
+
+function normalizeReplyEscalationFilter(value) {
+    const raw = String(value || 'all').toLowerCase();
+    return REPLY_ESCALATION_FILTERS.includes(raw) ? raw : 'all';
+}
+
 function normalizeUserId(user) {
     const parsed = Number(user?.id || user?.userId || 0);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -76,6 +94,34 @@ function buildReplyBacklogScopeFilter(scope, user, params, alias = 'c') {
         return `AND (${alias}.reply_owner_user_id IS NULL OR ${alias}.reply_owner_user_id <> ${userRef})`;
     }
     return '';
+}
+
+function buildReplyBacklogStateFilter({ sla = 'all', owner = 'all', escalation = 'all' } = {}, alias = 'c', escalationAlias = 'rt') {
+    const filters = [];
+
+    if (sla === 'overdue') {
+        filters.push(`AND ${alias}.reply_sla_at IS NOT NULL AND ${alias}.reply_sla_at <= NOW()`);
+    } else if (sla === 'due_soon') {
+        filters.push(`AND ${alias}.reply_sla_at IS NOT NULL AND ${alias}.reply_sla_at > NOW() AND ${alias}.reply_sla_at <= NOW() + INTERVAL '4 hours'`);
+    } else if (sla === 'on_track') {
+        filters.push(`AND ${alias}.reply_sla_at IS NOT NULL AND ${alias}.reply_sla_at > NOW() + INTERVAL '4 hours'`);
+    } else if (sla === 'none') {
+        filters.push(`AND ${alias}.reply_sla_at IS NULL`);
+    }
+
+    if (owner === 'with_owner') {
+        filters.push(`AND ${alias}.reply_owner_user_id IS NOT NULL`);
+    } else if (owner === 'without_owner') {
+        filters.push(`AND ${alias}.reply_owner_user_id IS NULL`);
+    }
+
+    if (escalation === 'escalated') {
+        filters.push(`AND ${escalationAlias}.id IS NOT NULL`);
+    } else if (escalation === 'not_escalated') {
+        filters.push(`AND ${escalationAlias}.id IS NULL`);
+    }
+
+    return filters.join('\n              ');
 }
 
 function buildTaskVisibility(user, params, alias = 't') {
@@ -333,7 +379,16 @@ function makeBucketMap() {
     }, {});
 }
 
-async function buildWorkQueue({ pool, user, limit = 8, today = null, replyScope = 'all' } = {}) {
+async function buildWorkQueue({
+    pool,
+    user,
+    limit = 8,
+    today = null,
+    replyScope = 'all',
+    replySla = 'all',
+    replyOwner = 'all',
+    replyEscalation = 'all'
+} = {}) {
     if (!pool || typeof pool.query !== 'function') {
         throw new Error('pool with query() is required');
     }
@@ -344,6 +399,9 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null, replyScope 
     const warnings = [];
     const bucketMap = makeBucketMap();
     const replyBacklogScope = normalizeReplyBacklogScope(replyScope);
+    const replySlaFilter = normalizeReplySlaFilter(replySla);
+    const replyOwnerFilter = normalizeReplyOwnerFilter(replyOwner);
+    const replyEscalationFilter = normalizeReplyEscalationFilter(replyEscalation);
 
     const overdue = await source(pool, warnings, 'tasks_overdue', () => loadTaskBucket(
         pool,
@@ -404,6 +462,11 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null, replyScope 
     const waitingReply = await source(pool, warnings, 'conversation_reply_expectations', async () => {
         const params = [];
         const replyScopeFilter = buildReplyBacklogScopeFilter(replyBacklogScope, user, params, 'c');
+        const replyStateFilter = buildReplyBacklogStateFilter({
+            sla: replySlaFilter,
+            owner: replyOwnerFilter,
+            escalation: replyEscalationFilter
+        }, 'c', 'rt');
         const limitRef = pushParam(params, safeLimit);
         const result = await pool.query(`
             SELECT c.id AS conversation_id, c.channel, c.customer_name, c.customer_phone,
@@ -427,6 +490,7 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null, replyScope 
               AND (c.last_inbound_at IS NULL OR c.last_inbound_at <= c.awaiting_reply_since)
               AND COALESCE(cm.delivery_status, '') NOT IN ('failed', 'later_failed')
               ${replyScopeFilter}
+              ${replyStateFilter}
             ORDER BY
               CASE WHEN c.reply_sla_at IS NULL THEN 1 ELSE 0 END,
               COALESCE(c.reply_sla_at, c.awaiting_reply_since) ASC
@@ -561,6 +625,23 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null, replyScope 
             replyBacklog: {
                 scope: replyBacklogScope,
                 availableScopes: REPLY_BACKLOG_SCOPES,
+                filters: {
+                    sla: replySlaFilter,
+                    owner: replyOwnerFilter,
+                    escalation: replyEscalationFilter
+                },
+                availableFilters: {
+                    sla: REPLY_SLA_FILTERS,
+                    owner: REPLY_OWNER_FILTERS,
+                    escalation: REPLY_ESCALATION_FILTERS
+                },
+                presets: [
+                    { key: 'all', label: 'All reply backlog', scope: 'all', sla: 'all', owner: 'all', escalation: 'all' },
+                    { key: 'mine_overdue', label: 'My overdue replies', scope: 'mine', sla: 'overdue', owner: 'all', escalation: 'all' },
+                    { key: 'team_overdue', label: 'Team overdue replies', scope: 'team', sla: 'overdue', owner: 'all', escalation: 'all' },
+                    { key: 'unassigned', label: 'Unassigned replies', scope: 'all', sla: 'all', owner: 'without_owner', escalation: 'all' },
+                    { key: 'escalated', label: 'Escalated replies', scope: 'all', sla: 'all', owner: 'all', escalation: 'escalated' }
+                ],
                 canonicalOwnerField: 'conversations.reply_owner_user_id',
                 displayOwnerField: 'conversations.reply_owner',
                 labelFiltering: false,
@@ -575,7 +656,13 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null, replyScope 
 module.exports = {
     BUCKETS,
     REPLY_BACKLOG_SCOPES,
+    REPLY_SLA_FILTERS,
+    REPLY_OWNER_FILTERS,
+    REPLY_ESCALATION_FILTERS,
     normalizeReplyBacklogScope,
+    normalizeReplySlaFilter,
+    normalizeReplyOwnerFilter,
+    normalizeReplyEscalationFilter,
     buildWorkQueue,
     addDays
 };

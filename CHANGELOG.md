@@ -4,6 +4,17 @@
 
 ---
 
+## v0.47.17 - 💬 0.47 Комунікації: reply owner picker v1 (2026-05-13)
+
+### Reply Owner Picker / Assignee UX v1 [codex]
+- **Picker замість ID prompt** - у Work Queue перепризначення відповідального для `waiting_reply` відкриває компактний список активних assignable users замість ручного введення numeric id.
+- **Canonical user id** - вибір і збереження працюють тільки через `users.id`; display label `reply_owner` лишається snapshot/fallback, але не стає authority для reassignment.
+- **Manager-safe source** - додано вузький manager-up endpoint для активних reply owner candidates; inactive/non-assignable користувачі не потрапляють у список і блокуються серверною перевіркою.
+- **Interaction safety** - picker має loading/error/empty/disabled стани, Escape/Cancel close та фокус на select, без fallback на free-text label.
+- **Без schema змін** - зміна використовує наявні `reply_owner_user_id`, `reply_owner` і manager-only backlog actions.
+
+---
+
 ## v0.47.16 - 💬 0.47 Комунікації: reply backlog actions v1 (2026-05-13)
 
 ### Reply Backlog Actions v1 [codex]

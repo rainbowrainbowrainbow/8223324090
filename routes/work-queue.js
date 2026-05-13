@@ -7,6 +7,7 @@ const { pool } = require('../db');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { buildWorkQueue } = require('../services/workQueue');
 const {
+    listReplyOwnerCandidates,
     reassignReplyExpectationOwner,
     clearReplyExpectation,
     updateReplyExpectationSla
@@ -54,6 +55,25 @@ function resolveReplySlaAt(body = {}) {
 
     return new Date(Date.now() + minutes * 60 * 1000).toISOString();
 }
+
+router.get('/reply-owners', async (req, res) => {
+    try {
+        const users = await listReplyOwnerCandidates();
+        res.json({
+            success: true,
+            users,
+            meta: {
+                canonicalValue: 'users.id',
+                displayField: 'name_or_username',
+                inactiveUsers: 'excluded',
+                labelFiltering: false
+            }
+        });
+    } catch (err) {
+        log.error('GET /work-queue/reply-owners error', err);
+        res.status(500).json({ success: false, error: 'Не вдалося завантажити відповідальних' });
+    }
+});
 
 router.patch('/replies/:conversationId/owner', async (req, res) => {
     try {

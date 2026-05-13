@@ -33,6 +33,7 @@ const DashboardPage = (() => {
     let _config = { widgets: [], layout: {}, theme: 'default' };
     let _widgetData = {};
     let _workQueueReplyScope = normalizeWorkQueueReplyScope(localStorage.getItem('eg_reply_backlog_scope'));
+    let _replyOwnerPickerState = null;
 
     async function init() {
         const token = localStorage.getItem('pzp_token');
@@ -261,9 +262,10 @@ const DashboardPage = (() => {
         const meta = [waitingSince || due, sla, owner, confidence].filter(Boolean).join(' · ');
         const href = item.href || '/dashboard';
         const conversationId = Number(item.meta?.conversationId || item.sourceId || 0);
+        const currentOwnerUserId = Number(item.meta?.replyOwnerUserId || 0);
         const actions = isWaitingReply && conversationId > 0 ? `
             <span class="work-queue-reply-actions" aria-label="Дії reply backlog">
-                <button type="button" class="work-queue-action-btn" onclick="DashboardPage.reassignReplyOwner(${conversationId}, this)">Власник</button>
+                <button type="button" class="work-queue-action-btn" onclick="DashboardPage.reassignReplyOwner(${conversationId}, this, ${currentOwnerUserId})">Власник</button>
                 <button type="button" class="work-queue-action-btn" onclick="DashboardPage.snoozeReplySla(${conversationId}, this)">SLA +24г</button>
                 <button type="button" class="work-queue-action-btn danger" onclick="DashboardPage.clearReplyExpectation(${conversationId}, this)">Очистити</button>
             </span>
@@ -1484,16 +1486,166 @@ const DashboardPage = (() => {
         }
     }
 
-    function reassignReplyOwner(conversationId, button) {
-        const raw = window.prompt('ID нового відповідального користувача');
-        const ownerUserId = Number(raw);
-        if (!Number.isInteger(ownerUserId) || ownerUserId <= 0) return;
-        return runReplyBacklogAction(
+    function ensureReplyOwnerPickerModal() {
+        let modal = document.getElementById('replyOwnerPickerModal');
+        if (modal) return modal;
+
+        modal = document.createElement('div');
+        modal.id = 'replyOwnerPickerModal';
+        modal.className = 'reply-owner-picker hidden';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'replyOwnerPickerTitle');
+        modal.innerHTML = `
+            <div class="reply-owner-picker-backdrop" onclick="DashboardPage.closeReplyOwnerPicker()"></div>
+            <div class="reply-owner-picker-card">
+                <div class="reply-owner-picker-head">
+                    <div>
+                        <h3 id="replyOwnerPickerTitle">Змінити відповідального</h3>
+                        <p id="replyOwnerPickerHint">Оберіть активного manager-up користувача. Зберігається canonical user id.</p>
+                    </div>
+                    <button type="button" class="reply-owner-picker-close" aria-label="Закрити" onclick="DashboardPage.closeReplyOwnerPicker()">×</button>
+                </div>
+                <div id="replyOwnerPickerBody" class="reply-owner-picker-body"></div>
+                <div class="reply-owner-picker-actions">
+                    <button type="button" class="reply-owner-picker-secondary" onclick="DashboardPage.closeReplyOwnerPicker()">Скасувати</button>
+                    <button type="button" id="replyOwnerPickerSave" class="reply-owner-picker-primary" onclick="DashboardPage.saveReplyOwnerPicker(this)" disabled>Зберегти</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        return modal;
+    }
+
+    function setReplyOwnerPickerBody(html, canSave = false) {
+        const body = document.getElementById('replyOwnerPickerBody');
+        const save = document.getElementById('replyOwnerPickerSave');
+        if (body) body.innerHTML = html;
+        if (save) save.disabled = !canSave;
+    }
+
+    function renderReplyOwnerPickerLoading() {
+        setReplyOwnerPickerBody('<div class="reply-owner-picker-state">Завантаження відповідальних...</div>', false);
+    }
+
+    function renderReplyOwnerPickerError(message) {
+        setReplyOwnerPickerBody(`
+            <div class="reply-owner-picker-state error">${escapeHtml(message || 'Не вдалося завантажити відповідальних')}</div>
+            <button type="button" class="reply-owner-picker-retry" onclick="DashboardPage.reloadReplyOwnerPicker()">Повторити</button>
+        `, false);
+    }
+
+    function renderReplyOwnerPickerUsers(users, currentOwnerUserId) {
+        const candidates = (users || [])
+            .map(user => ({ ...user, id: Number(user.id) }))
+            .filter(user => Number.isInteger(user.id) && user.id > 0);
+
+        if (!candidates.length) {
+            setReplyOwnerPickerBody('<div class="reply-owner-picker-state">Немає активних користувачів для призначення.</div>', false);
+            return;
+        }
+
+        const currentId = Number(currentOwnerUserId || 0);
+        const options = candidates.map(user => {
+            const label = user.label || user.name || user.username || `User #${user.id}`;
+            const role = user.role ? ` · ${user.role}` : '';
+            const selected = user.id === currentId ? ' selected' : '';
+            return `<option value="${user.id}"${selected}>${escapeHtml(`${label}${role}`)}</option>`;
+        }).join('');
+
+        setReplyOwnerPickerBody(`
+            <label class="reply-owner-picker-label" for="replyOwnerPickerSelect">Відповідальний</label>
+            <select id="replyOwnerPickerSelect" class="reply-owner-picker-select" aria-describedby="replyOwnerPickerHint">
+                ${options}
+            </select>
+        `, true);
+
+        window.setTimeout(() => {
+            const select = document.getElementById('replyOwnerPickerSelect');
+            if (select) select.focus();
+        }, 0);
+    }
+
+    async function loadReplyOwnerPickerUsers() {
+        if (!_replyOwnerPickerState) return;
+        renderReplyOwnerPickerLoading();
+
+        try {
+            const token = localStorage.getItem('pzp_token');
+            if (!token) throw new Error('Немає активної сесії');
+            const resp = await fetch('/api/work-queue/reply-owners', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || data.success === false) {
+                throw new Error(data.error || `HTTP ${resp.status}`);
+            }
+            const users = Array.isArray(data.users) ? data.users : [];
+            _replyOwnerPickerState.users = users;
+            renderReplyOwnerPickerUsers(users, _replyOwnerPickerState.currentOwnerUserId);
+        } catch (err) {
+            console.error('Reply owner picker error:', err);
+            if (_replyOwnerPickerState) _replyOwnerPickerState.users = [];
+            renderReplyOwnerPickerError(err.message);
+        }
+    }
+
+    function handleReplyOwnerPickerKeydown(event) {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeReplyOwnerPicker();
+        }
+    }
+
+    function reassignReplyOwner(conversationId, button, currentOwnerUserId = null) {
+        const id = Number(conversationId);
+        if (!Number.isInteger(id) || id <= 0) return;
+
+        const modal = ensureReplyOwnerPickerModal();
+        _replyOwnerPickerState = {
+            conversationId: id,
+            currentOwnerUserId: Number(currentOwnerUserId || 0),
+            trigger: button || null,
+            users: []
+        };
+        modal.classList.remove('hidden');
+        document.addEventListener('keydown', handleReplyOwnerPickerKeydown);
+        loadReplyOwnerPickerUsers();
+    }
+
+    function reloadReplyOwnerPicker() {
+        loadReplyOwnerPickerUsers();
+    }
+
+    function closeReplyOwnerPicker() {
+        const modal = document.getElementById('replyOwnerPickerModal');
+        const trigger = _replyOwnerPickerState?.trigger;
+        if (modal) modal.classList.add('hidden');
+        document.removeEventListener('keydown', handleReplyOwnerPickerKeydown);
+        _replyOwnerPickerState = null;
+        if (trigger && typeof trigger.focus === 'function') {
+            window.setTimeout(() => trigger.focus(), 0);
+        }
+    }
+
+    async function saveReplyOwnerPicker(button) {
+        const state = _replyOwnerPickerState;
+        const select = document.getElementById('replyOwnerPickerSelect');
+        const ownerUserId = Number(select?.value);
+        const knownIds = new Set((state?.users || []).map(user => Number(user.id)).filter(id => Number.isInteger(id) && id > 0));
+
+        if (!state || !Number.isInteger(ownerUserId) || ownerUserId <= 0 || !knownIds.has(ownerUserId)) {
+            renderReplyOwnerPickerError('Оберіть користувача зі списку відповідальних.');
+            return;
+        }
+
+        await runReplyBacklogAction(
             button,
-            `/api/work-queue/replies/${encodeURIComponent(conversationId)}/owner`,
+            `/api/work-queue/replies/${encodeURIComponent(state.conversationId)}/owner`,
             'PATCH',
             { ownerUserId }
         );
+        closeReplyOwnerPicker();
     }
 
     function snoozeReplySla(conversationId, button) {
@@ -1548,6 +1700,9 @@ const DashboardPage = (() => {
         refreshWorkQueue,
         setWorkQueueReplyScope,
         reassignReplyOwner,
+        reloadReplyOwnerPicker,
+        closeReplyOwnerPicker,
+        saveReplyOwnerPicker,
         snoozeReplySla,
         clearReplyExpectation,
         refreshWidget,

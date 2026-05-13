@@ -100,8 +100,15 @@ function createFakePool() {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             queries.push({ text, params });
 
+            if (/FROM users/i.test(text) && /ORDER BY COALESCE\(NULLIF\(name, ''\), username\), id/i.test(text)) {
+                return { rows: [
+                    { id: 20, username: 'manager-user', name: 'manager user', role: 'manager' },
+                    { id: 30, username: 'new-owner', name: 'New Owner', role: 'manager' }
+                ] };
+            }
+
             if (/FROM users/i.test(text) && /COALESCE\(is_active, true\) = true/i.test(text)) {
-                if (params[0] === 30) {
+                if (params[0] === 30 && Array.isArray(params[1]) && params[1].includes('manager')) {
                     return { rows: [{
                         id: 30,
                         username: 'new-owner',
@@ -395,6 +402,27 @@ describe('work queue endpoint', () => {
         assert.equal(manager.data.success, true);
     });
 
+    it('exposes manager-safe assignable reply owner picker data', async () => {
+        const admin = await request('/api/work-queue/reply-owners', 'admin');
+        assert.equal(admin.status, 403);
+
+        const res = await request('/api/work-queue/reply-owners', 'manager');
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.deepEqual(res.data.users.map(user => user.id), [20, 30]);
+        assert.equal(res.data.users[0].label, 'manager user');
+        assert.equal(res.data.users.some(user => Object.hasOwn(user, 'is_active')), false);
+        assert.equal(res.data.meta.canonicalValue, 'users.id');
+        assert.equal(res.data.meta.inactiveUsers, 'excluded');
+        assert.equal(res.data.meta.labelFiltering, false);
+
+        const pickerQuery = queries.find(q => /FROM users/i.test(q.text) && /ORDER BY COALESCE\(NULLIF\(name, ''\), username\), id/i.test(q.text));
+        assert.ok(pickerQuery, 'reply owner picker should use a dedicated active-user lookup');
+        assert.match(pickerQuery.text, /role = ANY\(\$1::text\[\]\)/i);
+        assert.ok(pickerQuery.params[0].includes('manager'));
+        assert.ok(!pickerQuery.text.includes('password_hash'));
+    });
+
     it('normalizes durable signals into canonical buckets and useful hrefs', async () => {
         const res = await request('/api/work-queue?limit=5', 'manager');
         assert.equal(res.status, 200, JSON.stringify(res.data));
@@ -493,7 +521,10 @@ describe('work queue endpoint', () => {
         assert.equal(res.data.conversation.replyOwnerUserId, 30);
         assert.equal(res.data.conversation.replyOwner, 'New Owner');
 
-        assert.ok(queries.some(q => /FROM users/i.test(q.text) && /COALESCE\(is_active, true\) = true/i.test(q.text) && q.params[0] === 30));
+        const ownerLookup = queries.find(q => /FROM users/i.test(q.text) && /COALESCE\(is_active, true\) = true/i.test(q.text) && q.params[0] === 30);
+        assert.ok(ownerLookup);
+        assert.match(ownerLookup.text, /role = ANY\(\$2::text\[\]\)/i);
+        assert.ok(ownerLookup.params[1].includes('manager'));
         const ownerUpdate = queries.find(q => /UPDATE conversations/i.test(q.text) && /SET reply_owner_user_id =/i.test(q.text));
         assert.ok(ownerUpdate, 'reply owner reassignment must update typed owner field');
         assert.deepEqual(ownerUpdate.params.slice(0, 3), [41, 30, 'New Owner']);
@@ -513,6 +544,17 @@ describe('work queue endpoint', () => {
         });
         assert.equal(res.status, 400, JSON.stringify(res.data));
         assert.equal(res.data.code, 'INVALID_REPLY_OWNER');
+        assert.ok(!queries.some(q => /UPDATE conversations/i.test(q.text) && /reply_owner_user_id/i.test(q.text)));
+    });
+
+    it('blocks inactive or non-assignable reply owner ids before mutation', async () => {
+        const res = await request('/api/work-queue/replies/41/owner', 'manager', {
+            method: 'PATCH',
+            body: { ownerUserId: 31 }
+        });
+        assert.equal(res.status, 404, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'REPLY_OWNER_NOT_ASSIGNABLE');
+        assert.ok(queries.some(q => /FROM users/i.test(q.text) && q.params[0] === 31));
         assert.ok(!queries.some(q => /UPDATE conversations/i.test(q.text) && /reply_owner_user_id/i.test(q.text)));
     });
 
@@ -586,6 +628,12 @@ describe('work queue endpoint', () => {
         assert.match(dashboardJs, /item\.meta\?\.awaitingReplySince/);
         assert.match(dashboardJs, /replySlaState/);
         assert.match(dashboardJs, /reassignReplyOwner/);
+        assert.match(dashboardJs, /replyOwnerPickerSelect/);
+        assert.match(dashboardJs, /saveReplyOwnerPicker/);
+        assert.match(dashboardJs, /setAttribute\('role', 'dialog'\)/);
+        assert.match(dashboardJs, /\/api\/work-queue\/reply-owners/);
+        assert.match(dashboardJs, /knownIds\.has\(ownerUserId\)/);
+        assert.doesNotMatch(dashboardJs, /window\.prompt/);
         assert.match(dashboardJs, /snoozeReplySla/);
         assert.match(dashboardJs, /clearReplyExpectation/);
         assert.match(dashboardJs, /work-queue\/replies/);
@@ -597,5 +645,7 @@ describe('work queue endpoint', () => {
         assert.match(dashboardCss, /is-waiting-reply/);
         assert.match(dashboardCss, /work-queue-scope-btn/);
         assert.match(dashboardCss, /work-queue-action-btn/);
+        assert.match(dashboardCss, /reply-owner-picker/);
+        assert.match(dashboardCss, /reply-owner-picker-select:focus-visible/);
     });
 });

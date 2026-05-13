@@ -25,6 +25,7 @@ const logger = createLogger('omni-hub');
 
 const VALID_CHANNELS = ['telegram', 'viber', 'sms', 'facebook', 'instagram', 'binotel'];
 const VALID_STATUSES = ['open', 'closed', 'pending', 'spam'];
+const REPLY_OWNER_ASSIGNABLE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
 const INBOUND_ONLY_CHANNELS = new Set(['binotel']);
 const DELIVERY_STATUS = Object.freeze({
   SAVED: 'saved',
@@ -871,14 +872,33 @@ async function findActiveReplyOwnerUser(userId) {
        FROM users
       WHERE id = $1
         AND COALESCE(is_active, true) = true
+        AND role = ANY($2::text[])
       LIMIT 1`,
-    [ownerUserId]
+    [ownerUserId, REPLY_OWNER_ASSIGNABLE_ROLES]
   );
   const user = result.rows[0];
   if (!user) {
-    throw replyActionError('REPLY_OWNER_NOT_FOUND', 'Reply owner user was not found or is inactive', 404);
+    throw replyActionError('REPLY_OWNER_NOT_ASSIGNABLE', 'Reply owner user was not found, inactive, or not assignable', 404);
   }
   return user;
+}
+
+async function listReplyOwnerCandidates() {
+  const result = await pool.query(
+    `SELECT id, username, name, role
+       FROM users
+      WHERE COALESCE(is_active, true) = true
+        AND role = ANY($1::text[])
+      ORDER BY COALESCE(NULLIF(name, ''), username), id`,
+    [REPLY_OWNER_ASSIGNABLE_ROLES]
+  );
+  return (result.rows || []).map(user => ({
+    id: user.id,
+    username: user.username,
+    name: user.name,
+    role: user.role,
+    label: normalizeOwnerLabel(user),
+  }));
 }
 
 async function reassignReplyExpectationOwner(conversationId, ownerUserId) {
@@ -1739,6 +1759,7 @@ module.exports = {
   setReplyExpectation,
   clearReplyExpectationForMessage,
   reassignReplyExpectationOwner,
+  listReplyOwnerCandidates,
   clearReplyExpectation,
   updateReplyExpectationSla,
   updateConversationStatus,
@@ -1752,6 +1773,7 @@ module.exports = {
   normalizeProviderResult,
   isSendCapableChannel,
   isActiveWaitingReply,
+  REPLY_OWNER_ASSIGNABLE_ROLES,
   INBOUND_ONLY_CHANNELS,
   DELIVERY_STATUS,
   ChannelUnavailableError,

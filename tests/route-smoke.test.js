@@ -497,8 +497,12 @@ describe('route-level API safety smoke', () => {
         assert.equal(manager.data.period.month, '2099-05');
         assert.equal(manager.data.totals.count, 2);
         assert.equal(manager.data.totals.revenue, 3700);
+        assert.equal(manager.data.totals.programCount, 2);
+        assert.equal(manager.data.totals.avgPrice, 1850);
         assert.equal(manager.data.summary[0].category, 'pinata');
         assert.equal(manager.data.details[0].date, '2099-05-02');
+        assert.equal(manager.data.summary[0].paidAmount, undefined);
+        assert.equal(manager.data.details[0].paymentStatus, undefined);
         assert.ok(queries.some(q => q.text.includes("b.status = 'confirmed'")));
         assert.ok(queries.some(q => q.text.includes("NULLIF(b.linked_to, '') IS NULL")));
     });
@@ -510,7 +514,11 @@ describe('route-level API safety smoke', () => {
         assert.equal(csv.status, 200);
         assert.match(csv.headers.get('content-type'), /text\/csv/);
         assert.match(csv.headers.get('content-disposition'), /product_sales_2099-05\.csv/);
-        assert.match(await csv.text(), /Підсумок/);
+        const csvText = await csv.text();
+        assert.match(csvText, /"Дата";"Час";"Програма";"Код";"Категорія";"Клієнт\/група";"Кімната";"Дітей";"Сума";"ID бронювання";"Створив"/);
+        assert.ok(!csvText.includes('Оплачено'));
+        assert.ok(!csvText.includes('Борг'));
+        assert.ok(!csvText.includes('Підсумок за'));
 
         const xlsx = await fetch(`${baseUrl}/api/analytics/product-sales/export?month=2099-05&format=xlsx`, {
             headers: withAuth({}, 'manager')
@@ -520,6 +528,15 @@ describe('route-level API safety smoke', () => {
         assert.match(xlsx.headers.get('content-disposition'), /product_sales_2099-05\.xlsx/);
         const body = await xlsx.arrayBuffer();
         assert.ok(body.byteLength > 1000);
+        const ExcelJS = require('exceljs');
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(Buffer.from(body));
+        const summaryHeaders = workbook.getWorksheet('Підсумок').getRow(1).values.join('|');
+        const detailHeaders = workbook.getWorksheet('Виписка').getRow(1).values.join('|');
+        assert.ok(summaryHeaders.includes('Середній чек'));
+        assert.ok(detailHeaders.includes('Клієнт/група'));
+        assert.ok(!summaryHeaders.includes('Оплачено'));
+        assert.ok(!detailHeaders.includes('Борг'));
     });
 
     it('enforces sensitive dashboard widget permissions server-side', async () => {

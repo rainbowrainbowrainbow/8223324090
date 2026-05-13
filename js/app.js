@@ -469,12 +469,12 @@ function renderProductSalesReport(data) {
     const emptyEl = document.getElementById('productSalesEmpty');
     if (!data || !statsEl || !summaryBody || !detailsBody) return;
 
-    const totals = data.totals || { count: 0, revenue: 0, paidAmount: 0, unpaidAmount: 0 };
+    const totals = data.totals || { count: 0, revenue: 0, programCount: 0, avgPrice: 0 };
     statsEl.innerHTML = [
         ['Продано', totals.count],
         ['Виручка', formatProductSalesMoney(totals.revenue)],
-        ['Оплачено', formatProductSalesMoney(totals.paidAmount)],
-        ['Борг', formatProductSalesMoney(totals.unpaidAmount)]
+        ['Програм', totals.programCount || (data.summary || []).length],
+        ['Середній чек', formatProductSalesMoney(totals.avgPrice)]
     ].map(([label, value]) => `
         <div class="product-sales-stat">
             <span>${escapeHtml(label)}</span>
@@ -500,8 +500,7 @@ function renderProductSalesReport(data) {
             <td>${escapeHtml(getProductSalesCategoryLabel(row.category))}</td>
             <td>${escapeHtml(String(row.count || 0))}</td>
             <td class="product-sales-money">${escapeHtml(formatProductSalesMoney(row.revenue))}</td>
-            <td class="product-sales-money">${escapeHtml(formatProductSalesMoney(row.paidAmount))}</td>
-            <td class="product-sales-money">${escapeHtml(formatProductSalesMoney(row.unpaidAmount))}</td>
+            <td class="product-sales-money">${escapeHtml(formatProductSalesMoney(row.avgPrice))}</td>
         </tr>
     `).join('');
 
@@ -521,7 +520,6 @@ function renderProductSalesReport(data) {
     detailsBody.innerHTML = details.map(row => {
         const customerMain = row.groupName || row.customerName || '—';
         const customerMeta = row.groupName && row.customerName ? row.customerName : row.customerPhone;
-        const paymentText = [row.paymentStatus, row.paymentMethod].filter(Boolean).join(' · ') || '—';
         return `
             <tr>
                 <td>${escapeHtml(row.date || '')}</td>
@@ -537,10 +535,7 @@ function renderProductSalesReport(data) {
                 <td>${escapeHtml(row.room || '')}</td>
                 <td>${escapeHtml(String(row.kidsCount || 0))}</td>
                 <td class="product-sales-money">${escapeHtml(formatProductSalesMoney(row.price))}</td>
-                <td>
-                    <div>${escapeHtml(paymentText)}</div>
-                    <div class="product-sales-muted">Оплачено: ${escapeHtml(formatProductSalesMoney(row.paidAmount))}</div>
-                </td>
+                <td><span class="product-sales-code">${escapeHtml(row.id || '')}</span></td>
             </tr>
         `;
     }).join('');

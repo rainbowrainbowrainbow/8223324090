@@ -2552,24 +2552,25 @@ body.dark-mode .points-hierarchy-me { box-shadow: 0 0 0 2px var(--gray-800), 0 0
 
 /* Product sales monthly report */
 .btn-product-sales {
-    background: linear-gradient(135deg, #10b981, #059669);
-    color: #fff;
-    border: none;
+    background: rgba(255,255,255,0.08);
+    color: var(--white, #fff);
+    border: 1px solid rgba(255,255,255,0.18);
     border-radius: 8px;
-    padding: 10px 16px;
+    padding: 10px 14px;
     font-weight: 800;
     cursor: pointer;
     min-height: 40px;
-    box-shadow: 0 8px 20px rgba(16, 185, 129, 0.24);
+    box-shadow: none;
 }
 
 .btn-product-sales:hover {
+    background: rgba(16, 185, 129, 0.18);
+    border-color: rgba(16, 185, 129, 0.45);
     transform: translateY(-1px);
-    box-shadow: 0 10px 24px rgba(16, 185, 129, 0.3);
 }
 
 .product-sales-modal-content {
-    width: min(1180px, calc(100vw - 32px));
+    width: min(1120px, calc(100vw - 32px));
     max-height: 90vh;
     overflow: auto;
 }
@@ -2580,6 +2581,10 @@ body.dark-mode .points-hierarchy-me { box-shadow: 0 0 0 2px var(--gray-800), 0 0
     gap: 16px;
     align-items: flex-start;
     margin-bottom: 16px;
+}
+
+.product-sales-title {
+    max-width: 720px;
 }
 
 .product-sales-head h3 {
@@ -2597,8 +2602,40 @@ body.dark-mode .points-hierarchy-me { box-shadow: 0 0 0 2px var(--gray-800), 0 0
 .product-sales-filters {
     display: flex;
     gap: 10px;
-    align-items: flex-end;
+    align-items: stretch;
     flex-wrap: wrap;
+}
+
+.product-sales-export {
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.product-sales-export-btn {
+    min-width: 92px;
+    min-height: 44px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    padding: 10px 16px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.product-sales-export-btn.primary {
+    background: #10b981;
+    color: #04130f;
+    box-shadow: 0 10px 24px rgba(16, 185, 129, 0.26);
+}
+
+.product-sales-export-btn.secondary {
+    background: rgba(255,255,255,0.08);
+    color: var(--gray-800, #1f2937);
+    border-color: var(--gray-300, #cbd5e1);
+}
+
+.product-sales-export-btn:disabled {
+    cursor: wait;
+    opacity: 0.65;
 }
 
 .product-sales-filters {
@@ -2607,14 +2644,15 @@ body.dark-mode .points-hierarchy-me { box-shadow: 0 0 0 2px var(--gray-800), 0 0
     border-radius: 10px;
     background: var(--gray-50, #f8fafc);
     margin-bottom: 14px;
+    align-items: flex-end;
 }
 
 .product-sales-filters label {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    min-width: 150px;
-    flex: 1 1 150px;
+    min-width: 132px;
+    flex: 1 1 132px;
 }
 
 .product-sales-filters label span {
@@ -2674,35 +2712,37 @@ body.dark-mode .points-hierarchy-me { box-shadow: 0 0 0 2px var(--gray-800), 0 0
     margin-bottom: 14px;
 }
 
-.product-sales-grid {
-    display: grid;
-    grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.4fr);
-    gap: 14px;
-}
-
 .product-sales-section h4 {
     margin: 0 0 10px 0;
     font-size: 14px;
     color: var(--gray-800, #1f2937);
 }
 
+.product-sales-detail-section {
+    margin-top: 16px;
+}
+
 .product-sales-table-wrap {
     border: 1px solid var(--gray-200, #e5e7eb);
     border-radius: 10px;
     overflow: auto;
-    max-height: 52vh;
+    max-height: 46vh;
     background: var(--white, #fff);
+}
+
+.product-sales-summary-wrap {
+    max-height: 220px;
 }
 
 .product-sales-table {
     width: 100%;
     border-collapse: collapse;
-    min-width: 620px;
+    min-width: 680px;
     font-size: 13px;
 }
 
 .product-sales-detail-table {
-    min-width: 920px;
+    min-width: 980px;
 }
 
 .product-sales-table th,
@@ -2766,6 +2806,7 @@ body.dark-mode .product-sales-empty {
 body.dark-mode .product-sales-filters input,
 body.dark-mode .product-sales-filters select,
 body.dark-mode .product-sales-stat,
+body.dark-mode .product-sales-export-btn.secondary,
 body.dark-mode .product-sales-table-wrap {
     background: var(--card-bg, #1e1e38);
     border-color: var(--border-color, rgba(255,255,255,0.12));
@@ -2791,8 +2832,13 @@ body.dark-mode .product-sales-table td {
     .product-sales-head {
         flex-direction: column;
     }
-    .product-sales-stats,
-    .product-sales-grid {
+    .product-sales-export {
+        width: 100%;
+    }
+    .product-sales-export-btn {
+        flex: 1;
+    }
+    .product-sales-stats {
         grid-template-columns: 1fr;
     }
 }

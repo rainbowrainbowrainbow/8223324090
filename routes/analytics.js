@@ -151,8 +151,6 @@ function normalizeProductSalesRow(row) {
         category: row.category || 'custom',
         count: Number(row.count) || 0,
         revenue: Number(row.revenue) || 0,
-        paidAmount: Number(row.paid_amount) || 0,
-        unpaidAmount: Number(row.unpaid_amount) || 0,
         avgPrice: Number(row.avg_price) || 0
     };
 }
@@ -174,10 +172,6 @@ function normalizeProductSalesDetail(row) {
         room: row.room || '',
         kidsCount: Number(row.kids_count) || 0,
         price: Number(row.price) || 0,
-        paidAmount: Number(row.paid_amount) || 0,
-        unpaidAmount: Number(row.unpaid_amount) || 0,
-        paymentStatus: row.payment_status || '',
-        paymentMethod: row.payment_method || '',
         createdBy: row.created_by || ''
     };
 }
@@ -203,8 +197,6 @@ async function loadProductSalesData(query = {}) {
                 COALESCE(NULLIF(b.category, ''), p.category, 'custom') AS category,
                 COUNT(*)::int AS count,
                 COALESCE(SUM(COALESCE(b.price, 0)), 0)::int AS revenue,
-                COALESCE(SUM(COALESCE(b.paid_amount, 0)), 0)::int AS paid_amount,
-                COALESCE(SUM(GREATEST(COALESCE(b.price, 0) - COALESCE(b.paid_amount, 0), 0)), 0)::int AS unpaid_amount,
                 ROUND(COALESCE(AVG(NULLIF(COALESCE(b.price, 0), 0)), 0))::int AS avg_price
             FROM bookings b
             LEFT JOIN products p ON p.id = NULLIF(b.program_id, '')
@@ -228,10 +220,6 @@ async function loadProductSalesData(query = {}) {
                 b.room,
                 COALESCE(b.kids_count, 0)::int AS kids_count,
                 COALESCE(b.price, 0)::int AS price,
-                COALESCE(b.paid_amount, 0)::int AS paid_amount,
-                GREATEST(COALESCE(b.price, 0) - COALESCE(b.paid_amount, 0), 0)::int AS unpaid_amount,
-                COALESCE(b.payment_status, '') AS payment_status,
-                COALESCE(b.payment_method, '') AS payment_method,
                 COALESCE(b.created_by, '') AS created_by
             FROM bookings b
             LEFT JOIN products p ON p.id = NULLIF(b.program_id, '')
@@ -246,10 +234,10 @@ async function loadProductSalesData(query = {}) {
     const totals = summary.reduce((acc, row) => {
         acc.count += row.count;
         acc.revenue += row.revenue;
-        acc.paidAmount += row.paidAmount;
-        acc.unpaidAmount += row.unpaidAmount;
         return acc;
-    }, { count: 0, revenue: 0, paidAmount: 0, unpaidAmount: 0 });
+    }, { count: 0, revenue: 0 });
+    totals.programCount = summary.length;
+    totals.avgPrice = totals.count > 0 ? Math.round(totals.revenue / totals.count) : 0;
 
     return {
         success: true,
@@ -265,6 +253,27 @@ function csvCell(value) {
     return `"${String(value ?? '').replace(/"/g, '""')}"`;
 }
 
+const PRODUCT_SALES_CATEGORY_LABELS = {
+    quest: 'Квести',
+    animation: 'Анімації',
+    show: 'Шоу',
+    masterclass: 'Майстер-класи',
+    photo: 'Фото',
+    pinata: 'Піньяти',
+    banquet: 'Банкети',
+    custom: 'Інше'
+};
+
+function productSalesCategoryLabel(category) {
+    return PRODUCT_SALES_CATEGORY_LABELS[category] || category || 'Інше';
+}
+
+function productSalesPartyName(row) {
+    return [row.groupName, row.customerName || row.customerPhone]
+        .filter(Boolean)
+        .join(' / ');
+}
+
 function formatExportFilename({ month, category, programId }, format) {
     const suffix = [month, category, programId]
         .filter(Boolean)
@@ -274,24 +283,44 @@ function formatExportFilename({ month, category, programId }, format) {
 }
 
 function buildProductSalesCsv(data) {
-    const summaryHeaders = ['Програма', 'Код', 'Категорія', 'Кількість', 'Виручка', 'Оплачено', 'Борг', 'Середній чек'];
-    const detailHeaders = ['Дата', 'Час', 'ID бронювання', 'Програма', 'Код', 'Категорія', 'Група', 'Клієнт', 'Телефон', 'Кімната', 'Дітей', 'Ціна', 'Оплачено', 'Борг', 'Статус оплати', 'Спосіб оплати', 'Створив'];
+    const detailHeaders = ['Дата', 'Час', 'Програма', 'Код', 'Категорія', 'Клієнт/група', 'Кімната', 'Дітей', 'Сума', 'ID бронювання', 'Створив'];
     const lines = [
-        `Підсумок за ${data.period.month}`,
-        summaryHeaders.map(csvCell).join(';'),
-        ...data.summary.map(row => [
-            row.name, row.code, row.category, row.count, row.revenue, row.paidAmount, row.unpaidAmount, row.avgPrice
-        ].map(csvCell).join(';')),
-        '',
-        `Виписка за ${data.period.month}`,
         detailHeaders.map(csvCell).join(';'),
         ...data.details.map(row => [
-            row.date, row.time, row.id, row.name, row.code, row.category, row.groupName, row.customerName,
-            row.customerPhone, row.room, row.kidsCount, row.price, row.paidAmount, row.unpaidAmount,
-            row.paymentStatus, row.paymentMethod, row.createdBy
+            row.date, row.time, row.name, row.code, productSalesCategoryLabel(row.category), productSalesPartyName(row), row.room,
+            row.kidsCount, row.price, row.id, row.createdBy
         ].map(csvCell).join(';'))
     ];
     return `\uFEFF${lines.join('\n')}`;
+}
+
+function styleProductSalesSheet(sheet, moneyColumns = []) {
+    const headerRow = sheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F766E' } };
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.height = 24;
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    sheet.autoFilter = {
+        from: { row: 1, column: 1 },
+        to: { row: 1, column: sheet.columns.length }
+    };
+    sheet.eachRow((row, rowNumber) => {
+        row.eachCell(cell => {
+            cell.border = {
+                top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+            };
+            if (rowNumber > 1) {
+                cell.alignment = { vertical: 'middle', wrapText: true };
+            }
+        });
+    });
+    moneyColumns.forEach(key => {
+        sheet.getColumn(key).numFmt = '#,##0';
+    });
 }
 
 async function buildProductSalesWorkbook(data) {
@@ -304,42 +333,35 @@ async function buildProductSalesWorkbook(data) {
     summarySheet.columns = [
         { header: 'Програма', key: 'name', width: 32 },
         { header: 'Код', key: 'code', width: 14 },
-        { header: 'Категорія', key: 'category', width: 16 },
+        { header: 'Категорія', key: 'categoryName', width: 16 },
         { header: 'Кількість', key: 'count', width: 12 },
         { header: 'Виручка', key: 'revenue', width: 14 },
-        { header: 'Оплачено', key: 'paidAmount', width: 14 },
-        { header: 'Борг', key: 'unpaidAmount', width: 14 },
         { header: 'Середній чек', key: 'avgPrice', width: 14 }
     ];
-    summarySheet.addRows(data.summary);
+    summarySheet.addRows(data.summary.map(row => ({ ...row, categoryName: productSalesCategoryLabel(row.category) })));
 
     const detailSheet = workbook.addWorksheet('Виписка');
     detailSheet.columns = [
         { header: 'Дата', key: 'date', width: 13 },
         { header: 'Час', key: 'time', width: 10 },
-        { header: 'ID бронювання', key: 'id', width: 18 },
         { header: 'Програма', key: 'name', width: 32 },
         { header: 'Код', key: 'code', width: 14 },
-        { header: 'Категорія', key: 'category', width: 16 },
-        { header: 'Група', key: 'groupName', width: 24 },
-        { header: 'Клієнт', key: 'customerName', width: 24 },
-        { header: 'Телефон', key: 'customerPhone', width: 18 },
+        { header: 'Категорія', key: 'categoryName', width: 16 },
+        { header: 'Клієнт/група', key: 'partyName', width: 28 },
         { header: 'Кімната', key: 'room', width: 16 },
         { header: 'Дітей', key: 'kidsCount', width: 10 },
-        { header: 'Ціна', key: 'price', width: 12 },
-        { header: 'Оплачено', key: 'paidAmount', width: 12 },
-        { header: 'Борг', key: 'unpaidAmount', width: 12 },
-        { header: 'Статус оплати', key: 'paymentStatus', width: 16 },
-        { header: 'Спосіб оплати', key: 'paymentMethod', width: 18 },
+        { header: 'Сума', key: 'price', width: 12 },
+        { header: 'ID бронювання', key: 'id', width: 18 },
         { header: 'Створив', key: 'createdBy', width: 16 }
     ];
-    detailSheet.addRows(data.details);
+    detailSheet.addRows(data.details.map(row => ({
+        ...row,
+        categoryName: productSalesCategoryLabel(row.category),
+        partyName: productSalesPartyName(row)
+    })));
 
-    for (const sheet of [summarySheet, detailSheet]) {
-        sheet.getRow(1).font = { bold: true };
-        sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
-        sheet.views = [{ state: 'frozen', ySplit: 1 }];
-    }
+    styleProductSalesSheet(summarySheet, ['revenue', 'avgPrice']);
+    styleProductSalesSheet(detailSheet, ['price']);
 
     return workbook;
 }

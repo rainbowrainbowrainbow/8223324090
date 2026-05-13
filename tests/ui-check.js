@@ -85,6 +85,9 @@ checkPage('index.html', (doc) => {
     check('Timeline product sales month filter exists', doc.getElementById('productSalesMonth')?.type === 'month');
     check('Timeline product sales category and program filters exist', !!doc.getElementById('productSalesCategory') && !!doc.getElementById('productSalesProgram'));
     check('Timeline product sales export buttons exist', !!doc.getElementById('productSalesXlsxBtn') && !!doc.getElementById('productSalesCsvBtn'));
+    check('Timeline product sales button is a modal trigger', doc.getElementById('productSalesBtn')?.textContent.includes('📊'));
+    check('Timeline product sales modal omits payment/debt fields', !doc.getElementById('productSalesModal')?.textContent.includes('Оплачено') && !doc.getElementById('productSalesModal')?.textContent.includes('Борг'));
+    check('Timeline product sales export buttons are styled as buttons', doc.getElementById('productSalesXlsxBtn')?.classList.contains('product-sales-export-btn') && doc.getElementById('productSalesCsvBtn')?.classList.contains('product-sales-export-btn'));
 });
 
 checkPage('dashboard.html', (doc, html) => {

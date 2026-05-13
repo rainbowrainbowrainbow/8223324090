@@ -10,6 +10,12 @@ const { sendViber } = require('./omni-viber');
 const { sendSMS } = require('./omni-sms');
 const { sendFacebook } = require('./omni-facebook');
 const { sendInstagram } = require('./omni-instagram');
+const {
+  booleanValue,
+  deriveReplySlaState,
+  isActiveWaitingReply,
+  isDeliveryFailed: failedDeliveryStatus,
+} = require('./replySla');
 
 const logger = createLogger('omni-hub');
 
@@ -27,7 +33,6 @@ const DELIVERY_STATUS = Object.freeze({
   UNKNOWN: 'unknown',
 });
 const LIFECYCLE_SUPPORTED_CHANNELS = new Set(['viber', 'sms']);
-const FAILED_DELIVERY_STATUSES = new Set([DELIVERY_STATUS.FAILED, DELIVERY_STATUS.LATER_FAILED]);
 const MAX_NAME_LEN = 255;
 const MAX_SEARCH_LEN = 255;
 
@@ -51,31 +56,10 @@ function safeTruncate(str, maxLen) {
   return str.length > maxLen ? str.slice(0, maxLen) : str;
 }
 
-function booleanValue(value) {
-  return value === true || value === 'true' || value === 't' || value === 1 || value === '1';
-}
-
 function normalizeOptionalTimestamp(value) {
   if (!value) return null;
   const parsed = new Date(value);
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
-}
-
-function failedDeliveryStatus(status) {
-  return FAILED_DELIVERY_STATUSES.has(String(status || '').toLowerCase());
-}
-
-function isActiveWaitingReply(row) {
-  if (!row || !booleanValue(row.reply_expected) || !row.awaiting_reply_since) return false;
-  if (failedDeliveryStatus(row.reply_expected_delivery_status)) return false;
-
-  const since = new Date(row.awaiting_reply_since).getTime();
-  if (!Number.isFinite(since)) return false;
-
-  if (!row.last_inbound_at) return true;
-  const lastInbound = new Date(row.last_inbound_at).getTime();
-  if (!Number.isFinite(lastInbound)) return true;
-  return lastInbound <= since;
 }
 
 function normalizeReplyExpectationOptions(options = {}) {
@@ -349,6 +333,7 @@ function mapConversationRow(row) {
   if (!row) return null;
   const replyExpected = booleanValue(row.reply_expected);
   const waitingReply = isActiveWaitingReply(row);
+  const replySlaState = deriveReplySlaState(row);
   return {
     id: row.id,
     channel: row.channel,
@@ -366,6 +351,7 @@ function mapConversationRow(row) {
     replyExpectedMessageId: row.reply_expected_message_id || null,
     replyOwner: row.reply_owner || null,
     replySlaAt: row.reply_sla_at || null,
+    replySlaState,
     waitingReply,
     replyExpectation: {
       expected: replyExpected,
@@ -374,7 +360,8 @@ function mapConversationRow(row) {
       expectedMessageId: row.reply_expected_message_id || null,
       owner: row.reply_owner || null,
       slaAt: row.reply_sla_at || null,
-      blockedByDeliveryFailure: failedDeliveryStatus(row.reply_expected_delivery_status),
+      slaState: replySlaState,
+      blockedByDeliveryFailure: failedDeliveryStatus(row.reply_expected_delivery_status ?? row.delivery_status),
     },
     lastMessage: row.last_message || null,
     unreadCount: row.unread_count,

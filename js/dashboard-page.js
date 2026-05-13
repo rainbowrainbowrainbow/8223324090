@@ -198,6 +198,15 @@ const DashboardPage = (() => {
         Explainability.setRegion(target, html);
     }
 
+    function replySlaLabel(state) {
+        switch (state) {
+            case 'overdue': return 'SLA прострочено';
+            case 'due_soon': return 'SLA скоро спливає';
+            case 'on_track': return 'SLA в нормі';
+            default: return '';
+        }
+    }
+
     function renderWorkQueueItem(item) {
         const priorityCls = item.priority ? ` priority-${item.priority}` : '';
         const bucketCls = item.bucket ? ` bucket-${item.bucket}` : '';
@@ -210,7 +219,12 @@ const DashboardPage = (() => {
         const owner = item.bucket === 'waiting_reply' && item.meta?.assignedTo
             ? `<span>${escapeHtml(item.meta.assignedTo)}</span>`
             : '';
-        const meta = [waitingSince || due, owner, confidence].filter(Boolean).join(' · ');
+        const slaLabel = item.bucket === 'waiting_reply' ? replySlaLabel(item.meta?.replySlaState) : '';
+        const slaState = item.meta?.replySlaState || 'none';
+        const sla = slaLabel
+            ? `<span class="work-queue-sla-pill sla-${escapeHtml(slaState)}">${escapeHtml(slaLabel)}</span>`
+            : '';
+        const meta = [waitingSince || due, sla, owner, confidence].filter(Boolean).join(' · ');
         const href = item.href || '/dashboard';
         return `
             <a class="work-queue-item${priorityCls}${bucketCls}${waitingCls}" href="${escapeHtml(href)}">

@@ -552,9 +552,20 @@ function waitingReplyConversation(workspace) {
         || null;
 }
 
+function replySlaText(conversation) {
+    if (!conversation?.waitingReply) return '';
+    switch (conversation.replySlaState) {
+        case 'overdue': return 'SLA прострочено';
+        case 'due_soon': return 'SLA скоро спливає';
+        case 'on_track': return 'SLA в нормі';
+        default: return '';
+    }
+}
+
 function waitingReplyText(conversation) {
     if (!conversation?.waitingReply || !conversation.awaitingReplySince) return '';
-    return `Очікуємо відповідь з ${workspaceDateTime(conversation.awaitingReplySince)}`;
+    const sla = replySlaText(conversation);
+    return [`Очікуємо відповідь з ${workspaceDateTime(conversation.awaitingReplySince)}`, sla].filter(Boolean).join(' · ');
 }
 
 function exactLeadBooking(workspace) {

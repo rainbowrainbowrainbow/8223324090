@@ -104,10 +104,24 @@ function customerHubAction(href, label, cls = '', options = {}) {
     return `<a class="customer-hub-action ${cls}" href="${escapeHtml(href)}"${target}>${escapeHtml(label)}</a>`;
 }
 
+function customerHubReplySlaLabel(conversation) {
+    if (!conversation?.waitingReply) return '';
+    switch (conversation.replySlaState) {
+        case 'overdue': return 'SLA прострочено';
+        case 'due_soon': return 'SLA скоро спливає';
+        case 'on_track': return 'SLA в нормі';
+        default: return '';
+    }
+}
+
 function customerHubWaitingReply(conversation) {
     if (!conversation || !conversation.waitingReply || !conversation.awaitingReplySince) return '';
-    const owner = conversation.replyOwner ? ` · ${conversation.replyOwner}` : '';
-    return `<div class="customer-hub-waiting-line">Очікуємо відповідь з ${formatDateTime(conversation.awaitingReplySince)}${escapeHtml(owner)}</div>`;
+    const details = [
+        `Очікуємо відповідь з ${formatDateTime(conversation.awaitingReplySince)}`,
+        customerHubReplySlaLabel(conversation),
+        conversation.replyOwner || ''
+    ].filter(Boolean).join(' · ');
+    return `<div class="customer-hub-waiting-line">${escapeHtml(details)}</div>`;
 }
 
 function customerHubConversation(conversation) {

@@ -157,11 +157,12 @@ function createFakePool() {
                     customer_phone: '+380000000041',
                     customer_id: 401,
                     assigned_to: 'manager user',
+                    reply_expected: true,
                     awaiting_reply_since: '2026-05-13T09:30:00Z',
                     reply_expected_message_id: 1201,
                     reply_owner: 'manager user',
-                    reply_sla_at: '2026-05-13T15:00:00Z',
-                    due_at: '2026-05-13T15:00:00Z',
+                    reply_sla_at: '2099-05-13T15:00:00Z',
+                    due_at: '2099-05-13T15:00:00Z',
                     delivery_status: 'delivered',
                     delivery_error: null,
                     failed_at: null,
@@ -294,7 +295,8 @@ describe('work queue endpoint', () => {
         assert.equal(buckets.waiting_reply.items[0].meta.signal, 'conversations.reply_expected');
         assert.equal(buckets.waiting_reply.items[0].meta.state, 'waiting_reply');
         assert.equal(buckets.waiting_reply.items[0].meta.awaitingReplySince, '2026-05-13T09:30:00Z');
-        assert.equal(buckets.waiting_reply.items[0].meta.replySlaAt, '2026-05-13T15:00:00Z');
+        assert.equal(buckets.waiting_reply.items[0].meta.replySlaAt, '2099-05-13T15:00:00Z');
+        assert.equal(buckets.waiting_reply.items[0].meta.replySlaState, 'on_track');
         assert.equal(buckets.waiting_reply.items[0].meta.replyExpectedMessageId, 1201);
         assert.equal(buckets.waiting_reply.items[0].meta.exactHref, '/omni?conversation=41');
         assert.equal(buckets.waiting_reply.items[0].meta.leadHref, '/sales-funnel?lead=41');
@@ -308,6 +310,7 @@ describe('work queue endpoint', () => {
         assert.match(waitingQuery.text, /awaiting_reply_since IS NOT NULL/i);
         assert.match(waitingQuery.text, /last_inbound_at IS NULL OR c\.last_inbound_at <= c\.awaiting_reply_since/i);
         assert.match(waitingQuery.text, /COALESCE\(cm\.delivery_status, ''\) NOT IN \('failed', 'later_failed'\)/i);
+        assert.match(waitingQuery.text, /CASE WHEN c\.reply_sla_at IS NULL THEN 1 ELSE 0 END/i);
     });
 
     it('does not reuse stale status=new cold-lead logic as queue authority', async () => {
@@ -323,7 +326,9 @@ describe('work queue endpoint', () => {
 
         assert.match(dashboardJs, /item\.bucket === 'waiting_reply'/);
         assert.match(dashboardJs, /item\.meta\?\.awaitingReplySince/);
+        assert.match(dashboardJs, /replySlaState/);
         assert.match(dashboardJs, /work-queue-state-pill/);
+        assert.match(dashboardJs, /work-queue-sla-pill/);
         assert.doesNotMatch(dashboardJs, /unread_count\s*>\s*0/i);
         assert.match(dashboardCss, /bucket-waiting_reply/);
         assert.match(dashboardCss, /is-waiting-reply/);

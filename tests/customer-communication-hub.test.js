@@ -92,6 +92,7 @@ describe('customer communication hub context', () => {
         assert.equal(context.live.primaryConversation.replyExpected, true);
         assert.equal(context.live.primaryConversation.waitingReply, true);
         assert.equal(context.live.primaryConversation.awaitingReplySince, '2099-05-02T09:00:00Z');
+        assert.equal(context.live.primaryConversation.replySlaState, 'on_track');
         assert.equal(context.links.omniExact, '/omni?conversation=903');
         assert.equal(context.links.omniSuggested, null);
         assert.equal(context.links.leadWorkspace, '/sales-funnel?lead=501');
@@ -225,6 +226,7 @@ describe('customer communication hub context', () => {
 
         assert.match(customersJs, /conversation\.waitingReply/);
         assert.match(customersJs, /customerHubWaitingReply/);
+        assert.match(customersJs, /replySlaState/);
         assert.match(customersHtml, /customer-hub-waiting-line/);
         assert.match(customersHtml, /customer-hub-pill\.waiting/);
     });

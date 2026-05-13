@@ -4,6 +4,16 @@
 
 ---
 
+## v0.47.12 - 💬 0.47 Комунікації: reply SLA severity v1 (2026-05-13)
+
+### Reply SLA Severity v1 [codex]
+- **Центральний SLA state** - додано `replySlaState` для активного `waiting_reply`: `none`, `on_track`, `due_soon`, `overdue`.
+- **Work Queue severity** - bucket `waiting_reply` показує compact SLA cues з `reply_sla_at`, сортує SLA-очікування перед розмовами без SLA і не змішує їх із `callback_due`.
+- **Контекстні бейджі** - Dashboard Work Queue, Omni, Customer Communication Hub і workspace ліда показують "SLA в нормі", "SLA скоро спливає" або "SLA прострочено" тільки для активного explicit очікування.
+- **Без automation/schema** - auto callback/task escalation навмисно не створюється; старі розмови без `reply_sla_at` лишаються без fake severity.
+
+---
+
 ## v0.47.11 - 💬 0.47 Комунікації: waiting reply queue + UI v1 (2026-05-13)
 
 ### Waiting Reply Queue + UI Surfacing v1 [codex]

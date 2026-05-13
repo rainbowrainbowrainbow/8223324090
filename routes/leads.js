@@ -25,6 +25,11 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { notifyNewLead } = require('../services/leadNotifier');
 const { authenticateToken, requireMinRole } = require('../middleware/auth');
+const {
+    booleanValue,
+    deriveReplySlaState,
+    isActiveWaitingReply
+} = require('../services/replySla');
 
 const log = createLogger('Leads');
 
@@ -206,28 +211,6 @@ function mapWorkspaceTask(row, leadId = null, exactBookingIds = []) {
     };
 }
 
-function truthy(value) {
-    return value === true || value === 1 || value === '1' || value === 'true' || value === 't';
-}
-
-function timestampMs(value) {
-    if (!value) return null;
-    const ms = new Date(value).getTime();
-    return Number.isNaN(ms) ? null : ms;
-}
-
-function workspaceDeliveryFailed(status) {
-    return ['failed', 'later_failed'].includes(String(status || '').toLowerCase());
-}
-
-function workspaceWaitingReply(row) {
-    if (!truthy(row?.reply_expected) || !row.awaiting_reply_since) return false;
-    if (workspaceDeliveryFailed(row.reply_expected_delivery_status)) return false;
-    const awaitingMs = timestampMs(row.awaiting_reply_since);
-    const inboundMs = timestampMs(row.last_inbound_at);
-    if (awaitingMs !== null && inboundMs !== null && inboundMs > awaitingMs) return false;
-    return true;
-}
 const FB_PAGE_ACCESS_TOKEN    = process.env.FB_PAGE_ACCESS_TOKEN    || '';
 const VIBER_AUTH_TOKEN        = process.env.VIBER_AUTH_TOKEN        || '';
 
@@ -828,12 +811,13 @@ router.get('/:id/workspace', async (req, res) => {
                     lastMessageAt: c.last_message_at,
                     lastInboundAt: c.last_inbound_at,
                     lastOutboundAt: c.last_outbound_at,
-                    replyExpected: truthy(c.reply_expected),
+                    replyExpected: booleanValue(c.reply_expected),
                     awaitingReplySince: c.awaiting_reply_since,
                     replyExpectedMessageId: c.reply_expected_message_id,
                     replyOwner: c.reply_owner,
                     replySlaAt: c.reply_sla_at,
-                    waitingReply: workspaceWaitingReply(c),
+                    replySlaState: deriveReplySlaState(c),
+                    waitingReply: isActiveWaitingReply(c),
                     replyDeliveryStatus: c.reply_expected_delivery_status,
                     lastMessage: c.last_message
                 })),

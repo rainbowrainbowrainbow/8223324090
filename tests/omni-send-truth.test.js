@@ -338,7 +338,9 @@ describe('Communication Send Truth v1', () => {
         });
         assert.equal(result.conversation.replyExpected, true);
         assert.equal(result.conversation.waitingReply, true);
+        assert.equal(result.conversation.replySlaState, 'on_track');
         assert.equal(result.replyExpectation.expected, true);
+        assert.equal(result.replyExpectation.slaState, 'on_track');
     });
 
     it('does not leave waiting_reply active when immediate delivery fails', async () => {

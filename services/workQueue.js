@@ -1,5 +1,6 @@
 const { getPermissions } = require('../config/roles');
 const { getKyivDateStr } = require('./booking');
+const { REPLY_SLA_STATES, deriveReplySlaState } = require('./replySla');
 
 const BUCKETS = [
     { key: 'overdue', label: 'Прострочено' },
@@ -182,6 +183,7 @@ function conversationItem(row, bucket = 'waiting_reply') {
     const dueAt = isoValue(row.due_at || row.reply_sla_at || row.awaiting_reply_since);
     const conversationHref = `/omni?conversation=${encodeURIComponent(row.conversation_id)}`;
     const leadHrefValue = row.lead_id ? leadHref(row.lead_id) : null;
+    const replySlaState = deriveReplySlaState(row);
     return {
         id: `${bucket}:conversation:${row.conversation_id}`,
         bucket,
@@ -194,7 +196,7 @@ function conversationItem(row, bucket = 'waiting_reply') {
         title: `Очікуємо відповідь: ${conversationTitle(row)}`,
         subtitle: [row.channel, row.customer_phone].filter(Boolean).join(' · ') || null,
         dueAt,
-        priority: row.reply_sla_at && new Date(row.reply_sla_at).getTime() < Date.now() ? 'high' : 'normal',
+        priority: replySlaState === REPLY_SLA_STATES.OVERDUE ? 'high' : 'normal',
         confidence: 'exact',
         actionLabel: 'Відкрити чат',
         href: conversationHref,
@@ -206,6 +208,7 @@ function conversationItem(row, bucket = 'waiting_reply') {
             waitingSince: isoValue(row.awaiting_reply_since),
             awaitingReplySince: isoValue(row.awaiting_reply_since),
             replySlaAt: isoValue(row.reply_sla_at),
+            replySlaState,
             replyExpectedMessageId: row.reply_expected_message_id || null,
             deliveryStatus: row.delivery_status || null,
             lastInboundAt: isoValue(row.last_inbound_at),
@@ -364,7 +367,7 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null } = {}) {
     const waitingReply = await source(pool, warnings, 'conversation_reply_expectations', async () => {
         const result = await pool.query(`
             SELECT c.id AS conversation_id, c.channel, c.customer_name, c.customer_phone,
-                   c.customer_id, c.assigned_to, c.awaiting_reply_since,
+                   c.customer_id, c.assigned_to, c.reply_expected, c.awaiting_reply_since,
                    c.reply_expected_message_id, c.reply_owner, c.reply_sla_at,
                    c.last_inbound_at, c.last_outbound_at,
                    COALESCE(c.reply_sla_at, c.awaiting_reply_since) AS due_at,
@@ -378,7 +381,9 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null } = {}) {
               AND COALESCE(c.status, 'open') NOT IN ('closed', 'spam')
               AND (c.last_inbound_at IS NULL OR c.last_inbound_at <= c.awaiting_reply_since)
               AND COALESCE(cm.delivery_status, '') NOT IN ('failed', 'later_failed')
-            ORDER BY COALESCE(c.reply_sla_at, c.awaiting_reply_since) ASC
+            ORDER BY
+              CASE WHEN c.reply_sla_at IS NULL THEN 1 ELSE 0 END,
+              COALESCE(c.reply_sla_at, c.awaiting_reply_since) ASC
             LIMIT $1
         `, [safeLimit]);
         return result.rows.map(row => conversationItem(row, 'waiting_reply'));

@@ -154,7 +154,7 @@ CI does not run PostgreSQL-backed API/integration suites, production deploy veri
 
 `package.json` is the version source of truth. The version helper is `scripts/version-sync.js`; it checks `package-lock.json`, visible UI labels, latest changelog markers, asset cache tags, service-worker cache names, and known inline asset references.
 
-The active release train is now `0.45.x`. `0.45.0` is the base release for this convention, and mini updates should increment patch only: `0.45.1`, `0.45.2`, `0.45.3`, etc. Existing `v43.*` and `v0.44.*` changelog entries, code comments, migration notes, and audit docs are historical records; do not use them as the active version source and do not return new release markers to those older lines without an explicit version-policy task.
+The active release train is now `0.47.x`. `0.47.0` is the base release for this convention, and mini updates should increment patch only: `0.47.1`, `0.47.2`, `0.47.3`, etc. Existing `v43.*`, `v0.44.*`, `v0.45.*`, and `v0.46.*` changelog entries, code comments, migration notes, and audit docs are historical records; do not use them as the active version source and do not return new release markers to those older lines without an explicit version-policy task.
 
 For user-visible or deployable product changes:
 

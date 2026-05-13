@@ -76,8 +76,25 @@
     font-weight: 900;
     color: #C9A84C;
     margin-top: 14px;
-    letter-spacing: -0.3px;
+    letter-spacing: 0;
     font-family: var(--font-heading, 'Space Grotesk'), sans-serif;
+}
+
+.login-release-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 32px;
+    margin: 12px auto 0;
+    padding: 6px 14px;
+    border: 1px solid rgba(245, 200, 66, 0.35);
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(245, 200, 66, 0.18), rgba(16, 185, 129, 0.14));
+    color: #F7D66B;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 0;
+    box-shadow: 0 8px 24px rgba(245, 200, 66, 0.12);
 }
 
 .tagline {
@@ -85,8 +102,7 @@
     font-size: 13px;
     margin-top: 6px;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0;
 }
 
 /* Changelog button */

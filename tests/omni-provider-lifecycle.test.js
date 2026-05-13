@@ -42,11 +42,28 @@ function loadHub(pool) {
 }
 
 function createLifecyclePool() {
-    const state = { update: null };
+    const state = { update: null, replyClear: null };
     return {
         state,
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
+            if (/UPDATE conversations/i.test(text) && /reply_expected = false/i.test(text)) {
+                state.replyClear = {
+                    conversationId: params[0],
+                    messageId: params[1],
+                };
+                return {
+                    rows: [{
+                        id: params[0],
+                        channel: 'viber',
+                        reply_expected: false,
+                        awaiting_reply_since: null,
+                        reply_expected_message_id: null,
+                        reply_owner: null,
+                        reply_sla_at: null,
+                    }],
+                };
+            }
             if (!/UPDATE conversation_messages cm/i.test(text) || !/provider_lifecycle_at/i.test(text)) {
                 throw new Error(`Unexpected lifecycle query: ${text}`);
             }
@@ -219,6 +236,28 @@ describe('Provider Lifecycle v1 for Viber and TurboSMS', () => {
         assert.equal(message.providerLifecycleEvent, 'seen');
         assert.equal(message.sendTruth.status, 'provider_read');
         assert.equal(message.sendTruth.deliveryConfirmed, true);
+        assert.equal(pool.state.replyClear, null);
+    });
+
+    it('clears active reply expectation when the expected outbound message later fails', async () => {
+        const pool = createLifecyclePool();
+        const hub = loadHub(pool);
+
+        const message = await hub.applyProviderLifecycleReceipt({
+            channel: 'viber',
+            providerMessageId: '43',
+            deliveryStatus: 'later_failed',
+            deliveryError: 'No suitable device',
+            providerLifecycleAt: '2026-05-13T10:00:02.000Z',
+            providerLifecycleEvent: 'failed',
+            providerLifecycleSource: 'viber_webhook',
+        });
+
+        assert.equal(message.deliveryStatus, 'later_failed');
+        assert.deepEqual(pool.state.replyClear, {
+            conversationId: 501,
+            messageId: 1201,
+        });
     });
 
     it('contains unsupported provider lifecycle receipts', async () => {

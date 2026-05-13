@@ -7,13 +7,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.47.9">
-    <link rel="stylesheet" href="css/layout.css?v=0.47.9">
-    <link rel="stylesheet" href="css/pages.css?v=0.47.9">
-    <link rel="stylesheet" href="css/modals.css?v=0.47.9">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.9">
-    <link rel="stylesheet" href="css/responsive.css?v=0.47.9">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.47.9">
+    <link rel="stylesheet" href="css/base.css?v=0.47.10">
+    <link rel="stylesheet" href="css/layout.css?v=0.47.10">
+    <link rel="stylesheet" href="css/pages.css?v=0.47.10">
+    <link rel="stylesheet" href="css/modals.css?v=0.47.10">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.10">
+    <link rel="stylesheet" href="css/responsive.css?v=0.47.10">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.47.10">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -376,6 +376,7 @@
 
         .omni-chat-input textarea {
             flex: 1;
+            min-width: 0;
             padding: 10px 14px;
             border: 1px solid var(--border-color, #e2e8f0);
             border-radius: 12px;
@@ -391,6 +392,29 @@
 
         .omni-chat-input textarea:focus {
             border-color: var(--accent-color, #F5C842);
+        }
+
+        .omni-reply-toggle {
+            min-height: 42px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0 8px;
+            color: var(--text-secondary, #718096);
+            font-size: 12px;
+            font-weight: 700;
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        .omni-reply-toggle input {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent-color, #F5C842);
+        }
+
+        .omni-reply-toggle:has(input:disabled) {
+            opacity: 0.45;
         }
 
         .omni-send-btn {
@@ -625,6 +649,10 @@
                     <div class="omni-quick-replies" id="omniQuickReplies" style="display:none"></div>
                     <div class="omni-chat-input" id="omniInputArea" style="display:none">
                         <textarea id="omniInput" rows="1" placeholder="Написати повідомлення..." maxlength="4000" aria-label="Повідомлення"></textarea>
+                        <label class="omni-reply-toggle" title="Позначити, що після цього повідомлення очікуємо відповідь клієнта">
+                            <input type="checkbox" id="omniReplyExpected">
+                            <span>Очікуємо відповідь</span>
+                        </label>
                         <button type="button" class="omni-send-btn" id="omniSendBtn" title="Відправити">&gt;</button>
                     </div>
                     <div class="omni-send-truth" id="omniSendTruth" hidden aria-live="polite"></div>
@@ -648,12 +676,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.47.9"></script>
-    <script src="js/api.js?v=0.47.9"></script>
-    <script src="js/auth.js?v=0.47.9"></script>
-    <script src="js/components/sidebar.js?v=0.47.9"></script>
+    <script src="js/config.js?v=0.47.10"></script>
+    <script src="js/api.js?v=0.47.10"></script>
+    <script src="js/auth.js?v=0.47.10"></script>
+    <script src="js/components/sidebar.js?v=0.47.10"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.47.9"></script>
+    <script src="js/ws.js?v=0.47.10"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -684,6 +712,7 @@
         const searchInput = $('omniSearch');
         const input = $('omniInput');
         const sendBtn = $('omniSendBtn');
+        const replyExpectedEl = $('omniReplyExpected');
         const sendTruthEl = $('omniSendTruth');
         const caseContextEl = $('omniCaseContext');
         let isSending = false;
@@ -946,7 +975,9 @@
             const canSend = canSendConversation(conv);
             input.disabled = !canSend || isSending;
             sendBtn.disabled = !canSend || isSending;
+            if (replyExpectedEl) replyExpectedEl.disabled = !canSend || isSending;
             input.placeholder = canSend ? 'Написати повідомлення...' : 'Канал доступний лише для перегляду';
+            if (!canSend && replyExpectedEl) replyExpectedEl.checked = false;
             if (!canSend && conv) {
                 setSendFeedback({
                     status: 'channel_unavailable',
@@ -1104,6 +1135,7 @@
             aiBtn.style.background = aiEnabled ? '#667eea' : '';
             aiBtn.style.color = aiEnabled ? '#fff' : '';
             setSendFeedback(null);
+            if (replyExpectedEl) replyExpectedEl.checked = false;
             updateSendControls(conv);
 
             renderConversations();
@@ -1130,12 +1162,16 @@
 
             const res = await api('/conversations/' + currentConvId + '/send', {
                 method: 'POST',
-                body: JSON.stringify({ text })
+                body: JSON.stringify({
+                    text,
+                    reply_expected: !!(replyExpectedEl && replyExpectedEl.checked)
+                })
             });
 
             if (res.success) {
                 input.value = '';
                 input.style.height = 'auto';
+                if (replyExpectedEl) replyExpectedEl.checked = false;
                 setSendFeedback(res.sendTruth || res.data?.meta?.sendTruth || {
                     status: 'provider_unknown',
                     channel: conv?.channel,
@@ -1342,8 +1378,8 @@
         });
     })();
     </script>
-    <script src="js/role-panel.js?v=0.47.9"></script>
-    <script src="js/ui.js?v=0.47.9"></script>
-    <script src="js/alerts.js?v=0.47.9"></script>
+    <script src="js/role-panel.js?v=0.47.10"></script>
+    <script src="js/ui.js?v=0.47.10"></script>
+    <script src="js/alerts.js?v=0.47.10"></script>
 </body>
 </html>

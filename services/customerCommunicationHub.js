@@ -94,6 +94,10 @@ function mapConversation(row, confidence) {
         assignedTo: row.assigned_to || null,
         unreadCount: row.unread_count || 0,
         lastMessageAt: row.last_message_at || null,
+        replyExpected: row.reply_expected === true,
+        awaitingReplySince: row.awaiting_reply_since || null,
+        replyOwner: row.reply_owner || null,
+        replySlaAt: row.reply_sla_at || null,
         lastMessage: row.last_message || null,
         confidence,
         sendCapable: !INBOUND_ONLY_CHANNELS.has(channel),
@@ -201,6 +205,7 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
     const exactConversationsResult = await db.query(`
         SELECT c.id, c.channel, c.customer_name, c.customer_phone, c.customer_id, c.status,
                c.assigned_to, c.unread_count, c.last_message_at, c.updated_at,
+               c.reply_expected, c.awaiting_reply_since, c.reply_owner, c.reply_sla_at,
                m.content AS last_message
         FROM conversations c
         LEFT JOIN LATERAL (
@@ -223,6 +228,7 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
         const suggestedResult = await db.query(`
             SELECT c.id, c.channel, c.customer_name, c.customer_phone, c.customer_id, c.status,
                    c.assigned_to, c.unread_count, c.last_message_at, c.updated_at,
+                   c.reply_expected, c.awaiting_reply_since, c.reply_owner, c.reply_sla_at,
                    m.content AS last_message
             FROM conversations c
             LEFT JOIN LATERAL (

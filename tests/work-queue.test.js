@@ -147,6 +147,26 @@ function createFakePool() {
                 }] };
             }
 
+            if (/FROM conversations c/i.test(text) && /reply_expected IS TRUE/i.test(text)) {
+                return { rows: [{
+                    conversation_id: 41,
+                    channel: 'viber',
+                    customer_name: 'Reply Client',
+                    customer_phone: '+380000000041',
+                    customer_id: 401,
+                    assigned_to: 'manager user',
+                    awaiting_reply_since: '2026-05-13T09:30:00Z',
+                    reply_expected_message_id: 1201,
+                    reply_owner: 'manager user',
+                    reply_sla_at: '2026-05-13T15:00:00Z',
+                    due_at: '2026-05-13T15:00:00Z',
+                    delivery_status: 'delivered',
+                    delivery_error: null,
+                    failed_at: null,
+                    lead_id: 41
+                }] };
+            }
+
             if (/FROM bookings b/i.test(text) && /b\.status = 'preliminary'/i.test(text)) {
                 return { rows: [{
                     id: 'BK-2',
@@ -266,10 +286,15 @@ describe('work queue endpoint', () => {
         assert.equal(buckets.tomorrow.items.some(item => item.bookingId === 'BK-3'), true);
         assert.equal(buckets.callback_due.items[0].leadId, 11);
         assert.equal(buckets.callback_due.items[0].confidence, 'exact');
+        assert.equal(buckets.waiting_reply.items[0].sourceType, 'conversation');
+        assert.equal(buckets.waiting_reply.items[0].sourceId, '41');
+        assert.equal(buckets.waiting_reply.items[0].href, '/omni?conversation=41');
+        assert.equal(buckets.waiting_reply.items[0].meta.signal, 'conversations.reply_expected');
         assert.equal(buckets.needs_confirmation.items[0].href, '/?date=2026-05-13&highlight=BK-2');
         assert.equal(buckets.event_soon.items[0].leadId, 12);
         assert.equal(buckets.idle_lead.items[0].confidence, 'suggested');
-        assert.ok(res.data.queue.meta.omittedBuckets.includes('waiting_reply'));
+        assert.equal(res.data.queue.meta.omittedBuckets.includes('waiting_reply'), false);
+        assert.ok(!queries.some(q => /unread_count\s*>\s*0/i.test(q.text)));
     });
 
     it('does not reuse stale status=new cold-lead logic as queue authority', async () => {

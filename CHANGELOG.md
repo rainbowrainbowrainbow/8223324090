@@ -4,6 +4,17 @@
 
 ---
 
+## v0.47.10 - 💬 0.47 Комунікації: canonical reply expectation v1 (2026-05-13)
+
+### Canonical Reply Expectation v1 [codex]
+- **Explicit waiting-reply model** - `conversations` тепер має явні поля `reply_expected`, `awaiting_reply_since`, `reply_expected_message_id`, `reply_owner` і `reply_sla_at`, щоб CRM не виводила очікування відповіді з unread/outbound евристик.
+- **Manual Omni intent** - менеджер може позначити "Очікуємо відповідь" під час ручної відправки; звичайний outbound, provider accepted/delivered/read і unread самі по собі не створюють `waiting_reply`.
+- **Safe clear/invalidate** - вхідне повідомлення після `awaiting_reply_since` очищає активне очікування, а immediate/later delivery failure не залишає фейковий waiting-reply.
+- **Work Queue bucket** - черга отримала окремий `waiting_reply` bucket на основі durable reply expectation fields, при цьому `callback_due` і `follow_up_due` не змішуються з очікуванням відповіді.
+- **Без backfill** - старі розмови лишаються `reply_expected=false`, бо історичний бізнес-намір очікувати відповідь не можна чесно відновити заднім числом.
+
+---
+
 ## v0.47.9 - 📬 0.47 Комунікації: lifecycle receipts v1 (2026-05-13)
 
 ### Provider Lifecycle v1: Viber + TurboSMS [codex]

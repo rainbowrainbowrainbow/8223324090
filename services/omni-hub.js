@@ -27,6 +27,7 @@ const DELIVERY_STATUS = Object.freeze({
   UNKNOWN: 'unknown',
 });
 const LIFECYCLE_SUPPORTED_CHANNELS = new Set(['viber', 'sms']);
+const FAILED_DELIVERY_STATUSES = new Set([DELIVERY_STATUS.FAILED, DELIVERY_STATUS.LATER_FAILED]);
 const MAX_NAME_LEN = 255;
 const MAX_SEARCH_LEN = 255;
 
@@ -48,6 +49,46 @@ class ChannelUnavailableError extends Error {
 function safeTruncate(str, maxLen) {
   if (!str || typeof str !== 'string') return str;
   return str.length > maxLen ? str.slice(0, maxLen) : str;
+}
+
+function booleanValue(value) {
+  return value === true || value === 'true' || value === 't' || value === 1 || value === '1';
+}
+
+function normalizeOptionalTimestamp(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+function failedDeliveryStatus(status) {
+  return FAILED_DELIVERY_STATUSES.has(String(status || '').toLowerCase());
+}
+
+function isActiveWaitingReply(row) {
+  if (!row || !booleanValue(row.reply_expected) || !row.awaiting_reply_since) return false;
+  if (failedDeliveryStatus(row.reply_expected_delivery_status)) return false;
+
+  const since = new Date(row.awaiting_reply_since).getTime();
+  if (!Number.isFinite(since)) return false;
+
+  if (!row.last_inbound_at) return true;
+  const lastInbound = new Date(row.last_inbound_at).getTime();
+  if (!Number.isFinite(lastInbound)) return true;
+  return lastInbound <= since;
+}
+
+function normalizeReplyExpectationOptions(options = {}) {
+  const replyExpected = booleanValue(options.replyExpected ?? options.reply_expected);
+  if (!replyExpected) {
+    return { replyExpected: false, replyOwner: null, replySlaAt: null };
+  }
+
+  return {
+    replyExpected: true,
+    replyOwner: safeTruncate(String(options.replyOwner || options.reply_owner || '').trim(), 100) || null,
+    replySlaAt: normalizeOptionalTimestamp(options.replySlaAt || options.reply_sla_at),
+  };
 }
 
 function normalizeDigits(value) {
@@ -306,6 +347,8 @@ function mergeSendTruthMeta(row) {
 
 function mapConversationRow(row) {
   if (!row) return null;
+  const replyExpected = booleanValue(row.reply_expected);
+  const waitingReply = isActiveWaitingReply(row);
   return {
     id: row.id,
     channel: row.channel,
@@ -318,6 +361,21 @@ function mapConversationRow(row) {
     lastMessageAt: row.last_message_at,
     lastInboundAt: row.last_inbound_at,
     lastOutboundAt: row.last_outbound_at,
+    replyExpected,
+    awaitingReplySince: row.awaiting_reply_since || null,
+    replyExpectedMessageId: row.reply_expected_message_id || null,
+    replyOwner: row.reply_owner || null,
+    replySlaAt: row.reply_sla_at || null,
+    waitingReply,
+    replyExpectation: {
+      expected: replyExpected,
+      active: waitingReply,
+      awaitingReplySince: row.awaiting_reply_since || null,
+      expectedMessageId: row.reply_expected_message_id || null,
+      owner: row.reply_owner || null,
+      slaAt: row.reply_sla_at || null,
+      blockedByDeliveryFailure: failedDeliveryStatus(row.reply_expected_delivery_status),
+    },
     lastMessage: row.last_message || null,
     unreadCount: row.unread_count,
     meta: row.meta,
@@ -661,6 +719,41 @@ async function saveInboundMessage(conversationId, normalized) {
          SET last_message_at = NOW(),
              last_inbound_at = NOW(),
              unread_count    = unread_count + 1,
+             reply_expected  = CASE
+               WHEN reply_expected IS TRUE
+                AND awaiting_reply_since IS NOT NULL
+                AND awaiting_reply_since <= NOW()
+               THEN false
+               ELSE reply_expected
+             END,
+             awaiting_reply_since = CASE
+               WHEN reply_expected IS TRUE
+                AND awaiting_reply_since IS NOT NULL
+                AND awaiting_reply_since <= NOW()
+               THEN NULL
+               ELSE awaiting_reply_since
+             END,
+             reply_expected_message_id = CASE
+               WHEN reply_expected IS TRUE
+                AND awaiting_reply_since IS NOT NULL
+                AND awaiting_reply_since <= NOW()
+               THEN NULL
+               ELSE reply_expected_message_id
+             END,
+             reply_owner = CASE
+               WHEN reply_expected IS TRUE
+                AND awaiting_reply_since IS NOT NULL
+                AND awaiting_reply_since <= NOW()
+               THEN NULL
+               ELSE reply_owner
+             END,
+             reply_sla_at = CASE
+               WHEN reply_expected IS TRUE
+                AND awaiting_reply_since IS NOT NULL
+                AND awaiting_reply_since <= NOW()
+               THEN NULL
+               ELSE reply_sla_at
+             END,
              status          = CASE WHEN status = 'closed' THEN 'open' ELSE status END,
              updated_at      = NOW()
        WHERE id = $1`,
@@ -676,6 +769,53 @@ async function saveInboundMessage(conversationId, normalized) {
   } finally {
     if (client) client.release();
   }
+}
+
+async function getConversationById(conversationId) {
+  const result = await pool.query(
+    'SELECT * FROM conversations WHERE id = $1 LIMIT 1',
+    [conversationId]
+  );
+  return mapConversationRow(result.rows[0]);
+}
+
+async function setReplyExpectation(conversationId, messageId, options = {}) {
+  const expectation = normalizeReplyExpectationOptions(options);
+  if (!expectation.replyExpected || !conversationId || !messageId) return null;
+
+  const result = await pool.query(
+    `UPDATE conversations
+        SET reply_expected = true,
+            awaiting_reply_since = NOW(),
+            reply_expected_message_id = $2,
+            reply_owner = $3,
+            reply_sla_at = $4::timestamp,
+            updated_at = NOW()
+      WHERE id = $1
+      RETURNING *`,
+    [conversationId, messageId, expectation.replyOwner, expectation.replySlaAt]
+  );
+  return mapConversationRow(result.rows[0]);
+}
+
+async function clearReplyExpectationForMessage(conversationId, messageId) {
+  if (!conversationId || !messageId) return null;
+
+  const result = await pool.query(
+    `UPDATE conversations
+        SET reply_expected = false,
+            awaiting_reply_since = NULL,
+            reply_expected_message_id = NULL,
+            reply_owner = NULL,
+            reply_sla_at = NULL,
+            updated_at = NOW()
+      WHERE id = $1
+        AND reply_expected IS TRUE
+        AND reply_expected_message_id = $2
+      RETURNING *`,
+    [conversationId, messageId]
+  );
+  return mapConversationRow(result.rows[0]);
 }
 
 // ---------------------------------------------------------------------------
@@ -901,6 +1041,12 @@ async function applyProviderLifecycleReceipt(receiptPayload) {
   }
 
   const message = mapMessageRow(result.rows[0]);
+  if (message.deliveryStatus === DELIVERY_STATUS.LATER_FAILED) {
+    const clearedConversation = await clearReplyExpectationForMessage(message.conversationId, message.id);
+    if (clearedConversation) {
+      notifyCRM('omni:conversation', { conversation: clearedConversation });
+    }
+  }
   notifyCRM('omni:message', { message, providerLifecycle: message.meta?.providerLifecycle || null });
   return message;
 }
@@ -918,21 +1064,22 @@ async function processInboundMessage(normalized) {
   );
 
   const message = await saveInboundMessage(conversation.id, normalized);
+  const updatedConversation = await getConversationById(conversation.id) || conversation;
 
-  notifyCRM('omni:message', { conversation, message });
-  notifyCRM('omni:conversation', { conversation });
+  notifyCRM('omni:message', { conversation: updatedConversation, message });
+  notifyCRM('omni:conversation', { conversation: updatedConversation });
 
   // AI auto-response when enabled
-  const meta = conversation.meta || {};
+  const meta = updatedConversation.meta || {};
   if (meta.ai_enabled || meta.aiEnabled) {
     try {
-      await generateAndSendAIResponse(conversation, message);
+      await generateAndSendAIResponse(updatedConversation, message);
     } catch (err) {
       logger.error('AI auto-response failed', err);
     }
   }
 
-  return { conversation, message };
+  return { conversation: updatedConversation, message };
 }
 
 // ---------------------------------------------------------------------------
@@ -1126,7 +1273,7 @@ async function getMessages(conversationId, limit = 50, offset = 0) {
 // 9. sendManualMessage
 // ---------------------------------------------------------------------------
 
-async function sendManualMessage(conversationId, text, senderName) {
+async function sendManualMessage(conversationId, text, senderName, options = {}) {
   const convResult = await pool.query(
     'SELECT * FROM conversations WHERE id = $1',
     [conversationId]
@@ -1140,6 +1287,7 @@ async function sendManualMessage(conversationId, text, senderName) {
   if (!isSendCapableChannel(conversation.channel)) {
     throw new ChannelUnavailableError(conversation.channel);
   }
+  const replyExpectation = normalizeReplyExpectationOptions(options);
 
   let client;
   try {
@@ -1195,9 +1343,37 @@ async function sendManualMessage(conversationId, text, senderName) {
       messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || messageWithTruth;
     }
 
-    notifyCRM('omni:message', { conversation, message: messageWithTruth, sendTruth });
+    let conversationWithReplyExpectation = conversation;
+    if (replyExpectation.replyExpected) {
+      if (failedDeliveryStatus(messageWithTruth.deliveryStatus)) {
+        logger.warn('Reply expectation was requested but immediate delivery failed; waiting_reply was not set', {
+          conversationId,
+          messageId: saved.id,
+          channel: conversation.channel,
+          deliveryStatus: messageWithTruth.deliveryStatus,
+        });
+      } else {
+        conversationWithReplyExpectation = await setReplyExpectation(
+          conversation.id,
+          saved.id,
+          replyExpectation
+        ) || conversation;
+        notifyCRM('omni:conversation', { conversation: conversationWithReplyExpectation });
+      }
+    }
 
-    return { message: messageWithTruth, sendTruth };
+    notifyCRM('omni:message', {
+      conversation: conversationWithReplyExpectation,
+      message: messageWithTruth,
+      sendTruth
+    });
+
+    return {
+      message: messageWithTruth,
+      sendTruth,
+      conversation: conversationWithReplyExpectation,
+      replyExpectation: conversationWithReplyExpectation.replyExpectation || null,
+    };
   } catch (e) {
     if (client) await client.query('ROLLBACK').catch(() => {});
     logger.error('sendManualMessage error', e);
@@ -1357,6 +1533,8 @@ module.exports = {
   sendManualMessage,
   saveMessageSendTruth,
   applyProviderLifecycleReceipt,
+  setReplyExpectation,
+  clearReplyExpectationForMessage,
   updateConversationStatus,
   getStats,
   getQuickReplies,
@@ -1367,6 +1545,7 @@ module.exports = {
   buildSendTruth,
   normalizeProviderResult,
   isSendCapableChannel,
+  isActiveWaitingReply,
   INBOUND_ONLY_CHANNELS,
   DELIVERY_STATUS,
   ChannelUnavailableError,

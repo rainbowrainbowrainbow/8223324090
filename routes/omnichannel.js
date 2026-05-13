@@ -265,21 +265,29 @@ router.get('/conversations/:id/messages', auth, async (req, res) => {
 // Send message from CRM
 router.post('/conversations/:id/send', auth, async (req, res) => {
     try {
-        const { text } = req.body;
+        const { text, reply_expected, reply_sla_at } = req.body;
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
         if (!text || !text.trim()) {
             return res.status(400).json({ success: false, error: 'Текст повідомлення обов\'язковий' });
         }
+        const replyOwner = req.user?.name || req.user?.username || null;
         const message = await getHub().sendManualMessage(
             id,
             text.trim(),
-            req.user.username
+            req.user.username,
+            {
+                replyExpected: reply_expected,
+                replyOwner,
+                replySlaAt: reply_sla_at || null,
+            }
         );
         res.json({
             success: true,
             data: message.message || message,
-            sendTruth: message.sendTruth || message.message?.meta?.sendTruth || null
+            sendTruth: message.sendTruth || message.message?.meta?.sendTruth || null,
+            conversation: message.conversation || null,
+            replyExpectation: message.replyExpectation || null
         });
     } catch (err) {
         log.error('Send message error:', err.message);

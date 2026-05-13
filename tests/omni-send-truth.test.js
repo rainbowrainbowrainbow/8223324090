@@ -55,7 +55,13 @@ function createManualSendPool(conversation) {
         failed_at: null,
         created_at: '2099-05-13T10:00:00Z'
     };
-    const state = { connectCalled: false, savedTruth: null, deliveryUpdates: [], conversationUpdates: [] };
+    const state = {
+        connectCalled: false,
+        savedTruth: null,
+        deliveryUpdates: [],
+        conversationUpdates: [],
+        replyExpectationUpdates: []
+    };
     const client = {
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
@@ -105,6 +111,26 @@ function createManualSendPool(conversation) {
                     }]
                 };
             }
+            if (/UPDATE conversations/i.test(text) && /reply_expected = true/i.test(text)) {
+                const update = {
+                    conversationId: params[0],
+                    messageId: params[1],
+                    owner: params[2],
+                    slaAt: params[3]
+                };
+                state.replyExpectationUpdates.push(update);
+                return {
+                    rows: [{
+                        ...conversation,
+                        reply_expected: true,
+                        awaiting_reply_since: '2099-05-13T10:00:04Z',
+                        reply_expected_message_id: update.messageId,
+                        reply_owner: update.owner,
+                        reply_sla_at: update.slaAt,
+                        last_inbound_at: conversation.last_inbound_at || null
+                    }]
+                };
+            }
             throw new Error(`Unexpected pool query: ${text}`);
         },
         connect: async () => {
@@ -135,7 +161,7 @@ function createInboundPool() {
         failed_at: null,
         created_at: '2099-05-13T10:00:00Z'
     };
-    const state = { inboundUpdateSeen: false };
+    const state = { inboundUpdateSeen: false, replyClearSeen: false };
     const client = {
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
@@ -145,6 +171,7 @@ function createInboundPool() {
             }
             if (/UPDATE conversations/i.test(text) && /last_inbound_at = NOW\(\)/i.test(text)) {
                 state.inboundUpdateSeen = true;
+                state.replyClearSeen = /reply_expected/i.test(text) && /awaiting_reply_since/i.test(text);
                 return { rows: [] };
             }
             throw new Error(`Unexpected inbound client query: ${text}`);
@@ -210,6 +237,7 @@ describe('Communication Send Truth v1', () => {
         assert.equal(message.direction, 'inbound');
         assert.equal(message.deliveryStatus, null);
         assert.equal(pool.state.inboundUpdateSeen, true);
+        assert.equal(pool.state.replyClearSeen, true);
     });
 
     it('persists send truth in message meta and durable fields after immediate provider failure', async () => {
@@ -262,6 +290,77 @@ describe('Communication Send Truth v1', () => {
             pool.state.deliveryUpdates.map(update => update.deliveryStatus),
             ['saved', 'attempted', 'accepted']
         );
+    });
+
+    it('does not set reply expectation on ordinary outbound sends', async () => {
+        const pool = createManualSendPool({
+            id: 915,
+            channel: 'telegram',
+            external_id: '12345',
+            customer_name: 'Telegram Lead',
+            status: 'open',
+            meta: {}
+        });
+        const hub = loadHub(pool, {
+            sendTelegramMessage: async () => ({ ok: true, result: { message_id: 42 } })
+        });
+
+        await hub.sendManualMessage(915, 'Привіт', 'Manager');
+
+        assert.equal(pool.state.replyExpectationUpdates.length, 0);
+    });
+
+    it('sets explicit reply expectation only when requested and delivery did not fail immediately', async () => {
+        const pool = createManualSendPool({
+            id: 916,
+            channel: 'telegram',
+            external_id: '12345',
+            customer_name: 'Telegram Lead',
+            status: 'open',
+            meta: {}
+        });
+        const hub = loadHub(pool, {
+            sendTelegramMessage: async () => ({ ok: true, result: { message_id: 42 } })
+        });
+
+        const result = await hub.sendManualMessage(916, 'Привіт', 'Manager', {
+            replyExpected: true,
+            replyOwner: 'Manager User',
+            replySlaAt: '2099-05-14T10:00:00.000Z'
+        });
+
+        assert.equal(pool.state.replyExpectationUpdates.length, 1);
+        assert.deepEqual(pool.state.replyExpectationUpdates[0], {
+            conversationId: 916,
+            messageId: 777,
+            owner: 'Manager User',
+            slaAt: '2099-05-14T10:00:00.000Z'
+        });
+        assert.equal(result.conversation.replyExpected, true);
+        assert.equal(result.conversation.waitingReply, true);
+        assert.equal(result.replyExpectation.expected, true);
+    });
+
+    it('does not leave waiting_reply active when immediate delivery fails', async () => {
+        const pool = createManualSendPool({
+            id: 917,
+            channel: 'telegram',
+            external_id: '12345',
+            customer_name: 'Telegram Lead',
+            status: 'open',
+            meta: {}
+        });
+        const hub = loadHub(pool, {
+            sendTelegramMessage: async () => ({ ok: false, description: 'No bot token configured' })
+        });
+
+        const result = await hub.sendManualMessage(917, 'Привіт', 'Manager', {
+            replyExpected: true,
+            replyOwner: 'Manager User'
+        });
+
+        assert.equal(result.message.deliveryStatus, 'failed');
+        assert.equal(pool.state.replyExpectationUpdates.length, 0);
     });
 
     it('persists unknown immediate provider result conservatively', async () => {
@@ -335,6 +434,23 @@ describe('Communication Send Truth v1', () => {
         assert.doesNotMatch(migration, /reply_expected/);
     });
 
+    it('defines the additive canonical reply expectation migration without backfill', () => {
+        const repoRoot = path.resolve(__dirname, '..');
+        const migration = fs.readFileSync(
+            path.join(repoRoot, 'db/migrations/170_canonical_reply_expectation_v1.sql'),
+            'utf8'
+        );
+
+        assert.match(migration, /MIGRATION_KIND: schema/);
+        assert.match(migration, /ADD COLUMN IF NOT EXISTS reply_expected BOOLEAN NOT NULL DEFAULT false/);
+        assert.match(migration, /ADD COLUMN IF NOT EXISTS awaiting_reply_since/);
+        assert.match(migration, /ADD COLUMN IF NOT EXISTS reply_expected_message_id/);
+        assert.match(migration, /ADD COLUMN IF NOT EXISTS reply_owner/);
+        assert.match(migration, /ADD COLUMN IF NOT EXISTS reply_sla_at/);
+        assert.match(migration, /idx_conversations_reply_waiting/);
+        assert.doesNotMatch(migration, /UPDATE\s+conversations/i);
+    });
+
     it('wires Omni UI for disabled channels and truthful send feedback', () => {
         const repoRoot = path.resolve(__dirname, '..');
         const omniHtml = fs.readFileSync(path.join(repoRoot, 'omni.html'), 'utf8');
@@ -343,6 +459,8 @@ describe('Communication Send Truth v1', () => {
         assert.match(omniHtml, /SEND_DISABLED_CHANNELS = new Set\(\['binotel'\]\)/);
         assert.match(omniHtml, /sendTruthFromDurableStatus/);
         assert.match(omniHtml, /renderSendTruthState/);
+        assert.match(omniHtml, /id="omniReplyExpected"/);
+        assert.match(omniHtml, /reply_expected: !!\(replyExpectedEl && replyExpectedEl\.checked\)/);
         assert.match(omniHtml, /channel_unavailable/);
         assert.match(omniHtml, /Провайдер прийняв запит/);
     });

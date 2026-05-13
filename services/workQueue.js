@@ -6,6 +6,7 @@ const BUCKETS = [
     { key: 'today', label: 'Сьогодні' },
     { key: 'tomorrow', label: 'Завтра' },
     { key: 'callback_due', label: 'Передзвонити' },
+    { key: 'waiting_reply', label: 'Очікуємо відповідь' },
     { key: 'needs_confirmation', label: 'Підтвердити' },
     { key: 'event_soon', label: 'Подія скоро' },
     { key: 'idle_lead', label: 'Лід холоне' }
@@ -173,6 +174,39 @@ function leadItem(row, bucket, options = {}) {
     };
 }
 
+function conversationTitle(row) {
+    return row.customer_name || row.customer_phone || `Conversation #${row.conversation_id}`;
+}
+
+function conversationItem(row, bucket = 'waiting_reply') {
+    const dueAt = isoValue(row.due_at || row.reply_sla_at || row.awaiting_reply_since);
+    return {
+        id: `${bucket}:conversation:${row.conversation_id}`,
+        bucket,
+        sourceType: 'conversation',
+        sourceId: String(row.conversation_id),
+        taskId: null,
+        leadId: row.lead_id || null,
+        customerId: row.customer_id || null,
+        bookingId: null,
+        title: `Очікуємо відповідь: ${conversationTitle(row)}`,
+        subtitle: [row.channel, row.customer_phone].filter(Boolean).join(' · ') || null,
+        dueAt,
+        priority: row.reply_sla_at && new Date(row.reply_sla_at).getTime() < Date.now() ? 'high' : 'normal',
+        confidence: 'exact',
+        actionLabel: 'Відкрити чат',
+        href: `/omni?conversation=${encodeURIComponent(row.conversation_id)}`,
+        meta: {
+            assignedTo: row.reply_owner || row.assigned_to || null,
+            signal: 'conversations.reply_expected',
+            awaitingReplySince: isoValue(row.awaiting_reply_since),
+            replySlaAt: isoValue(row.reply_sla_at),
+            replyExpectedMessageId: row.reply_expected_message_id || null,
+            deliveryStatus: row.delivery_status || null,
+        }
+    };
+}
+
 function bookingItem(row, bucket, options = {}) {
     const dueAt = bookingDueAt(row.date, row.time);
     return {
@@ -318,6 +352,28 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null } = {}) {
         }));
     });
 
+    const waitingReply = await source(pool, warnings, 'conversation_reply_expectations', async () => {
+        const result = await pool.query(`
+            SELECT c.id AS conversation_id, c.channel, c.customer_name, c.customer_phone,
+                   c.customer_id, c.assigned_to, c.awaiting_reply_since,
+                   c.reply_expected_message_id, c.reply_owner, c.reply_sla_at,
+                   COALESCE(c.reply_sla_at, c.awaiting_reply_since) AS due_at,
+                   cm.delivery_status, cm.delivery_error, cm.failed_at,
+                   cust.lead_id
+            FROM conversations c
+            LEFT JOIN conversation_messages cm ON cm.id = c.reply_expected_message_id
+            LEFT JOIN customers cust ON cust.id = c.customer_id
+            WHERE c.reply_expected IS TRUE
+              AND c.awaiting_reply_since IS NOT NULL
+              AND COALESCE(c.status, 'open') NOT IN ('closed', 'spam')
+              AND (c.last_inbound_at IS NULL OR c.last_inbound_at <= c.awaiting_reply_since)
+              AND COALESCE(cm.delivery_status, '') NOT IN ('failed', 'later_failed')
+            ORDER BY COALESCE(c.reply_sla_at, c.awaiting_reply_since) ASC
+            LIMIT $1
+        `, [safeLimit]);
+        return result.rows.map(row => conversationItem(row, 'waiting_reply'));
+    });
+
     const needsConfirmation = await source(pool, warnings, 'bookings_confirmation', async () => {
         const result = await pool.query(`
             SELECT b.id, b.date, b.time, b.label, b.group_name, b.program_name, b.room,
@@ -411,6 +467,7 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null } = {}) {
         ...tomorrowTasks,
         ...tomorrowBookings,
         ...callbackDue,
+        ...waitingReply,
         ...needsConfirmation,
         ...eventSoon,
         ...idleLeads
@@ -439,7 +496,7 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null } = {}) {
         meta: {
             canonicalBuckets: BUCKETS.map(bucket => bucket.key),
             heuristicBuckets: ['idle_lead'],
-            omittedBuckets: ['waiting_reply'],
+            omittedBuckets: [],
             warnings
         }
     };

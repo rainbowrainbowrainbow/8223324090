@@ -158,12 +158,16 @@ checkPage('leads.html', (doc, html) => {
     const customerChildren = doc.getElementById('ccChildrenCount');
     const cancelBtn = doc.getElementById('leadModalCancel');
     const saveBtn = doc.getElementById('leadModalSave');
+    const leadShell = doc.querySelector('main#main-content.page-container');
+    const leadsApp = doc.getElementById('leadsApp');
     check('Lead edit modal date input exists', leadDate?.type === 'date');
     check('Lead edit modal children input exists', leadChildren?.type === 'number');
     check('Lead edit modal cancel button exists', cancelBtn?.type === 'button');
     check('Lead edit modal save button exists', saveBtn?.type === 'button');
     check('Customer card modal date input exists', customerDate?.type === 'date');
     check('Customer card modal children input exists', customerChildren?.type === 'number');
+    check('Leads uses one standard page shell', !!leadShell && !doc.querySelector('.page-container .main-content'));
+    check('Leads app wrapper does not own shell offset', !!leadsApp && !leadsApp.classList.contains('main-content'));
     check('Lead modal grid allows narrow WebKit date inputs', html.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)'));
     check('Lead modal controls can shrink inside grid columns', html.includes('min-width: 0; max-width: 100%'));
     check('Lead modal responsive row is scoped', html.includes('.lead-modal .form-row { grid-template-columns: 1fr; }'));
@@ -238,6 +242,32 @@ check('All logout button pages load auth.js', pagesWithLogoutButton.every(page =
 check('No page JS owns logoutBtn directly outside auth.js', nonAuthJsLogoutOwners.length === 0);
 check('No inline logoutBtn click handlers remain', inlineLogoutOwners.length === 0);
 
+// Check shared layout shell guardrails
+console.log('\nlayout shell guardrails');
+const fullAppShellPages = new Set(['chat.html', 'copilot.html', 'designer.html', 'index.html', 'omni.html', 'training.html']);
+const shellPages = htmlFiles
+    .map(file => {
+        const html = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        const dom = new JSDOM(html);
+        return { file, dom, doc: dom.window.document };
+    })
+    .filter(page => page.doc.querySelector('.sidebar-nav'));
+const nestedShellPages = shellPages.filter(page => page.doc.querySelector('.page-container .main-content'));
+const inlineOffsetPages = shellPages.filter(page => (
+    [...page.doc.querySelectorAll('.page-container, main.main-content')]
+        .some(el => /margin-left\s*:\s*(220px|200px|64px)/i.test(el.getAttribute('style') || ''))
+));
+const unexpectedMainShellPages = shellPages.filter(page => (
+    !fullAppShellPages.has(page.file)
+    && page.doc.querySelector('main.main-content')
+    && !page.doc.querySelector('main#main-content.page-container')
+));
+
+check('No standard page nests main-content inside page-container', nestedShellPages.length === 0);
+check('No shell containers use inline left offsets', inlineOffsetPages.length === 0);
+check('Only documented full-app pages use main-content shell', unexpectedMainShellPages.length === 0);
+shellPages.forEach(page => page.dom.window.close());
+
 // Check sidebar nav items
 const sidebarCode = fs.readFileSync(path.join(ROOT, 'js/components/sidebar.js'), 'utf8');
 check('Sidebar has /designs', sidebarCode.includes("href: '/designs'"));
@@ -253,6 +283,11 @@ check('Lead modal buttons support touchend taps', leadsCode.includes("btn.addEve
 check('Lead modal close avoids shared closeModal collision', leadsCode.includes('function closeLeadModal') && !leadsCode.includes('function closeModal'));
 check('Lead save has duplicate-submit guard', leadsCode.includes('leadSaveInFlight'));
 check('Lead assignees use lead-scoped endpoint', leadsCode.includes("apiFetch('/api/leads/assignees')"));
+
+// Check Timeline/Kleshnya shell collapse keeps geometry in CSS
+const appCode = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
+check('Timeline sidebar collapse is class-based', appCode.includes("sidebar.classList.add('collapsed')") && appCode.includes("sidebar.classList.toggle('collapsed')"));
+check('Timeline sidebar collapse avoids inline shell offsets', !appCode.includes('style.marginLeft') && !appCode.includes("style.width = 'calc(100% - 64px)'"));
 
 // ═══════════════════════════════════════════════════
 // RESULTS

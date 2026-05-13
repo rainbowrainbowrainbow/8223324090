@@ -4,6 +4,17 @@
 
 ---
 
+## v0.46.11 - Виправлення layout gap у shell-сторінках CRM (2026-05-13)
+
+### Layout gap cluster fix [codex]
+- **Ліди** - прибрано structural duplicated shell offset: сторінка більше не вкладає `.main-content` всередину `.page-container`, тому контент стартує біля sidebar з нормальним відступом.
+- **Designs** - прибрано крихкий inline `margin-left: 220px` на `main.page-container`; сторінка тепер покладається на shared layout rules.
+- **Timeline/Kleshnya** - старий collapse path у `js/app.js` більше не пише inline `marginLeft/width`, а лишає геометрію shared CSS-класам.
+- **UI Guard** - UI smoke тепер ловить nested shell anti-pattern, inline shell offsets і недокументовані `.main-content` shell pages.
+- **Перевірка layout** - Chromium-заміри підтвердили, що Leads повернувся до нормального gap на 1440/1024/1000/768px і не зачепив standard shell pages.
+
+---
+
 ## v0.46.10 - Єдиний вихід зі сторінок CRM (2026-05-13)
 
 ### Shared logout binding [codex]

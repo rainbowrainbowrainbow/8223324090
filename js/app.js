@@ -573,21 +573,11 @@ function initUIControlListeners() {
         const savedCollapsed = localStorage.getItem('pzp_sidebar_collapsed');
         if (savedCollapsed === 'true') {
             sidebar.classList.add('collapsed');
-            document.querySelector('.header').style.marginLeft = '64px';
-            document.querySelector('.main-content').style.marginLeft = '64px';
-            document.querySelector('.main-content').style.width = 'calc(100% - 64px)';
         }
 
         collapseBtn.addEventListener('click', () => {
             const isCollapsed = sidebar.classList.toggle('collapsed');
             localStorage.setItem('pzp_sidebar_collapsed', isCollapsed);
-            const header = document.querySelector('.header');
-            const mainContent = document.querySelector('.main-content');
-            if (header) header.style.marginLeft = isCollapsed ? '64px' : '220px';
-            if (mainContent) {
-                mainContent.style.marginLeft = isCollapsed ? '64px' : '220px';
-                mainContent.style.width = isCollapsed ? 'calc(100% - 64px)' : 'calc(100% - 220px)';
-            }
         });
     }
 

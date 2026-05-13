@@ -58,6 +58,23 @@ function buildResult(fields) {
   };
 }
 
+function normalizeProviderTimestamp(value) {
+  if (value == null || value === '') return null;
+
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    if (numeric > 100000000000) return new Date(numeric).toISOString();
+    if (numeric > 1000000000) return new Date(numeric * 1000).toISOString();
+  }
+
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+function classifyIgnored(reason, details = {}) {
+  return { type: 'ignored', reason, ...details };
+}
+
 function detectTelegramContentType(message) {
   if (message.photo) return 'image';
   if (message.document) return 'file';
@@ -178,8 +195,70 @@ function normalizeViber(payload) {
     },
   });
 
-  log.debug('Normalized Viber payload', { externalId: result.externalId, contentType, event });
+  if (result) log.debug('Normalized Viber payload', { externalId: result.externalId, contentType, event });
   return result;
+}
+
+function classifyViberWebhook(payload = {}) {
+  payload = payload || {};
+  const event = String(payload.event || '').toLowerCase();
+  if (event === 'webhook') return classifyIgnored('webhook_verification');
+
+  if (event === 'message') {
+    const normalized = normalizeViber(payload);
+    return normalized
+      ? { type: 'inbound_message', normalized }
+      : classifyIgnored('invalid_viber_message');
+  }
+
+  const providerMessageId = payload.message_token || payload.messageToken || null;
+  if (!providerMessageId) return classifyIgnored('missing_viber_message_token', { event });
+
+  if (event === 'delivered') {
+    return {
+      type: 'delivery_receipt',
+      receipt: {
+        channel: 'viber',
+        providerMessageId: String(providerMessageId),
+        deliveryStatus: 'delivered',
+        providerLifecycleAt: normalizeProviderTimestamp(payload.timestamp),
+        providerLifecycleEvent: 'delivered',
+        providerLifecycleSource: 'viber_webhook',
+      },
+    };
+  }
+
+  if (event === 'seen') {
+    return {
+      type: 'read_receipt',
+      receipt: {
+        channel: 'viber',
+        providerMessageId: String(providerMessageId),
+        deliveryStatus: 'read',
+        providerLifecycleAt: normalizeProviderTimestamp(payload.timestamp),
+        providerLifecycleEvent: 'seen',
+        providerLifecycleSource: 'viber_webhook',
+      },
+    };
+  }
+
+  if (event === 'failed') {
+    const error = payload.desc || payload.description || payload.status_message || payload.error || 'Viber failed callback';
+    return {
+      type: 'delivery_receipt',
+      receipt: {
+        channel: 'viber',
+        providerMessageId: String(providerMessageId),
+        deliveryStatus: 'later_failed',
+        deliveryError: safeString(error, 1000),
+        providerLifecycleAt: normalizeProviderTimestamp(payload.timestamp),
+        providerLifecycleEvent: 'failed',
+        providerLifecycleSource: 'viber_webhook',
+      },
+    };
+  }
+
+  return classifyIgnored('unsupported_viber_event', { event });
 }
 
 // ---------------------------------------------------------------------------
@@ -207,8 +286,78 @@ function normalizeSms(payload) {
     },
   });
 
-  log.debug('Normalized SMS payload', { externalId: result.externalId });
+  if (result) log.debug('Normalized SMS payload', { externalId: result.externalId });
   return result;
+}
+
+function pickSmsProviderMessageId(payload = {}) {
+  return payload.message_id
+    || payload.messageId
+    || payload.id
+    || payload.sms_id
+    || payload.smsId
+    || payload.msg_id
+    || payload.msgId
+    || null;
+}
+
+function pickSmsProviderStatus(payload = {}) {
+  return payload.status
+    || payload.status_code
+    || payload.statusCode
+    || payload.state
+    || payload.dlr_status
+    || payload.dlrStatus
+    || payload.message_status
+    || payload.messageStatus
+    || null;
+}
+
+function mapTurboSmsDeliveryStatus(status) {
+  const normalized = String(status || '').trim().toUpperCase();
+  if (!normalized) return null;
+  if (['DELIVRD', 'DELIVERED'].includes(normalized)) return 'delivered';
+  if (['UNDELIV', 'UNDELIVERED', 'REJECTD', 'REJECTED', 'EXPIRED'].includes(normalized)) {
+    return 'later_failed';
+  }
+  return null;
+}
+
+function classifySmsWebhook(payload = {}) {
+  payload = payload || {};
+  const providerMessageId = pickSmsProviderMessageId(payload);
+  const providerStatus = pickSmsProviderStatus(payload);
+  const deliveryStatus = mapTurboSmsDeliveryStatus(providerStatus);
+
+  if (providerMessageId && deliveryStatus) {
+    const providerLifecycleEvent = String(providerStatus).trim().toUpperCase();
+    return {
+      type: 'delivery_receipt',
+      receipt: {
+        channel: 'sms',
+        providerMessageId: String(providerMessageId),
+        deliveryStatus,
+        deliveryError: deliveryStatus === 'later_failed' ? providerLifecycleEvent : null,
+        providerLifecycleAt: normalizeProviderTimestamp(
+          payload.timestamp || payload.date || payload.done_at || payload.doneAt || payload.done_date || payload.doneDate
+        ),
+        providerLifecycleEvent,
+        providerLifecycleSource: 'turbosms_webhook',
+      },
+    };
+  }
+
+  if (providerMessageId && providerStatus) {
+    return classifyIgnored('unsupported_sms_delivery_status', {
+      providerMessageId: String(providerMessageId),
+      providerStatus: String(providerStatus),
+    });
+  }
+
+  const normalized = normalizeSms(payload);
+  return normalized
+    ? { type: 'inbound_message', normalized }
+    : classifyIgnored('invalid_sms_message');
 }
 
 // ---------------------------------------------------------------------------
@@ -414,6 +563,9 @@ module.exports = {
   normalizeTelegram,
   normalizeViber,
   normalizeSms,
+  classifyViberWebhook,
+  classifySmsWebhook,
+  mapTurboSmsDeliveryStatus,
   normalizeFacebook,
   normalizeInstagram,
   normalizeBinotel,

@@ -72,6 +72,14 @@ function parseId(val) {
     return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function collectSmsWebhookPayloads(body) {
+    if (Array.isArray(body)) return body;
+    for (const key of ['messages', 'reports', 'delivery_reports', 'deliveryReports']) {
+        if (Array.isArray(body && body[key])) return body[key];
+    }
+    return [body];
+}
+
 // ═══════════════════════════════════════════════
 // PUBLIC WEBHOOKS (no auth)
 // ═══════════════════════════════════════════════
@@ -102,11 +110,14 @@ router.post('/webhook/viber', async (req, res) => {
         if (body.event === 'webhook') {
             return res.json({ status: 0, status_message: 'ok' });
         }
-        if (body.event === 'message') {
-            const normalized = getNormalizer().normalizeViber(body);
-            if (normalized) {
-                await getHub().processInboundMessage(normalized);
-            }
+        const classified = getNormalizer().classifyViberWebhook(body);
+        if (classified.type === 'inbound_message' && classified.normalized) {
+            await getHub().processInboundMessage(classified.normalized);
+        } else if (
+            (classified.type === 'delivery_receipt' || classified.type === 'read_receipt')
+            && classified.receipt
+        ) {
+            await getHub().applyProviderLifecycleReceipt(classified.receipt);
         }
         res.json({ status: 0, status_message: 'ok' });
     } catch (err) {
@@ -122,9 +133,13 @@ router.post('/webhook/sms', async (req, res) => {
             log.warn('SMS webhook secret verification failed');
             return res.status(403).json({ ok: false, error: 'invalid secret' });
         }
-        const normalized = getNormalizer().normalizeSms(req.body);
-        if (normalized) {
-            await getHub().processInboundMessage(normalized);
+        for (const payload of collectSmsWebhookPayloads(req.body)) {
+            const classified = getNormalizer().classifySmsWebhook(payload);
+            if (classified.type === 'inbound_message' && classified.normalized) {
+                await getHub().processInboundMessage(classified.normalized);
+            } else if (classified.type === 'delivery_receipt' && classified.receipt) {
+                await getHub().applyProviderLifecycleReceipt(classified.receipt);
+            }
         }
         res.json({ ok: true });
     } catch (err) {

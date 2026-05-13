@@ -4,6 +4,17 @@
 
 ---
 
+## v0.47.9 - 📬 0.47 Комунікації: lifecycle receipts v1 (2026-05-13)
+
+### Provider Lifecycle v1: Viber + TurboSMS [codex]
+- **Viber receipts** - webhook callbacks `delivered`, `seen` і `failed` тепер класифікуються як provider lifecycle події та оновлюють оригінальний outbound row за `message_token`.
+- **TurboSMS DLR** - статуси `DELIVRD`, `UNDELIV`, `REJECTD` і `EXPIRED` мапляться в durable delivery truth за `message_id`, без створення фейкових inbound SMS.
+- **Нові durable стани** - `conversation_messages.delivery_status` розширено на `delivered`, `read` і `later_failed`, а provider event timestamp/source/type зберігаються окремими nullable полями.
+- **Manager-safe Omni UI** - Omni показує confirmed delivery/read/late failure лише тоді, коли ці стани реально прийшли від Viber або TurboSMS; Telegram, Meta і Binotel залишаються без фейкових lifecycle claims.
+- **Без backfill** - старі outbound повідомлення не отримують delivery/read статус заднім числом, бо provider receipt truth для них не доведений.
+
+---
+
 ## v0.47.8 - 🛰️ 0.47 Комунікації: durable truth schema (2026-05-13)
 
 ### Durable Communication Truth Schema v1 [codex]

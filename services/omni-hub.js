@@ -20,9 +20,13 @@ const DELIVERY_STATUS = Object.freeze({
   SAVED: 'saved',
   ATTEMPTED: 'attempted',
   ACCEPTED: 'accepted',
+  DELIVERED: 'delivered',
+  READ: 'read',
   FAILED: 'failed',
+  LATER_FAILED: 'later_failed',
   UNKNOWN: 'unknown',
 });
+const LIFECYCLE_SUPPORTED_CHANNELS = new Set(['viber', 'sms']);
 const MAX_NAME_LEN = 255;
 const MAX_SEARCH_LEN = 255;
 
@@ -67,8 +71,14 @@ function sendTruthMessage(status, details = {}) {
       return 'Повідомлення збережено в CRM. Зовнішня доставка ще не підтверджена.';
     case 'provider_attempted':
       return 'Повідомлення збережено в CRM. Провайдер прийняв запит, але фінальна доставка у v1 не підтверджується.';
+    case 'provider_delivered':
+      return 'Повідомлення доставлено за підтвердженням провайдера.';
+    case 'provider_read':
+      return 'Провайдер підтвердив перегляд повідомлення.';
     case 'provider_failed_immediate':
       return `Повідомлення збережено в CRM, але ${channelLabel} одразу відхилив або не прийняв відправку.${error}`;
+    case 'provider_failed_later':
+      return `Провайдер спершу прийняв запит, але пізніше повідомив про недоставку.${error}`;
     case 'provider_unknown':
       return `Повідомлення збережено в CRM. Статус ${channelLabel} невідомий, тому доставку не можна вважати підтвердженою.${error}`;
     case 'channel_unavailable':
@@ -86,8 +96,12 @@ function buildSendTruth(status, details = {}) {
     savedInCrm: details.savedInCrm !== false,
     providerAttempted: details.providerAttempted === true,
     providerAccepted: details.providerAccepted ?? null,
-    deliveryConfirmed: false,
+    deliveryConfirmed: details.deliveryConfirmed === true,
     providerReference: details.providerReference || null,
+    lifecycleStatus: details.lifecycleStatus || null,
+    providerLifecycleAt: details.providerLifecycleAt || null,
+    providerLifecycleEvent: details.providerLifecycleEvent || null,
+    providerLifecycleSource: details.providerLifecycleSource || null,
     error: details.error || null,
     message: details.message || sendTruthMessage(status, details),
   };
@@ -154,9 +168,15 @@ function deliveryStatusFromSendTruth(sendTruth) {
       return DELIVERY_STATUS.SAVED;
     case 'provider_attempted':
       return DELIVERY_STATUS.ACCEPTED;
+    case 'provider_delivered':
+      return DELIVERY_STATUS.DELIVERED;
+    case 'provider_read':
+      return DELIVERY_STATUS.READ;
     case 'provider_failed_immediate':
     case 'channel_unavailable':
       return DELIVERY_STATUS.FAILED;
+    case 'provider_failed_later':
+      return DELIVERY_STATUS.LATER_FAILED;
     case 'provider_unknown':
       return DELIVERY_STATUS.UNKNOWN;
     default:
@@ -168,9 +188,39 @@ function attemptedDeliveryStatus(deliveryStatus) {
   return [
     DELIVERY_STATUS.ATTEMPTED,
     DELIVERY_STATUS.ACCEPTED,
+    DELIVERY_STATUS.DELIVERED,
+    DELIVERY_STATUS.READ,
     DELIVERY_STATUS.FAILED,
+    DELIVERY_STATUS.LATER_FAILED,
     DELIVERY_STATUS.UNKNOWN,
   ].includes(deliveryStatus);
+}
+
+function lifecycleDeliveryStatus(deliveryStatus) {
+  return [
+    DELIVERY_STATUS.DELIVERED,
+    DELIVERY_STATUS.READ,
+    DELIVERY_STATUS.LATER_FAILED,
+  ].includes(deliveryStatus);
+}
+
+function sendTruthStatusFromDeliveryStatus(deliveryStatus) {
+  switch (deliveryStatus) {
+    case DELIVERY_STATUS.DELIVERED:
+      return 'provider_delivered';
+    case DELIVERY_STATUS.READ:
+      return 'provider_read';
+    case DELIVERY_STATUS.LATER_FAILED:
+      return 'provider_failed_later';
+    case DELIVERY_STATUS.FAILED:
+      return 'provider_failed_immediate';
+    case DELIVERY_STATUS.ACCEPTED:
+      return 'provider_attempted';
+    case DELIVERY_STATUS.SAVED:
+      return 'saved';
+    default:
+      return 'provider_unknown';
+  }
 }
 
 function sendTruthFromDurableRow(row) {
@@ -191,11 +241,46 @@ function sendTruthFromDurableRow(row) {
         providerReference: row.provider_message_id || null,
         error: row.delivery_error || null,
       });
+    case DELIVERY_STATUS.DELIVERED:
+      return buildSendTruth('provider_delivered', {
+        providerAttempted: true,
+        providerAccepted: true,
+        deliveryConfirmed: true,
+        providerReference: row.provider_message_id || null,
+        lifecycleStatus: row.delivery_status,
+        providerLifecycleAt: row.provider_lifecycle_at || null,
+        providerLifecycleEvent: row.provider_lifecycle_event || null,
+        providerLifecycleSource: row.provider_lifecycle_source || null,
+        error: row.delivery_error || null,
+      });
+    case DELIVERY_STATUS.READ:
+      return buildSendTruth('provider_read', {
+        providerAttempted: true,
+        providerAccepted: true,
+        deliveryConfirmed: true,
+        providerReference: row.provider_message_id || null,
+        lifecycleStatus: row.delivery_status,
+        providerLifecycleAt: row.provider_lifecycle_at || null,
+        providerLifecycleEvent: row.provider_lifecycle_event || null,
+        providerLifecycleSource: row.provider_lifecycle_source || null,
+        error: row.delivery_error || null,
+      });
     case DELIVERY_STATUS.FAILED:
       return buildSendTruth('provider_failed_immediate', {
         providerAttempted: true,
         providerAccepted: false,
         providerReference: row.provider_message_id || null,
+        error: row.delivery_error || null,
+      });
+    case DELIVERY_STATUS.LATER_FAILED:
+      return buildSendTruth('provider_failed_later', {
+        providerAttempted: true,
+        providerAccepted: true,
+        providerReference: row.provider_message_id || null,
+        lifecycleStatus: row.delivery_status,
+        providerLifecycleAt: row.provider_lifecycle_at || null,
+        providerLifecycleEvent: row.provider_lifecycle_event || null,
+        providerLifecycleSource: row.provider_lifecycle_source || null,
         error: row.delivery_error || null,
       });
     case DELIVERY_STATUS.ATTEMPTED:
@@ -213,7 +298,7 @@ function sendTruthFromDurableRow(row) {
 
 function mergeSendTruthMeta(row) {
   const meta = row?.meta || {};
-  if (meta.sendTruth) return meta;
+  if (meta.sendTruth && !lifecycleDeliveryStatus(row?.delivery_status)) return meta;
 
   const sendTruth = sendTruthFromDurableRow(row);
   return sendTruth ? { ...meta, sendTruth } : meta;
@@ -261,6 +346,9 @@ function mapMessageRow(row) {
     sendAttemptedAt: row.send_attempted_at,
     providerAcceptedAt: row.provider_accepted_at,
     failedAt: row.failed_at,
+    providerLifecycleAt: row.provider_lifecycle_at,
+    providerLifecycleEvent: row.provider_lifecycle_event,
+    providerLifecycleSource: row.provider_lifecycle_source,
     sendTruth: meta.sendTruth || null,
     aiGenerated: row.ai_generated,
     readAt: row.read_at,
@@ -641,8 +729,16 @@ function durableSendTruthValues(sendTruth, options = {}) {
     : null;
   const deliveryError = sendTruth?.error || null;
   const providerAttempted = options.providerAttempted ?? (sendTruth?.providerAttempted === true || attemptedDeliveryStatus(deliveryStatus));
-  const providerAccepted = options.providerAccepted ?? (deliveryStatus === DELIVERY_STATUS.ACCEPTED);
-  const failed = options.failed ?? (deliveryStatus === DELIVERY_STATUS.FAILED);
+  const providerAccepted = options.providerAccepted ?? [
+    DELIVERY_STATUS.ACCEPTED,
+    DELIVERY_STATUS.DELIVERED,
+    DELIVERY_STATUS.READ,
+    DELIVERY_STATUS.LATER_FAILED,
+  ].includes(deliveryStatus);
+  const failed = options.failed ?? [
+    DELIVERY_STATUS.FAILED,
+    DELIVERY_STATUS.LATER_FAILED,
+  ].includes(deliveryStatus);
 
   return {
     providerMessageId,
@@ -689,6 +785,124 @@ async function markMessageSendAttempted(messageId, sendTruth) {
     providerAccepted: null,
     failed: false,
   });
+}
+
+function normalizeProviderLifecycleReceipt(receipt = {}) {
+  const channel = normalizeChannel(receipt.channel || receipt.provider);
+  if (!LIFECYCLE_SUPPORTED_CHANNELS.has(channel)) return null;
+
+  const deliveryStatus = receipt.deliveryStatus || receipt.delivery_status;
+  if (!lifecycleDeliveryStatus(deliveryStatus)) return null;
+
+  const providerMessageId = receipt.providerMessageId || receipt.provider_message_id || receipt.messageToken || receipt.message_id;
+  if (!providerMessageId) return null;
+
+  let providerLifecycleAt = receipt.providerLifecycleAt || receipt.provider_lifecycle_at || receipt.timestamp || null;
+  if (providerLifecycleAt) {
+    const parsed = new Date(providerLifecycleAt);
+    providerLifecycleAt = Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+  }
+
+  return {
+    channel,
+    providerMessageId: safeTruncate(String(providerMessageId), 255),
+    deliveryStatus,
+    deliveryError: receipt.deliveryError || receipt.delivery_error || receipt.error || null,
+    providerLifecycleAt,
+    providerLifecycleEvent: safeTruncate(String(receipt.providerLifecycleEvent || receipt.provider_lifecycle_event || receipt.event || deliveryStatus), 60),
+    providerLifecycleSource: safeTruncate(String(receipt.providerLifecycleSource || receipt.provider_lifecycle_source || `${channel}_webhook`), 40),
+  };
+}
+
+function buildLifecycleSendTruth(receipt) {
+  const deliveryConfirmed = [
+    DELIVERY_STATUS.DELIVERED,
+    DELIVERY_STATUS.READ,
+  ].includes(receipt.deliveryStatus);
+
+  return buildSendTruth(sendTruthStatusFromDeliveryStatus(receipt.deliveryStatus), {
+    channel: receipt.channel,
+    providerAttempted: true,
+    providerAccepted: true,
+    deliveryConfirmed,
+    providerReference: receipt.providerMessageId,
+    lifecycleStatus: receipt.deliveryStatus,
+    providerLifecycleAt: receipt.providerLifecycleAt,
+    providerLifecycleEvent: receipt.providerLifecycleEvent,
+    providerLifecycleSource: receipt.providerLifecycleSource,
+    error: receipt.deliveryError,
+  });
+}
+
+async function applyProviderLifecycleReceipt(receiptPayload) {
+  const receipt = normalizeProviderLifecycleReceipt(receiptPayload);
+  if (!receipt) {
+    logger.warn('Ignoring unsupported provider lifecycle receipt', {
+      channel: receiptPayload?.channel || receiptPayload?.provider || null,
+      deliveryStatus: receiptPayload?.deliveryStatus || receiptPayload?.delivery_status || null,
+    });
+    return null;
+  }
+
+  const sendTruth = buildLifecycleSendTruth(receipt);
+  const providerLifecycle = {
+    version: 1,
+    channel: receipt.channel,
+    providerMessageId: receipt.providerMessageId,
+    deliveryStatus: receipt.deliveryStatus,
+    deliveryError: receipt.deliveryError,
+    event: receipt.providerLifecycleEvent,
+    source: receipt.providerLifecycleSource,
+    at: receipt.providerLifecycleAt,
+  };
+
+  const result = await pool.query(
+    `UPDATE conversation_messages cm
+        SET meta = COALESCE(cm.meta, '{}'::jsonb) || $4::jsonb,
+            delivery_status = CASE
+              WHEN cm.delivery_status = 'read' AND $3 = 'delivered' THEN cm.delivery_status
+              ELSE $3
+            END,
+            delivery_error = CASE WHEN $3 = 'later_failed' THEN $8 ELSE NULL END,
+            provider_lifecycle_at = COALESCE($5::timestamp, NOW()),
+            provider_lifecycle_event = $6,
+            provider_lifecycle_source = $7,
+            send_attempted_at = COALESCE(cm.send_attempted_at, NOW()),
+            provider_accepted_at = COALESCE(cm.provider_accepted_at, NOW()),
+            failed_at = CASE
+              WHEN $3 = 'later_failed' THEN COALESCE(cm.failed_at, COALESCE($5::timestamp, NOW()))
+              ELSE cm.failed_at
+            END
+       FROM conversations c
+      WHERE cm.conversation_id = c.id
+        AND c.channel = $1
+        AND cm.direction = 'outbound'
+        AND cm.provider_message_id = $2
+      RETURNING cm.*`,
+    [
+      receipt.channel,
+      receipt.providerMessageId,
+      receipt.deliveryStatus,
+      JSON.stringify({ sendTruth, providerLifecycle }),
+      receipt.providerLifecycleAt,
+      receipt.providerLifecycleEvent,
+      receipt.providerLifecycleSource,
+      receipt.deliveryError,
+    ]
+  );
+
+  if (!result.rows.length) {
+    logger.warn('Provider lifecycle receipt did not match an outbound message', {
+      channel: receipt.channel,
+      providerMessageId: receipt.providerMessageId,
+      deliveryStatus: receipt.deliveryStatus,
+    });
+    return null;
+  }
+
+  const message = mapMessageRow(result.rows[0]);
+  notifyCRM('omni:message', { message, providerLifecycle: message.meta?.providerLifecycle || null });
+  return message;
 }
 
 // ---------------------------------------------------------------------------
@@ -1142,6 +1356,7 @@ module.exports = {
   getMessages,
   sendManualMessage,
   saveMessageSendTruth,
+  applyProviderLifecycleReceipt,
   updateConversationStatus,
   getStats,
   getQuickReplies,

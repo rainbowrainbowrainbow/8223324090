@@ -7,13 +7,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.47.8">
-    <link rel="stylesheet" href="css/layout.css?v=0.47.8">
-    <link rel="stylesheet" href="css/pages.css?v=0.47.8">
-    <link rel="stylesheet" href="css/modals.css?v=0.47.8">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.8">
-    <link rel="stylesheet" href="css/responsive.css?v=0.47.8">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.47.8">
+    <link rel="stylesheet" href="css/base.css?v=0.47.9">
+    <link rel="stylesheet" href="css/layout.css?v=0.47.9">
+    <link rel="stylesheet" href="css/pages.css?v=0.47.9">
+    <link rel="stylesheet" href="css/modals.css?v=0.47.9">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.9">
+    <link rel="stylesheet" href="css/responsive.css?v=0.47.9">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.47.9">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -432,6 +432,11 @@
             color: var(--info-color, #2563eb);
         }
 
+        .omni-send-truth.success,
+        .omni-send-state.success {
+            color: var(--success-color, #16a34a);
+        }
+
         .omni-send-truth.warning,
         .omni-send-state.warning {
             color: var(--warning-color, #d97706);
@@ -643,12 +648,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.47.8"></script>
-    <script src="js/api.js?v=0.47.8"></script>
-    <script src="js/auth.js?v=0.47.8"></script>
-    <script src="js/components/sidebar.js?v=0.47.8"></script>
+    <script src="js/config.js?v=0.47.9"></script>
+    <script src="js/api.js?v=0.47.9"></script>
+    <script src="js/auth.js?v=0.47.9"></script>
+    <script src="js/components/sidebar.js?v=0.47.9"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.47.8"></script>
+    <script src="js/ws.js?v=0.47.9"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -849,8 +854,9 @@
 
         function sendTruthTone(sendTruth) {
             const status = sendTruth?.status || '';
-            if (status === 'provider_failed_immediate' || status === 'channel_unavailable') return 'error';
+            if (status === 'provider_failed_immediate' || status === 'provider_failed_later' || status === 'channel_unavailable') return 'error';
             if (status === 'provider_unknown' || status === 'saved') return 'warning';
+            if (status === 'provider_delivered' || status === 'provider_read') return 'success';
             if (status === 'provider_attempted') return 'info';
             return 'warning';
         }
@@ -861,8 +867,14 @@
             switch (sendTruth.status) {
                 case 'provider_attempted':
                     return 'Провайдер прийняв запит. Фінальна доставка ще не підтверджується.';
+                case 'provider_delivered':
+                    return 'Повідомлення доставлено за підтвердженням провайдера.';
+                case 'provider_read':
+                    return 'Провайдер підтвердив перегляд повідомлення.';
                 case 'provider_failed_immediate':
                     return 'Провайдер одразу не прийняв відправку. Повідомлення лишилось у CRM.';
+                case 'provider_failed_later':
+                    return 'Провайдер пізніше повідомив про недоставку. Повідомлення лишилось у CRM.';
                 case 'provider_unknown':
                     return 'Повідомлення збережено в CRM, але статус провайдера невідомий.';
                 case 'channel_unavailable':
@@ -886,8 +898,14 @@
                     return { status: 'saved', providerReference: message.providerMessageId || null, error: message.deliveryError || null };
                 case 'accepted':
                     return { status: 'provider_attempted', providerReference: message.providerMessageId || null, error: message.deliveryError || null };
+                case 'delivered':
+                    return { status: 'provider_delivered', providerReference: message.providerMessageId || null, error: message.deliveryError || null };
+                case 'read':
+                    return { status: 'provider_read', providerReference: message.providerMessageId || null, error: message.deliveryError || null };
                 case 'failed':
                     return { status: 'provider_failed_immediate', providerReference: message.providerMessageId || null, error: message.deliveryError || null };
+                case 'later_failed':
+                    return { status: 'provider_failed_later', providerReference: message.providerMessageId || null, error: message.deliveryError || null };
                 case 'attempted':
                 case 'unknown':
                     return { status: 'provider_unknown', providerReference: message.providerMessageId || null, error: message.deliveryError || null };
@@ -898,7 +916,9 @@
 
         function sendTruthFromMessage(message) {
             const meta = parseMessageMeta(message?.meta);
-            return message?.sendTruth || meta.sendTruth || sendTruthFromDurableStatus(message);
+            const durable = sendTruthFromDurableStatus(message);
+            if (['delivered', 'read', 'later_failed'].includes(message?.deliveryStatus) && durable) return durable;
+            return message?.sendTruth || meta.sendTruth || durable;
         }
 
         function renderSendTruthState(sendTruth) {
@@ -1322,8 +1342,8 @@
         });
     })();
     </script>
-    <script src="js/role-panel.js?v=0.47.8"></script>
-    <script src="js/ui.js?v=0.47.8"></script>
-    <script src="js/alerts.js?v=0.47.8"></script>
+    <script src="js/role-panel.js?v=0.47.9"></script>
+    <script src="js/ui.js?v=0.47.9"></script>
+    <script src="js/alerts.js?v=0.47.9"></script>
 </body>
 </html>

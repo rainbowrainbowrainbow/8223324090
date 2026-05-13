@@ -105,6 +105,7 @@ checkPage('dashboard.html', (doc, html) => {
     check('mainApp exists', !!doc.getElementById('mainApp'));
     check('dashboardGrid exists', !!doc.getElementById('dashboardGrid'));
     check('dashboard work queue explainability region exists', !!doc.getElementById('workQueueExplainability'));
+    check('dashboard work queue reply scope controls exist', !!doc.getElementById('workQueueScopeControls'));
     check('dashboard login tagline matches package version', html.includes(`AI First CRM v${pkg.version}`));
     check('dashboard changelog button matches package version', html.includes(`Що нового у v${pkg.version}`));
 });

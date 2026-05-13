@@ -61,6 +61,29 @@ async function request(path, role = 'manager') {
 }
 
 function createFakePool() {
+    function replyRow(overrides = {}) {
+        return {
+            conversation_id: 41,
+            channel: 'viber',
+            customer_name: 'Reply Client',
+            customer_phone: '+380000000041',
+            customer_id: 401,
+            assigned_to: 'manager user',
+            reply_expected: true,
+            awaiting_reply_since: '2026-05-13T09:30:00Z',
+            reply_expected_message_id: 1201,
+            reply_owner: 'manager user',
+            reply_owner_user_id: 501,
+            reply_sla_at: '2099-05-13T15:00:00Z',
+            due_at: '2099-05-13T15:00:00Z',
+            delivery_status: 'delivered',
+            delivery_error: null,
+            failed_at: null,
+            lead_id: 41,
+            ...overrides
+        };
+    }
+
     return {
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
@@ -150,25 +173,28 @@ function createFakePool() {
             }
 
             if (/FROM conversations c/i.test(text) && /reply_expected IS TRUE/i.test(text)) {
-                return { rows: [{
-                    conversation_id: 41,
-                    channel: 'viber',
-                    customer_name: 'Reply Client',
-                    customer_phone: '+380000000041',
-                    customer_id: 401,
-                    assigned_to: 'manager user',
-                    reply_expected: true,
-                    awaiting_reply_since: '2026-05-13T09:30:00Z',
-                    reply_expected_message_id: 1201,
-                    reply_owner: 'manager user',
-                    reply_owner_user_id: 501,
-                    reply_sla_at: '2099-05-13T15:00:00Z',
-                    due_at: '2099-05-13T15:00:00Z',
-                    delivery_status: 'delivered',
-                    delivery_error: null,
-                    failed_at: null,
-                    lead_id: 41
-                }] };
+                if (/c\.reply_owner_user_id = \$\d+/i.test(text)) {
+                    return { rows: [replyRow({
+                        conversation_id: 42,
+                        reply_expected_message_id: 1202,
+                        reply_owner: 'Renamed label',
+                        reply_owner_user_id: 20,
+                        lead_id: 42
+                    })] };
+                }
+                if (/c\.reply_owner_user_id IS NULL OR c\.reply_owner_user_id <> \$\d+/i.test(text)) {
+                    return { rows: [
+                        replyRow(),
+                        replyRow({
+                            conversation_id: 43,
+                            reply_expected_message_id: 1203,
+                            reply_owner: 'manager user',
+                            reply_owner_user_id: null,
+                            lead_id: 43
+                        })
+                    ] };
+                }
+                return { rows: [replyRow()] };
             }
 
             if (/FROM bookings b/i.test(text) && /b\.status = 'preliminary'/i.test(text)) {
@@ -236,6 +262,10 @@ function createFakePool() {
 
 function bucketMap(queue) {
     return Object.fromEntries(queue.buckets.map(bucket => [bucket.key, bucket]));
+}
+
+function latestWaitingQuery() {
+    return [...queries].reverse().find(q => /FROM conversations c/i.test(q.text) && /reply_expected IS TRUE/i.test(q.text));
 }
 
 describe('work queue endpoint', () => {
@@ -307,7 +337,7 @@ describe('work queue endpoint', () => {
         assert.equal(buckets.idle_lead.items[0].confidence, 'suggested');
         assert.equal(res.data.queue.meta.omittedBuckets.includes('waiting_reply'), false);
         assert.ok(!queries.some(q => /unread_count\s*>\s*0/i.test(q.text)));
-        const waitingQuery = queries.find(q => /FROM conversations c/i.test(q.text) && /reply_expected IS TRUE/i.test(q.text));
+        const waitingQuery = latestWaitingQuery();
         assert.ok(waitingQuery, 'waiting_reply must come from conversations.reply_expected');
         assert.match(waitingQuery.text, /awaiting_reply_since IS NOT NULL/i);
         assert.match(waitingQuery.text, /last_inbound_at IS NULL OR c\.last_inbound_at <= c\.awaiting_reply_since/i);
@@ -315,6 +345,54 @@ describe('work queue endpoint', () => {
         assert.match(waitingQuery.text, /CASE WHEN c\.reply_sla_at IS NULL THEN 1 ELSE 0 END/i);
         assert.doesNotMatch(waitingQuery.text, /reply_owner\s*=\s*\$/i);
         assert.doesNotMatch(waitingQuery.text, /reply_owner_user_id\s*=\s*\$/i);
+        assert.equal(res.data.queue.meta.replyBacklog.scope, 'all');
+        assert.equal(res.data.queue.meta.replyBacklog.canonicalOwnerField, 'conversations.reply_owner_user_id');
+        assert.equal(res.data.queue.meta.replyBacklog.labelFiltering, false);
+    });
+
+    it('filters mine from typed reply_owner_user_id only', async () => {
+        const res = await request('/api/work-queue?replyScope=mine&limit=5', 'manager');
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        const buckets = bucketMap(res.data.queue);
+
+        assert.equal(buckets.waiting_reply.items.length, 1);
+        assert.equal(buckets.waiting_reply.items[0].sourceId, '42');
+        assert.equal(buckets.waiting_reply.items[0].meta.replyOwnerUserId, 20);
+        assert.equal(res.data.queue.meta.replyBacklog.scope, 'mine');
+        assert.equal(res.data.queue.meta.replyBacklog.nullOwnerBehavior, 'excluded');
+
+        const waitingQuery = latestWaitingQuery();
+        assert.match(waitingQuery.text, /c\.reply_owner_user_id = \$\d+/i);
+        assert.doesNotMatch(waitingQuery.text, /reply_owner\s*=\s*\$/i);
+        assert.equal(waitingQuery.params.includes(20), true);
+    });
+
+    it('filters team as current manager-visible non-mine backlog and keeps null owner rows broader than mine', async () => {
+        const res = await request('/api/work-queue?replyScope=team&limit=5', 'manager');
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        const buckets = bucketMap(res.data.queue);
+        const ownerIds = buckets.waiting_reply.items.map(item => item.meta.replyOwnerUserId);
+
+        assert.equal(ownerIds.includes(20), false);
+        assert.equal(ownerIds.includes(501), true);
+        assert.equal(ownerIds.includes(null), true);
+        assert.equal(res.data.queue.meta.replyBacklog.scope, 'team');
+        assert.equal(res.data.queue.meta.replyBacklog.teamSemantics, 'manager_visible_non_mine');
+        assert.equal(res.data.queue.meta.replyBacklog.nullOwnerBehavior, 'included_if_visible');
+
+        const waitingQuery = latestWaitingQuery();
+        assert.match(waitingQuery.text, /c\.reply_owner_user_id IS NULL OR c\.reply_owner_user_id <> \$\d+/i);
+        assert.doesNotMatch(waitingQuery.text, /reply_owner\s*=\s*\$/i);
+    });
+
+    it('normalizes unknown reply backlog scope back to all', async () => {
+        const res = await request('/api/work-queue?replyScope=label-match', 'manager');
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.queue.meta.replyBacklog.scope, 'all');
+
+        const waitingQuery = latestWaitingQuery();
+        assert.doesNotMatch(waitingQuery.text, /reply_owner_user_id\s*=\s*\$/i);
+        assert.doesNotMatch(waitingQuery.text, /reply_owner\s*=\s*\$/i);
     });
 
     it('does not reuse stale status=new cold-lead logic as queue authority', async () => {
@@ -329,6 +407,9 @@ describe('work queue endpoint', () => {
         const dashboardCss = fs.readFileSync(path.join(repoRoot, 'css/dashboard.css'), 'utf8');
 
         assert.match(dashboardJs, /item\.bucket === 'waiting_reply'/);
+        assert.match(dashboardJs, /replyScope: _workQueueReplyScope/);
+        assert.match(dashboardJs, /setWorkQueueReplyScope/);
+        assert.match(dashboardJs, /eg_reply_backlog_scope/);
         assert.match(dashboardJs, /item\.meta\?\.awaitingReplySince/);
         assert.match(dashboardJs, /replySlaState/);
         assert.match(dashboardJs, /work-queue-state-pill/);
@@ -336,5 +417,6 @@ describe('work queue endpoint', () => {
         assert.doesNotMatch(dashboardJs, /unread_count\s*>\s*0/i);
         assert.match(dashboardCss, /bucket-waiting_reply/);
         assert.match(dashboardCss, /is-waiting-reply/);
+        assert.match(dashboardCss, /work-queue-scope-btn/);
     });
 });

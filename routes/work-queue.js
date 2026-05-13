@@ -18,7 +18,8 @@ router.get('/', async (req, res) => {
         const queue = await buildWorkQueue({
             pool,
             user: req.user,
-            limit: req.query.limit
+            limit: req.query.limit,
+            replyScope: req.query.replyScope || req.query.reply_scope
         });
         res.json({ success: true, queue });
     } catch (err) {

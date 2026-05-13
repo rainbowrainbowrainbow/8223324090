@@ -13,6 +13,7 @@ const BUCKETS = [
     { key: 'idle_lead', label: 'Лід холоне' }
 ];
 
+const REPLY_BACKLOG_SCOPES = ['all', 'mine', 'team'];
 const CLOSED_LEAD_STAGES = ['completed', 'closed', 'lost'];
 const ACTIVE_TASK_STATUS_SQL = "COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')";
 const PRIORITY_WEIGHT = { critical: 0, high: 1, normal: 2, medium: 2, low: 3 };
@@ -50,6 +51,31 @@ function priority(value, fallback = 'normal') {
 function pushParam(params, value) {
     params.push(value);
     return `$${params.length}`;
+}
+
+function normalizeReplyBacklogScope(value) {
+    const raw = String(value || 'all').toLowerCase();
+    return REPLY_BACKLOG_SCOPES.includes(raw) ? raw : 'all';
+}
+
+function normalizeUserId(user) {
+    const parsed = Number(user?.id || user?.userId || 0);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function buildReplyBacklogScopeFilter(scope, user, params, alias = 'c') {
+    const userId = normalizeUserId(user);
+    if (scope === 'mine') {
+        if (!userId) return 'AND 1 = 0';
+        const userRef = pushParam(params, userId);
+        return `AND ${alias}.reply_owner_user_id = ${userRef}`;
+    }
+    if (scope === 'team') {
+        if (!userId) return '';
+        const userRef = pushParam(params, userId);
+        return `AND (${alias}.reply_owner_user_id IS NULL OR ${alias}.reply_owner_user_id <> ${userRef})`;
+    }
+    return '';
 }
 
 function buildTaskVisibility(user, params, alias = 't') {
@@ -304,7 +330,7 @@ function makeBucketMap() {
     }, {});
 }
 
-async function buildWorkQueue({ pool, user, limit = 8, today = null } = {}) {
+async function buildWorkQueue({ pool, user, limit = 8, today = null, replyScope = 'all' } = {}) {
     if (!pool || typeof pool.query !== 'function') {
         throw new Error('pool with query() is required');
     }
@@ -314,6 +340,7 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null } = {}) {
     const eventSoonStr = addDays(todayStr, 7);
     const warnings = [];
     const bucketMap = makeBucketMap();
+    const replyBacklogScope = normalizeReplyBacklogScope(replyScope);
 
     const overdue = await source(pool, warnings, 'tasks_overdue', () => loadTaskBucket(
         pool,
@@ -372,6 +399,9 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null } = {}) {
     });
 
     const waitingReply = await source(pool, warnings, 'conversation_reply_expectations', async () => {
+        const params = [];
+        const replyScopeFilter = buildReplyBacklogScopeFilter(replyBacklogScope, user, params, 'c');
+        const limitRef = pushParam(params, safeLimit);
         const result = await pool.query(`
             SELECT c.id AS conversation_id, c.channel, c.customer_name, c.customer_phone,
                    c.customer_id, c.assigned_to, c.reply_expected, c.awaiting_reply_since,
@@ -388,11 +418,12 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null } = {}) {
               AND COALESCE(c.status, 'open') NOT IN ('closed', 'spam')
               AND (c.last_inbound_at IS NULL OR c.last_inbound_at <= c.awaiting_reply_since)
               AND COALESCE(cm.delivery_status, '') NOT IN ('failed', 'later_failed')
+              ${replyScopeFilter}
             ORDER BY
               CASE WHEN c.reply_sla_at IS NULL THEN 1 ELSE 0 END,
               COALESCE(c.reply_sla_at, c.awaiting_reply_since) ASC
-            LIMIT $1
-        `, [safeLimit]);
+            LIMIT ${limitRef}
+        `, params);
         return result.rows.map(row => conversationItem(row, 'waiting_reply'));
     });
 
@@ -519,6 +550,15 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null } = {}) {
             canonicalBuckets: BUCKETS.map(bucket => bucket.key),
             heuristicBuckets: ['idle_lead'],
             omittedBuckets: [],
+            replyBacklog: {
+                scope: replyBacklogScope,
+                availableScopes: REPLY_BACKLOG_SCOPES,
+                canonicalOwnerField: 'conversations.reply_owner_user_id',
+                displayOwnerField: 'conversations.reply_owner',
+                labelFiltering: false,
+                nullOwnerBehavior: replyBacklogScope === 'mine' ? 'excluded' : 'included_if_visible',
+                teamSemantics: 'manager_visible_non_mine'
+            },
             warnings
         }
     };
@@ -526,6 +566,8 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null } = {}) {
 
 module.exports = {
     BUCKETS,
+    REPLY_BACKLOG_SCOPES,
+    normalizeReplyBacklogScope,
     buildWorkQueue,
     addDays
 };

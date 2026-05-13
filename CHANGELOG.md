@@ -4,6 +4,16 @@
 
 ---
 
+## v0.47.15 - 💬 0.47 Комунікації: reply backlog filters v1 (2026-05-13)
+
+### Reply Backlog Filters v1 [codex]
+- **Owner-aware backlog** - Work Queue отримала `replyScope=mine|team|all` для bucket `waiting_reply`, побудований тільки на `reply_owner_user_id`.
+- **Мої відповіді** - `mine` показує лише розмови, де `conversations.reply_owner_user_id = current user id`; `reply_owner` label не використовується для фільтрації.
+- **Команда без overclaim** - `team` означає поточний manager-visible backlog без моїх typed owner items, а не новий department/RBAC режим.
+- **Null-safe legacy** - старі рядки без typed owner не потрапляють у `mine`, але лишаються видимими в `team/all`, якщо їх уже дозволяє поточна manager visibility.
+
+---
+
 ## v0.47.14 - 💬 0.47 Комунікації: typed reply owner v1 (2026-05-13)
 
 ### Reply Owner Typing v1 [codex]

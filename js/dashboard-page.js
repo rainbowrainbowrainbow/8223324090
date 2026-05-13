@@ -32,6 +32,7 @@ const DashboardPage = (() => {
 
     let _config = { widgets: [], layout: {}, theme: 'default' };
     let _widgetData = {};
+    let _workQueueReplyScope = normalizeWorkQueueReplyScope(localStorage.getItem('eg_reply_backlog_scope'));
 
     async function init() {
         const token = localStorage.getItem('pzp_token');
@@ -126,9 +127,11 @@ const DashboardPage = (() => {
 
         panel.hidden = false;
         body.innerHTML = '<div class="widget-loading">Завантаження черги...</div>';
+        renderWorkQueueScopeControls();
 
         try {
-            const resp = await fetch('/api/work-queue', {
+            const params = new URLSearchParams({ replyScope: _workQueueReplyScope });
+            const resp = await fetch(`/api/work-queue?${params.toString()}`, {
                 headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
             });
             if (resp.status === 403 || resp.status === 401) {
@@ -145,6 +148,33 @@ const DashboardPage = (() => {
         }
     }
 
+    function normalizeWorkQueueReplyScope(value) {
+        return ['mine', 'team', 'all'].includes(value) ? value : 'all';
+    }
+
+    function workQueueReplyScopeLabel(scope) {
+        switch (scope) {
+            case 'mine': return 'Мої';
+            case 'team': return 'Команда';
+            default: return 'Усі';
+        }
+    }
+
+    function renderWorkQueueScopeControls(meta = {}) {
+        const target = document.getElementById('workQueueScopeControls');
+        if (!target) return;
+        const active = normalizeWorkQueueReplyScope(meta.replyBacklog?.scope || _workQueueReplyScope);
+        const scopes = ['mine', 'team', 'all'];
+        target.innerHTML = scopes.map(scope => `
+            <button type="button"
+                class="work-queue-scope-btn${scope === active ? ' active' : ''}"
+                aria-pressed="${scope === active ? 'true' : 'false'}"
+                onclick="DashboardPage.setWorkQueueReplyScope('${scope}')">
+                ${escapeHtml(workQueueReplyScopeLabel(scope))}
+            </button>
+        `).join('');
+    }
+
     function renderWorkQueue(queue, container) {
         const buckets = Array.isArray(queue.buckets) ? queue.buckets : [];
         const visibleBuckets = buckets.filter(bucket => bucket.count > 0 || (bucket.items && bucket.items.length > 0));
@@ -152,6 +182,7 @@ const DashboardPage = (() => {
         if (subtitle && queue.date) {
             subtitle.textContent = `Сьогодні ${formatQueueDate(queue.date.today)} · сформовано ${formatQueueDateTime(queue.generatedAt)}`;
         }
+        renderWorkQueueScopeControls(queue.meta || {});
         renderWorkQueueExplainability(queue, buckets, visibleBuckets.length);
 
         if (!visibleBuckets.length) {
@@ -182,8 +213,10 @@ const DashboardPage = (() => {
         const omitted = Array.isArray(meta.omittedBuckets) ? meta.omittedBuckets : [];
         const heuristic = Array.isArray(meta.heuristicBuckets) ? meta.heuristicBuckets : [];
         const filters = [];
+        const replyBacklog = meta.replyBacklog || {};
 
         if (warnings.length) filters.push({ label: 'Увага', value: `${warnings.length} джерел не відповіли` });
+        if (replyBacklog.scope) filters.push({ label: 'Reply backlog', value: workQueueReplyScopeLabel(replyBacklog.scope) });
         if (omitted.length) filters.push({ label: 'Не включено', value: omitted.map(key => bucketMap.get(key) || key).join(', ') });
         const activeHeuristic = heuristic.filter(key => (buckets || []).some(bucket => bucket.key === key && bucket.count > 0));
         if (activeHeuristic.length) {
@@ -1394,6 +1427,13 @@ const DashboardPage = (() => {
         loadWorkQueue();
     }
 
+    function setWorkQueueReplyScope(scope) {
+        _workQueueReplyScope = normalizeWorkQueueReplyScope(scope);
+        localStorage.setItem('eg_reply_backlog_scope', _workQueueReplyScope);
+        renderWorkQueueScopeControls({ replyBacklog: { scope: _workQueueReplyScope } });
+        loadWorkQueue();
+    }
+
     function refreshWidget(type) {
         loadWidgetData(type);
     }
@@ -1425,6 +1465,7 @@ const DashboardPage = (() => {
     return {
         init,
         refreshWorkQueue,
+        setWorkQueueReplyScope,
         refreshWidget,
         openTask,
         toggleOnboardingWidget,

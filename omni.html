@@ -7,13 +7,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.47.1">
-    <link rel="stylesheet" href="css/layout.css?v=0.47.1">
-    <link rel="stylesheet" href="css/pages.css?v=0.47.1">
-    <link rel="stylesheet" href="css/modals.css?v=0.47.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.1">
-    <link rel="stylesheet" href="css/responsive.css?v=0.47.1">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.47.1">
+    <link rel="stylesheet" href="css/base.css?v=0.47.3">
+    <link rel="stylesheet" href="css/layout.css?v=0.47.3">
+    <link rel="stylesheet" href="css/pages.css?v=0.47.3">
+    <link rel="stylesheet" href="css/modals.css?v=0.47.3">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.3">
+    <link rel="stylesheet" href="css/responsive.css?v=0.47.3">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.47.3">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -544,6 +544,7 @@
                             <button type="button" class="omni-channel-btn" data-channel="instagram">IG</button>
                             <button type="button" class="omni-channel-btn" data-channel="binotel">Tel</button>
                         </div>
+                        <div id="omniExplainability" hidden></div>
                     </div>
                     <div class="omni-stats" id="omniStats">
                         <!-- Filled by JS -->
@@ -599,12 +600,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.47.1"></script>
-    <script src="js/api.js?v=0.47.1"></script>
-    <script src="js/auth.js?v=0.47.1"></script>
-    <script src="js/components/sidebar.js?v=0.47.1"></script>
+    <script src="js/config.js?v=0.47.3"></script>
+    <script src="js/api.js?v=0.47.3"></script>
+    <script src="js/auth.js?v=0.47.3"></script>
+    <script src="js/components/sidebar.js?v=0.47.3"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.47.1"></script>
+    <script src="js/ws.js?v=0.47.3"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -715,8 +716,9 @@
 
         // ---- Render ----
         function renderConversations() {
+            renderOmniExplainability();
             if (!conversations.length) {
-                convList.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-secondary,#718096)">Немає розмов</div>';
+                convList.innerHTML = omniEmptyHtml();
                 return;
             }
             convList.innerHTML = conversations.map(c => {
@@ -736,6 +738,56 @@
                     '</div>' +
                 '</div>';
             }).join('');
+        }
+
+        function getOmniFilterSummary() {
+            const filters = [];
+            if (activeChannel !== 'all') filters.push({ label: 'Канал', value: CHANNEL_NAMES[activeChannel] || activeChannel });
+            if (searchQuery) filters.push({ label: 'Пошук', value: searchQuery });
+            if (selectedConversationQueryId && !currentConvId) filters.push({ label: 'Посилання', value: 'розмова #' + selectedConversationQueryId });
+            return filters;
+        }
+
+        function renderOmniExplainability() {
+            if (!window.Explainability) return;
+            const filters = getOmniFilterSummary();
+            const html = Explainability.renderFilterSummary(filters, {
+                label: 'Зріз розмов',
+                clearAction: filters.length ? 'omni' : '',
+                clearLabel: 'Показати всі розмови'
+            });
+            Explainability.setRegion('omniExplainability', html);
+        }
+
+        function omniEmptyHtml() {
+            const filters = getOmniFilterSummary();
+            if (window.Explainability) {
+                return Explainability.renderEmptyState({
+                    icon: '✉',
+                    title: filters.length ? 'Розмов за цим зрізом немає' : 'Розмов ще немає',
+                    message: filters.length
+                        ? 'Поточний пошук, канал або точне посилання звузили список. Скиньте зріз, щоб повернути всі доступні розмови.'
+                        : 'Коли зʼявиться повідомлення з підключеного каналу, воно буде тут.',
+                    clearAction: filters.length ? 'omni' : '',
+                    clearLabel: 'Показати всі розмови'
+                });
+            }
+            return '<div style="padding:24px;text-align:center;color:var(--text-secondary,#718096)">Немає розмов</div>';
+        }
+
+        function resetOmniFilters() {
+            activeChannel = 'all';
+            searchQuery = '';
+            selectedConversationQueryId = null;
+            conversationQueryApplied = true;
+            if (searchInput) searchInput.value = '';
+            document.querySelectorAll('.omni-channel-btn').forEach(b => b.classList.toggle('active', b.dataset.channel === 'all'));
+            const url = new URL(window.location.href);
+            url.searchParams.delete('search');
+            url.searchParams.delete('conversation');
+            url.searchParams.delete('conversationId');
+            history.replaceState({}, '', url.pathname + url.search + url.hash);
+            loadConversations();
         }
 
         function renderMessages(msgs) {
@@ -989,6 +1041,12 @@
             conversationQueryApplied = true;
             loadConversations();
         });
+        document.addEventListener('click', e => {
+            const clear = e.target.closest('[data-explain-clear="omni"]');
+            if (!clear) return;
+            e.preventDefault();
+            resetOmniFilters();
+        });
 
         // Search
         let searchTimeout;
@@ -1087,8 +1145,8 @@
         });
     })();
     </script>
-    <script src="js/role-panel.js?v=0.47.1"></script>
-    <script src="js/ui.js?v=0.47.1"></script>
-    <script src="js/alerts.js?v=0.47.1"></script>
+    <script src="js/role-panel.js?v=0.47.3"></script>
+    <script src="js/ui.js?v=0.47.3"></script>
+    <script src="js/alerts.js?v=0.47.3"></script>
 </body>
 </html>

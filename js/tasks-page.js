@@ -114,9 +114,10 @@ async function initPage() {
 
             const isTemplates = currentView === 'templates';
             document.getElementById('catFilters').style.display = isTemplates ? 'none' : '';
-            document.getElementById('quickAdd').style.display = isTemplates ? 'none' : '';
+            document.getElementById('quickAdd').style.display = (isTemplates || userPermissions?.canCreateTasks === false) ? 'none' : '';
             document.getElementById('boardContent').style.display = isTemplates ? 'none' : '';
             document.getElementById('templatesSection').style.display = isTemplates ? '' : 'none';
+            updateTaskExplainability();
 
             if (isTemplates) {
                 loadTemplates();
@@ -134,6 +135,12 @@ async function initPage() {
             currentCategory = chip.dataset.cat;
             renderBoard();
         });
+    });
+    document.addEventListener('click', (e) => {
+        const clear = e.target.closest('[data-explain-clear="tasks"]');
+        if (!clear) return;
+        e.preventDefault();
+        resetTaskFilters();
     });
 
     // Quick add task
@@ -326,12 +333,104 @@ function filterByCategory(tasks) {
     return tasks.filter(t => (t.category || 'admin') === currentCategory);
 }
 
+function getCategoryLabel(cat = currentCategory) {
+    if (cat === 'all') return 'Всі категорії';
+    return CAT_LABELS[cat]?.label || cat;
+}
+
+function getViewLabel(view = currentView) {
+    const labels = {
+        today: 'Сьогодні',
+        week: 'Тиждень',
+        my: 'Мої',
+        board: 'Канбан',
+        archive: 'Архів',
+        templates: 'Шаблони'
+    };
+    return labels[view] || view;
+}
+
+function getVisibilityNote() {
+    const visibility = userPermissions?.taskVisibility;
+    const notes = [];
+    if (visibility === 'own') notes.push('Показано тільки задачі, призначені вам');
+    if (visibility === 'department') notes.push('Показано ваші задачі та задачі відділу');
+    if (userPermissions?.canCreateTasks === false) notes.push('Створення задач недоступне для вашої ролі');
+    return notes.join('; ');
+}
+
+function taskEmptyState(view, unfilteredCount = 0, columnLabel = '') {
+    const hasCategory = currentCategory !== 'all';
+    const category = getCategoryLabel();
+    let title = columnLabel ? `Порожньо: ${columnLabel}` : 'Немає задач';
+    let message = `У зрізі "${getViewLabel(view)}" немає задач.`;
+    let clearAction = '';
+
+    if (hasCategory && unfilteredCount > 0) {
+        title = `Немає задач у категорії "${category}"`;
+        message = `У зрізі "${getViewLabel(view)}" є задачі, але поточна категорія їх приховала.`;
+        clearAction = 'tasks';
+    } else if (hasCategory) {
+        message = `У зрізі "${getViewLabel(view)}" зараз немає задач; активна категорія: "${category}".`;
+        clearAction = 'tasks';
+    }
+
+    const visibilityNote = getVisibilityNote();
+    if (visibilityNote) message += ` ${visibilityNote}.`;
+
+    if (window.Explainability) {
+        return Explainability.renderEmptyState({
+            icon: '☑',
+            title,
+            message,
+            clearAction,
+            clearLabel: 'Показати всі задачі'
+        });
+    }
+
+    return `<div class="empty-state">${escapeHtml(title)}<br><small>${escapeHtml(message)}</small></div>`;
+}
+
+function updateTaskExplainability() {
+    const filters = [];
+    const visibilityNote = getVisibilityNote();
+    const canReset = currentCategory !== 'all' || currentView !== 'today';
+    if (currentView !== 'today') filters.push({ label: 'Вигляд', value: getViewLabel() });
+    if (currentCategory !== 'all') filters.push({ label: 'Категорія', value: getCategoryLabel() });
+
+    const html = window.Explainability
+        ? Explainability.renderFilterSummary(filters, {
+            label: 'Зріз задач',
+            note: visibilityNote,
+            clearAction: canReset ? 'tasks' : '',
+            clearLabel: 'Скинути зріз'
+        })
+        : '';
+    if (window.Explainability) Explainability.setRegion('taskExplainability', html);
+}
+
+function resetTaskFilters() {
+    currentCategory = 'all';
+    currentView = 'today';
+    document.querySelectorAll('.cat-chip').forEach(chip => chip.classList.toggle('active', chip.dataset.cat === 'all'));
+    document.querySelectorAll('.board-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === 'today'));
+    const catFilters = document.getElementById('catFilters');
+    const quickAdd = document.getElementById('quickAdd');
+    const boardContent = document.getElementById('boardContent');
+    const templatesSection = document.getElementById('templatesSection');
+    if (catFilters) catFilters.style.display = '';
+    if (quickAdd && userPermissions?.canCreateTasks !== false) quickAdd.style.display = '';
+    if (boardContent) boardContent.style.display = '';
+    if (templatesSection) templatesSection.style.display = 'none';
+    renderBoard();
+}
+
 function updateCounts() {
     const today = getTodayStr();
     const week = getWeekRange();
     const username = AppState.currentUser?.name;
 
-    const active = allTasks.filter(t => t.status !== 'done');
+    const active = filterByCategory(allTasks.filter(t => t.status !== 'done'));
     const todayTasks = active.filter(t => t.date === today || !t.date);
     const weekTasks = active.filter(t => t.date >= week.from && t.date <= week.to);
     const myTasks = active.filter(t => t.assigned_to && t.assigned_to === username);
@@ -343,6 +442,8 @@ function updateCounts() {
 
 function renderBoard() {
     const container = document.getElementById('boardContent');
+    updateCounts();
+    updateTaskExplainability();
 
     switch (currentView) {
         case 'today': renderTodayView(container); break;
@@ -360,11 +461,12 @@ function renderBoard() {
 
 function renderTodayView(container) {
     const today = getTodayStr();
-    let tasks = allTasks.filter(t => t.date === today || (!t.date && t.status !== 'done'));
+    const baseTasks = allTasks.filter(t => t.date === today || (!t.date && t.status !== 'done'));
+    let tasks = baseTasks;
     tasks = filterByCategory(tasks);
 
     if (tasks.length === 0) {
-        container.innerHTML = '<div class="empty-state"><span>🎉</span>Немає задач на сьогодні!</div>';
+        container.innerHTML = taskEmptyState('today', baseTasks.length);
         return;
     }
 
@@ -392,11 +494,12 @@ function renderTodayView(container) {
 
 function renderWeekView(container) {
     const week = getWeekRange();
-    let tasks = allTasks.filter(t => t.date >= week.from && t.date <= week.to && t.status !== 'done');
+    const baseTasks = allTasks.filter(t => t.date >= week.from && t.date <= week.to && t.status !== 'done');
+    let tasks = baseTasks;
     tasks = filterByCategory(tasks);
 
     if (tasks.length === 0) {
-        container.innerHTML = '<div class="empty-state">Немає задач на цей тиждень!</div>';
+        container.innerHTML = taskEmptyState('week', baseTasks.length);
         return;
     }
 
@@ -425,11 +528,12 @@ function renderWeekView(container) {
 
 function renderMyView(container) {
     const username = AppState.currentUser?.name;
-    let tasks = allTasks.filter(t => t.assigned_to && t.assigned_to === username && t.status !== 'done');
+    const baseTasks = allTasks.filter(t => t.assigned_to && t.assigned_to === username && t.status !== 'done');
+    let tasks = baseTasks;
     tasks = filterByCategory(tasks);
 
     if (tasks.length === 0) {
-        container.innerHTML = '<div class="empty-state">Немає задач, призначених вам!</div>';
+        container.innerHTML = taskEmptyState('my', baseTasks.length);
         return;
     }
 
@@ -441,7 +545,8 @@ function renderMyView(container) {
 // ==========================================
 
 function renderKanbanView(container) {
-    let tasks = filterByCategory(allTasks);
+    const baseTasks = allTasks;
+    let tasks = filterByCategory(baseTasks);
 
     const todo = tasks.filter(t => t.status === 'todo');
     const inProgress = tasks.filter(t => t.status === 'in_progress');
@@ -453,19 +558,19 @@ function renderKanbanView(container) {
                 <div class="kanban-col-header">
                     До виконання <span class="kanban-col-count">${todo.length}</span>
                 </div>
-                ${todo.length ? todo.map(t => renderTaskCard(t)).join('') : '<div class="empty-state">Порожньо</div>'}
+                ${todo.length ? todo.map(t => renderTaskCard(t)).join('') : taskEmptyState('board', baseTasks.filter(t => t.status === 'todo').length, 'До виконання')}
             </div>
             <div class="kanban-col">
                 <div class="kanban-col-header">
                     В роботі <span class="kanban-col-count">${inProgress.length}</span>
                 </div>
-                ${inProgress.length ? inProgress.map(t => renderTaskCard(t)).join('') : '<div class="empty-state">Порожньо</div>'}
+                ${inProgress.length ? inProgress.map(t => renderTaskCard(t)).join('') : taskEmptyState('board', baseTasks.filter(t => t.status === 'in_progress').length, 'В роботі')}
             </div>
             <div class="kanban-col">
                 <div class="kanban-col-header">
                     Готово <span class="kanban-col-count">${done.length}</span>
                 </div>
-                ${done.length ? done.map(t => renderTaskCard(t)).join('') : '<div class="empty-state">Порожньо</div>'}
+                ${done.length ? done.map(t => renderTaskCard(t)).join('') : taskEmptyState('board', baseTasks.filter(t => t.status === 'done').length, 'Готово')}
             </div>
         </div>`;
 }
@@ -474,9 +579,10 @@ function renderKanbanView(container) {
 // VIEW: ARCHIVE (v40.5)
 // ==========================================
 function renderArchiveView(container) {
-    const archived = allTasks.filter(t => t.status === 'archived');
+    const baseArchived = allTasks.filter(t => t.status === 'archived');
+    const archived = filterByCategory(baseArchived);
     if (!archived.length) {
-        container.innerHTML = '<div class="empty-state" style="padding:40px;text-align:center;color:var(--gray-400)"><div style="font-size:40px;margin-bottom:8px">📦</div>Архів порожній</div>';
+        container.innerHTML = taskEmptyState('archive', baseArchived.length);
         return;
     }
     container.innerHTML = `<div style="margin-bottom:12px;color:var(--gray-500);font-size:13px">📦 Архівованих задач: ${archived.length}</div>` +

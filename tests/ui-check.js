@@ -100,6 +100,7 @@ checkPage('dashboard.html', (doc, html) => {
     check('loginForm exists', !!doc.getElementById('loginForm'));
     check('mainApp exists', !!doc.getElementById('mainApp'));
     check('dashboardGrid exists', !!doc.getElementById('dashboardGrid'));
+    check('dashboard work queue explainability region exists', !!doc.getElementById('workQueueExplainability'));
     check('dashboard login tagline matches package version', html.includes(`AI First CRM v${pkg.version}`));
     check('dashboard changelog button matches package version', html.includes(`Що нового у v${pkg.version}`));
 });
@@ -154,6 +155,7 @@ checkPage('guardian-ops.html', (doc, html) => {
 checkPage('customers.html', (doc, html) => {
     check('Customer edit modal exists', !!doc.getElementById('customerEditModal'));
     check('Customer child birthday date input exists', doc.getElementById('editChildBirthday')?.type === 'date');
+    check('Customer explainability region exists', !!doc.getElementById('customerExplainability'));
     check('Customer edit modal uses shrink-safe grid', html.includes('grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px'));
     check('Customer edit date input is bounded', html.includes('id="editChildBirthday" style="width:100%;min-width:0;max-width:100%;'));
 });
@@ -175,6 +177,7 @@ checkPage('leads.html', (doc, html) => {
     const leadShell = doc.querySelector('main#main-content.page-container');
     const leadsApp = doc.getElementById('leadsApp');
     const leadWorkspace = doc.getElementById('leadWorkspace');
+    check('Leads explainability region exists', !!doc.getElementById('leadsExplainability'));
     check('Lead edit modal date input exists', leadDate?.type === 'date');
     check('Lead edit modal children input exists', leadChildren?.type === 'number');
     check('Lead edit modal cancel button exists', cancelBtn?.type === 'button');
@@ -190,6 +193,12 @@ checkPage('leads.html', (doc, html) => {
     check('Lead modal responsive row is scoped', html.includes('.lead-modal .form-row { grid-template-columns: 1fr; }'));
     check('Lead modal rows stack on touch devices', html.includes('@media (hover: none) and (pointer: coarse)') && html.includes('.lead-modal .form-row { grid-template-columns: 1fr; }'));
     check('Lead modal rows stack on WebKit touch fallback', html.includes('@supports (-webkit-touch-callout: none)') && html.includes('.lead-modal .form-row { grid-template-columns: 1fr; }'));
+});
+
+checkPage('tasks.html', (doc) => {
+    check('Tasks explainability region exists', !!doc.getElementById('taskExplainability'));
+    check('Tasks category filters exist', !!doc.getElementById('catFilters'));
+    check('Tasks board content exists', !!doc.getElementById('boardContent'));
 });
 
 // ═══════════════════════════════════════════════════
@@ -217,7 +226,7 @@ check('Dark catalog muted text avoids low-alpha white', catalogCss.includes('bod
 check('Dark content/profile muted CTAs use readable muted token', contentCss.includes('body.dark-mode .content-bcard-slug { color: var(--text-muted, #94A3B8); }') && achievementsCss.includes('body.dark-mode .add-note-btn { border-color: #3D3D5C; color: var(--text-muted, #94A3B8); }'));
 
 const criticalJS = [
-    'js/config.js', 'js/api.js', 'js/auth.js', 'js/app.js',
+    'js/config.js', 'js/api.js', 'js/auth.js', 'js/ui.js', 'js/app.js',
     'js/components/sidebar.js',
     'js/art-director-page.js', 'js/center-page.js', 'js/demo-page.js',
     'js/designs-page.js', 'js/copilot-page.js',
@@ -308,11 +317,18 @@ check('Lead workspace links customer/task/omni context', leadsCode.includes('/cu
 const customersCode = fs.readFileSync(path.join(ROOT, 'js/customers-page.js'), 'utf8');
 const tasksCode = fs.readFileSync(path.join(ROOT, 'js/tasks-page.js'), 'utf8');
 const centerCode = fs.readFileSync(path.join(ROOT, 'js/center-page.js'), 'utf8');
+const uiCode = fs.readFileSync(path.join(ROOT, 'js/ui.js'), 'utf8');
 const omniHtml = fs.readFileSync(path.join(ROOT, 'omni.html'), 'utf8');
+const pagesCss = fs.readFileSync(path.join(ROOT, 'css/pages.css'), 'utf8');
 check('Customers page opens existing customer deep links', customersCode.includes('getCustomerDeepLinkId') && customersCode.includes("params.get('open')") && customersCode.includes("params.get('highlight')"));
 check('Tasks page opens task deep links', tasksCode.includes('getTaskDeepLinkId') && tasksCode.includes('openTaskDetail(taskId)'));
 check('Omni page applies contextual search query', omniHtml.includes('applyQueryContext') && omniHtml.includes("params.get('search')"));
 check('Center hot leads update canonical pipeline stage', centerCode.includes('JSON.stringify({ pipeline_stage: status })'));
+check('Explainability helper exposes filter summary and empty state renderers', uiCode.includes('window.Explainability') && uiCode.includes('renderFilterSummary') && uiCode.includes('renderEmptyState'));
+check('Explainability shared styles exist', pagesCss.includes('.explain-filter-summary') && pagesCss.includes('.explain-empty') && pagesCss.includes('.explain-clear-btn'));
+check('Tasks counts are category-aware', tasksCode.includes('const active = filterByCategory(allTasks.filter') && tasksCode.includes('taskEmptyState'));
+check('Leads, Customers, Omni expose clearable filter summaries', leadsCode.includes('resetLeadFilters') && customersCode.includes('resetCustomerFilters') && omniHtml.includes('resetOmniFilters'));
+check('Dashboard work queue surfaces endpoint metadata', fs.readFileSync(path.join(ROOT, 'js/dashboard-page.js'), 'utf8').includes('renderWorkQueueExplainability') && fs.readFileSync(path.join(ROOT, 'js/dashboard-page.js'), 'utf8').includes('omittedBuckets'));
 
 // Check Timeline/Kleshnya shell collapse keeps geometry in CSS
 const appCode = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');

@@ -108,6 +108,71 @@ function openCustomerDeepLink() {
     requestAnimationFrame(() => highlightCustomerRow(customerId));
 }
 
+function getCustomerFilterSummary() {
+    const f = CrmState.filters;
+    return [
+        f.search ? { label: 'Пошук', value: f.search } : null,
+        f.tag ? { label: 'Тег', value: f.tag } : null,
+        f.source ? { label: 'Джерело', value: SOURCE_LABELS[f.source] || f.source } : null,
+        f.dateFrom ? { label: 'Візити від', value: f.dateFrom } : null,
+        f.dateTo ? { label: 'Візити до', value: f.dateTo } : null
+    ].filter(Boolean);
+}
+
+function renderCustomerExplainability() {
+    if (!window.Explainability) return;
+    const filters = getCustomerFilterSummary();
+    const html = Explainability.renderFilterSummary(filters, {
+        label: 'Фільтри клієнтів',
+        clearAction: filters.length ? 'customers' : '',
+        clearLabel: 'Показати всіх клієнтів'
+    });
+    Explainability.setRegion('customerExplainability', html);
+}
+
+async function resetCustomerFilters() {
+    CrmState.filters = {
+        search: '',
+        source: '',
+        sortBy: 'updated_at',
+        dateFrom: '',
+        dateTo: '',
+        tag: ''
+    };
+    CrmState.page = 1;
+    const fields = {
+        searchInput: '',
+        sourceFilter: '',
+        sortFilter: 'updated_at',
+        dateFromFilter: '',
+        dateToFilter: '',
+        tagFilter: ''
+    };
+    Object.entries(fields).forEach(([id, value]) => {
+        const el = document.getElementById(id);
+        if (el) el.value = value;
+    });
+    await fetchCustomers();
+    renderCustomerTable();
+    renderPagination();
+}
+
+function customerEmptyHtml() {
+    const filters = getCustomerFilterSummary();
+    if (window.Explainability) {
+        return Explainability.renderEmptyState({
+            icon: '👥',
+            title: filters.length ? 'Клієнтів за цими фільтрами не знайдено' : 'Клієнтів ще немає',
+            message: filters.length
+                ? 'Поточний пошук, тег, джерело або діапазон дат приховали всі записи. Скиньте фільтри, щоб повернути повний список.'
+                : 'Коли клієнта буде створено або привʼязано до бронювання, він зʼявиться у цьому списку.',
+            clearAction: filters.length ? 'customers' : '',
+            clearLabel: 'Показати всіх клієнтів'
+        });
+    }
+    return filters.length ? 'Клієнтів за цими фільтрами не знайдено' : 'Клієнтів ще немає';
+}
+
 // ==========================================
 // API CALLS
 // ==========================================
@@ -225,12 +290,10 @@ function renderStats() {
 
 function renderCustomerTable() {
     const tbody = document.getElementById('customerTableBody');
+    renderCustomerExplainability();
     if (CrmState.customers.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7">
-            <div class="crm-empty">
-                <div class="empty-icon">🗂</div>
-                <div class="empty-text">Клієнтів не знайдено</div>
-            </div>
+            ${customerEmptyHtml()}
         </td></tr>`;
         return;
     }
@@ -1089,6 +1152,12 @@ async function initPage() {
         await fetchCustomers();
         renderCustomerTable();
         renderPagination();
+    });
+    document.addEventListener('click', async (e) => {
+        const clear = e.target.closest('[data-explain-clear="customers"]');
+        if (!clear) return;
+        e.preventDefault();
+        await resetCustomerFilters();
     });
 
     // Save customer

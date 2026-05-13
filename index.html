@@ -16,19 +16,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.47.1">
-    <link rel="stylesheet" href="css/auth.css?v=0.47.1">
-    <link rel="stylesheet" href="css/layout.css?v=0.47.1">
-    <link rel="stylesheet" href="css/timeline.css?v=0.47.1">
-    <link rel="stylesheet" href="css/panel.css?v=0.47.1">
-    <link rel="stylesheet" href="css/modals.css?v=0.47.1">
-    <link rel="stylesheet" href="css/controls.css?v=0.47.1">
-    <link rel="stylesheet" href="css/features.css?v=0.47.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.1">
-    <link rel="stylesheet" href="css/responsive.css?v=0.47.1">
-    <link rel="stylesheet" href="css/pages.css?v=0.47.1">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.47.1">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.47.1">
+    <link rel="stylesheet" href="css/base.css?v=0.47.3">
+    <link rel="stylesheet" href="css/auth.css?v=0.47.3">
+    <link rel="stylesheet" href="css/layout.css?v=0.47.3">
+    <link rel="stylesheet" href="css/timeline.css?v=0.47.3">
+    <link rel="stylesheet" href="css/panel.css?v=0.47.3">
+    <link rel="stylesheet" href="css/modals.css?v=0.47.3">
+    <link rel="stylesheet" href="css/controls.css?v=0.47.3">
+    <link rel="stylesheet" href="css/features.css?v=0.47.3">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.3">
+    <link rel="stylesheet" href="css/responsive.css?v=0.47.3">
+    <link rel="stylesheet" href="css/pages.css?v=0.47.3">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.47.3">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.47.3">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -44,11 +44,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.47 Ліди">✨ 0.47 Ліди</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.47 Ясність">🧭 0.47 Ясність</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.47.1 — ліди в одному робочому просторі</p>
+                <p class="tagline">AI First CRM v0.47.3 — фільтри пояснюють, що показано</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">🚀 Що нового у v0.47.1: Ліди</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">🧭 Що нового у v0.47.3: Ясність</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1245,6 +1245,24 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.47.3 - 🧭 0.47 Ясність: фільтри й порожні стани без здогадок (13.05.2026)</h4>
+                    <ul>
+                        <li><b>Фільтри видно одразу</b> - ліди, клієнти, задачі й Omni тепер показують активний зріз та швидку дію, щоб повернути повний список.</li>
+                        <li><b>Задачі без плутанини</b> - лічильники вкладок Tasks рахують той самий category-scope, який видно на екрані, а empty state пояснює категорію або рольову видимість.</li>
+                        <li><b>Чесні порожні стани</b> - порожній список більше не виглядає як поломка: UI пояснює, чи все приховали фільтри, чи записів справді немає.</li>
+                        <li><b>Робоча черга говорить чіткіше</b> - Dashboard показує warnings, omitted buckets і heuristic-підказки з <code>/api/work-queue</code>, не видаючи слабкі сигнали за точну правду.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.47.2 - ⚡ 0.47 Черга: робочі пріоритети менеджера (13.05.2026)</h4>
+                    <ul>
+                        <li><b>Робоча черга</b> - на дашборді з'явився компактний блок, який показує прострочене, сьогодні, завтра, передзвони, підтвердження, події скоро та ліди без руху.</li>
+                        <li><b>Єдине джерело</b> - новий read-only endpoint <code>/api/work-queue</code> нормалізує задачі, follow-up, бронювання і ліди без дублювання старих віджетів.</li>
+                        <li><b>Чесна впевненість</b> - черга спирається на durable поля, а слабкі сигнали не видаються за точну правду; <code>waiting_reply</code> навмисно відкладено до durable моделі.</li>
+                        <li><b>Корисні переходи</b> - пункти черги ведуть у кейс ліда, таймлайн бронювання або конкретну задачу.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.47.1 - 🔗 0.47 Ліди: Omni Case Link і бронювання з ліда (13.05.2026)</h4>
                     <ul>
@@ -5906,27 +5924,27 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.47.1"></script>
-    <script src="js/api.js?v=0.47.1"></script>
-    <script src="js/ui.js?v=0.47.1"></script>
-    <script src="js/auth.js?v=0.47.1"></script>
-    <script src="js/timeline.js?v=0.47.1"></script>
-    <script src="js/booking.js?v=0.47.1"></script>
-    <script src="js/settings.js?v=0.47.1"></script>
-    <script src="js/booking-form.js?v=0.47.1"></script>
-    <script src="js/booking-linked.js?v=0.47.1"></script>
-    <script src="js/settings-dashboard.js?v=0.47.1"></script>
-    <script src="js/settings-history.js?v=0.47.1"></script>
-    <script src="js/settings-afisha.js?v=0.47.1"></script>
-    <script src="js/settings-certificates.js?v=0.47.1"></script>
-    <script src="js/offline.js?v=0.47.1"></script>
-    <script src="js/search.js?v=0.47.1"></script>
-    <script src="js/ws.js?v=0.47.1"></script>
-    <script src="js/app.js?v=0.47.1"></script>
-    <script src="js/kleshnya-widget.js?v=0.47.1"></script>
-    <script src="js/components/sidebar.js?v=0.47.1"></script>
+    <script src="js/config.js?v=0.47.3"></script>
+    <script src="js/api.js?v=0.47.3"></script>
+    <script src="js/ui.js?v=0.47.3"></script>
+    <script src="js/auth.js?v=0.47.3"></script>
+    <script src="js/timeline.js?v=0.47.3"></script>
+    <script src="js/booking.js?v=0.47.3"></script>
+    <script src="js/settings.js?v=0.47.3"></script>
+    <script src="js/booking-form.js?v=0.47.3"></script>
+    <script src="js/booking-linked.js?v=0.47.3"></script>
+    <script src="js/settings-dashboard.js?v=0.47.3"></script>
+    <script src="js/settings-history.js?v=0.47.3"></script>
+    <script src="js/settings-afisha.js?v=0.47.3"></script>
+    <script src="js/settings-certificates.js?v=0.47.3"></script>
+    <script src="js/offline.js?v=0.47.3"></script>
+    <script src="js/search.js?v=0.47.3"></script>
+    <script src="js/ws.js?v=0.47.3"></script>
+    <script src="js/app.js?v=0.47.3"></script>
+    <script src="js/kleshnya-widget.js?v=0.47.3"></script>
+    <script src="js/components/sidebar.js?v=0.47.3"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=0.47.1"></script>
-    <script src="js/alerts.js?v=0.47.1"></script>
+    <script src="js/role-panel.js?v=0.47.3"></script>
+    <script src="js/alerts.js?v=0.47.3"></script>
 </body>
 </html>

@@ -98,6 +98,7 @@ focused route tests in the same pack.
 | `/api/users` | `routes/users.js` | users |
 | `/api/wallet` | `routes/wallet.js` | wallet |
 | `/api/warehouse` | `routes/warehouse.js` | warehouse |
+| `/api/work-queue` | `routes/work-queue.js` | work-queue |
 | `/api/workers` | `routes/workers.js` | workers |
 
 ## Generic `/api` Route Mount Exceptions

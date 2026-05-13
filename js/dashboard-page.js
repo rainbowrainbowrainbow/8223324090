@@ -75,6 +75,7 @@ const DashboardPage = (() => {
 
         // Render greeting
         renderGreeting();
+        loadWorkQueue();
     }
 
     async function loadConfig() {
@@ -111,6 +112,129 @@ const DashboardPage = (() => {
         const role = getUserRole();
         const roleName = ROLE_NAMES[role] || role;
         greetingEl.textContent = `${greeting}, ${AppState.currentUser.name}! (${roleName})`;
+    }
+
+    async function loadWorkQueue() {
+        const panel = document.getElementById('workQueuePanel');
+        const body = document.getElementById('workQueueBody');
+        if (!panel || !body) return;
+
+        if (typeof hasMinRole === 'function' && !hasMinRole('manager')) {
+            panel.hidden = true;
+            return;
+        }
+
+        panel.hidden = false;
+        body.innerHTML = '<div class="widget-loading">Завантаження черги...</div>';
+
+        try {
+            const resp = await fetch('/api/work-queue', {
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
+            });
+            if (resp.status === 403 || resp.status === 401) {
+                panel.hidden = true;
+                return;
+            }
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const data = await resp.json();
+            renderWorkQueue(data.queue || {}, body);
+        } catch (err) {
+            console.error('Work queue load error:', err);
+            if (window.Explainability) Explainability.setRegion('workQueueExplainability', '');
+            body.innerHTML = '<div class="widget-empty">Не вдалося завантажити робочу чергу</div>';
+        }
+    }
+
+    function renderWorkQueue(queue, container) {
+        const buckets = Array.isArray(queue.buckets) ? queue.buckets : [];
+        const visibleBuckets = buckets.filter(bucket => bucket.count > 0 || (bucket.items && bucket.items.length > 0));
+        const subtitle = document.getElementById('workQueueSubtitle');
+        if (subtitle && queue.date) {
+            subtitle.textContent = `Сьогодні ${formatQueueDate(queue.date.today)} · сформовано ${formatQueueDateTime(queue.generatedAt)}`;
+        }
+        renderWorkQueueExplainability(queue, buckets, visibleBuckets.length);
+
+        if (!visibleBuckets.length) {
+            container.innerHTML = '<div class="widget-empty">Немає термінових пунктів у доступних buckets черги. Якщо потрібен waiting reply, для нього ще потрібна durable модель.</div>';
+            return;
+        }
+
+        container.innerHTML = visibleBuckets.map(bucket => {
+            const items = (bucket.items || []).slice(0, 4).map(renderWorkQueueItem).join('');
+            return `
+                <div class="work-queue-bucket bucket-${bucket.key}">
+                    <div class="work-queue-bucket-head">
+                        <span class="work-queue-bucket-title">${escapeHtml(bucket.label || bucket.key)}</span>
+                        <span class="work-queue-count">${bucket.count || 0}</span>
+                    </div>
+                    <div class="work-queue-items">${items}</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function renderWorkQueueExplainability(queue, buckets, visibleCount) {
+        const target = document.getElementById('workQueueExplainability');
+        if (!target || !window.Explainability) return;
+        const meta = queue.meta || {};
+        const bucketMap = new Map((buckets || []).map(bucket => [bucket.key, bucket.label || bucket.key]));
+        const warnings = Array.isArray(meta.warnings) ? meta.warnings : [];
+        const omitted = Array.isArray(meta.omittedBuckets) ? meta.omittedBuckets : [];
+        const heuristic = Array.isArray(meta.heuristicBuckets) ? meta.heuristicBuckets : [];
+        const filters = [];
+
+        if (warnings.length) filters.push({ label: 'Увага', value: `${warnings.length} джерел не відповіли` });
+        if (omitted.length) filters.push({ label: 'Не включено', value: omitted.map(key => bucketMap.get(key) || key).join(', ') });
+        const activeHeuristic = heuristic.filter(key => (buckets || []).some(bucket => bucket.key === key && bucket.count > 0));
+        if (activeHeuristic.length) {
+            filters.push({ label: 'Підказки', value: activeHeuristic.map(key => bucketMap.get(key) || key).join(', ') });
+        }
+
+        const note = !visibleCount ? 'Порожньо: доступні durable сигнали зараз не дали термінових пунктів' : '';
+        const html = Explainability.renderFilterSummary(filters, {
+            label: 'Пояснення черги',
+            note
+        });
+        Explainability.setRegion(target, html);
+    }
+
+    function renderWorkQueueItem(item) {
+        const priorityCls = item.priority ? ` priority-${item.priority}` : '';
+        const confidence = item.confidence === 'suggested' ? '<span class="work-queue-confidence">підказка</span>' : '';
+        const due = item.dueAt ? `<span>${formatQueueDateTime(item.dueAt)}</span>` : '';
+        const meta = [due, confidence].filter(Boolean).join('');
+        const href = item.href || '/dashboard';
+        return `
+            <a class="work-queue-item${priorityCls}" href="${escapeHtml(href)}">
+                <span class="work-queue-dot" aria-hidden="true"></span>
+                <span class="work-queue-text">
+                    <span class="work-queue-title">${escapeHtml(item.title || item.actionLabel || 'Пункт черги')}</span>
+                    <span class="work-queue-meta">${meta}${item.subtitle ? ' · ' + escapeHtml(String(item.subtitle).slice(0, 90)) : ''}</span>
+                </span>
+                <span class="work-queue-action">${escapeHtml(item.actionLabel || 'Відкрити')}</span>
+            </a>
+        `;
+    }
+
+    function formatQueueDate(value) {
+        if (!value) return '—';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit' });
+    }
+
+    function formatQueueDateTime(value) {
+        if (!value) return '—';
+        if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return formatQueueDate(value);
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value).slice(0, 16).replace('T', ' ');
+        return date.toLocaleString('uk-UA', {
+            timeZone: 'Europe/Kyiv',
+            day: '2-digit',
+            month: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
     }
 
     function renderWidgets() {
@@ -1244,6 +1368,10 @@ const DashboardPage = (() => {
         });
     }
 
+    function refreshWorkQueue() {
+        loadWorkQueue();
+    }
+
     function refreshWidget(type) {
         loadWidgetData(type);
     }
@@ -1274,6 +1402,7 @@ const DashboardPage = (() => {
 
     return {
         init,
+        refreshWorkQueue,
         refreshWidget,
         openTask,
         toggleOnboardingWidget,

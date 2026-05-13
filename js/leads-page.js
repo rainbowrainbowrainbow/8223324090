@@ -226,6 +226,67 @@ function hideFunnelBar() {
     if (funnelEl) funnelEl.style.display = 'none';
 }
 
+function todayKyiv(offsetDays = 0) {
+    const date = new Date();
+    date.setDate(date.getDate() + offsetDays);
+    return date.toLocaleDateString('en-CA', { timeZone: 'Europe/Kyiv' });
+}
+
+function leadDateFilterLabel(value) {
+    if (!value) return '';
+    if (value === todayKyiv(0)) return 'Сьогодні';
+    if (value === todayKyiv(1)) return 'Завтра';
+    return value;
+}
+
+function getLeadFilterSummary() {
+    const search = document.getElementById('leadsSearch')?.value?.trim();
+    return [
+        currentFilter ? { label: 'Статус', value: STATUS_MAP[currentFilter]?.label || currentFilter } : null,
+        currentTypeFilter ? { label: 'Тип', value: LEAD_TYPE_MAP[currentTypeFilter]?.label || currentTypeFilter } : null,
+        currentDateFilter ? { label: 'Дата події', value: leadDateFilterLabel(currentDateFilter) } : null,
+        search ? { label: 'Пошук', value: search } : null
+    ].filter(Boolean);
+}
+
+function renderLeadExplainability() {
+    if (!window.Explainability) return;
+    const filters = getLeadFilterSummary();
+    const html = Explainability.renderFilterSummary(filters, {
+        label: 'Фільтри лідів',
+        clearAction: filters.length ? 'leads' : '',
+        clearLabel: 'Показати всі ліди'
+    });
+    Explainability.setRegion('leadsExplainability', html);
+}
+
+function resetLeadFilters() {
+    currentFilter = '';
+    currentTypeFilter = '';
+    currentDateFilter = '';
+    const search = document.getElementById('leadsSearch');
+    if (search) search.value = '';
+    document.querySelectorAll('#filterBtns .filter-btn').forEach(btn => btn.classList.toggle('active', !btn.dataset.status));
+    document.querySelectorAll('#dateBtns .filter-btn').forEach(btn => btn.classList.remove('active'));
+    loadLeads();
+}
+
+function leadEmptyHtml() {
+    const filters = getLeadFilterSummary();
+    if (window.Explainability) {
+        return Explainability.renderEmptyState({
+            icon: '🔎',
+            title: filters.length ? 'Лідів за цими фільтрами немає' : 'Лідів ще немає',
+            message: filters.length
+                ? 'Поточний статус, тип, дата або пошук приховали всі записи. Скиньте фільтри, щоб повернути повний список.'
+                : 'Коли зʼявляться заявки або менеджер додасть лід вручну, вони будуть у цьому списку.',
+            clearAction: filters.length ? 'leads' : '',
+            clearLabel: 'Показати всі ліди'
+        });
+    }
+    return filters.length ? 'Немає лідів за поточними фільтрами' : 'Немає лідів';
+}
+
 function renderTable() {
     const tbody = document.getElementById('leadsTableBody');
     const tableWrap = document.getElementById('tableView');
@@ -237,8 +298,9 @@ function renderTable() {
     hideFunnelBar();
 
     if (!tbody) return;
+    renderLeadExplainability();
     if (leadsData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Немає лідів</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-state">${leadEmptyHtml()}</td></tr>`;
         return;
     }
 
@@ -650,6 +712,12 @@ function renderKanban() {
     if (mailingWrap) mailingWrap.style.display = 'none';
 
     if (!kanbanWrap) return;
+    renderLeadExplainability();
+    if (leadsData.length === 0) {
+        hideFunnelBar();
+        kanbanWrap.innerHTML = leadEmptyHtml();
+        return;
+    }
 
     // Group leads by pipeline_stage
     const grouped = {};
@@ -992,6 +1060,7 @@ async function saveLostReason() {
 // MAILING LIST VIEW
 // ==========================================
 async function loadMailing() {
+    if (window.Explainability) Explainability.setRegion('leadsExplainability', '');
     const tableWrap = document.getElementById('tableView');
     const kanbanWrap = document.getElementById('kanbanView');
     const mailingWrap = document.getElementById('mailingView');
@@ -1156,6 +1225,12 @@ function setupEvents() {
             searchTimeout = setTimeout(loadLeads, 300);
         });
     }
+    document.addEventListener('click', (e) => {
+        const clear = e.target.closest('[data-explain-clear="leads"]');
+        if (!clear) return;
+        e.preventDefault();
+        resetLeadFilters();
+    });
 
     // Add lead button
     const addBtn = document.getElementById('addLeadBtn');

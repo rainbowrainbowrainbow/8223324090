@@ -62,6 +62,180 @@
     gap: 16px;
 }
 
+/* Work Queue v1 */
+.work-queue-panel {
+    margin-bottom: 16px;
+    padding: 14px;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.94);
+    box-shadow: var(--shadow-sm);
+}
+
+.work-queue-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+
+.work-queue-head h2 {
+    margin: 0;
+    font-size: 18px;
+    line-height: 1.2;
+}
+
+.work-queue-head p {
+    margin: 3px 0 0;
+    color: var(--gray-500, #718096);
+    font-size: 13px;
+}
+
+.work-queue-body {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+}
+
+.work-queue-bucket {
+    min-width: 0;
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 8px;
+    background: rgba(0,0,0,0.018);
+}
+
+.work-queue-bucket-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 10px;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.work-queue-bucket-title {
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.work-queue-count {
+    min-width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 7px;
+    background: var(--primary, #C9A84C);
+    color: #111827;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.work-queue-items {
+    display: flex;
+    flex-direction: column;
+}
+
+.work-queue-item {
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    padding: 9px 10px;
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+
+.work-queue-item:last-child {
+    border-bottom: 0;
+}
+
+.work-queue-item:hover,
+.work-queue-item:focus-visible {
+    background: rgba(0,0,0,0.045);
+    outline: none;
+}
+
+.work-queue-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: #3B82F6;
+}
+
+.work-queue-item.priority-critical .work-queue-dot,
+.work-queue-item.priority-high .work-queue-dot {
+    background: #EF4444;
+}
+
+.work-queue-item.priority-normal .work-queue-dot {
+    background: #F59E0B;
+}
+
+.work-queue-item.priority-low .work-queue-dot {
+    background: #10B981;
+}
+
+.work-queue-text {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.work-queue-title {
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.work-queue-meta {
+    min-height: 16px;
+    color: var(--gray-500, #718096);
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.work-queue-confidence {
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(59,130,246,0.12);
+    color: #1D4ED8;
+    font-weight: 800;
+}
+
+.work-queue-action {
+    color: var(--primary, #4A90D9);
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+    .work-queue-head {
+        flex-direction: column;
+    }
+
+    .work-queue-body {
+        grid-template-columns: 1fr;
+    }
+
+    .work-queue-item {
+        grid-template-columns: 10px minmax(0, 1fr);
+    }
+
+    .work-queue-action {
+        display: none;
+    }
+}
+
 /* Widget card */
 .widget-card {
     background: rgba(255,255,255,0.95);
@@ -1032,6 +1206,31 @@
 .dark-mode .widget-lead-item,
 .dark-mode .finance-stat {
     background: rgba(255,255,255,0.06);
+}
+
+.dark-mode .work-queue-panel {
+    background: rgba(37,37,64,0.94);
+    border-color: rgba(255,255,255,0.09);
+}
+
+.dark-mode .work-queue-bucket {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.08);
+}
+
+.dark-mode .work-queue-bucket-head,
+.dark-mode .work-queue-item {
+    border-color: rgba(255,255,255,0.07);
+}
+
+.dark-mode .work-queue-item:hover,
+.dark-mode .work-queue-item:focus-visible {
+    background: rgba(255,255,255,0.07);
+}
+
+.dark-mode .work-queue-confidence {
+    background: rgba(96,165,250,0.2);
+    color: #BFDBFE;
 }
 
 .dark-mode .widget-lead-item:hover { background: rgba(255,255,255,0.1); }

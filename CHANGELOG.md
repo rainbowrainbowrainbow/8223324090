@@ -4,6 +4,28 @@
 
 ---
 
+## v0.47.3 - 🧭 0.47 Ясність: фільтри й порожні стани без здогадок (2026-05-13)
+
+### Explainability Kit v1 [codex]
+- **Фільтри видно одразу** - додано reusable Explainability Kit для активних фільтрів, reset-дій і cause-aware empty states на manager-facing поверхнях.
+- **Задачі без оманливих лічильників** - вкладки Tasks тепер рахують задачі у тому самому category-scope, який бачить менеджер, а порожній стан пояснює активну категорію або рольову видимість.
+- **Ліди, клієнти, Omni** - `/sales-funnel`, `/customers` і `/omni` показують активний зріз, пошук/канал/дату/тип і дають швидкий шлях повернути повний список.
+- **Робоча черга чесніше пояснює себе** - Dashboard Work Queue показує omitted/heuristic/warning meta з endpoint, щоб manager не плутав "порожньо" з unsupported або частково недоступним bucket.
+- **Доступ не розширено** - role/access модель не змінювалась; UI лише краще пояснює, коли видимість або дія обмежена поточною роллю.
+
+---
+
+## v0.47.2 - ⚡ 0.47 Черга: робочі пріоритети менеджера (2026-05-13)
+
+### Work Queue v1 [codex]
+- **Канонічна робоча черга** - додано read-only endpoint `/api/work-queue`, який збирає існуючі durable сигнали в єдині buckets: `overdue`, `today`, `tomorrow`, `callback_due`, `needs_confirmation`, `event_soon`, `idle_lead`.
+- **Джерела сигналів** - черга використовує `tasks.deadline/date/source_type/source_id`, `lead_interactions.follow_up_date`, `bookings.date/time/status`, `leads.event_date`, `leads.last_contact_at` і canonical `pipeline_stage`.
+- **Dashboard UI** - для manager-up ролей додано компактний блок "Робоча черга" з лічильниками, короткими пунктами і переходами в кейс ліда, таймлайн бронювання або задачу.
+- **Без fake waiting reply** - `waiting_reply` не додано як канонічний bucket, бо в поточній моделі це ще не durable стан; `idle_lead` позначається як suggested сигнал.
+- **Захист від регресій** - додано focused tests для access gating, bucket generation, корисних href та заборони повертатися до legacy `status='new'` як джерела cold lead логіки.
+
+---
+
 ## v0.47.1 - 🔗 0.47 Ліди: Omni Case Link і бронювання з ліда (2026-05-13)
 
 ### Omni Case Link v1 + Lead→Booking Repair [codex]

@@ -13,6 +13,74 @@ if (typeof escapeHtml !== 'function') {
 }
 
 // ==========================================
+// EXPLAINABILITY KIT v1
+// ==========================================
+if (!window.Explainability) {
+    window.Explainability = (() => {
+        function esc(value) {
+            return (window.escapeHtml || function(str) {
+                if (!str) return '';
+                return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            })(value);
+        }
+
+        function activeFilters(filters) {
+            return (filters || []).filter(item => item && item.value !== undefined && item.value !== null && String(item.value).trim() !== '');
+        }
+
+        function renderFilterSummary(filters, options = {}) {
+            const active = activeFilters(filters);
+            if (!active.length && !options.note) return '';
+            const label = options.label || 'Активно';
+            const chips = active.map(item => {
+                const text = item.label ? `${item.label}: ${item.value}` : item.value;
+                return `<span class="explain-chip">${esc(text)}</span>`;
+            }).join('');
+            const note = options.note ? `<span class="explain-chip">${esc(options.note)}</span>` : '';
+            const clear = options.clearAction
+                ? `<button type="button" class="explain-clear-btn" data-explain-clear="${esc(options.clearAction)}">${esc(options.clearLabel || 'Очистити')}</button>`
+                : '';
+            return `
+                <div class="explain-filter-summary" role="status" aria-live="polite">
+                    <div class="explain-filter-main">
+                        <span class="explain-filter-label">${esc(label)}</span>
+                        ${chips}${note}
+                    </div>
+                    ${clear}
+                </div>
+            `;
+        }
+
+        function renderEmptyState(options = {}) {
+            const icon = options.icon ? `<span class="explain-empty-icon" aria-hidden="true">${esc(options.icon)}</span>` : '';
+            const title = options.title || 'Немає даних';
+            const message = options.message || '';
+            const action = options.clearAction
+                ? `<div class="explain-empty-actions"><button type="button" class="explain-clear-btn" data-explain-clear="${esc(options.clearAction)}">${esc(options.clearLabel || 'Очистити фільтри')}</button></div>`
+                : '';
+            return `
+                <div class="explain-empty">
+                    ${icon}
+                    <div class="explain-empty-title">${esc(title)}</div>
+                    ${message ? `<div class="explain-empty-message">${esc(message)}</div>` : ''}
+                    ${action}
+                </div>
+            `;
+        }
+
+        function setRegion(elementOrId, html) {
+            const el = typeof elementOrId === 'string' ? document.getElementById(elementOrId) : elementOrId;
+            if (!el) return;
+            el.innerHTML = html || '';
+            el.hidden = !html;
+        }
+
+        return { activeFilters, renderFilterSummary, renderEmptyState, setRegion };
+    })();
+}
+
+// ==========================================
 // STAFF ACCOUNT BADGE (v39.8.0)
 // ==========================================
 let _staffLinkCache = null;

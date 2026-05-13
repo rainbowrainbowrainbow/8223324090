@@ -155,7 +155,7 @@ const DashboardPage = (() => {
         renderWorkQueueExplainability(queue, buckets, visibleBuckets.length);
 
         if (!visibleBuckets.length) {
-            container.innerHTML = '<div class="widget-empty">Немає термінових пунктів у доступних buckets черги. Якщо потрібен waiting reply, для нього ще потрібна durable модель.</div>';
+            container.innerHTML = '<div class="widget-empty">Немає термінових пунктів у доступних buckets черги. Waiting reply зʼявиться лише для розмов із явним reply expectation.</div>';
             return;
         }
 
@@ -200,12 +200,20 @@ const DashboardPage = (() => {
 
     function renderWorkQueueItem(item) {
         const priorityCls = item.priority ? ` priority-${item.priority}` : '';
+        const bucketCls = item.bucket ? ` bucket-${item.bucket}` : '';
+        const waitingCls = item.bucket === 'waiting_reply' ? ' is-waiting-reply' : '';
         const confidence = item.confidence === 'suggested' ? '<span class="work-queue-confidence">підказка</span>' : '';
         const due = item.dueAt ? `<span>${formatQueueDateTime(item.dueAt)}</span>` : '';
-        const meta = [due, confidence].filter(Boolean).join('');
+        const waitingSince = item.bucket === 'waiting_reply' && item.meta?.awaitingReplySince
+            ? `<span class="work-queue-state-pill">очікуємо з ${formatQueueDateTime(item.meta.awaitingReplySince)}</span>`
+            : '';
+        const owner = item.bucket === 'waiting_reply' && item.meta?.assignedTo
+            ? `<span>${escapeHtml(item.meta.assignedTo)}</span>`
+            : '';
+        const meta = [waitingSince || due, owner, confidence].filter(Boolean).join(' · ');
         const href = item.href || '/dashboard';
         return `
-            <a class="work-queue-item${priorityCls}" href="${escapeHtml(href)}">
+            <a class="work-queue-item${priorityCls}${bucketCls}${waitingCls}" href="${escapeHtml(href)}">
                 <span class="work-queue-dot" aria-hidden="true"></span>
                 <span class="work-queue-text">
                     <span class="work-queue-title">${escapeHtml(item.title || item.actionLabel || 'Пункт черги')}</span>

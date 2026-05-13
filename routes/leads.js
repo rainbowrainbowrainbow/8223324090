@@ -205,6 +205,29 @@ function mapWorkspaceTask(row, leadId = null, exactBookingIds = []) {
         updatedAt: row.updated_at
     };
 }
+
+function truthy(value) {
+    return value === true || value === 1 || value === '1' || value === 'true' || value === 't';
+}
+
+function timestampMs(value) {
+    if (!value) return null;
+    const ms = new Date(value).getTime();
+    return Number.isNaN(ms) ? null : ms;
+}
+
+function workspaceDeliveryFailed(status) {
+    return ['failed', 'later_failed'].includes(String(status || '').toLowerCase());
+}
+
+function workspaceWaitingReply(row) {
+    if (!truthy(row?.reply_expected) || !row.awaiting_reply_since) return false;
+    if (workspaceDeliveryFailed(row.reply_expected_delivery_status)) return false;
+    const awaitingMs = timestampMs(row.awaiting_reply_since);
+    const inboundMs = timestampMs(row.last_inbound_at);
+    if (awaitingMs !== null && inboundMs !== null && inboundMs > awaitingMs) return false;
+    return true;
+}
 const FB_PAGE_ACCESS_TOKEN    = process.env.FB_PAGE_ACCESS_TOKEN    || '';
 const VIBER_AUTH_TOKEN        = process.env.VIBER_AUTH_TOKEN        || '';
 
@@ -741,8 +764,13 @@ router.get('/:id/workspace', async (req, res) => {
             ? await optionalWorkspaceQuery(`
                 SELECT c.id, c.channel, c.customer_name, c.customer_phone, c.customer_id, c.status,
                        c.assigned_to, c.unread_count, c.last_message_at, c.updated_at,
+                       c.last_inbound_at, c.last_outbound_at,
+                       c.reply_expected, c.awaiting_reply_since, c.reply_expected_message_id,
+                       c.reply_owner, c.reply_sla_at,
+                       expected_msg.delivery_status AS reply_expected_delivery_status,
                        m.content AS last_message
                 FROM conversations c
+                LEFT JOIN conversation_messages expected_msg ON expected_msg.id = c.reply_expected_message_id
                 LEFT JOIN LATERAL (
                     SELECT content
                     FROM conversation_messages
@@ -798,6 +826,15 @@ router.get('/:id/workspace', async (req, res) => {
                     assignedTo: c.assigned_to,
                     unreadCount: c.unread_count,
                     lastMessageAt: c.last_message_at,
+                    lastInboundAt: c.last_inbound_at,
+                    lastOutboundAt: c.last_outbound_at,
+                    replyExpected: truthy(c.reply_expected),
+                    awaitingReplySince: c.awaiting_reply_since,
+                    replyExpectedMessageId: c.reply_expected_message_id,
+                    replyOwner: c.reply_owner,
+                    replySlaAt: c.reply_sla_at,
+                    waitingReply: workspaceWaitingReply(c),
+                    replyDeliveryStatus: c.reply_expected_delivery_status,
                     lastMessage: c.last_message
                 })),
                 urgency: {

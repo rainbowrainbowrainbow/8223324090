@@ -7,13 +7,13 @@
     <title>Event Genix | Воронка продажів</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.47.10">
-    <link rel="stylesheet" href="css/layout.css?v=0.47.10">
-    <link rel="stylesheet" href="css/pages.css?v=0.47.10">
-    <link rel="stylesheet" href="css/modals.css?v=0.47.10">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.10">
-    <link rel="stylesheet" href="css/responsive.css?v=0.47.10">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.47.10">
+    <link rel="stylesheet" href="css/base.css?v=0.47.11">
+    <link rel="stylesheet" href="css/layout.css?v=0.47.11">
+    <link rel="stylesheet" href="css/pages.css?v=0.47.11">
+    <link rel="stylesheet" href="css/modals.css?v=0.47.11">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.11">
+    <link rel="stylesheet" href="css/responsive.css?v=0.47.11">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.47.11">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -290,6 +290,7 @@
         .workspace-badge.stage { color: #1D4ED8; background: #DBEAFE; border-color: #93C5FD; }
         .workspace-badge.urgent { color: #991B1B; background: #FEE2E2; border-color: #FCA5A5; }
         .workspace-badge.warning { color: #92400E; background: #FEF3C7; border-color: #FCD34D; }
+        .workspace-badge.waiting { color: #1D4ED8; background: #DBEAFE; border-color: #93C5FD; }
         .workspace-actions { justify-content: flex-end; }
         .workspace-btn {
             display: inline-flex;
@@ -346,6 +347,18 @@
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
             gap: 8px;
+        }
+        .manager-action-strip-note {
+            margin: -2px 0 10px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.35;
+        }
+        .manager-action-strip-note.waiting {
+            background: #DBEAFE;
+            color: #1D4ED8;
         }
         .workspace-action {
             min-height: 48px;
@@ -464,6 +477,10 @@
             margin-top: 3px;
             line-height: 1.4;
             overflow-wrap: anywhere;
+        }
+        .workspace-row-meta.waiting {
+            color: #1D4ED8;
+            font-weight: 800;
         }
         .workspace-row-link {
             color: #2563EB;
@@ -644,6 +661,13 @@
         body.dark-mode .workspace-action.success { background: #059669; border-color: #059669; color: #FFFFFF; }
         body.dark-mode .workspace-action.warning { background: rgba(245,158,11,0.16); border-color: rgba(252,211,77,0.45); color: #FBBF24; }
         body.dark-mode .workspace-action.disabled { background: rgba(255,255,255,0.04); color: #94A3B8; }
+        body.dark-mode .workspace-badge.waiting,
+        body.dark-mode .manager-action-strip-note.waiting {
+            background: rgba(96,165,250,0.16);
+            border-color: rgba(96,165,250,0.32);
+            color: #BFDBFE;
+        }
+        body.dark-mode .workspace-row-meta.waiting { color: #BFDBFE; }
 
         @media (max-width: 768px) {
             .leads-toolbar { flex-direction: column; align-items: stretch; }
@@ -1074,15 +1098,15 @@
         });
     }
     </script>
-    <script src="js/config.js?v=0.47.10"></script>
-    <script src="js/notification.js?v=0.47.10"></script>
-    <script src="js/api.js?v=0.47.10"></script>
-    <script src="js/auth.js?v=0.47.10"></script>
-    <script src="js/components/sidebar.js?v=0.47.10"></script>
+    <script src="js/config.js?v=0.47.11"></script>
+    <script src="js/notification.js?v=0.47.11"></script>
+    <script src="js/api.js?v=0.47.11"></script>
+    <script src="js/auth.js?v=0.47.11"></script>
+    <script src="js/components/sidebar.js?v=0.47.11"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/leads-page.js?v=0.47.10"></script>
-    <script src="js/ui.js?v=0.47.10"></script>
-    <script src="js/alerts.js?v=0.47.10"></script>
-    <script src="js/role-panel.js?v=0.47.10"></script>
+    <script src="js/leads-page.js?v=0.47.11"></script>
+    <script src="js/ui.js?v=0.47.11"></script>
+    <script src="js/alerts.js?v=0.47.11"></script>
+    <script src="js/role-panel.js?v=0.47.11"></script>
 </body>
 </html>

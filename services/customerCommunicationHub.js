@@ -16,6 +16,29 @@ function toDateOnly(value) {
     return String(value).slice(0, 10);
 }
 
+function truthy(value) {
+    return value === true || value === 1 || value === '1' || value === 'true' || value === 't';
+}
+
+function timestampMs(value) {
+    if (!value) return null;
+    const ms = new Date(value).getTime();
+    return Number.isNaN(ms) ? null : ms;
+}
+
+function isDeliveryFailed(status) {
+    return ['failed', 'later_failed'].includes(String(status || '').toLowerCase());
+}
+
+function isActiveWaitingReply(row) {
+    if (!truthy(row?.reply_expected) || !row.awaiting_reply_since) return false;
+    if (isDeliveryFailed(row.reply_expected_delivery_status)) return false;
+    const awaitingMs = timestampMs(row.awaiting_reply_since);
+    const inboundMs = timestampMs(row.last_inbound_at);
+    if (awaitingMs !== null && inboundMs !== null && inboundMs > awaitingMs) return false;
+    return true;
+}
+
 function mapCustomer(row) {
     if (!row) return null;
     return {
@@ -94,10 +117,15 @@ function mapConversation(row, confidence) {
         assignedTo: row.assigned_to || null,
         unreadCount: row.unread_count || 0,
         lastMessageAt: row.last_message_at || null,
-        replyExpected: row.reply_expected === true,
+        lastInboundAt: row.last_inbound_at || null,
+        lastOutboundAt: row.last_outbound_at || null,
+        replyExpected: truthy(row.reply_expected),
         awaitingReplySince: row.awaiting_reply_since || null,
+        replyExpectedMessageId: row.reply_expected_message_id || null,
         replyOwner: row.reply_owner || null,
         replySlaAt: row.reply_sla_at || null,
+        waitingReply: isActiveWaitingReply(row),
+        replyDeliveryStatus: row.reply_expected_delivery_status || null,
         lastMessage: row.last_message || null,
         confidence,
         sendCapable: !INBOUND_ONLY_CHANNELS.has(channel),
@@ -205,9 +233,13 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
     const exactConversationsResult = await db.query(`
         SELECT c.id, c.channel, c.customer_name, c.customer_phone, c.customer_id, c.status,
                c.assigned_to, c.unread_count, c.last_message_at, c.updated_at,
-               c.reply_expected, c.awaiting_reply_since, c.reply_owner, c.reply_sla_at,
+               c.last_inbound_at, c.last_outbound_at,
+               c.reply_expected, c.awaiting_reply_since, c.reply_expected_message_id,
+               c.reply_owner, c.reply_sla_at,
+               expected_msg.delivery_status AS reply_expected_delivery_status,
                m.content AS last_message
         FROM conversations c
+        LEFT JOIN conversation_messages expected_msg ON expected_msg.id = c.reply_expected_message_id
         LEFT JOIN LATERAL (
             SELECT content
             FROM conversation_messages
@@ -228,9 +260,13 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
         const suggestedResult = await db.query(`
             SELECT c.id, c.channel, c.customer_name, c.customer_phone, c.customer_id, c.status,
                    c.assigned_to, c.unread_count, c.last_message_at, c.updated_at,
-                   c.reply_expected, c.awaiting_reply_since, c.reply_owner, c.reply_sla_at,
+                   c.last_inbound_at, c.last_outbound_at,
+                   c.reply_expected, c.awaiting_reply_since, c.reply_expected_message_id,
+                   c.reply_owner, c.reply_sla_at,
+                   expected_msg.delivery_status AS reply_expected_delivery_status,
                    m.content AS last_message
             FROM conversations c
+            LEFT JOIN conversation_messages expected_msg ON expected_msg.id = c.reply_expected_message_id
             LEFT JOIN LATERAL (
                 SELECT content
                 FROM conversation_messages

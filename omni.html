@@ -7,13 +7,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.47.10">
-    <link rel="stylesheet" href="css/layout.css?v=0.47.10">
-    <link rel="stylesheet" href="css/pages.css?v=0.47.10">
-    <link rel="stylesheet" href="css/modals.css?v=0.47.10">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.10">
-    <link rel="stylesheet" href="css/responsive.css?v=0.47.10">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.47.10">
+    <link rel="stylesheet" href="css/base.css?v=0.47.11">
+    <link rel="stylesheet" href="css/layout.css?v=0.47.11">
+    <link rel="stylesheet" href="css/pages.css?v=0.47.11">
+    <link rel="stylesheet" href="css/modals.css?v=0.47.11">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.11">
+    <link rel="stylesheet" href="css/responsive.css?v=0.47.11">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.47.11">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -173,6 +173,32 @@
             border-radius: 10px;
             display: inline-block;
             margin-top: 4px;
+        }
+
+        .omni-conv-waiting {
+            display: inline-flex;
+            align-items: center;
+            margin-top: 4px;
+            padding: 2px 6px;
+            border-radius: 999px;
+            background: rgba(37,99,235,0.1);
+            color: #1D4ED8;
+            font-size: 11px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .omni-reply-state {
+            display: inline-flex;
+            align-items: center;
+            margin-left: 8px;
+            padding: 2px 7px;
+            border-radius: 999px;
+            background: rgba(37,99,235,0.1);
+            color: #1D4ED8;
+            font-size: 11px;
+            font-weight: 800;
+            vertical-align: middle;
         }
 
         /* Chat area */
@@ -676,12 +702,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.47.10"></script>
-    <script src="js/api.js?v=0.47.10"></script>
-    <script src="js/auth.js?v=0.47.10"></script>
-    <script src="js/components/sidebar.js?v=0.47.10"></script>
+    <script src="js/config.js?v=0.47.11"></script>
+    <script src="js/api.js?v=0.47.11"></script>
+    <script src="js/auth.js?v=0.47.11"></script>
+    <script src="js/components/sidebar.js?v=0.47.11"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.47.10"></script>
+    <script src="js/ws.js?v=0.47.11"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -798,6 +824,16 @@
         }
 
         // ---- Render ----
+        function replyWaitingText(conv) {
+            if (!conv || !conv.waitingReply || !conv.awaitingReplySince) return '';
+            return 'Очікуємо відповідь з ' + formatTime(conv.awaitingReplySince);
+        }
+
+        function replyWaitingBadge(conv, cls) {
+            const text = replyWaitingText(conv);
+            return text ? '<span class="' + (cls || 'omni-conv-waiting') + '">' + esc(text) + '</span>' : '';
+        }
+
         function renderConversations() {
             renderOmniExplainability();
             if (!conversations.length) {
@@ -809,6 +845,7 @@
                 const initials = (c.customerName || c.externalId || '?').slice(0, 2).toUpperCase();
                 const time = c.lastMessageAt ? formatTime(c.lastMessageAt) : '';
                 const badge = c.unreadCount > 0 ? '<span class="omni-conv-badge">' + c.unreadCount + '</span>' : '';
+                const waiting = replyWaitingBadge(c);
                 return '<div class="omni-conv-item' + (isActive ? ' active' : '') + '" data-id="' + c.id + '">' +
                     '<div class="omni-conv-avatar ch-' + c.channel + '">' + initials + '</div>' +
                     '<div class="omni-conv-info">' +
@@ -818,6 +855,7 @@
                     '<div class="omni-conv-meta">' +
                         '<div class="omni-conv-time">' + time + '</div>' +
                         badge +
+                        waiting +
                     '</div>' +
                 '</div>';
             }).join('');
@@ -1126,7 +1164,7 @@
             quickRepliesEl.style.display = 'flex';
 
             $('omniChatName').textContent = conv.customerName || conv.externalId;
-            $('omniChatChannel').textContent = CHANNEL_NAMES[conv.channel] || conv.channel;
+            $('omniChatChannel').innerHTML = esc(CHANNEL_NAMES[conv.channel] || conv.channel) + replyWaitingBadge(conv, 'omni-reply-state');
             $('omniChatAvatar').className = 'omni-conv-avatar ch-' + conv.channel;
             $('omniChatAvatar').textContent = (conv.customerName || conv.externalId || '?').slice(0, 2).toUpperCase();
 
@@ -1378,8 +1416,8 @@
         });
     })();
     </script>
-    <script src="js/role-panel.js?v=0.47.10"></script>
-    <script src="js/ui.js?v=0.47.10"></script>
-    <script src="js/alerts.js?v=0.47.10"></script>
+    <script src="js/role-panel.js?v=0.47.11"></script>
+    <script src="js/ui.js?v=0.47.11"></script>
+    <script src="js/alerts.js?v=0.47.11"></script>
 </body>
 </html>

@@ -105,6 +105,11 @@
     background: rgba(0,0,0,0.018);
 }
 
+.work-queue-bucket.bucket-waiting_reply {
+    border-color: rgba(37,99,235,0.22);
+    background: rgba(37,99,235,0.035);
+}
+
 .work-queue-bucket-head {
     display: flex;
     align-items: center;
@@ -178,6 +183,10 @@
     background: #10B981;
 }
 
+.work-queue-item.is-waiting-reply .work-queue-dot {
+    background: #2563EB;
+}
+
 .work-queue-text {
     min-width: 0;
     display: flex;
@@ -209,6 +218,16 @@
     background: rgba(59,130,246,0.12);
     color: #1D4ED8;
     font-weight: 800;
+}
+
+.work-queue-state-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(37,99,235,0.1);
+    color: #1D4ED8;
+    font-weight: 900;
 }
 
 .work-queue-action {
@@ -1218,6 +1237,11 @@
     border-color: rgba(255,255,255,0.08);
 }
 
+.dark-mode .work-queue-bucket.bucket-waiting_reply {
+    background: rgba(96,165,250,0.08);
+    border-color: rgba(96,165,250,0.22);
+}
+
 .dark-mode .work-queue-bucket-head,
 .dark-mode .work-queue-item {
     border-color: rgba(255,255,255,0.07);
@@ -1230,6 +1254,11 @@
 
 .dark-mode .work-queue-confidence {
     background: rgba(96,165,250,0.2);
+    color: #BFDBFE;
+}
+
+.dark-mode .work-queue-state-pill {
+    background: rgba(96,165,250,0.18);
     color: #BFDBFE;
 }
 

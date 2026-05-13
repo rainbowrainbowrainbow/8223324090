@@ -108,5 +108,8 @@ describe('Omni Case Link v1', () => {
         assert.match(omniHtml, /\/conversations\/' \+ convId \+ '\/context/);
         assert.match(leadsPage, /\/omni\?conversation=/);
         assert.match(leadsPage, /leadOmniHref/);
+        assert.match(leadsPage, /waitingReplyConversation/);
+        assert.match(leadsPage, /workspaceBadge\(waitingReplyText\(waitingConversation\), 'waiting'\)/);
+        assert.match(leadsPage, /manager-action-strip-note waiting/);
     });
 });

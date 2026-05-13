@@ -180,6 +180,8 @@ function conversationTitle(row) {
 
 function conversationItem(row, bucket = 'waiting_reply') {
     const dueAt = isoValue(row.due_at || row.reply_sla_at || row.awaiting_reply_since);
+    const conversationHref = `/omni?conversation=${encodeURIComponent(row.conversation_id)}`;
+    const leadHrefValue = row.lead_id ? leadHref(row.lead_id) : null;
     return {
         id: `${bucket}:conversation:${row.conversation_id}`,
         bucket,
@@ -195,14 +197,21 @@ function conversationItem(row, bucket = 'waiting_reply') {
         priority: row.reply_sla_at && new Date(row.reply_sla_at).getTime() < Date.now() ? 'high' : 'normal',
         confidence: 'exact',
         actionLabel: 'Відкрити чат',
-        href: `/omni?conversation=${encodeURIComponent(row.conversation_id)}`,
+        href: conversationHref,
         meta: {
             assignedTo: row.reply_owner || row.assigned_to || null,
             signal: 'conversations.reply_expected',
+            state: 'waiting_reply',
+            conversationId: row.conversation_id,
+            waitingSince: isoValue(row.awaiting_reply_since),
             awaitingReplySince: isoValue(row.awaiting_reply_since),
             replySlaAt: isoValue(row.reply_sla_at),
             replyExpectedMessageId: row.reply_expected_message_id || null,
             deliveryStatus: row.delivery_status || null,
+            lastInboundAt: isoValue(row.last_inbound_at),
+            lastOutboundAt: isoValue(row.last_outbound_at),
+            exactHref: conversationHref,
+            leadHref: leadHrefValue,
         }
     };
 }
@@ -357,6 +366,7 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null } = {}) {
             SELECT c.id AS conversation_id, c.channel, c.customer_name, c.customer_phone,
                    c.customer_id, c.assigned_to, c.awaiting_reply_since,
                    c.reply_expected_message_id, c.reply_owner, c.reply_sla_at,
+                   c.last_inbound_at, c.last_outbound_at,
                    COALESCE(c.reply_sla_at, c.awaiting_reply_since) AS due_at,
                    cm.delivery_status, cm.delivery_error, cm.failed_at,
                    cust.lead_id

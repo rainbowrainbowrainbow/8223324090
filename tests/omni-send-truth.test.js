@@ -461,6 +461,9 @@ describe('Communication Send Truth v1', () => {
         assert.match(omniHtml, /renderSendTruthState/);
         assert.match(omniHtml, /id="omniReplyExpected"/);
         assert.match(omniHtml, /reply_expected: !!\(replyExpectedEl && replyExpectedEl\.checked\)/);
+        assert.match(omniHtml, /replyWaitingBadge/);
+        assert.match(omniHtml, /omni-conv-waiting/);
+        assert.match(omniHtml, /omni-reply-state/);
         assert.match(omniHtml, /channel_unavailable/);
         assert.match(omniHtml, /Провайдер прийняв запит/);
     });

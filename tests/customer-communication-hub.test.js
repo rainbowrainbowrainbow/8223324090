@@ -1,5 +1,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
     getCustomerCommunicationContext,
@@ -72,6 +74,14 @@ describe('customer communication hub context', () => {
                     status: 'open',
                     unread_count: 2,
                     last_message_at: '2099-05-02T09:00:00Z',
+                    last_inbound_at: '2099-05-01T08:00:00Z',
+                    last_outbound_at: '2099-05-02T09:00:00Z',
+                    reply_expected: true,
+                    awaiting_reply_since: '2099-05-02T09:00:00Z',
+                    reply_expected_message_id: 1201,
+                    reply_owner: 'Manager',
+                    reply_sla_at: '2099-05-03T09:00:00Z',
+                    reply_expected_delivery_status: 'delivered',
                     last_message: 'Hello'
                 }]
             })
@@ -79,6 +89,9 @@ describe('customer communication hub context', () => {
 
         assert.equal(context.live.status, 'exact');
         assert.equal(context.live.primaryConversation.id, 903);
+        assert.equal(context.live.primaryConversation.replyExpected, true);
+        assert.equal(context.live.primaryConversation.waitingReply, true);
+        assert.equal(context.live.primaryConversation.awaitingReplySince, '2099-05-02T09:00:00Z');
         assert.equal(context.links.omniExact, '/omni?conversation=903');
         assert.equal(context.links.omniSuggested, null);
         assert.equal(context.links.leadWorkspace, '/sales-funnel?lead=501');
@@ -117,6 +130,40 @@ describe('customer communication hub context', () => {
         assert.equal(context.links.omniExact, null);
         assert.equal(context.links.omniSuggested, '/omni?conversation=904');
         assert.match(context.live.explanation, /не записано як точна CRM/i);
+    });
+
+    it('does not surface waiting reply after a later inbound cleared it', async () => {
+        const context = await getCustomerCommunicationContext(706, {
+            supabase: null,
+            pool: makePool({
+                customer: {
+                    id: 706,
+                    name: 'Cleared Reply Customer',
+                    phone: '+380000000006'
+                },
+                bookings: [],
+                crmLog: [],
+                exactConversations: [{
+                    id: 906,
+                    channel: 'viber',
+                    customer_name: 'Cleared Reply Customer',
+                    customer_phone: '+380000000006',
+                    customer_id: 706,
+                    status: 'open',
+                    unread_count: 1,
+                    last_inbound_at: '2099-05-03T09:00:00Z',
+                    last_outbound_at: '2099-05-02T09:00:00Z',
+                    reply_expected: true,
+                    awaiting_reply_since: '2099-05-02T09:00:00Z',
+                    reply_expected_message_id: 1202,
+                    reply_expected_delivery_status: 'delivered'
+                }],
+                suggestedConversations: []
+            })
+        });
+
+        assert.equal(context.live.primaryConversation.replyExpected, true);
+        assert.equal(context.live.primaryConversation.waitingReply, false);
     });
 
     it('keeps unavailable live context honest and falls back to Omni search only', async () => {
@@ -169,6 +216,17 @@ describe('customer communication hub context', () => {
         assert.equal(context.live.primaryConversation.channel, 'binotel');
         assert.equal(context.live.primaryConversation.sendCapable, false);
         assert.match(context.live.primaryConversation.channelNote, /вхідних звернень/i);
+    });
+
+    it('wires customer hub UI for explicit waiting reply only', () => {
+        const repoRoot = path.resolve(__dirname, '..');
+        const customersJs = fs.readFileSync(path.join(repoRoot, 'js/customers-page.js'), 'utf8');
+        const customersHtml = fs.readFileSync(path.join(repoRoot, 'customers.html'), 'utf8');
+
+        assert.match(customersJs, /conversation\.waitingReply/);
+        assert.match(customersJs, /customerHubWaitingReply/);
+        assert.match(customersHtml, /customer-hub-waiting-line/);
+        assert.match(customersHtml, /customer-hub-pill\.waiting/);
     });
 
     it('builds timeline links from booking date and id', () => {

@@ -2,6 +2,8 @@ const { describe, it, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const fs = require('node:fs');
+const path = require('node:path');
 const { apiAuthBoundary } = require('../middleware/apiAuthBoundary');
 
 const TEST_JWT_SECRET = 'work-queue-test-secret';
@@ -290,16 +292,40 @@ describe('work queue endpoint', () => {
         assert.equal(buckets.waiting_reply.items[0].sourceId, '41');
         assert.equal(buckets.waiting_reply.items[0].href, '/omni?conversation=41');
         assert.equal(buckets.waiting_reply.items[0].meta.signal, 'conversations.reply_expected');
+        assert.equal(buckets.waiting_reply.items[0].meta.state, 'waiting_reply');
+        assert.equal(buckets.waiting_reply.items[0].meta.awaitingReplySince, '2026-05-13T09:30:00Z');
+        assert.equal(buckets.waiting_reply.items[0].meta.replySlaAt, '2026-05-13T15:00:00Z');
+        assert.equal(buckets.waiting_reply.items[0].meta.replyExpectedMessageId, 1201);
+        assert.equal(buckets.waiting_reply.items[0].meta.exactHref, '/omni?conversation=41');
+        assert.equal(buckets.waiting_reply.items[0].meta.leadHref, '/sales-funnel?lead=41');
         assert.equal(buckets.needs_confirmation.items[0].href, '/?date=2026-05-13&highlight=BK-2');
         assert.equal(buckets.event_soon.items[0].leadId, 12);
         assert.equal(buckets.idle_lead.items[0].confidence, 'suggested');
         assert.equal(res.data.queue.meta.omittedBuckets.includes('waiting_reply'), false);
         assert.ok(!queries.some(q => /unread_count\s*>\s*0/i.test(q.text)));
+        const waitingQuery = queries.find(q => /FROM conversations c/i.test(q.text) && /reply_expected IS TRUE/i.test(q.text));
+        assert.ok(waitingQuery, 'waiting_reply must come from conversations.reply_expected');
+        assert.match(waitingQuery.text, /awaiting_reply_since IS NOT NULL/i);
+        assert.match(waitingQuery.text, /last_inbound_at IS NULL OR c\.last_inbound_at <= c\.awaiting_reply_since/i);
+        assert.match(waitingQuery.text, /COALESCE\(cm\.delivery_status, ''\) NOT IN \('failed', 'later_failed'\)/i);
     });
 
     it('does not reuse stale status=new cold-lead logic as queue authority', async () => {
         await request('/api/work-queue', 'manager');
         assert.ok(queries.some(q => /pipeline_stage/i.test(q.text)), 'queue should inspect canonical pipeline_stage');
         assert.ok(!queries.some(q => /status\s*=\s*'new'/i.test(q.text)), 'queue must not use legacy status=new cold lead query');
+    });
+
+    it('wires dashboard waiting-reply rendering without unread heuristics', () => {
+        const repoRoot = path.resolve(__dirname, '..');
+        const dashboardJs = fs.readFileSync(path.join(repoRoot, 'js/dashboard-page.js'), 'utf8');
+        const dashboardCss = fs.readFileSync(path.join(repoRoot, 'css/dashboard.css'), 'utf8');
+
+        assert.match(dashboardJs, /item\.bucket === 'waiting_reply'/);
+        assert.match(dashboardJs, /item\.meta\?\.awaitingReplySince/);
+        assert.match(dashboardJs, /work-queue-state-pill/);
+        assert.doesNotMatch(dashboardJs, /unread_count\s*>\s*0/i);
+        assert.match(dashboardCss, /bucket-waiting_reply/);
+        assert.match(dashboardCss, /is-waiting-reply/);
     });
 });

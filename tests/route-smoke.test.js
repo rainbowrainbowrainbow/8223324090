@@ -231,8 +231,29 @@ function createFakePool() {
             if (/FROM communication_log cl LEFT JOIN users u ON cl\.created_by = u\.id WHERE cl\.customer_id = \$1/i.test(text)) {
                 return { rows: [{ id: 902, customer_id: params[0], type: 'note', direction: 'internal', summary: 'Customer prefers Telegram', created_by_name: 'Dasha Manager', created_at: '2099-05-02T11:00:00Z' }] };
             }
-            if (/FROM conversations c LEFT JOIN LATERAL/i.test(text)) {
-                return { rows: [{ id: 903, channel: 'telegram', customer_name: 'Workspace Customer', customer_phone: '+380000000001', customer_id: 701, status: 'open', assigned_to: 'Dasha Manager', unread_count: 1, last_message_at: '2099-05-02T12:00:00Z', last_message: 'Hello' }] };
+            if (/FROM conversations c .*LEFT JOIN LATERAL/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 903,
+                        channel: 'telegram',
+                        customer_name: 'Workspace Customer',
+                        customer_phone: '+380000000001',
+                        customer_id: 701,
+                        status: 'open',
+                        assigned_to: 'Dasha Manager',
+                        unread_count: 1,
+                        last_message_at: '2099-05-02T12:00:00Z',
+                        last_inbound_at: '2099-05-01T12:00:00Z',
+                        last_outbound_at: '2099-05-02T12:00:00Z',
+                        reply_expected: true,
+                        awaiting_reply_since: '2099-05-02T12:00:00Z',
+                        reply_expected_message_id: 1203,
+                        reply_owner: 'Dasha Manager',
+                        reply_sla_at: '2099-05-03T12:00:00Z',
+                        reply_expected_delivery_status: 'accepted',
+                        last_message: 'Hello'
+                    }]
+                };
             }
             if (/INSERT INTO tasks \(title, description, date, priority, assigned_to, owner, created_by,/i.test(text)) {
                 return {

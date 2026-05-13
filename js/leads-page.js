@@ -545,6 +545,18 @@ function exactLeadConversation(workspace) {
     return (workspace.conversations || []).find(conv => conv && conv.id && conv.confidence === 'exact') || null;
 }
 
+function waitingReplyConversation(workspace) {
+    const conversations = workspace.conversations || [];
+    return conversations.find(conv => conv && conv.waitingReply && conv.confidence === 'exact')
+        || conversations.find(conv => conv && conv.waitingReply)
+        || null;
+}
+
+function waitingReplyText(conversation) {
+    if (!conversation?.waitingReply || !conversation.awaitingReplySince) return '';
+    return `Очікуємо відповідь з ${workspaceDateTime(conversation.awaitingReplySince)}`;
+}
+
 function exactLeadBooking(workspace) {
     const leadBookingId = workspace.lead?.bookingId;
     if (!leadBookingId) return null;
@@ -589,6 +601,7 @@ function renderManagerActionStrip(workspace) {
     const phone = lead.phone || customer?.phone || '';
     const tel = phone ? 'tel:' + phone.replace(/[^+\d]/g, '') : null;
     const exactConversation = exactLeadConversation(workspace);
+    const waitingConversation = waitingReplyConversation(workspace);
     const exactBooking = exactLeadBooking(workspace);
     const exactTask = exactOpenWorkspaceTask(workspace);
     const bookingHref = timelineHrefForBooking(exactBooking);
@@ -654,6 +667,7 @@ function renderManagerActionStrip(workspace) {
                 </div>
                 ${renderWorkspaceStageControl(lead)}
             </div>
+            ${waitingConversation ? `<div class="manager-action-strip-note waiting">${escapeHtml(waitingReplyText(waitingConversation))}</div>` : ''}
             <div class="manager-action-grid">
                 ${actions.map(workspaceAction).join('')}
             </div>
@@ -670,6 +684,7 @@ function renderLeadWorkspaceContent(workspace) {
     const stage = PIPELINE_STAGES.find(s => s.key === (canonical.stage || lead.pipelineStage || 'new'));
     const status = STATUS_MAP[canonical.aggregateStatus || lead.status] || {};
     const type = LEAD_TYPE_MAP[lead.leadType] || LEAD_TYPE_MAP.quality;
+    const waitingConversation = waitingReplyConversation(workspace);
     const eventDays = urgency.daysUntilEvent;
     const eventCue = eventDays === null || eventDays === undefined
         ? ''
@@ -698,6 +713,7 @@ function renderLeadWorkspaceContent(workspace) {
                         ${workspaceBadge(stage ? `${stage.emoji} ${stage.label}` : (lead.pipelineStage || 'new'), 'stage')}
                         ${workspaceBadge(status.label ? `${status.emoji || ''} ${status.label}` : lead.status)}
                         ${workspaceBadge(`${type.emoji || ''} ${type.label || lead.leadType || 'Лід'}`)}
+                        ${waitingConversation ? workspaceBadge(waitingReplyText(waitingConversation), 'waiting') : ''}
                         ${eventCue ? workspaceBadge(eventCue, eventCueClass) : ''}
                         ${urgency.overdueTasks ? workspaceBadge(`Прострочено задач: ${urgency.overdueTasks}`, 'urgent') : ''}
                     </div>
@@ -791,6 +807,7 @@ function renderLeadWorkspaceContent(workspace) {
                             <div>
                                 <div class="workspace-row-title">${workspaceText(conv.customerName || conv.customerPhone || conv.channel)}</div>
                                 <div class="workspace-row-meta">${workspaceText(conv.channel)} · ${workspaceText(conv.status)} · ${workspaceDateTime(conv.lastMessageAt)}</div>
+                                ${conv.waitingReply ? `<div class="workspace-row-meta waiting">${escapeHtml(waitingReplyText(conv))}</div>` : ''}
                                 <div class="workspace-row-meta">${workspaceText(conv.lastMessage, 'Останнього повідомлення немає')}</div>
                             </div>
                             <a class="workspace-row-link" href="${escapeHtml(leadOmniHref(workspace, conv))}">Omni</a>

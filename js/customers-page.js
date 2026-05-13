@@ -104,6 +104,12 @@ function customerHubAction(href, label, cls = '', options = {}) {
     return `<a class="customer-hub-action ${cls}" href="${escapeHtml(href)}"${target}>${escapeHtml(label)}</a>`;
 }
 
+function customerHubWaitingReply(conversation) {
+    if (!conversation || !conversation.waitingReply || !conversation.awaitingReplySince) return '';
+    const owner = conversation.replyOwner ? ` · ${conversation.replyOwner}` : '';
+    return `<div class="customer-hub-waiting-line">Очікуємо відповідь з ${formatDateTime(conversation.awaitingReplySince)}${escapeHtml(owner)}</div>`;
+}
+
 function customerHubConversation(conversation) {
     if (!conversation) return '';
     const confidence = conversation.confidence || 'suggested';
@@ -116,9 +122,11 @@ function customerHubConversation(conversation) {
         <div class="customer-hub-conversation-top">
             <span class="customer-hub-channel">${customerHubText(conversation.channel)}</span>
             <span class="customer-hub-pill ${escapeHtml(confidence)}">${statusLabel}</span>
+            ${conversation.waitingReply ? '<span class="customer-hub-pill waiting">Очікуємо відповідь</span>' : ''}
             ${conversation.unreadCount ? `<span class="customer-hub-unread">${conversation.unreadCount} нових</span>` : ''}
         </div>
         <div class="customer-hub-meta">${customerHubText(conversation.customerName || conversation.customerPhone || 'Omni')} · ${customerHubText(conversation.status)}</div>
+        ${customerHubWaitingReply(conversation)}
         <div class="customer-hub-preview">${customerHubText(conversation.lastMessage, 'Останнього повідомлення немає')}</div>
         <div class="customer-hub-meta">${formatDateTime(conversation.lastMessageAt)} ${sendNote}</div>
     </div>`;

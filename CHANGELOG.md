@@ -4,6 +4,17 @@
 
 ---
 
+## v0.47.11 - 💬 0.47 Комунікації: waiting reply queue + UI v1 (2026-05-13)
+
+### Waiting Reply Queue + UI Surfacing v1 [codex]
+- **Manager-visible waiting reply** - Work Queue тепер показує `waiting_reply` як окремий bucket із exact переходом у відповідну Omni-розмову.
+- **Тільки explicit model** - bucket і UI-індикатори беруться з `reply_expected` / `awaiting_reply_since`, а не з unread, будь-якого outbound або provider accepted/read.
+- **Контекстні індикатори** - Omni list/header, Customer Communication Hub і workspace ліда компактно показують "Очікуємо відповідь з..." там, де є активне explicit очікування.
+- **Clear/failure truth** - surfaced стан поважає later inbound після `awaiting_reply_since` і delivery failure, щоб не лишати фейкове очікування відповіді.
+- **Без нового schema/backfill** - зміна спирається на Canonical Reply Expectation v1; старі розмови без explicit поля не потрапляють у `waiting_reply`.
+
+---
+
 ## v0.47.10 - 💬 0.47 Комунікації: canonical reply expectation v1 (2026-05-13)
 
 ### Canonical Reply Expectation v1 [codex]

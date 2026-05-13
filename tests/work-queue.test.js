@@ -161,6 +161,7 @@ function createFakePool() {
                     awaiting_reply_since: '2026-05-13T09:30:00Z',
                     reply_expected_message_id: 1201,
                     reply_owner: 'manager user',
+                    reply_owner_user_id: 501,
                     reply_sla_at: '2099-05-13T15:00:00Z',
                     due_at: '2099-05-13T15:00:00Z',
                     delivery_status: 'delivered',
@@ -298,6 +299,7 @@ describe('work queue endpoint', () => {
         assert.equal(buckets.waiting_reply.items[0].meta.replySlaAt, '2099-05-13T15:00:00Z');
         assert.equal(buckets.waiting_reply.items[0].meta.replySlaState, 'on_track');
         assert.equal(buckets.waiting_reply.items[0].meta.replyExpectedMessageId, 1201);
+        assert.equal(buckets.waiting_reply.items[0].meta.replyOwnerUserId, 501);
         assert.equal(buckets.waiting_reply.items[0].meta.exactHref, '/omni?conversation=41');
         assert.equal(buckets.waiting_reply.items[0].meta.leadHref, '/sales-funnel?lead=41');
         assert.equal(buckets.needs_confirmation.items[0].href, '/?date=2026-05-13&highlight=BK-2');
@@ -311,6 +313,8 @@ describe('work queue endpoint', () => {
         assert.match(waitingQuery.text, /last_inbound_at IS NULL OR c\.last_inbound_at <= c\.awaiting_reply_since/i);
         assert.match(waitingQuery.text, /COALESCE\(cm\.delivery_status, ''\) NOT IN \('failed', 'later_failed'\)/i);
         assert.match(waitingQuery.text, /CASE WHEN c\.reply_sla_at IS NULL THEN 1 ELSE 0 END/i);
+        assert.doesNotMatch(waitingQuery.text, /reply_owner\s*=\s*\$/i);
+        assert.doesNotMatch(waitingQuery.text, /reply_owner_user_id\s*=\s*\$/i);
     });
 
     it('does not reuse stale status=new cold-lead logic as queue authority', async () => {

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.47.14 - 💬 0.47 Комунікації: typed reply owner v1 (2026-05-13)
+
+### Reply Owner Typing v1 [codex]
+- **Typed reply owner** - `conversations.reply_owner_user_id` тепер зберігає канонічний `users.id` для власника активного reply expectation.
+- **Display snapshot сумісність** - `reply_owner` лишається людською міткою для UI, історичних рядків і старих клієнтів.
+- **Без фейкового backlog** - Work Queue, Customer Hub, workspace ліда та Omni payload віддають typed owner id, але не вводять owner-only фільтри чи нові permissions.
+- **Межа задач** - reply escalation task і далі використовує чинну string ownership модель; повне retyping задач відкладено окремо.
+
+---
+
 ## v0.47.13 - 💬 0.47 Комунікації: reply auto-escalation v2 (2026-05-13)
 
 ### Reply Auto-Escalation v2 [codex]

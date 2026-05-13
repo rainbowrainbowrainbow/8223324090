@@ -209,6 +209,7 @@ function conversationItem(row, bucket = 'waiting_reply') {
             signal: 'conversations.reply_expected',
             state: 'waiting_reply',
             conversationId: row.conversation_id,
+            replyOwnerUserId: row.reply_owner_user_id || null,
             waitingSince: isoValue(row.awaiting_reply_since),
             awaitingReplySince: isoValue(row.awaiting_reply_since),
             replySlaAt: isoValue(row.reply_sla_at),
@@ -374,7 +375,7 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null } = {}) {
         const result = await pool.query(`
             SELECT c.id AS conversation_id, c.channel, c.customer_name, c.customer_phone,
                    c.customer_id, c.assigned_to, c.reply_expected, c.awaiting_reply_since,
-                   c.reply_expected_message_id, c.reply_owner, c.reply_sla_at,
+                   c.reply_expected_message_id, c.reply_owner, c.reply_owner_user_id, c.reply_sla_at,
                    c.last_inbound_at, c.last_outbound_at,
                    COALESCE(c.reply_sla_at, c.awaiting_reply_since) AS due_at,
                    cm.delivery_status, cm.delivery_error, cm.failed_at,

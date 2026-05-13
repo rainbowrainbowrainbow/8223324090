@@ -20,6 +20,7 @@ const OVERDUE_REPLY = {
     awaiting_reply_since: '2026-05-13T09:00:00.000Z',
     reply_expected_message_id: 1201,
     reply_owner: 'manager user',
+    reply_owner_user_id: 501,
     reply_sla_at: '2026-05-13T09:30:00.000Z',
     last_inbound_at: '2026-05-13T08:00:00.000Z',
     last_outbound_at: '2026-05-13T09:00:00.000Z',
@@ -84,12 +85,14 @@ describe('reply auto-escalation', () => {
         assert.equal(result.reused, 0);
         assert.equal(result.escalations[0].task.source_type, 'conversation_reply');
         assert.equal(result.escalations[0].task.source_id, '1201');
+        assert.match(result.escalations[0].task.description, /Reply owner user id: 501/);
         assert.match(result.escalations[0].task.title, /Прострочена відповідь/);
 
         const findQuery = pool.queries.find(q => /FROM conversations c/i.test(q.text));
         assert.ok(findQuery);
         assert.match(findQuery.text, /c\.reply_sla_at <= \$1::timestamp/i);
         assert.match(findQuery.text, /c\.reply_expected_message_id IS NOT NULL/i);
+        assert.match(findQuery.text, /c\.reply_owner_user_id/i);
         assert.match(findQuery.text, /COALESCE\(cm\.delivery_status, ''\) NOT IN \('failed', 'later_failed'\)/i);
 
         const insertQuery = pool.queries.find(q => /INSERT INTO tasks/i.test(q.text));

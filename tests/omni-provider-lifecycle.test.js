@@ -77,6 +77,7 @@ function createLifecyclePool() {
                         awaiting_reply_since: null,
                         reply_expected_message_id: null,
                         reply_owner: null,
+                        reply_owner_user_id: null,
                         reply_sla_at: null,
                     }],
                 };

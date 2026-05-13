@@ -39,6 +39,7 @@ function taskDescription(row) {
         row.awaiting_reply_since ? `Waiting since: ${isoValue(row.awaiting_reply_since)}` : null,
         row.reply_sla_at ? `Reply SLA: ${isoValue(row.reply_sla_at)}` : null,
         row.reply_expected_message_id ? `Reply anchor message: ${row.reply_expected_message_id}` : null,
+        row.reply_owner_user_id ? `Reply owner user id: ${row.reply_owner_user_id}` : null,
         'This is separate from callback_due and follow_up_due.'
     ].filter(Boolean).join('\n');
 }
@@ -135,7 +136,7 @@ async function findOverdueReplyExpectations(options = {}) {
     const result = await db.query(
         `SELECT c.id AS conversation_id, c.channel, c.customer_name, c.customer_phone,
                 c.customer_id, c.assigned_to, c.reply_expected, c.awaiting_reply_since,
-                c.reply_expected_message_id, c.reply_owner, c.reply_sla_at,
+                c.reply_expected_message_id, c.reply_owner, c.reply_owner_user_id, c.reply_sla_at,
                 c.last_inbound_at, c.last_outbound_at,
                 cm.delivery_status AS reply_expected_delivery_status,
                 cm.delivery_error AS reply_expected_delivery_error,

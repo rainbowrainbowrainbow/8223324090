@@ -119,7 +119,8 @@ function createManualSendPool(conversation) {
                     conversationId: params[0],
                     messageId: params[1],
                     owner: params[2],
-                    slaAt: params[3]
+                    ownerUserId: params[3],
+                    slaAt: params[4]
                 };
                 state.replyExpectationUpdates.push(update);
                 return {
@@ -129,6 +130,7 @@ function createManualSendPool(conversation) {
                         awaiting_reply_since: '2099-05-13T10:00:04Z',
                         reply_expected_message_id: update.messageId,
                         reply_owner: update.owner,
+                        reply_owner_user_id: update.ownerUserId,
                         reply_sla_at: update.slaAt,
                         last_inbound_at: conversation.last_inbound_at || null
                     }]
@@ -177,7 +179,9 @@ function createInboundPool() {
             }
             if (/UPDATE conversations/i.test(text) && /last_inbound_at = NOW\(\)/i.test(text)) {
                 state.inboundUpdateSeen = true;
-                state.replyClearSeen = /reply_expected/i.test(text) && /awaiting_reply_since/i.test(text);
+                state.replyClearSeen = /reply_expected/i.test(text)
+                    && /awaiting_reply_since/i.test(text)
+                    && /reply_owner_user_id/i.test(text);
                 return { rows: [] };
             }
             throw new Error(`Unexpected inbound client query: ${text}`);
@@ -332,6 +336,7 @@ describe('Communication Send Truth v1', () => {
         const result = await hub.sendManualMessage(916, 'Привіт', 'Manager', {
             replyExpected: true,
             replyOwner: 'Manager User',
+            replyOwnerUserId: 501,
             replySlaAt: '2099-05-14T10:00:00.000Z'
         });
 
@@ -340,12 +345,17 @@ describe('Communication Send Truth v1', () => {
             conversationId: 916,
             messageId: 777,
             owner: 'Manager User',
+            ownerUserId: 501,
             slaAt: '2099-05-14T10:00:00.000Z'
         });
         assert.equal(result.conversation.replyExpected, true);
         assert.equal(result.conversation.waitingReply, true);
+        assert.equal(result.conversation.replyOwner, 'Manager User');
+        assert.equal(result.conversation.replyOwnerUserId, 501);
         assert.equal(result.conversation.replySlaState, 'on_track');
         assert.equal(result.replyExpectation.expected, true);
+        assert.equal(result.replyExpectation.owner, 'Manager User');
+        assert.equal(result.replyExpectation.ownerUserId, 501);
         assert.equal(result.replyExpectation.slaState, 'on_track');
     });
 
@@ -459,9 +469,25 @@ describe('Communication Send Truth v1', () => {
         assert.doesNotMatch(migration, /UPDATE\s+conversations/i);
     });
 
+    it('defines typed reply owner migration without historical backfill', () => {
+        const repoRoot = path.resolve(__dirname, '..');
+        const migration = fs.readFileSync(
+            path.join(repoRoot, 'db/migrations/172_reply_owner_typing_v1.sql'),
+            'utf8'
+        );
+
+        assert.match(migration, /MIGRATION_KIND: schema/);
+        assert.match(migration, /ADD COLUMN IF NOT EXISTS reply_owner_user_id INTEGER REFERENCES users\(id\) ON DELETE SET NULL/);
+        assert.match(migration, /idx_conversations_reply_owner_user_waiting/);
+        assert.match(migration, /WHERE reply_expected IS TRUE/);
+        assert.doesNotMatch(migration, /UPDATE\s+conversations/i);
+        assert.doesNotMatch(migration, /ALTER TABLE tasks/i);
+    });
+
     it('wires Omni UI for disabled channels and truthful send feedback', () => {
         const repoRoot = path.resolve(__dirname, '..');
         const omniHtml = fs.readFileSync(path.join(repoRoot, 'omni.html'), 'utf8');
+        const omniRoute = fs.readFileSync(path.join(repoRoot, 'routes/omnichannel.js'), 'utf8');
 
         assert.match(omniHtml, /id="omniSendTruth"/);
         assert.match(omniHtml, /SEND_DISABLED_CHANNELS = new Set\(\['binotel'\]\)/);
@@ -473,6 +499,8 @@ describe('Communication Send Truth v1', () => {
         assert.match(omniHtml, /omni-conv-waiting/);
         assert.match(omniHtml, /omni-reply-state/);
         assert.match(omniHtml, /channel_unavailable/);
+        assert.match(omniRoute, /replyOwnerUserId = req\.user\?\.id \|\| null/);
+        assert.match(omniRoute, /replyOwnerUserId,/);
         assert.match(omniHtml, /Провайдер прийняв запит/);
     });
 });

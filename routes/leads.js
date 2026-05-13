@@ -749,7 +749,7 @@ router.get('/:id/workspace', async (req, res) => {
                        c.assigned_to, c.unread_count, c.last_message_at, c.updated_at,
                        c.last_inbound_at, c.last_outbound_at,
                        c.reply_expected, c.awaiting_reply_since, c.reply_expected_message_id,
-                       c.reply_owner, c.reply_sla_at,
+                       c.reply_owner, c.reply_owner_user_id, c.reply_sla_at,
                        expected_msg.delivery_status AS reply_expected_delivery_status,
                        m.content AS last_message
                 FROM conversations c
@@ -815,6 +815,7 @@ router.get('/:id/workspace', async (req, res) => {
                     awaitingReplySince: c.awaiting_reply_since,
                     replyExpectedMessageId: c.reply_expected_message_id,
                     replyOwner: c.reply_owner,
+                    replyOwnerUserId: c.reply_owner_user_id || null,
                     replySlaAt: c.reply_sla_at,
                     replySlaState: deriveReplySlaState(c),
                     waitingReply: isActiveWaitingReply(c),

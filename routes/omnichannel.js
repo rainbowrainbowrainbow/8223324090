@@ -272,6 +272,7 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Текст повідомлення обов\'язковий' });
         }
         const replyOwner = req.user?.name || req.user?.username || null;
+        const replyOwnerUserId = req.user?.id || null;
         const message = await getHub().sendManualMessage(
             id,
             text.trim(),
@@ -279,6 +280,7 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
             {
                 replyExpected: reply_expected,
                 replyOwner,
+                replyOwnerUserId,
                 replySlaAt: reply_sla_at || null,
             }
         );

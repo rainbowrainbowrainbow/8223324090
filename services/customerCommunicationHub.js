@@ -105,6 +105,7 @@ function mapConversation(row, confidence) {
         awaitingReplySince: row.awaiting_reply_since || null,
         replyExpectedMessageId: row.reply_expected_message_id || null,
         replyOwner: row.reply_owner || null,
+        replyOwnerUserId: row.reply_owner_user_id || null,
         replySlaAt: row.reply_sla_at || null,
         replySlaState: deriveReplySlaState(row),
         waitingReply: isActiveWaitingReply(row),
@@ -218,7 +219,7 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
                c.assigned_to, c.unread_count, c.last_message_at, c.updated_at,
                c.last_inbound_at, c.last_outbound_at,
                c.reply_expected, c.awaiting_reply_since, c.reply_expected_message_id,
-               c.reply_owner, c.reply_sla_at,
+               c.reply_owner, c.reply_owner_user_id, c.reply_sla_at,
                expected_msg.delivery_status AS reply_expected_delivery_status,
                m.content AS last_message
         FROM conversations c
@@ -245,7 +246,7 @@ async function getCustomerCommunicationContext(customerId, options = {}) {
                    c.assigned_to, c.unread_count, c.last_message_at, c.updated_at,
                    c.last_inbound_at, c.last_outbound_at,
                    c.reply_expected, c.awaiting_reply_since, c.reply_expected_message_id,
-                   c.reply_owner, c.reply_sla_at,
+                   c.reply_owner, c.reply_owner_user_id, c.reply_sla_at,
                    expected_msg.delivery_status AS reply_expected_delivery_status,
                    m.content AS last_message
             FROM conversations c

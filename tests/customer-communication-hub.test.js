@@ -80,6 +80,7 @@ describe('customer communication hub context', () => {
                     awaiting_reply_since: '2099-05-02T09:00:00Z',
                     reply_expected_message_id: 1201,
                     reply_owner: 'Manager',
+                    reply_owner_user_id: 501,
                     reply_sla_at: '2099-05-03T09:00:00Z',
                     reply_expected_delivery_status: 'delivered',
                     last_message: 'Hello'
@@ -92,6 +93,8 @@ describe('customer communication hub context', () => {
         assert.equal(context.live.primaryConversation.replyExpected, true);
         assert.equal(context.live.primaryConversation.waitingReply, true);
         assert.equal(context.live.primaryConversation.awaitingReplySince, '2099-05-02T09:00:00Z');
+        assert.equal(context.live.primaryConversation.replyOwner, 'Manager');
+        assert.equal(context.live.primaryConversation.replyOwnerUserId, 501);
         assert.equal(context.live.primaryConversation.replySlaState, 'on_track');
         assert.equal(context.links.omniExact, '/omni?conversation=903');
         assert.equal(context.links.omniSuggested, null);

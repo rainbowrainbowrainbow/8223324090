@@ -63,15 +63,22 @@ function normalizeOptionalTimestamp(value) {
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
 
+function normalizeOptionalPositiveInt(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 function normalizeReplyExpectationOptions(options = {}) {
   const replyExpected = booleanValue(options.replyExpected ?? options.reply_expected);
   if (!replyExpected) {
-    return { replyExpected: false, replyOwner: null, replySlaAt: null };
+    return { replyExpected: false, replyOwner: null, replyOwnerUserId: null, replySlaAt: null };
   }
 
   return {
     replyExpected: true,
     replyOwner: safeTruncate(String(options.replyOwner || options.reply_owner || '').trim(), 100) || null,
+    replyOwnerUserId: normalizeOptionalPositiveInt(options.replyOwnerUserId ?? options.reply_owner_user_id),
     replySlaAt: normalizeOptionalTimestamp(options.replySlaAt || options.reply_sla_at),
   };
 }
@@ -351,6 +358,7 @@ function mapConversationRow(row) {
     awaitingReplySince: row.awaiting_reply_since || null,
     replyExpectedMessageId: row.reply_expected_message_id || null,
     replyOwner: row.reply_owner || null,
+    replyOwnerUserId: row.reply_owner_user_id || null,
     replySlaAt: row.reply_sla_at || null,
     replySlaState,
     waitingReply,
@@ -360,6 +368,7 @@ function mapConversationRow(row) {
       awaitingReplySince: row.awaiting_reply_since || null,
       expectedMessageId: row.reply_expected_message_id || null,
       owner: row.reply_owner || null,
+      ownerUserId: row.reply_owner_user_id || null,
       slaAt: row.reply_sla_at || null,
       slaState: replySlaState,
       blockedByDeliveryFailure: failedDeliveryStatus(row.reply_expected_delivery_status ?? row.delivery_status),
@@ -748,6 +757,13 @@ async function saveInboundMessage(conversationId, normalized) {
                THEN NULL
                ELSE reply_owner
              END,
+             reply_owner_user_id = CASE
+               WHEN reply_expected IS TRUE
+                AND awaiting_reply_since IS NOT NULL
+                AND awaiting_reply_since <= NOW()
+               THEN NULL
+               ELSE reply_owner_user_id
+             END,
              reply_sla_at = CASE
                WHEN reply_expected IS TRUE
                 AND awaiting_reply_since IS NOT NULL
@@ -794,11 +810,12 @@ async function setReplyExpectation(conversationId, messageId, options = {}) {
             awaiting_reply_since = NOW(),
             reply_expected_message_id = $2,
             reply_owner = $3,
-            reply_sla_at = $4::timestamp,
+            reply_owner_user_id = $4,
+            reply_sla_at = $5::timestamp,
             updated_at = NOW()
       WHERE id = $1
       RETURNING *`,
-    [conversationId, messageId, expectation.replyOwner, expectation.replySlaAt]
+    [conversationId, messageId, expectation.replyOwner, expectation.replyOwnerUserId, expectation.replySlaAt]
   );
   return mapConversationRow(result.rows[0]);
 }
@@ -812,6 +829,7 @@ async function clearReplyExpectationForMessage(conversationId, messageId) {
             awaiting_reply_since = NULL,
             reply_expected_message_id = NULL,
             reply_owner = NULL,
+            reply_owner_user_id = NULL,
             reply_sla_at = NULL,
             updated_at = NOW()
       WHERE id = $1

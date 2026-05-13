@@ -249,6 +249,7 @@ function createFakePool() {
                         awaiting_reply_since: '2099-05-02T12:00:00Z',
                         reply_expected_message_id: 1203,
                         reply_owner: 'Dasha Manager',
+                        reply_owner_user_id: 2,
                         reply_sla_at: '2099-05-03T12:00:00Z',
                         reply_expected_delivery_status: 'accepted',
                         last_message: 'Hello'
@@ -604,6 +605,8 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.workspace.tasks[0].sourceType, 'lead');
         assert.equal(res.data.workspace.conversations[0].channel, 'telegram');
         assert.equal(res.data.workspace.conversations[0].confidence, 'exact');
+        assert.equal(res.data.workspace.conversations[0].replyOwner, 'Dasha Manager');
+        assert.equal(res.data.workspace.conversations[0].replyOwnerUserId, 2);
     });
 
     it('preserves exact lead source linkage when creating manager callback tasks', async () => {

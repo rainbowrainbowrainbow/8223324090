@@ -73,6 +73,17 @@ function formatDateShort(dateStr) {
     return `${d}.${m} ${days[dt.getDay()]}`;
 }
 
+function getTaskDeepLinkId() {
+    const params = new URLSearchParams(window.location.search);
+    const taskId = parseInt(params.get('open') || params.get('highlight'), 10);
+    return Number.isInteger(taskId) && taskId > 0 ? taskId : null;
+}
+
+function openTaskDeepLink() {
+    const taskId = getTaskDeepLinkId();
+    if (taskId) openTaskDetail(taskId);
+}
+
 // ==========================================
 // PAGE INIT
 // ==========================================
@@ -146,6 +157,7 @@ async function initPage() {
 
     await loadAllTasks();
     await loadMyPoints();
+    openTaskDeepLink();
     } catch (err) { console.error('Page init failed:', err); window.location.href = '/'; }
 }
 

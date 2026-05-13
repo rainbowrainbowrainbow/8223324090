@@ -141,6 +141,98 @@ function createFakePool() {
                     ]
                 };
             }
+            if (/FROM leads l LEFT JOIN users u ON l\.assigned_to = u\.id LEFT JOIN products p ON l\.program_id = p\.id WHERE l\.id = \$1 LIMIT 1/i.test(text)) {
+                return {
+                    rows: [{
+                        id: params[0],
+                        client_name: 'Workspace Lead',
+                        phone: '+380000000001',
+                        instagram: 'workspace_lead',
+                        source: 'instagram',
+                        source_channel: 'instagram',
+                        notes: 'Needs follow-up',
+                        status: 'contact',
+                        pipeline_stage: 'contacted',
+                        assigned_to: 2,
+                        assigned_name: 'Dasha Manager',
+                        lead_type: 'quality',
+                        quality_category: 'birthday',
+                        event_date: '2099-05-12',
+                        children_count: 12,
+                        program_name: 'Quest',
+                        booking_id: null,
+                        created_at: '2099-05-01T10:00:00Z',
+                        updated_at: '2099-05-01T10:00:00Z',
+                        last_contact_at: '2099-05-02T10:00:00Z'
+                    }]
+                };
+            }
+            if (/FROM customer_cards WHERE lead_id = \$1 LIMIT 1/i.test(text)) {
+                return { rows: [{ lead_id: params[0], event_type: 'birthday', event_date: '2099-05-12', guest_count: 20, notes: 'Card note' }] };
+            }
+            if (/FROM customers c LEFT JOIN \( SELECT customer_id,/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 701,
+                        name: 'Workspace Customer',
+                        phone: '+380000000001',
+                        instagram: 'workspace_lead',
+                        child_name: 'Mia',
+                        source: 'lead',
+                        notes: 'Customer note',
+                        real_total_bookings: 1,
+                        real_total_spent: 2500,
+                        real_last_visit: '2099-05-12',
+                        created_at: '2099-05-01T10:00:00Z',
+                        updated_at: '2099-05-01T10:00:00Z'
+                    }]
+                };
+            }
+            if (/FROM bookings b WHERE \(b\.customer_id = \$1\) AND NULLIF\(b\.linked_to, ''\) IS NULL/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 'BK-WS',
+                        date: '2099-05-12',
+                        time: '14:00',
+                        status: 'confirmed',
+                        program_name: 'Quest',
+                        category: 'quest',
+                        price: 2500,
+                        room: 'Room 1',
+                        kids_count: 12,
+                        customer_id: 701,
+                        notes: 'Booking note'
+                    }]
+                };
+            }
+            if (/FROM tasks WHERE \(source_type = 'lead' AND source_id = \$1\)/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 801,
+                        title: 'Call Workspace Customer',
+                        description: 'Follow-up for Workspace Lead',
+                        status: 'todo',
+                        priority: 'high',
+                        assigned_to: 'Dasha Manager',
+                        owner: 'Dasha Manager',
+                        deadline: '2099-05-10T12:00:00Z',
+                        category: 'admin',
+                        task_type: 'human',
+                        source_type: 'lead',
+                        source_id: '501',
+                        created_at: '2099-05-01T10:00:00Z'
+                    }]
+                };
+            }
+            if (/FROM lead_interactions li LEFT JOIN users u ON li\.user_id = u\.id WHERE li\.lead_id = \$1/i.test(text)) {
+                return { rows: [{ id: 901, lead_id: params[0], type: 'call', summary: 'Called client', details: 'Asked for date', manager_name: 'Dasha Manager', created_at: '2099-05-02T10:00:00Z' }] };
+            }
+            if (/FROM communication_log cl LEFT JOIN users u ON cl\.created_by = u\.id WHERE cl\.customer_id = \$1/i.test(text)) {
+                return { rows: [{ id: 902, customer_id: params[0], type: 'note', direction: 'internal', summary: 'Customer prefers Telegram', created_by_name: 'Dasha Manager', created_at: '2099-05-02T11:00:00Z' }] };
+            }
+            if (/FROM conversations c LEFT JOIN LATERAL/i.test(text)) {
+                return { rows: [{ id: 903, channel: 'telegram', customer_name: 'Workspace Customer', customer_phone: '+380000000001', status: 'open', assigned_to: 'Dasha Manager', unread_count: 1, last_message_at: '2099-05-02T12:00:00Z', last_message: 'Hello' }] };
+            }
             if (/SELECT id FROM users WHERE id = \$1 AND is_active = true AND role = ANY\(\$2::text\[\]\)/i.test(text)) {
                 return { rows: params[0] === 2 ? [{ id: 2 }] : [] };
             }
@@ -453,6 +545,19 @@ describe('route-level API safety smoke', () => {
 
         const users = await request('GET', '/api/users', undefined, withAuth({}, 'manager'));
         assert.equal(users.status, 403);
+    });
+
+    it('composes the lead manager workspace from the canonical pipeline stage', async () => {
+        const res = await request('GET', '/api/leads/501/workspace', undefined, withAuth({}, 'manager'));
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.workspace.canonical.statusField, 'pipeline_stage');
+        assert.equal(res.data.workspace.canonical.stage, 'contacted');
+        assert.equal(res.data.workspace.canonical.aggregateStatus, 'contact');
+        assert.equal(res.data.workspace.customer.id, 701);
+        assert.equal(res.data.workspace.bookings[0].id, 'BK-WS');
+        assert.equal(res.data.workspace.tasks[0].sourceType, 'lead');
+        assert.equal(res.data.workspace.conversations[0].channel, 'telegram');
     });
 
     it('validates and applies lead assignee updates', async () => {

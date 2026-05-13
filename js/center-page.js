@@ -2225,7 +2225,7 @@ async function updateLeadStatus(id, status) {
         await fetch('/api/leads/' + id, {
             method: 'PATCH',
             headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token'), 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status })
+            body: JSON.stringify({ pipeline_stage: status })
         });
         loadHotLeads();
     } catch { /* silent */ }

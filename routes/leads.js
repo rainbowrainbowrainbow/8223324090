@@ -43,6 +43,8 @@ const STAGE_TO_STATUS = {
     lost: 'lost'
 };
 
+const OPTIONAL_WORKSPACE_ERROR_CODES = new Set(['42P01', '42703', '42883']);
+
 const UNIVERSAL_WEBHOOK_TOKEN = process.env.UNIVERSAL_WEBHOOK_TOKEN || '';
 const FB_VERIFY_TOKEN         = process.env.FB_VERIFY_TOKEN         || '';
 
@@ -70,6 +72,130 @@ async function ensureAssignableUser(userId) {
         [userId, LEAD_ASSIGNEE_ROLES]
     );
     return result.rows.length > 0;
+}
+
+function normalizeDigits(value) {
+    return String(value || '').replace(/\D/g, '');
+}
+
+function normalizeInstagram(value) {
+    return String(value || '').trim().replace(/^@+/, '').toLowerCase();
+}
+
+function toDateOnly(value) {
+    if (!value) return null;
+    if (typeof value === 'string') return value.slice(0, 10);
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+    return String(value).slice(0, 10);
+}
+
+function calculateDaysUntil(dateValue) {
+    const dateOnly = toDateOnly(dateValue);
+    if (!dateOnly) return null;
+    const target = new Date(`${dateOnly}T00:00:00`);
+    if (Number.isNaN(target.getTime())) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.round((target - today) / 86400000);
+}
+
+async function optionalWorkspaceQuery(sql, params = []) {
+    try {
+        return await pool.query(sql, params);
+    } catch (err) {
+        if (OPTIONAL_WORKSPACE_ERROR_CODES.has(err.code)) {
+            log.warn(`Workspace optional query skipped: ${err.message}`);
+            return { rows: [] };
+        }
+        throw err;
+    }
+}
+
+function mapWorkspaceLead(row) {
+    const stage = row.pipeline_stage || 'new';
+    return {
+        id: row.id,
+        clientName: row.client_name,
+        phone: row.phone,
+        instagram: row.instagram,
+        source: row.source,
+        sourceChannel: row.source_channel,
+        notes: row.notes,
+        status: row.status || STAGE_TO_STATUS[stage] || 'new',
+        pipelineStage: stage,
+        assignedTo: row.assigned_to,
+        assignedName: row.assigned_name || row.assigned_username || null,
+        leadType: row.lead_type,
+        qualityCategory: row.quality_category,
+        eventDate: row.event_date,
+        childrenCount: row.children_count,
+        childAge: row.child_age,
+        programId: row.program_id,
+        programName: row.program_name || row.program_full_name || null,
+        bookingId: row.booking_id,
+        lostReason: row.lost_reason,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        lastContactAt: row.last_contact_at
+    };
+}
+
+function mapWorkspaceCustomer(row) {
+    if (!row) return null;
+    return {
+        id: row.id,
+        name: row.name,
+        phone: row.phone,
+        instagram: row.instagram,
+        childName: row.child_name,
+        childBirthday: row.child_birthday,
+        source: row.source,
+        notes: row.notes,
+        totalBookings: parseInt(row.real_total_bookings ?? row.total_bookings ?? 0, 10) || 0,
+        totalSpent: parseInt(row.real_total_spent ?? row.total_spent ?? 0, 10) || 0,
+        firstVisit: row.real_first_visit || row.first_visit || null,
+        lastVisit: row.real_last_visit || row.last_visit || null,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+    };
+}
+
+function mapWorkspaceBooking(row) {
+    return {
+        id: row.id,
+        date: row.date,
+        time: row.time,
+        status: row.status,
+        programName: row.program_name || row.label || row.program_code || null,
+        category: row.category,
+        price: row.price,
+        room: row.room,
+        kidsCount: row.kids_count,
+        customerId: row.customer_id,
+        notes: row.notes,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+    };
+}
+
+function mapWorkspaceTask(row) {
+    return {
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        status: row.status,
+        priority: row.priority,
+        assignedTo: row.assigned_to,
+        owner: row.owner,
+        date: row.date,
+        deadline: row.deadline,
+        category: row.category,
+        taskType: row.task_type,
+        sourceType: row.source_type,
+        sourceId: row.source_id,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+    };
 }
 const FB_PAGE_ACCESS_TOKEN    = process.env.FB_PAGE_ACCESS_TOKEN    || '';
 const VIBER_AUTH_TOKEN        = process.env.VIBER_AUTH_TOKEN        || '';
@@ -430,6 +556,249 @@ router.get('/pipeline', async (req, res) => {
     } catch (err) {
         log.error('GET /leads/pipeline error', err);
         res.status(500).json({ success: false, error: 'Помилка' });
+    }
+});
+
+// GET /api/leads/:id/workspace — unified manager workspace case composition
+router.get('/:id/workspace', async (req, res) => {
+    try {
+        const leadId = parseInt(req.params.id, 10);
+        if (!Number.isInteger(leadId) || leadId <= 0) {
+            return res.status(400).json({ success: false, error: 'Некоректний ID ліда' });
+        }
+
+        const leadResult = await pool.query(`
+            SELECT l.*, u.name AS assigned_name, u.username AS assigned_username,
+                   p.label AS program_name, p.name AS program_full_name
+            FROM leads l
+            LEFT JOIN users u ON l.assigned_to = u.id
+            LEFT JOIN products p ON l.program_id = p.id
+            WHERE l.id = $1
+            LIMIT 1
+        `, [leadId]);
+
+        if (leadResult.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Лід не знайдено' });
+        }
+
+        const rawLead = leadResult.rows[0];
+        const lead = mapWorkspaceLead(rawLead);
+
+        const cardResult = await optionalWorkspaceQuery(`
+            SELECT * FROM customer_cards
+            WHERE lead_id = $1
+            LIMIT 1
+        `, [leadId]);
+        const customerCard = cardResult.rows[0] || null;
+
+        let bookingCustomerId = null;
+        if (lead.bookingId) {
+            const bookingLinkResult = await pool.query(
+                'SELECT customer_id FROM bookings WHERE id = $1 LIMIT 1',
+                [lead.bookingId]
+            );
+            bookingCustomerId = bookingLinkResult.rows[0]?.customer_id || null;
+        }
+
+        const phoneDigits = normalizeDigits(lead.phone || customerCard?.phone);
+        const instagramKey = normalizeInstagram(lead.instagram);
+        const customerResult = await optionalWorkspaceQuery(`
+            SELECT c.*,
+                   COALESCE(b_agg.booking_count, 0) AS real_total_bookings,
+                   COALESCE(b_agg.booking_spent, 0) AS real_total_spent,
+                   b_agg.real_first_visit,
+                   b_agg.real_last_visit
+            FROM customers c
+            LEFT JOIN (
+                SELECT customer_id,
+                       COUNT(*) AS booking_count,
+                       COALESCE(SUM(price), 0) AS booking_spent,
+                       MIN(date) AS real_first_visit,
+                       MAX(date) AS real_last_visit
+                FROM bookings
+                WHERE status != 'cancelled'
+                GROUP BY customer_id
+            ) b_agg ON b_agg.customer_id = c.id
+            WHERE ($1::integer IS NOT NULL AND c.id = $1)
+               OR c.lead_id = $2
+               OR ($3 <> '' AND regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g') = $3)
+               OR ($4 <> '' AND lower(regexp_replace(COALESCE(c.instagram, ''), '^@+', '', 'g')) = $4)
+            ORDER BY
+                CASE
+                    WHEN $1::integer IS NOT NULL AND c.id = $1 THEN 0
+                    WHEN c.lead_id = $2 THEN 1
+                    WHEN $3 <> '' AND regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g') = $3 THEN 2
+                    ELSE 3
+                END,
+                b_agg.real_last_visit DESC NULLS LAST,
+                c.updated_at DESC
+            LIMIT 1
+        `, [bookingCustomerId, leadId, phoneDigits, instagramKey]);
+        const customer = mapWorkspaceCustomer(customerResult.rows[0]);
+        const customerId = customer?.id || bookingCustomerId || null;
+
+        const bookingConditions = [];
+        const bookingParams = [];
+        if (customerId) {
+            bookingParams.push(customerId);
+            bookingConditions.push(`b.customer_id = $${bookingParams.length}`);
+        }
+        if (lead.bookingId) {
+            bookingParams.push(String(lead.bookingId));
+            bookingConditions.push(`b.id = $${bookingParams.length}`);
+        }
+        const bookingsResult = bookingConditions.length > 0
+            ? await pool.query(`
+                SELECT b.*
+                FROM bookings b
+                WHERE (${bookingConditions.join(' OR ')})
+                  AND NULLIF(b.linked_to, '') IS NULL
+                ORDER BY b.date DESC NULLS LAST, b.time DESC NULLS LAST
+                LIMIT 12
+            `, bookingParams)
+            : { rows: [] };
+        const bookings = bookingsResult.rows.map(mapWorkspaceBooking);
+        const bookingIds = bookings.map(b => String(b.id)).filter(Boolean);
+
+        const taskConditions = [];
+        const taskParams = [];
+        taskParams.push(String(lead.id));
+        taskConditions.push(`(source_type = 'lead' AND source_id = $${taskParams.length})`);
+        if (bookingIds.length > 0) {
+            taskParams.push(bookingIds);
+            taskConditions.push(`(source_type = 'booking' AND source_id = ANY($${taskParams.length}::text[]))`);
+        }
+        if (lead.phone) {
+            taskParams.push(`%${lead.phone}%`);
+            taskConditions.push(`(description ILIKE $${taskParams.length} OR title ILIKE $${taskParams.length})`);
+        }
+        if (lead.clientName) {
+            taskParams.push(`%${lead.clientName}%`);
+            taskConditions.push(`(description ILIKE $${taskParams.length} OR title ILIKE $${taskParams.length})`);
+        }
+        const tasksResult = taskConditions.length > 0
+            ? await optionalWorkspaceQuery(`
+                SELECT *
+                FROM tasks
+                WHERE ${taskConditions.join(' OR ')}
+                ORDER BY
+                    CASE WHEN status = 'done' THEN 3 WHEN status = 'in_progress' THEN 0 ELSE 1 END,
+                    CASE WHEN deadline IS NOT NULL AND deadline < NOW() THEN 0 ELSE 1 END,
+                    CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 ELSE 3 END,
+                    COALESCE(deadline, created_at) ASC
+                LIMIT 12
+            `, taskParams)
+            : { rows: [] };
+        const tasks = tasksResult.rows.map(mapWorkspaceTask);
+
+        const interactionsResult = await optionalWorkspaceQuery(`
+            SELECT li.*, u.name AS manager_name
+            FROM lead_interactions li
+            LEFT JOIN users u ON li.user_id = u.id
+            WHERE li.lead_id = $1
+            ORDER BY li.created_at DESC
+            LIMIT 10
+        `, [leadId]);
+
+        const communicationsResult = customerId
+            ? await optionalWorkspaceQuery(`
+                SELECT cl.*, u.name AS created_by_name
+                FROM communication_log cl
+                LEFT JOIN users u ON cl.created_by = u.id
+                WHERE cl.customer_id = $1
+                ORDER BY cl.created_at DESC
+                LIMIT 8
+            `, [customerId])
+            : { rows: [] };
+
+        const conversationConditions = [];
+        const conversationParams = [];
+        if (customerId) {
+            conversationParams.push(customerId);
+            conversationConditions.push(`c.customer_id = $${conversationParams.length}`);
+        }
+        if (phoneDigits) {
+            conversationParams.push(phoneDigits);
+            conversationConditions.push(`regexp_replace(COALESCE(c.customer_phone, ''), '\\D', '', 'g') = $${conversationParams.length}`);
+        }
+        if (lead.clientName) {
+            conversationParams.push(`%${lead.clientName}%`);
+            conversationConditions.push(`c.customer_name ILIKE $${conversationParams.length}`);
+        }
+        const conversationsResult = conversationConditions.length > 0
+            ? await optionalWorkspaceQuery(`
+                SELECT c.id, c.channel, c.customer_name, c.customer_phone, c.status,
+                       c.assigned_to, c.unread_count, c.last_message_at, c.updated_at,
+                       m.content AS last_message
+                FROM conversations c
+                LEFT JOIN LATERAL (
+                    SELECT content
+                    FROM conversation_messages
+                    WHERE conversation_id = c.id
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                ) m ON true
+                WHERE ${conversationConditions.join(' OR ')}
+                ORDER BY c.last_message_at DESC NULLS LAST, c.updated_at DESC
+                LIMIT 8
+            `, conversationParams)
+            : { rows: [] };
+
+        const eventDates = [
+            lead.eventDate,
+            customerCard?.event_date,
+            ...bookings.map(b => b.date)
+        ].map(toDateOnly).filter(Boolean).sort();
+        const nextEventDate = eventDates.find(d => calculateDaysUntil(d) >= 0) || eventDates[0] || null;
+        const openTasks = tasks.filter(t => !['done', 'cancelled'].includes(t.status));
+        const overdueTasks = openTasks.filter(t => t.deadline && new Date(t.deadline) < new Date());
+        const dueSoonTasks = openTasks.filter(t => {
+            if (!t.deadline) return false;
+            const diffHours = (new Date(t.deadline) - new Date()) / 3600000;
+            return diffHours >= 0 && diffHours <= 48;
+        });
+        const dueFollowUps = interactionsResult.rows.filter(i => i.follow_up_date && !i.follow_up_done && calculateDaysUntil(i.follow_up_date) <= 1);
+
+        res.json({
+            success: true,
+            workspace: {
+                lead,
+                canonical: {
+                    statusField: 'pipeline_stage',
+                    stage: lead.pipelineStage,
+                    aggregateStatus: lead.status,
+                    aggregateStatusFromStage: STAGE_TO_STATUS[lead.pipelineStage] || lead.status || 'new'
+                },
+                customer,
+                customerCard,
+                bookings,
+                tasks,
+                interactions: interactionsResult.rows,
+                communications: communicationsResult.rows,
+                conversations: conversationsResult.rows.map(c => ({
+                    id: c.id,
+                    channel: c.channel,
+                    customerName: c.customer_name,
+                    customerPhone: c.customer_phone,
+                    status: c.status,
+                    assignedTo: c.assigned_to,
+                    unreadCount: c.unread_count,
+                    lastMessageAt: c.last_message_at,
+                    lastMessage: c.last_message
+                })),
+                urgency: {
+                    eventDate: nextEventDate,
+                    daysUntilEvent: calculateDaysUntil(nextEventDate),
+                    openTasks: openTasks.length,
+                    overdueTasks: overdueTasks.length,
+                    dueSoonTasks: dueSoonTasks.length,
+                    dueFollowUps: dueFollowUps.length
+                }
+            }
+        });
+    } catch (err) {
+        log.error('GET /leads/:id/workspace error', err);
+        res.status(500).json({ success: false, error: 'Помилка завантаження робочого простору ліда' });
     }
 });
 

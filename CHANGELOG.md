@@ -4,6 +4,17 @@
 
 ---
 
+## v0.46.15 - Єдиний робочий простір менеджера для ліда (2026-05-13)
+
+### Unified Manager Workspace Stage 2 [codex]
+- **Sales Funnel Workspace** - на `/sales-funnel` додано lead-centric drawer, який стабільно відкривається через `?lead=ID` і збирає кейс менеджера в одному робочому просторі.
+- **Case composition** - `GET /api/leads/:id/workspace` повертає lead, linked customer, customer card, active/related bookings, tasks/next actions, interactions, communication log, conversation summary та urgency/date cues.
+- **Канонічний статус** - workspace читає етап з `pipeline_stage`; старі Copilot/workflow статуси не стали джерелом правди для менеджерського кейсу.
+- **Навігація без втрати контексту** - додано відкриття `/customers?open=ID`, `/tasks?open=ID`, контекстний `/omni?search=...`, а `/omni` з'явився у sidebar для manager-up ролей.
+- **Захист від регресій** - route smoke перевіряє case composition, UI smoke перевіряє workspace shell/deep links, access matrix перевіряє новий sidebar item.
+
+---
+
 ## v0.46.14 - Видима кнопка продажів на Timeline (2026-05-13)
 
 ### Timeline: контраст кнопки продажів [codex]

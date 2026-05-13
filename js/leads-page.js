@@ -77,6 +77,9 @@ let usersData = [];
 let modalInitialState = '';
 let leadModalLastTouchAt = 0;
 let leadSaveInFlight = false;
+let workspaceLeadId = null;
+let workspaceRequestSeq = 0;
+let workspaceEventsBound = false;
 
 // Auth helpers
 function getToken() { return localStorage.getItem('pzp_token'); }
@@ -113,6 +116,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupEvents();
     await loadUsers();
     await loadLeads();
+    openWorkspaceFromUrl();
 });
 
 async function checkTestMode() {
@@ -175,6 +179,7 @@ async function loadLeads() {
         } else {
             renderTable();
         }
+        syncWorkspaceHighlight();
     } catch (err) {
         console.error('Load leads error', err);
         const tbody = document.getElementById('leadsTableBody');
@@ -249,7 +254,7 @@ function renderTable() {
         const canConvert = ['new', 'contact', 'proposal'].includes(l.status);
         const convertBtn = canConvert ? `<button class="btn-convert" onclick="convertLead(${l.id})">Конвертувати</button>` : '';
 
-        return `<tr class="${idleClass}">
+        return `<tr class="${idleClass}" data-lead-id="${l.id}">
             <td><strong>${escapeHtml(l.client_name || '—')}</strong>${l.instagram ? '<br><small style="color:var(--gray-400)">@' + escapeHtml(l.instagram) + '</small>' : ''}</td>
             <td>${escapeHtml(l.phone || '—')}</td>
             <td>${escapeHtml(typeof src === 'string' ? src : '')}</td>
@@ -257,6 +262,7 @@ function renderTable() {
             <td><span class="pipeline-stage">${stage ? stage.emoji + ' ' + stage.label : '—'}</span></td>
             <td>${date}</td>
             <td class="lead-actions">
+                <button class="btn-workspace" onclick="openLeadWorkspace(${l.id})">Кейс</button>
                 <button class="btn-edit" onclick="editLead(${l.id})">Деталі</button>
                 <button class="btn-type" onclick="showTypeMenu(${l.id}, event)">Тип</button>
                 ${convertBtn}
@@ -264,6 +270,328 @@ function renderTable() {
             </td>
         </tr>`;
     }).join('');
+}
+
+// ==========================================
+// UNIFIED MANAGER WORKSPACE
+// ==========================================
+function getWorkspaceLeadIdFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('lead') || params.get('leadId');
+    const id = parseInt(raw, 10);
+    return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function setWorkspaceUrl(leadId, replace = false) {
+    const url = new URL(window.location.href);
+    if (leadId) url.searchParams.set('lead', leadId);
+    else url.searchParams.delete('lead');
+    const state = leadId ? { leadWorkspace: leadId } : {};
+    if (replace) window.history.replaceState(state, '', url);
+    else window.history.pushState(state, '', url);
+}
+
+function bindWorkspaceEvents() {
+    if (workspaceEventsBound) return;
+    workspaceEventsBound = true;
+
+    document.getElementById('leadWorkspaceClose')?.addEventListener('click', () => closeLeadWorkspace());
+    document.getElementById('leadWorkspaceBackdrop')?.addEventListener('click', () => closeLeadWorkspace());
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && workspaceLeadId) closeLeadWorkspace();
+    });
+    window.addEventListener('popstate', () => {
+        const leadId = getWorkspaceLeadIdFromUrl();
+        if (leadId) openLeadWorkspace(leadId, { pushState: false });
+        else closeLeadWorkspace({ pushState: false });
+    });
+}
+
+function openWorkspaceFromUrl() {
+    const leadId = getWorkspaceLeadIdFromUrl();
+    if (leadId) openLeadWorkspace(leadId, { pushState: false });
+}
+
+function showWorkspaceShell() {
+    const panel = document.getElementById('leadWorkspace');
+    const backdrop = document.getElementById('leadWorkspaceBackdrop');
+    if (!panel || !backdrop) return;
+    panel.hidden = false;
+    backdrop.hidden = false;
+    panel.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => {
+        panel.classList.add('active');
+        backdrop.classList.add('active');
+        document.getElementById('leadWorkspaceClose')?.focus({ preventScroll: true });
+    });
+}
+
+function closeLeadWorkspace(options = {}) {
+    const { pushState = true } = options;
+    const panel = document.getElementById('leadWorkspace');
+    const backdrop = document.getElementById('leadWorkspaceBackdrop');
+    workspaceLeadId = null;
+    if (panel) {
+        panel.classList.remove('active');
+        panel.setAttribute('aria-hidden', 'true');
+        setTimeout(() => { if (!workspaceLeadId) panel.hidden = true; }, 200);
+    }
+    if (backdrop) {
+        backdrop.classList.remove('active');
+        setTimeout(() => { if (!workspaceLeadId) backdrop.hidden = true; }, 200);
+    }
+    if (pushState) setWorkspaceUrl(null);
+    syncWorkspaceHighlight();
+}
+
+async function openLeadWorkspace(leadId, options = {}) {
+    const { pushState = true } = options;
+    const id = parseInt(leadId, 10);
+    if (!Number.isInteger(id) || id <= 0) return;
+
+    bindWorkspaceEvents();
+    workspaceLeadId = id;
+    workspaceRequestSeq += 1;
+    const requestSeq = workspaceRequestSeq;
+
+    if (pushState) setWorkspaceUrl(id);
+    showWorkspaceShell();
+    syncWorkspaceHighlight();
+    renderWorkspaceLoading(id);
+
+    try {
+        const res = await apiFetch(`/api/leads/${id}/workspace`);
+        if (!res) return;
+        const data = await res.json();
+        if (requestSeq !== workspaceRequestSeq) return;
+        if (!res.ok || !data.success) {
+            renderWorkspaceError(data.error || 'Не вдалося завантажити кейс');
+            return;
+        }
+        renderLeadWorkspaceContent(data.workspace);
+    } catch (err) {
+        if (requestSeq === workspaceRequestSeq) renderWorkspaceError(err.message || 'Помилка завантаження кейсу');
+    }
+}
+
+function syncWorkspaceHighlight() {
+    document.querySelectorAll('[data-lead-id], .kanban-card[data-id]').forEach(el => {
+        const id = parseInt(el.dataset.leadId || el.dataset.id, 10);
+        el.classList.toggle('is-workspace-open', !!workspaceLeadId && id === workspaceLeadId);
+    });
+}
+
+function renderWorkspaceLoading(id) {
+    document.getElementById('leadWorkspaceTitle').textContent = `Лід #${id}`;
+    document.getElementById('leadWorkspaceSubtitle').textContent = 'Завантаження робочого простору';
+    const body = document.getElementById('leadWorkspaceBody');
+    if (body) body.innerHTML = '<div class="workspace-loading">Завантаження кейсу...</div>';
+}
+
+function renderWorkspaceError(message) {
+    const body = document.getElementById('leadWorkspaceBody');
+    if (body) body.innerHTML = `<div class="workspace-error">${escapeHtml(message || 'Помилка завантаження')}</div>`;
+}
+
+function workspaceDate(value) {
+    if (!value) return '—';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
+    return d.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function workspaceDateTime(value) {
+    if (!value) return '—';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return workspaceDate(value);
+    return d.toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function workspaceMoney(value) {
+    const num = parseInt(value, 10);
+    if (!num) return '0 ₴';
+    return num.toLocaleString('uk-UA') + ' ₴';
+}
+
+function workspaceText(value, fallback = '—') {
+    return escapeHtml(value || fallback);
+}
+
+function workspaceBadge(text, cls = '') {
+    if (!text) return '';
+    return `<span class="workspace-badge ${cls}">${escapeHtml(text)}</span>`;
+}
+
+function workspaceLink(href, label, cls = '') {
+    if (!href) return `<span class="workspace-btn ${cls}" aria-disabled="true">${escapeHtml(label)}</span>`;
+    return `<a class="workspace-btn ${cls}" href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
+}
+
+function workspaceList(items, renderer, emptyText) {
+    if (!items || !items.length) return `<div class="workspace-empty">${escapeHtml(emptyText)}</div>`;
+    return `<div class="workspace-list">${items.map(renderer).join('')}</div>`;
+}
+
+function leadOmniSearch(workspace) {
+    const lead = workspace.lead || {};
+    const customer = workspace.customer || {};
+    return lead.phone || customer.phone || lead.clientName || customer.name || '';
+}
+
+function leadContactLinks(lead, workspace) {
+    const phone = lead.phone || workspace.customer?.phone || '';
+    const tel = phone ? 'tel:' + phone.replace(/[^+\d]/g, '') : null;
+    const tgValue = phone ? phone.replace(/[^\d]/g, '') : '';
+    const tg = tgValue ? `https://t.me/${tgValue}` : null;
+    const omniSearch = leadOmniSearch(workspace);
+    return [
+        workspaceLink(tel, 'Подзвонити', 'success'),
+        workspaceLink(tg, 'Telegram'),
+        workspaceLink(omniSearch ? `/omni?search=${encodeURIComponent(omniSearch)}` : null, 'Комунікації', 'primary')
+    ].join('');
+}
+
+function renderLeadWorkspaceContent(workspace) {
+    const lead = workspace.lead || {};
+    const customer = workspace.customer;
+    const card = workspace.customerCard || {};
+    const canonical = workspace.canonical || {};
+    const urgency = workspace.urgency || {};
+    const stage = PIPELINE_STAGES.find(s => s.key === (canonical.stage || lead.pipelineStage || 'new'));
+    const status = STATUS_MAP[canonical.aggregateStatus || lead.status] || {};
+    const type = LEAD_TYPE_MAP[lead.leadType] || LEAD_TYPE_MAP.quality;
+    const eventDays = urgency.daysUntilEvent;
+    const eventCue = eventDays === null || eventDays === undefined
+        ? ''
+        : eventDays < 0 ? `Подія минула ${Math.abs(eventDays)} дн. тому`
+        : eventDays === 0 ? 'Подія сьогодні'
+        : eventDays === 1 ? 'Подія завтра'
+        : `До події ${eventDays} дн.`;
+    const eventCueClass = eventDays !== null && eventDays !== undefined && eventDays <= 1 ? 'urgent' : 'warning';
+    const omniSearch = leadOmniSearch(workspace);
+
+    document.getElementById('leadWorkspaceTitle').textContent = lead.clientName || `Лід #${lead.id}`;
+    document.getElementById('leadWorkspaceSubtitle').textContent = `Кейс ліда #${lead.id} · canonical: pipeline_stage`;
+
+    const customerHref = customer?.id ? `/customers?open=${encodeURIComponent(customer.id)}` : null;
+    const body = document.getElementById('leadWorkspaceBody');
+    if (!body) return;
+
+    body.innerHTML = `
+        <section class="workspace-hero">
+            <div class="workspace-hero-main">
+                <div>
+                    <h3 class="workspace-name">${workspaceText(lead.clientName, `Лід #${lead.id}`)}</h3>
+                    <div class="workspace-meta">
+                        ${workspaceText(lead.phone)}${lead.instagram ? ' · @' + workspaceText(lead.instagram).replace(/^@/, '') : ''}
+                    </div>
+                    <div class="workspace-badge-row">
+                        ${workspaceBadge(stage ? `${stage.emoji} ${stage.label}` : (lead.pipelineStage || 'new'), 'stage')}
+                        ${workspaceBadge(status.label ? `${status.emoji || ''} ${status.label}` : lead.status)}
+                        ${workspaceBadge(`${type.emoji || ''} ${type.label || lead.leadType || 'Лід'}`)}
+                        ${eventCue ? workspaceBadge(eventCue, eventCueClass) : ''}
+                        ${urgency.overdueTasks ? workspaceBadge(`Прострочено задач: ${urgency.overdueTasks}`, 'urgent') : ''}
+                    </div>
+                </div>
+                <div class="workspace-actions">
+                    ${leadContactLinks(lead, workspace)}
+                    <button type="button" class="workspace-btn" onclick="editLead(${lead.id})">Редагувати</button>
+                    <button type="button" class="workspace-btn" onclick="showCustomerCardModal(${lead.id})">Картка</button>
+                </div>
+            </div>
+        </section>
+
+        <div class="workspace-grid">
+            <section class="workspace-section">
+                <h3>Клієнт</h3>
+                ${customer ? `
+                    <dl class="workspace-kv">
+                        <dt>Ім'я</dt><dd>${workspaceText(customer.name)}</dd>
+                        <dt>Телефон</dt><dd>${workspaceText(customer.phone)}</dd>
+                        <dt>Дитина</dt><dd>${workspaceText(customer.childName)}</dd>
+                        <dt>Візити</dt><dd>${customer.totalBookings || 0} · ${workspaceMoney(customer.totalSpent)}</dd>
+                        <dt>Останній</dt><dd>${workspaceDate(customer.lastVisit)}</dd>
+                    </dl>
+                    <div class="workspace-actions" style="justify-content:flex-start;margin-top:12px">
+                        ${workspaceLink(customerHref, 'Відкрити клієнта')}
+                    </div>
+                ` : `
+                    <div class="workspace-empty">Клієнта ще не прив'язано. Дані ліда і картки доступні в цьому кейсі.</div>
+                `}
+            </section>
+
+            <section class="workspace-section">
+                <h3>Кейс і дата</h3>
+                <dl class="workspace-kv">
+                    <dt>Відповідальний</dt><dd>${workspaceText(lead.assignedName)}</dd>
+                    <dt>Джерело</dt><dd>${workspaceText(lead.sourceChannel || lead.source)}</dd>
+                    <dt>Бажана дата</dt><dd>${workspaceDate(lead.eventDate || card.event_date)}</dd>
+                    <dt>Програма</dt><dd>${workspaceText(lead.programName)}</dd>
+                    <dt>Нотатки</dt><dd>${workspaceText(lead.notes || card.notes)}</dd>
+                </dl>
+            </section>
+
+            <section class="workspace-section full">
+                <h3>Бронювання та події</h3>
+                ${workspaceList(workspace.bookings || [], booking => `
+                    <div class="workspace-row">
+                        <div class="workspace-row-top">
+                            <div>
+                                <div class="workspace-row-title">${workspaceText(booking.programName || booking.category || `Бронювання ${booking.id}`)}</div>
+                                <div class="workspace-row-meta">${workspaceDate(booking.date)} ${workspaceText(booking.time, '')} · ${workspaceText(booking.status)} · ${workspaceMoney(booking.price)}</div>
+                            </div>
+                            ${booking.date ? `<a class="workspace-row-link" href="/?date=${encodeURIComponent(String(booking.date).slice(0, 10))}&highlight=${encodeURIComponent(booking.id)}">Таймлайн</a>` : ''}
+                        </div>
+                    </div>
+                `, 'Пов’язаних бронювань поки немає')}
+            </section>
+
+            <section class="workspace-section">
+                <h3>Наступні дії</h3>
+                ${workspaceList(workspace.tasks || [], task => `
+                    <div class="workspace-row">
+                        <div class="workspace-row-top">
+                            <div>
+                                <div class="workspace-row-title">${workspaceText(task.title)}</div>
+                                <div class="workspace-row-meta">${workspaceText(task.status)} · ${workspaceText(task.priority)}${task.deadline ? ' · дедлайн ' + workspaceDateTime(task.deadline) : ''}</div>
+                            </div>
+                            <a class="workspace-row-link" href="/tasks?open=${encodeURIComponent(task.id)}">Задача</a>
+                        </div>
+                    </div>
+                `, 'Немає прив’язаних задач або next action')}
+            </section>
+
+            <section class="workspace-section">
+                <h3>Нотатки і взаємодії</h3>
+                ${workspaceList([...(workspace.interactions || []), ...(workspace.communications || [])].slice(0, 8), item => `
+                    <div class="workspace-row">
+                        <div class="workspace-row-title">${workspaceText(item.summary || item.type || 'Взаємодія')}</div>
+                        <div class="workspace-row-meta">${workspaceDateTime(item.created_at)}${item.manager_name || item.created_by_name ? ' · ' + workspaceText(item.manager_name || item.created_by_name) : ''}</div>
+                        ${item.details ? `<div class="workspace-row-meta">${workspaceText(item.details)}</div>` : ''}
+                    </div>
+                `, 'Взаємодій і коментарів ще немає')}
+            </section>
+
+            <section class="workspace-section full">
+                <h3>Комунікації</h3>
+                ${workspaceList(workspace.conversations || [], conv => `
+                    <div class="workspace-row">
+                        <div class="workspace-row-top">
+                            <div>
+                                <div class="workspace-row-title">${workspaceText(conv.customerName || conv.customerPhone || conv.channel)}</div>
+                                <div class="workspace-row-meta">${workspaceText(conv.channel)} · ${workspaceText(conv.status)} · ${workspaceDateTime(conv.lastMessageAt)}</div>
+                                <div class="workspace-row-meta">${workspaceText(conv.lastMessage, 'Останнього повідомлення немає')}</div>
+                            </div>
+                            <a class="workspace-row-link" href="/omni?search=${encodeURIComponent(conv.customerPhone || conv.customerName || omniSearch)}">Omni</a>
+                        </div>
+                    </div>
+                `, 'Розмови не знайдено. Відкрийте комунікації з контекстним пошуком.')}
+                <div class="workspace-actions" style="justify-content:flex-start;margin-top:12px">
+                    ${workspaceLink(omniSearch ? `/omni?search=${encodeURIComponent(omniSearch)}` : null, 'Відкрити комунікації', 'primary')}
+                </div>
+            </section>
+        </div>
+    `;
 }
 
 // ==========================================
@@ -352,7 +680,7 @@ function renderKanban() {
             const phone = l.phone || '';
             const phoneTel = phone.replace(/[^+\d]/g, '');
 
-            return `<div class="kanban-card ${idleClass}" draggable="true" data-id="${l.id}" onclick="editLead(${l.id})">
+            return `<div class="kanban-card ${idleClass}" draggable="true" data-id="${l.id}" onclick="openLeadWorkspace(${l.id})">
                 <div class="kanban-card-top">
                     <div class="kanban-card-name">${escapeHtml(l.client_name || '—')}</div>
                     <span class="kanban-days ${daysClass}" title="На етапі">${formatDaysLabel(days)}</span>
@@ -362,6 +690,7 @@ function renderKanban() {
                 ${phoneTel ? `<div class="kanban-card-actions" onclick="event.stopPropagation()">
                     <a class="kanban-action-btn" href="tel:${escapeHtml(phoneTel)}" title="Зателефонувати">📞</a>
                     <a class="kanban-action-btn" href="https://t.me/${escapeHtml(phoneTel)}" target="_blank" title="Telegram">💬</a>
+                    <button class="kanban-action-btn" type="button" onclick="editLead(${l.id})" title="Редагувати">✎</button>
                 </div>` : ''}
             </div>`;
         }).join('');
@@ -433,6 +762,7 @@ async function updateLeadStage(leadId, stage, extraFields = {}) {
                 if (typeof showNotification === 'function') showNotification('💰 Завдаток! Задачі створені автоматично', 'success');
             }
             await loadLeads();
+            if (workspaceLeadId === leadId) openLeadWorkspace(leadId, { pushState: false });
         }
     } catch (e) {
         console.error('Update stage error', e);
@@ -613,6 +943,7 @@ async function saveCustomerCard() {
             if (typeof showNotification === 'function') showNotification('Картка клієнта збережена', 'success');
             overlay.classList.remove('active');
             await loadLeads();
+            if (workspaceLeadId === leadId) openLeadWorkspace(leadId, { pushState: false });
         }
     } catch (e) {
         console.error('Save card error', e);
@@ -764,6 +1095,7 @@ function bindLeadModalButton(id, action) {
 function setupEvents() {
     if (setupEvents.bound) return;
     setupEvents.bound = true;
+    bindWorkspaceEvents();
 
     // View toggle buttons
     document.querySelectorAll('.view-btn').forEach(btn => {
@@ -774,6 +1106,7 @@ function setupEvents() {
             if (currentView === 'kanban') renderKanban();
             else if (currentView === 'mailing') loadMailing();
             else renderTable();
+            syncWorkspaceHighlight();
         });
     });
 
@@ -944,6 +1277,9 @@ async function saveLead() {
         if (!data.success) { if (typeof showNotification === 'function') showNotification(data.error || 'Помилка', 'error'); return; }
         closeLeadModal(true);
         await loadLeads();
+        if (editId && workspaceLeadId === parseInt(editId, 10)) {
+            openLeadWorkspace(parseInt(editId, 10), { pushState: false });
+        }
     } catch (err) {
         console.error('Save lead error', err);
         if (typeof showNotification === 'function') showNotification('Помилка збереження', 'error');
@@ -962,6 +1298,7 @@ async function deleteLead(id) {
     }
     try {
         await apiFetch(`/api/leads/${id}`, { method: 'DELETE' });
+        if (workspaceLeadId === id) closeLeadWorkspace();
         await loadLeads();
     } catch (err) {
         console.error('Delete lead error', err);
@@ -984,3 +1321,6 @@ function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+window.openLeadWorkspace = openLeadWorkspace;
+window.closeLeadWorkspace = closeLeadWorkspace;

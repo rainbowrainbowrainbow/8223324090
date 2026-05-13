@@ -174,6 +174,7 @@ checkPage('leads.html', (doc, html) => {
     const saveBtn = doc.getElementById('leadModalSave');
     const leadShell = doc.querySelector('main#main-content.page-container');
     const leadsApp = doc.getElementById('leadsApp');
+    const leadWorkspace = doc.getElementById('leadWorkspace');
     check('Lead edit modal date input exists', leadDate?.type === 'date');
     check('Lead edit modal children input exists', leadChildren?.type === 'number');
     check('Lead edit modal cancel button exists', cancelBtn?.type === 'button');
@@ -182,6 +183,8 @@ checkPage('leads.html', (doc, html) => {
     check('Customer card modal children input exists', customerChildren?.type === 'number');
     check('Leads uses one standard page shell', !!leadShell && !doc.querySelector('.page-container .main-content'));
     check('Leads app wrapper does not own shell offset', !!leadsApp && !leadsApp.classList.contains('main-content'));
+    check('Leads unified workspace shell exists', !!leadWorkspace && !!doc.getElementById('leadWorkspaceBody'));
+    check('Leads unified workspace has close control', doc.getElementById('leadWorkspaceClose')?.type === 'button');
     check('Lead modal grid allows narrow WebKit date inputs', html.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)'));
     check('Lead modal controls can shrink inside grid columns', html.includes('min-width: 0; max-width: 100%'));
     check('Lead modal responsive row is scoped', html.includes('.lead-modal .form-row { grid-template-columns: 1fr; }'));
@@ -288,6 +291,7 @@ check('Sidebar has /designs', sidebarCode.includes("href: '/designs'"));
 check('Sidebar has /designs#catalogs', sidebarCode.includes("href: '/designs#catalogs'"));
 check('Sidebar has /designer', sidebarCode.includes("href: '/designer'"));
 check('Sidebar has /guardian-ops', sidebarCode.includes("href: '/guardian-ops'"));
+check('Sidebar exposes /omni for communications', sidebarCode.includes("href: '/omni'") && sidebarCode.includes('omni:'));
 check('Sidebar has Центр керування', sidebarCode.includes('Центр керування'));
 
 // Check lead modal action binding
@@ -297,6 +301,18 @@ check('Lead modal buttons support touchend taps', leadsCode.includes("btn.addEve
 check('Lead modal close avoids shared closeModal collision', leadsCode.includes('function closeLeadModal') && !leadsCode.includes('function closeModal'));
 check('Lead save has duplicate-submit guard', leadsCode.includes('leadSaveInFlight'));
 check('Lead assignees use lead-scoped endpoint', leadsCode.includes("apiFetch('/api/leads/assignees')"));
+check('Lead workspace opens via query-driven endpoint', leadsCode.includes('getWorkspaceLeadIdFromUrl') && leadsCode.includes('/workspace') && leadsCode.includes("url.searchParams.set('lead'"));
+check('Lead workspace uses canonical pipeline stage', leadsCode.includes('canonical: pipeline_stage') && leadsCode.includes('PIPELINE_STAGES.find'));
+check('Lead workspace links customer/task/omni context', leadsCode.includes('/customers?open=') && leadsCode.includes('/tasks?open=') && leadsCode.includes('/omni?search='));
+
+const customersCode = fs.readFileSync(path.join(ROOT, 'js/customers-page.js'), 'utf8');
+const tasksCode = fs.readFileSync(path.join(ROOT, 'js/tasks-page.js'), 'utf8');
+const centerCode = fs.readFileSync(path.join(ROOT, 'js/center-page.js'), 'utf8');
+const omniHtml = fs.readFileSync(path.join(ROOT, 'omni.html'), 'utf8');
+check('Customers page opens existing customer deep links', customersCode.includes('getCustomerDeepLinkId') && customersCode.includes("params.get('open')") && customersCode.includes("params.get('highlight')"));
+check('Tasks page opens task deep links', tasksCode.includes('getTaskDeepLinkId') && tasksCode.includes('openTaskDetail(taskId)'));
+check('Omni page applies contextual search query', omniHtml.includes('applyQueryContext') && omniHtml.includes("params.get('search')"));
+check('Center hot leads update canonical pipeline stage', centerCode.includes('JSON.stringify({ pipeline_stage: status })'));
 
 // Check Timeline/Kleshnya shell collapse keeps geometry in CSS
 const appCode = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');

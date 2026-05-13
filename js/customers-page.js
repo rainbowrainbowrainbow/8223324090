@@ -80,6 +80,34 @@ function formatMoney(amount) {
     return amount.toLocaleString('uk-UA') + ' ₴';
 }
 
+function getCustomerDeepLinkId() {
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = parseInt(params.get('open') || params.get('highlight'), 10);
+    if (Number.isInteger(fromQuery) && fromQuery > 0) return fromQuery;
+
+    const hashMatch = (window.location.hash || '').match(/(?:^#|[?&])id=(\d+)/);
+    if (hashMatch) {
+        const fromHash = parseInt(hashMatch[1], 10);
+        if (Number.isInteger(fromHash) && fromHash > 0) return fromHash;
+    }
+    return null;
+}
+
+function highlightCustomerRow(customerId) {
+    const row = document.querySelector(`tr[data-id="${customerId}"]`);
+    if (!row) return;
+    row.style.outline = '2px solid #2563EB';
+    row.style.outlineOffset = '-2px';
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function openCustomerDeepLink() {
+    const customerId = getCustomerDeepLinkId();
+    if (!customerId) return;
+    showCustomerDetail(customerId);
+    requestAnimationFrame(() => highlightCustomerRow(customerId));
+}
+
 // ==========================================
 // API CALLS
 // ==========================================
@@ -1083,6 +1111,7 @@ async function initPage() {
 
     // Load initial data
     await refreshData();
+    openCustomerDeepLink();
 }
 
 document.addEventListener('DOMContentLoaded', initPage);

@@ -36,6 +36,9 @@ const DashboardPage = (() => {
     let _workQueueReplyFilters = loadReplyConsoleFilters();
     let _workQueueSelection = new Set();
     let _workQueueVisibleReplyIds = [];
+    let _workQueueVisibleItemIds = [];
+    let _workQueueItemsById = new Map();
+    let _workQueueSelectedItemId = null;
     let _replyOpsFlash = null;
     let _replyOwnerPickerState = null;
 
@@ -315,6 +318,15 @@ const DashboardPage = (() => {
         const visibleBuckets = buckets.filter(bucket => bucket.count > 0 || (bucket.items && bucket.items.length > 0));
         const waitingBucket = buckets.find(bucket => bucket.key === 'waiting_reply') || { items: [], count: 0 };
         const visibleReplyItems = Array.isArray(waitingBucket.items) ? waitingBucket.items : [];
+        const visibleItems = visibleBuckets.flatMap(bucket => {
+            const maxItems = bucket.key === 'waiting_reply' ? 12 : 4;
+            return (bucket.items || []).slice(0, maxItems);
+        });
+        _workQueueItemsById = new Map(visibleItems.map(item => [String(item.id || `${item.bucket}:${item.sourceType}:${item.sourceId}`), item]));
+        _workQueueVisibleItemIds = visibleItems.map(item => String(item.id || `${item.bucket}:${item.sourceType}:${item.sourceId}`));
+        if (_workQueueSelectedItemId && !_workQueueItemsById.has(_workQueueSelectedItemId)) {
+            _workQueueSelectedItemId = null;
+        }
         _workQueueVisibleReplyIds = visibleReplyItems
             .map(item => Number(item.meta?.conversationId || item.sourceId || 0))
             .filter(id => Number.isInteger(id) && id > 0);
@@ -327,11 +339,14 @@ const DashboardPage = (() => {
 
         if (!visibleBuckets.length) {
             container.innerHTML = `${renderReplyOperationsConsole(queue, visibleReplyItems)}
+                ${renderTriageWorkspace()}
                 <div class="widget-empty reply-ops-empty">Немає термінових пунктів у доступних buckets черги. Waiting reply зʼявиться лише для розмов із явним reply expectation.</div>`;
             return;
         }
 
-        container.innerHTML = `${renderReplyOperationsConsole(queue, visibleReplyItems)}${visibleBuckets.map(bucket => {
+        container.innerHTML = `${renderReplyOperationsConsole(queue, visibleReplyItems)}
+            ${renderTriageWorkspace()}
+            ${visibleBuckets.map(bucket => {
             const maxItems = bucket.key === 'waiting_reply' ? 12 : 4;
             const items = (bucket.items || []).slice(0, maxItems).map(renderWorkQueueItem).join('');
             return `
@@ -383,10 +398,251 @@ const DashboardPage = (() => {
         }
     }
 
+    function getWorkQueueItemId(item) {
+        return String(item?.id || `${item?.bucket || 'item'}:${item?.sourceType || 'source'}:${item?.sourceId || ''}`);
+    }
+
+    function workQueueBucketLabel(key) {
+        const item = _workQueueItemsById.get(_workQueueSelectedItemId);
+        if (item?.bucket === key && item?.bucketLabel) return item.bucketLabel;
+        const labels = {
+            overdue: 'Прострочені задачі',
+            today: 'Сьогодні',
+            tomorrow: 'Завтра',
+            callback_due: 'Callback due',
+            waiting_reply: 'Waiting reply',
+            needs_confirmation: 'Потребує підтвердження',
+            event_soon: 'Подія скоро',
+            idle_lead: 'Idle lead'
+        };
+        return labels[key] || key || 'Пункт черги';
+    }
+
+    function triageRiskLabel(item) {
+        if (!item) return 'Без вибору';
+        if (item.bucket === 'waiting_reply') {
+            return replySlaLabel(item.meta?.replySlaState) || 'Очікуємо відповідь';
+        }
+        if (item.bucket === 'overdue') return 'Прострочено';
+        if (item.priority === 'critical' || item.priority === 'high') return 'Високий ризик';
+        if (item.confidence === 'suggested') return 'Підказка, не hard truth';
+        return 'Операційний сигнал';
+    }
+
+    function triageReasonText(item) {
+        const signal = item?.meta?.signal ? ` Сигнал: ${item.meta.signal}.` : '';
+        switch (item?.bucket) {
+            case 'waiting_reply':
+                return `Є явний reply expectation у розмові; waiting почався ${formatQueueDateTime(item.meta?.awaitingReplySince || item.meta?.waitingSince)}.${signal}`;
+            case 'callback_due':
+                return `Запланований callback/follow-up вже у видимій черзі. Це не waiting_reply і не закривається reply-діями.${signal}`;
+            case 'overdue':
+                return `Задача прострочена за deadline/date і потребує переходу в task або linked context.${signal}`;
+            case 'today':
+                return `Задача має робочий дедлайн на сьогодні.${signal}`;
+            case 'tomorrow':
+                return `Задача або подія стоїть у найближчому плані на завтра.${signal}`;
+            case 'needs_confirmation':
+                return `Бронювання/подія ще не має достатнього підтвердження. Inline-confirm не вмикаємо у v4 без окремої booking-семантики.${signal}`;
+            case 'event_soon':
+                return `Подія наближається, тож менеджеру потрібен швидкий exact-context review.${signal}`;
+            case 'idle_lead':
+                return `Лід виглядає неактивним за queue heuristic. Це підказка, не canonical reply debt.${signal}`;
+            default:
+                return `Пункт потрапив у робочу чергу за доступним durable або heuristic сигналом.${signal}`;
+        }
+    }
+
+    function addTriageLink(links, href, label, tone = '') {
+        if (!href || links.some(link => link.href === href)) return;
+        links.push({ href, label, tone });
+    }
+
+    function getTriageLinks(item) {
+        const links = [];
+        const meta = item?.meta || {};
+        addTriageLink(links, meta.exactHref || item?.href, 'Відкрити exact context', 'primary');
+        addTriageLink(links, meta.leadHref, 'Лід');
+        addTriageLink(links, meta.replyEscalationHref, 'Escalation task');
+        if (item?.taskId) addTriageLink(links, `/tasks?open=${encodeURIComponent(item.taskId)}`, 'Задача');
+        if (item?.leadId) addTriageLink(links, `/sales-funnel?lead=${encodeURIComponent(item.leadId)}`, 'Лід');
+        if (item?.meta?.conversationId) addTriageLink(links, `/omni?conversation=${encodeURIComponent(item.meta.conversationId)}`, 'Omni');
+        if (item?.bookingId && item.href) addTriageLink(links, item.href, 'Бронювання');
+        if (!links.length) addTriageLink(links, '/dashboard', 'Повернутись до dashboard');
+        return links;
+    }
+
+    function renderTriageLinks(item) {
+        return getTriageLinks(item).map(link => `
+            <a class="work-queue-triage-link ${link.tone || ''}" href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>
+        `).join('');
+    }
+
+    function renderTriageActions(item) {
+        const isWaitingReply = item?.bucket === 'waiting_reply';
+        const conversationId = Number(item?.meta?.conversationId || item?.sourceId || 0);
+        if (isWaitingReply && Number.isInteger(conversationId) && conversationId > 0) {
+            const currentOwnerUserId = Number(item.meta?.replyOwnerUserId || 0);
+            return `
+                <div class="work-queue-triage-actions" aria-label="Reply resolution actions">
+                    <button type="button" class="work-queue-action-btn" data-triage-reply-action onclick="DashboardPage.reassignReplyOwner(${conversationId}, this, ${currentOwnerUserId})">Змінити власника</button>
+                    <button type="button" class="work-queue-action-btn" data-triage-reply-action onclick="DashboardPage.snoozeReplySla(${conversationId}, this)">SLA +24г</button>
+                    <button type="button" class="work-queue-action-btn danger" data-triage-reply-action onclick="DashboardPage.clearReplyExpectation(${conversationId}, this)">Очистити expectation</button>
+                </div>
+            `;
+        }
+
+        return `
+            <p class="work-queue-triage-action-note">
+                Для цього bucket v4 дає inspect + exact route-out. Inline mutation не вмикається, щоб не змішати reply, callback, task і booking semantics.
+            </p>
+        `;
+    }
+
+    function renderTriageMetric(label, value) {
+        if (!value) return '';
+        return `
+            <div class="work-queue-triage-metric">
+                <span>${escapeHtml(label)}</span>
+                <strong>${escapeHtml(value)}</strong>
+            </div>
+        `;
+    }
+
+    function renderTriageWorkspace() {
+        const selected = _workQueueSelectedItemId ? _workQueueItemsById.get(_workQueueSelectedItemId) : null;
+        const visibleCount = _workQueueVisibleItemIds.length;
+        if (!selected) {
+            return `
+                <section class="work-queue-resolution-workspace empty" id="workQueueResolutionWorkspace" tabindex="-1" aria-label="Triage and resolution workspace">
+                    <div class="work-queue-triage-empty">
+                        <span class="work-queue-triage-eyebrow">Resolution workspace</span>
+                        <h3>Оберіть пункт черги для тріажу</h3>
+                        <p>У workspace зʼявляться причина потрапляння в чергу, owner/risk snapshot, exact-context links і безпечні bucket-specific дії. Видимо пунктів: ${visibleCount}.</p>
+                    </div>
+                </section>
+            `;
+        }
+
+        const itemId = getWorkQueueItemId(selected);
+        const index = _workQueueVisibleItemIds.indexOf(itemId);
+        const owner = selected.meta?.assignedTo || selected.meta?.replyOwner || selected.assignedTo || '';
+        const dueAt = selected.dueAt || selected.meta?.replySlaAt || selected.meta?.awaitingReplySince || '';
+        const bucket = workQueueBucketLabel(selected.bucket);
+        const risk = triageRiskLabel(selected);
+        const reason = triageReasonText(selected);
+        const confidence = selected.confidence === 'suggested' ? 'Підказка' : 'Exact';
+        const inlineDepth = selected.bucket === 'waiting_reply' ? 'Inline reply actions' : 'Inspect + route-out';
+        const prevDisabled = index <= 0 ? 'disabled' : '';
+        const nextDisabled = index < 0 || index >= _workQueueVisibleItemIds.length - 1 ? 'disabled' : '';
+
+        return `
+            <section class="work-queue-resolution-workspace" id="workQueueResolutionWorkspace" tabindex="-1" aria-label="Triage and resolution workspace">
+                <div class="work-queue-triage-head">
+                    <div>
+                        <span class="work-queue-triage-eyebrow">${escapeHtml(bucket)}</span>
+                        <h3>${escapeHtml(selected.title || selected.actionLabel || 'Пункт черги')}</h3>
+                        <p>${escapeHtml(selected.subtitle || 'Контекст доступний через exact links нижче.')}</p>
+                    </div>
+                    <div class="work-queue-triage-nav" aria-label="Навігація пунктами черги">
+                        <button type="button" class="work-queue-action-btn" onclick="DashboardPage.previousTriageItem()" ${prevDisabled}>Назад</button>
+                        <span>${index >= 0 ? index + 1 : 0}/${visibleCount}</span>
+                        <button type="button" class="work-queue-action-btn" onclick="DashboardPage.nextTriageItem()" ${nextDisabled}>Далі</button>
+                        <button type="button" class="work-queue-action-btn" onclick="DashboardPage.clearTriageSelection()">До черги</button>
+                    </div>
+                </div>
+                <div class="work-queue-triage-grid">
+                    <div class="work-queue-triage-card">
+                        <h4>Чому тут</h4>
+                        <p>${escapeHtml(reason)}</p>
+                    </div>
+                    <div class="work-queue-triage-card">
+                        <h4>Owner / risk</h4>
+                        <div class="work-queue-triage-metrics">
+                            ${renderTriageMetric('Власник', owner || 'Не призначено')}
+                            ${renderTriageMetric('Ризик', risk)}
+                            ${renderTriageMetric('Термін', dueAt ? formatQueueDateTime(dueAt) : 'Без терміну')}
+                            ${renderTriageMetric('Достовірність', confidence)}
+                        </div>
+                    </div>
+                    <div class="work-queue-triage-card">
+                        <h4>Exact context</h4>
+                        <div class="work-queue-triage-links">${renderTriageLinks(selected)}</div>
+                    </div>
+                    <div class="work-queue-triage-card">
+                        <h4>Дії v4</h4>
+                        <p class="work-queue-triage-depth">${escapeHtml(inlineDepth)}</p>
+                        ${renderTriageActions(selected)}
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
+    function renderTriageWorkspaceOnly(focus = false) {
+        const target = document.getElementById('workQueueResolutionWorkspace');
+        if (!target) return;
+        target.outerHTML = renderTriageWorkspace();
+        updateTriageSelectionStyles();
+        if (focus) {
+            window.setTimeout(() => {
+                const nextTarget = document.getElementById('workQueueResolutionWorkspace');
+                if (nextTarget && typeof nextTarget.focus === 'function') nextTarget.focus();
+            }, 0);
+        }
+    }
+
+    function updateTriageSelectionStyles() {
+        document.querySelectorAll('[data-work-queue-item-id]').forEach(frame => {
+            const selected = frame.getAttribute('data-work-queue-item-id') === _workQueueSelectedItemId;
+            frame.classList.toggle('is-triage-selected', selected);
+        });
+    }
+
+    function selectTriageItem(encodedItemId) {
+        let itemId = '';
+        try {
+            itemId = decodeURIComponent(String(encodedItemId || ''));
+        } catch {
+            itemId = String(encodedItemId || '');
+        }
+        if (!_workQueueItemsById.has(itemId)) {
+            _workQueueSelectedItemId = null;
+        } else {
+            _workQueueSelectedItemId = itemId;
+        }
+        renderTriageWorkspaceOnly(true);
+    }
+
+    function navigateTriageItem(delta) {
+        if (!_workQueueVisibleItemIds.length) return;
+        const currentIndex = _workQueueVisibleItemIds.indexOf(_workQueueSelectedItemId);
+        const baseIndex = currentIndex >= 0 ? currentIndex : 0;
+        const nextIndex = Math.max(0, Math.min(_workQueueVisibleItemIds.length - 1, baseIndex + delta));
+        _workQueueSelectedItemId = _workQueueVisibleItemIds[nextIndex];
+        renderTriageWorkspaceOnly(true);
+    }
+
+    function nextTriageItem() {
+        navigateTriageItem(1);
+    }
+
+    function previousTriageItem() {
+        navigateTriageItem(-1);
+    }
+
+    function clearTriageSelection() {
+        _workQueueSelectedItemId = null;
+        renderTriageWorkspaceOnly(true);
+    }
+
     function renderWorkQueueItem(item) {
+        const itemId = getWorkQueueItemId(item);
+        const encodedItemId = encodeURIComponent(itemId);
         const priorityCls = item.priority ? ` priority-${item.priority}` : '';
         const bucketCls = item.bucket ? ` bucket-${item.bucket}` : '';
         const waitingCls = item.bucket === 'waiting_reply' ? ' is-waiting-reply' : '';
+        const triageSelectedCls = _workQueueSelectedItemId === itemId ? ' is-triage-selected' : '';
         const isWaitingReply = item.bucket === 'waiting_reply';
         const confidence = item.confidence === 'suggested' ? '<span class="work-queue-confidence">підказка</span>' : '';
         const due = item.dueAt ? `<span>${formatQueueDateTime(item.dueAt)}</span>` : '';
@@ -424,8 +680,14 @@ const DashboardPage = (() => {
         const escalationLink = isWaitingReply && item.meta?.replyEscalationHref
             ? `<a class="work-queue-escalation-link" href="${escapeHtml(item.meta.replyEscalationHref)}">Ескалація</a>`
             : '';
+        const detailButton = `
+            <button type="button" class="work-queue-detail-btn" onclick="DashboardPage.selectTriageItem('${encodedItemId}')">
+                Деталі
+            </button>
+        `;
+        const actionRow = [detailButton, actions, escalationLink].filter(Boolean).join('');
         return `
-            <div class="work-queue-item-frame${waitingCls}">
+            <div class="work-queue-item-frame${waitingCls}${triageSelectedCls}" data-work-queue-item-id="${escapeHtml(itemId)}">
                 ${selectionControl}
                 <a class="work-queue-item${priorityCls}${bucketCls}${waitingCls}" href="${escapeHtml(href)}">
                     <span class="work-queue-dot" aria-hidden="true"></span>
@@ -435,7 +697,7 @@ const DashboardPage = (() => {
                     </span>
                     <span class="work-queue-action">${escapeHtml(item.actionLabel || 'Відкрити')}</span>
                 </a>
-                ${actions || escalationLink ? `<div class="work-queue-reply-row">${actions}${escalationLink}</div>` : ''}
+                <div class="work-queue-reply-row">${actionRow}</div>
             </div>
         `;
     }
@@ -1600,6 +1862,7 @@ const DashboardPage = (() => {
         _workQueueReplyScope = normalizeWorkQueueReplyScope(scope);
         localStorage.setItem('eg_reply_backlog_scope', _workQueueReplyScope);
         _replyOpsFlash = null;
+        _workQueueSelectedItemId = null;
         clearWorkQueueSelection();
         renderWorkQueueScopeControls({ replyBacklog: { scope: _workQueueReplyScope } });
         loadWorkQueue();
@@ -1618,6 +1881,7 @@ const DashboardPage = (() => {
         });
         saveReplyConsoleFilters();
         _replyOpsFlash = null;
+        _workQueueSelectedItemId = null;
         clearWorkQueueSelection();
         loadWorkQueue();
     }
@@ -1636,6 +1900,7 @@ const DashboardPage = (() => {
         _workQueueReplyFilters = normalizeReplyConsoleFilters(next);
         saveReplyConsoleFilters();
         _replyOpsFlash = null;
+        _workQueueSelectedItemId = null;
         clearWorkQueueSelection();
         loadWorkQueue();
     }
@@ -1646,6 +1911,7 @@ const DashboardPage = (() => {
         _workQueueReplyFilters = normalizeReplyConsoleFilters();
         saveReplyConsoleFilters();
         _replyOpsFlash = null;
+        _workQueueSelectedItemId = null;
         clearWorkQueueSelection();
         loadWorkQueue();
     }
@@ -2031,6 +2297,10 @@ const DashboardPage = (() => {
         bulkReassignReplyOwners,
         bulkSnoozeReplySla,
         bulkClearReplyExpectations,
+        selectTriageItem,
+        nextTriageItem,
+        previousTriageItem,
+        clearTriageSelection,
         reassignReplyOwner,
         reloadReplyOwnerPicker,
         closeReplyOwnerPicker,

@@ -287,6 +287,176 @@
     grid-column: 1 / -1;
 }
 
+.work-queue-resolution-workspace {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid rgba(15,23,42,0.12);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.86);
+}
+
+.work-queue-resolution-workspace:focus {
+    outline: 2px solid rgba(37,99,235,0.22);
+    outline-offset: 2px;
+}
+
+.work-queue-resolution-workspace.empty {
+    background: rgba(248,250,252,0.82);
+}
+
+.work-queue-triage-empty h3,
+.work-queue-triage-head h3 {
+    margin: 0;
+    color: #111827;
+    font-size: 16px;
+    line-height: 1.25;
+    font-weight: 900;
+}
+
+.work-queue-triage-empty p,
+.work-queue-triage-head p,
+.work-queue-triage-card p {
+    margin: 4px 0 0;
+    color: #475569;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.work-queue-triage-eyebrow {
+    display: inline-flex;
+    margin-bottom: 4px;
+    color: #2563EB;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+.work-queue-triage-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.work-queue-triage-nav {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.work-queue-triage-nav span {
+    min-width: 44px;
+    color: #334155;
+    font-size: 12px;
+    font-weight: 850;
+    text-align: center;
+}
+
+.work-queue-triage-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(180px, 0.8fr);
+    gap: 10px;
+}
+
+.work-queue-triage-card {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid rgba(148,163,184,0.2);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.72);
+}
+
+.work-queue-triage-card h4 {
+    margin: 0;
+    color: #0F172A;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.work-queue-triage-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.work-queue-triage-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 7px;
+    border-radius: 7px;
+    background: rgba(15,23,42,0.04);
+}
+
+.work-queue-triage-metric span {
+    color: #64748B;
+    font-size: 10px;
+    font-weight: 850;
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+.work-queue-triage-metric strong {
+    color: #111827;
+    font-size: 12px;
+    font-weight: 900;
+    overflow-wrap: anywhere;
+}
+
+.work-queue-triage-links,
+.work-queue-triage-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.work-queue-triage-link,
+.work-queue-detail-btn {
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 9px;
+    border: 1px solid rgba(100,116,139,0.25);
+    border-radius: 7px;
+    background: #FFFFFF;
+    color: #334155;
+    font-size: 11px;
+    font-weight: 850;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.work-queue-triage-link.primary {
+    border-color: rgba(37,99,235,0.28);
+    background: rgba(37,99,235,0.08);
+    color: #1D4ED8;
+}
+
+.work-queue-triage-link:hover,
+.work-queue-triage-link:focus-visible,
+.work-queue-detail-btn:hover,
+.work-queue-detail-btn:focus-visible {
+    border-color: rgba(37,99,235,0.45);
+    outline: 2px solid rgba(37,99,235,0.18);
+    outline-offset: 1px;
+}
+
+.work-queue-triage-depth,
+.work-queue-triage-action-note {
+    color: #64748B;
+    font-size: 12px;
+    font-weight: 750;
+}
+
 .work-queue-body {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -340,6 +510,11 @@
 .work-queue-item-frame {
     position: relative;
     border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+
+.work-queue-item-frame.is-triage-selected {
+    box-shadow: inset 3px 0 0 #2563EB;
+    background: rgba(37,99,235,0.06);
 }
 
 .work-queue-item-frame:last-child {
@@ -500,6 +675,11 @@
     justify-content: space-between;
     gap: 8px;
     padding: 0 10px 9px 36px;
+}
+
+.work-queue-item-frame:not(.is-waiting-reply) .work-queue-reply-row {
+    justify-content: flex-start;
+    padding-left: 10px;
 }
 
 .work-queue-reply-actions {
@@ -697,6 +877,15 @@
 
     .work-queue-body {
         grid-template-columns: 1fr;
+    }
+
+    .work-queue-triage-head,
+    .work-queue-triage-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .work-queue-triage-head {
+        flex-direction: column;
     }
 
     .work-queue-item {
@@ -1720,10 +1909,59 @@
     border-color: rgba(96,165,250,0.22);
 }
 
+.dark-mode .work-queue-resolution-workspace {
+    background: rgba(15,23,42,0.34);
+    border-color: rgba(148,163,184,0.18);
+}
+
+.dark-mode .work-queue-resolution-workspace.empty {
+    background: rgba(15,23,42,0.24);
+}
+
+.dark-mode .work-queue-triage-empty h3,
+.dark-mode .work-queue-triage-head h3,
+.dark-mode .work-queue-triage-card h4,
+.dark-mode .work-queue-triage-metric strong {
+    color: #F8FAFC;
+}
+
+.dark-mode .work-queue-triage-empty p,
+.dark-mode .work-queue-triage-head p,
+.dark-mode .work-queue-triage-card p,
+.dark-mode .work-queue-triage-depth,
+.dark-mode .work-queue-triage-action-note,
+.dark-mode .work-queue-triage-nav span,
+.dark-mode .work-queue-triage-metric span {
+    color: #CBD5E1;
+}
+
+.dark-mode .work-queue-triage-card,
+.dark-mode .work-queue-triage-metric {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(148,163,184,0.18);
+}
+
+.dark-mode .work-queue-triage-link,
+.dark-mode .work-queue-detail-btn {
+    border-color: rgba(148,163,184,0.24);
+    background: rgba(15,23,42,0.48);
+    color: #E5E7EB;
+}
+
+.dark-mode .work-queue-triage-link.primary {
+    border-color: rgba(96,165,250,0.32);
+    background: rgba(96,165,250,0.14);
+    color: #BFDBFE;
+}
+
 .dark-mode .work-queue-bucket-head,
 .dark-mode .work-queue-item-frame,
 .dark-mode .work-queue-item {
     border-color: rgba(255,255,255,0.07);
+}
+
+.dark-mode .work-queue-item-frame.is-triage-selected {
+    background: rgba(96,165,250,0.1);
 }
 
 .dark-mode .work-queue-item:hover,

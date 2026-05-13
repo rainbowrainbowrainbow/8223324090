@@ -4,6 +4,8 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
+const { JSDOM } = require('jsdom');
 const { apiAuthBoundary } = require('../middleware/apiAuthBoundary');
 
 const TEST_JWT_SECRET = 'work-queue-test-secret';
@@ -744,6 +746,157 @@ describe('work queue endpoint', () => {
         assert.ok(!queries.some(q => /status\s*=\s*'new'/i.test(q.text)), 'queue must not use legacy status=new cold lead query');
     });
 
+    it('renders a triage workspace with truthful bucket-specific depth', async () => {
+        const repoRoot = path.resolve(__dirname, '..');
+        const dashboardJs = fs.readFileSync(path.join(repoRoot, 'js/dashboard-page.js'), 'utf8');
+        const dom = new JSDOM(`<!doctype html>
+            <div id="currentUser"></div>
+            <section id="workQueuePanel" hidden>
+                <p id="workQueueSubtitle"></p>
+                <div id="workQueueScopeControls"></div>
+                <div id="workQueueExplainability"></div>
+                <div id="workQueueBody"></div>
+            </section>
+            <div id="dashboardGrid"></div>
+        `, {
+            url: 'http://localhost/dashboard',
+            runScripts: 'outside-only'
+        });
+        const queue = {
+            date: { today: '2026-05-14' },
+            generatedAt: '2026-05-14T10:00:00Z',
+            meta: {
+                replyBacklog: { scope: 'all', filters: { sla: 'all', owner: 'all', escalation: 'all' } },
+                omittedBuckets: [],
+                heuristicBuckets: ['idle_lead'],
+                warnings: []
+            },
+            buckets: [
+                {
+                    key: 'waiting_reply',
+                    label: 'Waiting reply',
+                    count: 1,
+                    items: [{
+                        id: 'waiting_reply:conversation:41',
+                        bucket: 'waiting_reply',
+                        sourceType: 'conversation',
+                        sourceId: '41',
+                        leadId: 41,
+                        href: '/omni?conversation=41',
+                        title: 'Reply Client',
+                        subtitle: 'Viber conversation',
+                        dueAt: '2026-05-14T09:00:00Z',
+                        priority: 'high',
+                        confidence: 'exact',
+                        actionLabel: 'Відкрити Omni',
+                        meta: {
+                            conversationId: 41,
+                            assignedTo: 'Manager User',
+                            replyOwnerUserId: 20,
+                            awaitingReplySince: '2026-05-13T09:30:00Z',
+                            replySlaAt: '2026-05-14T09:00:00Z',
+                            replySlaState: 'overdue',
+                            replyEscalationTaskId: 700,
+                            replyEscalationHref: '/tasks?open=700',
+                            exactHref: '/omni?conversation=41',
+                            leadHref: '/sales-funnel?lead=41',
+                            signal: 'conversations.reply_expected'
+                        }
+                    }]
+                },
+                {
+                    key: 'callback_due',
+                    label: 'Callback due',
+                    count: 1,
+                    items: [{
+                        id: 'callback_due:lead_interaction:4',
+                        bucket: 'callback_due',
+                        sourceType: 'lead_interaction',
+                        sourceId: '4',
+                        leadId: 11,
+                        href: '/sales-funnel?lead=11',
+                        title: 'Callback Client',
+                        subtitle: 'Call after lunch',
+                        dueAt: '2026-05-14',
+                        priority: 'normal',
+                        confidence: 'exact',
+                        actionLabel: 'Відкрити лід',
+                        meta: {
+                            assignedTo: 'Manager User',
+                            signal: 'lead_interactions.follow_up_date'
+                        }
+                    }]
+                }
+            ]
+        };
+
+        dom.window.localStorage.setItem('pzp_token', 'token');
+        dom.window.localStorage.setItem('pzp_current_user', JSON.stringify({ id: 20, name: 'Manager User', role: 'manager' }));
+        dom.window.AppState = {};
+        dom.window.ROLE_NAMES = { manager: 'Manager' };
+        dom.window.hasMinRole = () => true;
+        dom.window.apiVerifyToken = async () => ({ id: 20, name: 'Manager User', role: 'manager' });
+        dom.window.Explainability = {
+            renderFilterSummary: () => '<div>queue explainability</div>',
+            setRegion: (target, html) => { target.innerHTML = html; }
+        };
+        dom.window.fetch = async url => {
+            const value = String(url);
+            if (value.startsWith('/api/dashboard/config')) {
+                return { ok: true, status: 200, json: async () => ({ success: true, config: { widgets: [], layout: {}, theme: 'default' } }) };
+            }
+            if (value.startsWith('/api/work-queue')) {
+                return { ok: true, status: 200, json: async () => ({ success: true, queue }) };
+            }
+            throw new Error(`Unexpected dashboard fetch: ${value}`);
+        };
+        dom.window.alert = () => {};
+        dom.window.confirm = () => true;
+
+        vm.runInContext(dashboardJs, dom.getInternalVMContext());
+        const DashboardPage = vm.runInContext('DashboardPage', dom.getInternalVMContext());
+        await DashboardPage.init();
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+
+        const body = dom.window.document.getElementById('workQueueBody');
+        assert.match(body.textContent, /Resolution workspace/);
+        assert.equal(body.querySelectorAll('.work-queue-detail-btn').length, 2);
+
+        DashboardPage.selectTriageItem(encodeURIComponent('waiting_reply:conversation:41'));
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        let workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
+        assert.match(workspace.textContent, /Reply Client/);
+        assert.match(workspace.textContent, /conversations\.reply_expected/);
+        assert.equal(workspace.querySelectorAll('[data-triage-reply-action]').length, 3);
+        assert.ok(workspace.querySelector('a[href="/omni?conversation=41"]'));
+        assert.ok(workspace.querySelector('a[href="/sales-funnel?lead=41"]'));
+        assert.ok(workspace.querySelector('a[href="/tasks?open=700"]'));
+
+        DashboardPage.nextTriageItem();
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
+        assert.match(workspace.textContent, /Callback Client/);
+        assert.match(workspace.textContent, /не waiting_reply/);
+        assert.equal(workspace.querySelectorAll('[data-triage-reply-action]').length, 0);
+        assert.ok(workspace.querySelector('a[href="/sales-funnel?lead=11"]'));
+        assert.ok(body.querySelector('[data-work-queue-item-id="callback_due:lead_interaction:4"].is-triage-selected'));
+
+        DashboardPage.setReplyConsoleFilter('sla', 'overdue');
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
+        assert.match(workspace.textContent, /Оберіть пункт черги/);
+        assert.equal(body.querySelectorAll('.is-triage-selected').length, 0);
+
+        DashboardPage.selectTriageItem(encodeURIComponent('waiting_reply:conversation:41'));
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        DashboardPage.clearTriageSelection();
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
+        assert.match(workspace.textContent, /Оберіть пункт черги/);
+    });
+
     it('wires dashboard waiting-reply rendering without unread heuristics', () => {
         const repoRoot = path.resolve(__dirname, '..');
         const dashboardJs = fs.readFileSync(path.join(repoRoot, 'js/dashboard-page.js'), 'utf8');
@@ -782,9 +935,19 @@ describe('work queue endpoint', () => {
         assert.match(dashboardJs, /work-queue-state-pill/);
         assert.match(dashboardJs, /work-queue-sla-pill/);
         assert.match(dashboardJs, /work-queue-reply-actions/);
+        assert.match(dashboardJs, /renderTriageWorkspace/);
+        assert.match(dashboardJs, /selectTriageItem/);
+        assert.match(dashboardJs, /nextTriageItem/);
+        assert.match(dashboardJs, /previousTriageItem/);
+        assert.match(dashboardJs, /data-triage-reply-action/);
+        assert.match(dashboardJs, /Inspect \+ route-out/);
         assert.doesNotMatch(dashboardJs, /unread_count\s*>\s*0/i);
         assert.match(dashboardCss, /bucket-waiting_reply/);
         assert.match(dashboardCss, /is-waiting-reply/);
+        assert.match(dashboardCss, /work-queue-resolution-workspace/);
+        assert.match(dashboardCss, /work-queue-triage-grid/);
+        assert.match(dashboardCss, /work-queue-detail-btn/);
+        assert.match(dashboardCss, /is-triage-selected/);
         assert.match(dashboardCss, /work-queue-scope-btn/);
         assert.match(dashboardCss, /reply-ops-console/);
         assert.match(dashboardCss, /reply-ops-filters/);

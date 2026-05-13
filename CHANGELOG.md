@@ -4,6 +4,17 @@
 
 ---
 
+## v0.47.19 - 🧭 0.47 Черга: triage & resolution workspace v4 (2026-05-14)
+
+### Manager Triage & Resolution Workspace v4 [codex]
+- **Resolution workspace у Work Queue** - менеджер може вибрати пункт черги й одразу бачити причину, owner/risk snapshot, exact-context links і доступні дії без втрати фільтрів.
+- **Bucket-specific глибина** - `waiting_reply` отримує inline reply actions, а callback/task/booking/idle buckets чесно лишаються inspect + route-out без фейкового універсального редактора.
+- **Навігація по черзі** - workspace підтримує next/previous/return-to-queue flow і очищає stale selection після зміни scope/filter state.
+- **Explainability без нової truth model** - панель використовує наявні queue fields, `meta.signal`, SLA/owner/escalation дані та exact hrefs без schema змін.
+- **UI safety** - додані empty/no-selection/selected стани, focus handling, dark-mode styling і jsdom перевірка bucket-specific rendering.
+
+---
+
 ## v0.47.18 - 💬 0.47 Комунікації: reply operations console v2 (2026-05-13)
 
 ### Reply Operations Console v2 [codex]

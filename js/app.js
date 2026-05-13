@@ -66,6 +66,11 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+const ProductSalesState = {
+    data: null,
+    activeProgramKey: ''
+};
+
 // ==========================================
 // ІНІЦІАЛІЗАЦІЯ
 // ==========================================
@@ -232,6 +237,8 @@ function initTimelineListeners() {
 
     document.getElementById('addLineBtn')?.addEventListener('click', addNewLine);
     document.getElementById('exportTimelineBtn')?.addEventListener('click', exportTimelineImage);
+    document.getElementById('productSalesBtn')?.addEventListener('click', showProductSalesModal);
+    initProductSalesListeners();
     // v30.3: PDF export
     const pdfBtn = document.getElementById('exportPdfBtn');
     if (pdfBtn) pdfBtn.addEventListener('click', exportTimelinePdf);
@@ -320,6 +327,256 @@ function initTimelineListeners() {
     document.querySelectorAll('.history-filter-input, .history-filter-select').forEach(el => {
         el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { historyCurrentOffset = 0; loadHistoryPage(); } });
     });
+}
+
+function getProductSalesMonthValue() {
+    try {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Kyiv',
+            year: 'numeric',
+            month: '2-digit'
+        }).formatToParts(new Date());
+        const year = parts.find(p => p.type === 'year')?.value;
+        const month = parts.find(p => p.type === 'month')?.value;
+        if (year && month) return `${year}-${month}`;
+    } catch (err) {
+        console.warn('[ProductSales] Kyiv month fallback', err);
+    }
+    return new Date().toISOString().slice(0, 7);
+}
+
+function getProductSalesQuery({ includeProgram = false } = {}) {
+    const params = new URLSearchParams();
+    const month = document.getElementById('productSalesMonth')?.value || getProductSalesMonthValue();
+    const category = document.getElementById('productSalesCategory')?.value || '';
+    const programId = document.getElementById('productSalesProgram')?.value || '';
+    params.set('month', month);
+    if (category) params.set('category', category);
+    if (includeProgram && programId) params.set('programId', programId);
+    return params;
+}
+
+function formatProductSalesMoney(value) {
+    if (typeof formatPrice === 'function') return formatPrice(value || 0);
+    return `${Number(value || 0).toLocaleString('uk-UA')} ₴`;
+}
+
+function getProductSalesCategoryLabel(category) {
+    if (!category) return 'Інше';
+    if (typeof CATEGORY_NAMES !== 'undefined' && CATEGORY_NAMES[category]) return CATEGORY_NAMES[category];
+    if (typeof CATEGORY_NAMES_SHORT !== 'undefined' && CATEGORY_NAMES_SHORT[category]) return CATEGORY_NAMES_SHORT[category];
+    return category;
+}
+
+function setProductSalesLoading(isLoading) {
+    ['productSalesRefreshBtn', 'productSalesXlsxBtn', 'productSalesCsvBtn'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = isLoading;
+    });
+}
+
+function showProductSalesModal() {
+    if (typeof canAccess === 'function' && !canAccess('export_data')) {
+        showNotification('Недостатньо прав для перегляду продажів', 'error');
+        return;
+    }
+    const modal = document.getElementById('productSalesModal');
+    const monthInput = document.getElementById('productSalesMonth');
+    if (!modal || !monthInput) return;
+    if (!monthInput.value) monthInput.value = getProductSalesMonthValue();
+    modal.classList.remove('hidden');
+    loadProductSalesReport();
+}
+
+function initProductSalesListeners() {
+    const modal = document.getElementById('productSalesModal');
+    if (!modal || modal.dataset.salesBound === '1') return;
+    modal.dataset.salesBound = '1';
+
+    document.getElementById('productSalesMonth')?.addEventListener('change', () => {
+        const programSelect = document.getElementById('productSalesProgram');
+        if (programSelect) programSelect.value = '';
+        ProductSalesState.activeProgramKey = '';
+        loadProductSalesReport();
+    });
+    document.getElementById('productSalesCategory')?.addEventListener('change', () => {
+        const programSelect = document.getElementById('productSalesProgram');
+        if (programSelect) programSelect.value = '';
+        ProductSalesState.activeProgramKey = '';
+        loadProductSalesReport();
+    });
+    document.getElementById('productSalesProgram')?.addEventListener('change', (event) => {
+        ProductSalesState.activeProgramKey = event.target.value || '';
+        renderProductSalesReport(ProductSalesState.data);
+    });
+    document.getElementById('productSalesSort')?.addEventListener('change', () => {
+        renderProductSalesReport(ProductSalesState.data);
+    });
+    document.getElementById('productSalesRefreshBtn')?.addEventListener('click', loadProductSalesReport);
+    document.getElementById('productSalesPinataBtn')?.addEventListener('click', () => {
+        const categorySelect = document.getElementById('productSalesCategory');
+        const programSelect = document.getElementById('productSalesProgram');
+        if (categorySelect) categorySelect.value = 'pinata';
+        if (programSelect) programSelect.value = '';
+        ProductSalesState.activeProgramKey = '';
+        loadProductSalesReport();
+    });
+    document.getElementById('productSalesXlsxBtn')?.addEventListener('click', () => downloadProductSalesExport('xlsx'));
+    document.getElementById('productSalesCsvBtn')?.addEventListener('click', () => downloadProductSalesExport('csv'));
+}
+
+async function loadProductSalesReport() {
+    setProductSalesLoading(true);
+    try {
+        const params = getProductSalesQuery({ includeProgram: false });
+        const response = await fetch(`/api/analytics/product-sales?${params.toString()}`, {
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return;
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            throw new Error(body.error || 'Не вдалося завантажити продажі програм');
+        }
+        const data = await response.json();
+        ProductSalesState.data = data;
+        syncProductSalesProgramOptions(data.summary || [], ProductSalesState.activeProgramKey);
+        renderProductSalesReport(data);
+    } catch (err) {
+        console.error('[ProductSales] load failed', err);
+        showNotification(err.message || 'Помилка звіту продажів', 'error');
+    } finally {
+        setProductSalesLoading(false);
+    }
+}
+
+function syncProductSalesProgramOptions(summary, selectedKey = '') {
+    const select = document.getElementById('productSalesProgram');
+    if (!select) return;
+    const current = selectedKey || select.value || '';
+    select.innerHTML = '<option value="">Усі програми</option>' + summary.map(row => {
+        const label = `${row.name || 'Невказана програма'}${row.code ? ` (${row.code})` : ''}`;
+        return `<option value="${escapeHtml(row.programKey)}">${escapeHtml(label)}</option>`;
+    }).join('');
+    const hasCurrent = [...select.options].some(option => option.value === current);
+    select.value = hasCurrent ? current : '';
+    ProductSalesState.activeProgramKey = select.value;
+}
+
+function renderProductSalesReport(data) {
+    const statsEl = document.getElementById('productSalesStats');
+    const summaryBody = document.getElementById('productSalesSummaryBody');
+    const detailsBody = document.getElementById('productSalesDetailsBody');
+    const emptyEl = document.getElementById('productSalesEmpty');
+    if (!data || !statsEl || !summaryBody || !detailsBody) return;
+
+    const totals = data.totals || { count: 0, revenue: 0, paidAmount: 0, unpaidAmount: 0 };
+    statsEl.innerHTML = [
+        ['Продано', totals.count],
+        ['Виручка', formatProductSalesMoney(totals.revenue)],
+        ['Оплачено', formatProductSalesMoney(totals.paidAmount)],
+        ['Борг', formatProductSalesMoney(totals.unpaidAmount)]
+    ].map(([label, value]) => `
+        <div class="product-sales-stat">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(String(value))}</strong>
+        </div>
+    `).join('');
+
+    if (emptyEl) emptyEl.classList.toggle('hidden', Number(totals.count) > 0);
+
+    const sortBy = document.getElementById('productSalesSort')?.value || 'count';
+    const summary = [...(data.summary || [])].sort((a, b) => {
+        if (sortBy === 'revenue') return (b.revenue || 0) - (a.revenue || 0) || (b.count || 0) - (a.count || 0);
+        return (b.count || 0) - (a.count || 0) || (b.revenue || 0) - (a.revenue || 0);
+    });
+    const activeKey = ProductSalesState.activeProgramKey || '';
+
+    summaryBody.innerHTML = summary.map(row => `
+        <tr data-program-key="${escapeHtml(row.programKey)}" class="${row.programKey === activeKey ? 'active' : ''}">
+            <td>
+                <div class="product-sales-name">${escapeHtml(row.name)}</div>
+                <div class="product-sales-code">${escapeHtml(row.code || row.programId || row.programKey)}</div>
+            </td>
+            <td>${escapeHtml(getProductSalesCategoryLabel(row.category))}</td>
+            <td>${escapeHtml(String(row.count || 0))}</td>
+            <td class="product-sales-money">${escapeHtml(formatProductSalesMoney(row.revenue))}</td>
+            <td class="product-sales-money">${escapeHtml(formatProductSalesMoney(row.paidAmount))}</td>
+            <td class="product-sales-money">${escapeHtml(formatProductSalesMoney(row.unpaidAmount))}</td>
+        </tr>
+    `).join('');
+
+    summaryBody.querySelectorAll('tr[data-program-key]').forEach(row => {
+        row.addEventListener('click', () => {
+            const programKey = row.dataset.programKey || '';
+            const select = document.getElementById('productSalesProgram');
+            ProductSalesState.activeProgramKey = ProductSalesState.activeProgramKey === programKey ? '' : programKey;
+            if (select) select.value = ProductSalesState.activeProgramKey;
+            renderProductSalesReport(ProductSalesState.data);
+        });
+    });
+
+    const details = activeKey
+        ? (data.details || []).filter(row => row.programKey === activeKey)
+        : (data.details || []);
+    detailsBody.innerHTML = details.map(row => {
+        const customerMain = row.groupName || row.customerName || '—';
+        const customerMeta = row.groupName && row.customerName ? row.customerName : row.customerPhone;
+        const paymentText = [row.paymentStatus, row.paymentMethod].filter(Boolean).join(' · ') || '—';
+        return `
+            <tr>
+                <td>${escapeHtml(row.date || '')}</td>
+                <td>${escapeHtml(row.time || '')}</td>
+                <td>
+                    <div class="product-sales-name">${escapeHtml(row.name || '')}</div>
+                    <div class="product-sales-code">${escapeHtml(row.code || row.id || '')}</div>
+                </td>
+                <td>
+                    <div>${escapeHtml(customerMain)}</div>
+                    ${customerMeta ? `<div class="product-sales-muted">${escapeHtml(customerMeta)}</div>` : ''}
+                </td>
+                <td>${escapeHtml(row.room || '')}</td>
+                <td>${escapeHtml(String(row.kidsCount || 0))}</td>
+                <td class="product-sales-money">${escapeHtml(formatProductSalesMoney(row.price))}</td>
+                <td>
+                    <div>${escapeHtml(paymentText)}</div>
+                    <div class="product-sales-muted">Оплачено: ${escapeHtml(formatProductSalesMoney(row.paidAmount))}</div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function downloadProductSalesExport(format) {
+    setProductSalesLoading(true);
+    try {
+        const params = getProductSalesQuery({ includeProgram: true });
+        params.set('format', format);
+        const response = await fetch(`/api/analytics/product-sales/export?${params.toString()}`, {
+            headers: getAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return;
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            throw new Error(body.error || 'Не вдалося експортувати продажі');
+        }
+        const blob = await response.blob();
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const match = /filename="([^"]+)"/.exec(disposition);
+        const filename = match ? match[1] : `product_sales_${document.getElementById('productSalesMonth')?.value || getProductSalesMonthValue()}.${format}`;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        console.error('[ProductSales] export failed', err);
+        showNotification(err.message || 'Помилка експорту продажів', 'error');
+    } finally {
+        setProductSalesLoading(false);
+    }
 }
 
 function initBookingFormListeners() {

@@ -348,6 +348,10 @@ function showMainApp() {
         const exportBtn = document.getElementById('exportTimelineBtn');
         if (exportBtn) exportBtn.style.display = 'none';
     }
+    const productSalesBtn = document.getElementById('productSalesBtn');
+    if (productSalesBtn) {
+        productSalesBtn.classList.toggle('hidden', !canAccess('export_data'));
+    }
 
     // Dark mode toggle
     const darkToggle = document.getElementById('darkModeToggle');

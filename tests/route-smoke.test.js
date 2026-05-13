@@ -176,6 +176,84 @@ function createFakePool() {
             if (/SELECT \* FROM accountants ORDER BY is_on_duty DESC, name/i.test(text)) {
                 return { rows: [] };
             }
+            if (/FROM bookings b LEFT JOIN products p ON p\.id = NULLIF\(b\.program_id, ''\)/i.test(text) && /GROUP BY 1, 2, 3, 4, 5/i.test(text)) {
+                return {
+                    rows: [
+                        {
+                            program_key: 'pinata_1',
+                            program_id: 'pinata_1',
+                            code: 'PIN',
+                            name: 'Піньята',
+                            category: 'pinata',
+                            count: 1,
+                            revenue: 1500,
+                            paid_amount: 1500,
+                            unpaid_amount: 0,
+                            avg_price: 1500
+                        },
+                        {
+                            program_key: 'quest_1',
+                            program_id: 'quest_1',
+                            code: 'Q1',
+                            name: 'Квест',
+                            category: 'quest',
+                            count: 1,
+                            revenue: 2200,
+                            paid_amount: 1200,
+                            unpaid_amount: 1000,
+                            avg_price: 2200
+                        }
+                    ]
+                };
+            }
+            if (/SELECT b\.id, b\.date, b\.time/i.test(text) && /FROM bookings b LEFT JOIN products p ON p\.id = NULLIF\(b\.program_id, ''\)/i.test(text)) {
+                return {
+                    rows: [
+                        {
+                            id: 'B1',
+                            date: '2099-05-02',
+                            time: '12:00',
+                            program_key: 'pinata_1',
+                            program_id: 'pinata_1',
+                            code: 'PIN',
+                            name: 'Піньята',
+                            category: 'pinata',
+                            group_name: 'Свято',
+                            customer_name: 'Олена',
+                            customer_phone: '+380000000001',
+                            room: 'Зал 1',
+                            kids_count: 10,
+                            price: 1500,
+                            paid_amount: 1500,
+                            unpaid_amount: 0,
+                            payment_status: 'paid',
+                            payment_method: 'cash',
+                            created_by: 'manager'
+                        },
+                        {
+                            id: 'B2',
+                            date: '2099-05-03',
+                            time: '14:00',
+                            program_key: 'quest_1',
+                            program_id: 'quest_1',
+                            code: 'Q1',
+                            name: 'Квест',
+                            category: 'quest',
+                            group_name: '',
+                            customer_name: 'Ірина',
+                            customer_phone: '+380000000002',
+                            room: 'Зал 2',
+                            kids_count: 8,
+                            price: 2200,
+                            paid_amount: 1200,
+                            unpaid_amount: 1000,
+                            payment_status: 'partial',
+                            payment_method: 'card',
+                            created_by: 'manager'
+                        }
+                    ]
+                };
+            }
             if (/FROM bookings WHERE date::date >= \$1::date AND date::date <= \$2::date/i.test(text)) {
                 return {
                     rows: [{
@@ -403,6 +481,45 @@ describe('route-level API safety smoke', () => {
         assert.equal(manager.status, 200, JSON.stringify(manager.data));
         assert.ok(manager.data.bookings, 'manager should receive analytics data');
         assert.ok(manager.data.finance, 'manager should receive finance analytics section');
+    });
+
+    it('serves product sales only to manager-up roles and excludes linked bookings', async () => {
+        const blocked = await request('GET', '/api/analytics/product-sales?month=2099-05', undefined, withAuth({}, 'admin'));
+        assert.equal(blocked.status, 403, JSON.stringify(blocked.data));
+
+        const invalid = await request('GET', '/api/analytics/product-sales?month=bad', undefined, withAuth({}, 'manager'));
+        assert.equal(invalid.status, 400, JSON.stringify(invalid.data));
+
+        queries.length = 0;
+        const manager = await request('GET', '/api/analytics/product-sales?month=2099-05', undefined, withAuth({}, 'manager'));
+        assert.equal(manager.status, 200, JSON.stringify(manager.data));
+        assert.equal(manager.data.success, true);
+        assert.equal(manager.data.period.month, '2099-05');
+        assert.equal(manager.data.totals.count, 2);
+        assert.equal(manager.data.totals.revenue, 3700);
+        assert.equal(manager.data.summary[0].category, 'pinata');
+        assert.equal(manager.data.details[0].date, '2099-05-02');
+        assert.ok(queries.some(q => q.text.includes("b.status = 'confirmed'")));
+        assert.ok(queries.some(q => q.text.includes("NULLIF(b.linked_to, '') IS NULL")));
+    });
+
+    it('exports product sales CSV and XLSX with attachment headers', async () => {
+        const csv = await fetch(`${baseUrl}/api/analytics/product-sales/export?month=2099-05&format=csv`, {
+            headers: withAuth({}, 'manager')
+        });
+        assert.equal(csv.status, 200);
+        assert.match(csv.headers.get('content-type'), /text\/csv/);
+        assert.match(csv.headers.get('content-disposition'), /product_sales_2099-05\.csv/);
+        assert.match(await csv.text(), /Підсумок/);
+
+        const xlsx = await fetch(`${baseUrl}/api/analytics/product-sales/export?month=2099-05&format=xlsx`, {
+            headers: withAuth({}, 'manager')
+        });
+        assert.equal(xlsx.status, 200);
+        assert.match(xlsx.headers.get('content-type'), /spreadsheetml\.sheet/);
+        assert.match(xlsx.headers.get('content-disposition'), /product_sales_2099-05\.xlsx/);
+        const body = await xlsx.arrayBuffer();
+        assert.ok(body.byteLength > 1000);
     });
 
     it('enforces sensitive dashboard widget permissions server-side', async () => {

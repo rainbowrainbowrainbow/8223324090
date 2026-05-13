@@ -78,6 +78,272 @@ function growthPct(curr, prev) {
     return Math.round(((curr - prev) / prev) * 1000) / 10;
 }
 
+function getCurrentKyivMonth() {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv',
+        year: 'numeric',
+        month: '2-digit'
+    }).formatToParts(new Date());
+    const year = parts.find(p => p.type === 'year')?.value;
+    const month = parts.find(p => p.type === 'month')?.value;
+    return `${year}-${month}`;
+}
+
+function getMonthRange(monthValue) {
+    const month = String(monthValue || getCurrentKyivMonth()).trim();
+    const match = /^(\d{4})-(\d{2})$/.exec(month);
+    if (!match) {
+        const err = new Error('month must be YYYY-MM');
+        err.statusCode = 400;
+        throw err;
+    }
+    const year = Number(match[1]);
+    const monthNumber = Number(match[2]);
+    if (monthNumber < 1 || monthNumber > 12) {
+        const err = new Error('month must be YYYY-MM');
+        err.statusCode = 400;
+        throw err;
+    }
+    const mm = String(monthNumber).padStart(2, '0');
+    const lastDay = new Date(year, monthNumber, 0).getDate();
+    return {
+        month: `${year}-${mm}`,
+        from: `${year}-${mm}-01`,
+        to: `${year}-${mm}-${String(lastDay).padStart(2, '0')}`
+    };
+}
+
+function normalizeFilter(value, maxLength = 120) {
+    if (value === undefined || value === null) return null;
+    const normalized = String(value).trim();
+    if (!normalized) return null;
+    return normalized.slice(0, maxLength);
+}
+
+function buildProductSalesWhere({ from, to, category, programId }) {
+    const params = [from, to];
+    const where = [
+        'b.date::date >= $1::date',
+        'b.date::date <= $2::date',
+        "b.status = 'confirmed'",
+        "NULLIF(b.linked_to, '') IS NULL"
+    ];
+
+    if (category) {
+        params.push(category);
+        where.push(`COALESCE(NULLIF(b.category, ''), p.category, 'custom') = $${params.length}`);
+    }
+
+    if (programId) {
+        params.push(programId);
+        where.push(`COALESCE(NULLIF(b.program_id, ''), 'custom:' || COALESCE(NULLIF(b.program_code, ''), NULLIF(b.program_name, ''), b.id)) = $${params.length}`);
+    }
+
+    return { whereSql: `WHERE ${where.join(' AND ')}`, params };
+}
+
+function normalizeProductSalesRow(row) {
+    return {
+        programKey: row.program_key,
+        programId: row.program_id || '',
+        code: row.code || '',
+        name: row.name || 'Невказана програма',
+        category: row.category || 'custom',
+        count: Number(row.count) || 0,
+        revenue: Number(row.revenue) || 0,
+        paidAmount: Number(row.paid_amount) || 0,
+        unpaidAmount: Number(row.unpaid_amount) || 0,
+        avgPrice: Number(row.avg_price) || 0
+    };
+}
+
+function normalizeProductSalesDetail(row) {
+    const date = row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date || '').slice(0, 10);
+    return {
+        id: row.id,
+        date,
+        time: row.time || '',
+        programKey: row.program_key,
+        programId: row.program_id || '',
+        code: row.code || '',
+        name: row.name || 'Невказана програма',
+        category: row.category || 'custom',
+        groupName: row.group_name || '',
+        customerName: row.customer_name || '',
+        customerPhone: row.customer_phone || '',
+        room: row.room || '',
+        kidsCount: Number(row.kids_count) || 0,
+        price: Number(row.price) || 0,
+        paidAmount: Number(row.paid_amount) || 0,
+        unpaidAmount: Number(row.unpaid_amount) || 0,
+        paymentStatus: row.payment_status || '',
+        paymentMethod: row.payment_method || '',
+        createdBy: row.created_by || ''
+    };
+}
+
+async function loadProductSalesData(query = {}) {
+    const range = getMonthRange(query.month);
+    const category = normalizeFilter(query.category, 50);
+    const programId = normalizeFilter(query.programId, 120);
+    const { whereSql, params } = buildProductSalesWhere({
+        from: range.from,
+        to: range.to,
+        category,
+        programId
+    });
+
+    const [summaryResult, detailResult] = await Promise.all([
+        pool.query(`
+            SELECT
+                COALESCE(NULLIF(b.program_id, ''), 'custom:' || COALESCE(NULLIF(b.program_code, ''), NULLIF(b.program_name, ''), b.id)) AS program_key,
+                NULLIF(b.program_id, '') AS program_id,
+                COALESCE(NULLIF(b.program_code, ''), p.code, '') AS code,
+                COALESCE(NULLIF(b.program_name, ''), p.name, NULLIF(b.label, ''), 'Невказана програма') AS name,
+                COALESCE(NULLIF(b.category, ''), p.category, 'custom') AS category,
+                COUNT(*)::int AS count,
+                COALESCE(SUM(COALESCE(b.price, 0)), 0)::int AS revenue,
+                COALESCE(SUM(COALESCE(b.paid_amount, 0)), 0)::int AS paid_amount,
+                COALESCE(SUM(GREATEST(COALESCE(b.price, 0) - COALESCE(b.paid_amount, 0), 0)), 0)::int AS unpaid_amount,
+                ROUND(COALESCE(AVG(NULLIF(COALESCE(b.price, 0), 0)), 0))::int AS avg_price
+            FROM bookings b
+            LEFT JOIN products p ON p.id = NULLIF(b.program_id, '')
+            ${whereSql}
+            GROUP BY 1, 2, 3, 4, 5
+            ORDER BY count DESC, revenue DESC, name
+        `, params),
+        pool.query(`
+            SELECT
+                b.id,
+                b.date,
+                b.time,
+                COALESCE(NULLIF(b.program_id, ''), 'custom:' || COALESCE(NULLIF(b.program_code, ''), NULLIF(b.program_name, ''), b.id)) AS program_key,
+                NULLIF(b.program_id, '') AS program_id,
+                COALESCE(NULLIF(b.program_code, ''), p.code, '') AS code,
+                COALESCE(NULLIF(b.program_name, ''), p.name, NULLIF(b.label, ''), 'Невказана програма') AS name,
+                COALESCE(NULLIF(b.category, ''), p.category, 'custom') AS category,
+                b.group_name,
+                c.name AS customer_name,
+                c.phone AS customer_phone,
+                b.room,
+                COALESCE(b.kids_count, 0)::int AS kids_count,
+                COALESCE(b.price, 0)::int AS price,
+                COALESCE(b.paid_amount, 0)::int AS paid_amount,
+                GREATEST(COALESCE(b.price, 0) - COALESCE(b.paid_amount, 0), 0)::int AS unpaid_amount,
+                COALESCE(b.payment_status, '') AS payment_status,
+                COALESCE(b.payment_method, '') AS payment_method,
+                COALESCE(b.created_by, '') AS created_by
+            FROM bookings b
+            LEFT JOIN products p ON p.id = NULLIF(b.program_id, '')
+            LEFT JOIN customers c ON c.id = b.customer_id
+            ${whereSql}
+            ORDER BY b.date::date, b.time, b.id
+        `, params)
+    ]);
+
+    const summary = summaryResult.rows.map(normalizeProductSalesRow);
+    const details = detailResult.rows.map(normalizeProductSalesDetail);
+    const totals = summary.reduce((acc, row) => {
+        acc.count += row.count;
+        acc.revenue += row.revenue;
+        acc.paidAmount += row.paidAmount;
+        acc.unpaidAmount += row.unpaidAmount;
+        return acc;
+    }, { count: 0, revenue: 0, paidAmount: 0, unpaidAmount: 0 });
+
+    return {
+        success: true,
+        period: range,
+        filters: { category: category || '', programId: programId || '' },
+        totals,
+        summary,
+        details
+    };
+}
+
+function csvCell(value) {
+    return `"${String(value ?? '').replace(/"/g, '""')}"`;
+}
+
+function formatExportFilename({ month, category, programId }, format) {
+    const suffix = [month, category, programId]
+        .filter(Boolean)
+        .map(part => String(part).replace(/[^a-zA-Z0-9_-]/g, '_'))
+        .join('_');
+    return `product_sales_${suffix || 'report'}.${format}`;
+}
+
+function buildProductSalesCsv(data) {
+    const summaryHeaders = ['Програма', 'Код', 'Категорія', 'Кількість', 'Виручка', 'Оплачено', 'Борг', 'Середній чек'];
+    const detailHeaders = ['Дата', 'Час', 'ID бронювання', 'Програма', 'Код', 'Категорія', 'Група', 'Клієнт', 'Телефон', 'Кімната', 'Дітей', 'Ціна', 'Оплачено', 'Борг', 'Статус оплати', 'Спосіб оплати', 'Створив'];
+    const lines = [
+        `Підсумок за ${data.period.month}`,
+        summaryHeaders.map(csvCell).join(';'),
+        ...data.summary.map(row => [
+            row.name, row.code, row.category, row.count, row.revenue, row.paidAmount, row.unpaidAmount, row.avgPrice
+        ].map(csvCell).join(';')),
+        '',
+        `Виписка за ${data.period.month}`,
+        detailHeaders.map(csvCell).join(';'),
+        ...data.details.map(row => [
+            row.date, row.time, row.id, row.name, row.code, row.category, row.groupName, row.customerName,
+            row.customerPhone, row.room, row.kidsCount, row.price, row.paidAmount, row.unpaidAmount,
+            row.paymentStatus, row.paymentMethod, row.createdBy
+        ].map(csvCell).join(';'))
+    ];
+    return `\uFEFF${lines.join('\n')}`;
+}
+
+async function buildProductSalesWorkbook(data) {
+    const ExcelJS = require('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Event Genix';
+    workbook.created = new Date();
+
+    const summarySheet = workbook.addWorksheet('Підсумок');
+    summarySheet.columns = [
+        { header: 'Програма', key: 'name', width: 32 },
+        { header: 'Код', key: 'code', width: 14 },
+        { header: 'Категорія', key: 'category', width: 16 },
+        { header: 'Кількість', key: 'count', width: 12 },
+        { header: 'Виручка', key: 'revenue', width: 14 },
+        { header: 'Оплачено', key: 'paidAmount', width: 14 },
+        { header: 'Борг', key: 'unpaidAmount', width: 14 },
+        { header: 'Середній чек', key: 'avgPrice', width: 14 }
+    ];
+    summarySheet.addRows(data.summary);
+
+    const detailSheet = workbook.addWorksheet('Виписка');
+    detailSheet.columns = [
+        { header: 'Дата', key: 'date', width: 13 },
+        { header: 'Час', key: 'time', width: 10 },
+        { header: 'ID бронювання', key: 'id', width: 18 },
+        { header: 'Програма', key: 'name', width: 32 },
+        { header: 'Код', key: 'code', width: 14 },
+        { header: 'Категорія', key: 'category', width: 16 },
+        { header: 'Група', key: 'groupName', width: 24 },
+        { header: 'Клієнт', key: 'customerName', width: 24 },
+        { header: 'Телефон', key: 'customerPhone', width: 18 },
+        { header: 'Кімната', key: 'room', width: 16 },
+        { header: 'Дітей', key: 'kidsCount', width: 10 },
+        { header: 'Ціна', key: 'price', width: 12 },
+        { header: 'Оплачено', key: 'paidAmount', width: 12 },
+        { header: 'Борг', key: 'unpaidAmount', width: 12 },
+        { header: 'Статус оплати', key: 'paymentStatus', width: 16 },
+        { header: 'Спосіб оплати', key: 'paymentMethod', width: 18 },
+        { header: 'Створив', key: 'createdBy', width: 16 }
+    ];
+    detailSheet.addRows(data.details);
+
+    for (const sheet of [summarySheet, detailSheet]) {
+        sheet.getRow(1).font = { bold: true };
+        sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
+        sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    }
+
+    return workbook;
+}
+
 // Role check
 router.use((req, res, next) => {
     if (req.user && req.user.role === 'viewer') {
@@ -440,6 +706,62 @@ router.get('/conversion', async (req, res) => {
     } catch (err) {
         log.error('GET /conversion error', err);
         res.status(500).json({ success: false, error: 'Помилка аналітики конверсії' });
+    }
+});
+
+// ==========================================
+// GET /api/analytics/product-sales — Monthly product sales statement
+// ==========================================
+
+router.get('/product-sales', async (req, res) => {
+    try {
+        const data = await loadProductSalesData(req.query);
+        res.json(data);
+    } catch (err) {
+        if (err.statusCode === 400) log.warn(`GET /product-sales invalid query: ${err.message}`);
+        else log.error('GET /product-sales error', err);
+        res.status(err.statusCode || 500).json({
+            success: false,
+            error: err.statusCode === 400 ? 'month має бути у форматі YYYY-MM' : 'Помилка звіту продажів програм'
+        });
+    }
+});
+
+// ==========================================
+// GET /api/analytics/product-sales/export — CSV/XLSX export
+// ==========================================
+
+router.get('/product-sales/export', async (req, res) => {
+    try {
+        const format = String(req.query.format || 'xlsx').toLowerCase();
+        if (!['xlsx', 'csv'].includes(format)) {
+            return res.status(400).json({ success: false, error: 'format має бути xlsx або csv' });
+        }
+
+        const data = await loadProductSalesData(req.query);
+        const filename = formatExportFilename({
+            month: data.period.month,
+            category: data.filters.category,
+            programId: data.filters.programId
+        }, format);
+
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        if (format === 'csv') {
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            return res.send(buildProductSalesCsv(data));
+        }
+
+        const workbook = await buildProductSalesWorkbook(data);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (err) {
+        if (err.statusCode === 400) log.warn(`GET /product-sales/export invalid query: ${err.message}`);
+        else log.error('GET /product-sales/export error', err);
+        res.status(err.statusCode || 500).json({
+            success: false,
+            error: err.statusCode === 400 ? 'month має бути у форматі YYYY-MM' : 'Помилка експорту продажів програм'
+        });
     }
 });
 

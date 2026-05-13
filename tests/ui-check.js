@@ -80,6 +80,11 @@ checkPage('index.html', (doc) => {
     check('mainApp exists', !!doc.getElementById('mainApp'));
     check('submit button has type=submit', doc.querySelector('.btn-login')?.type === 'submit');
     check('sidebarLinks exists', !!doc.getElementById('sidebarLinks'));
+    check('Timeline product sales button exists', !!doc.getElementById('productSalesBtn'));
+    check('Timeline product sales modal exists', !!doc.getElementById('productSalesModal'));
+    check('Timeline product sales month filter exists', doc.getElementById('productSalesMonth')?.type === 'month');
+    check('Timeline product sales category and program filters exist', !!doc.getElementById('productSalesCategory') && !!doc.getElementById('productSalesProgram'));
+    check('Timeline product sales export buttons exist', !!doc.getElementById('productSalesXlsxBtn') && !!doc.getElementById('productSalesCsvBtn'));
 });
 
 checkPage('dashboard.html', (doc, html) => {
@@ -288,6 +293,11 @@ check('Lead assignees use lead-scoped endpoint', leadsCode.includes("apiFetch('/
 const appCode = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');
 check('Timeline sidebar collapse is class-based', appCode.includes("sidebar.classList.add('collapsed')") && appCode.includes("sidebar.classList.toggle('collapsed')"));
 check('Timeline sidebar collapse avoids inline shell offsets', !appCode.includes('style.marginLeft') && !appCode.includes("style.width = 'calc(100% - 64px)'"));
+check('Timeline product sales button opens modal', appCode.includes('showProductSalesModal') && appCode.includes("document.getElementById('productSalesBtn')?.addEventListener('click', showProductSalesModal)"));
+check('Timeline product sales API loads monthly report', appCode.includes('/api/analytics/product-sales?') && appCode.includes('loadProductSalesReport'));
+check('Timeline product sales export supports CSV and XLSX', appCode.includes("downloadProductSalesExport('csv')") && appCode.includes("downloadProductSalesExport('xlsx')"));
+check('Timeline product sales supports pinata quick filter', appCode.includes("categorySelect.value = 'pinata'"));
+check('Timeline product sales button is permission-gated', authCode.includes('productSalesBtn') && authCode.includes("canAccess('export_data')"));
 
 // ═══════════════════════════════════════════════════
 // RESULTS

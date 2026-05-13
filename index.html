@@ -16,19 +16,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.46.11">
-    <link rel="stylesheet" href="css/auth.css?v=0.46.11">
-    <link rel="stylesheet" href="css/layout.css?v=0.46.11">
-    <link rel="stylesheet" href="css/timeline.css?v=0.46.11">
-    <link rel="stylesheet" href="css/panel.css?v=0.46.11">
-    <link rel="stylesheet" href="css/modals.css?v=0.46.11">
-    <link rel="stylesheet" href="css/controls.css?v=0.46.11">
-    <link rel="stylesheet" href="css/features.css?v=0.46.11">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.46.11">
-    <link rel="stylesheet" href="css/responsive.css?v=0.46.11">
-    <link rel="stylesheet" href="css/pages.css?v=0.46.11">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.46.11">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.46.11">
+    <link rel="stylesheet" href="css/base.css?v=0.46.12">
+    <link rel="stylesheet" href="css/auth.css?v=0.46.12">
+    <link rel="stylesheet" href="css/layout.css?v=0.46.12">
+    <link rel="stylesheet" href="css/timeline.css?v=0.46.12">
+    <link rel="stylesheet" href="css/panel.css?v=0.46.12">
+    <link rel="stylesheet" href="css/modals.css?v=0.46.12">
+    <link rel="stylesheet" href="css/controls.css?v=0.46.12">
+    <link rel="stylesheet" href="css/features.css?v=0.46.12">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.46.12">
+    <link rel="stylesheet" href="css/responsive.css?v=0.46.12">
+    <link rel="stylesheet" href="css/pages.css?v=0.46.12">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.46.12">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.46.12">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -45,9 +45,9 @@
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.46.11 — 0.45 release line</p>
+                <p class="tagline">AI First CRM v0.46.12 — 0.45 release line</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.46.11</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.46.12</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -169,6 +169,7 @@
                     <button id="roomLoadBtn" class="btn-room-load" title="Навантаження кімнат">🏠 Кімнати</button>
                 </div>
                 <div class="action-buttons">
+                    <button id="productSalesBtn" class="btn-product-sales hidden" title="Продажі програм за місяць">Продажі</button>
                     <button id="exportTimelineBtn" class="btn-export" title="Експортувати таймлайн як картинку">Експорт</button>
                     <div class="admin-dropdown" id="adminDropdown">
                         <button type="button" id="menuToggleBtn" class="btn-menu-toggle" title="Меню дій">☰ Меню</button>
@@ -1093,6 +1094,100 @@
         </div>
     </div>
 
+    <!-- Місячний звіт продажів програм -->
+    <div id="productSalesModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Продажі програм за місяць">
+        <div class="modal-content modal-wide product-sales-modal-content">
+            <span class="modal-close">&times;</span>
+            <div class="product-sales-head">
+                <div>
+                    <h3>Продажі програм</h3>
+                    <p>Підтверджені бронювання за датою проведення події, без пов'язаних бронювань другого аніматора.</p>
+                </div>
+                <div class="product-sales-export">
+                    <button type="button" id="productSalesXlsxBtn" class="btn-submit">Excel</button>
+                    <button type="button" id="productSalesCsvBtn" class="btn-secondary">CSV</button>
+                </div>
+            </div>
+            <div class="product-sales-filters">
+                <label>
+                    <span>Місяць</span>
+                    <input type="month" id="productSalesMonth">
+                </label>
+                <label>
+                    <span>Категорія</span>
+                    <select id="productSalesCategory">
+                        <option value="">Усі категорії</option>
+                        <option value="quest">Квести</option>
+                        <option value="animation">Анімації</option>
+                        <option value="show">Шоу</option>
+                        <option value="masterclass">Майстер-класи</option>
+                        <option value="photo">Фото</option>
+                        <option value="pinata">Піньяти</option>
+                        <option value="banquet">Банкети</option>
+                        <option value="custom">Інше</option>
+                    </select>
+                </label>
+                <label>
+                    <span>Програма</span>
+                    <select id="productSalesProgram">
+                        <option value="">Усі програми</option>
+                    </select>
+                </label>
+                <label>
+                    <span>Сортування</span>
+                    <select id="productSalesSort">
+                        <option value="count">За кількістю</option>
+                        <option value="revenue">За виручкою</option>
+                    </select>
+                </label>
+                <button type="button" id="productSalesPinataBtn" class="btn-secondary">Піньяти</button>
+                <button type="button" id="productSalesRefreshBtn" class="btn-submit">Оновити</button>
+            </div>
+            <div id="productSalesStats" class="product-sales-stats"></div>
+            <div id="productSalesEmpty" class="product-sales-empty hidden">За цей місяць підтверджених продажів немає</div>
+            <div class="product-sales-grid">
+                <section class="product-sales-section">
+                    <h4>Підсумок по програмах</h4>
+                    <div class="product-sales-table-wrap">
+                        <table class="product-sales-table">
+                            <thead>
+                                <tr>
+                                    <th>Програма</th>
+                                    <th>Категорія</th>
+                                    <th>К-сть</th>
+                                    <th>Виручка</th>
+                                    <th>Оплачено</th>
+                                    <th>Борг</th>
+                                </tr>
+                            </thead>
+                            <tbody id="productSalesSummaryBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+                <section class="product-sales-section">
+                    <h4>Виписка з датами продажів</h4>
+                    <div class="product-sales-table-wrap">
+                        <table class="product-sales-table product-sales-detail-table">
+                            <thead>
+                                <tr>
+                                    <th>Дата</th>
+                                    <th>Час</th>
+                                    <th>Програма</th>
+                                    <th>Клієнт / група</th>
+                                    <th>Кімната</th>
+                                    <th>Дітей</th>
+                                    <th>Сума</th>
+                                    <th>Оплата</th>
+                                </tr>
+                            </thead>
+                            <tbody id="productSalesDetailsBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
     <!-- Модальне вікно Telegram -->
     <div id="telegramModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Налаштування Telegram">
         <div class="modal-content">
@@ -1152,6 +1247,15 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.46.12 - Продажі програм на Timeline (13.05.2026)</h4>
+                    <ul>
+                        <li><b>Timeline</b> - додано кнопку "Продажі" для місячного звіту по проданих розважальних програмах</li>
+                        <li><b>Аналітика</b> - звіт рахує підтверджені бронювання за датою події без дублювання пов'язаних бронювань другого аніматора</li>
+                        <li><b>Піньяти</b> - додано швидкий фільтр категорії <code>pinata</code> і виписку з датами та сумами</li>
+                        <li><b>Експорт</b> - додано Excel і CSV з підсумком по програмах та детальними рядками продажів</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.46.11 - Виправлення layout gap у shell-сторінках CRM (13.05.2026)</h4>
                     <ul>
@@ -5760,27 +5864,27 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.46.11"></script>
-    <script src="js/api.js?v=0.46.11"></script>
-    <script src="js/ui.js?v=0.46.11"></script>
-    <script src="js/auth.js?v=0.46.11"></script>
-    <script src="js/timeline.js?v=0.46.11"></script>
-    <script src="js/booking.js?v=0.46.11"></script>
-    <script src="js/settings.js?v=0.46.11"></script>
-    <script src="js/booking-form.js?v=0.46.11"></script>
-    <script src="js/booking-linked.js?v=0.46.11"></script>
-    <script src="js/settings-dashboard.js?v=0.46.11"></script>
-    <script src="js/settings-history.js?v=0.46.11"></script>
-    <script src="js/settings-afisha.js?v=0.46.11"></script>
-    <script src="js/settings-certificates.js?v=0.46.11"></script>
-    <script src="js/offline.js?v=0.46.11"></script>
-    <script src="js/search.js?v=0.46.11"></script>
-    <script src="js/ws.js?v=0.46.11"></script>
-    <script src="js/app.js?v=0.46.11"></script>
-    <script src="js/kleshnya-widget.js?v=0.46.11"></script>
-    <script src="js/components/sidebar.js?v=0.46.11"></script>
+    <script src="js/config.js?v=0.46.12"></script>
+    <script src="js/api.js?v=0.46.12"></script>
+    <script src="js/ui.js?v=0.46.12"></script>
+    <script src="js/auth.js?v=0.46.12"></script>
+    <script src="js/timeline.js?v=0.46.12"></script>
+    <script src="js/booking.js?v=0.46.12"></script>
+    <script src="js/settings.js?v=0.46.12"></script>
+    <script src="js/booking-form.js?v=0.46.12"></script>
+    <script src="js/booking-linked.js?v=0.46.12"></script>
+    <script src="js/settings-dashboard.js?v=0.46.12"></script>
+    <script src="js/settings-history.js?v=0.46.12"></script>
+    <script src="js/settings-afisha.js?v=0.46.12"></script>
+    <script src="js/settings-certificates.js?v=0.46.12"></script>
+    <script src="js/offline.js?v=0.46.12"></script>
+    <script src="js/search.js?v=0.46.12"></script>
+    <script src="js/ws.js?v=0.46.12"></script>
+    <script src="js/app.js?v=0.46.12"></script>
+    <script src="js/kleshnya-widget.js?v=0.46.12"></script>
+    <script src="js/components/sidebar.js?v=0.46.12"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=0.46.11"></script>
-    <script src="js/alerts.js?v=0.46.11"></script>
+    <script src="js/role-panel.js?v=0.46.12"></script>
+    <script src="js/alerts.js?v=0.46.12"></script>
 </body>
 </html>

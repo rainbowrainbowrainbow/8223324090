@@ -4,6 +4,16 @@
 
 ---
 
+## v0.47.13 - 💬 0.47 Комунікації: reply auto-escalation v2 (2026-05-13)
+
+### Reply Auto-Escalation v2 [codex]
+- **Idempotent escalation task** - overdue explicit `waiting_reply` тепер може створити одну task з `source_type='conversation_reply'` і `source_id=<reply_expected_message_id>`, без дублювання при повторних scheduler runs.
+- **Race-safe linkage** - додано вузький partial unique index для reply-escalation anchors, щоб одна reply expectation не породжувала кілька відкритих або повторних задач.
+- **Stale close** - inbound reply, delivery failure або explicit clear скасовують активну escalation task для відповідного reply anchor, не змішуючи це з `callback_due`.
+- **Чесний trigger** - escalation стартує тільки з active overdue `replySlaState`; unread, звичайний outbound, provider accepted/read або `due_soon` не створюють задач.
+
+---
+
 ## v0.47.12 - 💬 0.47 Комунікації: reply SLA severity v1 (2026-05-13)
 
 ### Reply SLA Severity v1 [codex]

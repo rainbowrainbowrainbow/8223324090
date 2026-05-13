@@ -32,6 +32,7 @@ These jobs are wrapped with `guardScheduler` and are tracked in
 | `checkScheduledDeletions` | `services/scheduler.js` | telegram | `60000` | `daily` |
 | `checkCertificateExpiry` | `services/scheduler.js` | certificates | `60000` | `daily` |
 | `checkTaskReminders` | `services/scheduler.js` | tasks | `60000` | `hourly` |
+| `checkReplyAutoEscalations` | `services/scheduler.js` | tasks | `60000` | `hourly` |
 | `checkWorkDayTriggers` | `services/scheduler.js` | staff | `60000` | `daily` |
 | `checkMonthlyPointsReset` | `services/scheduler.js` | gamification | `60000` | `daily` |
 | `checkHrAutoClose` | `services/hr.js` | hr | `60000` | `daily` |
@@ -99,6 +100,7 @@ pause/dedup/error accounting from `guardScheduler`.
 The manifest records test files where direct coverage exists:
 
 - `tests/event-queue.test.js`
+- `tests/reply-escalation.test.js`
 - `tests/scheduled-chat-dispatch.test.js`
 - `tests/telegram-callbacks.test.js`
 - `tests/training.test.js`

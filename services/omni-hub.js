@@ -16,6 +16,7 @@ const {
   isActiveWaitingReply,
   isDeliveryFailed: failedDeliveryStatus,
 } = require('./replySla');
+const { closeReplyEscalationForMessage } = require('./replyEscalation');
 
 const logger = createLogger('omni-hub');
 
@@ -681,9 +682,22 @@ async function findOrCreateConversation(channel, externalId, senderName, phone) 
 
 async function saveInboundMessage(conversationId, normalized) {
   let client;
+  let clearedReplyMessageId = null;
   try {
     client = await pool.connect();
     await client.query('BEGIN');
+
+    const activeReply = await client.query(
+      `SELECT reply_expected_message_id
+         FROM conversations
+        WHERE id = $1
+          AND reply_expected IS TRUE
+          AND awaiting_reply_since IS NOT NULL
+          AND awaiting_reply_since <= NOW()
+        LIMIT 1`,
+      [conversationId]
+    );
+    clearedReplyMessageId = activeReply.rows[0]?.reply_expected_message_id || null;
 
     const msg = await client.query(
       `INSERT INTO conversation_messages
@@ -748,6 +762,10 @@ async function saveInboundMessage(conversationId, normalized) {
     );
 
     await client.query('COMMIT');
+    if (clearedReplyMessageId) {
+      await closeReplyEscalationForMessage(clearedReplyMessageId, { pool, reason: 'inbound_reply' })
+        .catch(err => logger.warn(`Reply escalation close after inbound skipped: ${err.message}`));
+    }
     return mapMessageRow(msg.rows[0]);
   } catch (e) {
     if (client) await client.query('ROLLBACK').catch(() => {});
@@ -802,7 +820,12 @@ async function clearReplyExpectationForMessage(conversationId, messageId) {
       RETURNING *`,
     [conversationId, messageId]
   );
-  return mapConversationRow(result.rows[0]);
+  const conversation = mapConversationRow(result.rows[0]);
+  if (conversation) {
+    await closeReplyEscalationForMessage(messageId, { pool, reason: 'reply_expectation_cleared' })
+      .catch(err => logger.warn(`Reply escalation close after expectation clear skipped: ${err.message}`));
+  }
+  return conversation;
 }
 
 // ---------------------------------------------------------------------------

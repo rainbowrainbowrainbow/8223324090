@@ -66,6 +66,9 @@ function createManualSendPool(conversation) {
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            if (/SELECT reply_expected_message_id FROM conversations/i.test(text)) {
+                return { rows: [] };
+            }
             if (/INSERT INTO conversation_messages/i.test(text)) {
                 return { rows: [{ ...inserted, sender_name: params[1], content: params[2] }] };
             }
@@ -166,6 +169,9 @@ function createInboundPool() {
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            if (/SELECT reply_expected_message_id FROM conversations/i.test(text)) {
+                return { rows: [] };
+            }
             if (/INSERT INTO conversation_messages/i.test(text)) {
                 return { rows: [{ ...inserted, sender_name: params[1], content: params[2] }] };
             }

@@ -42,11 +42,28 @@ function loadHub(pool) {
 }
 
 function createLifecyclePool() {
-    const state = { update: null, replyClear: null };
+    const state = { update: null, replyClear: null, escalationClose: null };
     return {
         state,
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
+            if (/UPDATE tasks/i.test(text) && /source_type = \$1/i.test(text)) {
+                state.escalationClose = {
+                    sourceType: params[0],
+                    sourceId: params[1],
+                };
+                return {
+                    rows: [{
+                        id: 9001,
+                        source_type: params[0],
+                        source_id: params[1],
+                        status: 'cancelled',
+                    }],
+                };
+            }
+            if (/INSERT INTO task_logs/i.test(text)) {
+                return { rows: [] };
+            }
             if (/UPDATE conversations/i.test(text) && /reply_expected = false/i.test(text)) {
                 state.replyClear = {
                     conversationId: params[0],
@@ -257,6 +274,10 @@ describe('Provider Lifecycle v1 for Viber and TurboSMS', () => {
         assert.deepEqual(pool.state.replyClear, {
             conversationId: 501,
             messageId: 1201,
+        });
+        assert.deepEqual(pool.state.escalationClose, {
+            sourceType: 'conversation_reply',
+            sourceId: '1201',
         });
     });
 

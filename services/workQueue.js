@@ -95,10 +95,12 @@ function buildTaskVisibility(user, params, alias = 't') {
 function hrefForTask(row) {
     const sourceType = row.task_source_type || row.source_type;
     const sourceId = row.task_source_id || row.source_id;
+    const conversationId = row.linked_conversation_id;
     const leadId = row.linked_lead_id || (sourceType === 'lead' && /^\d+$/.test(String(sourceId || '')) ? Number(sourceId) : null);
     const bookingId = row.linked_booking_id || (sourceType === 'booking' ? sourceId : null);
     const bookingDate = row.linked_booking_date || row.booking_date;
 
+    if (conversationId) return `/omni?conversation=${encodeURIComponent(conversationId)}`;
     if (leadId) return `/sales-funnel?lead=${encodeURIComponent(leadId)}`;
     if (bookingId && bookingDate) {
         return `/?date=${encodeURIComponent(dateValue(bookingDate))}&highlight=${encodeURIComponent(bookingId)}`;
@@ -111,8 +113,9 @@ function taskItem(row, bucket, options = {}) {
     const sourceId = row.task_source_id || row.source_id || null;
     const leadId = row.linked_lead_id || (sourceType === 'lead' && /^\d+$/.test(String(sourceId || '')) ? Number(sourceId) : null);
     const bookingId = row.linked_booking_id || (sourceType === 'booking' ? sourceId : null);
+    const conversationId = row.linked_conversation_id || null;
     const dueAt = isoValue(row.deadline) || dateValue(row.date);
-    const hasExactCase = Boolean(leadId || bookingId);
+    const hasExactCase = Boolean(conversationId || leadId || bookingId);
 
     return {
         id: `task:${bucket}:${row.id}`,
@@ -136,6 +139,7 @@ function taskItem(row, bucket, options = {}) {
             assignedTo: row.assigned_to || row.owner || null,
             taskSourceType: sourceType,
             taskSourceId: sourceId,
+            conversationId,
             signal: options.signal || (row.deadline ? 'deadline' : 'date')
         }
     };
@@ -263,10 +267,12 @@ async function loadTaskBucket(pool, user, bucket, whereSql, whereParams, limit, 
                t.source_id AS task_source_id, t.created_at,
                sl.id AS linked_lead_id,
                sb.id AS linked_booking_id, sb.date AS linked_booking_date,
-               sb.customer_id AS linked_customer_id
+               sb.customer_id AS linked_customer_id,
+               rcm.conversation_id AS linked_conversation_id
         FROM tasks t
         LEFT JOIN leads sl ON t.source_type = 'lead' AND t.source_id = sl.id::text
         LEFT JOIN bookings sb ON t.source_type = 'booking' AND t.source_id = sb.id::text
+        LEFT JOIN conversation_messages rcm ON t.source_type = 'conversation_reply' AND t.source_id = rcm.id::text
         WHERE ${ACTIVE_TASK_STATUS_SQL}
           ${visibility}
           AND (${whereSql})

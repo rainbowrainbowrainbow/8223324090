@@ -7,6 +7,7 @@ const GUARDED_SCHEDULER_JOBS = [
     { name: 'checkScheduledDeletions', functionName: 'checkScheduledDeletions', sourceFile: 'services/scheduler.js', owner: 'telegram', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'] },
     { name: 'checkCertificateExpiry', functionName: 'checkCertificateExpiry', sourceFile: 'services/scheduler.js', owner: 'certificates', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'] },
     { name: 'checkTaskReminders', functionName: 'checkTaskReminders', sourceFile: 'services/scheduler.js', owner: 'tasks', interval: '60000', dedup: 'hourly', sideEffects: ['telegram', 'database'] },
+    { name: 'checkReplyAutoEscalations', functionName: 'checkReplyAutoEscalations', sourceFile: 'services/scheduler.js', owner: 'tasks', interval: '60000', dedup: 'hourly', sideEffects: ['database'], tests: ['tests/reply-escalation.test.js'] },
     { name: 'checkWorkDayTriggers', functionName: 'checkWorkDayTriggers', sourceFile: 'services/scheduler.js', owner: 'staff', interval: '60000', dedup: 'daily', sideEffects: ['database'] },
     { name: 'checkMonthlyPointsReset', functionName: 'checkMonthlyPointsReset', sourceFile: 'services/scheduler.js', owner: 'gamification', interval: '60000', dedup: 'daily', sideEffects: ['database'] },
     { name: 'checkHrAutoClose', functionName: 'checkHrAutoClose', sourceFile: 'services/hr.js', owner: 'hr', interval: '60000', dedup: 'daily', sideEffects: ['database'] },

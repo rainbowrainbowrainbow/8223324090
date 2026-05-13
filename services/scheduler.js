@@ -637,6 +637,21 @@ async function checkTaskReminders() {
 // v10.0: Work day triggers — checks at configured start time (10:00 weekdays, 12:00 weekends)
 let workDayTriggeredToday = null;
 
+// v0.47.13: Reply auto-escalation - create/reuse one task for overdue explicit waiting-reply.
+async function checkReplyAutoEscalations() {
+    try {
+        const { runReplyAutoEscalation } = require('./replyEscalation');
+        const result = await runReplyAutoEscalation({ limit: 20, closeLimit: 50 });
+        if (result.created > 0 || result.closed > 0) {
+            log.info(`Reply auto-escalation: created=${result.created}, reused=${result.reused}, closed=${result.closed}`);
+        }
+    } catch (err) {
+        if (!err.message?.includes('does not exist') && err.code !== '42703') {
+            log.error('checkReplyAutoEscalations error', err);
+        }
+    }
+}
+
 async function checkWorkDayTriggers() {
     try {
         const todayStr = getKyivDateStr();
@@ -2036,7 +2051,7 @@ module.exports = {
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
     checkScheduledDeletions, checkRecurringAfisha, ensureRecurringAfishaForDate,
     checkRecurringBookings, checkCertificateExpiry,
-    checkTaskReminders, checkWorkDayTriggers, checkMonthlyPointsReset,
+    checkTaskReminders, checkReplyAutoEscalations, checkWorkDayTriggers, checkMonthlyPointsReset,
     checkStreakUpdates, checkBirthdayGreetings,
     checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkDebtNotifications,
     checkEventQueue, checkSLABreach, checkScheduledAnnouncements,

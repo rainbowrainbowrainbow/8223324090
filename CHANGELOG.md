@@ -4,6 +4,17 @@
 
 ---
 
+## v0.47.1 - 🔗 0.47 Ліди: Omni Case Link і бронювання з ліда (2026-05-13)
+
+### Omni Case Link v1 + Lead→Booking Repair [codex]
+- **Omni Case Link v1** - `/omni?conversation=ID` тепер відкриває конкретну розмову і показує CRM-контекст із чесним статусом `exact`, `suggested` або `unresolved`.
+- **Точні переходи** - Omni дає посилання на `/sales-funnel?lead=ID`, `/customers?open=ID` і таймлайн бронювання тільки коли ці ID реально відомі.
+- **Workspace → Omni** - робочий простір ліда відкриває точну Omni-розмову через `conversation`, а `search` лишається fallback для сумісності.
+- **Лід → бронювання** - конвертація ліда тепер переносить `leadId`, ім'я, телефон і дату в таймлайн/форму, а після створення бронювання записує `leads.booking_id`.
+- **Захист від регресій** - додано focused-тести для exact/suggested Omni context і repair логіки `leads.booking_id`.
+
+---
+
 ## v0.47.0 - ✨ 0.47 Ліди: видимий релізний milestone (2026-05-13)
 
 ### Релізна лінія 0.47 [codex]

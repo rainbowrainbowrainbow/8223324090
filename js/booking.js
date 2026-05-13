@@ -79,6 +79,7 @@ async function openBookingPanel(time, lineId) {
     const customerToggle = document.getElementById('customerDataToggle');
     if (customerToggle) customerToggle.checked = false;
     document.getElementById('customerDataSection')?.classList.add('hidden');
+    applyLeadConversionContextToBookingForm();
 
     document.getElementById('bookingPanel')?.classList.remove('hidden');
     document.querySelector('.main-content').classList.add('panel-open');
@@ -104,6 +105,40 @@ function clearCustomerFields() {
     if (hiddenId) hiddenId.value = '';
     document.getElementById('customerSearchResults')?.classList.add('hidden');
     document.getElementById('customerInfo')?.classList.add('hidden');
+}
+
+function applyLeadConversionContextToBookingForm() {
+    const ctx = AppState.leadConversionContext;
+    if (!ctx || !ctx.leadId || AppState.editingBookingId) return;
+
+    const customerToggle = document.getElementById('customerDataToggle');
+    if (customerToggle) customerToggle.checked = true;
+    document.getElementById('customerDataSection')?.classList.remove('hidden');
+
+    if (ctx.customerName) {
+        const nameEl = document.getElementById('customerName');
+        const searchEl = document.getElementById('customerSearch');
+        if (nameEl && !nameEl.value) nameEl.value = ctx.customerName;
+        if (searchEl && !searchEl.value) searchEl.value = ctx.customerName;
+    }
+    if (ctx.customerPhone) {
+        const phoneEl = document.getElementById('customerPhone');
+        if (phoneEl && !phoneEl.value) phoneEl.value = ctx.customerPhone;
+    }
+    const sourceEl = document.getElementById('customerSource');
+    if (sourceEl && !sourceEl.value) sourceEl.value = 'lead';
+}
+
+function clearLeadConversionContextAfterBooking(bookingId) {
+    if (!AppState.leadConversionContext) return;
+    AppState.leadConversionContext = null;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('leadId');
+    url.searchParams.delete('lead');
+    url.searchParams.delete('customerName');
+    url.searchParams.delete('customerPhone');
+    if (bookingId) url.searchParams.set('highlight', bookingId);
+    history.replaceState(null, '', url.pathname + url.search + url.hash);
 }
 
 function selectCustomerFromSearch(customer) {
@@ -812,6 +847,10 @@ function buildBookingObject(formData, program) {
         }
     }
 
+    if (!AppState.editingBookingId && AppState.leadConversionContext?.leadId) {
+        obj.leadId = AppState.leadConversionContext.leadId;
+    }
+
     // v33.8.0: Certificate code
     const certCode = document.getElementById('certCodeInput')?.value?.trim();
     if (certCode) obj.certificateCode = certCode;
@@ -1050,6 +1089,8 @@ async function handleBookingSubmit(e) {
             // v5.27: API now returns { booking: { id, ... } }
             if (createResult && createResult.booking) {
                 booking.id = createResult.booking.id;
+            } else if (createResult && createResult.mainBooking) {
+                booking.id = createResult.mainBooking.id;
             } else if (createResult && createResult.id) {
                 booking.id = createResult.id;
             }
@@ -1060,6 +1101,7 @@ async function handleBookingSubmit(e) {
             delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
             closeBookingPanel();
             unlockSubmitBtn();
+            clearLeadConversionContextAfterBooking(booking.id);
             await renderTimeline();
             showNotification('Бронювання створено!', 'success');
         }

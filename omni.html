@@ -7,13 +7,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.47.0">
-    <link rel="stylesheet" href="css/layout.css?v=0.47.0">
-    <link rel="stylesheet" href="css/pages.css?v=0.47.0">
-    <link rel="stylesheet" href="css/modals.css?v=0.47.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.0">
-    <link rel="stylesheet" href="css/responsive.css?v=0.47.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.47.0">
+    <link rel="stylesheet" href="css/base.css?v=0.47.1">
+    <link rel="stylesheet" href="css/layout.css?v=0.47.1">
+    <link rel="stylesheet" href="css/pages.css?v=0.47.1">
+    <link rel="stylesheet" href="css/modals.css?v=0.47.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.1">
+    <link rel="stylesheet" href="css/responsive.css?v=0.47.1">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.47.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -239,6 +239,81 @@
 
         .omni-chat-header-actions button:hover {
             background: var(--bg-hover, rgba(0,0,0,0.05));
+        }
+
+        .omni-case-context {
+            border-bottom: 1px solid var(--border-color, #e2e8f0);
+            padding: 10px 16px;
+            background: var(--bg-secondary, #f7fafc);
+            color: var(--text-primary, #1a202c);
+        }
+
+        .omni-case-context[hidden] {
+            display: none !important;
+        }
+
+        .omni-case-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .omni-case-title {
+            font-weight: 800;
+            font-size: 13px;
+        }
+
+        .omni-case-meta {
+            color: var(--text-secondary, #718096);
+            font-size: 12px;
+        }
+
+        .omni-case-link {
+            display: inline-flex;
+            align-items: center;
+            min-height: 28px;
+            padding: 5px 10px;
+            border-radius: 7px;
+            border: 1px solid var(--border-color, #e2e8f0);
+            background: var(--bg-primary, #fff);
+            color: var(--text-primary, #1a202c);
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .omni-case-link.primary {
+            background: var(--accent-color, #F5C842);
+            border-color: var(--accent-color, #F5C842);
+            color: #000;
+        }
+
+        .omni-case-link.suggested {
+            border-color: #f59e0b;
+            color: #92400e;
+        }
+
+        .omni-case-pill {
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: rgba(22, 163, 74, 0.12);
+            color: #166534;
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .omni-case-pill.suggested {
+            background: rgba(245, 158, 11, 0.14);
+            color: #92400e;
+        }
+
+        .omni-case-pill.unresolved {
+            background: rgba(100, 116, 139, 0.14);
+            color: #475569;
         }
 
         .omni-chat-messages {
@@ -497,6 +572,7 @@
                             <button type="button" id="omniCloseConv" title="Закрити розмову">Закрити</button>
                         </div>
                     </div>
+                    <div class="omni-case-context" id="omniCaseContext" hidden></div>
                     <div class="omni-chat-messages" id="omniMessages" style="display:none"></div>
                     <div class="omni-quick-replies" id="omniQuickReplies" style="display:none"></div>
                     <div class="omni-chat-input" id="omniInputArea" style="display:none">
@@ -523,12 +599,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.47.0"></script>
-    <script src="js/api.js?v=0.47.0"></script>
-    <script src="js/auth.js?v=0.47.0"></script>
-    <script src="js/components/sidebar.js?v=0.47.0"></script>
+    <script src="js/config.js?v=0.47.1"></script>
+    <script src="js/api.js?v=0.47.1"></script>
+    <script src="js/auth.js?v=0.47.1"></script>
+    <script src="js/components/sidebar.js?v=0.47.1"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.47.0"></script>
+    <script src="js/ws.js?v=0.47.1"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -540,6 +616,9 @@
         const API_BASE = (window.APP_CONFIG && APP_CONFIG.API_URL) || '';
         let conversations = [];
         let currentConvId = null;
+        let selectedConversationQueryId = null;
+        let conversationQueryApplied = false;
+        let caseContextRequestSeq = 0;
         let quickReplies = [];
         let activeChannel = 'all';
         let searchQuery = '';
@@ -555,6 +634,7 @@
         const statsEl = $('omniStats');
         const searchInput = $('omniSearch');
         const input = $('omniInput');
+        const caseContextEl = $('omniCaseContext');
 
         // ---- Auth ----
         function getHeaders() {
@@ -603,6 +683,7 @@
             if (res.success) {
                 conversations = (res.data && res.data.conversations) || [];
                 renderConversations();
+                await selectConversationFromQuery();
             }
         }
 
@@ -679,11 +760,112 @@
             ).join('');
         }
 
+        function setConversationUrl(convId, replace) {
+            const url = new URL(window.location.href);
+            if (convId) url.searchParams.set('conversation', String(convId));
+            else url.searchParams.delete('conversation');
+            const state = convId ? { omniConversation: convId } : {};
+            const method = replace ? 'replaceState' : 'pushState';
+            history[method](state, '', url.pathname + url.search + url.hash);
+        }
+
+        async function fetchConversationContext(convId) {
+            const res = await api('/conversations/' + convId + '/context');
+            if (!res.success || !res.data) return null;
+            return res.data;
+        }
+
+        async function selectConversationFromQuery() {
+            if (!selectedConversationQueryId || conversationQueryApplied) return;
+            let target = conversations.find(c => c.id === selectedConversationQueryId);
+            if (!target) {
+                const context = await fetchConversationContext(selectedConversationQueryId);
+                target = context && context.conversation;
+                if (target && !conversations.some(c => c.id === target.id)) {
+                    conversations = [target].concat(conversations);
+                    renderConversations();
+                }
+            }
+            if (target) {
+                conversationQueryApplied = true;
+                selectConversation(selectedConversationQueryId, { replaceUrl: true });
+            } else {
+                conversationQueryApplied = true;
+                if (caseContextEl) {
+                    caseContextEl.hidden = false;
+                    caseContextEl.innerHTML = '<div class="omni-case-row"><span class="omni-case-pill unresolved">Розмову не знайдено</span><span class="omni-case-meta">Перевірте посилання або відкрийте розмову зі списку.</span></div>';
+                }
+            }
+        }
+
+        function caseLink(href, label, cls) {
+            if (!href) return '';
+            return '<a class="omni-case-link ' + (cls || '') + '" href="' + esc(href) + '">' + esc(label) + '</a>';
+        }
+
+        function renderCaseContext(context) {
+            if (!caseContextEl) return;
+            const exact = context.exact || {};
+            const suggestions = context.suggestions || {};
+            const links = context.links || {};
+            const suggestedLinks = context.suggestedLinks || {};
+            const relatedBookings = context.relatedBookings || [];
+            const hasExact = exact.lead || exact.customer || exact.booking;
+            const hasSuggestion = suggestions.lead || suggestions.customer || suggestions.booking;
+            const pillClass = hasExact ? '' : (hasSuggestion ? 'suggested' : 'unresolved');
+            const pillText = hasExact ? 'Точний CRM-зв’язок' : (hasSuggestion ? 'Ймовірний збіг' : 'CRM-зв’язок не знайдено');
+            const title = exact.lead?.clientName || exact.customer?.name || suggestions.lead?.clientName || suggestions.customer?.name || 'Без прив’язки до кейсу';
+            const meta = [
+                exact.lead ? 'лід #' + exact.lead.id : null,
+                exact.customer ? 'клієнт #' + exact.customer.id : null,
+                exact.booking ? 'бронювання ' + exact.booking.id : null,
+                !exact.booking && relatedBookings.length ? 'бронювань клієнта: ' + relatedBookings.length : null
+            ].filter(Boolean).join(' · ');
+
+            const exactActions = [
+                caseLink(links.leadWorkspace, 'Відкрити кейс', 'primary'),
+                caseLink(links.customer, 'Клієнт', ''),
+                caseLink(links.booking, 'Таймлайн', '')
+            ].join('');
+            const suggestedActions = !hasExact && hasSuggestion ? [
+                caseLink(suggestedLinks.leadWorkspace, 'Ймовірний кейс', 'suggested'),
+                caseLink(suggestedLinks.customer, 'Ймовірний клієнт', 'suggested'),
+                caseLink(suggestedLinks.booking, 'Ймовірне бронювання', 'suggested')
+            ].join('') : '';
+
+            caseContextEl.hidden = false;
+            caseContextEl.innerHTML =
+                '<div class="omni-case-row">' +
+                    '<span class="omni-case-pill ' + pillClass + '">' + pillText + '</span>' +
+                    '<span class="omni-case-title">' + esc(title) + '</span>' +
+                    (meta ? '<span class="omni-case-meta">' + esc(meta) + '</span>' : '') +
+                    exactActions +
+                    suggestedActions +
+                '</div>';
+        }
+
+        async function loadCaseContext(convId) {
+            if (!caseContextEl) return;
+            const requestSeq = ++caseContextRequestSeq;
+            caseContextEl.hidden = false;
+            caseContextEl.innerHTML = '<div class="omni-case-row"><span class="omni-case-pill unresolved">Завантаження CRM-контексту...</span></div>';
+            const context = await fetchConversationContext(convId);
+            if (requestSeq !== caseContextRequestSeq) return;
+            if (context) {
+                renderCaseContext(context);
+            } else {
+                caseContextEl.innerHTML = '<div class="omni-case-row"><span class="omni-case-pill unresolved">CRM-контекст недоступний</span><span class="omni-case-meta">Розмову можна вести без прив’язки до кейсу.</span></div>';
+            }
+        }
+
         // ---- Actions ----
-        function selectConversation(convId) {
+        function selectConversation(convId, options = {}) {
             currentConvId = convId;
             const conv = conversations.find(c => c.id === convId);
             if (!conv) return;
+            selectedConversationQueryId = convId;
+            conversationQueryApplied = true;
+            if (!options.skipUrl) setConversationUrl(convId, !!options.replaceUrl);
 
             emptyState.style.display = 'none';
             chatHeader.style.display = 'flex';
@@ -703,6 +885,7 @@
 
             renderConversations();
             loadMessages(convId);
+            loadCaseContext(convId);
             renderQuickReplies();
         }
 
@@ -734,6 +917,8 @@
             messages.style.display = 'none';
             inputArea.style.display = 'none';
             quickRepliesEl.style.display = 'none';
+            if (caseContextEl) caseContextEl.hidden = true;
+            setConversationUrl(null, true);
             loadConversations();
             loadStats();
         }
@@ -801,6 +986,7 @@
             document.querySelectorAll('.omni-channel-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             activeChannel = btn.dataset.channel;
+            conversationQueryApplied = true;
             loadConversations();
         });
 
@@ -810,6 +996,7 @@
             clearTimeout(searchTimeout);
             searchTimeout = setTimeout(() => {
                 searchQuery = searchInput.value.trim();
+                conversationQueryApplied = true;
                 loadConversations();
             }, 300);
         });
@@ -846,11 +1033,26 @@
 
         function applyQueryContext() {
             const params = new URLSearchParams(window.location.search);
+            const queryConversation = parseInt(params.get('conversation') || params.get('conversationId') || '0', 10);
+            if (Number.isInteger(queryConversation) && queryConversation > 0) {
+                selectedConversationQueryId = queryConversation;
+                conversationQueryApplied = false;
+            }
             const querySearch = (params.get('search') || '').trim();
             if (!querySearch) return;
             searchQuery = querySearch;
             if (searchInput) searchInput.value = querySearch;
         }
+
+        window.addEventListener('popstate', () => {
+            const params = new URLSearchParams(window.location.search);
+            const queryConversation = parseInt(params.get('conversation') || params.get('conversationId') || '0', 10);
+            if (Number.isInteger(queryConversation) && queryConversation > 0) {
+                selectedConversationQueryId = queryConversation;
+                conversationQueryApplied = false;
+                selectConversationFromQuery();
+            }
+        });
 
         // ---- Init ----
         async function init() {
@@ -885,8 +1087,8 @@
         });
     })();
     </script>
-    <script src="js/role-panel.js?v=0.47.0"></script>
-    <script src="js/ui.js?v=0.47.0"></script>
-    <script src="js/alerts.js?v=0.47.0"></script>
+    <script src="js/role-panel.js?v=0.47.1"></script>
+    <script src="js/ui.js?v=0.47.1"></script>
+    <script src="js/alerts.js?v=0.47.1"></script>
 </body>
 </html>

@@ -199,8 +199,28 @@ function getTimeRange(date) {
     };
 }
 
+function getLeadConversionContextFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const leadId = parseInt(params.get('leadId') || params.get('lead'), 10);
+    if (!Number.isInteger(leadId) || leadId <= 0) return null;
+    return {
+        leadId,
+        customerName: (params.get('customerName') || '').trim(),
+        customerPhone: (params.get('customerPhone') || '').trim()
+    };
+}
+
+function getTimelineDateFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const date = params.get('date');
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+    const parsed = new Date(date + 'T00:00:00');
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function initializeTimeline() {
-    AppState.selectedDate = new Date();
+    AppState.leadConversionContext = getLeadConversionContextFromUrl();
+    AppState.selectedDate = getTimelineDateFromUrl() || new Date();
     const _tdEl = document.getElementById('timelineDate'); if (_tdEl) _tdEl.value = formatDate(AppState.selectedDate);
     renderTimeline();
 }

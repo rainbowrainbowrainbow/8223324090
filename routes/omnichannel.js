@@ -213,6 +213,22 @@ router.get('/conversations', auth, async (req, res) => {
     }
 });
 
+// Resolve CRM context for a single conversation without pretending fallback is exact.
+router.get('/conversations/:id/context', auth, async (req, res) => {
+    try {
+        const id = parseId(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'РќРµРІР°Р»С–РґРЅРёР№ ID СЂРѕР·РјРѕРІРё' });
+        const context = await getHub().resolveConversationContext(id);
+        if (!context) {
+            return res.status(404).json({ success: false, error: 'Р РѕР·РјРѕРІСѓ РЅРµ Р·РЅР°Р№РґРµРЅРѕ' });
+        }
+        res.json({ success: true, data: context });
+    } catch (err) {
+        log.error('Resolve conversation context error:', err.message);
+        res.status(500).json({ success: false, error: 'РџРѕРјРёР»РєР° Р·РІ\'СЏР·СѓРІР°РЅРЅСЏ CRM-РєРѕРЅС‚РµРєСЃС‚Сѓ' });
+    }
+});
+
 // Get messages for conversation
 router.get('/conversations/:id/messages', auth, async (req, res) => {
     try {

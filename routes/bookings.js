@@ -6,6 +6,7 @@ const { pool, generateBookingNumber } = require('../db');
 const { validateDate, validateTime, validateId, mapBookingRow, checkServerConflicts, checkServerDuplicate, checkRoomConflict, timeToMinutes } = require('../services/booking');
 const { notifyTelegram } = require('../services/telegram');
 const { processBookingAutomation } = require('../services/bookingAutomation');
+const { attachLeadBookingLink } = require('../services/leadBookingLink');
 const { broadcast } = require('../services/websocket');
 const { publish: publishEvent } = require('../services/eventBus');
 let _triggerAlertBroadcast;
@@ -353,6 +354,14 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             );
         }
 
+        if (!b.linkedTo && b.leadId) {
+            await attachLeadBookingLink(client, {
+                leadId: b.leadId,
+                bookingId: b.id,
+                customerId
+            });
+        }
+
         await client.query(
             'INSERT INTO history (action, username, data) VALUES ($1, $2, $3)',
             ['create', b.createdBy || req.user?.username, JSON.stringify(b)]
@@ -670,6 +679,14 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                  WHERE id = $2`,
                 [main.date, customerId]
             );
+        }
+
+        if (main.leadId) {
+            await attachLeadBookingLink(client, {
+                leadId: main.leadId,
+                bookingId: main.id,
+                customerId
+            });
         }
 
         const linkedRows = [];

@@ -23,6 +23,10 @@ function safeTruncate(str, maxLen) {
   return str.length > maxLen ? str.slice(0, maxLen) : str;
 }
 
+function normalizeDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
 // ---------------------------------------------------------------------------
 // Helpers: snake_case DB rows → camelCase API objects
 // ---------------------------------------------------------------------------
@@ -62,6 +66,218 @@ function mapMessageRow(row) {
     readAt: row.read_at,
     meta: row.meta,
     createdAt: row.created_at,
+  };
+}
+
+function mapContextCustomer(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    phone: row.phone,
+    instagram: row.instagram,
+    childName: row.child_name,
+    source: row.source,
+    leadId: row.lead_id,
+    totalBookings: row.total_bookings,
+    totalSpent: row.total_spent,
+    lastVisit: row.last_visit,
+  };
+}
+
+function mapContextLead(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    clientName: row.client_name,
+    phone: row.phone,
+    instagram: row.instagram,
+    source: row.source,
+    sourceChannel: row.source_channel,
+    status: row.status,
+    pipelineStage: row.pipeline_stage,
+    bookingId: row.booking_id,
+    eventDate: row.event_date,
+    assignedName: row.assigned_name,
+  };
+}
+
+function mapContextBooking(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    date: row.date,
+    time: row.time,
+    status: row.status,
+    programName: row.program_name,
+    category: row.category,
+    label: row.label,
+    room: row.room,
+    customerId: row.customer_id,
+  };
+}
+
+function buildTimelineLink(booking) {
+  if (!booking || !booking.id || !booking.date) return null;
+  return `/?date=${encodeURIComponent(String(booking.date).slice(0, 10))}&highlight=${encodeURIComponent(booking.id)}`;
+}
+
+async function findLeadById(leadId) {
+  if (!leadId) return null;
+  const result = await pool.query(
+    `SELECT l.*, u.name AS assigned_name
+     FROM leads l
+     LEFT JOIN users u ON l.assigned_to = u.id
+     WHERE l.id = $1
+     LIMIT 1`,
+    [leadId]
+  );
+  return mapContextLead(result.rows[0]);
+}
+
+async function findBookingById(bookingId) {
+  if (!bookingId) return null;
+  const result = await pool.query('SELECT * FROM bookings WHERE id = $1 LIMIT 1', [bookingId]);
+  return mapContextBooking(result.rows[0]);
+}
+
+async function findRelatedBookings(customerId) {
+  if (!customerId) return [];
+  const result = await pool.query(
+    `SELECT *
+     FROM bookings
+     WHERE customer_id = $1
+       AND status != 'cancelled'
+       AND NULLIF(linked_to, '') IS NULL
+     ORDER BY date DESC NULLS LAST, time DESC NULLS LAST
+     LIMIT 3`,
+    [customerId]
+  );
+  return result.rows.map(mapContextBooking);
+}
+
+async function findSuggestedCustomer(conversation) {
+  const phoneDigits = normalizeDigits(conversation.customer_phone);
+  const namePattern = conversation.customer_name ? `%${conversation.customer_name}%` : '';
+  if (!phoneDigits && !namePattern) return null;
+  const result = await pool.query(
+    `SELECT *
+     FROM customers
+     WHERE ($1 <> '' AND regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = $1)
+        OR ($2 <> '' AND name ILIKE $2)
+     ORDER BY
+       CASE
+         WHEN $1 <> '' AND regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = $1 THEN 0
+         ELSE 1
+       END,
+       updated_at DESC NULLS LAST
+     LIMIT 1`,
+    [phoneDigits, namePattern]
+  );
+  return mapContextCustomer(result.rows[0]);
+}
+
+async function findSuggestedLead(conversation) {
+  const phoneDigits = normalizeDigits(conversation.customer_phone);
+  const namePattern = conversation.customer_name ? `%${conversation.customer_name}%` : '';
+  if (!phoneDigits && !namePattern) return null;
+  const result = await pool.query(
+    `SELECT l.*, u.name AS assigned_name
+     FROM leads l
+     LEFT JOIN users u ON l.assigned_to = u.id
+     WHERE ($1 <> '' AND regexp_replace(COALESCE(l.phone, ''), '\\D', '', 'g') = $1)
+        OR ($2 <> '' AND l.client_name ILIKE $2)
+     ORDER BY
+       CASE
+         WHEN $1 <> '' AND regexp_replace(COALESCE(l.phone, ''), '\\D', '', 'g') = $1 THEN 0
+         ELSE 1
+       END,
+       l.updated_at DESC NULLS LAST
+     LIMIT 1`,
+    [phoneDigits, namePattern]
+  );
+  return mapContextLead(result.rows[0]);
+}
+
+function buildCaseLinks(exact, suggestions) {
+  const links = {
+    leadWorkspace: exact.lead ? `/sales-funnel?lead=${encodeURIComponent(exact.lead.id)}` : null,
+    customer: exact.customer ? `/customers?open=${encodeURIComponent(exact.customer.id)}` : null,
+    booking: exact.booking ? buildTimelineLink(exact.booking) : null,
+  };
+  const suggestedLinks = {
+    leadWorkspace: suggestions.lead ? `/sales-funnel?lead=${encodeURIComponent(suggestions.lead.id)}` : null,
+    customer: suggestions.customer ? `/customers?open=${encodeURIComponent(suggestions.customer.id)}` : null,
+    booking: suggestions.booking ? buildTimelineLink(suggestions.booking) : null,
+  };
+  return { links, suggestedLinks };
+}
+
+async function resolveConversationContext(conversationId) {
+  const id = Number.parseInt(conversationId, 10);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error('Invalid conversation id');
+  }
+
+  const conversationResult = await pool.query('SELECT * FROM conversations WHERE id = $1 LIMIT 1', [id]);
+  const rawConversation = conversationResult.rows[0];
+  if (!rawConversation) return null;
+
+  const exact = { customer: null, lead: null, booking: null };
+  const suggestions = { customer: null, lead: null, booking: null };
+  const reasons = [];
+
+  if (rawConversation.customer_id) {
+    const customerResult = await pool.query('SELECT * FROM customers WHERE id = $1 LIMIT 1', [rawConversation.customer_id]);
+    exact.customer = mapContextCustomer(customerResult.rows[0]);
+    if (exact.customer) reasons.push('conversation.customer_id');
+  }
+
+  if (exact.customer?.leadId) {
+    exact.lead = await findLeadById(exact.customer.leadId);
+    if (exact.lead) reasons.push('customers.lead_id');
+  }
+
+  if (exact.lead?.bookingId) {
+    exact.booking = await findBookingById(exact.lead.bookingId);
+    if (exact.booking) reasons.push('leads.booking_id');
+  }
+
+  if (!exact.customer) {
+    suggestions.customer = await findSuggestedCustomer(rawConversation);
+    if (suggestions.customer) reasons.push('suggested customer by phone/name');
+  }
+
+  if (!exact.lead) {
+    if (suggestions.customer?.leadId) {
+      suggestions.lead = await findLeadById(suggestions.customer.leadId);
+      if (suggestions.lead) reasons.push('suggested customers.lead_id');
+    }
+    if (!suggestions.lead) {
+      suggestions.lead = await findSuggestedLead(rawConversation);
+      if (suggestions.lead) reasons.push('suggested lead by phone/name');
+    }
+  }
+
+  if (!exact.booking && suggestions.lead?.bookingId) {
+    suggestions.booking = await findBookingById(suggestions.lead.bookingId);
+  }
+
+  const relatedBookings = await findRelatedBookings(exact.customer?.id || null);
+  const { links, suggestedLinks } = buildCaseLinks(exact, suggestions);
+  const confidence = exact.lead || exact.customer || exact.booking
+    ? 'exact'
+    : (suggestions.lead || suggestions.customer || suggestions.booking ? 'suggested' : 'unresolved');
+
+  return {
+    conversation: mapConversationRow(rawConversation),
+    confidence,
+    exact,
+    suggestions,
+    relatedBookings,
+    links,
+    suggestedLinks,
+    reasons,
   };
 }
 
@@ -620,6 +836,7 @@ module.exports = {
   updateConversationStatus,
   getStats,
   getQuickReplies,
+  resolveConversationContext,
   notifyCRM,
   mapConversationRow,
   mapMessageRow,

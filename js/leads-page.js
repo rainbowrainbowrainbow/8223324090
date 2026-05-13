@@ -438,16 +438,24 @@ function leadOmniSearch(workspace) {
     return lead.phone || customer.phone || lead.clientName || customer.name || '';
 }
 
+function leadOmniHref(workspace, conversation) {
+    if (conversation?.id) return `/omni?conversation=${encodeURIComponent(conversation.id)}`;
+    const conversations = workspace.conversations || [];
+    const exactConversation = conversations.find(conv => conv && conv.id);
+    if (exactConversation) return `/omni?conversation=${encodeURIComponent(exactConversation.id)}`;
+    const omniSearch = leadOmniSearch(workspace);
+    return omniSearch ? `/omni?search=${encodeURIComponent(omniSearch)}` : null;
+}
+
 function leadContactLinks(lead, workspace) {
     const phone = lead.phone || workspace.customer?.phone || '';
     const tel = phone ? 'tel:' + phone.replace(/[^+\d]/g, '') : null;
     const tgValue = phone ? phone.replace(/[^\d]/g, '') : '';
     const tg = tgValue ? `https://t.me/${tgValue}` : null;
-    const omniSearch = leadOmniSearch(workspace);
     return [
         workspaceLink(tel, 'Подзвонити', 'success'),
         workspaceLink(tg, 'Telegram'),
-        workspaceLink(omniSearch ? `/omni?search=${encodeURIComponent(omniSearch)}` : null, 'Комунікації', 'primary')
+        workspaceLink(leadOmniHref(workspace), 'Комунікації', 'primary')
     ].join('');
 }
 
@@ -468,8 +476,6 @@ function renderLeadWorkspaceContent(workspace) {
         : eventDays === 1 ? 'Подія завтра'
         : `До події ${eventDays} дн.`;
     const eventCueClass = eventDays !== null && eventDays !== undefined && eventDays <= 1 ? 'urgent' : 'warning';
-    const omniSearch = leadOmniSearch(workspace);
-
     document.getElementById('leadWorkspaceTitle').textContent = lead.clientName || `Лід #${lead.id}`;
     document.getElementById('leadWorkspaceSubtitle').textContent = `Кейс ліда #${lead.id} · canonical: pipeline_stage`;
 
@@ -582,12 +588,12 @@ function renderLeadWorkspaceContent(workspace) {
                                 <div class="workspace-row-meta">${workspaceText(conv.channel)} · ${workspaceText(conv.status)} · ${workspaceDateTime(conv.lastMessageAt)}</div>
                                 <div class="workspace-row-meta">${workspaceText(conv.lastMessage, 'Останнього повідомлення немає')}</div>
                             </div>
-                            <a class="workspace-row-link" href="/omni?search=${encodeURIComponent(conv.customerPhone || conv.customerName || omniSearch)}">Omni</a>
+                            <a class="workspace-row-link" href="${escapeHtml(leadOmniHref(workspace, conv))}">Omni</a>
                         </div>
                     </div>
                 `, 'Розмови не знайдено. Відкрийте комунікації з контекстним пошуком.')}
                 <div class="workspace-actions" style="justify-content:flex-start;margin-top:12px">
-                    ${workspaceLink(omniSearch ? `/omni?search=${encodeURIComponent(omniSearch)}` : null, 'Відкрити комунікації', 'primary')}
+                    ${workspaceLink(leadOmniHref(workspace), 'Відкрити комунікації', 'primary')}
                 </div>
             </section>
         </div>

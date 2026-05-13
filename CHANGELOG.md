@@ -4,6 +4,16 @@
 
 ---
 
+## v0.47.6 - 🌙 0.47 Ліди: видимі списки вибору в темній темі (2026-05-13)
+
+### Dark Stage Dropdown Fix [codex]
+- **Темна тема для native dropdowns** - shared `css/dark-mode.css` тепер задає темний color scheme і контрастні `option` для відкритих `<select>`.
+- **Етапи видно повністю** - у Manager Action Strip emoji та назви pipeline stages більше не зникають на білому option-фоні.
+- **Схожі поля теж закрито** - фікс покриває інші select/date/time controls у dark mode, зокрема задачі, клієнтів, фінанси, модалки та фільтри.
+- **Без зміни workflow** - логіка `pipeline_stage`, quick actions і права доступу не змінювались.
+
+---
+
 ## v0.47.5 - ⚡ 0.47 Ліди: швидкі дії менеджера у workspace (2026-05-13)
 
 ### Manager Action Strip v1 [codex]

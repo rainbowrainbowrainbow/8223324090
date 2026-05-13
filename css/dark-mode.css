@@ -311,6 +311,30 @@ body.dark-mode .selected-info {
 }
 
 /* Form elements */
+body.dark-mode select,
+body.dark-mode input[type="date"],
+body.dark-mode input[type="time"],
+body.dark-mode input[type="datetime-local"],
+body.dark-mode input[type="month"],
+body.dark-mode input[type="week"] {
+    color-scheme: dark;
+}
+
+body.dark-mode select option,
+body.dark-mode select optgroup {
+    background: var(--gray-100);
+    color: var(--text-primary);
+}
+
+body.dark-mode select option:checked {
+    background: #2563EB;
+    color: #FFFFFF;
+}
+
+body.dark-mode select option:disabled {
+    color: var(--text-muted);
+}
+
 body.dark-mode .form-section select,
 body.dark-mode .form-section input,
 body.dark-mode .form-group input {

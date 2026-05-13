@@ -75,6 +75,10 @@ function walkFiles(dir, matcher) {
 // ═══════════════════════════════════════════════════
 
 checkPage('index.html', (doc) => {
+    const modalsCss = fs.readFileSync(path.join(ROOT, 'css', 'modals.css'), 'utf8');
+    const productSalesBtnRule = modalsCss.match(/\.btn-product-sales\s*\{([\s\S]*?)\}/)?.[1] || '';
+    const darkProductSalesBtnRule = modalsCss.match(/body\.dark-mode\s+\.btn-product-sales\s*\{([\s\S]*?)\}/)?.[1] || '';
+
     check('loginForm exists', !!doc.getElementById('loginForm'));
     check('loginScreen exists', !!doc.getElementById('loginScreen'));
     check('mainApp exists', !!doc.getElementById('mainApp'));
@@ -88,6 +92,8 @@ checkPage('index.html', (doc) => {
     check('Timeline product sales button is a modal trigger', doc.getElementById('productSalesBtn')?.textContent.includes('📊'));
     check('Timeline product sales modal omits payment/debt fields', !doc.getElementById('productSalesModal')?.textContent.includes('Оплачено') && !doc.getElementById('productSalesModal')?.textContent.includes('Борг'));
     check('Timeline product sales export buttons are styled as buttons', doc.getElementById('productSalesXlsxBtn')?.classList.contains('product-sales-export-btn') && doc.getElementById('productSalesCsvBtn')?.classList.contains('product-sales-export-btn'));
+    check('Timeline product sales button has readable light text color', productSalesBtnRule.includes('color: var(--gray-800'));
+    check('Timeline product sales button has readable dark text color', darkProductSalesBtnRule.includes('color: var(--text-primary'));
 });
 
 checkPage('dashboard.html', (doc, html) => {

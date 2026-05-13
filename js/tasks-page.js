@@ -905,12 +905,12 @@ async function openTaskDetail(taskId) {
         const t = task.data || task;
         if (!t || !t.id) { showNotification('Задачу не знайдено', 'error'); return; }
 
-        const STATUS_LABELS = { todo: 'До виконання', in_progress: 'В роботі', done: 'Виконано', cancelled: 'Скасовано' };
+        const STATUS_LABELS = { todo: 'До виконання', in_progress: 'В роботі', done: 'Виконано' };
         const PRIORITY_LABELS = { low: 'Низький', normal: 'Звичайний', high: 'Високий' };
-        const statusColor = t.status === 'done' ? '#10B981' : t.status === 'in_progress' ? '#3B82F6' : t.status === 'cancelled' ? '#94A3B8' : '#F59E0B';
+        const statusColor = t.status === 'done' ? '#10B981' : t.status === 'in_progress' ? '#3B82F6' : '#F59E0B';
         const prioColor = t.priority === 'high' ? '#EF4444' : t.priority === 'low' ? '#94A3B8' : '#6B7280';
         const deadlineStr = t.deadline ? new Date(t.deadline).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
-        const isOverdue = t.deadline && new Date(t.deadline) < new Date() && t.status !== 'done' && t.status !== 'cancelled';
+        const isOverdue = t.deadline && new Date(t.deadline) < new Date() && t.status !== 'done';
 
         let overlay = document.getElementById('taskDetailOverlay');
         if (!overlay) {
@@ -940,7 +940,6 @@ async function openTaskDetail(taskId) {
                         <option value="todo" ${t.status==='todo'?'selected':''}>📋 До виконання</option>
                         <option value="in_progress" ${t.status==='in_progress'?'selected':''}>▶ В роботі</option>
                         <option value="done" ${t.status==='done'?'selected':''}>✅ Виконано</option>
-                        <option value="cancelled" ${t.status==='cancelled'?'selected':''}>✕ Скасовано</option>
                     </select></div>
                     <div style="flex:1"><label ${_lbl}>Пріоритет</label><select id="_tdPriority" ${_inp} style="width:100%;padding:8px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit">
                         <option value="low" ${t.priority==='low'?'selected':''}>Низький</option>

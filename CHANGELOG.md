@@ -4,6 +4,18 @@
 
 ---
 
+## v0.47.5 - ⚡ 0.47 Ліди: швидкі дії менеджера у workspace (2026-05-13)
+
+### Manager Action Strip v1 [codex]
+- **Швидкі дії в workspace ліда** - у `/sales-funnel?lead=ID` додано Manager Action Strip з дзвінком, exact Omni-переходом, карткою клієнта, exact бронюванням, callback-задачею, відкриттям/виконанням exact task і підтвердженням preliminary booking.
+- **Канонічний stage без дублювання** - зміна етапу в action strip використовує `pipeline_stage` через наявний lead stage flow, не створюючи паралельну workflow-логіку.
+- **Exact-first дисципліна** - Omni, booking і task actions показуються як активні тільки коли є точний контекст; fallback-збіги лишаються навігаційними/недоступними й не маскуються під готові дії.
+- **Callback-задачі з durable linkage** - створення callback із workspace тепер передає `source_type='lead'` і `source_id`, а backend `/api/tasks` зберігає цей зв'язок.
+- **Без dead `cancelled` action** - task detail більше не пропонує статус `cancelled`, який не підтримувався поточним backend three-state flow.
+- **Без fake-send UX** - strip не додає прямого надсилання повідомлень, щоб не обіцяти delivery там, де поточна provider-модель гарантує лише відкриття каналу або CRM-навігацію.
+
+---
+
 ## v0.47.4 - 💬 0.47 Клієнти: комунікаційний хаб у картці (2026-05-13)
 
 ### Customer Communication Hub v1 [codex]

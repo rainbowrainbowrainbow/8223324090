@@ -80,6 +80,7 @@ let leadSaveInFlight = false;
 let workspaceLeadId = null;
 let workspaceRequestSeq = 0;
 let workspaceEventsBound = false;
+let currentWorkspaceData = null;
 
 // Auth helpers
 function getToken() { return localStorage.getItem('pzp_token'); }
@@ -521,6 +522,145 @@ function leadContactLinks(lead, workspace) {
     ].join('');
 }
 
+function jsCallAttr(call) {
+    return escapeHtml(call);
+}
+
+function workspaceAction(action) {
+    const cls = ['workspace-action', action.cls || '', action.disabled ? 'disabled' : ''].filter(Boolean).join(' ');
+    const title = action.title ? ` title="${escapeHtml(action.title)}"` : '';
+    const note = action.note ? `<span class="workspace-action-note">${escapeHtml(action.note)}</span>` : '';
+    const label = `<span class="workspace-action-label">${escapeHtml(action.label)}</span>${note}`;
+    if (action.href && !action.disabled) {
+        const target = action.external ? ' target="_blank" rel="noopener"' : '';
+        return `<a class="${cls}" href="${escapeHtml(action.href)}"${target}${title}>${label}</a>`;
+    }
+    if (action.onClick && !action.disabled) {
+        return `<button type="button" class="${cls}" onclick="${jsCallAttr(action.onClick)}"${title}>${label}</button>`;
+    }
+    return `<span class="${cls}" aria-disabled="true"${title}>${label}</span>`;
+}
+
+function exactLeadConversation(workspace) {
+    return (workspace.conversations || []).find(conv => conv && conv.id && conv.confidence === 'exact') || null;
+}
+
+function exactLeadBooking(workspace) {
+    const leadBookingId = workspace.lead?.bookingId;
+    if (!leadBookingId) return null;
+    return (workspace.bookings || []).find(booking => booking && String(booking.id) === String(leadBookingId)) || null;
+}
+
+function timelineHrefForBooking(booking) {
+    if (!booking?.id || !booking?.date) return null;
+    return `/?date=${encodeURIComponent(String(booking.date).slice(0, 10))}&highlight=${encodeURIComponent(booking.id)}`;
+}
+
+function exactOpenWorkspaceTask(workspace) {
+    const leadId = String(workspace.lead?.id || '');
+    const exactBooking = exactLeadBooking(workspace);
+    const exactBookingId = exactBooking ? String(exactBooking.id) : '';
+    return (workspace.tasks || []).find(task => {
+        if (!task || ['done', 'archived', 'cancelled'].includes(task.status)) return false;
+        if (task.isExactCaseTask) return true;
+        if (task.sourceType === 'lead' && String(task.sourceId || '') === leadId) return true;
+        return exactBookingId && task.sourceType === 'booking' && String(task.sourceId || '') === exactBookingId;
+    }) || null;
+}
+
+function renderWorkspaceStageControl(lead) {
+    const currentStage = lead.pipelineStage || 'new';
+    const options = PIPELINE_STAGES.map(stage =>
+        `<option value="${escapeHtml(stage.key)}"${stage.key === currentStage ? ' selected' : ''}>${escapeHtml(`${stage.emoji} ${stage.label}`)}</option>`
+    ).join('');
+    return `
+        <label class="workspace-stage-control">
+            <span>Етап</span>
+            <select aria-label="Змінити етап ліда" onchange="moveLeadWorkspaceStage(${lead.id}, this.value)">
+                ${options}
+            </select>
+        </label>
+    `;
+}
+
+function renderManagerActionStrip(workspace) {
+    const lead = workspace.lead || {};
+    const customer = workspace.customer || null;
+    const phone = lead.phone || customer?.phone || '';
+    const tel = phone ? 'tel:' + phone.replace(/[^+\d]/g, '') : null;
+    const exactConversation = exactLeadConversation(workspace);
+    const exactBooking = exactLeadBooking(workspace);
+    const exactTask = exactOpenWorkspaceTask(workspace);
+    const bookingHref = timelineHrefForBooking(exactBooking);
+    const canConfirmBooking = exactBooking?.status === 'preliminary' && typeof canAccess === 'function' && canAccess('edit_booking');
+    const canSeeBookingButNotConfirm = exactBooking?.status === 'preliminary' && !canConfirmBooking;
+
+    const actions = [
+        { label: 'Подзвонити', href: tel, cls: 'success', disabled: !tel, note: tel ? '' : 'немає телефону' },
+        {
+            label: 'Omni exact',
+            href: exactConversation ? `/omni?conversation=${encodeURIComponent(exactConversation.id)}` : null,
+            cls: 'primary',
+            disabled: !exactConversation,
+            note: exactConversation ? '' : 'немає точної розмови'
+        },
+        {
+            label: 'Картка клієнта',
+            href: customer?.id ? `/customers?open=${encodeURIComponent(customer.id)}` : null,
+            disabled: !customer?.id,
+            note: customer?.id ? '' : 'клієнта не привʼязано'
+        },
+        {
+            label: 'Бронювання',
+            href: bookingHref,
+            disabled: !bookingHref,
+            note: bookingHref ? '' : 'немає exact booking'
+        },
+        {
+            label: 'Callback',
+            onClick: `createLeadWorkspaceCallbackTask(${lead.id})`,
+            cls: 'warning'
+        },
+        {
+            label: 'Відкрити задачу',
+            href: exactTask ? `/tasks?open=${encodeURIComponent(exactTask.id)}` : null,
+            disabled: !exactTask,
+            note: exactTask ? '' : 'немає exact задачі'
+        },
+        {
+            label: 'Виконати задачу',
+            onClick: exactTask ? `completeLeadWorkspaceTask(${lead.id}, ${exactTask.id})` : null,
+            cls: 'success',
+            disabled: !exactTask,
+            note: exactTask ? '' : 'немає exact задачі'
+        },
+        {
+            label: 'Підтвердити бронювання',
+            onClick: canConfirmBooking ? `confirmLeadWorkspaceBooking(${lead.id}, ${JSON.stringify(String(exactBooking.id))})` : null,
+            cls: 'success',
+            disabled: !canConfirmBooking,
+            note: exactBooking?.status === 'preliminary'
+                ? (canSeeBookingButNotConfirm ? 'немає права edit_booking' : '')
+                : (exactBooking ? 'не preliminary' : 'немає exact booking')
+        }
+    ];
+
+    return `
+        <section class="manager-action-strip" aria-label="Швидкі дії менеджера">
+            <div class="manager-action-strip-head">
+                <div>
+                    <h3>Швидкі дії</h3>
+                    <p>Тільки дії з точним контекстом або чесною недоступністю.</p>
+                </div>
+                ${renderWorkspaceStageControl(lead)}
+            </div>
+            <div class="manager-action-grid">
+                ${actions.map(workspaceAction).join('')}
+            </div>
+        </section>
+    `;
+}
+
 function renderLeadWorkspaceContent(workspace) {
     const lead = workspace.lead || {};
     const customer = workspace.customer;
@@ -544,6 +684,7 @@ function renderLeadWorkspaceContent(workspace) {
     const customerHref = customer?.id ? `/customers?open=${encodeURIComponent(customer.id)}` : null;
     const body = document.getElementById('leadWorkspaceBody');
     if (!body) return;
+    currentWorkspaceData = workspace;
 
     body.innerHTML = `
         <section class="workspace-hero">
@@ -568,6 +709,8 @@ function renderLeadWorkspaceContent(workspace) {
                 </div>
             </div>
         </section>
+
+        ${renderManagerActionStrip(workspace)}
 
         <div class="workspace-grid">
             <section class="workspace-section">
@@ -1398,6 +1541,142 @@ async function convertLead(id) {
     window.location.href = `/?${params.toString()}`;
 }
 
+function localDateTimeInput(date) {
+    const pad = value => String(value).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function localDateInput(date = new Date()) {
+    return localDateTimeInput(date).slice(0, 10);
+}
+
+async function createLeadWorkspaceCallbackTask(leadId) {
+    const workspace = currentWorkspaceData?.lead?.id === leadId ? currentWorkspaceData : null;
+    const lead = workspace?.lead || leadsData.find(l => l.id === leadId) || {};
+    const defaultDeadline = new Date();
+    defaultDeadline.setDate(defaultDeadline.getDate() + 1);
+    defaultDeadline.setHours(10, 0, 0, 0);
+    const defaultTitle = `Передзвонити: ${lead.clientName || lead.client_name || `лід #${leadId}`}`;
+
+    let values = null;
+    if (typeof formModal === 'function') {
+        values = await formModal('Нова дія для ліда', [
+            { key: 'title', label: 'Що зробити', defaultValue: defaultTitle, required: true },
+            { key: 'deadline', label: 'Коли', type: 'datetime-local', defaultValue: localDateTimeInput(defaultDeadline), required: true },
+            {
+                key: 'priority',
+                label: 'Пріоритет',
+                type: 'select',
+                defaultValue: 'high',
+                options: [
+                    { value: 'high', label: 'Високий' },
+                    { value: 'normal', label: 'Звичайний' },
+                    { value: 'low', label: 'Низький' }
+                ]
+            }
+        ], { okText: 'Створити задачу', type: 'success', icon: '📞' });
+    } else if (typeof promptModal === 'function') {
+        const title = await promptModal('Назва callback-задачі', { defaultValue: defaultTitle, okText: 'Створити' });
+        values = title ? { title, deadline: localDateTimeInput(defaultDeadline), priority: 'high' } : null;
+    }
+    if (!values) return;
+
+    const title = String(values.title || '').trim();
+    if (!title) {
+        if (typeof showNotification === 'function') showNotification('Назва задачі обовʼязкова', 'error');
+        return;
+    }
+
+    try {
+        const deadline = values.deadline || localDateTimeInput(defaultDeadline);
+        const body = {
+            title,
+            description: `Швидка дія з workspace ліда #${leadId}`,
+            date: deadline ? String(deadline).slice(0, 10) : localDateInput(),
+            deadline,
+            priority: values.priority || 'high',
+            category: 'operational',
+            task_type: 'human',
+            source_type: 'lead',
+            source_id: String(leadId),
+            assigned_to: lead.assignedName || null
+        };
+        const res = await apiFetch('/api/tasks', { method: 'POST', body: JSON.stringify(body) });
+        if (!res) return;
+        const data = await res.json();
+        if (data.success) {
+            if (typeof showNotification === 'function') showNotification('Callback-задачу створено і привʼязано до ліда', 'success');
+            await openLeadWorkspace(leadId, { pushState: false });
+        } else if (typeof showNotification === 'function') {
+            showNotification(data.error || 'Не вдалося створити задачу', 'error');
+        }
+    } catch (err) {
+        console.error('Create lead workspace task error', err);
+        if (typeof showNotification === 'function') showNotification('Помилка створення callback-задачі', 'error');
+    }
+}
+
+async function completeLeadWorkspaceTask(leadId, taskId) {
+    if (!taskId) return;
+    const ok = typeof confirmModal === 'function'
+        ? await confirmModal('Позначити цю exact задачу як виконану?', { okText: 'Виконати', type: 'success' })
+        : true;
+    if (!ok) return;
+
+    try {
+        const res = await apiFetch(`/api/tasks/${taskId}/status`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: 'done' })
+        });
+        if (!res) return;
+        const data = await res.json();
+        if (data.success) {
+            if (typeof showNotification === 'function') showNotification('Задачу виконано', 'success');
+            await openLeadWorkspace(leadId, { pushState: false });
+        } else if (typeof showNotification === 'function') {
+            showNotification(data.error || 'Не вдалося виконати задачу', 'error');
+        }
+    } catch (err) {
+        console.error('Complete workspace task error', err);
+        if (typeof showNotification === 'function') showNotification('Помилка виконання задачі', 'error');
+    }
+}
+
+async function confirmLeadWorkspaceBooking(leadId, bookingId) {
+    if (!bookingId) return;
+    const ok = typeof confirmModal === 'function'
+        ? await confirmModal('Підтвердити exact preliminary бронювання?', { okText: 'Підтвердити', type: 'success' })
+        : true;
+    if (!ok) return;
+
+    try {
+        const res = await apiFetch(`/api/bookings/${encodeURIComponent(bookingId)}`, {
+            method: 'PUT',
+            body: JSON.stringify({ status: 'confirmed' })
+        });
+        if (!res) return;
+        const data = await res.json();
+        if (data.success !== false) {
+            if (typeof showNotification === 'function') showNotification('Бронювання підтверджено', 'success');
+            await openLeadWorkspace(leadId, { pushState: false });
+        } else if (typeof showNotification === 'function') {
+            showNotification(data.error || 'Не вдалося підтвердити бронювання', 'error');
+        }
+    } catch (err) {
+        console.error('Confirm workspace booking error', err);
+        if (typeof showNotification === 'function') showNotification('Помилка підтвердження бронювання', 'error');
+    }
+}
+
+async function moveLeadWorkspaceStage(leadId, stage) {
+    if (!leadId || !stage) return;
+    if (stage === 'lost') {
+        showLostReasonModal(leadId, stage);
+        return;
+    }
+    await updateLeadStage(leadId, stage);
+}
+
 function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -1405,3 +1684,7 @@ function escapeHtml(str) {
 
 window.openLeadWorkspace = openLeadWorkspace;
 window.closeLeadWorkspace = closeLeadWorkspace;
+window.createLeadWorkspaceCallbackTask = createLeadWorkspaceCallbackTask;
+window.completeLeadWorkspaceTask = completeLeadWorkspaceTask;
+window.confirmLeadWorkspaceBooking = confirmLeadWorkspaceBooking;
+window.moveLeadWorkspaceStage = moveLeadWorkspaceStage;

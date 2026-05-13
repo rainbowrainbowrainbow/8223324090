@@ -192,6 +192,7 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         const dependency_ids = b.dependency_ids || b.dependencyIds;
         const control_policy = b.control_policy || b.controlPolicy;
         const source_type = b.source_type || b.sourceType;
+        const source_id = b.source_id || b.sourceId;
 
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
         if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Invalid date' });
@@ -232,6 +233,7 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             dependency_ids: dependency_ids || [],
             control_policy: control_policy || undefined,
             source_type: source_type || 'manual',
+            source_id: source_id || null,
             category: VALID_CATEGORIES.includes(category) ? category : 'admin',
             template_id: template_id || null,
             afisha_id: afisha_id || null,

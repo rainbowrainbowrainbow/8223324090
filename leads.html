@@ -7,13 +7,13 @@
     <title>Event Genix | Воронка продажів</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.47.4">
-    <link rel="stylesheet" href="css/layout.css?v=0.47.4">
-    <link rel="stylesheet" href="css/pages.css?v=0.47.4">
-    <link rel="stylesheet" href="css/modals.css?v=0.47.4">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.4">
-    <link rel="stylesheet" href="css/responsive.css?v=0.47.4">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.47.4">
+    <link rel="stylesheet" href="css/base.css?v=0.47.5">
+    <link rel="stylesheet" href="css/layout.css?v=0.47.5">
+    <link rel="stylesheet" href="css/pages.css?v=0.47.5">
+    <link rel="stylesheet" href="css/modals.css?v=0.47.5">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.5">
+    <link rel="stylesheet" href="css/responsive.css?v=0.47.5">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.47.5">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -316,6 +316,96 @@
             cursor: not-allowed;
             pointer-events: none;
         }
+        .manager-action-strip {
+            background: #FFFFFF;
+            border: 1px solid #CBD5E1;
+            border-radius: 8px;
+            padding: 14px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+        }
+        .manager-action-strip-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .manager-action-strip h3 {
+            margin: 0;
+            font-size: 15px;
+            font-weight: 900;
+            color: #0F172A;
+        }
+        .manager-action-strip p {
+            margin: 4px 0 0;
+            color: #64748B;
+            font-size: 12px;
+            line-height: 1.35;
+        }
+        .manager-action-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 8px;
+        }
+        .workspace-action {
+            min-height: 48px;
+            border: 1px solid #CBD5E1;
+            border-radius: 8px;
+            background: #F8FAFC;
+            color: #334155;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            justify-content: center;
+            gap: 2px;
+            padding: 8px 10px;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 900;
+            text-decoration: none;
+            cursor: pointer;
+            text-align: left;
+        }
+        .workspace-action:hover,
+        .workspace-action:focus-visible {
+            border-color: #2563EB;
+            outline: none;
+            background: #EFF6FF;
+        }
+        .workspace-action.primary { background: #2563EB; border-color: #2563EB; color: #FFFFFF; }
+        .workspace-action.success { background: #059669; border-color: #059669; color: #FFFFFF; }
+        .workspace-action.warning { background: #FEF3C7; border-color: #FCD34D; color: #92400E; }
+        .workspace-action.disabled {
+            opacity: .68;
+            cursor: not-allowed;
+            background: #F1F5F9;
+            color: #64748B;
+        }
+        .workspace-action-note {
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.2;
+            opacity: .86;
+        }
+        .workspace-stage-control {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 190px;
+            color: #64748B;
+            font-size: 11px;
+            font-weight: 800;
+        }
+        .workspace-stage-control select {
+            min-height: 38px;
+            border: 1px solid #CBD5E1;
+            border-radius: 8px;
+            padding: 7px 10px;
+            background: #FFFFFF;
+            color: #0F172A;
+            font: inherit;
+            font-size: 13px;
+        }
         .workspace-grid {
             display: grid;
             grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -524,26 +614,36 @@
         body.dark-mode .lead-workspace { background: #111827; border-color: rgba(255,255,255,0.12); }
         body.dark-mode .lead-workspace-header,
         body.dark-mode .workspace-hero,
+        body.dark-mode .manager-action-strip,
         body.dark-mode .workspace-section,
         body.dark-mode .workspace-empty,
         body.dark-mode .workspace-loading,
         body.dark-mode .workspace-error { background: #1E1E38; border-color: rgba(255,255,255,0.12); }
         body.dark-mode .lead-workspace-title,
         body.dark-mode .workspace-name,
+        body.dark-mode .manager-action-strip h3,
         body.dark-mode .workspace-section h3,
         body.dark-mode .workspace-kv dd,
         body.dark-mode .workspace-row-title { color: #F8FAFC; }
         body.dark-mode .lead-workspace-subtitle,
         body.dark-mode .workspace-meta,
         body.dark-mode .workspace-muted,
+        body.dark-mode .manager-action-strip p,
+        body.dark-mode .workspace-stage-control,
         body.dark-mode .workspace-kv dt,
         body.dark-mode .workspace-row-meta { color: #CBD5E1; }
         body.dark-mode .lead-workspace-close,
         body.dark-mode .workspace-btn,
+        body.dark-mode .workspace-action,
+        body.dark-mode .workspace-stage-control select,
         body.dark-mode .workspace-row,
         body.dark-mode .workspace-badge { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.12); color: #E2E8F0; }
         body.dark-mode .workspace-btn.primary { background: #2563EB; border-color: #2563EB; color: #FFFFFF; }
         body.dark-mode .workspace-btn.success { background: #059669; border-color: #059669; color: #FFFFFF; }
+        body.dark-mode .workspace-action.primary { background: #2563EB; border-color: #2563EB; color: #FFFFFF; }
+        body.dark-mode .workspace-action.success { background: #059669; border-color: #059669; color: #FFFFFF; }
+        body.dark-mode .workspace-action.warning { background: rgba(245,158,11,0.16); border-color: rgba(252,211,77,0.45); color: #FBBF24; }
+        body.dark-mode .workspace-action.disabled { background: rgba(255,255,255,0.04); color: #94A3B8; }
 
         @media (max-width: 768px) {
             .leads-toolbar { flex-direction: column; align-items: stretch; }
@@ -562,7 +662,10 @@
             .lead-workspace-header { padding: 14px; }
             .lead-workspace-body { padding: 12px; }
             .workspace-hero-main,
+            .manager-action-strip-head,
             .workspace-grid { grid-template-columns: 1fr; }
+            .manager-action-strip-head { display: grid; }
+            .workspace-stage-control { min-width: 0; }
             .workspace-actions { justify-content: flex-start; }
             .workspace-section.full { grid-column: auto; }
             .workspace-kv { grid-template-columns: 1fr; }
@@ -971,15 +1074,15 @@
         });
     }
     </script>
-    <script src="js/config.js?v=0.47.4"></script>
-    <script src="js/notification.js?v=0.47.4"></script>
-    <script src="js/api.js?v=0.47.4"></script>
-    <script src="js/auth.js?v=0.47.4"></script>
-    <script src="js/components/sidebar.js?v=0.47.4"></script>
+    <script src="js/config.js?v=0.47.5"></script>
+    <script src="js/notification.js?v=0.47.5"></script>
+    <script src="js/api.js?v=0.47.5"></script>
+    <script src="js/auth.js?v=0.47.5"></script>
+    <script src="js/components/sidebar.js?v=0.47.5"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/leads-page.js?v=0.47.4"></script>
-    <script src="js/ui.js?v=0.47.4"></script>
-    <script src="js/alerts.js?v=0.47.4"></script>
-    <script src="js/role-panel.js?v=0.47.4"></script>
+    <script src="js/leads-page.js?v=0.47.5"></script>
+    <script src="js/ui.js?v=0.47.5"></script>
+    <script src="js/alerts.js?v=0.47.5"></script>
+    <script src="js/role-panel.js?v=0.47.5"></script>
 </body>
 </html>

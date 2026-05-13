@@ -79,6 +79,7 @@ function clearModules() {
     [
         '../db',
         '../middleware/auth',
+        '../services/kleshnya',
         '../services/leadNotifier',
         '../services/report-bot',
         '../services/telegram',
@@ -231,7 +232,30 @@ function createFakePool() {
                 return { rows: [{ id: 902, customer_id: params[0], type: 'note', direction: 'internal', summary: 'Customer prefers Telegram', created_by_name: 'Dasha Manager', created_at: '2099-05-02T11:00:00Z' }] };
             }
             if (/FROM conversations c LEFT JOIN LATERAL/i.test(text)) {
-                return { rows: [{ id: 903, channel: 'telegram', customer_name: 'Workspace Customer', customer_phone: '+380000000001', status: 'open', assigned_to: 'Dasha Manager', unread_count: 1, last_message_at: '2099-05-02T12:00:00Z', last_message: 'Hello' }] };
+                return { rows: [{ id: 903, channel: 'telegram', customer_name: 'Workspace Customer', customer_phone: '+380000000001', customer_id: 701, status: 'open', assigned_to: 'Dasha Manager', unread_count: 1, last_message_at: '2099-05-02T12:00:00Z', last_message: 'Hello' }] };
+            }
+            if (/INSERT INTO tasks \(title, description, date, priority, assigned_to, owner, created_by,/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 880,
+                        title: params[0],
+                        description: params[1],
+                        date: params[2],
+                        priority: params[3],
+                        assigned_to: params[4],
+                        owner: params[5],
+                        created_by: params[6],
+                        task_type: params[7],
+                        deadline: params[8],
+                        source_type: params[13],
+                        source_id: params[14],
+                        category: params[15],
+                        status: 'todo'
+                    }]
+                };
+            }
+            if (/INSERT INTO task_logs \(task_id, action, old_value, new_value, actor\)/i.test(text)) {
+                return { rows: [], rowCount: 1 };
             }
             if (/SELECT id FROM users WHERE id = \$1 AND is_active = true AND role = ANY\(\$2::text\[\]\)/i.test(text)) {
                 return { rows: params[0] === 2 ? [{ id: 2 }] : [] };
@@ -558,6 +582,24 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.workspace.bookings[0].id, 'BK-WS');
         assert.equal(res.data.workspace.tasks[0].sourceType, 'lead');
         assert.equal(res.data.workspace.conversations[0].channel, 'telegram');
+        assert.equal(res.data.workspace.conversations[0].confidence, 'exact');
+    });
+
+    it('preserves exact lead source linkage when creating manager callback tasks', async () => {
+        const res = await request('POST', '/api/tasks', {
+            title: 'Передзвонити клієнту',
+            source_type: 'lead',
+            source_id: '501',
+            category: 'operational',
+            priority: 'high'
+        }, withAuth({}, 'manager'));
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.task.source_type, 'lead');
+        assert.equal(res.data.task.source_id, '501');
+        assert.ok(queries.some(q => /INSERT INTO tasks \(title, description, date, priority/i.test(q.text)
+            && q.params[13] === 'lead'
+            && q.params[14] === '501'));
     });
 
     it('validates and applies lead assignee updates', async () => {

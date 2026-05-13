@@ -160,7 +160,8 @@ function mapWorkspaceCustomer(row) {
     };
 }
 
-function mapWorkspaceBooking(row) {
+function mapWorkspaceBooking(row, leadBookingId = null) {
+    const isLeadBooking = Boolean(leadBookingId) && String(row.id) === String(leadBookingId);
     return {
         id: row.id,
         date: row.date,
@@ -173,12 +174,18 @@ function mapWorkspaceBooking(row) {
         kidsCount: row.kids_count,
         customerId: row.customer_id,
         notes: row.notes,
+        isLeadBooking,
         createdAt: row.created_at,
         updatedAt: row.updated_at
     };
 }
 
-function mapWorkspaceTask(row) {
+function mapWorkspaceTask(row, leadId = null, exactBookingIds = []) {
+    const sourceType = row.source_type;
+    const sourceId = row.source_id;
+    const exactBookingSet = new Set((exactBookingIds || []).map(id => String(id)));
+    const isExactLeadTask = sourceType === 'lead' && String(sourceId || '') === String(leadId || '');
+    const isExactBookingTask = sourceType === 'booking' && exactBookingSet.has(String(sourceId || ''));
     return {
         id: row.id,
         title: row.title,
@@ -191,8 +198,9 @@ function mapWorkspaceTask(row) {
         deadline: row.deadline,
         category: row.category,
         taskType: row.task_type,
-        sourceType: row.source_type,
-        sourceId: row.source_id,
+        sourceType,
+        sourceId,
+        isExactCaseTask: Boolean(isExactLeadTask || isExactBookingTask),
         createdAt: row.created_at,
         updatedAt: row.updated_at
     };
@@ -657,8 +665,12 @@ router.get('/:id/workspace', async (req, res) => {
                 LIMIT 12
             `, bookingParams)
             : { rows: [] };
-        const bookings = bookingsResult.rows.map(mapWorkspaceBooking);
+        const bookings = bookingsResult.rows.map(row => mapWorkspaceBooking(row, lead.bookingId));
         const bookingIds = bookings.map(b => String(b.id)).filter(Boolean);
+        const exactBookingIds = bookings
+            .filter(b => b.isLeadBooking)
+            .map(b => String(b.id))
+            .filter(Boolean);
 
         const taskConditions = [];
         const taskParams = [];
@@ -689,7 +701,7 @@ router.get('/:id/workspace', async (req, res) => {
                 LIMIT 12
             `, taskParams)
             : { rows: [] };
-        const tasks = tasksResult.rows.map(mapWorkspaceTask);
+        const tasks = tasksResult.rows.map(row => mapWorkspaceTask(row, lead.id, exactBookingIds));
 
         const interactionsResult = await optionalWorkspaceQuery(`
             SELECT li.*, u.name AS manager_name
@@ -727,7 +739,7 @@ router.get('/:id/workspace', async (req, res) => {
         }
         const conversationsResult = conversationConditions.length > 0
             ? await optionalWorkspaceQuery(`
-                SELECT c.id, c.channel, c.customer_name, c.customer_phone, c.status,
+                SELECT c.id, c.channel, c.customer_name, c.customer_phone, c.customer_id, c.status,
                        c.assigned_to, c.unread_count, c.last_message_at, c.updated_at,
                        m.content AS last_message
                 FROM conversations c
@@ -780,6 +792,8 @@ router.get('/:id/workspace', async (req, res) => {
                     channel: c.channel,
                     customerName: c.customer_name,
                     customerPhone: c.customer_phone,
+                    customerId: c.customer_id,
+                    confidence: customerId && Number(c.customer_id) === Number(customerId) ? 'exact' : 'suggested',
                     status: c.status,
                     assignedTo: c.assigned_to,
                     unreadCount: c.unread_count,

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.47.16 - 💬 0.47 Комунікації: reply backlog actions v1 (2026-05-13)
+
+### Reply Backlog Actions v1 [codex]
+- **Дії з черги** - Work Queue отримала manager-only дії для `waiting_reply`: змінити відповідального, перенести SLA на +24 години та явно очистити очікування відповіді.
+- **Typed owner only** - перепризначення працює через `reply_owner_user_id` і активний `users.id`; display label `reply_owner` лишається лише snapshot/fallback.
+- **SLA без callback coupling** - snooze змінює тільки `conversations.reply_sla_at`, не редагує `follow_up_date`, callback чи generic task deadlines.
+- **Escalation coherence** - clear/snooze скасовують stale reply-escalation task, а reassign синхронізує її display assignee без переходу на повну task ownership migration.
+- **Без нового schema** - зміна використовує вже наявні reply expectation / SLA / owner поля, старі рядки лишаються null-safe.
+
+---
+
 ## v0.47.15 - 💬 0.47 Комунікації: reply backlog filters v1 (2026-05-13)
 
 ### Reply Backlog Filters v1 [codex]

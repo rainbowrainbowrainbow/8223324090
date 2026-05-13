@@ -16,7 +16,10 @@ const {
   isActiveWaitingReply,
   isDeliveryFailed: failedDeliveryStatus,
 } = require('./replySla');
-const { closeReplyEscalationForMessage } = require('./replyEscalation');
+const {
+  closeReplyEscalationForMessage,
+  updateActiveReplyEscalationTaskForMessage,
+} = require('./replyEscalation');
 
 const logger = createLogger('omni-hub');
 
@@ -846,6 +849,178 @@ async function clearReplyExpectationForMessage(conversationId, messageId) {
   return conversation;
 }
 
+function replyActionError(code, message, statusCode = 400) {
+  const err = new Error(message);
+  err.code = code;
+  err.statusCode = statusCode;
+  return err;
+}
+
+function normalizeOwnerLabel(user) {
+  return safeTruncate(String(user?.name || user?.username || '').trim(), 100) || null;
+}
+
+async function findActiveReplyOwnerUser(userId) {
+  const ownerUserId = normalizeOptionalPositiveInt(userId);
+  if (!ownerUserId) {
+    throw replyActionError('INVALID_REPLY_OWNER', 'Valid ownerUserId is required', 400);
+  }
+
+  const result = await pool.query(
+    `SELECT id, username, name, role, is_active
+       FROM users
+      WHERE id = $1
+        AND COALESCE(is_active, true) = true
+      LIMIT 1`,
+    [ownerUserId]
+  );
+  const user = result.rows[0];
+  if (!user) {
+    throw replyActionError('REPLY_OWNER_NOT_FOUND', 'Reply owner user was not found or is inactive', 404);
+  }
+  return user;
+}
+
+async function reassignReplyExpectationOwner(conversationId, ownerUserId) {
+  const conversationRef = normalizeOptionalPositiveInt(conversationId);
+  if (!conversationRef) {
+    throw replyActionError('INVALID_CONVERSATION_ID', 'Valid conversationId is required', 400);
+  }
+
+  const ownerUser = await findActiveReplyOwnerUser(ownerUserId);
+  const ownerLabel = normalizeOwnerLabel(ownerUser);
+  const result = await pool.query(
+    `UPDATE conversations
+        SET reply_owner_user_id = $2,
+            reply_owner = $3,
+            updated_at = NOW()
+      WHERE id = $1
+        AND reply_expected IS TRUE
+        AND awaiting_reply_since IS NOT NULL
+        AND (last_inbound_at IS NULL OR last_inbound_at <= awaiting_reply_since)
+        AND NOT EXISTS (
+          SELECT 1
+            FROM conversation_messages cm
+           WHERE cm.id = conversations.reply_expected_message_id
+             AND COALESCE(cm.delivery_status, '') IN ('failed', 'later_failed')
+        )
+      RETURNING *`,
+    [conversationRef, ownerUser.id, ownerLabel]
+  );
+  const conversation = mapConversationRow(result.rows[0]);
+  if (!conversation) {
+    throw replyActionError('REPLY_EXPECTATION_NOT_FOUND', 'Active reply expectation was not found', 404);
+  }
+
+  if (conversation.replyExpectedMessageId) {
+    await updateActiveReplyEscalationTaskForMessage(
+      conversation.replyExpectedMessageId,
+      { assignee: ownerLabel },
+      { pool, reason: 'reply_owner_reassigned' }
+    ).catch(err => logger.warn(`Reply escalation owner sync skipped: ${err.message}`));
+  }
+
+  return {
+    conversation,
+    owner: {
+      id: ownerUser.id,
+      username: ownerUser.username,
+      name: ownerUser.name,
+      label: ownerLabel,
+    },
+  };
+}
+
+async function clearReplyExpectation(conversationId) {
+  const conversationRef = normalizeOptionalPositiveInt(conversationId);
+  if (!conversationRef) {
+    throw replyActionError('INVALID_CONVERSATION_ID', 'Valid conversationId is required', 400);
+  }
+
+  const result = await pool.query(
+    `WITH target AS (
+        SELECT reply_expected_message_id
+          FROM conversations
+         WHERE id = $1
+           AND reply_expected IS TRUE
+           AND awaiting_reply_since IS NOT NULL
+         LIMIT 1
+      ),
+      updated AS (
+        UPDATE conversations
+           SET reply_expected = false,
+               awaiting_reply_since = NULL,
+               reply_expected_message_id = NULL,
+               reply_owner = NULL,
+               reply_owner_user_id = NULL,
+               reply_sla_at = NULL,
+               updated_at = NOW()
+         WHERE id = $1
+           AND EXISTS (SELECT 1 FROM target)
+         RETURNING conversations.*
+      )
+      SELECT updated.*, target.reply_expected_message_id AS cleared_reply_expected_message_id
+        FROM updated
+        CROSS JOIN target`,
+    [conversationRef]
+  );
+  const row = result.rows[0];
+  const conversation = mapConversationRow(row);
+  if (!conversation) {
+    throw replyActionError('REPLY_EXPECTATION_NOT_FOUND', 'Active reply expectation was not found', 404);
+  }
+
+  if (row.cleared_reply_expected_message_id) {
+    await closeReplyEscalationForMessage(row.cleared_reply_expected_message_id, { pool, reason: 'reply_expectation_cleared_by_manager' })
+      .catch(err => logger.warn(`Reply escalation close after manager clear skipped: ${err.message}`));
+  }
+
+  return conversation;
+}
+
+async function updateReplyExpectationSla(conversationId, replySlaAt) {
+  const conversationRef = normalizeOptionalPositiveInt(conversationId);
+  if (!conversationRef) {
+    throw replyActionError('INVALID_CONVERSATION_ID', 'Valid conversationId is required', 400);
+  }
+  const normalizedSlaAt = normalizeOptionalTimestamp(replySlaAt);
+  if (!normalizedSlaAt) {
+    throw replyActionError('INVALID_REPLY_SLA_AT', 'Valid replySlaAt timestamp is required', 400);
+  }
+
+  const result = await pool.query(
+    `UPDATE conversations
+        SET reply_sla_at = $2::timestamp,
+            updated_at = NOW()
+      WHERE id = $1
+        AND reply_expected IS TRUE
+        AND awaiting_reply_since IS NOT NULL
+        AND (last_inbound_at IS NULL OR last_inbound_at <= awaiting_reply_since)
+        AND NOT EXISTS (
+          SELECT 1
+            FROM conversation_messages cm
+           WHERE cm.id = conversations.reply_expected_message_id
+             AND COALESCE(cm.delivery_status, '') IN ('failed', 'later_failed')
+        )
+      RETURNING *`,
+    [conversationRef, normalizedSlaAt]
+  );
+  const conversation = mapConversationRow(result.rows[0]);
+  if (!conversation) {
+    throw replyActionError('REPLY_EXPECTATION_NOT_FOUND', 'Active reply expectation was not found', 404);
+  }
+
+  if (conversation.replyExpectedMessageId) {
+    await updateActiveReplyEscalationTaskForMessage(
+      conversation.replyExpectedMessageId,
+      { deadline: normalizedSlaAt },
+      { pool, reason: 'reply_sla_moved' }
+    ).catch(err => logger.warn(`Reply escalation SLA sync skipped: ${err.message}`));
+  }
+
+  return conversation;
+}
+
 // ---------------------------------------------------------------------------
 // 3. saveOutboundMessage
 // ---------------------------------------------------------------------------
@@ -1563,6 +1738,9 @@ module.exports = {
   applyProviderLifecycleReceipt,
   setReplyExpectation,
   clearReplyExpectationForMessage,
+  reassignReplyExpectationOwner,
+  clearReplyExpectation,
+  updateReplyExpectationSla,
   updateConversationStatus,
   getStats,
   getQuickReplies,

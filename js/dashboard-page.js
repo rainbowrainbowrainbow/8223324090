@@ -244,30 +244,45 @@ const DashboardPage = (() => {
         const priorityCls = item.priority ? ` priority-${item.priority}` : '';
         const bucketCls = item.bucket ? ` bucket-${item.bucket}` : '';
         const waitingCls = item.bucket === 'waiting_reply' ? ' is-waiting-reply' : '';
+        const isWaitingReply = item.bucket === 'waiting_reply';
         const confidence = item.confidence === 'suggested' ? '<span class="work-queue-confidence">підказка</span>' : '';
         const due = item.dueAt ? `<span>${formatQueueDateTime(item.dueAt)}</span>` : '';
-        const waitingSince = item.bucket === 'waiting_reply' && item.meta?.awaitingReplySince
+        const waitingSince = isWaitingReply && item.meta?.awaitingReplySince
             ? `<span class="work-queue-state-pill">очікуємо з ${formatQueueDateTime(item.meta.awaitingReplySince)}</span>`
             : '';
-        const owner = item.bucket === 'waiting_reply' && item.meta?.assignedTo
+        const owner = isWaitingReply && item.meta?.assignedTo
             ? `<span>${escapeHtml(item.meta.assignedTo)}</span>`
             : '';
-        const slaLabel = item.bucket === 'waiting_reply' ? replySlaLabel(item.meta?.replySlaState) : '';
+        const slaLabel = isWaitingReply ? replySlaLabel(item.meta?.replySlaState) : '';
         const slaState = item.meta?.replySlaState || 'none';
         const sla = slaLabel
             ? `<span class="work-queue-sla-pill sla-${escapeHtml(slaState)}">${escapeHtml(slaLabel)}</span>`
             : '';
         const meta = [waitingSince || due, sla, owner, confidence].filter(Boolean).join(' · ');
         const href = item.href || '/dashboard';
+        const conversationId = Number(item.meta?.conversationId || item.sourceId || 0);
+        const actions = isWaitingReply && conversationId > 0 ? `
+            <span class="work-queue-reply-actions" aria-label="Дії reply backlog">
+                <button type="button" class="work-queue-action-btn" onclick="DashboardPage.reassignReplyOwner(${conversationId}, this)">Власник</button>
+                <button type="button" class="work-queue-action-btn" onclick="DashboardPage.snoozeReplySla(${conversationId}, this)">SLA +24г</button>
+                <button type="button" class="work-queue-action-btn danger" onclick="DashboardPage.clearReplyExpectation(${conversationId}, this)">Очистити</button>
+            </span>
+        ` : '';
+        const escalationLink = isWaitingReply && item.meta?.replyEscalationHref
+            ? `<a class="work-queue-escalation-link" href="${escapeHtml(item.meta.replyEscalationHref)}">Ескалація</a>`
+            : '';
         return `
-            <a class="work-queue-item${priorityCls}${bucketCls}${waitingCls}" href="${escapeHtml(href)}">
-                <span class="work-queue-dot" aria-hidden="true"></span>
-                <span class="work-queue-text">
-                    <span class="work-queue-title">${escapeHtml(item.title || item.actionLabel || 'Пункт черги')}</span>
-                    <span class="work-queue-meta">${meta}${item.subtitle ? ' · ' + escapeHtml(String(item.subtitle).slice(0, 90)) : ''}</span>
-                </span>
-                <span class="work-queue-action">${escapeHtml(item.actionLabel || 'Відкрити')}</span>
-            </a>
+            <div class="work-queue-item-frame${waitingCls}">
+                <a class="work-queue-item${priorityCls}${bucketCls}${waitingCls}" href="${escapeHtml(href)}">
+                    <span class="work-queue-dot" aria-hidden="true"></span>
+                    <span class="work-queue-text">
+                        <span class="work-queue-title">${escapeHtml(item.title || item.actionLabel || 'Пункт черги')}</span>
+                        <span class="work-queue-meta">${meta}${item.subtitle ? ' · ' + escapeHtml(String(item.subtitle).slice(0, 90)) : ''}</span>
+                    </span>
+                    <span class="work-queue-action">${escapeHtml(item.actionLabel || 'Відкрити')}</span>
+                </a>
+                ${actions || escalationLink ? `<div class="work-queue-reply-row">${actions}${escalationLink}</div>` : ''}
+            </div>
         `;
     }
 
@@ -1434,6 +1449,72 @@ const DashboardPage = (() => {
         loadWorkQueue();
     }
 
+    async function runReplyBacklogAction(button, path, method, payload) {
+        const token = localStorage.getItem('pzp_token');
+        if (!token) throw new Error('Немає активної сесії');
+
+        if (button) {
+            button.disabled = true;
+            button.setAttribute('aria-busy', 'true');
+        }
+        try {
+            const resp = await fetch(path, {
+                method,
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                },
+                body: payload ? JSON.stringify(payload) : undefined
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || data.success === false) {
+                throw new Error(data.error || `HTTP ${resp.status}`);
+            }
+            await loadWorkQueue();
+            return data;
+        } catch (err) {
+            console.error('Reply backlog action error:', err);
+            alert(err.message || 'Не вдалося оновити reply backlog');
+            throw err;
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.removeAttribute('aria-busy');
+            }
+        }
+    }
+
+    function reassignReplyOwner(conversationId, button) {
+        const raw = window.prompt('ID нового відповідального користувача');
+        const ownerUserId = Number(raw);
+        if (!Number.isInteger(ownerUserId) || ownerUserId <= 0) return;
+        return runReplyBacklogAction(
+            button,
+            `/api/work-queue/replies/${encodeURIComponent(conversationId)}/owner`,
+            'PATCH',
+            { ownerUserId }
+        );
+    }
+
+    function snoozeReplySla(conversationId, button) {
+        return runReplyBacklogAction(
+            button,
+            `/api/work-queue/replies/${encodeURIComponent(conversationId)}/sla`,
+            'PATCH',
+            { snoozeHours: 24 }
+        );
+    }
+
+    function clearReplyExpectation(conversationId, button) {
+        if (!window.confirm('Очистити очікування відповіді без позначки, що клієнт відповів?')) return;
+        return runReplyBacklogAction(
+            button,
+            `/api/work-queue/replies/${encodeURIComponent(conversationId)}/clear`,
+            'POST',
+            {}
+        );
+    }
+
     function refreshWidget(type) {
         loadWidgetData(type);
     }
@@ -1466,6 +1547,9 @@ const DashboardPage = (() => {
         init,
         refreshWorkQueue,
         setWorkQueueReplyScope,
+        reassignReplyOwner,
+        snoozeReplySla,
+        clearReplyExpectation,
         refreshWidget,
         openTask,
         toggleOnboardingWidget,

@@ -85,6 +85,44 @@ async function closeReplyEscalationForMessage(messageId, options = {}) {
     return result.rows || [];
 }
 
+async function updateActiveReplyEscalationTaskForMessage(messageId, updates = {}, options = {}) {
+    const sourceId = messageId ? String(messageId) : null;
+    if (!sourceId) return [];
+
+    const setSql = [];
+    const params = [REPLY_ESCALATION_SOURCE_TYPE, sourceId];
+    if (Object.prototype.hasOwnProperty.call(updates, 'assignee')) {
+        params.push(updates.assignee || null);
+        setSql.push(`assigned_to = $${params.length}`);
+        params.push(updates.assignee || null);
+        setSql.push(`owner = $${params.length}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'deadline')) {
+        params.push(updates.deadline || null);
+        setSql.push(`deadline = $${params.length}::timestamp`);
+    }
+    if (!setSql.length) return [];
+
+    const db = options.pool || defaultPool;
+    const reason = options.reason || 'reply_escalation_synced';
+    const result = await db.query(
+        `UPDATE tasks
+            SET ${setSql.join(', ')},
+                updated_at = NOW()
+          WHERE source_type = $1
+            AND source_id = $2
+            AND ${ACTIVE_TASK_STATUS_SQL}
+          RETURNING *`,
+        params
+    );
+
+    for (const task of result.rows || []) {
+        await logTaskAction(db, task.id, 'updated_reply_escalation', reason);
+    }
+
+    return result.rows || [];
+}
+
 async function closeStaleReplyEscalationTasks(options = {}) {
     const db = options.pool || defaultPool;
     const limit = normalizeLimit(options.limit || 50);
@@ -269,6 +307,7 @@ module.exports = {
     findOverdueReplyExpectations,
     createOrReuseReplyEscalationTask,
     closeReplyEscalationForMessage,
+    updateActiveReplyEscalationTaskForMessage,
     closeStaleReplyEscalationTasks,
     runReplyAutoEscalation
 };

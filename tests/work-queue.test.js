@@ -24,6 +24,8 @@ function clearModules() {
         '../db',
         '../middleware/auth',
         '../services/workQueue',
+        '../services/omni-hub',
+        '../services/replyEscalation',
         '../routes/work-queue'
     ].forEach(modulePath => {
         try { delete require.cache[require.resolve(modulePath)]; } catch {}
@@ -53,9 +55,16 @@ function tokenFor(role = 'manager') {
     );
 }
 
-async function request(path, role = 'manager') {
+async function request(path, role = 'manager', options = {}) {
     const headers = role ? { Authorization: `Bearer ${tokenFor(role)}` } : {};
-    const res = await fetch(`${baseUrl}${path}`, { headers });
+    if (options.body !== undefined) {
+        headers['Content-Type'] = 'application/json';
+    }
+    const res = await fetch(`${baseUrl}${path}`, {
+        method: options.method || 'GET',
+        headers,
+        body: options.body !== undefined ? JSON.stringify(options.body) : undefined
+    });
     const data = await res.json().catch(() => null);
     return { status: res.status, data };
 }
@@ -63,6 +72,7 @@ async function request(path, role = 'manager') {
 function createFakePool() {
     function replyRow(overrides = {}) {
         return {
+            id: overrides.conversation_id || 41,
             conversation_id: 41,
             channel: 'viber',
             customer_name: 'Reply Client',
@@ -79,6 +89,7 @@ function createFakePool() {
             delivery_status: 'delivered',
             delivery_error: null,
             failed_at: null,
+            reply_escalation_task_id: 700,
             lead_id: 41,
             ...overrides
         };
@@ -88,6 +99,81 @@ function createFakePool() {
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             queries.push({ text, params });
+
+            if (/FROM users/i.test(text) && /COALESCE\(is_active, true\) = true/i.test(text)) {
+                if (params[0] === 30) {
+                    return { rows: [{
+                        id: 30,
+                        username: 'new-owner',
+                        name: 'New Owner',
+                        role: 'manager',
+                        is_active: true
+                    }] };
+                }
+                return { rows: [] };
+            }
+
+            if (/UPDATE conversations/i.test(text) && /SET reply_owner_user_id =/i.test(text)) {
+                return { rows: [replyRow({
+                    reply_owner_user_id: params[1],
+                    reply_owner: params[2]
+                })] };
+            }
+
+            if (/WITH target AS/i.test(text) && /SET reply_expected = false/i.test(text)) {
+                return { rows: [{
+                    ...replyRow({
+                        reply_expected: false,
+                        awaiting_reply_since: null,
+                        reply_expected_message_id: null,
+                        reply_owner: null,
+                        reply_owner_user_id: null,
+                        reply_sla_at: null
+                    }),
+                    cleared_reply_expected_message_id: 1201
+                }] };
+            }
+
+            if (/UPDATE conversations/i.test(text) && /SET reply_sla_at =/i.test(text)) {
+                return { rows: [replyRow({
+                    reply_sla_at: params[1],
+                    due_at: params[1]
+                })] };
+            }
+
+            if (/UPDATE tasks/i.test(text) && /assigned_to =/i.test(text) && /source_type = \$1/i.test(text)) {
+                return { rows: [{
+                    id: 700,
+                    source_type: 'conversation_reply',
+                    source_id: '1201',
+                    assigned_to: params[2],
+                    owner: params[3],
+                    status: 'todo'
+                }] };
+            }
+
+            if (/UPDATE tasks/i.test(text) && /deadline =/i.test(text) && /source_type = \$1/i.test(text)) {
+                return { rows: [{
+                    id: 700,
+                    source_type: 'conversation_reply',
+                    source_id: '1201',
+                    deadline: params[2],
+                    status: 'todo'
+                }] };
+            }
+
+            if (/UPDATE tasks/i.test(text) && /SET status = 'cancelled'/i.test(text)) {
+                return { rows: [{
+                    id: 700,
+                    source_type: 'conversation_reply',
+                    source_id: String(params[1]),
+                    status: 'cancelled'
+                }] };
+            }
+
+            if (/INSERT INTO task_logs/i.test(text)) {
+                return { rows: [] };
+            }
 
             if (/FROM tasks t/i.test(text) && /LEFT\(COALESCE\(t\.date, ''\), 10\) < \$1/i.test(text)) {
                 return { rows: [{
@@ -329,6 +415,8 @@ describe('work queue endpoint', () => {
         assert.equal(buckets.waiting_reply.items[0].meta.replySlaAt, '2099-05-13T15:00:00Z');
         assert.equal(buckets.waiting_reply.items[0].meta.replySlaState, 'on_track');
         assert.equal(buckets.waiting_reply.items[0].meta.replyExpectedMessageId, 1201);
+        assert.equal(buckets.waiting_reply.items[0].meta.replyEscalationTaskId, 700);
+        assert.equal(buckets.waiting_reply.items[0].meta.replyEscalationHref, '/tasks?open=700');
         assert.equal(buckets.waiting_reply.items[0].meta.replyOwnerUserId, 501);
         assert.equal(buckets.waiting_reply.items[0].meta.exactHref, '/omni?conversation=41');
         assert.equal(buckets.waiting_reply.items[0].meta.leadHref, '/sales-funnel?lead=41');
@@ -395,6 +483,91 @@ describe('work queue endpoint', () => {
         assert.doesNotMatch(waitingQuery.text, /reply_owner\s*=\s*\$/i);
     });
 
+    it('lets managers reassign reply backlog owner by typed user id only', async () => {
+        const res = await request('/api/work-queue/replies/41/owner', 'manager', {
+            method: 'PATCH',
+            body: { ownerUserId: 30, reply_owner: 'Label Should Not Drive Filtering' }
+        });
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.conversation.replyOwnerUserId, 30);
+        assert.equal(res.data.conversation.replyOwner, 'New Owner');
+
+        assert.ok(queries.some(q => /FROM users/i.test(q.text) && /COALESCE\(is_active, true\) = true/i.test(q.text) && q.params[0] === 30));
+        const ownerUpdate = queries.find(q => /UPDATE conversations/i.test(q.text) && /SET reply_owner_user_id =/i.test(q.text));
+        assert.ok(ownerUpdate, 'reply owner reassignment must update typed owner field');
+        assert.deepEqual(ownerUpdate.params.slice(0, 3), [41, 30, 'New Owner']);
+        assert.doesNotMatch(ownerUpdate.text, /WHERE .*reply_owner\s*=/i);
+
+        const taskSync = queries.find(q => /UPDATE tasks/i.test(q.text) && /assigned_to =/i.test(q.text));
+        assert.ok(taskSync, 'existing reply escalation task should stay assigned coherently');
+        assert.equal(taskSync.params[0], 'conversation_reply');
+        assert.equal(taskSync.params[1], '1201');
+        assert.equal(taskSync.params[2], 'New Owner');
+    });
+
+    it('blocks label-only reply owner reassignment', async () => {
+        const res = await request('/api/work-queue/replies/41/owner', 'manager', {
+            method: 'PATCH',
+            body: { reply_owner: 'manager user' }
+        });
+        assert.equal(res.status, 400, JSON.stringify(res.data));
+        assert.equal(res.data.code, 'INVALID_REPLY_OWNER');
+        assert.ok(!queries.some(q => /UPDATE conversations/i.test(q.text) && /reply_owner_user_id/i.test(q.text)));
+    });
+
+    it('clears reply expectation without claiming an inbound reply and closes escalation', async () => {
+        const res = await request('/api/work-queue/replies/41/clear', 'manager', {
+            method: 'POST',
+            body: {}
+        });
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.conversation.replyExpected, false);
+        assert.equal(res.data.conversation.replyOwnerUserId, null);
+        assert.equal(res.data.conversation.replySlaAt, null);
+
+        const clearUpdate = queries.find(q => /WITH target AS/i.test(q.text) && /SET reply_expected = false/i.test(q.text));
+        assert.ok(clearUpdate, 'clear action must update canonical reply expectation fields');
+        assert.match(clearUpdate.text, /reply_expected_message_id = NULL/i);
+        assert.match(clearUpdate.text, /reply_owner_user_id = NULL/i);
+        assert.doesNotMatch(clearUpdate.text, /last_inbound_at/i);
+
+        const taskClose = queries.find(q => /UPDATE tasks/i.test(q.text) && /SET status = 'cancelled'/i.test(q.text));
+        assert.ok(taskClose, 'clear action should close active reply escalation task');
+        assert.equal(taskClose.params[0], 'conversation_reply');
+        assert.equal(taskClose.params[1], '1201');
+    });
+
+    it('snoozes reply SLA through reply_sla_at and moves linked escalation deadline', async () => {
+        const res = await request('/api/work-queue/replies/41/sla', 'manager', {
+            method: 'PATCH',
+            body: { replySlaAt: '2099-05-14T10:00:00.000Z' }
+        });
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.conversation.replySlaAt, '2099-05-14T10:00:00.000Z');
+
+        const slaUpdate = queries.find(q => /UPDATE conversations/i.test(q.text) && /SET reply_sla_at =/i.test(q.text));
+        assert.ok(slaUpdate, 'SLA action must mutate reply_sla_at');
+        assert.deepEqual(slaUpdate.params.slice(0, 2), [41, '2099-05-14T10:00:00.000Z']);
+        assert.doesNotMatch(slaUpdate.text, /tasks/i);
+        assert.doesNotMatch(slaUpdate.text, /follow_up_date/i);
+
+        const taskMove = queries.find(q => /UPDATE tasks/i.test(q.text) && /deadline =/i.test(q.text));
+        assert.ok(taskMove, 'SLA move should keep linked escalation task coherent without breaking its idempotency anchor');
+        assert.equal(taskMove.params[0], 'conversation_reply');
+        assert.equal(taskMove.params[1], '1201');
+        assert.equal(taskMove.params[2], '2099-05-14T10:00:00.000Z');
+        assert.ok(!queries.some(q => /UPDATE tasks/i.test(q.text) && /SET status = 'cancelled'/i.test(q.text)));
+    });
+
+    it('keeps reply backlog mutation routes manager-up only', async () => {
+        const admin = await request('/api/work-queue/replies/41/clear', 'admin', {
+            method: 'POST',
+            body: {}
+        });
+        assert.equal(admin.status, 403);
+    });
+
     it('does not reuse stale status=new cold-lead logic as queue authority', async () => {
         await request('/api/work-queue', 'manager');
         assert.ok(queries.some(q => /pipeline_stage/i.test(q.text)), 'queue should inspect canonical pipeline_stage');
@@ -412,11 +585,17 @@ describe('work queue endpoint', () => {
         assert.match(dashboardJs, /eg_reply_backlog_scope/);
         assert.match(dashboardJs, /item\.meta\?\.awaitingReplySince/);
         assert.match(dashboardJs, /replySlaState/);
+        assert.match(dashboardJs, /reassignReplyOwner/);
+        assert.match(dashboardJs, /snoozeReplySla/);
+        assert.match(dashboardJs, /clearReplyExpectation/);
+        assert.match(dashboardJs, /work-queue\/replies/);
         assert.match(dashboardJs, /work-queue-state-pill/);
         assert.match(dashboardJs, /work-queue-sla-pill/);
+        assert.match(dashboardJs, /work-queue-reply-actions/);
         assert.doesNotMatch(dashboardJs, /unread_count\s*>\s*0/i);
         assert.match(dashboardCss, /bucket-waiting_reply/);
         assert.match(dashboardCss, /is-waiting-reply/);
         assert.match(dashboardCss, /work-queue-scope-btn/);
+        assert.match(dashboardCss, /work-queue-action-btn/);
     });
 });

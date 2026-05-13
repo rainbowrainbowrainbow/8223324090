@@ -220,6 +220,7 @@ function conversationItem(row, bucket = 'waiting_reply') {
         sourceType: 'conversation',
         sourceId: String(row.conversation_id),
         taskId: null,
+        escalationTaskId: row.reply_escalation_task_id || null,
         leadId: row.lead_id || null,
         customerId: row.customer_id || null,
         bookingId: null,
@@ -241,6 +242,8 @@ function conversationItem(row, bucket = 'waiting_reply') {
             replySlaAt: isoValue(row.reply_sla_at),
             replySlaState,
             replyExpectedMessageId: row.reply_expected_message_id || null,
+            replyEscalationTaskId: row.reply_escalation_task_id || null,
+            replyEscalationHref: row.reply_escalation_task_id ? `/tasks?open=${encodeURIComponent(row.reply_escalation_task_id)}` : null,
             deliveryStatus: row.delivery_status || null,
             lastInboundAt: isoValue(row.last_inbound_at),
             lastOutboundAt: isoValue(row.last_outbound_at),
@@ -409,9 +412,14 @@ async function buildWorkQueue({ pool, user, limit = 8, today = null, replyScope 
                    c.last_inbound_at, c.last_outbound_at,
                    COALESCE(c.reply_sla_at, c.awaiting_reply_since) AS due_at,
                    cm.delivery_status, cm.delivery_error, cm.failed_at,
+                   rt.id AS reply_escalation_task_id,
                    cust.lead_id
             FROM conversations c
             LEFT JOIN conversation_messages cm ON cm.id = c.reply_expected_message_id
+            LEFT JOIN tasks rt
+              ON rt.source_type = 'conversation_reply'
+             AND rt.source_id = c.reply_expected_message_id::text
+             AND COALESCE(rt.status, 'todo') NOT IN ('done','cancelled','archived')
             LEFT JOIN customers cust ON cust.id = c.customer_id
             WHERE c.reply_expected IS TRUE
               AND c.awaiting_reply_since IS NOT NULL

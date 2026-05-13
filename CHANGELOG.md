@@ -4,6 +4,28 @@
 
 ---
 
+## v0.47.8 - 🛰️ 0.47 Комунікації: durable truth schema (2026-05-13)
+
+### Durable Communication Truth Schema v1 [codex]
+- **Durable delivery foundation** - `conversation_messages` тепер має nullable поля для provider ID, delivery status, помилки, часу спроби, provider acceptance і immediate failure без вигаданого final delivery.
+- **Мінімальна модель статусів** - додано компактні стани `saved`, `attempted`, `accepted`, `failed`, `unknown`; `accepted` означає тільки прийнятий provider request, а не підтверджену доставку клієнту.
+- **Timestamp-и для майбутнього reply logic** - `conversations.last_inbound_at` і `last_outbound_at` зберігають durable напрямок останньої комунікації, але `waiting_reply` ще не робиться канонічним станом.
+- **Без фейкового backfill** - історичні outbound повідомлення не отримують delivery status, бо стару provider truth неможливо довести заднім числом.
+- **Backward compatible Omni UI** - Omni читає durable поля, коли вони є, і лишає fallback на `meta.sendTruth` для старих рядків.
+
+---
+
+## v0.47.7 - 📡 0.47 Комунікації: чесна відправка в Omni (2026-05-13)
+
+### Communication Send Truth v1 [codex]
+- **DB save не маскується під доставку** - Omni send flow тепер повертає чесний `sendTruth`, щоб менеджер бачив різницю між "збережено в CRM" і immediate-result провайдера.
+- **Нормалізація provider result** - Telegram `{ ok: false }`, Viber/SMS/Facebook/Instagram `success: false` та невизначені відповіді зводяться до зрозумілих станів `provider_attempted`, `provider_failed_immediate`, `provider_unknown`.
+- **Inbound-only guard** - Binotel та інші не send-capable канали блокуються до створення outbound row і показують зрозуміле пояснення в Omni UI.
+- **Чесні bubble/feedback стани** - outbound повідомлення показують, що фінальна доставка у v1 не підтверджується без durable delivery schema.
+- **Без schema changes** - реліз використовує наявний `conversation_messages.meta`; `provider_message_id`, `delivery_status` і canonical `waiting_reply` лишаються окремим schema/task boundary.
+
+---
+
 ## v0.47.6 - 🌙 0.47 Ліди: видимі списки вибору в темній темі (2026-05-13)
 
 ### Dark Stage Dropdown Fix [codex]

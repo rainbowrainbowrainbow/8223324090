@@ -15,8 +15,31 @@ const logger = createLogger('omni-hub');
 
 const VALID_CHANNELS = ['telegram', 'viber', 'sms', 'facebook', 'instagram', 'binotel'];
 const VALID_STATUSES = ['open', 'closed', 'pending', 'spam'];
+const INBOUND_ONLY_CHANNELS = new Set(['binotel']);
+const DELIVERY_STATUS = Object.freeze({
+  SAVED: 'saved',
+  ATTEMPTED: 'attempted',
+  ACCEPTED: 'accepted',
+  FAILED: 'failed',
+  UNKNOWN: 'unknown',
+});
 const MAX_NAME_LEN = 255;
 const MAX_SEARCH_LEN = 255;
+
+class ChannelUnavailableError extends Error {
+  constructor(channel) {
+    super(`Channel ${channel || 'unknown'} is not send-capable`);
+    this.code = 'CHANNEL_UNAVAILABLE';
+    this.statusCode = 400;
+    this.sendTruth = buildSendTruth('channel_unavailable', {
+      channel,
+      savedInCrm: false,
+      providerAttempted: false,
+      providerAccepted: false,
+      error: 'Канал недоступний для відправки з CRM',
+    });
+  }
+}
 
 function safeTruncate(str, maxLen) {
   if (!str || typeof str !== 'string') return str;
@@ -27,9 +50,174 @@ function normalizeDigits(value) {
   return String(value || '').replace(/\D/g, '');
 }
 
+function normalizeChannel(channel) {
+  return String(channel || '').toLowerCase();
+}
+
+function isSendCapableChannel(channel) {
+  const normalized = normalizeChannel(channel);
+  return VALID_CHANNELS.includes(normalized) && !INBOUND_ONLY_CHANNELS.has(normalized);
+}
+
+function sendTruthMessage(status, details = {}) {
+  const channelLabel = details.channel ? String(details.channel) : 'канал';
+  const error = details.error ? ` Причина: ${details.error}` : '';
+  switch (status) {
+    case 'saved':
+      return 'Повідомлення збережено в CRM. Зовнішня доставка ще не підтверджена.';
+    case 'provider_attempted':
+      return 'Повідомлення збережено в CRM. Провайдер прийняв запит, але фінальна доставка у v1 не підтверджується.';
+    case 'provider_failed_immediate':
+      return `Повідомлення збережено в CRM, але ${channelLabel} одразу відхилив або не прийняв відправку.${error}`;
+    case 'provider_unknown':
+      return `Повідомлення збережено в CRM. Статус ${channelLabel} невідомий, тому доставку не можна вважати підтвердженою.${error}`;
+    case 'channel_unavailable':
+      return `${channelLabel} доступний лише для перегляду або не налаштований для відправки з CRM.`;
+    default:
+      return 'Стан відправки невідомий. Не вважайте повідомлення доставленим без підтвердження.';
+  }
+}
+
+function buildSendTruth(status, details = {}) {
+  return {
+    version: 1,
+    status,
+    channel: details.channel || null,
+    savedInCrm: details.savedInCrm !== false,
+    providerAttempted: details.providerAttempted === true,
+    providerAccepted: details.providerAccepted ?? null,
+    deliveryConfirmed: false,
+    providerReference: details.providerReference || null,
+    error: details.error || null,
+    message: details.message || sendTruthMessage(status, details),
+  };
+}
+
+function providerError(delivery) {
+  return delivery?.error || delivery?.description || delivery?.status_message || delivery?.response_status || null;
+}
+
+function providerReference(delivery) {
+  return delivery?.messageId
+    || delivery?.messageToken
+    || delivery?.commentId
+    || delivery?.result?.message_id
+    || delivery?.result?.messageId
+    || null;
+}
+
+function normalizeProviderResult(channel, delivery) {
+  const normalized = normalizeChannel(channel);
+
+  if (!isSendCapableChannel(normalized)) {
+    return buildSendTruth('channel_unavailable', {
+      channel: normalized,
+      savedInCrm: false,
+      providerAttempted: false,
+      providerAccepted: false,
+    });
+  }
+
+  if (delivery && (delivery.success === true || delivery.ok === true)) {
+    return buildSendTruth('provider_attempted', {
+      channel: normalized,
+      providerAttempted: true,
+      providerAccepted: true,
+      providerReference: providerReference(delivery),
+    });
+  }
+
+  if (delivery && (delivery.success === false || delivery.ok === false)) {
+    return buildSendTruth('provider_failed_immediate', {
+      channel: normalized,
+      providerAttempted: true,
+      providerAccepted: false,
+      error: providerError(delivery),
+    });
+  }
+
+  return buildSendTruth('provider_unknown', {
+    channel: normalized,
+    providerAttempted: true,
+    providerAccepted: null,
+    error: providerError(delivery) || 'Провайдер не повернув однозначний immediate-result',
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Helpers: snake_case DB rows → camelCase API objects
 // ---------------------------------------------------------------------------
+
+function deliveryStatusFromSendTruth(sendTruth) {
+  switch (sendTruth?.status) {
+    case 'saved':
+      return DELIVERY_STATUS.SAVED;
+    case 'provider_attempted':
+      return DELIVERY_STATUS.ACCEPTED;
+    case 'provider_failed_immediate':
+    case 'channel_unavailable':
+      return DELIVERY_STATUS.FAILED;
+    case 'provider_unknown':
+      return DELIVERY_STATUS.UNKNOWN;
+    default:
+      return DELIVERY_STATUS.UNKNOWN;
+  }
+}
+
+function attemptedDeliveryStatus(deliveryStatus) {
+  return [
+    DELIVERY_STATUS.ATTEMPTED,
+    DELIVERY_STATUS.ACCEPTED,
+    DELIVERY_STATUS.FAILED,
+    DELIVERY_STATUS.UNKNOWN,
+  ].includes(deliveryStatus);
+}
+
+function sendTruthFromDurableRow(row) {
+  if (!row || !row.delivery_status) return null;
+
+  switch (row.delivery_status) {
+    case DELIVERY_STATUS.SAVED:
+      return buildSendTruth('saved', {
+        providerAttempted: false,
+        providerAccepted: null,
+        providerReference: row.provider_message_id || null,
+        error: row.delivery_error || null,
+      });
+    case DELIVERY_STATUS.ACCEPTED:
+      return buildSendTruth('provider_attempted', {
+        providerAttempted: true,
+        providerAccepted: true,
+        providerReference: row.provider_message_id || null,
+        error: row.delivery_error || null,
+      });
+    case DELIVERY_STATUS.FAILED:
+      return buildSendTruth('provider_failed_immediate', {
+        providerAttempted: true,
+        providerAccepted: false,
+        providerReference: row.provider_message_id || null,
+        error: row.delivery_error || null,
+      });
+    case DELIVERY_STATUS.ATTEMPTED:
+    case DELIVERY_STATUS.UNKNOWN:
+      return buildSendTruth('provider_unknown', {
+        providerAttempted: true,
+        providerAccepted: null,
+        providerReference: row.provider_message_id || null,
+        error: row.delivery_error || null,
+      });
+    default:
+      return null;
+  }
+}
+
+function mergeSendTruthMeta(row) {
+  const meta = row?.meta || {};
+  if (meta.sendTruth) return meta;
+
+  const sendTruth = sendTruthFromDurableRow(row);
+  return sendTruth ? { ...meta, sendTruth } : meta;
+}
 
 function mapConversationRow(row) {
   if (!row) return null;
@@ -43,9 +231,13 @@ function mapConversationRow(row) {
     status: row.status,
     assignedTo: row.assigned_to,
     lastMessageAt: row.last_message_at,
+    lastInboundAt: row.last_inbound_at,
+    lastOutboundAt: row.last_outbound_at,
     lastMessage: row.last_message || null,
     unreadCount: row.unread_count,
     meta: row.meta,
+    sendCapable: isSendCapableChannel(row.channel),
+    sendReadiness: isSendCapableChannel(row.channel) ? 'send_capable' : 'inbound_only',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -53,6 +245,7 @@ function mapConversationRow(row) {
 
 function mapMessageRow(row) {
   if (!row) return null;
+  const meta = mergeSendTruthMeta(row);
   return {
     id: row.id,
     conversationId: row.conversation_id,
@@ -62,9 +255,16 @@ function mapMessageRow(row) {
     contentType: row.content_type,
     mediaUrl: row.media_url,
     externalMessageId: row.external_message_id,
+    providerMessageId: row.provider_message_id,
+    deliveryStatus: row.delivery_status,
+    deliveryError: row.delivery_error,
+    sendAttemptedAt: row.send_attempted_at,
+    providerAcceptedAt: row.provider_accepted_at,
+    failedAt: row.failed_at,
+    sendTruth: meta.sendTruth || null,
     aiGenerated: row.ai_generated,
     readAt: row.read_at,
-    meta: row.meta,
+    meta,
     createdAt: row.created_at,
   };
 }
@@ -371,6 +571,7 @@ async function saveInboundMessage(conversationId, normalized) {
     await client.query(
       `UPDATE conversations
          SET last_message_at = NOW(),
+             last_inbound_at = NOW(),
              unread_count    = unread_count + 1,
              status          = CASE WHEN status = 'closed' THEN 'open' ELSE status END,
              updated_at      = NOW()
@@ -414,7 +615,11 @@ async function saveOutboundMessage(conversationId, content, contentType, meta) {
     );
 
     await client.query(
-      `UPDATE conversations SET last_message_at = NOW(), updated_at = NOW() WHERE id = $1`,
+      `UPDATE conversations
+         SET last_message_at = NOW(),
+             last_outbound_at = NOW(),
+             updated_at = NOW()
+       WHERE id = $1`,
       [conversationId]
     );
 
@@ -427,6 +632,63 @@ async function saveOutboundMessage(conversationId, content, contentType, meta) {
   } finally {
     if (client) client.release();
   }
+}
+
+function durableSendTruthValues(sendTruth, options = {}) {
+  const deliveryStatus = options.deliveryStatus || deliveryStatusFromSendTruth(sendTruth);
+  const providerMessageId = sendTruth?.providerReference
+    ? safeTruncate(String(sendTruth.providerReference), 255)
+    : null;
+  const deliveryError = sendTruth?.error || null;
+  const providerAttempted = options.providerAttempted ?? (sendTruth?.providerAttempted === true || attemptedDeliveryStatus(deliveryStatus));
+  const providerAccepted = options.providerAccepted ?? (deliveryStatus === DELIVERY_STATUS.ACCEPTED);
+  const failed = options.failed ?? (deliveryStatus === DELIVERY_STATUS.FAILED);
+
+  return {
+    providerMessageId,
+    deliveryStatus,
+    deliveryError,
+    providerAttempted,
+    providerAccepted,
+    failed,
+  };
+}
+
+async function saveMessageSendTruth(messageId, sendTruth, options = {}) {
+  if (!messageId || !sendTruth) return null;
+  const durable = durableSendTruthValues(sendTruth, options);
+  const result = await pool.query(
+    `UPDATE conversation_messages
+       SET meta = COALESCE(meta, '{}'::jsonb) || $2::jsonb,
+           provider_message_id = COALESCE($3, provider_message_id),
+           delivery_status = $4,
+           delivery_error = $5,
+           send_attempted_at = CASE WHEN $6::boolean THEN COALESCE(send_attempted_at, NOW()) ELSE send_attempted_at END,
+           provider_accepted_at = CASE WHEN $7::boolean THEN COALESCE(provider_accepted_at, NOW()) ELSE provider_accepted_at END,
+           failed_at = CASE WHEN $8::boolean THEN COALESCE(failed_at, NOW()) ELSE failed_at END
+     WHERE id = $1
+     RETURNING *`,
+    [
+      messageId,
+      JSON.stringify({ sendTruth }),
+      durable.providerMessageId,
+      durable.deliveryStatus,
+      durable.deliveryError,
+      durable.providerAttempted,
+      durable.providerAccepted,
+      durable.failed,
+    ]
+  );
+  return mapMessageRow(result.rows[0]);
+}
+
+async function markMessageSendAttempted(messageId, sendTruth) {
+  return saveMessageSendTruth(messageId, sendTruth, {
+    deliveryStatus: DELIVERY_STATUS.ATTEMPTED,
+    providerAttempted: true,
+    providerAccepted: null,
+    failed: false,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -491,26 +753,48 @@ async function generateAndSendAIResponse(conversation, message) {
     return null;
   }
 
+  if (!isSendCapableChannel(conversation.channel)) {
+    logger.warn(`AI response skipped because ${conversation.channel} is not send-capable`);
+    return null;
+  }
+
+  let sendTruth = buildSendTruth('saved', {
+    channel: conversation.channel,
+    providerAttempted: false,
+    providerAccepted: null,
+  });
   const saved = await saveOutboundMessage(conversation.id, aiText, 'text', {
     aiGenerated: true,
+    sendTruth,
   });
+  let messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || saved;
 
   // Deliver to the external channel
   try {
+    messageWithTruth = await markMessageSendAttempted(saved.id, sendTruth) || messageWithTruth;
     const delivery = await sendToChannel(conversation.channel, conversation.externalId, aiText, {});
-    if (delivery && delivery.success === false) {
-      logger.warn(`Delivery failed via ${conversation.channel}: ${delivery.error || 'unknown'}`);
+    sendTruth = normalizeProviderResult(conversation.channel, delivery);
+    messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || saved;
+    if (sendTruth.status === 'provider_failed_immediate' || sendTruth.status === 'provider_unknown') {
+      logger.warn(`AI response delivery not confirmed via ${conversation.channel}: ${sendTruth.error || sendTruth.status}`);
     }
   } catch (err) {
     logger.error(`Failed to deliver AI response via ${conversation.channel}`, err);
+    sendTruth = buildSendTruth('provider_failed_immediate', {
+      channel: conversation.channel,
+      providerAttempted: true,
+      providerAccepted: false,
+      error: err.message,
+    });
+    messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || saved;
   }
 
   notifyCRM('omni:message', {
     conversation,
-    message: saved,
+    message: messageWithTruth,
   });
 
-  return saved;
+  return messageWithTruth;
 }
 
 // ---------------------------------------------------------------------------
@@ -531,7 +815,7 @@ async function sendToChannel(channel, externalId, text, meta) {
       return sendInstagram(externalId, text);
     case 'binotel':
       logger.info(`Binotel is inbound-only, skipping outbound to ${externalId}`);
-      return null;
+      return { success: false, error: 'Binotel is inbound-only', code: 'channel_unavailable' };
     default:
       logger.warn(`Unknown channel: ${channel}`);
       throw new Error(`Unsupported channel: ${channel}`);
@@ -639,6 +923,9 @@ async function sendManualMessage(conversationId, text, senderName) {
   }
 
   const conversation = mapConversationRow(convResult.rows[0]);
+  if (!isSendCapableChannel(conversation.channel)) {
+    throw new ChannelUnavailableError(conversation.channel);
+  }
 
   let client;
   try {
@@ -655,27 +942,48 @@ async function sendManualMessage(conversationId, text, senderName) {
 
     await client.query(
       `UPDATE conversations
-         SET last_message_at = NOW(), unread_count = 0, updated_at = NOW()
+         SET last_message_at = NOW(),
+             last_outbound_at = NOW(),
+             unread_count = 0,
+             updated_at = NOW()
        WHERE id = $1`,
       [conversationId]
     );
 
     await client.query('COMMIT');
+    client.release();
+    client = null;
 
     const saved = mapMessageRow(msg.rows[0]);
-
-    // Deliver to external channel (fire-and-forget after commit)
-    sendToChannel(conversation.channel, conversation.externalId, text, {}).then((delivery) => {
-      if (delivery && delivery.success === false) {
-        logger.warn(`Manual message delivery failed via ${conversation.channel}: ${delivery.error || 'unknown'}`);
-      }
-    }).catch((err) => {
-      logger.error(`Failed to deliver manual message via ${conversation.channel}`, err);
+    let sendTruth = buildSendTruth('saved', {
+      channel: conversation.channel,
+      providerAttempted: false,
+      providerAccepted: null,
     });
+    let messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || saved;
 
-    notifyCRM('omni:message', { conversation, message: saved });
+    try {
+      messageWithTruth = await markMessageSendAttempted(saved.id, sendTruth) || messageWithTruth;
+      const delivery = await sendToChannel(conversation.channel, conversation.externalId, text, {});
+      sendTruth = normalizeProviderResult(conversation.channel, delivery);
+      messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || messageWithTruth;
+      if (sendTruth.status === 'provider_failed_immediate' || sendTruth.status === 'provider_unknown') {
+        logger.warn(`Manual message delivery not confirmed via ${conversation.channel}: ${sendTruth.error || sendTruth.status}`);
+      }
+    } catch (err) {
+      logger.error(`Failed to deliver manual message via ${conversation.channel}`, err);
+      sendTruth = buildSendTruth('provider_failed_immediate', {
+        channel: conversation.channel,
+        providerAttempted: true,
+        providerAccepted: false,
+        error: err.message,
+      });
+      messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || messageWithTruth;
+    }
 
-    return saved;
+    notifyCRM('omni:message', { conversation, message: messageWithTruth, sendTruth });
+
+    return { message: messageWithTruth, sendTruth };
   } catch (e) {
     if (client) await client.query('ROLLBACK').catch(() => {});
     logger.error('sendManualMessage error', e);
@@ -833,6 +1141,7 @@ module.exports = {
   getConversations,
   getMessages,
   sendManualMessage,
+  saveMessageSendTruth,
   updateConversationStatus,
   getStats,
   getQuickReplies,
@@ -840,4 +1149,10 @@ module.exports = {
   notifyCRM,
   mapConversationRow,
   mapMessageRow,
+  buildSendTruth,
+  normalizeProviderResult,
+  isSendCapableChannel,
+  INBOUND_ONLY_CHANNELS,
+  DELIVERY_STATUS,
+  ChannelUnavailableError,
 };

@@ -261,9 +261,20 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
             text.trim(),
             req.user.username
         );
-        res.json({ success: true, data: message });
+        res.json({
+            success: true,
+            data: message.message || message,
+            sendTruth: message.sendTruth || message.message?.meta?.sendTruth || null
+        });
     } catch (err) {
         log.error('Send message error:', err.message);
+        if (err.code === 'CHANNEL_UNAVAILABLE') {
+            return res.status(err.statusCode || 400).json({
+                success: false,
+                error: 'Канал недоступний для відправки з CRM',
+                sendTruth: err.sendTruth || null
+            });
+        }
         res.status(500).json({ success: false, error: 'Помилка відправки повідомлення' });
     }
 });

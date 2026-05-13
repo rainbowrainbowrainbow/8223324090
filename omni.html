@@ -7,13 +7,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.47.6">
-    <link rel="stylesheet" href="css/layout.css?v=0.47.6">
-    <link rel="stylesheet" href="css/pages.css?v=0.47.6">
-    <link rel="stylesheet" href="css/modals.css?v=0.47.6">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.6">
-    <link rel="stylesheet" href="css/responsive.css?v=0.47.6">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.47.6">
+    <link rel="stylesheet" href="css/base.css?v=0.47.8">
+    <link rel="stylesheet" href="css/layout.css?v=0.47.8">
+    <link rel="stylesheet" href="css/pages.css?v=0.47.8">
+    <link rel="stylesheet" href="css/modals.css?v=0.47.8">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.8">
+    <link rel="stylesheet" href="css/responsive.css?v=0.47.8">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.47.8">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -412,6 +412,43 @@
             opacity: 0.85;
         }
 
+        .omni-send-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.45;
+            background: var(--border-color, #cbd5e0);
+            color: var(--text-secondary, #718096);
+        }
+
+        .omni-send-truth {
+            border-top: 1px solid var(--border-color, #e2e8f0);
+            padding: 8px 16px;
+            font-size: 12px;
+            color: var(--text-secondary, #718096);
+            background: var(--bg-secondary, #f7fafc);
+        }
+
+        .omni-send-truth.info,
+        .omni-send-state.info {
+            color: var(--info-color, #2563eb);
+        }
+
+        .omni-send-truth.warning,
+        .omni-send-state.warning {
+            color: var(--warning-color, #d97706);
+        }
+
+        .omni-send-truth.error,
+        .omni-send-state.error {
+            color: var(--danger-color, #dc2626);
+        }
+
+        .omni-send-state {
+            display: block;
+            margin-top: 4px;
+            font-size: 11px;
+            line-height: 1.35;
+        }
+
         .omni-quick-replies {
             display: flex;
             gap: 6px;
@@ -434,6 +471,11 @@
 
         .omni-quick-btn:hover {
             background: var(--accent-bg, rgba(245,200,66,0.15));
+        }
+
+        .omni-quick-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
         }
 
         /* Stats bar */
@@ -580,6 +622,7 @@
                         <textarea id="omniInput" rows="1" placeholder="Написати повідомлення..." maxlength="4000" aria-label="Повідомлення"></textarea>
                         <button type="button" class="omni-send-btn" id="omniSendBtn" title="Відправити">&gt;</button>
                     </div>
+                    <div class="omni-send-truth" id="omniSendTruth" hidden aria-live="polite"></div>
                 </div>
             </div>
         </main>
@@ -600,12 +643,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.47.6"></script>
-    <script src="js/api.js?v=0.47.6"></script>
-    <script src="js/auth.js?v=0.47.6"></script>
-    <script src="js/components/sidebar.js?v=0.47.6"></script>
+    <script src="js/config.js?v=0.47.8"></script>
+    <script src="js/api.js?v=0.47.8"></script>
+    <script src="js/auth.js?v=0.47.8"></script>
+    <script src="js/components/sidebar.js?v=0.47.8"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.47.6"></script>
+    <script src="js/ws.js?v=0.47.8"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -635,7 +678,10 @@
         const statsEl = $('omniStats');
         const searchInput = $('omniSearch');
         const input = $('omniInput');
+        const sendBtn = $('omniSendBtn');
+        const sendTruthEl = $('omniSendTruth');
         const caseContextEl = $('omniCaseContext');
+        let isSending = false;
 
         // ---- Auth ----
         function getHeaders() {
@@ -654,10 +700,12 @@
                     window.location.href = '/';
                     return { success: false, error: 'Сесія закінчилась' };
                 }
+                let body = null;
+                try { body = await res.json(); } catch {}
                 if (!res.ok) {
-                    return { success: false, error: 'Помилка сервера: ' + res.status };
+                    return { success: false, error: body?.error || ('Помилка сервера: ' + res.status), ...(body || {}) };
                 }
-                return await res.json();
+                return body || { success: true };
             } catch (err) {
                 console.error('API error:', err);
                 return { success: false, error: 'Помилка мережі' };
@@ -674,6 +722,7 @@
             telegram: 'Telegram', viber: 'Viber', sms: 'SMS',
             facebook: 'Facebook', instagram: 'Instagram', binotel: 'Binotel'
         };
+        const SEND_DISABLED_CHANNELS = new Set(['binotel']);
 
         // ---- Load data ----
         async function loadConversations() {
@@ -790,6 +839,103 @@
             loadConversations();
         }
 
+        function currentConversation() {
+            return conversations.find(c => c.id === currentConvId) || null;
+        }
+
+        function canSendConversation(conv) {
+            return Boolean(conv && conv.sendCapable !== false && !SEND_DISABLED_CHANNELS.has(String(conv.channel || '').toLowerCase()));
+        }
+
+        function sendTruthTone(sendTruth) {
+            const status = sendTruth?.status || '';
+            if (status === 'provider_failed_immediate' || status === 'channel_unavailable') return 'error';
+            if (status === 'provider_unknown' || status === 'saved') return 'warning';
+            if (status === 'provider_attempted') return 'info';
+            return 'warning';
+        }
+
+        function sendTruthLabel(sendTruth) {
+            if (!sendTruth) return '';
+            if (sendTruth.message) return sendTruth.message;
+            switch (sendTruth.status) {
+                case 'provider_attempted':
+                    return 'Провайдер прийняв запит. Фінальна доставка ще не підтверджується.';
+                case 'provider_failed_immediate':
+                    return 'Провайдер одразу не прийняв відправку. Повідомлення лишилось у CRM.';
+                case 'provider_unknown':
+                    return 'Повідомлення збережено в CRM, але статус провайдера невідомий.';
+                case 'channel_unavailable':
+                    return 'Цей канал недоступний для відправки з CRM.';
+                case 'saved':
+                    return 'Повідомлення збережено в CRM. Очікуємо immediate-result провайдера.';
+                default:
+                    return 'Стан відправки невідомий.';
+            }
+        }
+
+        function parseMessageMeta(meta) {
+            if (!meta) return {};
+            if (typeof meta === 'object') return meta;
+            try { return JSON.parse(meta); } catch { return {}; }
+        }
+
+        function sendTruthFromDurableStatus(message) {
+            switch (message?.deliveryStatus) {
+                case 'saved':
+                    return { status: 'saved', providerReference: message.providerMessageId || null, error: message.deliveryError || null };
+                case 'accepted':
+                    return { status: 'provider_attempted', providerReference: message.providerMessageId || null, error: message.deliveryError || null };
+                case 'failed':
+                    return { status: 'provider_failed_immediate', providerReference: message.providerMessageId || null, error: message.deliveryError || null };
+                case 'attempted':
+                case 'unknown':
+                    return { status: 'provider_unknown', providerReference: message.providerMessageId || null, error: message.deliveryError || null };
+                default:
+                    return null;
+            }
+        }
+
+        function sendTruthFromMessage(message) {
+            const meta = parseMessageMeta(message?.meta);
+            return message?.sendTruth || meta.sendTruth || sendTruthFromDurableStatus(message);
+        }
+
+        function renderSendTruthState(sendTruth) {
+            if (!sendTruth) return '';
+            const tone = sendTruthTone(sendTruth);
+            return '<span class="omni-send-state ' + tone + '">' + esc(sendTruthLabel(sendTruth)) + '</span>';
+        }
+
+        function setSendFeedback(sendTruth, fallbackText) {
+            if (!sendTruthEl) return;
+            const message = sendTruth ? sendTruthLabel(sendTruth) : fallbackText;
+            if (!message) {
+                sendTruthEl.hidden = true;
+                sendTruthEl.textContent = '';
+                sendTruthEl.className = 'omni-send-truth';
+                return;
+            }
+            const tone = sendTruth ? sendTruthTone(sendTruth) : 'warning';
+            sendTruthEl.hidden = false;
+            sendTruthEl.className = 'omni-send-truth ' + tone;
+            sendTruthEl.textContent = message;
+        }
+
+        function updateSendControls(conv) {
+            const canSend = canSendConversation(conv);
+            input.disabled = !canSend || isSending;
+            sendBtn.disabled = !canSend || isSending;
+            input.placeholder = canSend ? 'Написати повідомлення...' : 'Канал доступний лише для перегляду';
+            if (!canSend && conv) {
+                setSendFeedback({
+                    status: 'channel_unavailable',
+                    channel: conv.channel,
+                    message: (CHANNEL_NAMES[conv.channel] || conv.channel || 'Канал') + ' недоступний для відправки з CRM. Відкривайте історію без compose-дії.'
+                });
+            }
+        }
+
         function renderMessages(msgs) {
             messages.innerHTML = msgs.map(m => {
                 const dir = m.direction;
@@ -797,9 +943,11 @@
                 const cls = 'omni-msg ' + dir + (isAI ? ' ai' : '');
                 const sender = dir === 'outbound' ? (m.senderName || 'Оператор') : '';
                 const senderHtml = sender ? '<div class="omni-msg-sender">' + esc(sender) + (isAI ? ' (AI)' : '') + '</div>' : '';
+                const sendTruthHtml = dir === 'outbound' ? renderSendTruthState(sendTruthFromMessage(m)) : '';
                 return '<div class="' + cls + '">' +
                     senderHtml +
                     '<div>' + esc(m.content || '') + '</div>' +
+                    sendTruthHtml +
                     '<div class="omni-msg-time">' + formatTime(m.createdAt) + '</div>' +
                 '</div>';
             }).join('');
@@ -807,8 +955,9 @@
         }
 
         function renderQuickReplies() {
+            const disabled = !canSendConversation(currentConversation());
             quickRepliesEl.innerHTML = quickReplies.map(qr =>
-                '<button type="button" class="omni-quick-btn" data-content="' + esc(qr.content) + '">' + esc(qr.title) + '</button>'
+                '<button type="button" class="omni-quick-btn" data-content="' + esc(qr.content) + '"' + (disabled ? ' disabled aria-disabled="true"' : '') + '>' + esc(qr.title) + '</button>'
             ).join('');
         }
 
@@ -934,6 +1083,8 @@
             const aiEnabled = conv.meta && conv.meta.ai_enabled;
             aiBtn.style.background = aiEnabled ? '#667eea' : '';
             aiBtn.style.color = aiEnabled ? '#fff' : '';
+            setSendFeedback(null);
+            updateSendControls(conv);
 
             renderConversations();
             loadMessages(convId);
@@ -943,8 +1094,19 @@
 
         async function sendMessage() {
             const text = input.value.trim();
-            if (!text || !currentConvId) return;
-            input.value = '';
+            const conv = currentConversation();
+            if (!text || !currentConvId || isSending) return;
+            if (!canSendConversation(conv)) {
+                updateSendControls(conv);
+                return;
+            }
+            isSending = true;
+            updateSendControls(conv);
+            setSendFeedback({
+                status: 'saved',
+                channel: conv?.channel,
+                message: 'Зберігаємо в CRM і чекаємо immediate-result провайдера...'
+            });
 
             const res = await api('/conversations/' + currentConvId + '/send', {
                 method: 'POST',
@@ -952,9 +1114,24 @@
             });
 
             if (res.success) {
+                input.value = '';
+                input.style.height = 'auto';
+                setSendFeedback(res.sendTruth || res.data?.meta?.sendTruth || {
+                    status: 'provider_unknown',
+                    channel: conv?.channel,
+                    message: 'Повідомлення збережено, але стан провайдера не повернувся.'
+                });
                 loadMessages(currentConvId);
                 loadConversations();
+            } else {
+                setSendFeedback(res.sendTruth || {
+                    status: 'provider_failed_immediate',
+                    channel: conv?.channel,
+                    message: res.error || 'Не вдалося виконати відправку. Повідомлення не вважається доставленим.'
+                });
             }
+            isSending = false;
+            updateSendControls(currentConversation() || conv);
         }
 
         async function closeConversation() {
@@ -1062,7 +1239,7 @@
         // Quick replies
         quickRepliesEl.addEventListener('click', e => {
             const btn = e.target.closest('.omni-quick-btn');
-            if (btn) {
+            if (btn && !btn.disabled && !input.disabled) {
                 input.value = btn.dataset.content;
                 input.focus();
             }
@@ -1145,8 +1322,8 @@
         });
     })();
     </script>
-    <script src="js/role-panel.js?v=0.47.6"></script>
-    <script src="js/ui.js?v=0.47.6"></script>
-    <script src="js/alerts.js?v=0.47.6"></script>
+    <script src="js/role-panel.js?v=0.47.8"></script>
+    <script src="js/ui.js?v=0.47.8"></script>
+    <script src="js/alerts.js?v=0.47.8"></script>
 </body>
 </html>

@@ -81,3 +81,5 @@ deadline: "Before expanding booking-derived linked route actions"
 owner: "Codex / Sergii / Kleshnia"
 related_module: "Bookings / Linked entity route-outs"
 severity: MEDIUM
+
+2026-05-14 S22 update: Booking Visibility v1.1 promoted durable staff-host assignment scope and added linked-route parity helper. RISK-020 remains for true team/line/location booking scope; RISK-021 remains only for lead/customer exact-route parity until those entity object policies are proven. Booking-derived tasks now route to exact visible task context with parent booking fallback metadata.

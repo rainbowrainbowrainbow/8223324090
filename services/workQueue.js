@@ -2,7 +2,7 @@ const { getKyivDateStr } = require('./booking');
 const { REPLY_SLA_STATES, deriveReplySlaState } = require('./replySla');
 const { enrichQueueBuckets } = require('./queueIntelligence');
 const { buildTaskVisibilityScope, taskOwnerState } = require('./taskPolicy');
-const { getVisibleBookingScope } = require('./bookingVisibility');
+const { getVisibleBookingScope, resolveBookingDerivedLinkedRoute } = require('./bookingVisibility');
 
 const BUCKETS = [
     { key: 'overdue', label: 'Прострочено' },
@@ -163,7 +163,7 @@ function buildTaskVisibility(user, params, alias = 't') {
     return buildTaskVisibilityScope(user, params, alias);
 }
 
-function hrefForTask(row) {
+function hrefForTask(row, actor = null) {
     const sourceType = row.task_source_type || row.source_type;
     const sourceId = row.task_source_id || row.source_id;
     const conversationId = row.linked_conversation_id;
@@ -175,9 +175,38 @@ function hrefForTask(row) {
     if (conversationId) return `/omni?conversation=${encodeURIComponent(conversationId)}`;
     if (leadId) return `/sales-funnel?lead=${encodeURIComponent(leadId)}`;
     if (bookingId && bookingDate) {
-        return `/?date=${encodeURIComponent(dateValue(bookingDate))}&highlight=${encodeURIComponent(bookingId)}`;
+        const route = resolveBookingDerivedLinkedRoute(
+            actor,
+            {
+                id: bookingId,
+                date: bookingDate,
+                customer_id: row.linked_customer_id || null,
+                visible: linkedBookingVisible
+            },
+            { type: 'task', id: row.id, visible: true }
+        );
+        return route.href || `/?date=${encodeURIComponent(dateValue(bookingDate))}&highlight=${encodeURIComponent(bookingId)}`;
     }
     return `/tasks?open=${encodeURIComponent(row.id)}`;
+}
+
+function bookingDerivedTaskRoute(row, actor = null) {
+    const sourceType = row.task_source_type || row.source_type;
+    const sourceId = row.task_source_id || row.source_id;
+    const linkedBookingVisible = row.linked_booking_visible === true || row.linked_booking_visible === 'true';
+    const bookingId = row.linked_booking_id || (linkedBookingVisible && sourceType === 'booking' ? sourceId : null);
+    const bookingDate = row.linked_booking_date || row.booking_date;
+    if (!bookingId || !bookingDate) return null;
+    return resolveBookingDerivedLinkedRoute(
+        actor,
+        {
+            id: bookingId,
+            date: bookingDate,
+            customer_id: row.linked_customer_id || null,
+            visible: linkedBookingVisible
+        },
+        { type: 'task', id: row.id, visible: true }
+    );
 }
 
 function taskItem(row, bucket, options = {}) {
@@ -191,6 +220,7 @@ function taskItem(row, bucket, options = {}) {
     const hasExactCase = Boolean(conversationId || leadId || bookingId);
     const ownerState = taskOwnerState(row);
     const ownerLabel = row.owner_name || row.owner_username || row.assigned_to || row.owner || null;
+    const bookingRoute = bookingDerivedTaskRoute(row, options.actor);
 
     return {
         id: `task:${bucket}:${row.id}`,
@@ -207,7 +237,7 @@ function taskItem(row, bucket, options = {}) {
         priority: priority(row.priority),
         confidence: hasExactCase ? 'exact' : (row.deadline ? 'durable' : 'suggested'),
         actionLabel: hasExactCase ? 'Відкрити кейс' : 'Відкрити задачу',
-        href: hrefForTask(row),
+        href: hrefForTask(row, options.actor),
         meta: {
             status: row.status || null,
             category: row.category || null,
@@ -219,6 +249,12 @@ function taskItem(row, bucket, options = {}) {
             taskSourceType: sourceType,
             taskSourceId: sourceId,
             linkedBookingVisible,
+            bookingLinkedRoute: bookingRoute ? {
+                href: bookingRoute.href,
+                fallbackHref: bookingRoute.fallbackHref || null,
+                routeKind: bookingRoute.routeKind,
+                reason: bookingRoute.reason
+            } : null,
             version: row.version || null,
             updatedAt: isoValue(row.updated_at),
             createdAt: isoValue(row.created_at),
@@ -318,6 +354,16 @@ function bookingItem(row, bucket, options = {}) {
     const dueAt = bookingDueAt(row.date, row.time);
     const minutesUntilStart = options.minutesUntilStart ?? null;
     const latePreliminary = options.latePreliminary === true;
+    const leadRoute = row.lead_id ? resolveBookingDerivedLinkedRoute(
+        options.actor || null,
+        { id: row.id, date: row.date, customer_id: row.customer_id || null, visible: true },
+        { type: 'lead', id: row.lead_id, visible: options.leadVisible === true }
+    ) : null;
+    const customerRoute = row.customer_id ? resolveBookingDerivedLinkedRoute(
+        options.actor || null,
+        { id: row.id, date: row.date, customer_id: row.customer_id || null, visible: true },
+        { type: 'customer', id: row.customer_id, visible: options.customerVisible === true }
+    ) : null;
     return {
         id: `booking:${bucket}:${row.id}`,
         bucket,
@@ -345,7 +391,19 @@ function bookingItem(row, bucket, options = {}) {
             latePreliminary,
             minutesUntilStart,
             bookingVisibilityScope: options.bookingVisibilityScope || null,
-            bookingVisibilityClassification: options.bookingVisibilityClassification || null
+            bookingVisibilityClassification: options.bookingVisibilityClassification || null,
+            linkedRouteParity: {
+                lead: leadRoute ? {
+                    href: leadRoute.href,
+                    routeKind: leadRoute.routeKind,
+                    reason: leadRoute.reason
+                } : null,
+                customer: customerRoute ? {
+                    href: customerRoute.href,
+                    routeKind: customerRoute.routeKind,
+                    reason: customerRoute.reason
+                } : null
+            }
         }
     };
 }
@@ -392,7 +450,7 @@ async function loadTaskBucket(pool, user, bucket, whereSql, whereParams, limit, 
         LIMIT ${limitRef}
     `;
     const result = await pool.query(query, params);
-    return result.rows.map(row => taskItem(row, bucket, { signal, canExecute: true }));
+    return result.rows.map(row => taskItem(row, bucket, { actor: user, signal, canExecute: true }));
 }
 
 function compareItems(a, b) {
@@ -721,6 +779,7 @@ async function buildWorkQueue({
             const minutesUntilStart = minutesUntilBookingStart(row, now);
             const latePreliminary = isLatePreliminaryBooking(row, now);
             return bookingItem(row, 'needs_confirmation', {
+                actor: user,
                 today: todayStr,
                 actionLabel: 'Підтвердити бронювання',
                 signal: 'bookings.status_preliminary',
@@ -801,6 +860,7 @@ async function buildWorkQueue({
             LIMIT ${limitRef}
         `, params);
         return result.rows.map(row => bookingItem(row, 'tomorrow', {
+            actor: user,
             today: todayStr,
             actionLabel: 'Перевірити підготовку',
             signal: 'bookings.date_tomorrow',
@@ -859,6 +919,7 @@ async function buildWorkQueue({
                 classification: bookingScopeMeta.classification,
                 reason: bookingScopeMeta.reason,
                 denialSemantics: 'hidden-bookings-are-absent-from-booking-derived-queue-items',
+                promotedDurableScopes: ['staff-host-assignment'],
                 missingDurableScopes: ['team', 'line', 'location']
             },
             replyBacklog: {

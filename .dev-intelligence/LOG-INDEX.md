@@ -25,3 +25,5 @@
 | 2026-05-14 | S18 | Unsafe Dismiss v2 | #crm #ux #unsafe-dismiss #dirty-state #modals | route/tab e2e gap under Node 22 | QUICK |
 | 2026-05-14 | S19 | Unsafe Dismiss Full | #crm #ux #unsafe-dismiss #dirty-state #browser-tests | future e2e expansion + local runtime mismatch | QUICK |
 | 2026-05-14 | S20 | Booking Visibility Scope | #crm #bookings #visibility #authz #event-risk | linked-entity scope + missing line/team/location scope | QUICK |
+| 2026-05-14 | S21 | Booking Visibility Audit | #crm #bookings #visibility #authz #audit | existing RISK-020/RISK-021 | QUICK |
+| 2026-05-14 | S22 | Booking Visibility v1.1 | #crm #bookings #visibility #authz #linked-routes | team/line/location/reporting scope remains separate | QUICK |

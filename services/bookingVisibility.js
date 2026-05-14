@@ -53,6 +53,17 @@ const BOOKING_VISIBILITY_MATRIX = [
         classification: 'compatible-fallback'
     },
     {
+        actor: 'staff profile assigned as booking host or second animator',
+        view: true,
+        edit: false,
+        queue: true,
+        dashboardCounts: true,
+        timeline: true,
+        linkedRoutes: 'allowed when linked entity policy also passes',
+        scopeSource: 'staff-host-assignment',
+        classification: 'fully-classified'
+    },
+    {
         actor: 'creator of booking through exact legacy created_by match',
         view: true,
         edit: false,
@@ -96,6 +107,22 @@ function normalizeUserId(user) {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function normalizePositiveInteger(value) {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function userStaffIds(user) {
+    const values = [
+        user?.staff_id,
+        user?.staffId,
+        user?.staff?.id,
+        ...(Array.isArray(user?.staffIds) ? user.staffIds : []),
+        ...(Array.isArray(user?.staff_ids) ? user.staff_ids : [])
+    ];
+    return [...new Set(values.map(normalizePositiveInteger).filter(Boolean))];
+}
+
 function userNameTokens(user) {
     return [user?.username, user?.name]
         .map(value => String(value || '').trim())
@@ -131,10 +158,28 @@ function bookingSecondAnimator(booking = {}) {
     return normalizeBookingValue(booking.second_animator ?? booking.secondAnimator);
 }
 
+function bookingHostStaffId(booking = {}) {
+    return normalizePositiveInteger(booking.hosts ?? booking.host_id ?? booking.hostId);
+}
+
+function bookingSecondAnimatorStaffId(booking = {}) {
+    return normalizePositiveInteger(booking.second_animator ?? booking.secondAnimator);
+}
+
 function exactLegacyTokenMatch(user, value) {
     const normalized = normalizeBookingValue(value);
     if (!normalized) return false;
     return userNameTokens(user).includes(normalized);
+}
+
+function staffScopedHostMatch(user, booking = {}) {
+    const staffIds = userStaffIds(user);
+    if (!staffIds.length) return false;
+    const bookingStaffIds = [
+        bookingHostStaffId(booking),
+        bookingSecondAnimatorStaffId(booking)
+    ].filter(Boolean);
+    return bookingStaffIds.some(staffId => staffIds.includes(staffId));
 }
 
 function classifyBookingVisibility(user, booking = {}) {
@@ -165,6 +210,16 @@ function classifyBookingVisibility(user, booking = {}) {
             classification: 'compatible-fallback',
             scopeSource: hasOperationalBookingEdit(user) ? 'booking-operational-edit-role' : 'booking-operational-view-role',
             reason: 'current booking operational role without durable team/location scope'
+        };
+    }
+
+    if (staffScopedHostMatch(user, booking)) {
+        return {
+            canView: true,
+            canEdit: false,
+            classification: 'fully-classified',
+            scopeSource: 'staff-host-assignment',
+            reason: 'durable employee_profiles.staff_id assignment matches booking host/second animator'
         };
     }
 
@@ -204,6 +259,20 @@ function buildLegacyTokenCondition(user, params, alias) {
     return `(${alias}.created_by IN (${values}) OR ${alias}.second_animator IN (${values}))`;
 }
 
+function buildStaffHostCondition(user, params, alias) {
+    const userId = normalizeUserId(user);
+    if (!userId) return 'FALSE';
+    const userRef = pushParam(params, userId);
+    return `EXISTS (
+        SELECT 1
+        FROM employee_profiles ep
+        WHERE ep.user_id = ${userRef}
+          AND COALESCE(ep.is_active, true) IS TRUE
+          AND ep.staff_id IS NOT NULL
+          AND (${alias}.hosts = ep.staff_id OR ${alias}.second_animator = ep.staff_id::text)
+    )`;
+}
+
 function getVisibleBookingScope(user, params = [], alias = 'b') {
     if (!user) {
         return {
@@ -235,23 +304,43 @@ function getVisibleBookingScope(user, params = [], alias = 'b') {
         };
     }
 
-    const condition = buildLegacyTokenCondition(user, params, alias);
-    if (condition === 'FALSE') {
+    const conditions = [];
+    const staffHostCondition = buildStaffHostCondition(user, params, alias);
+    if (staffHostCondition !== 'FALSE') {
+        conditions.push({ condition: staffHostCondition, source: 'staff-host-assignment', classification: 'fully-classified' });
+    }
+
+    const legacyTokenCondition = buildLegacyTokenCondition(user, params, alias);
+    if (legacyTokenCondition !== 'FALSE') {
+        conditions.push({ condition: legacyTokenCondition, source: 'legacy-token-match', classification: 'compatible-fallback' });
+    }
+
+    if (!conditions.length) {
         return {
             sql: 'AND 1 = 0',
-            condition,
+            condition: 'FALSE',
             classification: 'ambiguous-legacy',
             scopeSource: 'deny',
             reason: 'actor has no durable or legacy booking tokens'
         };
     }
 
+    const condition = conditions.length === 1
+        ? conditions[0].condition
+        : `(${conditions.map(item => item.condition).join(' OR ')})`;
+    const hasStaffHost = conditions.some(item => item.source === 'staff-host-assignment');
+    const hasLegacy = conditions.some(item => item.source === 'legacy-token-match');
+
     return {
         sql: `AND ${condition}`,
         condition,
-        classification: 'compatible-fallback',
-        scopeSource: 'legacy-token-match',
-        reason: 'exact legacy created_by/second_animator match only'
+        classification: hasLegacy ? 'compatible-fallback' : 'fully-classified',
+        scopeSource: hasStaffHost && hasLegacy ? 'staff-host-or-legacy-token-match' : conditions[0].source,
+        reason: hasStaffHost && hasLegacy
+            ? 'durable staff host assignment plus exact legacy created_by/second_animator compatibility'
+            : (hasStaffHost
+                ? 'durable employee_profiles.staff_id assignment matches booking host/second animator'
+                : 'exact legacy created_by/second_animator match only')
     };
 }
 
@@ -276,8 +365,84 @@ function bookingAccessDeniedPayload() {
     return { success: false, error: 'Booking not found' };
 }
 
+function bookingIdValue(booking = {}) {
+    return booking.id ?? booking.booking_id ?? booking.bookingId ?? booking.source_id ?? booking.sourceId ?? null;
+}
+
+function bookingDateValue(booking = {}) {
+    return booking.date ?? booking.booking_date ?? booking.bookingDate ?? null;
+}
+
+function bookingContextHref(booking = {}) {
+    const id = bookingIdValue(booking);
+    if (!id) return null;
+    const date = bookingDateValue(booking);
+    if (date) {
+        return `/?date=${encodeURIComponent(String(date).slice(0, 10))}&highlight=${encodeURIComponent(id)}`;
+    }
+    return `/?highlight=${encodeURIComponent(id)}`;
+}
+
+function linkedEntityHref(linkedEntity = {}) {
+    const type = String(linkedEntity.type || linkedEntity.entityType || '').toLowerCase();
+    const id = linkedEntity.id ?? linkedEntity.entity_id ?? linkedEntity.entityId ?? linkedEntity.source_id ?? linkedEntity.sourceId;
+    if (!id) return null;
+    if (type === 'task') return `/tasks?open=${encodeURIComponent(id)}`;
+    if (type === 'lead') return `/sales-funnel?lead=${encodeURIComponent(id)}`;
+    if (type === 'customer') return `/customers?open=${encodeURIComponent(id)}`;
+    return null;
+}
+
+function truthyFlag(value) {
+    return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+function resolveBookingDerivedLinkedRoute(user, booking = {}, linkedEntity = {}) {
+    const bookingVisible = truthyFlag(booking.visible)
+        || truthyFlag(booking.visibleToActor)
+        || canViewBooking(user, booking);
+    if (!bookingVisible) {
+        return {
+            allowed: false,
+            href: null,
+            routeKind: 'none',
+            reason: 'booking-not-visible'
+        };
+    }
+
+    const parentHref = bookingContextHref(booking);
+    const exactHref = linkedEntityHref(linkedEntity);
+    if (exactHref && truthyFlag(linkedEntity.visible)) {
+        return {
+            allowed: true,
+            href: exactHref,
+            fallbackHref: parentHref,
+            routeKind: `linked-${String(linkedEntity.type || linkedEntity.entityType).toLowerCase()}`,
+            reason: 'booking-and-linked-entity-visible'
+        };
+    }
+
+    if (parentHref) {
+        return {
+            allowed: true,
+            href: parentHref,
+            fallbackHref: parentHref,
+            routeKind: 'parent-booking-fallback',
+            reason: exactHref ? 'linked-entity-visibility-not-proven' : 'no-exact-linked-entity-route'
+        };
+    }
+
+    return {
+        allowed: false,
+        href: null,
+        routeKind: 'none',
+        reason: 'booking-visible-but-no-safe-route'
+    };
+}
+
 module.exports = {
     BOOKING_VISIBILITY_MATRIX,
+    bookingContextHref,
     buildBookingVisibilityCondition,
     buildBookingVisibilityScope,
     bookingAccessDeniedPayload,
@@ -288,6 +453,8 @@ module.exports = {
     hasOperationalBookingEdit,
     hasOperationalBookingView,
     isFullBookingRole,
+    resolveBookingDerivedLinkedRoute,
     normalizeUserId,
+    userStaffIds,
     userNameTokens
 };

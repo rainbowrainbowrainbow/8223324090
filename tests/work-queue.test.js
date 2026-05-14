@@ -688,6 +688,10 @@ describe('work queue endpoint', () => {
         assert.ok(buckets.overdue.items[0].execution.actions.some(action => action.type === 'task_reassign_owner'));
         assert.ok(buckets.overdue.items[0].execution.actions.some(action => action.type === 'task_reschedule'));
         assert.equal(buckets.today.items[0].taskId, 2);
+        const bookingPrepTask = buckets.tomorrow.items.find(item => item.taskId === 3);
+        assert.equal(bookingPrepTask.href, '/tasks?open=3');
+        assert.equal(bookingPrepTask.meta.bookingLinkedRoute.fallbackHref, '/?date=2026-05-14&highlight=BK-1');
+        assert.equal(bookingPrepTask.meta.bookingLinkedRoute.routeKind, 'linked-task');
         assert.equal(buckets.tomorrow.items.some(item => item.bookingId === 'BK-3'), true);
         assert.equal(buckets.callback_due.items[0].leadId, 11);
         assert.equal(buckets.callback_due.items[0].confidence, 'exact');

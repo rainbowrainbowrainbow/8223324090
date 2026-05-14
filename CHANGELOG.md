@@ -4,6 +4,16 @@
 
 ---
 
+## v0.48.9 - Booking Visibility Scope v1.1 (2026-05-14)
+
+### Durable Scope & Linked Entity Parity [codex]
+- **Bookings** - розширено існуючий `services/bookingVisibility.js` без створення другої visibility-системи.
+- **Scope Truth** - додано durable staff-host visibility через `employee_profiles.staff_id`, `bookings.hosts` і numeric `second_animator`; `team`, `line` і `location` лишаються явно missing durable dimensions.
+- **Linked Parity** - booking-derived task routes ведуть в exact task context, а lead/customer route-outs використовують safe parent booking fallback, якщо linked entity visibility не доведена.
+- **Tests** - додано перевірки staff-host scope, linked-route hierarchy і no-duplicate booking visibility system.
+
+---
+
 ## v0.48.8 - Booking Visibility & Event Risk Scope Hardening (2026-05-14)
 
 ### Booking Visibility & Event Risk Scope Hardening v1 [codex]

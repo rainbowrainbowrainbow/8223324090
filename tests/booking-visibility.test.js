@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
     BOOKING_VISIBILITY_MATRIX,
@@ -7,12 +9,15 @@ const {
     canEditBooking,
     canViewBooking,
     classifyBookingVisibility,
-    getVisibleBookingScope
+    getVisibleBookingScope,
+    resolveBookingDerivedLinkedRoute,
+    userStaffIds
 } = require('../services/bookingVisibility');
 
 test('booking visibility matrix documents real durable and missing scope dimensions', () => {
     assert.ok(BOOKING_VISIBILITY_MATRIX.some(row => row.scopeSource === 'full-role' && row.view === true));
     assert.ok(BOOKING_VISIBILITY_MATRIX.some(row => row.scopeSource === 'booking-operational-role'));
+    assert.ok(BOOKING_VISIBILITY_MATRIX.some(row => row.scopeSource === 'staff-host-assignment' && row.view === true && row.edit === false));
     assert.ok(BOOKING_VISIBILITY_MATRIX.some(row => row.scopeSource === 'missing-durable-booking-line-scope' && row.view === false));
 });
 
@@ -65,9 +70,83 @@ test('legacy created_by and second_animator matches are exact compatible fallbac
 
     const params = [];
     const scope = getVisibleBookingScope(actor, params, 'b');
-    assert.match(scope.sql, /b\.created_by IN \(\$1,\$2\)/);
-    assert.match(scope.sql, /b\.second_animator IN \(\$1,\$2\)/);
-    assert.deepEqual(params, ['animator-one', 'Animator One']);
+    assert.match(scope.sql, /employee_profiles ep/);
+    assert.match(scope.sql, /b\.hosts = ep\.staff_id/);
+    assert.match(scope.sql, /b\.created_by IN \(\$2,\$3\)/);
+    assert.match(scope.sql, /b\.second_animator IN \(\$2,\$3\)/);
+    assert.deepEqual(params, [44, 'animator-one', 'Animator One']);
+});
+
+test('durable staff host assignment promotes booking visibility without edit rights', () => {
+    const actor = { id: 77, username: 'host-user', role: 'animator', staffIds: [501] };
+    const booking = { id: 'BK-STAFF', hosts: 501, created_by: 'someone-else' };
+
+    assert.deepEqual(userStaffIds(actor), [501]);
+    const decision = classifyBookingVisibility(actor, booking);
+    assert.equal(decision.canView, true);
+    assert.equal(decision.canEdit, false);
+    assert.equal(decision.classification, 'fully-classified');
+    assert.equal(decision.scopeSource, 'staff-host-assignment');
+
+    const secondAnimator = classifyBookingVisibility(actor, { second_animator: '501' });
+    assert.equal(secondAnimator.canView, true);
+    assert.equal(secondAnimator.scopeSource, 'staff-host-assignment');
+});
+
+test('query scope adds batch-safe employee profile staff assignment condition', () => {
+    const actor = { id: 77, username: 'host-user', role: 'animator' };
+    const params = [];
+    const scope = getVisibleBookingScope(actor, params, 'b');
+
+    assert.match(scope.condition, /EXISTS \(/);
+    assert.match(scope.condition, /FROM employee_profiles ep/);
+    assert.match(scope.condition, /ep\.user_id = \$1/);
+    assert.match(scope.condition, /b\.hosts = ep\.staff_id/);
+    assert.match(scope.condition, /b\.second_animator = ep\.staff_id::text/);
+    assert.match(scope.scopeSource, /staff-host/);
+    assert.deepEqual(params, [77, 'host-user']);
+});
+
+test('booking-derived linked routes prefer exact visible child route then parent booking fallback', () => {
+    const actor = { id: 1, username: 'manager', role: 'manager' };
+    const booking = { id: 'BK-10', date: '2026-05-14', visible: true };
+
+    const taskRoute = resolveBookingDerivedLinkedRoute(actor, booking, { type: 'task', id: 991, visible: true });
+    assert.equal(taskRoute.allowed, true);
+    assert.equal(taskRoute.href, '/tasks?open=991');
+    assert.equal(taskRoute.fallbackHref, '/?date=2026-05-14&highlight=BK-10');
+    assert.equal(taskRoute.routeKind, 'linked-task');
+
+    const leadFallback = resolveBookingDerivedLinkedRoute(actor, booking, { type: 'lead', id: 55, visible: false });
+    assert.equal(leadFallback.allowed, true);
+    assert.equal(leadFallback.href, '/?date=2026-05-14&highlight=BK-10');
+    assert.equal(leadFallback.routeKind, 'parent-booking-fallback');
+    assert.equal(leadFallback.reason, 'linked-entity-visibility-not-proven');
+
+    const denied = resolveBookingDerivedLinkedRoute({ role: 'cook' }, { id: 'BK-HIDDEN', date: '2026-05-14' }, { type: 'task', id: 10, visible: true });
+    assert.equal(denied.allowed, false);
+    assert.equal(denied.href, null);
+    assert.equal(denied.reason, 'booking-not-visible');
+});
+
+test('no parallel booking visibility system is introduced in services or routes', () => {
+    const root = path.resolve(__dirname, '..');
+    const forbidden = /\b(bookingVisibilityV2|bookingScopeHelper|queueBookingScope)\b/;
+    const stack = ['services', 'routes'].map(dir => path.join(root, dir));
+    const matches = [];
+    while (stack.length) {
+        const current = stack.pop();
+        for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+            const fullPath = path.join(current, entry.name);
+            if (entry.isDirectory()) {
+                stack.push(fullPath);
+            } else if (entry.isFile() && entry.name.endsWith('.js')) {
+                const body = fs.readFileSync(fullPath, 'utf8');
+                if (forbidden.test(body)) matches.push(path.relative(root, fullPath));
+            }
+        }
+    }
+    assert.deepEqual(matches, []);
 });
 
 test('unknown or ambiguous booking scope fails closed', () => {

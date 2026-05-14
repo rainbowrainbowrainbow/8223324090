@@ -241,7 +241,7 @@ function createFakePool() {
             if (/FROM customer_cards WHERE lead_id = \$1 LIMIT 1/i.test(text)) {
                 return { rows: [{ lead_id: params[0], event_type: 'birthday', event_date: '2099-05-12', guest_count: 20, notes: 'Card note' }] };
             }
-            if (/FROM customers c LEFT JOIN \( SELECT customer_id,/i.test(text)) {
+            if (/FROM customers c LEFT JOIN \( SELECT (?:b\.)?customer_id,/i.test(text)) {
                 return {
                     rows: [{
                         id: 701,

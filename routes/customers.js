@@ -41,6 +41,76 @@ function cleanText(value) {
     return text || null;
 }
 
+const SOCIAL_IDENTITY_CHANNELS = new Set(['telegram', 'instagram', 'facebook', 'viber', 'tiktok', 'phone', 'email', 'site', 'other']);
+
+function parseJsonArray(value) {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function normalizeSocialIdentities(value, fallback = {}) {
+    const rawItems = parseJsonArray(value);
+    const items = [];
+    const seen = new Set();
+
+    for (const item of rawItems) {
+        if (!item || typeof item !== 'object') continue;
+        const channelRaw = cleanText(item.channel || item.type || item.provider);
+        const channel = channelRaw && SOCIAL_IDENTITY_CHANNELS.has(channelRaw.toLowerCase())
+            ? channelRaw.toLowerCase()
+            : 'other';
+        const handle = cleanText(item.handle || item.username || item.value || item.phone || item.email);
+        const externalId = cleanText(item.externalId || item.external_id);
+        const url = cleanText(item.url || item.href);
+        if (!handle && !externalId && !url) continue;
+        const normalizedHandle = channel === 'instagram' && handle ? handle.replace(/^@+/, '') : handle;
+        const key = `${channel}:${String(normalizedHandle || externalId || url).toLowerCase()}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        items.push({
+            channel,
+            handle: normalizedHandle,
+            externalId,
+            url,
+            notes: cleanText(item.notes),
+            source: cleanText(item.source) || 'operator'
+        });
+        if (items.length >= 12) break;
+    }
+
+    const legacyInstagram = cleanText(fallback.instagram)?.replace(/^@+/, '');
+    if (legacyInstagram && !seen.has(`instagram:${legacyInstagram.toLowerCase()}`)) {
+        items.unshift({
+            channel: 'instagram',
+            handle: legacyInstagram,
+            externalId: null,
+            url: null,
+            notes: null,
+            source: 'legacy_primary'
+        });
+    }
+
+    return items;
+}
+
+function formatSocialIdentities(value, fallback = {}) {
+    return normalizeSocialIdentities(value, fallback)
+        .map(identity => {
+            const label = identity.channel === 'instagram' && identity.handle
+                ? `@${identity.handle}`
+                : (identity.handle || identity.externalId || identity.url || '');
+            return [identity.channel, label].filter(Boolean).join(': ');
+        })
+        .filter(Boolean)
+        .join(' | ');
+}
+
 function normalizeCustomerPayload(body = {}) {
     const name = cleanText(body.name);
     const childBirthday = cleanText(body.childBirthday ?? body.child_birthday);
@@ -54,7 +124,11 @@ function normalizeCustomerPayload(body = {}) {
         childName: cleanText(body.childName ?? body.child_name),
         childBirthday: childBirthday || null,
         source: cleanText(body.source),
-        notes: cleanText(body.notes)
+        notes: cleanText(body.notes),
+        socialIdentities: normalizeSocialIdentities(
+            body.socialIdentities ?? body.social_identities,
+            { instagram: body.instagram }
+        )
     };
 }
 
@@ -105,7 +179,7 @@ router.get('/search', async (req, res) => {
                     b_agg.real_last_visit
              FROM customers c
              LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
-             WHERE c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1
+             WHERE c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1 OR c.social_identities::text ILIKE $1
              ORDER BY b_agg.real_last_visit DESC NULLS LAST
              LIMIT 20`,
             params
@@ -277,7 +351,7 @@ router.get('/export', exportLimiter, async (req, res) => {
 
         const BOM = '\uFEFF';
         const header = [
-            'ID', "Ім'я", 'Телефон', 'Instagram', "Ім'я дитини",
+            'ID', "Ім'я", 'Телефон', 'Instagram', 'Соц. ідентичності', "Ім'я дитини",
             'ДН дитини', 'Джерело', 'Нотатки', 'Бронювань',
             'Витрачено (грн)', 'Перший візит', 'Останній візит',
             'Сертифікатів', 'Створено'
@@ -288,6 +362,7 @@ router.get('/export', exportLimiter, async (req, res) => {
             escapeCsv(r.name),
             escapeCsv(r.phone || ''),
             escapeCsv(r.instagram || ''),
+            escapeCsv(formatSocialIdentities(r.social_identities, { instagram: r.instagram })),
             escapeCsv(r.child_name || ''),
             r.child_birthday ? formatDate(r.child_birthday) : '',
             escapeCsv(r.source || ''),
@@ -340,6 +415,7 @@ router.get('/export-xlsx', exportLimiter, async (req, res) => {
             { header: "Ім'я", key: 'name', width: 22 },
             { header: 'Телефон', key: 'phone', width: 16 },
             { header: 'Instagram', key: 'instagram', width: 18 },
+            { header: 'Соц. ідентичності', key: 'socialIdentities', width: 28 },
             { header: "Ім'я дитини", key: 'childName', width: 18 },
             { header: 'ДН дитини', key: 'childBday', width: 14 },
             { header: 'Джерело', key: 'source', width: 14 },
@@ -360,6 +436,7 @@ router.get('/export-xlsx', exportLimiter, async (req, res) => {
                 name: r.name || '',
                 phone: r.phone || '',
                 instagram: r.instagram || '',
+                socialIdentities: formatSocialIdentities(r.social_identities, { instagram: r.instagram }),
                 childName: r.child_name || '',
                 childBday: r.child_birthday || '',
                 source: r.source || '',
@@ -959,7 +1036,7 @@ router.get('/', async (req, res) => {
 
         if (search) {
             params.push(`%${search}%`);
-            conditions.push(`(name ILIKE $${params.length} OR phone ILIKE $${params.length} OR instagram ILIKE $${params.length} OR child_name ILIKE $${params.length})`);
+            conditions.push(`(name ILIKE $${params.length} OR phone ILIKE $${params.length} OR instagram ILIKE $${params.length} OR child_name ILIKE $${params.length} OR social_identities::text ILIKE $${params.length})`);
         }
         if (source) { params.push(source); conditions.push(`source = $${params.length}`); }
         if (minVisits > 0) { params.push(minVisits); conditions.push(`total_bookings >= $${params.length}`); }
@@ -1125,7 +1202,7 @@ router.post('/', async (req, res) => {
     try {
         const input = normalizeCustomerPayload(req.body);
         if (input.error) return res.status(400).json({ error: input.error });
-        const { name, phone, instagram, childName, childBirthday, source, notes } = input;
+        const { name, phone, instagram, childName, childBirthday, source, notes, socialIdentities } = input;
         if (!name) {
             return res.status(400).json({ error: "Ім'я клієнта обов'язкове" });
         }
@@ -1142,9 +1219,9 @@ router.post('/', async (req, res) => {
         }
 
         const result = await pool.query(
-            `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source, notes)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [name, phone, instagram, childName, childBirthday, source, notes]
+            `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source, notes, social_identities)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb) RETURNING *`,
+            [name, phone, instagram, childName, childBirthday, source, notes, JSON.stringify(socialIdentities)]
         );
         res.json(mapCustomerRow(result.rows[0]));
     } catch (err) {
@@ -1159,7 +1236,7 @@ router.put('/:id', async (req, res) => {
         const { id } = req.params;
         const input = normalizeCustomerPayload(req.body);
         if (input.error) return res.status(400).json({ error: input.error });
-        const { name, phone, instagram, childName, childBirthday, source, notes } = input;
+        const { name, phone, instagram, childName, childBirthday, source, notes, socialIdentities } = input;
         if (!name) {
             return res.status(400).json({ error: "Ім'я клієнта обов'язкове" });
         }
@@ -1178,9 +1255,9 @@ router.put('/:id', async (req, res) => {
 
         const result = await pool.query(
             `UPDATE customers SET name=$1, phone=$2, instagram=$3, child_name=$4,
-             child_birthday=$5, source=$6, notes=$7, updated_at=NOW()
-             WHERE id=$8 RETURNING *`,
-            [name, phone, instagram, childName, childBirthday, source, notes, parseInt(id)]
+             child_birthday=$5, source=$6, notes=$7, social_identities=$8::jsonb, updated_at=NOW()
+             WHERE id=$9 RETURNING *`,
+            [name, phone, instagram, childName, childBirthday, source, notes, JSON.stringify(socialIdentities), parseInt(id)]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Клієнта не знайдено' });
         res.json(mapCustomerRow(result.rows[0]));
@@ -1265,6 +1342,7 @@ function mapCustomerRow(row) {
         instagram: row.instagram || null,
         childName: row.child_name || null,
         childBirthday: row.child_birthday || null,
+        socialIdentities: normalizeSocialIdentities(row.social_identities, { instagram: row.instagram }),
         source: row.source || null,
         notes: row.notes || null,
         // v33.3: Prefer live aggregation from bookings JOIN when available

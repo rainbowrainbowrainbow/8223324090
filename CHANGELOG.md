@@ -4,6 +4,17 @@
 
 ---
 
+## v0.48.14 - Operations Flow Cluster v2 Comprehensive (2026-05-14)
+
+### Operations Flow Completion [codex]
+- **Tasks** - canonical `tasks.owner_user_id` лишається source of truth; chat-originated tasks повертають explicit source/notification meta, а bulk assignment більше не робить no-op update і не дублює assignment notifications.
+- **Lead / Customer** - додано additive `leads.celebrants` і `customers.social_identities`; старі single-child/Instagram поля лишаються legacy projection, без auto-merge або fake duplicate engine.
+- **Workspace Scope** - lead workspace рахує customer booking aggregates через canonical booking visibility, щоб customer context не розширював видимість поза дозволеним booking scope.
+- **Analytics** - accepted-vs-closed deals report зафіксовано як snapshot-only semantics із `COUNT(DISTINCT leads.id)` duplicate protection і явною missing stage timestamp truth.
+- **Tests** - додано `tests/operations-flow-v2.test.js` для schema governance, no-op assignment, celebrants/social identities, lead/customer link truth і reporting semantics.
+
+---
+
 ## v0.48.13 - Org / HR / Inventory / Pricing Foundation v1 (2026-05-14)
 
 ### Backoffice Foundation [codex]

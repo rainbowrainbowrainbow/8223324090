@@ -96,6 +96,100 @@ function toDateOnly(value) {
     return String(value).slice(0, 10);
 }
 
+function parseJsonArray(value) {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function cleanText(value) {
+    if (value === undefined || value === null) return null;
+    const text = String(value).trim();
+    return text || null;
+}
+
+function normalizeCelebrants(value, legacy = {}) {
+    const items = [];
+    const rawItems = parseJsonArray(value);
+    for (const item of rawItems) {
+        if (!item || typeof item !== 'object') continue;
+        const name = cleanText(item.name || item.childName || item.child_name);
+        const ageRaw = item.age ?? item.childAge ?? item.child_age;
+        const age = ageRaw === undefined || ageRaw === null || ageRaw === ''
+            ? null
+            : Number(ageRaw);
+        const birthday = cleanText(item.birthday || item.birthDate || item.birth_date);
+        const notes = cleanText(item.notes);
+        if (!name && !Number.isFinite(age) && !birthday && !notes) continue;
+        items.push({
+            name,
+            age: Number.isFinite(age) && age >= 0 && age <= 120 ? age : null,
+            birthday: birthday && /^\d{4}-\d{2}-\d{2}$/.test(birthday) ? birthday : null,
+            notes,
+            source: cleanText(item.source) || 'operator'
+        });
+        if (items.length >= 20) break;
+    }
+
+    if (!items.length && (legacy.childAge || legacy.childrenCount)) {
+        items.push({
+            name: null,
+            age: Number.isFinite(Number(legacy.childAge)) ? Number(legacy.childAge) : null,
+            birthday: null,
+            notes: null,
+            source: 'legacy_single_child'
+        });
+    }
+
+    return items;
+}
+
+function leadSocialIdentities(lead = {}) {
+    const identities = [];
+    const instagram = normalizeInstagram(lead.instagram);
+    if (instagram) {
+        identities.push({ channel: 'instagram', handle: instagram, source: 'lead_link' });
+    }
+    const channel = cleanText(lead.source_channel || lead.source);
+    const telegram = cleanText(lead.telegram_id);
+    if (channel && channel !== 'instagram') {
+        identities.push({
+            channel,
+            handle: telegram || normalizeDigits(lead.phone) || cleanText(lead.client_name),
+            source: 'lead_link'
+        });
+    }
+    return identities.filter(identity => identity.channel && identity.handle);
+}
+
+function mergeLeadSocialIdentities(existingValue, lead = {}) {
+    const items = [...parseJsonArray(existingValue), ...leadSocialIdentities(lead)];
+    const merged = [];
+    const seen = new Set();
+    for (const item of items) {
+        if (!item || typeof item !== 'object') continue;
+        const channel = cleanText(item.channel || item.type || item.provider);
+        const handle = cleanText(item.handle || item.username || item.value || item.externalId || item.external_id);
+        if (!channel || !handle) continue;
+        const normalized = {
+            channel: channel.toLowerCase(),
+            handle: channel.toLowerCase() === 'instagram' ? handle.replace(/^@+/, '') : handle,
+            source: cleanText(item.source) || 'operator'
+        };
+        const key = `${normalized.channel}:${normalized.handle.toLowerCase()}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(normalized);
+        if (merged.length >= 12) break;
+    }
+    return merged;
+}
+
 function calculateDaysUntil(dateValue) {
     const dateOnly = toDateOnly(dateValue);
     if (!dateOnly) return null;
@@ -137,6 +231,10 @@ function mapWorkspaceLead(row) {
         eventDate: row.event_date,
         childrenCount: row.children_count,
         childAge: row.child_age,
+        celebrants: normalizeCelebrants(row.celebrants, {
+            childrenCount: row.children_count,
+            childAge: row.child_age
+        }),
         programId: row.program_id,
         programName: row.program_name || row.program_full_name || null,
         bookingId: row.booking_id,
@@ -154,6 +252,7 @@ function mapWorkspaceCustomer(row) {
         name: row.name,
         phone: row.phone,
         instagram: row.instagram,
+        socialIdentities: parseJsonArray(row.social_identities),
         childName: row.child_name,
         childBirthday: row.child_birthday,
         source: row.source,
@@ -398,7 +497,7 @@ router.get('/stats', async (req, res) => {
 // POST /api/leads — create new lead
 router.post('/', async (req, res) => {
     try {
-        const { client_name, phone, telegram_id, instagram, source, program_id, event_date, children_count, child_age, notes, assigned_to } = req.body;
+        const { client_name, phone, telegram_id, instagram, source, program_id, event_date, children_count, child_age, notes, assigned_to, celebrants } = req.body;
         if (!client_name) {
             return res.status(400).json({ success: false, error: "Ім'я клієнта обов'язкове" });
         }
@@ -409,14 +508,16 @@ router.post('/', async (req, res) => {
         if (assignedTo.provided && !(await ensureAssignableUser(assignedTo.value))) {
             return res.status(400).json({ success: false, error: 'Відповідального не знайдено або він неактивний' });
         }
+        const normalizedCelebrants = normalizeCelebrants(celebrants);
         const result = await pool.query(`
-            INSERT INTO leads (client_name, phone, telegram_id, instagram, source, program_id, event_date, children_count, child_age, notes, assigned_to)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            INSERT INTO leads (client_name, phone, telegram_id, instagram, source, program_id, event_date, children_count, child_age, notes, assigned_to, celebrants)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
             RETURNING *
         `, [client_name, phone || null, telegram_id || null, instagram || null, source || null,
             program_id || null, event_date || null,
             children_count || null, child_age || null, notes || null,
-            assignedTo.provided ? assignedTo.value : null]);
+            assignedTo.provided ? assignedTo.value : null,
+            JSON.stringify(normalizedCelebrants)]);
 
         log.info(`Lead created: ${client_name} by ${req.user.username}`);
         res.json({ success: true, lead: result.rows[0] });
@@ -429,7 +530,7 @@ router.post('/', async (req, res) => {
 // PATCH /api/leads/:id — update lead
 router.patch('/:id', async (req, res) => {
     try {
-        const { status, notes, assigned_to, last_contact_at, booking_id, lost_reason, client_name, phone, instagram, source, source_channel, event_date, children_count, child_age, program_id, pipeline_stage, milestone_tags, lead_type, quality_category, potential_value } = req.body;
+        const { status, notes, assigned_to, last_contact_at, booking_id, lost_reason, client_name, phone, instagram, source, source_channel, event_date, children_count, child_age, celebrants, program_id, pipeline_stage, milestone_tags, lead_type, quality_category, potential_value } = req.body;
         const updates = [];
         const params = [];
         const assignedTo = parseOptionalPositiveInt(assigned_to, 'assigned_to');
@@ -457,6 +558,10 @@ router.patch('/:id', async (req, res) => {
         if (event_date !== undefined) { params.push(event_date || null); updates.push(`event_date = $${params.length}`); }
         if (children_count !== undefined) { params.push(children_count); updates.push(`children_count = $${params.length}`); }
         if (child_age !== undefined) { params.push(child_age); updates.push(`child_age = $${params.length}`); }
+        if (celebrants !== undefined) {
+            params.push(JSON.stringify(normalizeCelebrants(celebrants)));
+            updates.push(`celebrants = $${params.length}::jsonb`);
+        }
         if (program_id !== undefined) { params.push(program_id || null); updates.push(`program_id = $${params.length}`); }
         if (pipeline_stage !== undefined) {
             params.push(pipeline_stage);
@@ -575,16 +680,24 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
                      phone = COALESCE(NULLIF(phone, ''), $2),
                      instagram = COALESCE(NULLIF(instagram, ''), $3),
                      source = COALESCE(NULLIF(source, ''), $4),
+                     social_identities = $6::jsonb,
                      updated_at = NOW()
                  WHERE id = $5
                  RETURNING *`,
-                [leadId, lead.phone || null, normalizeInstagram(lead.instagram) || null, lead.source || 'lead', customerId]
+                [
+                    leadId,
+                    lead.phone || null,
+                    normalizeInstagram(lead.instagram) || null,
+                    lead.source || 'lead',
+                    customerId,
+                    JSON.stringify(mergeLeadSocialIdentities(existing.rows[0].social_identities, lead))
+                ]
             );
             customer = updated.rows[0];
         } else if (createNew) {
             const inserted = await client.query(
-                `INSERT INTO customers (name, phone, instagram, child_name, source, notes, lead_id)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                `INSERT INTO customers (name, phone, instagram, child_name, source, notes, lead_id, social_identities)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
                  RETURNING *`,
                 [
                     lead.client_name || `Lead #${leadId}`,
@@ -593,7 +706,8 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
                     null,
                     lead.source || lead.source_channel || 'lead',
                     [lead.notes, lead.child_age ? `Вік дитини з ліда: ${lead.child_age}` : null].filter(Boolean).join('\n') || null,
-                    leadId
+                    leadId,
+                    JSON.stringify(leadSocialIdentities(lead))
                 ]
             );
             customer = inserted.rows[0];
@@ -713,6 +827,8 @@ router.get('/:id/workspace', async (req, res) => {
 
         const phoneDigits = normalizeDigits(lead.phone || customerCard?.phone);
         const instagramKey = normalizeInstagram(lead.instagram);
+        const customerLookupParams = [bookingCustomerId, leadId, phoneDigits, instagramKey];
+        const customerBookingScope = getVisibleBookingScope(req.user, customerLookupParams, 'b');
         const customerResult = await optionalWorkspaceQuery(`
             SELECT c.*,
                    COALESCE(b_agg.booking_count, 0) AS real_total_bookings,
@@ -721,14 +837,15 @@ router.get('/:id/workspace', async (req, res) => {
                    b_agg.real_last_visit
             FROM customers c
             LEFT JOIN (
-                SELECT customer_id,
+                SELECT b.customer_id,
                        COUNT(*) AS booking_count,
-                       COALESCE(SUM(price), 0) AS booking_spent,
-                       MIN(date) AS real_first_visit,
-                       MAX(date) AS real_last_visit
-                FROM bookings
-                WHERE status != 'cancelled'
-                GROUP BY customer_id
+                       COALESCE(SUM(b.price), 0) AS booking_spent,
+                       MIN(b.date) AS real_first_visit,
+                       MAX(b.date) AS real_last_visit
+                FROM bookings b
+                WHERE b.status != 'cancelled'
+                  ${customerBookingScope.sql}
+                GROUP BY b.customer_id
             ) b_agg ON b_agg.customer_id = c.id
             WHERE ($1::integer IS NOT NULL AND c.id = $1)
                OR c.lead_id = $2
@@ -744,7 +861,7 @@ router.get('/:id/workspace', async (req, res) => {
                 b_agg.real_last_visit DESC NULLS LAST,
                 c.updated_at DESC
             LIMIT 1
-        `, [bookingCustomerId, leadId, phoneDigits, instagramKey]);
+        `, customerLookupParams);
         const customer = mapWorkspaceCustomer(customerResult.rows[0]);
         const customerId = customer?.id || bookingCustomerId || null;
 

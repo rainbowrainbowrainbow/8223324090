@@ -104,6 +104,49 @@ function customerHubAction(href, label, cls = '', options = {}) {
     return `<a class="customer-hub-action ${cls}" href="${escapeHtml(href)}"${target}>${escapeHtml(label)}</a>`;
 }
 
+function parseJsonArray(value) {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function formatSocialIdentitiesInput(identities = []) {
+    return parseJsonArray(identities)
+        .map(item => [item.channel || item.type || '', item.handle || item.username || item.value || item.externalId || item.url || ''].filter(Boolean).join(': '))
+        .filter(Boolean)
+        .join('\n');
+}
+
+function parseSocialIdentitiesInput(value) {
+    return String(value || '')
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean)
+        .slice(0, 12)
+        .map(line => {
+            const [rawChannel, ...rest] = line.split(':');
+            const channel = rest.length ? rawChannel.trim().toLowerCase() : 'other';
+            const handle = rest.length ? rest.join(':').trim() : rawChannel.trim();
+            return { channel, handle, source: 'operator' };
+        });
+}
+
+function renderSocialIdentities(identities = [], instagram = '') {
+    const normalized = parseJsonArray(identities);
+    const items = normalized.length ? normalized : (instagram ? [{ channel: 'instagram', handle: instagram, source: 'legacy_primary' }] : []);
+    if (!items.length) return 'вЂ”';
+    return items.map(item => {
+        const channel = item.channel || item.type || 'other';
+        const value = item.channel === 'instagram' && item.handle ? '@' + item.handle : (item.handle || item.username || item.value || item.externalId || item.url || '');
+        return escapeHtml([channel, value].filter(Boolean).join(': '));
+    }).join('<br>');
+}
+
 function customerHubReplySlaLabel(conversation) {
     if (!conversation?.waitingReply) return '';
     switch (conversation.replySlaState) {
@@ -564,6 +607,10 @@ async function showCustomerDetail(id) {
                         <div class="field-value">${customer.instagram ? '@' + escapeHtml(customer.instagram) : '—'}</div>
                     </div>
                     <div class="detail-field">
+                        <div class="field-label">Соц. ідентичності</div>
+                        <div class="field-value">${renderSocialIdentities(customer.socialIdentities, customer.instagram)}</div>
+                    </div>
+                    <div class="detail-field">
                         <div class="field-label">Ім'я дитини</div>
                         <div class="field-value">${escapeHtml(customer.childName) || '—'}</div>
                     </div>
@@ -707,7 +754,7 @@ async function showCustomerDetail(id) {
 let _customerEditInitialState = '';
 
 function getCustomerEditState() {
-    const ids = ['editName', 'editPhone', 'editInstagram', 'editChildName', 'editChildBirthday', 'editSource', 'editNotes'];
+    const ids = ['editName', 'editPhone', 'editInstagram', 'editChildName', 'editChildBirthday', 'editSource', 'editSocialIdentities', 'editNotes'];
     return ids.map(id => {
         const el = document.getElementById(id);
         return el ? String(el.value || '') : '';
@@ -728,6 +775,7 @@ function openEditModal(customer) {
     document.getElementById('editChildName').value = customer?.childName || '';
     document.getElementById('editChildBirthday').value = customer?.childBirthday ? customer.childBirthday.slice(0, 10) : '';
     document.getElementById('editSource').value = customer?.source || '';
+    document.getElementById('editSocialIdentities').value = formatSocialIdentitiesInput(customer?.socialIdentities || []);
     document.getElementById('editNotes').value = customer?.notes || '';
 
     const modal = document.getElementById('customerEditModal');
@@ -770,6 +818,7 @@ async function handleSave() {
         instagram: document.getElementById('editInstagram')?.value.trim().replace('@', '') || null,
         childName: document.getElementById('editChildName')?.value.trim() || null,
         childBirthday: document.getElementById('editChildBirthday')?.value || null,
+        socialIdentities: parseSocialIdentitiesInput(document.getElementById('editSocialIdentities')?.value),
         source: document.getElementById('editSource')?.value || null,
         notes: document.getElementById('editNotes')?.value.trim() || null
     };

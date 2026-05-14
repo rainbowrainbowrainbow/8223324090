@@ -490,6 +490,66 @@ function workspaceText(value, fallback = '—') {
     return escapeHtml(value || fallback);
 }
 
+function parseJsonArray(value) {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function normalizeLeadCelebrants(lead = {}) {
+    const raw = parseJsonArray(lead.celebrants);
+    if (raw.length) return raw.filter(Boolean).map(item => ({
+        name: item.name || item.childName || item.child_name || '',
+        age: item.age ?? item.childAge ?? item.child_age ?? '',
+        birthday: item.birthday || item.birthDate || item.birth_date || '',
+        notes: item.notes || ''
+    }));
+    if (lead.childAge || lead.child_age) {
+        return [{ name: '', age: lead.childAge || lead.child_age, birthday: '', notes: '' }];
+    }
+    return [];
+}
+
+function formatCelebrantsInput(celebrants = []) {
+    return parseJsonArray(celebrants)
+        .map(item => [item.name || item.childName || item.child_name || '', item.age || '', item.birthday || ''].filter(Boolean).join(', '))
+        .join('\n');
+}
+
+function parseCelebrantsInput(value) {
+    return String(value || '')
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean)
+        .slice(0, 20)
+        .map(line => {
+            const parts = line.split(',').map(part => part.trim()).filter(Boolean);
+            const ageMatch = line.match(/\b(\d{1,3})\b/);
+            const birthday = parts.find(part => /^\d{4}-\d{2}-\d{2}$/.test(part)) || null;
+            return {
+                name: parts[0] && !/^\d{1,3}$/.test(parts[0]) && !/^\d{4}-\d{2}-\d{2}$/.test(parts[0]) ? parts[0] : null,
+                age: ageMatch ? parseInt(ageMatch[1], 10) : null,
+                birthday,
+                source: 'operator'
+            };
+        });
+}
+
+function renderCelebrantsValue(lead = {}) {
+    const celebrants = normalizeLeadCelebrants(lead);
+    if (!celebrants.length) return workspaceText(lead.childrenCount || lead.children_count);
+    return celebrants.map((item, index) => {
+        const label = item.name || `#${index + 1}`;
+        const details = [item.age ? `${item.age} р.` : '', item.birthday || ''].filter(Boolean).join(', ');
+        return escapeHtml(details ? `${label} (${details})` : label);
+    }).join('<br>');
+}
+
 function workspaceBadge(text, cls = '') {
     if (!text) return '';
     return `<span class="workspace-badge ${cls}">${escapeHtml(text)}</span>`;
@@ -775,6 +835,7 @@ function renderLeadWorkspaceContent(workspace) {
                     <dt>Джерело</dt><dd>${workspaceText(lead.sourceChannel || lead.source)}</dd>
                     <dt>Бажана дата</dt><dd>${workspaceDate(lead.eventDate || card.event_date)}</dd>
                     <dt>Програма</dt><dd>${workspaceText(lead.programName)}</dd>
+                    <dt>Іменинники</dt><dd>${renderCelebrantsValue(lead)}</dd>
                     <dt>Нотатки</dt><dd>${workspaceText(lead.notes || card.notes)}</dd>
                 </dl>
             </section>
@@ -1270,6 +1331,7 @@ async function showCustomerCardModal(leadId) {
     document.getElementById('ccEventDate').value = lead?.event_date ? lead.event_date.split('T')[0] : '';
     document.getElementById('ccGuestCount').value = '';
     document.getElementById('ccChildrenCount').value = lead?.children_count || '';
+    document.getElementById('ccCelebrants').value = formatCelebrantsInput(lead?.celebrants || []);
     document.getElementById('ccBudget').value = '';
     document.getElementById('ccHowFound').value = '';
     document.getElementById('ccNotes').value = '';
@@ -1307,23 +1369,26 @@ async function saveCustomerCard() {
         event_date: document.getElementById('ccEventDate')?.value || null,
         guest_count: parseInt(document.getElementById('ccGuestCount')?.value) || null,
         children_count: parseInt(document.getElementById('ccChildrenCount')?.value) || null,
+        celebrants: parseCelebrantsInput(document.getElementById('ccCelebrants')?.value),
         budget_approx: parseInt(document.getElementById('ccBudget')?.value) || null,
         how_found: document.getElementById('ccHowFound')?.value || null,
         email: document.getElementById('ccEmail')?.value || null,
         channel: document.getElementById('ccChannel')?.value || null,
         notes: document.getElementById('ccNotes')?.value || null
     };
+    if (!body.children_count && body.celebrants.length) body.children_count = body.celebrants.length;
 
     // Also update lead name/phone if changed
     const name = document.getElementById('ccName')?.value.trim();
     const phone = document.getElementById('ccPhone')?.value.trim();
-    if (name || phone) {
+    if (name || phone || body.event_date || body.children_count || (body.celebrants || []).length) {
         try {
             const leadBody = {};
             if (name) leadBody.client_name = name;
             if (phone) leadBody.phone = phone;
             if (body.event_date) leadBody.event_date = body.event_date;
             if (body.children_count) leadBody.children_count = body.children_count;
+            leadBody.celebrants = body.celebrants || [];
             await apiFetch(`/api/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify(leadBody) });
         } catch(e) { /* non-blocking */ }
     }
@@ -1619,6 +1684,7 @@ function openAddModal() {
     document.getElementById('leadSource').value = '';
     document.getElementById('leadEventDate').value = '';
     document.getElementById('leadChildrenCount').value = '';
+    document.getElementById('leadCelebrants').value = '';
     document.getElementById('leadNotes').value = '';
     document.getElementById('leadAssignedTo').value = '';
 
@@ -1644,6 +1710,7 @@ function editLead(id) {
     document.getElementById('leadSource').value = lead.source || '';
     document.getElementById('leadEventDate').value = lead.event_date ? lead.event_date.split('T')[0] : '';
     document.getElementById('leadChildrenCount').value = lead.children_count || '';
+    document.getElementById('leadCelebrants').value = formatCelebrantsInput(lead.celebrants || []);
     document.getElementById('leadNotes').value = lead.notes || '';
     document.getElementById('leadAssignedTo').value = lead.assigned_to || '';
 
@@ -1662,7 +1729,7 @@ function editLead(id) {
 }
 
 function getModalState() {
-    const fields = ['leadName', 'leadPhone', 'leadInstagram', 'leadSource', 'leadEventDate', 'leadChildrenCount', 'leadNotes', 'leadAssignedTo', 'leadPipelineStage', 'leadLeadType'];
+    const fields = ['leadName', 'leadPhone', 'leadInstagram', 'leadSource', 'leadEventDate', 'leadChildrenCount', 'leadCelebrants', 'leadNotes', 'leadAssignedTo', 'leadPipelineStage', 'leadLeadType'];
     return fields.map(id => {
         const el = document.getElementById(id);
         return el ? el.value : '';
@@ -1708,9 +1775,11 @@ async function saveLead() {
         source: document.getElementById('leadSource')?.value || null,
         event_date: document.getElementById('leadEventDate')?.value || null,
         children_count: parseInt(document.getElementById('leadChildrenCount')?.value) || null,
+        celebrants: parseCelebrantsInput(document.getElementById('leadCelebrants')?.value),
         notes: document.getElementById('leadNotes')?.value.trim() || null,
         assigned_to: parseInt(document.getElementById('leadAssignedTo')?.value) || null
     };
+    if (!body.children_count && body.celebrants.length) body.children_count = body.celebrants.length;
 
     // Add pipeline/type if editing
     if (editId) {

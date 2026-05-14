@@ -435,7 +435,21 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             created_by: username
         });
 
-        res.json({ success: true, task });
+        res.json({
+            success: true,
+            task,
+            meta: {
+                canonicalOwnerField: 'tasks.owner_user_id',
+                legacyDisplayFields: ['assigned_to', 'owner'],
+                sourceMetadata: {
+                    typeField: 'tasks.source_type',
+                    idField: 'tasks.source_id',
+                    supportedChatSources: ['chat_message', 'chat_channel', 'chat_command']
+                },
+                notificationTrigger: 'services/kleshnya.notifyTaskAssigned',
+                notificationFailure: 'logged_non_blocking'
+            }
+        });
         _alertPush();
     } catch (err) {
         log.error('Create error', err);
@@ -701,6 +715,10 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
             result = await pool.query(
                 `UPDATE tasks t SET owner_user_id = $${params.length + 1}, assigned_to = $${params.length + 2}, updated_at = NOW()
                  WHERE t.id = ANY($1::int[]) ${visibility}
+                   AND (
+                       t.owner_user_id IS DISTINCT FROM $${params.length + 1}
+                       OR COALESCE(t.assigned_to, '') IS DISTINCT FROM COALESCE($${params.length + 2}, '')
+                   )
                  RETURNING t.*`,
                 [...params, typedOwner.ownerUserId, typedOwner.assignedToSnapshot]
             );

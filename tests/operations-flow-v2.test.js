@@ -1,0 +1,90 @@
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const repoRoot = path.resolve(__dirname, '..');
+
+function readRepoFile(...parts) {
+    return fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
+}
+
+describe('operations flow v2 comprehensive contracts', () => {
+    const migration = readRepoFile('db', 'migrations', '178_operations_flow_v2_comprehensive.sql');
+    const tasksRoute = readRepoFile('routes', 'tasks.js');
+    const leadsRoute = readRepoFile('routes', 'leads.js');
+    const customersRoute = readRepoFile('routes', 'customers.js');
+    const analyticsRoute = readRepoFile('routes', 'analytics.js');
+    const leadsPage = readRepoFile('js', 'leads-page.js');
+    const leadsHtml = readRepoFile('leads.html');
+    const customersPage = readRepoFile('js', 'customers-page.js');
+    const customersHtml = readRepoFile('customers.html');
+
+    it('adds only additive legacy-safe schema for identity and celebrant context', () => {
+        assert.match(migration, /MIGRATION_KIND:\s*schema/);
+        assert.match(migration, /SAFETY:/);
+        assert.match(migration, /ROLLBACK:/);
+        assert.match(migration, /ALTER TABLE customers[\s\S]*ADD COLUMN IF NOT EXISTS social_identities JSONB/);
+        assert.match(migration, /customers_social_identities_array_check/);
+        assert.match(migration, /ALTER TABLE leads[\s\S]*ADD COLUMN IF NOT EXISTS celebrants JSONB/);
+        assert.match(migration, /leads_celebrants_array_check/);
+        assert.doesNotMatch(migration, /DROP TABLE|DELETE FROM|TRUNCATE/i);
+    });
+
+    it('keeps canonical task ownership and suppresses no-op bulk assignment notifications', () => {
+        assert.match(tasksRoute, /canonicalOwnerField: 'tasks\.owner_user_id'/);
+        assert.match(tasksRoute, /supportedChatSources: \['chat_message', 'chat_channel', 'chat_command'\]/);
+        assert.match(tasksRoute, /notificationTrigger: 'services\/kleshnya\.notifyTaskAssigned'/);
+        assert.match(tasksRoute, /IS DISTINCT FROM/);
+        assert.match(tasksRoute, /COALESCE\(t\.assigned_to, ''\) IS DISTINCT FROM COALESCE/);
+        assert.doesNotMatch(tasksRoute, /TaskEngineV2|taskRoutingV2|autoRouteChatTask/i);
+    });
+
+    it('stores multi-celebrant lead data without breaking legacy single-child rows', () => {
+        assert.match(leadsRoute, /function normalizeCelebrants/);
+        assert.match(leadsRoute, /source: 'legacy_single_child'/);
+        assert.match(leadsRoute, /INSERT INTO leads[\s\S]*celebrants\)/);
+        assert.match(leadsRoute, /celebrants = \$\$\{params\.length\}::jsonb/);
+        assert.match(leadsPage, /function parseCelebrantsInput/);
+        assert.match(leadsPage, /function renderCelebrantsValue/);
+        assert.match(leadsPage, /leadCelebrants/);
+        assert.match(leadsHtml, /id="leadCelebrants"/);
+        assert.match(leadsHtml, /id="ccCelebrants"/);
+    });
+
+    it('keeps lead/customer linking explicit while preserving cross-channel identity evidence', () => {
+        assert.match(leadsRoute, /mergePolicy: 'suggest_only'/);
+        assert.match(leadsRoute, /function leadSocialIdentities/);
+        assert.match(leadsRoute, /function mergeLeadSocialIdentities/);
+        assert.match(leadsRoute, /social_identities = \$6::jsonb/);
+        assert.match(leadsRoute, /INSERT INTO customers[\s\S]*social_identities/);
+        assert.doesNotMatch(leadsRoute, /autoMerge|mergeAutomatically|blindMerge/i);
+    });
+
+    it('makes customer social identities durable and searchable without replacing explicit merge', () => {
+        assert.match(customersRoute, /function normalizeSocialIdentities/);
+        assert.match(customersRoute, /socialIdentities: normalizeSocialIdentities/);
+        assert.match(customersRoute, /INSERT INTO customers[\s\S]*social_identities/);
+        assert.match(customersRoute, /UPDATE customers SET[\s\S]*social_identities=\$8::jsonb/);
+        assert.match(customersRoute, /social_identities::text ILIKE/);
+        assert.match(customersRoute, /Соц\. ідентичності/);
+        assert.match(customersPage, /function parseSocialIdentitiesInput/);
+        assert.match(customersPage, /renderSocialIdentities/);
+        assert.match(customersHtml, /id="editSocialIdentities"/);
+        assert.match(customersRoute, /router\.post\('\/:primaryId\/merge'/);
+    });
+
+    it('keeps reporting semantics explicit and duplicate-safe for accepted-vs-closed deals', () => {
+        assert.match(analyticsRoute, /COUNT\(DISTINCT l\.id\) FILTER \(WHERE \$\{acceptedPredicate\}\)/);
+        assert.match(analyticsRoute, /COUNT\(DISTINCT lead_days\.id\) FILTER/);
+        assert.match(analyticsRoute, /reportability: 'snapshot-only'/);
+        assert.match(analyticsRoute, /duplicateProtection: 'COUNT\(DISTINCT leads\.id\)'/);
+        assert.match(analyticsRoute, /stageTimestampTruth: 'missing'/);
+    });
+
+    it('keeps lead workspace booking-derived customer aggregates scoped to canonical booking visibility', () => {
+        assert.match(leadsRoute, /const customerBookingScope = getVisibleBookingScope\(req\.user, customerLookupParams, 'b'\)/);
+        assert.match(leadsRoute, /FROM bookings b[\s\S]*\$\{customerBookingScope\.sql\}/);
+        assert.match(leadsRoute, /socialIdentities: parseJsonArray\(row\.social_identities\)/);
+    });
+});

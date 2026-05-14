@@ -827,10 +827,10 @@ router.get('/deals-lifecycle', async (req, res) => {
 
         const totals = await pool.query(`
             SELECT
-                COUNT(*) FILTER (WHERE ${acceptedPredicate})::int AS accepted,
-                COUNT(*) FILTER (WHERE ${closedPredicate})::int AS closed,
-                COUNT(*) FILTER (WHERE COALESCE(l.pipeline_stage, '') = 'lost' OR COALESCE(l.status, '') = 'lost')::int AS lost,
-                COUNT(*)::int AS total
+                COUNT(DISTINCT l.id) FILTER (WHERE ${acceptedPredicate})::int AS accepted,
+                COUNT(DISTINCT l.id) FILTER (WHERE ${closedPredicate})::int AS closed,
+                COUNT(DISTINCT l.id) FILTER (WHERE COALESCE(l.pipeline_stage, '') = 'lost' OR COALESCE(l.status, '') = 'lost')::int AS lost,
+                COUNT(DISTINCT l.id)::int AS total
             FROM leads l
             WHERE ${dateExpr} >= $1::date
               AND ${dateExpr} <= $2::date
@@ -844,6 +844,7 @@ router.get('/deals-lifecycle', async (req, res) => {
             lead_days AS (
                 SELECT
                     ${dateExpr} AS day,
+                    l.id,
                     ${acceptedPredicate} AS accepted,
                     ${closedPredicate} AS closed
                 FROM leads l
@@ -853,8 +854,8 @@ router.get('/deals-lifecycle', async (req, res) => {
             )
             SELECT
                 days.day::text AS date,
-                COUNT(*) FILTER (WHERE lead_days.accepted)::int AS accepted,
-                COUNT(*) FILTER (WHERE lead_days.closed)::int AS closed
+                COUNT(DISTINCT lead_days.id) FILTER (WHERE lead_days.accepted)::int AS accepted,
+                COUNT(DISTINCT lead_days.id) FILTER (WHERE lead_days.closed)::int AS closed
             FROM days
             LEFT JOIN lead_days ON lead_days.day = days.day
             GROUP BY days.day
@@ -876,8 +877,11 @@ router.get('/deals-lifecycle', async (req, res) => {
             meta: {
                 acceptedStages: ['deposit_received', 'waiting'],
                 closedStages: ['completed', 'closed'],
+                reportability: 'snapshot-only',
+                duplicateProtection: 'COUNT(DISTINCT leads.id)',
                 dateBasis: 'COALESCE(leads.booked_at, leads.event_date, leads.created_at)',
-                stageTimestampTruth: 'missing'
+                stageTimestampTruth: 'missing',
+                closedExcludesLost: true
             }
         };
         setCache(cacheKey, data);

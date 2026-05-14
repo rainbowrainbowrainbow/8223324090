@@ -37,6 +37,11 @@ const DAYS_UK = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const MONTHS_UK = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня',
     'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
 const MONTHS_SHORT = ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру'];
+const HR_POOL_LABELS = {
+    core: 'Основна команда',
+    reserve: 'Резерв',
+    blacklisted: 'Чорний список'
+};
 
 // ==========================================
 // STATE
@@ -121,10 +126,18 @@ function fmtMoney(n) {
     return new Intl.NumberFormat('uk-UA').format(n) + ' ₴';
 }
 
-async function hrFetch(path, options = {}) {
+async function hrFetch(path, options = {}, legacyBody = undefined) {
     const token = localStorage.getItem('pzp_token');
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (typeof options === 'string') {
+        options = {
+            method: options,
+            body: legacyBody !== undefined ? JSON.stringify(legacyBody) : undefined
+        };
+    } else if (options && options.body && typeof options.body !== 'string') {
+        options = { ...options, body: JSON.stringify(options.body) };
+    }
     const resp = await fetch(`/api/hr${path}`, { headers, ...options });
     if (resp.status === 401 || resp.status === 403) {
         localStorage.removeItem('pzp_token');
@@ -151,7 +164,7 @@ async function initPage() {
     const userEl = document.getElementById('currentUser');
     if (userEl) userEl.textContent = user.name;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
-    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
+    const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'];
     canManage = MANAGE_ROLES.includes(user.role);
 
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
@@ -161,7 +174,17 @@ async function initPage() {
     initModals();
     initContextMenu();
     initNewTabs();
-    await loadToday();
+    const initialTab = getInitialHrTab();
+    await activateHrTab(initialTab, { updateHash: false });
+    const employeeId = new URLSearchParams(window.location.search).get('employee');
+    if (employeeId && /^\d+$/.test(employeeId)) {
+        await activateHrTab('team', { updateHash: false });
+        openStaffEdit(parseInt(employeeId, 10));
+    }
+    window.addEventListener('hashchange', () => {
+        const tab = getInitialHrTab();
+        activateHrTab(tab, { updateHash: false });
+    });
     startPolling();
     } catch (err) { console.error('HR initPage failed:', err); }
 }
@@ -173,6 +196,7 @@ function initNewTabs() {
     document.getElementById('btnAddAdjustment')?.addEventListener('click', showAdjustmentForm);
     document.getElementById('btnStartOnboarding')?.addEventListener('click', showStartOnboarding);
     document.getElementById('btnAddCostume')?.addEventListener('click', showAddCostume);
+    document.getElementById('btnSaveCompanyStructure')?.addEventListener('click', saveCompanyStructure);
 }
 
 // ==========================================
@@ -182,24 +206,38 @@ function initNewTabs() {
 function initTabs() {
     try {
     document.querySelectorAll('.hr-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('.hr-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.hr-tab-content').forEach(c => c.classList.remove('active'));
-            tab.classList.add('active');
-            const target = tab.dataset.tab;
-            const panel = document.getElementById(`tab-${target}`);
-            if (!panel) { console.error(`[HR] panel #tab-${target} not found`); return; }
-            panel.classList.add('active');
-            const loaders = {
-                today: loadToday, schedule: loadSchedule, team: loadTeam,
-                reports: loadReports, 'ai-team': renderAITeam, leaves: loadLeaves,
-                salary: loadSalary, ratings: loadRatings, onboarding: loadOnboarding,
-                costumes: loadCostumes, vacancies: loadVacancies
-            };
-            loaders[target]?.();
-        });
+        tab.addEventListener('click', () => activateHrTab(tab.dataset.tab, { updateHash: true }));
     });
     } catch (err) { console.error('HR init failed:', err); window.location.href = '/'; }
+}
+
+function getInitialHrTab() {
+    const hashTab = window.location.hash ? window.location.hash.slice(1) : '';
+    const queryTab = new URLSearchParams(window.location.search).get('tab') || '';
+    const target = queryTab || hashTab || 'today';
+    return document.getElementById(`tab-${target}`) ? target : 'today';
+}
+
+async function activateHrTab(target, options = {}) {
+    const tab = document.querySelector(`.hr-tab[data-tab="${target}"]`);
+    const panel = document.getElementById(`tab-${target}`);
+    if (!tab || !panel) return;
+    document.querySelectorAll('.hr-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.hr-tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    panel.classList.add('active');
+    if (options.updateHash) {
+        const next = target === 'today' ? window.location.pathname : `${window.location.pathname}#${target}`;
+        history.replaceState(null, '', next);
+    }
+    const loaders = {
+        today: loadToday, schedule: loadSchedule, team: loadTeam, structure: loadCompanyStructure,
+        reports: loadReports, 'ai-team': renderAITeam, leaves: loadLeaves,
+        salary: loadSalary, ratings: loadRatings, onboarding: loadOnboarding,
+        costumes: loadCostumes, vacancies: loadVacancies, reserve: loadReservePool,
+        blacklist: loadBlacklist
+    };
+    await loaders[target]?.();
 }
 
 // ==========================================
@@ -561,6 +599,7 @@ function openShiftModal(staffId, date) {
         document.getElementById('shiftBreak').value = existing.break_minutes || 30;
         document.getElementById('shiftNotes').value = existing.notes || '';
         document.getElementById('shiftDelete').style.display = '';
+        document.getElementById('shiftReplace').style.display = '';
     } else {
         // Use selected template
         const tplId = document.getElementById('templateSelect')?.value;
@@ -571,6 +610,7 @@ function openShiftModal(staffId, date) {
         document.getElementById('shiftBreak').value = tpl ? tpl.break_minutes : 30;
         document.getElementById('shiftNotes').value = '';
         document.getElementById('shiftDelete').style.display = 'none';
+        document.getElementById('shiftReplace').style.display = 'none';
     }
 
     showHrEditableModal('shiftModal');
@@ -632,6 +672,36 @@ async function deleteShift() {
         await loadSchedule();
     } else {
         showNotification(data?.error || 'Помилка', 'error');
+    }
+}
+
+async function replaceShift() {
+    if (!editingShift?.existing) return;
+    const candidates = scheduleStaff
+        .filter(s => s.id !== editingShift.staffId && s.is_active !== false)
+        .map(s => ({ value: String(s.id), label: `${s.name}${s.role_type ? ' · ' + (ROLE_LABELS[s.role_type] || s.role_type) : ''}` }));
+    if (!candidates.length) {
+        showNotification('Немає активних співробітників для підміни', 'error');
+        return;
+    }
+    const result = await formModal('Підміна зміни', [
+        { key: 'replacementStaffId', label: 'Хто замінює', type: 'select', options: candidates, required: true },
+        { key: 'reason', label: 'Причина', placeholder: 'Хвороба, прохання менеджера, термінова заміна...' }
+    ], { icon: '🔁', okText: 'Зберегти підміну' });
+    if (!result) return;
+    const data = await hrFetch(`/shifts/${editingShift.existing.id}/replace`, {
+        method: 'POST',
+        body: {
+            replacement_staff_id: parseInt(result.replacementStaffId, 10),
+            reason: result.reason || ''
+        }
+    });
+    if (data?.success) {
+        showNotification('Підміну збережено', 'success');
+        await closeHrEditableModal('shiftModal', true);
+        await loadSchedule();
+    } else {
+        showNotification(data?.error || 'Помилка підміни', 'error');
     }
 }
 
@@ -739,17 +809,23 @@ function renderTeam(staff) {
         const emergency = s.emergency_contact
             ? `Екстр: ${escapeHtml(s.emergency_contact)}${s.emergency_phone ? ', ' + escapeHtml(s.emergency_phone) : ''}`
             : '';
+        const poolStatus = s.hr_pool_status || 'core';
+        const poolBadge = poolStatus !== 'core'
+            ? `<span class="hr-badge ${poolStatus === 'blacklisted' ? 'hr-badge--warn' : 'hr-badge--ok'}">${HR_POOL_LABELS[poolStatus] || escapeHtml(poolStatus)}</span>`
+            : '';
 
         return `<div class="hr-team-card ${s.is_active ? '' : 'inactive'}">
             <div class="hr-team-avatar" style="${s.color ? 'background:' + s.color + '30;color:' + s.color : ''}">${avatar}</div>
             <div class="hr-team-details">
                 <div class="hr-team-name">${escapeHtml(s.name)} ${s.is_active ? '' : '<span style="color:var(--gray-400);">(звільнений)</span>'}</div>
                 <div class="hr-team-role">${s.position ? escapeHtml(s.position) + ' · ' : ''}${roleLabel}${hireStr ? ' · з ' + hireStr : ''}</div>
-                <div class="hr-team-badges">${s.has_face_descriptor ? '<span class="hr-badge hr-badge--ok" title="Фото для камери: є">📸</span>' : '<span class="hr-badge hr-badge--warn" title="Фото для камери: немає">📸❌</span>'} ${s.has_account ? '<span class="hr-badge hr-badge--ok" title="Акаунт CRM: є">🔑</span>' : '<span class="hr-badge hr-badge--warn" title="Акаунт CRM: немає">🔑❌</span>'}</div>
+                <div class="hr-team-badges">${s.has_face_descriptor ? '<span class="hr-badge hr-badge--ok" title="Фото для камери: є">📸</span>' : '<span class="hr-badge hr-badge--warn" title="Фото для камери: немає">📸❌</span>'} ${s.has_account ? '<span class="hr-badge hr-badge--ok" title="Акаунт CRM: є">🔑</span>' : '<span class="hr-badge hr-badge--warn" title="Акаунт CRM: немає">🔑❌</span>'} ${poolBadge}</div>
                 <div class="hr-team-contact">
                     ${phone ? '📞 ' + escapeHtml(phone) + '<br>' : ''}
                     ${emergency ? '⚡ ' + emergency : ''}
+                    ${s.address ? `${phone || emergency ? '<br>' : ''}📍 ${escapeHtml(s.address)}` : ''}
                 </div>
+                ${poolStatus === 'blacklisted' && s.blacklist_reason ? `<div class="hr-team-stats" style="color:var(--danger)">Причина: ${escapeHtml(s.blacklist_reason)}</div>` : ''}
                 ${s.hourly_rate > 0 ? `<div class="hr-team-stats">Ставка: ${s.hourly_rate} ₴/год</div>` : ''}
                 ${canManage ? `<button class="hr-team-edit" onclick="openStaffEdit(${s.id})">Редагувати</button>` : ''}
             </div>
@@ -765,12 +841,15 @@ function openStaffEdit(staffId) {
     document.getElementById('editRoleType').value = s.role_type || 'animator';
     document.getElementById('editPhone').value = s.phone || '';
     document.getElementById('editBirthDate').value = s.birth_date ? s.birth_date.substring(0, 10) : '';
+    document.getElementById('editAddress').value = s.address || '';
     document.getElementById('editEmergencyContact').value = s.emergency_contact || '';
     document.getElementById('editEmergencyPhone').value = s.emergency_phone || '';
     document.getElementById('editHourlyRate').value = s.hourly_rate || 0;
     document.getElementById('editTelegramId').value = s.telegram_id || '';
     document.getElementById('editTelegramUsername').value = s.telegram_username || '';
     document.getElementById('editContractType').value = s.contract_type || 'parttime';
+    document.getElementById('editPoolStatus').value = s.hr_pool_status || 'core';
+    document.getElementById('editBlacklistReason').value = s.blacklist_reason || '';
     document.getElementById('editSkills').value = (s.skills || []).join(', ');
     document.getElementById('editNotes').value = s.notes || '';
 
@@ -783,12 +862,15 @@ async function saveStaffEdit() {
         role_type: document.getElementById('editRoleType')?.value,
         phone: document.getElementById('editPhone')?.value || null,
         birth_date: document.getElementById('editBirthDate')?.value || null,
+        address: document.getElementById('editAddress')?.value || null,
         emergency_contact: document.getElementById('editEmergencyContact')?.value || null,
         emergency_phone: document.getElementById('editEmergencyPhone')?.value || null,
         hourly_rate: parseFloat(document.getElementById('editHourlyRate')?.value) || 0,
         telegram_id: document.getElementById('editTelegramId')?.value || null,
         telegram_username: document.getElementById('editTelegramUsername')?.value || null,
         contract_type: document.getElementById('editContractType')?.value || 'parttime',
+        hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core',
+        blacklist_reason: document.getElementById('editBlacklistReason')?.value || null,
         skills: document.getElementById('editSkills')?.value ? document.getElementById('editSkills')?.value.split(',').map(s => s.trim()).filter(Boolean) : null,
         notes: document.getElementById('editNotes')?.value || null
     };
@@ -803,6 +885,116 @@ async function saveStaffEdit() {
         await loadTeam();
     } else {
         showNotification(data?.error || 'Помилка', 'error');
+    }
+}
+
+// ==========================================
+// BACKOFFICE FOUNDATION: STRUCTURE / POOLS
+// ==========================================
+
+async function loadCompanyStructure() {
+    const statusEl = document.getElementById('companyStructureStatus');
+    if (statusEl) statusEl.textContent = 'Завантаження...';
+    const data = await hrFetch('/company-structure');
+    if (!data?.success) {
+        if (statusEl) statusEl.textContent = data?.error || 'Не вдалося завантажити структуру';
+        return;
+    }
+    const structure = data.data || data.structure || {};
+    const structureText = document.getElementById('companyStructureText');
+    const instructionsText = document.getElementById('companyInstructionsText');
+    if (structureText) structureText.value = structure.structure || structure.structure_text || '';
+    if (instructionsText) instructionsText.value = structure.instructions || structure.instructions_text || '';
+    if (statusEl) statusEl.textContent = structure.updatedAt ? `Оновлено: ${new Date(structure.updatedAt).toLocaleString('uk-UA')}` : '';
+}
+
+async function saveCompanyStructure() {
+    const payload = {
+        structure: document.getElementById('companyStructureText')?.value || '',
+        instructions: document.getElementById('companyInstructionsText')?.value || ''
+    };
+    const data = await hrFetch('/company-structure', {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+    });
+    if (data?.success) {
+        showNotification('Структуру та інструкції збережено', 'success');
+        await loadCompanyStructure();
+    } else {
+        showNotification(data?.error || 'Не вдалося зберегти', 'error');
+    }
+}
+
+async function loadReservePool() {
+    await loadPoolList('reserve', 'reservePoolList');
+}
+
+async function loadBlacklist() {
+    await loadPoolList('blacklisted', 'blacklistList');
+}
+
+async function loadPoolList(status, targetId) {
+    const target = document.getElementById(targetId);
+    if (target) target.innerHTML = '<div style="padding:24px;color:var(--gray-400)">Завантаження...</div>';
+    const data = await hrFetch(`/pool?status=${status}`);
+    if (!data?.success) {
+        if (target) target.innerHTML = `<div style="padding:24px;color:var(--danger)">${escapeHtml(data?.error || 'Помилка завантаження')}</div>`;
+        return;
+    }
+    renderPoolList(targetId, data.data || [], status);
+}
+
+function renderPoolList(targetId, staff, status) {
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    if (staff.length === 0) {
+        target.innerHTML = '<div style="padding:24px;color:var(--gray-400)">Список порожній</div>';
+        return;
+    }
+    target.innerHTML = staff.map(s => {
+        const reason = s.blacklist_reason ? `<div class="hr-team-stats">Причина: ${escapeHtml(s.blacklist_reason)}</div>` : '';
+        const phone = s.phone ? `<div class="hr-team-contact">📞 ${escapeHtml(s.phone)}</div>` : '';
+        const actions = canManage ? `
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                ${status !== 'reserve' ? `<button class="btn-secondary" onclick="setPoolStatus(${s.id}, 'reserve')">У резерв</button>` : ''}
+                ${status !== 'blacklisted' ? `<button class="btn-secondary" onclick="setPoolStatus(${s.id}, 'blacklisted')">У blacklist</button>` : ''}
+                <button class="btn-secondary" onclick="setPoolStatus(${s.id}, 'core')">В основну команду</button>
+            </div>` : '';
+        return `<div class="hr-team-card">
+            <div class="hr-team-avatar">${escapeHtml(s.name || '?').slice(0, 2).toUpperCase()}</div>
+            <div class="hr-team-details">
+                <div class="hr-team-name">${escapeHtml(s.name)}</div>
+                <div class="hr-team-role">${escapeHtml(ROLE_LABELS[s.role_type] || s.role_type || '')} ${s.department ? ' · ' + escapeHtml(s.department) : ''}</div>
+                ${phone}
+                ${reason}
+                ${actions}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function setPoolStatus(staffId, status) {
+    let reason = null;
+    if (status === 'blacklisted') {
+        const result = await formModal('Причина чорного списку', [
+            { key: 'reason', label: 'Причина', type: 'textarea', required: true }
+        ], { icon: '⚠️', type: 'warning' });
+        if (!result?.reason?.trim()) return;
+        reason = result.reason.trim();
+    }
+    const data = await hrFetch(`/staff/${staffId}/pool-status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status, reason })
+    });
+    if (data?.success) {
+        showNotification('HR-статус оновлено', 'success');
+        await Promise.all([
+            loadTeam().catch(() => {}),
+            loadReservePool().catch(() => {}),
+            loadBlacklist().catch(() => {})
+        ]);
+    } else {
+        showNotification(data?.error || 'Не вдалося оновити статус', 'error');
     }
 }
 
@@ -836,26 +1028,34 @@ function renderReports(data) {
     // Summary
     const rows = data.data;
     let totalPresent = 0, totalLate = 0, totalAbsent = 0, totalOvertime = 0;
+    let totalTasksAssigned = 0, totalTasksDone = 0, totalTasksOverdue = 0;
     for (const r of rows) {
         totalPresent += r.days_worked;
         totalLate += r.late_count;
         totalAbsent += r.days_absent;
         totalOvertime += r.total_overtime_hours;
+        totalTasksAssigned += r.task_kpi?.tasks_assigned || 0;
+        totalTasksDone += r.task_kpi?.tasks_done || 0;
+        totalTasksOverdue += r.task_kpi?.tasks_overdue || 0;
     }
     const totalScheduled = rows.reduce((a, r) => a + r.days_scheduled, 0);
     const attendanceRate = totalScheduled > 0 ? Math.round(totalPresent / totalScheduled * 100) : 0;
+    const taskDoneRate = totalTasksAssigned > 0 ? Math.round(totalTasksDone / totalTasksAssigned * 100) : 0;
 
     document.getElementById('reportSummary').innerHTML = `
         <div class="hr-report-stat"><div class="stat-value">${attendanceRate}%</div><div class="stat-label">Присутність</div></div>
         <div class="hr-report-stat"><div class="stat-value">${totalLate}</div><div class="stat-label">Запізнень</div></div>
         <div class="hr-report-stat"><div class="stat-value">${totalAbsent}</div><div class="stat-label">Відсутностей</div></div>
         <div class="hr-report-stat"><div class="stat-value">${totalOvertime.toFixed(0)}г</div><div class="stat-label">Переробка</div></div>
+        <div class="hr-report-stat"><div class="stat-value">${totalTasksDone}/${totalTasksAssigned}</div><div class="stat-label">Задачі виконано</div></div>
+        <div class="hr-report-stat"><div class="stat-value">${taskDoneRate}%</div><div class="stat-label">KPI задач</div></div>
+        <div class="hr-report-stat"><div class="stat-value">${totalTasksOverdue}</div><div class="stat-label">Прострочені</div></div>
     `;
 
     // Table
     document.getElementById('reportHead').innerHTML = `<tr>
         <th>ПІБ</th><th>Зміни</th><th>Відпрац.</th><th>Запізн.</th>
-        <th>Сер. запізн.</th><th>Годин</th><th>Сума</th></tr>`;
+        <th>Сер. запізн.</th><th>Годин</th><th>Сума</th><th>Задачі</th><th>KPI</th></tr>`;
 
     document.getElementById('reportBody').innerHTML = rows.map(r => `<tr>
         <td>${escapeHtml(r.staff_name)}</td>
@@ -865,6 +1065,8 @@ function renderReports(data) {
         <td class="num">${r.avg_late_minutes > 0 ? r.avg_late_minutes + 'хв' : '—'}</td>
         <td class="num">${r.total_worked_hours}г</td>
         <td class="num">${fmtMoney(r.estimated_salary)}</td>
+        <td class="num">${r.task_kpi?.tasks_done || 0}/${r.task_kpi?.tasks_assigned || 0}${r.task_kpi?.tasks_overdue ? ` · ${r.task_kpi.tasks_overdue} простр.` : ''}</td>
+        <td class="num">${r.task_completion_rate || 0}%</td>
     </tr>`).join('');
 }
 
@@ -928,6 +1130,7 @@ function initModals() {
     // Shift modal
     document.getElementById('shiftSave')?.addEventListener('click', saveShift);
     document.getElementById('shiftDelete')?.addEventListener('click', deleteShift);
+    document.getElementById('shiftReplace')?.addEventListener('click', replaceShift);
     document.getElementById('shiftCancel')?.addEventListener('click', () => closeHrEditableModal('shiftModal', false, 'Є незбережені зміни у зміні. Закрити без збереження?'));
 
     // Staff edit modal
@@ -1810,8 +2013,13 @@ async function refreshCandidates() {
                         <div class="kc-name">${escapeHtml(a.name)}</div>
                         ${a.phone ? `<div class="kc-meta">📞 ${escapeHtml(a.phone)}</div>` : ''}
                         ${a.telegram_username ? `<div class="kc-meta">✈️ @${escapeHtml(a.telegram_username)}</div>` : ''}
+                        ${a.birth_date ? `<div class="kc-meta">🎂 ${new Date(a.birth_date).toLocaleDateString('uk-UA')}</div>` : ''}
+                        ${a.address ? `<div class="kc-meta">📍 ${escapeHtml(a.address)}</div>` : ''}
+                        ${a.availability ? `<div class="kc-meta">🕒 ${escapeHtml(a.availability)}</div>` : ''}
                         ${a.salary_expectation ? `<div class="kc-meta">💰 ${a.salary_expectation} ₴</div>` : ''}
                         ${a.interview_date ? `<div class="kc-meta">📅 ${new Date(a.interview_date).toLocaleDateString('uk-UA')}</div>` : ''}
+                        ${a.experience ? `<div class="kc-meta">${escapeHtml(a.experience).slice(0, 120)}</div>` : ''}
+                        ${a.interview_notes ? `<div class="kc-meta">${escapeHtml(a.interview_notes).slice(0, 120)}</div>` : ''}
                         <div class="kc-actions">
                             ${s !== 'offer' ? `<button class="kc-btn" onclick="moveCandidate(${a.id},'${nextCandidateStatus(s)}')">→ ${APP_STATUS_LABEL[nextCandidateStatus(s)]}</button>` : ''}
                             ${s === 'offer' ? `<button class="kc-btn success" onclick="hireCandidate(${a.id})">✅ Найняти</button>` : ''}
@@ -1848,12 +2056,28 @@ async function addCandidatePrompt(vacancyId) {
     const result = await formModal('Додати кандидата', [
         { key: 'name', label: 'Ім\'я кандидата', required: true, placeholder: 'Іван Петренко' },
         { key: 'phone', label: 'Телефон', placeholder: '+380...' },
-        { key: 'tg', label: 'Telegram username', placeholder: '@username' }
+        { key: 'tg', label: 'Telegram username', placeholder: '@username' },
+        { key: 'birth_date', label: 'Дата народження', type: 'date' },
+        { key: 'address', label: 'Адреса', placeholder: 'Місто, район, вулиця' },
+        { key: 'availability', label: 'Доступність', placeholder: 'Будні після 16:00, вихідні повний день' },
+        { key: 'experience', label: 'Досвід', type: 'textarea', placeholder: 'Коротко про досвід і ролі' },
+        { key: 'interview_notes', label: 'Нотатки інтервʼю', type: 'textarea', placeholder: 'Що важливо перевірити або імпортувати' },
+        { key: 'raw_application_text', label: 'Сирий текст анкети', type: 'textarea', placeholder: 'Вставити текст із форми/скану' }
     ], { icon: '👤' });
     if (!result) return;
     await hrFetch(`/vacancies/${vacancyId}/applications`, {
         method: 'POST',
-        body: JSON.stringify({ name: result.name.trim(), phone: result.phone || null, telegram_username: result.tg || null })
+        body: JSON.stringify({
+            name: result.name.trim(),
+            phone: result.phone || null,
+            telegram_username: result.tg || null,
+            birth_date: result.birth_date || null,
+            address: result.address || null,
+            availability: result.availability || null,
+            experience: result.experience || null,
+            interview_notes: result.interview_notes || null,
+            raw_application_text: result.raw_application_text || null
+        })
     });
     refreshCandidates();
 }

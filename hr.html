@@ -8,13 +8,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.48.12">
-    <link rel="stylesheet" href="css/layout.css?v=0.48.12">
-    <link rel="stylesheet" href="css/pages.css?v=0.48.12">
-    <link rel="stylesheet" href="css/modals.css?v=0.48.12">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.48.12">
-    <link rel="stylesheet" href="css/responsive.css?v=0.48.12">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.48.12">
+    <link rel="stylesheet" href="css/base.css?v=0.48.13">
+    <link rel="stylesheet" href="css/layout.css?v=0.48.13">
+    <link rel="stylesheet" href="css/pages.css?v=0.48.13">
+    <link rel="stylesheet" href="css/modals.css?v=0.48.13">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.48.13">
+    <link rel="stylesheet" href="css/responsive.css?v=0.48.13">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.48.13">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -60,6 +60,41 @@
 
         .hr-tab-content { display: none; }
         .hr-tab-content.active { display: block; }
+        .hr-foundation-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .hr-foundation-card {
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius);
+            padding: 16px;
+        }
+        body.dark-mode .hr-foundation-card {
+            background: #1E1E38;
+            border-color: #2A2A4A;
+        }
+        .hr-foundation-card textarea {
+            width: 100%;
+            min-height: 220px;
+            resize: vertical;
+            border: 1px solid var(--gray-300);
+            border-radius: var(--radius-sm);
+            padding: 12px;
+            background: var(--white);
+            color: var(--gray-900);
+            font: inherit;
+        }
+        body.dark-mode .hr-foundation-card textarea {
+            background: #151528;
+            color: #E5E7EB;
+            border-color: #374151;
+        }
+        @media (max-width: 900px) {
+            .hr-foundation-grid { grid-template-columns: 1fr; }
+        }
 
         /* ==========================================
            TAB 1: TODAY DASHBOARD
@@ -1038,6 +1073,9 @@
                 <button type="button" class="hr-tab active" data-tab="today">Хто зараз</button>
                 <button type="button" class="hr-tab" data-tab="schedule">Розклад</button>
                 <button type="button" class="hr-tab" data-tab="team">Команда</button>
+                <button type="button" class="hr-tab" data-tab="structure">Структура</button>
+                <button type="button" class="hr-tab" data-tab="reserve">Резерв</button>
+                <button type="button" class="hr-tab" data-tab="blacklist">Чорний список</button>
                 <button type="button" class="hr-tab" data-tab="reports">Звіти</button>
                 <button type="button" class="hr-tab" data-tab="ai-team">AI Команда</button>
                 <button type="button" class="hr-tab" data-tab="leaves">Відпустки</button>
@@ -1118,6 +1156,42 @@
                     </label>
                 </div>
                 <div id="teamGrid" class="hr-team-grid"></div>
+            </div>
+
+            <!-- TAB 3A: COMPANY STRUCTURE -->
+            <div id="tab-structure" class="hr-tab-content">
+                <div class="hr-foundation-grid">
+                    <div class="hr-foundation-card">
+                        <h3 style="margin-top:0;">Структура компанії</h3>
+                        <textarea id="companyStructureText" aria-label="Структура компанії" placeholder="Вставте затверджену структуру компанії після появи org/dept image-source."></textarea>
+                    </div>
+                    <div class="hr-foundation-card">
+                        <h3 style="margin-top:0;">Інструкції</h3>
+                        <textarea id="companyInstructionsText" aria-label="Інструкції компанії" placeholder="Операційні інструкції, правила, відповідальні зони."></textarea>
+                    </div>
+                </div>
+                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                    <button type="button" id="btnSaveCompanyStructure" class="btn-add">Зберегти</button>
+                    <span id="companyStructureStatus" style="color:var(--gray-500);font-size:var(--font-sm);"></span>
+                </div>
+            </div>
+
+            <!-- TAB 3B: RESERVE POOL -->
+            <div id="tab-reserve" class="hr-tab-content">
+                <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+                    <h3 style="margin:0;">Резервний пул</h3>
+                    <button type="button" class="btn-secondary" onclick="loadReservePool()">Оновити</button>
+                </div>
+                <div id="reservePoolList" class="hr-team-grid"></div>
+            </div>
+
+            <!-- TAB 3C: BLACKLIST -->
+            <div id="tab-blacklist" class="hr-tab-content">
+                <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+                    <h3 style="margin:0;">Чорний список</h3>
+                    <button type="button" class="btn-secondary" onclick="loadBlacklist()">Оновити</button>
+                </div>
+                <div id="blacklistList" class="hr-team-grid"></div>
             </div>
 
             <!-- TAB 4: REPORTS -->
@@ -1267,6 +1341,7 @@
             </div>
             <div class="hr-modal-actions">
                 <button type="button" id="shiftDelete" class="btn-danger" style="display:none;">Видалити</button>
+                <button type="button" id="shiftReplace" class="btn-secondary" style="display:none;">Підміна</button>
                 <button type="button" id="shiftCancel" class="btn-secondary">Скасувати</button>
                 <button type="button" id="shiftSave" class="btn-primary">Зберегти</button>
             </div>
@@ -1315,6 +1390,10 @@
                 <input type="date" id="editBirthDate">
             </div>
             <div class="form-group">
+                <label>Адреса</label>
+                <textarea id="editAddress" rows="2" aria-label="Адреса співробітника" placeholder="Місто, район, вулиця"></textarea>
+            </div>
+            <div class="form-group">
                 <label>Екстрений контакт</label>
                 <input type="text" id="editEmergencyContact" aria-label="Мама, Петренко О.В." placeholder="Мама, Петренко О.В.">
             </div>
@@ -1341,6 +1420,18 @@
                     <option value="fulltime">Повна зайнятість</option>
                     <option value="freelance">Фріланс</option>
                 </select>
+            </div>
+            <div class="form-group">
+                <label>HR-статус</label>
+                <select id="editPoolStatus">
+                    <option value="core">Основна команда</option>
+                    <option value="reserve">Резервний пул</option>
+                    <option value="blacklisted">Чорний список</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Причина чорного списку</label>
+                <textarea id="editBlacklistReason" rows="2" aria-label="Причина чорного списку" placeholder="Заповнюється тільки для чорного списку"></textarea>
             </div>
             <div class="form-group">
                 <label>Навички (через кому)</label>
@@ -1404,16 +1495,16 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.48.12"></script>
-    <script src="js/config.js?v=0.48.12"></script>
-    <script src="js/notification.js?v=0.48.12"></script>
-    <script src="js/api.js?v=0.48.12"></script>
-    <script src="js/auth.js?v=0.48.12"></script>
-    <script src="js/components/sidebar.js?v=0.48.12"></script>
+    <script src="js/ui.js?v=0.48.13"></script>
+    <script src="js/config.js?v=0.48.13"></script>
+    <script src="js/notification.js?v=0.48.13"></script>
+    <script src="js/api.js?v=0.48.13"></script>
+    <script src="js/auth.js?v=0.48.13"></script>
+    <script src="js/components/sidebar.js?v=0.48.13"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.48.12"></script>
-    <script src="js/alerts.js?v=0.48.12"></script>
-    <script src="js/role-panel.js?v=0.48.12"></script>
+    <script src="js/hr-page.js?v=0.48.13"></script>
+    <script src="js/alerts.js?v=0.48.13"></script>
+    <script src="js/role-panel.js?v=0.48.13"></script>
     <script>
     // ─── Shifts Summary (v33.5) ──────────
     async function loadShiftsSummary() {

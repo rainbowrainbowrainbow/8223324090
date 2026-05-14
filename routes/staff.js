@@ -390,14 +390,14 @@ router.get('/', async (req, res) => {
 // LLM HINT: telegramUsername is optional — used for @-mentions in schedule notifications
 router.post('/', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'), async (req, res) => {
     try {
-        const { name, department, position, phone, hireDate, color, telegramUsername } = req.body;
+        const { name, department, position, phone, hireDate, color, telegramUsername, role_type, roleType, address } = req.body;
         if (!name || !department || !position) {
             return res.status(400).json({ success: false, error: 'Обов\'язкові поля: ім\'я, відділ, посада' });
         }
         const result = await pool.query(
-            `INSERT INTO staff (name, department, position, phone, hire_date, color, telegram_username)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [name, department, position, phone || null, hireDate || null, color || null, telegramUsername || null]
+            `INSERT INTO staff (name, department, position, phone, hire_date, color, telegram_username, role_type, address)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+            [name, department, position, phone || null, hireDate || null, color || null, telegramUsername || null, role_type || roleType || null, address || null]
         );
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
@@ -410,17 +410,19 @@ router.post('/', requireRole('creator', 'director', 'vice_director', 'senior_man
 // LLM HINT: telegramUsername — set to Telegram @username (without @) for schedule notifications
 router.put('/:id', requireRole('creator', 'director', 'vice_director', 'senior_manager', 'hr'), async (req, res) => {
     try {
-        const { name, department, position, phone, hireDate, color, isActive, telegramUsername } = req.body;
+        const { name, department, position, phone, hireDate, color, isActive, telegramUsername, role_type, roleType, address } = req.body;
         // Only update telegram_username if explicitly passed (even empty string clears it)
         const tgUser = telegramUsername !== undefined ? (telegramUsername || null) : undefined;
         const result = await pool.query(
             `UPDATE staff SET name=COALESCE($1,name), department=COALESCE($2,department),
              position=COALESCE($3,position), phone=$4, hire_date=$5, color=$6,
              is_active=COALESCE($7,is_active),
-             telegram_username = CASE WHEN $9::boolean THEN $10 ELSE telegram_username END
+             telegram_username = CASE WHEN $9::boolean THEN $10 ELSE telegram_username END,
+             role_type=COALESCE($11,role_type),
+             address=COALESCE($12,address)
              WHERE id=$8 RETURNING *`,
             [name, department, position, phone || null, hireDate || null, color || null, isActive, req.params.id,
-             telegramUsername !== undefined, tgUser]
+             telegramUsername !== undefined, tgUser, role_type || roleType || null, address || null]
         );
         if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
         res.json({ success: true, data: result.rows[0] });

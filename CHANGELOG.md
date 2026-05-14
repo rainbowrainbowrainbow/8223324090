@@ -4,6 +4,17 @@
 
 ---
 
+## v0.48.13 - Org / HR / Inventory / Pricing Foundation v1 (2026-05-14)
+
+### Backoffice Foundation [codex]
+- **Departments** - org/dept image-source у workspace не знайдено, тому фінальну department taxonomy і registry не вигадано; hardcoded reuse points зафіксовані як legacy/UI/auth-sensitive.
+- **HR** - `/hr#team` став canonical route для команди, profile deep-link відкриває картку співробітника, профіль підтримує адресу, дату народження, резерв і чорний список.
+- **Schedule** - HR shifts синхронізуються у legacy `staff_schedule`, додано явну підміну зміни з audit context, а manual attendance fallback збережено.
+- **Operations** - додано HR-owned структуру/інструкції, reserve/blacklist списки, структуровану анкету кандидата і task KPI на `tasks.owner_user_id` без нового task engine.
+- **Warehouse / Pricing** - multi-warehouse promotion зупинено без durable stock-movement/location truth; price center лишився на існуючій working truth без fake link semantics.
+
+---
+
 ## v0.48.12 - Operations Flow Cluster v1 (2026-05-14)
 
 ### Operations Flow [codex]

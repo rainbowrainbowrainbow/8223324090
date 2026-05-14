@@ -1,0 +1,80 @@
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const repoRoot = path.resolve(__dirname, '..');
+
+function readRepoFile(...parts) {
+    return fs.readFileSync(path.join(repoRoot, ...parts), 'utf8');
+}
+
+describe('backoffice foundation v1 contracts', () => {
+    const migration = readRepoFile('db', 'migrations', '177_backoffice_foundation_v1.sql');
+    const hrRoute = readRepoFile('routes', 'hr.js');
+    const staffRoute = readRepoFile('routes', 'staff.js');
+    const hrPage = readRepoFile('js', 'hr-page.js');
+    const hrHtml = readRepoFile('hr.html');
+    const sidebar = readRepoFile('js', 'components', 'sidebar.js');
+
+    it('keeps schema changes additive and explicitly governed', () => {
+        assert.match(migration, /MIGRATION_KIND:\s*schema/);
+        assert.match(migration, /SAFETY:/);
+        assert.match(migration, /ROLLBACK:/);
+        assert.match(migration, /ALTER TABLE staff[\s\S]*ADD COLUMN IF NOT EXISTS address TEXT/);
+        assert.match(migration, /ADD COLUMN IF NOT EXISTS hr_pool_status VARCHAR\(20\) DEFAULT 'core'/);
+        assert.match(migration, /staff_hr_pool_status_check/);
+        assert.match(migration, /ALTER TABLE hr_shifts[\s\S]*ADD COLUMN IF NOT EXISTS original_staff_id/);
+        assert.match(migration, /ADD COLUMN IF NOT EXISTS replacement_reason TEXT/);
+        assert.match(migration, /ALTER TABLE job_applications[\s\S]*ADD COLUMN IF NOT EXISTS raw_application_text TEXT/);
+        assert.match(migration, /ADD COLUMN IF NOT EXISTS parsed_payload JSONB/);
+        assert.doesNotMatch(migration, /CREATE TABLE\s+(IF NOT EXISTS\s+)?warehouses\b/i);
+        assert.doesNotMatch(migration, /DROP TABLE|DELETE FROM|TRUNCATE/i);
+    });
+
+    it('mirrors HR shifts into the legacy schedule surface and supports explicit replacement', () => {
+        assert.match(hrRoute, /function mirrorHrShiftToStaffSchedule/);
+        assert.match(hrRoute, /INSERT INTO staff_schedule/);
+        assert.match(hrRoute, /ON CONFLICT \(staff_id, date\)/);
+        assert.match(hrRoute, /function removeMirroredStaffSchedule/);
+        assert.match(hrRoute, /router\.post\('\/shifts\/:id\/replace'/);
+        assert.match(hrRoute, /replacement_staff_id/);
+        assert.match(hrRoute, /original_staff_id = COALESCE\(original_staff_id, staff_id\)/);
+        assert.match(hrPage, /async function replaceShift/);
+        assert.match(hrPage, /document\.getElementById\('shiftReplace'\)\?\.addEventListener\('click', replaceShift\)/);
+        assert.match(hrHtml, /id="shiftReplace"/);
+    });
+
+    it('adds HR-owned structure, reserve, blacklist, and task KPI without a new task engine', () => {
+        assert.match(hrRoute, /router\.get\('\/company-structure'/);
+        assert.match(hrRoute, /router\.put\('\/company-structure'/);
+        assert.match(hrRoute, /hr_company_structure/);
+        assert.match(hrRoute, /router\.get\('\/pool'/);
+        assert.match(hrRoute, /router\.put\('\/staff\/:id\/pool-status'/);
+        assert.match(hrRoute, /FROM tasks t[\s\S]*JOIN employee_profiles ep ON ep\.user_id = t\.owner_user_id/);
+        assert.match(hrRoute, /task_kpi/);
+        assert.doesNotMatch(hrRoute, /new TaskEngine|TaskEngineV2|taskAnalyticsV2/);
+    });
+
+    it('wires HR navigation and profile deep-links to existing HR page semantics', () => {
+        assert.match(sidebar, /href: '\/hr#team'[\s\S]*access: 'hr_page'/);
+        assert.doesNotMatch(sidebar, /staffView: 'team'/);
+        assert.match(hrPage, /function getInitialHrTab/);
+        assert.match(hrPage, /new URLSearchParams\(window\.location\.search\)\.get\('employee'\)/);
+        assert.match(hrPage, /activateHrTab\('team'/);
+        assert.match(hrHtml, /data-tab="structure"/);
+        assert.match(hrHtml, /data-tab="reserve"/);
+        assert.match(hrHtml, /data-tab="blacklist"/);
+    });
+
+    it('keeps employee and candidate profile data durable in existing routes and forms', () => {
+        assert.match(staffRoute, /const \{[\s\S]*role_type[\s\S]*address[\s\S]*\} = req\.body/);
+        assert.match(staffRoute, /INSERT INTO staff[\s\S]*role_type[\s\S]*address/);
+        assert.match(staffRoute, /UPDATE staff SET[\s\S]*role_type\s*=\s*COALESCE\(\$\d+,role_type\)[\s\S]*address\s*=\s*COALESCE\(\$\d+,address\)/);
+        assert.match(hrPage, /id="editAddress"|editAddress/);
+        assert.match(hrPage, /editPoolStatus/);
+        assert.match(hrPage, /raw_application_text/);
+        assert.match(hrHtml, /id="editAddress"/);
+        assert.match(hrHtml, /id="editPoolStatus"/);
+    });
+});

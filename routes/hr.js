@@ -56,6 +56,56 @@ async function auditLog(action, staffId, performedBy, details, ipAddress) {
     }
 }
 
+function toDateOnly(value) {
+    if (!value) return null;
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    return String(value).slice(0, 10);
+}
+
+function staffScheduleStatusForShift(shiftType) {
+    return shiftType === 'remote' ? 'remote' : 'working';
+}
+
+function buildReplacementNote(shift) {
+    if (!shift?.original_staff_id) return shift?.notes || null;
+    const reason = shift.replacement_reason ? `: ${shift.replacement_reason}` : '';
+    return `Підміна за співробітника #${shift.original_staff_id}${reason}`;
+}
+
+async function mirrorHrShiftToStaffSchedule(shift, db = pool) {
+    const date = toDateOnly(shift?.shift_date);
+    if (!shift?.staff_id || !date) return;
+    await db.query(
+        `INSERT INTO staff_schedule (staff_id, date, shift_start, shift_end, status, note)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (staff_id, date)
+         DO UPDATE SET shift_start = EXCLUDED.shift_start,
+                       shift_end = EXCLUDED.shift_end,
+                       status = EXCLUDED.status,
+                       note = EXCLUDED.note`,
+        [
+            shift.staff_id,
+            date,
+            shift.planned_start || null,
+            shift.planned_end || null,
+            staffScheduleStatusForShift(shift.shift_type),
+            buildReplacementNote(shift)
+        ]
+    );
+}
+
+async function removeMirroredStaffSchedule(staffId, shiftDate, db = pool) {
+    const date = toDateOnly(shiftDate);
+    if (!staffId || !date) return;
+    await db.query(
+        `DELETE FROM staff_schedule
+         WHERE staff_id = $1
+           AND date = $2
+           AND status IN ('working', 'remote')`,
+        [staffId, date]
+    );
+}
+
 // ==========================================
 // STAFF HR DATA
 // ==========================================
@@ -65,9 +115,9 @@ router.get('/staff', async (req, res) => {
     try {
         const { active, role_type, include_freelance } = req.query;
         let sql = `SELECT id, name, department, position, phone, emergency_contact, emergency_phone,
-                    role_type, hire_date, birth_date, is_active, hourly_rate, photo_url, notes,
+                    role_type, hire_date, birth_date, address, is_active, hourly_rate, photo_url, notes,
                     telegram_id, telegram_username, color, contract_type, skills,
-                    is_freelance, unique_person_key,
+                    is_freelance, unique_person_key, hr_pool_status, blacklist_reason, blacklisted_at,
                     (EXISTS(SELECT 1 FROM staff_face_descriptors sfd WHERE sfd.staff_id = staff.id)) AS has_face_descriptor,
                     (EXISTS(SELECT 1 FROM employee_profiles ep WHERE ep.staff_id = staff.id AND ep.is_active = true)) AS has_account
                     FROM staff`;
@@ -100,8 +150,9 @@ router.get('/staff/:id', async (req, res) => {
     try {
         const staff = await pool.query(
             `SELECT id, name, department, position, phone, emergency_contact, emergency_phone,
-                    role_type, hire_date, birth_date, is_active, hourly_rate, photo_url, notes,
-                    telegram_id, telegram_username, color, contract_type, skills
+                    role_type, hire_date, birth_date, address, is_active, hourly_rate, photo_url, notes,
+                    telegram_id, telegram_username, color, contract_type, skills,
+                    hr_pool_status, blacklist_reason, blacklisted_at
              FROM staff WHERE id = $1`, [req.params.id]
         );
         if (staff.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
@@ -115,7 +166,7 @@ router.get('/staff/:id', async (req, res) => {
 // PUT /api/hr/staff/:id — update HR fields
 router.put('/staff/:id', async (req, res) => {
     try {
-        const { phone, emergency_contact, emergency_phone, role_type, hourly_rate, birth_date, notes, telegram_id, telegram_username, contract_type, skills } = req.body;
+        const { phone, emergency_contact, emergency_phone, role_type, hourly_rate, birth_date, address, notes, telegram_id, telegram_username, contract_type, skills, hr_pool_status, blacklist_reason } = req.body;
         const result = await pool.query(
             `UPDATE staff SET
                 phone = COALESCE($1, phone),
@@ -128,9 +179,21 @@ router.put('/staff/:id', async (req, res) => {
                 telegram_id = COALESCE($8, telegram_id),
                 telegram_username = COALESCE($9, telegram_username),
                 contract_type = COALESCE($10, contract_type),
-                skills = COALESCE($11, skills)
-             WHERE id = $12 RETURNING *`,
-            [phone, emergency_contact, emergency_phone, role_type, hourly_rate, birth_date, notes, telegram_id, telegram_username, contract_type, skills ? (Array.isArray(skills) ? skills : [skills]) : null, req.params.id]
+                skills = COALESCE($11, skills),
+                address = COALESCE($12, address),
+                hr_pool_status = COALESCE($13, hr_pool_status),
+                blacklist_reason = CASE
+                    WHEN $13::text = 'blacklisted' THEN COALESCE($14, blacklist_reason)
+                    WHEN $13::text IS NOT NULL AND $13::text != 'blacklisted' THEN NULL
+                    ELSE COALESCE($14, blacklist_reason)
+                END,
+                blacklisted_at = CASE
+                    WHEN $13::text = 'blacklisted' THEN COALESCE(blacklisted_at, NOW())
+                    WHEN $13::text IS NOT NULL AND $13::text != 'blacklisted' THEN NULL
+                    ELSE blacklisted_at
+                END
+             WHERE id = $15 RETURNING *`,
+            [phone, emergency_contact, emergency_phone, role_type, hourly_rate, birth_date, notes, telegram_id, telegram_username, contract_type, skills ? (Array.isArray(skills) ? skills : [skills]) : null, address, hr_pool_status, blacklist_reason, req.params.id]
         );
         if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
         await auditLog('staff_update', parseInt(req.params.id), req.user?.username, req.body, req.ip);
@@ -154,6 +217,88 @@ router.put('/staff/:id/status', async (req, res) => {
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
         log.error('PUT /hr/staff/:id/status error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// GET /api/hr/pool — reserve/blacklist operational lists
+router.get('/pool', async (req, res) => {
+    try {
+        const status = req.query.status === 'blacklisted' ? 'blacklisted' : 'reserve';
+        const result = await pool.query(
+            `SELECT id, name, department, position, phone, role_type, contract_type,
+                    is_active, hr_pool_status, blacklist_reason, blacklisted_at, notes
+             FROM staff
+             WHERE hr_pool_status = $1
+             ORDER BY is_active DESC, name`,
+            [status]
+        );
+        res.json({ success: true, status, data: result.rows });
+    } catch (err) {
+        log.error('GET /hr/pool error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// PUT /api/hr/staff/:id/pool-status — move staff between core/reserve/blacklist
+router.put('/staff/:id/pool-status', async (req, res) => {
+    try {
+        const { status, reason } = req.body;
+        if (!['core', 'reserve', 'blacklisted'].includes(status)) {
+            return res.status(400).json({ success: false, error: 'Невалідний статус пулу' });
+        }
+        const result = await pool.query(
+            `UPDATE staff SET
+                hr_pool_status = $1,
+                blacklist_reason = CASE WHEN $1 = 'blacklisted' THEN COALESCE($2, blacklist_reason) ELSE NULL END,
+                blacklisted_at = CASE WHEN $1 = 'blacklisted' THEN COALESCE(blacklisted_at, NOW()) ELSE NULL END
+             WHERE id = $3
+             RETURNING id, name, department, role_type, hr_pool_status, blacklist_reason, blacklisted_at`,
+            [status, reason || null, req.params.id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
+        await auditLog('pool_status_update', parseInt(req.params.id), req.user?.username, { status, reason }, req.ip);
+        res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        log.error('PUT /hr/staff/:id/pool-status error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// GET/PUT /api/hr/company-structure — HR-owned instructions without Control Center refactor
+router.get('/company-structure', async (req, res) => {
+    try {
+        const result = await pool.query("SELECT value FROM settings WHERE key = 'hr_company_structure'");
+        let payload = { structure: '', instructions: '' };
+        if (result.rows[0]?.value) {
+            try { payload = { ...payload, ...JSON.parse(result.rows[0].value) }; }
+            catch { payload.instructions = result.rows[0].value; }
+        }
+        res.json({ success: true, data: payload });
+    } catch (err) {
+        log.error('GET /hr/company-structure error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+router.put('/company-structure', async (req, res) => {
+    try {
+        const payload = {
+            structure: String(req.body.structure || '').slice(0, 20000),
+            instructions: String(req.body.instructions || '').slice(0, 20000),
+            updatedBy: req.user?.username || null,
+            updatedAt: new Date().toISOString()
+        };
+        await pool.query(
+            `INSERT INTO settings (key, value)
+             VALUES ('hr_company_structure', $1)
+             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+            [JSON.stringify(payload)]
+        );
+        await auditLog('company_structure_update', null, req.user?.username, { updatedAt: payload.updatedAt }, req.ip);
+        res.json({ success: true, data: payload });
+    } catch (err) {
+        log.error('PUT /hr/company-structure error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
     }
 });
@@ -274,6 +419,7 @@ router.post('/shifts', async (req, res) => {
             [staff_id, shift_date, planned_start, planned_end, shift_type || 'regular', break_minutes || 0, notes, req.user?.username]
         );
         await auditLog('shift_create', staff_id, req.user?.username, { shift_date, planned_start, planned_end }, req.ip);
+        await mirrorHrShiftToStaffSchedule(result.rows[0]);
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
         log.error('POST /hr/shifts error', err);
@@ -298,6 +444,7 @@ router.put('/shifts/:id', async (req, res) => {
         );
         if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
         await auditLog('shift_update', result.rows[0].staff_id, req.user?.username, req.body, req.ip);
+        await mirrorHrShiftToStaffSchedule(result.rows[0]);
         res.json({ success: true, data: result.rows[0] });
     } catch (err) {
         log.error('PUT /hr/shifts/:id error', err);
@@ -311,12 +458,88 @@ router.delete('/shifts/:id', async (req, res) => {
         const existing = await pool.query('SELECT * FROM hr_shifts WHERE id = $1', [req.params.id]);
         if (existing.rows.length === 0) return res.status(404).json({ success: false, error: 'Не знайдено' });
         await pool.query('DELETE FROM hr_shifts WHERE id = $1', [req.params.id]);
+        await removeMirroredStaffSchedule(existing.rows[0].staff_id, existing.rows[0].shift_date);
         await auditLog('shift_delete', existing.rows[0].staff_id, req.user?.username,
             { shift_date: existing.rows[0].shift_date }, req.ip);
         res.json({ success: true });
     } catch (err) {
         log.error('DELETE /hr/shifts/:id error', err);
         res.status(500).json({ success: false, error: 'Помилка сервера' });
+    }
+});
+
+// POST /api/hr/shifts/:id/replace — move a shift to a replacement staff member
+router.post('/shifts/:id/replace', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const replacementStaffId = parseInt(req.body.replacement_staff_id, 10);
+        const reason = String(req.body.reason || '').trim() || null;
+        if (!replacementStaffId) {
+            return res.status(400).json({ success: false, error: 'Потрібен replacement_staff_id' });
+        }
+
+        await client.query('BEGIN');
+        const existing = await client.query('SELECT * FROM hr_shifts WHERE id = $1 FOR UPDATE', [req.params.id]);
+        if (!existing.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Зміну не знайдено' });
+        }
+        const oldShift = existing.rows[0];
+        if (Number(oldShift.staff_id) === replacementStaffId) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, error: 'Підміна на того самого співробітника не потрібна' });
+        }
+
+        const replacement = await client.query(
+            'SELECT id, name FROM staff WHERE id = $1 AND is_active = true',
+            [replacementStaffId]
+        );
+        if (!replacement.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Підмінний співробітник неактивний або не існує' });
+        }
+
+        const conflict = await client.query(
+            `SELECT id FROM hr_shifts
+             WHERE staff_id = $1 AND shift_date = $2 AND id <> $3
+             LIMIT 1`,
+            [replacementStaffId, oldShift.shift_date, req.params.id]
+        );
+        if (conflict.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, error: 'У підмінного співробітника вже є зміна на цю дату' });
+        }
+
+        const updated = await client.query(
+            `UPDATE hr_shifts SET
+                original_staff_id = COALESCE(original_staff_id, staff_id),
+                staff_id = $1,
+                replacement_reason = $2,
+                replaced_by = $3,
+                replaced_at = NOW(),
+                updated_at = NOW()
+             WHERE id = $4
+             RETURNING *`,
+            [replacementStaffId, reason, req.user?.username || null, req.params.id]
+        );
+
+        await removeMirroredStaffSchedule(oldShift.staff_id, oldShift.shift_date, client);
+        await mirrorHrShiftToStaffSchedule(updated.rows[0], client);
+        await client.query('COMMIT');
+
+        await auditLog('shift_replace', oldShift.staff_id, req.user?.username, {
+            shift_id: parseInt(req.params.id),
+            replacement_staff_id: replacementStaffId,
+            reason
+        }, req.ip);
+
+        res.json({ success: true, data: updated.rows[0], replacement: replacement.rows[0] });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('POST /hr/shifts/:id/replace error', err);
+        res.status(500).json({ success: false, error: 'Помилка сервера' });
+    } finally {
+        client.release();
     }
 });
 
@@ -341,14 +564,16 @@ router.post('/shifts/bulk', async (req, res) => {
         let count = 0;
         for (const sid of staff_ids) {
             for (const d of dates) {
-                await pool.query(
+                const result = await pool.query(
                     `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, break_minutes, shift_type, created_by)
                      VALUES ($1, $2, $3, $4, $5, $6, $7)
                      ON CONFLICT (staff_id, shift_date) DO UPDATE SET
                         planned_start = EXCLUDED.planned_start, planned_end = EXCLUDED.planned_end,
-                        break_minutes = EXCLUDED.break_minutes, shift_type = EXCLUDED.shift_type, updated_at = NOW()`,
+                        break_minutes = EXCLUDED.break_minutes, shift_type = EXCLUDED.shift_type, updated_at = NOW()
+                     RETURNING *`,
                     [sid, d, start, end, brk, stype, req.user?.username]
                 );
+                await mirrorHrShiftToStaffSchedule(result.rows[0]);
                 count++;
             }
         }
@@ -390,14 +615,16 @@ router.post('/shifts/copy-week', async (req, res) => {
         for (const row of source.rows) {
             const dayIndex = srcDates.indexOf(row.shift_date instanceof Date ? row.shift_date.toISOString().split('T')[0] : row.shift_date);
             if (dayIndex === -1) continue;
-            await pool.query(
+            const copied = await pool.query(
                 `INSERT INTO hr_shifts (staff_id, shift_date, planned_start, planned_end, break_minutes, shift_type, notes, created_by)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                  ON CONFLICT (staff_id, shift_date) DO UPDATE SET
                     planned_start = EXCLUDED.planned_start, planned_end = EXCLUDED.planned_end,
-                    break_minutes = EXCLUDED.break_minutes, shift_type = EXCLUDED.shift_type, updated_at = NOW()`,
+                    break_minutes = EXCLUDED.break_minutes, shift_type = EXCLUDED.shift_type, updated_at = NOW()
+                 RETURNING *`,
                 [row.staff_id, tgtDates[dayIndex], row.planned_start, row.planned_end, row.break_minutes, row.shift_type, row.notes, req.user?.username]
             );
+            await mirrorHrShiftToStaffSchedule(copied.rows[0]);
             count++;
         }
         await auditLog('shift_copy_week', null, req.user?.username, { source_week, target_week, count }, req.ip);
@@ -750,6 +977,38 @@ router.get('/report/monthly', async (req, res) => {
             [dateFrom, dateTo]
         );
 
+        const taskKpiRows = await pool.query(
+            `SELECT ep.staff_id,
+                    COUNT(t.id)::int AS tasks_assigned,
+                    COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') = 'done')::int AS tasks_done,
+                    COUNT(t.id) FILTER (
+                        WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'archived', 'cancelled')
+                          AND t.deadline IS NOT NULL
+                          AND t.deadline < NOW()
+                    )::int AS tasks_overdue
+             FROM tasks t
+             JOIN employee_profiles ep ON ep.user_id = t.owner_user_id AND ep.is_active = true
+             WHERE t.owner_user_id IS NOT NULL
+               AND (
+                    t.created_at::date BETWEEN $1::date AND $2::date
+                    OR t.completed_at::date BETWEEN $1::date AND $2::date
+               )
+             GROUP BY ep.staff_id`,
+            [dateFrom, dateTo]
+        ).catch(err => {
+            log.warn('Task KPI query failed:', err.message);
+            return { rows: [] };
+        });
+
+        const taskKpiMap = {};
+        for (const r of taskKpiRows.rows) {
+            taskKpiMap[r.staff_id] = {
+                tasks_assigned: parseInt(r.tasks_assigned) || 0,
+                tasks_done: parseInt(r.tasks_done) || 0,
+                tasks_overdue: parseInt(r.tasks_overdue) || 0
+            };
+        }
+
         const statsMap = {};
         for (const r of records.rows) {
             if (!statsMap[r.staff_id]) {
@@ -783,6 +1042,7 @@ router.get('/report/monthly', async (req, res) => {
             const totalWorkedHours = Math.round(s.total_worked_minutes / 60 * 10) / 10;
             const totalOvertimeHours = Math.round(s.total_overtime_minutes / 60 * 10) / 10;
             const rate = parseFloat(st.hourly_rate) || 0;
+            const taskKpi = taskKpiMap[st.id] || { tasks_assigned: 0, tasks_done: 0, tasks_overdue: 0 };
 
             return {
                 staff_id: st.id,
@@ -801,7 +1061,9 @@ router.get('/report/monthly', async (req, res) => {
                 estimated_salary: Math.round(totalWorkedHours * rate),
                 late_count: s.late_count,
                 avg_late_minutes: s.late_count > 0 ? Math.round(s.total_late_minutes / s.late_count) : 0,
-                attendance_rate: daysScheduled > 0 ? Math.round(s.days_worked / daysScheduled * 100) : 0
+                attendance_rate: daysScheduled > 0 ? Math.round(s.days_worked / daysScheduled * 100) : 0,
+                task_kpi: taskKpi,
+                task_completion_rate: taskKpi.tasks_assigned > 0 ? Math.round(taskKpi.tasks_done / taskKpi.tasks_assigned * 100) : 0
             };
         });
 
@@ -1846,26 +2108,40 @@ router.get('/vacancies/:id/applications', async (req, res) => {
 });
 
 router.post('/vacancies/:id/applications', async (req, res) => {
-    const { name, phone, telegram_username, telegram_id, source = 'manual', notes, salary_expectation, cv_url } = req.body;
+    const {
+        name, phone, telegram_username, telegram_id, source = 'manual', notes, salary_expectation, cv_url,
+        birth_date, address, availability, experience, interview_notes, raw_application_text, parsed_payload
+    } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'name обов\'язковий' });
     try {
         const r = await pool.query(
-            `INSERT INTO job_applications (vacancy_id,name,phone,telegram_username,telegram_id,source,notes,salary_expectation,cv_url,added_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+            `INSERT INTO job_applications
+                (vacancy_id,name,phone,telegram_username,telegram_id,source,notes,salary_expectation,cv_url,added_by,
+                 birth_date,address,availability,experience,interview_notes,raw_application_text,parsed_payload)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
             [parseInt(req.params.id), name.trim(), phone||null, telegram_username||null, telegram_id||null,
-             source, notes||null, salary_expectation||null, cv_url||null, req.user?.username||null]);
+             source, notes||null, salary_expectation||null, cv_url||null, req.user?.username||null,
+             birth_date || null, address || null, availability || null, experience || null, interview_notes || null,
+             raw_application_text || null, parsed_payload ? JSON.stringify(parsed_payload) : null]);
         res.json({ success: true, application: r.rows[0] });
     } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 router.patch('/applications/:id', async (req, res) => {
-    const { status, notes, interview_date, salary_expectation } = req.body;
+    const { status, notes, interview_date, salary_expectation, address, birth_date, availability, experience, interview_notes, raw_application_text, parsed_payload } = req.body;
     const sets = [], vals = [];
     let i = 1;
     if (status)              { sets.push(`status=$${i++}`); vals.push(status); }
     if (notes !== undefined) { sets.push(`notes=$${i++}`);  vals.push(notes); }
     if (interview_date)      { sets.push(`interview_date=$${i++}`); vals.push(interview_date); }
     if (salary_expectation)  { sets.push(`salary_expectation=$${i++}`); vals.push(salary_expectation); }
+    if (address !== undefined) { sets.push(`address=$${i++}`); vals.push(address); }
+    if (birth_date !== undefined) { sets.push(`birth_date=$${i++}`); vals.push(birth_date || null); }
+    if (availability !== undefined) { sets.push(`availability=$${i++}`); vals.push(availability); }
+    if (experience !== undefined) { sets.push(`experience=$${i++}`); vals.push(experience); }
+    if (interview_notes !== undefined) { sets.push(`interview_notes=$${i++}`); vals.push(interview_notes); }
+    if (raw_application_text !== undefined) { sets.push(`raw_application_text=$${i++}`); vals.push(raw_application_text); }
+    if (parsed_payload !== undefined) { sets.push(`parsed_payload=$${i++}`); vals.push(parsed_payload ? JSON.stringify(parsed_payload) : null); }
     sets.push('updated_at=NOW()');
     vals.push(parseInt(req.params.id));
     try {
@@ -1885,10 +2161,10 @@ router.post('/applications/:id/hire', async (req, res) => {
         await pool.query("UPDATE job_vacancies SET status='filled', closed_at=NOW() WHERE id=$1", [a.vacancy_id]);
         const { department = 'animators', salary } = req.body;
         const staffResult = await pool.query(
-            `INSERT INTO staff (name, department, position, phone, role_type, hire_date, telegram_username, telegram_id, hourly_rate, is_active)
-             VALUES ($1,$2,$3,$4,$5,CURRENT_DATE,$6,$7,$8,true) RETURNING id`,
+            `INSERT INTO staff (name, department, position, phone, role_type, hire_date, telegram_username, telegram_id, hourly_rate, address, is_active)
+             VALUES ($1,$2,$3,$4,$5,CURRENT_DATE,$6,$7,$8,$9,true) RETURNING id`,
             [a.name, department, a.vac_title, a.phone||null, a.role_type,
-             a.telegram_username||null, a.telegram_id||null, salary||0]);
+             a.telegram_username||null, a.telegram_id||null, salary||0, a.address || null]);
         res.json({ success: true, staff_id: staffResult.rows[0].id, message: `${a.name} найнятий як ${a.role_type}` });
     } catch (err) { log.error('POST /applications/:id/hire', err); res.status(500).json({ error: 'Internal server error' }); }
 });

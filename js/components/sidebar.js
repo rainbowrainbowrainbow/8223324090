@@ -27,7 +27,7 @@ const Sidebar = (() => {
         // ─── GROUP: HR ───────────────────────────────────────────
         { type: 'group', key: 'hr', label: 'HR', icon: '🤝', defaultOpen: true },
         { href: '/staff',        icon: '🗓️', label: 'Графік',         access: 'schedule_daily', group: 'hr', staffView: 'schedule' },
-        { href: '/staff',        icon: '📋', label: 'Команда',        access: 'staff',          group: 'hr', staffView: 'team', noActive: true },
+        { href: '/hr#team',      icon: '📋', label: 'Команда',        access: 'hr_page',        group: 'hr' },
         { href: '/hr',           icon: '🤝', label: 'Кадри',          access: 'hr_page',        group: 'hr' },
         { href: '/training',     icon: '🎓', label: 'Навчання',       access: 'training',       group: 'hr' },
         { href: '/checkin',      icon: '📸', label: 'Check-in',       access: 'hr_page',        group: 'hr' },

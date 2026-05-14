@@ -1,7 +1,8 @@
-const { getPermissions } = require('../config/roles');
 const { getKyivDateStr } = require('./booking');
 const { REPLY_SLA_STATES, deriveReplySlaState } = require('./replySla');
 const { enrichQueueBuckets } = require('./queueIntelligence');
+const { buildTaskVisibilityScope, taskOwnerState } = require('./taskPolicy');
+const { getVisibleBookingScope } = require('./bookingVisibility');
 
 const BUCKETS = [
     { key: 'overdue', label: 'Прострочено' },
@@ -44,6 +45,39 @@ function bookingDueAt(date, time) {
     if (!day) return null;
     const clock = String(time || '').match(/^(\d{2}):(\d{2})/)?.[0];
     return clock ? `${day}T${clock}:00` : day;
+}
+
+function kyivClock(now = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23'
+    }).formatToParts(now).reduce((acc, part) => {
+        if (part.type !== 'literal') acc[part.type] = part.value;
+        return acc;
+    }, {});
+    return {
+        date: `${parts.year}-${parts.month}-${parts.day}`,
+        minutes: (Number(parts.hour) * 60) + Number(parts.minute)
+    };
+}
+
+function minutesUntilBookingStart(row, now = new Date()) {
+    const day = dateValue(row?.date);
+    const clock = String(row?.time || '').match(/^(\d{2}):(\d{2})/);
+    if (!day || !clock) return null;
+    const current = kyivClock(now);
+    if (day !== current.date) return null;
+    return (Number(clock[1]) * 60 + Number(clock[2])) - current.minutes;
+}
+
+function isLatePreliminaryBooking(row, now = new Date()) {
+    const minutes = minutesUntilBookingStart(row, now);
+    return Number.isFinite(minutes) && minutes >= 0 && minutes <= 120;
 }
 
 function priority(value, fallback = 'normal') {
@@ -126,43 +160,7 @@ function buildReplyBacklogStateFilter({ sla = 'all', owner = 'all', escalation =
 }
 
 function buildTaskVisibility(user, params, alias = 't') {
-    const perms = getPermissions(user?.role);
-    if (perms.taskVisibility === 'all') return '';
-
-    const nameRef = pushParam(params, user?.name || user?.username || '');
-    if (perms.taskVisibility === 'department') {
-        const userIdRef = pushParam(params, user?.id || 0);
-        return `AND (
-            ${alias}.assigned_to = ${nameRef}
-            OR ${alias}.owner = ${nameRef}
-            OR ${alias}.assigned_to IN (
-                SELECT u.name
-                FROM users u
-                JOIN employee_profiles ep ON ep.user_id = u.id
-                WHERE ep.department IS NOT NULL
-                  AND ep.department = (
-                    SELECT ep2.department
-                    FROM employee_profiles ep2
-                    WHERE ep2.user_id = ${userIdRef}
-                    LIMIT 1
-                  )
-            )
-            OR ${alias}.owner IN (
-                SELECT u.name
-                FROM users u
-                JOIN employee_profiles ep ON ep.user_id = u.id
-                WHERE ep.department IS NOT NULL
-                  AND ep.department = (
-                    SELECT ep2.department
-                    FROM employee_profiles ep2
-                    WHERE ep2.user_id = ${userIdRef}
-                    LIMIT 1
-                  )
-            )
-        )`;
-    }
-
-    return `AND (${alias}.assigned_to = ${nameRef} OR ${alias}.owner = ${nameRef})`;
+    return buildTaskVisibilityScope(user, params, alias);
 }
 
 function hrefForTask(row) {
@@ -170,7 +168,8 @@ function hrefForTask(row) {
     const sourceId = row.task_source_id || row.source_id;
     const conversationId = row.linked_conversation_id;
     const leadId = row.linked_lead_id || (sourceType === 'lead' && /^\d+$/.test(String(sourceId || '')) ? Number(sourceId) : null);
-    const bookingId = row.linked_booking_id || (sourceType === 'booking' ? sourceId : null);
+    const linkedBookingVisible = row.linked_booking_visible === true || row.linked_booking_visible === 'true';
+    const bookingId = row.linked_booking_id || (linkedBookingVisible && sourceType === 'booking' ? sourceId : null);
     const bookingDate = row.linked_booking_date || row.booking_date;
 
     if (conversationId) return `/omni?conversation=${encodeURIComponent(conversationId)}`;
@@ -185,10 +184,13 @@ function taskItem(row, bucket, options = {}) {
     const sourceType = row.task_source_type || row.source_type || null;
     const sourceId = row.task_source_id || row.source_id || null;
     const leadId = row.linked_lead_id || (sourceType === 'lead' && /^\d+$/.test(String(sourceId || '')) ? Number(sourceId) : null);
-    const bookingId = row.linked_booking_id || (sourceType === 'booking' ? sourceId : null);
+    const linkedBookingVisible = row.linked_booking_visible === true || row.linked_booking_visible === 'true';
+    const bookingId = row.linked_booking_id || (linkedBookingVisible && sourceType === 'booking' ? sourceId : null);
     const conversationId = row.linked_conversation_id || null;
     const dueAt = isoValue(row.deadline) || dateValue(row.date);
     const hasExactCase = Boolean(conversationId || leadId || bookingId);
+    const ownerState = taskOwnerState(row);
+    const ownerLabel = row.owner_name || row.owner_username || row.assigned_to || row.owner || null;
 
     return {
         id: `task:${bucket}:${row.id}`,
@@ -209,10 +211,22 @@ function taskItem(row, bucket, options = {}) {
         meta: {
             status: row.status || null,
             category: row.category || null,
-            assignedTo: row.assigned_to || row.owner || null,
+            assignedTo: ownerLabel,
+            ownerUserId: row.owner_user_id || null,
+            ownerState,
+            legacyAssignedTo: row.assigned_to || null,
+            legacyOwner: row.owner || null,
             taskSourceType: sourceType,
             taskSourceId: sourceId,
+            linkedBookingVisible,
+            version: row.version || null,
+            updatedAt: isoValue(row.updated_at),
+            createdAt: isoValue(row.created_at),
             conversationId,
+            canTaskExecute: options.canExecute === true,
+            taskExecutionUnavailableReason: options.canExecute === true
+                ? null
+                : 'Task is visible, but inline execution is unavailable for this item.',
             signal: options.signal || (row.deadline ? 'deadline' : 'date')
         }
     };
@@ -302,6 +316,8 @@ function conversationItem(row, bucket = 'waiting_reply') {
 
 function bookingItem(row, bucket, options = {}) {
     const dueAt = bookingDueAt(row.date, row.time);
+    const minutesUntilStart = options.minutesUntilStart ?? null;
+    const latePreliminary = options.latePreliminary === true;
     return {
         id: `booking:${bucket}:${row.id}`,
         bucket,
@@ -314,13 +330,22 @@ function bookingItem(row, bucket, options = {}) {
         title: row.label || row.group_name || row.customer_name || `Бронювання ${row.id}`,
         subtitle: [row.program_name, row.room, row.time ? String(row.time).slice(0, 5) : null].filter(Boolean).join(' · ') || null,
         dueAt,
-        priority: options.priority || (dateValue(row.date) === options.today ? 'high' : 'normal'),
+        priority: options.priority || (latePreliminary ? 'critical' : (dateValue(row.date) === options.today ? 'high' : 'normal')),
         confidence: 'exact',
         actionLabel: options.actionLabel || 'Відкрити таймлайн',
         href: `/?date=${encodeURIComponent(dateValue(row.date))}&highlight=${encodeURIComponent(row.id)}`,
+        why: options.why || null,
         meta: {
             status: row.status || null,
-            signal: options.signal || bucket
+            signal: options.signal || bucket,
+            exactHref: `/?date=${encodeURIComponent(dateValue(row.date))}&highlight=${encodeURIComponent(row.id)}`,
+            canConfirmInline: options.canConfirmInline === true,
+            confirmationWindow: options.confirmationWindow || null,
+            riskClass: latePreliminary ? 'late_preliminary' : (options.riskClass || bucket),
+            latePreliminary,
+            minutesUntilStart,
+            bookingVisibilityScope: options.bookingVisibilityScope || null,
+            bookingVisibilityClassification: options.bookingVisibilityClassification || null
         }
     };
 }
@@ -337,18 +362,24 @@ async function source(pool, warnings, name, fn) {
 async function loadTaskBucket(pool, user, bucket, whereSql, whereParams, limit, signal) {
     const params = [...whereParams];
     const visibility = buildTaskVisibility(user, params, 't');
+    const bookingVisibility = getVisibleBookingScope(user, params, 'sb');
     const limitRef = pushParam(params, limit);
     const query = `
         SELECT t.id, t.title, t.description, t.status, t.priority, t.deadline, t.date,
-               t.category, t.assigned_to, t.owner, t.source_type AS task_source_type,
+               t.category, t.assigned_to, t.owner, t.owner_user_id, t.version, t.updated_at,
+               ou.name AS owner_name, ou.username AS owner_username,
+               t.source_type AS task_source_type,
                t.source_id AS task_source_id, t.created_at,
                sl.id AS linked_lead_id,
                sb.id AS linked_booking_id, sb.date AS linked_booking_date,
+               CASE WHEN sb.id IS NULL THEN false ELSE true END AS linked_booking_visible,
                sb.customer_id AS linked_customer_id,
                rcm.conversation_id AS linked_conversation_id
         FROM tasks t
+        LEFT JOIN users ou ON ou.id = t.owner_user_id
         LEFT JOIN leads sl ON t.source_type = 'lead' AND t.source_id = sl.id::text
         LEFT JOIN bookings sb ON t.source_type = 'booking' AND t.source_id = sb.id::text
+            AND ${bookingVisibility.condition}
         LEFT JOIN conversation_messages rcm ON t.source_type = 'conversation_reply' AND t.source_id = rcm.id::text
         WHERE ${ACTIVE_TASK_STATUS_SQL}
           ${visibility}
@@ -361,7 +392,7 @@ async function loadTaskBucket(pool, user, bucket, whereSql, whereParams, limit, 
         LIMIT ${limitRef}
     `;
     const result = await pool.query(query, params);
-    return result.rows.map(row => taskItem(row, bucket, { signal }));
+    return result.rows.map(row => taskItem(row, bucket, { signal, canExecute: true }));
 }
 
 function compareItems(a, b) {
@@ -444,9 +475,47 @@ function executionForItem(item) {
     }
 
     if (item?.sourceType === 'task') {
+        if (item.meta?.canTaskExecute) {
+            return {
+                model: 'task_execution_truth_v2',
+                depth: 'limited_task_inline',
+                inline: true,
+                routeOutOnly: false,
+                autoAdvance: 'after_durable_mutation_refetch',
+                actions: [
+                    {
+                        type: 'open_exact_context',
+                        label: item?.actionLabel || 'Open task context',
+                        href: item?.meta?.exactHref || item?.href || null,
+                        durableMutation: false
+                    },
+                    {
+                        type: 'task_mark_done',
+                        label: 'Mark task done',
+                        durableMutation: true,
+                        canonicalField: 'tasks.status'
+                    },
+                    {
+                        type: 'task_reassign_owner',
+                        label: 'Reassign task owner',
+                        durableMutation: true,
+                        canonicalField: 'tasks.owner_user_id'
+                    },
+                    {
+                        type: 'task_reschedule',
+                        label: 'Task deadline +24h',
+                        durableMutation: true,
+                        canonicalField: 'tasks.deadline'
+                    }
+                ],
+                unavailableReason: item.meta?.ownerState === 'legacy_unknown_owner'
+                    ? 'Task has legacy string ownership; inline execution is allowed through object visibility, and reassignment will create typed owner truth.'
+                    : null
+            };
+        }
         return routeOutExecution(
             item,
-            'Task inline execution is route-out only in v6 until task object visibility and string-based ownership are hardened.',
+            item.meta?.taskExecutionUnavailableReason || 'Task inline execution is unavailable until task object visibility is proven.',
             'limited_task_route_out'
         );
     }
@@ -456,7 +525,29 @@ function executionForItem(item) {
     }
 
     if (item?.bucket === 'needs_confirmation') {
-        return routeOutExecution(item, 'Booking confirmation is route-out only here; inline confirmation needs a narrow booking endpoint before execution engine use.');
+        return {
+            model: 'confirmation_event_risk_ops_v1',
+            depth: item.meta?.latePreliminary ? 'late_preliminary_inline_confirm' : 'needs_confirmation_inline_confirm',
+            inline: true,
+            routeOutOnly: false,
+            autoAdvance: 'after_durable_mutation_refetch',
+            actions: [
+                {
+                    type: 'open_exact_context',
+                    label: item?.actionLabel || 'Open booking context',
+                    href: item?.meta?.exactHref || item?.href || null,
+                    durableMutation: false
+                },
+                {
+                    type: 'booking_confirm',
+                    label: item.meta?.latePreliminary ? 'Confirm critical preliminary booking' : 'Confirm booking',
+                    durableMutation: true,
+                    canonicalField: 'bookings.status/confirmed_at/confirmed_by',
+                    endpoint: '/api/bookings/:id/confirm'
+                }
+            ],
+            unavailableReason: null
+        };
     }
 
     if (item?.bucket === 'event_soon') {
@@ -495,7 +586,8 @@ async function buildWorkQueue({
     replyScope = 'all',
     replySla = 'all',
     replyOwner = 'all',
-    replyEscalation = 'all'
+    replyEscalation = 'all',
+    now = new Date()
 } = {}) {
     if (!pool || typeof pool.query !== 'function') {
         throw new Error('pool with query() is required');
@@ -510,6 +602,7 @@ async function buildWorkQueue({
     const replySlaFilter = normalizeReplySlaFilter(replySla);
     const replyOwnerFilter = normalizeReplyOwnerFilter(replyOwner);
     const replyEscalationFilter = normalizeReplyEscalationFilter(replyEscalation);
+    const bookingScopeMeta = getVisibleBookingScope(user, [], 'b');
 
     const overdue = await source(pool, warnings, 'tasks_overdue', () => loadTaskBucket(
         pool,
@@ -608,6 +701,9 @@ async function buildWorkQueue({
     });
 
     const needsConfirmation = await source(pool, warnings, 'bookings_confirmation', async () => {
+        const params = [todayStr, tomorrowStr];
+        const bookingVisibility = getVisibleBookingScope(user, params, 'b');
+        const limitRef = pushParam(params, safeLimit);
         const result = await pool.query(`
             SELECT b.id, b.date, b.time, b.label, b.group_name, b.program_name, b.room,
                    b.status, b.customer_id, c.lead_id
@@ -617,15 +713,29 @@ async function buildWorkQueue({
               AND LEFT(COALESCE(b.date, ''), 10) <= $2
               AND b.status = 'preliminary'
               AND NULLIF(COALESCE(b.linked_to, ''), '') IS NULL
+              ${bookingVisibility.sql}
             ORDER BY b.date ASC, b.time ASC NULLS LAST
-            LIMIT $3
-        `, [todayStr, tomorrowStr, safeLimit]);
-        return result.rows.map(row => bookingItem(row, 'needs_confirmation', {
-            today: todayStr,
-            actionLabel: 'Підтвердити бронювання',
-            signal: 'bookings.status_preliminary',
-            priority: dateValue(row.date) === todayStr ? 'high' : 'normal'
-        }));
+            LIMIT ${limitRef}
+        `, params);
+        return result.rows.map(row => {
+            const minutesUntilStart = minutesUntilBookingStart(row, now);
+            const latePreliminary = isLatePreliminaryBooking(row, now);
+            return bookingItem(row, 'needs_confirmation', {
+                today: todayStr,
+                actionLabel: 'Підтвердити бронювання',
+                signal: 'bookings.status_preliminary',
+                priority: latePreliminary ? 'critical' : (dateValue(row.date) === todayStr ? 'high' : 'normal'),
+                canConfirmInline: true,
+                confirmationWindow: 'today_tomorrow_preliminary',
+                latePreliminary,
+                minutesUntilStart,
+                bookingVisibilityScope: bookingVisibility.scopeSource,
+                bookingVisibilityClassification: bookingVisibility.classification,
+                why: latePreliminary
+                    ? 'Booking is preliminary and starts in the next 2 hours.'
+                    : `Booking is preliminary and event is ${dateValue(row.date) === todayStr ? 'today' : 'tomorrow'}.`
+            });
+        });
     });
 
     const eventSoon = await source(pool, warnings, 'leads_event_soon', async () => {
@@ -675,6 +785,9 @@ async function buildWorkQueue({
     });
 
     const tomorrowBookings = await source(pool, warnings, 'bookings_tomorrow', async () => {
+        const params = [tomorrowStr];
+        const bookingVisibility = getVisibleBookingScope(user, params, 'b');
+        const limitRef = pushParam(params, safeLimit);
         const result = await pool.query(`
             SELECT b.id, b.date, b.time, b.label, b.group_name, b.program_name, b.room,
                    b.status, b.customer_id, c.lead_id
@@ -683,14 +796,17 @@ async function buildWorkQueue({
             WHERE LEFT(COALESCE(b.date, ''), 10) = $1
               AND b.status IN ('confirmed', 'preliminary')
               AND NULLIF(COALESCE(b.linked_to, ''), '') IS NULL
+              ${bookingVisibility.sql}
             ORDER BY b.time ASC NULLS LAST
-            LIMIT $2
-        `, [tomorrowStr, safeLimit]);
+            LIMIT ${limitRef}
+        `, params);
         return result.rows.map(row => bookingItem(row, 'tomorrow', {
             today: todayStr,
             actionLabel: 'Перевірити підготовку',
             signal: 'bookings.date_tomorrow',
-            priority: row.status === 'preliminary' ? 'high' : 'normal'
+            priority: row.status === 'preliminary' ? 'high' : 'normal',
+            bookingVisibilityScope: bookingVisibility.scopeSource,
+            bookingVisibilityClassification: bookingVisibility.classification
         }));
     });
 
@@ -737,6 +853,14 @@ async function buildWorkQueue({
             heuristicBuckets: ['idle_lead'],
             omittedBuckets: [],
             intelligence: enrichedQueue.summary,
+            bookingVisibility: {
+                visibleScopeOnly: true,
+                scopeSource: bookingScopeMeta.scopeSource,
+                classification: bookingScopeMeta.classification,
+                reason: bookingScopeMeta.reason,
+                denialSemantics: 'hidden-bookings-are-absent-from-booking-derived-queue-items',
+                missingDurableScopes: ['team', 'line', 'location']
+            },
             replyBacklog: {
                 scope: replyBacklogScope,
                 availableScopes: REPLY_BACKLOG_SCOPES,
@@ -781,5 +905,7 @@ module.exports = {
     EXECUTION_MODEL,
     executionForItem,
     buildWorkQueue,
-    addDays
+    addDays,
+    minutesUntilBookingStart,
+    isLatePreliminaryBooking
 };

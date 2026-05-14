@@ -2,6 +2,7 @@
  * services/booking.js — Booking business logic: validators, time helpers, conflict checks, mappers
  */
 const { pool } = require('../db');
+const { normalizePinataFields, buildPinataServices } = require('./pinataMode');
 
 // --- Validators ---
 
@@ -127,6 +128,17 @@ async function checkServerDuplicate(client, date, programId, time, duration, exc
 // --- Row mapper (snake_case → camelCase) ---
 
 function mapBookingRow(row) {
+    const pinataFields = normalizePinataFields({
+        pinata_mode: row.pinata_mode,
+        pinata_number: row.pinata_number,
+        pinata_filler_number: row.pinata_filler_number,
+        pinata_filler: row.pinata_filler,
+        program_id: row.program_id,
+        category: row.category,
+        client_pinata_service_price: row.client_pinata_service_price,
+        client_pinata_service_note: row.client_pinata_service_note
+    });
+
     return {
         id: row.id,
         date: row.date,
@@ -141,7 +153,13 @@ function mapBookingRow(row) {
         price: row.price,
         hosts: row.hosts,
         secondAnimator: row.second_animator,
-        pinataFiller: row.pinata_filler,
+        pinataFiller: pinataFields.pinataFiller,
+        pinataMode: pinataFields.pinataMode,
+        pinataNumber: pinataFields.pinataNumber,
+        pinataFillerNumber: pinataFields.pinataFillerNumber,
+        clientPinataServicePrice: pinataFields.clientPinataServicePrice,
+        clientPinataServiceNote: pinataFields.clientPinataServiceNote,
+        services: buildPinataServices(pinataFields),
         costume: row.costume,
         room: row.room,
         notes: row.notes,
@@ -156,6 +174,10 @@ function mapBookingRow(row) {
         skipNotification: row.skip_notification || false,
         customerId: row.customer_id || null,
         paymentMethod: row.payment_method || null,
+        confirmedAt: row.confirmed_at || row.confirmedAt || null,
+        confirmedBy: row.confirmed_by || row.confirmedBy || null,
+        confirmationNote: row.confirmation_note || row.confirmationNote || null,
+        confirmationSource: row.confirmation_source || row.confirmationSource || null,
         banquetGuests: row.banquet_guests || null,
         banquetTables: row.banquet_tables || null,
         banquetMenu: row.banquet_menu || null,

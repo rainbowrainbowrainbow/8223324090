@@ -21,3 +21,7 @@
 | 2026-04-02 | lMoie | v42.2.0: Business Cards — service docs for AI content gen | business-cards,social-rules,ai-context,migration-155-157 | none | feature |
 | 2026-04-02 | lMoie | v42.3.0: Marketing Subagent — AI gen + publishers + cron | subagent,marketing,publishers,cron,automation | IG needs FB verification, TT/FB/Threads/Viber stubs | feature |
 | 2026-04-07 | lMoie | v43.0.0: Payroll Compliance — depremium templates + audit trail | payroll,depremium,hr,audit,compliance,migration-159 | legacy salary_adjustments compat | feature |
+| 2026-05-14 | S17 | Client Pinata Split | #crm #bookings #pinata #services #analytics | legacy ambiguity + local runtime mismatch | QUICK |
+| 2026-05-14 | S18 | Unsafe Dismiss v2 | #crm #ux #unsafe-dismiss #dirty-state #modals | route/tab e2e gap under Node 22 | QUICK |
+| 2026-05-14 | S19 | Unsafe Dismiss Full | #crm #ux #unsafe-dismiss #dirty-state #browser-tests | future e2e expansion + local runtime mismatch | QUICK |
+| 2026-05-14 | S20 | Booking Visibility Scope | #crm #bookings #visibility #authz #event-risk | linked-entity scope + missing line/team/location scope | QUICK |

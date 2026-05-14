@@ -62,12 +62,12 @@ const ROLE_DEPARTMENTS = {
 // v24.3.0: Default dashboard widgets per role (all 24 roles)
 const DEFAULT_WIDGETS = {
     // Executive — full overview
-    creator:        ['quick_stats', 'director_pnl', 'staff_today', 'week_bookings', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'catalogs', 'weather', 'currency', 'announcements'],
-    director:       ['director_pnl', 'quick_stats', 'staff_today', 'week_bookings', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'weather', 'currency', 'announcements'],
-    vice_director:  ['operations', 'quick_stats', 'staff_today', 'week_bookings', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'finance_today', 'weather', 'announcements'],
+    creator:        ['quick_stats', 'director_pnl', 'staff_today', 'week_bookings', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'catalogs', 'weather', 'currency', 'announcements'],
+    director:       ['director_pnl', 'quick_stats', 'staff_today', 'week_bookings', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'finance_today', 'weather', 'currency', 'announcements'],
+    vice_director:  ['operations', 'quick_stats', 'staff_today', 'week_bookings', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'finance_today', 'weather', 'announcements'],
     // Management
-    senior_manager: ['quick_stats', 'staff_today', 'week_bookings', 'team_tasks', 'exceptions', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements'],
-    manager:        ['staff_today', 'week_bookings', 'exceptions', 'tasks', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements'],
+    senior_manager: ['quick_stats', 'staff_today', 'week_bookings', 'event_risk_summary', 'team_tasks', 'exceptions', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements'],
+    manager:        ['staff_today', 'week_bookings', 'event_risk_summary', 'exceptions', 'tasks', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements'],
     // Specialists
     accountant:     ['finance_today', 'tasks', 'quick_stats', 'currency', 'weather'],
     art_director:   ['content_pipeline', 'tasks', 'my_schedule', 'bookings_today', 'weather', 'announcements'],
@@ -75,7 +75,7 @@ const DEFAULT_WIDGETS = {
     it_specialist:  ['tasks', 'alerts', 'team_online', 'weather'],
     hr:             ['hr_overview', 'staff_today', 'tasks', 'team_online', 'my_schedule', 'announcements', 'weather'],
     // Operations
-    admin:          ['exceptions', 'tasks', 'bookings_today', 'my_schedule', 'weather', 'announcements'],
+    admin:          ['event_risk_summary', 'exceptions', 'tasks', 'bookings_today', 'my_schedule', 'weather', 'announcements'],
     security:       ['my_schedule', 'tasks', 'alerts', 'weather'],
     // Programs
     senior_instructor: ['my_schedule', 'tasks', 'bookings_today', 'weather', 'announcements'],
@@ -114,6 +114,7 @@ const DASHBOARD_WIDGET_MIN_ROLES = {
     currency: 'manager',
     reports_today: 'senior_manager',
     exceptions: 'admin',
+    event_risk_summary: 'admin',
     catalogs: 'admin',
     account_stats: 'manager',
     staff_today: 'manager',

@@ -7,13 +7,13 @@
     <title>Event Genix | Воронка продажів</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.47.22">
-    <link rel="stylesheet" href="css/layout.css?v=0.47.22">
-    <link rel="stylesheet" href="css/pages.css?v=0.47.22">
-    <link rel="stylesheet" href="css/modals.css?v=0.47.22">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.22">
-    <link rel="stylesheet" href="css/responsive.css?v=0.47.22">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.47.22">
+    <link rel="stylesheet" href="css/base.css?v=0.48.8">
+    <link rel="stylesheet" href="css/layout.css?v=0.48.8">
+    <link rel="stylesheet" href="css/pages.css?v=0.48.8">
+    <link rel="stylesheet" href="css/modals.css?v=0.48.8">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.48.8">
+    <link rel="stylesheet" href="css/responsive.css?v=0.48.8">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.48.8">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -922,7 +922,7 @@
                 <button type="button" onclick="setQualityCategory('corporate')">🏢 Корпоратив</button>
             </div>
             <div class="modal-btns" role="dialog" aria-modal="true">
-                <button type="button" class="btn-cancel" onclick="document.getElementById('qualityCategoryModal').classList.remove('active')">Скасувати</button>
+                <button type="button" class="btn-cancel" onclick="closeQualityCategoryModal()">Скасувати</button>
             </div>
         </div>
     </div>
@@ -1001,7 +1001,7 @@
                 <textarea id="ccNotes" rows="2" placeholder="Додаткова інформація..."></textarea>
             </div>
             <div class="modal-btns" role="dialog" aria-modal="true">
-                <button type="button" class="btn-cancel" onclick="document.getElementById('customerCardModal').classList.remove('active')">Пропустити</button>
+                <button type="button" class="btn-cancel" onclick="closeCustomerCardModal(false)">Пропустити</button>
                 <button type="button" class="btn-save" onclick="saveCustomerCard()">Зберегти картку</button>
             </div>
         </div>
@@ -1027,7 +1027,7 @@
                 <textarea id="lostReasonNotes" rows="2" placeholder="Деталі..."></textarea>
             </div>
             <div class="modal-btns" role="dialog" aria-modal="true">
-                <button type="button" class="btn-cancel" onclick="document.getElementById('lostReasonModal').classList.remove('active')">Скасувати</button>
+                <button type="button" class="btn-cancel" onclick="closeLostReasonModal(false)">Скасувати</button>
                 <button type="button" class="btn-save" onclick="saveLostReason()">Зберегти</button>
             </div>
         </div>
@@ -1069,7 +1069,7 @@
                 <textarea id="mailingNotes" rows="2" placeholder="Що хочемо написати..."></textarea>
             </div>
             <div class="modal-btns" role="dialog" aria-modal="true">
-                <button type="button" class="btn-cancel" onclick="document.getElementById('addMailingModal').classList.remove('active')">Скасувати</button>
+                <button type="button" class="btn-cancel" onclick="closeAddMailingModal(false)">Скасувати</button>
                 <button type="button" class="btn-save" onclick="saveMailingEntry()">Додати</button>
             </div>
         </div>
@@ -1098,15 +1098,15 @@
         });
     }
     </script>
-    <script src="js/config.js?v=0.47.22"></script>
-    <script src="js/notification.js?v=0.47.22"></script>
-    <script src="js/api.js?v=0.47.22"></script>
-    <script src="js/auth.js?v=0.47.22"></script>
-    <script src="js/components/sidebar.js?v=0.47.22"></script>
+    <script src="js/config.js?v=0.48.8"></script>
+    <script src="js/notification.js?v=0.48.8"></script>
+    <script src="js/api.js?v=0.48.8"></script>
+    <script src="js/auth.js?v=0.48.8"></script>
+    <script src="js/components/sidebar.js?v=0.48.8"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/leads-page.js?v=0.47.22"></script>
-    <script src="js/ui.js?v=0.47.22"></script>
-    <script src="js/alerts.js?v=0.47.22"></script>
-    <script src="js/role-panel.js?v=0.47.22"></script>
+    <script src="js/leads-page.js?v=0.48.8"></script>
+    <script src="js/ui.js?v=0.48.8"></script>
+    <script src="js/alerts.js?v=0.48.8"></script>
+    <script src="js/role-panel.js?v=0.48.8"></script>
 </body>
 </html>

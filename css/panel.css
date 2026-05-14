@@ -391,6 +391,32 @@
 
 .second-animator-section .form-section { margin-bottom: 0; }
 
+/* Pinata source separation */
+.pinata-mode-section,
+.pinata-filler-section,
+.pinata-shared-section,
+.pinata-service-section {
+    background: #F8FAFC;
+    border: 1px solid #CBD5E1;
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 18px;
+}
+
+.pinata-mode-section .form-section,
+.pinata-filler-section .form-section,
+.pinata-shared-section .form-section,
+.pinata-service-section .form-section {
+    margin-bottom: 12px;
+}
+
+.pinata-mode-section .form-section:last-child,
+.pinata-filler-section .form-section:last-child,
+.pinata-shared-section .form-section:last-child,
+.pinata-service-section .form-section:last-child {
+    margin-bottom: 0;
+}
+
 /* Hosts warning */
 .hosts-warning {
     background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);

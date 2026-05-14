@@ -193,9 +193,9 @@ async function _quickAction(alertId, action) {
 
     if (action === 'confirm' && alert.bookingId) {
         try {
-            const res = await fetch(`/api/bookings/${alert.bookingId}`, {
-                method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ status: 'confirmed' })
+            const res = await fetch(`/api/bookings/${encodeURIComponent(alert.bookingId)}/confirm`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ source: 'alerts' })
             });
             if (res.ok) {
                 if (typeof showNotification === 'function') showNotification('Бронювання підтверджено!', 'success');

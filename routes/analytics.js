@@ -120,6 +120,12 @@ function normalizeFilter(value, maxLength = 120) {
     return normalized.slice(0, maxLength);
 }
 
+const PRODUCT_SALES_PROGRAM_KEY_SQL = "CASE WHEN b.pinata_mode = 'client' THEN 'client_pinata_service' ELSE COALESCE(NULLIF(b.program_id, ''), 'custom:' || COALESCE(NULLIF(b.program_code, ''), NULLIF(b.program_name, ''), b.id)) END";
+const PRODUCT_SALES_PROGRAM_ID_SQL = "CASE WHEN b.pinata_mode = 'client' THEN 'client_pinata_service' ELSE NULLIF(b.program_id, '') END";
+const PRODUCT_SALES_CODE_SQL = "CASE WHEN b.pinata_mode = 'client' THEN 'SERV' ELSE COALESCE(NULLIF(b.program_code, ''), p.code, '') END";
+const PRODUCT_SALES_NAME_SQL = "CASE WHEN b.pinata_mode = 'client' THEN 'Клієнтська піньята (послуга)' ELSE COALESCE(NULLIF(b.program_name, ''), p.name, NULLIF(b.label, ''), 'Невказана програма') END";
+const PRODUCT_SALES_CATEGORY_SQL = "CASE WHEN b.pinata_mode = 'client' THEN 'custom' ELSE COALESCE(NULLIF(b.category, ''), p.category, 'custom') END";
+
 function buildProductSalesWhere({ from, to, category, programId }) {
     const params = [from, to];
     const where = [
@@ -131,12 +137,12 @@ function buildProductSalesWhere({ from, to, category, programId }) {
 
     if (category) {
         params.push(category);
-        where.push(`COALESCE(NULLIF(b.category, ''), p.category, 'custom') = $${params.length}`);
+        where.push(`${PRODUCT_SALES_CATEGORY_SQL} = $${params.length}`);
     }
 
     if (programId) {
         params.push(programId);
-        where.push(`COALESCE(NULLIF(b.program_id, ''), 'custom:' || COALESCE(NULLIF(b.program_code, ''), NULLIF(b.program_name, ''), b.id)) = $${params.length}`);
+        where.push(`${PRODUCT_SALES_PROGRAM_KEY_SQL} = $${params.length}`);
     }
 
     return { whereSql: `WHERE ${where.join(' AND ')}`, params };
@@ -190,11 +196,11 @@ async function loadProductSalesData(query = {}) {
     const [summaryResult, detailResult] = await Promise.all([
         pool.query(`
             SELECT
-                COALESCE(NULLIF(b.program_id, ''), 'custom:' || COALESCE(NULLIF(b.program_code, ''), NULLIF(b.program_name, ''), b.id)) AS program_key,
-                NULLIF(b.program_id, '') AS program_id,
-                COALESCE(NULLIF(b.program_code, ''), p.code, '') AS code,
-                COALESCE(NULLIF(b.program_name, ''), p.name, NULLIF(b.label, ''), 'Невказана програма') AS name,
-                COALESCE(NULLIF(b.category, ''), p.category, 'custom') AS category,
+                ${PRODUCT_SALES_PROGRAM_KEY_SQL} AS program_key,
+                ${PRODUCT_SALES_PROGRAM_ID_SQL} AS program_id,
+                ${PRODUCT_SALES_CODE_SQL} AS code,
+                ${PRODUCT_SALES_NAME_SQL} AS name,
+                ${PRODUCT_SALES_CATEGORY_SQL} AS category,
                 COUNT(*)::int AS count,
                 COALESCE(SUM(COALESCE(b.price, 0)), 0)::int AS revenue,
                 ROUND(COALESCE(AVG(NULLIF(COALESCE(b.price, 0), 0)), 0))::int AS avg_price
@@ -209,11 +215,11 @@ async function loadProductSalesData(query = {}) {
                 b.id,
                 b.date,
                 b.time,
-                COALESCE(NULLIF(b.program_id, ''), 'custom:' || COALESCE(NULLIF(b.program_code, ''), NULLIF(b.program_name, ''), b.id)) AS program_key,
-                NULLIF(b.program_id, '') AS program_id,
-                COALESCE(NULLIF(b.program_code, ''), p.code, '') AS code,
-                COALESCE(NULLIF(b.program_name, ''), p.name, NULLIF(b.label, ''), 'Невказана програма') AS name,
-                COALESCE(NULLIF(b.category, ''), p.category, 'custom') AS category,
+                ${PRODUCT_SALES_PROGRAM_KEY_SQL} AS program_key,
+                ${PRODUCT_SALES_PROGRAM_ID_SQL} AS program_id,
+                ${PRODUCT_SALES_CODE_SQL} AS code,
+                ${PRODUCT_SALES_NAME_SQL} AS name,
+                ${PRODUCT_SALES_CATEGORY_SQL} AS category,
                 b.group_name,
                 c.name AS customer_name,
                 c.phone AS customer_phone,
@@ -530,11 +536,14 @@ router.get('/charts', async (req, res) => {
             `, [from, to]),
             // Top programs
             pool.query(`
-                SELECT program_name, category, COUNT(*)::int AS count,
+                SELECT
+                    CASE WHEN pinata_mode = 'client' THEN 'Клієнтська піньята (послуга)' ELSE program_name END AS program_name,
+                    CASE WHEN pinata_mode = 'client' THEN 'custom' ELSE category END AS category,
+                    COUNT(*)::int AS count,
                     COALESCE(SUM(price), 0)::int AS revenue
                 FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date
                 AND linked_to IS NULL AND status = 'confirmed'
-                GROUP BY program_name, category
+                GROUP BY 1, 2
                 ORDER BY revenue DESC LIMIT 10
             `, [from, to]),
             // Expense categories
@@ -813,11 +822,14 @@ router.get('/bookings', async (req, res) => {
                 AND status != 'cancelled' AND linked_to IS NULL
             `, [from, to]),
             pool.query(`
-                SELECT program_name AS name, program_code AS code, category,
+                SELECT
+                    CASE WHEN pinata_mode = 'client' THEN 'Клієнтська піньята (послуга)' ELSE program_name END AS name,
+                    CASE WHEN pinata_mode = 'client' THEN 'SERV' ELSE program_code END AS code,
+                    CASE WHEN pinata_mode = 'client' THEN 'custom' ELSE category END AS category,
                        COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
                 FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date
                 AND status != 'cancelled' AND linked_to IS NULL
-                GROUP BY program_name, program_code, category ORDER BY revenue DESC LIMIT 15
+                GROUP BY 1, 2, 3 ORDER BY revenue DESC LIMIT 15
             `, [from, to]),
             pool.query(`
                 SELECT date, COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
@@ -826,10 +838,11 @@ router.get('/bookings', async (req, res) => {
                 GROUP BY date ORDER BY date
             `, [from, to]),
             pool.query(`
-                SELECT category, COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
+                SELECT CASE WHEN pinata_mode = 'client' THEN 'custom' ELSE category END AS category,
+                       COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
                 FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date
                 AND status != 'cancelled' AND linked_to IS NULL AND category IS NOT NULL
-                GROUP BY category ORDER BY revenue DESC
+                GROUP BY 1 ORDER BY revenue DESC
             `, [from, to]),
             pool.query(`
                 SELECT EXTRACT(ISODOW FROM date::date)::int AS dow, COUNT(*)::int AS count,

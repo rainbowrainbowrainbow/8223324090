@@ -226,11 +226,14 @@ function initAuthListeners() {
 function initTimelineListeners() {
     document.getElementById('prevDay')?.addEventListener('click', () => changeDate(-1));
     document.getElementById('nextDay')?.addEventListener('click', () => changeDate(1));
-    document.getElementById('timelineDate')?.addEventListener('change', (e) => {
+    document.getElementById('timelineDate')?.addEventListener('change', async (e) => {
         const newDate = new Date(e.target.value);
         // Skip if date hasn't actually changed (prevents double-render from programmatic .value set)
         if (formatDate(newDate) === formatDate(AppState.selectedDate)) return;
-        closeBookingPanel(); // C2: auto-close on date change
+        if (!await closeBookingPanel(false)) {
+            e.target.value = formatDate(AppState.selectedDate);
+            return;
+        }
         AppState.selectedDate = newDate;
         renderTimeline();
     });
@@ -246,7 +249,8 @@ function initTimelineListeners() {
     // v5.15: Today button
     const todayBtn = document.getElementById('todayBtn');
     if (todayBtn) {
-        todayBtn.addEventListener('click', () => {
+        todayBtn.addEventListener('click', async () => {
+            if (!await closeBookingPanel(false)) return;
             AppState.selectedDate = new Date();
             document.getElementById('timelineDate').value = formatDate(AppState.selectedDate);
             renderTimeline();
@@ -575,9 +579,9 @@ async function downloadProductSalesExport(format) {
 }
 
 function initBookingFormListeners() {
-    document.getElementById('closePanel')?.addEventListener('click', closeBookingPanel);
+    document.getElementById('closePanel')?.addEventListener('click', () => closeBookingPanel(false));
     // v5.35: Close panel when clicking the backdrop overlay
-    document.getElementById('panelBackdrop')?.addEventListener('click', closeBookingPanel);
+    document.getElementById('panelBackdrop')?.addEventListener('click', () => closeBookingPanel(false));
     document.getElementById('bookingForm')?.addEventListener('submit', handleBookingSubmit);
 
     document.getElementById('editLineForm')?.addEventListener('submit', handleEditLine);
@@ -596,6 +600,15 @@ function initBookingFormListeners() {
 
     const customDuration = document.getElementById('customDuration');
     if (customDuration) customDuration.addEventListener('change', updateCustomDuration);
+
+    const pinataMode = document.getElementById('pinataMode');
+    if (pinataMode) {
+        pinataMode.addEventListener('change', (event) => {
+            if (typeof syncPinataModeFields === 'function') {
+                syncPinataModeFields(event.target.value);
+            }
+        });
+    }
 
     const extraHostToggle = document.getElementById('extraHostToggle');
     if (extraHostToggle) {

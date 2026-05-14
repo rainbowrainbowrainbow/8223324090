@@ -1,5 +1,10 @@
 'use strict';
 
+const {
+    buildTaskOperationsSummary,
+    deriveTaskIntelligence
+} = require('./taskIntelligence');
+
 const PRIORITY_BANDS = Object.freeze({
     CRITICAL: 'critical',
     ACTION_TODAY: 'action_today',
@@ -105,29 +110,31 @@ function waitingReplyIntelligence(item) {
 }
 
 function taskIntelligence(item, options) {
-    const signal = item.meta?.signal || '';
-    const isOverdue = item.bucket === 'overdue';
-    const isToday = item.bucket === 'today' || isDueOnOrBefore(item, options.today);
-    const priorityBand = isOverdue
-        ? PRIORITY_BANDS.CRITICAL
-        : (isToday ? PRIORITY_BANDS.ACTION_TODAY : PRIORITY_BANDS.WATCH);
-    const riskType = isOverdue
-        ? 'task_overdue'
-        : (item.bucket === 'tomorrow' ? 'task_due_tomorrow' : 'task_due_today');
+    const taskLocal = deriveTaskIntelligence({
+        ...item,
+        status: item.meta?.status,
+        category: item.meta?.category,
+        ownerUserId: item.meta?.ownerUserId,
+        ownerState: item.meta?.ownerState,
+        owner_name: item.meta?.assignedTo,
+        assigned_to: item.meta?.legacyAssignedTo,
+        owner: item.meta?.legacyOwner,
+        updatedAt: item.meta?.updatedAt,
+        createdAt: item.meta?.createdAt
+    }, options);
 
     return {
-        priorityBand,
-        riskTypes: unique([riskType, item.meta?.category ? `task_category_${item.meta.category}` : null]),
-        recommendedAction: baseAction('open_task_or_case', item.actionLabel || 'Open task context', item.href),
-        why: [
-            `Task item is in bucket ${item.bucket} from ${signal || 'deadline/date'} and remains active.`,
-            item.meta?.assignedTo
-                ? `Task assignment is display-based (${item.meta.assignedTo}), so owner intelligence is limited.`
-                : 'No task assignee/owner label is available.'
-        ],
-        confidence: confidenceFor(item, 'medium'),
-        depth: 'limited',
-        sourceFields: unique(['tasks.deadline', 'tasks.date', 'tasks.status', 'tasks.priority', 'tasks.source_type', 'tasks.source_id'])
+        ...taskLocal,
+        riskTypes: unique([
+            ...(taskLocal.riskTypes || []),
+            item.bucket === 'tomorrow' ? 'task_due_tomorrow' : null,
+            item.meta?.category ? `task_category_${item.meta.category}` : null
+        ]),
+        recommendedAction: taskLocal.recommendedAction?.type === 'open_task'
+            ? baseAction('open_task_or_case', item.actionLabel || 'Open task context', item.href)
+            : { ...taskLocal.recommendedAction, href: taskLocal.recommendedAction?.href || item.href },
+        depth: 'task_local',
+        sourceFields: unique([...(taskLocal.sourceFields || []), 'tasks.source_type', 'tasks.source_id'])
     };
 }
 
@@ -149,17 +156,28 @@ function callbackDueIntelligence(item, options) {
 
 function confirmationIntelligence(item, options) {
     const dueToday = isDueOnOrBefore(item, options.today);
+    const latePreliminary = item?.meta?.latePreliminary === true;
     return {
-        priorityBand: dueToday ? PRIORITY_BANDS.CRITICAL : PRIORITY_BANDS.ACTION_TODAY,
-        riskTypes: unique(['booking_needs_confirmation', dueToday ? 'confirmation_due_today' : 'confirmation_due_soon']),
-        recommendedAction: baseAction('open_booking_context', item.actionLabel || 'Open booking context', item.href),
+        priorityBand: latePreliminary || dueToday ? PRIORITY_BANDS.CRITICAL : PRIORITY_BANDS.ACTION_TODAY,
+        riskTypes: unique([
+            'booking_needs_confirmation',
+            latePreliminary ? 'late_preliminary' : null,
+            dueToday ? 'confirmation_due_today' : 'confirmation_due_soon'
+        ]),
+        recommendedAction: baseAction(
+            item.meta?.canConfirmInline ? 'confirm_booking' : 'open_booking_context',
+            item.meta?.canConfirmInline ? 'Confirm booking' : (item.actionLabel || 'Open booking context'),
+            item.href
+        ),
         why: [
-            `Booking is preliminary and in the confirmation window (${item.dueAt || 'no due timestamp'}).`,
-            'Queue can route to booking context; inline confirmation semantics remain separate.'
+            latePreliminary
+                ? `Booking is preliminary and starts within the next 2 hours (${item.dueAt || 'no due timestamp'}).`
+                : `Booking is preliminary and in the today/tomorrow confirmation window (${item.dueAt || 'no due timestamp'}).`,
+            'This is booking status risk from bookings.status, not event_soon timing readiness.'
         ],
         confidence: 'medium',
-        depth: 'limited',
-        sourceFields: ['bookings.status', 'bookings.date', 'bookings.time', 'bookings.linked_to']
+        depth: item.meta?.canConfirmInline ? 'confirmation_action' : 'limited',
+        sourceFields: ['bookings.status', 'bookings.date', 'bookings.time', 'bookings.linked_to', 'bookings.confirmed_at', 'bookings.confirmed_by']
     };
 }
 
@@ -254,9 +272,11 @@ function increment(map, key) {
 function buildBottlenecks(items) {
     const bottlenecks = [];
     const replyOwnerMap = new Map();
+    const taskOwnerMap = new Map();
     let unassignedUrgentReplies = 0;
     let escalatedReplies = 0;
     let visibleOverdueTasks = 0;
+    let unassignedOverdueTasks = 0;
 
     for (const item of items) {
         const intel = item.intelligence || {};
@@ -278,7 +298,23 @@ function buildBottlenecks(items) {
                 replyOwnerMap.set(key, existing);
             }
         }
-        if (item.bucket === 'overdue' && item.sourceType === 'task') visibleOverdueTasks += 1;
+        if (item.bucket === 'overdue' && item.sourceType === 'task') {
+            visibleOverdueTasks += 1;
+            if (!meta.ownerUserId) {
+                unassignedOverdueTasks += 1;
+            } else {
+                const key = String(meta.ownerUserId);
+                const existing = taskOwnerMap.get(key) || {
+                    type: 'task_pressure_by_owner',
+                    ownerUserId: meta.ownerUserId,
+                    label: meta.assignedTo || `User #${meta.ownerUserId}`,
+                    count: 0,
+                    confidence: 'high'
+                };
+                existing.count += 1;
+                taskOwnerMap.set(key, existing);
+            }
+        }
     }
 
     if (unassignedUrgentReplies > 0) {
@@ -305,9 +341,20 @@ function buildBottlenecks(items) {
             type: 'visible_overdue_tasks',
             label: 'Visible overdue task pressure',
             count: visibleOverdueTasks,
-            confidence: 'medium',
-            caveat: 'Task ownership can still be display/string based.'
+            confidence: 'high',
+            caveat: 'Derived only from visible queue tasks and tasks.owner_user_id where available.'
         });
+    }
+    if (unassignedOverdueTasks > 0) {
+        bottlenecks.push({
+            type: 'unassigned_overdue_tasks',
+            label: 'Unassigned overdue tasks',
+            count: unassignedOverdueTasks,
+            confidence: 'high'
+        });
+    }
+    for (const entry of taskOwnerMap.values()) {
+        if (entry.count > 0) bottlenecks.push(entry);
     }
     return bottlenecks.sort((a, b) => b.count - a.count || a.type.localeCompare(b.type));
 }
@@ -331,6 +378,16 @@ function buildSummary(items) {
         .map(([type, count]) => ({ type, count }))
         .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type));
 
+    const taskSummary = buildTaskOperationsSummary(items
+        .filter(item => item.sourceType === 'task')
+        .map(item => ({
+            ...item,
+            ownerUserId: item.meta?.ownerUserId,
+            ownerState: item.meta?.ownerState,
+            assigned_to: item.meta?.legacyAssignedTo,
+            owner: item.meta?.legacyOwner
+        })));
+
     return {
         model: INTELLIGENCE_MODEL,
         globalScore: false,
@@ -342,6 +399,7 @@ function buildSummary(items) {
         depth: toObject(depthCounts),
         topRisks,
         bottlenecks: buildBottlenecks(items),
+        taskOperations: taskSummary,
         weakBuckets: ['idle_lead'],
         includedBuckets: unique(items.map(item => item.bucket))
     };

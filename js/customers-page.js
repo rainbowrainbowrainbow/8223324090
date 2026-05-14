@@ -704,6 +704,20 @@ async function showCustomerDetail(id) {
 // CRUD HANDLERS
 // ==========================================
 
+let _customerEditInitialState = '';
+
+function getCustomerEditState() {
+    const ids = ['editName', 'editPhone', 'editInstagram', 'editChildName', 'editChildBirthday', 'editSource', 'editNotes'];
+    return ids.map(id => {
+        const el = document.getElementById(id);
+        return el ? String(el.value || '') : '';
+    }).join('|');
+}
+
+function isCustomerEditDirty() {
+    return getCustomerEditState() !== _customerEditInitialState;
+}
+
 function openEditModal(customer) {
     CrmState.editingId = customer ? customer.id : null;
     document.getElementById('customerEditTitle').textContent = customer ? 'Редагувати клієнта' : 'Новий клієнт';
@@ -716,13 +730,31 @@ function openEditModal(customer) {
     document.getElementById('editSource').value = customer?.source || '';
     document.getElementById('editNotes').value = customer?.notes || '';
 
-    document.getElementById('customerEditModal')?.classList.remove('hidden');
+    const modal = document.getElementById('customerEditModal');
+    _customerEditInitialState = getCustomerEditState();
+    modal?.classList.remove('hidden');
+    if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
     document.getElementById('editName')?.focus();
 }
 
-function closeEditModal() {
-    document.getElementById('customerEditModal')?.classList.add('hidden');
-    CrmState.editingId = null;
+async function closeEditModal(force = false) {
+    const modal = document.getElementById('customerEditModal');
+    const closeNow = () => {
+        modal?.classList.add('hidden');
+        CrmState.editingId = null;
+        _customerEditInitialState = getCustomerEditState();
+    };
+    if (window.UnsafeDismissGuard && modal) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, closeNow, {
+            force,
+            isDirty: isCustomerEditDirty,
+            message: 'Є незбережені зміни клієнта. Закрити без збереження?',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+    }
+    closeNow();
+    return true;
 }
 
 async function handleSave() {
@@ -748,7 +780,7 @@ async function handleSave() {
             showNotification(result.error, 'error');
             return;
         }
-        closeEditModal();
+        await closeEditModal(true);
         showNotification(CrmState.editingId ? 'Клієнта оновлено' : 'Клієнта створено');
         await refreshData();
     } catch (err) {
@@ -1317,19 +1349,23 @@ async function initPage() {
 
     // Save customer
     document.getElementById('saveCustomerBtn')?.addEventListener('click', handleSave);
-    document.getElementById('cancelEditBtn')?.addEventListener('click', closeEditModal);
+    document.getElementById('cancelEditBtn')?.addEventListener('click', () => closeEditModal(false));
 
     // Modal close buttons
     document.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', () => {
-            btn.closest('.modal').classList.add('hidden');
+            const modal = btn.closest('.modal');
+            if (modal?.id === 'customerEditModal') closeEditModal(false);
+            else modal?.classList.add('hidden');
         });
     });
 
     // Close modals on backdrop click
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.classList.add('hidden');
+            if (e.target !== modal) return;
+            if (modal.id === 'customerEditModal') closeEditModal(false);
+            else modal.classList.add('hidden');
         });
     });
 

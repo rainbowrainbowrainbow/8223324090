@@ -15,6 +15,30 @@ function truncate(text, max = 4000) {
     return text.slice(0, max) + '\n\n... (обрізано)';
 }
 
+function appendPinataOperationalLines(text, booking) {
+    if (booking.pinata_number || booking.pinataNumber) {
+        text += `рџЄ… РџС–РЅСЊСЏС‚Р°: в„–${esc(booking.pinata_number || booking.pinataNumber)}\n`;
+    }
+    if (booking.pinata_filler_number || booking.pinataFillerNumber) {
+        text += `рџЄ… РќР°РїРѕРІРЅСЋРІР°С‡: в„–${esc(booking.pinata_filler_number || booking.pinataFillerNumber)}\n`;
+    } else if (booking.pinata_filler || booking.pinataFiller) {
+        text += `рџЄ… РќР°РїРѕРІРЅСЋРІР°С‡: в„–${esc(booking.pinata_filler || booking.pinataFiller)}\n`;
+    }
+    return text;
+}
+
+function appendPinataOperationalLines(text, booking) {
+    if (booking.pinata_number || booking.pinataNumber) {
+        text += `🪅 Піньята: №${esc(booking.pinata_number || booking.pinataNumber)}\n`;
+    }
+    if (booking.pinata_filler_number || booking.pinataFillerNumber) {
+        text += `🪅 Наповнювач: №${esc(booking.pinata_filler_number || booking.pinataFillerNumber)}\n`;
+    } else if (booking.pinata_filler || booking.pinataFiller) {
+        text += `🪅 Наповнювач: №${esc(booking.pinata_filler || booking.pinataFiller)}\n`;
+    }
+    return text;
+}
+
 const notificationTemplates = {
     create(booking, extra) {
         const endTime = minutesToTime(timeToMinutes(booking.time) + (booking.duration || 0));
@@ -26,7 +50,7 @@ const notificationTemplates = {
         text += `🏠 ${esc(booking.room)}\n`;
         if (extra.lineName) text += `🎪 Аніматор: ${esc(extra.lineName)}\n`;
         if (booking.second_animator || booking.secondAnimator) text += `👥 Другий аніматор: ${esc(booking.second_animator || booking.secondAnimator)}\n`;
-        if (booking.pinata_filler || booking.pinataFiller) text += `🪅 Наповнювач: №${booking.pinata_filler || booking.pinataFiller}\n`;
+        text = appendPinataOperationalLines(text, booking);
         if (booking.kids_count) text += `👶 ${booking.kids_count} дітей\n`;
         if (booking.group_name || booking.groupName) text += `👥 Група: ${esc(booking.group_name || booking.groupName)}\n`;
         if (booking.notes) text += `📝 ${esc(booking.notes)}\n`;
@@ -42,7 +66,7 @@ const notificationTemplates = {
         text += `🏠 ${esc(booking.room)}\n`;
         if (extra.lineName) text += `🎪 Аніматор: ${esc(extra.lineName)}\n`;
         if (booking.second_animator || booking.secondAnimator) text += `👥 Другий аніматор: ${esc(booking.second_animator || booking.secondAnimator)}\n`;
-        if (booking.pinata_filler || booking.pinataFiller) text += `🪅 Наповнювач: №${booking.pinata_filler || booking.pinataFiller}\n`;
+        text = appendPinataOperationalLines(text, booking);
         if (booking.kids_count) text += `👶 ${booking.kids_count} дітей\n`;
         if (booking.group_name || booking.groupName) text += `👥 Група: ${esc(booking.group_name || booking.groupName)}\n`;
         if (booking.notes) text += `📝 ${esc(booking.notes)}\n`;

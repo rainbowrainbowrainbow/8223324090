@@ -11,6 +11,7 @@ function clearModules() {
     [
         '../db',
         '../middleware/auth',
+        '../services/bookingVisibility',
         '../services/booking',
         '../services/telegram',
         '../services/bookingAutomation',

@@ -440,6 +440,24 @@ function renderSchedule() {
 // EDIT MODAL
 // ==========================================
 
+let _staffScheduleInitialState = '';
+let _staffFillInitialState = '';
+
+function getStaffScheduleState() {
+    return ['schStatus', 'schStart', 'schEnd', 'schNote'].map(id => {
+        const el = document.getElementById(id);
+        return el ? String(el.value || '') : '';
+    }).join('|');
+}
+
+function getStaffFillState() {
+    const dayState = Array.from(document.querySelectorAll('#fillDaysRow input[type=checkbox]')).map(cb => cb.checked ? '1' : '0').join('');
+    return ['fillStaffSelect', 'fillStatus', 'fillStart', 'fillEnd', 'fillNote'].map(id => {
+        const el = document.getElementById(id);
+        return el ? String(el.value || '') : '';
+    }).join('|') + '|days:' + dayState;
+}
+
 function openEditModal(staffId, date) {
     const emp = StaffState.staff.find(s => s.id === staffId);
     if (!emp) return;
@@ -454,12 +472,30 @@ function openEditModal(staffId, date) {
     document.getElementById('schNote').value = entry?.note || '';
 
     toggleTimeFields();
-    document.getElementById('schModalOverlay')?.classList.add('visible');
+    const overlay = document.getElementById('schModalOverlay');
+    _staffScheduleInitialState = getStaffScheduleState();
+    overlay?.classList.add('visible');
+    if (window.UnsafeDismissGuard && overlay) window.UnsafeDismissGuard.remember(overlay);
 }
 
-function closeEditModal() {
-    document.getElementById('schModalOverlay')?.classList.remove('visible');
-    StaffState.editingCell = null;
+async function closeEditModal(force = false) {
+    const overlay = document.getElementById('schModalOverlay');
+    const closeNow = () => {
+        overlay?.classList.remove('visible');
+        StaffState.editingCell = null;
+        _staffScheduleInitialState = getStaffScheduleState();
+    };
+    if (window.UnsafeDismissGuard && overlay) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(overlay, closeNow, {
+            force,
+            isDirty: () => getStaffScheduleState() !== _staffScheduleInitialState,
+            message: 'Є незбережені зміни розкладу. Закрити без збереження?',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+    }
+    closeNow();
+    return true;
 }
 
 function toggleTimeFields() {
@@ -479,7 +515,7 @@ async function handleSave() {
     if (result.success) {
         StaffState.schedule[`${staffId}_${date}`] = result.data;
         renderSchedule();
-        closeEditModal();
+        closeEditModal(true);
         showNotification('Зміну збережено');
     } else {
         showNotification(result.error || 'Помилка збереження', 'error');
@@ -535,11 +571,29 @@ function openFillWeekModal() {
     document.getElementById('fillEnd').value = '20:00';
     document.getElementById('fillNote').value = '';
     toggleFillTimeFields();
-    document.getElementById('fillWeekOverlay')?.classList.add('visible');
+    const overlay = document.getElementById('fillWeekOverlay');
+    _staffFillInitialState = getStaffFillState();
+    overlay?.classList.add('visible');
+    if (window.UnsafeDismissGuard && overlay) window.UnsafeDismissGuard.remember(overlay);
 }
 
-function closeFillWeekModal() {
-    document.getElementById('fillWeekOverlay')?.classList.remove('visible');
+async function closeFillWeekModal(force = false) {
+    const overlay = document.getElementById('fillWeekOverlay');
+    const closeNow = () => {
+        overlay?.classList.remove('visible');
+        _staffFillInitialState = getStaffFillState();
+    };
+    if (window.UnsafeDismissGuard && overlay) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(overlay, closeNow, {
+            force,
+            isDirty: () => getStaffFillState() !== _staffFillInitialState,
+            message: 'Є незбережені зміни заповнення тижня. Закрити без збереження?',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+    }
+    closeNow();
+    return true;
 }
 
 function toggleFillTimeFields() {
@@ -597,7 +651,7 @@ async function handleFillWeekSave() {
 
     const result = await bulkSaveSchedule(entries);
     if (result.success) {
-        closeFillWeekModal();
+        closeFillWeekModal(true);
         showNotification(`Заповнено ${result.count} записів`);
         await goToWeek(StaffState.weekStart);
     } else {
@@ -1336,20 +1390,20 @@ async function initPage() {
     document.getElementById('nextWeekBtn')?.addEventListener('click', nextWeek);
     document.getElementById('todayWeekBtn')?.addEventListener('click', goToday);
     document.getElementById('schSaveBtn')?.addEventListener('click', handleSave);
-    document.getElementById('schCancelBtn')?.addEventListener('click', closeEditModal);
+    document.getElementById('schCancelBtn')?.addEventListener('click', () => closeEditModal(false));
     document.getElementById('schStatus')?.addEventListener('change', toggleTimeFields);
 
     document.getElementById('schModalOverlay')?.addEventListener('click', (e) => {
-        if (e.target === e.currentTarget) closeEditModal();
+        if (e.target === e.currentTarget) closeEditModal(false);
     });
 
     // Fill week modal
     document.getElementById('fillWeekBtn')?.addEventListener('click', openFillWeekModal);
     document.getElementById('fillSaveBtn')?.addEventListener('click', handleFillWeekSave);
-    document.getElementById('fillCancelBtn')?.addEventListener('click', closeFillWeekModal);
+    document.getElementById('fillCancelBtn')?.addEventListener('click', () => closeFillWeekModal(false));
     document.getElementById('fillStatus')?.addEventListener('change', toggleFillTimeFields);
     document.getElementById('fillWeekOverlay')?.addEventListener('click', (e) => {
-        if (e.target === e.currentTarget) closeFillWeekModal();
+        if (e.target === e.currentTarget) closeFillWeekModal(false);
     });
 
     // Copy week
@@ -1393,8 +1447,8 @@ async function initPage() {
 
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            closeEditModal();
-            closeFillWeekModal();
+            closeEditModal(false);
+            closeFillWeekModal(false);
             closeLinkModal();
             closeBulkResults();
         }

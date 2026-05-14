@@ -72,6 +72,49 @@
     box-shadow: var(--shadow-sm);
 }
 
+.event-risk-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.event-risk-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 58px;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    text-decoration: none;
+    background: var(--surface-color);
+}
+
+.event-risk-card span {
+    font-size: 13px;
+    line-height: 1.25;
+}
+
+.event-risk-card strong {
+    font-size: 22px;
+}
+
+.event-risk-card.warning {
+    border-color: rgba(245, 158, 11, 0.45);
+}
+
+.event-risk-card.critical {
+    border-color: rgba(239, 68, 68, 0.55);
+}
+
+.event-risk-summary-note {
+    margin: 10px 0 0;
+    color: var(--gray-500);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
 .work-queue-head {
     display: flex;
     justify-content: space-between;
@@ -1332,6 +1375,36 @@
     font-weight: 600;
 }
 
+.team-presence-member {
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 10px;
+    min-width: 170px;
+    align-items: center;
+}
+
+.team-presence-copy {
+    min-width: 0;
+    flex: 1;
+}
+
+.team-presence-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.team-presence-last-seen,
+.team-presence-summary {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.25;
+}
+
+.team-presence-summary {
+    margin-bottom: 8px;
+}
+
 .team-avatar {
     width: 24px;
     height: 24px;
@@ -1349,7 +1422,16 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
+    background: #94A3B8;
+}
+
+.team-presence-member.is-online .team-online-dot {
     background: #38A169;
+    box-shadow: 0 0 0 3px rgba(56, 161, 105, 0.16);
+}
+
+.team-presence-member.is-recent .team-online-dot {
+    background: #F59E0B;
 }
 
 /* Weather widget */

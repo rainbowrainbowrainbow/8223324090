@@ -97,6 +97,10 @@ async function updateActiveReplyEscalationTaskForMessage(messageId, updates = {}
         params.push(updates.assignee || null);
         setSql.push(`owner = $${params.length}`);
     }
+    if (Object.prototype.hasOwnProperty.call(updates, 'ownerUserId')) {
+        params.push(updates.ownerUserId || null);
+        setSql.push(`owner_user_id = $${params.length}`);
+    }
     if (Object.prototype.hasOwnProperty.call(updates, 'deadline')) {
         params.push(updates.deadline || null);
         setSql.push(`deadline = $${params.length}::timestamp`);
@@ -219,16 +223,16 @@ async function createOrReuseReplyEscalationTask(row, options = {}) {
     const result = await db.query(
         `WITH inserted AS (
             INSERT INTO tasks (
-                title, description, date, status, priority, assigned_to, owner, created_by,
+                title, description, date, status, priority, assigned_to, owner, owner_user_id, created_by,
                 task_type, deadline, source_type, source_id, category, type
             )
-            SELECT $1, $2, $3, 'todo', 'high', $4, $5, $6,
-                   'human', $7::timestamp, $8, $9, 'admin', 'auto'
+            SELECT $1, $2, $3, 'todo', 'high', $4, $5, $6, $7,
+                   'human', $8::timestamp, $9, $10, 'admin', 'auto'
             WHERE NOT EXISTS (
                 SELECT 1
                 FROM tasks
-                WHERE source_type = $8
-                  AND source_id = $9
+                WHERE source_type = $9
+                  AND source_id = $10
             )
             ON CONFLICT (source_id)
                 WHERE source_type = 'conversation_reply'
@@ -241,8 +245,8 @@ async function createOrReuseReplyEscalationTask(row, options = {}) {
         UNION ALL
         SELECT t.*, false AS created
         FROM tasks t
-        WHERE t.source_type = $8
-          AND t.source_id = $9
+        WHERE t.source_type = $9
+          AND t.source_id = $10
           AND NOT EXISTS (SELECT 1 FROM inserted)
         ORDER BY created DESC, id DESC
         LIMIT 1`,
@@ -252,6 +256,7 @@ async function createOrReuseReplyEscalationTask(row, options = {}) {
             date,
             assignee,
             assignee,
+            row.reply_owner_user_id || null,
             REPLY_ESCALATION_CREATED_BY,
             row.reply_sla_at,
             REPLY_ESCALATION_SOURCE_TYPE,

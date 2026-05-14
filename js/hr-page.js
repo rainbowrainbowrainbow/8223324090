@@ -397,7 +397,7 @@ function openCorrectionModal(staffId) {
     document.getElementById('corrClockIn').value = item.record.clock_in ? fmtTimeFromISO(item.record.clock_in) : '';
     document.getElementById('corrClockOut').value = item.record.clock_out ? fmtTimeFromISO(item.record.clock_out) : '';
     document.getElementById('corrNotes').value = '';
-    document.getElementById('correctionModal').style.display = 'flex';
+    showHrEditableModal('correctionModal');
 }
 
 // ==========================================
@@ -573,7 +573,7 @@ function openShiftModal(staffId, date) {
         document.getElementById('shiftDelete').style.display = 'none';
     }
 
-    document.getElementById('shiftModal').style.display = 'flex';
+    showHrEditableModal('shiftModal');
 }
 
 async function saveShift() {
@@ -612,7 +612,7 @@ async function saveShift() {
 
         if (data && data.success) {
             showNotification('Зміну збережено', 'success');
-            document.getElementById('shiftModal').style.display = 'none';
+            await closeHrEditableModal('shiftModal', true);
             await loadSchedule();
         } else {
             showNotification(data?.error || 'Помилка', 'error');
@@ -628,7 +628,7 @@ async function deleteShift() {
     const data = await hrFetch(`/shifts/${editingShift.existing.id}`, { method: 'DELETE' });
     if (data && data.success) {
         showNotification('Зміну видалено', 'success');
-        document.getElementById('shiftModal').style.display = 'none';
+        await closeHrEditableModal('shiftModal', true);
         await loadSchedule();
     } else {
         showNotification(data?.error || 'Помилка', 'error');
@@ -774,7 +774,7 @@ function openStaffEdit(staffId) {
     document.getElementById('editSkills').value = (s.skills || []).join(', ');
     document.getElementById('editNotes').value = s.notes || '';
 
-    document.getElementById('staffEditModal').style.display = 'flex';
+    showHrEditableModal('staffEditModal');
 }
 
 async function saveStaffEdit() {
@@ -799,7 +799,7 @@ async function saveStaffEdit() {
     });
     if (data && data.success) {
         showNotification('Профіль оновлено', 'success');
-        document.getElementById('staffEditModal').style.display = 'none';
+        await closeHrEditableModal('staffEditModal', true);
         await loadTeam();
     } else {
         showNotification(data?.error || 'Помилка', 'error');
@@ -897,30 +897,51 @@ async function exportCSV() {
 // MODALS
 // ==========================================
 
+function showHrEditableModal(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.style.display = 'flex';
+    if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(modal);
+}
+
+async function closeHrEditableModal(id, force = false, message = 'Є незбережені зміни. Закрити без збереження?') {
+    const modal = document.getElementById(id);
+    if (!modal) return true;
+    const closeNow = () => { modal.style.display = 'none'; };
+    if (force) {
+        closeNow();
+        if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(modal);
+        return true;
+    }
+    if (window.UnsafeDismissGuard) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, closeNow, {
+            message,
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+    }
+    closeNow();
+    return true;
+}
+
 function initModals() {
     // Shift modal
     document.getElementById('shiftSave')?.addEventListener('click', saveShift);
     document.getElementById('shiftDelete')?.addEventListener('click', deleteShift);
-    document.getElementById('shiftCancel')?.addEventListener('click', () => {
-        document.getElementById('shiftModal').style.display = 'none';
-    });
+    document.getElementById('shiftCancel')?.addEventListener('click', () => closeHrEditableModal('shiftModal', false, 'Є незбережені зміни у зміні. Закрити без збереження?'));
 
     // Staff edit modal
     document.getElementById('editSave')?.addEventListener('click', saveStaffEdit);
-    document.getElementById('editCancel')?.addEventListener('click', () => {
-        document.getElementById('staffEditModal').style.display = 'none';
-    });
+    document.getElementById('editCancel')?.addEventListener('click', () => closeHrEditableModal('staffEditModal', false, 'Є незбережені зміни співробітника. Закрити без збереження?'));
 
     // Correction modal
     document.getElementById('corrSave')?.addEventListener('click', saveCorrection);
-    document.getElementById('corrCancel')?.addEventListener('click', () => {
-        document.getElementById('correctionModal').style.display = 'none';
-    });
+    document.getElementById('corrCancel')?.addEventListener('click', () => closeHrEditableModal('correctionModal', false, 'Є незбережені зміни корекції. Закрити без збереження?'));
 
     // Close modals on overlay click
     ['shiftModal', 'staffEditModal', 'correctionModal'].forEach(id => {
         document.getElementById(id)?.addEventListener('click', (e) => {
-            if (e.target === e.currentTarget) e.currentTarget.style.display = 'none';
+            if (e.target === e.currentTarget) closeHrEditableModal(id);
         });
     });
 }
@@ -947,7 +968,7 @@ async function saveCorrection() {
     });
     if (data && data.success) {
         showNotification('Час виправлено', 'success');
-        document.getElementById('correctionModal').style.display = 'none';
+        await closeHrEditableModal('correctionModal', true);
         await loadToday();
     } else {
         showNotification(data?.error || 'Помилка', 'error');

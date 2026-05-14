@@ -182,6 +182,25 @@ async function apiUpdateBooking(id, booking) {
     }
 }
 
+async function apiConfirmBooking(id, payload = {}) {
+    try {
+        const response = await fetch(`${API_BASE}/bookings/${encodeURIComponent(id)}/confirm`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error', status: response.status, currentStatus: body.currentStatus || null };
+        }
+        return await response.json();
+    } catch (err) {
+        console.error('API confirmBooking error:', err);
+        return { success: false, error: err.message, offline: true };
+    }
+}
+
 async function apiUpdateLinkedBookingsAtomic(id, payload) {
     try {
         const response = await fetch(`${API_BASE}/bookings/${id}/linked-atomic`, {

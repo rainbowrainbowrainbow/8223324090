@@ -177,6 +177,136 @@ const FOCUSABLE_SELECTOR = [
 // Stack for nested modals (e.g. confirmModal on top of bookingModal)
 const _focusTrapStack = [];
 
+const UnsafeDismissGuard = (() => {
+    const FIELD_SELECTOR = [
+        'input:not([type="hidden"])',
+        'select',
+        'textarea',
+        '[contenteditable="true"]'
+    ].join(', ');
+
+    function getFieldValue(el) {
+        if (!el) return '';
+        if (el.matches?.('input[type="checkbox"],input[type="radio"]')) return el.checked ? '1' : '0';
+        if (el.getAttribute?.('contenteditable') === 'true') return el.textContent || '';
+        return el.value || '';
+    }
+
+    function snapshot(surface, selector = FIELD_SELECTOR) {
+        if (!surface) return '';
+        return Array.from(surface.querySelectorAll(selector))
+            .filter(el => !el.disabled)
+            .map(el => `${el.id || el.name || el.dataset.key || el.tagName}:${getFieldValue(el)}`)
+            .join('|');
+    }
+
+    function remember(surface, options = {}) {
+        if (!surface) return '';
+        const value = snapshot(surface, options.selector);
+        surface.dataset.editableSurface = 'true';
+        surface.dataset.dirtyBaseline = value;
+        surface.dataset.dirty = 'false';
+        if (!surface._unsafeDismissDirtyHandler) {
+            surface._unsafeDismissDirtyHandler = () => {
+                if (surface.dataset.dirtyBaseline !== snapshot(surface, options.selector)) {
+                    surface.dataset.dirty = 'true';
+                }
+            };
+            surface.addEventListener('input', surface._unsafeDismissDirtyHandler, true);
+            surface.addEventListener('change', surface._unsafeDismissDirtyHandler, true);
+        }
+        return value;
+    }
+
+    function markClean(surface, options = {}) {
+        if (!surface) return;
+        surface.dataset.dirtyBaseline = snapshot(surface, options.selector);
+        surface.dataset.dirty = 'false';
+    }
+
+    function isDirtySurface(surface, options = {}) {
+        if (typeof options.isDirty === 'function') return !!options.isDirty();
+        if (!surface) return false;
+        if (surface.dataset.dirty === 'true') return true;
+        if (surface.dataset.dirtyBaseline !== undefined) {
+            return surface.dataset.dirtyBaseline !== snapshot(surface, options.selector);
+        }
+        return false;
+    }
+
+    async function confirmDiscardIfDirty(surface, options = {}) {
+        if (!isDirtySurface(surface, options)) return true;
+        const message = options.message || 'Є незбережені зміни. Закрити без збереження?';
+        const okText = options.okText || 'Закрити без збереження';
+        const cancelText = options.cancelText || 'Повернутись';
+        if (typeof confirmModal === 'function') {
+            return !!(await confirmModal(message, { type: 'warning', okText, cancelText }));
+        }
+        if (typeof customConfirm === 'function') {
+            return !!(await customConfirm(message, 'Незбережені зміни'));
+        }
+        try {
+            return typeof window.confirm === 'function' ? window.confirm(message) : false;
+        } catch {
+            return false;
+        }
+    }
+
+    async function attemptCloseEditableSurface(surface, closeFn, options = {}) {
+        if (!surface) return true;
+        if (!options.force && !(await confirmDiscardIfDirty(surface, options))) return false;
+        if (typeof closeFn === 'function') closeFn();
+        if (options.markClean !== false) markClean(surface, options);
+        if (typeof options.onClosed === 'function') options.onClosed();
+        return true;
+    }
+
+    function canDismissByBackdrop(surface, options = {}) {
+        return !isDirtySurface(surface, options);
+    }
+
+    function canDismissByEscape(surface, options = {}) {
+        return !isDirtySurface(surface, options);
+    }
+
+    function bindBackdropClose(surface, closeFn, options = {}) {
+        if (!surface || surface._unsafeDismissBackdropBound) return;
+        surface._unsafeDismissBackdropBound = true;
+        surface.addEventListener('click', (e) => {
+            if (e.target !== surface) return;
+            attemptCloseEditableSurface(surface, closeFn, { ...options, reason: 'backdrop' });
+        });
+    }
+
+    function bindEscapeClose(surface, closeFn, options = {}) {
+        if (!surface || surface._unsafeDismissEscapeBound) return;
+        surface._unsafeDismissEscapeBound = true;
+        surface.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            e.preventDefault();
+            e.stopPropagation();
+            attemptCloseEditableSurface(surface, closeFn, { ...options, reason: 'escape' });
+        });
+    }
+
+    return {
+        remember,
+        markClean,
+        snapshot,
+        isDirtySurface,
+        confirmDiscardIfDirty,
+        attemptCloseEditableSurface,
+        canDismissByBackdrop,
+        canDismissByEscape,
+        bindBackdropClose,
+        bindEscapeClose
+    };
+})();
+
+if (typeof window !== 'undefined') {
+    window.UnsafeDismissGuard = UnsafeDismissGuard;
+}
+
 function openModal(modalEl, triggerEl) {
     if (!modalEl) return;
 
@@ -236,15 +366,26 @@ function openModal(modalEl, triggerEl) {
         if (e.key === 'Escape') {
             e.preventDefault();
             e.stopPropagation();
-            closeModal(modalEl);
+            if (modalEl.dataset.editableSurface === 'true' && window.UnsafeDismissGuard) {
+                window.UnsafeDismissGuard.attemptCloseEditableSurface(modalEl, () => closeModal(modalEl, { force: true }), { reason: 'escape' });
+            } else {
+                closeModal(modalEl);
+            }
         }
     };
 
     modalEl.addEventListener('keydown', modalEl._focusTrapHandler);
 }
 
-function closeModal(modalEl) {
+function closeModal(modalEl, options = {}) {
     if (!modalEl) return;
+
+    if (!options.force && modalEl.dataset.editableSurface === 'true' && window.UnsafeDismissGuard && window.UnsafeDismissGuard.isDirtySurface(modalEl)) {
+        window.UnsafeDismissGuard.attemptCloseEditableSurface(modalEl, () => closeModal(modalEl, { force: true }), {
+            reason: options.reason || 'direct-close'
+        });
+        return false;
+    }
 
     // Find this modal in the stack
     const idx = _focusTrapStack.findIndex(s => s.modal === modalEl);
@@ -271,13 +412,21 @@ function closeModal(modalEl) {
     }
 }
 
-function closeAllModals() {
-    document.querySelectorAll('.modal').forEach(m => {
-        if (m.id === 'confirmModal') return;
+async function closeAllModals() {
+    for (const m of document.querySelectorAll('.modal')) {
+        if (m.id === 'confirmModal') continue;
         if (!m.classList.contains('hidden')) {
+            if (m.dataset.editableSurface === 'true' && window.UnsafeDismissGuard) {
+                const closed = await window.UnsafeDismissGuard.attemptCloseEditableSurface(m, () => closeModal(m, { force: true }), {
+                    reason: 'close-all'
+                });
+                if (!closed) return false;
+                continue;
+            }
             closeModal(m);
         }
-    });
+    }
+    return true;
 }
 
 function customConfirm(message, title = 'Підтвердження') {
@@ -495,7 +644,23 @@ function formModal(title, fields, options = {}) {
             return vals;
         };
 
-        overlay.querySelector('.confirm-cancel').addEventListener('click', () => close(null));
+        let initialValuesJson = null;
+        const getValuesJson = () => JSON.stringify(getValues());
+        const isDirty = () => initialValuesJson !== null && getValuesJson() !== initialValuesJson;
+        const requestCancel = async () => {
+            if (isDirty() && window.UnsafeDismissGuard) {
+                const ok = await window.UnsafeDismissGuard.confirmDiscardIfDirty(overlay, {
+                    isDirty,
+                    message: 'Є незбережені зміни у формі. Закрити без збереження?',
+                    okText: 'Закрити без збереження',
+                    cancelText: 'Повернутись'
+                });
+                if (!ok) return;
+            }
+            close(null);
+        };
+
+        overlay.querySelector('.confirm-cancel').addEventListener('click', () => requestCancel());
         overlay.querySelector('.confirm-ok').addEventListener('click', () => {
             const vals = getValues();
             for (const f of fields) {
@@ -507,7 +672,7 @@ function formModal(title, fields, options = {}) {
             }
             close(vals);
         });
-        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) requestCancel(); });
 
         // Focus management
         overlay.querySelectorAll('.fm-field').forEach(el => {
@@ -515,10 +680,12 @@ function formModal(title, fields, options = {}) {
             el.addEventListener('blur', () => { el.style.borderColor = 'rgba(139,92,246,0.3)'; });
         });
 
-        const onKey = (e) => { if (e.key === 'Escape') close(null); };
+        const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); requestCancel(); } };
         document.addEventListener('keydown', onKey);
 
         document.body.appendChild(overlay);
+        initialValuesJson = getValuesJson();
+        if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay);
         const firstField = overlay.querySelector('.fm-field');
         if (firstField) requestAnimationFrame(() => firstField.focus());
     });
@@ -1043,6 +1210,19 @@ async function changeBookingStatus(bookingId, newStatus) {
         const bookings = await getBookingsForDate(AppState.selectedDate);
         const booking = bookings.find(b => b.id === bookingId);
         if (!booking) return;
+
+        if (newStatus === 'confirmed' && booking.status === 'preliminary' && typeof apiConfirmBooking === 'function') {
+            const confirmResult = await apiConfirmBooking(bookingId, { source: 'booking_panel' });
+            if (!confirmResult || confirmResult.success === false) {
+                showNotification(confirmResult?.error || 'Помилка: не вдалося підтвердити бронювання', 'error');
+                return;
+            }
+            delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+            closeAllModals();
+            await renderTimeline();
+            showNotification('Бронювання підтверджено', 'success');
+            return;
+        }
 
         const updated = { ...booking, status: newStatus };
         const statusResult = await apiUpdateBooking(bookingId, updated);

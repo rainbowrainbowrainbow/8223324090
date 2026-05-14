@@ -11,6 +11,17 @@ router.use(authenticateToken);
 router.param('id', (req, res, next, val) => { if (val && !/^\d+$/.test(val)) return res.status(400).json({ error: 'Invalid ID format' }); next(); });
 const { createLogger } = require('../utils/logger');
 const { getPermissions } = require('../config/roles');
+const { buildTaskVisibilityScope, canMutateTask } = require('../services/taskPolicy');
+const {
+    completeTask,
+    getAssignableTaskOwner,
+    listTaskOwnerCandidates,
+    reassignTaskOwner,
+    resolveDeadline,
+    rescheduleTask
+} = require('../services/taskExecution');
+const { listTaskActionHistory } = require('../services/taskActionHistory');
+const { deriveTaskIntelligence } = require('../services/taskIntelligence');
 
 const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
 const { formatTaskNotification } = require('../services/templates');
@@ -41,10 +52,57 @@ const VALID_PRIORITIES = ['low', 'normal', 'high'];
 const VALID_CATEGORIES = ['event', 'purchase', 'admin', 'trampoline', 'personal', 'improvement', 'operational', 'maintenance'];
 const VALID_TASK_TYPES = ['human', 'bot'];
 
+async function resolveTypedTaskOwner(input = {}, actor = null) {
+    const ownerUserId = input.owner_user_id ?? input.ownerUserId;
+    const assigned = input.assigned_to ?? input.assignedTo;
+    const candidate = ownerUserId ?? (/^\d+$/.test(String(assigned || '')) ? assigned : null);
+    if (!candidate) return null;
+    const owner = await getAssignableTaskOwner(candidate, { actor });
+    return {
+        ownerUserId: owner.id,
+        assignedToSnapshot: owner.label,
+        owner
+    };
+}
+
+function normalizeTaskPayload(row) {
+    const ownerLabel = row.owner_name || row.owner_username || row.assigned_to || row.owner || null;
+    const ownerState = row.owner_user_id ? 'typed' : (row.assigned_to || row.owner ? 'legacy_unknown_owner' : 'unassigned');
+    return {
+        ...row,
+        ownerLabel,
+        ownerState,
+        ownerUserId: row.owner_user_id || null,
+        intelligence: deriveTaskIntelligence({
+            ...row,
+            owner_label: ownerLabel,
+            ownerState
+        })
+    };
+}
+
+function sourceSurface(body = {}, fallback = 'task_detail') {
+    const raw = String(body.sourceSurface || body.source_surface || fallback).trim();
+    if (raw === 'manager_queue_task_execution_v2') return raw;
+    if (raw === 'task_detail') return raw;
+    if (raw === 'task_page') return raw;
+    return fallback;
+}
+
+function sendTaskActionError(res, err) {
+    const status = err.statusCode || 500;
+    if (status >= 500) log.error('Task action error', err);
+    return res.status(status).json({
+        success: false,
+        error: err.message || 'Task action failed',
+        code: err.code || 'TASK_ACTION_FAILED'
+    });
+}
+
 // GET /api/tasks — list with optional filters + pagination (v19.10)
 router.get('/', async (req, res) => {
     try {
-        const { status, date, assigned_to, owner, afisha_id, type, task_type, category, date_from, date_to, page, limit: lim } = req.query;
+        const { status, date, assigned_to, owner, owner_user_id, afisha_id, type, task_type, category, date_from, date_to, page, limit: lim } = req.query;
         const conditions = [];
         const params = [];
         let idx = 1;
@@ -66,12 +124,21 @@ router.get('/', async (req, res) => {
             params.push(date_to);
         }
         if (assigned_to) {
-            conditions.push(`assigned_to = $${idx++}`);
-            params.push(assigned_to);
+            if (/^\d+$/.test(String(assigned_to))) {
+                conditions.push(`t.owner_user_id = $${idx++}`);
+                params.push(parseInt(assigned_to, 10));
+            } else {
+                conditions.push(`(t.owner_user_id IS NULL AND t.assigned_to = $${idx++})`);
+                params.push(assigned_to);
+            }
         }
         if (owner) {
-            conditions.push(`owner = $${idx++}`);
+            conditions.push(`(t.owner_user_id IS NULL AND t.owner = $${idx++})`);
             params.push(owner);
+        }
+        if (owner_user_id && /^\d+$/.test(String(owner_user_id))) {
+            conditions.push(`t.owner_user_id = $${idx++}`);
+            params.push(parseInt(owner_user_id, 10));
         }
         if (afisha_id && /^\d+$/.test(afisha_id)) {
             conditions.push(`afisha_id = $${idx++}`);
@@ -90,27 +157,11 @@ router.get('/', async (req, res) => {
             params.push(category);
         }
 
-        // v20.9.16: Role-based visibility filter
+        // Role/object visibility: typed owner_user_id first, legacy string fallback for unmapped tasks.
         if (req.user) {
-            const perms = getPermissions(req.user.role);
-            if (perms.taskVisibility === 'own') {
-                conditions.push(`assigned_to = $${idx++}`);
-                params.push(req.user.name);
-            } else if (perms.taskVisibility === 'department') {
-                // See own tasks + tasks of department colleagues (via employee_profiles)
-                // Fallback to 'own' if user has no employee_profile/department
-                conditions.push(`(assigned_to = $${idx++} OR assigned_to IN (
-                    SELECT u.name FROM users u
-                    JOIN employee_profiles ep ON ep.user_id = u.id
-                    WHERE ep.department IS NOT NULL
-                    AND ep.department = (
-                        SELECT ep2.department FROM employee_profiles ep2
-                        WHERE ep2.user_id = $${idx++} LIMIT 1
-                    )
-                ))`);
-                params.push(req.user.name, req.user.id);
-            }
-            // 'all' — no filter added
+            const visibility = buildTaskVisibilityScope(req.user, params, 't');
+            if (visibility) conditions.push(visibility.replace(/^AND\s+/i, ''));
+            idx = params.length + 1;
         }
 
         const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -121,14 +172,18 @@ router.get('/', async (req, res) => {
         params.push(limit, offset);
 
         const result = await pool.query(
-            `SELECT * FROM tasks ${where} ORDER BY
-                CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END,
-                CASE status WHEN 'in_progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 END,
-                created_at DESC
+            `SELECT t.*, u.name AS owner_name, u.username AS owner_username
+             FROM tasks t
+             LEFT JOIN users u ON u.id = t.owner_user_id
+             ${where}
+             ORDER BY
+                CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END,
+                CASE t.status WHEN 'in_progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 END,
+                t.created_at DESC
             LIMIT $${idx++} OFFSET $${idx++}`,
             params
         );
-        res.json(result.rows);
+        res.json(result.rows.map(normalizeTaskPayload));
     } catch (err) {
         log.error('Get error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -141,17 +196,138 @@ router.get('/permissions', (req, res) => {
     res.json({ success: true, permissions: perms, role: req.user?.role });
 });
 
+// GET /api/tasks/owners — active assignable users for typed task ownership
+router.get('/owners', async (req, res) => {
+    try {
+        const perms = getPermissions(req.user?.role);
+        if (!perms.canCreateTasks && !perms.canAssignAnyone && !['all', 'department'].includes(perms.taskVisibility)) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+        }
+        const users = await listTaskOwnerCandidates({ actor: req.user });
+        res.json({
+            success: true,
+            users,
+            meta: {
+                canonicalField: 'tasks.owner_user_id',
+                legacyDisplayFields: ['assigned_to', 'owner']
+            }
+        });
+    } catch (err) {
+        log.error('Task owners lookup error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // GET /api/tasks/:id — single task
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
         if (id === 'logs') return res.status(400).json({ error: 'Use /api/tasks/:id/logs' });
-        const result = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
+        const params = [id];
+        const visibility = buildTaskVisibilityScope(req.user, params, 't');
+        const result = await pool.query(
+            `SELECT t.*, u.name AS owner_name, u.username AS owner_username
+             FROM tasks t
+             LEFT JOIN users u ON u.id = t.owner_user_id
+             WHERE t.id = $1 ${visibility}
+             LIMIT 1`,
+            params
+        );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
-        res.json(result.rows[0]);
+        res.json(normalizeTaskPayload(result.rows[0]));
     } catch (err) {
         log.error('Get by id error', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/tasks/:id/history — durable task execution action history
+router.get('/:id/history', async (req, res) => {
+    try {
+        const visibleParams = [req.params.id];
+        const visibility = buildTaskVisibilityScope(req.user, visibleParams, 't');
+        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, visibleParams);
+        if (!visible.rows.length) return res.status(404).json({ error: 'Task not found' });
+        const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 10, 50));
+        const history = await listTaskActionHistory(req.params.id, { limit });
+        res.json({
+            success: true,
+            history,
+            meta: {
+                source: 'task_action_history',
+                newestFirst: true,
+                bounded: limit
+            }
+        });
+    } catch (err) {
+        log.error('Get task action history error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/:id/complete', async (req, res) => {
+    try {
+        const result = await completeTask(req.params.id, req.user, {
+            sourceSurface: sourceSurface(req.body),
+            route: 'tasks_task_complete'
+        });
+        res.json({
+            success: true,
+            task: normalizeTaskPayload(result.task),
+            historyEvent: result.historyEvent,
+            meta: {
+                durableMutation: true,
+                canonicalField: 'tasks.status'
+            }
+        });
+        _alertPush();
+    } catch (err) {
+        sendTaskActionError(res, err);
+    }
+});
+
+router.post('/:id/reassign', async (req, res) => {
+    try {
+        const ownerUserId = req.body?.ownerUserId ?? req.body?.owner_user_id;
+        const result = await reassignTaskOwner(req.params.id, ownerUserId, req.user, {
+            sourceSurface: sourceSurface(req.body),
+            route: 'tasks_task_reassign'
+        });
+        res.json({
+            success: true,
+            task: normalizeTaskPayload(result.task),
+            owner: result.owner,
+            historyEvent: result.historyEvent,
+            meta: {
+                durableMutation: true,
+                canonicalField: 'tasks.owner_user_id'
+            }
+        });
+        _alertPush();
+    } catch (err) {
+        sendTaskActionError(res, err);
+    }
+});
+
+router.post('/:id/reschedule', async (req, res) => {
+    try {
+        const deadline = resolveDeadline(req.body || {});
+        const result = await rescheduleTask(req.params.id, deadline, req.user, {
+            sourceSurface: sourceSurface(req.body),
+            route: 'tasks_task_reschedule'
+        });
+        res.json({
+            success: true,
+            task: normalizeTaskPayload(result.task),
+            historyEvent: result.historyEvent,
+            meta: {
+                durableMutation: true,
+                canonicalField: 'tasks.deadline'
+            }
+        });
+        _alertPush();
+    } catch (err) {
+        sendTaskActionError(res, err);
     }
 });
 
@@ -159,6 +335,10 @@ router.get('/:id', async (req, res) => {
 router.get('/:id/logs', async (req, res) => {
     try {
         const { id } = req.params;
+        const visibleParams = [id];
+        const visibility = buildTaskVisibilityScope(req.user, visibleParams, 't');
+        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, visibleParams);
+        if (!visible.rows.length) return res.status(404).json({ error: 'Task not found' });
         const result = await pool.query(
             'SELECT * FROM task_logs WHERE task_id = $1 ORDER BY created_at DESC LIMIT 100',
             [id]
@@ -179,7 +359,9 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         const description = b.description;
         const date = b.date;
         const priority = b.priority;
-        const assigned_to = b.assigned_to || b.assignedTo;
+        const typedOwner = await resolveTypedTaskOwner(b, req.user);
+        const assigned_to = typedOwner?.assignedToSnapshot || b.assigned_to || b.assignedTo;
+        const owner_user_id = typedOwner?.ownerUserId || null;
         const owner = b.owner;
         const type = b.type;
         const template_id = b.template_id || b.templateId;
@@ -225,6 +407,7 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             title, description, date,
             priority: VALID_PRIORITIES.includes(priority) ? priority : 'normal',
             assigned_to: assigned_to || null,
+            owner_user_id,
             owner: owner || null,
             task_type: VALID_TASK_TYPES.includes(task_type) ? task_type : 'human',
             deadline: deadline || null,
@@ -255,16 +438,21 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const { id } = req.params;
         const b = req.body;
         // v40: Support partial updates — merge with existing task
-        const existing = await pool.query('SELECT * FROM tasks WHERE id = $1', [id]);
+        const existingParams = [id];
+        const visibility = buildTaskVisibilityScope(req.user, existingParams, 't');
+        const existing = await pool.query(`SELECT t.* FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, existingParams);
         if (!existing.rows.length) return res.status(404).json({ error: 'Task not found' });
         const old = existing.rows[0];
+        if (!canMutateTask(req.user, old)) return res.status(403).json({ error: 'Недостатньо прав для зміни задачі' });
 
         const title = b.title || old.title;
         const description = b.description !== undefined ? b.description : old.description;
         const date = b.date !== undefined ? b.date : old.date;
         const status = b.status || old.status;
         const priority = b.priority || old.priority;
-        const assigned_to = b.assigned_to || b.assignedTo || old.assigned_to;
+        const typedOwner = await resolveTypedTaskOwner(b, req.user);
+        const assigned_to = typedOwner?.assignedToSnapshot || b.assigned_to || b.assignedTo || old.assigned_to;
+        const owner_user_id = typedOwner ? typedOwner.ownerUserId : old.owner_user_id;
         const owner = b.owner !== undefined ? b.owner : old.owner;
         const category = b.category || old.category;
         const task_type = b.task_type || b.taskType || old.task_type;
@@ -278,11 +466,11 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const taskPriority = VALID_PRIORITIES.includes(priority) ? priority : 'normal';
         const taskCategory = VALID_CATEGORIES.includes(category) ? category : undefined;
         const setClauses = ['title=$1', 'description=$2', 'date=$3', 'status=$4', 'priority=$5',
-            'assigned_to=$6', 'owner=$7', `updated_at=NOW()`, `completed_at=CASE WHEN $8='done' THEN NOW() ELSE NULL END`,
+            'assigned_to=$6', 'owner=$7', 'owner_user_id=$8', `updated_at=NOW()`, `completed_at=CASE WHEN $9='done' THEN NOW() ELSE NULL END`,
             'version=COALESCE(version,1)+1'];
         const values = [title.trim(), description || null, date || null, taskStatus, taskPriority,
-                        assigned_to || null, owner || null, taskStatus];
-        let paramIdx = 9;
+                        assigned_to || null, owner || null, owner_user_id || null, taskStatus];
+        let paramIdx = 10;
 
         if (taskCategory) {
             setClauses.push(`category=$${paramIdx++}`);
@@ -364,6 +552,12 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
         const { status } = req.body;
         if (!VALID_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status' });
 
+        const visibleParams = [id];
+        const visibility = buildTaskVisibilityScope(req.user, visibleParams, 't');
+        const visible = await pool.query(`SELECT t.* FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, visibleParams);
+        if (!visible.rows.length) return res.status(404).json({ error: 'Task not found' });
+        if (!canMutateTask(req.user, visible.rows[0])) return res.status(403).json({ error: 'Недостатньо прав для зміни задачі' });
+
         const actor = req.user?.username || 'system';
         const kleshnya = getKleshnya();
         const task = await kleshnya.updateTaskStatus(parseInt(id), status, actor);
@@ -397,6 +591,10 @@ router.post('/:id/review', requireRole('admin', 'creator', 'director', 'manager'
         if (!Number.isInteger(reviewScore) || reviewScore < 1 || reviewScore > 10) {
             return res.status(400).json({ error: 'score повинен бути від 1 до 10' });
         }
+        const visibleParams = [req.params.id];
+        const visibility = buildTaskVisibilityScope(req.user, visibleParams, 't');
+        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, visibleParams);
+        if (!visible.rows.length) return res.status(404).json({ error: 'Task not found' });
 
         const result = await pool.query(
             `UPDATE tasks SET review_score = $1, review_comment = $2,
@@ -460,27 +658,34 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
         const intIds = ids.map(id => parseInt(id)).filter(id => !isNaN(id));
         if (intIds.length === 0) return res.status(400).json({ error: 'No valid ids' });
 
+        const params = [intIds];
+        const visibility = buildTaskVisibilityScope(req.user, params, 't');
         let result;
         if (action === 'archive') {
             result = await pool.query(
-                `UPDATE tasks SET status = 'archived', updated_at = NOW() WHERE id = ANY($1::int[]) AND status NOT IN ('archived')`,
-                [intIds]
+                `UPDATE tasks t SET status = 'archived', updated_at = NOW()
+                 WHERE t.id = ANY($1::int[]) ${visibility} AND COALESCE(t.status, 'todo') NOT IN ('archived')`,
+                params
             );
         } else if (action === 'done') {
             result = await pool.query(
-                `UPDATE tasks SET status = 'done', completed_at = NOW(), updated_at = NOW() WHERE id = ANY($1::int[]) AND status NOT IN ('done','archived')`,
-                [intIds]
+                `UPDATE tasks t SET status = 'done', completed_at = NOW(), updated_at = NOW()
+                 WHERE t.id = ANY($1::int[]) ${visibility} AND COALESCE(t.status, 'todo') NOT IN ('done','archived')`,
+                params
             );
         } else if (action === 'assign' && assignTo) {
+            const typedOwner = await resolveTypedTaskOwner({ ownerUserId: assignTo }, req.user).catch(() => null);
             result = await pool.query(
-                `UPDATE tasks SET assigned_to = $1, updated_at = NOW() WHERE id = ANY($2::int[])`,
-                [assignTo, intIds]
+                `UPDATE tasks t SET owner_user_id = $${params.length + 1}, assigned_to = $${params.length + 2}, updated_at = NOW()
+                 WHERE t.id = ANY($1::int[]) ${visibility}`,
+                [...params, typedOwner?.ownerUserId || null, typedOwner?.assignedToSnapshot || assignTo]
             );
         } else if (action === 'priority' && priority) {
             if (!VALID_PRIORITIES.includes(priority)) return res.status(400).json({ error: 'Invalid priority' });
             result = await pool.query(
-                `UPDATE tasks SET priority = $1, updated_at = NOW() WHERE id = ANY($2::int[])`,
-                [priority, intIds]
+                `UPDATE tasks t SET priority = $${params.length + 1}, updated_at = NOW()
+                 WHERE t.id = ANY($1::int[]) ${visibility}`,
+                [...params, priority]
             );
         } else {
             return res.status(400).json({ error: `Unknown action: ${action}` });

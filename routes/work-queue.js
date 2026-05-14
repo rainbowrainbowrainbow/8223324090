@@ -20,6 +20,18 @@ const {
     listReplyActionHistory,
     logReplyActionEvent
 } = require('../services/replyActionHistory');
+const {
+    DEFAULT_TASK_SOURCE_SURFACE,
+    listTaskActionHistory
+} = require('../services/taskActionHistory');
+const {
+    completeTask,
+    getVisibleTask,
+    listTaskOwnerCandidates,
+    reassignTaskOwner,
+    resolveDeadline,
+    rescheduleTask
+} = require('../services/taskExecution');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('WorkQueue');
@@ -66,6 +78,18 @@ function sendReplyActionError(res, err) {
     });
 }
 
+function sendTaskActionError(res, err) {
+    const status = err?.statusCode || 500;
+    if (status >= 500) {
+        log.error('Task execution action error', err);
+    }
+    res.status(status).json({
+        success: false,
+        error: err?.message || 'Не вдалося оновити задачу',
+        code: err?.code || 'TASK_EXECUTION_ACTION_FAILED'
+    });
+}
+
 function resolveReplySlaAt(body = {}) {
     const direct = body.replySlaAt || body.reply_sla_at;
     if (direct) return direct;
@@ -91,6 +115,13 @@ function resolveSourceSurface(body = {}) {
     if (value === 'reply_operations_console_v2') return value;
     if (value === DEFAULT_SOURCE_SURFACE) return value;
     return DEFAULT_SOURCE_SURFACE;
+}
+
+function resolveTaskSourceSurface(body = {}) {
+    const value = String(body.sourceSurface || body.source_surface || '').trim();
+    if (value === 'task_page') return value;
+    if (value === DEFAULT_TASK_SOURCE_SURFACE) return value;
+    return DEFAULT_TASK_SOURCE_SURFACE;
 }
 
 function snapshotReplyValue(snapshot = {}) {
@@ -444,6 +475,100 @@ router.post('/replies/:conversationId/escalate', async (req, res) => {
         });
     } catch (err) {
         sendReplyActionError(res, err);
+    }
+});
+
+router.get('/task-owners', async (req, res) => {
+    try {
+        const users = await listTaskOwnerCandidates({ actor: req.user });
+        res.json({
+            success: true,
+            users,
+            meta: {
+                canonicalValue: 'users.id',
+                canonicalField: 'tasks.owner_user_id',
+                displayField: 'name_or_username',
+                inactiveUsers: 'excluded',
+                labelFiltering: false
+            }
+        });
+    } catch (err) {
+        sendTaskActionError(res, err);
+    }
+});
+
+router.get('/tasks/:taskId/history', async (req, res) => {
+    try {
+        const taskId = parsePositiveInt(req.params.taskId);
+        if (!taskId) {
+            return res.status(400).json({ success: false, error: 'Valid taskId is required', code: 'INVALID_TASK_ID' });
+        }
+        const rawLimit = Number(req.query.limit);
+        const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 50) : 10;
+        await getVisibleTask(taskId, req.user);
+        const events = await listTaskActionHistory(taskId, { limit });
+        res.json({
+            success: true,
+            taskId,
+            events,
+            meta: {
+                source: 'task_action_history',
+                newestFirst: true,
+                limit
+            }
+        });
+    } catch (err) {
+        sendTaskActionError(res, err);
+    }
+});
+
+router.post('/tasks/:taskId/done', async (req, res) => {
+    try {
+        const taskId = parsePositiveInt(req.params.taskId);
+        if (!taskId) {
+            return res.status(400).json({ success: false, error: 'Valid taskId is required', code: 'INVALID_TASK_ID' });
+        }
+        const result = await completeTask(taskId, req.user, {
+            sourceSurface: resolveTaskSourceSurface(req.body || {}),
+            route: 'work_queue_task_done'
+        });
+        res.json({ success: true, action: 'task_mark_done', task: result.task, historyEvent: result.historyEvent });
+    } catch (err) {
+        sendTaskActionError(res, err);
+    }
+});
+
+router.patch('/tasks/:taskId/owner', async (req, res) => {
+    try {
+        const taskId = parsePositiveInt(req.params.taskId);
+        if (!taskId) {
+            return res.status(400).json({ success: false, error: 'Valid taskId is required', code: 'INVALID_TASK_ID' });
+        }
+        const ownerUserId = req.body?.ownerUserId ?? req.body?.owner_user_id;
+        const result = await reassignTaskOwner(taskId, ownerUserId, req.user, {
+            sourceSurface: resolveTaskSourceSurface(req.body || {}),
+            route: 'work_queue_task_owner'
+        });
+        res.json({ success: true, action: 'task_reassign_owner', task: result.task, owner: result.owner, historyEvent: result.historyEvent });
+    } catch (err) {
+        sendTaskActionError(res, err);
+    }
+});
+
+router.patch('/tasks/:taskId/deadline', async (req, res) => {
+    try {
+        const taskId = parsePositiveInt(req.params.taskId);
+        if (!taskId) {
+            return res.status(400).json({ success: false, error: 'Valid taskId is required', code: 'INVALID_TASK_ID' });
+        }
+        const deadline = resolveDeadline(req.body || {});
+        const result = await rescheduleTask(taskId, deadline, req.user, {
+            sourceSurface: resolveTaskSourceSurface(req.body || {}),
+            route: 'work_queue_task_reschedule'
+        });
+        res.json({ success: true, action: 'task_reschedule', deadline, task: result.task, historyEvent: result.historyEvent });
+    } catch (err) {
+        sendTaskActionError(res, err);
     }
 });
 

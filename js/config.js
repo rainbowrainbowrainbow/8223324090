@@ -63,7 +63,7 @@ const PROGRAMS = [
     // Піньяти
     { id: 'pinata', code: 'Пін', label: 'Пін(15)', name: 'Піньята', icon: '🪅', category: 'pinata', duration: 15, price: 700, hosts: 1, hasFiller: true, age: '2-99р', kids: 'до 15', description: 'Будь-яка кругла піньята з каталогу на ваш вибір; наповнена цукерками та сюрпризами; розрахована на компанію до 15 дітей.' },
     { id: 'pinata_custom', code: 'ПінН', label: 'ПінН(15)', name: 'Піньята PRO', icon: '🪅⭐', category: 'pinata', duration: 15, price: 1000, hosts: 1, hasFiller: true, age: '2-99р', kids: 'до 15', description: 'Унікальна форма з особливого розділу або піньята на індивідуальне замовлення; втілюємо вашу ідею у життя.' },
-    { id: 'pinata_own', code: 'ПінВ', label: 'ПінВ(15)', name: 'Власна піньята', icon: '🪅🏠', category: 'pinata', duration: 15, price: 300, hosts: 1, hasFiller: false, age: '2-99р', kids: 'до 15', description: 'Клієнт приносить свою піньяту; ми тільки проводимо церемонію розбивання.' },
+    { id: 'pinata_own', code: 'ПінС', label: 'ПінС(15)', name: 'Клієнтська піньята (послуга)', icon: '🪅🏠', category: 'custom', duration: 15, price: 300, hosts: 1, hasFiller: false, age: '2-99р', kids: 'до 15', description: 'Клієнт приносить свою піньяту; команда надає тільки сервіс супроводу церемонії.' },
 
     // Кастомна позиція
     { id: 'custom', code: 'Інше', label: 'Інше', name: 'Інше (вкажіть)', icon: '✏️', category: 'custom', duration: 30, price: 0, hosts: 1, isCustom: true }

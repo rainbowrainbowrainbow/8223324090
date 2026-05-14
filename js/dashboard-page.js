@@ -12,6 +12,7 @@ const DashboardPage = (() => {
         my_schedule:    { icon: '🕐', title: 'Мій графік', minRole: null },
         team_online:    { icon: '👥', title: 'Команда онлайн', minRole: 'manager' },
         alerts:         { icon: '🔔', title: 'Сповіщення', minRole: null },
+        event_risk_summary: { icon: '⚠️', title: 'Ризики подій', minRole: 'admin' },
         exceptions:     { icon: '🚨', title: 'Що потребує уваги', minRole: 'admin' },
         leads_new:      { icon: '🔥', title: 'Нові ліди', minRole: 'manager' },
         finance_today:  { icon: '💰', title: 'Фінанси сьогодні', minRole: 'senior_manager' },
@@ -43,6 +44,9 @@ const DashboardPage = (() => {
     let _queueExecutionFlash = null;
     let _replyActionHistoryState = { itemId: null, conversationId: null, status: 'idle', events: [], error: null };
     let _replyOwnerPickerState = null;
+    let _taskActionHistoryState = { itemId: null, taskId: null, status: 'idle', events: [], error: null };
+    let _taskOwnerPickerState = null;
+    let _settingsOverlayInitialState = '';
 
     async function init() {
         const token = localStorage.getItem('pzp_token');
@@ -388,6 +392,7 @@ const DashboardPage = (() => {
         if (_workQueueSelectedItemId && !_workQueueItemsById.has(_workQueueSelectedItemId)) {
             _workQueueSelectedItemId = null;
             _replyActionHistoryState = { itemId: null, conversationId: null, status: 'idle', events: [], error: null };
+            _taskActionHistoryState = { itemId: null, taskId: null, status: 'idle', events: [], error: null };
         }
         _workQueueVisibleReplyIds = visibleReplyItems
             .map(item => Number(item.meta?.conversationId || item.sourceId || 0))
@@ -514,9 +519,9 @@ const DashboardPage = (() => {
             case 'tomorrow':
                 return `Задача або подія стоїть у найближчому плані на завтра.${signal}`;
             case 'needs_confirmation':
-                return `Бронювання/подія ще не має достатнього підтвердження. Inline-confirm не вмикаємо у v4 без окремої booking-семантики.${signal}`;
+                return `Бронювання має durable status preliminary у сьогодні/завтра confirmation window. Inline-confirm іде тільки через narrow booking confirmation endpoint; event_soon лишається timing cue.${signal}`;
             case 'event_soon':
-                return `Подія наближається, тож менеджеру потрібен швидкий exact-context review.${signal}`;
+                return `Подія наближається, тож менеджеру потрібен швидкий exact-context review. Це timing cue, не booking readiness signal.${signal}`;
             case 'idle_lead':
                 return `Лід виглядає неактивним за queue heuristic. Це підказка, не canonical reply debt.${signal}`;
             default:
@@ -688,11 +693,111 @@ const DashboardPage = (() => {
         `;
     }
 
+    function isTaskActionHistoryItem(item) {
+        return item?.sourceType === 'task' && Number(item?.taskId || item?.sourceId || 0) > 0;
+    }
+
+    function taskActionHistoryTaskId(item) {
+        const id = Number(item?.taskId || item?.sourceId || 0);
+        return Number.isInteger(id) && id > 0 ? id : null;
+    }
+
+    function syncTaskActionHistorySelection(item) {
+        if (!isTaskActionHistoryItem(item)) {
+            _taskActionHistoryState = { itemId: null, taskId: null, status: 'idle', events: [], error: null };
+            return;
+        }
+        const itemId = getWorkQueueItemId(item);
+        const taskId = taskActionHistoryTaskId(item);
+        if (_taskActionHistoryState.itemId !== itemId || _taskActionHistoryState.taskId !== taskId) {
+            _taskActionHistoryState = { itemId, taskId, status: 'loading', events: [], error: null };
+        }
+    }
+
+    function taskActionHistoryTitle(actionType) {
+        switch (actionType) {
+            case 'task_completed':
+                return 'Task completed';
+            case 'task_owner_reassigned':
+                return 'Owner reassigned';
+            case 'task_rescheduled':
+                return 'Task rescheduled';
+            default:
+                return 'Task action';
+        }
+    }
+
+    function renderTaskActionHistoryChange(event) {
+        const oldValue = event?.oldValue || {};
+        const newValue = event?.newValue || {};
+        if (event?.actionType === 'task_completed') {
+            return `status ${historyValueLabel(oldValue.status)} -> ${historyValueLabel(newValue.status)}`;
+        }
+        if (event?.actionType === 'task_owner_reassigned') {
+            return `${historyValueLabel(oldValue.assignedTo || oldValue.ownerUserId)} -> ${historyValueLabel(newValue.assignedTo || newValue.ownerUserId)}`;
+        }
+        if (event?.actionType === 'task_rescheduled') {
+            return `${historyValueLabel(oldValue.deadline || oldValue.date)} -> ${historyValueLabel(newValue.deadline || newValue.date)}`;
+        }
+        return event?.summary || '';
+    }
+
+    function renderTaskActionHistoryRows(events) {
+        return (events || []).map(event => {
+            const actor = event.actor?.name || (event.actor?.userId ? `User #${event.actor.userId}` : 'Unknown actor');
+            const created = event.createdAt ? formatQueueDateTime(event.createdAt) : '';
+            const change = renderTaskActionHistoryChange(event);
+            return `
+                <li class="reply-action-history-row">
+                    <div>
+                        <strong>${escapeHtml(taskActionHistoryTitle(event.actionType))}</strong>
+                        <span>${escapeHtml(event.summary || '')}</span>
+                    </div>
+                    <p>${escapeHtml(actor)}${created ? ` · ${escapeHtml(created)}` : ''}</p>
+                    ${change ? `<code>${escapeHtml(change)}</code>` : ''}
+                </li>
+            `;
+        }).join('');
+    }
+
+    function renderTaskActionHistory(item) {
+        if (!isTaskActionHistoryItem(item)) return '';
+        syncTaskActionHistorySelection(item);
+        const state = _taskActionHistoryState;
+        const status = state.status || 'idle';
+        let body = '';
+        if (status === 'loading' || status === 'idle') {
+            body = '<p class="reply-action-history-state" role="status">Loading task execution history...</p>';
+        } else if (status === 'error') {
+            body = `
+                <p class="reply-action-history-state error">Could not load task execution history.</p>
+                <button type="button" class="work-queue-action-btn" onclick="DashboardPage.reloadTaskActionHistory()">Retry</button>
+            `;
+        } else if (!state.events.length) {
+            body = '<p class="reply-action-history-state">No task execution history yet.</p>';
+        } else {
+            body = `<ol class="reply-action-history-list">${renderTaskActionHistoryRows(state.events)}</ol>`;
+        }
+        return `
+            <div class="work-queue-triage-card reply-action-history-card" id="taskActionHistoryPanel" aria-label="Task Action History">
+                <h4>Task Action History</h4>
+                ${body}
+            </div>
+        `;
+    }
+
     function renderReplyActionHistoryOnly() {
         const target = document.getElementById('replyActionHistoryPanel');
         const selected = _workQueueSelectedItemId ? _workQueueItemsById.get(_workQueueSelectedItemId) : null;
         if (!target || !selected) return;
         target.outerHTML = renderReplyActionHistory(selected);
+    }
+
+    function renderTaskActionHistoryOnly() {
+        const target = document.getElementById('taskActionHistoryPanel');
+        const selected = _workQueueSelectedItemId ? _workQueueItemsById.get(_workQueueSelectedItemId) : null;
+        if (!target || !selected) return;
+        target.outerHTML = renderTaskActionHistory(selected);
     }
 
     async function loadReplyActionHistoryForSelected() {
@@ -732,6 +837,43 @@ const DashboardPage = (() => {
         renderReplyActionHistoryOnly();
     }
 
+    async function loadTaskActionHistoryForSelected() {
+        const selected = _workQueueSelectedItemId ? _workQueueItemsById.get(_workQueueSelectedItemId) : null;
+        if (!isTaskActionHistoryItem(selected)) {
+            _taskActionHistoryState = { itemId: null, taskId: null, status: 'idle', events: [], error: null };
+            return;
+        }
+        const itemId = getWorkQueueItemId(selected);
+        const taskId = taskActionHistoryTaskId(selected);
+        _taskActionHistoryState = { itemId, taskId, status: 'loading', events: [], error: null };
+        renderTaskActionHistoryOnly();
+        try {
+            const token = localStorage.getItem('pzp_token');
+            if (!token) throw new Error('No active session');
+            const resp = await fetch(`/api/work-queue/tasks/${encodeURIComponent(taskId)}/history?limit=10`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || data.success === false) {
+                throw new Error(data.error || `HTTP ${resp.status}`);
+            }
+            if (_taskActionHistoryState.itemId !== itemId || _taskActionHistoryState.taskId !== taskId) return;
+            _taskActionHistoryState = {
+                itemId,
+                taskId,
+                status: 'loaded',
+                events: Array.isArray(data.events) ? data.events : [],
+                error: null
+            };
+        } catch (err) {
+            console.error('Task action history error:', err);
+            if (_taskActionHistoryState.itemId === itemId && _taskActionHistoryState.taskId === taskId) {
+                _taskActionHistoryState = { itemId, taskId, status: 'error', events: [], error: err.message };
+            }
+        }
+        renderTaskActionHistoryOnly();
+    }
+
     function nextVisibleItemIdAfter(itemId) {
         if (!_workQueueVisibleItemIds.length) return null;
         const index = _workQueueVisibleItemIds.indexOf(itemId);
@@ -756,6 +898,7 @@ const DashboardPage = (() => {
         setExecutionFeedback(`${message}${selectedMessage}`, 'success');
         renderTriageWorkspaceOnly(true);
         await loadReplyActionHistoryForSelected();
+        await loadTaskActionHistoryForSelected();
     }
 
     function renderTriageActions(item) {
@@ -776,6 +919,35 @@ const DashboardPage = (() => {
                     ${escalationAction}
                 </div>
                 <p class="work-queue-triage-action-note">Auto-advance дозволений тільки після durable mutation і refetch. Open context не вважається resolution.</p>
+            `;
+        }
+
+        if (item?.sourceType === 'task' && item?.execution?.inline) {
+            const taskId = Number(item.taskId || item.sourceId || 0);
+            const ownerState = item.meta?.ownerState || 'unassigned';
+            const ownerNote = ownerState === 'legacy_unknown_owner'
+                ? ' Legacy owner буде замінено typed owner при reassignment.'
+                : '';
+            return `
+                <div class="work-queue-triage-actions" aria-label="Task execution actions">
+                    <button type="button" class="work-queue-action-btn" data-triage-task-action onclick="DashboardPage.completeQueueTask(${taskId}, this)">Mark done</button>
+                    <button type="button" class="work-queue-action-btn" data-triage-task-action onclick="DashboardPage.reassignQueueTaskOwner(${taskId}, this, ${Number(item.meta?.ownerUserId || 0)})">Reassign owner</button>
+                    <button type="button" class="work-queue-action-btn" data-triage-task-action onclick="DashboardPage.rescheduleQueueTask(${taskId}, this)">Deadline +24h</button>
+                </div>
+                <p class="work-queue-triage-action-note">Task actions use object-level visibility, canonical tasks.owner_user_id/deadline/status, action history, and refetch after mutation.${escapeHtml(ownerNote)}</p>
+            `;
+        }
+
+        if (item?.bucket === 'needs_confirmation' && item?.execution?.inline) {
+            const bookingId = String(item.bookingId || item.sourceId || '');
+            const lateNote = item.meta?.latePreliminary
+                ? ' This is a late preliminary risk because the booking starts within 2 hours.'
+                : '';
+            return `
+                <div class="work-queue-triage-actions" aria-label="Booking confirmation actions">
+                    <button type="button" class="work-queue-action-btn" data-triage-booking-action onclick="DashboardPage.confirmQueueBooking('${escapeHtml(bookingId)}', this)">Confirm booking</button>
+                </div>
+                <p class="work-queue-triage-action-note">Confirmation uses POST /api/bookings/:id/confirm and writes bookings.status, confirmed_at, confirmed_by and history.${escapeHtml(lateNote)}</p>
             `;
         }
 
@@ -871,6 +1043,7 @@ const DashboardPage = (() => {
                         ${renderTriageActions(selected)}
                     </div>
                     ${renderReplyActionHistory(selected)}
+                    ${renderTaskActionHistory(selected)}
                 </div>
             </section>
         `;
@@ -910,6 +1083,7 @@ const DashboardPage = (() => {
         }
         renderTriageWorkspaceOnly(true);
         loadReplyActionHistoryForSelected();
+        loadTaskActionHistoryForSelected();
     }
 
     function navigateTriageItem(delta) {
@@ -920,6 +1094,7 @@ const DashboardPage = (() => {
         _workQueueSelectedItemId = _workQueueVisibleItemIds[nextIndex];
         renderTriageWorkspaceOnly(true);
         loadReplyActionHistoryForSelected();
+        loadTaskActionHistoryForSelected();
     }
 
     function nextTriageItem() {
@@ -933,6 +1108,7 @@ const DashboardPage = (() => {
     function clearTriageSelection() {
         _workQueueSelectedItemId = null;
         _replyActionHistoryState = { itemId: null, conversationId: null, status: 'idle', events: [], error: null };
+        _taskActionHistoryState = { itemId: null, taskId: null, status: 'idle', events: [], error: null };
         renderTriageWorkspaceOnly(true);
     }
 
@@ -1126,6 +1302,9 @@ const DashboardPage = (() => {
             case 'alerts':
                 renderAlerts(data, container);
                 break;
+            case 'event_risk_summary':
+                renderEventRiskSummary(data, container);
+                break;
             case 'exceptions':
                 renderExceptions(data, container);
                 break;
@@ -1186,6 +1365,33 @@ const DashboardPage = (() => {
                     <div class="stat-label">Виручка</div>
                 </div>
             </div>
+        `;
+    }
+
+    function renderEventRiskSummary(data, container) {
+        const cards = Array.isArray(data.cards) ? data.cards : [];
+        if (!cards.length) {
+            container.innerHTML = '<div class="widget-empty">Немає event-risk summary</div>';
+            return;
+        }
+        const html = cards.map(card => {
+            const count = Number(card.count || 0);
+            const tone = card.kind === 'late_preliminary' && count > 0
+                ? 'critical'
+                : (count > 0 ? 'warning' : 'quiet');
+            return `
+                <a class="event-risk-card ${tone}" href="${escapeHtml(card.href || '/dashboard#workQueuePanel')}" title="${escapeHtml(card.why || '')}">
+                    <span>${escapeHtml(card.label || card.key || 'Risk')}</span>
+                    <strong>${count}</strong>
+                </a>
+            `;
+        }).join('');
+        const meta = data.meta || {};
+        container.innerHTML = `
+            <div class="event-risk-summary-grid">${html}</div>
+            <p class="event-risk-summary-note">
+                Дані без universal score: confirmation/prep/resource cues окремо. ${meta.eventSoonSemantics ? escapeHtml(meta.eventSoonSemantics) : ''}
+            </p>
         `;
     }
 
@@ -1260,24 +1466,58 @@ const DashboardPage = (() => {
         container.innerHTML = items;
     }
 
+    function formatTeamLastSeen(value, isOnline) {
+        if (isOnline) return 'онлайн зараз';
+        if (!value) return 'активність невідома';
+        const seen = new Date(value);
+        if (Number.isNaN(seen.getTime())) return 'активність невідома';
+        const now = new Date();
+        const diffMs = now.getTime() - seen.getTime();
+        if (diffMs >= 0 && diffMs < 60 * 60 * 1000) {
+            const minutes = Math.max(1, Math.floor(diffMs / 60000));
+            return `був ${minutes} хв тому`;
+        }
+        const time = seen.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+        const today = now.toLocaleDateString('uk-UA');
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        if (seen.toLocaleDateString('uk-UA') === today) return `сьогодні о ${time}`;
+        if (seen.toLocaleDateString('uk-UA') === yesterday.toLocaleDateString('uk-UA')) return `вчора о ${time}`;
+        return `${seen.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' })} о ${time}`;
+    }
+
     function renderTeamOnline(data, container) {
-        if (!data.online || data.online.length === 0) {
-            container.innerHTML = '<div class="widget-empty">Ніхто не онлайн</div>';
+        const users = Array.isArray(data.users) ? data.users : (Array.isArray(data.online) ? data.online : []);
+        if (users.length === 0) {
+            container.innerHTML = '<div class="widget-empty">Немає даних про активність команди</div>';
             return;
         }
 
-        const items = data.online.map(m => {
-            const initial = (m.name || '?').charAt(0).toUpperCase();
-            const profileLink = m.username ? ` onclick="openStaffProfile('${m.username}')" style="cursor:pointer" title="Профіль: ${m.username}"` : '';
-            return `<div class="team-member"${profileLink}>
-                <div class="team-avatar">${initial}</div>
-                ${escapeHtml(m.name)}
+        const meta = data.meta || {};
+        const items = users.map(m => {
+            const name = m.name || m.username || 'User';
+            const initial = name.charAt(0).toUpperCase();
+            const isOnline = m.isOnline === true || m.is_online === true || m.status === 'online';
+            const isRecent = !isOnline && (m.recentlyActive === true || m.status === 'recently_active');
+            const lastSeen = m.lastSeenAt || m.lastSeen || m.last_seen || null;
+            const statusText = formatTeamLastSeen(lastSeen, isOnline);
+            const profileArg = String(m.username || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const profileLink = m.username ? ` onclick="openStaffProfile('${profileArg}')" style="cursor:pointer" title="Профіль: ${escapeHtml(m.username)}"` : '';
+            return `<div class="team-member team-presence-member ${isOnline ? 'is-online' : isRecent ? 'is-recent' : 'is-offline'}"${profileLink}>
+                <div class="team-avatar">${escapeHtml(initial)}</div>
+                <div class="team-presence-copy">
+                    <div class="team-presence-name">${escapeHtml(name)}</div>
+                    <div class="team-presence-last-seen">${escapeHtml(statusText)}</div>
+                </div>
                 ${m.username ? '<span class="staff-crm-badge has-account" style="margin-left:2px;padding:0 4px;font-size:9px">👤</span>' : ''}
-                <div class="team-online-dot"></div>
+                <div class="team-online-dot" aria-label="${isOnline ? 'онлайн зараз' : isRecent ? 'був нещодавно' : 'офлайн'}"></div>
             </div>`;
         }).join('');
 
-        container.innerHTML = `<div class="team-grid">${items}</div>`;
+        const summary = meta.returned
+            ? `<div class="team-presence-summary">${escapeHtml(`Онлайн: ${meta.onlineCount || 0}; нещодавно активні: ${meta.recentlyActiveCount || 0}`)}</div>`
+            : '';
+        container.innerHTML = `${summary}<div class="team-grid team-presence-grid">${items}</div>`;
     }
 
     function renderWeather(data, container) {
@@ -1792,6 +2032,48 @@ const DashboardPage = (() => {
         renderWidgets();
     }
 
+    function getSettingsOverlayState() {
+        return Array.from(document.querySelectorAll('#settingsWidgetList .settings-widget-item.active'))
+            .map(el => el.dataset.widget || '')
+            .join('|');
+    }
+
+    function isSettingsOverlayDirty() {
+        return getSettingsOverlayState() !== _settingsOverlayInitialState;
+    }
+
+    async function closeSettingsOverlay(force = false) {
+        const overlay = document.getElementById('settingsOverlay');
+        if (!overlay) return true;
+
+        const closeNow = () => {
+            overlay.remove();
+            _settingsOverlayInitialState = '';
+        };
+
+        if (window.UnsafeDismissGuard) {
+            return window.UnsafeDismissGuard.attemptCloseEditableSurface(overlay, closeNow, {
+                force,
+                isDirty: isSettingsOverlayDirty,
+                message: 'Є незбережені зміни в налаштуваннях дашборду. Закрити без збереження?',
+                okText: 'Закрити без збереження',
+                cancelText: 'Повернутись'
+            });
+        }
+
+        if (!force && isSettingsOverlayDirty() && typeof confirmModal === 'function') {
+            const confirmed = await confirmModal('Є незбережені зміни в налаштуваннях дашборду. Закрити без збереження?', {
+                type: 'warning',
+                okText: 'Закрити без збереження',
+                cancelText: 'Повернутись'
+            });
+            if (!confirmed) return false;
+        }
+
+        closeNow();
+        return true;
+    }
+
     // Settings modal with drag & drop reordering
     function openSettings() {
         const availableWidgets = Object.entries(WIDGET_DEFS)
@@ -1820,7 +2102,10 @@ const DashboardPage = (() => {
 
         // Remove previous settings modal if open
         const prev = document.getElementById('settingsOverlay');
-        if (prev) prev.remove();
+        if (prev) {
+            closeSettingsOverlay(false);
+            return;
+        }
 
         const overlay = document.createElement('div');
         overlay.className = 'onboarding-overlay';
@@ -1833,13 +2118,17 @@ const DashboardPage = (() => {
                 </div>
                 <div class="settings-widget-list" id="settingsWidgetList">${widgetItems}</div>
                 <div class="settings-modal-footer">
-                    <button class="dashboard-btn" onclick="document.getElementById('settingsOverlay')?.remove()">Скасувати</button>
+                    <button class="dashboard-btn" onclick="DashboardPage.closeSettingsOverlay(false)">Скасувати</button>
                     <button class="dashboard-btn primary" onclick="DashboardPage.saveSettings()">Зберегти</button>
                 </div>
             </div>
         `;
 
         document.body.appendChild(overlay);
+        _settingsOverlayInitialState = getSettingsOverlayState();
+        if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay, {
+            isDirty: isSettingsOverlayDirty
+        });
         _initDragAndDrop();
     }
 
@@ -1927,7 +2216,8 @@ const DashboardPage = (() => {
         }
 
         const overlay = document.getElementById('settingsOverlay');
-        if (overlay) overlay.remove();
+        if (window.UnsafeDismissGuard && overlay) window.UnsafeDismissGuard.markClean(overlay);
+        await closeSettingsOverlay(true);
 
         renderWidgets();
     }
@@ -2383,6 +2673,295 @@ const DashboardPage = (() => {
         }
     }
 
+    async function runTaskQueueAction(button, path, method, payload, options = {}) {
+        const token = localStorage.getItem('pzp_token');
+        if (!token) throw new Error('Немає активної сесії');
+        const previousItemId = options.previousItemId || _workQueueSelectedItemId || null;
+        const actionLabel = options.actionLabel || 'Task execution action applied.';
+
+        if (button) {
+            button.disabled = true;
+            button.setAttribute('aria-busy', 'true');
+        }
+        setExecutionFeedback('Виконуємо durable task action...', '');
+        renderTriageWorkspaceOnly(false);
+        try {
+            const resp = await fetch(path, {
+                method,
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                },
+                body: payload ? JSON.stringify(payload) : undefined
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || data.success === false) {
+                throw new Error(data.error || `HTTP ${resp.status}`);
+            }
+            await refetchQueueAfterDurableExecution(previousItemId, actionLabel);
+            return data;
+        } catch (err) {
+            console.error('Task queue action error:', err);
+            setExecutionFeedback(err.message || 'Task execution action failed; queue focus was not advanced.', 'error');
+            renderTriageWorkspaceOnly(true);
+            alert(err.message || 'Не вдалося оновити задачу');
+            throw err;
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.removeAttribute('aria-busy');
+            }
+        }
+    }
+
+    async function runBookingQueueAction(button, path, payload, options = {}) {
+        const token = localStorage.getItem('pzp_token');
+        if (!token) throw new Error('Немає активної сесії');
+        const previousItemId = options.previousItemId || _workQueueSelectedItemId || null;
+        const actionLabel = options.actionLabel || 'Booking confirmation applied.';
+
+        if (button) {
+            button.disabled = true;
+            button.setAttribute('aria-busy', 'true');
+        }
+        setExecutionFeedback('Виконуємо durable booking confirmation...', '');
+        renderTriageWorkspaceOnly(false);
+        try {
+            const resp = await fetch(path, {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload || {})
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || data.success === false) {
+                throw new Error(data.error || `HTTP ${resp.status}`);
+            }
+            await refetchQueueAfterDurableExecution(previousItemId, actionLabel);
+            return data;
+        } catch (err) {
+            console.error('Booking queue action error:', err);
+            setExecutionFeedback(err.message || 'Booking confirmation failed; queue focus was not advanced.', 'error');
+            renderTriageWorkspaceOnly(true);
+            alert(err.message || 'Не вдалося підтвердити бронювання');
+            throw err;
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.removeAttribute('aria-busy');
+            }
+        }
+    }
+
+    function confirmQueueBooking(bookingId, button) {
+        const id = String(bookingId || '').trim();
+        if (!id) return;
+        if (!window.confirm('Підтвердити preliminary бронювання?')) return;
+        return runBookingQueueAction(
+            button,
+            `/api/bookings/${encodeURIComponent(id)}/confirm`,
+            { source: 'queue' },
+            {
+                previousItemId: _workQueueSelectedItemId || `booking:needs_confirmation:${id}`,
+                actionLabel: 'Booking confirmed through narrow confirmation contract.'
+            }
+        );
+    }
+
+    function completeQueueTask(taskId, button) {
+        if (!window.confirm('Позначити задачу виконаною?')) return;
+        return runTaskQueueAction(
+            button,
+            `/api/work-queue/tasks/${encodeURIComponent(taskId)}/done`,
+            'POST',
+            { sourceSurface: 'manager_queue_task_execution_v2' },
+            {
+                previousItemId: _workQueueSelectedItemId || `task:overdue:${taskId}`,
+                actionLabel: 'Task completed through canonical tasks.status.'
+            }
+        );
+    }
+
+    function rescheduleQueueTask(taskId, button) {
+        return runTaskQueueAction(
+            button,
+            `/api/work-queue/tasks/${encodeURIComponent(taskId)}/deadline`,
+            'PATCH',
+            { snoozeHours: 24, sourceSurface: 'manager_queue_task_execution_v2' },
+            {
+                previousItemId: _workQueueSelectedItemId || `task:overdue:${taskId}`,
+                actionLabel: 'Task deadline moved by 24 hours through tasks.deadline.'
+            }
+        );
+    }
+
+    function ensureTaskOwnerPickerModal() {
+        let modal = document.getElementById('taskOwnerPickerModal');
+        if (modal) return modal;
+
+        modal = document.createElement('div');
+        modal.id = 'taskOwnerPickerModal';
+        modal.className = 'reply-owner-picker hidden';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'taskOwnerPickerTitle');
+        modal.innerHTML = `
+            <div class="reply-owner-picker-backdrop" onclick="DashboardPage.closeTaskOwnerPicker()"></div>
+            <div class="reply-owner-picker-card">
+                <div class="reply-owner-picker-head">
+                    <div>
+                        <h3 id="taskOwnerPickerTitle">Reassign task owner</h3>
+                        <p id="taskOwnerPickerHint">Choose an active assignable user. Saved value is canonical users.id.</p>
+                    </div>
+                    <button type="button" class="reply-owner-picker-close" aria-label="Закрити" onclick="DashboardPage.closeTaskOwnerPicker()">×</button>
+                </div>
+                <div id="taskOwnerPickerBody" class="reply-owner-picker-body"></div>
+                <div class="reply-owner-picker-actions">
+                    <button type="button" class="reply-owner-picker-secondary" onclick="DashboardPage.closeTaskOwnerPicker()">Скасувати</button>
+                    <button type="button" id="taskOwnerPickerSave" class="reply-owner-picker-primary" onclick="DashboardPage.saveTaskOwnerPicker(this)" disabled>Зберегти</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        return modal;
+    }
+
+    function setTaskOwnerPickerBody(html, canSave = false) {
+        const body = document.getElementById('taskOwnerPickerBody');
+        const save = document.getElementById('taskOwnerPickerSave');
+        if (body) body.innerHTML = html;
+        if (save) save.disabled = !canSave;
+    }
+
+    function renderTaskOwnerPickerUsers(users, currentOwnerUserId) {
+        const candidates = (users || []).map(user => ({ ...user, id: Number(user.id) })).filter(user => user.id > 0);
+        if (!candidates.length) {
+            setTaskOwnerPickerBody('<div class="reply-owner-picker-state">Немає активних користувачів для призначення.</div>', false);
+            return;
+        }
+        const currentId = Number(currentOwnerUserId || 0);
+        const options = candidates.map(user => {
+            const label = user.label || user.name || user.username || `User #${user.id}`;
+            const role = user.role ? ` · ${user.role}` : '';
+            return `<option value="${user.id}"${user.id === currentId ? ' selected' : ''}>${escapeHtml(`${label}${role}`)}</option>`;
+        }).join('');
+        setTaskOwnerPickerBody(`
+            <label class="reply-owner-picker-label" for="taskOwnerPickerSelect">Task owner</label>
+            <select id="taskOwnerPickerSelect" class="reply-owner-picker-select" aria-describedby="taskOwnerPickerHint">${options}</select>
+        `, true);
+        const select = document.getElementById('taskOwnerPickerSelect');
+        if (_taskOwnerPickerState) _taskOwnerPickerState.initialSelectedOwnerUserId = Number(select?.value || 0);
+        const modal = document.getElementById('taskOwnerPickerModal');
+        if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
+        window.setTimeout(() => select?.focus(), 0);
+    }
+
+    async function loadTaskOwnerPickerUsers() {
+        if (!_taskOwnerPickerState) return;
+        setTaskOwnerPickerBody('<div class="reply-owner-picker-state">Завантаження відповідальних...</div>', false);
+        try {
+            const token = localStorage.getItem('pzp_token');
+            if (!token) throw new Error('Немає активної сесії');
+            const resp = await fetch('/api/work-queue/task-owners', { headers: { 'Authorization': 'Bearer ' + token } });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || data.success === false) throw new Error(data.error || `HTTP ${resp.status}`);
+            _taskOwnerPickerState.users = Array.isArray(data.users) ? data.users : [];
+            renderTaskOwnerPickerUsers(_taskOwnerPickerState.users, _taskOwnerPickerState.currentOwnerUserId);
+        } catch (err) {
+            console.error('Task owner picker error:', err);
+            setTaskOwnerPickerBody(`
+                <div class="reply-owner-picker-state error">${escapeHtml(err.message || 'Не вдалося завантажити відповідальних')}</div>
+                <button type="button" class="reply-owner-picker-retry" onclick="DashboardPage.reloadTaskOwnerPicker()">Повторити</button>
+            `, false);
+        }
+    }
+
+    function handleTaskOwnerPickerKeydown(event) {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeTaskOwnerPicker(false);
+        }
+    }
+
+    function reassignQueueTaskOwner(taskId, button, currentOwnerUserId = null) {
+        const id = Number(taskId);
+        if (!Number.isInteger(id) || id <= 0) return;
+        const modal = ensureTaskOwnerPickerModal();
+        _taskOwnerPickerState = {
+            taskId: id,
+            currentOwnerUserId: Number(currentOwnerUserId || 0),
+            trigger: button || null,
+            users: []
+        };
+        modal.classList.remove('hidden');
+        document.addEventListener('keydown', handleTaskOwnerPickerKeydown);
+        loadTaskOwnerPickerUsers();
+    }
+
+    function reloadTaskOwnerPicker() {
+        loadTaskOwnerPickerUsers();
+    }
+
+    function isTaskOwnerPickerDirty() {
+        const select = document.getElementById('taskOwnerPickerSelect');
+        if (!_taskOwnerPickerState || !select) return false;
+        return Number(select.value || 0) !== Number(_taskOwnerPickerState.initialSelectedOwnerUserId || 0);
+    }
+
+    async function closeTaskOwnerPicker(force = false) {
+        const modal = document.getElementById('taskOwnerPickerModal');
+        const trigger = _taskOwnerPickerState?.trigger;
+        const closeNow = () => {
+            if (modal) modal.classList.add('hidden');
+            document.removeEventListener('keydown', handleTaskOwnerPickerKeydown);
+            _taskOwnerPickerState = null;
+            if (trigger && typeof trigger.focus === 'function') window.setTimeout(() => trigger.focus(), 0);
+        };
+        if (window.UnsafeDismissGuard && modal) {
+            return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, closeNow, {
+                force,
+                isDirty: isTaskOwnerPickerDirty,
+                message: 'Є незбережений вибір відповідального задачі. Закрити без збереження?',
+                okText: 'Закрити без збереження',
+                cancelText: 'Повернутись'
+            });
+        }
+        if (!force && isTaskOwnerPickerDirty() && typeof confirmModal === 'function') {
+            const confirmed = await confirmModal('Є незбережений вибір відповідального задачі. Закрити без збереження?', {
+                type: 'warning',
+                okText: 'Закрити без збереження',
+                cancelText: 'Повернутись'
+            });
+            if (!confirmed) return false;
+        }
+        closeNow();
+        return true;
+    }
+
+    async function saveTaskOwnerPicker(button) {
+        const state = _taskOwnerPickerState;
+        const select = document.getElementById('taskOwnerPickerSelect');
+        const ownerUserId = Number(select?.value);
+        const knownIds = new Set((state?.users || []).map(user => Number(user.id)).filter(id => Number.isInteger(id) && id > 0));
+        if (!state || !Number.isInteger(ownerUserId) || ownerUserId <= 0 || !knownIds.has(ownerUserId)) {
+            setTaskOwnerPickerBody('<div class="reply-owner-picker-state error">Оберіть користувача зі списку.</div>', false);
+            return;
+        }
+        await runTaskQueueAction(
+            button,
+            `/api/work-queue/tasks/${encodeURIComponent(state.taskId)}/owner`,
+            'PATCH',
+            { ownerUserId, sourceSurface: 'manager_queue_task_execution_v2' },
+            {
+                previousItemId: _workQueueSelectedItemId || `task:overdue:${state.taskId}`,
+                actionLabel: 'Task owner reassigned through canonical tasks.owner_user_id.'
+            }
+        );
+        await closeTaskOwnerPicker(true);
+    }
+
     function ensureReplyOwnerPickerModal() {
         let modal = document.getElementById('replyOwnerPickerModal');
         if (modal) return modal;
@@ -2457,8 +3036,11 @@ const DashboardPage = (() => {
             </select>
         `, true);
 
+        const select = document.getElementById('replyOwnerPickerSelect');
+        if (_replyOwnerPickerState) _replyOwnerPickerState.initialSelectedOwnerUserId = Number(select?.value || 0);
+        const modal = document.getElementById('replyOwnerPickerModal');
+        if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
         window.setTimeout(() => {
-            const select = document.getElementById('replyOwnerPickerSelect');
             if (select) select.focus();
         }, 0);
     }
@@ -2490,7 +3072,7 @@ const DashboardPage = (() => {
     function handleReplyOwnerPickerKeydown(event) {
         if (event.key === 'Escape') {
             event.preventDefault();
-            closeReplyOwnerPicker();
+            closeReplyOwnerPicker(false);
         }
     }
 
@@ -2514,15 +3096,42 @@ const DashboardPage = (() => {
         loadReplyOwnerPickerUsers();
     }
 
-    function closeReplyOwnerPicker() {
+    function isReplyOwnerPickerDirty() {
+        const select = document.getElementById('replyOwnerPickerSelect');
+        if (!_replyOwnerPickerState || !select) return false;
+        return Number(select.value || 0) !== Number(_replyOwnerPickerState.initialSelectedOwnerUserId || 0);
+    }
+
+    async function closeReplyOwnerPicker(force = false) {
         const modal = document.getElementById('replyOwnerPickerModal');
         const trigger = _replyOwnerPickerState?.trigger;
-        if (modal) modal.classList.add('hidden');
-        document.removeEventListener('keydown', handleReplyOwnerPickerKeydown);
-        _replyOwnerPickerState = null;
-        if (trigger && typeof trigger.focus === 'function') {
-            window.setTimeout(() => trigger.focus(), 0);
+        const closeNow = () => {
+            if (modal) modal.classList.add('hidden');
+            document.removeEventListener('keydown', handleReplyOwnerPickerKeydown);
+            _replyOwnerPickerState = null;
+            if (trigger && typeof trigger.focus === 'function') {
+                window.setTimeout(() => trigger.focus(), 0);
+            }
+        };
+        if (window.UnsafeDismissGuard && modal) {
+            return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, closeNow, {
+                force,
+                isDirty: isReplyOwnerPickerDirty,
+                message: 'Є незбережений вибір відповідального reply. Закрити без збереження?',
+                okText: 'Закрити без збереження',
+                cancelText: 'Повернутись'
+            });
         }
+        if (!force && isReplyOwnerPickerDirty() && typeof confirmModal === 'function') {
+            const confirmed = await confirmModal('Є незбережений вибір відповідального reply. Закрити без збереження?', {
+                type: 'warning',
+                okText: 'Закрити без збереження',
+                cancelText: 'Повернутись'
+            });
+            if (!confirmed) return false;
+        }
+        closeNow();
+        return true;
     }
 
     async function saveReplyOwnerPicker(button) {
@@ -2554,7 +3163,7 @@ const DashboardPage = (() => {
                 }
             );
         }
-        closeReplyOwnerPicker();
+        await closeReplyOwnerPicker(true);
     }
 
     function snoozeReplySla(conversationId, button) {
@@ -2644,8 +3253,16 @@ const DashboardPage = (() => {
         reassignReplyOwner,
         reloadReplyOwnerPicker,
         reloadReplyActionHistory: loadReplyActionHistoryForSelected,
+        reloadTaskActionHistory: loadTaskActionHistoryForSelected,
         closeReplyOwnerPicker,
         saveReplyOwnerPicker,
+        reassignQueueTaskOwner,
+        reloadTaskOwnerPicker,
+        closeTaskOwnerPicker,
+        saveTaskOwnerPicker,
+        completeQueueTask,
+        rescheduleQueueTask,
+        confirmQueueBooking,
         snoozeReplySla,
         clearReplyExpectation,
         escalateReplyExpectation,
@@ -2654,6 +3271,7 @@ const DashboardPage = (() => {
         toggleOnboardingWidget,
         saveOnboarding,
         openSettings,
+        closeSettingsOverlay,
         toggleSettingsWidget,
         saveSettings,
         switchTestRole,

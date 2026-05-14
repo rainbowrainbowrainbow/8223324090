@@ -79,6 +79,53 @@ function getTaskDeepLinkId() {
     return Number.isInteger(taskId) && taskId > 0 ? taskId : null;
 }
 
+function currentUserId() {
+    const parsed = Number(AppState.currentUser?.id || AppState.currentUser?.userId || 0);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function taskOwnerUserId(task = {}) {
+    const parsed = Number(task.ownerUserId || task.owner_user_id || 0);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function isTaskOwnedByCurrentUser(task = {}) {
+    const ownerId = taskOwnerUserId(task);
+    if (ownerId) return ownerId === currentUserId();
+    return false;
+}
+
+function getTaskOwnerLabel(task = {}) {
+    return task.ownerLabel || task.owner_label || task.assigned_to || task.owner || '';
+}
+
+function getTaskOwnerState(task = {}) {
+    return task.ownerState || task.owner_state || (taskOwnerUserId(task) ? 'typed' : (getTaskOwnerLabel(task) ? 'legacy_unknown_owner' : 'unassigned'));
+}
+
+function getTaskOwnerStateLabel(task = {}) {
+    const state = getTaskOwnerState(task);
+    if (state === 'typed') return 'assigned';
+    if (state === 'legacy_unknown_owner') return 'legacy-unknown';
+    return 'unassigned';
+}
+
+function renderTaskIntelligence(task = {}) {
+    const intel = task.intelligence || {};
+    const pieces = [];
+    if (intel.priorityBand) pieces.push(`<span class="task-intel-badge task-intel-${escapeHtml(intel.priorityBand)}">${escapeHtml(intel.priorityBand)}</span>`);
+    if (intel.recommendedAction) pieces.push(`<span class="task-intel-badge">${escapeHtml(intel.recommendedAction)}</span>`);
+    return pieces.join('');
+}
+
+function formatDateTimeInput(value) {
+    if (!value) return '';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function openTaskDeepLink() {
     const taskId = getTaskDeepLinkId();
     if (taskId) openTaskDetail(taskId);
@@ -101,7 +148,7 @@ async function initPage() {
     const userEl = document.getElementById('currentUser');
     if (userEl) userEl.textContent = user.name;
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
-    _loadAssigneeDropdown();
+    await _loadAssigneeDropdown();
 
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
@@ -297,6 +344,61 @@ async function apiGetTaskPermissions() {
     } catch (err) { console.error('API getTaskPermissions error:', err); return null; }
 }
 
+async function apiGetTaskOwners() {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/owners`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        if (!response.ok) return [];
+        const data = await response.json();
+        return data.users || [];
+    } catch (err) { console.error('API getTaskOwners error:', err); return []; }
+}
+
+async function apiGetTaskHistory(taskId) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${taskId}/history?limit=10`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { success: false, history: [] };
+        if (!response.ok) throw new Error('history API error');
+        return await response.json();
+    } catch (err) { console.error('API getTaskHistory error:', err); return { success: false, history: [], error: err.message }; }
+}
+
+async function apiCompleteTask(taskId) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${taskId}/complete`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ sourceSurface: 'task_page' })
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) { console.error('API completeTask error:', err); return null; }
+}
+
+async function apiReassignTask(taskId, ownerUserId) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${taskId}/reassign`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ ownerUserId, sourceSurface: 'task_page' })
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) { console.error('API reassignTask error:', err); return null; }
+}
+
+async function apiRescheduleTask(taskId, deadline) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${taskId}/reschedule`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ deadline, sourceSurface: 'task_page' })
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) { console.error('API rescheduleTask error:', err); return null; }
+}
+
 // ==========================================
 // LOAD & RENDER
 // ==========================================
@@ -428,12 +530,11 @@ function resetTaskFilters() {
 function updateCounts() {
     const today = getTodayStr();
     const week = getWeekRange();
-    const username = AppState.currentUser?.name;
 
     const active = filterByCategory(allTasks.filter(t => t.status !== 'done'));
     const todayTasks = active.filter(t => t.date === today || !t.date);
     const weekTasks = active.filter(t => t.date >= week.from && t.date <= week.to);
-    const myTasks = active.filter(t => t.assigned_to && t.assigned_to === username);
+    const myTasks = active.filter(isTaskOwnedByCurrentUser);
 
     document.getElementById('countToday').textContent = todayTasks.length;
     document.getElementById('countWeek').textContent = weekTasks.length;
@@ -527,8 +628,7 @@ function renderWeekView(container) {
 // ==========================================
 
 function renderMyView(container) {
-    const username = AppState.currentUser?.name;
-    const baseTasks = allTasks.filter(t => t.assigned_to && t.assigned_to === username && t.status !== 'done');
+    const baseTasks = allTasks.filter(t => isTaskOwnedByCurrentUser(t) && t.status !== 'done');
     let tasks = baseTasks;
     tasks = filterByCategory(tasks);
 
@@ -664,8 +764,16 @@ function renderTaskCard(t) {
     const escLevel = t.escalation_level || 0;
     const escHtml = escLevel > 0 ? `<span class="escalation-dot escalation-${escLevel}" title="Ескалація: рівень ${escLevel}"></span>` : '';
 
-    // v10.0: Owner line
-    const ownerHtml = (t.owner && t.owner !== t.assigned_to) ? `<span class="task-card-owner">${escapeHtml(t.owner)}</span>` : '';
+    const ownerLabel = getTaskOwnerLabel(t);
+    const ownerState = getTaskOwnerStateLabel(t);
+    const ownerClass = ownerState === 'assigned' ? 'task-assignee-badge' : 'task-no-assignee';
+    const ownerTitle = ownerState === 'legacy-unknown'
+        ? 'Legacy owner label without typed user id'
+        : (ownerState === 'unassigned' ? 'Task has no typed owner' : 'Typed task owner');
+    const ownerHtml = ownerLabel
+        ? `<span class="${ownerClass}" title="${escapeHtml(ownerTitle)}">👤 ${escapeHtml(ownerLabel)} <small>${escapeHtml(ownerState)}</small></span>`
+        : '<span class="task-no-assignee">— unassigned</span>';
+    const intelHtml = renderTaskIntelligence(t);
 
     return `
     <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''}" data-task-id="${t.id}" onclick="openTaskDetail(${t.id})" style="cursor:pointer">
@@ -678,8 +786,8 @@ function renderTaskCard(t) {
             <span>${catInfo.icon} ${catInfo.label}</span>
             ${t.date ? `<span>${formatDateShort(t.date)}</span>` : ''}
             ${deadlineHtml}
-            ${t.assigned_to ? `<span class="task-assignee-badge" title="Відповідальний: ${escapeHtml(t.assigned_to)}">👤 ${escapeHtml(t.assigned_to)}</span>` : '<span class="task-no-assignee">— нікому</span>'}
             ${ownerHtml}
+            ${intelHtml}
             ${t.type === 'recurring' ? '<span class="badge badge-normal">Повтор</span>' : ''}
             ${t.type === 'afisha' ? '<span class="badge badge-normal">Афіша</span>' : ''}
         </div>
@@ -697,15 +805,11 @@ function renderTaskCard(t) {
 let _assigneeList = [];
 async function _loadAssigneeDropdown() {
     try {
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch('/api/hr/staff?active=true', { headers: { 'Authorization': `Bearer ${token}` } });
-        if (!res.ok) return;
-        const data = await res.json();
-        _assigneeList = (data.data || []).filter(s => s.name).sort((a, b) => a.name.localeCompare(b.name, 'uk'));
+        _assigneeList = (await apiGetTaskOwners()).sort((a, b) => String(a.label || '').localeCompare(String(b.label || ''), 'uk'));
         const sel = document.getElementById('taskAssignedTo');
         if (sel) {
             sel.innerHTML = '<option value="">— нікому —</option>' +
-                _assigneeList.map(s => `<option value="${s.name}">${s.name}${s.role_type ? ' (' + s.role_type + ')' : ''}</option>`).join('');
+                _assigneeList.map(s => `<option value="${s.id}">${escapeHtml(s.label || s.name || s.username || ('User #' + s.id))}${s.role ? ' (' + escapeHtml(s.role) + ')' : ''}</option>`).join('');
         }
     } catch {}
 }
@@ -721,10 +825,11 @@ async function addTask() {
     const priority = document.getElementById('taskPriority')?.value;
     const taskType = document.getElementById('taskType')?.value || 'human';
     const deadlineTime = document.getElementById('taskDeadlineTime')?.value || '';
-    const assignedTo = document.getElementById('taskAssignedTo')?.value || null;
+    const ownerUserId = document.getElementById('taskAssignedTo')?.value || null;
     const today = getTodayStr();
 
-    const data = { title, date: today, priority, category, task_type: taskType, source_type: 'manual', assigned_to: assignedTo };
+    const data = { title, date: today, priority, category, task_type: taskType, source_type: 'manual' };
+    if (ownerUserId) data.ownerUserId = ownerUserId;
 
     // Build deadline if time specified
     if (deadlineTime) {
@@ -743,13 +848,11 @@ async function addTask() {
 }
 
 async function cycleStatus(taskId, newStatus) {
-    const result = await apiPatchTaskStatus(taskId, newStatus);
+    const result = newStatus === 'done'
+        ? await apiCompleteTask(taskId)
+        : await apiPatchTaskStatus(taskId, newStatus);
     if (result && result.success) {
-        // Update local cache
-        const task = allTasks.find(t => t.id === taskId);
-        if (task) task.status = newStatus;
-        updateCounts();
-        renderBoard();
+        await loadAllTasks();
         // v10.0: Reload points if task completed (Kleshnya awards points)
         if (newStatus === 'done') loadMyPoints();
     } else {
@@ -878,7 +981,7 @@ async function bulkAction(action) {
     if (result && result.success) {
         showNotification(`${labels[action] || action}: ${result.affected || ids.length} задач`, 'success');
         clearBulkSelection();
-        await loadAndRender();
+        await loadAllTasks();
     } else {
         showNotification('Помилка bulk операції', 'error');
     }
@@ -896,6 +999,59 @@ window.clearBulkSelection = clearBulkSelection;
 // ==========================================
 
 // Open task detail modal (from alerts deep-link or card click)
+let _taskDetailInitialState = null;
+
+function getTaskDetailFormState() {
+    const ids = ['_tdTitle', '_tdDesc', '_tdStatus', '_tdPriority', '_tdDeadline', '_tdAssigned', '_tdCategory'];
+    return ids.map(id => {
+        const el = document.getElementById(id);
+        return el ? String(el.value || '') : '';
+    }).join('|');
+}
+
+function resetTaskDetailDirtyState() {
+    _taskDetailInitialState = getTaskDetailFormState();
+}
+
+function isTaskDetailDirty() {
+    return _taskDetailInitialState !== null && getTaskDetailFormState() !== _taskDetailInitialState;
+}
+
+async function closeTaskDetailOverlay(force) {
+    const overlay = document.getElementById('taskDetailOverlay');
+    if (!overlay) return true;
+    if (window.UnsafeDismissGuard) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(overlay, () => {
+            overlay.remove();
+            _taskDetailInitialState = null;
+        }, {
+            force,
+            isDirty: isTaskDetailDirty,
+            message: 'Є незбережені зміни в задачі. Закрити без збереження?',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+    }
+    if (!force && isTaskDetailDirty()) {
+        const message = 'Є незбережені зміни в задачі. Закрити без збереження?';
+        let confirmed = true;
+        if (typeof confirmModal === 'function') {
+            confirmed = await confirmModal(message, { type: 'warning', okText: 'Закрити' });
+        } else {
+            try {
+                confirmed = typeof window.confirm === 'function' ? window.confirm(message) : false;
+            } catch {
+                confirmed = false;
+            }
+        }
+        if (!confirmed) return false;
+    }
+    overlay.remove();
+    _taskDetailInitialState = null;
+    return true;
+}
+window.closeTaskDetailOverlay = closeTaskDetailOverlay;
+
 async function openTaskDetail(taskId) {
     try {
         const token = localStorage.getItem('pzp_token');
@@ -919,18 +1075,27 @@ async function openTaskDetail(taskId) {
             overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)';
             document.body.appendChild(overlay);
         }
-        overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+        overlay.onclick = function(e) { if (e.target === overlay) closeTaskDetailOverlay(false); };
 
-        const dlIso = t.deadline ? new Date(t.deadline).toISOString().slice(0, 16) : '';
+        const dlIso = formatDateTimeInput(t.deadline);
+        const ownerSelectHtml = _assigneeList.map(s => {
+            const selected = taskOwnerUserId(t) === Number(s.id) ? ' selected' : '';
+            const label = s.label || s.name || s.username || ('User #' + s.id);
+            return `<option value="${s.id}"${selected}>${escapeHtml(label)}${s.role ? ' (' + escapeHtml(s.role) + ')' : ''}</option>`;
+        }).join('');
+        const ownerStateLabel = getTaskOwnerStateLabel(t);
+        const taskIntel = t.intelligence || {};
+        const taskWhy = Array.isArray(taskIntel.why) ? taskIntel.why.join(' ') : (taskIntel.why || '');
         const _lbl = 'style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:3px"';
         const _inp = 'style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box"';
 
+        overlay.dataset.taskVersion = t.version || 1;
         overlay.innerHTML = `<div style="background:var(--white,#fff);border-radius:16px;max-width:520px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
             <div style="padding:16px 20px;border-bottom:1px solid var(--gray-100);display:flex;align-items:center;gap:12px">
                 <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${statusColor}"></span>
                 <h3 style="margin:0;font-size:16px;font-weight:800;flex:1">Задача #${t.id}</h3>
                 <span style="font-size:11px;color:var(--gray-400)">Автор: ${escapeHtml(t.created_by || '—')}</span>
-                <button onclick="document.getElementById('taskDetailOverlay').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--gray-400);padding:4px">✕</button>
+                <button onclick="closeTaskDetailOverlay(false)" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--gray-400);padding:4px">✕</button>
             </div>
             <div style="padding:16px 20px;display:flex;flex-direction:column;gap:10px">
                 <div><label ${_lbl}>Назва</label><input id="_tdTitle" value="${escapeHtml(t.title || '')}" ${_inp}></div>
@@ -951,7 +1116,7 @@ async function openTaskDetail(taskId) {
                     <div style="flex:1"><label ${_lbl}>Дедлайн${isOverdue ? ' ⚠️' : ''}</label><input id="_tdDeadline" type="datetime-local" value="${dlIso}" ${_inp}></div>
                     <div style="flex:1"><label ${_lbl}>Призначено</label><select id="_tdAssigned" ${_inp} style="width:100%;padding:8px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit">
                         <option value="">— нікому —</option>
-                        ${_assigneeList.map(s => `<option value="${escapeHtml(s.name)}"${t.assigned_to === s.name ? ' selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
+                        ${ownerSelectHtml}
                     </select></div>
                 </div>
                 <div><label ${_lbl}>Категорія</label><select id="_tdCategory" ${_inp} style="width:100%;padding:8px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit">
@@ -962,12 +1127,34 @@ async function openTaskDetail(taskId) {
                     <option value="personal" ${t.category==='personal'?'selected':''}>Особисте</option>
                     <option value="improvement" ${t.category==='improvement'?'selected':''}>Покращення</option>
                 </select></div>
+                <div style="border:1px solid var(--gray-100);border-radius:10px;padding:10px;background:rgba(15,23,42,0.03)">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--gray-600)">
+                        <strong>Task operations</strong>
+                        <span>${escapeHtml(ownerStateLabel)}</span>
+                        ${taskIntel.priorityBand ? `<span class="task-intel-badge task-intel-${escapeHtml(taskIntel.priorityBand)}">${escapeHtml(taskIntel.priorityBand)}</span>` : ''}
+                        ${taskIntel.recommendedAction ? `<span class="task-intel-badge">${escapeHtml(taskIntel.recommendedAction)}</span>` : ''}
+                    </div>
+                    ${taskWhy ? `<div style="margin-top:6px;font-size:12px;color:var(--gray-500)">${escapeHtml(taskWhy)}</div>` : ''}
+                </div>
+                <div style="border:1px solid var(--gray-100);border-radius:10px;padding:10px">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+                        <strong style="font-size:13px">Task Action History</strong>
+                        <button type="button" onclick="loadTaskHistory(${t.id})" style="border:1px solid var(--gray-200);background:none;border-radius:8px;padding:4px 8px;font-size:12px;cursor:pointer">Оновити</button>
+                    </div>
+                    <div id="_tdHistory" style="font-size:12px;color:var(--gray-500)">Завантаження історії...</div>
+                </div>
             </div>
-            <div style="padding:12px 20px;border-top:1px solid var(--gray-100);display:flex;gap:8px">
-                <button onclick="saveTaskDetail(${t.id})" style="flex:2;padding:10px;border:none;border-radius:10px;background:linear-gradient(135deg,#10B981,#059669);color:#fff;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">💾 Зберегти</button>
-                <button onclick="document.getElementById('taskDetailOverlay').remove()" style="flex:1;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:none;cursor:pointer;font-family:inherit;font-size:13px">Скасувати</button>
+            <div style="padding:12px 20px;border-top:1px solid var(--gray-100);display:flex;gap:8px;flex-wrap:wrap">
+                <button onclick="saveTaskDetail(${t.id})" style="flex:2;min-width:120px;padding:10px;border:none;border-radius:10px;background:linear-gradient(135deg,#10B981,#059669);color:#fff;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">💾 Зберегти</button>
+                <button onclick="taskDetailComplete(${t.id})" ${t.status === 'done' ? 'disabled' : ''} style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#10B981;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">Done</button>
+                <button onclick="taskDetailReassign(${t.id})" style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#2563EB;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">Reassign</button>
+                <button onclick="taskDetailReschedule(${t.id})" style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#F59E0B;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">Reschedule</button>
+                <button onclick="closeTaskDetailOverlay(false)" style="flex:1;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:none;cursor:pointer;font-family:inherit;font-size:13px">Скасувати</button>
             </div>
         </div>`;
+        resetTaskDetailDirtyState();
+        if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay);
+        loadTaskHistory(t.id);
 
         // Highlight card in list
         document.querySelectorAll('.task-card').forEach(c => c.style.outline = '');
@@ -977,19 +1164,116 @@ async function openTaskDetail(taskId) {
 }
 window.openTaskDetail = openTaskDetail;
 
+function historyActionTitle(actionType) {
+    const labels = {
+        task_completed: 'Task completed',
+        task_owner_reassigned: 'Owner reassigned',
+        task_rescheduled: 'Task rescheduled'
+    };
+    return labels[actionType] || actionType || 'Task action';
+}
+
+function shortHistoryValue(value = {}) {
+    if (!value || typeof value !== 'object') return '';
+    if (value.status) return `status: ${value.status}`;
+    if (value.ownerUserId !== undefined) return `owner: ${value.ownerUserId || 'none'}`;
+    if (value.deadline !== undefined) return `deadline: ${value.deadline || 'none'}`;
+    return '';
+}
+
+function renderTaskHistory(history = []) {
+    if (!history.length) return '<div style="color:var(--gray-400)">Ще немає історії дій</div>';
+    return history.map(event => {
+        const oldValue = shortHistoryValue(event.oldValue);
+        const newValue = shortHistoryValue(event.newValue);
+        const when = event.createdAt ? new Date(event.createdAt).toLocaleString('uk-UA') : '';
+        return `<div style="border-top:1px solid var(--gray-100);padding:7px 0">
+            <div style="display:flex;justify-content:space-between;gap:8px"><strong>${escapeHtml(historyActionTitle(event.actionType))}</strong><span>${escapeHtml(when)}</span></div>
+            <div>${escapeHtml(event.actor?.name || 'system')}</div>
+            ${(oldValue || newValue) ? `<div style="color:var(--gray-500)">${escapeHtml(oldValue || '—')} → ${escapeHtml(newValue || '—')}</div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+async function loadTaskHistory(taskId) {
+    const target = document.getElementById('_tdHistory');
+    if (!target) return;
+    target.textContent = 'Завантаження історії...';
+    const result = await apiGetTaskHistory(taskId);
+    if (!result?.success) {
+        target.innerHTML = '<div style="color:#ef4444">Не вдалося завантажити історію</div>';
+        return;
+    }
+    target.innerHTML = renderTaskHistory(result.history || []);
+}
+window.loadTaskHistory = loadTaskHistory;
+
+async function taskDetailComplete(taskId) {
+    const result = await apiCompleteTask(taskId);
+    if (result?.success) {
+        showNotification('Задачу виконано', 'success');
+        await closeTaskDetailOverlay(true);
+        await loadAllTasks();
+        return;
+    }
+    showNotification(result?.error || 'Не вдалося виконати задачу', 'error');
+}
+window.taskDetailComplete = taskDetailComplete;
+
+async function taskDetailReassign(taskId) {
+    const ownerUserId = document.getElementById('_tdAssigned')?.value;
+    if (!ownerUserId) {
+        showNotification('Оберіть typed owner для reassignment', 'error');
+        return;
+    }
+    const result = await apiReassignTask(taskId, ownerUserId);
+    if (result?.success) {
+        showNotification('Owner задачі змінено', 'success');
+        await loadTaskHistory(taskId);
+        resetTaskDetailDirtyState();
+        await loadAllTasks();
+        return;
+    }
+    showNotification(result?.error || 'Не вдалося змінити owner', 'error');
+}
+window.taskDetailReassign = taskDetailReassign;
+
+async function taskDetailReschedule(taskId) {
+    const deadline = document.getElementById('_tdDeadline')?.value;
+    if (!deadline) {
+        showNotification('Вкажіть дедлайн для reschedule', 'error');
+        return;
+    }
+    const result = await apiRescheduleTask(taskId, deadline);
+    if (result?.success) {
+        showNotification('Дедлайн задачі оновлено', 'success');
+        await loadTaskHistory(taskId);
+        resetTaskDetailDirtyState();
+        await loadAllTasks();
+        return;
+    }
+    showNotification(result?.error || 'Не вдалося змінити дедлайн', 'error');
+}
+window.taskDetailReschedule = taskDetailReschedule;
+
 async function saveTaskDetail(taskId) {
     const title = document.getElementById('_tdTitle')?.value.trim();
     if (!title) { showNotification('Назва обов\'язкова', 'error'); return; }
+    const selectedStatus = document.getElementById('_tdStatus')?.value || 'todo';
+    if (selectedStatus === 'done') {
+        await taskDetailComplete(taskId);
+        return;
+    }
     try {
         const token = localStorage.getItem('pzp_token');
         const body = {
             title,
             description: document.getElementById('_tdDesc')?.value.trim() || null,
-            status: document.getElementById('_tdStatus')?.value || 'todo',
+            status: selectedStatus,
             priority: document.getElementById('_tdPriority')?.value || 'normal',
             category: document.getElementById('_tdCategory')?.value || 'admin',
-            assigned_to: document.getElementById('_tdAssigned')?.value.trim() || null,
-            deadline: document.getElementById('_tdDeadline')?.value || null
+            deadline: document.getElementById('_tdDeadline')?.value || null,
+            version: document.getElementById('taskDetailOverlay')?.dataset?.taskVersion || undefined
         };
         const res = await fetch(`/api/tasks/${taskId}`, {
             method: 'PUT',
@@ -997,9 +1281,9 @@ async function saveTaskDetail(taskId) {
             body: JSON.stringify(body)
         });
         if (res.ok) {
-            document.getElementById('taskDetailOverlay')?.remove();
+            await closeTaskDetailOverlay(true);
             showNotification('Задачу збережено');
-            if (typeof loadTasks === 'function') loadTasks();
+            await loadAllTasks();
         } else {
             const data = await res.json().catch(() => ({}));
             showNotification(data.error || 'Помилка збереження', 'error');
@@ -1009,6 +1293,10 @@ async function saveTaskDetail(taskId) {
 window.saveTaskDetail = saveTaskDetail;
 
 async function quickChangeStatus(taskId, newStatus) {
+    if (newStatus === 'done') {
+        await taskDetailComplete(taskId);
+        return;
+    }
     try {
         const token = localStorage.getItem('pzp_token');
         await fetch(`/api/tasks/${taskId}/status`, {
@@ -1016,9 +1304,9 @@ async function quickChangeStatus(taskId, newStatus) {
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({ status: newStatus })
         });
-        document.getElementById('taskDetailOverlay')?.remove();
+        await closeTaskDetailOverlay(true);
         showNotification('Статус змінено');
-        if (typeof loadTasks === 'function') loadTasks();
+        await loadAllTasks();
     } catch (err) { showNotification('Помилка зміни статусу: ' + (err.message || ''), 'error'); }
 }
 window.quickChangeStatus = quickChangeStatus;

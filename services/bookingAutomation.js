@@ -84,11 +84,15 @@ function matchesCondition(condition, booking) {
     if (!condition) return false;
     const productId = booking.programId || booking.program_id;
     const category = booking.category;
+    const pinataMode = booking.pinataMode || booking.pinata_mode;
+    const isClientPinataService = pinataMode === 'client';
 
     if (condition.product_ids && Array.isArray(condition.product_ids)) {
+        if (isClientPinataService && condition.product_ids.some(id => String(id).startsWith('pinata'))) return false;
         if (condition.product_ids.includes(productId)) return true;
     }
     if (condition.categories && Array.isArray(condition.categories)) {
+        if (isClientPinataService && condition.categories.includes('pinata')) return false;
         if (condition.categories.includes(category)) return true;
     }
     return false;
@@ -120,10 +124,17 @@ async function executeCreateTask(action, booking, rule) {
     const bookingId = booking.id || null;
 
     await pool.query(
-        `INSERT INTO tasks (title, date, status, priority, category, created_by, type)
-         VALUES ($1, $2, 'todo', $3, $4, $5, 'auto_complete')`,
-        [title, taskDate, action.priority || 'normal', action.category || 'purchase',
-         booking.createdBy || booking.created_by || 'system']
+        `INSERT INTO tasks (title, date, status, priority, category, created_by, type, source_type, source_id)
+         VALUES ($1, $2, 'todo', $3, $4, $5, 'auto_complete', $6, $7)`,
+        [
+            title,
+            taskDate,
+            action.priority || 'normal',
+            action.category || 'purchase',
+            booking.createdBy || booking.created_by || 'system',
+            bookingId ? 'booking' : 'manual',
+            bookingId ? String(bookingId) : null
+        ]
     );
     log.info(`Auto-task created: "${title}" for ${taskDate} (rule: ${rule.name})`);
 }

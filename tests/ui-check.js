@@ -78,7 +78,7 @@ function walkFiles(dir, matcher) {
 // PAGE CHECKS
 // ═══════════════════════════════════════════════════
 
-checkPage('index.html', (doc) => {
+checkPage('index.html', (doc, html) => {
     const modalsCss = fs.readFileSync(path.join(ROOT, 'css', 'modals.css'), 'utf8');
     const productSalesBtnRule = modalsCss.match(/\.btn-product-sales\s*\{([\s\S]*?)\}/)?.[1] || '';
     const darkProductSalesBtnRule = modalsCss.match(/body\.dark-mode\s+\.btn-product-sales\s*\{([\s\S]*?)\}/)?.[1] || '';
@@ -98,6 +98,9 @@ checkPage('index.html', (doc) => {
     check('Timeline product sales export buttons are styled as buttons', doc.getElementById('productSalesXlsxBtn')?.classList.contains('product-sales-export-btn') && doc.getElementById('productSalesCsvBtn')?.classList.contains('product-sales-export-btn'));
     check('Timeline product sales button has readable light text color', productSalesBtnRule.includes('color: var(--gray-800'));
     check('Timeline product sales button has readable dark text color', darkProductSalesBtnRule.includes('color: var(--text-primary'));
+    check('Booking pinata mode selector exists', !!doc.getElementById('pinataMode'));
+    check('Booking client pinata service fields exist', !!doc.getElementById('clientPinataServiceFields') && !!doc.getElementById('clientPinataServicePrice'));
+    check('Park pinata filler excludes client-owned option', !html.includes('value="Клієнта"'));
 });
 
 checkPage('dashboard.html', (doc, html) => {
@@ -330,13 +333,45 @@ check('Customers page opens existing customer deep links', customersCode.include
 check('Customer card exposes communication hub context', customersCode.includes('fetchCustomerCommunicationContext') && customersCode.includes('/communication-context') && customersCode.includes('renderCustomerCommunicationHub') && customersCode.includes('customerCommHub'));
 check('Customer communication hub has exact/suggested/unavailable styling', htmlContains('customers.html', '.customer-hub-pill.exact') && htmlContains('customers.html', '.customer-hub-pill.suggested') && htmlContains('customers.html', '.customer-hub-pill.unavailable'));
 check('Tasks page opens task deep links', tasksCode.includes('getTaskDeepLinkId') && tasksCode.includes('openTaskDetail(taskId)'));
+check('Task detail overlay uses guarded close instead of direct backdrop removal', tasksCode.includes('function isTaskDetailDirty') && tasksCode.includes('closeTaskDetailOverlay(false)') && !tasksCode.includes("taskDetailOverlay')?.remove()"));
+check('Task detail save sends stale-write version from selected task', tasksCode.includes('dataset.taskVersion') && tasksCode.includes('version: document.getElementById'));
+const dashboardPageCode = fs.readFileSync(path.join(ROOT, 'js/dashboard-page.js'), 'utf8');
+check('Dashboard team online renders last-seen presence states', dashboardPageCode.includes('formatTeamLastSeen') && dashboardPageCode.includes('онлайн зараз') && dashboardPageCode.includes('був ${minutes} хв тому') && dashboardPageCode.includes('team-presence-last-seen'));
+const dashboardRouteCode = fs.readFileSync(path.join(ROOT, 'routes/dashboard.js'), 'utf8');
+check('Dashboard team online endpoint distinguishes websocket online from last seen', dashboardRouteCode.includes('getOnlineUserIds') && dashboardRouteCode.includes('lastSeenSource') && dashboardRouteCode.includes('recentlyActive'));
 check('Omni page applies contextual search query', omniHtml.includes('applyQueryContext') && omniHtml.includes("params.get('search')"));
 check('Center hot leads update canonical pipeline stage', centerCode.includes('JSON.stringify({ pipeline_stage: status })'));
 check('Explainability helper exposes filter summary and empty state renderers', uiCode.includes('window.Explainability') && uiCode.includes('renderFilterSummary') && uiCode.includes('renderEmptyState'));
 check('Explainability shared styles exist', pagesCss.includes('.explain-filter-summary') && pagesCss.includes('.explain-empty') && pagesCss.includes('.explain-clear-btn'));
 check('Tasks counts are category-aware', tasksCode.includes('const active = filterByCategory(allTasks.filter') && tasksCode.includes('taskEmptyState'));
 check('Leads, Customers, Omni expose clearable filter summaries', leadsCode.includes('resetLeadFilters') && customersCode.includes('resetCustomerFilters') && omniHtml.includes('resetOmniFilters'));
-check('Dashboard work queue surfaces endpoint metadata', fs.readFileSync(path.join(ROOT, 'js/dashboard-page.js'), 'utf8').includes('renderWorkQueueExplainability') && fs.readFileSync(path.join(ROOT, 'js/dashboard-page.js'), 'utf8').includes('omittedBuckets'));
+check('Dashboard work queue surfaces endpoint metadata', dashboardPageCode.includes('renderWorkQueueExplainability') && dashboardPageCode.includes('omittedBuckets'));
+
+// Check unsafe dismiss guardrails for critical editable surfaces
+console.log('\nunsafe dismiss guardrails');
+const bookingCode = fs.readFileSync(path.join(ROOT, 'js/booking.js'), 'utf8');
+const timelineCode = fs.readFileSync(path.join(ROOT, 'js/timeline.js'), 'utf8');
+const appCodeForDismiss = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
+const financeCode = fs.readFileSync(path.join(ROOT, 'js/finance-page.js'), 'utf8');
+const designsPageCode = fs.readFileSync(path.join(ROOT, 'js/designs-page.js'), 'utf8');
+const designsHtml = fs.readFileSync(path.join(ROOT, 'designs.html'), 'utf8');
+const staffCode = fs.readFileSync(path.join(ROOT, 'js/staff-page.js'), 'utf8');
+const hrCode = fs.readFileSync(path.join(ROOT, 'js/hr-page.js'), 'utf8');
+const contentCode = fs.readFileSync(path.join(ROOT, 'js/content-page.js'), 'utf8');
+check('Booking UI separates park and client pinata modes', bookingCode.includes('syncPinataModeFields') && bookingCode.includes('clientPinataServicePrice') && bookingCode.includes('renderPinataDetailRows'));
+check('Booking UI captures pinata and filler numbers separately', bookingCode.includes('pinataNumber') && bookingCode.includes('pinataFillerNumber') && htmlContains('index.html', 'pinataSharedFields'));
+check('Booking route normalizes client pinata server-side', htmlContains('routes/bookings.js', 'normalizePinataFields') && htmlContains('routes/bookings.js', 'client_pinata_service_price'));
+check('Booking route stores pinata operation numbers server-side', htmlContains('routes/bookings.js', 'pinata_number') && htmlContains('routes/bookings.js', 'pinata_filler_number'));
+check('Pinata demand excludes client pinata service', htmlContains('routes/catalogs.js', "COALESCE(b.pinata_mode, 'park') = 'park'") && htmlContains('routes/warehouse.js', "COALESCE(pinata_mode, 'park') = 'park'"));
+check('Shared UnsafeDismissGuard exposes dirty guarded close policy', uiCode.includes('const UnsafeDismissGuard') && uiCode.includes('attemptCloseEditableSurface') && uiCode.includes('confirmDiscardIfDirty') && uiCode.includes('window.UnsafeDismissGuard = UnsafeDismissGuard'));
+check('Shared closeAllModals respects editable dirty surfaces', uiCode.includes("m.dataset.editableSurface === 'true'") && uiCode.includes('attemptCloseEditableSurface(m') && uiCode.includes('reason: \'close-all\''));
+check('Shared formModal cancel/backdrop path asks dirty guard', uiCode.includes('const requestCancel = async') && uiCode.includes('confirmDiscardIfDirty(overlay') && uiCode.includes("overlay.addEventListener('click', (e) => { if (e.target === overlay) requestCancel(); });"));
+check('Lead edit backdrop and Escape route through guarded close', leadsCode.includes("overlay.id === 'leadModal'") && leadsCode.includes('closeLeadModal(false)') && leadsCode.includes('attemptCloseEditableSurface(modal'));
+check('Booking panel guards date changes and panel close', bookingCode.includes('async function closeBookingPanel') && bookingCode.includes('attemptCloseEditableSurface(panel') && appCodeForDismiss.includes('if (!await closeBookingPanel(false))') && timelineCode.includes('async function selectCell'));
+check('Task/customer/finance edit surfaces use shared dirty guard', tasksCode.includes('attemptCloseEditableSurface(overlay') && customersCode.includes('attemptCloseEditableSurface(modal') && financeCode.includes('attemptCloseEditableSurface(modal'));
+check('Design/catalog overlays guard dirty dismiss paths', designsPageCode.includes('attemptCloseEditableSurface(overlay') && designsHtml.includes('guardedEditableOverlayClose') && designsHtml.includes('closeAutomationModal(false)'));
+check('Staff and HR edit modals use guarded close paths', staffCode.includes('attemptCloseEditableSurface(overlay') && hrCode.includes('closeHrEditableModal') && hrCode.includes('showHrEditableModal'));
+check('Content edit modals force-close only after durable actions', contentCode.includes('attemptCloseEditableSurface(modal') && contentCode.includes('await closeModal(true)') && contentCode.includes('await closeCardModal(true)'));
 
 // Check Timeline/Kleshnya shell collapse keeps geometry in CSS
 const appCode = fs.readFileSync(path.join(ROOT, 'js', 'app.js'), 'utf8');

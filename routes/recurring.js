@@ -27,6 +27,7 @@ const {
     logSkip
 } = require('../services/recurring');
 const { mapBookingRow, getKyivDateStr } = require('../services/booking');
+const { normalizePinataFields } = require('../services/pinataMode');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
 
@@ -34,6 +35,34 @@ const log = createLogger('RecurringAPI');
 
 // All recurring routes require authentication
 router.use(authenticateToken);
+
+function normalizeRecurringPinataFields(body) {
+    const normalized = normalizePinataFields({
+        pinataMode: body.pinataMode,
+        pinataNumber: body.pinataNumber,
+        pinataFillerNumber: body.pinataFillerNumber,
+        pinataFiller: body.pinataFiller,
+        clientPinataServicePrice: body.clientPinataServicePrice,
+        clientPinataServiceNote: body.clientPinataServiceNote,
+        programId: body.productId,
+        category: body.category
+    });
+    if (normalized.error) return normalized;
+
+    body.pinataMode = normalized.pinataMode;
+    body.pinataNumber = normalized.pinataNumber;
+    body.pinataFillerNumber = normalized.pinataFillerNumber;
+    body.pinataFiller = normalized.pinataFiller;
+    body.clientPinataServicePrice = normalized.clientPinataServicePrice;
+    body.clientPinataServiceNote = normalized.clientPinataServiceNote;
+    if (normalized.pinataMode === 'client') {
+        body.price = normalized.clientPinataServicePrice ?? 0;
+    } else if (normalized.pinataMode === 'none'
+        && (body.category === 'pinata' || String(body.productId || '').startsWith('pinata'))) {
+        body.price = 0;
+    }
+    return normalized;
+}
 
 // Valid patterns for recurrence
 const VALID_PATTERNS = ['weekly', 'biweekly', 'monthly', 'custom', 'weekdays', 'weekends'];
@@ -111,6 +140,8 @@ router.post('/', async (req, res) => {
 
         // Parse days_of_week to Postgres array format
         const daysOfWeek = Array.isArray(b.daysOfWeek) ? b.daysOfWeek : null;
+        const pinataFields = normalizeRecurringPinataFields(b);
+        if (pinataFields.error) return res.status(400).json({ error: pinataFields.error });
 
         const result = await pool.query(
             `INSERT INTO recurring_templates
@@ -120,9 +151,11 @@ router.post('/', async (req, res) => {
               product_id, product_code, product_label, product_name, category,
               duration, price, hosts,
               second_animator_name,
-              pinata_filler, costume, kids_count, group_name, notes, extra_data,
+              pinata_filler, pinata_mode, pinata_number, pinata_filler_number,
+              client_pinata_service_price, client_pinata_service_note,
+              costume, kids_count, group_name, notes, extra_data,
               status, created_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
              RETURNING *`,
             [
                 b.pattern,
@@ -145,6 +178,11 @@ router.post('/', async (req, res) => {
                 b.hosts || 1,
                 b.secondAnimatorName || null,
                 b.pinataFiller || null,
+                b.pinataMode || 'none',
+                b.pinataNumber || null,
+                b.pinataFillerNumber || null,
+                b.clientPinataServicePrice ?? null,
+                b.clientPinataServiceNote || null,
                 b.costume || null,
                 b.kidsCount || null,
                 b.groupName || null,
@@ -225,6 +263,21 @@ router.put('/:id', async (req, res) => {
         const daysOfWeek = b.daysOfWeek !== undefined
             ? (Array.isArray(b.daysOfWeek) ? b.daysOfWeek : null)
             : existing.rows[0].days_of_week;
+        const existingRow = existing.rows[0];
+        b.productId = b.productId !== undefined ? b.productId : existingRow.product_id;
+        b.category = b.category !== undefined ? b.category : existingRow.category;
+        b.pinataMode = b.pinataMode !== undefined ? b.pinataMode : existingRow.pinata_mode;
+        b.pinataNumber = b.pinataNumber !== undefined ? b.pinataNumber : existingRow.pinata_number;
+        b.pinataFillerNumber = b.pinataFillerNumber !== undefined ? b.pinataFillerNumber : existingRow.pinata_filler_number;
+        b.pinataFiller = b.pinataFiller !== undefined ? b.pinataFiller : existingRow.pinata_filler;
+        b.clientPinataServicePrice = b.clientPinataServicePrice !== undefined
+            ? b.clientPinataServicePrice
+            : existingRow.client_pinata_service_price;
+        b.clientPinataServiceNote = b.clientPinataServiceNote !== undefined
+            ? b.clientPinataServiceNote
+            : existingRow.client_pinata_service_note;
+        const pinataFields = normalizeRecurringPinataFields(b);
+        if (pinataFields.error) return res.status(400).json({ error: pinataFields.error });
 
         await pool.query(
             `UPDATE recurring_templates SET
@@ -248,14 +301,19 @@ router.put('/:id', async (req, res) => {
              hosts = COALESCE($18, hosts),
              second_animator_name = $19,
              pinata_filler = $20,
-             costume = $21,
-             kids_count = $22,
-             group_name = $23,
-             notes = $24,
-             extra_data = $25,
-             status = COALESCE($26, status),
+             pinata_mode = $21,
+             pinata_number = $22,
+             pinata_filler_number = $23,
+             client_pinata_service_price = $24,
+             client_pinata_service_note = $25,
+             costume = $26,
+             kids_count = $27,
+             group_name = $28,
+             notes = $29,
+             extra_data = $30,
+             status = COALESCE($31, status),
              updated_at = NOW()
-             WHERE id = $27`,
+             WHERE id = $32`,
             [
                 b.pattern || null,
                 daysOfWeek,
@@ -276,7 +334,12 @@ router.put('/:id', async (req, res) => {
                 b.price !== undefined ? b.price : existing.rows[0].price,
                 b.hosts || null,
                 b.secondAnimatorName !== undefined ? b.secondAnimatorName : existing.rows[0].second_animator_name,
-                b.pinataFiller !== undefined ? b.pinataFiller : existing.rows[0].pinata_filler,
+                b.pinataFiller,
+                b.pinataMode,
+                b.pinataNumber,
+                b.pinataFillerNumber,
+                b.clientPinataServicePrice,
+                b.clientPinataServiceNote,
                 b.costume !== undefined ? b.costume : existing.rows[0].costume,
                 b.kidsCount !== undefined ? b.kidsCount : existing.rows[0].kids_count,
                 b.groupName !== undefined ? b.groupName : existing.rows[0].group_name,

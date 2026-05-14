@@ -471,10 +471,24 @@ window.openLightbox = openLightbox;
 // ==========================================
 // EDIT MODAL
 // ==========================================
+let _designEditInitialState = '';
+
+function getDesignEditState() {
+    const ids = ['editTitle', 'editDescription', 'editCollection', 'editPublishDate'];
+    return ids.map(id => {
+        const el = document.getElementById(id);
+        return el ? String(el.value || '') : '';
+    }).join('|') + '|tags:' + editTags.join(',');
+}
+
+function isDesignEditDirty() {
+    return getDesignEditState() !== _designEditInitialState;
+}
+
 function setupEditModal() {
-    document.getElementById('editCancel').addEventListener('click', closeEditModal);
+    document.getElementById('editCancel').addEventListener('click', () => closeEditModal(false));
     document.getElementById('editOverlay').addEventListener('click', (e) => {
-        if (e.target.id === 'editOverlay') closeEditModal();
+        if (e.target.id === 'editOverlay') closeEditModal(false);
     });
     document.getElementById('editSave').addEventListener('click', saveEdit);
 
@@ -561,13 +575,31 @@ function openEditModal(id) {
     document.getElementById('editPublishDate').value = d.publishDate || '';
     editTags = [...(d.tags || [])];
     renderEditTags();
-    document.getElementById('editOverlay').classList.add('visible');
+    const overlay = document.getElementById('editOverlay');
+    _designEditInitialState = getDesignEditState();
+    overlay.classList.add('visible');
+    if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay);
 }
 window.openEditModal = openEditModal;
 
-function closeEditModal() {
-    document.getElementById('editOverlay').classList.remove('visible');
-    editingDesignId = null;
+async function closeEditModal(force = false) {
+    const overlay = document.getElementById('editOverlay');
+    const closeNow = () => {
+        overlay?.classList.remove('visible');
+        editingDesignId = null;
+        _designEditInitialState = getDesignEditState();
+    };
+    if (window.UnsafeDismissGuard && overlay) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(overlay, closeNow, {
+            force,
+            isDirty: isDesignEditDirty,
+            message: 'Є незбережені зміни дизайну. Закрити без збереження?',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+    }
+    closeNow();
+    return true;
 }
 
 async function saveEdit() {
@@ -587,7 +619,7 @@ async function saveEdit() {
 
     if (res && res.ok) {
         showNotification('Збережено');
-        closeEditModal();
+        await closeEditModal(true);
         await Promise.all([loadDesigns(), loadTags()]);
         renderTagChips();
     } else {
@@ -1176,7 +1208,7 @@ function buildCatalogPageHtml(pkg) {
             </div>
             <!-- FOOTER -->
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.47.22" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.48.8" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>
@@ -1270,7 +1302,7 @@ function buildAutoPageHtml(page) {
                 ${page.description && itemsHtml ? `<div class="cat-desc" style="margin-top:12px">${esc(page.description)}</div>` : ''}
             </div>
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.47.22" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.48.8" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>

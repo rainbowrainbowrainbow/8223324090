@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
@@ -16,19 +16,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.47.22">
-    <link rel="stylesheet" href="css/auth.css?v=0.47.22">
-    <link rel="stylesheet" href="css/layout.css?v=0.47.22">
-    <link rel="stylesheet" href="css/timeline.css?v=0.47.22">
-    <link rel="stylesheet" href="css/panel.css?v=0.47.22">
-    <link rel="stylesheet" href="css/modals.css?v=0.47.22">
-    <link rel="stylesheet" href="css/controls.css?v=0.47.22">
-    <link rel="stylesheet" href="css/features.css?v=0.47.22">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.22">
-    <link rel="stylesheet" href="css/responsive.css?v=0.47.22">
-    <link rel="stylesheet" href="css/pages.css?v=0.47.22">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.47.22">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.47.22">
+    <link rel="stylesheet" href="css/base.css?v=0.48.8">
+    <link rel="stylesheet" href="css/auth.css?v=0.48.8">
+    <link rel="stylesheet" href="css/layout.css?v=0.48.8">
+    <link rel="stylesheet" href="css/timeline.css?v=0.48.8">
+    <link rel="stylesheet" href="css/panel.css?v=0.48.8">
+    <link rel="stylesheet" href="css/modals.css?v=0.48.8">
+    <link rel="stylesheet" href="css/controls.css?v=0.48.8">
+    <link rel="stylesheet" href="css/features.css?v=0.48.8">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.48.8">
+    <link rel="stylesheet" href="css/responsive.css?v=0.48.8">
+    <link rel="stylesheet" href="css/pages.css?v=0.48.8">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.48.8">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.48.8">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -46,9 +46,9 @@
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <div class="login-release-badge" aria-label="Поточний реліз 0.47 Комунікації">🛰️ 0.47 Комунікації</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.47.22 — reply action history</p>
+                <p class="tagline">AI First CRM v0.48.8 — booking visibility scope</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">🧾 Що нового у v0.47.22: Reply action history</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.48.8: Booking Visibility</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -530,13 +530,46 @@
                     </div>
                 </div>
 
-                <!-- Вибір наповнювача піньяти -->
+                <!-- Режим піньяти -->
+                <div id="pinataModeSection" class="pinata-mode-section hidden">
+                    <div class="form-section">
+                        <label for="pinataMode">Піньята</label>
+                        <select id="pinataMode" name="pinataMode">
+                            <option value="none">Без піньяти</option>
+                            <option value="park">Піньята парку</option>
+                            <option value="client">Клієнтська піньята (послуга)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="pinataSharedFields" class="pinata-shared-section hidden">
+                    <div class="form-section">
+                        <label for="pinataNumber">Номер піньяти</label>
+                        <input type="text" id="pinataNumber" name="pinataNumber" maxlength="80" placeholder="P-014">
+                    </div>
+                    <div class="form-section">
+                        <label for="pinataFillerNumber">Номер наповнювача</label>
+                        <input type="text" id="pinataFillerNumber" name="pinataFillerNumber" maxlength="80" placeholder="F-008">
+                    </div>
+                </div>
+
+                <div id="clientPinataServiceFields" class="pinata-service-section hidden">
+                    <div class="form-section">
+                        <label for="clientPinataServicePrice">Вартість послуги</label>
+                        <input type="number" id="clientPinataServicePrice" min="0" step="50" placeholder="300">
+                    </div>
+                    <div class="form-section">
+                        <label for="clientPinataServiceNote">Нотатка</label>
+                        <input type="text" id="clientPinataServiceNote" maxlength="500" placeholder="Клієнт приносить свою піньяту">
+                    </div>
+                </div>
+
+                <!-- Вибір наповнювача піньяти парку -->
                 <div id="pinataFillerSection" class="pinata-filler-section hidden">
                     <div class="form-section">
                         <label>Наповнювач</label>
                         <select id="pinataFillerSelect">
                             <option value="">Оберіть наповнювач</option>
-                            <option value="Клієнта">Клієнта (свій)</option>
                             <optgroup label="Номер 1">
                                 <option value="1M">1 - M</option>
                                 <option value="1L">1 - L</option>
@@ -1245,6 +1278,93 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.48.8 — Booking Visibility & Event Risk Scope Hardening v1 (Клешня, 14.05.2026)</h4>
+                    <ul>
+                        <li><b>Bookings</b> — введено канонічну object-level visibility policy для бронювань і booking-derived routes.</li>
+                        <li><b>Event Risk</b> — queue, dashboard alerts/summaries і timeline тепер рахують та показують тільки visible booking scope.</li>
+                        <li><b>Authz</b> — booking mutations повторно перевіряють object-level permission, а hidden bookings fail closed.</li>
+                        <li><b>Compatibility</b> — legacy <code>created_by</code> / <code>second_animator</code> працюють тільки як exact fallback; team/location scope позначено як missing durable dimension.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.48.7 — Unsafe Dismiss Hardening v2: Full Legacy & Dynamic Cluster (Клешня, 14.05.2026)</h4>
+                    <ul>
+                        <li><b>Lead Cluster</b> — secondary lead modals і workspace context switches тепер поважають dirty-close policy перед backdrop, Escape, cancel або selection switch.</li>
+                        <li><b>Profile Safety</b> — profile password/settings modal більше не закривається напряму через backdrop, Escape або tab switch із незбереженими полями.</li>
+                        <li><b>Browser Safety</b> — behavior tests розширено на Escape, route/selection transition, direct close bypass і read-only viewer dismissal.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.48.6 — Unsafe Dismiss Hardening v2: Legacy / Dynamic Surface Completion (Клешня, 14.05.2026)</h4>
+                    <ul>
+                        <li><b>Guard Adoption</b> — shared unsafe-dismiss protection поширено на legacy/dynamic editing surfaces: lead customer card, art-director editors, finance account, warehouse quantity, sound project/announcement, dashboard pickers/settings і certificate flows.</li>
+                        <li><b>Bypass Removal</b> — settings/certificates більше не ховають dirty booking panel напряму, а generic <code>closeModal()</code> більше не обходить dirty-close policy для editable surfaces.</li>
+                        <li><b>Regression Safety</b> — додано behavior-level перевірки для dirty backdrop/direct close, rejected discard і confirmed discard.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.48.5 — Client Pinata Operational Numbers (Клешня, 14.05.2026)</h4>
+                    <ul>
+                        <li><b>Operations</b> — додано окремі поля <code>pinata_number</code> і <code>pinata_filler_number</code> для номера піньяти та номера наповнювача.</li>
+                        <li><b>Booking UI</b> — режими <code>Піньята парку</code> і <code>Клієнтська піньята (послуга)</code> тепер мають спільні операційні поля номерів.</li>
+                        <li><b>Server Truth</b> — create/update/recurring paths нормалізують номери разом із <code>pinata_mode</code>, не змішуючи service-mode з park pinata counters.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.48.4 — Client Pinata as Service Separation v1 (Клешня, 14.05.2026)</h4>
+                    <ul>
+                        <li><b>Booking Logic</b> — піньята парку, клієнтська піньята як послуга і відсутність піньяти тепер мають окремий <code>pinata_mode</code>.</li>
+                        <li><b>Services</b> — клієнтська піньята зберігає ціну/нотатку як сервіс, а park filler очищається серверною нормалізацією.</li>
+                        <li><b>Analytics</b> — demand, складські counters і product-sales більше не рахують клієнтські піньяти як піньяти парку.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.48.3 — Confirmation & Event Risk Operations Cluster v1 (Клешня, 14.05.2026)</h4>
+                    <ul>
+                        <li><b>Confirmation</b> — додано вузьку операцію підтвердження бронювання з accountable confirmation truth і audit trail.</li>
+                        <li><b>Queue Rails</b> — посилено manager-facing confirmation/event-risk cues без фейкового universal risk score.</li>
+                        <li><b>Prep Linkage</b> — нормалізовано booking-linked prep tasks для чесних booking readiness summary.</li>
+                        <li><b>Dashboard</b> — додано explainable visible-scope summaries для today/tomorrow unconfirmed, late preliminary і overdue booking-linked prep tasks.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.48.2 - 🛡️ 0.48 UX: unsafe dismiss hardening (14.05.2026)</h4>
+                    <ul>
+                        <li><b>Guarded close policy</b> - editable modal/panel/overlay surfaces тепер проходять dirty-state перевірку перед backdrop, Escape, cancel або close-all dismiss.</li>
+                        <li><b>Критичні форми</b> - lead edit, booking create/edit, task detail, customer edit, finance transaction, design/catalog, staff/HR та content edit surfaces більше не закриваються silently з dirty state.</li>
+                        <li><b>Booking safety</b> - зміна дати або вибір іншої клітинки timeline не скидають dirty booking panel без підтвердження.</li>
+                        <li><b>Regression shield</b> - UI smoke checks тепер перевіряють unsafe-dismiss guardrails для цього класу помилок.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.48.1 - ✅ 0.48 Tasks: operations cluster hardening (14.05.2026)</h4>
+                    <ul>
+                        <li><b>Dashboard presence</b> - віджет <code>Команда онлайн</code> розрізняє live WebSocket online та durable last-seen активність із <code>users.last_seen_at</code> / <code>employee_profiles.last_activity_at</code>.</li>
+                        <li><b>Last seen UX</b> - dashboard показує readable стани <code>онлайн зараз</code>, <code>був N хв тому</code>, <code>сьогодні</code>, <code>вчора</code> або дату для старішої активності.</li>
+                        <li><b>Task UX safety</b> - task detail overlay більше не закривається напряму через backdrop/cancel, якщо є dirty edit state; close проходить через guarded confirmation.</li>
+                        <li><b>Task stale guard</b> - task detail save передає поточний <code>version</code>, щоб backend optimistic-locking міг відхилити stale write.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.48.0 - ✅ 0.48 Tasks: operations cluster v1 (14.05.2026)</h4>
+                    <ul>
+                        <li><b>Typed ownership truth</b> - задачі тепер використовують canonical <code>tasks.owner_user_id</code>; legacy <code>assigned_to/owner</code> лишаються display fallback без fuzzy mapping.</li>
+                        <li><b>Object-level visibility</b> - task list/detail/history/actions, dashboard widgets і Work Queue task buckets проходять через спільну task visibility policy.</li>
+                        <li><b>Safe execution rails</b> - Tasks page і manager queue підтримують durable complete, typed reassign і deadline reschedule з authz, stale-write guard, feedback та refetch.</li>
+                        <li><b>Task action history</b> - <code>task_action_history</code> фіксує completed/reassigned/rescheduled події, а open-context не логуються як execution.</li>
+                        <li><b>Task-local intelligence</b> - task items мають пояснювані priority/risk/recommended-action поля без fake global score.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.47.23 - ✅ 0.47 Tasks: visibility, ownership & execution rails v2 (14.05.2026)</h4>
+                    <ul>
+                        <li><b>Typed task ownership</b> - задачі отримали canonical <code>tasks.owner_user_id</code>, а legacy <code>assigned_to/owner</code> лишаються display/compatibility fields.</li>
+                        <li><b>Object-level visibility</b> - task routes і Work Queue task buckets тепер проходять через централізовану visibility/action policy.</li>
+                        <li><b>Execution rails</b> - overdue/task items у manager workspace отримали safe inline дії: mark done, reassign owner і deadline +24h.</li>
+                        <li><b>Action history</b> - durable <code>task_action_history</code> фіксує completed/reassigned/rescheduled події без глобальної audit-платформи.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.47.22 - 🧾 0.47 Черга: reply execution action history v1 (14.05.2026)</h4>
                     <ul>
@@ -6093,27 +6213,28 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.47.22"></script>
-    <script src="js/api.js?v=0.47.22"></script>
-    <script src="js/ui.js?v=0.47.22"></script>
-    <script src="js/auth.js?v=0.47.22"></script>
-    <script src="js/timeline.js?v=0.47.22"></script>
-    <script src="js/booking.js?v=0.47.22"></script>
-    <script src="js/settings.js?v=0.47.22"></script>
-    <script src="js/booking-form.js?v=0.47.22"></script>
-    <script src="js/booking-linked.js?v=0.47.22"></script>
-    <script src="js/settings-dashboard.js?v=0.47.22"></script>
-    <script src="js/settings-history.js?v=0.47.22"></script>
-    <script src="js/settings-afisha.js?v=0.47.22"></script>
-    <script src="js/settings-certificates.js?v=0.47.22"></script>
-    <script src="js/offline.js?v=0.47.22"></script>
-    <script src="js/search.js?v=0.47.22"></script>
-    <script src="js/ws.js?v=0.47.22"></script>
-    <script src="js/app.js?v=0.47.22"></script>
-    <script src="js/kleshnya-widget.js?v=0.47.22"></script>
-    <script src="js/components/sidebar.js?v=0.47.22"></script>
+    <script src="js/config.js?v=0.48.8"></script>
+    <script src="js/api.js?v=0.48.8"></script>
+    <script src="js/ui.js?v=0.48.8"></script>
+    <script src="js/auth.js?v=0.48.8"></script>
+    <script src="js/timeline.js?v=0.48.8"></script>
+    <script src="js/booking.js?v=0.48.8"></script>
+    <script src="js/settings.js?v=0.48.8"></script>
+    <script src="js/booking-form.js?v=0.48.8"></script>
+    <script src="js/booking-linked.js?v=0.48.8"></script>
+    <script src="js/settings-dashboard.js?v=0.48.8"></script>
+    <script src="js/settings-history.js?v=0.48.8"></script>
+    <script src="js/settings-afisha.js?v=0.48.8"></script>
+    <script src="js/settings-certificates.js?v=0.48.8"></script>
+    <script src="js/offline.js?v=0.48.8"></script>
+    <script src="js/search.js?v=0.48.8"></script>
+    <script src="js/ws.js?v=0.48.8"></script>
+    <script src="js/app.js?v=0.48.8"></script>
+    <script src="js/kleshnya-widget.js?v=0.48.8"></script>
+    <script src="js/components/sidebar.js?v=0.48.8"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=0.47.22"></script>
-    <script src="js/alerts.js?v=0.47.22"></script>
+    <script src="js/role-panel.js?v=0.48.8"></script>
+    <script src="js/alerts.js?v=0.48.8"></script>
 </body>
 </html>
+

@@ -12,11 +12,120 @@ function toggleBookingTag(el) {
     el.classList.toggle('active');
 }
 
+function isPinataProgram(program) {
+    return !!program && (program.category === 'pinata' || String(program.id || '').startsWith('pinata'));
+}
+
+function getClientPinataDefaultPrice() {
+    const ownPinata = getProductsSync().find(p => p.id === 'pinata_own');
+    return Number(ownPinata?.price || 300);
+}
+
+function getPinataModeValue() {
+    return document.getElementById('pinataMode')?.value || 'none';
+}
+
+function syncPinataModeFields(mode = getPinataModeValue()) {
+    const modeSection = document.getElementById('pinataModeSection');
+    const sharedSection = document.getElementById('pinataSharedFields');
+    const parkSection = document.getElementById('pinataFillerSection');
+    const clientSection = document.getElementById('clientPinataServiceFields');
+    const pinataNumber = document.getElementById('pinataNumber');
+    const pinataFillerNumber = document.getElementById('pinataFillerNumber');
+    const fillerSelect = document.getElementById('pinataFillerSelect');
+    const servicePrice = document.getElementById('clientPinataServicePrice');
+    const serviceNote = document.getElementById('clientPinataServiceNote');
+    const selectedProgramId = document.getElementById('selectedProgram')?.value;
+    const program = selectedProgramId ? getProductsSync().find(p => p.id === selectedProgramId) : null;
+
+    if (modeSection) modeSection.classList.toggle('hidden', !isPinataProgram(program));
+    if (sharedSection) sharedSection.classList.toggle('hidden', mode === 'none' || !isPinataProgram(program));
+    if (parkSection) parkSection.classList.toggle('hidden', mode !== 'park');
+    if (clientSection) clientSection.classList.toggle('hidden', mode !== 'client');
+    if (mode !== 'park' && fillerSelect) fillerSelect.value = '';
+    if (mode === 'none') {
+        if (pinataNumber) pinataNumber.value = '';
+        if (pinataFillerNumber) pinataFillerNumber.value = '';
+    }
+    if (mode === 'client' && servicePrice && !servicePrice.value) {
+        servicePrice.value = String(getClientPinataDefaultPrice());
+    }
+    if (mode !== 'client') {
+        if (servicePrice) servicePrice.value = '';
+        if (serviceNote) serviceNote.value = '';
+    }
+}
+
+function resetPinataModeFields() {
+    const mode = document.getElementById('pinataMode');
+    if (mode) mode.value = 'none';
+    const fillerSelect = document.getElementById('pinataFillerSelect');
+    if (fillerSelect) fillerSelect.value = '';
+    const pinataNumber = document.getElementById('pinataNumber');
+    if (pinataNumber) pinataNumber.value = '';
+    const pinataFillerNumber = document.getElementById('pinataFillerNumber');
+    if (pinataFillerNumber) pinataFillerNumber.value = '';
+    const servicePrice = document.getElementById('clientPinataServicePrice');
+    if (servicePrice) servicePrice.value = '';
+    const serviceNote = document.getElementById('clientPinataServiceNote');
+    if (serviceNote) serviceNote.value = '';
+    document.getElementById('pinataModeSection')?.classList.add('hidden');
+    document.getElementById('pinataSharedFields')?.classList.add('hidden');
+    document.getElementById('pinataFillerSection')?.classList.add('hidden');
+    document.getElementById('clientPinataServiceFields')?.classList.add('hidden');
+}
+
+function inferBookingPinataMode(booking, program) {
+    if (booking?.pinataMode) return booking.pinataMode;
+    if (booking?.programId === 'pinata_own') return 'client';
+    if (booking?.clientPinataServicePrice !== undefined && booking?.clientPinataServicePrice !== null) return 'client';
+    if (booking?.pinataFiller) return 'park';
+    return isPinataProgram(program) ? 'park' : 'none';
+}
+
+function renderPinataDetailRows(booking) {
+    const numberRows = [
+        booking?.pinataNumber
+            ? `<div class="booking-detail-row"><span class="label">Номер піньяти:</span><span class="value">${escapeHtml(booking.pinataNumber)}</span></div>`
+            : '',
+        booking?.pinataFillerNumber
+            ? `<div class="booking-detail-row"><span class="label">Номер наповнювача:</span><span class="value">${escapeHtml(booking.pinataFillerNumber)}</span></div>`
+            : ''
+    ].join('');
+
+    if (booking?.pinataMode === 'client') {
+        const note = booking.clientPinataServiceNote
+            ? `<div class="booking-detail-row"><span class="label">РќРѕС‚Р°С‚РєР°:</span><span class="value">${escapeHtml(booking.clientPinataServiceNote)}</span></div>`
+            : '';
+        return `<div class="booking-detail-row"><span class="label">РџС–РЅСЊСЏС‚Р°:</span><span class="value">РљР»С–С”РЅС‚СЃСЊРєР° РїС–РЅСЊСЏС‚Р° (РїРѕСЃР»СѓРіР°)${booking.clientPinataServicePrice ? ` - ${escapeHtml(formatPrice(booking.clientPinataServicePrice))}` : ''}</span></div>${numberRows}${note}`;
+    }
+    if ((booking?.pinataMode === 'park' || !booking?.pinataMode) && booking?.pinataFiller) {
+        return `<div class="booking-detail-row"><span class="label">РџС–РЅСЊСЏС‚Р° РїР°СЂРєСѓ:</span><span class="value">${escapeHtml(booking.pinataFiller)}</span></div>${numberRows}`;
+    }
+    if (numberRows) return numberRows;
+
+    if (booking?.pinataMode === 'client') {
+        const note = booking.clientPinataServiceNote
+            ? `<div class="booking-detail-row"><span class="label">Нотатка:</span><span class="value">${escapeHtml(booking.clientPinataServiceNote)}</span></div>`
+            : '';
+        return `<div class="booking-detail-row"><span class="label">Піньята:</span><span class="value">Клієнтська піньята (послуга)${booking.clientPinataServicePrice ? ` - ${escapeHtml(formatPrice(booking.clientPinataServicePrice))}` : ''}</span></div>${note}`;
+    }
+    if ((booking?.pinataMode === 'park' || !booking?.pinataMode) && booking?.pinataFiller) {
+        return `<div class="booking-detail-row"><span class="label">Піньята парку:</span><span class="value">${escapeHtml(booking.pinataFiller)}</span></div>`;
+    }
+    return '';
+}
+
 // ==========================================
 // ПАНЕЛЬ БРОНЮВАННЯ
 // ==========================================
 
 async function openBookingPanel(time, lineId) {
+    const existingPanel = document.getElementById('bookingPanel');
+    if (existingPanel && !existingPanel.classList.contains('hidden')) {
+        const closed = await closeBookingPanel(false);
+        if (!closed) return false;
+    }
     const lines = await getLinesForDate(AppState.selectedDate);
     const line = lines.find(l => l.id === lineId);
 
@@ -45,7 +154,7 @@ async function openBookingPanel(time, lineId) {
     document.getElementById('hostsWarning')?.classList.add('hidden');
     document.getElementById('customProgramSection')?.classList.add('hidden');
     document.getElementById('secondAnimatorSection')?.classList.add('hidden');
-    document.getElementById('pinataFillerSection')?.classList.add('hidden');
+    resetPinataModeFields();
 
     // Скинути toggle додаткового ведучого
     const extraHostToggle = document.getElementById('extraHostToggle');
@@ -87,6 +196,10 @@ async function openBookingPanel(time, lineId) {
     document.body.classList.add('panel-open');
     // v5.35: Show backdrop overlay on tablet/mobile
     document.getElementById('panelBackdrop')?.classList.remove('hidden');
+    const panel = document.getElementById('bookingPanel');
+    if (window.UnsafeDismissGuard && panel) window.UnsafeDismissGuard.remember(panel);
+    if (window.BookingForm?.markClean) BookingForm.markClean();
+    return true;
 }
 
 // ==========================================
@@ -308,7 +421,18 @@ async function openBookingChat(bookingId) {
     } catch (e) { console.error('openBookingChat:', e); }
 }
 
-function closeBookingPanel() {
+async function closeBookingPanel(force = false) {
+    const panel = document.getElementById('bookingPanel');
+    if (!force && panel && window.UnsafeDismissGuard) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(panel, () => closeBookingPanel(true), {
+            force,
+            isDirty: () => !!window.BookingForm?.isDirty?.(),
+            message: 'Є незбережені зміни в бронюванні. Закрити без збереження?',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись',
+            markClean: false
+        });
+    }
     document.getElementById('bookingPanel')?.classList.add('hidden');
     document.querySelector('.main-content').classList.remove('panel-open');
     // v5.33: Unlock body scroll
@@ -326,6 +450,9 @@ function closeBookingPanel() {
         if (panelH3) panelH3.textContent = 'Нове бронювання';
         if (btnSubmit) btnSubmit.textContent = 'Додати бронювання';
     }
+    if (window.BookingForm?.markClean) BookingForm.markClean();
+    if (window.UnsafeDismissGuard && panel) window.UnsafeDismissGuard.markClean(panel);
+    return true;
 }
 
 let _programIconsHash = null;
@@ -434,12 +561,14 @@ function selectProgram(programId) {
         document.getElementById('customProgramSection')?.classList.add('hidden');
     }
 
-    if (program.hasFiller) {
-        document.getElementById('pinataFillerSection')?.classList.remove('hidden');
-        document.getElementById('pinataFillerSelect').value = '';
-        _loadPinataStockBadge();
+    if (isPinataProgram(program)) {
+        const modeSelect = document.getElementById('pinataMode');
+        const defaultMode = program.id === 'pinata_own' ? 'client' : 'park';
+        if (modeSelect) modeSelect.value = defaultMode;
+        syncPinataModeFields(defaultMode);
+        if (defaultMode === 'park') _loadPinataStockBadge();
     } else {
-        document.getElementById('pinataFillerSection')?.classList.add('hidden');
+        resetPinataModeFields();
     }
 
     if (program.hosts > 1) {
@@ -702,15 +831,32 @@ function getBookingFormData() {
     }
 
     let pinataFiller = '';
-    if (program && program.hasFiller) {
+    const pinataMode = program && isPinataProgram(program) ? getPinataModeValue() : 'none';
+    const pinataNumber = pinataMode !== 'none'
+        ? (document.getElementById('pinataNumber')?.value?.trim() || null)
+        : null;
+    const pinataFillerNumber = pinataMode !== 'none'
+        ? (document.getElementById('pinataFillerNumber')?.value?.trim() || null)
+        : null;
+    let clientPinataServicePrice = null;
+    let clientPinataServiceNote = null;
+    if (program && program.hasFiller && pinataMode === 'park') {
         pinataFiller = document.getElementById('pinataFillerSelect')?.value;
         if (pinataFiller) label = `Пін+${pinataFiller}`;
+    } else if (program && pinataMode === 'client') {
+        clientPinataServicePrice = document.getElementById('clientPinataServicePrice')?.value || null;
+        clientPinataServiceNote = document.getElementById('clientPinataServiceNote')?.value?.trim() || null;
+        label = 'Клієнтська піньята';
     }
 
     const secondAnimator = program && program.hosts > 1
         ? document.getElementById('secondAnimatorSelect')?.value : null;
 
-    return { programId, room, program, time, lineId, duration, label, pinataFiller, secondAnimator };
+    return {
+        programId, room, program, time, lineId, duration, label,
+        pinataMode, pinataNumber, pinataFillerNumber, pinataFiller, clientPinataServicePrice, clientPinataServiceNote,
+        secondAnimator
+    };
 }
 
 async function validateBookingConflicts(lineId, time, duration, program, secondAnimator, excludeId = null) {
@@ -783,7 +929,12 @@ function buildBookingObject(formData, program) {
     const status = statusEl ? statusEl.value : 'confirmed';
     const kidsCountInput = document.getElementById('kidsCountInput');
     const kidsCount = (program.perChild && kidsCountInput) ? (parseInt(kidsCountInput.value) || 0) : 0;
-    const finalPrice = program.perChild && kidsCount > 0 ? program.price * kidsCount : program.price;
+    const servicePrice = Number(formData.clientPinataServicePrice || 0);
+    const finalPrice = formData.pinataMode === 'client'
+        ? servicePrice
+        : (formData.pinataMode === 'none' && isPinataProgram(program)
+            ? 0
+            : (program.perChild && kidsCount > 0 ? program.price * kidsCount : program.price));
 
     const obj = {
         date: formatDate(AppState.selectedDate),
@@ -798,7 +949,12 @@ function buildBookingObject(formData, program) {
         price: finalPrice,
         hosts: program.hosts,
         secondAnimator: formData.secondAnimator,
+        pinataMode: formData.pinataMode,
+        pinataNumber: formData.pinataMode !== 'none' ? formData.pinataNumber : null,
+        pinataFillerNumber: formData.pinataMode !== 'none' ? formData.pinataFillerNumber : null,
         pinataFiller: formData.pinataFiller,
+        clientPinataServicePrice: formData.pinataMode === 'client' ? finalPrice : null,
+        clientPinataServiceNote: formData.pinataMode === 'client' ? formData.clientPinataServiceNote : null,
         costume: costume,
         room: formData.room,
         notes: document.getElementById('bookingNotes')?.value,
@@ -990,7 +1146,7 @@ async function handleBookingSubmit(e) {
 
     if (!formData.programId) { showNotification('Оберіть програму', 'error'); unlockSubmitBtn(); return; }
     if (!formData.room) { showNotification('Оберіть кімнату', 'error'); unlockSubmitBtn(); return; }
-    if (formData.program.hasFiller && !formData.pinataFiller) {
+    if (formData.program.hasFiller && formData.pinataMode === 'park' && !formData.pinataFiller) {
         showNotification('Оберіть наповнювач для піньяти', 'error'); unlockSubmitBtn(); return;
     }
     // v8.7: Require second animator for multi-host programs
@@ -1067,7 +1223,7 @@ async function handleBookingSubmit(e) {
             AppState.editingBookingId = null;
 
             delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
-            closeBookingPanel();
+            closeBookingPanel(true);
             unlockSubmitBtn();
             await renderTimeline();
             showNotification('Бронювання оновлено!', 'success');
@@ -1099,7 +1255,7 @@ async function handleBookingSubmit(e) {
             pushUndo('create', [booking]);
 
             delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
-            closeBookingPanel();
+            closeBookingPanel(true);
             unlockSubmitBtn();
             clearLeadConversionContextAfterBooking(booking.id);
             await renderTimeline();
@@ -1151,7 +1307,7 @@ async function handleOptimisticLockConflict(result, localBooking) {
         const retryResult = await apiUpdateBooking(localBooking.id, localBooking);
         if (retryResult && retryResult.success) {
             delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
-            closeBookingPanel();
+            closeBookingPanel(true);
             await renderTimeline();
             showNotification('Бронювання перезаписано!', 'success');
         } else if (retryResult && retryResult.conflict) {
@@ -1357,7 +1513,7 @@ async function showBookingDetails(bookingId) {
             <span class="value">${escapeHtml(String(booking.hosts))}${booking.secondAnimator ? ` (+ ${escapeHtml(booking.secondAnimator)})` : ''}</span>
         </div>
         ${booking.costume ? `<div class="booking-detail-row"><span class="label">Костюм:</span><span class="value">${escapeHtml(booking.costume)}</span></div>` : ''}
-        ${booking.pinataFiller ? `<div class="booking-detail-row"><span class="label">Піньята:</span><span class="value">${escapeHtml(booking.pinataFiller)}</span></div>` : ''}
+        ${renderPinataDetailRows(booking)}
         <div class="booking-detail-row booking-detail-row--copyable" data-copy="${escapeHtml(formatPrice(booking.price))}">
             <span class="label">Ціна:</span>
             <span class="value">${escapeHtml(formatPrice(booking.price))}</span>
@@ -1525,9 +1681,24 @@ async function editBooking(bookingId) {
             if (customDuration) customDuration.value = booking.duration || 30;
         }
 
-        // Піньята наповнювач
-        if (program && program.hasFiller && booking.pinataFiller) {
-            document.getElementById('pinataFillerSelect').value = booking.pinataFiller;
+        if (program && isPinataProgram(program)) {
+            const mode = inferBookingPinataMode(booking, program);
+            const modeSelect = document.getElementById('pinataMode');
+            if (modeSelect) modeSelect.value = mode;
+            syncPinataModeFields(mode);
+            const pinataNumberInput = document.getElementById('pinataNumber');
+            const pinataFillerNumberInput = document.getElementById('pinataFillerNumber');
+            if (pinataNumberInput) pinataNumberInput.value = booking.pinataNumber || '';
+            if (pinataFillerNumberInput) pinataFillerNumberInput.value = booking.pinataFillerNumber || '';
+            if (mode === 'park' && booking.pinataFiller) {
+                document.getElementById('pinataFillerSelect').value = booking.pinataFiller;
+            }
+            if (mode === 'client') {
+                const priceInput = document.getElementById('clientPinataServicePrice');
+                const noteInput = document.getElementById('clientPinataServiceNote');
+                if (priceInput) priceInput.value = booking.clientPinataServicePrice ?? getClientPinataDefaultPrice();
+                if (noteInput) noteInput.value = booking.clientPinataServiceNote || '';
+            }
         }
 
         // К-кість дітей (МК)
@@ -1629,8 +1800,24 @@ async function duplicateBooking(bookingId) {
             if (customDuration) customDuration.value = booking.duration || 30;
         }
 
-        if (program && program.hasFiller && booking.pinataFiller) {
-            document.getElementById('pinataFillerSelect').value = booking.pinataFiller;
+        if (program && isPinataProgram(program)) {
+            const mode = inferBookingPinataMode(booking, program);
+            const modeSelect = document.getElementById('pinataMode');
+            if (modeSelect) modeSelect.value = mode;
+            syncPinataModeFields(mode);
+            const pinataNumberInput = document.getElementById('pinataNumber');
+            const pinataFillerNumberInput = document.getElementById('pinataFillerNumber');
+            if (pinataNumberInput) pinataNumberInput.value = booking.pinataNumber || '';
+            if (pinataFillerNumberInput) pinataFillerNumberInput.value = booking.pinataFillerNumber || '';
+            if (mode === 'park' && booking.pinataFiller) {
+                document.getElementById('pinataFillerSelect').value = booking.pinataFiller;
+            }
+            if (mode === 'client') {
+                const priceInput = document.getElementById('clientPinataServicePrice');
+                const noteInput = document.getElementById('clientPinataServiceNote');
+                if (priceInput) priceInput.value = booking.clientPinataServicePrice ?? getClientPinataDefaultPrice();
+                if (noteInput) noteInput.value = booking.clientPinataServiceNote || '';
+            }
         }
 
         if (program && program.perChild && booking.kidsCount) {
@@ -1975,7 +2162,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 price: booking.price,
                 hosts: booking.hosts,
                 secondAnimatorName: booking.secondAnimator || null,
+                pinataMode: booking.pinataMode || null,
+                pinataNumber: booking.pinataNumber || null,
+                pinataFillerNumber: booking.pinataFillerNumber || null,
                 pinataFiller: booking.pinataFiller || null,
+                clientPinataServicePrice: booking.clientPinataServicePrice ?? null,
+                clientPinataServiceNote: booking.clientPinataServiceNote || null,
                 costume: booking.costume || null,
                 kidsCount: booking.kidsCount || null,
                 notes: booking.notes || null
@@ -2103,7 +2295,11 @@ const BulkOps = {
                 try {
                     const bookings = await getBookingsForDate(AppState.selectedDate);
                     const b = bookings.find(x => x.id === id);
-                    if (b) await apiUpdateBooking(id, { ...b, status });
+                    if (b && status === 'confirmed' && b.status === 'preliminary' && typeof apiConfirmBooking === 'function') {
+                        await apiConfirmBooking(id, { source: 'booking_panel' });
+                    } else if (b) {
+                        await apiUpdateBooking(id, { ...b, status });
+                    }
                 } catch (e) { /* continue */ }
             }
 

@@ -510,13 +510,14 @@ function renderGridCells(lineId, date) {
     return html;
 }
 
-function selectCell(cell) {
+async function selectCell(cell) {
     if (isViewer()) return;
+    const opened = await openBookingPanel(cell.dataset.time, cell.dataset.line);
+    if (!opened) return;
     document.querySelectorAll('.grid-cell.selected').forEach(c => c.classList.remove('selected'));
     cell.classList.add('selected');
     AppState.selectedCell = cell;
     AppState.selectedLineId = cell.dataset.line;
-    openBookingPanel(cell.dataset.time, cell.dataset.line);
 }
 
 function createBookingBlock(booking, startHour) {
@@ -2207,10 +2208,10 @@ function removePendingLine() {
 // НАВІГАЦІЯ ПО ДАТАХ
 // ==========================================
 
-function changeDate(days) {
+async function changeDate(days) {
     _debugRender(`changeDate(${days}) from=${formatDate(AppState.selectedDate)}`);
     // C2: Auto-close booking panel on date change
-    closeBookingPanel();
+    if (!await closeBookingPanel(false)) return;
     // v3.9: Cleanup pending poll on date change
     if (AppState.pendingPollInterval) {
         clearInterval(AppState.pendingPollInterval);

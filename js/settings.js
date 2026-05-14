@@ -250,6 +250,7 @@ async function openProductForm(productId) {
     }
 
     modal.classList.remove('hidden');
+    if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(modal);
 }
 
 // v7.1: Save product (create or update)
@@ -2383,6 +2384,7 @@ async function showEditContractor(id) {
     document.getElementById('contractorPhone').value = c.phone || '';
     document.getElementById('contractorNotes').value = c.notes || '';
     modal.classList.remove('hidden');
+    if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(modal);
 }
 
 async function handleContractorSubmit(e) {
@@ -2517,14 +2519,19 @@ function debounceCertSearch() {
     certSearchTimeout = setTimeout(loadCertificates, 400);
 }
 
-function openCertificatesPanel() {
+async function openCertificatesPanel() {
     const panel = document.getElementById('certificatesPanel');
     if (!panel) return;
 
     // Close booking panel if open
     const bookingPanel = document.getElementById('bookingPanel');
     if (bookingPanel && !bookingPanel.classList.contains('hidden')) {
-        bookingPanel.classList.add('hidden');
+        if (typeof closeBookingPanel === 'function') {
+            const closed = await closeBookingPanel(false);
+            if (!closed) return;
+        } else {
+            bookingPanel.classList.add('hidden');
+        }
     }
 
     // Close dropdown menu
@@ -2649,6 +2656,7 @@ function showCreateCertificateModal() {
     // Auto-select season
     initCertSeasonButtons('certSeasonRow', 'certSeason');
     modal.classList.remove('hidden');
+    if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(modal);
 }
 
 function showBatchCertificateModal() {
@@ -2670,6 +2678,7 @@ function showBatchCertificateModal() {
     // Auto-select season
     initCertSeasonButtons('batchCertSeasonRow', 'batchCertSeason');
     modal.classList.remove('hidden');
+    if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(modal);
 }
 
 async function handleBatchCertSubmit(event) {
@@ -2702,6 +2711,8 @@ async function handleBatchCertSubmit(event) {
     btn.textContent = `✅ Згенеровано ${quantity} сертифікатів`;
 
     showNotification(`Згенеровано ${quantity} сертифікатів`, 'success');
+    const modal = document.getElementById('batchCertModal');
+    if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.markClean(modal);
     loadCertificates();
 }
 
@@ -2782,7 +2793,10 @@ async function handleCertificateSubmit(event) {
 
     const result = await apiCreateCertificate(data);
     if (result.success) {
-        document.getElementById('certificateModal')?.classList.add('hidden');
+        const modal = document.getElementById('certificateModal');
+        if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.markClean(modal);
+        if (typeof closeModal === 'function') closeModal(modal, { force: true });
+        else modal?.classList.add('hidden');
         showNotification(`Сертифікат ${result.certificate.certCode} видано!`, 'success');
         loadCertificates();
         // Одразу показати деталі нового сертифіката

@@ -142,6 +142,76 @@ function createFakePool() {
                     ]
                 };
             }
+            if (/SELECT id, username, name, role FROM users WHERE COALESCE\(is_active, true\) = true AND role = ANY\(\$1::text\[\]\)/i.test(text)) {
+                return {
+                    rows: [
+                        { id: 2, username: 'dasha', name: 'Даша', role: 'manager' },
+                        { id: 3, username: 'marketing', name: 'Маркетинг', role: 'marketer' }
+                    ]
+                };
+            }
+            if (/FROM task_action_history/i.test(text)) {
+                return { rows: [{
+                    id: 41,
+                    task_id: params[0],
+                    action_type: 'task_completed',
+                    actor_user_id: 1,
+                    actor_name_snapshot: 'Route Smoke',
+                    source_surface: 'task_page',
+                    old_value_json: { status: 'todo' },
+                    new_value_json: { status: 'done' },
+                    meta_json: { route: 'tasks_task_complete' },
+                    summary: 'Task completed',
+                    created_at: '2099-05-02T12:00:00Z'
+                }] };
+            }
+            if (/INSERT INTO task_action_history/i.test(text)) {
+                return { rows: [{
+                    id: 42,
+                    task_id: params[0],
+                    action_type: params[1],
+                    actor_user_id: params[2],
+                    actor_name_snapshot: params[3],
+                    source_surface: params[4],
+                    old_value_json: params[5] ? JSON.parse(params[5]) : null,
+                    new_value_json: params[6] ? JSON.parse(params[6]) : null,
+                    meta_json: params[7] ? JSON.parse(params[7]) : null,
+                    summary: params[8],
+                    created_at: '2099-05-02T12:05:00Z'
+                }] };
+            }
+            if (/FROM tasks t LEFT JOIN users u ON u\.id = t\.owner_user_id WHERE t\.id = \$1/i.test(text)) {
+                return { rows: [{
+                    id: params[0],
+                    title: 'Route smoke task',
+                    status: 'todo',
+                    priority: 'high',
+                    deadline: '2099-05-02T12:00:00Z',
+                    owner_user_id: 1,
+                    assigned_to: 'Route Smoke',
+                    owner: null,
+                    owner_name: 'Route Smoke',
+                    owner_username: 'route-smoke',
+                    version: 1,
+                    active: true,
+                    created_at: '2099-05-01T10:00:00Z'
+                }] };
+            }
+            if (/SELECT t\.id FROM tasks t WHERE t\.id = \$1/i.test(text)) {
+                return { rows: [{ id: params[0] }] };
+            }
+            if (/UPDATE tasks/i.test(text) && /SET status = 'done'/i.test(text) && /RETURNING \*/i.test(text)) {
+                return { rows: [{
+                    id: params[0],
+                    title: 'Route smoke task',
+                    status: 'done',
+                    priority: 'high',
+                    deadline: '2099-05-02T12:00:00Z',
+                    owner_user_id: 1,
+                    assigned_to: 'Route Smoke',
+                    completed_at: '2099-05-02T12:05:00Z'
+                }] };
+            }
             if (/FROM leads l LEFT JOIN users u ON l\.assigned_to = u\.id LEFT JOIN products p ON l\.program_id = p\.id WHERE l\.id = \$1 LIMIT 1/i.test(text)) {
                 return {
                     rows: [{
@@ -256,7 +326,7 @@ function createFakePool() {
                     }]
                 };
             }
-            if (/INSERT INTO tasks \(title, description, date, priority, assigned_to, owner, created_by,/i.test(text)) {
+            if (/INSERT INTO tasks \(title, description, date, priority, assigned_to, owner, owner_user_id, created_by,/i.test(text)) {
                 return {
                     rows: [{
                         id: 880,
@@ -266,12 +336,13 @@ function createFakePool() {
                         priority: params[3],
                         assigned_to: params[4],
                         owner: params[5],
-                        created_by: params[6],
-                        task_type: params[7],
-                        deadline: params[8],
-                        source_type: params[13],
-                        source_id: params[14],
-                        category: params[15],
+                        owner_user_id: params[6],
+                        created_by: params[7],
+                        task_type: params[8],
+                        deadline: params[9],
+                        source_type: params[14],
+                        source_id: params[15],
+                        category: params[16],
                         status: 'todo'
                     }]
                 };
@@ -419,13 +490,13 @@ function createFakePool() {
             if (/FROM hr_time_records WHERE record_date >= \$1 AND record_date <= \$2/i.test(text)) {
                 return { rows: [{ total_minutes: 0, active_staff: 0 }] };
             }
-            if (/SELECT COALESCE\(SUM\(price\), 0\) as total FROM bookings WHERE date = \$1 AND status = 'confirmed'/i.test(text)) {
+            if (/SELECT COALESCE\(SUM\((?:b\.)?price\), 0\) as total FROM bookings(?: b)? WHERE (?:b\.)?date = \$1 AND (?:b\.)?status = 'confirmed'/i.test(text)) {
                 return { rows: [{ total: 0 }] };
             }
             if (/SELECT COALESCE\(SUM\(amount\), 0\) as total FROM finance_transactions WHERE date = \$1 AND type = 'expense'/i.test(text)) {
                 return { rows: [{ total: 0 }] };
             }
-            if (/SELECT COUNT\(\*\) as count FROM bookings WHERE date = \$1 AND status != 'cancelled'/i.test(text)) {
+            if (/SELECT COUNT\(\*\) as count FROM bookings(?: b)? WHERE (?:b\.)?date = \$1 AND (?:b\.)?status != 'cancelled'/i.test(text)) {
                 return { rows: [{ count: 0 }] };
             }
 
@@ -583,6 +654,28 @@ describe('route-level API safety smoke', () => {
         assert.ok(roles.data.actionPermissions.create_booking);
     });
 
+    it('exposes typed task operations endpoints behind object visibility', async () => {
+        const owners = await request('GET', '/api/tasks/owners', undefined, withAuth({}, 'manager'));
+        assert.equal(owners.status, 200, JSON.stringify(owners.data));
+        assert.equal(owners.data.success, true);
+        assert.deepEqual(owners.data.users.map(user => user.id), [2, 3]);
+        assert.equal(owners.data.meta.canonicalField, 'tasks.owner_user_id');
+
+        const history = await request('GET', '/api/tasks/1/history?limit=5', undefined, withAuth());
+        assert.equal(history.status, 200, JSON.stringify(history.data));
+        assert.equal(history.data.success, true);
+        assert.equal(history.data.meta.source, 'task_action_history');
+        assert.equal(history.data.history[0].actionType, 'task_completed');
+
+        queries.length = 0;
+        const completed = await request('POST', '/api/tasks/1/complete', { sourceSurface: 'task_page' }, withAuth());
+        assert.equal(completed.status, 200, JSON.stringify(completed.data));
+        assert.equal(completed.data.success, true);
+        assert.equal(completed.data.historyEvent.actionType, 'task_completed');
+        assert.ok(queries.some(q => /UPDATE tasks/i.test(q.text) && /SET status = 'done'/i.test(q.text)));
+        assert.ok(queries.some(q => /INSERT INTO task_action_history/i.test(q.text)));
+    });
+
     it('lets lead roles load assignable users without opening user management', async () => {
         const assignees = await request('GET', '/api/leads/assignees', undefined, withAuth({}, 'manager'));
         assert.equal(assignees.status, 200, JSON.stringify(assignees.data));
@@ -622,8 +715,8 @@ describe('route-level API safety smoke', () => {
         assert.equal(res.data.task.source_type, 'lead');
         assert.equal(res.data.task.source_id, '501');
         assert.ok(queries.some(q => /INSERT INTO tasks \(title, description, date, priority/i.test(q.text)
-            && q.params[13] === 'lead'
-            && q.params[14] === '501'));
+            && q.params[14] === 'lead'
+            && q.params[15] === '501'));
     });
 
     it('validates and applies lead assignee updates', async () => {

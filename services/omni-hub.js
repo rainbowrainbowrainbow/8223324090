@@ -935,7 +935,7 @@ async function reassignReplyExpectationOwner(conversationId, ownerUserId) {
   if (conversation.replyExpectedMessageId) {
     await updateActiveReplyEscalationTaskForMessage(
       conversation.replyExpectedMessageId,
-      { assignee: ownerLabel },
+      { assignee: ownerLabel, ownerUserId: ownerUser.id },
       { pool, reason: 'reply_owner_reassigned' }
     ).catch(err => logger.warn(`Reply escalation owner sync skipped: ${err.message}`));
   }

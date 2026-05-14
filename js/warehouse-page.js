@@ -34,6 +34,7 @@ let canManage = false;
 // Modal state
 let qtyModalMode = null; // 'use' or 'restock'
 let qtyModalItemId = null;
+let qtyModalInitialState = '';
 
 // ==========================================
 // PAGE AUTH & INIT
@@ -107,17 +108,21 @@ function setupEventListeners() {
     });
 
     // Qty modal
-    document.getElementById('qtyModalCancel')?.addEventListener('click', closeQtyModal);
+    document.getElementById('qtyModalCancel')?.addEventListener('click', () => closeQtyModal(false));
     document.getElementById('qtyModalConfirm')?.addEventListener('click', confirmQtyModal);
 
     // Close modal on backdrop click
     document.getElementById('qtyModal')?.addEventListener('click', (e) => {
-        if (e.target === document.getElementById('qtyModal')) closeQtyModal();
+        if (e.target === document.getElementById('qtyModal')) closeQtyModal(false);
     });
 
     // Escape key
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') closeQtyModal();
+        const modal = document.getElementById('qtyModal');
+        if (e.key === 'Escape' && modal?.style.display !== 'none' && !document.querySelector('.confirm-overlay')) {
+            e.preventDefault();
+            closeQtyModal(false);
+        }
     });
 }
 
@@ -334,6 +339,18 @@ async function deleteItem(itemId) {
 // USE / RESTOCK MODAL
 // ==========================================
 
+function getQtyModalState() {
+    const fields = ['qtyModalAmount', 'qtyModalReason'];
+    return fields.map(id => {
+        const el = document.getElementById(id);
+        return el ? String(el.value || '') : '';
+    }).join('|');
+}
+
+function isQtyModalDirty() {
+    return getQtyModalState() !== qtyModalInitialState;
+}
+
 function openUseModal(itemId) {
     qtyModalMode = 'use';
     qtyModalItemId = itemId;
@@ -346,7 +363,10 @@ function openUseModal(itemId) {
     document.getElementById('qtyModalConfirm').textContent = 'Списати';
     document.getElementById('qtyModalConfirm').className = 'btn-page-primary';
     document.getElementById('qtyModalConfirm').style.background = document.body.classList.contains('dark-mode') ? 'rgba(239,68,68,0.8)' : '#EF4444';
-    document.getElementById('qtyModal').style.display = '';
+    const modal = document.getElementById('qtyModal');
+    qtyModalInitialState = getQtyModalState();
+    modal.style.display = '';
+    if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(modal);
     document.getElementById('qtyModalAmount')?.focus();
 }
 
@@ -362,14 +382,45 @@ function openRestockModal(itemId) {
     document.getElementById('qtyModalConfirm').textContent = 'Поповнити';
     document.getElementById('qtyModalConfirm').className = 'btn-page-primary';
     document.getElementById('qtyModalConfirm').style.background = '';
-    document.getElementById('qtyModal').style.display = '';
+    const modal = document.getElementById('qtyModal');
+    qtyModalInitialState = getQtyModalState();
+    modal.style.display = '';
+    if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(modal);
     document.getElementById('qtyModalAmount')?.focus();
 }
 
-function closeQtyModal() {
-    document.getElementById('qtyModal').style.display = 'none';
-    qtyModalMode = null;
-    qtyModalItemId = null;
+async function closeQtyModal(force = false) {
+    const modal = document.getElementById('qtyModal');
+    if (!modal || modal.style.display === 'none') return true;
+
+    const closeNow = () => {
+        modal.style.display = 'none';
+        qtyModalMode = null;
+        qtyModalItemId = null;
+        qtyModalInitialState = getQtyModalState();
+    };
+
+    if (window.UnsafeDismissGuard) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, closeNow, {
+            force,
+            isDirty: isQtyModalDirty,
+            message: 'Є незбережені зміни в кількості. Закрити без збереження?',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+    }
+
+    if (!force && isQtyModalDirty() && typeof confirmModal === 'function') {
+        const confirmed = await confirmModal('Є незбережені зміни в кількості. Закрити без збереження?', {
+            type: 'warning',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+        if (!confirmed) return false;
+    }
+
+    closeNow();
+    return true;
 }
 
 async function confirmQtyModal() {
@@ -391,7 +442,9 @@ async function confirmQtyModal() {
     if (result && result.success) {
         const msg = qtyModalMode === 'use' ? `Списано ${amount}` : `Поповнено +${amount}`;
         showNotification(msg, 'success');
-        closeQtyModal();
+        const modal = document.getElementById('qtyModal');
+        if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.markClean(modal);
+        await closeQtyModal(true);
         await Promise.all([loadStock(), loadHistory()]);
     } else {
         showNotification(result?.error || 'Помилка', 'error');

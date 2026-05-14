@@ -8,15 +8,15 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.47.22">
-    <link rel="stylesheet" href="css/layout.css?v=0.47.22">
-    <link rel="stylesheet" href="css/pages.css?v=0.47.22">
-    <link rel="stylesheet" href="css/modals.css?v=0.47.22">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.22">
-    <link rel="stylesheet" href="css/responsive.css?v=0.47.22">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.47.22">
-    <link rel="stylesheet" href="css/designs.css?v=0.47.22">
-    <link rel="stylesheet" href="css/catalog.css?v=0.47.22">
+    <link rel="stylesheet" href="css/base.css?v=0.48.8">
+    <link rel="stylesheet" href="css/layout.css?v=0.48.8">
+    <link rel="stylesheet" href="css/pages.css?v=0.48.8">
+    <link rel="stylesheet" href="css/modals.css?v=0.48.8">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.48.8">
+    <link rel="stylesheet" href="css/responsive.css?v=0.48.8">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.48.8">
+    <link rel="stylesheet" href="css/designs.css?v=0.48.8">
+    <link rel="stylesheet" href="css/catalog.css?v=0.48.8">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -1322,29 +1322,59 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/ui.js?v=0.47.22"></script>
-    <script src="js/config.js?v=0.47.22"></script>
-    <script src="js/notification.js?v=0.47.22"></script>
-    <script src="js/api.js?v=0.47.22"></script>
-    <script src="js/auth.js?v=0.47.22"></script>
-    <script src="js/components/sidebar.js?v=0.47.22"></script>
+    <script src="js/ui.js?v=0.48.8"></script>
+    <script src="js/config.js?v=0.48.8"></script>
+    <script src="js/notification.js?v=0.48.8"></script>
+    <script src="js/api.js?v=0.48.8"></script>
+    <script src="js/auth.js?v=0.48.8"></script>
+    <script src="js/components/sidebar.js?v=0.48.8"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/catalogs.js?v=0.47.22"></script>
-    <script src="js/designs-page.js?v=0.47.22"></script>
-    <script src="js/role-panel.js?v=0.47.22"></script>
+    <script src="js/catalogs.js?v=0.48.8"></script>
+    <script src="js/designs-page.js?v=0.48.8"></script>
+    <script src="js/role-panel.js?v=0.48.8"></script>
     <script>
     // v38.9.0: Create catalog modal functions
+    function rememberEditableOverlay(overlay) {
+        if (window.UnsafeDismissGuard && overlay) window.UnsafeDismissGuard.remember(overlay);
+    }
+    function guardedEditableOverlayClose(overlay, closeFn, message) {
+        if (!overlay) return true;
+        if (window.UnsafeDismissGuard) {
+            return window.UnsafeDismissGuard.attemptCloseEditableSurface(overlay, closeFn, {
+                message: message || 'Є незбережені зміни. Закрити без збереження?',
+                okText: 'Закрити без збереження',
+                cancelText: 'Повернутись'
+            });
+        }
+        closeFn();
+        return true;
+    }
     function openCreateCatalogModal() {
         // Use our img-picker modal for creating catalogs
         var overlay = document.getElementById('createCatalogOverlay');
-        if (overlay) { overlay.classList.remove('hidden'); return; }
+        if (overlay) { overlay.classList.remove('hidden'); rememberEditableOverlay(overlay); return; }
         // Fallback: simple prompt-free modal
         var name = ''; var emoji = '📂';
         var modal = document.createElement('div');
         modal.className = 'img-picker-overlay';
         modal.innerHTML = '<div class="img-picker-modal" style="max-width:420px"><div class="img-picker-header"><h3>Створити каталог</h3><button type="button" class="img-picker-close" onclick="this.closest(\'.img-picker-overlay\').remove()">&#10005;</button></div><div style="padding:16px 20px"><form onsubmit="event.preventDefault();_doCreateCatalog(this)"><div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--gray-500);display:block;margin-bottom:4px">Назва</label><input name="name" required style="width:100%;padding:10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;box-sizing:border-box" placeholder="Каталог піньят"></div><div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--gray-500);display:block;margin-bottom:4px">Емодзі</label><input name="emoji" value="📂" style="width:60px;padding:10px;border:1px solid var(--gray-200);border-radius:8px;font-size:20px;text-align:center"></div><div style="display:flex;gap:8px"><button type="submit" style="flex:1;padding:10px;border:none;border-radius:8px;background:linear-gradient(135deg,#C9A84C,#D4AF37);color:#0D0D0D;font-weight:800;cursor:pointer;font-family:inherit">Створити</button><button type="button" onclick="this.closest(\'.img-picker-overlay\').remove()" style="flex:1;padding:10px;border:1px solid var(--gray-200);border-radius:8px;background:none;cursor:pointer;font-family:inherit">Скасувати</button></div></form></div></div>';
         document.body.appendChild(modal);
-        modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+        rememberEditableOverlay(modal);
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) guardedEditableOverlayClose(modal, function() { modal.remove(); }, 'Є незбережені зміни каталогу. Закрити без збереження?');
+        });
+        var fallbackCloseBtn = modal.querySelector('.img-picker-close');
+        var fallbackCancelBtn = modal.querySelector('button[onclick*="closest"]');
+        if (fallbackCloseBtn) fallbackCloseBtn.onclick = null;
+        if (fallbackCancelBtn) fallbackCancelBtn.onclick = null;
+        fallbackCloseBtn?.addEventListener('click', function(e) {
+            e.preventDefault();
+            guardedEditableOverlayClose(modal, function() { modal.remove(); }, 'Є незбережені зміни каталогу. Закрити без збереження?');
+        });
+        fallbackCancelBtn?.addEventListener('click', function(e) {
+            e.preventDefault();
+            guardedEditableOverlayClose(modal, function() { modal.remove(); }, 'Є незбережені зміни каталогу. Закрити без збереження?');
+        });
     }
     async function _doCreateCatalog(form) {
         var name = form.name.value.trim();
@@ -1357,7 +1387,9 @@
             if (!res) return;
             var data = await res.json();
             if (data.success || data.id) {
-                form.closest('.img-picker-overlay').remove();
+                var overlay = form.closest('.img-picker-overlay');
+                if (overlay && window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(overlay);
+                overlay?.remove();
                 showNotification('Каталог "' + name + '" створено!');
                 loadDynamicCatalogCards();
             } else {
@@ -1785,7 +1817,18 @@
             '<div style="display:flex;gap:8px;margin-top:16px"><button type="button" onclick="_saveFullEdit(\'' + catalogId + '\',' + pageNumber + ')" style="flex:1;padding:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#C9A84C,#D4AF37);color:#0D0D0D;font-weight:800;cursor:pointer;font-family:inherit;font-size:14px">💾 Зберегти</button><button type="button" onclick="this.closest(\'.img-picker-overlay\').remove()" style="flex:1;padding:12px;border:1px solid var(--gray-200);border-radius:10px;background:none;cursor:pointer;font-family:inherit;font-size:14px">Скасувати</button></div>' +
             '</div></div>';
         document.body.appendChild(modal);
-        modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+        rememberEditableOverlay(modal);
+        function closeFullEditModal(force) {
+            if (force) { modal.remove(); return true; }
+            return guardedEditableOverlayClose(modal, function() { modal.remove(); }, 'Є незбережені зміни сторінки каталогу. Закрити без збереження?');
+        }
+        var fullEditCloseBtn = modal.querySelector('.img-picker-close');
+        var fullEditCancelBtn = modal.querySelector('button[onclick*="closest"]');
+        if (fullEditCloseBtn) fullEditCloseBtn.onclick = null;
+        if (fullEditCancelBtn) fullEditCancelBtn.onclick = null;
+        fullEditCloseBtn?.addEventListener('click', function(e) { e.preventDefault(); closeFullEditModal(false); });
+        fullEditCancelBtn?.addEventListener('click', function(e) { e.preventDefault(); closeFullEditModal(false); });
+        modal.addEventListener('click', function(e) { if (e.target === modal) closeFullEditModal(false); });
         // Theme picker clicks
         modal.querySelectorAll('#_feThemePicker .theme-dot').forEach(function(dot) {
             dot.addEventListener('click', function() {
@@ -1818,7 +1861,8 @@
         try {
             var r = await apiFetch('/api/catalogs/' + catalogId + '/pages/' + pageNumber, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
             if (r && r.ok) {
-                document.querySelector('.img-picker-overlay:last-child')?.remove();
+                var savedOverlay = document.querySelector('.img-picker-overlay:last-child');
+                if (savedOverlay) { if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(savedOverlay); savedOverlay.remove(); }
                 showNotification('Сторінку збережено');
                 openCatalogPages(catalogId);
             } else { showNotification('Помилка збереження', 'error'); }
@@ -1843,7 +1887,7 @@
     async function addCatalogPage() {
         if (!_pagesCatalogId) return;
         var overlay = document.getElementById('pageFormOverlay');
-        if (overlay) { overlay.classList.remove('hidden'); document.getElementById('pageFormTitle').textContent = 'Додати сторінку'; return; }
+        if (overlay) { overlay.classList.remove('hidden'); document.getElementById('pageFormTitle').textContent = 'Додати сторінку'; rememberEditableOverlay(overlay); return; }
     }
 
     async function deleteCatalogPage(catalogId, pageNumber) {
@@ -1938,6 +1982,7 @@
         // Switch to first tab
         switchImgTab('generate');
         overlay.classList.remove('hidden');
+        rememberEditableOverlay(overlay);
     }
 
     // Tab switching
@@ -2054,9 +2099,24 @@
     window.useRefGeneratedImage = useRefGeneratedImage;
 
     // Modal functions for Image Picker + Page Form
-    function closeImagePicker() { var o = document.getElementById('imagePickerOverlay'); if (o) o.classList.add('hidden'); }
-    function closePageForm() { var o = document.getElementById('pageFormOverlay'); if (o) o.classList.add('hidden'); }
-    function closeCreateCatalog() { var o = document.getElementById('createCatalogOverlay'); if (o) o.classList.add('hidden'); }
+    function closeImagePicker(force) {
+        var o = document.getElementById('imagePickerOverlay');
+        if (!o) return true;
+        if (force) { o.classList.add('hidden'); if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(o); return true; }
+        return guardedEditableOverlayClose(o, function() { o.classList.add('hidden'); }, 'Є незбережені зміни зображення. Закрити без збереження?');
+    }
+    function closePageForm(force) {
+        var o = document.getElementById('pageFormOverlay');
+        if (!o) return true;
+        if (force) { o.classList.add('hidden'); if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(o); return true; }
+        return guardedEditableOverlayClose(o, function() { o.classList.add('hidden'); }, 'Є незбережені зміни сторінки. Закрити без збереження?');
+    }
+    function closeCreateCatalog(force) {
+        var o = document.getElementById('createCatalogOverlay');
+        if (!o) return true;
+        if (force) { o.classList.add('hidden'); if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(o); return true; }
+        return guardedEditableOverlayClose(o, function() { o.classList.add('hidden'); }, 'Є незбережені зміни каталогу. Закрити без збереження?');
+    }
 
     async function submitCreateCatalog() {
         var name = document.getElementById('catalogNameInput')?.value?.trim();
@@ -2069,7 +2129,7 @@
             var res = await apiFetch('/api/catalogs/definitions', { method:'POST', body:JSON.stringify({id:id,name:name,emoji:emoji,description:desc}), headers:{'Content-Type':'application/json'} });
             if (!res) return;
             var data = await res.json();
-            if (data.success || data.id) { closeCreateCatalog(); showNotification('Каталог "'+name+'" створено!'); loadDynamicCatalogCards(); }
+            if (data.success || data.id) { closeCreateCatalog(true); showNotification('Каталог "'+name+'" створено!'); loadDynamicCatalogCards(); }
             else { showNotification(data.error||'Помилка','error'); }
         } catch(e) { showNotification('Помилка: '+e.message,'error'); }
     }
@@ -2179,7 +2239,7 @@
         var body = window._imgPickerField === 'background' ? { background_url: url } : { image_url: url };
         try {
             await apiFetch('/api/catalogs/' + window._imgPickerCatalogId + '/pages/' + window._imgPickerPageNumber, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
-            closeImagePicker(); showNotification('Зображення збережено');
+            closeImagePicker(true); showNotification('Зображення збережено');
             if (_pagesCatalogId) openCatalogPages(_pagesCatalogId);
         } catch (err) { showNotification('Помилка', 'error'); }
     }
@@ -2191,7 +2251,7 @@
         var det = document.getElementById('pageDetail')?.value?.trim();
         if (det) body.details = JSON.stringify({ info: det });
         apiFetch('/api/catalogs/' + _pagesCatalogId + '/pages', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } })
-            .then(function(r) { if (r) { closePageForm(); showNotification('Сторінку додано'); openCatalogPages(_pagesCatalogId); } });
+            .then(function(r) { if (r) { closePageForm(true); showNotification('Сторінку додано'); openCatalogPages(_pagesCatalogId); } });
     }
     function fillPageFromProduct(val) {
         if (!val || typeof PROGRAMS === 'undefined') return;
@@ -2266,7 +2326,18 @@
             '<button onclick="addAutomation(\'' + catalogId + '\')" class="img-picker-btn-primary" style="white-space:nowrap">+ Додати</button></div></div>' +
             '<div style="padding:10px 16px"><button type="button" class="img-picker-btn-cancel" onclick="this.closest(\'.img-picker-overlay\').remove()">Закрити</button></div></div>';
         document.body.appendChild(modal);
-        modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+        rememberEditableOverlay(modal);
+        function closeAutomationModal(force) {
+            if (force) { if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(modal); modal.remove(); return true; }
+            return guardedEditableOverlayClose(modal, function() { modal.remove(); }, 'Є незбережені зміни автоматизації. Закрити без збереження?');
+        }
+        var automationCloseBtn = modal.querySelector('.img-picker-close');
+        var automationCancelBtn = modal.querySelector('.img-picker-btn-cancel');
+        if (automationCloseBtn) automationCloseBtn.onclick = null;
+        if (automationCancelBtn) automationCancelBtn.onclick = null;
+        automationCloseBtn?.addEventListener('click', function(e) { e.preventDefault(); closeAutomationModal(false); });
+        automationCancelBtn?.addEventListener('click', function(e) { e.preventDefault(); closeAutomationModal(false); });
+        modal.addEventListener('click', function(e) { if (e.target === modal) closeAutomationModal(false); });
     }
     window.openAutomationsModal = openAutomationsModal;
 
@@ -2281,7 +2352,9 @@
                 assignedRole: document.getElementById('_autoRole').value
             }), headers: { 'Content-Type': 'application/json' } });
             if (r && r.ok) {
-                document.querySelector('.img-picker-overlay:last-child')?.remove();
+                var overlay = document.querySelector('.img-picker-overlay:last-child');
+                if (overlay && window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(overlay);
+                overlay?.remove();
                 showNotification('Автоматизацію додано');
                 openAutomationsModal(catalogId);
             } else { showNotification('Помилка', 'error'); }
@@ -2320,12 +2393,26 @@
     });
 
     // ESC closes all modals
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') { closeImagePicker(); closePageForm(); closeCreateCatalog(); }
+    document.addEventListener('keydown', async function(e) {
+        if (e.key !== 'Escape') return;
+        var overlays = ['imagePickerOverlay', 'pageFormOverlay', 'createCatalogOverlay']
+            .map(function(id) { return document.getElementById(id); })
+            .filter(function(el) { return el && !el.classList.contains('hidden'); });
+        var top = overlays[overlays.length - 1];
+        if (!top) return;
+        e.preventDefault();
+        if (top.id === 'imagePickerOverlay') await closeImagePicker(false);
+        else if (top.id === 'pageFormOverlay') await closePageForm(false);
+        else if (top.id === 'createCatalogOverlay') await closeCreateCatalog(false);
     });
     ['imagePickerOverlay', 'pageFormOverlay', 'createCatalogOverlay'].forEach(function(id) {
         var el = document.getElementById(id);
-        if (el) el.addEventListener('click', function(e) { if (e.target === el) el.classList.add('hidden'); });
+        if (el) el.addEventListener('click', function(e) {
+            if (e.target !== el) return;
+            if (id === 'imagePickerOverlay') closeImagePicker(false);
+            else if (id === 'pageFormOverlay') closePageForm(false);
+            else if (id === 'createCatalogOverlay') closeCreateCatalog(false);
+        });
     });
 
     // Load dynamic catalogs on tab switch
@@ -2344,6 +2431,6 @@
         }
     });
     </script>
-    <script src="js/alerts.js?v=0.47.22"></script>
+    <script src="js/alerts.js?v=0.48.8"></script>
 </body>
 </html>

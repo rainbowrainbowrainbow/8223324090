@@ -168,10 +168,11 @@ router.get('/pinata-status', async (req, res) => {
                  ORDER BY name`
             ),
             pool.query(
-                `SELECT id, date, time, pinata_filler, group_name
+                `SELECT id, date, time, pinata_filler, pinata_number, pinata_filler_number, group_name
                  FROM bookings
                  WHERE pinata_filler IS NOT NULL
                    AND pinata_filler != ''
+                   AND COALESCE(pinata_mode, 'park') = 'park'
                    AND date::date >= CURRENT_DATE
                    AND date::date <= CURRENT_DATE + INTERVAL '14 days'
                    AND status != 'cancelled'

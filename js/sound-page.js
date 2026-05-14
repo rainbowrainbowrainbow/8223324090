@@ -7,6 +7,32 @@
 
     const _esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
+    function rememberSoundEditableModal(modal) {
+        if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
+    }
+
+    async function closeSoundEditableModal(modal, closeFn, options = {}) {
+        if (!modal) return true;
+        if (window.UnsafeDismissGuard) {
+            return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, closeFn, {
+                force: options.force || false,
+                message: options.message || 'Є незбережені зміни. Закрити без збереження?',
+                okText: 'Закрити без збереження',
+                cancelText: 'Повернутись'
+            });
+        }
+        if (!options.force && typeof confirmModal === 'function') {
+            const confirmed = await confirmModal(options.message || 'Є незбережені зміни. Закрити без збереження?', {
+                type: 'warning',
+                okText: 'Закрити без збереження',
+                cancelText: 'Повернутись'
+            });
+            if (!confirmed) return false;
+        }
+        closeFn();
+        return true;
+    }
+
     // ==========================================
     // HASH NAVIGATION (sidebar drives tabs)
     // ==========================================
@@ -247,10 +273,18 @@
         const saveBtn = document.getElementById('announcementModalSave');
         const createBtn = document.getElementById('createAnnouncementBtn');
         const refreshBtn = document.getElementById('announcementsRefreshBtn');
+        const openAnnouncementModal = () => {
+            modal?.classList.remove('hidden');
+            rememberSoundEditableModal(modal);
+        };
+        const closeAnnouncementModal = (force = false) => closeSoundEditableModal(modal, () => modal?.classList.add('hidden'), {
+            force,
+            message: 'Є незбережені зміни в оголошенні. Закрити без збереження?'
+        });
 
-        if (createBtn) createBtn.addEventListener('click', () => modal?.classList.remove('hidden'));
-        if (closeBtn) closeBtn.addEventListener('click', () => modal?.classList.add('hidden'));
-        if (cancelBtn) cancelBtn.addEventListener('click', () => modal?.classList.add('hidden'));
+        if (createBtn) createBtn.addEventListener('click', openAnnouncementModal);
+        if (closeBtn) closeBtn.addEventListener('click', () => closeAnnouncementModal(false));
+        if (cancelBtn) cancelBtn.addEventListener('click', () => closeAnnouncementModal(false));
         if (refreshBtn) refreshBtn.addEventListener('click', () => loadAnnouncements());
 
         if (saveBtn) saveBtn.addEventListener('click', async () => {
@@ -264,7 +298,8 @@
             };
             try {
                 await apiCall('POST', '/music/announcements', body);
-                modal?.classList.add('hidden');
+                if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.markClean(modal);
+                await closeAnnouncementModal(true);
                 document.getElementById('annTitle').value = '';
                 document.getElementById('annText').value = '';
                 loadAnnouncements();
@@ -274,7 +309,14 @@
         });
 
         // Close on overlay click
-        if (modal) modal.addEventListener('click', e => { if (e.target === modal) modal.classList.add('hidden'); });
+        if (modal) modal.addEventListener('click', e => { if (e.target === modal) closeAnnouncementModal(false); });
+        document.addEventListener('keydown', e => {
+            if (e.key !== 'Escape' || document.querySelector('.confirm-overlay')) return;
+            if (modal && !modal.classList.contains('hidden')) {
+                e.preventDefault();
+                closeAnnouncementModal(false);
+            }
+        });
     }
 
     // ==========================================
@@ -340,10 +382,18 @@
         const saveBtn = document.getElementById('projectModalSave');
         const createBtn = document.getElementById('createProjectBtn');
         const refreshBtn = document.getElementById('projectsRefreshBtn');
+        const openProjectModal = () => {
+            modal?.classList.remove('hidden');
+            rememberSoundEditableModal(modal);
+        };
+        const closeProjectModal = (force = false) => closeSoundEditableModal(modal, () => modal?.classList.add('hidden'), {
+            force,
+            message: 'Є незбережені зміни в звуковому проєкті. Закрити без збереження?'
+        });
 
-        if (createBtn) createBtn.addEventListener('click', () => modal?.classList.remove('hidden'));
-        if (closeBtn) closeBtn.addEventListener('click', () => modal?.classList.add('hidden'));
-        if (cancelBtn) cancelBtn.addEventListener('click', () => modal?.classList.add('hidden'));
+        if (createBtn) createBtn.addEventListener('click', openProjectModal);
+        if (closeBtn) closeBtn.addEventListener('click', () => closeProjectModal(false));
+        if (cancelBtn) cancelBtn.addEventListener('click', () => closeProjectModal(false));
         if (refreshBtn) refreshBtn.addEventListener('click', () => loadProjects());
 
         if (saveBtn) saveBtn.addEventListener('click', async () => {
@@ -356,7 +406,8 @@
             };
             try {
                 await apiCall('POST', '/music/projects', body);
-                modal?.classList.add('hidden');
+                if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.markClean(modal);
+                await closeProjectModal(true);
                 document.getElementById('projName').value = '';
                 document.getElementById('projDesc').value = '';
                 loadProjects();
@@ -365,7 +416,14 @@
             }
         });
 
-        if (modal) modal.addEventListener('click', e => { if (e.target === modal) modal.classList.add('hidden'); });
+        if (modal) modal.addEventListener('click', e => { if (e.target === modal) closeProjectModal(false); });
+        document.addEventListener('keydown', e => {
+            if (e.key !== 'Escape' || document.querySelector('.confirm-overlay')) return;
+            if (modal && !modal.classList.contains('hidden')) {
+                e.preventDefault();
+                closeProjectModal(false);
+            }
+        });
     }
 
     // ==========================================

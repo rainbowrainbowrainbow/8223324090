@@ -14,6 +14,8 @@ const ContentPage = (() => {
     let activePlatform = 'all';
     let posts = [];
     let accounts = [];
+    let postInitialState = '';
+    let cardInitialState = '';
 
     const PLATFORM_ICONS = {
         instagram: '📸', telegram: '📱', tiktok: '🎵',
@@ -344,7 +346,10 @@ const ContentPage = (() => {
         document.querySelectorAll('#modalPlatforms input').forEach(cb => { cb.checked = false; });
         updateCharCount();
         renderModalActions(null);
-        document.getElementById('postModal').classList.add('open');
+        const modal = document.getElementById('postModal');
+        modal.classList.add('open');
+        postInitialState = JSON.stringify(getFormData());
+        if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(modal);
     }
 
     async function openPost(id) {
@@ -366,14 +371,32 @@ const ContentPage = (() => {
             document.getElementById('postCurrentStatus').innerHTML = `<span class="content-status content-status--${escapeHtml(p.status)}">${escapeHtml(STATUS_LABELS[p.status] || p.status)}</span>`;
             updateCharCount();
             renderModalActions(p);
-            document.getElementById('postModal').classList.add('open');
+            const modal = document.getElementById('postModal');
+            modal.classList.add('open');
+            postInitialState = JSON.stringify(getFormData());
+            if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(modal);
         } catch (err) {
             notify('Помилка завантаження посту', 'error');
         }
     }
 
-    function closeModal() {
-        document.getElementById('postModal').classList.remove('open');
+    async function closeModal(force = false) {
+        const modal = document.getElementById('postModal');
+        const closeNow = () => {
+            modal?.classList.remove('open');
+            postInitialState = '';
+        };
+        if (window.UnsafeDismissGuard && modal) {
+            return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, closeNow, {
+                force,
+                isDirty: () => JSON.stringify(getFormData()) !== postInitialState,
+                message: 'Є незбережені зміни контенту. Закрити без збереження?',
+                okText: 'Закрити без збереження',
+                cancelText: 'Повернутись'
+            });
+        }
+        closeNow();
+        return true;
     }
 
     function updateCharCount() {
@@ -447,7 +470,7 @@ const ContentPage = (() => {
                 await api('/posts', { method: 'POST', body: JSON.stringify(formData) });
                 notify('Пост створено');
             }
-            closeModal();
+            await closeModal(true);
             loadCalendar();
         } catch (err) {
             notify('Помилка: ' + err.message, 'error');
@@ -458,7 +481,7 @@ const ContentPage = (() => {
         try {
             await api('/posts/' + id, { method: 'PUT', body: JSON.stringify({ status: 'pending_approval' }) });
             notify('Пост відправлено на затвердження');
-            closeModal();
+            await closeModal(true);
             loadCalendar();
         } catch (err) { notify('Помилка: ' + err.message, 'error'); }
     }
@@ -467,7 +490,7 @@ const ContentPage = (() => {
         try {
             await api('/posts/' + id + '/approve', { method: 'PUT' });
             notify('Пост затверджено');
-            closeModal();
+            await closeModal(true);
             loadCalendar();
         } catch (err) { notify('Помилка: ' + err.message, 'error'); }
     }
@@ -476,7 +499,7 @@ const ContentPage = (() => {
         try {
             await api('/posts/' + id + '/reject', { method: 'PUT', body: JSON.stringify({ reason: 'Повернуто на доопрацювання' }) });
             notify('Пост повернуто на доопрацювання');
-            closeModal();
+            await closeModal(true);
             loadCalendar();
         } catch (err) { notify('Помилка: ' + err.message, 'error'); }
     }
@@ -487,7 +510,7 @@ const ContentPage = (() => {
         try {
             await api('/posts/' + id + '/schedule', { method: 'PUT', body: JSON.stringify({ scheduled_at: scheduledAt }) });
             notify('Пост заплановано');
-            closeModal();
+            await closeModal(true);
             loadCalendar();
         } catch (err) { notify('Помилка: ' + err.message, 'error'); }
     }
@@ -519,7 +542,7 @@ const ContentPage = (() => {
             const failed = Object.keys(data.errors || {});
             if (failed.length) notify(`⚠️ Опубліковано (з помилками: ${failed.join(', ')})`, 'warning');
             else notify(`🚀 Опубліковано: ${published}`);
-            closeModal();
+            await closeModal(true);
             loadCalendar();
         } catch (err) { notify('Помилка: ' + err.message, 'error'); }
     }
@@ -532,7 +555,7 @@ const ContentPage = (() => {
         try {
             await api('/posts/' + id, { method: 'DELETE' });
             notify('Пост видалено');
-            closeModal();
+            await closeModal(true);
             loadCalendar();
         } catch (err) { notify('Помилка: ' + err.message, 'error'); }
     }
@@ -662,7 +685,10 @@ const ContentPage = (() => {
         document.getElementById('cardModalActions').innerHTML =
             `<button class="content-btn content-btn--primary" onclick="ContentPage.saveCard()">💾 Зберегти</button>
              <button class="content-btn content-btn--secondary" onclick="ContentPage.closeCardModal()">Скасувати</button>`;
-        document.getElementById('cardModal').classList.add('open');
+        const modal = document.getElementById('cardModal');
+        modal.classList.add('open');
+        cardInitialState = JSON.stringify(getCardFormData());
+        if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(modal);
     }
 
     async function openCard(id) {
@@ -690,11 +716,51 @@ const ContentPage = (() => {
                 `<button class="content-btn content-btn--primary" onclick="ContentPage.saveCard()">💾 Зберегти</button>
                  <button class="content-btn content-btn--danger" onclick="ContentPage.deleteCard(${c.id})">🗑️ Видалити</button>
                  <button class="content-btn content-btn--secondary" onclick="ContentPage.closeCardModal()">Скасувати</button>`;
-            document.getElementById('cardModal').classList.add('open');
+            const modal = document.getElementById('cardModal');
+            modal.classList.add('open');
+            cardInitialState = JSON.stringify(getCardFormData());
+            if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(modal);
         } catch (err) { notify('Помилка: ' + err.message, 'error'); }
     }
 
-    function closeCardModal() { document.getElementById('cardModal').classList.remove('open'); }
+    function getCardFormData() {
+        return {
+            slug: document.getElementById('cardSlug')?.value || '',
+            title: document.getElementById('cardTitle')?.value || '',
+            category: document.getElementById('cardCategory')?.value || '',
+            short: document.getElementById('cardShortDesc')?.value || '',
+            full: document.getElementById('cardFullDesc')?.value || '',
+            audience: document.getElementById('cardAudience')?.value || '',
+            price: document.getElementById('cardPrice')?.value || '',
+            features: document.getElementById('cardFeatures')?.value || '',
+            ig: document.getElementById('cardHashtagsIG')?.value || '',
+            tt: document.getElementById('cardHashtagsTT')?.value || '',
+            fb: document.getElementById('cardHashtagsFB')?.value || '',
+            tone: document.getElementById('cardTone')?.value || '',
+            rules: document.getElementById('cardRules')?.value || '',
+            cta: document.getElementById('cardCTA')?.value || '',
+            doNot: document.getElementById('cardDoNot')?.value || ''
+        };
+    }
+
+    async function closeCardModal(force = false) {
+        const modal = document.getElementById('cardModal');
+        const closeNow = () => {
+            modal?.classList.remove('open');
+            cardInitialState = '';
+        };
+        if (window.UnsafeDismissGuard && modal) {
+            return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, closeNow, {
+                force,
+                isDirty: () => JSON.stringify(getCardFormData()) !== cardInitialState,
+                message: 'Є незбережені зміни бізнес-картки. Закрити без збереження?',
+                okText: 'Закрити без збереження',
+                cancelText: 'Повернутись'
+            });
+        }
+        closeNow();
+        return true;
+    }
 
     function splitComma(val) { return val ? val.split(',').map(s => s.trim()).filter(Boolean) : []; }
 
@@ -726,7 +792,7 @@ const ContentPage = (() => {
                 await bcApi('/', { method: 'POST', body: JSON.stringify(body) });
                 notify('Картку створено');
             }
-            closeCardModal();
+            await closeCardModal(true);
             loadCards();
         } catch (err) { notify('Помилка: ' + err.message, 'error'); }
     }
@@ -739,7 +805,7 @@ const ContentPage = (() => {
         try {
             await bcApi('/' + id, { method: 'DELETE' });
             notify('Картку видалено');
-            closeCardModal();
+            await closeCardModal(true);
             loadCards();
         } catch (err) { notify('Помилка: ' + err.message, 'error'); }
     }

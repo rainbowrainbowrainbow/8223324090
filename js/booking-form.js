@@ -13,7 +13,9 @@ window.BookingForm = {
      */
     init() {
         const fields = ['roomSelect', 'selectedProgram', 'bookingNotes', 'bookingGroupName',
-            'costumeSelect', 'kidsCountInput', 'customerName', 'customerPhone'];
+            'costumeSelect', 'kidsCountInput', 'customerName', 'customerPhone',
+            'pinataMode', 'pinataNumber', 'pinataFillerNumber', 'pinataFillerSelect',
+            'clientPinataServicePrice', 'clientPinataServiceNote'];
         fields.forEach(id => {
             const el = document.getElementById(id);
             if (el) {
@@ -75,7 +77,8 @@ window.BookingForm = {
         const program = getProductsSync().find(p => p.id === programId);
         if (!program) return { valid: false, error: 'Програму не знайдено' };
 
-        if (program.hasFiller) {
+        const pinataMode = document.getElementById('pinataMode')?.value || 'none';
+        if (program.hasFiller && pinataMode === 'park') {
             const filler = document.getElementById('pinataFillerSelect')?.value;
             if (!filler) return { valid: false, error: 'Оберіть наповнювач для піньяти' };
         }
@@ -137,7 +140,14 @@ window.BookingForm = {
         document.getElementById('hostsWarning')?.classList.add('hidden');
         document.getElementById('customProgramSection')?.classList.add('hidden');
         document.getElementById('secondAnimatorSection')?.classList.add('hidden');
-        document.getElementById('pinataFillerSection')?.classList.add('hidden');
+        if (typeof resetPinataModeFields === 'function') {
+            resetPinataModeFields();
+        } else {
+            document.getElementById('pinataModeSection')?.classList.add('hidden');
+            document.getElementById('pinataSharedFields')?.classList.add('hidden');
+            document.getElementById('pinataFillerSection')?.classList.add('hidden');
+            document.getElementById('clientPinataServiceFields')?.classList.add('hidden');
+        }
 
         const extraHostToggle = document.getElementById('extraHostToggle');
         if (extraHostToggle) {

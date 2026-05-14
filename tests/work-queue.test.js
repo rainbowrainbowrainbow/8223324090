@@ -30,6 +30,10 @@ function clearModules() {
         '../services/omni-hub',
         '../services/replyEscalation',
         '../services/replyActionHistory',
+        '../services/taskActionHistory',
+        '../services/taskExecution',
+        '../services/taskPolicy',
+        '../services/bookingVisibility',
         '../routes/work-queue'
     ].forEach(modulePath => {
         try { delete require.cache[require.resolve(modulePath)]; } catch {}
@@ -242,15 +246,135 @@ function createFakePool() {
                 ] };
             }
 
+            if (/FROM task_action_history/i.test(text)) {
+                return { rows: [
+                    {
+                        id: 22,
+                        task_id: params[0],
+                        action_type: 'task_owner_reassigned',
+                        actor_user_id: 20,
+                        actor_name_snapshot: 'manager user',
+                        source_surface: 'manager_queue_task_execution_v2',
+                        old_value_json: { ownerUserId: null, assignedTo: 'legacy owner' },
+                        new_value_json: { ownerUserId: 30, assignedTo: 'New Owner' },
+                        meta_json: { route: 'work_queue_task_owner' },
+                        summary: 'Task owner reassigned',
+                        created_at: '2026-05-14T12:05:00Z'
+                    },
+                    {
+                        id: 21,
+                        task_id: params[0],
+                        action_type: 'task_completed',
+                        actor_user_id: 20,
+                        actor_name_snapshot: 'manager user',
+                        source_surface: 'manager_queue_task_execution_v2',
+                        old_value_json: { status: 'todo' },
+                        new_value_json: { status: 'done' },
+                        meta_json: { route: 'work_queue_task_done' },
+                        summary: 'Task completed',
+                        created_at: '2026-05-14T12:00:00Z'
+                    }
+                ] };
+            }
+
+            if (/INSERT INTO task_action_history/i.test(text)) {
+                return { rows: [{
+                    id: queries.filter(q => /INSERT INTO task_action_history/i.test(q.text)).length,
+                    task_id: params[0],
+                    action_type: params[1],
+                    actor_user_id: params[2],
+                    actor_name_snapshot: params[3],
+                    source_surface: params[4],
+                    old_value_json: params[5] ? JSON.parse(params[5]) : null,
+                    new_value_json: params[6] ? JSON.parse(params[6]) : null,
+                    meta_json: params[7] ? JSON.parse(params[7]) : null,
+                    summary: params[8],
+                    created_at: '2026-05-14T12:10:00Z'
+                }] };
+            }
+
             if (/WITH inserted AS/i.test(text) && /INSERT INTO tasks/i.test(text) && /conversation_reply/i.test(text)) {
                 return { rows: [{
                     id: 710,
                     title: 'Overdue reply escalation',
                     status: 'todo',
                     source_type: 'conversation_reply',
-                    source_id: String(params[8]),
-                    deadline: params[6],
+                    source_id: String(params[9]),
+                    owner_user_id: params[5],
+                    deadline: params[7],
                     created: true
+                }] };
+            }
+
+            if (/FROM tasks t/i.test(text) && /LEFT JOIN users u ON u\.id = t\.owner_user_id/i.test(text) && /WHERE t\.id = \$1/i.test(text)) {
+                if (params[0] === 999) return { rows: [] };
+                return { rows: [{
+                    id: params[0],
+                    title: 'Visible queue task',
+                    description: 'Visible task detail',
+                    status: 'todo',
+                    priority: 'high',
+                    deadline: '2026-05-12T08:00:00Z',
+                    date: null,
+                    category: 'admin',
+                    assigned_to: 'manager user',
+                    owner: null,
+                    owner_user_id: 20,
+                    owner_name: 'manager user',
+                    owner_username: 'manager-user',
+                    version: 1,
+                    source_type: 'manual',
+                    source_id: null,
+                    created_at: '2026-05-10T10:00:00Z'
+                }] };
+            }
+
+            if (/UPDATE tasks/i.test(text) && /SET status = 'done'/i.test(text) && /RETURNING \*/i.test(text)) {
+                return { rows: [{
+                    id: params[0],
+                    title: 'Visible queue task',
+                    status: 'done',
+                    priority: 'high',
+                    deadline: '2026-05-12T08:00:00Z',
+                    date: null,
+                    category: 'admin',
+                    assigned_to: 'manager user',
+                    owner: null,
+                    owner_user_id: 20,
+                    completed_at: '2026-05-14T12:00:00Z',
+                    updated_at: '2026-05-14T12:00:00Z'
+                }] };
+            }
+
+            if (/UPDATE tasks/i.test(text) && /SET owner_user_id =/i.test(text) && /RETURNING \*/i.test(text)) {
+                return { rows: [{
+                    id: params[0],
+                    title: 'Visible queue task',
+                    status: 'todo',
+                    priority: 'high',
+                    deadline: '2026-05-12T08:00:00Z',
+                    date: null,
+                    category: 'admin',
+                    assigned_to: params[2],
+                    owner: null,
+                    owner_user_id: params[1],
+                    updated_at: '2026-05-14T12:00:00Z'
+                }] };
+            }
+
+            if (/UPDATE tasks/i.test(text) && /SET deadline =/i.test(text) && /RETURNING \*/i.test(text)) {
+                return { rows: [{
+                    id: params[0],
+                    title: 'Visible queue task',
+                    status: 'todo',
+                    priority: 'high',
+                    deadline: params[1],
+                    date: null,
+                    category: 'admin',
+                    assigned_to: 'manager user',
+                    owner: null,
+                    owner_user_id: 20,
+                    updated_at: '2026-05-14T12:00:00Z'
                 }] };
             }
 
@@ -266,6 +390,9 @@ function createFakePool() {
                     category: 'admin',
                     assigned_to: 'manager user',
                     owner: null,
+                    owner_user_id: 20,
+                    owner_name: 'manager user',
+                    owner_username: 'manager-user',
                     task_source_type: 'lead',
                     task_source_id: '10',
                     linked_lead_id: 10,
@@ -288,6 +415,9 @@ function createFakePool() {
                     category: 'event',
                     assigned_to: 'manager user',
                     owner: null,
+                    owner_user_id: 20,
+                    owner_name: 'manager user',
+                    owner_username: 'manager-user',
                     task_source_type: 'manual',
                     task_source_id: null,
                     linked_lead_id: null,
@@ -310,6 +440,9 @@ function createFakePool() {
                     category: 'event',
                     assigned_to: 'manager user',
                     owner: null,
+                    owner_user_id: 20,
+                    owner_name: 'manager user',
+                    owner_username: 'manager-user',
                     task_source_type: 'booking',
                     task_source_id: 'BK-1',
                     linked_lead_id: null,
@@ -547,6 +680,13 @@ describe('work queue endpoint', () => {
 
         assert.equal(buckets.overdue.items[0].taskId, 1);
         assert.equal(buckets.overdue.items[0].href, '/sales-funnel?lead=10');
+        assert.equal(buckets.overdue.items[0].meta.ownerUserId, 20);
+        assert.equal(buckets.overdue.items[0].meta.ownerState, 'typed');
+        assert.equal(buckets.overdue.items[0].execution.depth, 'limited_task_inline');
+        assert.equal(buckets.overdue.items[0].execution.routeOutOnly, false);
+        assert.ok(buckets.overdue.items[0].execution.actions.some(action => action.type === 'task_mark_done'));
+        assert.ok(buckets.overdue.items[0].execution.actions.some(action => action.type === 'task_reassign_owner'));
+        assert.ok(buckets.overdue.items[0].execution.actions.some(action => action.type === 'task_reschedule'));
         assert.equal(buckets.today.items[0].taskId, 2);
         assert.equal(buckets.tomorrow.items.some(item => item.bookingId === 'BK-3'), true);
         assert.equal(buckets.callback_due.items[0].leadId, 11);
@@ -572,8 +712,13 @@ describe('work queue endpoint', () => {
         assert.equal(buckets.callback_due.items[0].execution.routeOutOnly, true);
         assert.match(buckets.callback_due.items[0].execution.unavailableReason, /route-out only/i);
         assert.equal(buckets.needs_confirmation.items[0].href, '/?date=2026-05-13&highlight=BK-2');
-        assert.equal(buckets.needs_confirmation.items[0].execution.routeOutOnly, true);
+        assert.equal(buckets.needs_confirmation.items[0].meta.canConfirmInline, true);
+        assert.equal(buckets.needs_confirmation.items[0].meta.confirmationWindow, 'today_tomorrow_preliminary');
+        assert.equal(buckets.needs_confirmation.items[0].execution.routeOutOnly, false);
+        assert.equal(buckets.needs_confirmation.items[0].execution.autoAdvance, 'after_durable_mutation_refetch');
+        assert.ok(buckets.needs_confirmation.items[0].execution.actions.some(action => action.type === 'booking_confirm'));
         assert.equal(buckets.event_soon.items[0].leadId, 12);
+        assert.match(buckets.event_soon.items[0].intelligence.why.join(' '), /timing pressure, not final readiness/i);
         assert.equal(buckets.idle_lead.items[0].confidence, 'suggested');
         assert.equal(buckets.idle_lead.items[0].execution.depth, 'summary_route_out');
         assert.equal(res.data.queue.meta.omittedBuckets.includes('waiting_reply'), false);
@@ -595,6 +740,9 @@ describe('work queue endpoint', () => {
         assert.equal(res.data.queue.meta.intelligence.hiddenDataScanned, false);
         assert.equal(res.data.queue.meta.intelligence.source, 'visible_queue_items');
         assert.equal(res.data.queue.meta.intelligence.weakBuckets.includes('idle_lead'), true);
+        assert.equal(res.data.queue.meta.bookingVisibility.visibleScopeOnly, true);
+        assert.match(res.data.queue.meta.bookingVisibility.scopeSource, /booking-operational|full-role/);
+        assert.equal(res.data.queue.meta.bookingVisibility.missingDurableScopes.includes('line'), true);
     });
 
     it('adds bucket-aware intelligence without a fake global score', async () => {
@@ -605,6 +753,7 @@ describe('work queue endpoint', () => {
         const callback = buckets.callback_due.items[0];
         const idle = buckets.idle_lead.items[0];
         const overdueTask = buckets.overdue.items[0];
+        const needsConfirmation = buckets.needs_confirmation.items[0];
         const summary = res.data.queue.meta.intelligence;
 
         assert.equal(waiting.intelligence.model, 'bucket_aware_priority_bands_v1');
@@ -617,13 +766,19 @@ describe('work queue endpoint', () => {
         assert.equal(waiting.intelligence.recommendedAction.type, 'open_reply_escalation');
         assert.match(waiting.intelligence.why.join(' '), /conversations\.reply_expected/);
 
-        assert.equal(overdueTask.intelligence.priorityBand, 'critical');
+        assert.equal(overdueTask.intelligence.priorityBand, 'action_today');
         assert.equal(overdueTask.intelligence.riskTypes.includes('task_overdue'), true);
-        assert.equal(overdueTask.intelligence.depth, 'limited');
+        assert.equal(overdueTask.intelligence.depth, 'task_local');
+        assert.equal(overdueTask.intelligence.globalScore, false);
 
         assert.equal(callback.intelligence.recommendedAction.type, 'open_lead_for_callback');
         assert.equal(callback.intelligence.riskTypes.includes('callback_due'), true);
         assert.match(callback.intelligence.why.join(' '), /not canonical waiting_reply/);
+
+        assert.equal(needsConfirmation.intelligence.recommendedAction.type, 'confirm_booking');
+        assert.equal(needsConfirmation.intelligence.riskTypes.includes('booking_needs_confirmation'), true);
+        assert.match(needsConfirmation.intelligence.why.join(' '), /booking status risk from bookings\.status/i);
+        assert.equal(needsConfirmation.intelligence.globalScore, false);
 
         assert.equal(idle.intelligence.priorityBand, 'suggested');
         assert.equal(idle.intelligence.confidence, 'low');
@@ -634,7 +789,7 @@ describe('work queue endpoint', () => {
         assert.ok(Number(summary.priorityBands.critical || 0) >= 1);
         assert.ok(summary.topRisks.some(risk => risk.type === 'reply_escalated'));
         assert.ok(summary.bottlenecks.some(b => b.type === 'escalated_replies'));
-        assert.ok(summary.bottlenecks.some(b => b.type === 'visible_overdue_tasks' && /string/.test(b.caveat)));
+        assert.ok(summary.bottlenecks.some(b => b.type === 'visible_overdue_tasks' && /tasks\.owner_user_id/.test(b.caveat)));
     });
 
     it('filters mine from typed reply_owner_user_id only', async () => {
@@ -861,8 +1016,8 @@ describe('work queue endpoint', () => {
 
         const insertQuery = queries.find(q => /WITH inserted AS/i.test(q.text) && /INSERT INTO tasks/i.test(q.text));
         assert.ok(insertQuery, 'manual escalation should reuse the idempotent conversation_reply task creation path');
-        assert.equal(insertQuery.params[7], 'conversation_reply');
-        assert.equal(insertQuery.params[8], '1204');
+        assert.equal(insertQuery.params[8], 'conversation_reply');
+        assert.equal(insertQuery.params[9], '1204');
 
         const historyInsert = queries.find(q => /INSERT INTO reply_action_history/i.test(q.text) && q.params[2] === 'reply_escalated');
         assert.ok(historyInsert, 'manual reply escalation must leave durable action history');
@@ -981,6 +1136,83 @@ describe('work queue endpoint', () => {
         assert.ok(historyQuery);
         assert.match(historyQuery.text, /ORDER BY created_at DESC, id DESC/i);
         assert.deepEqual(historyQuery.params, [41, 2]);
+    });
+
+    it('exposes assignable task owners without label-only authority', async () => {
+        const denied = await request('/api/work-queue/task-owners', 'admin');
+        assert.equal(denied.status, 403);
+
+        const res = await request('/api/work-queue/task-owners', 'manager');
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.deepEqual(res.data.users.map(user => user.id), [20, 30]);
+        assert.equal(res.data.meta.canonicalField, 'tasks.owner_user_id');
+        assert.equal(res.data.meta.labelFiltering, false);
+    });
+
+    it('opens safe task execution rails with durable history for done, owner, and deadline actions', async () => {
+        const done = await request('/api/work-queue/tasks/1/done', 'manager', {
+            method: 'POST',
+            body: { sourceSurface: 'manager_queue_task_execution_v2' }
+        });
+        assert.equal(done.status, 200, JSON.stringify(done.data));
+        assert.equal(done.data.action, 'task_mark_done');
+        assert.equal(done.data.historyEvent.actionType, 'task_completed');
+
+        const doneUpdate = queries.find(q => /UPDATE tasks/i.test(q.text) && /SET status = 'done'/i.test(q.text));
+        assert.ok(doneUpdate, 'task done must mutate canonical tasks.status');
+        assert.match(doneUpdate.text, /COALESCE\(status, 'todo'\) NOT IN/i);
+        let historyInsert = queries.find(q => /INSERT INTO task_action_history/i.test(q.text) && q.params[1] === 'task_completed');
+        assert.ok(historyInsert, 'task done must leave durable task action history');
+        assert.equal(historyInsert.params[0], 1);
+        assert.equal(historyInsert.params[2], 20);
+
+        queries.length = 0;
+        const reassign = await request('/api/work-queue/tasks/1/owner', 'manager', {
+            method: 'PATCH',
+            body: { ownerUserId: 30, assigned_to: 'Ignored Label', sourceSurface: 'manager_queue_task_execution_v2' }
+        });
+        assert.equal(reassign.status, 200, JSON.stringify(reassign.data));
+        assert.equal(reassign.data.action, 'task_reassign_owner');
+        assert.equal(reassign.data.owner.id, 30);
+        const ownerUpdate = queries.find(q => /UPDATE tasks/i.test(q.text) && /SET owner_user_id =/i.test(q.text));
+        assert.ok(ownerUpdate, 'task reassignment must update typed owner field');
+        assert.deepEqual(ownerUpdate.params.slice(0, 3), [1, 30, 'New Owner']);
+        historyInsert = queries.find(q => /INSERT INTO task_action_history/i.test(q.text) && q.params[1] === 'task_owner_reassigned');
+        assert.ok(historyInsert, 'task reassignment must leave durable task action history');
+        assert.deepEqual(JSON.parse(historyInsert.params[6]), { ownerUserId: 30, assignedTo: 'New Owner', owner: null });
+
+        queries.length = 0;
+        const reschedule = await request('/api/work-queue/tasks/1/deadline', 'manager', {
+            method: 'PATCH',
+            body: { deadline: '2099-05-15T12:00:00.000Z', sourceSurface: 'manager_queue_task_execution_v2' }
+        });
+        assert.equal(reschedule.status, 200, JSON.stringify(reschedule.data));
+        assert.equal(reschedule.data.action, 'task_reschedule');
+        const deadlineUpdate = queries.find(q => /UPDATE tasks/i.test(q.text) && /SET deadline =/i.test(q.text));
+        assert.ok(deadlineUpdate, 'task reschedule must mutate canonical deadline field');
+        assert.deepEqual(deadlineUpdate.params.slice(0, 2), [1, '2099-05-15T12:00:00.000Z']);
+        historyInsert = queries.find(q => /INSERT INTO task_action_history/i.test(q.text) && q.params[1] === 'task_rescheduled');
+        assert.ok(historyInsert, 'task reschedule must leave durable task action history');
+    });
+
+    it('returns bounded newest-first task action history to managers only', async () => {
+        const denied = await request('/api/work-queue/tasks/1/history?limit=10', 'admin');
+        assert.equal(denied.status, 403);
+
+        const res = await request('/api/work-queue/tasks/1/history?limit=2', 'manager');
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.meta.source, 'task_action_history');
+        assert.equal(res.data.meta.newestFirst, true);
+        assert.deepEqual(res.data.events.map(event => event.actionType), ['task_owner_reassigned', 'task_completed']);
+
+        const visibleQuery = queries.find(q => /FROM tasks t/i.test(q.text) && /WHERE t\.id = \$1/i.test(q.text));
+        assert.ok(visibleQuery, 'task history must verify object visibility before reading history');
+        const historyQuery = queries.find(q => /FROM task_action_history/i.test(q.text));
+        assert.ok(historyQuery);
+        assert.match(historyQuery.text, /ORDER BY created_at DESC, id DESC/i);
+        assert.deepEqual(historyQuery.params, [1, 2]);
     });
 
     it('does not reuse stale status=new cold-lead logic as queue authority', async () => {
@@ -1122,6 +1354,53 @@ describe('work queue endpoint', () => {
                             signal: 'lead_interactions.follow_up_date'
                         }
                     }]
+                },
+                {
+                    key: 'overdue',
+                    label: 'Overdue tasks',
+                    count: 1,
+                    items: [{
+                        id: 'task:overdue:1',
+                        bucket: 'overdue',
+                        sourceType: 'task',
+                        sourceId: '1',
+                        taskId: 1,
+                        href: '/tasks?open=1',
+                        title: 'Overdue task',
+                        subtitle: 'Task context',
+                        dueAt: '2026-05-13T08:00:00Z',
+                        priority: 'high',
+                        confidence: 'durable',
+                        actionLabel: 'Відкрити задачу',
+                        intelligence: {
+                            model: 'bucket_aware_priority_bands_v1',
+                            globalScore: false,
+                            priorityBand: 'critical',
+                            riskTypes: ['task_overdue'],
+                            recommendedAction: { type: 'open_task', label: 'Open overdue task', href: '/tasks?open=1' },
+                            why: ['tasks.deadline is overdue.'],
+                            confidence: 'medium',
+                            depth: 'limited'
+                        },
+                        execution: {
+                            model: 'task_execution_truth_v2',
+                            depth: 'limited_task_inline',
+                            inline: true,
+                            routeOutOnly: false,
+                            autoAdvance: 'after_durable_mutation_refetch',
+                            actions: [
+                                { type: 'task_mark_done', durableMutation: true },
+                                { type: 'task_reassign_owner', durableMutation: true },
+                                { type: 'task_reschedule', durableMutation: true }
+                            ]
+                        },
+                        meta: {
+                            assignedTo: 'Manager User',
+                            ownerUserId: 20,
+                            ownerState: 'typed',
+                            signal: 'task_due_overdue'
+                        }
+                    }]
                 }
             ]
         };
@@ -1175,6 +1454,37 @@ describe('work queue endpoint', () => {
                 currentQueue.items = currentQueue.buckets.flatMap(bucket => bucket.items || []);
                 return { ok: true, status: 200, json: async () => ({ success: true, conversation: { id: 41, replyExpected: false } }) };
             }
+            if (value.startsWith('/api/work-queue/tasks/1/history')) {
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        success: true,
+                        events: [{
+                            id: 21,
+                            taskId: 1,
+                            actionType: 'task_completed',
+                            createdAt: '2026-05-14T12:00:00Z',
+                            actor: { userId: 20, name: 'Manager User' },
+                            sourceSurface: 'manager_queue_task_execution_v2',
+                            summary: 'Task completed',
+                            oldValue: { status: 'todo' },
+                            newValue: { status: 'done' },
+                            meta: { route: 'work_queue_task_done' }
+                        }]
+                    })
+                };
+            }
+            if (value.startsWith('/api/work-queue/tasks/1/done') && options.method === 'POST') {
+                currentQueue = {
+                    ...currentQueue,
+                    buckets: currentQueue.buckets.map(bucket => bucket.key === 'overdue'
+                        ? { ...bucket, count: 0, items: [] }
+                        : bucket)
+                };
+                currentQueue.items = currentQueue.buckets.flatMap(bucket => bucket.items || []);
+                return { ok: true, status: 200, json: async () => ({ success: true, task: { id: 1, status: 'done' } }) };
+            }
             if (value.startsWith('/api/work-queue')) {
                 return { ok: true, status: 200, json: async () => ({ success: true, queue: currentQueue }) };
             }
@@ -1193,7 +1503,7 @@ describe('work queue endpoint', () => {
         assert.match(body.textContent, /Resolution workspace/);
         assert.match(body.textContent, /Queue Intelligence v1/);
         assert.match(body.textContent, /no global score/);
-        assert.equal(body.querySelectorAll('.work-queue-detail-btn').length, 2);
+        assert.equal(body.querySelectorAll('.work-queue-detail-btn').length, 3);
 
         DashboardPage.selectTriageItem(encodeURIComponent('waiting_reply:conversation:41'));
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
@@ -1222,6 +1532,22 @@ describe('work queue endpoint', () => {
         assert.equal(workspace.querySelector('#replyActionHistoryPanel'), null);
         assert.ok(workspace.querySelector('a[href="/sales-funnel?lead=11"]'));
         assert.ok(body.querySelector('[data-work-queue-item-id="callback_due:lead_interaction:4"].is-triage-selected'));
+
+        DashboardPage.selectTriageItem(encodeURIComponent('task:overdue:1'));
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
+        assert.match(workspace.textContent, /Overdue task/);
+        assert.match(workspace.textContent, /Task Action History/);
+        assert.match(workspace.textContent, /Task completed/);
+        assert.match(workspace.textContent, /Task actions use object-level visibility/);
+        assert.equal(workspace.querySelectorAll('[data-triage-task-action]').length, 3);
+
+        await DashboardPage.completeQueueTask(1, null);
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
+        assert.match(workspace.textContent, /Task completed through canonical tasks\.status/);
+        assert.equal(body.querySelector('[data-work-queue-item-id="task:overdue:1"]'), null);
 
         DashboardPage.selectTriageItem(encodeURIComponent('waiting_reply:conversation:41'));
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
@@ -1294,6 +1620,14 @@ describe('work queue endpoint', () => {
         assert.match(dashboardJs, /loadReplyActionHistoryForSelected/);
         assert.match(dashboardJs, /\/api\/work-queue\/replies\/.*\/history/);
         assert.match(dashboardJs, /reloadReplyActionHistory/);
+        assert.match(dashboardJs, /Task Action History/);
+        assert.match(dashboardJs, /data-triage-task-action/);
+        assert.match(dashboardJs, /\/api\/work-queue\/tasks\/.*\/done/);
+        assert.match(dashboardJs, /\/api\/work-queue\/tasks\/.*\/owner/);
+        assert.match(dashboardJs, /\/api\/work-queue\/tasks\/.*\/deadline/);
+        assert.match(dashboardJs, /\/api\/work-queue\/tasks\/.*\/history/);
+        assert.match(dashboardJs, /taskOwnerPickerSelect/);
+        assert.match(dashboardJs, /knownIds\.has\(ownerUserId\)/);
         assert.match(dashboardJs, /never_on_route_out|route-out only/i);
         assert.match(dashboardJs, /Execution v6/);
         assert.match(dashboardJs, /\/api\/work-queue\/replies\/.*\/escalate/);

@@ -63,7 +63,7 @@ function getCurrentMonth() {
  */
 async function createTask(data) {
     const {
-        title, description, date, priority = 'normal', assigned_to, owner,
+        title, description, date, priority = 'normal', assigned_to, owner, owner_user_id,
         task_type = 'human', deadline, time_window_start, time_window_end,
         dependency_ids = [], control_policy, source_type = 'manual', source_id,
         category = 'admin', template_id, afisha_id, created_by = 'kleshnya'
@@ -74,12 +74,12 @@ async function createTask(data) {
     const policy = control_policy || { reminder_minutes: [60, 30, 10], escalation_after_minutes: 120 };
 
     const result = await pool.query(
-        `INSERT INTO tasks (title, description, date, priority, assigned_to, owner, created_by,
+        `INSERT INTO tasks (title, description, date, priority, assigned_to, owner, owner_user_id, created_by,
          task_type, deadline, time_window_start, time_window_end, dependency_ids,
          control_policy, source_type, source_id, category, template_id, afisha_id, type)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
         [title.trim(), description || null, date || null, priority, assigned_to || null, owner || null,
-         created_by, task_type, deadline || null, time_window_start || null, time_window_end || null,
+         owner_user_id || null, created_by, task_type, deadline || null, time_window_start || null, time_window_end || null,
          dependency_ids, JSON.stringify(policy), source_type, source_id || null,
          category, template_id || null, afisha_id || null, source_type === 'recurring' ? 'recurring' : 'manual']
     );

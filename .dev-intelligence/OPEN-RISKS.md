@@ -36,3 +36,48 @@ severity: HIGH / MEDIUM / LOW
 closed_date: YYYY-MM-DD
 closed_by: "[Ð©Ð¾ Ð·Ñ€Ð¾Ð±Ð»ÐµÐ½Ð¾]"
 ```
+
+### RISK-017
+date_opened: 2026-05-14
+source_log: "dev-logs/2026-05-14.md SESSION 17"
+risk: "Legacy pinata records with ambiguous text may require manual review instead of aggressive fuzzy backfill; local verification was run on Node 24/npm 11, while production baseline is Node 22/npm 10."
+deadline: "ASAP before production deploy validation"
+owner: "Codex / Ñåðã³é / Êëåøíÿ"
+related_module: "Bookings / Pinata service separation"
+severity: MEDIUM
+
+### RISK-018
+date_opened: 2026-05-14
+source_log: "dev-logs/2026-05-14.md SESSION 18"
+risk: "Unsafe dismiss v2 has focused guard/unit/static UI coverage, but route/tab destructive transitions still need deeper browser-level e2e validation under the canonical Node 22/npm 10 runtime."
+deadline: "ASAP before production deploy validation"
+owner: "Codex / Sergii / Kleshnia"
+related_module: "Unsafe dismiss / legacy dynamic editing surfaces"
+severity: MEDIUM
+
+### RISK-019
+date_opened: 2026-05-14
+source_log: "dev-logs/2026-05-14.md SESSION 19"
+risk: "Unsafe dismiss full cluster now has expanded jsdom behavior coverage, but future newly-added route/tab dynamic surfaces still need browser-level e2e expansion under the canonical Node 22/npm 10 runtime."
+deadline: "ASAP before future modal-heavy releases"
+owner: "Codex / Sergii / Kleshnia"
+related_module: "Unsafe dismiss / legacy dynamic editing surfaces"
+severity: MEDIUM
+
+### RISK-020
+date_opened: 2026-05-14
+source_log: "dev-logs/2026-05-14.md SESSION 20"
+risk: "Booking visibility hardening could not introduce true team/line/location object scope because the repo does not have durable booking scope fields for those dimensions yet; current implementation is deny-safe for ambiguous scope and uses compatible fallback only for existing role/legacy truths."
+deadline: "Before adding team/location-scoped booking operations"
+owner: "Codex / Sergii / Kleshnia"
+related_module: "Bookings / Event risk visibility"
+severity: MEDIUM
+
+### RISK-021
+date_opened: 2026-05-14
+source_log: "dev-logs/2026-05-14.md SESSION 20"
+risk: "Booking-derived linked routes now avoid obvious booking leaks, but full parity between booking visibility and task/customer/lead object rules may need a follow-up if those entity policies diverge materially."
+deadline: "Before expanding booking-derived linked route actions"
+owner: "Codex / Sergii / Kleshnia"
+related_module: "Bookings / Linked entity route-outs"
+severity: MEDIUM

@@ -217,7 +217,7 @@ async function saveTransaction() {
             await apiRequest('POST', '/api/finance/transactions', data);
             showNotification('Транзакцію створено');
         }
-        closeTransModal();
+        await closeTransModal(true);
         refreshData();
     } catch (err) {
         showNotification('Помилка збереження', 'error');
@@ -457,6 +457,33 @@ function renderSalaryReport(data) {
 // MODALS
 // ==========================================
 
+let _transEditInitialState = '';
+let _accountModalInitialState = '';
+
+function getTransEditState() {
+    const ids = ['editType', 'editCategory', 'editAmount', 'editDate', 'editPayment', 'editDescription'];
+    return ids.map(id => {
+        const el = document.getElementById(id);
+        return el ? String(el.value || '') : '';
+    }).join('|');
+}
+
+function isTransEditDirty() {
+    return getTransEditState() !== _transEditInitialState;
+}
+
+function getAccountModalState() {
+    const ids = ['accName', 'accEmoji', 'accType', 'accDescription'];
+    return ids.map(id => {
+        const el = document.getElementById(id);
+        return el ? String(el.value || '') : '';
+    }).join('|');
+}
+
+function isAccountModalDirty() {
+    return getAccountModalState() !== _accountModalInitialState;
+}
+
 function openTransModal(id) {
     FinState.editingId = id || null;
     const modal = document.getElementById('transEditModal');
@@ -486,12 +513,29 @@ function openTransModal(id) {
         document.getElementById('editDescription').value = '';
     }
 
+    _transEditInitialState = getTransEditState();
     modal.classList.remove('hidden');
+    if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
 }
 
-function closeTransModal() {
-    document.getElementById('transEditModal')?.classList.add('hidden');
-    FinState.editingId = null;
+async function closeTransModal(force = false) {
+    const modal = document.getElementById('transEditModal');
+    const closeNow = () => {
+        modal?.classList.add('hidden');
+        FinState.editingId = null;
+        _transEditInitialState = getTransEditState();
+    };
+    if (window.UnsafeDismissGuard && modal) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, closeNow, {
+            force,
+            isDirty: isTransEditDirty,
+            message: 'Є незбережені зміни транзакції. Закрити без збереження?',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+    }
+    closeNow();
+    return true;
 }
 
 function updateCategoryOptions(type) {
@@ -863,7 +907,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Save transaction
     document.getElementById('saveTransBtn')?.addEventListener('click', saveTransaction);
-    document.getElementById('cancelTransBtn')?.addEventListener('click', closeTransModal);
+    document.getElementById('cancelTransBtn')?.addEventListener('click', () => closeTransModal(false));
 
     // Type change → update category options
     document.getElementById('editType')?.addEventListener('change', (e) => {
@@ -873,14 +917,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Modal close buttons
     document.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', () => {
-            btn.closest('.modal').classList.add('hidden');
+            const modal = btn.closest('.modal');
+            if (modal?.id === 'transEditModal') closeTransModal(false);
+            else if (modal?.id === 'addAccountModal') closeAddAccountModal(false);
+            else modal?.classList.add('hidden');
         });
     });
 
     // Modal backdrop click
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.classList.add('hidden');
+            if (e.target !== modal) return;
+            if (modal.id === 'transEditModal') closeTransModal(false);
+            else if (modal.id === 'addAccountModal') closeAddAccountModal(false);
+            else modal.classList.add('hidden');
         });
     });
 
@@ -1372,11 +1422,46 @@ async function loadAccounts() {
 }
 
 function openAddAccountModal() {
+    const modal = document.getElementById('addAccountModal');
     document.getElementById('accName').value = '';
     document.getElementById('accEmoji').value = '💳';
     document.getElementById('accType').value = 'cash';
     document.getElementById('accDescription').value = '';
-    document.getElementById('addAccountModal')?.classList.remove('hidden');
+    _accountModalInitialState = getAccountModalState();
+    modal?.classList.remove('hidden');
+    if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
+}
+
+async function closeAddAccountModal(force = false) {
+    const modal = document.getElementById('addAccountModal');
+    if (!modal) return true;
+
+    const closeNow = () => {
+        modal.classList.add('hidden');
+        _accountModalInitialState = getAccountModalState();
+    };
+
+    if (window.UnsafeDismissGuard) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, closeNow, {
+            force,
+            isDirty: isAccountModalDirty,
+            message: 'Є незбережені зміни в рахунку. Закрити без збереження?',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+    }
+
+    if (!force && isAccountModalDirty() && typeof confirmModal === 'function') {
+        const confirmed = await confirmModal('Є незбережені зміни в рахунку. Закрити без збереження?', {
+            type: 'warning',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+        if (!confirmed) return false;
+    }
+
+    closeNow();
+    return true;
 }
 
 async function saveAccount() {
@@ -1389,7 +1474,9 @@ async function saveAccount() {
             type: document.getElementById('accType')?.value,
             description: document.getElementById('accDescription')?.value?.trim() || null
         });
-        document.getElementById('addAccountModal')?.classList.add('hidden');
+        const modal = document.getElementById('addAccountModal');
+        if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.markClean(modal);
+        await closeAddAccountModal(true);
         showNotification('Рахунок додано!');
         loadAccounts();
     } catch (err) {

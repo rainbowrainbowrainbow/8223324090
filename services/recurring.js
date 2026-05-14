@@ -318,14 +318,18 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
             await client.query(
                 `INSERT INTO bookings
                  (id, date, time, line_id, program_id, program_code, label, program_name, category,
-                  duration, price, hosts, second_animator, pinata_filler, costume, room, notes,
+                  duration, price, hosts, second_animator, pinata_filler, pinata_mode,
+                  pinata_number, pinata_filler_number, client_pinata_service_price,
+                  client_pinata_service_note, costume, room, notes,
                   created_by, linked_to, status, kids_count, group_name, extra_data, recurring_template_id)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
                 [mainId, dateStr, timeStart, primaryLineId,
                  template.product_id, template.product_code, template.product_label, template.product_name,
                  template.category, duration, template.price, template.hosts || 1,
-                 template.second_animator_name, template.pinata_filler, template.costume || null,
-                 template.room, template.notes, template.created_by || 'system',
+                 template.second_animator_name, template.pinata_filler, template.pinata_mode || 'none',
+                 template.pinata_number || null, template.pinata_filler_number || null,
+                 template.client_pinata_service_price ?? null, template.client_pinata_service_note || null,
+                 template.costume || null, template.room, template.notes, template.created_by || 'system',
                  null, bookingStatus, template.kids_count || null, template.group_name || null,
                  template.extra_data ? JSON.stringify(template.extra_data) : null,
                  template.id]
@@ -353,14 +357,18 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
                     await client.query(
                         `INSERT INTO bookings
                          (id, date, time, line_id, program_id, program_code, label, program_name, category,
-                          duration, price, hosts, second_animator, pinata_filler, costume, room, notes,
+                          duration, price, hosts, second_animator, pinata_filler, pinata_mode,
+                          pinata_number, pinata_filler_number, client_pinata_service_price,
+                          client_pinata_service_note, costume, room, notes,
                           created_by, linked_to, status, kids_count, group_name, extra_data, recurring_template_id)
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
                         [linkedId, dateStr, timeStart, secondLineId,
                          template.product_id, template.product_code, template.product_label, template.product_name,
                          template.category, duration, template.price, template.hosts || 1,
-                         template.second_animator_name, template.pinata_filler, template.costume || null,
-                         template.room, template.notes, template.created_by || 'system',
+                         template.second_animator_name, template.pinata_filler, template.pinata_mode || 'none',
+                         template.pinata_number || null, template.pinata_filler_number || null,
+                         template.client_pinata_service_price ?? null, template.client_pinata_service_note || null,
+                         template.costume || null, template.room, template.notes, template.created_by || 'system',
                          mainId, bookingStatus, template.kids_count || null, template.group_name || null,
                          template.extra_data ? JSON.stringify(template.extra_data) : null,
                          template.id]
@@ -492,7 +500,12 @@ function mapTemplateRow(row) {
         hosts: row.hosts,
         secondAnimatorName: row.second_animator_name,
         secondAnimatorLineId: row.second_animator_line_id,
+        pinataMode: row.pinata_mode,
+        pinataNumber: row.pinata_number,
+        pinataFillerNumber: row.pinata_filler_number,
         pinataFiller: row.pinata_filler,
+        clientPinataServicePrice: row.client_pinata_service_price,
+        clientPinataServiceNote: row.client_pinata_service_note,
         costume: row.costume,
         kidsCount: row.kids_count,
         groupName: row.group_name,

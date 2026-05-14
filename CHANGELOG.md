@@ -4,6 +4,109 @@
 
 ---
 
+## v0.48.8 - Booking Visibility & Event Risk Scope Hardening (2026-05-14)
+
+### Booking Visibility & Event Risk Scope Hardening v1 [codex]
+- **Bookings** - додано канонічну object-level visibility policy для бронювань із full-role, operational compatible fallback, legacy exact-match fallback і deny-safe unknown scope.
+- **Event Risk** - Work Queue, dashboard event-risk summaries, alerts, timeline list/occupancy та booking-derived route-outs тепер будуються тільки з visible booking scope.
+- **Authz** - confirmation, linked-atomic update, PUT, payment update і delete більше не покладаються лише на page/action access, а повторно перевіряють booking object permission.
+- **Compatibility** - legacy `created_by` / `second_animator` підтримуються тільки як exact compatible fallback; team/location scope явно позначено як missing durable dimension.
+- **Tests** - додано booking visibility policy тести та fail-closed перевірку hidden booking confirmation route.
+
+---
+
+## v0.48.7 - 🛡️ 0.48 Unsafe Dismiss Full Legacy & Dynamic Cluster (2026-05-14)
+
+### Unsafe Dismiss Hardening v2 Full Cluster [codex]
+- **Lead Cluster Completion** - secondary lead overlays for lost reason and mailing entry now use guarded close semantics, and lead workspace switches respect active dirty lead surfaces before changing context.
+- **Profile Safety** - profile password/settings modal close, backdrop, Escape and tab switches now route through shared dirty-state confirmation instead of direct hide.
+- **Browser-Behavior Coverage** - unsafe-dismiss behavior tests now cover backdrop, Escape, route/selection transition, direct `closeModal()` bypass, confirmed discard, and read-only viewer dismissal.
+
+---
+
+## v0.48.6 - 🛡️ 0.48 Unsafe Dismiss Hardening v2 (2026-05-14)
+
+### Unsafe Dismiss Hardening v2 [codex]
+- **Guard Adoption** - lead customer card, art-director content/brand editors, finance account, warehouse quantity, sound announcement/project, dashboard pickers/settings та certificate flows тепер проходять через shared `UnsafeDismissGuard` там, де є editable або локально змінений state.
+- **Bypass Removal** - certificates/settings більше не ховають dirty booking panel напряму, а generic `closeModal()` маршрутизує dirty editable surfaces через guarded close перед hide/remove.
+- **Regression Safety** - додано behavior-level `jsdom` тест, який перевіряє dirty backdrop/direct close, rejected discard і confirmed discard без reliance тільки на static grep.
+
+---
+
+## v0.48.5 - 🪅 0.48 Client Pinata Operational Numbers (2026-05-14)
+
+### Client Pinata as Service Separation v1 [codex]
+- **Operations** - додано окремі поля `pinata_number` і `pinata_filler_number`, щоб номер піньяти та номер наповнювача жили як структуровані операційні атрибути.
+- **Booking UI** - форма бронювання показує спільні поля номера для режимів `park` і `client`, але очищає їх у режимі `none`.
+- **Server Truth** - create/update/recurring paths нормалізують номери разом із `pinata_mode`, щоб клієнтська піньята лишалась сервісом, а stale park/client поля не змішувались.
+- **Operations Output** - booking detail, recurring generation, scheduler and warehouse pinata surfaces now carry the separate pinata/filler numbers where relevant.
+
+---
+
+## v0.48.4 - 🪅 0.48 Client Pinata as Service Separation v1 (2026-05-14)
+
+### Client Pinata as Service Separation v1 [codex]
+- **Booking Logic** - розділено піньяти парку та клієнтські піньяти через `pinata_mode` (`none`, `park`, `client`) і серверну нормалізацію stale-полів.
+- **Services** - клієнтська піньята тепер зберігається як сервісна опція з ціною/нотаткою, а не як park pinata filler/catalog item.
+- **Analytics** - pinata demand, складські pinata counters, scheduler tasks і product-sales категорії більше не рахують `client` mode як попит на піньяти парку.
+- **UI** - форма бронювання явно показує сценарії `Без піньяти`, `Піньята парку`, `Клієнтська піньята (послуга)` і відповідні поля.
+
+---
+
+## v0.48.3 - ✅ 0.48 Confirmation & Event Risk Operations Cluster v1 (2026-05-14)
+
+### Confirmation & Event Risk Operations Cluster v1 [codex]
+- **Confirmation** - додано вузьку операцію підтвердження бронювання через `POST /api/bookings/:id/confirm` з `confirmed_at`, `confirmed_by`, note/source і audit trail.
+- **Queue rails** - `needs_confirmation` отримав чесний inline confirm через narrow endpoint, а `event_soon` лишився окремим timing cue без fake readiness score.
+- **Prep linkage** - booking-origin automation tasks тепер пишуть `source_type='booking'` і `source_id`, а prep summaries рахують тільки реально linked overdue tasks.
+- **Dashboard** - додано visible-scope `event_risk_summary` для непідтверджених сьогодні/завтра, late preliminary, booking-linked overdue prep і resource warnings без universal risk score.
+
+---
+
+## v0.48.2 - 🛡️ 0.48 UX: unsafe dismiss hardening (2026-05-14)
+
+### Unsafe Dismiss Hardening v1 [codex]
+- **Єдина guarded-close policy** - додано shared `UnsafeDismissGuard`, який змушує editable modal/panel/overlay проходити dirty-state перевірку перед backdrop, Escape, cancel або close-all dismiss.
+- **Критичні форми захищені** - lead edit, booking create/edit panel, task detail overlay, customer edit, finance transaction, design/catalog, staff/HR та content edit surfaces більше не мають прямого silent-close шляху для dirty state.
+- **Booking/date/selection safety** - зміна дати або вибір іншої клітинки таймлайна тепер поважають dirty booking panel і не скидають форму без підтвердження.
+- **Повторювані overlay patterns закриті** - catalog/design automation/page/image overlays, staff schedule/fill-week, HR shift/staff/correction і content business-card/post modals отримали guarded cancel/backdrop/Escape semantics.
+- **Regression shield** - `tests/ui-check.js` тепер перевіряє shared unsafe-dismiss guardrails, щоб dirty critical forms не поверталися до direct backdrop/remove behavior.
+
+---
+
+## v0.48.1 - ✅ 0.48 Tasks: operations cluster hardening (2026-05-14)
+
+### Task Operations Cluster v1 [codex]
+- **Dashboard presence** - віджет `Команда онлайн` тепер розрізняє live WebSocket online та durable last-seen активність із `users.last_seen_at` / `employee_profiles.last_activity_at`.
+- **Last seen UX** - dashboard показує readable стани `онлайн зараз`, `був N хв тому`, `сьогодні`, `вчора` або дату для старішої активності без reload усього dashboard.
+- **Task dismiss safety** - task detail overlay більше не знищується напряму через backdrop/cancel; dirty form закривається тільки через guarded close confirmation.
+- **Task stale guard UX** - task detail save передає поточний `version`, щоб backend optimistic-locking міг чесно відхилити stale write.
+
+---
+
+## v0.48.0 - ✅ 0.48 Tasks: operations cluster v1 (2026-05-14)
+
+### Task Operations Cluster v1 [codex]
+- **Typed ownership як source of truth** - task owner тепер ведеться через canonical `tasks.owner_user_id`; legacy `assigned_to/owner` лишаються display/compatibility fallback без fuzzy mapping.
+- **Object-level visibility** - task list/detail/history/actions, dashboard widgets і Work Queue task buckets проходять через спільну task visibility policy, щоб hidden tasks не потрапляли в queue або mutation routes.
+- **Safe task execution rails** - Tasks page і manager queue підтримують durable complete, typed reassign і deadline reschedule з object-level authz, stale-write guard, feedback та refetch після mutation.
+- **Task action accountability** - `task_action_history` фіксує `task_completed`, `task_owner_reassigned` і `task_rescheduled`; open-context/route-out не логуються як execution.
+- **Task-local intelligence** - task items отримали пояснювані `priorityBand`, `riskTypes`, `recommendedAction`, `why`, `confidence` і visible-scope summary без універсального cross-domain score.
+- **Operational UI** - Tasks detail modal показує owner state, task-local intelligence і compact Task Action History з loading/empty/error states.
+
+---
+
+## v0.47.23 - ✅ 0.47 Tasks: visibility, ownership & execution rails v2 (2026-05-14)
+
+### Task Visibility, Ownership & Execution Rails v2 [codex]
+- **Typed task ownership** - додано canonical `tasks.owner_user_id`, а legacy `assigned_to/owner` лишаються display/compatibility snapshot без fuzzy owner mapping.
+- **Object-level visibility** - task list/detail/mutation і manager queue task buckets використовують централізовану policy з typed owner, department scope і чесним legacy fallback тільки для unmapped задач.
+- **Task execution rails** - overdue/task items у Work Queue отримали перші safe inline actions: mark done, reassign typed owner і deadline +24h, з refetch після durable mutation.
+- **Task action history** - додано вузький `task_action_history` для `task_completed`, `task_owner_reassigned` і `task_rescheduled` без глобальної audit-платформи й без логування open-context.
+- **Manager workspace UX** - resolution workspace показує task owner state, task execution actions, compact `Task Action History`, loading/error/empty states і без stale history leak.
+
+---
+
 ## v0.47.22 - 🧾 0.47 Черга: reply execution action history v1 (2026-05-14)
 
 ### Reply Execution Audit Trail / Action History v1 [codex]

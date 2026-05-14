@@ -47,8 +47,8 @@ function createEscalationPool(rows, { existingTask = false } = {}) {
                 return { rows };
             }
             if (/WITH inserted AS/i.test(text) && /INSERT INTO tasks/i.test(text)) {
-                assert.equal(params[7], REPLY_ESCALATION_SOURCE_TYPE);
-                assert.equal(params[8], '1201');
+                assert.equal(params[8], REPLY_ESCALATION_SOURCE_TYPE);
+                assert.equal(params[9], '1201');
                 return {
                     rows: [{
                         id: existingTask ? 91 : 90,
@@ -56,9 +56,10 @@ function createEscalationPool(rows, { existingTask = false } = {}) {
                         description: params[1],
                         status: existingTask ? 'done' : 'todo',
                         priority: 'high',
-                        deadline: params[6],
-                        source_type: params[7],
-                        source_id: params[8],
+                        owner_user_id: params[5],
+                        deadline: params[7],
+                        source_type: params[8],
+                        source_id: params[9],
                         created: !existingTask
                     }]
                 };

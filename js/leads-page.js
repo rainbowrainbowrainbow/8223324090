@@ -75,6 +75,12 @@ let leadsData = [];
 let pipelineData = {};
 let usersData = [];
 let modalInitialState = '';
+let customerCardInitialState = '';
+const leadSecondaryInitialState = new Map();
+const LEAD_SECONDARY_MODAL_FIELDS = {
+    lostReasonModal: ['lostReasonSelect', 'lostReasonNotes'],
+    addMailingModal: ['mailingName', 'mailingPhone', 'mailingEmail', 'mailingChannel', 'mailingNotes']
+};
 let leadModalLastTouchAt = 0;
 let leadSaveInFlight = false;
 let workspaceLeadId = null;
@@ -389,8 +395,10 @@ function showWorkspaceShell() {
     });
 }
 
-function closeLeadWorkspace(options = {}) {
-    const { pushState = true } = options;
+async function closeLeadWorkspace(options = {}) {
+    const { pushState = true, force = false, guard = true } = options;
+    if (guard && !force && !(await closeActiveLeadEditableSurfaces(false))) return false;
+
     const panel = document.getElementById('leadWorkspace');
     const backdrop = document.getElementById('leadWorkspaceBackdrop');
     workspaceLeadId = null;
@@ -405,12 +413,14 @@ function closeLeadWorkspace(options = {}) {
     }
     if (pushState) setWorkspaceUrl(null);
     syncWorkspaceHighlight();
+    return true;
 }
 
 async function openLeadWorkspace(leadId, options = {}) {
     const { pushState = true } = options;
     const id = parseInt(leadId, 10);
     if (!Number.isInteger(id) || id <= 0) return;
+    if (workspaceLeadId !== id && !(await closeActiveLeadEditableSurfaces(false))) return;
 
     bindWorkspaceEvents();
     workspaceLeadId = id;
@@ -1085,11 +1095,147 @@ function showQualityCategoryModal(leadId) {
     overlay.classList.add('active');
 }
 
+function closeQualityCategoryModal() {
+    document.getElementById('qualityCategoryModal')?.classList.remove('active');
+}
+
+function getLeadSecondaryState(modalId) {
+    const fields = LEAD_SECONDARY_MODAL_FIELDS[modalId] || [];
+    return fields.map(id => {
+        const el = document.getElementById(id);
+        return el ? el.value : '';
+    }).join('|');
+}
+
+function rememberLeadSecondarySurface(modalId) {
+    const overlay = document.getElementById(modalId);
+    if (!overlay) return;
+    leadSecondaryInitialState.set(modalId, getLeadSecondaryState(modalId));
+    if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay);
+}
+
+function isLeadSecondaryDirty(modalId) {
+    return getLeadSecondaryState(modalId) !== (leadSecondaryInitialState.get(modalId) || '');
+}
+
+async function closeLeadSecondaryModal(modalId, force = false) {
+    const overlay = document.getElementById(modalId);
+    if (!overlay) return true;
+    const closeNow = () => {
+        overlay.classList.remove('active');
+        leadSecondaryInitialState.set(modalId, getLeadSecondaryState(modalId));
+    };
+
+    if (window.UnsafeDismissGuard) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(overlay, closeNow, {
+            force,
+            isDirty: () => isLeadSecondaryDirty(modalId)
+        });
+    }
+
+    if (!force && isLeadSecondaryDirty(modalId)) {
+        const confirmed = typeof confirmModal === 'function'
+            ? await confirmModal('Unsaved changes. Close without saving?', {
+                type: 'warning',
+                okText: 'Close without saving',
+                cancelText: 'Return'
+            })
+            : window.confirm?.('Unsaved changes. Close without saving?');
+        if (!confirmed) return false;
+    }
+
+    closeNow();
+    return true;
+}
+
+function closeLostReasonModal(force = false) {
+    return closeLeadSecondaryModal('lostReasonModal', force);
+}
+
+function closeAddMailingModal(force = false) {
+    return closeLeadSecondaryModal('addMailingModal', force);
+}
+
+async function closeActiveLeadEditableSurfaces(force = false) {
+    const surfaces = [
+        { id: 'leadModal', close: () => closeLeadModal(force) },
+        { id: 'customerCardModal', close: () => closeCustomerCardModal(force) },
+        { id: 'lostReasonModal', close: () => closeLostReasonModal(force) },
+        { id: 'addMailingModal', close: () => closeAddMailingModal(force) }
+    ];
+
+    for (const surface of surfaces) {
+        const overlay = document.getElementById(surface.id);
+        if (overlay?.classList.contains('active') && !(await surface.close())) return false;
+    }
+    return true;
+}
+
+function getCustomerCardState() {
+    const fields = [
+        'ccName',
+        'ccPhone',
+        'ccEmail',
+        'ccChannel',
+        'ccEventType',
+        'ccEventDate',
+        'ccGuestCount',
+        'ccChildrenCount',
+        'ccBudget',
+        'ccHowFound',
+        'ccNotes'
+    ];
+    return fields.map(id => {
+        const el = document.getElementById(id);
+        return el ? el.value : '';
+    }).join('|');
+}
+
+function isCustomerCardDirty() {
+    return getCustomerCardState() !== customerCardInitialState;
+}
+
+async function closeCustomerCardModal(force = false) {
+    const overlay = document.getElementById('customerCardModal');
+    if (!overlay) return true;
+
+    const closeNow = () => {
+        overlay.classList.remove('active');
+        customerCardInitialState = getCustomerCardState();
+    };
+
+    if (window.UnsafeDismissGuard) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(overlay, closeNow, {
+            force,
+            isDirty: isCustomerCardDirty,
+            message: 'Є незбережені зміни в картці клієнта. Закрити без збереження?',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+    }
+
+    if (!force && isCustomerCardDirty()) {
+        if (typeof confirmModal === 'function') {
+            const confirmed = await confirmModal('Є незбережені зміни в картці клієнта. Закрити без збереження?', {
+                type: 'warning',
+                okText: 'Закрити без збереження',
+                cancelText: 'Повернутись'
+            });
+            if (!confirmed) return false;
+        } else if (!window.confirm('Є незбережені зміни в картці клієнта. Закрити без збереження?')) {
+            return false;
+        }
+    }
+
+    closeNow();
+    return true;
+}
+
 async function setQualityCategory(category) {
     const overlay = document.getElementById('qualityCategoryModal');
     if (!overlay) return;
     const leadId = parseInt(overlay.dataset.leadId);
-    overlay.classList.remove('active');
+    closeQualityCategoryModal();
 
     try {
         await apiFetch(`/api/leads/${leadId}`, {
@@ -1147,7 +1293,9 @@ async function showCustomerCardModal(leadId) {
         }
     } catch(e) { /* ok */ }
 
+    customerCardInitialState = getCustomerCardState();
     overlay.classList.add('active');
+    if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay);
 }
 
 async function saveCustomerCard() {
@@ -1186,7 +1334,8 @@ async function saveCustomerCard() {
         const data = await res.json();
         if (data.success) {
             if (typeof showNotification === 'function') showNotification('Картка клієнта збережена', 'success');
-            overlay.classList.remove('active');
+            if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(overlay);
+            await closeCustomerCardModal(true);
             await loadLeads();
             if (workspaceLeadId === leadId) openLeadWorkspace(leadId, { pushState: false });
         }
@@ -1207,6 +1356,7 @@ function showLostReasonModal(leadId, stage) {
     document.getElementById('lostReasonSelect').value = '';
     document.getElementById('lostReasonNotes').value = '';
     overlay.classList.add('active');
+    rememberLeadSecondarySurface('lostReasonModal');
 }
 
 async function saveLostReason() {
@@ -1214,12 +1364,13 @@ async function saveLostReason() {
     const leadId = parseInt(overlay.dataset.leadId);
     const reason = document.getElementById('lostReasonSelect')?.value;
     const notes = document.getElementById('lostReasonNotes')?.value;
-    overlay.classList.remove('active');
 
     await updateLeadStage(leadId, 'lost', {
         lost_reason: reason + (notes ? ': ' + notes : ''),
         lead_type: 'low_quality'
     });
+    if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(overlay);
+    await closeLostReasonModal(true);
 
     // Suggest mailing
     if (typeof showNotification === 'function') {
@@ -1279,6 +1430,7 @@ function showAddMailingModal() {
     document.getElementById('mailingChannel').value = '';
     document.getElementById('mailingNotes').value = '';
     overlay.classList.add('active');
+    rememberLeadSecondarySurface('addMailingModal');
 }
 
 async function saveMailingEntry() {
@@ -1298,7 +1450,8 @@ async function saveMailingEntry() {
             notes: document.getElementById('mailingNotes')?.value.trim() || null
         };
         await apiFetch('/api/leads/mailing', { method: 'POST', body: JSON.stringify(body) });
-        overlay.classList.remove('active');
+        if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(overlay);
+        await closeAddMailingModal(true);
         if (typeof showNotification === 'function') showNotification('Контакт додано до розсилки', 'success');
         loadMailing();
     } catch(e) {
@@ -1413,9 +1566,47 @@ function setupEvents() {
     document.querySelectorAll('.lead-modal-overlay').forEach(overlay => {
         overlay.addEventListener('click', (e) => {
             if (e.target === e.currentTarget) {
-                overlay.classList.remove('active');
+                if (overlay.id === 'leadModal') closeLeadModal(false);
+                else if (overlay.id === 'customerCardModal') closeCustomerCardModal(false);
+                else if (overlay.id === 'qualityCategoryModal') closeQualityCategoryModal();
+                else if (overlay.id === 'lostReasonModal') closeLostReasonModal(false);
+                else if (overlay.id === 'addMailingModal') closeAddMailingModal(false);
+                else overlay.classList.remove('active');
             }
         });
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (document.querySelector('.confirm-overlay')) return;
+        const modal = document.getElementById('leadModal');
+        const customerCardModal = document.getElementById('customerCardModal');
+        const lostReasonModal = document.getElementById('lostReasonModal');
+        const addMailingModal = document.getElementById('addMailingModal');
+        const qualityCategoryModal = document.getElementById('qualityCategoryModal');
+        if (modal?.classList.contains('active')) {
+            e.preventDefault();
+            closeLeadModal(false);
+            return;
+        }
+        if (customerCardModal?.classList.contains('active')) {
+            e.preventDefault();
+            closeCustomerCardModal(false);
+            return;
+        }
+        if (lostReasonModal?.classList.contains('active')) {
+            e.preventDefault();
+            closeLostReasonModal(false);
+            return;
+        }
+        if (addMailingModal?.classList.contains('active')) {
+            e.preventDefault();
+            closeAddMailingModal(false);
+            return;
+        }
+        if (qualityCategoryModal?.classList.contains('active')) {
+            e.preventDefault();
+            closeQualityCategoryModal();
+        }
     });
 }
 
@@ -1435,8 +1626,10 @@ function openAddModal() {
     const stageGroup = document.getElementById('leadStageGroup');
     if (stageGroup) stageGroup.style.display = 'none';
 
+    const modal = document.getElementById('leadModal');
     modalInitialState = getModalState();
-    document.getElementById('leadModal')?.classList.add('active');
+    modal?.classList.add('active');
+    if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
 }
 
 function editLead(id) {
@@ -1462,12 +1655,14 @@ function editLead(id) {
         document.getElementById('leadLeadType').value = lead.lead_type || 'quality';
     }
 
+    const modal = document.getElementById('leadModal');
     modalInitialState = getModalState();
-    document.getElementById('leadModal')?.classList.add('active');
+    modal?.classList.add('active');
+    if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
 }
 
 function getModalState() {
-    const fields = ['leadName', 'leadPhone', 'leadInstagram', 'leadSource', 'leadEventDate', 'leadChildrenCount', 'leadNotes', 'leadAssignedTo'];
+    const fields = ['leadName', 'leadPhone', 'leadInstagram', 'leadSource', 'leadEventDate', 'leadChildrenCount', 'leadNotes', 'leadAssignedTo', 'leadPipelineStage', 'leadLeadType'];
     return fields.map(id => {
         const el = document.getElementById(id);
         return el ? el.value : '';
@@ -1479,6 +1674,19 @@ function isModalDirty() {
 }
 
 async function closeLeadModal(force = false) {
+    const modal = document.getElementById('leadModal');
+    if (window.UnsafeDismissGuard && modal) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, () => {
+            modal.classList.remove('active');
+            modalInitialState = getModalState();
+        }, {
+            force,
+            isDirty: isModalDirty,
+            message: 'Є незбережені зміни в ліді. Закрити без збереження?',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+    }
     if (!force && isModalDirty()) {
         if (typeof confirmModal === 'function') {
             if (!await confirmModal('Є незбережені дані. Закрити?', { type: 'warning', okText: 'Закрити' })) return;
@@ -1678,9 +1886,9 @@ async function confirmLeadWorkspaceBooking(leadId, bookingId) {
     if (!ok) return;
 
     try {
-        const res = await apiFetch(`/api/bookings/${encodeURIComponent(bookingId)}`, {
-            method: 'PUT',
-            body: JSON.stringify({ status: 'confirmed' })
+        const res = await apiFetch(`/api/bookings/${encodeURIComponent(bookingId)}/confirm`, {
+            method: 'POST',
+            body: JSON.stringify({ source: 'lead_workspace' })
         });
         if (!res) return;
         const data = await res.json();
@@ -1716,3 +1924,6 @@ window.createLeadWorkspaceCallbackTask = createLeadWorkspaceCallbackTask;
 window.completeLeadWorkspaceTask = completeLeadWorkspaceTask;
 window.confirmLeadWorkspaceBooking = confirmLeadWorkspaceBooking;
 window.moveLeadWorkspaceStage = moveLeadWorkspaceStage;
+window.closeQualityCategoryModal = closeQualityCategoryModal;
+window.closeLostReasonModal = closeLostReasonModal;
+window.closeAddMailingModal = closeAddMailingModal;

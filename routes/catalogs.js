@@ -545,6 +545,8 @@ router.get('/demand-stats', requireRole('admin', 'creator', 'director', 'art_dir
                             COUNT(b.id)::int AS bookings_count
                      FROM catalog_items ci
                      LEFT JOIN bookings b ON b.pinata_filler ILIKE '%' || ci.name || '%'
+                        AND COALESCE(b.pinata_mode, 'park') = 'park'
+                        AND b.status != 'cancelled'
                      WHERE ci.catalog_id = 'pinyata' AND ci.status = 'active'
                      GROUP BY ci.id ORDER BY bookings_count DESC, ci.name`;
         } else if (catalogId === 'costume') {

@@ -8,6 +8,67 @@ function _escHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+let profileModalPasswordBaseline = '';
+
+function getProfileModalPasswordState() {
+    const current = document.getElementById('profileCurrentPwd')?.value || '';
+    const next = document.getElementById('profileNewPwd')?.value || '';
+    return `${current}|${next}`;
+}
+
+function isProfileModalDirty() {
+    return getProfileModalPasswordState() !== profileModalPasswordBaseline;
+}
+
+function rememberProfileModalState() {
+    const modal = document.getElementById('profileModal');
+    profileModalPasswordBaseline = getProfileModalPasswordState();
+    if (window.UnsafeDismissGuard && modal) {
+        window.UnsafeDismissGuard.remember(modal, {
+            selector: '#profileCurrentPwd,#profileNewPwd'
+        });
+    }
+}
+
+async function confirmProfileModalDiscardIfDirty() {
+    const modal = document.getElementById('profileModal');
+    if (!isProfileModalDirty()) return true;
+    if (window.UnsafeDismissGuard && modal) {
+        const confirmed = await window.UnsafeDismissGuard.confirmDiscardIfDirty(modal, {
+            isDirty: isProfileModalDirty
+        });
+        if (confirmed) rememberProfileModalState();
+        return confirmed;
+    }
+    const confirmed = typeof confirmModal === 'function'
+        ? await confirmModal('Unsaved profile changes. Close without saving?', {
+            type: 'warning',
+            okText: 'Close without saving',
+            cancelText: 'Return'
+        })
+        : window.confirm?.('Unsaved profile changes. Close without saving?');
+    if (confirmed) rememberProfileModalState();
+    return !!confirmed;
+}
+
+async function closeProfileModal(force = false) {
+    const modal = document.getElementById('profileModal');
+    if (!modal) return true;
+    const closeNow = () => {
+        modal.classList.add('hidden');
+        profileModalPasswordBaseline = getProfileModalPasswordState();
+    };
+    if (window.UnsafeDismissGuard) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, closeNow, {
+            force,
+            isDirty: isProfileModalDirty
+        });
+    }
+    if (!force && !(await confirmProfileModalDiscardIfDirty())) return false;
+    closeNow();
+    return true;
+}
+
 // ==========================================
 // АВТОРИЗАЦІЯ
 // ==========================================
@@ -467,8 +528,10 @@ async function openProfileModal() {
     const modal = document.getElementById('profileModal');
     const content = document.getElementById('profileContent');
     if (!modal || !content) return;
+    if (!modal.classList.contains('hidden') && !(await confirmProfileModalDiscardIfDirty())) return;
 
     modal.classList.remove('hidden');
+    rememberProfileModalState();
     content.innerHTML = '<div class="profile-loading">Завантаження...</div>';
 
     // Log opening
@@ -547,16 +610,19 @@ async function openProfileModal() {
 
     // Tab switching
     content.querySelectorAll('.prof-tab').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
+            if (!(await confirmProfileModalDiscardIfDirty())) return;
             content.querySelectorAll('.prof-tab').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             _profileRenderTab(btn.dataset.tab, data, achDefs);
+            rememberProfileModalState();
             if (typeof apiLogAction === 'function') apiLogAction('profile_tab', btn.dataset.tab);
         });
     });
 
     // Render "Today" tab by default
     _profileRenderTab('today', data, achDefs);
+    rememberProfileModalState();
     window._profileActivityOffset = data.recentActivity.length;
 }
 
@@ -1144,6 +1210,7 @@ function profileShowPasswordForm() {
     if (form) {
         form.classList.remove('hidden');
         document.getElementById('profileCurrentPwd')?.focus();
+        rememberProfileModalState();
     }
 }
 
@@ -1172,6 +1239,7 @@ async function profileChangePassword() {
         okEl.classList.remove('hidden');
         document.getElementById('profileCurrentPwd').value = '';
         document.getElementById('profileNewPwd').value = '';
+        rememberProfileModalState();
         setTimeout(() => {
             document.getElementById('profilePasswordForm')?.classList.add('hidden');
             okEl.classList.add('hidden');
@@ -1265,15 +1333,15 @@ function initProfileHandler() {
         const closeBtn = profileModal.querySelector('.modal-close');
         if (closeBtn) {
             closeBtn.addEventListener('click', () => {
-                profileModal.classList.add('hidden');
+                closeProfileModal(false);
             });
         }
         profileModal.addEventListener('click', (e) => {
-            if (e.target === profileModal) profileModal.classList.add('hidden');
+            if (e.target === profileModal) closeProfileModal(false);
         });
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && !profileModal.classList.contains('hidden')) {
-                profileModal.classList.add('hidden');
+                closeProfileModal(false);
             }
         });
     }

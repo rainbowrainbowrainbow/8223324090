@@ -63,7 +63,8 @@ async function buildAndSendDigest(date) {
 
     const bookingsResult = await pool.query(
         `SELECT id, date, time, duration, line_id, program_name, program_code, label, category, price,
-                hosts, second_animator, pinata_filler, costume, room, notes, linked_to, status, kids_count, group_name
+                hosts, second_animator, pinata_filler, pinata_number, pinata_filler_number,
+                costume, room, notes, linked_to, status, kids_count, group_name
          FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time LIMIT 500`, [date]);
     const bookings = bookingsResult.rows;
 
@@ -174,7 +175,8 @@ async function sendTomorrowReminder(todayStr) {
         // v7.9.3: Fetch ALL bookings including linked (for second animator display)
         const bookingsResult = await pool.query(
             `SELECT id, date, time, duration, line_id, program_name, program_code, label, category, price,
-                    hosts, second_animator, pinata_filler, costume, room, notes, linked_to, status, kids_count, group_name
+                    hosts, second_animator, pinata_filler, pinata_number, pinata_filler_number,
+                    costume, room, notes, linked_to, status, kids_count, group_name
              FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time LIMIT 500`,
             [tomorrowStr]
         );
@@ -675,13 +677,20 @@ async function checkWorkDayTriggers() {
         const pinataBookings = await pool.query(
             `SELECT b.*, p.has_filler FROM bookings b
              JOIN products p ON b.program_id = p.id
-             WHERE b.date = $1 AND p.has_filler = true AND b.status != 'cancelled'`,
+             WHERE b.date = $1
+               AND p.has_filler = true
+               AND COALESCE(b.pinata_mode, 'park') = 'park'
+               AND b.status != 'cancelled'`,
             [todayStr]
         );
 
         const { createTask } = require('./kleshnya');
 
         for (const booking of pinataBookings.rows) {
+            const pinataLabel = booking.pinata_number || booking.pinata_filler || '?';
+            const fillerSuffix = booking.pinata_filler_number
+                ? ` / наповнювач №${booking.pinata_filler_number}`
+                : '';
             // Check if task already exists for this booking
             const existingTask = await pool.query(
                 "SELECT id FROM tasks WHERE source_type = 'booking' AND source_id = $1 AND date = $2 AND title LIKE '%піньят%'",
@@ -692,7 +701,7 @@ async function checkWorkDayTriggers() {
             // Create pinata confirmation task
             const deadline = new Date(`${todayStr}T${isWeekend ? '12:00' : '14:00'}:00`);
             await createTask({
-                title: `🪅 Підтвердити друк піньяти №${booking.pinata_filler || '?'} на ${booking.time}`,
+                title: `🪅 Підтвердити друк піньяти №${pinataLabel}${fillerSuffix} на ${booking.time}`,
                 description: `Бронювання: ${booking.label || booking.program_code}, кімната: ${booking.room}`,
                 date: todayStr,
                 priority: 'high',

@@ -473,13 +473,87 @@ async function deleteContent(id) {
 // CONTENT CREATE / EDIT MODAL
 // ==========================================
 
+function openContentModal() {
+    const modal = document.getElementById('contentModal');
+    modal?.classList.remove('hidden');
+    if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
+}
+
+async function closeContentModal(force = false) {
+    const modal = document.getElementById('contentModal');
+    if (!modal) return true;
+
+    const closeNow = () => {
+        modal.classList.add('hidden');
+        editingContentId = null;
+    };
+
+    if (window.UnsafeDismissGuard) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, closeNow, {
+            force,
+            message: 'Є незбережені зміни в content-модалці. Закрити без збереження?',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+    }
+
+    if (!force && typeof confirmModal === 'function') {
+        const confirmed = await confirmModal('Є незбережені зміни в content-модалці. Закрити без збереження?', {
+            type: 'warning',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+        if (!confirmed) return false;
+    }
+
+    closeNow();
+    return true;
+}
+
+function openBrandModal() {
+    const modal = document.getElementById('brandModal');
+    document.getElementById('brandForm')?.reset();
+    modal?.classList.remove('hidden');
+    if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
+}
+
+async function closeBrandModal(force = false) {
+    const modal = document.getElementById('brandModal');
+    if (!modal) return true;
+
+    const closeNow = () => {
+        modal.classList.add('hidden');
+    };
+
+    if (window.UnsafeDismissGuard) {
+        return window.UnsafeDismissGuard.attemptCloseEditableSurface(modal, closeNow, {
+            force,
+            message: 'Є незбережені зміни в brand-модалці. Закрити без збереження?',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+    }
+
+    if (!force && typeof confirmModal === 'function') {
+        const confirmed = await confirmModal('Є незбережені зміни в brand-модалці. Закрити без збереження?', {
+            type: 'warning',
+            okText: 'Закрити без збереження',
+            cancelText: 'Повернутись'
+        });
+        if (!confirmed) return false;
+    }
+
+    closeNow();
+    return true;
+}
+
 function openCreateContent() {
     editingContentId = null;
     document.getElementById('contentModalTitle').textContent = 'Новий контент';
     document.getElementById('contentForm').reset();
     document.getElementById('templateFieldsContainer').style.display = 'none';
     populateTemplateSelect();
-    document.getElementById('contentModal')?.classList.remove('hidden');
+    openContentModal();
 }
 
 function openEditContent(id) {
@@ -501,7 +575,7 @@ function openEditContent(id) {
         showTemplateFields(item.template_id, item.field_values);
     }
 
-    document.getElementById('contentModal')?.classList.remove('hidden');
+    openContentModal();
 }
 
 function populateTemplateSelect() {
@@ -577,8 +651,9 @@ async function handleContentSubmit(e) {
 
     if (result.success) {
         showNotification(editingContentId ? 'Контент оновлено' : 'Контент створено', 'success');
-        document.getElementById('contentModal')?.classList.add('hidden');
-        editingContentId = null;
+        const modal = document.getElementById('contentModal');
+        if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.markClean(modal);
+        await closeContentModal(true);
         loadPipeline();
         if (activeTab === 'overview') loadOverview();
     } else {
@@ -641,7 +716,7 @@ function useTemplate(templateId) {
     document.getElementById('contentTemplate').value = templateId;
     showTemplateFields(templateId, {});
 
-    document.getElementById('contentModal')?.classList.remove('hidden');
+    openContentModal();
 }
 
 // ==========================================
@@ -732,7 +807,9 @@ async function handleBrandSubmit(e) {
     const result = await apiPost('/brand', { category, title, value, description });
     if (result.success) {
         showNotification('Правило додано', 'success');
-        document.getElementById('brandModal')?.classList.add('hidden');
+        const modal = document.getElementById('brandModal');
+        if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.markClean(modal);
+        await closeBrandModal(true);
         document.getElementById('brandForm').reset();
         loadBrand();
     } else {
@@ -802,7 +879,7 @@ async function initAuth() {
 function setupModals() {
     // Content modal
     document.getElementById('contentModalClose')?.addEventListener('click', () => {
-        document.getElementById('contentModal')?.classList.add('hidden');
+        closeContentModal(false);
     });
     document.getElementById('contentForm')?.addEventListener('submit', handleContentSubmit);
     document.getElementById('contentTemplate')?.addEventListener('change', (e) => {
@@ -816,11 +893,11 @@ function setupModals() {
 
     // Brand modal
     document.getElementById('brandModalClose')?.addEventListener('click', () => {
-        document.getElementById('brandModal')?.classList.add('hidden');
+        closeBrandModal(false);
     });
     document.getElementById('brandForm')?.addEventListener('submit', handleBrandSubmit);
     document.getElementById('btnAddBrand')?.addEventListener('click', () => {
-        document.getElementById('brandModal')?.classList.remove('hidden');
+        openBrandModal();
     });
 
     // Create content button
@@ -854,8 +931,27 @@ function setupModals() {
     // Close modals on backdrop click
     ['contentModal', 'detailModal', 'brandModal'].forEach(id => {
         document.getElementById(id)?.addEventListener('click', (e) => {
-            if (e.target.id === id) e.target.classList.add('hidden');
+            if (e.target.id !== id) return;
+            if (id === 'contentModal') closeContentModal(false);
+            else if (id === 'brandModal') closeBrandModal(false);
+            else e.target.classList.add('hidden');
         });
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' || document.querySelector('.confirm-overlay')) return;
+        const contentModal = document.getElementById('contentModal');
+        const brandModal = document.getElementById('brandModal');
+        const detailModal = document.getElementById('detailModal');
+        if (contentModal && !contentModal.classList.contains('hidden')) {
+            e.preventDefault();
+            closeContentModal(false);
+        } else if (brandModal && !brandModal.classList.contains('hidden')) {
+            e.preventDefault();
+            closeBrandModal(false);
+        } else if (detailModal && !detailModal.classList.contains('hidden')) {
+            e.preventDefault();
+            detailModal.classList.add('hidden');
+        }
     });
 }
 

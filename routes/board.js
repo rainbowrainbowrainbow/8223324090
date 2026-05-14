@@ -7,6 +7,7 @@ const { pool } = require('../db');
 const { requireMinRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { getKyivDateStr } = require('../services/booking');
+const { getVisibleBookingScope } = require('../services/bookingVisibility');
 
 const log = createLogger('Board');
 
@@ -16,14 +17,19 @@ router.get('/stats', async (req, res) => {
         const today = getKyivDateStr();
         const role = req.user.role;
         const REVENUE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
+        const bookingParams = [today];
+        const bookingScope = getVisibleBookingScope(req.user, bookingParams, 'b');
+        const revenueParams = [today];
+        const revenueScope = getVisibleBookingScope(req.user, revenueParams, 'b');
 
         const results = await Promise.allSettled([
             // 0: Bookings today
             pool.query(
                 `SELECT COUNT(*)::int as total,
-                    COUNT(*) FILTER (WHERE status = 'confirmed')::int as confirmed,
-                    COUNT(*) FILTER (WHERE status = 'preliminary')::int as preliminary
-                 FROM bookings WHERE date = $1 AND status != 'cancelled'`, [today]
+                    COUNT(*) FILTER (WHERE b.status = 'confirmed')::int as confirmed,
+                    COUNT(*) FILTER (WHERE b.status = 'preliminary')::int as preliminary
+                 FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled'
+                 ${bookingScope.sql}`, bookingParams
             ),
             // 1: Staff on shift today
             pool.query(
@@ -41,8 +47,9 @@ router.get('/stats', async (req, res) => {
             // 3: Revenue today (only for senior_manager+)
             REVENUE_ROLES.includes(role) ?
                 pool.query(
-                    `SELECT COALESCE(SUM(price), 0)::int as revenue FROM bookings
-                     WHERE date = $1 AND status != 'cancelled'`, [today]
+                    `SELECT COALESCE(SUM(b.price), 0)::int as revenue FROM bookings b
+                     WHERE b.date = $1 AND b.status != 'cancelled'
+                     ${revenueScope.sql}`, revenueParams
                 ) : Promise.resolve({ rows: [{ revenue: null }] })
         ]);
 

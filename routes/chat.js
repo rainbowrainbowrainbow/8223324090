@@ -14,6 +14,7 @@ const { processMessage: processBotMessage } = require('../services/chat-bot');
 const guardian = require('../services/guardian');
 const linkPreview = require('../services/linkPreview');
 const { createLogger } = require('../utils/logger');
+const { getVisibleBookingScope } = require('../services/bookingVisibility');
 
 const { authenticateToken, requireRole, ROLE_HIERARCHY } = require('../middleware/auth');
 
@@ -309,7 +310,7 @@ function readInsertedFlag(row) {
     return row?.inserted === true || row?.inserted === 't' || row?.inserted === 'true';
 }
 
-async function provisionBookingChatChannel({ pool, bookingId, userId }) {
+async function provisionBookingChatChannel({ pool, bookingId, userId, actor }) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -327,9 +328,14 @@ async function provisionBookingChatChannel({ pool, bookingId, userId }) {
             return { channel: existing.rows[0], isNew: false, existingByLink: true };
         }
 
+        const bookingParams = [bookingId];
+        const bookingScope = getVisibleBookingScope(actor, bookingParams, 'b');
         const booking = await client.query(
-            'SELECT id, date, program_name, label FROM bookings WHERE id = $1',
-            [bookingId]
+            `SELECT b.id, b.date, b.program_name, b.label
+             FROM bookings b
+             WHERE b.id = $1
+             ${bookingScope.sql}`,
+            bookingParams
         );
         if (!booking.rowCount) {
             await client.query('ROLLBACK');
@@ -522,9 +528,14 @@ router.post('/channels/:id/messages', async (req, res) => {
             const _msgId = message.id;
             setImmediate(async () => {
                 try {
+                    const bkParams = [_bkId];
+                    const bkScope = getVisibleBookingScope(req.user, bkParams, 'b');
                     const bkData = await pool.query(
-                        'SELECT id, date, time, program_name, label, status, price FROM bookings WHERE id = $1',
-                        [_bkId]
+                        `SELECT b.id, b.date, b.time, b.program_name, b.label, b.status, b.price
+                         FROM bookings b
+                         WHERE b.id = $1
+                         ${bkScope.sql}`,
+                        bkParams
                     );
                     if (!bkData.rowCount) return;
                     const b = bkData.rows[0];
@@ -2173,9 +2184,15 @@ router.post('/slash', async (req, res) => {
             case 'вільно':
             case 'free': {
                 const date = parseArgsDate(args);
+                const params = [date];
+                const visibility = getVisibleBookingScope(req.user, params, 'b');
                 const bk = await pool.query(
-                    `SELECT SUBSTRING(time, 1, 5) AS t FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time`,
-                    [date]
+                    `SELECT SUBSTRING(b.time, 1, 5) AS t
+                     FROM bookings b
+                     WHERE b.date = $1 AND b.status != 'cancelled'
+                     ${visibility.sql}
+                     ORDER BY b.time`,
+                    params
                 );
                 const busy = bk.rows.map(r => r.t);
                 const slots = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00'];
@@ -2188,9 +2205,15 @@ router.post('/slash', async (req, res) => {
             case 'броні':
             case 'bookings': {
                 const date = parseArgsDate(args);
+                const params = [date];
+                const visibility = getVisibleBookingScope(req.user, params, 'b');
                 const rows = await pool.query(
-                    `SELECT SUBSTRING(time,1,5) AS t, program_name, label FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time LIMIT 20`,
-                    [date]
+                    `SELECT SUBSTRING(b.time,1,5) AS t, b.program_name, b.label
+                     FROM bookings b
+                     WHERE b.date = $1 AND b.status != 'cancelled'
+                     ${visibility.sql}
+                     ORDER BY b.time LIMIT 20`,
+                    params
                 );
                 reply = rows.rowCount
                     ? `📋 Бронювання ${date} (${rows.rowCount}):\n` + rows.rows.map(r => `${r.t} — ${r.program_name} | ${r.label}`).join('\n')
@@ -2250,7 +2273,7 @@ router.post('/booking-channel', async (req, res) => {
         if (!bookingId || typeof bookingId !== 'string') return res.status(400).json({ error: 'bookingId required' });
 
         const userId = req.user.id || req.user.userId;
-        const result = await provisionBookingChatChannel({ pool, bookingId, userId });
+        const result = await provisionBookingChatChannel({ pool, bookingId, userId, actor: req.user });
         if (result.notFound) return res.status(404).json({ error: 'Booking not found' });
         if (result.existingByLink && !await requireChannelMemberOrRespond(result.channel.id, userId, res)) return;
 
@@ -2396,9 +2419,14 @@ router.post('/room-channels/init', async (req, res) => {
         if (!['admin', 'director', 'creator'].includes(req.user.role)) {
             return res.status(403).json({ error: 'Admin only' });
         }
+        const roomParams = [];
+        const roomScope = getVisibleBookingScope(req.user, roomParams, 'b');
         const rooms = await pool.query(
-            `SELECT DISTINCT line_id FROM bookings
-             WHERE line_id IS NOT NULL AND line_id != '' ORDER BY line_id`
+            `SELECT DISTINCT b.line_id FROM bookings b
+             WHERE b.line_id IS NOT NULL AND b.line_id != ''
+             ${roomScope.sql}
+             ORDER BY b.line_id`,
+            roomParams
         );
         const created = [];
         for (const room of rooms.rows) {
@@ -2424,14 +2452,17 @@ router.get('/room-channels/:lineId/history', async (req, res) => {
         if (chanRow.rowCount && !await requireChannelMemberOrRespond(chanRow.rows[0].id, getCurrentUserId(req), res)) return;
 
         // Bookings in this room
+        const bookingParams = [lineId, limit];
+        const bookingScope = getVisibleBookingScope(req.user, bookingParams, 'b');
         const bookings = await pool.query(
             `SELECT 'booking' AS source_type, id AS source_id,
                     date || 'T' || SUBSTRING(time,1,5) AS event_time,
                     program_name || ' | ' || COALESCE(group_name, label, '') AS content,
                     status, kids_count, created_by
-             FROM bookings WHERE line_id = $1
-             ORDER BY date DESC, time DESC LIMIT $2`,
-            [lineId, limit]
+             FROM bookings b WHERE b.line_id = $1
+             ${bookingScope.sql}
+             ORDER BY b.date DESC, b.time DESC LIMIT $2`,
+            bookingParams
         );
 
         // Chat messages in room channel

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.48.10 - Scoped Reporting & Analytics Booking Visibility Hardening v1 (2026-05-14)
+
+### Reporting Scope & Cache Safety [codex]
+- **Reporting Scope** - booking-derived analytics, stats, center, board, settings fallback, room availability і Kleshnya/chat helper summaries тепер повторно використовують canonical `services/bookingVisibility.js`.
+- **Role Guards** - `/api/stats`, `/api/center` і settings stats fallback вирівняно з page/sidebar semantics перед scoped aggregation, щоб auth-only маршрути не відкривали broad totals.
+- **Cache Safety** - analytics/stats aggregates отримали actor-scoped cache keys; finance creator/director/accountant reporting лишився явно privileged full-role без redesign ролей.
+- **Tests** - додано reporting visibility proof test, який блокує дубльовану reporting visibility engine і перевіряє guards/cache/finance semantics.
+
+---
+
 ## v0.48.9 - Booking Visibility Scope v1.1 (2026-05-14)
 
 ### Durable Scope & Linked Entity Parity [codex]

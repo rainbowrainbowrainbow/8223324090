@@ -12,6 +12,7 @@ const { createLogger } = require('../utils/logger');
 const { requireRole } = require('../middleware/auth');
 const { publish } = require('../services/eventBus');
 const log = createLogger('Finance');
+const FINANCE_BOOKING_REPORTING_SCOPE = 'finance-full-role'; // Intentional broad finance semantics for creator/director/accountant.
 function _escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // RBAC: Finance access — creator, director, accountant only

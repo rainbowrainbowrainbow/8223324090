@@ -114,7 +114,7 @@ function createFakePool() {
             return { rows: [], rowCount: 0 };
         }
 
-        if (/SELECT DISTINCT line_id FROM bookings/i.test(text)) {
+        if (/SELECT DISTINCT (?:b\.)?line_id FROM bookings(?: b)?/i.test(text)) {
             const seen = new Set();
             const rows = [];
             for (const booking of state.bookings.values()) {
@@ -154,7 +154,7 @@ function createFakePool() {
                     return { rows: channel ? [cloneChannel(channel)] : [], rowCount: channel ? 1 : 0 };
                 }
 
-                if (/SELECT id, date, program_name, label FROM bookings WHERE id = \$1/i.test(text)) {
+                if (/SELECT (?:b\.)?id, (?:b\.)?date, (?:b\.)?program_name, (?:b\.)?label FROM bookings(?: b)? WHERE (?:b\.)?id = \$1/i.test(text)) {
                     const booking = state.bookings.get(params[0]);
                     return { rows: booking ? [{ ...booking }] : [], rowCount: booking ? 1 : 0 };
                 }

@@ -251,7 +251,7 @@ router.get('/greeting', authenticateToken, async (req, res) => {
         const username = req.user?.username;
         const displayName = req.user?.name || username;
         const dateStr = req.query.date || new Date().toISOString().split('T')[0];
-        const result = await getGreeting(username, dateStr, displayName);
+        const result = await getGreeting(username, dateStr, displayName, req.user);
         res.json(result);
     } catch (err) {
         log.error('Error fetching greeting', err);
@@ -345,7 +345,7 @@ router.post('/chat', authenticateToken, async (req, res) => {
         const chatHistory = AI_ENABLED
             ? await getChatHistory(username, 20, activeSessionId)
             : [];
-        const result = await generateChatResponse(text, username, chatHistory);
+        const result = await generateChatResponse(text, username, chatHistory, req.user);
 
         // Save assistant response
         const saved = await addChatMessage(

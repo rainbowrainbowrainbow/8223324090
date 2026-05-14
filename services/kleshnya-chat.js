@@ -9,6 +9,7 @@
  */
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { getVisibleBookingScope } = require('./bookingVisibility');
 const Anthropic = require('@anthropic-ai/sdk');
 
 const log = createLogger('KleshnyaChat');
@@ -26,28 +27,42 @@ if (AI_ENABLED) {
     log.info('Claude AI disabled (no ANTHROPIC_API_KEY). Using skill engine fallback.');
 }
 
+function actorForBookingScope(username, actor) {
+    return actor || { username, name: username };
+}
+
+function scopedBookingVisibility(username, actor, params, alias = 'b') {
+    return getVisibleBookingScope(actorForBookingScope(username, actor), params, alias);
+}
+
 /**
  * Gather extended context for AI system prompt
  */
-async function gatherAIContext(username, dateStr) {
+async function gatherAIContext(username, dateStr, actor = null) {
     const ctx = {};
     try {
         // Today's bookings
+        const todayParams = [dateStr];
+        const todayScope = scopedBookingVisibility(username, actor, todayParams, 'b');
         const bookRes = await pool.query(
-            `SELECT COUNT(*) cnt, COALESCE(SUM(price),0) revenue,
-                    COUNT(*) FILTER (WHERE status='confirmed') confirmed,
-                    COUNT(*) FILTER (WHERE status='preliminary') preliminary
-             FROM bookings WHERE date = $1 AND (linked_to IS NULL OR linked_to = '') AND status != 'cancelled'`,
-            [dateStr]
+            `SELECT COUNT(*) cnt, COALESCE(SUM(b.price),0) revenue,
+                    COUNT(*) FILTER (WHERE b.status='confirmed') confirmed,
+                    COUNT(*) FILTER (WHERE b.status='preliminary') preliminary
+             FROM bookings b WHERE b.date = $1 AND (b.linked_to IS NULL OR b.linked_to = '') AND b.status != 'cancelled'
+             ${todayScope.sql}`,
+            todayParams
         );
         ctx.todayBookings = bookRes.rows[0];
 
         // Upcoming bookings (next 3 today)
+        const upcomingParams = [dateStr];
+        const upcomingScope = scopedBookingVisibility(username, actor, upcomingParams, 'b');
         const upcomingRes = await pool.query(
-            `SELECT time, program_name, group_name, room, kids_count, price, status, hosts, second_animator
-             FROM bookings WHERE date = $1 AND (linked_to IS NULL OR linked_to = '') AND status != 'cancelled'
-             ORDER BY time LIMIT 5`,
-            [dateStr]
+            `SELECT b.time, b.program_name, b.group_name, b.room, b.kids_count, b.price, b.status, b.hosts, b.second_animator
+             FROM bookings b WHERE b.date = $1 AND (b.linked_to IS NULL OR b.linked_to = '') AND b.status != 'cancelled'
+             ${upcomingScope.sql}
+             ORDER BY b.time LIMIT 5`,
+            upcomingParams
         );
         ctx.upcomingBookings = upcomingRes.rows;
 
@@ -79,10 +94,13 @@ async function gatherAIContext(username, dateStr) {
 
         // Week revenue
         const weekRange = getKyivWeekRange();
+        const weekParams = [weekRange.from, weekRange.to];
+        const weekScope = scopedBookingVisibility(username, actor, weekParams, 'b');
         const weekRes = await pool.query(
-            `SELECT COUNT(*) cnt, COALESCE(SUM(price),0) revenue
-             FROM bookings WHERE date >= $1 AND date <= $2 AND (linked_to IS NULL OR linked_to = '') AND status = 'confirmed'`,
-            [weekRange.from, weekRange.to]
+            `SELECT COUNT(*) cnt, COALESCE(SUM(b.price),0) revenue
+             FROM bookings b WHERE b.date >= $1 AND b.date <= $2 AND (b.linked_to IS NULL OR b.linked_to = '') AND b.status = 'confirmed'
+             ${weekScope.sql}`,
+            weekParams
         );
         ctx.weekStats = weekRes.rows[0];
 
@@ -179,12 +197,12 @@ function extractSuggestions(responseText) {
 /**
  * Generate AI response via Claude Haiku
  */
-async function generateAIResponse(userMessage, username, chatHistory) {
+async function generateAIResponse(userMessage, username, chatHistory, actor = null) {
     if (!AI_ENABLED || !anthropic) return null;
 
     try {
         const dateStr = getKyivDate(0);
-        const ctx = await gatherAIContext(username, dateStr);
+        const ctx = await gatherAIContext(username, dateStr, actor);
         const systemPrompt = buildSystemPrompt(ctx, username, dateStr);
 
         // Build messages array from chat history (last 10 messages)
@@ -459,7 +477,7 @@ const STATS_TRIGGER_WORDS = ['скільки', 'за тижд', 'за місяц
  * Try to handle category stats query (e.g., "скільки піньят за тиждень?")
  * Returns response or null if not a category query.
  */
-async function tryHandleCategoryStats(lower, username) {
+async function tryHandleCategoryStats(lower, username, actor = null) {
     // Find matching category
     let matchedCat = null;
     for (const [keyword, cat] of Object.entries(CATEGORY_MAP)) {
@@ -487,13 +505,16 @@ async function tryHandleCategoryStats(lower, username) {
     }
 
     // Query bookings filtered by category
+    const params = [from, to, matchedCat.db];
+    const visibility = scopedBookingVisibility(username, actor, params, 'b');
     const res = await pool.query(
-        `SELECT id, date, time, program_name, price, status, group_name, kids_count, hosts
-         FROM bookings
-         WHERE date >= $1 AND date <= $2 AND category = $3
-           AND status != 'cancelled' AND (linked_to IS NULL OR linked_to = '')
-         ORDER BY date, time`,
-        [from, to, matchedCat.db]
+        `SELECT b.id, b.date, b.time, b.program_name, b.price, b.status, b.group_name, b.kids_count, b.hosts
+         FROM bookings b
+         WHERE b.date >= $1 AND b.date <= $2 AND b.category = $3
+           AND b.status != 'cancelled' AND (b.linked_to IS NULL OR b.linked_to = '')
+           ${visibility.sql}
+         ORDER BY b.date, b.time`,
+        params
     );
 
     const total = res.rows.length;
@@ -544,7 +565,7 @@ const HELLO_KEYWORDS = ['привіт', 'здоров', 'hi', 'hello', 'йо', '
 
 // --- Main Chat Engine ---
 
-async function generateChatResponse(userMessage, username, chatHistory) {
+async function generateChatResponse(userMessage, username, chatHistory, actor = null) {
     const lower = userMessage.toLowerCase().trim();
 
     try {
@@ -565,12 +586,12 @@ async function generateChatResponse(userMessage, username, chatHistory) {
         }
 
         // 2.5. Check for category stats query (e.g., "скільки піньят за тиждень?")
-        const categoryResult = await tryHandleCategoryStats(lower, username);
+        const categoryResult = await tryHandleCategoryStats(lower, username, actor);
         if (categoryResult) return categoryResult;
 
         // 3. Try AI first (if enabled)
         if (AI_ENABLED) {
-            const aiResult = await generateAIResponse(userMessage, username, chatHistory);
+            const aiResult = await generateAIResponse(userMessage, username, chatHistory, actor);
             if (aiResult) return aiResult;
         }
 
@@ -583,7 +604,7 @@ async function generateChatResponse(userMessage, username, chatHistory) {
 
         for (const skill of sortedSkills) {
             if (skill.keywords.some(k => lower.includes(k))) {
-                return await skill.handler(lower, username);
+                return await skill.handler(lower, username, actor);
             }
         }
 
@@ -619,19 +640,22 @@ async function handleHelp() {
     };
 }
 
-async function handleBookings(lower, username) {
+async function handleBookings(lower, username, actor = null) {
     const dateIntent = parseDateIntent(lower);
     const suggestions = ['Бронювання на завтра', 'Виручка за тиждень', 'Які кімнати вільні?', 'Афіша'];
 
     if (dateIntent.from && dateIntent.to) {
         // Range query
+        const params = [dateIntent.from, dateIntent.to];
+        const visibility = scopedBookingVisibility(username, actor, params, 'b');
         const res = await pool.query(
-            `SELECT COUNT(*) cnt, COALESCE(SUM(price),0) revenue,
-                    COUNT(*) FILTER (WHERE status='confirmed') confirmed,
-                    COUNT(*) FILTER (WHERE status='preliminary') preliminary,
-                    COUNT(*) FILTER (WHERE status='cancelled') cancelled
-             FROM bookings WHERE date >= $1 AND date <= $2 AND (linked_to IS NULL OR linked_to = '')`,
-            [dateIntent.from, dateIntent.to]
+            `SELECT COUNT(*) cnt, COALESCE(SUM(b.price),0) revenue,
+                    COUNT(*) FILTER (WHERE b.status='confirmed') confirmed,
+                    COUNT(*) FILTER (WHERE b.status='preliminary') preliminary,
+                    COUNT(*) FILTER (WHERE b.status='cancelled') cancelled
+             FROM bookings b WHERE b.date >= $1 AND b.date <= $2 AND (b.linked_to IS NULL OR b.linked_to = '')
+             ${visibility.sql}`,
+            params
         );
         const r = res.rows[0];
         let msg = `📊 <b>Бронювання за ${dateIntent.label}</b> (${formatDateUkr(dateIntent.from)} — ${formatDateUkr(dateIntent.to)}):\n\n`;
@@ -645,10 +669,14 @@ async function handleBookings(lower, username) {
 
     // Single date
     const date = dateIntent.date;
+    const params = [date];
+    const visibility = scopedBookingVisibility(username, actor, params, 'b');
     const res = await pool.query(
-        `SELECT id, time, program_name, group_name, room, price, status, kids_count, duration, hosts
-         FROM bookings WHERE date = $1 AND (linked_to IS NULL OR linked_to = '') ORDER BY time`,
-        [date]
+        `SELECT b.id, b.time, b.program_name, b.group_name, b.room, b.price, b.status, b.kids_count, b.duration, b.hosts
+         FROM bookings b WHERE b.date = $1 AND (b.linked_to IS NULL OR b.linked_to = '')
+         ${visibility.sql}
+         ORDER BY b.time`,
+        params
     );
 
     if (res.rows.length === 0) {
@@ -935,7 +963,7 @@ async function handleTeam(lower, username) {
     };
 }
 
-async function handleRevenue(lower, username) {
+async function handleRevenue(lower, username, actor = null) {
     const isAvgCheck = lower.includes('середній чек') || lower.includes('середній') || lower.includes('чек');
     const dateIntent = parseDateIntent(lower);
 
@@ -953,14 +981,17 @@ async function handleRevenue(lower, username) {
         label = 'цей тиждень';
     }
 
+    const params = [from, to];
+    const visibility = scopedBookingVisibility(username, actor, params, 'b');
     const res = await pool.query(
         `SELECT COUNT(*) cnt,
-                COALESCE(SUM(price), 0) revenue,
-                COALESCE(ROUND(AVG(price)), 0) avg_price,
-                COUNT(*) FILTER (WHERE status='confirmed') confirmed,
-                COUNT(*) FILTER (WHERE status='preliminary') preliminary
-         FROM bookings WHERE date >= $1 AND date <= $2 AND (linked_to IS NULL OR linked_to = '') AND status != 'cancelled'`,
-        [from, to]
+                COALESCE(SUM(b.price), 0) revenue,
+                COALESCE(ROUND(AVG(b.price)), 0) avg_price,
+                COUNT(*) FILTER (WHERE b.status='confirmed') confirmed,
+                COUNT(*) FILTER (WHERE b.status='preliminary') preliminary
+         FROM bookings b WHERE b.date >= $1 AND b.date <= $2 AND (b.linked_to IS NULL OR b.linked_to = '') AND b.status != 'cancelled'
+         ${visibility.sql}`,
+        params
     );
 
     const r = res.rows[0];
@@ -969,7 +1000,7 @@ async function handleRevenue(lower, username) {
         let msg = `💰 <b>Середній чек за ${label}:</b>\n\n`;
         msg += `📊 Бронювань: ${r.cnt}\n`;
         msg += `💵 Середній чек: <b>${formatPrice(r.avg_price)}</b>\n`;
-        msg += `💰 Загальна виручка: ${formatPrice(r.revenue)}`;
+        msg += `💰 Видима виручка: ${formatPrice(r.revenue)}`;
         return {
             message: msg,
             suggestions: ['Виручка за місяць', 'Топ програм', 'Бронювання', 'Аналітика']
@@ -992,10 +1023,13 @@ async function handleRevenue(lower, username) {
         return pt.toISOString().split('T')[0];
     })();
 
+    const prevParams = [prevFrom, prevTo];
+    const prevVisibility = scopedBookingVisibility(username, actor, prevParams, 'b');
     const prevRes = await pool.query(
-        `SELECT COALESCE(SUM(price), 0) revenue, COUNT(*) cnt
-         FROM bookings WHERE date >= $1 AND date <= $2 AND (linked_to IS NULL OR linked_to = '') AND status != 'cancelled'`,
-        [prevFrom, prevTo]
+        `SELECT COALESCE(SUM(b.price), 0) revenue, COUNT(*) cnt
+         FROM bookings b WHERE b.date >= $1 AND b.date <= $2 AND (b.linked_to IS NULL OR b.linked_to = '') AND b.status != 'cancelled'
+         ${prevVisibility.sql}`,
+        prevParams
     );
 
     const prev = prevRes.rows[0];
@@ -1185,15 +1219,18 @@ async function handleCertificates(lower, username) {
     };
 }
 
-async function handleRooms(lower, username) {
+async function handleRooms(lower, username, actor = null) {
     const dateIntent = parseDateIntent(lower);
     const date = dateIntent.date || getKyivDate(0);
 
+    const params = [date];
+    const visibility = scopedBookingVisibility(username, actor, params, 'b');
     const res = await pool.query(
-        `SELECT room, COUNT(*) cnt, SUM(duration) total_mins, MIN(time) first_time, MAX(time) last_time
-         FROM bookings WHERE date = $1 AND status != 'cancelled' AND room IS NOT NULL AND (linked_to IS NULL OR linked_to = '')
-         GROUP BY room ORDER BY cnt DESC`,
-        [date]
+        `SELECT b.room, COUNT(*) cnt, SUM(b.duration) total_mins, MIN(b.time) first_time, MAX(b.time) last_time
+         FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' AND b.room IS NOT NULL AND (b.linked_to IS NULL OR b.linked_to = '')
+         ${visibility.sql}
+         GROUP BY b.room ORDER BY cnt DESC`,
+        params
     );
 
     if (res.rows.length === 0) {
@@ -1218,17 +1255,20 @@ async function handleRooms(lower, username) {
     };
 }
 
-async function handleAnalytics(lower, username) {
+async function handleAnalytics(lower, username, actor = null) {
     const isTopPrograms = lower.includes('топ програм') || lower.includes('top program') || lower.includes('популярн');
     const isComparison = lower.includes('порівня') || lower.includes('compar');
 
     if (isTopPrograms) {
         const range = getMonthRange();
+        const params = [range.from, range.to];
+        const visibility = scopedBookingVisibility(username, actor, params, 'b');
         const res = await pool.query(
-            `SELECT program_name, COUNT(*) cnt, SUM(price) revenue
-             FROM bookings WHERE date >= $1 AND date <= $2 AND status = 'confirmed' AND (linked_to IS NULL OR linked_to = '')
-             GROUP BY program_name ORDER BY cnt DESC LIMIT 10`,
-            [range.from, range.to]
+            `SELECT b.program_name, COUNT(*) cnt, SUM(b.price) revenue
+             FROM bookings b WHERE b.date >= $1 AND b.date <= $2 AND b.status = 'confirmed' AND (b.linked_to IS NULL OR b.linked_to = '')
+             ${visibility.sql}
+             GROUP BY b.program_name ORDER BY cnt DESC LIMIT 10`,
+            params
         );
 
         if (res.rows.length === 0) {
@@ -1256,17 +1296,23 @@ async function handleAnalytics(lower, username) {
     // General analytics / comparison
     const curr = getMonthRange();
     const prev = getPrevMonthRange();
+    const currParams = [curr.from, curr.to];
+    const currVisibility = scopedBookingVisibility(username, actor, currParams, 'b');
+    const prevParams = [prev.from, prev.to];
+    const prevVisibility = scopedBookingVisibility(username, actor, prevParams, 'b');
 
     const [currRes, prevRes] = await Promise.all([
         pool.query(
-            `SELECT COUNT(*) cnt, COALESCE(SUM(price),0) revenue, COALESCE(ROUND(AVG(price)),0) avg_price
-             FROM bookings WHERE date >= $1 AND date <= $2 AND status='confirmed' AND (linked_to IS NULL OR linked_to = '')`,
-            [curr.from, curr.to]
+            `SELECT COUNT(*) cnt, COALESCE(SUM(b.price),0) revenue, COALESCE(ROUND(AVG(b.price)),0) avg_price
+             FROM bookings b WHERE b.date >= $1 AND b.date <= $2 AND b.status='confirmed' AND (b.linked_to IS NULL OR b.linked_to = '')
+             ${currVisibility.sql}`,
+            currParams
         ),
         pool.query(
-            `SELECT COUNT(*) cnt, COALESCE(SUM(price),0) revenue, COALESCE(ROUND(AVG(price)),0) avg_price
-             FROM bookings WHERE date >= $1 AND date <= $2 AND status='confirmed' AND (linked_to IS NULL OR linked_to = '')`,
-            [prev.from, prev.to]
+            `SELECT COUNT(*) cnt, COALESCE(SUM(b.price),0) revenue, COALESCE(ROUND(AVG(b.price)),0) avg_price
+             FROM bookings b WHERE b.date >= $1 AND b.date <= $2 AND b.status='confirmed' AND (b.linked_to IS NULL OR b.linked_to = '')
+             ${prevVisibility.sql}`,
+            prevParams
         )
     ]);
 

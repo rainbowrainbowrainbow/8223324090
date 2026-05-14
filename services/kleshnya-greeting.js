@@ -15,6 +15,7 @@
  */
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { getVisibleBookingScope } = require('./bookingVisibility');
 
 const log = createLogger('KleshnyaGreeting');
 
@@ -72,6 +73,14 @@ function formatPrice(amount) {
     return amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₴';
 }
 
+function scopedGreetingTarget(username, actor) {
+    return [
+        username || 'unknown',
+        actor?.id || actor?.userId || 'anon',
+        actor?.role || 'roleless'
+    ].join(':');
+}
+
 function generateTemplateMessage(ctx, displayName) {
     const time = getTimeOfDay();
     const greetingFn = pick(GREETINGS[time]);
@@ -125,7 +134,7 @@ function generateTemplateMessage(ctx, displayName) {
 
 // --- Gather context from DB ---
 
-async function gatherContext(username, dateStr) {
+async function gatherContext(username, dateStr, actor = null) {
     const ctx = {
         bookingsCount: 0,
         totalRevenue: 0,
@@ -138,17 +147,27 @@ async function gatherContext(username, dateStr) {
 
     try {
         // Bookings for today
+        const bookingsParams = [dateStr];
+        const bookingsScope = getVisibleBookingScope(actor || { username }, bookingsParams, 'b');
         const bookingsRes = await pool.query(
-            "SELECT COUNT(*) as cnt, COALESCE(SUM(price), 0) as revenue FROM bookings WHERE date = $1 AND status != 'cancelled' AND (linked_to IS NULL OR linked_to = '')",
-            [dateStr]
+            `SELECT COUNT(*) as cnt, COALESCE(SUM(b.price), 0) as revenue
+             FROM bookings b
+             WHERE b.date = $1 AND b.status != 'cancelled' AND (b.linked_to IS NULL OR b.linked_to = '')
+             ${bookingsScope.sql}`,
+            bookingsParams
         );
         ctx.bookingsCount = parseInt(bookingsRes.rows[0].cnt);
         ctx.totalRevenue = parseFloat(bookingsRes.rows[0].revenue) || 0;
 
         // Preliminary bookings
+        const prelimParams = [dateStr];
+        const prelimScope = getVisibleBookingScope(actor || { username }, prelimParams, 'b');
         const prelimRes = await pool.query(
-            "SELECT COUNT(*) as cnt FROM bookings WHERE date = $1 AND status = 'preliminary' AND (linked_to IS NULL OR linked_to = '')",
-            [dateStr]
+            `SELECT COUNT(*) as cnt
+             FROM bookings b
+             WHERE b.date = $1 AND b.status = 'preliminary' AND (b.linked_to IS NULL OR b.linked_to = '')
+             ${prelimScope.sql}`,
+            prelimParams
         );
         ctx.preliminaryCount = parseInt(prelimRes.rows[0].cnt);
 
@@ -192,17 +211,18 @@ async function gatherContext(username, dateStr) {
 
 // --- Main: get or generate greeting ---
 
-async function getGreeting(username, dateStr, displayName) {
+async function getGreeting(username, dateStr, displayName, actor = null) {
     try {
+        const targetUser = scopedGreetingTarget(username, actor);
         // 1. Check cache
         const cached = await pool.query(
             `SELECT message, context, source FROM kleshnya_messages
              WHERE scope = 'daily_greeting' AND target_date = $1
-             AND (target_user = $2 OR target_user IS NULL)
+             AND target_user = $2
              AND expires_at > NOW()
              ORDER BY target_user NULLS LAST, created_at DESC
              LIMIT 1`,
-            [dateStr, username]
+            [dateStr, targetUser]
         );
 
         if (cached.rows.length > 0) {
@@ -215,7 +235,7 @@ async function getGreeting(username, dateStr, displayName) {
         }
 
         // 2. Gather context
-        const ctx = await gatherContext(username, dateStr);
+        const ctx = await gatherContext(username, dateStr, actor);
 
         // 3. Generate (template for now, agent hook later)
         const message = generateTemplateMessage(ctx, displayName);
@@ -225,7 +245,7 @@ async function getGreeting(username, dateStr, displayName) {
         await pool.query(
             `INSERT INTO kleshnya_messages (scope, target_date, target_user, message, context, source, expires_at)
              VALUES ('daily_greeting', $1, $2, $3, $4, 'template', $5)`,
-            [dateStr, username, message, JSON.stringify(ctx), expiresAt]
+            [dateStr, targetUser, message, JSON.stringify(ctx), expiresAt]
         );
 
         return { message, context: ctx, source: 'template', cached: false };

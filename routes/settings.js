@@ -7,6 +7,7 @@ const { validateDate, validateTime, validateSettingKey, mapBookingRow, timeToMin
 const { createLogger } = require('../utils/logger');
 const { logAdminAction } = require('../services/adminAudit');
 const { settingsCache } = require('../services/cache');
+const { getVisibleBookingScope } = require('../services/bookingVisibility');
 
 const { requireRole, requireMinRole, authenticateToken } = require('../middleware/auth');
 const log = createLogger('Settings');
@@ -38,15 +39,22 @@ router.get('/health', async (req, res) => {
 
 // v39.8: Security — require authentication for remaining endpoints
 router.use(authenticateToken);
-router.get('/stats/:dateFrom/:dateTo', async (req, res) => {
+router.get('/stats/:dateFrom/:dateTo', requireRole('creator', 'director'), async (req, res) => {
     try {
         const { dateFrom, dateTo } = req.params;
         if (!validateDate(dateFrom) || !validateDate(dateTo)) {
             return res.status(400).json({ error: 'Invalid date format' });
         }
+        const params = [dateFrom, dateTo];
+        const visibility = getVisibleBookingScope(req.user, params, 'b');
         const result = await pool.query(
-            "SELECT * FROM bookings WHERE date >= $1 AND date <= $2 AND linked_to IS NULL AND status != 'cancelled' ORDER BY date, time",
-            [dateFrom, dateTo]
+            `SELECT b.* FROM bookings b
+             WHERE b.date >= $1 AND b.date <= $2
+               AND b.linked_to IS NULL
+               AND b.status != 'cancelled'
+               ${visibility.sql}
+             ORDER BY b.date, b.time`,
+            params
         );
         res.json(result.rows.map(mapBookingRow));
     } catch (err) {
@@ -124,9 +132,14 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
         if (!validateTime(time)) return res.status(400).json({ error: 'Invalid time' });
         const dur = parseInt(duration) || 60;
 
+        const params = [date];
+        const visibility = getVisibleBookingScope(req.user, params, 'b');
         const bookings = await pool.query(
-            "SELECT room, time, duration FROM bookings WHERE date = $1 AND status != 'cancelled'",
-            [date]
+            `SELECT b.room, b.time, b.duration
+             FROM bookings b
+             WHERE b.date = $1 AND b.status != 'cancelled'
+             ${visibility.sql}`,
+            params
         );
 
         const reqStart = timeToMinutes(time);

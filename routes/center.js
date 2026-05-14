@@ -18,11 +18,13 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { requireMinRole, authenticateToken } = require('../middleware/auth');
+const { getVisibleBookingScope } = require('../services/bookingVisibility');
 
 const log = createLogger('Center');
 
 // v39.8: Security — require authentication for all center endpoints
 router.use(authenticateToken);
+router.use(requireMinRole('manager'));
 
 // ==========================================
 // HELPERS
@@ -52,6 +54,12 @@ function getMonthStart(d) {
     return new Date(d.getFullYear(), d.getMonth(), 1);
 }
 
+function scopedBookingParams(user, params = [], alias = 'b') {
+    const queryParams = [...params];
+    const visibility = getVisibleBookingScope(user, queryParams, alias);
+    return { params: queryParams, sql: visibility.sql, condition: visibility.condition };
+}
+
 // Worker status based on last activity
 function computeWorkerStatus(lastActivityAt) {
     if (!lastActivityAt) return { status: 'offline', label: 'Офлайн', emoji: '🔴' };
@@ -70,6 +78,9 @@ router.get('/overview', async (req, res) => {
         const today = formatDateISO(now);
         const weekStart = formatDateISO(getWeekStart(now));
         const monthStart = formatDateISO(getMonthStart(now));
+        const todayScope = scopedBookingParams(req.user, [today]);
+        const weekScope = scopedBookingParams(req.user, [weekStart, today]);
+        const monthScope = scopedBookingParams(req.user, [monthStart, today]);
 
         // Run all queries in parallel
         const [
@@ -80,17 +91,17 @@ router.get('/overview', async (req, res) => {
             tasksStats
         ] = await Promise.all([
             // Revenue
-            pool.query(`SELECT COALESCE(SUM(price), 0) AS revenue FROM bookings WHERE date = $1 AND status != 'cancelled'`, [today]),
-            pool.query(`SELECT COALESCE(SUM(price), 0) AS revenue FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled'`, [weekStart, today]),
-            pool.query(`SELECT COALESCE(SUM(price), 0) AS revenue FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled'`, [monthStart, today]),
+            pool.query(`SELECT COALESCE(SUM(b.price), 0) AS revenue FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${todayScope.sql}`, todayScope.params),
+            pool.query(`SELECT COALESCE(SUM(b.price), 0) AS revenue FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' ${weekScope.sql}`, weekScope.params),
+            pool.query(`SELECT COALESCE(SUM(b.price), 0) AS revenue FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' ${monthScope.sql}`, monthScope.params),
             // Bookings count
-            pool.query(`SELECT COUNT(*) AS cnt FROM bookings WHERE date = $1 AND status != 'cancelled'`, [today]),
-            pool.query(`SELECT COUNT(*) AS cnt FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled'`, [weekStart, today]),
-            pool.query(`SELECT COUNT(*) AS cnt FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled'`, [monthStart, today]),
+            pool.query(`SELECT COUNT(*) AS cnt FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${todayScope.sql}`, todayScope.params),
+            pool.query(`SELECT COUNT(*) AS cnt FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' ${weekScope.sql}`, weekScope.params),
+            pool.query(`SELECT COUNT(*) AS cnt FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' ${monthScope.sql}`, monthScope.params),
             // Top program
-            pool.query(`SELECT program_name, COUNT(*) AS cnt FROM bookings WHERE date = $1 AND status != 'cancelled' GROUP BY program_name ORDER BY cnt DESC LIMIT 1`, [today]),
-            pool.query(`SELECT program_name, COUNT(*) AS cnt FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled' GROUP BY program_name ORDER BY cnt DESC LIMIT 1`, [weekStart, today]),
-            pool.query(`SELECT program_name, COUNT(*) AS cnt FROM bookings WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled' GROUP BY program_name ORDER BY cnt DESC LIMIT 1`, [monthStart, today]),
+            pool.query(`SELECT b.program_name, COUNT(*) AS cnt FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${todayScope.sql} GROUP BY b.program_name ORDER BY cnt DESC LIMIT 1`, todayScope.params),
+            pool.query(`SELECT b.program_name, COUNT(*) AS cnt FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' ${weekScope.sql} GROUP BY b.program_name ORDER BY cnt DESC LIMIT 1`, weekScope.params),
+            pool.query(`SELECT b.program_name, COUNT(*) AS cnt FROM bookings b WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' ${monthScope.sql} GROUP BY b.program_name ORDER BY cnt DESC LIMIT 1`, monthScope.params),
             // Workers
             pool.query('SELECT id, name, display_name, type, purpose, is_active, updated_at FROM worker_roles ORDER BY created_at').catch(err => { log.warn('Worker roles fetch failed', err.message); return { rows: [] }; }),
             // Tasks stats
@@ -173,6 +184,7 @@ router.get('/workers', async (req, res) => {
         ).catch(() => ({ rows: [] }));
 
         // Check multiple activity sources for each worker
+        const lastBookingsScope = scopedBookingParams(req.user, []);
         const [lastTasks, lastBookings, lastHistory] = await Promise.all([
             pool.query(`
                 SELECT assigned_to AS name, MAX(updated_at) AS last_activity
@@ -181,9 +193,10 @@ router.get('/workers', async (req, res) => {
             `).catch(() => ({ rows: [] })),
             pool.query(`
                 SELECT created_by AS name, MAX(created_at) AS last_activity
-                FROM bookings WHERE created_by IS NOT NULL
+                FROM bookings b WHERE b.created_by IS NOT NULL
+                ${lastBookingsScope.sql}
                 GROUP BY created_by
-            `).catch(() => ({ rows: [] })),
+            `, lastBookingsScope.params).catch(() => ({ rows: [] })),
             pool.query(`
                 SELECT changed_by AS name, MAX(changed_at) AS last_activity
                 FROM history WHERE changed_by IS NOT NULL
@@ -523,13 +536,15 @@ router.get('/clients', async (req, res) => {
 
 router.get('/clients/:id/bookings', async (req, res) => {
     try {
+        const scoped = scopedBookingParams(req.user, [req.params.id]);
         const result = await pool.query(`
-            SELECT id, date, time, program_name, category, duration, price, status, room, kids_count
-            FROM bookings
-            WHERE customer_id = $1 AND status != 'cancelled'
-            ORDER BY date DESC, time DESC
+            SELECT b.id, b.date, b.time, b.program_name, b.category, b.duration, b.price, b.status, b.room, b.kids_count
+            FROM bookings b
+            WHERE b.customer_id = $1 AND b.status != 'cancelled'
+            ${scoped.sql}
+            ORDER BY b.date DESC, b.time DESC
             LIMIT 50
-        `, [req.params.id]);
+        `, scoped.params);
         res.json({ success: true, bookings: result.rows });
     } catch (err) {
         log.error('GET /center/clients/:id/bookings error', err);
@@ -580,14 +595,16 @@ router.get('/briefing', async (req, res) => {
         weekEnd.setDate(weekEnd.getDate() + 6);
         const from = formatDateISO(weekStart);
         const to = formatDateISO(weekEnd);
+        const bookingsScope = scopedBookingParams(req.user, [from, to]);
 
         const [bookingsRes, tasksRes, expiringDiscounts, staffRes] = await Promise.all([
             pool.query(`
-                SELECT date, time, program_name, category, price, status, room, kids_count, customer_id
-                FROM bookings
-                WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled' AND linked_to IS NULL
-                ORDER BY date, time
-            `, [from, to]),
+                SELECT b.date, b.time, b.program_name, b.category, b.price, b.status, b.room, b.kids_count, b.customer_id
+                FROM bookings b
+                WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' AND b.linked_to IS NULL
+                ${bookingsScope.sql}
+                ORDER BY b.date, b.time
+            `, bookingsScope.params),
             pool.query(`
                 SELECT id, title, status, priority, assigned_to, date, deadline
                 FROM tasks
@@ -654,19 +671,21 @@ router.get('/reconciliation', async (req, res) => {
         const today = formatDateISO(now);
         const from = req.query.from || monthStart;
         const to = req.query.to || today;
+        const bookingsScope = scopedBookingParams(req.user, [from, to]);
 
         const [bookingsRes, paymentsRes] = await Promise.all([
             pool.query(`
                 SELECT
                     COUNT(*)::int AS total_bookings,
-                    COALESCE(SUM(price), 0)::int AS total_price,
-                    COUNT(*) FILTER (WHERE status = 'confirmed')::int AS confirmed,
-                    COALESCE(SUM(CASE WHEN status = 'confirmed' THEN price ELSE 0 END), 0)::int AS confirmed_revenue,
-                    COUNT(*) FILTER (WHERE status = 'preliminary')::int AS preliminary,
-                    COALESCE(SUM(CASE WHEN status = 'preliminary' THEN price ELSE 0 END), 0)::int AS preliminary_revenue
-                FROM bookings
-                WHERE date::date >= $1::date AND date::date <= $2::date AND linked_to IS NULL AND status != 'cancelled'
-            `, [from, to]),
+                    COALESCE(SUM(b.price), 0)::int AS total_price,
+                    COUNT(*) FILTER (WHERE b.status = 'confirmed')::int AS confirmed,
+                    COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.price ELSE 0 END), 0)::int AS confirmed_revenue,
+                    COUNT(*) FILTER (WHERE b.status = 'preliminary')::int AS preliminary,
+                    COALESCE(SUM(CASE WHEN b.status = 'preliminary' THEN b.price ELSE 0 END), 0)::int AS preliminary_revenue
+                FROM bookings b
+                WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.linked_to IS NULL AND b.status != 'cancelled'
+                ${bookingsScope.sql}
+            `, bookingsScope.params),
             pool.query(`
                 SELECT
                     COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0)::int AS total_income,
@@ -710,16 +729,18 @@ router.get('/heatmap', async (req, res) => {
         fromDate.setMonth(fromDate.getMonth() - months);
         const from = formatDateISO(fromDate);
         const to = formatDateISO(now);
+        const scoped = scopedBookingParams(req.user, [from, to]);
 
         const result = await pool.query(`
-            SELECT date,
+            SELECT b.date,
                 COUNT(*)::int AS count,
-                COALESCE(SUM(price), 0)::int AS revenue
-            FROM bookings
-            WHERE date::date >= $1::date AND date::date <= $2::date AND status != 'cancelled' AND linked_to IS NULL
-            GROUP BY date
-            ORDER BY date
-        `, [from, to]);
+                COALESCE(SUM(b.price), 0)::int AS revenue
+            FROM bookings b
+            WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.status != 'cancelled' AND b.linked_to IS NULL
+            ${scoped.sql}
+            GROUP BY b.date
+            ORDER BY b.date
+        `, scoped.params);
 
         res.json({ success: true, heatmap: result.rows, period: { from, to } });
     } catch (err) {
@@ -739,21 +760,23 @@ router.get('/program-performance', async (req, res) => {
         const today = formatDateISO(now);
         const from = req.query.from || monthStart;
         const to = req.query.to || today;
+        const scoped = scopedBookingParams(req.user, [from, to]);
 
         const result = await pool.query(`
             SELECT
-                program_id, program_name, category,
+                b.program_id, b.program_name, b.category,
                 COUNT(*)::int AS total,
-                COUNT(*) FILTER (WHERE status = 'confirmed')::int AS confirmed,
-                COUNT(*) FILTER (WHERE status = 'preliminary')::int AS preliminary,
-                COALESCE(SUM(CASE WHEN status = 'confirmed' THEN price ELSE 0 END), 0)::int AS revenue,
-                COALESCE(ROUND(AVG(CASE WHEN status = 'confirmed' THEN price END)), 0)::int AS avg_price,
-                COALESCE(ROUND(AVG(kids_count)), 0)::int AS avg_kids
-            FROM bookings
-            WHERE date::date >= $1::date AND date::date <= $2::date AND linked_to IS NULL AND status != 'cancelled'
-            GROUP BY program_id, program_name, category
+                COUNT(*) FILTER (WHERE b.status = 'confirmed')::int AS confirmed,
+                COUNT(*) FILTER (WHERE b.status = 'preliminary')::int AS preliminary,
+                COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.price ELSE 0 END), 0)::int AS revenue,
+                COALESCE(ROUND(AVG(CASE WHEN b.status = 'confirmed' THEN b.price END)), 0)::int AS avg_price,
+                COALESCE(ROUND(AVG(b.kids_count)), 0)::int AS avg_kids
+            FROM bookings b
+            WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.linked_to IS NULL AND b.status != 'cancelled'
+            ${scoped.sql}
+            GROUP BY b.program_id, b.program_name, b.category
             ORDER BY revenue DESC
-        `, [from, to]);
+        `, scoped.params);
 
         res.json({ success: true, programs: result.rows, period: { from, to } });
     } catch (err) {
@@ -771,6 +794,9 @@ router.get('/cross-sell', async (req, res) => {
         const now = getKyivNow();
         const monthStart = formatDateISO(new Date(now.getFullYear(), now.getMonth() - 3, 1));
         const today = formatDateISO(now);
+        const comboParams = [monthStart, today];
+        const comboScopeB1 = getVisibleBookingScope(req.user, comboParams, 'b1');
+        const comboScopeB2 = getVisibleBookingScope(req.user, comboParams, 'b2');
 
         // Find programs frequently booked together on the same date by the same customer
         const result = await pool.query(`
@@ -785,21 +811,25 @@ router.get('/cross-sell', async (req, res) => {
                 AND b1.linked_to IS NULL AND b2.linked_to IS NULL
             WHERE b1.date::date >= $1::date AND b1.date::date <= $2::date
                 AND b1.status != 'cancelled' AND b2.status != 'cancelled'
+                ${comboScopeB1.sql}
+                ${comboScopeB2.sql}
             GROUP BY b1.program_name, b2.program_name
             HAVING COUNT(*) >= 2
             ORDER BY combo_count DESC
             LIMIT 15
-        `, [monthStart, today]);
+        `, comboParams);
 
+        const addonScope = scopedBookingParams(req.user, [monthStart, today]);
         // Top add-ons (linked bookings)
         const addons = await pool.query(`
-            SELECT program_name, COUNT(*)::int AS count, COALESCE(SUM(price), 0)::int AS revenue
-            FROM bookings
-            WHERE date::date >= $1::date AND date::date <= $2::date AND linked_to IS NOT NULL AND status != 'cancelled'
-            GROUP BY program_name
+            SELECT b.program_name, COUNT(*)::int AS count, COALESCE(SUM(b.price), 0)::int AS revenue
+            FROM bookings b
+            WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.linked_to IS NOT NULL AND b.status != 'cancelled'
+            ${addonScope.sql}
+            GROUP BY b.program_name
             ORDER BY count DESC
             LIMIT 10
-        `, [monthStart, today]);
+        `, addonScope.params);
 
         res.json({
             success: true,

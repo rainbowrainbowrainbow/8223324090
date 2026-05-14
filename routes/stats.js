@@ -8,6 +8,8 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { requireRole } = require('../middleware/auth');
+const { getVisibleBookingScope } = require('../services/bookingVisibility');
 
 const log = createLogger('Stats');
 
@@ -41,6 +43,17 @@ function setCache(key, data) {
         const firstKey = statsCache.keys().next().value;
         statsCache.delete(firstKey);
     }
+}
+
+function actorScopedCacheKey(req, prefix, ...parts) {
+    const user = req.user || {};
+    return [
+        prefix,
+        `actor=${user.id || user.userId || 'anon'}`,
+        `role=${user.role || ''}`,
+        `name=${user.username || user.name || ''}`,
+        ...parts
+    ].join(':');
 }
 
 // ==========================================
@@ -148,12 +161,7 @@ const CATEGORY_NAMES = {
 // ROLE CHECK — block viewers
 // ==========================================
 
-router.use((req, res, next) => {
-    if (req.user && req.user.role === 'viewer') {
-        return res.status(403).json({ error: 'Insufficient permissions' });
-    }
-    next();
-});
+router.use(requireRole('manager'));
 
 // ==========================================
 // GET /revenue — Aggregated revenue + daily breakdown + comparison
@@ -172,55 +180,66 @@ router.get('/revenue', async (req, res) => {
             to = range.to;
         }
 
-        const cacheKey = `revenue:${from}:${to}`;
+        const cacheKey = actorScopedCacheKey(req, 'revenue', from, to);
         const cached = getCached(cacheKey);
         if (cached) return res.json(cached);
+
+        const totalsParams = [from, to];
+        const totalsScope = getVisibleBookingScope(req.user, totalsParams, 'b');
 
         // Totals for current period
         const totalsResult = await pool.query(`
             SELECT
-                COALESCE(SUM(CASE WHEN status = 'confirmed' THEN price ELSE 0 END), 0)::int AS confirmed_revenue,
-                COALESCE(SUM(price), 0)::int AS total_revenue,
+                COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.price ELSE 0 END), 0)::int AS confirmed_revenue,
+                COALESCE(SUM(b.price), 0)::int AS total_revenue,
                 COUNT(*)::int AS total_count,
-                COUNT(*) FILTER (WHERE status = 'confirmed')::int AS confirmed_count,
-                COUNT(*) FILTER (WHERE status = 'preliminary')::int AS preliminary_count,
-                COALESCE(ROUND(AVG(price)), 0)::int AS avg_price
-            FROM bookings
-            WHERE date >= $1 AND date <= $2
-              AND linked_to IS NULL
-              AND status != 'cancelled'
-        `, [from, to]);
+                COUNT(*) FILTER (WHERE b.status = 'confirmed')::int AS confirmed_count,
+                COUNT(*) FILTER (WHERE b.status = 'preliminary')::int AS preliminary_count,
+                COALESCE(ROUND(AVG(b.price)), 0)::int AS avg_price
+            FROM bookings b
+            WHERE b.date >= $1 AND b.date <= $2
+              AND b.linked_to IS NULL
+              AND b.status != 'cancelled'
+              ${totalsScope.sql}
+        `, totalsParams);
 
         const t = totalsResult.rows[0];
 
         // Previous period for comparison
         const prev = getPreviousRange(from, to);
+        const prevParams = [prev.from, prev.to];
+        const prevScope = getVisibleBookingScope(req.user, prevParams, 'b');
         const prevResult = await pool.query(`
             SELECT
-                COALESCE(SUM(CASE WHEN status = 'confirmed' THEN price ELSE 0 END), 0)::int AS confirmed_revenue,
-                COALESCE(SUM(price), 0)::int AS total_revenue,
+                COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.price ELSE 0 END), 0)::int AS confirmed_revenue,
+                COALESCE(SUM(b.price), 0)::int AS total_revenue,
                 COUNT(*)::int AS total_count,
-                COALESCE(ROUND(AVG(price)), 0)::int AS avg_price
-            FROM bookings
-            WHERE date >= $1 AND date <= $2
-              AND linked_to IS NULL
-              AND status != 'cancelled'
-        `, [prev.from, prev.to]);
+                COALESCE(ROUND(AVG(b.price)), 0)::int AS avg_price
+            FROM bookings b
+            WHERE b.date >= $1 AND b.date <= $2
+              AND b.linked_to IS NULL
+              AND b.status != 'cancelled'
+              ${prevScope.sql}
+        `, prevParams);
 
         const p = prevResult.rows[0];
 
+        const dailyParams = [from, to];
+        const dailyScope = getVisibleBookingScope(req.user, dailyParams, 'b');
+
         // Daily breakdown
         const dailyResult = await pool.query(`
-            SELECT date,
-                COALESCE(SUM(price), 0)::int AS revenue,
+            SELECT b.date,
+                COALESCE(SUM(b.price), 0)::int AS revenue,
                 COUNT(*)::int AS count
-            FROM bookings
-            WHERE date >= $1 AND date <= $2
-              AND linked_to IS NULL
-              AND status != 'cancelled'
-            GROUP BY date
-            ORDER BY date
-        `, [from, to]);
+            FROM bookings b
+            WHERE b.date >= $1 AND b.date <= $2
+              AND b.linked_to IS NULL
+              AND b.status != 'cancelled'
+              ${dailyScope.sql}
+            GROUP BY b.date
+            ORDER BY b.date
+        `, dailyParams);
 
         // Compute growth percentages
         function growthPct(current, previous) {
@@ -272,51 +291,63 @@ router.get('/programs', async (req, res) => {
         const to = (req.query.to && isValidDate(req.query.to)) ? req.query.to : range.to;
         const limit = Math.min(parseInt(req.query.limit) || 10, 50);
 
-        const cacheKey = `programs:${from}:${to}:${limit}`;
+        const cacheKey = actorScopedCacheKey(req, 'programs', from, to, limit);
         const cached = getCached(cacheKey);
         if (cached) return res.json(cached);
 
+        const byCountParams = [from, to, limit];
+        const byCountScope = getVisibleBookingScope(req.user, byCountParams, 'b');
+
         // Top programs by count
         const byCountResult = await pool.query(`
-            SELECT program_id, program_name, category,
+            SELECT b.program_id, b.program_name, b.category,
                 COUNT(*)::int AS count,
-                COALESCE(SUM(price), 0)::int AS revenue
-            FROM bookings
-            WHERE date >= $1 AND date <= $2
-              AND linked_to IS NULL
-              AND status = 'confirmed'
-            GROUP BY program_id, program_name, category
+                COALESCE(SUM(b.price), 0)::int AS revenue
+            FROM bookings b
+            WHERE b.date >= $1 AND b.date <= $2
+              AND b.linked_to IS NULL
+              AND b.status = 'confirmed'
+              ${byCountScope.sql}
+            GROUP BY b.program_id, b.program_name, b.category
             ORDER BY count DESC
             LIMIT $3
-        `, [from, to, limit]);
+        `, byCountParams);
+
+        const byRevenueParams = [from, to, limit];
+        const byRevenueScope = getVisibleBookingScope(req.user, byRevenueParams, 'b');
 
         // Top programs by revenue
         const byRevenueResult = await pool.query(`
-            SELECT program_id, program_name, category,
+            SELECT b.program_id, b.program_name, b.category,
                 COUNT(*)::int AS count,
-                COALESCE(SUM(price), 0)::int AS revenue
-            FROM bookings
-            WHERE date >= $1 AND date <= $2
-              AND linked_to IS NULL
-              AND status = 'confirmed'
-            GROUP BY program_id, program_name, category
+                COALESCE(SUM(b.price), 0)::int AS revenue
+            FROM bookings b
+            WHERE b.date >= $1 AND b.date <= $2
+              AND b.linked_to IS NULL
+              AND b.status = 'confirmed'
+              ${byRevenueScope.sql}
+            GROUP BY b.program_id, b.program_name, b.category
             ORDER BY revenue DESC
             LIMIT $3
-        `, [from, to, limit]);
+        `, byRevenueParams);
+
+        const byCategoryParams = [from, to];
+        const byCategoryScope = getVisibleBookingScope(req.user, byCategoryParams, 'b');
 
         // By category
         const byCategoryResult = await pool.query(`
-            SELECT category,
+            SELECT b.category,
                 COUNT(*)::int AS count,
-                COALESCE(SUM(price), 0)::int AS revenue,
+                COALESCE(SUM(b.price), 0)::int AS revenue,
                 ROUND(COUNT(*)::numeric / NULLIF(SUM(COUNT(*)) OVER(), 0) * 100, 1) AS pct
-            FROM bookings
-            WHERE date >= $1 AND date <= $2
-              AND linked_to IS NULL
-              AND status = 'confirmed'
-            GROUP BY category
+            FROM bookings b
+            WHERE b.date >= $1 AND b.date <= $2
+              AND b.linked_to IS NULL
+              AND b.status = 'confirmed'
+              ${byCategoryScope.sql}
+            GROUP BY b.category
             ORDER BY count DESC
-        `, [from, to]);
+        `, byCategoryParams);
 
         const data = {
             period: { from, to },
@@ -361,47 +392,59 @@ router.get('/load', async (req, res) => {
         const from = (req.query.from && isValidDate(req.query.from)) ? req.query.from : range.from;
         const to = (req.query.to && isValidDate(req.query.to)) ? req.query.to : range.to;
 
-        const cacheKey = `load:${from}:${to}`;
+        const cacheKey = actorScopedCacheKey(req, 'load', from, to);
         const cached = getCached(cacheKey);
         if (cached) return res.json(cached);
+
+        const byDowParams = [from, to];
+        const byDowScope = getVisibleBookingScope(req.user, byDowParams, 'b');
 
         // By day of week (ISODOW: 1=Monday ... 7=Sunday)
         const byDowResult = await pool.query(`
             SELECT
-                EXTRACT(ISODOW FROM date::date)::int AS day_num,
+                EXTRACT(ISODOW FROM b.date::date)::int AS day_num,
                 COUNT(*)::int AS count,
-                COALESCE(SUM(price), 0)::int AS revenue
-            FROM bookings
-            WHERE date >= $1 AND date <= $2
-              AND linked_to IS NULL AND status = 'confirmed'
+                COALESCE(SUM(b.price), 0)::int AS revenue
+            FROM bookings b
+            WHERE b.date >= $1 AND b.date <= $2
+              AND b.linked_to IS NULL AND b.status = 'confirmed'
+              ${byDowScope.sql}
             GROUP BY day_num
             ORDER BY day_num
-        `, [from, to]);
+        `, byDowParams);
+
+        const byHourParams = [from, to];
+        const byHourScope = getVisibleBookingScope(req.user, byHourParams, 'b');
 
         // By hour of day
         const byHourResult = await pool.query(`
             SELECT
-                CAST(SUBSTRING(time FROM 1 FOR 2) AS INTEGER) AS hour,
+                CAST(SUBSTRING(b.time FROM 1 FOR 2) AS INTEGER) AS hour,
                 COUNT(*)::int AS count
-            FROM bookings
-            WHERE date >= $1 AND date <= $2
-              AND linked_to IS NULL AND status = 'confirmed'
+            FROM bookings b
+            WHERE b.date >= $1 AND b.date <= $2
+              AND b.linked_to IS NULL AND b.status = 'confirmed'
+              ${byHourScope.sql}
             GROUP BY hour
             ORDER BY hour
-        `, [from, to]);
+        `, byHourParams);
+
+        const roomParams = [from, to];
+        const roomScope = getVisibleBookingScope(req.user, roomParams, 'b');
 
         // Room utilization
         const roomResult = await pool.query(`
-            SELECT room,
+            SELECT b.room,
                 COUNT(*)::int AS booking_count,
-                COALESCE(SUM(duration), 0)::int AS total_minutes
-            FROM bookings
-            WHERE date >= $1 AND date <= $2
-              AND linked_to IS NULL AND status = 'confirmed'
-              AND room IS NOT NULL AND room != ''
-            GROUP BY room
+                COALESCE(SUM(b.duration), 0)::int AS total_minutes
+            FROM bookings b
+            WHERE b.date >= $1 AND b.date <= $2
+              AND b.linked_to IS NULL AND b.status = 'confirmed'
+              AND b.room IS NOT NULL AND b.room != ''
+              ${roomScope.sql}
+            GROUP BY b.room
             ORDER BY total_minutes DESC
-        `, [from, to]);
+        `, roomParams);
 
         // Count business days in range for utilization calculation
         const fromDate = new Date(from + 'T00:00:00');
@@ -416,6 +459,9 @@ router.get('/load', async (req, res) => {
         }
 
         // Animator workload — group by line_id only, pick latest name
+        const animatorParams = [from, to];
+        const animatorScope = getVisibleBookingScope(req.user, animatorParams, 'b');
+
         const animatorResult = await pool.query(`
             SELECT b.line_id,
                 MAX(l.name) AS animator_name,
@@ -425,9 +471,10 @@ router.get('/load', async (req, res) => {
             LEFT JOIN lines_by_date l ON b.line_id = l.line_id AND b.date = l.date
             WHERE b.date >= $1 AND b.date <= $2
               AND b.linked_to IS NULL AND b.status = 'confirmed'
+              ${animatorScope.sql}
             GROUP BY b.line_id
             ORDER BY booking_count DESC
-        `, [from, to]);
+        `, animatorParams);
 
         const data = {
             period: { from, to },
@@ -477,33 +524,41 @@ router.get('/trends', async (req, res) => {
         const to = range.to;
         const prev = getPreviousRange(from, to);
 
-        const cacheKey = `trends:${from}:${to}`;
+        const cacheKey = actorScopedCacheKey(req, 'trends', from, to);
         const cached = getCached(cacheKey);
         if (cached) return res.json(cached);
+
+        const currentParams = [from, to];
+        const currentScope = getVisibleBookingScope(req.user, currentParams, 'b');
 
         // Current period
         const currentResult = await pool.query(`
             SELECT
-                COALESCE(SUM(CASE WHEN status = 'confirmed' THEN price ELSE 0 END), 0)::int AS revenue,
+                COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.price ELSE 0 END), 0)::int AS revenue,
                 COUNT(*)::int AS count,
-                COALESCE(ROUND(AVG(price)), 0)::int AS average
-            FROM bookings
-            WHERE date >= $1 AND date <= $2
-              AND linked_to IS NULL
-              AND status != 'cancelled'
-        `, [from, to]);
+                COALESCE(ROUND(AVG(b.price)), 0)::int AS average
+            FROM bookings b
+            WHERE b.date >= $1 AND b.date <= $2
+              AND b.linked_to IS NULL
+              AND b.status != 'cancelled'
+              ${currentScope.sql}
+        `, currentParams);
+
+        const prevParams = [prev.from, prev.to];
+        const prevScope = getVisibleBookingScope(req.user, prevParams, 'b');
 
         // Previous period
         const prevResult = await pool.query(`
             SELECT
-                COALESCE(SUM(CASE WHEN status = 'confirmed' THEN price ELSE 0 END), 0)::int AS revenue,
+                COALESCE(SUM(CASE WHEN b.status = 'confirmed' THEN b.price ELSE 0 END), 0)::int AS revenue,
                 COUNT(*)::int AS count,
-                COALESCE(ROUND(AVG(price)), 0)::int AS average
-            FROM bookings
-            WHERE date >= $1 AND date <= $2
-              AND linked_to IS NULL
-              AND status != 'cancelled'
-        `, [prev.from, prev.to]);
+                COALESCE(ROUND(AVG(b.price)), 0)::int AS average
+            FROM bookings b
+            WHERE b.date >= $1 AND b.date <= $2
+              AND b.linked_to IS NULL
+              AND b.status != 'cancelled'
+              ${prevScope.sql}
+        `, prevParams);
 
         const c = currentResult.rows[0];
         const p = prevResult.rows[0];
@@ -548,7 +603,7 @@ router.get('/trends', async (req, res) => {
 router.get('/forecast', async (req, res) => {
     try {
         const days = Math.min(parseInt(req.query.days) || 14, 60);
-        const cacheKey = `forecast:${days}`;
+        const cacheKey = actorScopedCacheKey(req, 'forecast', days);
         const cached = getCached(cacheKey);
         if (cached) return res.json(cached);
 
@@ -558,6 +613,8 @@ router.get('/forecast', async (req, res) => {
         const lookbackStr = lookback.toISOString().split('T')[0];
         const todayStr = new Date().toISOString().split('T')[0];
 
+        const dowParams = [lookbackStr, todayStr];
+        const dowScope = getVisibleBookingScope(req.user, dowParams, 'b');
         const dowAvg = await pool.query(`
             SELECT
                 EXTRACT(ISODOW FROM date::date)::int AS dow,
@@ -565,40 +622,48 @@ router.get('/forecast', async (req, res) => {
                 MAX(day_count)::int AS peak_bookings,
                 ROUND(AVG(day_revenue))::int AS avg_revenue
             FROM (
-                SELECT date, COUNT(*) AS day_count, COALESCE(SUM(price), 0) AS day_revenue
-                FROM bookings
-                WHERE date >= $1 AND date < $2
-                  AND linked_to IS NULL AND status = 'confirmed'
-                GROUP BY date
+                SELECT b.date, COUNT(*) AS day_count, COALESCE(SUM(b.price), 0) AS day_revenue
+                FROM bookings b
+                WHERE b.date >= $1 AND b.date < $2
+                  AND b.linked_to IS NULL AND b.status = 'confirmed'
+                  ${dowScope.sql}
+                GROUP BY b.date
             ) daily
             GROUP BY EXTRACT(ISODOW FROM daily.date::date)
             ORDER BY dow
-        `, [lookbackStr, todayStr]);
+        `, dowParams);
 
         // Hourly pattern
+        const hourParams = [lookbackStr, todayStr];
+        const hourSubScope = getVisibleBookingScope(req.user, hourParams, 'b2');
+        const hourMainScope = getVisibleBookingScope(req.user, hourParams, 'b');
         const hourAvg = await pool.query(`
             SELECT
-                CAST(SUBSTRING(time FROM 1 FOR 2) AS INTEGER) AS hour,
-                ROUND(COUNT(*)::numeric / GREATEST(1, (SELECT COUNT(DISTINCT date) FROM bookings WHERE date >= $1 AND date < $2 AND linked_to IS NULL AND status = 'confirmed')), 2)::float AS avg_per_day
-            FROM bookings
-            WHERE date >= $1 AND date < $2
-              AND linked_to IS NULL AND status = 'confirmed'
+                CAST(SUBSTRING(b.time FROM 1 FOR 2) AS INTEGER) AS hour,
+                ROUND(COUNT(*)::numeric / GREATEST(1, (SELECT COUNT(DISTINCT b2.date) FROM bookings b2 WHERE b2.date >= $1 AND b2.date < $2 AND b2.linked_to IS NULL AND b2.status = 'confirmed' ${hourSubScope.sql})), 2)::float AS avg_per_day
+            FROM bookings b
+            WHERE b.date >= $1 AND b.date < $2
+              AND b.linked_to IS NULL AND b.status = 'confirmed'
+              ${hourMainScope.sql}
             GROUP BY hour
             ORDER BY hour
-        `, [lookbackStr, todayStr]);
+        `, hourParams);
 
         // Weekly trend (is load growing or shrinking?)
+        const weeklyParams = [lookbackStr, todayStr];
+        const weeklyScope = getVisibleBookingScope(req.user, weeklyParams, 'b');
         const weeklyTrend = await pool.query(`
             SELECT
-                EXTRACT(WEEK FROM date::date)::int AS week_num,
+                EXTRACT(WEEK FROM b.date::date)::int AS week_num,
                 COUNT(*)::int AS bookings,
-                COALESCE(SUM(price), 0)::int AS revenue
-            FROM bookings
-            WHERE date >= $1 AND date < $2
-              AND linked_to IS NULL AND status = 'confirmed'
+                COALESCE(SUM(b.price), 0)::int AS revenue
+            FROM bookings b
+            WHERE b.date >= $1 AND b.date < $2
+              AND b.linked_to IS NULL AND b.status = 'confirmed'
+              ${weeklyScope.sql}
             GROUP BY week_num
             ORDER BY week_num
-        `, [lookbackStr, todayStr]);
+        `, weeklyParams);
 
         // Calculate growth trend (simple linear regression slope)
         const weeks = weeklyTrend.rows;
@@ -681,34 +746,45 @@ router.get('/forecast', async (req, res) => {
 
 router.get('/reviews', async (req, res) => {
     try {
-        const cacheKey = 'reviews-summary';
+        const cacheKey = actorScopedCacheKey(req, 'reviews-summary');
         const cached = getCached(cacheKey);
         if (cached) return res.json(cached);
 
+        const summaryParams = [];
+        const summaryScope = getVisibleBookingScope(req.user, summaryParams, 'b');
         const summary = await pool.query(`
             SELECT
                 COUNT(*)::int AS total_reviews,
                 ROUND(AVG(rating), 1)::float AS avg_rating,
                 COUNT(CASE WHEN rating >= 4 THEN 1 END)::int AS positive,
                 COUNT(CASE WHEN rating <= 2 THEN 1 END)::int AS negative
-            FROM event_reviews
-        `);
+            FROM event_reviews er
+            LEFT JOIN bookings b ON b.id = er.booking_id
+            WHERE er.booking_id IS NULL OR (${summaryScope.condition})
+        `, summaryParams);
 
+        const recentParams = [];
+        const recentScope = getVisibleBookingScope(req.user, recentParams, 'b');
         const recent = await pool.query(`
             SELECT er.id, er.rating, er.customer_name, er.comment, er.created_at,
                    b.label, b.program_name, b.date
             FROM event_reviews er
             LEFT JOIN bookings b ON b.id = er.booking_id
+            WHERE er.booking_id IS NULL OR (${recentScope.condition})
             ORDER BY er.created_at DESC
             LIMIT 20
-        `);
+        `, recentParams);
 
+        const byRatingParams = [];
+        const byRatingScope = getVisibleBookingScope(req.user, byRatingParams, 'b');
         const byRating = await pool.query(`
-            SELECT rating, COUNT(*)::int AS count
-            FROM event_reviews
-            GROUP BY rating
+            SELECT er.rating, COUNT(*)::int AS count
+            FROM event_reviews er
+            LEFT JOIN bookings b ON b.id = er.booking_id
+            WHERE er.booking_id IS NULL OR (${byRatingScope.condition})
+            GROUP BY er.rating
             ORDER BY rating
-        `);
+        `, byRatingParams);
 
         const data = {
             summary: summary.rows[0] || { total_reviews: 0, avg_rating: 0, positive: 0, negative: 0 },

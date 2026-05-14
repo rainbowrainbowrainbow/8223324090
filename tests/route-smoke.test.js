@@ -463,7 +463,7 @@ function createFakePool() {
                     ]
                 };
             }
-            if (/FROM bookings WHERE date::date >= \$1::date AND date::date <= \$2::date/i.test(text)) {
+            if (/FROM bookings(?: b)? WHERE (?:b\.)?date::date >= \$1::date AND (?:b\.)?date::date <= \$2::date/i.test(text)) {
                 return {
                     rows: [{
                         revenue: 0,

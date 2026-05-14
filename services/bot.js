@@ -19,6 +19,7 @@
 const { pool } = require('../db');
 const { sendTelegramMessage, telegramRequest } = require('./telegram');
 const { createLogger } = require('../utils/logger');
+const { getVisibleBookingScope } = require('./bookingVisibility');
 
 const log = createLogger('ClawdBot');
 
@@ -41,6 +42,48 @@ async function resolveActorName(fromUsername, fromChatId, fromName) {
         if (staffRes.rows.length > 0) return staffRes.rows[0].name;
     }
     return fromName || 'telegram';
+}
+
+async function resolveTelegramBookingActor(fromUsername, fromChatId, fromName) {
+    if (fromUsername || fromChatId) {
+        const userRes = await pool.query(
+            `SELECT u.id, u.username, u.name, u.role,
+                    ARRAY_REMOVE(ARRAY_AGG(ep.staff_id), NULL) AS staff_ids
+             FROM users u
+             LEFT JOIN employee_profiles ep ON ep.user_id = u.id AND ep.is_active = true
+             WHERE u.telegram_username = $1 OR u.telegram_chat_id = $2
+             GROUP BY u.id, u.username, u.name, u.role
+             LIMIT 1`,
+            [fromUsername, fromChatId]
+        );
+        if (userRes.rows.length > 0) {
+            const row = userRes.rows[0];
+            return {
+                id: row.id,
+                username: row.username,
+                name: row.name,
+                role: row.role,
+                staffIds: row.staff_ids || []
+            };
+        }
+
+        if (fromUsername) {
+            const staffRes = await pool.query(
+                'SELECT id, name FROM staff WHERE telegram_username = $1 LIMIT 1',
+                [fromUsername]
+            );
+            if (staffRes.rows.length > 0) {
+                return {
+                    username: staffRes.rows[0].name,
+                    name: staffRes.rows[0].name,
+                    role: 'animator',
+                    staffIds: [staffRes.rows[0].id]
+                };
+            }
+        }
+    }
+
+    return { username: fromName || fromUsername || 'telegram', role: 'telegram_unknown' };
 }
 
 const CATEGORY_NAMES = {
@@ -155,13 +198,17 @@ async function handleCertVerify(chatId, threadId, code) {
 }
 
 // /today or /tomorrow — bookings summary for a date
-async function handleDaySummary(chatId, threadId, date, label) {
+async function handleDaySummary(chatId, threadId, date, label, actor = null) {
     try {
+        const params = [date];
+        const visibility = getVisibleBookingScope(actor, params, 'b');
         const bookings = await pool.query(
             `SELECT b.*, l.name as line_name FROM bookings b
              LEFT JOIN lines_by_date l ON b.line_id = l.line_id AND b.date = l.date
-             WHERE b.date = $1 ORDER BY b.time`,
-            [date]
+             WHERE b.date = $1
+               ${visibility.sql}
+             ORDER BY b.time`,
+            params
         );
 
         if (bookings.rows.length === 0) {
@@ -719,12 +766,24 @@ async function handleBotCommand(chatId, threadId, text, fromUsername) {
             return handleStart(chatId, threadId, fromUsername);
 
         case '/today':
-            return handleDaySummary(chatId, threadId, formatDate(getKyivNow()), 'Сьогодні');
+            return handleDaySummary(
+                chatId,
+                threadId,
+                formatDate(getKyivNow()),
+                'Сьогодні',
+                await resolveTelegramBookingActor(fromUsername, chatId, null)
+            );
 
         case '/tomorrow': {
             const tomorrow = getKyivNow();
             tomorrow.setDate(tomorrow.getDate() + 1);
-            return handleDaySummary(chatId, threadId, formatDate(tomorrow), 'Завтра');
+            return handleDaySummary(
+                chatId,
+                threadId,
+                formatDate(tomorrow),
+                'Завтра',
+                await resolveTelegramBookingActor(fromUsername, chatId, null)
+            );
         }
 
         case '/programs':

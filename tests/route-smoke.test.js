@@ -276,7 +276,7 @@ function createFakePool() {
                     }]
                 };
             }
-            if (/FROM tasks WHERE \(source_type = 'lead' AND source_id = \$1\)/i.test(text)) {
+            if (/FROM tasks t/i.test(text) && /t\.source_type = 'lead' AND t\.source_id = \$1/i.test(text)) {
                 return {
                     rows: [{
                         id: 801,

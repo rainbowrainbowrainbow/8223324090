@@ -158,7 +158,7 @@ router.post('/notify', authenticateToken, async (req, res) => {
 router.get('/digest/:date', authenticateToken, async (req, res) => {
     try {
         const { date } = req.params;
-        const result = await buildAndSendDigest(date);
+        const result = await buildAndSendDigest(date, req.user);
         res.json(result);
     } catch (err) {
         log.error('Digest error', err);
@@ -169,7 +169,7 @@ router.get('/digest/:date', authenticateToken, async (req, res) => {
 router.get('/reminder/:date', authenticateToken, async (req, res) => {
     try {
         const { date } = req.params;
-        const result = await sendTomorrowReminder(date);
+        const result = await sendTomorrowReminder(date, req.user);
         res.json(result);
     } catch (err) {
         log.error('Reminder error', err);

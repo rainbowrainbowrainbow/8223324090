@@ -29,6 +29,33 @@ const BOOKING_EDIT_ROLES = new Set([
     ...FALLBACK_EDIT_ROLES
 ]);
 
+const BOOKING_VISIBILITY_REASON_CODES = Object.freeze({
+    FULL_ROLE: 'full_role',
+    OPERATIONAL_COMPATIBLE_FALLBACK: 'ambiguous_legacy',
+    STAFF_HOST_SCOPE: 'staff_host_scope',
+    CREATOR_SCOPE: 'creator_scope',
+    LEGACY_SECOND_ANIMATOR: 'ambiguous_legacy',
+    MISSING_DURABLE_OPERATIONAL_SCOPE: 'ambiguous_legacy',
+    AMBIGUOUS_LEGACY: 'ambiguous_legacy',
+    DENY_NO_SCOPE: 'deny_no_scope'
+});
+
+function bookingVisibilityReasonCode(scopeSource) {
+    if (scopeSource === 'full-role') return BOOKING_VISIBILITY_REASON_CODES.FULL_ROLE;
+    if (scopeSource === 'staff-host-assignment') return BOOKING_VISIBILITY_REASON_CODES.STAFF_HOST_SCOPE;
+    if (scopeSource === 'staff-host-or-legacy-token-match') return BOOKING_VISIBILITY_REASON_CODES.STAFF_HOST_SCOPE;
+    if (scopeSource === 'legacy-created-by') return BOOKING_VISIBILITY_REASON_CODES.CREATOR_SCOPE;
+    if (scopeSource === 'deny') return BOOKING_VISIBILITY_REASON_CODES.DENY_NO_SCOPE;
+    return BOOKING_VISIBILITY_REASON_CODES.AMBIGUOUS_LEGACY;
+}
+
+function withBookingVisibilityReason(decision) {
+    return {
+        ...decision,
+        reasonCode: decision.reasonCode || bookingVisibilityReasonCode(decision.scopeSource)
+    };
+}
+
 const BOOKING_VISIBILITY_MATRIX = [
     {
         actor: 'creator/director full access',
@@ -96,7 +123,10 @@ const BOOKING_VISIBILITY_MATRIX = [
         scopeSource: 'deny',
         classification: 'ambiguous-legacy'
     }
-];
+].map(row => ({
+    ...row,
+    reasonCode: bookingVisibilityReasonCode(row.scopeSource)
+}));
 
 function normalizeRole(user) {
     return String(user?.role || '').trim();
@@ -184,72 +214,72 @@ function staffScopedHostMatch(user, booking = {}) {
 
 function classifyBookingVisibility(user, booking = {}) {
     if (!user) {
-        return {
+        return withBookingVisibilityReason({
             canView: false,
             canEdit: false,
             classification: 'ambiguous-legacy',
             scopeSource: 'deny',
             reason: 'no-authenticated-actor'
-        };
+        });
     }
 
     if (isFullBookingRole(user)) {
-        return {
+        return withBookingVisibilityReason({
             canView: true,
             canEdit: true,
             classification: 'fully-classified',
             scopeSource: 'full-role',
             reason: 'creator/director full booking access'
-        };
+        });
     }
 
     if (hasOperationalBookingView(user)) {
-        return {
+        return withBookingVisibilityReason({
             canView: true,
             canEdit: hasOperationalBookingEdit(user),
             classification: 'compatible-fallback',
             scopeSource: hasOperationalBookingEdit(user) ? 'booking-operational-edit-role' : 'booking-operational-view-role',
             reason: 'current booking operational role without durable team/location scope'
-        };
+        });
     }
 
     if (staffScopedHostMatch(user, booking)) {
-        return {
+        return withBookingVisibilityReason({
             canView: true,
             canEdit: false,
             classification: 'fully-classified',
             scopeSource: 'staff-host-assignment',
             reason: 'durable employee_profiles.staff_id assignment matches booking host/second animator'
-        };
+        });
     }
 
     if (exactLegacyTokenMatch(user, bookingCreatedBy(booking))) {
-        return {
+        return withBookingVisibilityReason({
             canView: true,
             canEdit: false,
             classification: 'compatible-fallback',
             scopeSource: 'legacy-created-by',
             reason: 'exact legacy created_by match'
-        };
+        });
     }
 
     if (exactLegacyTokenMatch(user, bookingSecondAnimator(booking))) {
-        return {
+        return withBookingVisibilityReason({
             canView: true,
             canEdit: false,
             classification: 'compatible-fallback',
             scopeSource: 'legacy-second-animator',
             reason: 'exact legacy second_animator match'
-        };
+        });
     }
 
-    return {
+    return withBookingVisibilityReason({
         canView: false,
         canEdit: false,
         classification: 'ambiguous-legacy',
         scopeSource: 'deny',
         reason: 'no durable booking visibility rule matched'
-    };
+    });
 }
 
 function buildLegacyTokenCondition(user, params, alias) {
@@ -261,47 +291,60 @@ function buildLegacyTokenCondition(user, params, alias) {
 
 function buildStaffHostCondition(user, params, alias) {
     const userId = normalizeUserId(user);
-    if (!userId) return 'FALSE';
-    const userRef = pushParam(params, userId);
-    return `EXISTS (
-        SELECT 1
-        FROM employee_profiles ep
-        WHERE ep.user_id = ${userRef}
-          AND COALESCE(ep.is_active, true) IS TRUE
-          AND ep.staff_id IS NOT NULL
-          AND (${alias}.hosts = ep.staff_id OR ${alias}.second_animator = ep.staff_id::text)
-    )`;
+    const conditions = [];
+
+    if (userId) {
+        const userRef = pushParam(params, userId);
+        conditions.push(`EXISTS (
+            SELECT 1
+            FROM employee_profiles ep
+            WHERE ep.user_id = ${userRef}
+              AND COALESCE(ep.is_active, true) IS TRUE
+              AND ep.staff_id IS NOT NULL
+              AND (${alias}.hosts = ep.staff_id OR ${alias}.second_animator = ep.staff_id::text)
+        )`);
+    }
+
+    const staffIds = userStaffIds(user);
+    if (staffIds.length) {
+        const hostRefs = staffIds.map(staffId => pushParam(params, staffId)).join(',');
+        const secondAnimatorRefs = staffIds.map(staffId => pushParam(params, String(staffId))).join(',');
+        conditions.push(`(${alias}.hosts IN (${hostRefs}) OR ${alias}.second_animator IN (${secondAnimatorRefs}))`);
+    }
+
+    if (!conditions.length) return 'FALSE';
+    return conditions.length === 1 ? conditions[0] : `(${conditions.join(' OR ')})`;
 }
 
 function getVisibleBookingScope(user, params = [], alias = 'b') {
     if (!user) {
-        return {
+        return withBookingVisibilityReason({
             sql: 'AND 1 = 0',
             condition: 'FALSE',
             classification: 'ambiguous-legacy',
             scopeSource: 'deny',
             reason: 'no-authenticated-actor'
-        };
+        });
     }
 
     if (isFullBookingRole(user)) {
-        return {
+        return withBookingVisibilityReason({
             sql: '',
             condition: 'TRUE',
             classification: 'fully-classified',
             scopeSource: 'full-role',
             reason: 'creator/director full booking access'
-        };
+        });
     }
 
     if (hasOperationalBookingView(user)) {
-        return {
+        return withBookingVisibilityReason({
             sql: '',
             condition: 'TRUE',
             classification: 'compatible-fallback',
             scopeSource: hasOperationalBookingEdit(user) ? 'booking-operational-edit-role' : 'booking-operational-view-role',
             reason: 'current booking operational role without durable team/location scope'
-        };
+        });
     }
 
     const conditions = [];
@@ -316,13 +359,13 @@ function getVisibleBookingScope(user, params = [], alias = 'b') {
     }
 
     if (!conditions.length) {
-        return {
+        return withBookingVisibilityReason({
             sql: 'AND 1 = 0',
             condition: 'FALSE',
             classification: 'ambiguous-legacy',
             scopeSource: 'deny',
             reason: 'actor has no durable or legacy booking tokens'
-        };
+        });
     }
 
     const condition = conditions.length === 1
@@ -331,7 +374,7 @@ function getVisibleBookingScope(user, params = [], alias = 'b') {
     const hasStaffHost = conditions.some(item => item.source === 'staff-host-assignment');
     const hasLegacy = conditions.some(item => item.source === 'legacy-token-match');
 
-    return {
+    return withBookingVisibilityReason({
         sql: `AND ${condition}`,
         condition,
         classification: hasLegacy ? 'compatible-fallback' : 'fully-classified',
@@ -341,7 +384,7 @@ function getVisibleBookingScope(user, params = [], alias = 'b') {
             : (hasStaffHost
                 ? 'durable employee_profiles.staff_id assignment matches booking host/second animator'
                 : 'exact legacy created_by/second_animator match only')
-    };
+    });
 }
 
 function buildBookingVisibilityScope(user, params = [], alias = 'b') {
@@ -442,7 +485,9 @@ function resolveBookingDerivedLinkedRoute(user, booking = {}, linkedEntity = {})
 
 module.exports = {
     BOOKING_VISIBILITY_MATRIX,
+    BOOKING_VISIBILITY_REASON_CODES,
     bookingContextHref,
+    bookingVisibilityReasonCode,
     buildBookingVisibilityCondition,
     buildBookingVisibilityScope,
     bookingAccessDeniedPayload,

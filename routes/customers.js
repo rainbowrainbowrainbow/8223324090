@@ -9,13 +9,15 @@ const { pool } = require('../db');
 const { getSupabase } = require('../db/supabase');
 const { createLogger } = require('../utils/logger');
 const { exportLimiter } = require('../middleware/rateLimit');
-const { authenticateToken, requireMinRole } = require('../middleware/auth');
+const { authenticateToken, requireRole, requireMinRole } = require('../middleware/auth');
 const { getCustomerCommunicationContext } = require('../services/customerCommunicationHub');
+const { getVisibleBookingScope } = require('../services/bookingVisibility');
 
 const log = createLogger('Customers');
 
 // All customer routes require authentication
 router.use(authenticateToken);
+router.use(requireRole('admin', 'reception'));
 // v40: Validate :id param is numeric
 router.param('id', (req, res, next, val) => { if (val && !/^\d+$/.test(val)) return res.status(400).json({ error: 'Invalid ID format' }); next(); });
 
@@ -31,6 +33,24 @@ const PREDEFINED_TAGS = [
 // Helper: check if Supabase is available
 function useSupabase() {
     return !!getSupabase();
+}
+
+function scopedBookingAggregateSql(user, params, alias = 'b') {
+    const visibility = getVisibleBookingScope(user, params, alias);
+    return {
+        visibility,
+        sql: `
+            SELECT ${alias}.customer_id,
+                   COUNT(*) AS booking_count,
+                   COALESCE(SUM(${alias}.price), 0) AS booking_spent,
+                   MIN(${alias}.date) AS real_first_visit,
+                   MAX(${alias}.date) AS real_last_visit
+            FROM bookings ${alias}
+            WHERE ${alias}.status != 'cancelled'
+              ${visibility.sql}
+            GROUP BY ${alias}.customer_id
+        `
+    };
 }
 
 // Autocomplete search (for booking form dropdown)
@@ -53,23 +73,19 @@ router.get('/search', async (req, res) => {
 
         // Fallback: Railway DB — v33.3: live aggregation from bookings
         const pattern = `%${q}%`;
+        const params = [pattern];
+        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b');
         const result = await pool.query(
             `SELECT c.id, c.name, c.phone, c.instagram, c.child_name, c.total_bookings,
                     COALESCE(b_agg.booking_count, 0) AS real_total_bookings,
                     COALESCE(b_agg.booking_spent, 0) AS real_total_spent,
                     b_agg.real_last_visit
              FROM customers c
-             LEFT JOIN (
-                 SELECT customer_id, COUNT(*) AS booking_count,
-                        COALESCE(SUM(price), 0) AS booking_spent,
-                        MAX(date) AS real_last_visit
-                 FROM bookings WHERE status != 'cancelled'
-                 GROUP BY customer_id
-             ) b_agg ON b_agg.customer_id = c.id
+             LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
              WHERE c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1
              ORDER BY b_agg.real_last_visit DESC NULLS LAST
              LIMIT 20`,
-            [pattern]
+            params
         );
         res.json(result.rows.map(mapCustomerRow));
     } catch (err) {
@@ -91,6 +107,8 @@ router.get('/rfm', async (req, res) => {
             rows = data || [];
         } else {
             // v32.1: JOIN bookings for real totals
+            const params = [];
+            const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b');
             const result = await pool.query(`
                 SELECT c.id, c.name, c.phone, c.instagram, c.child_name,
                        COALESCE(b.cnt, 0) AS total_bookings,
@@ -99,12 +117,12 @@ router.get('/rfm', async (req, res) => {
                        c.created_at, c.updated_at
                 FROM customers c
                 LEFT JOIN (
-                    SELECT customer_id, COUNT(*) AS cnt, COALESCE(SUM(price),0) AS spent,
-                           MIN(date) AS first_visit, MAX(date) AS last_visit
-                    FROM bookings WHERE status != 'cancelled' GROUP BY customer_id
+                    SELECT customer_id, booking_count AS cnt, booking_spent AS spent,
+                           real_first_visit AS first_visit, real_last_visit AS last_visit
+                    FROM (${bookingAgg.sql}) scoped_bookings
                 ) b ON b.customer_id = c.id
                 ORDER BY b.last_visit DESC NULLS LAST
-            `);
+            `, params);
             rows = result.rows;
         }
 
@@ -144,6 +162,8 @@ router.get('/segments', async (req, res) => {
         const now = new Date();
         const threeMonthsAgo = new Date(now - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         const oneMonthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const params = [threeMonthsAgo, oneMonthAgo];
+        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b');
 
         const result = await pool.query(`
             SELECT
@@ -153,10 +173,10 @@ router.get('/segments', async (req, res) => {
                 COUNT(*) FILTER (WHERE COALESCE(b.spent, 0) >= 10000) AS vip
             FROM customers c
             LEFT JOIN (
-                SELECT customer_id, MAX(date) AS last_visit, COALESCE(SUM(price), 0) AS spent
-                FROM bookings WHERE status != 'cancelled' GROUP BY customer_id
+                SELECT customer_id, real_last_visit AS last_visit, booking_spent AS spent
+                FROM (${bookingAgg.sql}) scoped_bookings
             ) b ON b.customer_id = c.id
-        `, [threeMonthsAgo, oneMonthAgo]);
+        `, params);
 
         const row = result.rows[0];
         res.json({
@@ -936,6 +956,7 @@ router.get('/', async (req, res) => {
         const countResult = await pool.query(`SELECT COUNT(*) FROM customers ${where}`, params);
         const total = parseInt(countResult.rows[0].count);
 
+        const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b');
         const dataParams = [...params, limit, offset];
         // v32.1: JOIN bookings to compute real totalBookings/totalSpent/LTV
         const result = await pool.query(
@@ -945,16 +966,7 @@ router.get('/', async (req, res) => {
                     b_agg.real_last_visit,
                     b_agg.real_first_visit
              FROM customers c
-             LEFT JOIN (
-                 SELECT customer_id,
-                        COUNT(*) AS booking_count,
-                        COALESCE(SUM(price), 0) AS booking_spent,
-                        MAX(date) AS real_last_visit,
-                        MIN(date) AS real_first_visit
-                 FROM bookings
-                 WHERE status != 'cancelled'
-                 GROUP BY customer_id
-             ) b_agg ON b_agg.customer_id = c.id
+             LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
              ${where ? where.replace(/WHERE/i, 'WHERE') : ''}
              ORDER BY ${orderBy} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
             dataParams
@@ -1016,10 +1028,16 @@ router.get('/:id', async (req, res) => {
         }
 
         // Bookings + certificates from Railway DB (they stay there)
+        const bookingParams = [numId];
+        const bookingVisibility = getVisibleBookingScope(req.user, bookingParams, 'b');
         const bookings = await pool.query(
             `SELECT id, date, time, program_name, program_code, label, price, status, room, duration
-             FROM bookings WHERE customer_id = $1 AND linked_to IS NULL ORDER BY date DESC LIMIT 50`,
-            [numId]
+             FROM bookings b
+             WHERE b.customer_id = $1
+               AND b.linked_to IS NULL
+               ${bookingVisibility.sql}
+             ORDER BY b.date DESC LIMIT 50`,
+            bookingParams
         );
         customer.bookings = bookings.rows.map(b => ({
             id: b.id, date: b.date, time: b.time, programName: b.program_name,
@@ -1046,13 +1064,16 @@ router.get('/:id', async (req, res) => {
 
         // v33.8.0 Integration 5: Reviews + average_rating
         try {
+            const reviewParams = [numId];
+            const reviewVisibility = getVisibleBookingScope(req.user, reviewParams, 'b');
             const reviews = await pool.query(
                 `SELECT er.rating, er.comment, er.created_at, b.date, b.program_name
                  FROM event_reviews er
                  LEFT JOIN bookings b ON b.id = er.booking_id
                  WHERE er.customer_id = $1
+                   AND (er.booking_id IS NULL OR ${reviewVisibility.condition})
                  ORDER BY er.created_at DESC LIMIT 10`,
-                [numId]
+                reviewParams
             );
             customer.reviews = reviews.rows.map(r => ({
                 rating: r.rating, comment: r.comment, createdAt: r.created_at,

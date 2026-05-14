@@ -5,6 +5,8 @@ const path = require('node:path');
 
 const {
     BOOKING_VISIBILITY_MATRIX,
+    BOOKING_VISIBILITY_REASON_CODES,
+    bookingVisibilityReasonCode,
     buildBookingVisibilityScope,
     canEditBooking,
     canViewBooking,
@@ -19,6 +21,22 @@ test('booking visibility matrix documents real durable and missing scope dimensi
     assert.ok(BOOKING_VISIBILITY_MATRIX.some(row => row.scopeSource === 'booking-operational-role'));
     assert.ok(BOOKING_VISIBILITY_MATRIX.some(row => row.scopeSource === 'staff-host-assignment' && row.view === true && row.edit === false));
     assert.ok(BOOKING_VISIBILITY_MATRIX.some(row => row.scopeSource === 'missing-durable-booking-line-scope' && row.view === false));
+    assert.ok(BOOKING_VISIBILITY_MATRIX.every(row => row.reasonCode), 'matrix rows should carry stable internal reason codes');
+});
+
+test('booking visibility exposes stable internal reason codes without fake team line location promotion', () => {
+    assert.equal(BOOKING_VISIBILITY_REASON_CODES.FULL_ROLE, 'full_role');
+    assert.equal(BOOKING_VISIBILITY_REASON_CODES.STAFF_HOST_SCOPE, 'staff_host_scope');
+    assert.equal(BOOKING_VISIBILITY_REASON_CODES.CREATOR_SCOPE, 'creator_scope');
+    assert.equal(BOOKING_VISIBILITY_REASON_CODES.DENY_NO_SCOPE, 'deny_no_scope');
+    assert.equal(bookingVisibilityReasonCode('full-role'), 'full_role');
+    assert.equal(bookingVisibilityReasonCode('staff-host-assignment'), 'staff_host_scope');
+    assert.equal(bookingVisibilityReasonCode('legacy-created-by'), 'creator_scope');
+    assert.equal(bookingVisibilityReasonCode('deny'), 'deny_no_scope');
+
+    const root = path.resolve(__dirname, '..');
+    const source = fs.readFileSync(path.join(root, 'services/bookingVisibility.js'), 'utf8');
+    assert.doesNotMatch(source, /team_scope|line_scope|location_scope/, 'team/line/location must not be promoted without durable truth');
 });
 
 test('creator/director have fully classified booking scope', () => {
@@ -30,11 +48,13 @@ test('creator/director have fully classified booking scope', () => {
     assert.equal(decision.canEdit, true);
     assert.equal(decision.classification, 'fully-classified');
     assert.equal(decision.scopeSource, 'full-role');
+    assert.equal(decision.reasonCode, 'full_role');
 
     const params = [];
     const scope = getVisibleBookingScope(actor, params, 'b');
     assert.equal(scope.sql, '');
     assert.equal(scope.condition, 'TRUE');
+    assert.equal(scope.reasonCode, 'full_role');
     assert.deepEqual(params, []);
 });
 
@@ -47,6 +67,7 @@ test('current booking operational roles use compatible fallback and can be query
     assert.equal(decision.canEdit, true);
     assert.equal(decision.classification, 'compatible-fallback');
     assert.match(decision.scopeSource, /booking-operational/);
+    assert.equal(decision.reasonCode, 'ambiguous_legacy');
     assert.equal(canViewBooking(actor, booking), true);
     assert.equal(canEditBooking(actor, booking), true);
 
@@ -87,6 +108,7 @@ test('durable staff host assignment promotes booking visibility without edit rig
     assert.equal(decision.canEdit, false);
     assert.equal(decision.classification, 'fully-classified');
     assert.equal(decision.scopeSource, 'staff-host-assignment');
+    assert.equal(decision.reasonCode, 'staff_host_scope');
 
     const secondAnimator = classifyBookingVisibility(actor, { second_animator: '501' });
     assert.equal(secondAnimator.canView, true);
@@ -105,6 +127,18 @@ test('query scope adds batch-safe employee profile staff assignment condition', 
     assert.match(scope.condition, /b\.second_animator = ep\.staff_id::text/);
     assert.match(scope.scopeSource, /staff-host/);
     assert.deepEqual(params, [77, 'host-user']);
+});
+
+test('query scope accepts proven staffIds when actor is resolved outside users table', () => {
+    const actor = { username: 'telegram-host', role: 'animator', staffIds: [501] };
+    const params = [];
+    const scope = getVisibleBookingScope(actor, params, 'b');
+
+    assert.match(scope.condition, /b\.hosts IN \(\$1\)/);
+    assert.match(scope.condition, /b\.second_animator IN \(\$2\)/);
+    assert.equal(scope.scopeSource, 'staff-host-or-legacy-token-match');
+    assert.equal(scope.reasonCode, 'staff_host_scope');
+    assert.deepEqual(params, [501, '501', 'telegram-host']);
 });
 
 test('booking-derived linked routes prefer exact visible child route then parent booking fallback', () => {

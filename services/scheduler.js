@@ -12,6 +12,7 @@ const { ensureDefaultLines, getKyivDate, getKyivDateStr, getKyivTimeStr, timeToM
 const { sendBackupToTelegram } = require('./backup');
 const { formatAfishaBlock } = require('./templates');
 const { createLogger } = require('../utils/logger');
+const { canViewBooking, getVisibleBookingScope } = require('./bookingVisibility');
 
 // Lazy require to avoid circular dependency at load time
 function getRecurringService() {
@@ -19,6 +20,16 @@ function getRecurringService() {
 }
 
 const log = createLogger('Scheduler');
+const SYSTEM_BOOKING_NOTIFICATION_ACTOR = Object.freeze({
+    id: 0,
+    username: 'system-notification',
+    name: 'System Notification',
+    role: 'creator'
+});
+
+function notificationActor(actor) {
+    return actor || SYSTEM_BOOKING_NOTIFICATION_ACTOR;
+}
 
 // Lazy require to avoid circular dependency (routes/afisha → services/scheduler → routes/afisha)
 function getDistributeAfisha() {
@@ -48,12 +59,13 @@ async function setLastSent(key, dateStr) {
     } catch (err) { log.error(`setLastSent(${key}) error`, err); }
 }
 
-async function buildAndSendDigest(date) {
+async function buildAndSendDigest(date, actor = null) {
     const chatId = await getConfiguredChatId();
     if (!chatId) {
         log.warn('No chat ID configured for digest');
         return { success: false, reason: 'no_chat_id' };
     }
+    const bookingActor = notificationActor(actor);
 
     // v8.1: Ensure recurring afisha templates applied before building digest
     try { await ensureRecurringAfishaForDate(date); } catch (e) { log.warn(`Recurring afisha setup failed for ${date}`, e.message); }
@@ -61,11 +73,17 @@ async function buildAndSendDigest(date) {
     // Auto-distribute afisha events to animators before building digest
     try { await getDistributeAfisha()(date); } catch (e) { log.warn('Auto-distribute before digest skipped', e.message); }
 
+    const bookingParams = [date];
+    const bookingVisibility = getVisibleBookingScope(bookingActor, bookingParams, 'b');
     const bookingsResult = await pool.query(
         `SELECT id, date, time, duration, line_id, program_name, program_code, label, category, price,
                 hosts, second_animator, pinata_filler, pinata_number, pinata_filler_number,
                 costume, room, notes, linked_to, status, kids_count, group_name
-         FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time LIMIT 500`, [date]);
+         FROM bookings b
+         WHERE b.date = $1
+           AND b.status != 'cancelled'
+           ${bookingVisibility.sql}
+         ORDER BY b.time LIMIT 500`, bookingParams);
     const bookings = bookingsResult.rows;
 
     // Fetch afisha events for the same date
@@ -77,7 +95,12 @@ async function buildAndSendDigest(date) {
     if (bookings.length === 0 && afishaEvents.length === 0) {
         const text = `📅 <b>${date}</b>\n\nНемає бронювань на цей день.`;
         const result = await sendTelegramMessage(chatId, text);
-        return { success: result?.ok || false, count: 0, reason: result?.ok ? undefined : (result?.description || 'send_failed') };
+        return {
+            success: result?.ok || false,
+            count: 0,
+            reason: result?.ok ? undefined : (result?.description || 'send_failed'),
+            meta: { bookingVisibilityScope: bookingVisibility.scopeSource, privilegedSystemActor: !actor }
+        };
     }
 
     await ensureDefaultLines(date);
@@ -163,22 +186,34 @@ async function buildAndSendDigest(date) {
         await scheduleAutoDelete(chatId, result.result.message_id);
     }
 
-    return { success: result?.ok || false, count: bookings.length, reason: result?.ok ? undefined : (result?.description || 'send_failed') };
+    return {
+        success: result?.ok || false,
+        count: bookings.length,
+        reason: result?.ok ? undefined : (result?.description || 'send_failed'),
+        meta: { bookingVisibilityScope: bookingVisibility.scopeSource, privilegedSystemActor: !actor }
+    };
 }
 
-async function sendTomorrowReminder(todayStr) {
+async function sendTomorrowReminder(todayStr, actor = null) {
     try {
+        const bookingActor = notificationActor(actor);
         const [y, m, d] = todayStr.split('-').map(Number);
         const tomorrow = new Date(y, m - 1, d + 1);
         const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
 
         // v7.9.3: Fetch ALL bookings including linked (for second animator display)
+        const bookingParams = [tomorrowStr];
+        const bookingVisibility = getVisibleBookingScope(bookingActor, bookingParams, 'b');
         const bookingsResult = await pool.query(
             `SELECT id, date, time, duration, line_id, program_name, program_code, label, category, price,
                     hosts, second_animator, pinata_filler, pinata_number, pinata_filler_number,
                     costume, room, notes, linked_to, status, kids_count, group_name
-             FROM bookings WHERE date = $1 AND status != 'cancelled' ORDER BY time LIMIT 500`,
-            [tomorrowStr]
+             FROM bookings b
+             WHERE b.date = $1
+               AND b.status != 'cancelled'
+               ${bookingVisibility.sql}
+             ORDER BY b.time LIMIT 500`,
+            bookingParams
         );
         const mainBookingsCount = bookingsResult.rows.filter(b => !b.linked_to).length;
 
@@ -187,7 +222,12 @@ async function sendTomorrowReminder(todayStr) {
         const afishaEvents = afishaResult.rows;
 
         if (mainBookingsCount === 0 && afishaEvents.length === 0) {
-            return { success: true, count: 0, reason: 'no_bookings_tomorrow' };
+            return {
+                success: true,
+                count: 0,
+                reason: 'no_bookings_tomorrow',
+                meta: { bookingVisibilityScope: bookingVisibility.scopeSource, privilegedSystemActor: !actor }
+            };
         }
 
         const chatId = await getConfiguredChatId();
@@ -281,7 +321,11 @@ async function sendTomorrowReminder(todayStr) {
             await scheduleAutoDelete(chatId, sendResult.result.message_id);
         }
 
-        return { success: sendResult?.ok || false, count: bookingsResult.rows.length };
+        return {
+            success: sendResult?.ok || false,
+            count: bookingsResult.rows.length,
+            meta: { bookingVisibilityScope: bookingVisibility.scopeSource, privilegedSystemActor: !actor }
+        };
     } catch (err) {
         log.error(`Reminder error: ${err.message}`);
         return { success: false, error: err.message };
@@ -1080,6 +1124,8 @@ async function checkUpcomingBookings() {
         upcomingSentToday = todayStr;
         await setLastSent('upcoming_bookings', todayStr);
 
+        const bookingParams = [];
+        const bookingVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, bookingParams, 'b');
         const result = await pool.query(`
             SELECT b.id, b.date, b.time, b.label, b.program_name, b.room,
                    c.name AS customer_name, c.phone AS customer_phone
@@ -1088,7 +1134,8 @@ async function checkUpcomingBookings() {
             WHERE b.date = to_char(CURRENT_DATE + INTERVAL '3 days', 'YYYY-MM-DD')
               AND b.status IN ('confirmed', 'pending')
               AND b.linked_to IS NULL
-        `);
+              ${bookingVisibility.sql}
+        `, bookingParams);
 
         if (result.rows.length === 0) return;
 
@@ -1140,6 +1187,8 @@ async function checkDebtNotifications() {
         debtSentThisWeek = weekId;
         await setLastSent('debt_notifications', weekId);
 
+        const bookingParams = [];
+        const bookingVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, bookingParams, 'b');
         const result = await pool.query(`
             SELECT b.id, b.date, b.label, b.program_name, b.price, b.paid_amount,
                    c.name AS customer_name, c.phone AS customer_phone,
@@ -1150,8 +1199,9 @@ async function checkDebtNotifications() {
               AND (b.payment_status IS NULL OR b.payment_status != 'paid')
               AND COALESCE(b.paid_amount, 0) < COALESCE(b.price, 0)
               AND b.date::date <= CURRENT_DATE
+              ${bookingVisibility.sql}
             ORDER BY debt DESC LIMIT 20
-        `);
+        `, bookingParams);
 
         if (result.rows.length === 0) return;
 
@@ -1442,11 +1492,13 @@ async function checkAutoReport() {
         const [y, m, d] = todayStr.split('-');
         const dateFormatted = `${d}.${m}.${y}`;
 
+        const reportBookingParams = [todayStr];
+        const reportBookingVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, reportBookingParams, 'b');
         const bookingsResult = await pool.query(
             "SELECT COUNT(*)::int AS total, SUM(CASE WHEN status='confirmed' THEN 1 ELSE 0 END)::int AS confirmed, " +
             "COALESCE(SUM(price),0)::numeric AS revenue, COALESCE(AVG(price),0)::numeric AS avg_check " +
-            "FROM bookings WHERE date = $1 AND status != 'cancelled'",
-            [todayStr]
+            `FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' ${reportBookingVisibility.sql}`,
+            reportBookingParams
         );
         const stats = bookingsResult.rows[0];
 
@@ -1457,9 +1509,16 @@ async function checkAutoReport() {
         );
         const taskStats = tasksResult.rows[0];
 
+        const topProgramParams = [todayStr];
+        const topProgramVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, topProgramParams, 'b');
         const topProgramResult = await pool.query(
-            "SELECT program, COUNT(*)::int AS cnt FROM bookings WHERE date = $1 AND status != 'cancelled' GROUP BY program ORDER BY cnt DESC LIMIT 3",
-            [todayStr]
+            `SELECT b.program_name AS program, COUNT(*)::int AS cnt
+             FROM bookings b
+             WHERE b.date = $1 AND b.status != 'cancelled'
+               ${topProgramVisibility.sql}
+             GROUP BY b.program_name
+             ORDER BY cnt DESC LIMIT 3`,
+            topProgramParams
         );
 
         let text = `📊 <b>ЩОДЕННИЙ ЗВІТ — ${dateFormatted}</b>\n`;
@@ -1650,6 +1709,8 @@ async function checkAutoReviewRequests() {
     try {
         // Find bookings that ended 2+ hours ago, haven't had review requests sent
         const hoursDelay = 2;
+        const bookingParams = [hoursDelay];
+        const bookingVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, bookingParams, 'b');
         const result = await pool.query(`
             SELECT b.id, b.label, b.phone, b.date, b.time, b.duration,
                    b.program_name, b.customer_telegram_id
@@ -1659,10 +1720,11 @@ async function checkAutoReviewRequests() {
               AND b.date::date <= CURRENT_DATE
               AND rrs.booking_id IS NULL
               AND b.phone IS NOT NULL
+              ${bookingVisibility.sql}
               AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time + (b.duration || ' minutes')::interval) < NOW() - ($1 || ' hours')::interval
             ORDER BY b.date DESC, b.time DESC
             LIMIT 10
-        `, [hoursDelay]);
+        `, bookingParams);
 
         for (const booking of result.rows) {
             const tgChatId = booking.customer_telegram_id;
@@ -1872,14 +1934,17 @@ async function checkEventPipeline() {
         const tomorrowStr = tomorrow.toISOString().slice(0, 10);
 
         // T-24: bookings happening tomorrow that haven't had t24 event
+        const t24Params = [tomorrowStr];
+        const t24Visibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, t24Params, 'b');
         const t24 = await pool.query(`
             SELECT b.id, b.label, b.time, b.program_name, b.room, b.phone, b.customer_telegram_id
             FROM bookings b
             LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 't24_sent'
             WHERE b.date = $1 AND b.status IN ('confirmed', 'preliminary')
               AND bp.id IS NULL
+              ${t24Visibility.sql}
             LIMIT 20
-        `, [tomorrowStr]).catch(() => ({ rows: [] }));
+        `, t24Params).catch(() => ({ rows: [] }));
 
         for (const b of t24.rows) {
             await publish('booking.t24', {
@@ -1894,14 +1959,17 @@ async function checkEventPipeline() {
         }
 
         // Day-of: bookings today that haven't had day_of event
+        const dayOfParams = [today];
+        const dayOfVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, dayOfParams, 'b');
         const dayOf = await pool.query(`
             SELECT b.id, b.label, b.time, b.program_name, b.room
             FROM bookings b
             LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 'day_of_prep'
             WHERE b.date = $1 AND b.status IN ('confirmed', 'preliminary')
               AND bp.id IS NULL
+              ${dayOfVisibility.sql}
             LIMIT 20
-        `, [today]).catch(() => ({ rows: [] }));
+        `, dayOfParams).catch(() => ({ rows: [] }));
 
         for (const b of dayOf.rows) {
             await publish('booking.day_of', {
@@ -1915,16 +1983,19 @@ async function checkEventPipeline() {
         }
 
         // Completed: bookings that ended (time + duration < now) but no completion event
+        const completedParams = [today];
+        const completedVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, completedParams, 'b');
         const completed = await pool.query(`
             SELECT b.id, b.label, b.time, b.program_name, b.room, b.duration
             FROM bookings b
             LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 'completed'
             WHERE b.date = $1 AND b.status = 'confirmed'
               AND bp.id IS NULL
+              ${completedVisibility.sql}
               AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time
                    + (COALESCE(b.duration, 120) || ' minutes')::interval) < NOW()
             LIMIT 20
-        `, [today]).catch(() => ({ rows: [] }));
+        `, completedParams).catch(() => ({ rows: [] }));
 
         for (const b of completed.rows) {
             await publish('booking.completed', {
@@ -2198,6 +2269,8 @@ async function checkBookingPushReminders() {
         const targetMinutes = nowMinutes + 30;
         const targetTime = `${String(Math.floor(targetMinutes / 60)).padStart(2, '0')}:${String(targetMinutes % 60).padStart(2, '0')}`;
 
+        const bookingParams = [todayStr, targetTime];
+        const bookingVisibility = getVisibleBookingScope(SYSTEM_BOOKING_NOTIFICATION_ACTOR, bookingParams, 'b');
         const result = await pool.query(`
             SELECT b.id, b.id AS booking_number, b.time AS time_start, b.program_name,
                    b.hosts, b.second_animator
@@ -2206,7 +2279,8 @@ async function checkBookingPushReminders() {
               AND b.status IN ('confirmed', 'pending')
               AND b.time = $2
               AND b.hosts IS NOT NULL AND b.hosts != ''
-        `, [todayStr, targetTime]);
+              ${bookingVisibility.sql}
+        `, bookingParams);
 
         if (result.rows.length === 0) return;
 
@@ -2228,6 +2302,7 @@ async function checkBookingPushReminders() {
             );
 
             for (const s of staff.rows) {
+                if (!canViewBooking({ role: 'animator', staffIds: [s.id] }, booking)) continue;
                 const text = `⏰ <b>Через 30 хв у тебе бронювання!</b>\n\n`
                     + `📋 ${booking.booking_number}\n`
                     + `🎭 ${booking.program_name || 'Програма не вказана'}\n`

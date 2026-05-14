@@ -24,7 +24,9 @@ const crypto = require('crypto');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { notifyNewLead } = require('../services/leadNotifier');
-const { authenticateToken, requireMinRole } = require('../middleware/auth');
+const { authenticateToken, requireRole, requireMinRole } = require('../middleware/auth');
+const { getVisibleBookingScope } = require('../services/bookingVisibility');
+const { buildTaskVisibilityScope } = require('../services/taskPolicy');
 const {
     booleanValue,
     deriveReplySlaState,
@@ -247,6 +249,7 @@ router.post('/landing', async (req, res) => {
 
 // All remaining leads routes require authentication.
 router.use(authenticateToken);
+router.use(requireRole('manager', 'marketer'));
 
 // GET /api/leads/assignees — active users that can own leads
 router.get('/assignees', async (req, res) => {
@@ -607,9 +610,11 @@ router.get('/:id/workspace', async (req, res) => {
 
         let bookingCustomerId = null;
         if (lead.bookingId) {
+            const bookingLinkParams = [lead.bookingId];
+            const bookingLinkScope = getVisibleBookingScope(req.user, bookingLinkParams, 'b');
             const bookingLinkResult = await pool.query(
-                'SELECT customer_id FROM bookings WHERE id = $1 LIMIT 1',
-                [lead.bookingId]
+                `SELECT b.customer_id FROM bookings b WHERE b.id = $1 ${bookingLinkScope.sql} LIMIT 1`,
+                bookingLinkParams
             );
             bookingCustomerId = bookingLinkResult.rows[0]?.customer_id || null;
         }
@@ -661,12 +666,14 @@ router.get('/:id/workspace', async (req, res) => {
             bookingParams.push(String(lead.bookingId));
             bookingConditions.push(`b.id = $${bookingParams.length}`);
         }
+        const bookingVisibility = getVisibleBookingScope(req.user, bookingParams, 'b');
         const bookingsResult = bookingConditions.length > 0
             ? await pool.query(`
                 SELECT b.*
                 FROM bookings b
                 WHERE (${bookingConditions.join(' OR ')})
                   AND NULLIF(b.linked_to, '') IS NULL
+                  ${bookingVisibility.sql}
                 ORDER BY b.date DESC NULLS LAST, b.time DESC NULLS LAST
                 LIMIT 12
             `, bookingParams)
@@ -681,29 +688,31 @@ router.get('/:id/workspace', async (req, res) => {
         const taskConditions = [];
         const taskParams = [];
         taskParams.push(String(lead.id));
-        taskConditions.push(`(source_type = 'lead' AND source_id = $${taskParams.length})`);
+        taskConditions.push(`(t.source_type = 'lead' AND t.source_id = $${taskParams.length})`);
         if (bookingIds.length > 0) {
             taskParams.push(bookingIds);
-            taskConditions.push(`(source_type = 'booking' AND source_id = ANY($${taskParams.length}::text[]))`);
+            taskConditions.push(`(t.source_type = 'booking' AND t.source_id = ANY($${taskParams.length}::text[]))`);
         }
         if (lead.phone) {
             taskParams.push(`%${lead.phone}%`);
-            taskConditions.push(`(description ILIKE $${taskParams.length} OR title ILIKE $${taskParams.length})`);
+            taskConditions.push(`(t.description ILIKE $${taskParams.length} OR t.title ILIKE $${taskParams.length})`);
         }
         if (lead.clientName) {
             taskParams.push(`%${lead.clientName}%`);
-            taskConditions.push(`(description ILIKE $${taskParams.length} OR title ILIKE $${taskParams.length})`);
+            taskConditions.push(`(t.description ILIKE $${taskParams.length} OR t.title ILIKE $${taskParams.length})`);
         }
+        const taskVisibility = buildTaskVisibilityScope(req.user, taskParams, 't');
         const tasksResult = taskConditions.length > 0
             ? await optionalWorkspaceQuery(`
-                SELECT *
-                FROM tasks
-                WHERE ${taskConditions.join(' OR ')}
+                SELECT t.*
+                FROM tasks t
+                WHERE (${taskConditions.join(' OR ')})
+                  ${taskVisibility}
                 ORDER BY
-                    CASE WHEN status = 'done' THEN 3 WHEN status = 'in_progress' THEN 0 ELSE 1 END,
-                    CASE WHEN deadline IS NOT NULL AND deadline < NOW() THEN 0 ELSE 1 END,
-                    CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 ELSE 3 END,
-                    COALESCE(deadline, created_at) ASC
+                    CASE WHEN t.status = 'done' THEN 3 WHEN t.status = 'in_progress' THEN 0 ELSE 1 END,
+                    CASE WHEN t.deadline IS NOT NULL AND t.deadline < NOW() THEN 0 ELSE 1 END,
+                    CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 ELSE 3 END,
+                    COALESCE(t.deadline, t.created_at) ASC
                 LIMIT 12
             `, taskParams)
             : { rows: [] };

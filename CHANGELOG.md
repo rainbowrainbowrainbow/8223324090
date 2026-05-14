@@ -4,6 +4,17 @@
 
 ---
 
+## v0.48.11 - Scoped Visibility & Operations Mega Completion v1 (2026-05-14)
+
+### Visibility & Operations [codex]
+- **Reporting** - booking-derived reporting, stats, center, board, settings fallback і helper/chat summaries доведено на canonical `services/bookingVisibility.js` rails без другого visibility engine.
+- **Parity** - global search, customer booking aggregates/details і lead workspace shortcuts тепер не розширюють видимість поза booking/task/page scope.
+- **Notifications** - Telegram digest/reminder/manual helper summaries і scheduled booking alerts отримали actor/system-scoped booking visibility та safe recipient checks.
+- **Operational Scope** - підтверджено durable staff-host assignment; `team`, `line` і `location` лишаються explicit missing truth/deny-safe без fake promotion.
+- **Tests** - додано regression coverage для route parity, notification scope, stable `reasonCode` contracts і заборони duplicate visibility systems.
+
+---
+
 ## v0.48.10 - Scoped Reporting & Analytics Booking Visibility Hardening v1 (2026-05-14)
 
 ### Reporting Scope & Cache Safety [codex]

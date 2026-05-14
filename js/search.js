@@ -116,7 +116,7 @@ function onSearchInput(value) {
 function buildFlatResults() {
     searchFlatResults = [];
     if (!searchResults) return;
-    const order = ['bookings', 'customers', 'tasks', 'programs'];
+    const order = ['bookings', 'customers', 'tasks', 'programs', 'staff'];
     for (const key of order) {
         if (searchResults[key] && searchResults[key].length > 0) {
             for (const item of searchResults[key]) {
@@ -148,14 +148,16 @@ function renderSearchResults() {
         booking: 'Бронювання',
         customer: 'Клієнти',
         task: 'Задачі',
-        program: 'Програми'
+        program: 'Програми',
+        staff: 'Команда'
     };
 
     const typeColors = {
         booking: 'var(--primary)',
         customer: '#8B5CF6',
         task: '#F59E0B',
-        program: '#3B82F6'
+        program: '#3B82F6',
+        staff: '#10B981'
     };
 
     let html = '';
@@ -212,6 +214,11 @@ function highlightSearchResult() {
 function navigateToResult(item) {
     if (!item) return;
     closeSearch();
+
+    if (item.href) {
+        window.location.href = item.href;
+        return;
+    }
 
     switch (item.type) {
         case 'booking':

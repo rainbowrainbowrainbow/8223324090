@@ -53,3 +53,43 @@ test('finance reporting remains explicitly privileged full-role', () => {
     assert.match(finance, /FINANCE_BOOKING_REPORTING_SCOPE = 'finance-full-role'/, 'finance broad semantics should be explicit');
     assert.match(finance, /requireRole\('creator', 'director', 'accountant'\)/, 'finance should stay restricted to finance-privileged roles');
 });
+
+test('cross-entity search and workspace shortcuts cannot bypass booking/task visibility', () => {
+    const search = read('routes/search.js');
+    assert.match(search, /PAGE_ACCESS/, 'global search should only search non-booking surfaces that the actor can open');
+    assert.match(search, /getVisibleBookingScope\(req\.user, bookingParams, 'b'\)/, 'booking search should use canonical booking scope');
+    assert.match(search, /buildTaskVisibilityScope\(req\.user, taskParams, 't'\)/, 'task search should use canonical task scope');
+    assert.match(search, /staff: staff\.rows\.map/, 'staff results should remain inside the typed results payload');
+
+    const searchClient = read('js/search.js');
+    assert.match(searchClient, /const order = \['bookings', 'customers', 'tasks', 'programs', 'staff'\]/, 'frontend search should include staff results only when API returns them');
+    assert.match(searchClient, /if \(item\.href\)/, 'frontend search should honor server-provided safe route targets');
+
+    const customers = read('routes/customers.js');
+    assert.match(customers, /router\.use\(requireRole\('admin', 'reception'\)\)/, 'customer routes should match page/sidebar access');
+    assert.match(customers, /function scopedBookingAggregateSql/, 'customer booking aggregates should be scoped in one reusable helper');
+    assert.match(customers, /getVisibleBookingScope\(req\.user, bookingParams, 'b'\)/, 'customer booking history should reuse canonical booking visibility');
+
+    const leads = read('routes/leads.js');
+    assert.match(leads, /router\.use\(requireRole\('manager', 'marketer'\)\)/, 'lead workspace routes should match sales funnel access');
+    assert.match(leads, /getVisibleBookingScope\(req\.user, bookingParams, 'b'\)/, 'lead workspace linked bookings should be booking-scoped');
+    assert.match(leads, /buildTaskVisibilityScope\(req\.user, taskParams, 't'\)/, 'lead workspace linked tasks should be task-scoped');
+});
+
+test('notification and helper summaries use canonical booking scope and safe actor context', () => {
+    const scheduler = read('services/scheduler.js');
+    assert.match(scheduler, /SYSTEM_BOOKING_NOTIFICATION_ACTOR/, 'scheduler should make privileged system broadcasts explicit');
+    assert.match(scheduler, /function notificationActor\(actor\)/, 'scheduler should centralize notification actor selection');
+    assert.match(scheduler, /async function buildAndSendDigest\(date, actor = null\)/, 'manual digest should accept an actor for scoped previews');
+    assert.match(scheduler, /async function sendTomorrowReminder\(todayStr, actor = null\)/, 'manual reminder should accept an actor for scoped previews');
+    assert.match(scheduler, /getVisibleBookingScope\(bookingActor, bookingParams, 'b'\)/, 'digest/reminder booking queries should use canonical visibility');
+    assert.match(scheduler, /canViewBooking\(\{ role: 'animator', staffIds: \[s\.id\] \}, booking\)/, 'staff push notifications should verify each recipient can see the booking');
+
+    const telegram = read('routes/telegram.js');
+    assert.match(telegram, /buildAndSendDigest\(date, req\.user\)/, 'manual Telegram digest trigger should pass request actor');
+    assert.match(telegram, /sendTomorrowReminder\(date, req\.user\)/, 'manual Telegram reminder trigger should pass request actor');
+
+    const bot = read('services/bot.js');
+    assert.match(bot, /resolveTelegramBookingActor/, 'bot day summaries should resolve Telegram users into booking actors');
+    assert.match(bot, /handleDaySummary\([\s\S]*?await resolveTelegramBookingActor/, 'bot /today and /tomorrow should pass scoped booking actor into summaries');
+});

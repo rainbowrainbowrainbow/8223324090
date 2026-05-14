@@ -16,19 +16,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.48.10">
-    <link rel="stylesheet" href="css/auth.css?v=0.48.10">
-    <link rel="stylesheet" href="css/layout.css?v=0.48.10">
-    <link rel="stylesheet" href="css/timeline.css?v=0.48.10">
-    <link rel="stylesheet" href="css/panel.css?v=0.48.10">
-    <link rel="stylesheet" href="css/modals.css?v=0.48.10">
-    <link rel="stylesheet" href="css/controls.css?v=0.48.10">
-    <link rel="stylesheet" href="css/features.css?v=0.48.10">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.48.10">
-    <link rel="stylesheet" href="css/responsive.css?v=0.48.10">
-    <link rel="stylesheet" href="css/pages.css?v=0.48.10">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.48.10">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.48.10">
+    <link rel="stylesheet" href="css/base.css?v=0.48.11">
+    <link rel="stylesheet" href="css/auth.css?v=0.48.11">
+    <link rel="stylesheet" href="css/layout.css?v=0.48.11">
+    <link rel="stylesheet" href="css/timeline.css?v=0.48.11">
+    <link rel="stylesheet" href="css/panel.css?v=0.48.11">
+    <link rel="stylesheet" href="css/modals.css?v=0.48.11">
+    <link rel="stylesheet" href="css/controls.css?v=0.48.11">
+    <link rel="stylesheet" href="css/features.css?v=0.48.11">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.48.11">
+    <link rel="stylesheet" href="css/responsive.css?v=0.48.11">
+    <link rel="stylesheet" href="css/pages.css?v=0.48.11">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.48.11">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.48.11">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -46,9 +46,9 @@
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <div class="login-release-badge" aria-label="Поточний реліз 0.47 Комунікації">🛰️ 0.47 Комунікації</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.48.10 — reporting visibility scope</p>
+                <p class="tagline">AI First CRM v0.48.11 — scoped operations visibility</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.48.10: Reporting Scope</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.48.11: Scoped Operations</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1279,11 +1279,12 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.48.10 — Scoped Reporting & Analytics Booking Visibility Hardening v1 (Клешня, 14.05.2026)</h4>
+                    <h4>v0.48.11 — Scoped Visibility & Operations Mega Completion v1 (Клешня, 14.05.2026)</h4>
                     <ul>
-                        <li><b>Reporting Scope</b> — booking-derived analytics, stats, center, board, settings fallback, and helper/chat summaries тепер поважають canonical booking visibility.</li>
-                        <li><b>Role Guards</b> — API доступ вирівняно з реальними page/sidebar semantics перед scoped aggregation.</li>
-                        <li><b>Cache Safety</b> — scoped aggregates більше не кешуються actor-agnostic способом.</li>
+                        <li><b>Reporting</b> — booking-derived reporting, stats, center, board, settings fallback і helper/chat summaries завершено на canonical visibility rails.</li>
+                        <li><b>Parity</b> — search, customer, lead і helper shortcuts більше не розширюють видимість поза safe booking/task/page scope.</li>
+                        <li><b>Notifications</b> — Telegram digests, reminders, alerts і helper day summaries scoped by actor або explicit system actor.</li>
+                        <li><b>Operational Scope</b> — durable staff-host scope підтверджено; team/line/location не промоутяться без доказаної truth.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -6221,28 +6222,28 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.48.10"></script>
-    <script src="js/api.js?v=0.48.10"></script>
-    <script src="js/ui.js?v=0.48.10"></script>
-    <script src="js/auth.js?v=0.48.10"></script>
-    <script src="js/timeline.js?v=0.48.10"></script>
-    <script src="js/booking.js?v=0.48.10"></script>
-    <script src="js/settings.js?v=0.48.10"></script>
-    <script src="js/booking-form.js?v=0.48.10"></script>
-    <script src="js/booking-linked.js?v=0.48.10"></script>
-    <script src="js/settings-dashboard.js?v=0.48.10"></script>
-    <script src="js/settings-history.js?v=0.48.10"></script>
-    <script src="js/settings-afisha.js?v=0.48.10"></script>
-    <script src="js/settings-certificates.js?v=0.48.10"></script>
-    <script src="js/offline.js?v=0.48.10"></script>
-    <script src="js/search.js?v=0.48.10"></script>
-    <script src="js/ws.js?v=0.48.10"></script>
-    <script src="js/app.js?v=0.48.10"></script>
-    <script src="js/kleshnya-widget.js?v=0.48.10"></script>
-    <script src="js/components/sidebar.js?v=0.48.10"></script>
+    <script src="js/config.js?v=0.48.11"></script>
+    <script src="js/api.js?v=0.48.11"></script>
+    <script src="js/ui.js?v=0.48.11"></script>
+    <script src="js/auth.js?v=0.48.11"></script>
+    <script src="js/timeline.js?v=0.48.11"></script>
+    <script src="js/booking.js?v=0.48.11"></script>
+    <script src="js/settings.js?v=0.48.11"></script>
+    <script src="js/booking-form.js?v=0.48.11"></script>
+    <script src="js/booking-linked.js?v=0.48.11"></script>
+    <script src="js/settings-dashboard.js?v=0.48.11"></script>
+    <script src="js/settings-history.js?v=0.48.11"></script>
+    <script src="js/settings-afisha.js?v=0.48.11"></script>
+    <script src="js/settings-certificates.js?v=0.48.11"></script>
+    <script src="js/offline.js?v=0.48.11"></script>
+    <script src="js/search.js?v=0.48.11"></script>
+    <script src="js/ws.js?v=0.48.11"></script>
+    <script src="js/app.js?v=0.48.11"></script>
+    <script src="js/kleshnya-widget.js?v=0.48.11"></script>
+    <script src="js/components/sidebar.js?v=0.48.11"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=0.48.10"></script>
-    <script src="js/alerts.js?v=0.48.10"></script>
+    <script src="js/role-panel.js?v=0.48.11"></script>
+    <script src="js/alerts.js?v=0.48.11"></script>
 </body>
 </html>
 

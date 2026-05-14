@@ -4,6 +4,16 @@
 
 ---
 
+## v0.49.0 - Release 49 Rollout (2026-05-15)
+
+### Release Marker [codex]
+- **Visibility** - scoped visibility, reporting, parity and notification contours зібрані на canonical booking visibility без нового shadow engine.
+- **Operations** - operations flow cluster зафіксовано в release 49 state: task assignment truth, chat-to-task rails, lead/customer identity, queue і accepted-vs-closed analytics.
+- **Backoffice** - org/HR/inventory/pricing foundation піднято як стабільний release marker: staff department UI guidance, HR schedule truth, warehouse owner partition і Price Center product linkage.
+- **Navigation Audit** - page-switch flicker root-cause audit виконано analysis-only; production fix лишається окремою наступною задачею.
+
+---
+
 ## v0.48.15 - Org / HR / Inventory / Pricing Foundation v2 Comprehensive (2026-05-14)
 
 ### Backoffice Foundation Completion [codex]

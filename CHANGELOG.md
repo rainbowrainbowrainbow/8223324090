@@ -4,6 +4,17 @@
 
 ---
 
+## v0.48.15 - Org / HR / Inventory / Pricing Foundation v2 Comprehensive (2026-05-14)
+
+### Backoffice Foundation Completion [codex]
+- **Departments** - org/dept image-source у workspace не знайдено, тому фінальну taxonomy не вигадано; add-employee form переведено на наявний `StaffState.departments` legacy source з fallback, а role options стали department-aware тільки як UI guidance.
+- **HR** - v1 source truth збережено: company structure/instructions, employee profile fields, reserve/blacklist, manual attendance fallback і task KPI лишаються на чинних HR/staff/task джерелах без auth-role redesign.
+- **Warehouse** - існуючий `warehouse_stock.owner` явно оформлено як bounded owner partition (`park`, `dar`, `shared`) з `transferSemantics: missing-truth`, без fake multi-warehouse transfers або accounting semantics.
+- **Pricing** - Price Center отримав `/api/center/prices/positions`, product-position audit у UI і виправлену привʼязку `price_rules.product_id`, яка більше не вимагає одночасної зміни value/name.
+- **Tests** - додано `tests/backoffice-foundation-v2.test.js` для department fallback, department-aware form modal, price linkage і warehouse owner-partition stop-rules.
+
+---
+
 ## v0.48.14 - Operations Flow Cluster v2 Comprehensive (2026-05-14)
 
 ### Operations Flow Completion [codex]

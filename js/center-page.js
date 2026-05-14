@@ -17,6 +17,7 @@ let discountCodes = [];
 let proposals = [];
 let catalogProducts = [];
 let catalogFilter = 'all';
+let pricePositionsData = [];
 
 // ==========================================
 // NOTIFICATIONS
@@ -47,6 +48,18 @@ async function apiCenterPrices() {
         return await response.json();
     } catch (err) {
         console.error('API center prices error:', err);
+        return null;
+    }
+}
+
+async function apiCenterPricePositions() {
+    try {
+        const response = await fetch(`${API_BASE}/center/prices/positions`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API center price positions error:', err);
         return null;
     }
 }
@@ -459,6 +472,64 @@ function appendPriceAddRow(container) {
         <button onclick="addNewPrice()">+ Додати</button>
     </div>`;
     container.insertAdjacentHTML('beforeend', addHtml);
+}
+
+function appendPricePositionsPanel(container) {
+    if (!container || !Array.isArray(pricePositionsData) || pricePositionsData.length === 0) return;
+
+    const unlinked = pricePositionsData.filter(p => !p.priceCode);
+    const linkedCount = pricePositionsData.length - unlinked.length;
+    const visibleUnlinked = unlinked.slice(0, 12);
+    const rows = visibleUnlinked.map(p => `
+        <div class="price-position-row">
+            <div class="price-position-main">
+                <div class="price-position-name">${escapeHtml(p.productName || p.productLabel || p.productId)}</div>
+                <div class="price-position-meta">${escapeHtml(p.productCategory || '—')} · ${escapeHtml(p.productId)} · ${formatPrice(p.productPrice || 0)}</div>
+            </div>
+            ${isAdminUser ? `<button type="button" class="price-link-btn" onclick="createPriceForProduct('${escapeHtml(p.productId)}')">Створити правило</button>` : '<span class="price-unlinked-badge">немає правила</span>'}
+        </div>
+    `).join('');
+    const hiddenCount = Math.max(0, unlinked.length - visibleUnlinked.length);
+
+    container.insertAdjacentHTML('beforeend', `
+        <div class="price-position-panel">
+            <div class="price-position-header">
+                <strong>Позиції каталогу</strong>
+                <span>${linkedCount}/${pricePositionsData.length} привʼязані до price_rules</span>
+            </div>
+            ${unlinked.length
+                ? `<div class="price-position-note">Ці програми беруть базову ціну з products і ще не мають централізованого правила.</div>${rows}${hiddenCount ? `<div class="price-position-note">+${hiddenCount} позицій приховано у короткому списку.</div>` : ''}`
+                : '<div class="price-position-note">Усі активні product-позиції мають price rule linkage.</div>'
+            }
+        </div>
+    `);
+}
+
+async function createPriceForProduct(productId) {
+    const product = pricePositionsData.find(p => p.productId === productId);
+    if (!product) return;
+
+    const result = await apiCreatePrice({
+        code: product.productId,
+        name: product.productName || product.productLabel || product.productId,
+        value: Number(product.productPrice || 0),
+        unit: 'грн',
+        category: product.productCategory || 'program',
+        description: 'Створено з каталогу програм для централізованого price linkage'
+    });
+    if (!result.success) {
+        showNotification(result.error || 'Не вдалося створити правило ціни', 'error');
+        return;
+    }
+
+    const linkResult = await apiUpdatePrice(product.productId, { productId });
+    if (!linkResult.success) {
+        showNotification(linkResult.error || 'Правило створено, але привʼязка не вдалася', 'error');
+        return;
+    }
+
+    showNotification(`Правило ціни для ${product.productName || productId} створено і привʼязано`, 'success');
+    await loadPrices();
 }
 
 // v20.9.25: Price change with confirmation dialog
@@ -2043,13 +2114,18 @@ async function loadWorkers() {
 }
 
 async function loadPrices() {
-    const data = await apiCenterPrices();
+    const [data, positionsData] = await Promise.all([
+        apiCenterPrices(),
+        apiCenterPricePositions()
+    ]);
     if (!data || !data.success) {
         document.getElementById('pricesContent').innerHTML = '<div class="center-empty">Помилка завантаження цін</div>';
         return;
     }
     pricesData = data.prices || [];
+    pricePositionsData = positionsData?.success ? (positionsData.positions || []) : [];
     renderPrices(pricesData);
+    appendPricePositionsPanel(document.getElementById('pricesContent'));
 }
 
 async function loadTasks() {

@@ -595,6 +595,11 @@ function formModal(title, fields, options = {}) {
         const icons = { danger: '🗑️', success: '✅', warning: '⚠️', info: 'ℹ️' };
         const icon = customIcon || icons[type] || '📝';
         const safeTitle = String(title).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const escAttr = (value) => String(value ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const renderSelectOptions = (field, optionList) => {
+            const optionsToRender = Array.isArray(optionList) ? optionList : [];
+            return optionsToRender.map(o => `<option value="${escAttr(o.value)}"${o.value === field.defaultValue ? ' selected' : ''}>${escAttr(o.label)}</option>`).join('');
+        };
 
         const fieldsHtml = fields.map(f => {
             const id = 'fm_' + f.key;
@@ -605,7 +610,7 @@ function formModal(title, fields, options = {}) {
             const baseStyle = 'width:100%;padding:10px 14px;border:2px solid rgba(139,92,246,0.3);border-radius:10px;font-size:15px;font-family:inherit;background:var(--surface,#fff);color:var(--text,#1a1a2e);outline:none;transition:border-color 0.2s;';
 
             if (f.type === 'select' && f.options) {
-                const opts = f.options.map(o => `<option value="${String(o.value).replace(/"/g,'&quot;')}"${o.value === f.defaultValue ? ' selected' : ''}>${o.label}</option>`).join('');
+                const opts = renderSelectOptions(f, f.options);
                 return `<div style="margin-bottom:10px;">${label}<select id="${id}" data-key="${f.key}" class="fm-field" style="${baseStyle}">${opts}</select></div>`;
             }
             if (f.type === 'textarea') {
@@ -684,6 +689,27 @@ function formModal(title, fields, options = {}) {
         document.addEventListener('keydown', onKey);
 
         document.body.appendChild(overlay);
+
+        fields
+            .filter(f => f.type === 'select' && f.dependsOn && f.optionsBy)
+            .forEach(f => {
+                const parent = overlay.querySelector(`#fm_${f.dependsOn}`);
+                const target = overlay.querySelector(`#fm_${f.key}`);
+                if (!parent || !target) return;
+
+                const rebuild = () => {
+                    const previous = target.value || f.defaultValue || '';
+                    const nextOptions = f.optionsBy[parent.value] || f.optionsBy.__default || f.options || [];
+                    target.innerHTML = renderSelectOptions(f, nextOptions);
+                    if (nextOptions.some(o => String(o.value) === String(previous))) {
+                        target.value = previous;
+                    }
+                };
+
+                parent.addEventListener('change', rebuild);
+                rebuild();
+            });
+
         initialValuesJson = getValuesJson();
         if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay);
         const firstField = overlay.querySelector('.fm-field');

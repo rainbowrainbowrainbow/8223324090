@@ -21,6 +21,16 @@ const CATEGORIES = [
 const CAT_MAP = {};
 CATEGORIES.forEach(c => { CAT_MAP[c.id] = c; });
 
+const OWNER_LABELS = {
+    park: 'Парк Закревського',
+    dar: 'Дар',
+    shared: 'Спільне'
+};
+
+function getOwnerLabel(owner) {
+    return OWNER_LABELS[owner] || owner || OWNER_LABELS.park;
+}
+
 // ==========================================
 // STATE
 // ==========================================
@@ -217,6 +227,7 @@ function renderStock() {
         return `<tr class="${isLow ? 'low-stock' : ''}">
             <td><span class="wh-item-name">${escapeHtml(item.name)}</span>${item.notes ? `<br><span class="wh-qty-info">${escapeHtml(item.notes)}</span>` : ''}</td>
             <td><span class="wh-cat-badge">${cat.icon} ${cat.name}</span></td>
+            <td><span class="wh-owner-badge">${escapeHtml(getOwnerLabel(item.owner))}</span></td>
             <td><span class="wh-qty ${qtyClass}">${isLow ? '⚠️ ' : ''}${item.quantity}</span><span class="wh-qty-info"> / ${item.minQuantity}</span></td>
             <td>${item.minQuantity}</td>
             <td>${escapeHtml(item.unit)}</td>
@@ -235,6 +246,7 @@ function renderStock() {
                 <span class="wh-item-name">${escapeHtml(item.name)}</span>
                 <span class="wh-cat-badge">${cat.icon} ${cat.name}</span>
             </div>
+            <div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">${escapeHtml(getOwnerLabel(item.owner))}</div>
             ${item.notes ? `<div style="font-size:12px;color:var(--gray-400);margin-bottom:6px;">${escapeHtml(item.notes)}</div>` : ''}
             <div class="wh-card-qty">
                 <div>
@@ -281,6 +293,8 @@ function openItemForm(itemId = null) {
         document.getElementById('wf-min').value = 0;
         document.getElementById('wf-unit').value = 'шт';
         document.getElementById('wf-notes').value = '';
+        var ownerElNew = document.getElementById('wf-owner');
+        if (ownerElNew) ownerElNew.value = 'park';
         document.getElementById('wf-quantity').disabled = false;
     }
 

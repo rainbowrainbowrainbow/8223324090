@@ -267,6 +267,71 @@ router.get('/prices', async (req, res) => {
     }
 });
 
+// GET /api/center/prices/positions — product catalog positions with price-rule linkage
+router.get('/prices/positions', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                p.id AS product_id,
+                p.code AS product_code,
+                p.label AS product_label,
+                p.name AS product_name,
+                p.category AS product_category,
+                p.price AS product_price,
+                p.is_active AS product_active,
+                pr.code AS price_code,
+                pr.name AS price_name,
+                pr.value AS price_value,
+                pr.unit AS price_unit,
+                pr.category AS price_category,
+                pr.effective_from,
+                pr.updated_at,
+                pr.updated_by
+            FROM products p
+            LEFT JOIN price_rules pr ON pr.product_id = p.id
+            WHERE p.is_active = true
+            ORDER BY p.category, p.sort_order, p.name
+        `);
+
+        const positions = result.rows.map(row => ({
+            productId: row.product_id,
+            productCode: row.product_code,
+            productLabel: row.product_label,
+            productName: row.product_name,
+            productCategory: row.product_category,
+            productPrice: Number(row.product_price || 0),
+            priceCode: row.price_code || null,
+            priceName: row.price_name || null,
+            priceValue: row.price_value === null || row.price_value === undefined ? null : Number(row.price_value),
+            priceUnit: row.price_unit || null,
+            priceCategory: row.price_category || null,
+            effectiveFrom: row.effective_from || null,
+            updatedAt: row.updated_at || null,
+            updatedBy: row.updated_by || null
+        }));
+
+        res.json({
+            success: true,
+            source: 'products',
+            linkSource: 'price_rules.product_id',
+            positions,
+            unlinkedCount: positions.filter(p => !p.priceCode).length
+        });
+    } catch (err) {
+        if (err.message.includes('does not exist')) {
+            return res.json({
+                success: true,
+                source: 'products',
+                linkSource: 'price_rules.product_id',
+                positions: [],
+                unlinkedCount: 0
+            });
+        }
+        log.error('GET /center/prices/positions error', err);
+        res.status(500).json({ success: false, error: 'Помилка завантаження позицій прайсу' });
+    }
+});
+
 // GET /api/center/prices/:code — single price rule
 router.get('/prices/:code', async (req, res) => {
     try {
@@ -285,8 +350,17 @@ router.put('/prices/:code', requireMinRole('senior_manager'), async (req, res) =
     const client = await pool.connect();
     try {
         const { value, name, unit, category, description, effectiveFrom, productId } = req.body;
-        if (value === undefined && !name) {
-            return res.status(400).json({ success: false, error: 'Вкажіть value або name' });
+        const hasProductLinkUpdate = Object.prototype.hasOwnProperty.call(req.body, 'productId');
+        const hasEffectiveFromUpdate = Object.prototype.hasOwnProperty.call(req.body, 'effectiveFrom');
+        const hasAnyUpdate = value !== undefined
+            || name !== undefined
+            || unit !== undefined
+            || category !== undefined
+            || description !== undefined
+            || hasEffectiveFromUpdate
+            || hasProductLinkUpdate;
+        if (!hasAnyUpdate) {
+            return res.status(400).json({ success: false, error: 'Вкажіть поле для оновлення' });
         }
 
         // v20.9.25: Block past effective dates
@@ -301,6 +375,14 @@ router.put('/prices/:code', requireMinRole('senior_manager'), async (req, res) =
         }
 
         await client.query('BEGIN');
+
+        if (hasProductLinkUpdate && productId) {
+            const productExists = await client.query('SELECT id FROM products WHERE id = $1', [productId]);
+            if (productExists.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, error: 'Програму для привʼязки не знайдено' });
+            }
+        }
 
         // v33.3: Fetch old price for history tracking
         const oldPriceResult = await client.query('SELECT value, name FROM price_rules WHERE code = $1', [req.params.code]);
@@ -318,11 +400,21 @@ router.put('/prices/:code', requireMinRole('senior_manager'), async (req, res) =
                 unit = COALESCE($3, unit),
                 category = COALESCE($4, category),
                 description = COALESCE($5, description),
-                effective_from = $6,
+                effective_from = CASE WHEN $6::boolean THEN $7 ELSE effective_from END,
                 updated_at = NOW(),
-                updated_by = $7
-             WHERE code = $8 RETURNING *`,
-            [value !== undefined ? value : null, name || null, unit || null, category || null, description || null, effectiveFrom || null, req.user.username, req.params.code]
+                updated_by = $8
+             WHERE code = $9 RETURNING *`,
+            [
+                value !== undefined ? value : null,
+                name !== undefined ? name || null : null,
+                unit !== undefined ? unit || null : null,
+                category !== undefined ? category || null : null,
+                description !== undefined ? description || null : null,
+                hasEffectiveFromUpdate,
+                effectiveFrom || null,
+                req.user.username,
+                req.params.code
+            ]
         );
         if (result.rows.length === 0) {
             await client.query('ROLLBACK');

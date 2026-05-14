@@ -91,6 +91,53 @@ const DEPT_SUB_GROUPS = {
     ]
 };
 
+const STAFF_ROLE_OPTIONS = [
+    { value: 'animator', label: 'Аніматор' },
+    { value: 'instructor', label: 'Інструктор' },
+    { value: 'admin', label: 'Адміністратор' },
+    { value: 'reception', label: 'Рецепція' },
+    { value: 'manager', label: 'Менеджер' },
+    { value: 'senior_manager', label: 'Старший менеджер' },
+    { value: 'hr', label: 'HR' },
+    { value: 'barista', label: 'Бариста' },
+    { value: 'cook', label: 'Кухар' },
+    { value: 'waiter', label: 'Офіціант' },
+    { value: 'cleaning', label: 'Клінінг' },
+    { value: 'dishwasher', label: 'Мийка' },
+    { value: 'wardrobe', label: 'Гардероб' },
+    { value: 'security', label: 'Охорона' },
+    { value: 'maintenance', label: 'Технік' },
+    { value: 'it_specialist', label: 'IT / техпідтримка' }
+];
+
+const STAFF_ROLE_OPTIONS_BY_DEPT = {
+    animators: STAFF_ROLE_OPTIONS.filter(r => ['animator', 'instructor'].includes(r.value)),
+    trampoline: STAFF_ROLE_OPTIONS.filter(r => ['instructor', 'animator'].includes(r.value)),
+    admin: STAFF_ROLE_OPTIONS.filter(r => ['admin', 'reception', 'manager', 'senior_manager', 'hr'].includes(r.value)),
+    cafe: STAFF_ROLE_OPTIONS.filter(r => ['barista', 'cook', 'waiter'].includes(r.value)),
+    tech: STAFF_ROLE_OPTIONS.filter(r => ['maintenance', 'it_specialist'].includes(r.value)),
+    cleaning: STAFF_ROLE_OPTIONS.filter(r => ['cleaning', 'dishwasher', 'wardrobe'].includes(r.value)),
+    security: STAFF_ROLE_OPTIONS.filter(r => ['security', 'maintenance'].includes(r.value)),
+    __default: STAFF_ROLE_OPTIONS
+};
+
+const LEGACY_DEPARTMENT_FALLBACK = {
+    animators: 'Аніматори',
+    trampoline: 'Батутисти',
+    admin: 'Адміністрація',
+    cafe: 'Кафе',
+    tech: 'Технічний відділ',
+    cleaning: 'Прибирання',
+    security: 'Охорона'
+};
+
+function getDepartmentOptionsFromStaffState() {
+    const source = StaffState.departments && Object.keys(StaffState.departments).length
+        ? StaffState.departments
+        : LEGACY_DEPARTMENT_FALLBACK;
+    return Object.entries(source).map(([value, label]) => ({ value, label }));
+}
+
 const DAYS_UK = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const MONTHS_UK = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', 'лип', 'сер', 'вер', 'жов', 'лис', 'гру'];
 
@@ -1273,34 +1320,23 @@ function handlePrint() {
 
 // v39.11: Add staff modal
 async function openAddStaffModal() {
-    const DEPTS = [
-        { value: 'animators', label: 'Аніматори' },
-        { value: 'admin', label: 'Адміністрація' },
-        { value: 'cafe', label: 'Кафе' },
-        { value: 'cleaning', label: 'Господарчі' },
-        { value: 'security', label: 'Охорона' },
-        { value: 'trampoline', label: 'Батути' }
-    ];
-    const ROLES = [
-        { value: 'animator', label: 'Аніматор' },
-        { value: 'admin', label: 'Адміністратор' },
-        { value: 'manager', label: 'Менеджер' },
-        { value: 'reception', label: 'Рецепція' },
-        { value: 'barista', label: 'Бариста' },
-        { value: 'cook', label: 'Кухар' },
-        { value: 'cleaning', label: 'Клінінг' },
-        { value: 'security', label: 'Охорона' },
-        { value: 'waiter', label: 'Офіціант' },
-        { value: 'instructor', label: 'Інструктор' },
-        { value: 'hr', label: 'HR' }
-    ];
+    const DEPTS = getDepartmentOptionsFromStaffState();
+    const defaultDepartment = DEPTS[0]?.value || 'animators';
     if (typeof formModal !== 'function') return;
     const result = await formModal('Додати співробітника', [
         { key: 'name', label: 'ПІБ', required: true, placeholder: 'Прізвище Ім\'я По батькові' },
-        { key: 'department', label: 'Відділ', type: 'select', options: DEPTS, required: true },
-        { key: 'position', label: 'Посада', placeholder: 'Аніматор, Менеджер...' },
-        { key: 'role_type', label: 'Роль', type: 'select', options: ROLES },
-        { key: 'phone', label: 'Телефон', placeholder: '+380...' }
+        { key: 'department', label: 'Відділ', type: 'select', options: DEPTS, defaultValue: defaultDepartment, required: true },
+        { key: 'position', label: 'Посада', placeholder: 'Аніматор, Менеджер...', required: true },
+        {
+            key: 'role_type',
+            label: 'Роль',
+            type: 'select',
+            options: STAFF_ROLE_OPTIONS_BY_DEPT[defaultDepartment] || STAFF_ROLE_OPTIONS,
+            optionsBy: STAFF_ROLE_OPTIONS_BY_DEPT,
+            dependsOn: 'department'
+        },
+        { key: 'phone', label: 'Телефон', placeholder: '+380...' },
+        { key: 'address', label: 'Адреса', placeholder: 'Місто, вулиця, будинок' }
     ], { icon: '👤', okText: 'Додати' });
     if (!result) return;
     try {
@@ -1313,7 +1349,8 @@ async function openAddStaffModal() {
                 department: result.department,
                 position: result.position || '',
                 role_type: result.role_type || 'animator',
-                phone: result.phone || ''
+                phone: result.phone || '',
+                address: result.address || ''
             })
         });
         if (!res.ok) {

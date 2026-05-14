@@ -16,6 +16,7 @@ router.param('id', (req, res, next, val) => { if (val && !/^\d+$/.test(val)) ret
 
 const VALID_CATEGORIES = ['consumable', 'craft', 'props', 'food', 'decor', 'prizes', 'office', 'tech'];
 const VALID_UNITS = ['шт', 'рул', 'уп', 'кг', 'л', 'м', 'компл', 'набір'];
+const VALID_OWNERS = ['park', 'dar', 'shared'];
 
 // Map DB row to API response (snake_case -> camelCase)
 function mapStockRow(row) {
@@ -65,6 +66,9 @@ function validateStock(body) {
     if (body.unit && !VALID_UNITS.includes(body.unit)) {
         errors.push('invalid unit');
     }
+    if (body.owner && !VALID_OWNERS.includes(body.owner)) {
+        errors.push('invalid owner');
+    }
     return errors;
 }
 
@@ -91,6 +95,13 @@ router.get('/', async (req, res) => {
         }
         if (req.query.low_stock === 'true') {
             conditions.push('quantity <= min_quantity');
+        }
+        if (req.query.owner) {
+            if (!VALID_OWNERS.includes(req.query.owner)) {
+                return res.status(400).json({ success: false, error: 'invalid owner' });
+            }
+            conditions.push(`COALESCE(owner, 'park') = $${paramIdx++}`);
+            params.push(req.query.owner);
         }
         if (req.query.all === 'true') {
             conditions.shift(); // remove is_active filter
@@ -124,7 +135,12 @@ router.get('/', async (req, res) => {
         res.json({
             success: true,
             items: result.rows.map(mapStockRow),
-            lowStockCount: parseInt(lowStockResult.rows[0].count)
+            lowStockCount: parseInt(lowStockResult.rows[0].count),
+            warehouseMode: {
+                source: 'warehouse_stock.owner',
+                dimensions: VALID_OWNERS,
+                transferSemantics: 'missing-truth'
+            }
         });
     } catch (err) {
         log.error('List warehouse stock error', err);
@@ -248,7 +264,7 @@ router.get('/categories', async (req, res) => {
         );
         res.json(result.rows.map(r => r.category));
     } catch (err) {
-        logger.error('[Warehouse] Get categories error', err);
+        log.error('[Warehouse] Get categories error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

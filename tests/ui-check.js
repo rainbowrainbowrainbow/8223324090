@@ -305,12 +305,24 @@ shellPages.forEach(page => page.dom.window.close());
 
 // Check sidebar nav items
 const sidebarCode = fs.readFileSync(path.join(ROOT, 'js/components/sidebar.js'), 'utf8');
+const layoutCss = fs.readFileSync(path.join(ROOT, 'css/layout.css'), 'utf8');
 check('Sidebar has /designs', sidebarCode.includes("href: '/designs'"));
 check('Sidebar has /designs#catalogs', sidebarCode.includes("href: '/designs#catalogs'"));
 check('Sidebar has /designer', sidebarCode.includes("href: '/designer'"));
 check('Sidebar has /guardian-ops', sidebarCode.includes("href: '/guardian-ops'"));
 check('Sidebar exposes /omni for communications', sidebarCode.includes("href: '/omni'") && sidebarCode.includes('omni:'));
 check('Sidebar has Центр керування', sidebarCode.includes('Центр керування'));
+
+check('Sidebar navigation no longer delays on visible old DOM', !sidebarCode.includes('setTimeout(() => { window.location.href = href; }, 180)') && sidebarCode.includes('requestAnimationFrame(navigate)'));
+check('Sidebar init is idempotent for shared bindings', sidebarCode.includes('transitionsBound') && sidebarCode.includes('sidebarToggleBound') && sidebarCode.includes('sidebarOverlayBound') && sidebarCode.includes('sidebarLinkBound'));
+check('Sidebar marks shared shell ready after baseline init', sidebarCode.includes("classList.add('shell-ready')") && sidebarCode.includes("classList.remove('shell-ready')"));
+check('Layout gates page group animations behind shell readiness', layoutCss.includes('body[data-page-group]:not(.shell-ready) #mainApp:not(.hidden)') && layoutCss.includes('body.shell-ready[data-page-group="crm"]'));
+check('Page exit uses neutral shell veil instead of old shell animation', layoutCss.includes('body.page-exiting::before') && layoutCss.includes('body.page-exiting #mainApp') && !layoutCss.includes('animation: ptFadeOut 0.18s'));
+
+const trainingPageCode = fs.readFileSync(path.join(ROOT, 'js/training-page.js'), 'utf8');
+check('Training page script does not double-initialize sidebar', !trainingPageCode.includes('Sidebar.init('));
+const legacySidebarTogglePages = htmlFiles.filter(file => fs.readFileSync(path.join(ROOT, file), 'utf8').includes('Sidebar toggle for mobile'));
+check('Top-level pages do not keep page-local sidebar toggle bindings', legacySidebarTogglePages.length === 0);
 
 // Check lead modal action binding
 const leadsCode = fs.readFileSync(path.join(ROOT, 'js/leads-page.js'), 'utf8');

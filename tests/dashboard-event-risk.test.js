@@ -41,6 +41,7 @@ function tokenFor(role = 'manager') {
 }
 
 function createFakePool(queries) {
+    let preliminaryDayQueryCount = 0;
     return {
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
@@ -50,7 +51,8 @@ function createFakePool(queries) {
                 return { rows: [{ count: 1 }] };
             }
             if (/FROM bookings b/i.test(text) && /b\.status = 'preliminary'/i.test(text)) {
-                return { rows: [{ count: params[0] === '2026-05-14' ? 3 : 5 }] };
+                preliminaryDayQueryCount += 1;
+                return { rows: [{ count: preliminaryDayQueryCount === 1 ? 3 : 5 }] };
             }
             if (/FROM tasks t JOIN bookings b ON t\.source_type = 'booking' AND t\.source_id = b\.id::text/i.test(text)) {
                 return { rows: [{ count: 4 }] };

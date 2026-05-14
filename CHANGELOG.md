@@ -4,6 +4,15 @@
 
 ---
 
+## v0.49.1 - Navigation Page Switch Flicker Fix (2026-05-15)
+
+### Navigation Stability [codex]
+- **Navigation** - прибрано visible old-shell delay під час переходів між CRM pages: sidebar click більше не тримає попередній DOM на 180ms.
+- **Shell** - додано shared `shell-ready` lifecycle, який ховає broken intermediate shell до завершення sidebar baseline init.
+- **Stability** - `Sidebar.init()` зроблено idempotent, прибрано дубльовані page-local sidebar toggle/init paths, а page-group animations запускаються тільки після shell readiness.
+
+---
+
 ## v0.49.0 - Release 49 Rollout (2026-05-15)
 
 ### Release Marker [codex]

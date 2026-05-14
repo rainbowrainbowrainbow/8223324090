@@ -3,6 +3,13 @@
  * Accordion groups, unified nav, all pages consistent
  */
 const Sidebar = (() => {
+    const _state = {
+        transitionsBound: false,
+        scrollRestored: false,
+        userRetryStarted: false,
+        badgeTimer: null
+    };
+
     // ═══ NAV_ITEMS ════════════════════════════════════════════════
     const NAV_ITEMS = [
         // ─── GROUP: CRM ──────────────────────────────────────────
@@ -233,6 +240,13 @@ const Sidebar = (() => {
         _fetchLiveBadges();
     }
 
+    function _markShellReady() {
+        document.body.classList.remove('shell-baseline', 'page-exiting');
+        document.body.classList.add('shell-ready');
+        document.body.removeAttribute('aria-busy');
+        document.documentElement.classList.add('shell-ready');
+    }
+
     // ═══ TOGGLE GROUP ══════════════════════════════════════════════
     function toggleGroup(key, btn) {
         if (!btn) return;
@@ -277,6 +291,10 @@ const Sidebar = (() => {
 
     // ═══ LIVE BADGES ═══
     async function _fetchLiveBadges() {
+        if (_state.badgeTimer) {
+            clearTimeout(_state.badgeTimer);
+            _state.badgeTimer = null;
+        }
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
         try {
@@ -291,7 +309,7 @@ const Sidebar = (() => {
         } catch {}
         const chatUnread = typeof ChatState !== 'undefined' ? (ChatState.totalUnread || 0) : 0;
         _setBadge('unread', chatUnread > 0 ? chatUnread : null);
-        setTimeout(_fetchLiveBadges, 300000);
+        _state.badgeTimer = setTimeout(_fetchLiveBadges, 300000);
     }
 
     function _setBadge(type, value) {
@@ -337,23 +355,26 @@ const Sidebar = (() => {
         const toggle = document.getElementById('sidebarToggle');
         const sidebar = document.getElementById('sidebarNav');
         const overlay = document.getElementById('sidebarOverlay');
-        if (toggle && sidebar) {
+        if (toggle && sidebar && toggle.dataset.sidebarToggleBound !== 'true') {
+            toggle.dataset.sidebarToggleBound = 'true';
             toggle.addEventListener('click', () => {
                 sidebar.classList.toggle('open');
-                if (overlay) overlay.classList.toggle('active');
+                if (overlay) overlay.classList.toggle('hidden', !sidebar.classList.contains('open'));
             });
         }
-        if (overlay && sidebar) {
+        if (overlay && sidebar && overlay.dataset.sidebarOverlayBound !== 'true') {
+            overlay.dataset.sidebarOverlayBound = 'true';
             overlay.addEventListener('click', () => {
                 sidebar.classList.remove('open');
-                overlay.classList.remove('active');
+                overlay.classList.add('hidden');
             });
         }
-        if (sidebar) {
+        if (sidebar && sidebar.dataset.sidebarLinkBound !== 'true') {
+            sidebar.dataset.sidebarLinkBound = 'true';
             sidebar.addEventListener('click', (e) => {
                 const link = e.target.closest('.nav-link');
                 if (!link) return;
-                if (window.innerWidth <= 768 && overlay) { sidebar.classList.remove('open'); overlay.classList.remove('active'); }
+                if (window.innerWidth <= 768 && overlay) { sidebar.classList.remove('open'); overlay.classList.add('hidden'); }
             });
         }
         // Theme toggle — inject at bottom of sidebar
@@ -402,17 +423,36 @@ const Sidebar = (() => {
     }
 
     function init(containerSelector) {
+        document.body.classList.add('shell-baseline');
         render(containerSelector);
         initToggle();
         _initPageTransitions();
         // Fill user card immediately + keep retrying until avatar shows real initial
-        _retryUserCard();
+        if (!_state.userRetryStarted) {
+            _state.userRetryStarted = true;
+            _retryUserCard();
+        } else {
+            initUserCard();
+        }
+        _markShellReady();
     }
 
     // ─── Page transition animations ────────────────────────────────
     function _initPageTransitions() {
+        if (!_state.scrollRestored) {
+            _state.scrollRestored = true;
+            const savedScroll = sessionStorage.getItem('sidebar_scroll_' + window.location.pathname);
+            if (savedScroll) {
+                window.scrollTo(0, parseInt(savedScroll, 10));
+                sessionStorage.removeItem('sidebar_scroll_' + window.location.pathname);
+            }
+        }
+        if (_state.transitionsBound) return;
+        _state.transitionsBound = true;
+
         document.addEventListener('click', (e) => {
             const link = e.target.closest('.sidebar-links .nav-link[href]');
+            if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
             if (!link || link.getAttribute('onclick')) return;
             const href = link.getAttribute('href');
             if (!href || href.startsWith('#')) return;
@@ -451,16 +491,16 @@ const Sidebar = (() => {
             e.preventDefault();
             // Save scroll position before navigating
             sessionStorage.setItem('sidebar_scroll_' + window.location.pathname, window.scrollY);
-            document.body.classList.add('page-exiting');
-            setTimeout(() => { window.location.href = href; }, 180);
+            document.body.classList.add('shell-baseline', 'page-exiting');
+            document.body.classList.remove('shell-ready');
+            document.body.setAttribute('aria-busy', 'true');
+            const navigate = () => { window.location.assign(href); };
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(navigate);
+            } else {
+                navigate();
+            }
         });
-
-        // v38.9.0: Restore scroll position after navigation
-        const savedScroll = sessionStorage.getItem('sidebar_scroll_' + window.location.pathname);
-        if (savedScroll) {
-            window.scrollTo(0, parseInt(savedScroll));
-            sessionStorage.removeItem('sidebar_scroll_' + window.location.pathname);
-        }
     }
 
     async function _retryUserCard() {

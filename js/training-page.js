@@ -16,7 +16,6 @@
     let testsData = [];
 
     // ═══ Init ═══
-    if (typeof Sidebar !== 'undefined') Sidebar.init('#sidebarLinks');
     initTabs();
     initRoleFilter();
     loadOverviewStats();

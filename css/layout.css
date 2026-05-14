@@ -12,6 +12,38 @@
     flex-direction: column;
 }
 
+body[data-page-group]:not(.shell-ready) #mainApp:not(.hidden) {
+    visibility: hidden;
+}
+
+body[data-page-group]:not(.shell-ready) .page-container,
+body[data-page-group]:not(.shell-ready) .main-content {
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+}
+
+body.page-exiting {
+    cursor: progress;
+}
+
+body.page-exiting #mainApp {
+    visibility: hidden !important;
+}
+
+body.page-exiting::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-tooltip, 2000);
+    background: var(--gray-50, #F8FAFC);
+    pointer-events: none;
+}
+
+body.dark-mode.page-exiting::before {
+    background: var(--gray-900, #0F172A);
+}
+
 /* ==========================================
    SIDEBAR NAVIGATION — v17.10.0
    ========================================== */
@@ -1536,40 +1568,42 @@ input[type="date"] {
 }
 
 /* CRM: slide in from left */
-body[data-page-group="crm"] .page-container,
-body[data-page-group="crm"] .main-content {
+body.shell-ready[data-page-group="crm"] .page-container,
+body.shell-ready[data-page-group="crm"] .main-content {
     animation: ptSlideInRight 0.35s var(--ease-out-expo) both;
 }
 /* Управління: scale + fade */
-body[data-page-group="mgmt"] .page-container,
-body[data-page-group="mgmt"] .main-content {
+body.shell-ready[data-page-group="mgmt"] .page-container,
+body.shell-ready[data-page-group="mgmt"] .main-content {
     animation: ptFadeScale 0.4s var(--ease-out-expo) both;
 }
 /* HR: slide up */
-body[data-page-group="hr"] .page-container,
-body[data-page-group="hr"] .main-content {
+body.shell-ready[data-page-group="hr"] .page-container,
+body.shell-ready[data-page-group="hr"] .main-content {
     animation: ptSlideInUp 0.35s var(--ease-out-expo) both;
 }
 /* Арт: perspective rotate */
-body[data-page-group="art"] .page-container,
-body[data-page-group="art"] .main-content {
+body.shell-ready[data-page-group="art"] .page-container,
+body.shell-ready[data-page-group="art"] .main-content {
     animation: ptRotateIn 0.4s var(--ease-out-expo) both;
 }
 /* Дизайнер: fade scale */
-body[data-page-group="designer"] .page-container,
-body[data-page-group="designer"] .main-content {
+body.shell-ready[data-page-group="designer"] .page-container,
+body.shell-ready[data-page-group="designer"] .main-content {
     animation: ptFadeScale 0.4s var(--ease-out-expo) both;
 }
 /* Система: bounce */
-body[data-page-group="system"] .page-container,
-body[data-page-group="system"] .main-content {
+body.shell-ready[data-page-group="system"] .page-container,
+body.shell-ready[data-page-group="system"] .main-content {
     animation: ptBounceIn 0.4s var(--ease-bounce) both;
 }
 
-/* Exit state — applied by JS before navigation */
+/* Exit state uses a neutral veil from the shared shell contract, not old-shell motion. */
 body.page-exiting .page-container,
 body.page-exiting .main-content {
-    animation: ptFadeOut 0.18s var(--ease-smooth) both !important;
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
 }
 
 /* Respect reduced motion preference */

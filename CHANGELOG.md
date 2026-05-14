@@ -4,6 +4,39 @@
 
 ---
 
+## v0.47.22 - 🧾 0.47 Черга: reply execution action history v1 (2026-05-14)
+
+### Reply Execution Audit Trail / Action History v1 [codex]
+- **Durable reply action history** - manager `waiting_reply` execution actions тепер пишуть вузький audit trail у `reply_action_history` з actor snapshot, source surface, old/new JSON і timestamp.
+- **Reply-first event model** - clear expectation, SLA snooze, owner reassignment, manual escalation і linked escalation closure мають єдиний queryable формат без глобальної CRM audit-платформи.
+- **Manager-only history endpoint** - Work Queue отримала bounded newest-first API для останніх reply execution events по conversation, з тими самими manager-up auth boundaries.
+- **History panel у workspace** - resolution workspace показує компактний `Reply Action History` для reply items, із loading/empty/error/data станами і без stale history leak після refetch/next-item.
+- **Regression shield** - оновлено work-queue тести для audit write/read, source surface, manager-only access, bulk actions і jsdom rendering.
+
+---
+
+## v0.47.21 - ⚙️ 0.47 Черга: execution engine v6 reply-first core (2026-05-14)
+
+### Manager Queue Execution Engine v6 [codex]
+- **Reply-first execution core** - Work Queue resolution workspace отримав bucket-aware execution shell: глибокі inline дії доступні лише для `waiting_reply`, де є canonical reply truth.
+- **Durable reply outcomes** - clear expectation, `SLA +24г`, reassign owner і overdue escalation працюють через наявні canonical поля `reply_expected`, `reply_sla_at`, `reply_owner_user_id` та `conversation_reply` escalation anchor.
+- **Safe next-item flow** - після успішної durable reply mutation черга refetch-иться, selection перевіряється заново і фокус переходить тільки до наступного видимого item, якщо попередній більше не є коректним фокусом.
+- **Route-out rails для слабших bucket-ів** - task/callback/confirmation/event/idle items показують exact-context route-out і пояснення, чому inline execution тут ще не вмикається.
+- **Без fake universal workflow** - `open exact context` не вважається resolution, а `event_soon` і `idle_lead` не отримують generic `done/defer/delegate` кнопок.
+
+---
+
+## v0.47.20 - 🧠 0.47 Черга: bucket-aware intelligence v1 (2026-05-14)
+
+### Manager Queue Intelligence v1 [codex]
+- **Priority bands без fake score** - Work Queue тепер збагачує видимі manager queue items структурою `intelligence` з `critical`, `action_today`, `watch` і `suggested` замість універсального числового score.
+- **Bucket-aware рекомендації** - `waiting_reply`, overdue tasks, `callback_due`, `needs_confirmation`, `event_soon` і `idle_lead` отримують різну глибину рекомендацій, `riskTypes`, `why` і `confidence` відповідно до сили їхніх реальних сигналів.
+- **Visible-scope summary** - `queue.meta.intelligence` рахує priority bands, top risks і bottleneck-и тільки з уже повернутих manager-visible queue items, без окремого глобального DB scan.
+- **Weak buckets contained** - `idle_lead` лишається `suggested` / `summary_only` і не може обігнати canonical overdue reply або task pressure.
+- **Dashboard surfacing** - Work Queue показує compact intelligence strip, band pills на items і сильніший selected-item intelligence snapshot у resolution workspace.
+
+---
+
 ## v0.47.19 - 🧭 0.47 Черга: triage & resolution workspace v4 (2026-05-14)
 
 ### Manager Triage & Resolution Workspace v4 [codex]

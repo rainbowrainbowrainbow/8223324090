@@ -16,19 +16,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.47.19">
-    <link rel="stylesheet" href="css/auth.css?v=0.47.19">
-    <link rel="stylesheet" href="css/layout.css?v=0.47.19">
-    <link rel="stylesheet" href="css/timeline.css?v=0.47.19">
-    <link rel="stylesheet" href="css/panel.css?v=0.47.19">
-    <link rel="stylesheet" href="css/modals.css?v=0.47.19">
-    <link rel="stylesheet" href="css/controls.css?v=0.47.19">
-    <link rel="stylesheet" href="css/features.css?v=0.47.19">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.19">
-    <link rel="stylesheet" href="css/responsive.css?v=0.47.19">
-    <link rel="stylesheet" href="css/pages.css?v=0.47.19">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.47.19">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.47.19">
+    <link rel="stylesheet" href="css/base.css?v=0.47.22">
+    <link rel="stylesheet" href="css/auth.css?v=0.47.22">
+    <link rel="stylesheet" href="css/layout.css?v=0.47.22">
+    <link rel="stylesheet" href="css/timeline.css?v=0.47.22">
+    <link rel="stylesheet" href="css/panel.css?v=0.47.22">
+    <link rel="stylesheet" href="css/modals.css?v=0.47.22">
+    <link rel="stylesheet" href="css/controls.css?v=0.47.22">
+    <link rel="stylesheet" href="css/features.css?v=0.47.22">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.47.22">
+    <link rel="stylesheet" href="css/responsive.css?v=0.47.22">
+    <link rel="stylesheet" href="css/pages.css?v=0.47.22">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.47.22">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.47.22">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -46,9 +46,9 @@
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <div class="login-release-badge" aria-label="Поточний реліз 0.47 Комунікації">🛰️ 0.47 Комунікації</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.47.19 — triage resolution workspace</p>
+                <p class="tagline">AI First CRM v0.47.22 — reply action history</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">🧭 Що нового у v0.47.19: Triage workspace</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">🧾 Що нового у v0.47.22: Reply action history</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1245,6 +1245,33 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.47.22 - 🧾 0.47 Черга: reply execution action history v1 (14.05.2026)</h4>
+                    <ul>
+                        <li><b>Durable action history</b> - manager reply execution actions тепер пишуть audit trail у <code>reply_action_history</code> з actor snapshot, source surface, old/new JSON і timestamp.</li>
+                        <li><b>Reply-first events</b> - clear expectation, SLA snooze, owner reassignment, overdue escalation і linked escalation closure мають єдиний queryable формат без глобального audit platform scope.</li>
+                        <li><b>History endpoint</b> - Work Queue отримала manager-only newest-first API для останніх reply execution events по conversation.</li>
+                        <li><b>Workspace panel</b> - resolution workspace показує компактний <code>Reply Action History</code> із loading/empty/error/data станами і не переносить stale history між selected items.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.47.21 - ⚙️ 0.47 Черга: execution engine v6 reply-first core (14.05.2026)</h4>
+                    <ul>
+                        <li><b>Reply-first execution core</b> - Work Queue workspace тепер має execution shell, де глибокі inline дії доступні тільки для <code>waiting_reply</code> з canonical reply truth.</li>
+                        <li><b>Durable outcomes</b> - clear expectation, <code>SLA +24г</code>, reassign owner і overdue escalation працюють через <code>reply_expected</code>, <code>reply_sla_at</code>, <code>reply_owner_user_id</code> та <code>conversation_reply</code> anchor.</li>
+                        <li><b>Safe next item</b> - після успішної mutation черга refetch-иться і фокус переходить до наступного видимого item тільки якщо це чесно після зміни стану.</li>
+                        <li><b>Route-out rails</b> - callback, confirmation, event, idle lead і task rails не отримують fake universal <code>done/defer</code>; вони показують exact context і пояснення межі.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.47.20 - 🧠 0.47 Черга: bucket-aware intelligence v1 (14.05.2026)</h4>
+                    <ul>
+                        <li><b>Priority bands без fake score</b> - Work Queue отримала <code>critical</code>, <code>action_today</code>, <code>watch</code> і <code>suggested</code> як пояснювані bucket-aware мітки, а не один універсальний числовий рейтинг.</li>
+                        <li><b>Рекомендації з доказами</b> - queue items тепер мають <code>recommendedAction</code>, <code>riskTypes</code>, <code>why</code> і <code>confidence</code>, привʼязані до реальних полів черги.</li>
+                        <li><b>Manager summary</b> - dashboard показує компактний intelligence strip з critical/action/watch/suggested counts, top risk і bottleneck тільки з видимих manager queue data.</li>
+                        <li><b>Weak buckets contained</b> - <code>idle_lead</code> лишається <code>suggested</code>/<code>summary_only</code> і не може обганяти canonical overdue reply чи task pressure.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.47.19 - 🧭 0.47 Черга: triage & resolution workspace v4 (14.05.2026)</h4>
                     <ul>
@@ -6066,27 +6093,27 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.47.19"></script>
-    <script src="js/api.js?v=0.47.19"></script>
-    <script src="js/ui.js?v=0.47.19"></script>
-    <script src="js/auth.js?v=0.47.19"></script>
-    <script src="js/timeline.js?v=0.47.19"></script>
-    <script src="js/booking.js?v=0.47.19"></script>
-    <script src="js/settings.js?v=0.47.19"></script>
-    <script src="js/booking-form.js?v=0.47.19"></script>
-    <script src="js/booking-linked.js?v=0.47.19"></script>
-    <script src="js/settings-dashboard.js?v=0.47.19"></script>
-    <script src="js/settings-history.js?v=0.47.19"></script>
-    <script src="js/settings-afisha.js?v=0.47.19"></script>
-    <script src="js/settings-certificates.js?v=0.47.19"></script>
-    <script src="js/offline.js?v=0.47.19"></script>
-    <script src="js/search.js?v=0.47.19"></script>
-    <script src="js/ws.js?v=0.47.19"></script>
-    <script src="js/app.js?v=0.47.19"></script>
-    <script src="js/kleshnya-widget.js?v=0.47.19"></script>
-    <script src="js/components/sidebar.js?v=0.47.19"></script>
+    <script src="js/config.js?v=0.47.22"></script>
+    <script src="js/api.js?v=0.47.22"></script>
+    <script src="js/ui.js?v=0.47.22"></script>
+    <script src="js/auth.js?v=0.47.22"></script>
+    <script src="js/timeline.js?v=0.47.22"></script>
+    <script src="js/booking.js?v=0.47.22"></script>
+    <script src="js/settings.js?v=0.47.22"></script>
+    <script src="js/booking-form.js?v=0.47.22"></script>
+    <script src="js/booking-linked.js?v=0.47.22"></script>
+    <script src="js/settings-dashboard.js?v=0.47.22"></script>
+    <script src="js/settings-history.js?v=0.47.22"></script>
+    <script src="js/settings-afisha.js?v=0.47.22"></script>
+    <script src="js/settings-certificates.js?v=0.47.22"></script>
+    <script src="js/offline.js?v=0.47.22"></script>
+    <script src="js/search.js?v=0.47.22"></script>
+    <script src="js/ws.js?v=0.47.22"></script>
+    <script src="js/app.js?v=0.47.22"></script>
+    <script src="js/kleshnya-widget.js?v=0.47.22"></script>
+    <script src="js/components/sidebar.js?v=0.47.22"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=0.47.19"></script>
-    <script src="js/alerts.js?v=0.47.19"></script>
+    <script src="js/role-panel.js?v=0.47.22"></script>
+    <script src="js/alerts.js?v=0.47.22"></script>
 </body>
 </html>

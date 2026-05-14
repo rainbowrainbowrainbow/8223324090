@@ -1,6 +1,7 @@
 const { getPermissions } = require('../config/roles');
 const { getKyivDateStr } = require('./booking');
 const { REPLY_SLA_STATES, deriveReplySlaState } = require('./replySla');
+const { enrichQueueBuckets } = require('./queueIntelligence');
 
 const BUCKETS = [
     { key: 'overdue', label: 'Прострочено' },
@@ -372,6 +373,113 @@ function compareItems(a, b) {
     return (PRIORITY_WEIGHT[a.priority] ?? 9) - (PRIORITY_WEIGHT[b.priority] ?? 9);
 }
 
+const EXECUTION_MODEL = 'reply_first_execution_engine_v6';
+
+function routeOutExecution(item, reason, depth = 'route_out_only') {
+    return {
+        model: EXECUTION_MODEL,
+        depth,
+        inline: false,
+        routeOutOnly: true,
+        autoAdvance: 'never_on_route_out',
+        actions: [
+            {
+                type: 'open_exact_context',
+                label: item?.actionLabel || 'Open exact context',
+                href: item?.meta?.exactHref || item?.href || null,
+                durableMutation: false
+            }
+        ],
+        unavailableReason: reason
+    };
+}
+
+function executionForItem(item) {
+    if (item?.bucket === 'waiting_reply') {
+        const isOverdue = item.meta?.replySlaState === REPLY_SLA_STATES.OVERDUE;
+        const hasEscalation = Boolean(item.meta?.replyEscalationTaskId);
+        return {
+            model: EXECUTION_MODEL,
+            depth: 'full_reply',
+            inline: true,
+            routeOutOnly: false,
+            autoAdvance: 'after_durable_mutation_refetch',
+            actions: [
+                {
+                    type: 'open_exact_context',
+                    label: 'Open Omni context',
+                    href: item.meta?.exactHref || item.href || null,
+                    durableMutation: false
+                },
+                {
+                    type: 'reply_reassign_owner',
+                    label: 'Reassign reply owner',
+                    durableMutation: true,
+                    canonicalField: 'conversations.reply_owner_user_id'
+                },
+                {
+                    type: 'reply_snooze_sla',
+                    label: 'Snooze reply SLA',
+                    durableMutation: true,
+                    canonicalField: 'conversations.reply_sla_at'
+                },
+                {
+                    type: 'reply_clear_expectation',
+                    label: 'Clear reply expectation',
+                    durableMutation: true,
+                    canonicalField: 'conversations.reply_expected'
+                },
+                {
+                    type: hasEscalation ? 'open_reply_escalation' : 'reply_escalate_overdue',
+                    label: hasEscalation ? 'Open reply escalation' : 'Escalate overdue reply',
+                    href: item.meta?.replyEscalationHref || null,
+                    enabled: hasEscalation || isOverdue,
+                    durableMutation: !hasEscalation,
+                    canonicalField: 'tasks.source_type=conversation_reply',
+                    unavailableReason: isOverdue ? null : 'Reply escalation is only available for overdue waiting replies.'
+                }
+            ],
+            unavailableReason: null
+        };
+    }
+
+    if (item?.sourceType === 'task') {
+        return routeOutExecution(
+            item,
+            'Task inline execution is route-out only in v6 until task object visibility and string-based ownership are hardened.',
+            'limited_task_route_out'
+        );
+    }
+
+    if (item?.bucket === 'callback_due') {
+        return routeOutExecution(item, 'Callback completion/defer remains route-out only; follow-up state is not a shared queue execution outcome yet.');
+    }
+
+    if (item?.bucket === 'needs_confirmation') {
+        return routeOutExecution(item, 'Booking confirmation is route-out only here; inline confirmation needs a narrow booking endpoint before execution engine use.');
+    }
+
+    if (item?.bucket === 'event_soon') {
+        return routeOutExecution(item, 'Event-soon items are review/context signals, not execution outcomes in v6.', 'review_route_out');
+    }
+
+    if (item?.bucket === 'idle_lead') {
+        return routeOutExecution(item, 'Idle lead is heuristic and remains review-only; no fake done/defer action is exposed.', 'summary_route_out');
+    }
+
+    return routeOutExecution(item, 'No bucket-specific durable execution action is defined for this queue item.');
+}
+
+function attachExecutionRails(bucket) {
+    return {
+        ...bucket,
+        items: (bucket.items || []).map(item => ({
+            ...item,
+            execution: executionForItem(item)
+        }))
+    };
+}
+
 function makeBucketMap() {
     return BUCKETS.reduce((acc, bucket) => {
         acc[bucket.key] = { ...bucket, count: 0, items: [] };
@@ -607,6 +715,12 @@ async function buildWorkQueue({
         bucket.items.sort(compareItems);
         bucket.count = bucket.items.length;
     }
+    const queueBuckets = BUCKETS.map(bucket => attachExecutionRails(bucketMap[bucket.key]));
+    const enrichedQueue = enrichQueueBuckets(queueBuckets, {
+        today: todayStr,
+        tomorrow: tomorrowStr,
+        eventSoonUntil: eventSoonStr
+    });
 
     return {
         generatedAt: new Date().toISOString(),
@@ -616,12 +730,13 @@ async function buildWorkQueue({
             tomorrow: tomorrowStr,
             eventSoonUntil: eventSoonStr
         },
-        buckets: BUCKETS.map(bucket => bucketMap[bucket.key]),
-        items: BUCKETS.flatMap(bucket => bucketMap[bucket.key].items),
+        buckets: enrichedQueue.buckets,
+        items: enrichedQueue.items,
         meta: {
             canonicalBuckets: BUCKETS.map(bucket => bucket.key),
             heuristicBuckets: ['idle_lead'],
             omittedBuckets: [],
+            intelligence: enrichedQueue.summary,
             replyBacklog: {
                 scope: replyBacklogScope,
                 availableScopes: REPLY_BACKLOG_SCOPES,
@@ -663,6 +778,8 @@ module.exports = {
     normalizeReplySlaFilter,
     normalizeReplyOwnerFilter,
     normalizeReplyEscalationFilter,
+    EXECUTION_MODEL,
+    executionForItem,
     buildWorkQueue,
     addDays
 };

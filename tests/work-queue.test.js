@@ -26,8 +26,10 @@ function clearModules() {
         '../db',
         '../middleware/auth',
         '../services/workQueue',
+        '../services/queueIntelligence',
         '../services/omni-hub',
         '../services/replyEscalation',
+        '../services/replyActionHistory',
         '../routes/work-queue'
     ].forEach(modulePath => {
         try { delete require.cache[require.resolve(modulePath)]; } catch {}
@@ -190,6 +192,68 @@ function createFakePool() {
                 return { rows: [] };
             }
 
+            if (/INSERT INTO reply_action_history/i.test(text)) {
+                return { rows: [{
+                    id: queries.filter(q => /INSERT INTO reply_action_history/i.test(q.text)).length,
+                    conversation_id: params[0],
+                    reply_expected_message_id: params[1],
+                    action_type: params[2],
+                    actor_user_id: params[3],
+                    actor_name_snapshot: params[4],
+                    source_surface: params[5],
+                    old_value_json: params[6] ? JSON.parse(params[6]) : null,
+                    new_value_json: params[7] ? JSON.parse(params[7]) : null,
+                    meta_json: params[8] ? JSON.parse(params[8]) : null,
+                    summary: params[9],
+                    created_at: '2026-05-14T12:00:00Z'
+                }] };
+            }
+
+            if (/FROM reply_action_history/i.test(text)) {
+                return { rows: [
+                    {
+                        id: 12,
+                        conversation_id: params[0],
+                        reply_expected_message_id: 1201,
+                        action_type: 'reply_owner_reassigned',
+                        actor_user_id: 20,
+                        actor_name_snapshot: 'manager user',
+                        source_surface: 'manager_queue_execution_v6',
+                        old_value_json: { replyOwnerUserId: 501, replyOwner: 'manager user' },
+                        new_value_json: { replyOwnerUserId: 30, replyOwner: 'New Owner' },
+                        meta_json: { route: 'work_queue_reply_owner' },
+                        summary: 'Reply owner reassigned',
+                        created_at: '2026-05-14T12:00:00Z'
+                    },
+                    {
+                        id: 11,
+                        conversation_id: params[0],
+                        reply_expected_message_id: 1201,
+                        action_type: 'reply_sla_snoozed',
+                        actor_user_id: 20,
+                        actor_name_snapshot: 'manager user',
+                        source_surface: 'manager_queue_execution_v6',
+                        old_value_json: { replySlaAt: '2099-05-13T15:00:00Z' },
+                        new_value_json: { replySlaAt: '2099-05-14T10:00:00.000Z' },
+                        meta_json: { route: 'work_queue_reply_sla' },
+                        summary: 'Reply SLA moved',
+                        created_at: '2026-05-14T11:00:00Z'
+                    }
+                ] };
+            }
+
+            if (/WITH inserted AS/i.test(text) && /INSERT INTO tasks/i.test(text) && /conversation_reply/i.test(text)) {
+                return { rows: [{
+                    id: 710,
+                    title: 'Overdue reply escalation',
+                    status: 'todo',
+                    source_type: 'conversation_reply',
+                    source_id: String(params[8]),
+                    deadline: params[6],
+                    created: true
+                }] };
+            }
+
             if (/FROM tasks t/i.test(text) && /LEFT\(COALESCE\(t\.date, ''\), 10\) < \$1/i.test(text)) {
                 return { rows: [{
                     id: 1,
@@ -273,7 +337,40 @@ function createFakePool() {
                 }] };
             }
 
+            if (/FROM conversations c/i.test(text) && /rt\.id AS reply_escalation_task_id/i.test(text) && /WHERE c\.id = \$1/i.test(text)) {
+                if (params[0] === 44) {
+                    return { rows: [replyRow({
+                        conversation_id: 44,
+                        reply_expected_message_id: 1204,
+                        reply_owner: null,
+                        reply_owner_user_id: null,
+                        reply_sla_at: '2026-05-13T08:00:00Z',
+                        due_at: '2026-05-13T08:00:00Z',
+                        reply_escalation_task_id: null,
+                        reply_escalation_status: null,
+                        lead_id: 44
+                    })] };
+                }
+                if (params[0] === 99) return { rows: [] };
+                return { rows: [replyRow({ conversation_id: params[0], reply_escalation_status: 'todo' })] };
+            }
+
             if (/FROM conversations c/i.test(text) && /reply_expected IS TRUE/i.test(text)) {
+                if (/c\.id = \$1/i.test(text)) {
+                    if (params[0] === 44) {
+                        return { rows: [replyRow({
+                            conversation_id: 44,
+                            reply_expected_message_id: 1204,
+                            reply_owner: null,
+                            reply_owner_user_id: null,
+                            reply_sla_at: '2026-05-13T08:00:00Z',
+                            due_at: '2026-05-13T08:00:00Z',
+                            reply_escalation_task_id: null,
+                            lead_id: 44
+                        })] };
+                    }
+                    return { rows: [replyRow({ conversation_id: params[0] })] };
+                }
                 if (/c\.reply_owner_user_id = \$\d+/i.test(text)) {
                     return { rows: [replyRow({
                         conversation_id: 42,
@@ -468,9 +565,17 @@ describe('work queue endpoint', () => {
         assert.equal(buckets.waiting_reply.items[0].meta.replyOwnerUserId, 501);
         assert.equal(buckets.waiting_reply.items[0].meta.exactHref, '/omni?conversation=41');
         assert.equal(buckets.waiting_reply.items[0].meta.leadHref, '/sales-funnel?lead=41');
+        assert.equal(buckets.waiting_reply.items[0].execution.model, 'reply_first_execution_engine_v6');
+        assert.equal(buckets.waiting_reply.items[0].execution.depth, 'full_reply');
+        assert.equal(buckets.waiting_reply.items[0].execution.autoAdvance, 'after_durable_mutation_refetch');
+        assert.ok(buckets.waiting_reply.items[0].execution.actions.some(action => action.type === 'reply_clear_expectation'));
+        assert.equal(buckets.callback_due.items[0].execution.routeOutOnly, true);
+        assert.match(buckets.callback_due.items[0].execution.unavailableReason, /route-out only/i);
         assert.equal(buckets.needs_confirmation.items[0].href, '/?date=2026-05-13&highlight=BK-2');
+        assert.equal(buckets.needs_confirmation.items[0].execution.routeOutOnly, true);
         assert.equal(buckets.event_soon.items[0].leadId, 12);
         assert.equal(buckets.idle_lead.items[0].confidence, 'suggested');
+        assert.equal(buckets.idle_lead.items[0].execution.depth, 'summary_route_out');
         assert.equal(res.data.queue.meta.omittedBuckets.includes('waiting_reply'), false);
         assert.ok(!queries.some(q => /unread_count\s*>\s*0/i.test(q.text)));
         const waitingQuery = latestWaitingQuery();
@@ -484,6 +589,52 @@ describe('work queue endpoint', () => {
         assert.equal(res.data.queue.meta.replyBacklog.scope, 'all');
         assert.equal(res.data.queue.meta.replyBacklog.canonicalOwnerField, 'conversations.reply_owner_user_id');
         assert.equal(res.data.queue.meta.replyBacklog.labelFiltering, false);
+        assert.equal(res.data.queue.meta.intelligence.model, 'bucket_aware_priority_bands_v1');
+        assert.equal(res.data.queue.meta.intelligence.globalScore, false);
+        assert.equal(res.data.queue.meta.intelligence.visibleScopeOnly, true);
+        assert.equal(res.data.queue.meta.intelligence.hiddenDataScanned, false);
+        assert.equal(res.data.queue.meta.intelligence.source, 'visible_queue_items');
+        assert.equal(res.data.queue.meta.intelligence.weakBuckets.includes('idle_lead'), true);
+    });
+
+    it('adds bucket-aware intelligence without a fake global score', async () => {
+        const res = await request('/api/work-queue?limit=5', 'manager');
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        const buckets = bucketMap(res.data.queue);
+        const waiting = buckets.waiting_reply.items[0];
+        const callback = buckets.callback_due.items[0];
+        const idle = buckets.idle_lead.items[0];
+        const overdueTask = buckets.overdue.items[0];
+        const summary = res.data.queue.meta.intelligence;
+
+        assert.equal(waiting.intelligence.model, 'bucket_aware_priority_bands_v1');
+        assert.equal(waiting.intelligence.globalScore, false);
+        assert.equal(waiting.intelligence.priorityBand, 'critical');
+        assert.equal(waiting.intelligence.confidence, 'high');
+        assert.equal(waiting.intelligence.depth, 'full');
+        assert.equal(waiting.intelligence.riskTypes.includes('reply_expected'), true);
+        assert.equal(waiting.intelligence.riskTypes.includes('reply_escalated'), true);
+        assert.equal(waiting.intelligence.recommendedAction.type, 'open_reply_escalation');
+        assert.match(waiting.intelligence.why.join(' '), /conversations\.reply_expected/);
+
+        assert.equal(overdueTask.intelligence.priorityBand, 'critical');
+        assert.equal(overdueTask.intelligence.riskTypes.includes('task_overdue'), true);
+        assert.equal(overdueTask.intelligence.depth, 'limited');
+
+        assert.equal(callback.intelligence.recommendedAction.type, 'open_lead_for_callback');
+        assert.equal(callback.intelligence.riskTypes.includes('callback_due'), true);
+        assert.match(callback.intelligence.why.join(' '), /not canonical waiting_reply/);
+
+        assert.equal(idle.intelligence.priorityBand, 'suggested');
+        assert.equal(idle.intelligence.confidence, 'low');
+        assert.equal(idle.intelligence.depth, 'summary_only');
+        assert.equal(idle.intelligence.riskTypes.includes('lead_idle_heuristic'), true);
+        assert.match(idle.intelligence.why.join(' '), /must not outrank canonical overdue reply/);
+
+        assert.ok(Number(summary.priorityBands.critical || 0) >= 1);
+        assert.ok(summary.topRisks.some(risk => risk.type === 'reply_escalated'));
+        assert.ok(summary.bottlenecks.some(b => b.type === 'escalated_replies'));
+        assert.ok(summary.bottlenecks.some(b => b.type === 'visible_overdue_tasks' && /string/.test(b.caveat)));
     });
 
     it('filters mine from typed reply_owner_user_id only', async () => {
@@ -594,6 +745,17 @@ describe('work queue endpoint', () => {
         assert.equal(taskSync.params[0], 'conversation_reply');
         assert.equal(taskSync.params[1], '1201');
         assert.equal(taskSync.params[2], 'New Owner');
+
+        const historyInsert = queries.find(q => /INSERT INTO reply_action_history/i.test(q.text) && q.params[2] === 'reply_owner_reassigned');
+        assert.ok(historyInsert, 'reply owner execution must leave durable action history');
+        assert.equal(historyInsert.params[0], 41);
+        assert.equal(historyInsert.params[1], 1201);
+        assert.equal(historyInsert.params[3], 20);
+        assert.equal(historyInsert.params[4], 'manager user');
+        assert.equal(historyInsert.params[5], 'manager_queue_execution_v6');
+        assert.deepEqual(JSON.parse(historyInsert.params[6]), { replyOwnerUserId: 501, replyOwner: 'manager user' });
+        assert.deepEqual(JSON.parse(historyInsert.params[7]), { replyOwnerUserId: 30, replyOwner: 'New Owner' });
+        assert.equal(res.data.historyEvent.actionType, 'reply_owner_reassigned');
     });
 
     it('blocks label-only reply owner reassignment', async () => {
@@ -637,6 +799,14 @@ describe('work queue endpoint', () => {
         assert.ok(taskClose, 'clear action should close active reply escalation task');
         assert.equal(taskClose.params[0], 'conversation_reply');
         assert.equal(taskClose.params[1], '1201');
+
+        const historyInserts = queries.filter(q => /INSERT INTO reply_action_history/i.test(q.text));
+        assert.equal(historyInserts.length, 2, 'clear should record the clear and linked escalation closure');
+        assert.equal(historyInserts[0].params[2], 'reply_expectation_cleared');
+        assert.equal(historyInserts[1].params[2], 'reply_escalation_closed');
+        assert.deepEqual(JSON.parse(historyInserts[0].params[6]).replyOwnerUserId, 501);
+        assert.equal(JSON.parse(historyInserts[0].params[7]).replyExpected, false);
+        assert.equal(res.data.historyEvents.length, 2);
     });
 
     it('snoozes reply SLA through reply_sla_at and moves linked escalation deadline', async () => {
@@ -659,12 +829,53 @@ describe('work queue endpoint', () => {
         assert.equal(taskMove.params[1], '1201');
         assert.equal(taskMove.params[2], '2099-05-14T10:00:00.000Z');
         assert.ok(!queries.some(q => /UPDATE tasks/i.test(q.text) && /SET status = 'cancelled'/i.test(q.text)));
+
+        const historyInsert = queries.find(q => /INSERT INTO reply_action_history/i.test(q.text) && q.params[2] === 'reply_sla_snoozed');
+        assert.ok(historyInsert, 'SLA execution must leave durable action history');
+        assert.deepEqual(JSON.parse(historyInsert.params[6]), { replySlaAt: '2099-05-13T15:00:00Z' });
+        assert.deepEqual(JSON.parse(historyInsert.params[7]), { replySlaAt: '2099-05-14T10:00:00.000Z' });
+        assert.equal(res.data.historyEvent.actionType, 'reply_sla_snoozed');
+    });
+
+    it('escalates overdue reply expectations through the conversation_reply anchor only', async () => {
+        const res = await request('/api/work-queue/replies/44/escalate', 'manager', {
+            method: 'POST',
+            body: {}
+        });
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.action, 'reply_escalate_overdue');
+        assert.equal(res.data.created, true);
+        assert.equal(res.data.task.source_type, 'conversation_reply');
+        assert.equal(res.data.task.source_id, '1204');
+
+        const expectationQuery = queries.find(q =>
+            /FROM conversations c/i.test(q.text)
+            && /reply_expected IS TRUE/i.test(q.text)
+            && /c\.id = \$1/i.test(q.text)
+            && q.params[0] === 44
+        );
+        assert.ok(expectationQuery, 'manual escalation must load the active explicit reply expectation');
+        assert.match(expectationQuery.text, /reply_expected IS TRUE/i);
+        assert.match(expectationQuery.text, /awaiting_reply_since IS NOT NULL/i);
+        assert.match(expectationQuery.text, /COALESCE\(cm\.delivery_status, ''\) NOT IN \('failed', 'later_failed'\)/i);
+
+        const insertQuery = queries.find(q => /WITH inserted AS/i.test(q.text) && /INSERT INTO tasks/i.test(q.text));
+        assert.ok(insertQuery, 'manual escalation should reuse the idempotent conversation_reply task creation path');
+        assert.equal(insertQuery.params[7], 'conversation_reply');
+        assert.equal(insertQuery.params[8], '1204');
+
+        const historyInsert = queries.find(q => /INSERT INTO reply_action_history/i.test(q.text) && q.params[2] === 'reply_escalated');
+        assert.ok(historyInsert, 'manual reply escalation must leave durable action history');
+        assert.equal(historyInsert.params[0], 44);
+        assert.equal(historyInsert.params[1], 1204);
+        assert.equal(JSON.parse(historyInsert.params[8]).sourceType, 'conversation_reply');
+        assert.equal(res.data.historyEvent.actionType, 'reply_escalated');
     });
 
     it('bulk reassigns selected reply items through typed owner ids only', async () => {
         const res = await request('/api/work-queue/replies/bulk/owner', 'manager', {
             method: 'POST',
-            body: { conversationIds: [41, 44, 41], ownerUserId: 30, reply_owner: 'Ignored Label' }
+            body: { conversationIds: [41, 44, 41], ownerUserId: 30, reply_owner: 'Ignored Label', sourceSurface: 'reply_operations_console_v2' }
         });
         assert.equal(res.status, 200, JSON.stringify(res.data));
         assert.equal(res.data.action, 'reply_owner_bulk_reassign');
@@ -676,12 +887,15 @@ describe('work queue endpoint', () => {
         assert.deepEqual(ownerUpdates.map(q => q.params[0]), [41, 44]);
         assert.ok(ownerUpdates.every(q => q.params[1] === 30 && q.params[2] === 'New Owner'));
         assert.ok(ownerUpdates.every(q => !/WHERE .*reply_owner\s*=/i.test(q.text)));
+        const historyInserts = queries.filter(q => /INSERT INTO reply_action_history/i.test(q.text) && q.params[2] === 'reply_owner_reassigned');
+        assert.equal(historyInserts.length, 2);
+        assert.ok(historyInserts.every(q => q.params[5] === 'reply_operations_console_v2'));
     });
 
     it('bulk SLA move reports partial failures without hiding applied items', async () => {
         const res = await request('/api/work-queue/replies/bulk/sla', 'manager', {
             method: 'POST',
-            body: { conversationIds: [41, 99], replySlaAt: '2099-05-15T10:00:00.000Z' }
+            body: { conversationIds: [41, 99], replySlaAt: '2099-05-15T10:00:00.000Z', sourceSurface: 'reply_operations_console_v2' }
         });
         assert.equal(res.status, 200, JSON.stringify(res.data));
         assert.equal(res.data.action, 'reply_sla_bulk_move');
@@ -695,12 +909,14 @@ describe('work queue endpoint', () => {
         assert.equal(slaUpdates.length, 2);
         assert.deepEqual(slaUpdates.map(q => q.params[0]), [41, 99]);
         assert.ok(!queries.some(q => /follow_up_date/i.test(q.text)));
+        const historyInserts = queries.filter(q => /INSERT INTO reply_action_history/i.test(q.text) && q.params[2] === 'reply_sla_snoozed');
+        assert.equal(historyInserts.length, 1, 'only successful bulk SLA mutation should be audited as success');
     });
 
     it('bulk clear closes linked escalation for applied items and reports stale rows', async () => {
         const res = await request('/api/work-queue/replies/bulk/clear', 'manager', {
             method: 'POST',
-            body: { conversationIds: [41, 99] }
+            body: { conversationIds: [41, 99], sourceSurface: 'reply_operations_console_v2' }
         });
         assert.equal(res.status, 200, JSON.stringify(res.data));
         assert.equal(res.data.action, 'reply_expectation_bulk_clear');
@@ -714,6 +930,9 @@ describe('work queue endpoint', () => {
         assert.ok(taskClose, 'bulk clear should use existing stale escalation close path');
         assert.equal(taskClose.params[0], 'conversation_reply');
         assert.equal(taskClose.params[1], '1201');
+        const historyInserts = queries.filter(q => /INSERT INTO reply_action_history/i.test(q.text));
+        assert.equal(historyInserts.filter(q => q.params[2] === 'reply_expectation_cleared').length, 1);
+        assert.equal(historyInserts.filter(q => q.params[2] === 'reply_escalation_closed').length, 1);
     });
 
     it('rejects invalid bulk selection before any mutation', async () => {
@@ -738,6 +957,30 @@ describe('work queue endpoint', () => {
             body: { conversationIds: [41] }
         });
         assert.equal(bulk.status, 403);
+
+        const escalate = await request('/api/work-queue/replies/44/escalate', 'admin', {
+            method: 'POST',
+            body: {}
+        });
+        assert.equal(escalate.status, 403);
+    });
+
+    it('returns bounded newest-first reply action history to managers only', async () => {
+        const denied = await request('/api/work-queue/replies/41/history?limit=10', 'admin');
+        assert.equal(denied.status, 403);
+
+        const res = await request('/api/work-queue/replies/41/history?limit=2', 'manager');
+        assert.equal(res.status, 200, JSON.stringify(res.data));
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.meta.source, 'reply_action_history');
+        assert.equal(res.data.meta.newestFirst, true);
+        assert.equal(res.data.events.length, 2);
+        assert.deepEqual(res.data.events.map(event => event.actionType), ['reply_owner_reassigned', 'reply_sla_snoozed']);
+
+        const historyQuery = queries.find(q => /FROM reply_action_history/i.test(q.text));
+        assert.ok(historyQuery);
+        assert.match(historyQuery.text, /ORDER BY created_at DESC, id DESC/i);
+        assert.deepEqual(historyQuery.params, [41, 2]);
     });
 
     it('does not reuse stale status=new cold-lead logic as queue authority', async () => {
@@ -769,6 +1012,17 @@ describe('work queue endpoint', () => {
                 replyBacklog: { scope: 'all', filters: { sla: 'all', owner: 'all', escalation: 'all' } },
                 omittedBuckets: [],
                 heuristicBuckets: ['idle_lead'],
+                intelligence: {
+                    model: 'bucket_aware_priority_bands_v1',
+                    globalScore: false,
+                    source: 'visible_queue_items',
+                    visibleScopeOnly: true,
+                    hiddenDataScanned: false,
+                    priorityBands: { critical: 1, action_today: 1 },
+                    topRisks: [{ type: 'reply_escalated', count: 1 }],
+                    bottlenecks: [{ type: 'escalated_replies', label: 'Escalated replies', count: 1 }],
+                    weakBuckets: ['idle_lead']
+                },
                 warnings: []
             },
             buckets: [
@@ -789,6 +1043,29 @@ describe('work queue endpoint', () => {
                         priority: 'high',
                         confidence: 'exact',
                         actionLabel: 'Відкрити Omni',
+                        intelligence: {
+                            model: 'bucket_aware_priority_bands_v1',
+                            globalScore: false,
+                            priorityBand: 'critical',
+                            riskTypes: ['reply_expected', 'reply_escalated'],
+                            recommendedAction: { type: 'open_reply_escalation', label: 'Open reply escalation context', href: '/tasks?open=700' },
+                            why: ['Explicit reply expectation is active from conversations.reply_expected.', 'A linked conversation_reply escalation task exists.'],
+                            confidence: 'high',
+                            depth: 'full'
+                        },
+                        execution: {
+                            model: 'reply_first_execution_engine_v6',
+                            depth: 'full_reply',
+                            inline: true,
+                            routeOutOnly: false,
+                            autoAdvance: 'after_durable_mutation_refetch',
+                            actions: [
+                                { type: 'reply_reassign_owner', durableMutation: true },
+                                { type: 'reply_snooze_sla', durableMutation: true },
+                                { type: 'reply_clear_expectation', durableMutation: true },
+                                { type: 'open_reply_escalation', href: '/tasks?open=700', durableMutation: false }
+                            ]
+                        },
                         meta: {
                             conversationId: 41,
                             assignedTo: 'Manager User',
@@ -821,6 +1098,25 @@ describe('work queue endpoint', () => {
                         priority: 'normal',
                         confidence: 'exact',
                         actionLabel: 'Відкрити лід',
+                        intelligence: {
+                            model: 'bucket_aware_priority_bands_v1',
+                            globalScore: false,
+                            priorityBand: 'action_today',
+                            riskTypes: ['callback_due'],
+                            recommendedAction: { type: 'open_lead_for_callback', label: 'Open lead and call client', href: '/sales-funnel?lead=11' },
+                            why: ['lead_interactions.follow_up_date placed this item in callback_due.', 'This is callback/follow-up work, not canonical waiting_reply.'],
+                            confidence: 'medium',
+                            depth: 'limited'
+                        },
+                        execution: {
+                            model: 'reply_first_execution_engine_v6',
+                            depth: 'route_out_only',
+                            inline: false,
+                            routeOutOnly: true,
+                            autoAdvance: 'never_on_route_out',
+                            actions: [{ type: 'open_exact_context', href: '/sales-funnel?lead=11', durableMutation: false }],
+                            unavailableReason: 'Callback completion/defer remains route-out only; follow-up state is not a shared queue execution outcome yet.'
+                        },
                         meta: {
                             assignedTo: 'Manager User',
                             signal: 'lead_interactions.follow_up_date'
@@ -829,6 +1125,8 @@ describe('work queue endpoint', () => {
                 }
             ]
         };
+        queue.items = queue.buckets.flatMap(bucket => bucket.items || []);
+        let currentQueue = queue;
 
         dom.window.localStorage.setItem('pzp_token', 'token');
         dom.window.localStorage.setItem('pzp_current_user', JSON.stringify({ id: 20, name: 'Manager User', role: 'manager' }));
@@ -840,13 +1138,45 @@ describe('work queue endpoint', () => {
             renderFilterSummary: () => '<div>queue explainability</div>',
             setRegion: (target, html) => { target.innerHTML = html; }
         };
-        dom.window.fetch = async url => {
+        dom.window.fetch = async (url, options = {}) => {
             const value = String(url);
             if (value.startsWith('/api/dashboard/config')) {
                 return { ok: true, status: 200, json: async () => ({ success: true, config: { widgets: [], layout: {}, theme: 'default' } }) };
             }
+            if (value.startsWith('/api/work-queue/replies/41/history')) {
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        success: true,
+                        events: [{
+                            id: 12,
+                            conversationId: 41,
+                            replyExpectedMessageId: 1201,
+                            actionType: 'reply_owner_reassigned',
+                            createdAt: '2026-05-14T12:00:00Z',
+                            actor: { userId: 20, name: 'Manager User' },
+                            sourceSurface: 'manager_queue_execution_v6',
+                            summary: 'Reply owner reassigned',
+                            oldValue: { replyOwnerUserId: 501, replyOwner: 'Old Owner' },
+                            newValue: { replyOwnerUserId: 20, replyOwner: 'Manager User' },
+                            meta: { route: 'work_queue_reply_owner' }
+                        }]
+                    })
+                };
+            }
+            if (value.startsWith('/api/work-queue/replies/41/clear') && options.method === 'POST') {
+                currentQueue = {
+                    ...queue,
+                    buckets: queue.buckets.map(bucket => bucket.key === 'waiting_reply'
+                        ? { ...bucket, count: 0, items: [] }
+                        : bucket)
+                };
+                currentQueue.items = currentQueue.buckets.flatMap(bucket => bucket.items || []);
+                return { ok: true, status: 200, json: async () => ({ success: true, conversation: { id: 41, replyExpected: false } }) };
+            }
             if (value.startsWith('/api/work-queue')) {
-                return { ok: true, status: 200, json: async () => ({ success: true, queue }) };
+                return { ok: true, status: 200, json: async () => ({ success: true, queue: currentQueue }) };
             }
             throw new Error(`Unexpected dashboard fetch: ${value}`);
         };
@@ -861,13 +1191,22 @@ describe('work queue endpoint', () => {
 
         const body = dom.window.document.getElementById('workQueueBody');
         assert.match(body.textContent, /Resolution workspace/);
+        assert.match(body.textContent, /Queue Intelligence v1/);
+        assert.match(body.textContent, /no global score/);
         assert.equal(body.querySelectorAll('.work-queue-detail-btn').length, 2);
 
         DashboardPage.selectTriageItem(encodeURIComponent('waiting_reply:conversation:41'));
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         let workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
         assert.match(workspace.textContent, /Reply Client/);
+        assert.match(workspace.textContent, /Execution v6/);
+        assert.match(workspace.textContent, /Reply Action History/);
+        assert.match(workspace.textContent, /Owner reassigned/);
+        assert.match(workspace.textContent, /Reply-first inline execution/);
         assert.match(workspace.textContent, /conversations\.reply_expected/);
+        assert.match(workspace.textContent, /Open reply escalation context/);
+        assert.match(workspace.textContent, /reply_escalated/);
         assert.equal(workspace.querySelectorAll('[data-triage-reply-action]').length, 3);
         assert.ok(workspace.querySelector('a[href="/omni?conversation=41"]'));
         assert.ok(workspace.querySelector('a[href="/sales-funnel?lead=41"]'));
@@ -877,10 +1216,24 @@ describe('work queue endpoint', () => {
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
         assert.match(workspace.textContent, /Callback Client/);
-        assert.match(workspace.textContent, /не waiting_reply/);
+        assert.match(workspace.textContent, /not canonical waiting_reply/);
+        assert.match(workspace.textContent, /route-out only/i);
         assert.equal(workspace.querySelectorAll('[data-triage-reply-action]').length, 0);
+        assert.equal(workspace.querySelector('#replyActionHistoryPanel'), null);
         assert.ok(workspace.querySelector('a[href="/sales-funnel?lead=11"]'));
         assert.ok(body.querySelector('[data-work-queue-item-id="callback_due:lead_interaction:4"].is-triage-selected'));
+
+        DashboardPage.selectTriageItem(encodeURIComponent('waiting_reply:conversation:41'));
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        await DashboardPage.clearReplyExpectation(41, null);
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
+        assert.match(workspace.textContent, /Reply expectation cleared/);
+        assert.match(workspace.textContent, /Callback Client/);
+        assert.equal(workspace.querySelector('#replyActionHistoryPanel'), null, 'history from cleared reply must not leak into the next selected item');
+        assert.ok(body.querySelector('[data-work-queue-item-id="callback_due:lead_interaction:4"].is-triage-selected'));
+        assert.equal(body.querySelector('[data-work-queue-item-id="waiting_reply:conversation:41"]'), null);
 
         DashboardPage.setReplyConsoleFilter('sla', 'overdue');
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
@@ -889,7 +1242,7 @@ describe('work queue endpoint', () => {
         assert.match(workspace.textContent, /Оберіть пункт черги/);
         assert.equal(body.querySelectorAll('.is-triage-selected').length, 0);
 
-        DashboardPage.selectTriageItem(encodeURIComponent('waiting_reply:conversation:41'));
+        DashboardPage.selectTriageItem(encodeURIComponent('callback_due:lead_interaction:4'));
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         DashboardPage.clearTriageSelection();
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
@@ -911,6 +1264,9 @@ describe('work queue endpoint', () => {
         assert.match(dashboardJs, /eg_reply_backlog_scope/);
         assert.match(dashboardJs, /eg_reply_console_filters/);
         assert.match(dashboardJs, /renderReplyOperationsConsole/);
+        assert.match(dashboardJs, /renderQueueIntelligenceSummary/);
+        assert.match(dashboardJs, /priorityBandLabel/);
+        assert.match(dashboardJs, /item\.intelligence\?\.recommendedAction/);
         assert.match(dashboardJs, /toggleReplySelection/);
         assert.match(dashboardJs, /selectVisibleReplyItems/);
         assert.match(dashboardJs, /bulkReassignReplyOwners/);
@@ -931,6 +1287,16 @@ describe('work queue endpoint', () => {
         assert.doesNotMatch(dashboardJs, /window\.prompt/);
         assert.match(dashboardJs, /snoozeReplySla/);
         assert.match(dashboardJs, /clearReplyExpectation/);
+        assert.match(dashboardJs, /escalateReplyExpectation/);
+        assert.match(dashboardJs, /refetchQueueAfterDurableExecution/);
+        assert.match(dashboardJs, /Reply Action History/);
+        assert.match(dashboardJs, /replyActionHistoryPanel/);
+        assert.match(dashboardJs, /loadReplyActionHistoryForSelected/);
+        assert.match(dashboardJs, /\/api\/work-queue\/replies\/.*\/history/);
+        assert.match(dashboardJs, /reloadReplyActionHistory/);
+        assert.match(dashboardJs, /never_on_route_out|route-out only/i);
+        assert.match(dashboardJs, /Execution v6/);
+        assert.match(dashboardJs, /\/api\/work-queue\/replies\/.*\/escalate/);
         assert.match(dashboardJs, /work-queue\/replies/);
         assert.match(dashboardJs, /work-queue-state-pill/);
         assert.match(dashboardJs, /work-queue-sla-pill/);
@@ -940,7 +1306,7 @@ describe('work queue endpoint', () => {
         assert.match(dashboardJs, /nextTriageItem/);
         assert.match(dashboardJs, /previousTriageItem/);
         assert.match(dashboardJs, /data-triage-reply-action/);
-        assert.match(dashboardJs, /Inspect \+ route-out/);
+        assert.match(dashboardJs, /Route-out only|route-out only/);
         assert.doesNotMatch(dashboardJs, /unread_count\s*>\s*0/i);
         assert.match(dashboardCss, /bucket-waiting_reply/);
         assert.match(dashboardCss, /is-waiting-reply/);
@@ -952,9 +1318,14 @@ describe('work queue endpoint', () => {
         assert.match(dashboardCss, /reply-ops-console/);
         assert.match(dashboardCss, /reply-ops-filters/);
         assert.match(dashboardCss, /reply-ops-bulkbar/);
+        assert.match(dashboardCss, /work-queue-intelligence/);
+        assert.match(dashboardCss, /queue-band-pill/);
         assert.match(dashboardCss, /work-queue-select/);
         assert.match(dashboardCss, /work-queue-action-btn/);
         assert.match(dashboardCss, /reply-owner-picker/);
         assert.match(dashboardCss, /reply-owner-picker-select:focus-visible/);
+        assert.match(dashboardCss, /work-queue-execution-feedback/);
+        assert.match(dashboardCss, /reply-action-history-card/);
+        assert.match(dashboardCss, /reply-action-history-row/);
     });
 });

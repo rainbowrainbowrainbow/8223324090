@@ -287,6 +287,83 @@
     grid-column: 1 / -1;
 }
 
+.work-queue-intelligence {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid rgba(14,165,233,0.18);
+    border-radius: 8px;
+    background: rgba(14,165,233,0.045);
+}
+
+.work-queue-intelligence-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.work-queue-intelligence-head h3 {
+    margin: 2px 0 0;
+    font-size: 15px;
+    color: #0F172A;
+}
+
+.work-queue-intelligence-scope {
+    color: #64748B;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.work-queue-intelligence-chips,
+.work-queue-intelligence-notes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.work-queue-intelligence-notes span {
+    color: #475569;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.queue-band-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 20px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: rgba(15,23,42,0.07);
+    color: #334155;
+    font-size: 11px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.queue-band-pill.band-critical {
+    background: rgba(239,68,68,0.14);
+    color: #B91C1C;
+}
+
+.queue-band-pill.band-action_today {
+    background: rgba(245,158,11,0.16);
+    color: #92400E;
+}
+
+.queue-band-pill.band-watch {
+    background: rgba(37,99,235,0.12);
+    color: #1D4ED8;
+}
+
+.queue-band-pill.band-suggested {
+    background: rgba(100,116,139,0.12);
+    color: #475569;
+}
+
 .work-queue-resolution-workspace {
     grid-column: 1 / -1;
     display: flex;
@@ -356,6 +433,29 @@
     font-size: 12px;
     font-weight: 850;
     text-align: center;
+}
+
+.work-queue-execution-feedback {
+    padding: 8px 10px;
+    border: 1px solid rgba(37,99,235,0.18);
+    border-radius: 8px;
+    background: rgba(37,99,235,0.08);
+    color: #1E40AF;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.35;
+}
+
+.work-queue-execution-feedback.success {
+    border-color: rgba(16,185,129,0.22);
+    background: rgba(16,185,129,0.1);
+    color: #047857;
+}
+
+.work-queue-execution-feedback.error {
+    border-color: rgba(239,68,68,0.22);
+    background: rgba(239,68,68,0.1);
+    color: #B91C1C;
 }
 
 .work-queue-triage-grid {
@@ -455,6 +555,79 @@
     color: #64748B;
     font-size: 12px;
     font-weight: 750;
+}
+
+.reply-action-history-card {
+    grid-column: 1 / -1;
+}
+
+.reply-action-history-state {
+    margin-top: 8px;
+    padding: 8px;
+    border-radius: 7px;
+    background: rgba(15,23,42,0.04);
+    color: #475569;
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.reply-action-history-state.error {
+    background: rgba(239,68,68,0.1);
+    color: #B91C1C;
+}
+
+.reply-action-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.reply-action-history-row {
+    display: grid;
+    gap: 4px;
+    padding: 8px;
+    border: 1px solid rgba(148,163,184,0.18);
+    border-radius: 7px;
+    background: rgba(248,250,252,0.9);
+}
+
+.reply-action-history-row div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.reply-action-history-row strong {
+    color: #0F172A;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.reply-action-history-row span,
+.reply-action-history-row p {
+    margin: 0;
+    color: #64748B;
+    font-size: 11px;
+    font-weight: 750;
+}
+
+.reply-action-history-row code {
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    padding: 3px 6px;
+    border-radius: 6px;
+    background: rgba(37,99,235,0.08);
+    color: #1D4ED8;
+    font-size: 11px;
+    font-family: inherit;
+    font-weight: 850;
+    overflow-wrap: anywhere;
 }
 
 .work-queue-body {
@@ -1918,6 +2091,45 @@
     background: rgba(15,23,42,0.24);
 }
 
+.dark-mode .work-queue-intelligence {
+    border-color: rgba(56,189,248,0.22);
+    background: rgba(15,23,42,0.7);
+}
+
+.dark-mode .work-queue-intelligence-head h3 {
+    color: #F8FAFC;
+}
+
+.dark-mode .work-queue-intelligence-scope,
+.dark-mode .work-queue-intelligence-notes span {
+    color: #CBD5E1;
+}
+
+.dark-mode .queue-band-pill {
+    background: rgba(148,163,184,0.18);
+    color: #E2E8F0;
+}
+
+.dark-mode .queue-band-pill.band-critical {
+    background: rgba(248,113,113,0.18);
+    color: #FCA5A5;
+}
+
+.dark-mode .queue-band-pill.band-action_today {
+    background: rgba(251,191,36,0.18);
+    color: #FCD34D;
+}
+
+.dark-mode .queue-band-pill.band-watch {
+    background: rgba(96,165,250,0.18);
+    color: #93C5FD;
+}
+
+.dark-mode .queue-band-pill.band-suggested {
+    background: rgba(148,163,184,0.18);
+    color: #CBD5E1;
+}
+
 .dark-mode .work-queue-triage-empty h3,
 .dark-mode .work-queue-triage-head h3,
 .dark-mode .work-queue-triage-card h4,
@@ -1935,10 +2147,54 @@
     color: #CBD5E1;
 }
 
+.dark-mode .work-queue-execution-feedback {
+    border-color: rgba(96,165,250,0.24);
+    background: rgba(37,99,235,0.16);
+    color: #BFDBFE;
+}
+
+.dark-mode .work-queue-execution-feedback.success {
+    border-color: rgba(52,211,153,0.26);
+    background: rgba(16,185,129,0.16);
+    color: #A7F3D0;
+}
+
+.dark-mode .work-queue-execution-feedback.error {
+    border-color: rgba(248,113,113,0.28);
+    background: rgba(239,68,68,0.14);
+    color: #FCA5A5;
+}
+
 .dark-mode .work-queue-triage-card,
 .dark-mode .work-queue-triage-metric {
     background: rgba(255,255,255,0.05);
     border-color: rgba(148,163,184,0.18);
+}
+
+.dark-mode .reply-action-history-state,
+.dark-mode .reply-action-history-row {
+    background: rgba(15,23,42,0.42);
+    border-color: rgba(148,163,184,0.18);
+    color: #CBD5E1;
+}
+
+.dark-mode .reply-action-history-state.error {
+    background: rgba(239,68,68,0.16);
+    color: #FCA5A5;
+}
+
+.dark-mode .reply-action-history-row strong {
+    color: #F8FAFC;
+}
+
+.dark-mode .reply-action-history-row span,
+.dark-mode .reply-action-history-row p {
+    color: #CBD5E1;
+}
+
+.dark-mode .reply-action-history-row code {
+    background: rgba(96,165,250,0.15);
+    color: #BFDBFE;
 }
 
 .dark-mode .work-queue-triage-link,

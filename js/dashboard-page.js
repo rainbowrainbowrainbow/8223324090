@@ -40,6 +40,8 @@ const DashboardPage = (() => {
     let _workQueueItemsById = new Map();
     let _workQueueSelectedItemId = null;
     let _replyOpsFlash = null;
+    let _queueExecutionFlash = null;
+    let _replyActionHistoryState = { itemId: null, conversationId: null, status: 'idle', events: [], error: null };
     let _replyOwnerPickerState = null;
 
     async function init() {
@@ -155,11 +157,14 @@ const DashboardPage = (() => {
             }
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             const data = await resp.json();
-            renderWorkQueue(data.queue || {}, body);
+            const queue = data.queue || {};
+            renderWorkQueue(queue, body);
+            return queue;
         } catch (err) {
             console.error('Work queue load error:', err);
             if (window.Explainability) Explainability.setRegion('workQueueExplainability', '');
             body.innerHTML = '<div class="widget-empty">Не вдалося завантажити робочу чергу</div>';
+            return null;
         }
     }
 
@@ -313,6 +318,62 @@ const DashboardPage = (() => {
         `;
     }
 
+    function priorityBandLabel(band) {
+        switch (band) {
+            case 'critical': return 'Критично';
+            case 'action_today': return 'Дія сьогодні';
+            case 'watch': return 'Watch';
+            case 'suggested': return 'Підказка';
+            default: return 'Операційний сигнал';
+        }
+    }
+
+    function intelligenceConfidenceLabel(confidence) {
+        switch (confidence) {
+            case 'high': return 'High';
+            case 'medium': return 'Medium';
+            case 'low': return 'Low';
+            default: return confidence || 'Medium';
+        }
+    }
+
+    function renderQueueIntelligenceSummary(queue) {
+        const intelligence = queue?.meta?.intelligence || {};
+        const bands = intelligence.priorityBands || {};
+        const bottlenecks = Array.isArray(intelligence.bottlenecks) ? intelligence.bottlenecks : [];
+        const topRisks = Array.isArray(intelligence.topRisks) ? intelligence.topRisks : [];
+        const critical = Number(bands.critical || 0);
+        const actionToday = Number(bands.action_today || 0);
+        const watch = Number(bands.watch || 0);
+        const suggested = Number(bands.suggested || 0);
+        const topBottleneck = bottlenecks[0];
+        const topRisk = topRisks[0];
+
+        if (!queue?.items?.length && !critical && !actionToday && !watch && !suggested) return '';
+
+        return `
+            <section class="work-queue-intelligence" aria-label="Manager queue intelligence summary">
+                <div class="work-queue-intelligence-head">
+                    <div>
+                        <span class="work-queue-triage-eyebrow">Queue Intelligence v1</span>
+                        <h3>Bucket-aware priority bands</h3>
+                    </div>
+                    <span class="work-queue-intelligence-scope">Visible queue data only · no global score</span>
+                </div>
+                <div class="work-queue-intelligence-chips">
+                    <span class="queue-band-pill band-critical">Критично ${critical}</span>
+                    <span class="queue-band-pill band-action_today">Дія сьогодні ${actionToday}</span>
+                    <span class="queue-band-pill band-watch">Watch ${watch}</span>
+                    <span class="queue-band-pill band-suggested">Підказки ${suggested}</span>
+                </div>
+                <div class="work-queue-intelligence-notes">
+                    <span>${escapeHtml(topRisk ? `Top risk: ${topRisk.type} (${topRisk.count})` : 'Ризики формуються з bucket-specific полів')}</span>
+                    <span>${escapeHtml(topBottleneck ? `Bottleneck: ${topBottleneck.label || topBottleneck.type} (${topBottleneck.count})` : 'Bottleneck-и рахуються лише з видимої черги')}</span>
+                </div>
+            </section>
+        `;
+    }
+
     function renderWorkQueue(queue, container) {
         const buckets = Array.isArray(queue.buckets) ? queue.buckets : [];
         const visibleBuckets = buckets.filter(bucket => bucket.count > 0 || (bucket.items && bucket.items.length > 0));
@@ -326,6 +387,7 @@ const DashboardPage = (() => {
         _workQueueVisibleItemIds = visibleItems.map(item => String(item.id || `${item.bucket}:${item.sourceType}:${item.sourceId}`));
         if (_workQueueSelectedItemId && !_workQueueItemsById.has(_workQueueSelectedItemId)) {
             _workQueueSelectedItemId = null;
+            _replyActionHistoryState = { itemId: null, conversationId: null, status: 'idle', events: [], error: null };
         }
         _workQueueVisibleReplyIds = visibleReplyItems
             .map(item => Number(item.meta?.conversationId || item.sourceId || 0))
@@ -339,12 +401,14 @@ const DashboardPage = (() => {
 
         if (!visibleBuckets.length) {
             container.innerHTML = `${renderReplyOperationsConsole(queue, visibleReplyItems)}
+                ${renderQueueIntelligenceSummary(queue)}
                 ${renderTriageWorkspace()}
                 <div class="widget-empty reply-ops-empty">Немає термінових пунктів у доступних buckets черги. Waiting reply зʼявиться лише для розмов із явним reply expectation.</div>`;
             return;
         }
 
         container.innerHTML = `${renderReplyOperationsConsole(queue, visibleReplyItems)}
+            ${renderQueueIntelligenceSummary(queue)}
             ${renderTriageWorkspace()}
             ${visibleBuckets.map(bucket => {
             const maxItems = bucket.key === 'waiting_reply' ? 12 : 4;
@@ -379,6 +443,9 @@ const DashboardPage = (() => {
         const activeHeuristic = heuristic.filter(key => (buckets || []).some(bucket => bucket.key === key && bucket.count > 0));
         if (activeHeuristic.length) {
             filters.push({ label: 'Підказки', value: activeHeuristic.map(key => bucketMap.get(key) || key).join(', ') });
+        }
+        if (meta.intelligence?.model) {
+            filters.push({ label: 'Intelligence', value: 'bucket-aware bands, no global score' });
         }
 
         const note = !visibleCount ? 'Порожньо: доступні durable сигнали зараз не дали термінових пунктів' : '';
@@ -420,6 +487,7 @@ const DashboardPage = (() => {
 
     function triageRiskLabel(item) {
         if (!item) return 'Без вибору';
+        if (item.intelligence?.priorityBand) return priorityBandLabel(item.intelligence.priorityBand);
         if (item.bucket === 'waiting_reply') {
             return replySlaLabel(item.meta?.replySlaState) || 'Очікуємо відповідь';
         }
@@ -430,6 +498,9 @@ const DashboardPage = (() => {
     }
 
     function triageReasonText(item) {
+        if (Array.isArray(item?.intelligence?.why) && item.intelligence.why.length) {
+            return item.intelligence.why.join(' ');
+        }
         const signal = item?.meta?.signal ? ` Сигнал: ${item.meta.signal}.` : '';
         switch (item?.bucket) {
             case 'waiting_reply':
@@ -478,23 +549,239 @@ const DashboardPage = (() => {
         `).join('');
     }
 
+    function executionDepthLabel(item) {
+        const depth = item?.execution?.depth;
+        if (item?.bucket === 'waiting_reply') return 'Reply-first inline execution';
+        if (depth === 'limited_task_route_out') return 'Task rail: route-out only';
+        if (depth === 'summary_route_out') return 'Summary/review only';
+        if (depth === 'review_route_out') return 'Context review only';
+        return item?.execution?.routeOutOnly ? 'Route-out only' : 'Bucket-specific execution';
+    }
+
+    function executionUnavailableText(item) {
+        if (item?.execution?.unavailableReason) return item.execution.unavailableReason;
+        if (item?.bucket === 'waiting_reply') return 'Reply actions mutate canonical reply fields and refetch the visible queue.';
+        return 'Inline execution is not enabled for this bucket.';
+    }
+
+    function renderExecutionFeedback() {
+        if (!_queueExecutionFlash?.message) return '';
+        return `
+            <div class="work-queue-execution-feedback ${escapeHtml(_queueExecutionFlash.tone || '')}" role="status" aria-live="polite">
+                ${escapeHtml(_queueExecutionFlash.message)}
+            </div>
+        `;
+    }
+
+    function setExecutionFeedback(message, tone = '') {
+        _queueExecutionFlash = message ? { message, tone } : null;
+    }
+
+    function isReplyActionHistoryItem(item) {
+        return item?.bucket === 'waiting_reply' && Number(item?.meta?.conversationId || item?.sourceId || 0) > 0;
+    }
+
+    function replyActionHistoryConversationId(item) {
+        const id = Number(item?.meta?.conversationId || item?.sourceId || 0);
+        return Number.isInteger(id) && id > 0 ? id : null;
+    }
+
+    function syncReplyActionHistorySelection(item) {
+        if (!isReplyActionHistoryItem(item)) {
+            _replyActionHistoryState = { itemId: null, conversationId: null, status: 'idle', events: [], error: null };
+            return;
+        }
+        const itemId = getWorkQueueItemId(item);
+        const conversationId = replyActionHistoryConversationId(item);
+        if (_replyActionHistoryState.itemId !== itemId || _replyActionHistoryState.conversationId !== conversationId) {
+            _replyActionHistoryState = { itemId, conversationId, status: 'loading', events: [], error: null };
+        }
+    }
+
+    function replyActionHistoryTitle(actionType) {
+        switch (actionType) {
+            case 'reply_expectation_cleared':
+                return 'Expectation cleared';
+            case 'reply_sla_snoozed':
+                return 'SLA moved';
+            case 'reply_owner_reassigned':
+                return 'Owner reassigned';
+            case 'reply_escalated':
+                return 'Escalation created/reused';
+            case 'reply_escalation_closed':
+                return 'Escalation closed';
+            default:
+                return 'Reply action';
+        }
+    }
+
+    function historyValueLabel(value) {
+        if (value === undefined || value === null || value === '') return 'none';
+        if (typeof value === 'boolean') return value ? 'yes' : 'no';
+        if (typeof value === 'string') {
+            const date = new Date(value);
+            if (!Number.isNaN(date.getTime()) && /T|\d{4}-\d{2}-\d{2}/.test(value)) return formatQueueDateTime(value);
+            return value;
+        }
+        return String(value);
+    }
+
+    function renderReplyActionHistoryChange(event) {
+        const oldValue = event?.oldValue || {};
+        const newValue = event?.newValue || {};
+        if (event?.actionType === 'reply_owner_reassigned') {
+            return `${historyValueLabel(oldValue.replyOwner || oldValue.replyOwnerUserId)} -> ${historyValueLabel(newValue.replyOwner || newValue.replyOwnerUserId)}`;
+        }
+        if (event?.actionType === 'reply_sla_snoozed') {
+            return `${historyValueLabel(oldValue.replySlaAt)} -> ${historyValueLabel(newValue.replySlaAt)}`;
+        }
+        if (event?.actionType === 'reply_expectation_cleared') {
+            return `waiting_reply ${historyValueLabel(oldValue.replyExpected)} -> ${historyValueLabel(newValue.replyExpected)}`;
+        }
+        if (event?.actionType === 'reply_escalated' || event?.actionType === 'reply_escalation_closed') {
+            return `task ${historyValueLabel(oldValue.replyEscalationTaskId)} -> ${historyValueLabel(newValue.replyEscalationTaskId)}`;
+        }
+        return event?.summary || '';
+    }
+
+    function renderReplyActionHistoryRows(events) {
+        return (events || []).map(event => {
+            const actor = event.actor?.name || (event.actor?.userId ? `User #${event.actor.userId}` : 'Unknown actor');
+            const created = event.createdAt ? formatQueueDateTime(event.createdAt) : '';
+            const change = renderReplyActionHistoryChange(event);
+            return `
+                <li class="reply-action-history-row">
+                    <div>
+                        <strong>${escapeHtml(replyActionHistoryTitle(event.actionType))}</strong>
+                        <span>${escapeHtml(event.summary || '')}</span>
+                    </div>
+                    <p>${escapeHtml(actor)}${created ? ` · ${escapeHtml(created)}` : ''}</p>
+                    ${change ? `<code>${escapeHtml(change)}</code>` : ''}
+                </li>
+            `;
+        }).join('');
+    }
+
+    function renderReplyActionHistory(item) {
+        if (!isReplyActionHistoryItem(item)) return '';
+        syncReplyActionHistorySelection(item);
+        const state = _replyActionHistoryState;
+        const status = state.status || 'idle';
+        let body = '';
+        if (status === 'loading' || status === 'idle') {
+            body = '<p class="reply-action-history-state" role="status">Loading reply execution history...</p>';
+        } else if (status === 'error') {
+            body = `
+                <p class="reply-action-history-state error">Could not load reply execution history.</p>
+                <button type="button" class="work-queue-action-btn" onclick="DashboardPage.reloadReplyActionHistory()">Retry</button>
+            `;
+        } else if (!state.events.length) {
+            body = '<p class="reply-action-history-state">No reply execution history yet.</p>';
+        } else {
+            body = `<ol class="reply-action-history-list">${renderReplyActionHistoryRows(state.events)}</ol>`;
+        }
+        return `
+            <div class="work-queue-triage-card reply-action-history-card" id="replyActionHistoryPanel" aria-label="Reply Action History">
+                <h4>Reply Action History</h4>
+                ${body}
+            </div>
+        `;
+    }
+
+    function renderReplyActionHistoryOnly() {
+        const target = document.getElementById('replyActionHistoryPanel');
+        const selected = _workQueueSelectedItemId ? _workQueueItemsById.get(_workQueueSelectedItemId) : null;
+        if (!target || !selected) return;
+        target.outerHTML = renderReplyActionHistory(selected);
+    }
+
+    async function loadReplyActionHistoryForSelected() {
+        const selected = _workQueueSelectedItemId ? _workQueueItemsById.get(_workQueueSelectedItemId) : null;
+        if (!isReplyActionHistoryItem(selected)) {
+            _replyActionHistoryState = { itemId: null, conversationId: null, status: 'idle', events: [], error: null };
+            return;
+        }
+        const itemId = getWorkQueueItemId(selected);
+        const conversationId = replyActionHistoryConversationId(selected);
+        _replyActionHistoryState = { itemId, conversationId, status: 'loading', events: [], error: null };
+        renderReplyActionHistoryOnly();
+        try {
+            const token = localStorage.getItem('pzp_token');
+            if (!token) throw new Error('No active session');
+            const resp = await fetch(`/api/work-queue/replies/${encodeURIComponent(conversationId)}/history?limit=10`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || data.success === false) {
+                throw new Error(data.error || `HTTP ${resp.status}`);
+            }
+            if (_replyActionHistoryState.itemId !== itemId || _replyActionHistoryState.conversationId !== conversationId) return;
+            _replyActionHistoryState = {
+                itemId,
+                conversationId,
+                status: 'loaded',
+                events: Array.isArray(data.events) ? data.events : [],
+                error: null
+            };
+        } catch (err) {
+            console.error('Reply action history error:', err);
+            if (_replyActionHistoryState.itemId === itemId && _replyActionHistoryState.conversationId === conversationId) {
+                _replyActionHistoryState = { itemId, conversationId, status: 'error', events: [], error: err.message };
+            }
+        }
+        renderReplyActionHistoryOnly();
+    }
+
+    function nextVisibleItemIdAfter(itemId) {
+        if (!_workQueueVisibleItemIds.length) return null;
+        const index = _workQueueVisibleItemIds.indexOf(itemId);
+        if (index < 0) return _workQueueVisibleItemIds[0] || null;
+        return _workQueueVisibleItemIds[index + 1] || _workQueueVisibleItemIds[index - 1] || null;
+    }
+
+    async function refetchQueueAfterDurableExecution(previousItemId, message) {
+        const preferredNext = nextVisibleItemIdAfter(previousItemId);
+        await loadWorkQueue();
+        const previousStillVisible = previousItemId && _workQueueItemsById.has(previousItemId);
+        if (!previousStillVisible) {
+            _workQueueSelectedItemId = (preferredNext && _workQueueItemsById.has(preferredNext))
+                ? preferredNext
+                : (_workQueueVisibleItemIds[0] || null);
+        } else {
+            _workQueueSelectedItemId = previousItemId;
+        }
+        const selectedMessage = _workQueueSelectedItemId && _workQueueItemsById.has(_workQueueSelectedItemId)
+            ? ' Наступний фокус оновлено після refetch.'
+            : ' Після refetch немає наступного видимого item.';
+        setExecutionFeedback(`${message}${selectedMessage}`, 'success');
+        renderTriageWorkspaceOnly(true);
+        await loadReplyActionHistoryForSelected();
+    }
+
     function renderTriageActions(item) {
         const isWaitingReply = item?.bucket === 'waiting_reply';
         const conversationId = Number(item?.meta?.conversationId || item?.sourceId || 0);
         if (isWaitingReply && Number.isInteger(conversationId) && conversationId > 0) {
             const currentOwnerUserId = Number(item.meta?.replyOwnerUserId || 0);
+            const isOverdue = item.meta?.replySlaState === 'overdue';
+            const escalationHref = item.meta?.replyEscalationHref;
+            const escalationAction = escalationHref
+                ? `<a class="work-queue-triage-link" href="${escapeHtml(escalationHref)}">Відкрити escalation</a>`
+                : `<button type="button" class="work-queue-action-btn" data-triage-reply-action onclick="DashboardPage.escalateReplyExpectation(${conversationId}, this)" ${isOverdue ? '' : 'disabled title="Reply escalation is available only for overdue waiting replies"'}>Escalate overdue</button>`;
             return `
-                <div class="work-queue-triage-actions" aria-label="Reply resolution actions">
+                <div class="work-queue-triage-actions" aria-label="Reply execution actions">
                     <button type="button" class="work-queue-action-btn" data-triage-reply-action onclick="DashboardPage.reassignReplyOwner(${conversationId}, this, ${currentOwnerUserId})">Змінити власника</button>
                     <button type="button" class="work-queue-action-btn" data-triage-reply-action onclick="DashboardPage.snoozeReplySla(${conversationId}, this)">SLA +24г</button>
                     <button type="button" class="work-queue-action-btn danger" data-triage-reply-action onclick="DashboardPage.clearReplyExpectation(${conversationId}, this)">Очистити expectation</button>
+                    ${escalationAction}
                 </div>
+                <p class="work-queue-triage-action-note">Auto-advance дозволений тільки після durable mutation і refetch. Open context не вважається resolution.</p>
             `;
         }
 
         return `
             <p class="work-queue-triage-action-note">
-                Для цього bucket v4 дає inspect + exact route-out. Inline mutation не вмикається, щоб не змішати reply, callback, task і booking semantics.
+                ${escapeHtml(executionUnavailableText(item))}
             </p>
         `;
     }
@@ -531,8 +818,14 @@ const DashboardPage = (() => {
         const bucket = workQueueBucketLabel(selected.bucket);
         const risk = triageRiskLabel(selected);
         const reason = triageReasonText(selected);
-        const confidence = selected.confidence === 'suggested' ? 'Підказка' : 'Exact';
-        const inlineDepth = selected.bucket === 'waiting_reply' ? 'Inline reply actions' : 'Inspect + route-out';
+        const confidence = selected.intelligence?.confidence
+            ? intelligenceConfidenceLabel(selected.intelligence.confidence)
+            : (selected.confidence === 'suggested' ? 'Підказка' : 'Exact');
+        const recommended = selected.intelligence?.recommendedAction?.label || selected.actionLabel || '';
+        const riskTypes = Array.isArray(selected.intelligence?.riskTypes)
+            ? selected.intelligence.riskTypes.join(', ')
+            : '';
+        const inlineDepth = executionDepthLabel(selected);
         const prevDisabled = index <= 0 ? 'disabled' : '';
         const nextDisabled = index < 0 || index >= _workQueueVisibleItemIds.length - 1 ? 'disabled' : '';
 
@@ -551,6 +844,7 @@ const DashboardPage = (() => {
                         <button type="button" class="work-queue-action-btn" onclick="DashboardPage.clearTriageSelection()">До черги</button>
                     </div>
                 </div>
+                ${renderExecutionFeedback()}
                 <div class="work-queue-triage-grid">
                     <div class="work-queue-triage-card">
                         <h4>Чому тут</h4>
@@ -561,6 +855,7 @@ const DashboardPage = (() => {
                         <div class="work-queue-triage-metrics">
                             ${renderTriageMetric('Власник', owner || 'Не призначено')}
                             ${renderTriageMetric('Ризик', risk)}
+                            ${renderTriageMetric('Risk types', riskTypes)}
                             ${renderTriageMetric('Термін', dueAt ? formatQueueDateTime(dueAt) : 'Без терміну')}
                             ${renderTriageMetric('Достовірність', confidence)}
                         </div>
@@ -570,10 +865,12 @@ const DashboardPage = (() => {
                         <div class="work-queue-triage-links">${renderTriageLinks(selected)}</div>
                     </div>
                     <div class="work-queue-triage-card">
-                        <h4>Дії v4</h4>
+                        <h4>Execution v6</h4>
+                        ${renderTriageMetric('Recommended', recommended)}
                         <p class="work-queue-triage-depth">${escapeHtml(inlineDepth)}</p>
                         ${renderTriageActions(selected)}
                     </div>
+                    ${renderReplyActionHistory(selected)}
                 </div>
             </section>
         `;
@@ -612,6 +909,7 @@ const DashboardPage = (() => {
             _workQueueSelectedItemId = itemId;
         }
         renderTriageWorkspaceOnly(true);
+        loadReplyActionHistoryForSelected();
     }
 
     function navigateTriageItem(delta) {
@@ -621,6 +919,7 @@ const DashboardPage = (() => {
         const nextIndex = Math.max(0, Math.min(_workQueueVisibleItemIds.length - 1, baseIndex + delta));
         _workQueueSelectedItemId = _workQueueVisibleItemIds[nextIndex];
         renderTriageWorkspaceOnly(true);
+        loadReplyActionHistoryForSelected();
     }
 
     function nextTriageItem() {
@@ -633,6 +932,7 @@ const DashboardPage = (() => {
 
     function clearTriageSelection() {
         _workQueueSelectedItemId = null;
+        _replyActionHistoryState = { itemId: null, conversationId: null, status: 'idle', events: [], error: null };
         renderTriageWorkspaceOnly(true);
     }
 
@@ -645,6 +945,13 @@ const DashboardPage = (() => {
         const triageSelectedCls = _workQueueSelectedItemId === itemId ? ' is-triage-selected' : '';
         const isWaitingReply = item.bucket === 'waiting_reply';
         const confidence = item.confidence === 'suggested' ? '<span class="work-queue-confidence">підказка</span>' : '';
+        const band = item.intelligence?.priorityBand || '';
+        const bandPill = band
+            ? `<span class="queue-band-pill band-${escapeHtml(band)}">${escapeHtml(priorityBandLabel(band))}</span>`
+            : '';
+        const recommendation = item.intelligence?.recommendedAction?.label
+            ? `<span>${escapeHtml(item.intelligence.recommendedAction.label)}</span>`
+            : '';
         const due = item.dueAt ? `<span>${formatQueueDateTime(item.dueAt)}</span>` : '';
         const waitingSince = isWaitingReply && item.meta?.awaitingReplySince
             ? `<span class="work-queue-state-pill">очікуємо з ${formatQueueDateTime(item.meta.awaitingReplySince)}</span>`
@@ -657,7 +964,7 @@ const DashboardPage = (() => {
         const sla = slaLabel
             ? `<span class="work-queue-sla-pill sla-${escapeHtml(slaState)}">${escapeHtml(slaLabel)}</span>`
             : '';
-        const meta = [waitingSince || due, sla, owner, confidence].filter(Boolean).join(' · ');
+        const meta = [bandPill, waitingSince || due, sla, owner, confidence, recommendation].filter(Boolean).join(' · ');
         const href = item.href || '/dashboard';
         const conversationId = Number(item.meta?.conversationId || item.sourceId || 0);
         const currentOwnerUserId = Number(item.meta?.replyOwnerUserId || 0);
@@ -2020,7 +2327,8 @@ const DashboardPage = (() => {
         if (!ids.length) return;
         return runReplyBulkAction(button, '/api/work-queue/replies/bulk/sla', {
             conversationIds: ids,
-            snoozeHours: 24
+            snoozeHours: 24,
+            sourceSurface: 'reply_operations_console_v2'
         });
     }
 
@@ -2029,18 +2337,23 @@ const DashboardPage = (() => {
         if (!ids.length) return;
         if (!window.confirm(`Очистити очікування відповіді для ${ids.length} видимих item без позначки, що клієнти відповіли?`)) return;
         return runReplyBulkAction(button, '/api/work-queue/replies/bulk/clear', {
-            conversationIds: ids
+            conversationIds: ids,
+            sourceSurface: 'reply_operations_console_v2'
         });
     }
 
-    async function runReplyBacklogAction(button, path, method, payload) {
+    async function runReplyBacklogAction(button, path, method, payload, options = {}) {
         const token = localStorage.getItem('pzp_token');
         if (!token) throw new Error('Немає активної сесії');
+        const previousItemId = options.previousItemId || _workQueueSelectedItemId || null;
+        const actionLabel = options.actionLabel || 'Reply execution action applied.';
 
         if (button) {
             button.disabled = true;
             button.setAttribute('aria-busy', 'true');
         }
+        setExecutionFeedback('Виконуємо durable reply action...', '');
+        renderTriageWorkspaceOnly(false);
         try {
             const resp = await fetch(path, {
                 method,
@@ -2054,10 +2367,12 @@ const DashboardPage = (() => {
             if (!resp.ok || data.success === false) {
                 throw new Error(data.error || `HTTP ${resp.status}`);
             }
-            await loadWorkQueue();
+            await refetchQueueAfterDurableExecution(previousItemId, actionLabel);
             return data;
         } catch (err) {
             console.error('Reply backlog action error:', err);
+            setExecutionFeedback(err.message || 'Reply execution action failed; queue focus was not advanced.', 'error');
+            renderTriageWorkspaceOnly(true);
             alert(err.message || 'Не вдалося оновити reply backlog');
             throw err;
         } finally {
@@ -2225,14 +2540,18 @@ const DashboardPage = (() => {
             await runReplyBulkAction(
                 button,
                 '/api/work-queue/replies/bulk/owner',
-                { conversationIds: state.conversationIds, ownerUserId }
+                { conversationIds: state.conversationIds, ownerUserId, sourceSurface: 'reply_operations_console_v2' }
             );
         } else {
             await runReplyBacklogAction(
                 button,
                 `/api/work-queue/replies/${encodeURIComponent(state.conversationId)}/owner`,
                 'PATCH',
-                { ownerUserId }
+                { ownerUserId, sourceSurface: 'manager_queue_execution_v6' },
+                {
+                    previousItemId: `waiting_reply:conversation:${state.conversationId}`,
+                    actionLabel: 'Reply owner reassigned through canonical reply_owner_user_id.'
+                }
             );
         }
         closeReplyOwnerPicker();
@@ -2243,7 +2562,11 @@ const DashboardPage = (() => {
             button,
             `/api/work-queue/replies/${encodeURIComponent(conversationId)}/sla`,
             'PATCH',
-            { snoozeHours: 24 }
+            { snoozeHours: 24, sourceSurface: 'manager_queue_execution_v6' },
+            {
+                previousItemId: `waiting_reply:conversation:${conversationId}`,
+                actionLabel: 'Reply SLA moved by 24 hours through reply_sla_at.'
+            }
         );
     }
 
@@ -2253,7 +2576,24 @@ const DashboardPage = (() => {
             button,
             `/api/work-queue/replies/${encodeURIComponent(conversationId)}/clear`,
             'POST',
-            {}
+            { sourceSurface: 'manager_queue_execution_v6' },
+            {
+                previousItemId: `waiting_reply:conversation:${conversationId}`,
+                actionLabel: 'Reply expectation cleared without claiming an inbound reply.'
+            }
+        );
+    }
+
+    function escalateReplyExpectation(conversationId, button) {
+        return runReplyBacklogAction(
+            button,
+            `/api/work-queue/replies/${encodeURIComponent(conversationId)}/escalate`,
+            'POST',
+            { sourceSurface: 'manager_queue_execution_v6' },
+            {
+                previousItemId: `waiting_reply:conversation:${conversationId}`,
+                actionLabel: 'Overdue reply escalation task created or reused by conversation_reply anchor.'
+            }
         );
     }
 
@@ -2303,10 +2643,12 @@ const DashboardPage = (() => {
         clearTriageSelection,
         reassignReplyOwner,
         reloadReplyOwnerPicker,
+        reloadReplyActionHistory: loadReplyActionHistoryForSelected,
         closeReplyOwnerPicker,
         saveReplyOwnerPicker,
         snoozeReplySla,
         clearReplyExpectation,
+        escalateReplyExpectation,
         refreshWidget,
         openTask,
         toggleOnboardingWidget,

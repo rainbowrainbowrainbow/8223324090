@@ -268,6 +268,71 @@ async function createOrReuseReplyEscalationTask(row, options = {}) {
     return { task, created, skipped: false, reason: created ? 'created' : 'reused' };
 }
 
+async function findActiveReplyExpectationByConversation(conversationId, options = {}) {
+    const parsedId = Number(conversationId);
+    if (!Number.isInteger(parsedId) || parsedId <= 0) {
+        const err = new Error('Valid conversationId is required');
+        err.statusCode = 400;
+        err.code = 'INVALID_CONVERSATION_ID';
+        throw err;
+    }
+
+    const db = options.pool || defaultPool;
+    const result = await db.query(
+        `SELECT c.id AS conversation_id, c.channel, c.customer_name, c.customer_phone,
+                c.customer_id, c.assigned_to, c.reply_expected, c.awaiting_reply_since,
+                c.reply_expected_message_id, c.reply_owner, c.reply_owner_user_id, c.reply_sla_at,
+                c.last_inbound_at, c.last_outbound_at,
+                cm.delivery_status AS reply_expected_delivery_status,
+                cm.delivery_error AS reply_expected_delivery_error,
+                cust.lead_id
+           FROM conversations c
+           JOIN conversation_messages cm ON cm.id = c.reply_expected_message_id
+           LEFT JOIN customers cust ON cust.id = c.customer_id
+          WHERE c.id = $1
+            AND c.reply_expected IS TRUE
+            AND c.awaiting_reply_since IS NOT NULL
+            AND c.reply_expected_message_id IS NOT NULL
+            AND COALESCE(c.status, 'open') NOT IN ('closed', 'spam')
+            AND (c.last_inbound_at IS NULL OR c.last_inbound_at <= c.awaiting_reply_since)
+            AND COALESCE(cm.delivery_status, '') NOT IN ('failed', 'later_failed')
+          LIMIT 1`,
+        [parsedId]
+    );
+
+    const row = result.rows?.[0] || null;
+    if (!row) {
+        const err = new Error('Active reply expectation was not found for this conversation');
+        err.statusCode = 404;
+        err.code = 'REPLY_EXPECTATION_NOT_ACTIVE';
+        throw err;
+    }
+    return row;
+}
+
+async function escalateReplyExpectationForConversation(conversationId, options = {}) {
+    const db = options.pool || defaultPool;
+    const row = await findActiveReplyExpectationByConversation(conversationId, { pool: db });
+    const now = isoValue(options.now) || new Date().toISOString();
+    const result = await createOrReuseReplyEscalationTask(row, {
+        pool: db,
+        now,
+        today: options.today
+    });
+
+    if (result.skipped) {
+        const err = new Error(result.reason === 'not_overdue'
+            ? 'Reply expectation is not overdue yet'
+            : 'Reply expectation cannot be escalated');
+        err.statusCode = result.reason === 'not_overdue' ? 409 : 400;
+        err.code = result.reason === 'not_overdue' ? 'REPLY_NOT_OVERDUE' : 'REPLY_ESCALATION_SKIPPED';
+        err.reason = result.reason;
+        throw err;
+    }
+
+    return result;
+}
+
 async function runReplyAutoEscalation(options = {}) {
     const db = options.pool || defaultPool;
     const closed = await closeStaleReplyEscalationTasks({
@@ -305,7 +370,9 @@ module.exports = {
     REPLY_ESCALATION_CREATED_BY,
     taskAnchor,
     findOverdueReplyExpectations,
+    findActiveReplyExpectationByConversation,
     createOrReuseReplyEscalationTask,
+    escalateReplyExpectationForConversation,
     closeReplyEscalationForMessage,
     updateActiveReplyEscalationTaskForMessage,
     closeStaleReplyEscalationTasks,

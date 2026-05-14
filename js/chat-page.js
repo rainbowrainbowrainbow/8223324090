@@ -24,6 +24,7 @@
     var _emojiPanelOpen = false;
     var _emojiFrequent = [];
     var _channelMembers = [];
+    var _taskOwnerCandidates = null;
 
     // Emoji data (Telegram categories)
     var EMOJI_CATEGORIES = [
@@ -1584,76 +1585,107 @@
         }
     }
 
-    async function _createTaskFromMessage() {
-        if (!_contextMsg) return;
-        var contentEl = _contextMsg.el.querySelector('.chat-bubble-content');
-        var usernameEl = _contextMsg.el.querySelector('.chat-bubble-username');
-        var msgText = contentEl ? contentEl.textContent.trim() : '';
-        var author = usernameEl ? usernameEl.textContent.trim() : '';
-
-        // Show modal for task description
-        var taskDesc = await promptModal('📋 Створити задачу з повідомлення\n\nОпишіть задачу:', { defaultValue: msgText.substring(0, 200), placeholder: 'Опис задачі...' });
-        if (!taskDesc) return;
-
-        // Create task via API
-        fetch('/api/tasks', {
-            method: 'POST',
-            headers: _headers(),
-            body: JSON.stringify({
-                title: taskDesc.substring(0, 100),
-                description: 'З чату від @' + author + ':\n\n' + msgText + '\n\n---\nЗадача: ' + taskDesc,
-                priority: 'medium',
-                sourceType: 'chat'
-            })
-        }).then(function (resp) {
-            if (resp.ok) {
-                // Show success toast
-                var toast = document.createElement('div');
-                toast.className = 'chat-toast';
-                toast.textContent = '✅ Задачу створено';
-                document.body.appendChild(toast);
-                setTimeout(function () { toast.remove(); }, 3000);
-            }
-        }).catch(function () {});
+    async function _loadTaskOwnerCandidates(force) {
+        if (_taskOwnerCandidates && !force) return _taskOwnerCandidates;
+        try {
+            var resp = await fetch('/api/tasks/owners', { headers: _headers(false) });
+            if (!resp.ok) throw new Error('owners API error');
+            var data = await resp.json();
+            _taskOwnerCandidates = data.users || [];
+        } catch (err) {
+            console.error('[Chat] Task owners load error:', err);
+            _taskOwnerCandidates = [];
+        }
+        return _taskOwnerCandidates;
     }
 
-    // v33.12.0: AI task from message (inline form instead of window.prompt)
-    function _createAITaskFromMsg(msg, el) {
+    function _taskOwnerOption(owner) {
+        var label = owner.label || owner.name || owner.username || ('User #' + owner.id);
+        var role = owner.role ? ' (' + owner.role + ')' : '';
+        return '<option value="' + _esc(owner.id) + '">' + _esc(label + role) + '</option>';
+    }
+
+    async function _createCanonicalChatTask(payload) {
+        var body = {
+            title: String(payload.title || '').slice(0, 100),
+            description: payload.description || null,
+            priority: 'normal',
+            category: 'operational',
+            ownerUserId: payload.ownerUserId,
+            sourceType: payload.sourceType || 'chat_message',
+            sourceId: payload.sourceId || null
+        };
+        var resp = await fetch('/api/tasks', {
+            method: 'POST',
+            headers: _headers(),
+            body: JSON.stringify(body)
+        });
+        var data = await resp.json().catch(function () { return {}; });
+        if (!resp.ok) throw new Error(data.error || data.message || 'Не вдалося створити задачу');
+        return data.task || data;
+    }
+
+    async function _createTaskFromMessage() {
+        if (!_contextMsg) return;
+        await _createAITaskFromMsg(_contextMsg, _contextMsg.el);
+    }
+
+    // v33.12.0/v0.48.12: AI task from message with explicit operator-selected owner.
+    async function _createAITaskFromMsg(msg, el) {
         var contentEl = el ? el.querySelector('.chat-bubble-content') : null;
         var usernameEl = el ? el.querySelector('.chat-bubble-username') : null;
         var msgText = contentEl ? contentEl.textContent.trim() : (msg.content || '');
         var author = usernameEl ? usernameEl.textContent.trim() : (msg.displayName || msg.username || '');
         var existing = el ? el.querySelector('.msg-ai-task-form') : null;
         if (existing) { existing.remove(); return; }
+        var owners = await _loadTaskOwnerCandidates();
+        if (!owners.length) {
+            if (typeof showNotification === 'function') showNotification('Немає доступних виконавців для задачі', 'error');
+            return;
+        }
         var form = document.createElement('div');
         form.className = 'msg-ai-task-form';
         form.innerHTML =
             '<div style="font-size:11px;color:var(--gray-400);margin-bottom:6px">📋 Поставити задачу</div>' +
             '<div style="font-size:12px;color:var(--gray-500);margin-bottom:6px;padding:6px;background:rgba(0,0,0,0.03);border-radius:6px;border-left:2px solid var(--primary,#6366f1)"><b>@' + _esc(author) + ':</b> ' + _esc(msgText.slice(0, 100)) + '</div>' +
+            '<select class="ai-task-owner" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;box-sizing:border-box;margin-bottom:6px">' +
+                '<option value="">Оберіть виконавця</option>' + owners.map(_taskOwnerOption).join('') +
+            '</select>' +
             '<textarea placeholder="Що треба зробити?" style="width:100%;padding:6px;border:1px solid var(--border-color);border-radius:6px;font-size:12px;resize:none;height:50px;box-sizing:border-box;margin-bottom:6px"></textarea>' +
             '<div style="display:flex;gap:6px"><button class="ai-task-submit" style="flex:1;padding:6px;background:var(--primary,#6366f1);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">📋 Створити задачу</button>' +
-            '<button onclick="this.closest(\'.msg-ai-task-form\').remove()" style="padding:6px 10px;border:1px solid var(--border-color);border-radius:6px;background:none;cursor:pointer;font-size:12px">✕</button></div>';
+            '<button onclick="this.closest(\'.msg-ai-task-form\').remove()" style="padding:6px 10px;border:1px solid var(--border-color);border-radius:6px;background:none;cursor:pointer;font-size:12px">×</button></div>';
         var bubble = el ? el.querySelector('.chat-bubble') : null;
         if (bubble) bubble.appendChild(form);
         var textarea = form.querySelector('textarea');
+        var ownerSelect = form.querySelector('.ai-task-owner');
         if (textarea) textarea.focus();
         var submitBtn = form.querySelector('.ai-task-submit');
         if (submitBtn) {
             submitBtn.addEventListener('click', async function() {
                 var text = textarea.value.trim();
                 if (!text) { textarea.focus(); return; }
+                var ownerUserId = ownerSelect ? ownerSelect.value : '';
+                if (!ownerUserId) {
+                    if (ownerSelect) ownerSelect.focus();
+                    if (typeof showNotification === 'function') showNotification('Оберіть виконавця задачі', 'error');
+                    return;
+                }
                 submitBtn.disabled = true;
                 submitBtn.textContent = '⏳...';
                 try {
-                    var resp = await fetch('/api/tasks', {
-                        method: 'POST', headers: _headers(),
-                        body: JSON.stringify({ title: text.slice(0, 100), description: 'З чату від @' + author + ':\n' + msgText + '\n\nЗадача: ' + text, priority: 'normal', sourceType: 'chat' })
+                    var task = await _createCanonicalChatTask({
+                        title: text,
+                        ownerUserId: ownerUserId,
+                        sourceType: msg && msg.id ? 'chat_message' : 'chat_channel',
+                        sourceId: msg && msg.id ? String(msg.id) : (_currentChannel ? String(_currentChannel.id) : null),
+                        description: 'З чату' + (_currentChannel?.name ? ' ' + _currentChannel.name : '') + ' від @' + author + ':\n' + msgText + '\n\nЗадача: ' + text
                     });
-                    if (resp.ok) {
-                        form.innerHTML = '<div style="color:var(--success,green);font-size:12px;padding:4px">✅ Задачу створено!</div>';
-                        setTimeout(function() { form.remove(); }, 2000);
-                    } else { throw new Error('Failed'); }
-                } catch (e) { submitBtn.textContent = '📋 Створити задачу'; } finally { submitBtn.disabled = false; }
+                    form.innerHTML = '<div style="color:var(--success,green);font-size:12px;padding:4px">✅ Задачу створено #' + _esc(task.id || '') + '</div>';
+                    setTimeout(function() { form.remove(); }, 2000);
+                } catch (e) {
+                    submitBtn.textContent = '📋 Створити задачу';
+                    if (typeof showNotification === 'function') showNotification(e.message || 'Помилка створення задачі', 'error');
+                } finally { submitBtn.disabled = false; }
             });
         }
     }
@@ -5339,37 +5371,37 @@
 
     async function _sendTaskFromChat(taskText) {
         try {
-            // Parse @username from task text: /task @username description
-            var assignedTo = null;
-            var title = taskText;
-            var mentionMatch = taskText.match(/^@(\w+)\s+(.+)/);
-            if (mentionMatch) {
-                var targetUsername = mentionMatch[1];
-                title = mentionMatch[2];
-                var targetUser = _chatUsers.find(function (u) { return u.username.toLowerCase() === targetUsername.toLowerCase(); });
-                if (targetUser) assignedTo = targetUser.id;
+            var mentionMatch = taskText.match(/^@([\w.-]+)\s+(.+)/);
+            if (!mentionMatch) {
+                showNotification('Для /task вкажіть виконавця: /task @username опис', 'error');
+                return;
+            }
+            var targetUsername = mentionMatch[1];
+            var title = mentionMatch[2].trim();
+            if (!title) {
+                showNotification('Додайте опис задачі після @username', 'error');
+                return;
+            }
+            var owners = await _loadTaskOwnerCandidates();
+            var targetOwner = owners.find(function (u) {
+                return String(u.username || '').toLowerCase() === targetUsername.toLowerCase();
+            });
+            if (!targetOwner) {
+                showNotification('Виконавець @' + targetUsername + ' недоступний для задач', 'error');
+                return;
             }
 
-            // Create task via chat tasks API
-            var task = await _api('POST', '/tasks', {
-                channelId: _currentChannel.id,
-                assignedTo: assignedTo,
-                title: title
+            var task = await _createCanonicalChatTask({
+                title: title,
+                ownerUserId: targetOwner.id,
+                sourceType: 'chat_command',
+                sourceId: _currentChannel ? String(_currentChannel.id) : null,
+                description: 'Задача з команди /task у чаті' + (_currentChannel?.name ? ' ' + _currentChannel.name : '') + '. Виконавець підтверджений оператором: @' + targetUsername + '.'
             });
 
             if (task) {
-                // Also create in main tasks system
-                var token = localStorage.getItem('pzp_token');
-                fetch('/api/tasks', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                    body: JSON.stringify({ title: title, priority: 'normal' })
-                }).catch(function () {});
-
-                // Send confirmation message
-                var assignText = assignedTo ? ' → @' + mentionMatch[1] : '';
                 var confirmMsg = await _api('POST', '/channels/' + _currentChannel.id + '/messages', {
-                    content: '\u{1F4CB} Задачу створено: «' + title + '»' + assignText
+                    content: '\u{1F4CB} Задачу #' + (task.id || '') + ' створено: «' + title + '» → @' + targetUsername
                 });
                 if (confirmMsg) _appendMessage(confirmMsg);
             }

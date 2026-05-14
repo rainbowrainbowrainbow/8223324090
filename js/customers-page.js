@@ -183,7 +183,7 @@ function renderCustomerCommunicationHub(context) {
         </div>
         <div class="customer-hub-actions" aria-label="Комунікаційні дії клієнта">
             ${customerHubAction(links.call, 'Подзвонити', 'success')}
-            ${customerHubAction(links.telegramExternal, 'Telegram зовнішньо', '', { external: true })}
+            ${customerHubAction(omniHref, 'Telegram у CRM', omniClass)}
             ${customerHubAction(omniHref, omniLabel, omniClass)}
             ${customerHubAction(links.leadWorkspace, 'Відкрити кейс ліда')}
             ${customerHubAction(links.booking, 'Відкрити бронювання')}

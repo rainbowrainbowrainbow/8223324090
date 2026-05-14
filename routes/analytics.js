@@ -77,6 +77,15 @@ function getDateRange(period) {
     }
 }
 
+function getRequestDateRange(query = {}) {
+    let from = query.from, to = query.to;
+    if (!from || !to || !isValidDate(from) || !isValidDate(to)) {
+        const range = getDateRange(query.period || 'month');
+        from = range.from; to = range.to;
+    }
+    return { from, to };
+}
+
 function getPrevRange(from, to) {
     const f = new Date(from + 'T00:00:00'), t = new Date(to + 'T00:00:00');
     const days = Math.round((t - f) / 86400000) + 1;
@@ -801,6 +810,81 @@ router.get('/conversion', async (req, res) => {
     } catch (err) {
         log.error('GET /conversion error', err);
         res.status(500).json({ success: false, error: 'Помилка аналітики конверсії' });
+    }
+});
+
+// GET /api/analytics/deals-lifecycle — accepted vs closed leads for selected range
+router.get('/deals-lifecycle', async (req, res) => {
+    try {
+        const { from, to } = getRequestDateRange(req.query);
+        const cacheKey = actorScopedCacheKey(req, 'deals-lifecycle', from, to);
+        const cached = getCached(cacheKey);
+        if (cached) return res.json(cached);
+
+        const acceptedPredicate = `(COALESCE(l.pipeline_stage, '') IN ('deposit_received', 'waiting') OR COALESCE(l.status, '') = 'booked')`;
+        const closedPredicate = `(COALESCE(l.pipeline_stage, '') IN ('completed', 'closed') OR COALESCE(l.status, '') = 'completed')`;
+        const dateExpr = `COALESCE(l.booked_at::date, l.event_date::date, l.created_at::date)`;
+
+        const totals = await pool.query(`
+            SELECT
+                COUNT(*) FILTER (WHERE ${acceptedPredicate})::int AS accepted,
+                COUNT(*) FILTER (WHERE ${closedPredicate})::int AS closed,
+                COUNT(*) FILTER (WHERE COALESCE(l.pipeline_stage, '') = 'lost' OR COALESCE(l.status, '') = 'lost')::int AS lost,
+                COUNT(*)::int AS total
+            FROM leads l
+            WHERE ${dateExpr} >= $1::date
+              AND ${dateExpr} <= $2::date
+              AND COALESCE(l.lead_type, 'quality') <> 'spam'
+        `, [from, to]);
+
+        const trend = await pool.query(`
+            WITH days AS (
+                SELECT generate_series($1::date, $2::date, interval '1 day')::date AS day
+            ),
+            lead_days AS (
+                SELECT
+                    ${dateExpr} AS day,
+                    ${acceptedPredicate} AS accepted,
+                    ${closedPredicate} AS closed
+                FROM leads l
+                WHERE ${dateExpr} >= $1::date
+                  AND ${dateExpr} <= $2::date
+                  AND COALESCE(l.lead_type, 'quality') <> 'spam'
+            )
+            SELECT
+                days.day::text AS date,
+                COUNT(*) FILTER (WHERE lead_days.accepted)::int AS accepted,
+                COUNT(*) FILTER (WHERE lead_days.closed)::int AS closed
+            FROM days
+            LEFT JOIN lead_days ON lead_days.day = days.day
+            GROUP BY days.day
+            ORDER BY days.day
+        `, [from, to]);
+
+        const row = totals.rows[0] || {};
+        const accepted = parseInt(row.accepted, 10) || 0;
+        const closed = parseInt(row.closed, 10) || 0;
+        const data = {
+            success: true,
+            period: { from, to },
+            accepted,
+            closed,
+            lost: parseInt(row.lost, 10) || 0,
+            total: parseInt(row.total, 10) || 0,
+            conversionRatio: accepted > 0 ? Math.round((closed / accepted) * 1000) / 10 : 0,
+            trend: trend.rows,
+            meta: {
+                acceptedStages: ['deposit_received', 'waiting'],
+                closedStages: ['completed', 'closed'],
+                dateBasis: 'COALESCE(leads.booked_at, leads.event_date, leads.created_at)',
+                stageTimestampTruth: 'missing'
+            }
+        };
+        setCache(cacheKey, data);
+        res.json(data);
+    } catch (err) {
+        log.error('GET /deals-lifecycle error', err);
+        res.status(500).json({ success: false, error: 'Помилка звіту accepted-vs-closed' });
     }
 });
 

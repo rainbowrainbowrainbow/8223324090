@@ -48,7 +48,8 @@ const AnState = {
     customTo: null,
     overview: null,
     charts: null,
-    comparison: null
+    comparison: null,
+    dealsLifecycle: null
 };
 
 // ==========================================
@@ -115,6 +116,16 @@ async function fetchComparison() {
         renderComparison(res);
     } catch (err) {
         console.error('Failed to fetch comparison', err);
+    }
+}
+
+async function fetchDealsLifecycle() {
+    try {
+        const res = await apiRequest('GET', `/api/analytics/deals-lifecycle?${getParams()}`);
+        AnState.dealsLifecycle = res;
+        renderDealsLifecycle(res);
+    } catch (err) {
+        console.error('Failed to fetch deals lifecycle', err);
     }
 }
 
@@ -346,6 +357,49 @@ function renderSegments(seg) {
     `;
 }
 
+function renderDealsLifecycle(data) {
+    const el = document.getElementById('dealsLifecycleContent');
+    if (!el) return;
+    if (!data) { el.innerHTML = ''; return; }
+    const maxVal = Math.max(...(data.trend || []).map(d => Math.max(d.accepted || 0, d.closed || 0)), 1);
+    const bars = (data.trend || []).map(d => {
+        const acceptedH = Math.max(((d.accepted || 0) / maxVal) * 120, d.accepted ? 2 : 0);
+        const closedH = Math.max(((d.closed || 0) / maxVal) * 120, d.closed ? 2 : 0);
+        return `<div class="an-bar-group">
+            <div class="an-bar-pair" style="height:120px">
+                <div class="an-bar blue" style="height:${acceptedH}px" title="Прийнято: ${d.accepted || 0}"></div>
+                <div class="an-bar green" style="height:${closedH}px" title="Закрито: ${d.closed || 0}"></div>
+            </div>
+            <div class="an-bar-label">${String(d.date || '').substring(8)}</div>
+        </div>`;
+    }).join('');
+
+    el.innerHTML = `
+        <div class="an-section">
+            <h3 class="an-section-title">Прийняті vs закриті угоди</h3>
+            <div class="an-charts-row">
+                <div class="an-chart-container">
+                    <div class="an-chart-title">${fmtDate(data.period?.from)} — ${fmtDate(data.period?.to)}</div>
+                    <div class="an-kpi-grid" style="margin-bottom:12px">
+                        <div class="an-kpi-card blue"><div class="an-kpi-label">Прийнято</div><div class="an-kpi-value">${fmtNum(data.accepted)}</div></div>
+                        <div class="an-kpi-card green"><div class="an-kpi-label">Закрито</div><div class="an-kpi-value">${fmtNum(data.closed)}</div></div>
+                        <div class="an-kpi-card teal"><div class="an-kpi-label">Конверсія</div><div class="an-kpi-value">${data.conversionRatio || 0}%</div></div>
+                    </div>
+                    <div style="font-size:12px;color:var(--gray-400)">Accepted: deposit_received/waiting. Closed: completed/closed.</div>
+                </div>
+                <div class="an-chart-container">
+                    <div class="an-chart-title">Динаміка за датами</div>
+                    <div class="an-bar-chart" style="height:140px">${bars || '<div style="color:var(--gray-400);font-size:13px;padding:8px">Немає даних</div>'}</div>
+                    <div class="an-legend">
+                        <div class="an-legend-item"><div class="an-legend-dot" style="background:#3B82F6"></div> Прийнято</div>
+                        <div class="an-legend-item"><div class="an-legend-dot" style="background:#10B981"></div> Закрито</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 // ==========================================
 // RENDER — COMPARISON TABLE
 // ==========================================
@@ -418,6 +472,7 @@ function applyCustomRange() {
 function refreshAll() {
     fetchOverview();
     fetchCharts();
+    fetchDealsLifecycle();
     fetchComparison();
 }
 

@@ -523,12 +523,11 @@ function leadOmniHref(workspace, conversation) {
 function leadContactLinks(lead, workspace) {
     const phone = lead.phone || workspace.customer?.phone || '';
     const tel = phone ? 'tel:' + phone.replace(/[^+\d]/g, '') : null;
-    const tgValue = phone ? phone.replace(/[^\d]/g, '') : '';
-    const tg = tgValue ? `https://t.me/${tgValue}` : null;
+    const omni = leadOmniHref(workspace);
     return [
         workspaceLink(tel, 'Подзвонити', 'success'),
-        workspaceLink(tg, 'Telegram'),
-        workspaceLink(leadOmniHref(workspace), 'Комунікації', 'primary')
+        workspaceLink(omni, 'Telegram у CRM', 'primary'),
+        workspaceLink(omni, 'Комунікації')
     ].join('');
 }
 
@@ -743,6 +742,7 @@ function renderLeadWorkspaceContent(workspace) {
                     ${leadContactLinks(lead, workspace)}
                     <button type="button" class="workspace-btn" onclick="editLead(${lead.id})">Редагувати</button>
                     <button type="button" class="workspace-btn" onclick="showCustomerCardModal(${lead.id})">Картка</button>
+                    <button type="button" class="workspace-btn" onclick="linkWorkspaceLeadCustomer(${lead.id})">${customer?.id ? 'Змінити клієнта' : 'Привʼязати клієнта'}</button>
                 </div>
             </div>
         </section>
@@ -1793,6 +1793,18 @@ async function createLeadWorkspaceCallbackTask(leadId) {
     defaultDeadline.setDate(defaultDeadline.getDate() + 1);
     defaultDeadline.setHours(10, 0, 0, 0);
     const defaultTitle = `Передзвонити: ${lead.clientName || lead.client_name || `лід #${leadId}`}`;
+    let taskOwners = [];
+    try {
+        const ownersRes = await apiFetch('/api/tasks/owners');
+        const ownersData = await ownersRes.json();
+        taskOwners = ownersData.users || [];
+    } catch (err) {
+        console.error('Load task owners error', err);
+    }
+    if (!taskOwners.length) {
+        if (typeof showNotification === 'function') showNotification('Немає доступних виконавців для задачі', 'error');
+        return;
+    }
 
     let values = null;
     if (typeof formModal === 'function') {
@@ -1809,6 +1821,19 @@ async function createLeadWorkspaceCallbackTask(leadId) {
                     { value: 'normal', label: 'Звичайний' },
                     { value: 'low', label: 'Низький' }
                 ]
+            },
+            {
+                key: 'ownerUserId',
+                label: 'Виконавець',
+                type: 'select',
+                required: true,
+                options: [
+                    { value: '', label: 'Оберіть виконавця' },
+                    ...taskOwners.map(owner => ({
+                        value: String(owner.id),
+                        label: `${owner.label || owner.name || owner.username || ('User #' + owner.id)}${owner.role ? ' (' + owner.role + ')' : ''}`
+                    }))
+                ]
             }
         ], { okText: 'Створити задачу', type: 'success', icon: '📞' });
     } else if (typeof promptModal === 'function') {
@@ -1820,6 +1845,10 @@ async function createLeadWorkspaceCallbackTask(leadId) {
     const title = String(values.title || '').trim();
     if (!title) {
         if (typeof showNotification === 'function') showNotification('Назва задачі обовʼязкова', 'error');
+        return;
+    }
+    if (!values.ownerUserId) {
+        if (typeof showNotification === 'function') showNotification('Оберіть виконавця задачі', 'error');
         return;
     }
 
@@ -1835,7 +1864,7 @@ async function createLeadWorkspaceCallbackTask(leadId) {
             task_type: 'human',
             source_type: 'lead',
             source_id: String(leadId),
-            assigned_to: lead.assignedName || null
+            ownerUserId: values.ownerUserId
         };
         const res = await apiFetch('/api/tasks', { method: 'POST', body: JSON.stringify(body) });
         if (!res) return;
@@ -1904,6 +1933,55 @@ async function confirmLeadWorkspaceBooking(leadId, bookingId) {
     }
 }
 
+async function linkWorkspaceLeadCustomer(leadId) {
+    const workspace = currentWorkspaceData?.lead?.id === leadId ? currentWorkspaceData : null;
+    const currentCustomerId = workspace?.customer?.id ? String(workspace.customer.id) : '';
+    let rawId = '';
+    if (typeof promptModal === 'function') {
+        rawId = await promptModal('Вкажіть ID існуючого клієнта або залиште порожнім, щоб створити нового з ліда', {
+            defaultValue: currentCustomerId,
+            placeholder: 'ID клієнта',
+            okText: 'Привʼязати'
+        });
+        if (rawId === null || rawId === undefined) return;
+    } else {
+        rawId = window.prompt('ID клієнта або порожньо для створення нового', currentCustomerId) || '';
+    }
+
+    const trimmed = String(rawId || '').trim();
+    const body = trimmed
+        ? { customerId: parseInt(trimmed, 10) }
+        : { createNew: true };
+    if (trimmed && (!Number.isInteger(body.customerId) || body.customerId <= 0)) {
+        if (typeof showNotification === 'function') showNotification('ID клієнта має бути числом', 'error');
+        return;
+    }
+
+    if (!trimmed && typeof confirmModal === 'function') {
+        const ok = await confirmModal('Створити нового клієнта з даних цього ліда?', { okText: 'Створити і привʼязати', type: 'success' });
+        if (!ok) return;
+    }
+
+    try {
+        const res = await apiFetch(`/api/leads/${leadId}/link-customer`, {
+            method: 'POST',
+            body: JSON.stringify(body)
+        });
+        if (!res) return;
+        const data = await res.json();
+        if (data.success) {
+            const suggestionText = data.suggestions?.length ? ` Є ${data.suggestions.length} можливих дублікатів.` : '';
+            if (typeof showNotification === 'function') showNotification('Клієнта привʼязано до ліда.' + suggestionText, 'success');
+            await openLeadWorkspace(leadId, { pushState: false });
+        } else if (typeof showNotification === 'function') {
+            showNotification(data.error || 'Не вдалося привʼязати клієнта', 'error');
+        }
+    } catch (err) {
+        console.error('Link lead customer error', err);
+        if (typeof showNotification === 'function') showNotification('Помилка привʼязки клієнта', 'error');
+    }
+}
+
 async function moveLeadWorkspaceStage(leadId, stage) {
     if (!leadId || !stage) return;
     if (stage === 'lost') {
@@ -1923,6 +2001,7 @@ window.closeLeadWorkspace = closeLeadWorkspace;
 window.createLeadWorkspaceCallbackTask = createLeadWorkspaceCallbackTask;
 window.completeLeadWorkspaceTask = completeLeadWorkspaceTask;
 window.confirmLeadWorkspaceBooking = confirmLeadWorkspaceBooking;
+window.linkWorkspaceLeadCustomer = linkWorkspaceLeadCustomer;
 window.moveLeadWorkspaceStage = moveLeadWorkspaceStage;
 window.closeQualityCategoryModal = closeQualityCategoryModal;
 window.closeLostReasonModal = closeLostReasonModal;

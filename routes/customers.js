@@ -35,6 +35,29 @@ function useSupabase() {
     return !!getSupabase();
 }
 
+function cleanText(value) {
+    if (value === undefined || value === null) return null;
+    const text = String(value).trim();
+    return text || null;
+}
+
+function normalizeCustomerPayload(body = {}) {
+    const name = cleanText(body.name);
+    const childBirthday = cleanText(body.childBirthday ?? body.child_birthday);
+    if (childBirthday && !/^\d{4}-\d{2}-\d{2}$/.test(childBirthday)) {
+        return { error: 'Дата народження має бути у форматі YYYY-MM-DD' };
+    }
+    return {
+        name,
+        phone: cleanText(body.phone),
+        instagram: cleanText(body.instagram)?.replace(/^@+/, '') || null,
+        childName: cleanText(body.childName ?? body.child_name),
+        childBirthday: childBirthday || null,
+        source: cleanText(body.source),
+        notes: cleanText(body.notes)
+    };
+}
+
 function scopedBookingAggregateSql(user, params, alias = 'b') {
     const visibility = getVisibleBookingScope(user, params, alias);
     return {
@@ -1100,17 +1123,19 @@ router.get('/:id', async (req, res) => {
 // Create customer
 router.post('/', async (req, res) => {
     try {
-        const { name, phone, instagram, childName, childBirthday, source, notes } = req.body;
-        if (!name || !name.trim()) {
+        const input = normalizeCustomerPayload(req.body);
+        if (input.error) return res.status(400).json({ error: input.error });
+        const { name, phone, instagram, childName, childBirthday, source, notes } = input;
+        if (!name) {
             return res.status(400).json({ error: "Ім'я клієнта обов'язкове" });
         }
 
         const sb = getSupabase();
         if (sb) {
             const { data, error } = await sb.from('customers').insert({
-                name: name.trim(), phone: phone || null, instagram: instagram || null,
-                child_name: childName || null, child_birthday: childBirthday || null,
-                source: source || null, notes: notes || null
+                name, phone, instagram,
+                child_name: childName, child_birthday: childBirthday,
+                source, notes
             }).select().single();
             if (error) throw error;
             return res.json(mapCustomerRow(data));
@@ -1119,7 +1144,7 @@ router.post('/', async (req, res) => {
         const result = await pool.query(
             `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source, notes)
              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [name.trim(), phone || null, instagram || null, childName || null, childBirthday || null, source || null, notes || null]
+            [name, phone, instagram, childName, childBirthday, source, notes]
         );
         res.json(mapCustomerRow(result.rows[0]));
     } catch (err) {
@@ -1132,17 +1157,19 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, phone, instagram, childName, childBirthday, source, notes } = req.body;
-        if (!name || !name.trim()) {
+        const input = normalizeCustomerPayload(req.body);
+        if (input.error) return res.status(400).json({ error: input.error });
+        const { name, phone, instagram, childName, childBirthday, source, notes } = input;
+        if (!name) {
             return res.status(400).json({ error: "Ім'я клієнта обов'язкове" });
         }
 
         const sb = getSupabase();
         if (sb) {
             const { data, error } = await sb.from('customers').update({
-                name: name.trim(), phone: phone || null, instagram: instagram || null,
-                child_name: childName || null, child_birthday: childBirthday || null,
-                source: source || null, notes: notes || null, updated_at: new Date().toISOString()
+                name, phone, instagram,
+                child_name: childName, child_birthday: childBirthday,
+                source, notes, updated_at: new Date().toISOString()
             }).eq('id', parseInt(id)).select().single();
             if (error) throw error;
             if (!data) return res.status(404).json({ error: 'Клієнта не знайдено' });
@@ -1153,7 +1180,7 @@ router.put('/:id', async (req, res) => {
             `UPDATE customers SET name=$1, phone=$2, instagram=$3, child_name=$4,
              child_birthday=$5, source=$6, notes=$7, updated_at=NOW()
              WHERE id=$8 RETURNING *`,
-            [name.trim(), phone || null, instagram || null, childName || null, childBirthday || null, source || null, notes || null, parseInt(id)]
+            [name, phone, instagram, childName, childBirthday, source, notes, parseInt(id)]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Клієнта не знайдено' });
         res.json(mapCustomerRow(result.rows[0]));

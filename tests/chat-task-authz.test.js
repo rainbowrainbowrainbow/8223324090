@@ -1,5 +1,9 @@
 const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const repoRoot = path.resolve(__dirname, '..');
 
 let state;
 
@@ -211,5 +215,55 @@ describe('chat task authorization and duplicate-safe creation', () => {
         assert.notEqual(second.task.id, first.task.id);
         assert.equal(state.inserts.length, 2);
         assert.equal(state.tx.length, 0);
+    });
+});
+
+describe('operations flow static contracts', () => {
+    it('wires chat-created operational tasks through canonical tasks with explicit owner selection', () => {
+        const chatPage = fs.readFileSync(path.join(repoRoot, 'js/chat-page.js'), 'utf8');
+
+        assert.match(chatPage, /\/api\/tasks\/owners/);
+        assert.match(chatPage, /ownerUserId: payload\.ownerUserId/);
+        assert.match(chatPage, /sourceType: msg && msg\.id \? 'chat_message' : 'chat_channel'/);
+        assert.match(chatPage, /Для \/task вкажіть виконавця/);
+        assert.doesNotMatch(chatPage, /_api\('POST', '\/tasks'/);
+    });
+
+    it('keeps task assignment notifications change-aware and typed-owner aware', () => {
+        const tasksRoute = fs.readFileSync(path.join(repoRoot, 'routes/tasks.js'), 'utf8');
+        const kleshnya = fs.readFileSync(path.join(repoRoot, 'services/kleshnya.js'), 'utf8');
+
+        assert.match(tasksRoute, /function taskAssigneeChanged/);
+        assert.match(tasksRoute, /router\.post\('\/:id\/reassign'[\s\S]*notifyTaskAssignment\(result\.task/);
+        assert.match(tasksRoute, /taskAssigneeChanged\(old, updatedTask\)/);
+        assert.match(kleshnya, /WHERE id = \$1 AND telegram_chat_id IS NOT NULL/);
+    });
+
+    it('keeps lead/customer linking explicit and duplicate handling suggest-only', () => {
+        const leadsRoute = fs.readFileSync(path.join(repoRoot, 'routes/leads.js'), 'utf8');
+        const leadsPage = fs.readFileSync(path.join(repoRoot, 'js/leads-page.js'), 'utf8');
+        const customersPage = fs.readFileSync(path.join(repoRoot, 'js/customers-page.js'), 'utf8');
+        const customersRoute = fs.readFileSync(path.join(repoRoot, 'routes/customers.js'), 'utf8');
+
+        assert.match(leadsRoute, /\/:id\/link-customer/);
+        assert.match(leadsRoute, /mergePolicy: 'suggest_only'/);
+        assert.match(customersRoute, /function normalizeCustomerPayload/);
+        assert.match(customersRoute, /Дата народження має бути у форматі YYYY-MM-DD/);
+        assert.match(leadsPage, /linkWorkspaceLeadCustomer/);
+        assert.match(leadsPage, /Telegram у CRM/);
+        assert.match(customersPage, /Telegram у CRM/);
+        assert.doesNotMatch(customersPage, /Telegram зовнішньо/);
+    });
+
+    it('adds accepted-vs-closed analytics with explicit missing stage timestamp truth', () => {
+        const analyticsRoute = fs.readFileSync(path.join(repoRoot, 'routes/analytics.js'), 'utf8');
+        const analyticsPage = fs.readFileSync(path.join(repoRoot, 'js/analytics-page.js'), 'utf8');
+        const analyticsHtml = fs.readFileSync(path.join(repoRoot, 'analytics.html'), 'utf8');
+
+        assert.match(analyticsRoute, /\/deals-lifecycle/);
+        assert.match(analyticsRoute, /stageTimestampTruth: 'missing'/);
+        assert.match(analyticsPage, /fetchDealsLifecycle/);
+        assert.match(analyticsPage, /Прийняті vs закриті угоди/);
+        assert.match(analyticsHtml, /dealsLifecycleContent/);
     });
 });

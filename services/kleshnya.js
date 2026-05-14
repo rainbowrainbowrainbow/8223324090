@@ -355,13 +355,19 @@ async function sendTaskNotification(text, task) {
  */
 async function sendPersonalNotification(text, task) {
     const assignee = task.assigned_to;
-    if (!assignee) return false;
+    const ownerUserId = Number(task.owner_user_id || task.ownerUserId || 0);
+    if (!assignee && !ownerUserId) return false;
 
     try {
-        const result = await pool.query(
-            'SELECT telegram_chat_id FROM users WHERE username = $1 AND telegram_chat_id IS NOT NULL',
-            [assignee]
-        );
+        const result = ownerUserId
+            ? await pool.query(
+                'SELECT telegram_chat_id FROM users WHERE id = $1 AND telegram_chat_id IS NOT NULL',
+                [ownerUserId]
+            )
+            : await pool.query(
+                'SELECT telegram_chat_id FROM users WHERE username = $1 AND telegram_chat_id IS NOT NULL',
+                [assignee]
+            );
         if (result.rows.length > 0 && result.rows[0].telegram_chat_id) {
             const personalChatId = String(result.rows[0].telegram_chat_id);
             const buttons = getTaskInlineButtons(task);

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.48.12 - Operations Flow Cluster v1 (2026-05-14)
+
+### Operations Flow [codex]
+- **Задачі** - chat-to-task тепер створює canonical `tasks` з явним operator-selected `ownerUserId`; slash `/task` більше не створює окрему legacy chat-task і дубль у main tasks.
+- **Notifications** - assignment/reassignment notifications стали typed-owner aware, bulk/reassign hooks використовують існуючу task notification доріжку, а no-op update більше не дублює повідомлення.
+- **Lead/Customer** - lead workspace отримав explicit link/create-link клієнта; duplicate handling лишається suggest-only без auto-merge, а Telegram entry points ведуть у CRM Omni.
+- **Analytics** - додано accepted-vs-closed deals report за вибраний date range із явною позначкою, що durable stage timestamp truth ще відсутня.
+- **Stop-rules** - multi-social identity schema, multi-celebrant storage і task multi-responsible model не промоутяться без доведеної durable truth.
+
+---
+
 ## v0.48.11 - Scoped Visibility & Operations Mega Completion v1 (2026-05-14)
 
 ### Visibility & Operations [codex]

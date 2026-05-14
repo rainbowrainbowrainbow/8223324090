@@ -540,6 +540,98 @@ router.patch('/:id', async (req, res) => {
     }
 });
 
+// POST /api/leads/:id/link-customer — explicit operator-confirmed lead/customer link
+router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const leadId = parseInt(req.params.id, 10);
+        const requestedCustomerId = req.body?.customerId ?? req.body?.customer_id;
+        const createNew = req.body?.createNew === true || req.body?.create_new === true;
+
+        const leadResult = await client.query('SELECT * FROM leads WHERE id = $1 LIMIT 1', [leadId]);
+        if (!leadResult.rows.length) {
+            return res.status(404).json({ success: false, error: 'Лід не знайдено' });
+        }
+        const lead = leadResult.rows[0];
+
+        await client.query('BEGIN');
+
+        let customer;
+        let mode = 'linked_existing';
+        if (requestedCustomerId) {
+            const customerId = parseInt(requestedCustomerId, 10);
+            if (!Number.isInteger(customerId) || customerId <= 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, error: 'customerId має бути додатним числом' });
+            }
+            const existing = await client.query('SELECT * FROM customers WHERE id = $1 LIMIT 1', [customerId]);
+            if (!existing.rows.length) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, error: 'Клієнта не знайдено' });
+            }
+            const updated = await client.query(
+                `UPDATE customers
+                 SET lead_id = $1,
+                     phone = COALESCE(NULLIF(phone, ''), $2),
+                     instagram = COALESCE(NULLIF(instagram, ''), $3),
+                     source = COALESCE(NULLIF(source, ''), $4),
+                     updated_at = NOW()
+                 WHERE id = $5
+                 RETURNING *`,
+                [leadId, lead.phone || null, normalizeInstagram(lead.instagram) || null, lead.source || 'lead', customerId]
+            );
+            customer = updated.rows[0];
+        } else if (createNew) {
+            const inserted = await client.query(
+                `INSERT INTO customers (name, phone, instagram, child_name, source, notes, lead_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 RETURNING *`,
+                [
+                    lead.client_name || `Lead #${leadId}`,
+                    lead.phone || null,
+                    normalizeInstagram(lead.instagram) || null,
+                    null,
+                    lead.source || lead.source_channel || 'lead',
+                    [lead.notes, lead.child_age ? `Вік дитини з ліда: ${lead.child_age}` : null].filter(Boolean).join('\n') || null,
+                    leadId
+                ]
+            );
+            customer = inserted.rows[0];
+            mode = 'created_new';
+        } else {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Передайте customerId або createNew=true' });
+        }
+
+        const suggestionsResult = await client.query(`
+            SELECT id, name, phone, instagram
+            FROM customers
+            WHERE id <> $1
+              AND (
+                ($2 <> '' AND regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') = $2)
+                OR ($3 <> '' AND lower(regexp_replace(COALESCE(instagram, ''), '^@+', '', 'g')) = $3)
+              )
+            ORDER BY updated_at DESC NULLS LAST, id DESC
+            LIMIT 5
+        `, [customer.id, normalizeDigits(customer.phone || lead.phone), normalizeInstagram(customer.instagram || lead.instagram)]);
+
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            mode,
+            mergePolicy: 'suggest_only',
+            customer: mapWorkspaceCustomer(customer),
+            suggestions: suggestionsResult.rows.map(mapWorkspaceCustomer)
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('POST /leads/:id/link-customer error', err);
+        res.status(500).json({ success: false, error: 'Помилка привʼязки клієнта' });
+    } finally {
+        client.release();
+    }
+});
+
 // GET /api/leads/pipeline — pipeline funnel by stages (v29.1.0)
 // Stages: new → contacted → info_sent → deal → deposit_received → waiting → completed → closed / lost
 router.get('/pipeline', async (req, res) => {

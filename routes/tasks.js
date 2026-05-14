@@ -39,12 +39,23 @@ function getKleshnya() {
 async function notifyTaskAssignment(task, username) {
     try {
         const chatId = await getConfiguredChatId();
-        if (!chatId) return;
+        if (!chatId) return { sent: false, reason: 'no_chat_id' };
         const text = formatTaskNotification('task_assigned', task, { username });
-        if (text) await sendTelegramMessage(chatId, text);
+        if (!text) return { sent: false, reason: 'empty_template' };
+        const result = await sendTelegramMessage(chatId, text);
+        return { sent: !!result?.ok, result };
     } catch (err) {
         log.error(`Task notification failed: ${err.message}`);
+        return { sent: false, reason: 'error', error: err.message };
     }
+}
+
+function taskAssigneeChanged(oldTask = {}, newTask = {}) {
+    const oldOwner = Number(oldTask.owner_user_id || 0);
+    const newOwner = Number(newTask.owner_user_id || 0);
+    const oldLabel = String(oldTask.assigned_to || '');
+    const newLabel = String(newTask.assigned_to || '');
+    return oldOwner !== newOwner || oldLabel !== newLabel;
 }
 
 const VALID_STATUSES = ['todo', 'in_progress', 'done'];
@@ -293,6 +304,7 @@ router.post('/:id/reassign', async (req, res) => {
             sourceSurface: sourceSurface(req.body),
             route: 'tasks_task_reassign'
         });
+        notifyTaskAssignment(result.task, req.user?.username || 'system').catch(() => {});
         res.json({
             success: true,
             task: normalizeTaskPayload(result.task),
@@ -532,12 +544,14 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             } catch (e) { /* gamification not ready */ }
         }
 
-        // v19.10: Notify on task assignment
-        if (assigned_to) {
-            notifyTaskAssignment(result.rows[0], actor).catch(() => {});
+        const updatedTask = result.rows[0];
+
+        // v19.10/v0.48.12: Notify only when assignment actually changes.
+        if (taskAssigneeChanged(old, updatedTask) && (updatedTask.owner_user_id || updatedTask.assigned_to)) {
+            notifyTaskAssignment(updatedTask, actor).catch(() => {});
         }
 
-        res.json({ success: true, task: result.rows[0] });
+        res.json({ success: true, task: updatedTask });
         _alertPush();
     } catch (err) {
         log.error('Update error', err);
@@ -674,12 +688,25 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
                 params
             );
         } else if (action === 'assign' && assignTo) {
-            const typedOwner = await resolveTypedTaskOwner({ ownerUserId: assignTo }, req.user).catch(() => null);
+            let typedOwner;
+            try {
+                typedOwner = await resolveTypedTaskOwner({ ownerUserId: assignTo }, req.user);
+            } catch (ownerErr) {
+                return res.status(ownerErr.statusCode || 400).json({
+                    success: false,
+                    error: ownerErr.message || 'Task owner is not assignable',
+                    code: ownerErr.code || 'TASK_OWNER_NOT_ASSIGNABLE'
+                });
+            }
             result = await pool.query(
                 `UPDATE tasks t SET owner_user_id = $${params.length + 1}, assigned_to = $${params.length + 2}, updated_at = NOW()
-                 WHERE t.id = ANY($1::int[]) ${visibility}`,
-                [...params, typedOwner?.ownerUserId || null, typedOwner?.assignedToSnapshot || assignTo]
+                 WHERE t.id = ANY($1::int[]) ${visibility}
+                 RETURNING t.*`,
+                [...params, typedOwner.ownerUserId, typedOwner.assignedToSnapshot]
             );
+            for (const task of result.rows || []) {
+                notifyTaskAssignment(task, req.user?.username || 'system').catch(() => {});
+            }
         } else if (action === 'priority' && priority) {
             if (!VALID_PRIORITIES.includes(priority)) return res.status(400).json({ error: 'Invalid priority' });
             result = await pool.query(

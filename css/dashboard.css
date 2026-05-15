@@ -406,6 +406,7 @@ body.dark-mode .board-frame-label {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 16px;
+    align-items: start;
 }
 
 /* Work Queue v1 */
@@ -1686,6 +1687,7 @@ body.dark-mode .board-frame-label {
     border: 1px solid rgba(0,0,0,0.06);
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: var(--shadow-sm);
+    align-self: start;
 }
 
 .widget-card:hover {
@@ -2195,17 +2197,18 @@ body.dark-mode .board-frame-label {
 .weather-display {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
+    min-height: 58px;
 }
 
 .weather-temp {
-    font-size: 36px;
+    font-size: 28px;
     font-weight: 900;
     line-height: 1;
 }
 
 .weather-icon {
-    font-size: 36px;
+    font-size: 28px;
 }
 
 .weather-details {
@@ -2216,13 +2219,13 @@ body.dark-mode .board-frame-label {
 /* Currency widget */
 .currency-rates {
     display: flex;
-    gap: 16px;
+    gap: 10px;
 }
 
 .currency-item {
     flex: 1;
     text-align: center;
-    padding: 10px;
+    padding: 8px 10px;
     background: rgba(0,0,0,0.02);
     border-radius: 10px;
 }
@@ -2234,7 +2237,7 @@ body.dark-mode .board-frame-label {
 }
 
 .currency-value {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 900;
     margin-top: 4px;
 }

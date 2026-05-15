@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.11 - Dashboard Widget Cleanup (2026-05-15)
+
+### Dashboard / Widget Density [codex]
+- **Removed widgets** - з головного dashboard прибрано великі службові картки `finance_today`, `reports_today`, `account_stats` і `week_bookings`.
+- **Compact widgets** - погода й курси валют стали нижчими та більше не виглядають як великі порожні блоки.
+- **Layout** - dashboard grid тепер вирівнює віджети по природній висоті, без розтягування всього рядка до найвищої картки.
+
+---
+
 ## v0.50.10 - Sidebar Profile Cleanup (2026-05-15)
 
 ### Sidebar / Dashboard Cleanup [codex]

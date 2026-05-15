@@ -1,5 +1,5 @@
 /**
- * js/dashboard-page.js — Dashboard page logic (v0.50.5)
+ * js/dashboard-page.js — Dashboard page logic (v0.50.11)
  * Widget-based personalized dashboard with safe board foundation mode.
  */
 
@@ -10,6 +10,7 @@ const DashboardPage = (() => {
     const BOARD_SAVE_DEBOUNCE_MS = 900;
     const BOARD_ALLOWED_TYPES = new Set(['widget', 'note', 'text', 'shape', 'frame']);
     const BOARD_ALLOWED_DEPTHS = new Set(['live-compact', 'headline-only']);
+    const DASHBOARD_RETIRED_WIDGETS = new Set(['finance_today', 'reports_today', 'account_stats', 'week_bookings']);
 
     // Widget definitions — all available widgets
     const WIDGET_DEFS = {
@@ -114,6 +115,7 @@ const DashboardPage = (() => {
     }
 
     function canUseWidget(widgetKey) {
+        if (DASHBOARD_RETIRED_WIDGETS.has(widgetKey)) return false;
         const def = WIDGET_DEFS[widgetKey];
         if (!def) return false;
         return !def.minRole || typeof hasMinRole !== 'function' || hasMinRole(def.minRole);
@@ -2304,7 +2306,9 @@ const DashboardPage = (() => {
     }
 
     function normalizeDashboardWidgets(widgets) {
-        const list = Array.isArray(widgets) ? widgets.filter(Boolean) : [];
+        const list = Array.isArray(widgets)
+            ? widgets.filter(Boolean).filter(widgetKey => WIDGET_DEFS[widgetKey] && !DASHBOARD_RETIRED_WIDGETS.has(widgetKey))
+            : [];
         const funnelDef = WIDGET_DEFS.funnel;
         const canSeeFunnel = funnelDef && (!funnelDef.minRole || typeof hasMinRole !== 'function' || hasMinRole(funnelDef.minRole));
         if (canSeeFunnel && !list.includes('funnel')) {
@@ -3171,7 +3175,7 @@ const DashboardPage = (() => {
 
         const role = getUserRole();
         const availableWidgets = Object.entries(WIDGET_DEFS)
-            .filter(([, def]) => !def.minRole || (typeof hasMinRole === 'function' && hasMinRole(def.minRole)));
+            .filter(([key, def]) => !DASHBOARD_RETIRED_WIDGETS.has(key) && (!def.minRole || (typeof hasMinRole === 'function' && hasMinRole(def.minRole))));
 
         const widgetOptions = availableWidgets.map(([key, def]) => {
             const isDefault = _config && _config.widgets && _config.widgets.includes(key);
@@ -3264,7 +3268,7 @@ const DashboardPage = (() => {
     // Settings modal with drag & drop reordering
     function openSettings() {
         const availableWidgets = Object.entries(WIDGET_DEFS)
-            .filter(([, def]) => !def.minRole || (typeof hasMinRole === 'function' && hasMinRole(def.minRole)));
+            .filter(([key, def]) => !DASHBOARD_RETIRED_WIDGETS.has(key) && (!def.minRole || (typeof hasMinRole === 'function' && hasMinRole(def.minRole))));
 
         const activeWidgets = _config ? (_config.widgets || []) : [];
 

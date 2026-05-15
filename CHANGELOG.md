@@ -4,6 +4,14 @@
 
 ---
 
+## v0.50.18 - Sidebar Dashboard Badge Cleanup (2026-05-15)
+
+### Sidebar / Navigation [codex]
+- **Dashboard badge** - прибрано помилковий лічильник alert-ів з кнопки `Дашборд` у sidebar.
+- **Badge truth** - alerts лишаються тільки там, де їм місце: у сповіщеннях і відповідних dashboard surfaces, без фальшивого дублювання на jump-кнопці.
+
+---
+
 ## v0.50.17 - Sidebar Dashboard Jump (2026-05-15)
 
 ### Sidebar / Navigation [codex]

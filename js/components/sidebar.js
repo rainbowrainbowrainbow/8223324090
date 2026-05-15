@@ -426,7 +426,6 @@ const Sidebar = (() => {
         const href = String(item?.href || '');
         if (href === '/chat') return 'unread';
         if (href === '/sales-funnel') return 'leads_new';
-        if (href === '/dashboard') return 'alerts';
         return '';
     }
 

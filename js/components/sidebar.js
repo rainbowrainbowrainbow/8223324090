@@ -373,6 +373,7 @@ const Sidebar = (() => {
 
         _ensureAuroraLayer();
         _ensurePillsRow();
+        _ensureDashboardJump();
         _initPillTooltips();
         _ensureActiveIndicator();
         _initCollapsedTooltips(container);
@@ -572,6 +573,32 @@ const Sidebar = (() => {
                 <div class="sidebar-pill-meta" id="sidebarPillFunnelMeta">без нових</div>
             </a>`;
         sidebar.insertBefore(row, links);
+    }
+
+    function _ensureDashboardJump() {
+        const sidebar = document.getElementById('sidebarNav');
+        if (!sidebar) return;
+        const links = sidebar.querySelector('.sidebar-links');
+        if (!links) return;
+        let wrap = document.getElementById('sidebarDashboardJumpWrap');
+        if (!wrap) {
+            wrap = document.createElement('div');
+            wrap.id = 'sidebarDashboardJumpWrap';
+            wrap.className = 'sidebar-dashboard-jump-wrap';
+            wrap.innerHTML = `
+                <a href="/dashboard" class="sidebar-dashboard-jump" id="sidebarDashboardJump" data-page-access="/dashboard" aria-label="Відкрити Дашборд CRM">
+                    <span class="sidebar-dashboard-jump-icon">${_renderIcon('dashboard', 'sidebar-dashboard-jump-svg')}</span>
+                    <span class="sidebar-dashboard-jump-copy">
+                        <span class="sidebar-dashboard-jump-kicker">Головний екран</span>
+                        <span class="sidebar-dashboard-jump-title">Дашборд</span>
+                    </span>
+                    <span class="sidebar-dashboard-jump-arrow" aria-hidden="true">→</span>
+                </a>`;
+            sidebar.insertBefore(wrap, links);
+        }
+        const jump = document.getElementById('sidebarDashboardJump');
+        const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+        if (jump) jump.classList.toggle('active', currentPath === '/dashboard');
     }
 
     function _setPillDescription(widget, text) {
@@ -945,7 +972,7 @@ const Sidebar = (() => {
         if (sidebar && sidebar.dataset.sidebarLinkBound !== 'true') {
             sidebar.dataset.sidebarLinkBound = 'true';
             sidebar.addEventListener('click', (e) => {
-                const link = e.target.closest('.nav-link, .sidebar-quick-nav-link');
+                const link = e.target.closest('.nav-link, .sidebar-quick-nav-link, .sidebar-dashboard-jump');
                 if (!link) return;
                 if (window.innerWidth <= 768 && overlay) { sidebar.classList.remove('open'); overlay.classList.add('hidden'); }
             });

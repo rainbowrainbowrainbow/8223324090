@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.8 - Sidebar Role Line (2026-05-15)
+
+### Sidebar / Profile Card [codex]
+- **Profile card** - прибрано обрізаний time-based greeting `Доброго...` біля імені користувача.
+- **Roles** - під іменем тепер показується роль або ролі акаунта без привʼязки до часу доби.
+- **UI guard** - додано static smoke check, який не дасть повернути greeting-рядок у sidebar.
+
+---
+
 ## v0.50.7 - Sidebar AI Placeholder Cleanup (2026-05-15)
 
 ### Sidebar / Dashboard Surface [codex]

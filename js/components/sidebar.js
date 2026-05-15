@@ -529,19 +529,7 @@ const Sidebar = (() => {
         _bindProfileEntry(card);
     }
 
-    function _refreshNowCard() {
-        const nameEl = document.getElementById('sidebarNowName');
-        const greetEl = document.getElementById('sidebarNowGreeting');
-        const timeEl = document.getElementById('sidebarNowTime');
-        if (!nameEl) return;
-
-        const user = _getCurrentSidebarUser();
-        const now = new Date();
-        const hour = now.getHours();
-        const greet = hour < 5 ? 'Доброї ночі'
-            : hour < 12 ? 'Доброго ранку'
-            : hour < 18 ? 'Гарного дня'
-            : 'Доброго вечора';
+    function _sidebarRoleLabel(role) {
         const labels = {
             creator: 'Creator',
             director: 'Директор',
@@ -550,14 +538,47 @@ const Sidebar = (() => {
             manager: 'Менеджер',
             admin: 'Адмін',
             hr: 'HR',
+            hr_manager: 'HR менеджер',
             accountant: 'Бухгалтер',
             animator: 'Аніматор',
             instructor: 'Інструктор',
-            art_director: 'Арт директор'
+            trampoline_instructor: 'Інструктор батутів',
+            waiter: 'Офіціант',
+            bartender: 'Бармен',
+            cook: 'Кухар',
+            head_cook: 'Шеф-кухар',
+            art_director: 'Арт директор',
+            designer: 'Дизайнер',
+            sound: 'Звук',
+            warehouse: 'Склад'
         };
+        const key = String(role || '').trim();
+        return labels[key] || key;
+    }
+
+    function _sidebarRoleLine(user) {
+        if (!user) return 'Гість';
+        const rawRoles = Array.isArray(user.roles) && user.roles.length
+            ? user.roles
+            : [user.role || user.account_role || user.accountRole].filter(Boolean);
+        const roles = rawRoles
+            .map(_sidebarRoleLabel)
+            .filter(Boolean)
+            .filter((role, index, list) => list.indexOf(role) === index);
+        return roles.length ? roles.slice(0, 3).join(' · ') : 'Користувач CRM';
+    }
+
+    function _refreshNowCard() {
+        const nameEl = document.getElementById('sidebarNowName');
+        const greetEl = document.getElementById('sidebarNowGreeting');
+        const timeEl = document.getElementById('sidebarNowTime');
+        if (!nameEl) return;
+
+        const user = _getCurrentSidebarUser();
+        const now = new Date();
 
         nameEl.textContent = user?.name || user?.username || 'Гість';
-        greetEl.textContent = user?.role ? `${greet}, ${labels[user.role] || user.role}` : greet;
+        greetEl.textContent = _sidebarRoleLine(user);
         timeEl.textContent = now.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
 
         const avatarEl = document.getElementById('sidebarNowAvatar');
@@ -920,14 +941,10 @@ const Sidebar = (() => {
         const nameEl = document.getElementById('sidebarUserName');
         const roleEl = document.getElementById('sidebarUserRole');
         const cardEl = document.getElementById('sidebarUserCard');
-        const LABELS = { creator:'🏆 Creator', director:'🦁 Директор', vice_director:'🌟 Заст. директора',
-            senior_manager:'📋 Ст. менеджер', manager:'📋 Менеджер', admin:'👑 Адмін',
-            hr:'🤝 HR', accountant:'💰 Бухгалтер', animator:'🎭 Аніматор',
-            instructor:'🎓 Інструктор', art_director:'🎨 Арт директор' };
         _paintUserAvatar(avatarEl, user);
         _paintUserAvatar(compactAvatarEl, user);
         if (nameEl) nameEl.textContent = user.name || user.username || '';
-        if (roleEl) roleEl.textContent = LABELS[user.role] || user.role || '';
+        if (roleEl) roleEl.textContent = _sidebarRoleLine(user);
         _bindProfileEntry(cardEl);
         _bindProfileEntry(nameEl);
         _bindProfileEntry(document.getElementById('sidebarNowCard'));

@@ -215,6 +215,16 @@ const Sidebar = (() => {
         return `<span class="${className} eg-icon eg-icon--${safeKey}" aria-hidden="true"><span class="nav-icon-magnet"><svg class="eg-icon-svg" viewBox="0 0 24 24" focusable="false">${ICON_DRAWINGS[safeKey]}</svg></span></span>`;
     }
 
+    function _renderStatusIcon(type) {
+        const drawings = {
+            tasks: '<rect x="5" y="5" width="14" height="14" rx="4"/><path d="M8.5 12.2l2.2 2.2 4.9-5.3"/><path d="M8 18.5h8"/>',
+            alerts: '<path d="M12 4.5l8.2 14.2H3.8z"/><path d="M12 9v4.7"/><circle cx="12" cy="16.4" r=".8"/><path d="M5.7 5.8C7.2 4.2 9.4 3.2 12 3.2s4.8 1 6.3 2.6"/>',
+            funnel: '<path d="M4.5 5.5h15L14 12.4v4.2l-4 1.9v-6.1z"/><circle cx="7.5" cy="6" r="1.2"/><circle cx="16.5" cy="6" r="1.2"/><circle cx="12" cy="17.6" r="1.2"/>'
+        };
+        const safe = drawings[type] ? type : 'tasks';
+        return `<svg class="sidebar-status-svg sidebar-status-svg--${safe}" viewBox="0 0 24 24" focusable="false" aria-hidden="true">${drawings[safe]}</svg>`;
+    }
+
     // ═══ ACCORDION STATE ══════════════════════════════════════════
     function _getGroupState() {
         try {
@@ -363,6 +373,7 @@ const Sidebar = (() => {
 
         _ensureAuroraLayer();
         _ensurePillsRow();
+        _initPillTooltips();
         _ensureActiveIndicator();
         _initCollapsedTooltips(container);
         _initSpotlight();
@@ -536,31 +547,61 @@ const Sidebar = (() => {
         row.className = 'sidebar-pills';
         row.setAttribute('aria-label', 'Швидкий стан CRM');
         row.innerHTML = `
-            <a href="/tasks?view=my" class="sidebar-pill sidebar-pill--tasks" id="sidebarPillTasks">
+            <a href="/tasks?view=my" class="sidebar-pill sidebar-pill--tasks" id="sidebarPillTasks" data-sidebar-tooltip="Мої задачі: відкриває персональний список задач, активні й прострочені.">
                 <div class="sidebar-pill-top">
-                    <span class="sidebar-pill-icon">${_renderIcon('task', 'sidebar-pill-icon-inner')}</span>
+                    <span class="sidebar-pill-icon">${_renderStatusIcon('tasks')}</span>
                     <span class="sidebar-pill-label">Задачі</span>
                 </div>
                 <div class="sidebar-pill-value" id="sidebarPillTasksValue">–</div>
                 <div class="sidebar-pill-meta" id="sidebarPillTasksMeta">оновлення...</div>
             </a>
-            <button type="button" class="sidebar-pill sidebar-pill--alerts" id="sidebarPillAlerts" onclick="Sidebar.openAlerts(event)">
+            <button type="button" class="sidebar-pill sidebar-pill--alerts" id="sidebarPillAlerts" onclick="Sidebar.openAlerts(event)" data-sidebar-tooltip="Сповіщення: відкриває повну панель алертів і ризиків, які потребують уваги.">
                 <div class="sidebar-pill-top">
-                    <span class="sidebar-pill-icon">${_renderIcon('alert', 'sidebar-pill-icon-inner')}</span>
+                    <span class="sidebar-pill-icon">${_renderStatusIcon('alerts')}</span>
                     <span class="sidebar-pill-label">Алерти</span>
                 </div>
                 <div class="sidebar-pill-value" id="sidebarPillAlertsValue">0</div>
                 <div class="sidebar-pill-meta" id="sidebarPillAlertsMeta">спокійно</div>
             </button>
-            <a href="/sales-funnel" class="sidebar-pill sidebar-pill--funnel" id="sidebarPillFunnel">
+            <a href="/sales-funnel" class="sidebar-pill sidebar-pill--funnel" id="sidebarPillFunnel" data-sidebar-tooltip="Воронка: відкриває ліди, які чекають дії, нові звернення і гарячі етапи.">
                 <div class="sidebar-pill-top">
-                    <span class="sidebar-pill-icon">${_renderIcon('funnel', 'sidebar-pill-icon-inner')}</span>
+                    <span class="sidebar-pill-icon">${_renderStatusIcon('funnel')}</span>
                     <span class="sidebar-pill-label">Воронка</span>
                 </div>
                 <div class="sidebar-pill-value" id="sidebarPillFunnelValue">0</div>
                 <div class="sidebar-pill-meta" id="sidebarPillFunnelMeta">без нових</div>
             </a>`;
         sidebar.insertBefore(row, links);
+    }
+
+    function _setPillDescription(widget, text) {
+        if (!widget || !text) return;
+        widget.removeAttribute('title');
+        widget.setAttribute('aria-label', text);
+        widget.setAttribute('data-sidebar-tooltip', text);
+    }
+
+    function _initPillTooltips() {
+        const sidebar = document.getElementById('sidebarNav');
+        if (!sidebar) return;
+        sidebar.querySelectorAll('.sidebar-pill').forEach((pill) => {
+            if (pill.dataset.tooltipBound === 'true') return;
+            pill.dataset.tooltipBound = 'true';
+            let timer = null;
+            const clear = () => {
+                if (timer) clearTimeout(timer);
+                timer = null;
+                setTimeout(() => pill.classList.remove('show-tip'), 180);
+            };
+            pill.addEventListener('pointerdown', () => {
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(() => pill.classList.add('show-tip'), 520);
+            });
+            pill.addEventListener('pointerup', clear);
+            pill.addEventListener('pointercancel', clear);
+            pill.addEventListener('pointerleave', clear);
+            pill.addEventListener('blur', clear);
+        });
     }
 
     function _ensureActiveIndicator() {
@@ -672,8 +713,7 @@ const Sidebar = (() => {
         const alertTitle = !active.length
             ? 'Алерти: все спокійно. Натисніть, щоб відкрити повну інформацію.'
             : `Алерти: ${count} нових, ${active.length} активних. Натисніть, щоб відкрити повну інформацію.`;
-        widget.title = alertTitle;
-        widget.setAttribute('aria-label', alertTitle);
+        _setPillDescription(widget, alertTitle);
         widget.classList.toggle('has-alerts', active.length > 0);
         widget.classList.toggle('has-critical', unread.some(alert => alert.level === 'critical'));
     }
@@ -737,8 +777,7 @@ const Sidebar = (() => {
             const taskTitle = overdueCount > 0
                 ? `Задачі: ${activeCount} активних, ${overdueCount} прострочених. Натисніть, щоб відкрити всі задачі.`
                 : `Задачі: ${activeCount} активних. Натисніть, щоб відкрити всі задачі.`;
-            widget.title = taskTitle;
-            widget.setAttribute('aria-label', taskTitle);
+            _setPillDescription(widget, taskTitle);
             widget.classList.toggle('has-overdue', overdueCount > 0);
         } catch {}
         _state.taskWidgetTimer = setTimeout(_refreshTaskMiniWidget, 300000);
@@ -787,8 +826,7 @@ const Sidebar = (() => {
             const funnelTitle = actionCount > 0
                 ? `Воронка: ${actionCount} лідів чекає дії, ${newCount} нових. Натисніть, щоб відкрити повну воронку.`
                 : `Воронка: ${newCount} нових лідів. Натисніть, щоб відкрити повну воронку.`;
-            widget.title = funnelTitle;
-            widget.setAttribute('aria-label', funnelTitle);
+            _setPillDescription(widget, funnelTitle);
             widget.classList.toggle('has-action', actionCount > 0);
             widget.classList.toggle('has-new', actionCount === 0 && newCount > 0);
             widget.href = firstLead?.id ? `/sales-funnel?lead=${encodeURIComponent(firstLead.id)}` : '/sales-funnel';

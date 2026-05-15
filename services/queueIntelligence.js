@@ -197,21 +197,6 @@ function eventSoonIntelligence(item, options) {
     };
 }
 
-function idleLeadIntelligence(item) {
-    return {
-        priorityBand: PRIORITY_BANDS.SUGGESTED,
-        riskTypes: ['lead_idle_heuristic'],
-        recommendedAction: baseAction('review_lead', 'Review lead context', item.href),
-        why: [
-            'Lead appears idle from COALESCE(leads.last_contact_at, leads.created_at).',
-            'This is a queue heuristic and must not outrank canonical overdue reply or task pressure.'
-        ],
-        confidence: 'low',
-        depth: 'summary_only',
-        sourceFields: ['leads.last_contact_at', 'leads.created_at']
-    };
-}
-
 function fallbackIntelligence(item) {
     return {
         priorityBand: item?.confidence === 'suggested' ? PRIORITY_BANDS.SUGGESTED : PRIORITY_BANDS.WATCH,
@@ -235,7 +220,6 @@ function deriveItemIntelligence(item, options = {}) {
     if (item.bucket === 'callback_due') return callbackDueIntelligence(item, options);
     if (item.bucket === 'needs_confirmation') return confirmationIntelligence(item, options);
     if (item.bucket === 'event_soon') return eventSoonIntelligence(item, options);
-    if (item.bucket === 'idle_lead') return idleLeadIntelligence(item);
     if (item.bucket === 'tomorrow' && item.sourceType === 'booking') {
         return {
             ...confirmationIntelligence(item, options),
@@ -400,7 +384,7 @@ function buildSummary(items) {
         topRisks,
         bottlenecks: buildBottlenecks(items),
         taskOperations: taskSummary,
-        weakBuckets: ['idle_lead'],
+        weakBuckets: [],
         includedBuckets: unique(items.map(item => item.bucket))
     };
 }

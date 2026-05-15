@@ -534,8 +534,8 @@ const Sidebar = (() => {
         }
         if (metaEl) {
             if (!active.length) metaEl.textContent = 'Все спокійно';
-            else if (count > 0) metaEl.textContent = `${count} нових · ${first?.title || 'Є нові алерти'}`;
-            else metaEl.textContent = `${active.length} прочитано · ${first?.title || 'Алерти'}`;
+            else if (count > 0) metaEl.textContent = `${count} нових`;
+            else metaEl.textContent = `${active.length} переглянуто`;
         }
         widget.classList.toggle('has-alerts', active.length > 0);
         widget.classList.toggle('has-critical', unread.some(alert => alert.level === 'critical'));
@@ -633,8 +633,9 @@ const Sidebar = (() => {
             if (countEl) countEl.textContent = displayCount > 99 ? '99+' : String(displayCount);
             if (metaEl) {
                 if (actionCount > 0) {
-                    const name = firstLead?.client_name || firstLead?.clientName || 'лід';
-                    metaEl.textContent = `${actionCount} чекає дії · ${name}`;
+                    metaEl.textContent = newCount > 0
+                        ? `${actionCount} чекає дії · ${newCount} нових`
+                        : `${actionCount} чекає дії`;
                 } else if (newCount > 0) {
                     metaEl.textContent = `${newCount} нових лідів`;
                 } else {

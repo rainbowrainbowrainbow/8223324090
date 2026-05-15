@@ -382,7 +382,6 @@ const DashboardPage = (() => {
             event_soon: 'подія наближається',
             event_near_window: 'подія в найближчому вікні',
             event_watch_window: 'подія на контролі',
-            lead_idle_heuristic: 'лід давно без активності',
             tomorrow_booking_prep: 'підготовка бронювання на завтра',
             visible_overdue_tasks: 'видимі прострочені задачі',
             unassigned_overdue_tasks: 'прострочені задачі без відповідального',
@@ -492,6 +491,43 @@ const DashboardPage = (() => {
         `;
     }
 
+    function renderFunnelInsights(queue) {
+        const funnel = queue?.meta?.funnelInsights || {};
+        const stages = Array.isArray(funnel.stages)
+            ? funnel.stages.filter(stage => Number(stage.total || 0) > 0).slice(0, 5)
+            : [];
+        const total = Number(funnel.total || 0);
+        const waitingAction = Number(funnel.waitingAction || 0);
+        const hotStage = funnel.hotStage || stages.find(stage => Number(stage.waitingAction || 0) > 0) || stages[0] || null;
+
+        if (!total && !stages.length) return '';
+
+        const stageChips = stages.map(stage => `
+            <a class="work-queue-funnel-chip" href="${escapeHtml(stage.href || `/sales-funnel?stage=${encodeURIComponent(stage.stage || '')}`)}">
+                <span>${escapeHtml(stage.label || stage.stage || 'Етап')}</span>
+                <strong>${Number(stage.waitingAction || 0)}/${Number(stage.total || 0)}</strong>
+            </a>
+        `).join('');
+
+        return `
+            <section class="work-queue-funnel-insights" aria-label="Інформація по воронці лідів">
+                <div class="work-queue-funnel-head">
+                    <div>
+                        <span class="work-queue-triage-eyebrow">Воронка</span>
+                        <h3>Ліди у роботі</h3>
+                    </div>
+                    <a class="work-queue-funnel-link" href="${escapeHtml(funnel.href || '/sales-funnel')}">Відкрити</a>
+                </div>
+                <div class="work-queue-funnel-metrics">
+                    <span><strong>${total}</strong> активних</span>
+                    <span><strong>${waitingAction}</strong> чекає дії</span>
+                    <span><strong>${escapeHtml(hotStage?.label || 'Без етапу')}</strong> найгарячіше</span>
+                </div>
+                <div class="work-queue-funnel-stages">${stageChips}</div>
+            </section>
+        `;
+    }
+
     function syncWorkQueuePanelMode() {
         const hasSelection = Boolean(_workQueueSelectedItemId && _workQueueItemsById.has(_workQueueSelectedItemId));
         document.getElementById('workQueuePanel')?.classList.toggle('has-triage-selection', hasSelection);
@@ -527,6 +563,7 @@ const DashboardPage = (() => {
         if (!visibleBuckets.length) {
             container.innerHTML = `${renderReplyOperationsConsole(queue, visibleReplyItems)}
                 ${renderQueueIntelligenceSummary(queue)}
+                ${renderFunnelInsights(queue)}
                 ${renderTriageWorkspace()}
                 <div class="widget-empty reply-ops-empty">Немає термінових пунктів у доступних категоріях черги. Очікування відповіді зʼявляється лише для розмов із явною потребою відповісти клієнту.</div>`;
             return;
@@ -548,6 +585,7 @@ const DashboardPage = (() => {
 
         container.innerHTML = `${renderReplyOperationsConsole(queue, visibleReplyItems)}
             ${renderQueueIntelligenceSummary(queue)}
+            ${renderFunnelInsights(queue)}
             <div class="work-queue-buckets" aria-label="Пункти робочої черги">${bucketsHtml}</div>
             ${renderTriageWorkspace()}`;
         syncWorkQueuePanelMode();
@@ -567,6 +605,12 @@ const DashboardPage = (() => {
 
         if (warnings.length) filters.push({ label: 'Увага', value: `${warnings.length} джерел не відповіли` });
         if (replyBacklog.scope) filters.push({ label: 'Беклог відповідей', value: workQueueReplyScopeLabel(replyBacklog.scope) });
+        if (Number(meta.funnelInsights?.total || 0) > 0) {
+            filters.push({
+                label: 'Воронка',
+                value: `${Number(meta.funnelInsights.total || 0)} лідів · ${Number(meta.funnelInsights.waitingAction || 0)} чекає дії`
+            });
+        }
         if (omitted.length) filters.push({ label: 'Не включено', value: omitted.map(key => bucketMap.get(key) || key).join(', ') });
         const activeHeuristic = heuristic.filter(key => (buckets || []).some(bucket => bucket.key === key && bucket.count > 0));
         if (activeHeuristic.length) {
@@ -608,8 +652,7 @@ const DashboardPage = (() => {
             callback_due: 'Потрібен контакт',
             waiting_reply: 'Очікує відповіді',
             needs_confirmation: 'Потребує підтвердження',
-            event_soon: 'Подія скоро',
-            idle_lead: 'Лід без активності'
+            event_soon: 'Подія скоро'
         };
         return labels[key] || humanizeQueueRiskType(key) || 'Пункт черги';
     }
@@ -648,8 +691,8 @@ const DashboardPage = (() => {
         if (/booking status risk from bookings\.status/i.test(value)) return 'Це ризик статусу бронювання з bookings.status, а не проста ознака наближення події.';
         if (/leads\.event_date is inside the queue event window/i.test(value)) return `Дата події потрапляє у робоче вікно черги${suffix}.`;
         if (/flags timing pressure/i.test(value)) return 'Це сигнал наближення часу, а не доказ фінальної готовності.';
-        if (/Lead appears idle/i.test(value)) return 'Лід виглядає неактивним за останнім контактом або датою створення.';
-        if (/queue heuristic/i.test(value) && /must not outrank/i.test(value)) return 'Це підказка черги, яка не переважає прострочені відповіді чи задачі.';
+        if (/Lead appears idle/i.test(value)) return 'Стан ліда тепер показується у воронці, а не як окремий пункт робочої черги.';
+        if (/queue heuristic/i.test(value) && /must not outrank/i.test(value)) return 'Це довідковий сигнал, який не є робочою дією черги.';
         if (/Queue item came from/i.test(value)) return `Пункт потрапив у чергу за сигналом: ${humanizeQueueSignal(value.replace(/^Queue item came from\s+/i, '').replace(/\.$/, ''))}.`;
         if (/No stronger bucket-specific intelligence rule/i.test(value)) return 'Для цього пункту немає сильнішого правила аналітики категорії.';
         if (/Booking is visible in tomorrow prep/i.test(value)) return 'Бронювання видиме у підготовці на завтра.';
@@ -697,8 +740,6 @@ const DashboardPage = (() => {
                 return `Бронювання має попередній статус у вікні підтвердження сьогодні/завтра. Швидке підтвердження йде тільки через вузький endpoint бронювання; наближення події лишається окремим часовим сигналом.${signal}`;
             case 'event_soon':
                 return `Подія наближається, тому менеджеру потрібна швидка перевірка точного контексту. Це часовий сигнал, а не доказ готовності бронювання.${signal}`;
-            case 'idle_lead':
-                return `Лід виглядає неактивним за підказкою черги. Це лише підказка, не канонічний борг відповіді.${signal}`;
             default:
                 return `Пункт потрапив у робочу чергу за доступним довіреним або підказковим сигналом.${signal}`;
         }

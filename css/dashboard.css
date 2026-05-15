@@ -403,6 +403,95 @@
     white-space: nowrap;
 }
 
+.work-queue-funnel-insights {
+    grid-column: 1;
+    display: grid;
+    gap: 7px;
+    padding: 8px;
+    border: 1px solid rgba(20,184,166,0.22);
+    border-radius: 10px;
+    background:
+        linear-gradient(135deg, rgba(20,184,166,0.09), rgba(59,130,246,0.045)),
+        rgba(255,255,255,0.74);
+}
+
+.work-queue-funnel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+.work-queue-funnel-head h3 {
+    margin: 1px 0 0;
+    color: #0F172A;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.work-queue-funnel-link,
+.work-queue-funnel-chip {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+}
+
+.work-queue-funnel-link {
+    min-height: 24px;
+    padding: 0 9px;
+    border-radius: 999px;
+    background: rgba(15,118,110,0.1);
+    color: #0F766E;
+    font-size: 10px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.work-queue-funnel-metrics,
+.work-queue-funnel-stages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.work-queue-funnel-metrics span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 0 7px;
+    border-radius: 7px;
+    background: rgba(255,255,255,0.72);
+    color: #475569;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.work-queue-funnel-metrics strong {
+    margin-right: 4px;
+    color: #0F172A;
+    font-size: 12px;
+    font-weight: 950;
+}
+
+.work-queue-funnel-chip {
+    gap: 6px;
+    min-height: 24px;
+    padding: 0 7px;
+    border: 1px solid rgba(15,118,110,0.16);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.58);
+    color: #334155;
+    font-size: 10px;
+    font-weight: 850;
+}
+
+.work-queue-funnel-chip strong {
+    color: #0F766E;
+    font-size: 10px;
+    font-weight: 950;
+}
+
 .queue-band-pill {
     display: inline-flex;
     align-items: center;
@@ -2306,6 +2395,38 @@
 .dark-mode .work-queue-intelligence-scope,
 .dark-mode .work-queue-intelligence-notes span {
     color: #CBD5E1;
+}
+
+.dark-mode .work-queue-funnel-insights {
+    border-color: rgba(45,212,191,0.24);
+    background:
+        linear-gradient(135deg, rgba(20,184,166,0.14), rgba(59,130,246,0.08)),
+        rgba(15,23,42,0.72);
+}
+
+.dark-mode .work-queue-funnel-head h3,
+.dark-mode .work-queue-funnel-metrics strong {
+    color: #F8FAFC;
+}
+
+.dark-mode .work-queue-funnel-link {
+    background: rgba(45,212,191,0.13);
+    color: #5EEAD4;
+}
+
+.dark-mode .work-queue-funnel-metrics span {
+    background: rgba(255,255,255,0.06);
+    color: #CBD5E1;
+}
+
+.dark-mode .work-queue-funnel-chip {
+    border-color: rgba(45,212,191,0.16);
+    background: rgba(255,255,255,0.055);
+    color: #E2E8F0;
+}
+
+.dark-mode .work-queue-funnel-chip strong {
+    color: #5EEAD4;
 }
 
 .dark-mode .queue-band-pill {

@@ -11,8 +11,7 @@ const BUCKETS = [
     { key: 'callback_due', label: 'Передзвонити' },
     { key: 'waiting_reply', label: 'Очікуємо відповідь' },
     { key: 'needs_confirmation', label: 'Підтвердити' },
-    { key: 'event_soon', label: 'Подія скоро' },
-    { key: 'idle_lead', label: 'Лід холоне' }
+    { key: 'event_soon', label: 'Подія скоро' }
 ];
 
 const REPLY_BACKLOG_SCOPES = ['all', 'mine', 'team'];
@@ -274,6 +273,64 @@ function leadHref(id) {
 
 function leadTitle(row) {
     return row.client_name || row.customer_name || row.name || `Лід #${row.id || row.lead_id}`;
+}
+
+const LEAD_FUNNEL_STAGE_LABELS = {
+    new: 'Нові',
+    contacted: 'Контакт',
+    info_sent: 'Надіслано інфо',
+    deal: 'В роботі',
+    negotiation: 'Переговори',
+    booked: 'Бронь',
+    completed: 'Завершено',
+    closed: 'Закрито',
+    lost: 'Втрачено'
+};
+
+function normalizeFunnelStage(stage) {
+    return String(stage || 'new').trim().toLowerCase() || 'new';
+}
+
+function leadFunnelStageLabel(stage) {
+    const normalized = normalizeFunnelStage(stage);
+    return LEAD_FUNNEL_STAGE_LABELS[normalized] || normalized.replace(/[_-]+/g, ' ');
+}
+
+function leadFunnelHref(stage = '') {
+    const normalized = normalizeFunnelStage(stage);
+    return normalized ? `/sales-funnel?stage=${encodeURIComponent(normalized)}` : '/sales-funnel';
+}
+
+function normalizeLeadFunnelInsights(rows = []) {
+    const stages = (Array.isArray(rows) ? rows : []).map(row => {
+        const stage = normalizeFunnelStage(row.stage || row.pipeline_stage);
+        const total = Number(row.total || 0);
+        const waitingAction = Number(row.waiting_action || row.waiting_action_count || row.stale_count || 0);
+        return {
+            stage,
+            label: leadFunnelStageLabel(stage),
+            total,
+            waitingAction,
+            oldestTouchAt: isoValue(row.oldest_touch_at),
+            href: leadFunnelHref(stage)
+        };
+    }).filter(row => row.total > 0);
+
+    const total = stages.reduce((sum, row) => sum + row.total, 0);
+    const waitingAction = stages.reduce((sum, row) => sum + row.waitingAction, 0);
+    const hotStage = stages
+        .slice()
+        .sort((a, b) => b.waitingAction - a.waitingAction || b.total - a.total || a.label.localeCompare(b.label))[0] || null;
+
+    return {
+        model: 'lead_funnel_summary_v1',
+        source: 'leads.pipeline_stage + leads.last_contact_at_or_created_at',
+        total,
+        waitingAction,
+        stages,
+        hotStage,
+        href: '/sales-funnel'
+    };
 }
 
 function leadItem(row, bucket, options = {}) {
@@ -612,10 +669,6 @@ function executionForItem(item) {
         return routeOutExecution(item, 'Event-soon items are review/context signals, not execution outcomes in v6.', 'review_route_out');
     }
 
-    if (item?.bucket === 'idle_lead') {
-        return routeOutExecution(item, 'Idle lead is heuristic and remains review-only; no fake done/defer action is exposed.', 'summary_route_out');
-    }
-
     return routeOutExecution(item, 'No bucket-specific durable execution action is defined for this queue item.');
 }
 
@@ -821,26 +874,21 @@ async function buildWorkQueue({
         }));
     });
 
-    const idleLeads = await source(pool, warnings, 'leads_idle', async () => {
+    const funnelInsights = await source(pool, warnings, 'leads_funnel_summary', async () => {
         const result = await pool.query(`
-            SELECT l.id, l.client_name, l.phone, l.pipeline_stage, l.assigned_to,
-                   l.booking_id, COALESCE(l.last_contact_at, l.created_at) AS due_at,
-                   EXTRACT(EPOCH FROM (NOW() - COALESCE(l.last_contact_at, l.created_at))) / 3600 AS hours_idle,
-                   u.name AS assigned_name
+            SELECT COALESCE(NULLIF(l.pipeline_stage, ''), 'new') AS stage,
+                   COUNT(*)::int AS total,
+                   COUNT(*) FILTER (
+                       WHERE COALESCE(l.last_contact_at, l.created_at) < NOW() - INTERVAL '48 hours'
+                   )::int AS waiting_action,
+                   MIN(COALESCE(l.last_contact_at, l.created_at)) AS oldest_touch_at
             FROM leads l
-            LEFT JOIN users u ON u.id = l.assigned_to
             WHERE COALESCE(l.pipeline_stage, 'new') <> ALL($1::text[])
-              AND COALESCE(l.last_contact_at, l.created_at) < NOW() - INTERVAL '48 hours'
-            ORDER BY COALESCE(l.last_contact_at, l.created_at) ASC
-            LIMIT $2
-        `, [CLOSED_LEAD_STAGES, safeLimit]);
-        return result.rows.map(row => leadItem(row, 'idle_lead', {
-            title: `Лід без руху: ${leadTitle(row)}`,
-            subtitle: row.hours_idle ? `${Math.round(row.hours_idle)} год без контакту` : row.phone || null,
-            signal: 'leads.last_contact_at_or_created_at',
-            confidence: 'suggested',
-            priority: Number(row.hours_idle || 0) >= 72 ? 'high' : 'normal'
-        }));
+            GROUP BY COALESCE(NULLIF(l.pipeline_stage, ''), 'new')
+            ORDER BY waiting_action DESC, total DESC, stage ASC
+            LIMIT 8
+        `, [CLOSED_LEAD_STAGES]);
+        return normalizeLeadFunnelInsights(result.rows);
     });
 
     const tomorrowBookings = await source(pool, warnings, 'bookings_tomorrow', async () => {
@@ -878,8 +926,7 @@ async function buildWorkQueue({
         ...callbackDue,
         ...waitingReply,
         ...needsConfirmation,
-        ...eventSoon,
-        ...idleLeads
+        ...eventSoon
     ];
 
     for (const item of allItems) {
@@ -910,8 +957,9 @@ async function buildWorkQueue({
         items: enrichedQueue.items,
         meta: {
             canonicalBuckets: BUCKETS.map(bucket => bucket.key),
-            heuristicBuckets: ['idle_lead'],
+            heuristicBuckets: [],
             omittedBuckets: [],
+            funnelInsights: Array.isArray(funnelInsights) ? normalizeLeadFunnelInsights([]) : funnelInsights,
             intelligence: enrichedQueue.summary,
             bookingVisibility: {
                 visibleScopeOnly: true,

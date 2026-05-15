@@ -570,17 +570,20 @@ function createFakePool() {
             }
 
             if (/FROM leads l/i.test(text) && /INTERVAL '48 hours'/i.test(text)) {
-                return { rows: [{
-                    id: 13,
-                    client_name: 'Idle Lead',
-                    phone: '+380000000013',
-                    pipeline_stage: 'info_sent',
-                    assigned_to: 20,
-                    booking_id: null,
-                    due_at: '2026-05-10T10:00:00Z',
-                    hours_idle: 80,
-                    assigned_name: 'Manager User'
-                }] };
+                return { rows: [
+                    {
+                        stage: 'info_sent',
+                        total: 11,
+                        waiting_action: 8,
+                        oldest_touch_at: '2026-05-10T10:00:00Z'
+                    },
+                    {
+                        stage: 'contacted',
+                        total: 4,
+                        waiting_action: 1,
+                        oldest_touch_at: '2026-05-12T10:00:00Z'
+                    }
+                ] };
             }
 
             if (/FROM bookings b/i.test(text) && /b\.status IN \('confirmed', 'preliminary'\)/i.test(text)) {
@@ -723,8 +726,13 @@ describe('work queue endpoint', () => {
         assert.ok(buckets.needs_confirmation.items[0].execution.actions.some(action => action.type === 'booking_confirm'));
         assert.equal(buckets.event_soon.items[0].leadId, 12);
         assert.match(buckets.event_soon.items[0].intelligence.why.join(' '), /timing pressure, not final readiness/i);
-        assert.equal(buckets.idle_lead.items[0].confidence, 'suggested');
-        assert.equal(buckets.idle_lead.items[0].execution.depth, 'summary_route_out');
+        assert.equal(Object.hasOwn(buckets, 'idle_lead'), false);
+        assert.equal(res.data.queue.items.some(item => item.bucket === 'idle_lead'), false);
+        assert.equal(res.data.queue.meta.funnelInsights.model, 'lead_funnel_summary_v1');
+        assert.equal(res.data.queue.meta.funnelInsights.total, 15);
+        assert.equal(res.data.queue.meta.funnelInsights.waitingAction, 9);
+        assert.equal(res.data.queue.meta.funnelInsights.hotStage.stage, 'info_sent');
+        assert.equal(res.data.queue.meta.funnelInsights.stages[0].href, '/sales-funnel?stage=info_sent');
         assert.equal(res.data.queue.meta.omittedBuckets.includes('waiting_reply'), false);
         assert.ok(!queries.some(q => /unread_count\s*>\s*0/i.test(q.text)));
         const waitingQuery = latestWaitingQuery();
@@ -743,7 +751,8 @@ describe('work queue endpoint', () => {
         assert.equal(res.data.queue.meta.intelligence.visibleScopeOnly, true);
         assert.equal(res.data.queue.meta.intelligence.hiddenDataScanned, false);
         assert.equal(res.data.queue.meta.intelligence.source, 'visible_queue_items');
-        assert.equal(res.data.queue.meta.intelligence.weakBuckets.includes('idle_lead'), true);
+        assert.equal(res.data.queue.meta.intelligence.weakBuckets.includes('idle_lead'), false);
+        assert.equal(res.data.queue.meta.heuristicBuckets.includes('idle_lead'), false);
         assert.equal(res.data.queue.meta.bookingVisibility.visibleScopeOnly, true);
         assert.match(res.data.queue.meta.bookingVisibility.scopeSource, /booking-operational|full-role/);
         assert.equal(res.data.queue.meta.bookingVisibility.missingDurableScopes.includes('line'), true);
@@ -755,7 +764,6 @@ describe('work queue endpoint', () => {
         const buckets = bucketMap(res.data.queue);
         const waiting = buckets.waiting_reply.items[0];
         const callback = buckets.callback_due.items[0];
-        const idle = buckets.idle_lead.items[0];
         const overdueTask = buckets.overdue.items[0];
         const needsConfirmation = buckets.needs_confirmation.items[0];
         const summary = res.data.queue.meta.intelligence;
@@ -784,11 +792,9 @@ describe('work queue endpoint', () => {
         assert.match(needsConfirmation.intelligence.why.join(' '), /booking status risk from bookings\.status/i);
         assert.equal(needsConfirmation.intelligence.globalScore, false);
 
-        assert.equal(idle.intelligence.priorityBand, 'suggested');
-        assert.equal(idle.intelligence.confidence, 'low');
-        assert.equal(idle.intelligence.depth, 'summary_only');
-        assert.equal(idle.intelligence.riskTypes.includes('lead_idle_heuristic'), true);
-        assert.match(idle.intelligence.why.join(' '), /must not outrank canonical overdue reply/);
+        assert.equal(res.data.queue.items.some(item => item.bucket === 'idle_lead'), false);
+        assert.equal(summary.weakBuckets.includes('idle_lead'), false);
+        assert.equal(res.data.queue.meta.funnelInsights.waitingAction, 9);
 
         assert.ok(Number(summary.priorityBands.critical || 0) >= 1);
         assert.ok(summary.topRisks.some(risk => risk.type === 'reply_escalated'));
@@ -1247,7 +1253,18 @@ describe('work queue endpoint', () => {
             meta: {
                 replyBacklog: { scope: 'all', filters: { sla: 'all', owner: 'all', escalation: 'all' } },
                 omittedBuckets: [],
-                heuristicBuckets: ['idle_lead'],
+                heuristicBuckets: [],
+                funnelInsights: {
+                    model: 'lead_funnel_summary_v1',
+                    total: 15,
+                    waitingAction: 9,
+                    href: '/sales-funnel',
+                    hotStage: { stage: 'info_sent', label: 'Надіслано інфо', total: 11, waitingAction: 8, href: '/sales-funnel?stage=info_sent' },
+                    stages: [
+                        { stage: 'info_sent', label: 'Надіслано інфо', total: 11, waitingAction: 8, href: '/sales-funnel?stage=info_sent' },
+                        { stage: 'contacted', label: 'Контакт', total: 4, waitingAction: 1, href: '/sales-funnel?stage=contacted' }
+                    ]
+                },
                 intelligence: {
                     model: 'bucket_aware_priority_bands_v1',
                     globalScore: false,
@@ -1257,7 +1274,7 @@ describe('work queue endpoint', () => {
                     priorityBands: { critical: 1, action_today: 1 },
                     topRisks: [{ type: 'reply_escalated', count: 1 }],
                     bottlenecks: [{ type: 'escalated_replies', label: 'Escalated replies', count: 1 }],
-                    weakBuckets: ['idle_lead']
+                    weakBuckets: []
                 },
                 warnings: []
             },
@@ -1507,6 +1524,9 @@ describe('work queue endpoint', () => {
         assert.match(body.querySelector('.work-queue-intelligence-head')?.textContent || '', /Черга/);
         assert.doesNotMatch(body.textContent, /Аналітика черги v1/);
         assert.match(body.textContent, /без глобального скорингу/);
+        assert.ok(body.querySelector('.work-queue-funnel-insights'), 'lead funnel summary should render outside queue buckets');
+        assert.match(body.textContent, /Ліди у роботі/);
+        assert.match(body.textContent, /9/);
         assert.doesNotMatch(body.textContent, /reply_escalated|missing_deadline|Queue Intelligence|Resolution workspace/);
         assert.equal(body.querySelectorAll('.work-queue-detail-btn').length, 3);
         assert.ok(body.querySelector('.work-queue-buckets .work-queue-bucket'), 'queue buckets should render inside the compact scroll rail');

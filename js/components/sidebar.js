@@ -361,7 +361,7 @@ const Sidebar = (() => {
                 <span class="sidebar-task-widget-count" id="sidebarTaskWidgetCount">–</span>
             </a>
             <button type="button" class="sidebar-alert-widget" id="sidebarAlertWidget" onclick="Sidebar.openAlerts(event)" title="Сповіщення">
-                <span class="sidebar-alert-widget-icon">🔔</span>
+                <span class="sidebar-alert-widget-icon">⚠️</span>
                 <span class="sidebar-alert-widget-main">
                     <span class="sidebar-alert-widget-title">Сповіщення</span>
                     <span class="sidebar-alert-widget-meta" id="sidebarAlertWidgetMeta">Завантаження...</span>
@@ -375,7 +375,28 @@ const Sidebar = (() => {
                     <span class="sidebar-funnel-widget-meta" id="sidebarFunnelWidgetMeta">Завантаження...</span>
                 </span>
                 <span class="sidebar-funnel-widget-count" id="sidebarFunnelWidgetCount">0</span>
-            </a>`;
+            </a>
+            <nav class="sidebar-quick-nav" aria-label="Швидкі переходи">
+                <a href="/staff" class="sidebar-quick-nav-link" title="Графік">
+                    <span class="sidebar-quick-nav-icon">📅</span>
+                    <span class="sidebar-quick-nav-text">Графік</span>
+                </a>
+                <a href="/" class="sidebar-quick-nav-link" title="Таймлайн">
+                    <span class="sidebar-quick-nav-icon">🗓️</span>
+                    <span class="sidebar-quick-nav-text">Таймлайн</span>
+                </a>
+                <a href="/chat" class="sidebar-quick-nav-link" title="Чат">
+                    <span class="sidebar-quick-nav-icon">💬</span>
+                    <span class="sidebar-quick-nav-text">Чат</span>
+                </a>
+            </nav>`;
+        const currentPath = window.location.pathname || '/';
+        zone.querySelectorAll('.sidebar-quick-nav-link[href]').forEach((link) => {
+            const href = link.getAttribute('href') || '';
+            const isTimeline = href === '/' && (currentPath === '/' || currentPath.endsWith('/index.html'));
+            const isSection = href !== '/' && currentPath.startsWith(href);
+            link.classList.toggle('active', isTimeline || isSection);
+        });
         sidebar.insertBefore(zone, links);
     }
 
@@ -610,6 +631,7 @@ const Sidebar = (() => {
         const toggle = document.getElementById('sidebarToggle');
         const sidebar = document.getElementById('sidebarNav');
         const overlay = document.getElementById('sidebarOverlay');
+        _removeLegacySidebarActions(sidebar);
         _ensureCompactProfileAvatar(sidebar);
         if (toggle && sidebar && toggle.dataset.sidebarToggleBound !== 'true') {
             toggle.dataset.sidebarToggleBound = 'true';
@@ -628,7 +650,7 @@ const Sidebar = (() => {
         if (sidebar && sidebar.dataset.sidebarLinkBound !== 'true') {
             sidebar.dataset.sidebarLinkBound = 'true';
             sidebar.addEventListener('click', (e) => {
-                const link = e.target.closest('.nav-link');
+                const link = e.target.closest('.nav-link, .sidebar-quick-nav-link');
                 if (!link) return;
                 if (window.innerWidth <= 768 && overlay) { sidebar.classList.remove('open'); overlay.classList.add('hidden'); }
             });
@@ -639,6 +661,23 @@ const Sidebar = (() => {
         // Keep the sidebar full-width; accordion groups start collapsed and persist user choice.
         localStorage.removeItem('pzp_sidebar_collapsed');
         if (sidebar) sidebar.classList.remove('collapsed');
+    }
+
+    function _removeLegacySidebarActions(sidebar) {
+        const root = sidebar || document;
+        root.querySelectorAll('#sidebarActions, .sidebar-actions').forEach((el) => el.remove());
+        [
+            'sidebarHistoryBtn',
+            'sidebarAfishaBtn',
+            'sidebarCertificatesBtn',
+            'sidebarDashboardBtn',
+            'sidebarSettingsBtn',
+            'sidebarDigestBtn',
+            'sidebarPointsBtn'
+        ].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        });
     }
 
     function _ensureCompactProfileAvatar(sidebar) {
@@ -709,10 +748,14 @@ const Sidebar = (() => {
     function _initPageTransitions() {
         if (!_state.scrollRestored) {
             _state.scrollRestored = true;
-            const savedScroll = sessionStorage.getItem('sidebar_scroll_' + window.location.pathname);
-            if (savedScroll) {
-                window.scrollTo(0, parseInt(savedScroll, 10));
-                sessionStorage.removeItem('sidebar_scroll_' + window.location.pathname);
+            try {
+                Object.keys(sessionStorage).forEach((key) => {
+                    if (key.startsWith('sidebar_scroll_')) sessionStorage.removeItem(key);
+                });
+            } catch {}
+            const sidebar = document.getElementById('sidebarNav');
+            if (sidebar) {
+                sidebar.scrollTop = 0;
             }
         }
         if (_state.transitionsBound) return;
@@ -757,8 +800,8 @@ const Sidebar = (() => {
             }
 
             e.preventDefault();
-            // Save scroll position before navigating
-            sessionStorage.setItem('sidebar_scroll_' + window.location.pathname, window.scrollY);
+            const sidebar = document.getElementById('sidebarNav');
+            if (sidebar) sidebar.scrollTop = 0;
             document.body.classList.add('shell-baseline', 'page-exiting');
             document.body.classList.remove('shell-ready');
             document.body.setAttribute('aria-busy', 'true');

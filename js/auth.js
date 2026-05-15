@@ -476,10 +476,6 @@ function showMainApp() {
     document.querySelectorAll('.sidebar-no-viewer').forEach(el => {
         el.classList.toggle('hidden', isViewer());
     });
-    // Sidebar certificates — visible to all
-    const sidebarCerts = document.getElementById('sidebarCertificatesBtn');
-    if (sidebarCerts) sidebarCerts.classList.remove('hidden');
-
     // v20.1.0: Hide booking creation buttons for roles that can't create
     if (!canAccess('create_booking')) {
         const addLineBtn = document.getElementById('addLineBtn');

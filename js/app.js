@@ -846,20 +846,7 @@ function initUIControlListeners() {
         });
     }
 
-    // v17.10: Sidebar action buttons → trigger original handlers
-    const sidebarActions = {
-        sidebarHistoryBtn: () => { if (typeof showHistory === 'function') showHistory(); },
-        sidebarAfishaBtn: () => { if (typeof showAfishaModal === 'function') showAfishaModal(); },
-        sidebarCertificatesBtn: () => { if (typeof openCertificatesPanel === 'function') openCertificatesPanel(); },
-        sidebarDashboardBtn: () => { if (typeof showDashboard === 'function') showDashboard(); },
-        sidebarSettingsBtn: () => { if (typeof showSettings === 'function') showSettings(); },
-        sidebarDigestBtn: () => { if (typeof sendDailyDigest === 'function') sendDailyDigest(); },
-        sidebarPointsBtn: () => { if (typeof showPointsPanel === 'function') showPointsPanel(); },
-    };
-    for (const [id, handler] of Object.entries(sidebarActions)) {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('click', handler);
-    }
+    document.getElementById('sidebarActions')?.remove();
 }
 
 function initModalListeners() {

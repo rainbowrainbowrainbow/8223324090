@@ -8,25 +8,22 @@ let _alertsData = [];
 
 // ─── Self-inject bell + panel ───────────────────
 function _ensureAlertElements() {
+    const oldBell = document.getElementById('alertBell');
+    if (oldBell) oldBell.remove();
+
+    if (!document.getElementById('alertsPanelBackdrop')) {
+        const backdrop = document.createElement('div');
+        backdrop.className = 'alerts-panel-backdrop';
+        backdrop.id = 'alertsPanelBackdrop';
+        backdrop.addEventListener('click', _closeAlertsPanel);
+        document.body.appendChild(backdrop);
+    }
+
     // Fix legacy panels with wrong class
     const existingPanel = document.getElementById('alertsPanel');
     if (existingPanel && !existingPanel.classList.contains('alerts-panel-v4')) {
         existingPanel.className = 'alerts-panel-v4';
     }
-    if (document.getElementById('alertBell')) return;
-    const header = document.querySelector('.header-actions, .page-header .user-panel, .top-bar, header')
-        || document.querySelector('[id$="Header"] .user-panel, .page-header');
-    if (!header) return;
-    const userPanel = header.querySelector('.user-panel') || header.querySelector('[id="currentUser"]')?.parentElement;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'alert-bell-btn';
-    btn.id = 'alertBell';
-    btn.onclick = (e) => toggleAlertsPanel(e);
-    btn.title = 'Сповіщення';
-    btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="alert-badge" id="alertBadge">0</span>`;
-    if (userPanel) userPanel.parentElement.insertBefore(btn, userPanel);
-    else header.appendChild(btn);
 
     if (!document.getElementById('alertsPanel')) {
         const panel = document.createElement('div');
@@ -45,7 +42,6 @@ function _saveDismissed(s) { localStorage.setItem(_ALERTS_DISMISSED_KEY, JSON.st
 // ─── Badge update ───────────────────────────────
 async function loadAlertBell() {
     const badge = document.getElementById('alertBadge');
-    if (!badge) return;
     try {
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
@@ -57,7 +53,7 @@ async function loadAlertBell() {
         _alertsData = alerts.filter(a => !dismissed.has(a.id));
         const read = _getRead();
         const unread = _alertsData.filter(a => !read.has(a.id));
-        _updateBadge(badge, unread);
+        if (badge) _updateBadge(badge, unread);
         _emitAlertsUpdated();
     } catch { /* silent */ }
 }
@@ -80,11 +76,30 @@ function _emitAlertsUpdated() {
 // ─── Panel toggle ───────────────────────────────
 function toggleAlertsPanel(e) {
     if (e) e.stopPropagation();
+    _ensureAlertElements();
     const p = document.getElementById('alertsPanel');
     if (!p) return;
     const isOpen = p.classList.contains('open');
-    if (isOpen) { p.classList.remove('open'); }
-    else { p.classList.add('open'); _renderPanel(); }
+    if (isOpen) _closeAlertsPanel();
+    else _openAlertsPanel();
+}
+
+function _openAlertsPanel() {
+    const p = document.getElementById('alertsPanel');
+    const backdrop = document.getElementById('alertsPanelBackdrop');
+    if (!p) return;
+    p.classList.add('open');
+    if (backdrop) backdrop.classList.add('open');
+    document.body.classList.add('alerts-center-open');
+    _renderPanel();
+}
+
+function _closeAlertsPanel() {
+    const p = document.getElementById('alertsPanel');
+    const backdrop = document.getElementById('alertsPanelBackdrop');
+    if (p) p.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('open');
+    document.body.classList.remove('alerts-center-open');
 }
 
 // ─── Interactive Panel Render ───────────────────
@@ -102,7 +117,14 @@ async function _renderPanel() {
         _emitAlertsUpdated();
 
         if (!_alertsData.length) {
-            p.innerHTML = `<div class="ap-header"><span class="ap-title">🔔 Сповіщення</span></div>
+            p.innerHTML = `<div class="ap-header">
+                    <div class="ap-header-main">
+                        <span class="ap-kicker">Центр подій</span>
+                        <span class="ap-title">Сповіщення</span>
+                        <span class="ap-subtitle">Активні попередження, задачі й операційні сигнали</span>
+                    </div>
+                    <button class="ap-close" type="button" onclick="_closeAlertsPanel()" aria-label="Закрити">×</button>
+                </div>
                 <div class="ap-empty"><div class="ap-empty-icon">✅</div><div class="ap-empty-text">Все в порядку!</div><div class="ap-empty-sub">Немає активних сповіщень</div></div>`;
             return;
         }
@@ -116,9 +138,14 @@ async function _renderPanel() {
         const info = _alertsData.filter(a => a.level === 'info');
 
         const header = `<div class="ap-header">
-            <span class="ap-title">🔔 Сповіщення</span>
+            <div class="ap-header-main">
+                <span class="ap-kicker">Центр подій</span>
+                <span class="ap-title">Сповіщення</span>
+                <span class="ap-subtitle">Працюй зі сповіщеннями тут, без прив'язки до верхнього дзвіночка</span>
+            </div>
             <span class="ap-count">${unreadCount ? unreadCount + ' нових' : 'Все прочитано'}</span>
             ${_alertsData.length > 0 ? `<button class="ap-mark-all" onclick="_markAllRead()" title="Позначити все як прочитане">✓</button>` : ''}
+            <button class="ap-close" type="button" onclick="_closeAlertsPanel()" aria-label="Закрити">×</button>
         </div>`;
 
         let body = '';
@@ -128,7 +155,13 @@ async function _renderPanel() {
 
         p.innerHTML = header + `<div class="ap-body">${body}</div>`;
     } catch {
-        p.innerHTML = `<div class="ap-header"><span class="ap-title">🔔 Сповіщення</span></div><div class="ap-empty"><div class="ap-empty-icon">❌</div><div class="ap-empty-text">Помилка завантаження</div></div>`;
+        p.innerHTML = `<div class="ap-header">
+            <div class="ap-header-main">
+                <span class="ap-kicker">Центр подій</span>
+                <span class="ap-title">Сповіщення</span>
+            </div>
+            <button class="ap-close" type="button" onclick="_closeAlertsPanel()" aria-label="Закрити">×</button>
+        </div><div class="ap-empty"><div class="ap-empty-icon">❌</div><div class="ap-empty-text">Помилка завантаження</div></div>`;
     }
 }
 
@@ -276,8 +309,7 @@ function _markAllRead() {
 // ─── Navigate ───────────────────────────────────
 function _goAlert(link, id) {
     const r = _getRead(); r.add(id); _saveRead(r);
-    const p = document.getElementById('alertsPanel');
-    if (p) p.classList.remove('open');
+    _closeAlertsPanel();
     loadAlertBell();
     if (!link) return;
     const currentPath = window.location.pathname;
@@ -354,8 +386,12 @@ async function _submitAlertTask(btn, alertId) {
 // ─── Outside click + init ───────────────────────
 document.addEventListener('click', e => {
     const p = document.getElementById('alertsPanel');
-    const b = document.getElementById('alertBell');
-    if (p && b && !b.contains(e.target) && !p.contains(e.target)) p.classList.remove('open');
+    const trigger = e.target.closest?.('#sidebarAlertWidget');
+    if (p?.classList.contains('open') && !trigger && !p.contains(e.target)) _closeAlertsPanel();
+});
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') _closeAlertsPanel();
 });
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -378,3 +414,5 @@ document.addEventListener('DOMContentLoaded', () => {
     // Clear old dismissed (>24h)
     try { const d = _getDismissed(); if (d.size > 50) { localStorage.removeItem(_ALERTS_DISMISSED_KEY); } } catch {}
 });
+
+window._closeAlertsPanel = _closeAlertsPanel;

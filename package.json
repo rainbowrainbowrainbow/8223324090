@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.50.36",
+  "version": "0.50.37",
   "eventGenix": {
-    "releaseLabel": "My Cabinet Cluster Visual Polish"
+    "releaseLabel": "Dashboard Board Creative Workspace & AI Upgrade"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

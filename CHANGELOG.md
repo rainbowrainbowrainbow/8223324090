@@ -4,6 +4,17 @@
 
 ---
 
+## v0.50.37 - Dashboard Board Creative Workspace & AI Upgrade (2026-05-16)
+
+### Dashboard / Board [codex]
+- **Workspace Logic** - board отримав явний interaction contract для view, edit, draw, connect, text-edit і widget-inspect режимів, щоб widget click, drag, text edit і connector flow не билися між собою.
+- **Creative Palette** - toolbar зібрано в grouped navigation, insert, draw, connect, AI і action flows, а не в один довгий ряд рівноправних кнопок.
+- **Connectors** - додано connector model у board state, anchor buttons на об'єктах, relation types, line/arrow/curve styles і live reroute після move/resize.
+- **AI Board** - додано Suno-style board-native presets: expand idea, mood pack, auto cluster, summarize, extract tasks, remix, name frame і prompt-to-board generation.
+- **Visual Polish** - selected/editing/widget-inspect/connector/anchor states приведено до чистішої premium-мови без грубих обводок.
+
+---
+
 ## v0.50.36 - My Cabinet Cluster Visual Polish (2026-05-16)
 
 ### Profile / My Cabinet [codex]

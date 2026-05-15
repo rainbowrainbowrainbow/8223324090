@@ -63,7 +63,7 @@ function profileUser(data = profileData) {
 
 function profileDisplayName(data = profileData) {
     const user = profileUser(data);
-    return data?.displayName || user.name || user.username || data?.username || 'Користувач';
+    return data?.displayName || user.displayName || user.name || user.username || data?.username || 'Користувач';
 }
 
 function profileUsername(data = profileData) {
@@ -103,6 +103,27 @@ const NOTE_COLORS = ['#fef3c7', '#dcfce7', '#dbeafe', '#fce7f3', '#f3e8ff', '#e0
 const FURNITURE_EMOJIS = { furn_desk: '🖥️', furn_plant: '🪴', furn_trophy: '🏆', furn_arcade: '🎮', furn_dino_statue: '🦕' };
 const MOOD_EMOJIS = { happy: '😊', working: '💼', tired: '😴', excited: '🤩', chill: '😎' };
 const QUEST_ICONS = { complete_tasks: '✅', create_booking: '📋', play_minigame: '🎮', visit_room: '🏠', send_message: '💬', early_login: '🌅', mark_shift: '⏰', meta_quest: '⭐' };
+const PROFILE_AVATAR_EMOJIS = ['🙂', '😎', '🤝', '🧠', '⚡', '🔥', '🎯', '✅', '💼', '🛠️', '🎨', '👑'];
+const PROFILE_AVATAR_COLORS = ['#f59e0b', '#10b981', '#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#64748b'];
+
+function profileAvatarData(data = profileData) {
+    const user = profileUser(data);
+    return {
+        url: user.avatarUrl || user.avatar_url || data?.avatarUrl || data?.avatar_url || '',
+        emoji: user.avatarEmoji || user.avatar_emoji || data?.avatarEmoji || data?.avatar_emoji || '',
+        color: user.avatarColor || user.avatar_color || data?.avatarColor || data?.avatar_color || '#f59e0b',
+        initial: profileInitial(data)
+    };
+}
+
+function renderProfileAvatarVisual(className = 'profile-work-avatar', data = profileData, attrs = '') {
+    const avatar = profileAvatarData(data);
+    const style = avatar.color ? ` style="background:${escapeHtml(avatar.color)}"` : '';
+    if (avatar.url) {
+        return `<div class="${className}"${attrs}><img src="${escapeHtml(avatar.url)}" alt=""></div>`;
+    }
+    return `<div class="${className}"${style}${attrs}>${escapeHtml(avatar.emoji || avatar.initial)}</div>`;
+}
 
 // ==========================================
 // API
@@ -175,7 +196,7 @@ async function initProfilePage() {
     const viewUserId = parseInt(params.get('id')) || currentUserId;
     isOwnProfile = viewUserId === currentUserId;
     const requestedTab = params.get('tab');
-    const allowedOwnTabs = ['profile', 'myday', 'mytasks', 'achievements', 'inventory', 'shop', 'leaderboard', 'quests', 'season', 'teams', 'referral'];
+    const allowedOwnTabs = ['profile', 'myday', 'mytasks', 'settings', 'achievements', 'inventory', 'shop', 'leaderboard', 'quests', 'season', 'teams', 'referral'];
     if (isOwnProfile && requestedTab && allowedOwnTabs.includes(requestedTab)) {
         activeTab = requestedTab;
     }
@@ -227,7 +248,6 @@ function renderProfile() {
     const username = profileUsername(p);
     const role = profileRole(p);
     const roleLabel = profileRoleLabel(role);
-    const avatarLetter = profileInitial(p);
     const completedAch = myAchievements.filter(a => a.completed);
     const totalAch = myAchievements.filter(a => !a.isSecret || a.completed).length;
     const activeTasks = Number(p.tasks?.assigned || 0) + Number(p.tasks?.in_progress || 0);
@@ -254,7 +274,9 @@ function renderProfile() {
 
         <div class="profile-header profile-work-header">
             <div class="profile-identity-block">
-                <div class="profile-work-avatar">${escapeHtml(avatarLetter)}</div>
+                ${isOwnProfile
+                    ? renderProfileAvatarVisual('profile-work-avatar profile-avatar-clickable', p, ' role="button" tabindex="0" title="Змінити аватар" onclick="switchTab(\'settings\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();switchTab(\'settings\');}"')
+                    : renderProfileAvatarVisual('profile-work-avatar', p)}
                 <div class="profile-identity-copy">
                     <div class="profile-kicker">Особистий робочий профіль</div>
                     <h1>${escapeHtml(name)}</h1>
@@ -264,7 +286,7 @@ function renderProfile() {
                         <span class="${p.user?.telegramConnected ? 'is-ok' : ''}">${p.user?.telegramConnected ? 'Telegram підключено' : 'Telegram не підключено'}</span>
                     </div>
                     ${titleHtml ? `<div class="profile-title-row">${titleHtml}</div>` : ''}
-                    ${p.bio ? `<div class="profile-bio">${escapeHtml(p.bio)}</div>` : ''}
+                    ${p.user?.bio || p.bio ? `<div class="profile-bio">${escapeHtml(p.user?.bio || p.bio)}</div>` : ''}
                 </div>
             </div>
 
@@ -293,6 +315,7 @@ function renderProfile() {
             <button class="profile-tab ${activeTab === 'profile' ? 'active' : ''}" onclick="switchTab('profile')">Огляд</button>
             ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'myday' ? 'active' : ''}" onclick="switchTab('myday')">Мій день</button>` : ''}
             ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'mytasks' ? 'active' : ''}" onclick="switchTab('mytasks')">Мої задачі</button>` : ''}
+            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'settings' ? 'active' : ''}" onclick="switchTab('settings')">Налаштування</button>` : ''}
             <button class="profile-tab ${activeTab === 'achievements' ? 'active' : ''}" onclick="switchTab('achievements')">Досягнення</button>
             ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'inventory' ? 'active' : ''}" onclick="switchTab('inventory')">Інвентар</button>` : ''}
             ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'shop' ? 'active' : ''}" onclick="switchTab('shop')">Магазин</button>` : ''}
@@ -341,6 +364,7 @@ function renderTabContent() {
     switch (activeTab) {
         case 'myday': return renderMyDayTab();
         case 'mytasks': return renderMyTasksTab();
+        case 'settings': return renderProfileSettingsTab();
         case 'achievements': return renderAchievements();
         case 'inventory': return renderInventory();
         case 'shop': return renderShopTab();
@@ -446,6 +470,54 @@ function renderWorkProfileOverview() {
         </div>`;
 }
 
+function renderProfileSettingsTab() {
+    const avatar = profileAvatarData(profileData);
+    const currentEmoji = avatar.emoji || '🙂';
+    const currentColor = avatar.color || '#f59e0b';
+    return `
+        <div class="profile-settings-shell">
+            <section class="profile-work-panel profile-settings-panel">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Налаштування профілю</span>
+                        <h2>Аватарка</h2>
+                    </div>
+                    <span>Header + sidebar</span>
+                </div>
+                <div class="profile-avatar-editor">
+                    <div>
+                        <div id="profileAvatarPreview" class="profile-avatar-preview" style="background:${escapeHtml(currentColor)}">
+                            ${avatar.url ? `<img src="${escapeHtml(avatar.url)}" alt="">` : escapeHtml(avatar.emoji || avatar.initial)}
+                        </div>
+                        <div class="profile-avatar-preview-hint">Так аватарка буде виглядати в меню та профілі</div>
+                    </div>
+                    <div class="profile-avatar-controls">
+                        <input type="hidden" id="profileAvatarEmoji" value="${escapeHtml(currentEmoji)}">
+                        <input type="hidden" id="profileAvatarColor" value="${escapeHtml(currentColor)}">
+                        <label>Швидкий emoji</label>
+                        <div class="profile-avatar-emoji-grid">
+                            ${PROFILE_AVATAR_EMOJIS.map(emoji => `<button type="button" class="${emoji === currentEmoji ? 'active' : ''}" onclick="selectProfileAvatarEmoji('${emoji}')">${escapeHtml(emoji)}</button>`).join('')}
+                        </div>
+                        <label>Колір фону</label>
+                        <div class="profile-avatar-color-grid">
+                            ${PROFILE_AVATAR_COLORS.map(color => `<button type="button" class="${color.toLowerCase() === currentColor.toLowerCase() ? 'active' : ''}" style="background:${color}" title="${color}" onclick="selectProfileAvatarColor('${color}')"></button>`).join('')}
+                        </div>
+                        <div class="profile-avatar-action-row">
+                            <button type="button" class="profile-settings-primary" onclick="saveProfileAvatar('emoji')">Зберегти emoji</button>
+                            <button type="button" onclick="saveProfileAvatar('initials')">Літера з імені</button>
+                        </div>
+                        <label for="profileAvatarUrl">Фото через URL</label>
+                        <div class="profile-avatar-url-row">
+                            <input id="profileAvatarUrl" type="url" placeholder="https://.../avatar.jpg" value="${escapeHtml(avatar.url)}" oninput="previewProfileAvatarUrl()">
+                            <button type="button" onclick="saveProfileAvatar('image')">Зберегти фото</button>
+                        </div>
+                        <p class="profile-avatar-note">Підтримується прямий https/http URL до зображення або швидкий emoji-аватар. Після збереження sidebar оновиться одразу.</p>
+                    </div>
+                </div>
+            </section>
+        </div>`;
+}
+
 function profileOverviewMetric(label, value, hint, tone = '') {
     return `
         <div class="profile-overview-metric ${tone}">
@@ -453,6 +525,75 @@ function profileOverviewMetric(label, value, hint, tone = '') {
             <span>${escapeHtml(label)}</span>
             <small>${escapeHtml(hint || '')}</small>
         </div>`;
+}
+
+function paintProfileAvatarPreview(mode = 'emoji') {
+    const preview = document.getElementById('profileAvatarPreview');
+    if (!preview) return;
+    const emoji = document.getElementById('profileAvatarEmoji')?.value || profileAvatarData().initial;
+    const color = document.getElementById('profileAvatarColor')?.value || '#f59e0b';
+    const url = String(document.getElementById('profileAvatarUrl')?.value || '').trim();
+    preview.innerHTML = '';
+    if (mode === 'image' && url) {
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = '';
+        preview.style.background = 'transparent';
+        preview.appendChild(img);
+        return;
+    }
+    preview.style.background = color;
+    preview.textContent = mode === 'initials' ? profileAvatarData().initial : emoji;
+}
+
+function selectProfileAvatarEmoji(emoji) {
+    const input = document.getElementById('profileAvatarEmoji');
+    if (input) input.value = emoji;
+    document.querySelectorAll('.profile-avatar-emoji-grid button').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent.trim() === emoji);
+    });
+    paintProfileAvatarPreview('emoji');
+}
+
+function selectProfileAvatarColor(color) {
+    const input = document.getElementById('profileAvatarColor');
+    if (input) input.value = color;
+    document.querySelectorAll('.profile-avatar-color-grid button').forEach(btn => {
+        btn.classList.toggle('active', (btn.getAttribute('title') || '').toLowerCase() === color.toLowerCase());
+    });
+    paintProfileAvatarPreview('emoji');
+}
+
+function previewProfileAvatarUrl() {
+    const url = String(document.getElementById('profileAvatarUrl')?.value || '').trim();
+    paintProfileAvatarPreview(url ? 'image' : 'emoji');
+}
+
+async function saveProfileAvatar(type) {
+    const payload = {
+        avatarType: type,
+        avatarEmoji: document.getElementById('profileAvatarEmoji')?.value || '🙂',
+        avatarColor: document.getElementById('profileAvatarColor')?.value || '#f59e0b',
+        avatarUrl: String(document.getElementById('profileAvatarUrl')?.value || '').trim()
+    };
+    const result = await apiPatch('/auth/profile/avatar', payload);
+    if (!result?.success || !result.user) {
+        if (typeof showNotification === 'function') showNotification(result?.error || 'Не вдалося зберегти аватарку', 'error');
+        return;
+    }
+    profileData.user = { ...(profileData.user || {}), ...result.user };
+    try {
+        const saved = JSON.parse(localStorage.getItem('pzp_current_user') || '{}');
+        const next = { ...saved, ...result.user };
+        localStorage.setItem('pzp_current_user', JSON.stringify(next));
+        if (typeof AppState !== 'undefined') AppState.currentUser = { ...(AppState.currentUser || {}), ...next };
+    } catch {
+        localStorage.setItem('pzp_current_user', JSON.stringify(result.user));
+        if (typeof AppState !== 'undefined') AppState.currentUser = result.user;
+    }
+    if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
+    if (typeof showNotification === 'function') showNotification('Аватарку оновлено', 'success');
+    renderProfile();
 }
 
 function renderProfileTaskRow(task, tag = '') {

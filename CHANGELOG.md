@@ -4,6 +4,24 @@
 
 ---
 
+## v0.49.10 - Profile Avatar Settings (2026-05-15)
+
+### Profile Avatar [codex]
+- **Профіль** - у вкладці "Налаштування" додано робочий редактор аватарки.
+- **Avatar** - підтримано emoji-аватар, колір фону, повернення до літери з імені та фото через URL.
+- **Sidebar** - після збереження аватарка синхронізується з header/sidebar, AppState і localStorage.
+
+---
+
+## v0.49.9 - Light Sidebar Readability Fix (2026-05-15)
+
+### Sidebar Light Mode [codex]
+- **Меню** - у світлій темі підсилено контраст стрілок accordion-груп, щоб їх було видно так само впевнено, як у темній темі.
+- **Рамки** - зроблено помітнішими межі між групами меню та active group border.
+- **UX** - labels, arrows і active marker більше не губляться на білому sidebar-фоні.
+
+---
+
 ## v0.49.8 - Tasks OS Foundation + Sidebar/Профіль Polish (2026-05-15)
 
 ### Tasks OS + My Cabinet [codex]

@@ -19,6 +19,17 @@ const { buildTaskOwnerMatch, normalizeUserId } = require('../services/taskPolicy
 
 const log = createLogger('Auth');
 
+function userAvatarPayload(row = {}) {
+    return {
+        avatar_url: row.avatar_url || null,
+        avatarUrl: row.avatar_url || null,
+        avatar_emoji: row.avatar_emoji || null,
+        avatarEmoji: row.avatar_emoji || null,
+        avatar_color: row.avatar_color || null,
+        avatarColor: row.avatar_color || null
+    };
+}
+
 function profileTaskOwnerWhere(user, alias = '') {
     const params = [];
     const prefix = alias ? `${alias}.` : '';
@@ -35,7 +46,11 @@ router.post('/login', async (req, res) => {
         }
 
         const result = await pool.query(
-            'SELECT id, username, password_hash, role, name, is_active FROM users WHERE LOWER(username) = LOWER($1)',
+            `SELECT u.id, u.username, u.password_hash, u.role, u.name, u.is_active,
+                    u.avatar_emoji, u.avatar_color, upe.avatar_url
+             FROM users u
+             LEFT JOIN user_profiles_ext upe ON upe.username = u.username
+             WHERE LOWER(u.username) = LOWER($1)`,
             [username.trim()]
         );
 
@@ -70,7 +85,7 @@ router.post('/login', async (req, res) => {
             accessToken, // new: short-lived (15m)
             refreshToken, // new: long-lived (30d), store securely
             refreshExpiresAt: expiresAt,
-            user: { id: user.id, username: user.username, role: user.role, name: user.name }
+            user: { id: user.id, username: user.username, role: user.role, name: user.name, ...userAvatarPayload(user) }
         });
     } catch (err) {
         log.error('Login error', err);
@@ -82,14 +97,18 @@ router.get('/verify', authenticateToken, async (req, res) => {
     try {
         // Read fresh role from DB (JWT may have stale role after role migration)
         const result = await pool.query(
-            'SELECT id, role, name FROM users WHERE username = $1 AND is_active = true',
+            `SELECT u.id, u.username, u.role, u.name, u.avatar_emoji, u.avatar_color, upe.avatar_url
+             FROM users u
+             LEFT JOIN user_profiles_ext upe ON upe.username = u.username
+             WHERE u.username = $1 AND u.is_active = true`,
             [req.user.username]
         );
         if (result.rows.length === 0) {
             return res.status(403).json({ error: 'User not found or deactivated' });
         }
-        const { id, role, name } = result.rows[0];
-        res.json({ user: { id, username: req.user.username, role, name } });
+        const user = result.rows[0];
+        const { id, role, name, username } = user;
+        res.json({ user: { id, username, role, name, ...userAvatarPayload(user) } });
     } catch (err) {
         res.status(500).json({ error: 'Verification failed' });
     }
@@ -102,7 +121,11 @@ router.get('/profile/:userId', authenticateToken, async (req, res) => {
         if (isNaN(userId)) return res.status(400).json({ error: 'Invalid user ID' });
 
         const { rows: [user] } = await pool.query(
-            'SELECT id, username, name, role, created_at FROM users WHERE id = $1', [userId]
+            `SELECT u.id, u.username, u.name, u.role, u.created_at,
+                    u.avatar_emoji, u.avatar_color, upe.display_name, upe.avatar_url
+             FROM users u
+             LEFT JOIN user_profiles_ext upe ON upe.username = u.username
+             WHERE u.id = $1`, [userId]
         );
         if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -114,8 +137,8 @@ router.get('/profile/:userId', authenticateToken, async (req, res) => {
                  WHERE ua.user_id = $1 ORDER BY ua.unlocked_at DESC LIMIT 20`, [userId]
             ).catch(() => ({ rows: [] }));
             return res.json({
-                id: user.id, username: user.username, displayName: user.name,
-                role: user.role, createdAt: user.created_at,
+                id: user.id, username: user.username, displayName: user.display_name || user.name,
+                role: user.role, createdAt: user.created_at, ...userAvatarPayload(user),
                 isOwnProfile: true, achievements: ach.rows
             });
         }
@@ -130,9 +153,10 @@ router.get('/profile/:userId', authenticateToken, async (req, res) => {
         res.json({
             id: user.id,
             username: user.username,
-            displayName: user.name,
+            displayName: user.display_name || user.name,
             role: user.role,
             createdAt: user.created_at,
+            ...userAvatarPayload(user),
             achievements: achievements.rows
         });
     } catch (err) {
@@ -148,7 +172,11 @@ router.get('/profile', authenticateToken, async (req, res) => {
 
         // User info (including telegram status)
         const userResult = await pool.query(
-            'SELECT id, username, name, role, created_at, telegram_chat_id FROM users WHERE username = $1',
+            `SELECT u.id, u.username, u.name, u.role, u.created_at, u.telegram_chat_id,
+                    u.avatar_emoji, u.avatar_color, upe.display_name, upe.bio, upe.avatar_url
+             FROM users u
+             LEFT JOIN user_profiles_ext upe ON upe.username = u.username
+             WHERE u.username = $1`,
             [username]
         );
         if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -524,7 +552,10 @@ router.get('/profile', authenticateToken, async (req, res) => {
                 name: user.name,
                 role: user.role,
                 createdAt: user.created_at,
-                telegramConnected: !!user.telegram_chat_id
+                displayName: user.display_name || user.name,
+                bio: user.bio || '',
+                telegramConnected: !!user.telegram_chat_id,
+                ...userAvatarPayload(user)
             },
             points: {
                 monthly: points.monthly_points,
@@ -549,6 +580,68 @@ router.get('/profile', authenticateToken, async (req, res) => {
         });
     } catch (err) {
         log.error('Profile error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// PATCH /api/auth/profile/avatar — update own CRM avatar for profile/header/sidebar
+router.patch('/profile/avatar', authenticateToken, async (req, res) => {
+    try {
+        const avatarType = ['emoji', 'image', 'initials'].includes(req.body.avatarType)
+            ? req.body.avatarType
+            : 'emoji';
+        const colorRaw = String(req.body.avatarColor || req.body.avatar_color || '').trim();
+        const avatarColor = /^#[0-9a-f]{6}$/i.test(colorRaw) ? colorRaw : '#f59e0b';
+        const emojiRaw = String(req.body.avatarEmoji || req.body.avatar_emoji || '').trim();
+        const avatarEmoji = emojiRaw ? Array.from(emojiRaw).slice(0, 4).join('') : null;
+        const urlRaw = String(req.body.avatarUrl || req.body.avatar_url || '').trim();
+        const avatarUrl = urlRaw || null;
+
+        if (avatarType === 'image') {
+            if (!avatarUrl) return res.status(400).json({ error: 'Додайте URL фото' });
+            if (avatarUrl.length > 500 || !/^https?:\/\//i.test(avatarUrl)) {
+                return res.status(400).json({ error: 'Фото має бути https/http URL до 500 символів' });
+            }
+        }
+        if (avatarType === 'emoji' && !avatarEmoji) {
+            return res.status(400).json({ error: 'Оберіть emoji для аватарки' });
+        }
+
+        const finalEmoji = avatarType === 'emoji' ? avatarEmoji : null;
+        const finalColor = avatarType === 'image' ? null : avatarColor;
+        const finalUrl = avatarType === 'image' ? avatarUrl : null;
+        const avatarStyle = avatarType === 'image' ? 'photo' : avatarType;
+
+        await pool.query(
+            `INSERT INTO user_profiles_ext (username, avatar_url, avatar_style)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (username) DO UPDATE
+             SET avatar_url = EXCLUDED.avatar_url,
+                 avatar_style = EXCLUDED.avatar_style,
+                 updated_at = NOW()`,
+            [req.user.username, finalUrl, avatarStyle]
+        );
+        await pool.query(
+            `UPDATE users
+             SET avatar_emoji = $1,
+                 avatar_color = $2
+             WHERE username = $3`,
+            [finalEmoji, finalColor, req.user.username]
+        );
+
+        const { rows: [user] } = await pool.query(
+            `SELECT u.id, u.username, u.name, u.role, u.avatar_emoji, u.avatar_color, upe.avatar_url
+             FROM users u
+             LEFT JOIN user_profiles_ext upe ON upe.username = u.username
+             WHERE u.username = $1`,
+            [req.user.username]
+        );
+        res.json({
+            success: true,
+            user: { id: user.id, username: user.username, name: user.name, role: user.role, ...userAvatarPayload(user) }
+        });
+    } catch (err) {
+        log.error('Update profile avatar error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

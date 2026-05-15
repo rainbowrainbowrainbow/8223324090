@@ -794,60 +794,73 @@ body.dark-mode .sidebar-nav {
 .sidebar-group-header {
   position: relative;
   display: grid !important;
-  grid-template-columns: 28px minmax(0, 1fr) 18px;
+  grid-template-columns: 22px minmax(0, 1fr) 20px;
   align-items: center;
-  gap: 7px !important;
-  min-height: 42px;
-  margin: 4px 0 1px;
-  padding: 7px 10px 7px 12px !important;
+  gap: 6px !important;
+  min-height: 34px;
+  margin: 2px 0 0;
+  padding: 4px 8px 4px 10px !important;
   border: 1px solid transparent !important;
-  border-radius: 14px !important;
+  border-radius: 11px !important;
   background: transparent !important;
   color: var(--sb-text-faint) !important;
-  font-size: 12px !important;
+  font-size: 10.5px !important;
   font-weight: 900 !important;
-  letter-spacing: 0.045em !important;
+  letter-spacing: 0.04em !important;
+  line-height: 1;
   text-transform: uppercase;
   box-sizing: border-box;
   overflow: hidden;
   box-shadow: none !important;
-  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .sidebar-group-header:hover,
 .sidebar-group-header.has-active {
   color: var(--sb-primary-fg) !important;
+  background: color-mix(in srgb, var(--sb-surface-hi) 62%, transparent) !important;
 }
 
-.sidebar-group-header.open,
-.sidebar-group-header.has-active {
+.sidebar-group-header.open {
   border-color: var(--sb-primary-border) !important;
   background:
-    radial-gradient(circle at 14% 50%, var(--sb-primary-bg), transparent 42%),
-    linear-gradient(135deg, var(--sb-surface) 0%, var(--sb-surface-hi) 100%) !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), 0 8px 22px rgba(15,23,42,0.055) !important;
+    radial-gradient(circle at 13% 50%, color-mix(in srgb, var(--sb-primary) 14%, transparent), transparent 44%),
+    linear-gradient(135deg, color-mix(in srgb, var(--sb-surface) 76%, transparent), color-mix(in srgb, var(--sb-surface-hi) 82%, transparent)) !important;
+  color: var(--sb-primary-fg) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 6px 16px rgba(15,23,42,0.045) !important;
 }
 
 .sidebar-group-header.has-active::before {
   content: "";
   position: absolute;
   left: 0;
-  top: 11px;
-  bottom: 11px;
-  width: 3px;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
   border-radius: 0 999px 999px 0;
   background: linear-gradient(180deg, var(--sb-primary-fg), var(--sb-primary));
   box-shadow: 0 0 12px var(--sb-primary-glow);
 }
 
-.sidebar-group-header.has-active:not(.open)::after {
-  content: none !important;
-  display: none !important;
+.sidebar-group-header::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--sb-border) 70%, transparent), transparent);
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.sidebar-group:last-of-type .sidebar-group-header::after {
+  opacity: 0.24;
 }
 
 .sidebar-group-header .nav-icon {
-  width: 22px !important;
-  height: 22px !important;
+  width: 20px !important;
+  height: 20px !important;
   background: transparent !important;
   color: currentColor !important;
 }
@@ -861,35 +874,64 @@ body.dark-mode .sidebar-nav {
   white-space: nowrap;
 }
 
-.sidebar-group-arrow {
+.sidebar-group-chevron {
   justify-self: end;
-  margin-left: 0 !important;
-  width: 12px !important;
-  height: 12px !important;
-  opacity: 0.72;
-  border-right: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
-  transform: rotate(45deg);
-  transition: transform 0.22s ease, opacity 0.16s ease;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: currentColor;
+  background: color-mix(in srgb, var(--sb-surface-hi) 52%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+  opacity: 0.86;
+  transition:
+    transform 0.2s ease,
+    opacity 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
 }
 
-.sidebar-group-arrow::before,
-.sidebar-group-arrow::after {
-  content: none !important;
-  display: none !important;
+.sidebar-group-chevron-svg {
+  width: 12px;
+  height: 12px;
+  display: block;
 }
 
-.sidebar-group-header.open .sidebar-group-arrow {
-  transform: rotate(225deg);
+.sidebar-group-chevron-svg path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sidebar-group-header.open .sidebar-group-chevron {
+  transform: rotate(180deg);
+  background: color-mix(in srgb, var(--sb-primary) 16%, var(--sb-surface-hi));
+  border-color: color-mix(in srgb, var(--sb-primary) 32%, transparent);
+  color: var(--sb-primary-fg);
+}
+
+.sidebar-group-header:hover .sidebar-group-chevron,
+.sidebar-group-header:focus-visible .sidebar-group-chevron,
+.sidebar-group-header.has-active .sidebar-group-chevron {
+  opacity: 1;
+  background: color-mix(in srgb, var(--sb-primary) 12%, var(--sb-surface-hi));
+  border-color: color-mix(in srgb, var(--sb-primary) 22%, transparent);
+  color: var(--sb-primary-fg);
 }
 
 .sidebar-group-pulse {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
+  margin-left: 1px;
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--sb-primary);
-  box-shadow: 0 0 8px var(--sb-primary-glow);
+  box-shadow: 0 0 6px var(--sb-primary-glow);
   animation: sbPulseDot 1.6s ease-in-out infinite;
 }
 
@@ -939,9 +981,24 @@ body.dark-mode .sidebar-nav {
   padding: 8px;
 }
 
+.sidebar-nav.collapsed .sidebar-group-chevron,
+.sidebar-nav.collapsed .sidebar-group-pulse {
+  display: none !important;
+}
+
 @media (max-width: 768px) {
   .sidebar-nav {
     width: 260px;
+  }
+
+  .sidebar-group-header {
+    min-height: 36px;
+    padding: 5px 9px 5px 10px !important;
+  }
+
+  .sidebar-group-chevron {
+    width: 22px;
+    height: 22px;
   }
 }
 
@@ -949,10 +1006,13 @@ body.dark-mode .sidebar-nav {
   .sidebar-aurora,
   .sidebar-aurora-blob-1,
   .sidebar-aurora-blob-2,
+  .sidebar-group-chevron,
+  .sidebar-group-header,
   .sidebar-group-pulse,
   .sidebar-active-indicator::after,
   .sidebar-group-items.open > .sidebar-group-inner > .nav-link {
     animation: none !important;
+    transition: none !important;
   }
 
   .sidebar-active-indicator {

@@ -225,6 +225,15 @@ const Sidebar = (() => {
         return `<svg class="sidebar-status-svg sidebar-status-svg--${safe}" viewBox="0 0 24 24" focusable="false" aria-hidden="true">${drawings[safe]}</svg>`;
     }
 
+    function _renderGroupChevron() {
+        return `
+    <span class="sidebar-group-chevron" aria-hidden="true">
+      <svg class="sidebar-group-chevron-svg" viewBox="0 0 20 20" focusable="false">
+        <path d="M6 8l4 4 4-4"></path>
+      </svg>
+    </span>`;
+    }
+
     // ═══ ACCORDION STATE ══════════════════════════════════════════
     function _getGroupState() {
         try {
@@ -304,7 +313,7 @@ const Sidebar = (() => {
           title="${item.label}">
     ${_renderIcon(item.icon)}
     <span class="nav-text sidebar-group-label">${item.label}</span>
-    <span class="sidebar-group-arrow"></span>
+    ${_renderGroupChevron()}
   </button>
   <div class="sidebar-group-items${finalOpen ? ' open' : ''}">
     <div class="sidebar-group-inner">`;

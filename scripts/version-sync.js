@@ -238,9 +238,10 @@ function syncFirstScreenLabels(file, version, releaseLabel, { checkLatestModal =
         const latestModalMatch = html.match(latestModalRegex);
         if (latestModalMatch) {
             const expectedHeading = `v${version}${releaseLabel ? ` — ${releaseLabel}` : ''}`;
-            if (latestModalMatch[2] !== expectedHeading) {
-                report(file, 'latest changelog modal entry', latestModalMatch[2], expectedHeading);
-                if (FIX) html = html.replace(latestModalRegex, `$1${htmlEscape(expectedHeading)}$3`);
+            const expectedHeadingHtml = htmlEscape(expectedHeading);
+            if (latestModalMatch[2] !== expectedHeadingHtml) {
+                report(file, 'latest changelog modal entry', latestModalMatch[2], expectedHeadingHtml);
+                if (FIX) html = html.replace(latestModalRegex, `$1${expectedHeadingHtml}$3`);
             } else {
                 ok(file, 'latest changelog modal entry');
             }

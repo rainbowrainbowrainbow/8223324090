@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.34 - Sidebar Category Density & Chevron Polish (2026-05-16)
+
+### Sidebar / Aurora [codex]
+- **Category Density** - category headers у sidebar стали компактнішими за висотою, padding і gap, щоб navigation rail виглядав щільніше та спокійніше.
+- **Chevron** - legacy border-arrow замінено на SVG control chevron у власній mini-control зоні з акуратним open/closed станом.
+- **Visual Rhythm** - hover, active і open surfaces для accordion groups зібрані в чистіший premium-патерн без зміни role/access logic.
+
+---
+
 ## v0.50.33 - Version System Hardening (2026-05-16)
 
 ### Release / Version [codex]

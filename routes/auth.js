@@ -9,6 +9,7 @@
 const router = require('express').Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
 const { pool } = require('../db');
 const {
     JWT_SECRET, authenticateToken, PAGE_ACCESS, ACTION_PERMISSIONS, ROLE_HIERARCHY, ROLE_LEVEL,
@@ -16,8 +17,34 @@ const {
 } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { buildTaskOwnerMatch, normalizeUserId } = require('../services/taskPolicy');
+const {
+    uploadProfileAvatarWithFallback,
+    validateProfileAvatarFile,
+    MAX_AVATAR_BYTES
+} = require('../services/profileAvatarStorage');
 
 const log = createLogger('Auth');
+
+const profileAvatarUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_AVATAR_BYTES },
+    fileFilter: (req, file, cb) => {
+        try {
+            validateProfileAvatarFile(file);
+            cb(null, true);
+        } catch (err) {
+            cb(err);
+        }
+    }
+});
+
+function handleProfileAvatarUpload(req, res, next) {
+    profileAvatarUpload.single('file')(req, res, (err) => {
+        if (!err) return next();
+        const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : (err.statusCode || 400);
+        res.status(status).json({ error: err.message || 'Не вдалося завантажити фото профілю' });
+    });
+}
 
 function userAvatarPayload(row = {}) {
     return {
@@ -643,6 +670,60 @@ router.patch('/profile/avatar', authenticateToken, async (req, res) => {
     } catch (err) {
         log.error('Update profile avatar error', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/auth/profile/avatar/upload - upload own profile photo from device
+router.post('/profile/avatar/upload', authenticateToken, handleProfileAvatarUpload, async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'Оберіть фото профілю' });
+        }
+
+        const stored = await uploadProfileAvatarWithFallback(req.file, {
+            username: req.user.username,
+            userId: req.user.id
+        });
+
+        await pool.query(
+            `INSERT INTO user_profiles_ext (username, avatar_url, avatar_style)
+             VALUES ($1, $2, 'photo')
+             ON CONFLICT (username) DO UPDATE
+             SET avatar_url = EXCLUDED.avatar_url,
+                 avatar_style = EXCLUDED.avatar_style,
+                 updated_at = NOW()`,
+            [req.user.username, stored.publicUrl]
+        );
+        await pool.query(
+            `UPDATE users
+             SET avatar_emoji = NULL,
+                 avatar_color = NULL
+             WHERE username = $1`,
+            [req.user.username]
+        );
+
+        const { rows: [user] } = await pool.query(
+            `SELECT u.id, u.username, u.name, u.role, u.avatar_emoji, u.avatar_color, upe.avatar_url
+             FROM users u
+             LEFT JOIN user_profiles_ext upe ON upe.username = u.username
+             WHERE u.username = $1`,
+            [req.user.username]
+        );
+
+        res.json({
+            success: true,
+            storage: {
+                provider: stored.provider,
+                bucket: stored.bucket,
+                key: stored.key,
+                contentType: stored.contentType
+            },
+            user: { id: user.id, username: user.username, name: user.name, role: user.role, ...userAvatarPayload(user) }
+        });
+    } catch (err) {
+        const status = err.statusCode || 500;
+        log.error('Upload profile avatar error', err);
+        res.status(status).json({ error: status >= 500 ? 'Internal server error' : err.message });
     }
 });
 

@@ -506,12 +506,22 @@ function renderProfileSettingsTab() {
                             <button type="button" class="profile-settings-primary" onclick="saveProfileAvatar('emoji')">Зберегти emoji</button>
                             <button type="button" onclick="saveProfileAvatar('initials')">Літера з імені</button>
                         </div>
+                        <label for="profileAvatarFile">Фото з компʼютера або телефона</label>
+                        <div class="profile-avatar-upload-row">
+                            <input id="profileAvatarFile" class="profile-avatar-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" onchange="handleProfileAvatarFileChange(this)">
+                            <label class="profile-avatar-file-pick" for="profileAvatarFile">
+                                <span>⬆</span>
+                                <b id="profileAvatarFileName">Обрати фото</b>
+                                <small>JPG, PNG, WebP або GIF до 5 МБ</small>
+                            </label>
+                            <button type="button" id="profileAvatarUploadBtn" onclick="uploadProfileAvatarFile()" disabled>Завантажити</button>
+                        </div>
                         <label for="profileAvatarUrl">Фото через URL</label>
                         <div class="profile-avatar-url-row">
                             <input id="profileAvatarUrl" type="url" placeholder="https://.../avatar.jpg" value="${escapeHtml(avatar.url)}" oninput="previewProfileAvatarUrl()">
                             <button type="button" onclick="saveProfileAvatar('image')">Зберегти фото</button>
                         </div>
-                        <p class="profile-avatar-note">Підтримується прямий https/http URL до зображення або швидкий emoji-аватар. Після збереження sidebar оновиться одразу.</p>
+                        <p class="profile-avatar-note">Можна завантажити файл із пристрою, вставити прямий https/http URL або використати emoji-аватар. Після збереження sidebar оновиться одразу.</p>
                     </div>
                 </div>
             </section>
@@ -569,17 +579,51 @@ function previewProfileAvatarUrl() {
     paintProfileAvatarPreview(url ? 'image' : 'emoji');
 }
 
-async function saveProfileAvatar(type) {
-    const payload = {
-        avatarType: type,
-        avatarEmoji: document.getElementById('profileAvatarEmoji')?.value || '🙂',
-        avatarColor: document.getElementById('profileAvatarColor')?.value || '#f59e0b',
-        avatarUrl: String(document.getElementById('profileAvatarUrl')?.value || '').trim()
+function handleProfileAvatarFileChange(input) {
+    const file = input?.files?.[0];
+    const nameEl = document.getElementById('profileAvatarFileName');
+    const uploadBtn = document.getElementById('profileAvatarUploadBtn');
+    if (uploadBtn) uploadBtn.disabled = true;
+    if (!file) {
+        if (nameEl) nameEl.textContent = 'Обрати фото';
+        return;
+    }
+
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (file.size > 5 * 1024 * 1024) {
+        if (typeof showNotification === 'function') showNotification('Фото профілю має бути до 5 МБ', 'error');
+        input.value = '';
+        if (nameEl) nameEl.textContent = 'Обрати фото';
+        return;
+    }
+    if (file.type && !allowed.includes(file.type)) {
+        if (typeof showNotification === 'function') showNotification('Підтримуються тільки JPG, PNG, WebP або GIF', 'error');
+        input.value = '';
+        if (nameEl) nameEl.textContent = 'Обрати фото';
+        return;
+    }
+
+    if (nameEl) nameEl.textContent = file.name;
+    if (uploadBtn) uploadBtn.disabled = false;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        const preview = document.getElementById('profileAvatarPreview');
+        if (!preview) return;
+        preview.innerHTML = '';
+        const img = document.createElement('img');
+        img.src = reader.result;
+        img.alt = '';
+        preview.style.background = 'transparent';
+        preview.appendChild(img);
     };
-    const result = await apiPatch('/auth/profile/avatar', payload);
+    reader.readAsDataURL(file);
+}
+
+function applyProfileAvatarResult(result, message = 'Аватарку оновлено') {
     if (!result?.success || !result.user) {
         if (typeof showNotification === 'function') showNotification(result?.error || 'Не вдалося зберегти аватарку', 'error');
-        return;
+        return false;
     }
     profileData.user = { ...(profileData.user || {}), ...result.user };
     try {
@@ -592,8 +636,62 @@ async function saveProfileAvatar(type) {
         if (typeof AppState !== 'undefined') AppState.currentUser = result.user;
     }
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
-    if (typeof showNotification === 'function') showNotification('Аватарку оновлено', 'success');
+    if (typeof showNotification === 'function') showNotification(message, 'success');
     renderProfile();
+    return true;
+}
+
+async function uploadProfileAvatarFile() {
+    const input = document.getElementById('profileAvatarFile');
+    const file = input?.files?.[0];
+    if (!file) {
+        if (typeof showNotification === 'function') showNotification('Оберіть фото з пристрою', 'error');
+        return;
+    }
+
+    const button = document.getElementById('profileAvatarUploadBtn');
+    const originalText = button?.textContent || 'Завантажити';
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Завантаження...';
+    }
+
+    try {
+        const body = new FormData();
+        body.append('file', file);
+        const response = await fetch('/api/auth/profile/avatar/upload', {
+            method: 'POST',
+            headers: getAuthHeaders(false),
+            body
+        });
+        if (handleAuthError(response)) return;
+        const result = await response.json().catch(() => ({ success: false, error: 'Помилка відповіді сервера' }));
+        if (!response.ok) {
+            if (typeof showNotification === 'function') showNotification(result?.error || 'Не вдалося завантажити фото', 'error');
+            return;
+        }
+        const urlInput = document.getElementById('profileAvatarUrl');
+        if (urlInput && result.user?.avatarUrl) urlInput.value = result.user.avatarUrl;
+        applyProfileAvatarResult(result, 'Фото профілю оновлено');
+    } catch (err) {
+        if (typeof showNotification === 'function') showNotification(err.message || 'Не вдалося завантажити фото', 'error');
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = originalText;
+        }
+    }
+}
+
+async function saveProfileAvatar(type) {
+    const payload = {
+        avatarType: type,
+        avatarEmoji: document.getElementById('profileAvatarEmoji')?.value || '🙂',
+        avatarColor: document.getElementById('profileAvatarColor')?.value || '#f59e0b',
+        avatarUrl: String(document.getElementById('profileAvatarUrl')?.value || '').trim()
+    };
+    const result = await apiPatch('/auth/profile/avatar', payload);
+    applyProfileAvatarResult(result);
 }
 
 function renderProfileTaskRow(task, tag = '') {

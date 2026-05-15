@@ -35,6 +35,19 @@ const LOCAL_UPLOAD_SURFACE = [
         reason: 'Manual and generated sounds prefer Supabase Storage; local files are retained as a rollout fallback.'
     },
     {
+        urlPrefix: '/uploads/profile-avatars',
+        localDir: 'uploads/profile-avatars',
+        owner: 'profile',
+        persistence: 'supabase-preferred-local-fallback',
+        routeFile: 'routes/auth.js',
+        serviceFile: 'services/profileAvatarStorage.js',
+        frontendFiles: ['profile.html', 'js/profile-page.js'],
+        tests: ['tests/profile-avatar-storage.test.js'],
+        remoteBucket: 'profile-avatars',
+        envBucket: 'SUPABASE_PROFILE_AVATAR_BUCKET',
+        reason: 'User profile photos prefer Supabase Storage; local files are a fallback for environments without Supabase.'
+    },
+    {
         urlPrefix: '/uploads/designs',
         localDir: 'uploads/designs',
         owner: 'designs',
@@ -71,6 +84,17 @@ const REMOTE_STORAGE_SURFACE = [
         tests: ['tests/audio-storage.test.js'],
         localFallback: '/uploads/sounds',
         reason: 'Durable sound library audio for manual uploads and generated audio.'
+    },
+    {
+        bucket: 'profile-avatars',
+        envBucket: 'SUPABASE_PROFILE_AVATAR_BUCKET',
+        owner: 'profile',
+        provider: 'supabase-storage',
+        serviceFile: 'services/profileAvatarStorage.js',
+        routeFiles: ['routes/auth.js'],
+        tests: ['tests/profile-avatar-storage.test.js'],
+        localFallback: '/uploads/profile-avatars',
+        reason: 'Durable user profile photos uploaded from desktop or mobile devices.'
     },
     {
         bucket: 'catalog-images',

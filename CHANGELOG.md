@@ -4,6 +4,16 @@
 
 ---
 
+## v0.50.15 - Profile Photo Upload (2026-05-15)
+
+### Profile / Avatar [codex]
+- **Фото з пристрою** - у налаштуваннях профілю додано завантаження власної аватарки з комп'ютера або телефона.
+- **Storage** - фото профілю проходить через documented storage surface: Supabase Storage `profile-avatars` із локальним fallback `/uploads/profile-avatars`.
+- **Safety** - дозволені тільки JPG, PNG, WebP і GIF до 5 МБ; SVG та невідповідні MIME-типи блокуються до збереження.
+- **UX** - preview аватарки оновлюється одразу після вибору файлу, а після збереження оновлюються профіль, header і sidebar.
+
+---
+
 ## v0.50.14 - Dashboard Board Tools & Notes Repair (2026-05-15)
 
 ### Dashboard / Board Mode [codex]

@@ -7,15 +7,15 @@
     <title>Event Genix | Робочий профіль</title>
     <meta name="description" content="Event Genix — робочий профіль працівника, задачі, графік і операційні показники">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.50.14">
-    <link rel="stylesheet" href="css/layout.css?v=0.50.14">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.14">
-    <link rel="stylesheet" href="css/pages.css?v=0.50.14">
-    <link rel="stylesheet" href="css/modals.css?v=0.50.14">
-    <link rel="stylesheet" href="css/controls.css?v=0.50.14">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.14">
-    <link rel="stylesheet" href="css/responsive.css?v=0.50.14">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.50.14">
+    <link rel="stylesheet" href="css/base.css?v=0.50.15">
+    <link rel="stylesheet" href="css/layout.css?v=0.50.15">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.15">
+    <link rel="stylesheet" href="css/pages.css?v=0.50.15">
+    <link rel="stylesheet" href="css/modals.css?v=0.50.15">
+    <link rel="stylesheet" href="css/controls.css?v=0.50.15">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.15">
+    <link rel="stylesheet" href="css/responsive.css?v=0.50.15">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.50.15">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -1223,14 +1223,17 @@
         }
 
         .profile-avatar-action-row,
-        .profile-avatar-url-row {
+        .profile-avatar-url-row,
+        .profile-avatar-upload-row {
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
         }
 
         .profile-avatar-action-row button,
-        .profile-avatar-url-row button {
+        .profile-avatar-url-row button,
+        .profile-avatar-upload-row button,
+        .profile-avatar-file-pick {
             padding: 0 14px;
         }
 
@@ -1242,6 +1245,65 @@
 
         .profile-avatar-url-row {
             align-items: center;
+        }
+
+        .profile-avatar-upload-row {
+            align-items: stretch;
+        }
+
+        .profile-avatar-file-input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .profile-avatar-file-pick {
+            flex: 1 1 300px;
+            min-height: 58px;
+            border-radius: 12px;
+            border: 1px dashed var(--gray-300);
+            background: rgba(16,185,129,0.05);
+            color: var(--gray-800);
+            cursor: pointer;
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            grid-template-rows: auto auto;
+            column-gap: 10px;
+            align-items: center;
+            font-weight: 900;
+        }
+
+        .profile-avatar-file-pick span {
+            grid-row: 1 / 3;
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            color: var(--primary);
+        }
+
+        .profile-avatar-file-pick b,
+        .profile-avatar-file-pick small {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .profile-avatar-file-pick small {
+            color: var(--gray-500);
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .profile-avatar-upload-row button:disabled {
+            opacity: 0.48;
+            cursor: not-allowed;
         }
 
         .profile-avatar-url-row input {
@@ -1441,10 +1503,22 @@
         body.dark-mode .profile-avatar-color-grid button,
         body.dark-mode .profile-avatar-action-row button,
         body.dark-mode .profile-avatar-url-row button,
-        body.dark-mode .profile-avatar-url-row input {
+        body.dark-mode .profile-avatar-upload-row button,
+        body.dark-mode .profile-avatar-url-row input,
+        body.dark-mode .profile-avatar-file-pick,
+        body.dark-mode .profile-avatar-file-pick span {
             background: rgba(255,255,255,0.06);
             border-color: rgba(255,255,255,0.12);
             color: var(--profile-dark-text);
+        }
+
+        body.dark-mode .profile-avatar-file-pick {
+            border-color: rgba(52, 211, 153, 0.28);
+            background: rgba(16, 185, 129, 0.08);
+        }
+
+        body.dark-mode .profile-avatar-file-pick small {
+            color: var(--profile-dark-secondary);
         }
 
         body.dark-mode .profile-avatar-action-row .profile-settings-primary {
@@ -2263,16 +2337,16 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.50.14"></script>
-    <script src="js/notification.js?v=0.50.14"></script>
-    <script src="js/api.js?v=0.50.14"></script>
-    <script src="js/auth.js?v=0.50.14"></script>
-    <script src="js/components/sidebar.js?v=0.50.14"></script>
+    <script src="js/config.js?v=0.50.15"></script>
+    <script src="js/notification.js?v=0.50.15"></script>
+    <script src="js/api.js?v=0.50.15"></script>
+    <script src="js/auth.js?v=0.50.15"></script>
+    <script src="js/components/sidebar.js?v=0.50.15"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ui.js?v=0.50.14"></script>
-    <script src="js/achievement-popup.js?v=0.50.14"></script>
-    <script src="js/profile-page.js?v=0.50.14"></script>
-    <script src="js/role-panel.js?v=0.50.14"></script>
-    <script src="js/alerts.js?v=0.50.14"></script>
+    <script src="js/ui.js?v=0.50.15"></script>
+    <script src="js/achievement-popup.js?v=0.50.15"></script>
+    <script src="js/profile-page.js?v=0.50.15"></script>
+    <script src="js/role-panel.js?v=0.50.15"></script>
+    <script src="js/alerts.js?v=0.50.15"></script>
 </body>
 </html>

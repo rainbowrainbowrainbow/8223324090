@@ -28,10 +28,12 @@ pack.
 | --- | --- | --- | --- | --- | --- |
 | `/uploads/chat` | `uploads/chat` | chat | `supabase-preferred-local-fallback` | `tests/chat-upload-storage.test.js`, `tests/chat-upload-route.test.js` | New chat attachments prefer Supabase bucket `chat-uploads` through `SUPABASE_CHAT_BUCKET`; local files are only a fallback. |
 | `/uploads/sounds` | `uploads/sounds` | sound | `supabase-preferred-local-fallback` | `tests/audio-storage.test.js` | Manual and generated sound uploads prefer Supabase bucket `audio-library` through `SUPABASE_AUDIO_BUCKET`; local files are only a fallback. |
+| `/uploads/profile-avatars` | `uploads/profile-avatars` | profile | `supabase-preferred-local-fallback` | `tests/profile-avatar-storage.test.js` | User profile photos uploaded from desktop or mobile prefer Supabase bucket `profile-avatars` through `SUPABASE_PROFILE_AVATAR_BUCKET`; local files are only a fallback. |
 | `/uploads/designs` | `uploads/designs` | designs | `local-only-legacy` | `tests/designs.test.js` | Design board assets still use local disk through `routes/designs.js` and are the main storage migration candidate. |
 
 All local upload directories must stay ignored in `.gitignore`, including
-`uploads/chat`, `uploads/sounds`, and `uploads/designs`.
+`uploads/chat`, `uploads/sounds`, `uploads/profile-avatars`, and
+`uploads/designs`.
 
 ## Supabase Storage Buckets
 
@@ -39,6 +41,7 @@ All local upload directories must stay ignored in `.gitignore`, including
 | --- | --- | --- | --- | --- | --- |
 | `chat-uploads` | `SUPABASE_CHAT_BUCKET` | chat | `services/chatUploadStorage.js` | `routes/chat.js` | `/uploads/chat` |
 | `audio-library` | `SUPABASE_AUDIO_BUCKET` | sound | `services/audioStorage.js` | `routes/music.js` | `/uploads/sounds` |
+| `profile-avatars` | `SUPABASE_PROFILE_AVATAR_BUCKET` | profile | `services/profileAvatarStorage.js` | `routes/auth.js` | `/uploads/profile-avatars` |
 | `catalog-images` | none | catalogs | `services/imageStorage.js` | `routes/catalogs.js` | none |
 
 Shared Supabase client configuration lives in `db/supabase.js` and reads

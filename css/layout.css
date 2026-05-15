@@ -16,6 +16,16 @@ body[data-page-group]:not(.shell-ready) #mainApp {
     visibility: hidden;
 }
 
+body[data-page-group]:not(.auth-screen) #loginScreen {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+body[data-page-group].auth-screen #loginScreen {
+    visibility: visible;
+    pointer-events: auto;
+}
+
 body[data-page-group]:not(.shell-ready) .page-container,
 body[data-page-group]:not(.shell-ready) .main-content {
     animation: none !important;

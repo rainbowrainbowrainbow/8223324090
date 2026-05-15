@@ -518,6 +518,51 @@ body.dark-mode .explain-empty-title {
 }
 
 /* ==========================================
+   PAGE FATAL ERROR STATE
+   ========================================== */
+
+.page-fatal-error {
+    padding: 16px;
+    border: 1px solid rgba(239, 68, 68, 0.22);
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.06);
+    color: #7F1D1D;
+}
+
+.page-fatal-error h3 {
+    margin: 0 0 8px;
+    font-size: 16px;
+    font-weight: 900;
+    color: inherit;
+}
+
+.page-fatal-error p {
+    margin: 0 0 10px;
+    color: inherit;
+}
+
+.page-fatal-error pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+    line-height: 1.45;
+    color: inherit;
+}
+
+.page-fatal-error-meta {
+    margin-top: 10px;
+    font-size: 12px;
+    opacity: 0.78;
+}
+
+body.dark-mode .page-fatal-error {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(248, 113, 113, 0.32);
+    color: #FECACA;
+}
+
+/* ==========================================
    RESPONSIVE
    ========================================== */
 

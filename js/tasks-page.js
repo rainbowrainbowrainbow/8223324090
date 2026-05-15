@@ -27,6 +27,7 @@ let currentView = 'today';
 let currentCategory = 'all';
 let allTasks = [];
 let userPermissions = null; // v20.9.16: loaded from /api/tasks/permissions
+let pageCurrentUser = null;
 
 // ==========================================
 // UTILITIES
@@ -79,8 +80,14 @@ function getTaskDeepLinkId() {
     return Number.isInteger(taskId) && taskId > 0 ? taskId : null;
 }
 
+function getTasksCurrentUser() {
+    if (typeof AppState !== 'undefined' && AppState.currentUser) return AppState.currentUser;
+    return pageCurrentUser;
+}
+
 function currentUserId() {
-    const parsed = Number(AppState.currentUser?.id || AppState.currentUser?.userId || 0);
+    const user = getTasksCurrentUser();
+    const parsed = Number(user?.id || user?.userId || 0);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
@@ -131,89 +138,148 @@ function openTaskDeepLink() {
     if (taskId) openTaskDetail(taskId);
 }
 
+function bootStep(label, extra) {
+    if (extra !== undefined) console.info(`[tasks:boot] ${label}`, extra);
+    else console.info(`[tasks:boot] ${label}`);
+}
+
+function renderTasksFatalError(err) {
+    if (typeof renderStandaloneFatalError === 'function') {
+        renderStandaloneFatalError({
+            moduleName: 'tasks',
+            containerId: 'boardContent',
+            title: 'Не вдалося відкрити модуль задач',
+            message: 'Сторінка завантажилась, але один із кроків ініціалізації впав.',
+            error: err
+        });
+        return;
+    }
+    const board = document.getElementById('boardContent');
+    if (board) {
+        board.innerHTML = `
+            <div class="page-fatal-error" role="alert">
+                <h3>Не вдалося відкрити модуль задач</h3>
+                <p>Сторінка завантажилась, але один із кроків ініціалізації впав.</p>
+                <pre>${escapeHtml(err?.message || 'Unknown error')}</pre>
+            </div>
+        `;
+    }
+}
+
 // ==========================================
 // PAGE INIT
 // ==========================================
 
 async function initPage() {
-    try {
-    initDarkMode();
+    if (typeof initDarkMode === 'function') initDarkMode();
+    bootStep('auth:start');
     const token = localStorage.getItem('pzp_token');
     if (!token) { window.location.href = '/'; return; }
 
-    const user = await apiVerifyToken();
+    let user;
+    try {
+        user = await apiVerifyToken();
+    } catch (err) {
+        bootStep('auth:runtime-failed', { message: err?.message || String(err) });
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        if (typeof handleStandaloneInitError === 'function') {
+            handleStandaloneInitError('tasks', err, renderTasksFatalError);
+        } else {
+            console.error('[tasks:init] auth runtime failure', err);
+            renderTasksFatalError(err);
+        }
+        return;
+    }
     if (!user) { window.location.href = '/'; return; }
 
-    AppState.currentUser = user;
-    const userEl = document.getElementById('currentUser');
-    if (userEl) userEl.textContent = user.name;
-    if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
-    else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
-    await _loadAssigneeDropdown();
+    bootStep('auth:ok', { role: user.role, username: user.username });
+    try {
+        pageCurrentUser = user;
+        if (typeof AppState !== 'undefined') AppState.currentUser = user;
+        const userEl = document.getElementById('currentUser');
+        if (userEl) userEl.textContent = user.name;
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
+        bootStep('shell:ready');
 
-    if (typeof bindLogoutButton === 'function') bindLogoutButton();
+        await _loadAssigneeDropdown();
+        bootStep('owners:loaded', { count: _assigneeList.length });
 
-    // Board tab switching
-    document.querySelectorAll('.board-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('.board-tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            currentView = tab.dataset.view;
+        if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
-            const isTemplates = currentView === 'templates';
-            document.getElementById('catFilters').style.display = isTemplates ? 'none' : '';
-            document.getElementById('quickAdd').style.display = (isTemplates || userPermissions?.canCreateTasks === false) ? 'none' : '';
-            document.getElementById('boardContent').style.display = isTemplates ? 'none' : '';
-            document.getElementById('templatesSection').style.display = isTemplates ? '' : 'none';
-            updateTaskExplainability();
+        // Board tab switching
+        document.querySelectorAll('.board-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.board-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentView = tab.dataset.view;
 
-            if (isTemplates) {
-                loadTemplates();
-            } else {
+                const isTemplates = currentView === 'templates';
+                document.getElementById('catFilters').style.display = isTemplates ? 'none' : '';
+                document.getElementById('quickAdd').style.display = (isTemplates || userPermissions?.canCreateTasks === false) ? 'none' : '';
+                document.getElementById('boardContent').style.display = isTemplates ? 'none' : '';
+                document.getElementById('templatesSection').style.display = isTemplates ? '' : 'none';
+                updateTaskExplainability();
+
+                if (isTemplates) {
+                    loadTemplates();
+                } else {
+                    renderBoard();
+                }
+            });
+        });
+
+        // Category filter chips
+        document.querySelectorAll('.cat-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
+                chip.classList.add('active');
+                currentCategory = chip.dataset.cat;
                 renderBoard();
-            }
+            });
         });
-    });
-
-    // Category filter chips
-    document.querySelectorAll('.cat-chip').forEach(chip => {
-        chip.addEventListener('click', () => {
-            document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
-            chip.classList.add('active');
-            currentCategory = chip.dataset.cat;
-            renderBoard();
+        document.addEventListener('click', (e) => {
+            const clear = e.target.closest('[data-explain-clear="tasks"]');
+            if (!clear) return;
+            e.preventDefault();
+            resetTaskFilters();
         });
-    });
-    document.addEventListener('click', (e) => {
-        const clear = e.target.closest('[data-explain-clear="tasks"]');
-        if (!clear) return;
-        e.preventDefault();
-        resetTaskFilters();
-    });
 
-    // Quick add task
-    document.getElementById('addTaskBtn')?.addEventListener('click', addTask);
-    document.getElementById('taskTitle')?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') addTask();
-    });
+        // Quick add task
+        document.getElementById('addTaskBtn')?.addEventListener('click', addTask);
+        document.getElementById('taskTitle')?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') addTask();
+        });
 
-    // Templates
-    document.getElementById('addTemplateBtn')?.addEventListener('click', addTemplate);
-    document.getElementById('tplPattern')?.addEventListener('change', (e) => {
-        document.getElementById('tplDays').style.display = e.target.value === 'custom' ? '' : 'none';
-    });
+        // Templates
+        document.getElementById('addTemplateBtn')?.addEventListener('click', addTemplate);
+        document.getElementById('tplPattern')?.addEventListener('change', (e) => {
+            document.getElementById('tplDays').style.display = e.target.value === 'custom' ? '' : 'none';
+        });
 
-    // v20.9.16: Load permissions and apply UI restrictions
-    const permsResult = await apiGetTaskPermissions();
-    if (permsResult && permsResult.permissions) {
-        userPermissions = permsResult.permissions;
-        applyPermissionsUI(userPermissions);
+        // v20.9.16: Load permissions and apply UI restrictions
+        const permsResult = await apiGetTaskPermissions();
+        if (permsResult && permsResult.permissions) {
+            userPermissions = permsResult.permissions;
+            applyPermissionsUI(userPermissions);
+        }
+        bootStep('permissions:loaded', { hasPermissions: Boolean(userPermissions) });
+
+        await loadAllTasks({ fatal: true });
+        bootStep('tasks:loaded', { count: Array.isArray(allTasks) ? allTasks.length : 0 });
+        await loadMyPoints();
+        bootStep('points:loaded');
+        openTaskDeepLink();
+        bootStep('render:done');
+    } catch (err) {
+        bootStep('runtime:failed', { message: err?.message || String(err) });
+        if (typeof handleStandaloneInitError === 'function') {
+            handleStandaloneInitError('tasks', err, renderTasksFatalError);
+        } else {
+            console.error('[tasks:init] runtime failure', err);
+            renderTasksFatalError(err);
+        }
     }
-
-    await loadAllTasks();
-    await loadMyPoints();
-    openTaskDeepLink();
-    } catch (err) { console.error('Page init failed:', err); window.location.href = '/'; }
 }
 
 // v20.9.16: Hide/show UI elements based on role permissions
@@ -404,15 +470,21 @@ async function apiRescheduleTask(taskId, deadline) {
 // LOAD & RENDER
 // ==========================================
 
-async function loadAllTasks() {
+async function loadAllTasks(options = {}) {
+    const { fatal = false } = options;
     const board = document.getElementById('boardContent');
     if (board) board.innerHTML = '<div class="loading-spinner">Завантаження задач…</div>';
     try {
-        allTasks = await apiGetTasks();
+        const tasks = await apiGetTasks();
+        if (!Array.isArray(tasks)) {
+            throw new Error('/api/tasks returned non-array payload');
+        }
+        allTasks = tasks;
         updateCounts();
         renderBoard();
     } catch (err) {
         console.error('loadAllTasks error:', err);
+        if (fatal) throw err;
         showNotification('Помилка завантаження задач', 'error');
         if (board) board.innerHTML = '';
     }
@@ -420,7 +492,7 @@ async function loadAllTasks() {
 
 // v10.0: Load user points
 async function loadMyPoints() {
-    const username = AppState.currentUser?.username;
+    const username = getTasksCurrentUser()?.username;
     if (!username) return;
     const points = await apiGetMyPoints(username);
     const bar = document.getElementById('pointsBar');

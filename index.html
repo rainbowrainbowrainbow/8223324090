@@ -16,19 +16,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.49.3">
-    <link rel="stylesheet" href="css/auth.css?v=0.49.3">
-    <link rel="stylesheet" href="css/layout.css?v=0.49.3">
-    <link rel="stylesheet" href="css/timeline.css?v=0.49.3">
-    <link rel="stylesheet" href="css/panel.css?v=0.49.3">
-    <link rel="stylesheet" href="css/modals.css?v=0.49.3">
-    <link rel="stylesheet" href="css/controls.css?v=0.49.3">
-    <link rel="stylesheet" href="css/features.css?v=0.49.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.49.3">
-    <link rel="stylesheet" href="css/responsive.css?v=0.49.3">
-    <link rel="stylesheet" href="css/pages.css?v=0.49.3">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.49.3">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.49.3">
+    <link rel="stylesheet" href="css/base.css?v=0.49.4">
+    <link rel="stylesheet" href="css/auth.css?v=0.49.4">
+    <link rel="stylesheet" href="css/layout.css?v=0.49.4">
+    <link rel="stylesheet" href="css/timeline.css?v=0.49.4">
+    <link rel="stylesheet" href="css/panel.css?v=0.49.4">
+    <link rel="stylesheet" href="css/modals.css?v=0.49.4">
+    <link rel="stylesheet" href="css/controls.css?v=0.49.4">
+    <link rel="stylesheet" href="css/features.css?v=0.49.4">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.49.4">
+    <link rel="stylesheet" href="css/responsive.css?v=0.49.4">
+    <link rel="stylesheet" href="css/pages.css?v=0.49.4">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.49.4">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.49.4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -40,15 +40,15 @@
     (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
     </script>
     <!-- Екран авторизації -->
-    <div id="loginScreen" class="login-screen">
+    <div id="loginScreen" class="login-screen hidden">
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <div class="login-release-badge" aria-label="Поточний реліз 0.47 Комунікації">🛰️ 0.47 Комунікації</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.49.3 — dashboard queue + navigation first paint</p>
+                <p class="tagline">AI First CRM v0.49.4 — timeline shell + chat self-task</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.49.3: Dashboard + Navigation</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.49.4: Timeline + Chat</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1279,13 +1279,25 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.49.3 — Dashboard Work Queue Compact Widget Fix (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.4 — Timeline + Chat Self-Task Flow (Клешня, 15.05.2026)</h4>
+                    <ul>
+                        <li><b>Navigation</b> — прибрано короткий flash стартового/login екрана при переході з Tasks на Timeline.</li>
+                        <li><b>Shell</b> — timeline landing page вирівняно до спільного authenticated first-paint contract.</li>
+                        <li><b>UX</b> — route transitions на Timeline тепер відкривають одразу робочий інтерфейс без проміжного першого екрана.</li>
+                        <li><b>Chat</b> — додано швидкий сценарій «створи таску собі» прямо з чату.</li>
+                        <li><b>Commands</b> — <code>/task</code> тепер підтримує self-формати: <code>/task собі ...</code>, <code>/task self ...</code>.</li>
+                        <li><b>Task form</b> — форма задачі preselect-ить поточного користувача й має кнопку <b>Собі</b>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.49.3 — Dashboard + Tasks Bootstrap Hardening (Клешня, 15.05.2026)</h4>
                     <ul>
                         <li><b>UI</b> — робочу чергу на dashboard ущільнено як справжній віджет, а не широку сторінкову секцію.</li>
                         <li><b>UX</b> — bucket-и отримали внутрішній скрол, компактніші рядки й коротку праву зону вирішення.</li>
                         <li><b>Density</b> — аналітика черги, кнопки й деталі більше не розтягують блок зайвим вертикальним простором.</li>
-                        <li><b>Follow-up</b> — службовий <code>v1</code> і довгі пояснення з аналітики прибрано з видимого шару, а висоту bucket-rail додатково зменшено.</li>
-                        <li><b>Widget mode</b> — порожня права зона не резервує колонку до вибору пункту, а кнопка оновлення стала компактною.</li>
+                        <li><b>Tasks</b> — runtime-помилки ініціалізації більше не маскуються редіректом на головну після успішної авторизації.</li>
+                        <li><b>Stability</b> — додано видимий fatal state і boot markers для задач та чату.</li>
+                        <li><b>Audit</b> — перевірено standalone bootstrap-патерни CRM і закрито критичні same-class redirect-ризики в HR, Finance та Analytics.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -6296,28 +6308,28 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.49.3"></script>
-    <script src="js/api.js?v=0.49.3"></script>
-    <script src="js/ui.js?v=0.49.3"></script>
-    <script src="js/auth.js?v=0.49.3"></script>
-    <script src="js/timeline.js?v=0.49.3"></script>
-    <script src="js/booking.js?v=0.49.3"></script>
-    <script src="js/settings.js?v=0.49.3"></script>
-    <script src="js/booking-form.js?v=0.49.3"></script>
-    <script src="js/booking-linked.js?v=0.49.3"></script>
-    <script src="js/settings-dashboard.js?v=0.49.3"></script>
-    <script src="js/settings-history.js?v=0.49.3"></script>
-    <script src="js/settings-afisha.js?v=0.49.3"></script>
-    <script src="js/settings-certificates.js?v=0.49.3"></script>
-    <script src="js/offline.js?v=0.49.3"></script>
-    <script src="js/search.js?v=0.49.3"></script>
-    <script src="js/ws.js?v=0.49.3"></script>
-    <script src="js/app.js?v=0.49.3"></script>
-    <script src="js/kleshnya-widget.js?v=0.49.3"></script>
-    <script src="js/components/sidebar.js?v=0.49.3"></script>
+    <script src="js/config.js?v=0.49.4"></script>
+    <script src="js/api.js?v=0.49.4"></script>
+    <script src="js/ui.js?v=0.49.4"></script>
+    <script src="js/auth.js?v=0.49.4"></script>
+    <script src="js/timeline.js?v=0.49.4"></script>
+    <script src="js/booking.js?v=0.49.4"></script>
+    <script src="js/settings.js?v=0.49.4"></script>
+    <script src="js/booking-form.js?v=0.49.4"></script>
+    <script src="js/booking-linked.js?v=0.49.4"></script>
+    <script src="js/settings-dashboard.js?v=0.49.4"></script>
+    <script src="js/settings-history.js?v=0.49.4"></script>
+    <script src="js/settings-afisha.js?v=0.49.4"></script>
+    <script src="js/settings-certificates.js?v=0.49.4"></script>
+    <script src="js/offline.js?v=0.49.4"></script>
+    <script src="js/search.js?v=0.49.4"></script>
+    <script src="js/ws.js?v=0.49.4"></script>
+    <script src="js/app.js?v=0.49.4"></script>
+    <script src="js/kleshnya-widget.js?v=0.49.4"></script>
+    <script src="js/components/sidebar.js?v=0.49.4"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=0.49.3"></script>
-    <script src="js/alerts.js?v=0.49.3"></script>
+    <script src="js/role-panel.js?v=0.49.4"></script>
+    <script src="js/alerts.js?v=0.49.4"></script>
 </body>
 </html>
 

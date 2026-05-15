@@ -498,10 +498,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name || user.username;
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
         else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
-    } catch {
-        window.location.href = '/';
-        document.getElementById('mainApp')?.classList.add('hidden');
-        if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
+    } catch (err) {
+        if (err?.message === 'Invalid token') {
+            window.location.href = '/';
+            document.getElementById('mainApp')?.classList.add('hidden');
+            if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
+            return;
+        }
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        if (typeof handleStandaloneInitError === 'function') {
+            handleStandaloneInitError('analytics', err, (failure) => {
+                renderStandaloneFatalError({
+                    moduleName: 'analytics',
+                    containerId: 'kpiGrid',
+                    title: 'Не вдалося відкрити аналітику',
+                    message: 'Авторизація пройшла, але ініціалізація аналітики впала.',
+                    error: failure
+                });
+            });
+        } else {
+            console.error('[analytics:init] runtime failure', err);
+        }
         return;
     }
 

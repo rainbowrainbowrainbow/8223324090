@@ -189,6 +189,8 @@ function showLoginScreen() {
         window.location.href = '/';
         return;
     }
+    document.body.classList.add('auth-screen');
+    document.body.classList.remove('authenticated-shell');
     document.getElementById('loginScreen')?.classList.remove('hidden');
     document.getElementById('mainApp')?.classList.add('hidden');
     // Hide floating buttons that are outside mainApp
@@ -197,6 +199,7 @@ function showLoginScreen() {
 }
 
 function clearAuthenticatedPageShell() {
+    document.body.classList.remove('auth-screen', 'authenticated-shell');
     if (typeof Sidebar !== 'undefined' && Sidebar.clearShellReady) Sidebar.clearShellReady();
     else {
         document.body.classList.remove('shell-ready');
@@ -205,6 +208,8 @@ function clearAuthenticatedPageShell() {
 }
 
 function showAuthenticatedPageShell() {
+    document.body.classList.remove('auth-screen');
+    document.body.classList.add('authenticated-shell');
     document.getElementById('loginScreen')?.classList.add('hidden');
     const mainApp = document.getElementById('mainApp');
     if (mainApp) {
@@ -212,14 +217,52 @@ function showAuthenticatedPageShell() {
         if (mainApp.style.display === 'none') mainApp.style.display = '';
     }
 
+    const appUser = typeof AppState !== 'undefined' ? AppState.currentUser : null;
     const _userEl = document.getElementById('currentUser');
-    if (_userEl && AppState.currentUser?.name) _userEl.textContent = AppState.currentUser.name;
+    if (_userEl && appUser?.name) _userEl.textContent = appUser.name;
 
     const sidebarToggle = document.getElementById('sidebarToggle');
     if (sidebarToggle) sidebarToggle.classList.remove('hidden');
 
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+}
+
+function renderStandaloneFatalError(options = {}) {
+    const {
+        containerId = 'main-content',
+        title = 'Не вдалося відкрити модуль',
+        message = 'Сторінка завантажилась, але один із кроків ініціалізації впав.',
+        error,
+        moduleName = 'module'
+    } = options;
+    const target = document.getElementById(containerId)
+        || document.getElementById('main-content')
+        || document.getElementById('mainApp')
+        || document.body;
+    if (!target) return;
+    const errorMessage = error?.message || String(error || 'Unknown error');
+    const requestId = error?.requestId ? `<p class="page-fatal-error-meta">requestId: ${_escHtml(error.requestId)}</p>` : '';
+    target.innerHTML = `
+        <div class="page-fatal-error" role="alert" data-module="${_escHtml(moduleName)}">
+            <h3>${_escHtml(title)}</h3>
+            <p>${_escHtml(message)}</p>
+            <pre>${_escHtml(errorMessage)}</pre>
+            ${requestId}
+        </div>
+    `;
+}
+
+function handleStandaloneInitError(moduleName, err, renderFatal) {
+    console.error(`[${moduleName}:init] runtime failure`, err);
+    if (typeof renderFatal === 'function') {
+        renderFatal(err);
+    } else {
+        renderStandaloneFatalError({ moduleName, error: err });
+    }
+    if (typeof showNotification === 'function') {
+        showNotification(`Помилка ініціалізації: ${moduleName}`, 'error');
+    }
 }
 
 // v22.0.0: Role hierarchy — 26 roles (higher index = more permissions)

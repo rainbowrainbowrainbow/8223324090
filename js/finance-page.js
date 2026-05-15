@@ -851,10 +851,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
         else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
-    } catch {
-        window.location.href = '/';
-        document.getElementById('mainApp')?.classList.add('hidden');
-        if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
+    } catch (err) {
+        if (err?.message === 'Invalid token') {
+            window.location.href = '/';
+            document.getElementById('mainApp')?.classList.add('hidden');
+            if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
+            return;
+        }
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        if (typeof handleStandaloneInitError === 'function') {
+            handleStandaloneInitError('finance', err, (failure) => {
+                renderStandaloneFatalError({
+                    moduleName: 'finance',
+                    containerId: 'tabDashboard',
+                    title: 'Не вдалося відкрити фінанси',
+                    message: 'Авторизація пройшла, але ініціалізація фінансового модуля впала.',
+                    error: failure
+                });
+            });
+        } else {
+            console.error('[finance:init] runtime failure', err);
+        }
         return;
     }
 

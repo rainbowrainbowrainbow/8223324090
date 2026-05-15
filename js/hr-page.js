@@ -187,7 +187,22 @@ async function initPage() {
         activateHrTab(tab, { updateHash: false });
     });
     startPolling();
-    } catch (err) { console.error('HR initPage failed:', err); }
+    } catch (err) {
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        if (typeof handleStandaloneInitError === 'function') {
+            handleStandaloneInitError('hr', err, (failure) => {
+                renderStandaloneFatalError({
+                    moduleName: 'hr',
+                    containerId: 'tab-today',
+                    title: 'Не вдалося відкрити HR',
+                    message: 'Авторизація пройшла, але ініціалізація HR-модуля впала.',
+                    error: failure
+                });
+            });
+        } else {
+            console.error('HR initPage failed:', err);
+        }
+    }
 }
 
 function initNewTabs() {
@@ -209,7 +224,10 @@ function initTabs() {
     document.querySelectorAll('.hr-tab').forEach(tab => {
         tab.addEventListener('click', () => activateHrTab(tab.dataset.tab, { updateHash: true }));
     });
-    } catch (err) { console.error('HR init failed:', err); window.location.href = '/'; }
+    } catch (err) {
+        console.error('HR init failed:', err);
+        throw err;
+    }
 }
 
 function getInitialHrTab() {

@@ -252,6 +252,8 @@ Object.defineProperty(AppState, 'currentUser', {
     configurable: true
 });
 
+if (typeof window !== 'undefined') window.AppState = AppState;
+
 // v7.0: Products cache TTL (5 minutes)
 const PRODUCTS_CACHE_TTL = 5 * 60 * 1000;
 

@@ -4,7 +4,21 @@
 
 ---
 
-## v0.49.3 - Dashboard Work Queue Compact Widget Fix (2026-05-15)
+## v0.49.4 - Timeline + Chat Self-Task Flow (2026-05-15)
+
+### Timeline First-Screen Flash [codex]
+- **Navigation** - прибрано короткий flash стартового/login екрана при переході з Tasks на Timeline.
+- **Shell** - timeline landing page вирівняно до shared authenticated first-paint contract: login shell більше не visible-by-default.
+- **UX** - route transitions на Timeline відкривають робочий інтерфейс без проміжного першого екрана, а unauthenticated login показується тільки explicit auth flow.
+
+### Chat Self-Task Flow [codex]
+- **Chat** - додано швидкий сценарій "створи таску собі" прямо з task form у чаті.
+- **Commands** - `/task` тепер підтримує self-формати: `/task собі ...`, `/task self ...`, `/task me ...`.
+- **UX** - task form preselect-ить поточного користувача, лишаючи старий delegated flow через вибір іншого виконавця.
+
+---
+
+## v0.49.3 - Dashboard + Tasks Bootstrap Hardening (2026-05-15)
 
 ### Dashboard Work Queue [codex]
 - **UI** - робочу чергу на dashboard ущільнено як справжній віджет: блок більше не розтягується на широку сторінкову секцію.
@@ -12,6 +26,12 @@
 - **Density** - аналітика черги, chips, кнопки, картки тріажу й empty-state стиснуті для швидкого сканування без втрати мобільного fallback.
 - **Follow-up** - видимий `v1`/службові пояснення з аналітики прибрано з основного шару віджета, ширину й висоту bucket-rail додатково зменшено.
 - **Widget mode** - порожня права зона більше не резервує колонку до вибору пункту, а кнопка оновлення в шапці отримала компактний widget-size.
+
+### Tasks Bootstrap + Standalone Audit [codex]
+- **Tasks** - знайдено й закрито root cause класу `auth/runtime conflation`: runtime-помилки після успішної авторизації більше не редіректять користувача на головну як fake auth failure.
+- **Chat** - додано fatal bootstrap boundary і boot markers, щоб сценарій "є звук, але білий екран" залишав видимий error state замість часткового background init без UI.
+- **Stability** - додано shared standalone fatal error contract для page-local runtime failures; auth failure і init/render failure тепер розведені.
+- **Audit** - перевірено standalone modules Tasks, Chat, HR, Analytics, Finance, Warehouse, Customers, Leads, Programs, Staff, Dashboard, Training, Designs, Graduation; critical same-class redirect risks закрито для HR, Finance та Analytics.
 
 ---
 

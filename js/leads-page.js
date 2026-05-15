@@ -87,6 +87,11 @@ let workspaceLeadId = null;
 let workspaceRequestSeq = 0;
 let workspaceEventsBound = false;
 let currentWorkspaceData = null;
+let leadCustomerLinkState = {
+    leadId: null,
+    customers: [],
+    searchTimer: null
+};
 
 // Auth helpers
 function getToken() { return localStorage.getItem('pzp_token'); }
@@ -2009,35 +2014,187 @@ async function confirmLeadWorkspaceBooking(leadId, bookingId) {
     }
 }
 
-async function linkWorkspaceLeadCustomer(leadId) {
-    const workspace = currentWorkspaceData?.lead?.id === leadId ? currentWorkspaceData : null;
-    const currentCustomerId = workspace?.customer?.id ? String(workspace.customer.id) : '';
-    let rawId = '';
-    if (typeof promptModal === 'function') {
-        rawId = await promptModal('Вкажіть ID існуючого клієнта або залиште порожнім, щоб створити нового з ліда', {
-            defaultValue: currentCustomerId,
-            placeholder: 'ID клієнта',
-            okText: 'Привʼязати'
-        });
-        if (rawId === null || rawId === undefined) return;
-    } else {
-        rawId = window.prompt('ID клієнта або порожньо для створення нового', currentCustomerId) || '';
-    }
+function ensureLeadCustomerLinkModal() {
+    let modal = document.getElementById('leadCustomerLinkModal');
+    if (modal) return modal;
 
-    const trimmed = String(rawId || '').trim();
-    const body = trimmed
-        ? { customerId: parseInt(trimmed, 10) }
-        : { createNew: true };
-    if (trimmed && (!Number.isInteger(body.customerId) || body.customerId <= 0)) {
-        if (typeof showNotification === 'function') showNotification('ID клієнта має бути числом', 'error');
+    modal = document.createElement('div');
+    modal.id = 'leadCustomerLinkModal';
+    modal.className = 'lead-modal-overlay';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'leadCustomerLinkTitle');
+    modal.innerHTML = `
+        <div class="lead-modal lead-customer-link-modal">
+            <h2 id="leadCustomerLinkTitle">Привʼязати клієнта</h2>
+            <p class="lead-customer-link-hint" id="leadCustomerLinkHint">Оберіть існуючого клієнта зі списку або створіть нового з даних ліда.</p>
+            <div class="form-group">
+                <label for="leadCustomerSearch">Пошук клієнта</label>
+                <input type="search" id="leadCustomerSearch" placeholder="Імʼя, телефон або Instagram" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label for="leadCustomerSelect">Існуючий клієнт</label>
+                <select id="leadCustomerSelect">
+                    <option value="">Почніть пошук клієнта</option>
+                </select>
+            </div>
+            <div class="lead-customer-link-preview is-empty" id="leadCustomerLinkPreview">Клієнта ще не вибрано.</div>
+            <div class="modal-btns">
+                <button type="button" class="btn-cancel" id="leadCustomerLinkCancel">Скасувати</button>
+                <button type="button" class="btn-cancel" id="leadCustomerCreateNew">Створити нового з ліда</button>
+                <button type="button" class="btn-save" id="leadCustomerLinkSubmit">Привʼязати існуючого</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) closeLeadCustomerLinkModal();
+    });
+    modal.querySelector('#leadCustomerLinkCancel')?.addEventListener('click', closeLeadCustomerLinkModal);
+    modal.querySelector('#leadCustomerCreateNew')?.addEventListener('click', submitLeadCustomerCreateNew);
+    modal.querySelector('#leadCustomerLinkSubmit')?.addEventListener('click', submitLeadCustomerLinkExisting);
+    modal.querySelector('#leadCustomerSelect')?.addEventListener('change', renderLeadCustomerLinkPreview);
+    modal.querySelector('#leadCustomerSearch')?.addEventListener('input', (event) => {
+        clearTimeout(leadCustomerLinkState.searchTimer);
+        leadCustomerLinkState.searchTimer = setTimeout(() => {
+            loadLeadCustomerLinkOptions(event.target.value);
+        }, 250);
+    });
+
+    return modal;
+}
+
+function normalizeLeadCustomerOption(customer) {
+    if (!customer || !customer.id) return null;
+    return {
+        id: Number(customer.id),
+        name: customer.name || customer.clientName || `Клієнт #${customer.id}`,
+        phone: customer.phone || '',
+        instagram: customer.instagram || '',
+        childName: customer.childName || customer.child_name || '',
+        totalBookings: Number(customer.totalBookings ?? customer.total_bookings ?? 0) || 0
+    };
+}
+
+function leadCustomerSearchSeed(workspace) {
+    const lead = workspace?.lead || {};
+    const customer = workspace?.customer || {};
+    return lead.phone || customer.phone || lead.clientName || lead.client_name || customer.name || '';
+}
+
+function mergeLeadCustomerOptions(customers) {
+    const seen = new Set();
+    leadCustomerLinkState.customers = (customers || [])
+        .map(normalizeLeadCustomerOption)
+        .filter(Boolean)
+        .filter(customer => {
+            if (seen.has(customer.id)) return false;
+            seen.add(customer.id);
+            return true;
+        });
+}
+
+function renderLeadCustomerLinkOptions(selectedId = '') {
+    const select = document.getElementById('leadCustomerSelect');
+    if (!select) return;
+    const customers = leadCustomerLinkState.customers;
+    if (!customers.length) {
+        select.innerHTML = '<option value="">Нічого не знайдено</option>';
+        renderLeadCustomerLinkPreview();
+        return;
+    }
+    select.innerHTML = '<option value="">Оберіть існуючого клієнта</option>' + customers.map(customer => {
+        const meta = [
+            customer.phone,
+            customer.instagram ? '@' + String(customer.instagram).replace(/^@+/, '') : '',
+            customer.totalBookings ? `${customer.totalBookings} віз.` : ''
+        ].filter(Boolean).join(' · ');
+        const label = `${customer.name}${meta ? ' · ' + meta : ''}`;
+        return `<option value="${customer.id}"${String(customer.id) === String(selectedId) ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('');
+    renderLeadCustomerLinkPreview();
+}
+
+function renderLeadCustomerLinkPreview() {
+    const preview = document.getElementById('leadCustomerLinkPreview');
+    const select = document.getElementById('leadCustomerSelect');
+    if (!preview || !select) return;
+    const selectedId = Number(select.value || 0);
+    const customer = leadCustomerLinkState.customers.find(item => item.id === selectedId);
+    if (!customer) {
+        preview.className = 'lead-customer-link-preview is-empty';
+        preview.textContent = 'Клієнта ще не вибрано.';
+        return;
+    }
+    preview.className = 'lead-customer-link-preview';
+    preview.innerHTML = `
+        <strong>${escapeHtml(customer.name)}</strong>
+        <span>ID ${escapeHtml(customer.id)}${customer.phone ? ' · ' + escapeHtml(customer.phone) : ''}${customer.instagram ? ' · @' + escapeHtml(String(customer.instagram).replace(/^@+/, '')) : ''}${customer.totalBookings ? ' · ' + escapeHtml(customer.totalBookings) + ' віз.' : ''}</span>
+    `;
+}
+
+async function loadLeadCustomerLinkOptions(query) {
+    const select = document.getElementById('leadCustomerSelect');
+    const trimmed = String(query || '').trim();
+    if (!select) return;
+    if (trimmed.length < 2) {
+        const workspace = currentWorkspaceData?.lead?.id === leadCustomerLinkState.leadId ? currentWorkspaceData : null;
+        const current = normalizeLeadCustomerOption(workspace?.customer);
+        mergeLeadCustomerOptions(current ? [current] : []);
+        renderLeadCustomerLinkOptions(current?.id || '');
         return;
     }
 
-    if (!trimmed && typeof confirmModal === 'function') {
-        const ok = await confirmModal('Створити нового клієнта з даних цього ліда?', { okText: 'Створити і привʼязати', type: 'success' });
-        if (!ok) return;
+    select.innerHTML = '<option value="">Пошук клієнтів...</option>';
+    try {
+        const customers = typeof apiSearchCustomers === 'function'
+            ? await apiSearchCustomers(trimmed)
+            : await apiFetch(`/api/customers/search?q=${encodeURIComponent(trimmed)}`).then(res => res ? res.json() : []);
+        const workspace = currentWorkspaceData?.lead?.id === leadCustomerLinkState.leadId ? currentWorkspaceData : null;
+        const current = normalizeLeadCustomerOption(workspace?.customer);
+        const stillInitialSearch = trimmed === String(leadCustomerSearchSeed(workspace) || '').trim();
+        mergeLeadCustomerOptions([current, ...(Array.isArray(customers) ? customers : [])].filter(Boolean));
+        renderLeadCustomerLinkOptions(stillInitialSearch ? (current?.id || '') : '');
+    } catch (err) {
+        console.error('Lead customer search error', err);
+        select.innerHTML = '<option value="">Помилка пошуку клієнтів</option>';
+        if (typeof showNotification === 'function') showNotification('Не вдалося завантажити список клієнтів', 'error');
     }
+}
 
+async function linkWorkspaceLeadCustomer(leadId) {
+    const workspace = currentWorkspaceData?.lead?.id === leadId ? currentWorkspaceData : null;
+    const modal = ensureLeadCustomerLinkModal();
+    leadCustomerLinkState.leadId = leadId;
+    leadCustomerLinkState.customers = [];
+
+    const lead = workspace?.lead || {};
+    const hint = modal.querySelector('#leadCustomerLinkHint');
+    const input = modal.querySelector('#leadCustomerSearch');
+    const current = normalizeLeadCustomerOption(workspace?.customer);
+    const seed = leadCustomerSearchSeed(workspace);
+    if (hint) {
+        const leadLabel = lead.clientName || lead.client_name || `лід #${leadId}`;
+        hint.textContent = `Лід: ${leadLabel}. Оберіть існуючого клієнта зі списку або створіть нового з даних ліда.`;
+    }
+    if (input) input.value = seed;
+    mergeLeadCustomerOptions(current ? [current] : []);
+    renderLeadCustomerLinkOptions(current?.id || '');
+    modal.classList.add('active');
+    setTimeout(() => input?.focus(), 30);
+    await loadLeadCustomerLinkOptions(seed);
+}
+
+function closeLeadCustomerLinkModal() {
+    clearTimeout(leadCustomerLinkState.searchTimer);
+    const modal = document.getElementById('leadCustomerLinkModal');
+    if (modal) modal.classList.remove('active');
+}
+
+async function submitLeadCustomerLink(body, successText) {
+    const leadId = leadCustomerLinkState.leadId;
+    if (!leadId) return;
     try {
         const res = await apiFetch(`/api/leads/${leadId}/link-customer`, {
             method: 'POST',
@@ -2047,7 +2204,8 @@ async function linkWorkspaceLeadCustomer(leadId) {
         const data = await res.json();
         if (data.success) {
             const suggestionText = data.suggestions?.length ? ` Є ${data.suggestions.length} можливих дублікатів.` : '';
-            if (typeof showNotification === 'function') showNotification('Клієнта привʼязано до ліда.' + suggestionText, 'success');
+            closeLeadCustomerLinkModal();
+            if (typeof showNotification === 'function') showNotification(successText + suggestionText, 'success');
             await openLeadWorkspace(leadId, { pushState: false });
         } else if (typeof showNotification === 'function') {
             showNotification(data.error || 'Не вдалося привʼязати клієнта', 'error');
@@ -2056,6 +2214,25 @@ async function linkWorkspaceLeadCustomer(leadId) {
         console.error('Link lead customer error', err);
         if (typeof showNotification === 'function') showNotification('Помилка привʼязки клієнта', 'error');
     }
+}
+
+async function submitLeadCustomerLinkExisting() {
+    const select = document.getElementById('leadCustomerSelect');
+    const customerId = Number(select?.value || 0);
+    if (!Number.isInteger(customerId) || customerId <= 0) {
+        if (typeof showNotification === 'function') showNotification('Оберіть існуючого клієнта зі списку', 'error');
+        select?.focus();
+        return;
+    }
+    await submitLeadCustomerLink({ customerId }, 'Клієнта привʼязано до ліда.');
+}
+
+async function submitLeadCustomerCreateNew() {
+    const ok = typeof confirmModal === 'function'
+        ? await confirmModal('Створити нового клієнта з даних цього ліда?', { okText: 'Створити і привʼязати', type: 'success' })
+        : window.confirm('Створити нового клієнта з даних цього ліда?');
+    if (!ok) return;
+    await submitLeadCustomerLink({ createNew: true }, 'Нового клієнта створено і привʼязано до ліда.');
 }
 
 async function moveLeadWorkspaceStage(leadId, stage) {
@@ -2078,6 +2255,7 @@ window.createLeadWorkspaceCallbackTask = createLeadWorkspaceCallbackTask;
 window.completeLeadWorkspaceTask = completeLeadWorkspaceTask;
 window.confirmLeadWorkspaceBooking = confirmLeadWorkspaceBooking;
 window.linkWorkspaceLeadCustomer = linkWorkspaceLeadCustomer;
+window.closeLeadCustomerLinkModal = closeLeadCustomerLinkModal;
 window.moveLeadWorkspaceStage = moveLeadWorkspaceStage;
 window.closeQualityCategoryModal = closeQualityCategoryModal;
 window.closeLostReasonModal = closeLostReasonModal;

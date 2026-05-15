@@ -7,13 +7,13 @@
     <title>Event Genix | Воронка продажів</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.49.22">
-    <link rel="stylesheet" href="css/layout.css?v=0.49.22">
-    <link rel="stylesheet" href="css/pages.css?v=0.49.22">
-    <link rel="stylesheet" href="css/modals.css?v=0.49.22">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.49.22">
-    <link rel="stylesheet" href="css/responsive.css?v=0.49.22">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.49.22">
+    <link rel="stylesheet" href="css/base.css?v=0.49.24">
+    <link rel="stylesheet" href="css/layout.css?v=0.49.24">
+    <link rel="stylesheet" href="css/pages.css?v=0.49.24">
+    <link rel="stylesheet" href="css/modals.css?v=0.49.24">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.49.24">
+    <link rel="stylesheet" href="css/responsive.css?v=0.49.24">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.49.24">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -568,6 +568,42 @@
         .btn-cancel { background: var(--gray-100); color: var(--gray-700); border: none; padding: 10px 20px; border-radius: var(--radius-sm); font-weight: 600; font-family: inherit; cursor: pointer; min-height: 44px; }
         .btn-cancel:hover { background: var(--gray-200); }
 
+        /* Lead/customer linking */
+        .lead-customer-link-modal { width: min(92vw, 640px); }
+        .lead-customer-link-hint {
+            margin: -6px 0 16px;
+            color: #64748B;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.35;
+        }
+        .lead-customer-link-preview {
+            border: 1.5px solid #A7F3D0;
+            border-radius: 10px;
+            background: #ECFDF5;
+            padding: 12px 14px;
+            display: grid;
+            gap: 3px;
+            color: #064E3B;
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .lead-customer-link-preview strong {
+            color: #0F172A;
+            font-size: 14px;
+            font-weight: 900;
+        }
+        .lead-customer-link-preview span {
+            color: #047857;
+            font-size: 12px;
+            font-weight: 750;
+        }
+        .lead-customer-link-preview.is-empty {
+            border-color: #CBD5E1;
+            background: #F8FAFC;
+            color: #64748B;
+        }
+
         /* Quality category buttons */
         .quality-category-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 20px 0; }
         .quality-category-btns button { padding: 16px; border: 2px solid #E2E8F0; border-radius: 12px; background: #fff; cursor: pointer; font-size: 15px; font-weight: 700; font-family: inherit; transition: all .15s; min-height: 56px; }
@@ -605,6 +641,19 @@
         body.dark-mode .lead-modal label { color: #9CA3AF; }
         body.dark-mode .lead-modal input, body.dark-mode .lead-modal textarea { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); color: #E2E8F0; }
         body.dark-mode .lead-modal select { background: #252540; border-color: rgba(255,255,255,0.12); color: #E2E8F0; }
+        body.dark-mode .lead-customer-link-hint { color: #CBD5E1; }
+        body.dark-mode .lead-customer-link-preview {
+            background: rgba(16,185,129,0.10);
+            border-color: rgba(52,211,153,0.28);
+            color: #A7F3D0;
+        }
+        body.dark-mode .lead-customer-link-preview strong { color: #F8FAFC; }
+        body.dark-mode .lead-customer-link-preview span { color: #A7F3D0; }
+        body.dark-mode .lead-customer-link-preview.is-empty {
+            background: rgba(255,255,255,0.04);
+            border-color: rgba(148,163,184,0.22);
+            color: #94A3B8;
+        }
         body.dark-mode .lead-actions button { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: #D1D5DB; }
         body.dark-mode .lead-actions .btn-workspace { background: rgba(59,130,246,0.18); color: #BFDBFE; border-color: rgba(147,197,253,0.45); }
         body.dark-mode .lead-actions .btn-convert { background: #10B981; color: #fff; }
@@ -1106,15 +1155,15 @@
         });
     }
     </script>
-    <script src="js/config.js?v=0.49.22"></script>
-    <script src="js/notification.js?v=0.49.22"></script>
-    <script src="js/api.js?v=0.49.22"></script>
-    <script src="js/auth.js?v=0.49.22"></script>
-    <script src="js/components/sidebar.js?v=0.49.22"></script>
+    <script src="js/config.js?v=0.49.24"></script>
+    <script src="js/notification.js?v=0.49.24"></script>
+    <script src="js/api.js?v=0.49.24"></script>
+    <script src="js/auth.js?v=0.49.24"></script>
+    <script src="js/components/sidebar.js?v=0.49.24"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/leads-page.js?v=0.49.22"></script>
-    <script src="js/ui.js?v=0.49.22"></script>
-    <script src="js/alerts.js?v=0.49.22"></script>
-    <script src="js/role-panel.js?v=0.49.22"></script>
+    <script src="js/leads-page.js?v=0.49.24"></script>
+    <script src="js/ui.js?v=0.49.24"></script>
+    <script src="js/alerts.js?v=0.49.24"></script>
+    <script src="js/role-panel.js?v=0.49.24"></script>
 </body>
 </html>

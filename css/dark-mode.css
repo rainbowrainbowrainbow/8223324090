@@ -2498,3 +2498,47 @@ body.dark-mode .sidebar-theme-btn:hover {
     border-color: rgba(148, 163, 184, 0.12);
     color: #F8FAFC;
 }
+
+/* Dashboard team presence: only live online users stay green */
+body.dark-mode .team-presence-member {
+    background: rgba(30, 33, 55, 0.68);
+    border-color: rgba(148, 163, 184, 0.14);
+    color: #94A3B8;
+}
+
+body.dark-mode .team-presence-member.is-online {
+    background: rgba(16, 185, 129, 0.10);
+    border-color: rgba(52, 211, 153, 0.24);
+    color: #F8FAFC;
+}
+
+body.dark-mode .team-presence-member:not(.is-online) .team-presence-name {
+    color: #94A3B8;
+}
+
+body.dark-mode .team-presence-member.is-online .team-presence-name {
+    color: #F8FAFC;
+}
+
+body.dark-mode .team-presence-member:not(.is-online) .team-avatar {
+    background: #475569;
+    color: #CBD5E1;
+}
+
+body.dark-mode .team-presence-member.is-online .team-avatar {
+    background: #10B981;
+    color: #FFFFFF;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+}
+
+body.dark-mode .team-presence-member:not(.is-online) .staff-crm-badge.has-account {
+    background: rgba(148, 163, 184, 0.10) !important;
+    border-color: rgba(148, 163, 184, 0.16) !important;
+    color: #CBD5E1 !important;
+}
+
+body.dark-mode .team-presence-member.is-recent .team-online-dot,
+body.dark-mode .team-presence-member.is-offline .team-online-dot {
+    background: #64748B;
+    box-shadow: none;
+}

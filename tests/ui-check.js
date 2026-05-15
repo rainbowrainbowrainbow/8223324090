@@ -360,6 +360,7 @@ check('Lead assignees use lead-scoped endpoint', leadsCode.includes("apiFetch('/
 check('Lead workspace opens via query-driven endpoint', leadsCode.includes('getWorkspaceLeadIdFromUrl') && leadsCode.includes('/workspace') && leadsCode.includes("url.searchParams.set('lead'"));
 check('Lead workspace uses canonical pipeline stage', leadsCode.includes('canonical: pipeline_stage') && leadsCode.includes('PIPELINE_STAGES.find'));
 check('Lead workspace links customer/task/omni context', leadsCode.includes('/customers?open=') && leadsCode.includes('/tasks?open=') && leadsCode.includes('/omni?search='));
+check('Lead customer linking uses searchable existing-customer dropdown', leadsCode.includes('leadCustomerSelect') && leadsCode.includes('apiSearchCustomers') && leadsCode.includes('submitLeadCustomerLinkExisting') && leadsCode.includes('submitLeadCustomerCreateNew'));
 
 const customersCode = fs.readFileSync(path.join(ROOT, 'js/customers-page.js'), 'utf8');
 const tasksCode = fs.readFileSync(path.join(ROOT, 'js/tasks-page.js'), 'utf8');

@@ -525,10 +525,7 @@ const DashboardPage = (() => {
             return;
         }
 
-        container.innerHTML = `${renderReplyOperationsConsole(queue, visibleReplyItems)}
-            ${renderQueueIntelligenceSummary(queue)}
-            ${renderTriageWorkspace()}
-            ${visibleBuckets.map(bucket => {
+        const bucketsHtml = visibleBuckets.map(bucket => {
             const maxItems = bucket.key === 'waiting_reply' ? 12 : 4;
             const items = (bucket.items || []).slice(0, maxItems).map(renderWorkQueueItem).join('');
             return `
@@ -540,7 +537,12 @@ const DashboardPage = (() => {
                     <div class="work-queue-items">${items}</div>
                 </div>
             `;
-        }).join('')}`;
+        }).join('');
+
+        container.innerHTML = `${renderReplyOperationsConsole(queue, visibleReplyItems)}
+            ${renderQueueIntelligenceSummary(queue)}
+            <div class="work-queue-buckets" aria-label="Пункти робочої черги">${bucketsHtml}</div>
+            ${renderTriageWorkspace()}`;
         updateReplyOpsSelectionState();
     }
 
@@ -1166,8 +1168,8 @@ const DashboardPage = (() => {
                 <section class="work-queue-resolution-workspace empty" id="workQueueResolutionWorkspace" tabindex="-1" aria-label="Робоча зона тріажу й вирішення">
                     <div class="work-queue-triage-empty">
                         <span class="work-queue-triage-eyebrow">Робоча зона вирішення</span>
-                        <h3>Оберіть пункт черги</h3>
-                        <p>Тут зʼявляться причина, ризик, контекст і доступні дії. Видимо пунктів: ${visibleCount}.</p>
+                        <h3>Оберіть пункт</h3>
+                        <p>Причина, ризик, контекст і дії. Видимо: ${visibleCount}.</p>
                     </div>
                 </section>
             `;

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.49.3 - Dashboard Work Queue Compact Widget Fix (2026-05-15)
+
+### Dashboard Work Queue [codex]
+- **UI** - робочу чергу на dashboard ущільнено як справжній віджет: блок більше не розтягується на широку сторінкову секцію.
+- **UX** - bucket-и винесено у власний scroll-контейнер, права зона вирішення стала коротшою, а рядки черги не створюють окремих високих action-блоків.
+- **Density** - аналітика черги, chips, кнопки, картки тріажу й empty-state стиснуті для швидкого сканування без втрати мобільного fallback.
+
+---
+
 ## v0.49.2 - Dashboard Work Queue + Navigation First Paint Fix (2026-05-15)
 
 ### Dashboard Work Queue [codex]

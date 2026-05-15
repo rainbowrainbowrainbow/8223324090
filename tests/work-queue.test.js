@@ -1505,7 +1505,8 @@ describe('work queue endpoint', () => {
 
         const body = dom.window.document.getElementById('workQueueBody');
         assert.match(body.textContent, /Робоча зона вирішення/);
-        assert.match(body.textContent, /Аналітика черги v1/);
+        assert.match(body.querySelector('.work-queue-intelligence-head')?.textContent || '', /Черга/);
+        assert.doesNotMatch(body.textContent, /Аналітика черги v1/);
         assert.match(body.textContent, /без глобального скорингу/);
         assert.doesNotMatch(body.textContent, /reply_escalated|missing_deadline|Queue Intelligence|Resolution workspace/);
         assert.equal(body.querySelectorAll('.work-queue-detail-btn').length, 3);

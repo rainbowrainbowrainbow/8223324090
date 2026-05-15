@@ -472,10 +472,10 @@ const DashboardPage = (() => {
             <section class="work-queue-intelligence" aria-label="Аналітика робочої черги">
                 <div class="work-queue-intelligence-head">
                     <div>
-                        <span class="work-queue-triage-eyebrow">Аналітика черги v1</span>
-                        <h3>Пріоритетні групи за категоріями</h3>
+                        <span class="work-queue-triage-eyebrow">Черга</span>
+                        <h3>Пріоритети</h3>
                     </div>
-                    <span class="work-queue-intelligence-scope">Лише видимі дані черги · без глобального скорингу</span>
+                    <span class="work-queue-intelligence-scope">Видима черга · без глобального скорингу</span>
                 </div>
                 <div class="work-queue-intelligence-chips">
                     <span class="queue-band-pill band-critical">Критично ${critical}</span>
@@ -484,8 +484,8 @@ const DashboardPage = (() => {
                     <span class="queue-band-pill band-suggested">Підказки ${suggested}</span>
                 </div>
                 <div class="work-queue-intelligence-notes">
-                    <span>${escapeHtml(topRisk ? `Головний ризик: ${humanizeQueueRiskType(topRisk.type)} (${topRisk.count})` : 'Ризики формуються з полів конкретної категорії')}</span>
-                    <span>${escapeHtml(topBottleneck ? `Вузьке місце: ${humanizeQueueBottleneck(topBottleneck.label, topBottleneck.type)} (${topBottleneck.count})` : 'Вузькі місця рахуються лише з видимої черги')}</span>
+                    <span>${escapeHtml(topRisk ? `Ризик: ${humanizeQueueRiskType(topRisk.type)} (${topRisk.count})` : 'Ризики з полів категорії')}</span>
+                    <span>${escapeHtml(topBottleneck ? `Вузько: ${humanizeQueueBottleneck(topBottleneck.label, topBottleneck.type)} (${topBottleneck.count})` : 'Лише видима черга')}</span>
                 </div>
             </section>
         `;

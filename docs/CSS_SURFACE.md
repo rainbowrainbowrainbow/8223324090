@@ -24,6 +24,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/achievements.css` | shop | `page-scoped` | active | Gamification achievements and shop presentation styles. |
 | `css/agents.css` | chat | `page-scoped` | active | Chat assistant and agent panel styles. |
 | `css/auth.css` | shared-auth | `shared` | active | Login and authentication shell styles used by root, dashboard, and sound pages. |
+| `css/assistant-rail.css` | shared-crm-assistant | `shared` | active | Shared global CRM assistant rail, proactive help panel, voice controls, and dark/mobile states. |
 | `css/base.css` | shared-ui | `shared` | active | Global variables, reset, typography, and shared primitives. |
 | `css/catalog.css` | catalogs | `feature-shared` | active | Catalog viewer and print/public catalog styles used by designs and catalog routes. |
 | `css/chat.css` | chat | `page-scoped-large` | active-large | Main chat page styles; large-file consolidation candidate. |

@@ -4,6 +4,35 @@
 
 ---
 
+## v0.50.22 - Global CRM Assistant Rail (2026-05-15)
+
+### CRM / Assistant Rail [codex]
+- **All Pages** - верхня AI-строка стала shared CRM-компонентом і монтується у header на всіх authenticated сторінках без копіювання HTML.
+- **Proactive Help** - якщо користувач лишається на сторінці 5 секунд і не починає активну роботу, асистент сам коротко пропонує допомогу з урахуванням сторінки та ролі.
+- **Voice + Text** - одна й та сама підказка показується субтитрами і, якщо voice mode увімкнений, паралельно озвучується через TTS.
+- **Global API** - додано `/api/crm-assistant/*` як основний namespace для reply, transcription і speech; dashboard namespace лишився legacy alias.
+
+---
+
+## v0.50.21 - Dashboard AI Guide Voice Mode (2026-05-15)
+
+### Dashboard / Assistant Rail [codex]
+- **Assistant Rail** - верхня AI-панель дашборду підключена до server-side OpenAI Responses API і тепер дає короткі CRM-підказки з урахуванням ролі, сторінки, widgets і role preview.
+- **Voice Mode** - додано голосовий цикл: мікрофон у браузері, server-side transcription через OpenAI audio, AI-відповідь, TTS-озвучення і субтитри в rail.
+- **CRM Guidance** - створено окремий instruction pack для Event Genix CRM, щоб асистент працював як in-product провідник, а не generic chat.
+- **Secret Safety** - `OPENAI_API_KEY` використовується тільки на backend; frontend відправляє лише dashboard context і не отримує ключ.
+
+---
+
+## v0.50.20 - Dashboard Mixed Scene by Role (2026-05-15)
+
+### Dashboard / Role Scenes [codex]
+- **Dashboard Scene** - дашборд став єдиною змішаною сценою з логічно розкладеними widgets, контрольним центром і зонами для нотаток.
+- **Role Logic** - для `creator`, `admin`, `manager`, `senior_manager`, `director`, `vice_director`, `hr` і `art_director` додано власні scene presets; creator може preview-ити сцену інших ролей.
+- **Workspace Feel** - права writing lane, стабільний center control і керовано асиметричний лівий кластер формують dashboard як робочий простір, а не плоский список карток.
+
+---
+
 ## v0.50.19 - Assistant Rail Expansion & Sidebar Status Polish (2026-05-15)
 
 ### Dashboard / Sidebar [codex]

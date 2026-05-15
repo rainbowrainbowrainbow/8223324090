@@ -46,6 +46,18 @@ npm run dev
 
 The server uses `PORT` or defaults to `3000`. It expects PostgreSQL through `DATABASE_URL` or standard `PGHOST`/`PGUSER`/`PGDATABASE` variables. In production, `JWT_SECRET` is required by startup validation. Telegram, report-bot, Supabase, and AI integrations are optional unless you are working on those areas.
 
+Dashboard assistant AI/voice runs only through backend secrets:
+
+```bash
+OPENAI_API_KEY=<server-side-secret>
+OPENAI_ASSISTANT_MODEL=gpt-4.1-mini
+OPENAI_TRANSCRIPTION_MODEL=whisper-1
+OPENAI_TTS_MODEL=gpt-4o-mini-tts
+OPENAI_TTS_VOICE=alloy
+```
+
+Do not place OpenAI keys in HTML, browser JavaScript, localStorage, screenshots, changelog text, or seeded data. Without `OPENAI_API_KEY`, `/api/crm-assistant/*` returns a controlled `openai_not_configured` error and the global CRM assistant rail stays in text fallback mode.
+
 ## Public Landing Materials
 
 Current public sales/manager materials live under `landing/`:

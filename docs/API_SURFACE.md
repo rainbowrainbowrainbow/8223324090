@@ -40,8 +40,10 @@ focused route tests in the same pack.
 | `/api/content` | `routes/content.js` | content |
 | `/api/contractors` | `routes/contractors.js` | contractors |
 | `/api/copilot` | `routes/copilot.js` | copilot |
+| `/api/crm-assistant` | `routes/crm-assistant.js` | CRM assistant AI/voice |
 | `/api/customers` | `routes/customers.js` | customers |
 | `/api/dashboard` | `routes/dashboard.js` | dashboard |
+| `/api/dashboard-assistant` | `routes/dashboard-assistant.js` | legacy alias for CRM assistant AI/voice |
 | `/api/decisions` | `routes/decisions.js` | decisions |
 | `/api/demo` | `routes/demo.js` | demo |
 | `/api/designs` | `routes/designs.js` | designs |

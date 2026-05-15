@@ -215,6 +215,68 @@ function clearAuthenticatedPageShell() {
     }
 }
 
+let _crmAssistantRailLoadPromise = null;
+
+function getCurrentAssetVersion() {
+    const authScript = Array.from(document.scripts).find(script => /(^|\/)js\/auth\.js/.test(script.getAttribute('src') || ''));
+    if (!authScript) return '';
+    try {
+        return new URL(authScript.src, window.location.href).searchParams.get('v') || '';
+    } catch {
+        return '';
+    }
+}
+
+function ensureCrmAssistantRailAssets() {
+    if (window.CrmAssistantRail && typeof window.CrmAssistantRail.init === 'function') {
+        return Promise.resolve(window.CrmAssistantRail);
+    }
+    if (_crmAssistantRailLoadPromise) return _crmAssistantRailLoadPromise;
+
+    const version = getCurrentAssetVersion();
+    const suffix = version ? `?v=${encodeURIComponent(version)}` : '';
+    const railCssPath = 'css/assistant-rail.css';
+    const railJsPath = 'js/assistant-rail.js';
+    if (!document.querySelector('link[data-crm-assistant-rail-css]')) {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = `${railCssPath}${suffix}`;
+        link.dataset.crmAssistantRailCss = 'true';
+        document.head.appendChild(link);
+    }
+
+    _crmAssistantRailLoadPromise = new Promise((resolve, reject) => {
+        if (document.querySelector('script[data-crm-assistant-rail-js]')) {
+            const waitForGlobal = () => {
+                if (window.CrmAssistantRail) resolve(window.CrmAssistantRail);
+                else window.setTimeout(waitForGlobal, 25);
+            };
+            waitForGlobal();
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = `${railJsPath}${suffix}`;
+        script.defer = true;
+        script.dataset.crmAssistantRailJs = 'true';
+        script.onload = () => resolve(window.CrmAssistantRail);
+        script.onerror = () => reject(new Error('crm_assistant_rail_load_failed'));
+        document.body.appendChild(script);
+    });
+    return _crmAssistantRailLoadPromise;
+}
+
+function initCrmAssistantRail() {
+    ensureCrmAssistantRailAssets()
+        .then(rail => {
+            if (rail && typeof rail.init === 'function') {
+                rail.init({
+                    page: document.body?.dataset?.page || document.title || window.location.pathname
+                });
+            }
+        })
+        .catch(err => console.warn('[crm-assistant] rail init failed', err));
+}
+
 function showAuthenticatedPageShell() {
     document.body.classList.remove('auth-screen');
     document.body.classList.add('authenticated-shell');
@@ -234,6 +296,7 @@ function showAuthenticatedPageShell() {
 
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+    initCrmAssistantRail();
 }
 
 function renderStandaloneFatalError(options = {}) {
@@ -1430,6 +1493,9 @@ function initProfileHandler() {
 document.addEventListener('DOMContentLoaded', () => {
     // Delay slightly to let page-specific JS set username first
     setTimeout(initProfileHandler, 100);
+    setTimeout(() => {
+        if (document.body.classList.contains('authenticated-shell')) initCrmAssistantRail();
+    }, 350);
 
     // v37.5: Auto-fill sidebar avatar from AppState OR localStorage
     // Page-specific JS files set AppState.currentUser after apiVerifyToken()

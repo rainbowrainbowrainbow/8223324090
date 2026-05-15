@@ -241,6 +241,7 @@ check('Profile settings supports local avatar upload from device', profileCode.i
 
 const criticalJS = [
     'js/config.js', 'js/api.js', 'js/auth.js', 'js/ui.js', 'js/app.js',
+    'js/assistant-rail.js',
     'js/components/sidebar.js',
     'js/art-director-page.js', 'js/center-page.js', 'js/demo-page.js',
     'js/designs-page.js', 'js/copilot-page.js',
@@ -347,14 +348,18 @@ const chatPageCode = fs.readFileSync(path.join(ROOT, 'js/chat-page.js'), 'utf8')
 const dashboardHtml = fs.readFileSync(path.join(ROOT, 'dashboard.html'), 'utf8');
 const dashboardPageCode = fs.readFileSync(path.join(ROOT, 'js/dashboard-page.js'), 'utf8');
 const dashboardCss = fs.readFileSync(path.join(ROOT, 'css/dashboard.css'), 'utf8');
+const assistantRailCode = fs.readFileSync(path.join(ROOT, 'js/assistant-rail.js'), 'utf8');
+const assistantRailCss = fs.readFileSync(path.join(ROOT, 'css/assistant-rail.css'), 'utf8');
 const dashboardRouteCode = fs.readFileSync(path.join(ROOT, 'routes/dashboard.js'), 'utf8');
 check('Training page script does not double-initialize sidebar', !trainingPageCode.includes('Sidebar.init('));
 check('Chat page no longer uses early first-paint hack', !chatPageCode.includes('Show main app FIRST') && chatPageCode.includes('showAuthenticatedPageShell'));
 check('Dashboard retires bulky low-signal widgets from the main surface', dashboardPageCode.includes('DASHBOARD_RETIRED_WIDGETS') && ['finance_today', 'reports_today', 'account_stats', 'week_bookings'].every(key => dashboardPageCode.includes(key)) && dashboardPageCode.includes('!DASHBOARD_RETIRED_WIDGETS.has'));
 check('Dashboard grid keeps widgets at natural height', dashboardCss.includes('align-items: start') && dashboardCss.includes('align-self: start'));
-check('Dashboard header has assistant voice/subtitle rail', dashboardHtml.includes('id="dashboardAssistantRail"') && dashboardHtml.includes('id="assistantRailSubtitles"') && dashboardHtml.includes('DashboardPage.toggleAssistantVoice()') && dashboardHtml.includes('DashboardPage.replayAssistantLine()'));
-check('Dashboard assistant rail has stateful presence contract', dashboardPageCode.includes('ASSISTANT_RAIL_MODES') && dashboardPageCode.includes('function setAssistantRailState') && dashboardPageCode.includes('function renderAssistantRail') && dashboardPageCode.includes('function shouldAssistantSubtitleScroll') && dashboardPageCode.includes('function demoAssistantSpeak'));
-check('Dashboard assistant rail styles include partial ticker and mode visuals', dashboardCss.includes('@keyframes assistantTicker') && dashboardCss.includes('.assistant-rail-subtitles.is-ticker') && dashboardCss.includes('[data-mode="speaking"]') && dashboardCss.includes('[data-mode="busy"]') && dashboardCss.includes('body.dark-mode .dashboard-assistant-rail'));
+check('CRM assistant rail is shared and loaded from auth shell', authCode.includes('function initCrmAssistantRail') && authCode.includes('css/assistant-rail.css') && authCode.includes('js/assistant-rail.js') && assistantRailCode.includes('window.CrmAssistantRail'));
+check('Shared assistant rail injects header UI instead of dashboard static copy', !dashboardHtml.includes('id="dashboardAssistantRail"') && assistantRailCode.includes('function ensureMounted') && assistantRailCode.includes("document.querySelector('.header .header-content')") && assistantRailCode.includes('insertBefore(rail, userPanel)'));
+check('Shared assistant rail has 5s proactive help with interaction guard', assistantRailCode.includes('function scheduleProactiveHelp') && assistantRailCode.includes('5000') && assistantRailCode.includes('pageInteractionDetected') && assistantRailCode.includes('cancelProactiveHelp'));
+check('Shared assistant rail supports CRM voice/text API contract', assistantRailCode.includes('/api/crm-assistant/reply') && assistantRailCode.includes('/api/crm-assistant/speak') && assistantRailCode.includes('/api/crm-assistant/transcribe') && assistantRailCode.includes('voiceEnabled'));
+check('Shared assistant rail styles include partial ticker and mode visuals', assistantRailCss.includes('@keyframes assistantTicker') && assistantRailCss.includes('.assistant-rail-subtitles.is-ticker') && assistantRailCss.includes('[data-mode="speaking"]') && assistantRailCss.includes('[data-mode="busy"]') && assistantRailCss.includes('body.dark-mode .crm-assistant-rail'));
 const shellReadyExemptPages = new Set(['index.html']);
 const noExplicitShellReadyPages = mainAppShellPages.filter(page => {
     if (shellReadyExemptPages.has(page.file)) return false;

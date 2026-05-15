@@ -1,0 +1,668 @@
+/**
+ * js/assistant-rail.js — shared CRM assistant rail
+ *
+ * Mounted at runtime from auth.js so every authenticated CRM page gets one
+ * consistent rail without copying HTML into each page.
+ */
+(function () {
+    const MODES = new Set(['idle', 'thinking', 'busy', 'listening', 'speaking', 'muted', 'error']);
+    const LABELS = {
+        idle: 'Готовий',
+        thinking: 'Думаю',
+        busy: 'Зайнятий',
+        listening: 'Слухаю',
+        speaking: 'Говорю',
+        muted: 'Тиша',
+        error: 'Помилка'
+    };
+    const PAGE_HELP_INTENTS = {
+        dashboard: 'Поясни dashboard, bottlenecks і наступну найкориснішу дію.',
+        tasks: 'Поясни що найважливіше на сторінці задач і що користувач може зробити далі.',
+        staff: 'Поясни коротко як допомогти з графіком, змінами, конфліктами і годинами.',
+        customers: 'Поясни як допомогти знайти клієнтів, дублікати або контекст по комунікаціях.',
+        finance: 'Поясни на що звернути увагу у фінансах саме зараз.',
+        analytics: 'Поясни які сигнали в аналітиці найважливіші.',
+        chat: 'Поясни як допомогти з повідомленнями, діалогами і відповідями.',
+        kleshnya: 'Поясни як користувач може працювати з AI-помічником у CRM.',
+        leads: 'Поясни як допомогти з новими лідами, статусами і наступною дією.',
+        training: 'Поясни як допомогти з навчанням, тестами і прогресом команди.',
+        warehouse: 'Поясни як допомогти знайти залишки, низький сток або історію руху.',
+        programs: 'Поясни як допомогти з програмами, пакетами і підбором послуг.',
+        hr: 'Поясни як допомогти з персоналом, графіками і HR задачами.',
+        designs: 'Поясни як допомогти з дизайнами, каталогами і production pipeline.',
+        'art-director': 'Поясни як допомогти з контентом, дизайнами і творчим пайплайном.',
+        graduation: 'Поясни як допомогти з випускними подіями, задачами і підготовкою.',
+        center: 'Поясни як допомогти керувати операційним центром і контрольними точками.',
+        copilot: 'Поясни як допомогти з продажами, follow-up і next best action.',
+        sound: 'Поясни як допомогти з аудіо, треками і матеріалами.',
+        reports: 'Поясни як допомогти зі звітами, ризиками і контрольними висновками.',
+        timeline: 'Поясни як допомогти з таймлайном бронювань і поточним днем.'
+    };
+
+    let state = {
+        mode: localStorage.getItem('eg_crm_assistant_voice') === 'off' ? 'muted' : 'idle',
+        subtitle: 'Я поруч, якщо треба допомога по сторінці.',
+        tickerText: '',
+        lastSpokenLine: '',
+        voiceEnabled: localStorage.getItem('eg_crm_assistant_voice') !== 'off',
+        updatedAt: new Date().toISOString()
+    };
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let listeningStream = null;
+    let audioPlayer = null;
+    let audioUrl = null;
+    let history = [];
+    let proactiveTimer = null;
+    let proactiveShownForPage = null;
+    let pageInteractionDetected = false;
+    let interactionWatchersBound = false;
+    let initCount = 0;
+
+    function escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = String(value ?? '');
+        return div.innerHTML;
+    }
+
+    function normalizeMode(value) {
+        return MODES.has(value) ? value : 'idle';
+    }
+
+    function getCurrentPageKey() {
+        const raw = window.location.pathname.replace(/^\/+/, '').replace(/\.html$/, '').replace(/\/$/, '');
+        if (!raw || raw === 'index') return 'timeline';
+        return raw;
+    }
+
+    function getRole() {
+        if (typeof getUserRole === 'function') return getUserRole();
+        return window.AppState?.currentUser?.role || null;
+    }
+
+    function roleLabel(role) {
+        if (!role) return '';
+        if (window.ROLE_NAMES && window.ROLE_NAMES[role]) return window.ROLE_NAMES[role];
+        return role;
+    }
+
+    function getAssetVersion() {
+        const script = Array.from(document.scripts).find(item => /(^|\/)js\/auth\.js/.test(item.getAttribute('src') || ''));
+        if (!script) return '';
+        try {
+            return new URL(script.src, window.location.href).searchParams.get('v') || '';
+        } catch {
+            return '';
+        }
+    }
+
+    function ensureMounted() {
+        const headerContent = document.querySelector('.header .header-content');
+        if (!headerContent) return false;
+        if (document.getElementById('crmAssistantRail')) return true;
+
+        const legacyDashboardRail = document.getElementById('dashboardAssistantRail');
+        if (legacyDashboardRail) legacyDashboardRail.remove();
+
+        const rail = document.createElement('div');
+        rail.id = 'crmAssistantRail';
+        rail.className = 'crm-assistant-rail';
+        rail.setAttribute('data-mode', state.mode);
+        rail.setAttribute('aria-live', 'polite');
+        rail.setAttribute('aria-label', 'Стан голосового AI-помічника');
+        rail.innerHTML = `
+            <div class="assistant-rail-presence">
+                <div class="assistant-rail-avatar" id="crmAssistantRailAvatar" aria-hidden="true">AI</div>
+                <div class="assistant-rail-status-stack">
+                    <div class="assistant-rail-topline">
+                        <span class="assistant-rail-name">Клешня</span>
+                        <span class="assistant-rail-state assistant-state-idle" id="crmAssistantRailState">Готовий</span>
+                    </div>
+                    <div class="assistant-rail-subtitles-wrap" id="crmAssistantRailSubtitlesWrap">
+                        <div class="assistant-rail-subtitles" id="crmAssistantRailSubtitles">Я поруч, якщо треба допомога по сторінці.</div>
+                    </div>
+                </div>
+            </div>
+            <div class="assistant-rail-actions" aria-label="Керування голосовим AI-помічником">
+                <button type="button" class="assistant-rail-btn" id="crmAssistantMicBtn" title="Голосовий ввід" aria-label="Голосовий ввід">🎙</button>
+                <button type="button" class="assistant-rail-btn" id="crmAssistantVoiceToggle" title="Увімкнути або вимкнути голос" aria-label="Увімкнути або вимкнути голос">🔊</button>
+                <button type="button" class="assistant-rail-btn" id="crmAssistantReplayBtn" title="Повторити останню репліку" aria-label="Повторити останню репліку">↺</button>
+                <button type="button" class="assistant-rail-btn" id="crmAssistantExpandBtn" title="Розгорнути AI-помічника" aria-label="Розгорнути AI-помічника">⋯</button>
+            </div>
+        `;
+
+        const userPanel = headerContent.querySelector('.user-panel');
+        if (userPanel) headerContent.insertBefore(rail, userPanel);
+        else headerContent.appendChild(rail);
+
+        bindRailControls();
+        render();
+        return true;
+    }
+
+    function bindRailControls() {
+        document.getElementById('crmAssistantMicBtn')?.addEventListener('click', toggleListening);
+        document.getElementById('crmAssistantVoiceToggle')?.addEventListener('click', toggleVoice);
+        document.getElementById('crmAssistantReplayBtn')?.addEventListener('click', replayLastLine);
+        document.getElementById('crmAssistantExpandBtn')?.addEventListener('click', expand);
+    }
+
+    function shouldSubtitleScroll(text = '', wrap = null, el = null) {
+        const normalized = String(text).trim();
+        if (normalized.length > 150) return true;
+        return !!(wrap && el && (
+            el.scrollWidth > wrap.clientWidth + 32 ||
+            el.scrollHeight > wrap.clientHeight + 8
+        ));
+    }
+
+    function render() {
+        const rail = document.getElementById('crmAssistantRail');
+        const stateEl = document.getElementById('crmAssistantRailState');
+        const subtitlesWrap = document.getElementById('crmAssistantRailSubtitlesWrap');
+        const subtitlesEl = document.getElementById('crmAssistantRailSubtitles');
+        const voiceBtn = document.getElementById('crmAssistantVoiceToggle');
+        const micBtn = document.getElementById('crmAssistantMicBtn');
+        const replayBtn = document.getElementById('crmAssistantReplayBtn');
+        if (!rail || !stateEl || !subtitlesEl || !voiceBtn) return;
+
+        const text = state.tickerText || state.subtitle || '...';
+        rail.dataset.mode = state.mode;
+        stateEl.textContent = LABELS[state.mode] || LABELS.idle;
+        stateEl.className = `assistant-rail-state assistant-state-${state.mode}`;
+        subtitlesEl.textContent = text;
+        subtitlesEl.classList.remove('is-ticker');
+        voiceBtn.textContent = state.voiceEnabled ? '🔊' : '🔇';
+        voiceBtn.setAttribute('aria-pressed', state.voiceEnabled ? 'true' : 'false');
+        if (micBtn) {
+            const listening = mediaRecorder?.state === 'recording' || state.mode === 'listening';
+            micBtn.classList.toggle('active', listening);
+            micBtn.setAttribute('aria-pressed', listening ? 'true' : 'false');
+            micBtn.title = listening ? 'Зупинити запис голосу' : 'Голосовий ввід';
+        }
+        if (replayBtn) replayBtn.disabled = !(state.lastSpokenLine || state.subtitle);
+
+        requestAnimationFrame(() => {
+            subtitlesEl.classList.toggle('is-ticker', shouldSubtitleScroll(text, subtitlesWrap, subtitlesEl));
+        });
+    }
+
+    function setState(patch = {}) {
+        const nextMode = normalizeMode(patch.mode ?? state.mode);
+        state = {
+            ...state,
+            ...patch,
+            mode: nextMode,
+            subtitle: Object.prototype.hasOwnProperty.call(patch, 'subtitle') ? String(patch.subtitle || '') : state.subtitle,
+            tickerText: Object.prototype.hasOwnProperty.call(patch, 'tickerText') ? String(patch.tickerText || '') : state.tickerText,
+            updatedAt: new Date().toISOString()
+        };
+        render();
+    }
+
+    function bindInteractionWatchers() {
+        if (interactionWatchersBound) return;
+        interactionWatchersBound = true;
+        const mark = event => {
+            if (event?.target?.closest?.('#crmAssistantRail, #crmAssistantPanelOverlay')) return;
+            pageInteractionDetected = true;
+            cancelProactiveHelp();
+        };
+        window.addEventListener('pointerdown', mark, { passive: true });
+        window.addEventListener('keydown', mark);
+        window.addEventListener('input', mark, { capture: true });
+    }
+
+    function scheduleProactiveHelp(context = {}) {
+        cancelProactiveHelp();
+        const pageKey = getCurrentPageKey();
+        if (proactiveShownForPage === pageKey) return;
+        if (['thinking', 'busy', 'listening', 'speaking'].includes(state.mode)) return;
+
+        pageInteractionDetected = false;
+        bindInteractionWatchers();
+        proactiveTimer = window.setTimeout(async () => {
+            proactiveTimer = null;
+            if (pageInteractionDetected || document.hidden) return;
+            if (['thinking', 'busy', 'listening', 'speaking'].includes(state.mode)) return;
+            proactiveShownForPage = pageKey;
+            await announcePageContext({ ...context, proactive: true, textOnly: !state.voiceEnabled });
+        }, 5000);
+    }
+
+    function cancelProactiveHelp() {
+        if (!proactiveTimer) return;
+        clearTimeout(proactiveTimer);
+        proactiveTimer = null;
+    }
+
+    function collectDashboardContext() {
+        const getDashboardContext = window.DashboardPage?.getAssistantContext;
+        if (typeof getDashboardContext === 'function') {
+            try { return getDashboardContext() || {}; } catch {}
+        }
+        const widgets = Array.from(document.querySelectorAll('#dashboardGrid [data-widget]'))
+            .map(el => el.dataset.widget)
+            .filter(Boolean)
+            .slice(0, 30);
+        return widgets.length ? { widgets } : {};
+    }
+
+    function collectPageHints() {
+        const activeTab = document.querySelector('[aria-selected="true"], .tab-btn.active, .nav-tab.active, .period-btn.active, .filter-btn.active');
+        const badges = Array.from(document.querySelectorAll('.badge, .status-badge, .count-badge, .alert-badge'))
+            .map(el => el.textContent?.trim())
+            .filter(Boolean)
+            .slice(0, 8);
+        return {
+            activeTab: activeTab?.textContent?.trim() || '',
+            badges
+        };
+    }
+
+    function buildPageGuideContext(extra = {}) {
+        const page = getCurrentPageKey();
+        const role = getRole();
+        const title = document.querySelector('main h1, main h2, h1, h2')?.textContent?.trim() || document.title || page;
+        const dashboardContext = page === 'dashboard' ? collectDashboardContext() : {};
+        return {
+            page,
+            role,
+            displayRole: roleLabel(dashboardContext.scenePreset || role),
+            title,
+            view: document.body?.dataset?.view || '',
+            intent: PAGE_HELP_INTENTS[page] || 'Допоможи коротко і контекстно по цій сторінці CRM.',
+            ...collectPageHints(),
+            ...dashboardContext,
+            ...extra
+        };
+    }
+
+    function buildRequestPayload(input = {}) {
+        const context = buildPageGuideContext(input);
+        return {
+            userMessage: context.userMessage || context.intent,
+            role: context.role,
+            displayRole: context.displayRole,
+            page: context.page,
+            title: context.title,
+            view: context.view,
+            widgets: context.widgets || [],
+            scenePreset: context.scenePreset || '',
+            sceneTitle: context.sceneTitle || '',
+            intent: context.intent,
+            proactive: context.proactive === true,
+            activeTab: context.activeTab || '',
+            badges: context.badges || [],
+            voiceMode: context.voiceMode === true,
+            recentState: {
+                mode: state.mode,
+                voiceEnabled: state.voiceEnabled,
+                previewRole: context.previewRole || localStorage.getItem('pzp_test_role') || ''
+            }
+        };
+    }
+
+    async function requestGuideReply(payloadOrText = {}) {
+        const payload = typeof payloadOrText === 'string'
+            ? buildRequestPayload({ userMessage: payloadOrText })
+            : buildRequestPayload(payloadOrText);
+        const resp = await fetch('/api/crm-assistant/reply', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + localStorage.getItem('pzp_token')
+            },
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.success) throw new Error(data.error || `crm_assistant_reply_http_${resp.status}`);
+        return data.reply;
+    }
+
+    function localPageHelpText(context = {}) {
+        const page = context.page || getCurrentPageKey();
+        const title = context.title || document.querySelector('main h1, main h2, h1, h2')?.textContent?.trim() || 'цій сторінці';
+        const role = context.displayRole || roleLabel(getRole());
+        const suffix = role ? ` для ролі ${role}` : '';
+        const phrase = {
+            tasks: 'Бачу сторінку задач. Можу допомогти розібрати пріоритети, прострочене і наступні кроки.',
+            finance: 'Бачу фінансовий модуль. Можу підсвітити важливі суми, ризики і контрольні точки.',
+            chat: 'Бачу чат. Можу допомогти знайти діалоги, які чекають відповіді або дії.',
+            staff: 'Бачу командний модуль. Можу допомогти з графіком, змінами і конфліктами.',
+            dashboard: 'Бачу dashboard. Можу коротко пояснити віджети, bottlenecks і наступну найкориснішу дію.'
+        }[page];
+        return phrase || `Бачу ${title}${suffix}. Можу коротко підказати, що тут важливо і з чого почати.`;
+    }
+
+    async function announcePageContext(options = {}) {
+        const context = buildPageGuideContext(options);
+        const thinking = options.proactive
+            ? 'Я на сторінці вже кілька секунд. Готую коротку підказку...'
+            : 'Готую підказку по цій сторінці...';
+        setState({ mode: 'thinking', subtitle: thinking, tickerText: '' });
+
+        let reply;
+        try {
+            reply = await requestGuideReply({
+                ...context,
+                proactive: options.proactive === true,
+                voiceMode: state.voiceEnabled && !options.textOnly
+            });
+        } catch (err) {
+            if (String(err?.message || '').includes('openai_not_configured')) {
+                reply = { text: localPageHelpText(context), subtitle: localPageHelpText(context) };
+            } else {
+                handleError(err, 'Не вдалося підготувати підказку по сторінці.');
+                return;
+            }
+        }
+
+        await playReply(reply, { textOnly: options.textOnly === true });
+    }
+
+    function stopAudioPlayback() {
+        if (audioPlayer) {
+            try {
+                audioPlayer.pause();
+                audioPlayer.src = '';
+            } catch {}
+            audioPlayer = null;
+        }
+        if (audioUrl) {
+            URL.revokeObjectURL(audioUrl);
+            audioUrl = null;
+        }
+    }
+
+    async function speakText(text) {
+        const line = String(text || '').trim();
+        if (!line) return;
+        stopAudioPlayback();
+        const resp = await fetch('/api/crm-assistant/speak', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + localStorage.getItem('pzp_token')
+            },
+            body: JSON.stringify({ text: line })
+        });
+        if (!resp.ok) {
+            const data = await resp.json().catch(() => ({}));
+            throw new Error(data.error || `crm_assistant_speak_http_${resp.status}`);
+        }
+        const blob = await resp.blob();
+        audioUrl = URL.createObjectURL(blob);
+        audioPlayer = new Audio(audioUrl);
+        audioPlayer.onended = () => {
+            stopAudioPlayback();
+            if (state.mode === 'speaking') setState({ mode: 'idle' });
+        };
+        audioPlayer.onerror = () => {
+            stopAudioPlayback();
+            if (state.mode === 'speaking') setState({ mode: 'idle' });
+        };
+        await audioPlayer.play();
+    }
+
+    async function playReply(reply, options = {}) {
+        const text = String(reply?.subtitle || reply?.text || '').trim();
+        if (!text) return;
+        appendHistory('assistant', text);
+        setState({
+            mode: state.voiceEnabled && !options.textOnly ? 'speaking' : 'idle',
+            subtitle: text,
+            tickerText: text,
+            lastSpokenLine: text
+        });
+        renderHistory();
+        if (!state.voiceEnabled || options.textOnly) return;
+        try {
+            await speakText(text);
+        } catch (err) {
+            console.warn('[crm-assistant] speech playback failed:', err);
+            if (state.mode === 'speaking') setState({ mode: 'idle' });
+        }
+    }
+
+    function handleError(error, fallback = 'Не вдалося отримати відповідь асистента.') {
+        const code = String(error?.message || '');
+        const subtitle = code.includes('openai_not_configured')
+            ? 'OpenAI ще не налаштовано на сервері. Потрібен OPENAI_API_KEY у backend env.'
+            : fallback;
+        setState({ mode: 'error', subtitle, tickerText: subtitle });
+        appendHistory('assistant', subtitle);
+        renderHistory();
+    }
+
+    function pickAudioMimeType() {
+        if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') return '';
+        return ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
+            .find(type => MediaRecorder.isTypeSupported(type)) || '';
+    }
+
+    async function transcribeAudioBlob(blob) {
+        const formData = new FormData();
+        formData.append('audio', blob, 'crm-assistant.webm');
+        const resp = await fetch('/api/crm-assistant/transcribe', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') },
+            body: formData
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.success) throw new Error(data.error || `crm_assistant_transcribe_http_${resp.status}`);
+        return String(data.text || '').trim();
+    }
+
+    async function toggleListening() {
+        cancelProactiveHelp();
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+            return;
+        }
+        if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+            handleError(new Error('media_recorder_unavailable'), 'Голосовий ввід недоступний у цьому браузері.');
+            return;
+        }
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            listeningStream = stream;
+            audioChunks = [];
+            const mimeType = pickAudioMimeType();
+            const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+            mediaRecorder = recorder;
+
+            recorder.ondataavailable = event => {
+                if (event.data && event.data.size > 0) audioChunks.push(event.data);
+            };
+            recorder.onstop = async () => {
+                const chunks = audioChunks.slice();
+                audioChunks = [];
+                if (listeningStream) {
+                    listeningStream.getTracks().forEach(track => track.stop());
+                    listeningStream = null;
+                }
+                if (!chunks.length) {
+                    setState({ mode: 'idle', subtitle: 'Не почувив голос. Спробуй ще раз.' });
+                    return;
+                }
+                try {
+                    setState({ mode: 'thinking', subtitle: 'Розпізнаю голос і готую відповідь...' });
+                    const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+                    const transcript = await transcribeAudioBlob(blob);
+                    if (!transcript) throw new Error('empty_transcript');
+                    appendHistory('user', transcript);
+                    setState({ mode: 'thinking', subtitle: `Почув: ${transcript}` });
+                    const reply = await requestGuideReply({ userMessage: transcript, voiceMode: true });
+                    await playReply(reply);
+                } catch (err) {
+                    handleError(err, 'Не вдалося розпізнати голос або підготувати відповідь.');
+                }
+            };
+
+            setState({ mode: 'listening', subtitle: 'Слухаю тебе. Говори природно.', tickerText: '' });
+            recorder.start();
+        } catch (err) {
+            handleError(err, 'Не вдалося увімкнути мікрофон.');
+        }
+    }
+
+    function toggleVoice() {
+        const next = !state.voiceEnabled;
+        localStorage.setItem('eg_crm_assistant_voice', next ? 'on' : 'off');
+        localStorage.setItem('eg_dashboard_assistant_voice', next ? 'on' : 'off');
+        setState({
+            voiceEnabled: next,
+            mode: next ? 'idle' : 'muted',
+            subtitle: next
+                ? 'Голос увімкнено. Підказки показуються текстом і можуть озвучуватись.'
+                : 'Голос вимкнено. Підказки залишаються текстом і субтитрами.',
+            tickerText: ''
+        });
+    }
+
+    async function replayLastLine() {
+        const line = state.lastSpokenLine || state.subtitle || 'Немає останньої репліки для повтору.';
+        await playReply({ text: line, subtitle: line }, { textOnly: !state.voiceEnabled });
+    }
+
+    function appendHistory(role, text) {
+        const line = String(text || '').trim();
+        if (!line) return;
+        history.push({ role, text: line, at: new Date().toISOString() });
+        if (history.length > 16) history = history.slice(-16);
+    }
+
+    function expand() {
+        const prev = document.getElementById('crmAssistantPanelOverlay');
+        if (prev) {
+            renderHistory();
+            return;
+        }
+        const overlay = document.createElement('div');
+        overlay.id = 'crmAssistantPanelOverlay';
+        overlay.className = 'crm-assistant-panel-overlay';
+        overlay.innerHTML = `
+            <div class="crm-assistant-panel" role="dialog" aria-modal="true" aria-label="AI-провідник CRM">
+                <div class="crm-assistant-panel-header">
+                    <div>
+                        <strong>Клешня</strong>
+                        <span>AI-провідник CRM</span>
+                    </div>
+                    <button type="button" class="crm-assistant-panel-close" aria-label="Закрити" id="crmAssistantPanelClose">×</button>
+                </div>
+                <div class="crm-assistant-history" id="crmAssistantHistory"></div>
+                <div class="crm-assistant-quick-prompts">
+                    <button type="button" data-crm-assistant-prompt="Що для мене зараз головне на цій сторінці?">Головне зараз</button>
+                    <button type="button" data-crm-assistant-prompt="Поясни цю сторінку моєю роллю">Поясни сторінку</button>
+                    <button type="button" data-crm-assistant-prompt="Що зараз найважливіше зробити?">Наступний крок</button>
+                    <button type="button" data-crm-assistant-prompt="Проведи мене по ключових блоках">По блоках</button>
+                </div>
+                <form class="crm-assistant-form" id="crmAssistantForm">
+                    <textarea id="crmAssistantPromptInput" rows="3" maxlength="1200" placeholder="Запитай по цій сторінці CRM..."></textarea>
+                    <button type="submit" class="dashboard-btn primary">Запитати</button>
+                </form>
+                <div class="crm-assistant-disclosure">Голосові відповіді генерує AI.</div>
+            </div>
+        `;
+        overlay.addEventListener('click', event => {
+            if (event.target === overlay) closePanel();
+        });
+        document.body.appendChild(overlay);
+        document.getElementById('crmAssistantPanelClose')?.addEventListener('click', closePanel);
+        document.getElementById('crmAssistantForm')?.addEventListener('submit', submitPrompt);
+        overlay.querySelectorAll('[data-crm-assistant-prompt]').forEach(btn => {
+            btn.addEventListener('click', () => runQuickPrompt(btn.dataset.crmAssistantPrompt));
+        });
+        renderHistory();
+        document.getElementById('crmAssistantPromptInput')?.focus();
+    }
+
+    function closePanel() {
+        document.getElementById('crmAssistantPanelOverlay')?.remove();
+    }
+
+    function renderHistory() {
+        const container = document.getElementById('crmAssistantHistory');
+        if (!container) return;
+        const items = history.length ? history : [{ role: 'assistant', text: state.subtitle || 'Я готовий допомогти по цій сторінці.' }];
+        container.innerHTML = items.map(item => `
+            <div class="crm-assistant-history-item ${escapeHtml(item.role)}">
+                <span>${item.role === 'user' ? 'Ти' : 'Клешня'}</span>
+                <p>${escapeHtml(item.text)}</p>
+            </div>
+        `).join('');
+        container.scrollTop = container.scrollHeight;
+    }
+
+    async function runQuickPrompt(prompt) {
+        await submitPromptText(prompt);
+    }
+
+    async function submitPrompt(event) {
+        event.preventDefault();
+        const input = document.getElementById('crmAssistantPromptInput');
+        const text = input ? input.value.trim() : '';
+        if (input) input.value = '';
+        await submitPromptText(text);
+    }
+
+    async function submitPromptText(text) {
+        const prompt = String(text || '').trim();
+        if (!prompt) return;
+        cancelProactiveHelp();
+        appendHistory('user', prompt);
+        renderHistory();
+        setState({ mode: 'thinking', subtitle: 'Думаю над відповіддю по цій сторінці...', tickerText: '' });
+        try {
+            const reply = await requestGuideReply({ userMessage: prompt });
+            await playReply(reply);
+        } catch (err) {
+            handleError(err);
+        }
+    }
+
+    function announceFromPage(text) {
+        const line = String(text || '').trim();
+        if (!line) return;
+        setState({
+            mode: state.voiceEnabled ? 'idle' : 'muted',
+            subtitle: line,
+            tickerText: '',
+            lastSpokenLine: line
+        });
+    }
+
+    function init(options = {}) {
+        initCount += 1;
+        if (!ensureMounted()) return false;
+        if (options.subtitle) announceFromPage(options.subtitle);
+        window.setTimeout(() => scheduleProactiveHelp(options), initCount === 1 ? 500 : 100);
+        return true;
+    }
+
+    window.CrmAssistantRail = {
+        init,
+        ensureMounted,
+        setState,
+        scheduleProactiveHelp,
+        cancelProactiveHelp,
+        announcePageContext,
+        announceFromPage,
+        toggleVoice,
+        replayLastLine,
+        expand,
+        closePanel,
+        requestGuideReply,
+        speakText,
+        playReply,
+        toggleListening,
+        buildPageGuideContext,
+        getAssetVersion
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        if (document.body.classList.contains('authenticated-shell')) init();
+    });
+})();

@@ -13,6 +13,7 @@ const DashboardPage = (() => {
     const BOARD_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser']);
     const BOARD_ALLOWED_SHAPES = new Set(['line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
     const DASHBOARD_RETIRED_WIDGETS = new Set(['finance_today', 'reports_today', 'account_stats', 'week_bookings']);
+    const DASHBOARD_PRESENTATION_MODES = new Set(['mixed-scene', 'flat-grid']);
 
     // Widget definitions — all available widgets
     const WIDGET_DEFS = {
@@ -41,6 +42,120 @@ const DashboardPage = (() => {
         director_pnl:   { icon: '💹', title: 'P&L', minRole: 'director' },
         content_pipeline: { icon: '🎨', title: 'Контент-пайплайн', minRole: 'art_director' },
         operations:     { icon: '⚙️', title: 'Операції', minRole: 'vice_director' },
+    };
+
+    const ROLE_DASHBOARD_BASE_WIDGETS = {
+        creator: ['quick_stats', 'my_focus', 'funnel', 'director_pnl', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'catalogs', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts', 'hr_overview', 'content_pipeline', 'operations'],
+        director: ['director_pnl', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts'],
+        vice_director: ['operations', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'weather', 'announcements', 'tasks', 'my_schedule', 'alerts'],
+        senior_manager: ['quick_stats', 'my_focus', 'funnel', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements', 'tasks', 'my_schedule', 'alerts'],
+        manager: ['staff_today', 'event_risk_summary', 'exceptions', 'my_focus', 'funnel', 'tasks', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements', 'team_tasks', 'team_online', 'alerts', 'quick_stats'],
+        admin: ['event_risk_summary', 'exceptions', 'tasks', 'bookings_today', 'my_schedule', 'weather', 'announcements', 'alerts', 'quick_stats', 'catalogs'],
+        hr: ['hr_overview', 'staff_today', 'tasks', 'team_online', 'my_schedule', 'announcements', 'weather', 'alerts', 'my_focus'],
+        art_director: ['content_pipeline', 'tasks', 'my_schedule', 'bookings_today', 'weather', 'announcements', 'alerts', 'catalogs', 'quick_stats'],
+        _default: ['my_focus', 'tasks', 'my_schedule', 'weather', 'announcements', 'alerts'],
+    };
+
+    const ROLE_DASHBOARD_SCENES = {
+        creator: {
+            title: 'Creator mixed scene',
+            description: 'Повний огляд CRM з операційним кластером, executive контролем і окремою смугою для думок.',
+            zones: {
+                leftCluster: ['funnel', 'tasks', 'team_tasks', 'leads_new', 'staff_today', 'bookings_today'],
+                centerControl: ['my_focus', 'alerts', 'quick_stats', 'weather', 'announcements', 'my_schedule'],
+                lowerSupport: ['director_pnl', 'operations', 'event_risk_summary', 'exceptions', 'team_online', 'currency'],
+                specialty: ['hr_overview', 'content_pipeline', 'catalogs'],
+                rightWritingLane: ['notes-zone-primary', 'notes-zone-secondary', 'decision-zone']
+            },
+            spacing: { rightFreeLane: 340, chaos: 0.22 }
+        },
+        admin: {
+            title: 'Admin operations scene',
+            description: 'Контроль бронювань, ризиків, задач і системних довідників без executive шуму.',
+            zones: {
+                leftCluster: ['event_risk_summary', 'exceptions', 'bookings_today', 'tasks'],
+                centerControl: ['my_focus', 'alerts', 'quick_stats', 'my_schedule'],
+                lowerSupport: ['announcements', 'weather', 'catalogs'],
+                rightWritingLane: ['notes-zone-primary', 'admin-zone']
+            },
+            spacing: { rightFreeLane: 320, chaos: 0.14 }
+        },
+        manager: {
+            title: 'Manager flow scene',
+            description: 'Ліди, команда, задачі й сьогоднішні події з місцем для швидких нотаток.',
+            zones: {
+                leftCluster: ['funnel', 'leads_new', 'tasks', 'team_tasks'],
+                centerControl: ['my_focus', 'alerts', 'staff_today', 'team_online', 'bookings_today'],
+                lowerSupport: ['event_risk_summary', 'exceptions', 'my_schedule', 'weather', 'announcements'],
+                rightWritingLane: ['notes-zone-primary']
+            },
+            spacing: { rightFreeLane: 300, chaos: 0.18 }
+        },
+        senior_manager: {
+            title: 'Senior manager control scene',
+            description: 'Командна воронка, ризики, задачі й швидка статистика для зміни.',
+            zones: {
+                leftCluster: ['funnel', 'team_tasks', 'staff_today', 'leads_new'],
+                centerControl: ['my_focus', 'quick_stats', 'event_risk_summary', 'exceptions'],
+                lowerSupport: ['bookings_today', 'team_online', 'alerts', 'weather', 'announcements'],
+                rightWritingLane: ['notes-zone-primary', 'decision-zone']
+            },
+            spacing: { rightFreeLane: 320, chaos: 0.15 }
+        },
+        director: {
+            title: 'Director executive scene',
+            description: 'Executive контроль: P&L, ризики, винятки й рішення без операційного перевантаження.',
+            zones: {
+                leftCluster: ['director_pnl', 'quick_stats', 'funnel'],
+                centerControl: ['alerts', 'my_focus', 'event_risk_summary', 'exceptions'],
+                lowerSupport: ['team_tasks', 'staff_today', 'bookings_today', 'team_online', 'weather', 'announcements'],
+                rightWritingLane: ['notes-zone-primary', 'decision-zone']
+            },
+            spacing: { rightFreeLane: 340, chaos: 0.10 }
+        },
+        vice_director: {
+            title: 'Vice director operations scene',
+            description: 'Операційний контроль, ризики подій і команда з помірною асиметрією.',
+            zones: {
+                leftCluster: ['operations', 'event_risk_summary', 'exceptions', 'bookings_today'],
+                centerControl: ['my_focus', 'alerts', 'quick_stats', 'staff_today', 'team_online'],
+                lowerSupport: ['funnel', 'team_tasks', 'weather', 'announcements'],
+                rightWritingLane: ['notes-zone-primary', 'ops-zone']
+            },
+            spacing: { rightFreeLane: 320, chaos: 0.12 }
+        },
+        hr: {
+            title: 'HR people scene',
+            description: 'Люди, зміни, команда й особистий фокус із чистою note lane для кадрових спостережень.',
+            zones: {
+                leftCluster: ['hr_overview', 'tasks'],
+                centerControl: ['staff_today', 'team_online', 'my_focus', 'alerts'],
+                lowerSupport: ['my_schedule', 'announcements', 'weather'],
+                rightWritingLane: ['notes-zone-primary', 'people-zone']
+            },
+            spacing: { rightFreeLane: 320, chaos: 0.12 }
+        },
+        art_director: {
+            title: 'Art director creative scene',
+            description: 'Контент, задачі, бронювання й простір для скетчів без змішування з executive блоками.',
+            zones: {
+                leftCluster: ['content_pipeline', 'tasks'],
+                centerControl: ['alerts', 'my_schedule', 'bookings_today', 'announcements'],
+                lowerSupport: ['catalogs', 'quick_stats', 'weather'],
+                rightWritingLane: ['notes-zone-primary', 'sketch-zone']
+            },
+            spacing: { rightFreeLane: 360, chaos: 0.16 }
+        }
+    };
+
+    const WRITING_ZONE_DEFS = {
+        'notes-zone-primary': { title: 'Головні нотатки', hint: 'Рішення, які треба тримати поруч із dashboard.' },
+        'notes-zone-secondary': { title: 'Швидкі думки', hint: 'Чернетки, ідеї, короткі спостереження.' },
+        'decision-zone': { title: 'Рішення', hint: 'Що затвердити, делегувати або перевірити.' },
+        'sketch-zone': { title: 'Скетч-зона', hint: 'Ідеї для контенту, афіш і програм.' },
+        'ops-zone': { title: 'Операційні нотатки', hint: 'Вузькі місця, зміни, ризики на сьогодні.' },
+        'people-zone': { title: 'Нотатки про команду', hint: 'Команда, адаптація, зміни, важливі сигнали.' },
+        'admin-zone': { title: 'Admin notes', hint: 'Довідники, бронювання, ручні перевірки.' }
     };
 
     let _config = createDefaultDashboardConfig();
@@ -80,6 +195,12 @@ const DashboardPage = (() => {
         lastSpokenLine: '',
         updatedAt: null
     };
+    let _assistantMediaRecorder = null;
+    let _assistantAudioChunks = [];
+    let _assistantListeningStream = null;
+    let _assistantAudioPlayer = null;
+    let _assistantAudioUrl = null;
+    let _assistantHistory = [];
     const ASSISTANT_RAIL_MODES = new Set(['idle', 'thinking', 'busy', 'listening', 'speaking', 'muted', 'error']);
     const ASSISTANT_RAIL_LABELS = {
         idle: 'Готовий',
@@ -97,6 +218,12 @@ const DashboardPage = (() => {
             layout: {},
             theme: 'default',
             mode: 'grid',
+            presentationMode: 'mixed-scene',
+            roleScenePreset: null,
+            sceneOptions: {
+                writingLane: true,
+                controlledChaos: true
+            },
             boardMeta: {
                 version: BOARD_SCHEMA_VERSION,
                 enabled: true,
@@ -141,6 +268,18 @@ const DashboardPage = (() => {
         return value === 'board' ? 'board' : 'grid';
     }
 
+    function normalizeDashboardPresentationMode(value) {
+        return DASHBOARD_PRESENTATION_MODES.has(value) ? value : 'mixed-scene';
+    }
+
+    function normalizeSceneOptions(input) {
+        const source = safeObject(input, {});
+        return {
+            writingLane: source.writingLane !== false,
+            controlledChaos: source.controlledChaos !== false
+        };
+    }
+
     function normalizeBoardTool(value) {
         return BOARD_TOOLS.has(value) ? value : 'select';
     }
@@ -175,10 +314,31 @@ const DashboardPage = (() => {
     }
 
     function canUseWidget(widgetKey) {
+        return canUseWidgetForRole(widgetKey, getEffectiveDashboardRole());
+    }
+
+    function getRoleBaseWidgets(role) {
+        return ROLE_DASHBOARD_BASE_WIDGETS[role] || ROLE_DASHBOARD_BASE_WIDGETS._default;
+    }
+
+    function roleMeetsMinRole(role, minRole) {
+        if (!minRole) return true;
+        if (!role) return false;
+        if (role === 'creator') return true;
+        if (typeof ROLE_LEVEL !== 'undefined') {
+            const userLevel = ROLE_LEVEL[role];
+            const minLevel = ROLE_LEVEL[minRole];
+            return Number.isInteger(userLevel) && Number.isInteger(minLevel) && userLevel >= minLevel;
+        }
+        return role === minRole || (typeof hasMinRole === 'function' && hasMinRole(minRole));
+    }
+
+    function canUseWidgetForRole(widgetKey, role) {
         if (DASHBOARD_RETIRED_WIDGETS.has(widgetKey)) return false;
         const def = WIDGET_DEFS[widgetKey];
         if (!def) return false;
-        return !def.minRole || typeof hasMinRole !== 'function' || hasMinRole(def.minRole);
+        if (getRoleBaseWidgets(role).includes(widgetKey)) return true;
+        return roleMeetsMinRole(role, def.minRole);
     }
 
     function normalizeBoardItem(item, index = 0) {
@@ -271,10 +431,16 @@ const DashboardPage = (() => {
             mode: normalizeDashboardMode(source.mode || layout.mode),
             widgets: normalizeDashboardWidgets(source.widgets || defaults.widgets),
             theme: source.theme || defaults.theme,
+            presentationMode: normalizeDashboardPresentationMode(source.presentationMode || layout.presentationMode || defaults.presentationMode),
+            roleScenePreset: source.roleScenePreset || layout.roleScenePreset || defaults.roleScenePreset,
+            sceneOptions: normalizeSceneOptions(source.sceneOptions || layout.sceneOptions || defaults.sceneOptions),
             boardMeta: normalizeBoardMeta(source.boardMeta || layout.boardMeta || defaults.boardMeta),
             boardState: normalizeBoardState(source.boardState || layout.boardState || defaults.boardState)
         };
         next.layout.mode = next.mode;
+        next.layout.presentationMode = next.presentationMode;
+        next.layout.roleScenePreset = next.roleScenePreset;
+        next.layout.sceneOptions = next.sceneOptions;
         next.layout.boardMeta = next.boardMeta;
         next.layout.boardState = next.boardState;
         return next;
@@ -356,11 +522,17 @@ const DashboardPage = (() => {
             layout: {
                 ...safeObject(_config.layout, {}),
                 mode: patch.mode || _config.mode || 'grid',
+                presentationMode: patch.presentationMode || _config.presentationMode || 'mixed-scene',
+                roleScenePreset: Object.prototype.hasOwnProperty.call(patch, 'roleScenePreset') ? patch.roleScenePreset : _config.roleScenePreset,
+                sceneOptions: patch.sceneOptions || _config.sceneOptions || createDefaultDashboardConfig().sceneOptions,
                 boardMeta: patch.boardMeta || _config.boardMeta,
                 boardState: patch.boardState || _config.boardState
             },
             theme: patch.theme || _config.theme || 'default',
             mode: patch.mode || _config.mode || 'grid',
+            presentationMode: patch.presentationMode || _config.presentationMode || 'mixed-scene',
+            roleScenePreset: Object.prototype.hasOwnProperty.call(patch, 'roleScenePreset') ? patch.roleScenePreset : _config.roleScenePreset,
+            sceneOptions: patch.sceneOptions || _config.sceneOptions || createDefaultDashboardConfig().sceneOptions,
             boardMeta: patch.boardMeta || _config.boardMeta,
             boardState: patch.boardState || _config.boardState
         };
@@ -528,10 +700,7 @@ const DashboardPage = (() => {
         const role = getUserRole();
         const roleName = ROLE_NAMES[role] || role;
         greetingEl.textContent = `${greeting}, ${AppState.currentUser.name}!`;
-        setAssistantRailState({
-            mode: _assistantRailState.voiceEnabled ? 'idle' : 'muted',
-            subtitle: `Я на зв’язку. Можу показувати субтитри, голосовий статус і підказки по CRM. Роль акаунта: ${roleName}.`
-        });
+        announceDashboardContextToAssistant(roleName);
     }
 
     function normalizeAssistantRailMode(value) {
@@ -539,6 +708,10 @@ const DashboardPage = (() => {
     }
 
     function setAssistantRailState(patch = {}) {
+        if (window.CrmAssistantRail?.setState && !document.getElementById('dashboardAssistantRail')) {
+            window.CrmAssistantRail.setState(patch);
+            return;
+        }
         const nextMode = normalizeAssistantRailMode(patch.mode ?? _assistantRailState.mode);
         const subtitle = Object.prototype.hasOwnProperty.call(patch, 'subtitle')
             ? String(patch.subtitle || '')
@@ -563,6 +736,7 @@ const DashboardPage = (() => {
         const subtitlesWrap = document.getElementById('assistantRailSubtitlesWrap');
         const subtitlesEl = document.getElementById('assistantRailSubtitles');
         const voiceBtn = document.getElementById('assistantRailVoiceToggle');
+        const micBtn = document.getElementById('assistantRailMicBtn');
         const replayBtn = document.getElementById('assistantRailReplayBtn');
         if (!rail || !stateEl || !subtitlesEl || !voiceBtn) return;
 
@@ -574,6 +748,12 @@ const DashboardPage = (() => {
         subtitlesEl.classList.remove('is-ticker');
         voiceBtn.textContent = _assistantRailState.voiceEnabled ? '🔊' : '🔇';
         voiceBtn.setAttribute('aria-pressed', _assistantRailState.voiceEnabled ? 'true' : 'false');
+        if (micBtn) {
+            const isListening = _assistantMediaRecorder?.state === 'recording' || _assistantRailState.mode === 'listening';
+            micBtn.classList.toggle('active', isListening);
+            micBtn.setAttribute('aria-pressed', isListening ? 'true' : 'false');
+            micBtn.title = isListening ? 'Зупинити запис голосу' : 'Голосовий ввід';
+        }
         if (replayBtn) replayBtn.disabled = !(_assistantRailState.lastSpokenLine || _assistantRailState.subtitle);
 
         requestAnimationFrame(() => {
@@ -592,6 +772,10 @@ const DashboardPage = (() => {
     }
 
     function toggleAssistantVoice() {
+        if (window.CrmAssistantRail?.toggleVoice && !document.getElementById('dashboardAssistantRail')) {
+            window.CrmAssistantRail.toggleVoice();
+            return;
+        }
         const next = !_assistantRailState.voiceEnabled;
         localStorage.setItem('eg_dashboard_assistant_voice', next ? 'on' : 'off');
         setAssistantRailState({
@@ -603,39 +787,368 @@ const DashboardPage = (() => {
         });
     }
 
-    function replayAssistantLine() {
-        const line = _assistantRailState.lastSpokenLine || _assistantRailState.subtitle || 'Немає останньої репліки для повтору.';
-        setAssistantRailState({
-            mode: _assistantRailState.voiceEnabled ? 'speaking' : 'idle',
-            subtitle: line,
-            lastSpokenLine: line
-        });
-        if (_assistantRailState.voiceEnabled) {
-            window.clearTimeout(replayAssistantLine._timer);
-            replayAssistantLine._timer = window.setTimeout(() => {
-                if (_assistantRailState.mode === 'speaking') setAssistantRailState({ mode: 'idle' });
-            }, 2600);
+    async function replayAssistantLine() {
+        if (window.CrmAssistantRail?.replayLastLine && !document.getElementById('dashboardAssistantRail')) {
+            await window.CrmAssistantRail.replayLastLine();
+            return;
         }
+        const line = _assistantRailState.lastSpokenLine || _assistantRailState.subtitle || 'Немає останньої репліки для повтору.';
+        await playAssistantReply({ text: line, subtitle: line }, { addToHistory: false });
     }
 
     function expandAssistantRail() {
-        setAssistantRailState({
-            mode: 'thinking',
-            subtitle: 'Повна історія голосових реплік і LLM-подій буде відкриватися тут у наступному кроці.'
-        });
-        if (typeof showNotification === 'function') {
-            showNotification('Assistant rail готовий для підключення історії голосу та субтитрів.', 'info');
+        if (window.CrmAssistantRail?.expand && !document.getElementById('dashboardAssistantRail')) {
+            window.CrmAssistantRail.expand();
+            return;
         }
+        openDashboardAssistantPanel();
     }
 
     function demoAssistantSpeak(text) {
         const line = String(text || '').trim();
         if (!line) return;
+        if (window.CrmAssistantRail?.announceFromPage && !document.getElementById('dashboardAssistantRail')) {
+            window.CrmAssistantRail.announceFromPage(line);
+            return;
+        }
         setAssistantRailState({
             mode: _assistantRailState.voiceEnabled ? 'speaking' : 'idle',
             subtitle: line,
             lastSpokenLine: line
         });
+    }
+
+    function announceDashboardContextToAssistant(roleName = '') {
+        if (['thinking', 'busy', 'listening', 'speaking'].includes(_assistantRailState.mode)) return;
+        const role = getEffectiveDashboardRole();
+        const label = roleName || roleDisplayName(role);
+        const widgets = getDashboardAssistantWidgetsContext();
+        const subtitle = `Я бачу dashboard для ролі ${label}. Можу коротко пояснити віджети, пріоритети і наступний крок.`;
+        if (window.CrmAssistantRail?.announceFromPage && !document.getElementById('dashboardAssistantRail')) {
+            window.CrmAssistantRail.announceFromPage(subtitle);
+            return;
+        }
+        setAssistantRailState({
+            mode: _assistantRailState.voiceEnabled ? 'idle' : 'muted',
+            subtitle,
+            tickerText: widgets.length > 8 ? `Активна сцена: ${label}. Видимі блоки: ${widgets.slice(0, 8).join(', ')}.` : ''
+        });
+    }
+
+    function getDashboardAssistantWidgetsContext() {
+        const domWidgets = Array.from(document.querySelectorAll('#dashboardGrid [data-widget]'))
+            .map(el => el.dataset.widget)
+            .filter(Boolean);
+        const source = domWidgets.length ? domWidgets : normalizeDashboardWidgets(_config?.widgets || []);
+        return [...new Set(source)].slice(0, 30);
+    }
+
+    function buildDashboardAssistantPayload(userMessage, voiceMode = false) {
+        const context = getAssistantContext();
+        return {
+            ...context,
+            userMessage: String(userMessage || '').trim(),
+            voiceMode,
+            recentState: {
+                mode: _assistantRailState.mode,
+                voiceEnabled: _assistantRailState.voiceEnabled,
+                previewRole: localStorage.getItem('pzp_test_role') || ''
+            }
+        };
+    }
+
+    function getAssistantContext() {
+        const role = typeof getUserRole === 'function' ? getUserRole() : AppState.currentUser?.role || '';
+        const scene = typeof getEffectiveDashboardScene === 'function' ? getEffectiveDashboardScene() : null;
+        const effectiveRole = typeof getEffectiveDashboardRole === 'function' ? getEffectiveDashboardRole() : role;
+        return {
+            role,
+            displayRole: roleDisplayName(effectiveRole),
+            page: 'dashboard',
+            widgets: getDashboardAssistantWidgetsContext(),
+            scenePreset: effectiveRole,
+            sceneTitle: scene?.title || '',
+            previewRole: localStorage.getItem('pzp_test_role') || '',
+            intent: 'Поясни dashboard, bottlenecks і наступну найкориснішу дію.'
+        };
+    }
+
+    async function requestDashboardAssistantReply(userMessage, options = {}) {
+        if (window.CrmAssistantRail?.requestGuideReply && !document.getElementById('dashboardAssistantRail')) {
+            return window.CrmAssistantRail.requestGuideReply({
+                ...getAssistantContext(),
+                userMessage: String(userMessage || '').trim(),
+                voiceMode: options.voiceMode === true
+            });
+        }
+        const resp = await fetch('/api/crm-assistant/reply', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + localStorage.getItem('pzp_token')
+            },
+            body: JSON.stringify(buildDashboardAssistantPayload(userMessage, options.voiceMode === true))
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.success) throw new Error(data.error || `assistant_reply_http_${resp.status}`);
+        return data.reply;
+    }
+
+    async function transcribeAssistantAudioBlob(blob) {
+        const formData = new FormData();
+        formData.append('audio', blob, 'dashboard-assistant.webm');
+        const resp = await fetch('/api/crm-assistant/transcribe', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') },
+            body: formData
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.success) throw new Error(data.error || `assistant_transcribe_http_${resp.status}`);
+        return String(data.text || '').trim();
+    }
+
+    function stopAssistantAudioPlayback() {
+        if (_assistantAudioPlayer) {
+            try {
+                _assistantAudioPlayer.pause();
+                _assistantAudioPlayer.src = '';
+            } catch {}
+            _assistantAudioPlayer = null;
+        }
+        if (_assistantAudioUrl) {
+            URL.revokeObjectURL(_assistantAudioUrl);
+            _assistantAudioUrl = null;
+        }
+    }
+
+    async function playAssistantReply(reply, options = {}) {
+        if (window.CrmAssistantRail?.playReply && !document.getElementById('dashboardAssistantRail')) {
+            await window.CrmAssistantRail.playReply(reply, { textOnly: _assistantRailState.voiceEnabled === false });
+            return;
+        }
+        const text = String(reply?.subtitle || reply?.text || '').trim();
+        if (!text) return;
+        if (options.addToHistory !== false) appendAssistantHistory('assistant', text);
+        setAssistantRailState({
+            mode: _assistantRailState.voiceEnabled ? 'speaking' : 'idle',
+            subtitle: text,
+            tickerText: text,
+            lastSpokenLine: text
+        });
+        renderAssistantHistory();
+
+        if (!_assistantRailState.voiceEnabled) return;
+        try {
+            stopAssistantAudioPlayback();
+            const resp = await fetch('/api/crm-assistant/speak', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + localStorage.getItem('pzp_token')
+                },
+                body: JSON.stringify({ text })
+            });
+            if (!resp.ok) {
+                const data = await resp.json().catch(() => ({}));
+                throw new Error(data.error || `assistant_speak_http_${resp.status}`);
+            }
+            const blob = await resp.blob();
+            _assistantAudioUrl = URL.createObjectURL(blob);
+            _assistantAudioPlayer = new Audio(_assistantAudioUrl);
+            _assistantAudioPlayer.onended = () => {
+                stopAssistantAudioPlayback();
+                if (_assistantRailState.mode === 'speaking') setAssistantRailState({ mode: 'idle' });
+            };
+            _assistantAudioPlayer.onerror = () => {
+                stopAssistantAudioPlayback();
+                if (_assistantRailState.mode === 'speaking') setAssistantRailState({ mode: 'idle' });
+            };
+            await _assistantAudioPlayer.play();
+        } catch (err) {
+            console.warn('[dashboard-assistant] speech playback failed:', err);
+            if (_assistantRailState.mode === 'speaking') setAssistantRailState({ mode: 'idle' });
+        }
+    }
+
+    function handleDashboardAssistantError(error, fallback = 'Не вдалося отримати відповідь асистента.') {
+        const code = String(error?.message || '');
+        const missingKey = code.includes('openai_not_configured');
+        const subtitle = missingKey
+            ? 'OpenAI ще не налаштовано на сервері. Потрібен OPENAI_API_KEY у backend env.'
+            : fallback;
+        setAssistantRailState({ mode: 'error', subtitle, tickerText: subtitle });
+        appendAssistantHistory('assistant', subtitle);
+        renderAssistantHistory();
+    }
+
+    function pickAssistantAudioMimeType() {
+        if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') return '';
+        return ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
+            .find(type => MediaRecorder.isTypeSupported(type)) || '';
+    }
+
+    async function toggleAssistantListening() {
+        if (window.CrmAssistantRail?.toggleListening && !document.getElementById('dashboardAssistantRail')) {
+            await window.CrmAssistantRail.toggleListening();
+            return;
+        }
+        if (_assistantMediaRecorder && _assistantMediaRecorder.state === 'recording') {
+            _assistantMediaRecorder.stop();
+            return;
+        }
+        if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+            handleDashboardAssistantError(new Error('media_recorder_unavailable'), 'Голосовий ввід недоступний у цьому браузері.');
+            return;
+        }
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            _assistantListeningStream = stream;
+            _assistantAudioChunks = [];
+            const mimeType = pickAssistantAudioMimeType();
+            const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+            _assistantMediaRecorder = recorder;
+
+            recorder.ondataavailable = event => {
+                if (event.data && event.data.size > 0) _assistantAudioChunks.push(event.data);
+            };
+            recorder.onstop = async () => {
+                const chunks = _assistantAudioChunks.slice();
+                _assistantAudioChunks = [];
+                if (_assistantListeningStream) {
+                    _assistantListeningStream.getTracks().forEach(track => track.stop());
+                    _assistantListeningStream = null;
+                }
+                if (!chunks.length) {
+                    setAssistantRailState({ mode: 'idle', subtitle: 'Не почувив голос. Спробуй ще раз.' });
+                    return;
+                }
+                try {
+                    setAssistantRailState({ mode: 'thinking', subtitle: 'Розпізнаю голос і готую відповідь...' });
+                    const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+                    const transcript = await transcribeAssistantAudioBlob(blob);
+                    if (!transcript) throw new Error('empty_transcript');
+                    appendAssistantHistory('user', transcript);
+                    setAssistantRailState({ mode: 'thinking', subtitle: `Почув: ${transcript}` });
+                    const reply = await requestDashboardAssistantReply(transcript, { voiceMode: true });
+                    await playAssistantReply(reply);
+                } catch (err) {
+                    handleDashboardAssistantError(err, 'Не вдалося розпізнати голос або підготувати відповідь.');
+                }
+            };
+
+            setAssistantRailState({ mode: 'listening', subtitle: 'Слухаю тебе. Говори природно.' });
+            recorder.start();
+        } catch (err) {
+            handleDashboardAssistantError(err, 'Не вдалося увімкнути мікрофон.');
+        }
+    }
+
+    function appendAssistantHistory(role, text) {
+        const line = String(text || '').trim();
+        if (!line) return;
+        _assistantHistory.push({ role, text: line, at: new Date().toISOString() });
+        if (_assistantHistory.length > 16) _assistantHistory = _assistantHistory.slice(-16);
+    }
+
+    function openDashboardAssistantPanel() {
+        const prev = document.getElementById('dashboardAssistantPanelOverlay');
+        if (prev) {
+            renderAssistantHistory();
+            return;
+        }
+        const overlay = document.createElement('div');
+        overlay.id = 'dashboardAssistantPanelOverlay';
+        overlay.className = 'dashboard-assistant-panel-overlay';
+        overlay.innerHTML = `
+            <div class="dashboard-assistant-panel" role="dialog" aria-modal="true" aria-label="AI-провідник dashboard">
+                <div class="dashboard-assistant-panel-header">
+                    <div>
+                        <strong>Клешня</strong>
+                        <span>AI-провідник dashboard</span>
+                    </div>
+                    <button type="button" class="assistant-panel-close" aria-label="Закрити" onclick="DashboardPage.closeDashboardAssistantPanel()">×</button>
+                </div>
+                <div class="dashboard-assistant-history" id="dashboardAssistantHistory"></div>
+                <div class="dashboard-assistant-quick-prompts">
+                    <button type="button" onclick="DashboardPage.runAssistantQuickPrompt('Що для мене зараз головне на dashboard?')">Головне зараз</button>
+                    <button type="button" onclick="DashboardPage.runAssistantQuickPrompt('Поясни цей dashboard моєю роллю')">Поясни сцену</button>
+                    <button type="button" onclick="DashboardPage.runAssistantQuickPrompt('Що зараз найважливіше зробити?')">Наступний крок</button>
+                    <button type="button" onclick="DashboardPage.runAssistantQuickPrompt('Проведи мене по віджетах')">По віджетах</button>
+                </div>
+                <form class="dashboard-assistant-form" onsubmit="DashboardPage.submitAssistantPrompt(event)">
+                    <textarea id="dashboardAssistantPromptInput" rows="3" maxlength="1200" placeholder="Запитай по dashboard..."></textarea>
+                    <button type="submit" class="dashboard-btn primary">Запитати</button>
+                </form>
+                <div class="dashboard-assistant-disclosure">Голосові відповіді генерує AI.</div>
+            </div>
+        `;
+        overlay.addEventListener('click', event => {
+            if (event.target === overlay) closeDashboardAssistantPanel();
+        });
+        document.body.appendChild(overlay);
+        renderAssistantHistory();
+        const input = document.getElementById('dashboardAssistantPromptInput');
+        if (input) input.focus();
+    }
+
+    function closeDashboardAssistantPanel() {
+        if (window.CrmAssistantRail?.closePanel && !document.getElementById('dashboardAssistantPanelOverlay')) {
+            window.CrmAssistantRail.closePanel();
+            return;
+        }
+        const overlay = document.getElementById('dashboardAssistantPanelOverlay');
+        if (overlay) overlay.remove();
+    }
+
+    function renderAssistantHistory() {
+        const container = document.getElementById('dashboardAssistantHistory');
+        if (!container) return;
+        const items = _assistantHistory.length
+            ? _assistantHistory
+            : [{ role: 'assistant', text: _assistantRailState.subtitle || 'Я готовий допомогти з dashboard.' }];
+        container.innerHTML = items.map(item => `
+            <div class="dashboard-assistant-history-item ${escapeHtml(item.role)}">
+                <span>${item.role === 'user' ? 'Ти' : 'Клешня'}</span>
+                <p>${escapeHtml(item.text)}</p>
+            </div>
+        `).join('');
+        container.scrollTop = container.scrollHeight;
+    }
+
+    async function runAssistantQuickPrompt(prompt) {
+        if (window.CrmAssistantRail?.requestGuideReply && !document.getElementById('dashboardAssistantPanelOverlay')) {
+            window.CrmAssistantRail.expand();
+            const reply = await window.CrmAssistantRail.requestGuideReply({
+                ...getAssistantContext(),
+                userMessage: String(prompt || '').trim()
+            });
+            await window.CrmAssistantRail.playReply(reply);
+            return;
+        }
+        await submitAssistantPromptText(prompt);
+    }
+
+    async function submitAssistantPrompt(event) {
+        event.preventDefault();
+        const input = document.getElementById('dashboardAssistantPromptInput');
+        const text = input ? input.value.trim() : '';
+        if (input) input.value = '';
+        await submitAssistantPromptText(text);
+    }
+
+    async function submitAssistantPromptText(text) {
+        const prompt = String(text || '').trim();
+        if (!prompt) return;
+        appendAssistantHistory('user', prompt);
+        renderAssistantHistory();
+        setAssistantRailState({ mode: 'thinking', subtitle: 'Думаю над відповіддю по dashboard...' });
+        try {
+            const reply = await requestDashboardAssistantReply(prompt);
+            await playAssistantReply(reply);
+        } catch (err) {
+            handleDashboardAssistantError(err);
+        }
     }
 
     async function loadWorkQueue() {
@@ -1951,11 +2464,237 @@ const DashboardPage = (() => {
         });
     }
 
+    function getDashboardPresentationMode() {
+        return normalizeDashboardPresentationMode(_config?.presentationMode || _config?.layout?.presentationMode);
+    }
+
+    function getEffectiveDashboardRole() {
+        const ownRole = AppState.currentUser?.role || 'manager';
+        const testRole = localStorage.getItem('pzp_test_role');
+        if (ownRole === 'creator' && testRole && ROLE_DASHBOARD_SCENES[testRole]) return testRole;
+        return ownRole;
+    }
+
+    function getEffectiveDashboardScene() {
+        const role = getEffectiveDashboardRole();
+        if (ROLE_DASHBOARD_SCENES[role]) return ROLE_DASHBOARD_SCENES[role];
+        return {
+            title: 'Default dashboard scene',
+            description: 'Особистий фокус, задачі, графік і базові операційні сигнали.',
+            zones: {
+                leftCluster: ['tasks', 'my_schedule'],
+                centerControl: ['my_focus', 'alerts'],
+                lowerSupport: ['weather', 'announcements'],
+                rightWritingLane: ['notes-zone-primary']
+            },
+            spacing: { rightFreeLane: 300, chaos: 0.08 }
+        };
+    }
+
+    function roleDisplayName(role) {
+        return (typeof ROLE_NAMES !== 'undefined' && ROLE_NAMES[role]) ? ROLE_NAMES[role] : role;
+    }
+
+    function getRoleSceneWidgetPool(role, scene) {
+        const explicit = [
+            ...getRoleBaseWidgets(role),
+            ...Object.values(scene?.zones || {}).flat().filter(key => WIDGET_DEFS[key])
+        ];
+        const allAvailable = Object.keys(WIDGET_DEFS).filter(key => canUseWidgetForRole(key, role));
+        const source = role === 'creator' ? allAvailable : explicit;
+        return [...new Set(source)].filter(key => canUseWidgetForRole(key, role));
+    }
+
+    function targetLaneForWidget(widgetKey) {
+        if (['director_pnl', 'operations', 'hr_overview', 'content_pipeline', 'catalogs'].includes(widgetKey)) return 'specialty';
+        if (['quick_stats', 'bookings_today', 'event_risk_summary', 'exceptions', 'my_schedule', 'weather', 'currency', 'announcements'].includes(widgetKey)) return 'lowerSupport';
+        if (['my_focus', 'alerts', 'team_online', 'staff_today'].includes(widgetKey)) return 'centerControl';
+        return 'leftCluster';
+    }
+
+    function pickSceneLaneWidgets(keys, pool, used) {
+        return (Array.isArray(keys) ? keys : [])
+            .filter(key => pool.includes(key) && !used.has(key))
+            .map(key => {
+                used.add(key);
+                return key;
+            });
+    }
+
+    function buildMixedSceneLayout() {
+        const role = getEffectiveDashboardRole();
+        const scene = getEffectiveDashboardScene();
+        const pool = getRoleSceneWidgetPool(role, scene);
+        const zones = scene.zones || {};
+        const used = new Set();
+        const lanes = {
+            leftCluster: pickSceneLaneWidgets(zones.leftCluster, pool, used),
+            centerControl: pickSceneLaneWidgets(zones.centerControl, pool, used),
+            lowerSupport: pickSceneLaneWidgets(zones.lowerSupport, pool, used),
+            specialty: pickSceneLaneWidgets(zones.specialty, pool, used)
+        };
+
+        pool.filter(key => !used.has(key)).forEach(key => {
+            const target = targetLaneForWidget(key);
+            lanes[target].push(key);
+            used.add(key);
+        });
+
+        return {
+            role,
+            roleLabel: roleDisplayName(role),
+            scene,
+            lanes,
+            writingZones: _config?.sceneOptions?.writingLane === false ? [] : (zones.rightWritingLane || ['notes-zone-primary']),
+            options: normalizeSceneOptions(_config?.sceneOptions),
+            spacing: scene.spacing || { rightFreeLane: 320, chaos: 0.12 }
+        };
+    }
+
+    function renderMixedSceneDashboard(grid) {
+        const layout = buildMixedSceneLayout();
+        grid.className = 'dashboard-grid dashboard-mixed-scene';
+        grid.innerHTML = renderMixedSceneMarkup(layout);
+        hydrateMixedSceneWidgets(layout);
+        updateDashboardRolePreviewControl();
+    }
+
+    function renderMixedSceneMarkup(layout) {
+        const role = escapeHtml(layout.role);
+        const rightLane = Math.max(280, Math.min(380, Number(layout.spacing?.rightFreeLane || 320)));
+        const chaosClass = layout.options.controlledChaos ? 'scene-chaos-on' : 'scene-chaos-calm';
+        return `
+            <section class="dashboard-scene dashboard-scene-role-${role} ${chaosClass}" style="--scene-right-lane: ${rightLane}px" data-scene-role="${role}">
+                <div class="dashboard-scene-left-chaos" id="dashboardSceneLeftChaos">
+                    ${renderSceneWidgetZone(layout.lanes.leftCluster, 'chaos')}
+                </div>
+
+                <div class="dashboard-scene-center-control" id="dashboardSceneCenterControl">
+                    ${renderSceneWidgetZone(layout.lanes.centerControl, 'control')}
+                    ${renderSceneWidgetZone(layout.lanes.lowerSupport, 'support')}
+                    ${renderSceneWidgetZone(layout.lanes.specialty, 'specialty')}
+                </div>
+
+                ${layout.writingZones.length ? `
+                    <aside class="dashboard-scene-right-writing" id="dashboardSceneRightWriting" aria-label="Dashboard writing lane">
+                        ${layout.writingZones.map(zoneId => renderWritingZone(zoneId)).join('')}
+                    </aside>
+                ` : ''}
+            </section>
+        `;
+    }
+
+    function renderSceneWidgetZone(widgetKeys = [], tone = 'default') {
+        return widgetKeys
+            .filter(widgetKey => WIDGET_DEFS[widgetKey])
+            .filter(widgetKey => canUseWidgetForRole(widgetKey, getEffectiveDashboardRole()))
+            .map(widgetKey => renderSceneWidgetCard(widgetKey, tone))
+            .join('');
+    }
+
+    function renderSceneWidgetCard(widgetKey, tone = 'default') {
+        const def = WIDGET_DEFS[widgetKey];
+        if (!def) return '';
+        const safeKey = escapeHtml(widgetKey);
+        return `
+            <section class="widget-card scene-tone-${escapeHtml(tone)}" data-widget="${safeKey}">
+                <div class="widget-header">
+                    <div class="widget-title">
+                        <span class="widget-title-icon">${escapeHtml(def.icon)}</span>
+                        ${escapeHtml(def.title)}
+                    </div>
+                    <div class="widget-actions">
+                        <button class="widget-action-btn" onclick="DashboardPage.refreshWidget('${escapeJsString(widgetKey)}')" title="Оновити" aria-label="Оновити">↻</button>
+                    </div>
+                </div>
+                <div class="widget-body" id="widget-${safeKey}">
+                    <div class="widget-loading">Завантаження...</div>
+                </div>
+            </section>
+        `;
+    }
+
+    function getWritingZoneStorageKey(zoneId) {
+        const user = AppState.currentUser || {};
+        const owner = user.id || user.username || user.name || 'guest';
+        return `eg_dashboard_scene_note_${owner}_${getEffectiveDashboardRole()}_${zoneId}`;
+    }
+
+    function getWritingZoneValue(zoneId) {
+        try {
+            return localStorage.getItem(getWritingZoneStorageKey(zoneId)) || '';
+        } catch {
+            return '';
+        }
+    }
+
+    function saveWritingZone(zoneId, value) {
+        try {
+            localStorage.setItem(getWritingZoneStorageKey(zoneId), String(value || '').slice(0, 5000));
+        } catch {}
+    }
+
+    function renderWritingZone(zoneId) {
+        const def = WRITING_ZONE_DEFS[zoneId] || WRITING_ZONE_DEFS['notes-zone-primary'];
+        const value = getWritingZoneValue(zoneId);
+        const safeZoneId = escapeHtml(zoneId);
+        return `
+            <section class="dashboard-writing-zone" data-zone="${safeZoneId}">
+                <div class="dashboard-writing-zone-header">
+                    <strong>${escapeHtml(def.title)}</strong>
+                    <button type="button" class="dashboard-btn dashboard-writing-zone-note-btn" onclick="DashboardPage.addBoardNoteToZone('${escapeJsString(zoneId)}')">У Board</button>
+                </div>
+                <textarea class="dashboard-writing-zone-body"
+                    id="${safeZoneId}"
+                    rows="8"
+                    placeholder="${escapeHtml(def.hint)}"
+                    oninput="DashboardPage.saveWritingZone('${escapeJsString(zoneId)}', this.value)">${escapeHtml(value)}</textarea>
+            </section>
+        `;
+    }
+
+    function hydrateMixedSceneWidgets(layout) {
+        const allKeys = Object.values(layout.lanes || {}).flat().filter(key => WIDGET_DEFS[key]);
+        [...new Set(allKeys)].forEach(widgetKey => loadWidgetData(widgetKey));
+    }
+
+    function renderFlatWidgetGrid(grid) {
+        grid.className = 'dashboard-grid';
+        const widgets = normalizeDashboardWidgets(_config.widgets || []);
+        grid.innerHTML = '';
+
+        for (const widgetKey of widgets) {
+            if (!canUseWidget(widgetKey)) continue;
+            grid.insertAdjacentHTML('beforeend', renderSceneWidgetCard(widgetKey, 'default'));
+            loadWidgetData(widgetKey);
+        }
+
+        if (grid.children.length === 0) {
+            grid.innerHTML = '<div class="widget-empty">Немає віджетів. Натисніть "Налаштувати", щоб додати.</div>';
+        }
+    }
+
+    function updateDashboardRolePreviewControl() {
+        const wrapper = document.getElementById('dashboardRolePreview');
+        const select = document.getElementById('dashboardRolePreviewSelect');
+        if (!wrapper || !select) return;
+        const canPreview = AppState.currentUser?.role === 'creator';
+        wrapper.hidden = !canPreview;
+        if (!canPreview) return;
+        select.value = localStorage.getItem('pzp_test_role') || '';
+        const label = document.getElementById('dashboardRolePreviewCurrent');
+        if (label) {
+            const role = getEffectiveDashboardRole();
+            label.textContent = `Сцена: ${roleDisplayName(role)}`;
+        }
+    }
+
     function renderWidgets() {
         const grid = document.getElementById('dashboardGrid');
         if (!grid || !_config) return;
         _config = normalizeDashboardConfig(_config);
         syncBoardToolbar();
+        updateDashboardRolePreviewControl();
 
         if (_config.mode === 'board') {
             grid.classList.add('hidden');
@@ -1967,44 +2706,12 @@ const DashboardPage = (() => {
         if (boardShell) boardShell.classList.add('hidden');
         grid.classList.remove('hidden');
 
-        const widgets = normalizeDashboardWidgets(_config.widgets || []);
-        grid.innerHTML = '';
-
-        for (const widgetKey of widgets) {
-            const def = WIDGET_DEFS[widgetKey];
-            if (!def) continue;
-
-            // Check role access
-            if (def.minRole && typeof hasMinRole === 'function' && !hasMinRole(def.minRole)) {
-                continue;
-            }
-
-            const card = document.createElement('div');
-            card.className = 'widget-card';
-            card.dataset.widget = widgetKey;
-            card.innerHTML = `
-                <div class="widget-header">
-                    <div class="widget-title">
-                        <span class="widget-title-icon">${def.icon}</span>
-                        ${def.title}
-                    </div>
-                    <div class="widget-actions">
-                        <button class="widget-action-btn" onclick="DashboardPage.refreshWidget('${widgetKey}')" title="Оновити">↻</button>
-                    </div>
-                </div>
-                <div class="widget-body" id="widget-${widgetKey}">
-                    <div class="widget-loading">Завантаження...</div>
-                </div>
-            `;
-            grid.appendChild(card);
-
-            // Load widget data
-            loadWidgetData(widgetKey);
+        if (getDashboardPresentationMode() === 'mixed-scene') {
+            renderMixedSceneDashboard(grid);
+            return;
         }
 
-        if (grid.children.length === 0) {
-            grid.innerHTML = '<div class="widget-empty">Немає віджетів. Натисніть "Налаштувати" щоб додати.</div>';
-        }
+        renderFlatWidgetGrid(grid);
     }
 
     function getBoardItems() {
@@ -2450,6 +3157,22 @@ const DashboardPage = (() => {
         addBoardItem({ type: 'note', w: 260, h: 150, text: 'Нова нотатка' });
     }
 
+    function addBoardNoteToZone(zoneId) {
+        const def = WRITING_ZONE_DEFS[zoneId] || WRITING_ZONE_DEFS['notes-zone-primary'];
+        const text = getWritingZoneValue(zoneId).trim() || def.hint || 'Нова нотатка';
+        if (_config.mode !== 'board') {
+            _config.mode = 'board';
+            _config.layout.mode = 'board';
+        }
+        addBoardItem({
+            type: 'note',
+            w: 280,
+            h: 170,
+            title: def.title,
+            text: text.slice(0, 5000)
+        });
+    }
+
     function addBoardText() {
         addBoardItem({ type: 'text', w: 320, h: 160, text: 'Новий текстовий блок', title: 'Text' });
     }
@@ -2628,6 +3351,36 @@ const DashboardPage = (() => {
             seedBoardWidgets();
         }
         saveDashboardConfig({ mode: nextMode }).catch(err => console.error('[dashboard] mode save failed:', err));
+        renderWidgets();
+    }
+
+    function setDashboardRolePreview(role) {
+        if (AppState.currentUser?.role !== 'creator') return;
+        const nextRole = String(role || '').trim();
+        if (!nextRole) {
+            localStorage.removeItem('pzp_test_role');
+        } else if (ROLE_DASHBOARD_SCENES[nextRole]) {
+            localStorage.setItem('pzp_test_role', nextRole);
+        }
+        renderWidgets();
+        announceDashboardContextToAssistant();
+    }
+
+    function setDashboardSceneOption(option, value) {
+        if (!_config) return;
+        const options = normalizeSceneOptions(_config.sceneOptions);
+        if (option === 'writingLane') options.writingLane = value === true || value === 'true';
+        if (option === 'controlledChaos') options.controlledChaos = value === true || value === 'true';
+        _config.sceneOptions = options;
+        _config.layout = {
+            ...safeObject(_config.layout, {}),
+            mode: _config.mode,
+            presentationMode: getDashboardPresentationMode(),
+            sceneOptions: options,
+            boardMeta: _config.boardMeta,
+            boardState: _config.boardState
+        };
+        saveDashboardConfig({ sceneOptions: options }).catch(err => console.error('[dashboard] scene option save failed:', err));
         renderWidgets();
     }
 
@@ -3607,9 +4360,16 @@ const DashboardPage = (() => {
     }
 
     function getSettingsOverlayState() {
-        return Array.from(document.querySelectorAll('#settingsWidgetList .settings-widget-item.active'))
+        const widgets = Array.from(document.querySelectorAll('#settingsWidgetList .settings-widget-item.active'))
             .map(el => el.dataset.widget || '')
             .join('|');
+        const writingLane = document.getElementById('settingsWritingLane');
+        const controlledChaos = document.getElementById('settingsControlledChaos');
+        return [
+            widgets,
+            `writing:${writingLane ? writingLane.checked : _config?.sceneOptions?.writingLane !== false}`,
+            `chaos:${controlledChaos ? controlledChaos.checked : _config?.sceneOptions?.controlledChaos !== false}`
+        ].join('|');
     }
 
     function isSettingsOverlayDirty() {
@@ -3650,8 +4410,11 @@ const DashboardPage = (() => {
 
     // Settings modal with drag & drop reordering
     function openSettings() {
+        const effectiveRole = getEffectiveDashboardRole();
+        const effectiveScene = getEffectiveDashboardScene();
+        const sceneOptions = normalizeSceneOptions(_config?.sceneOptions);
         const availableWidgets = Object.entries(WIDGET_DEFS)
-            .filter(([key, def]) => !DASHBOARD_RETIRED_WIDGETS.has(key) && (!def.minRole || (typeof hasMinRole === 'function' && hasMinRole(def.minRole))));
+            .filter(([key]) => canUseWidgetForRole(key, effectiveRole));
 
         const activeWidgets = _config ? (_config.widgets || []) : [];
 
@@ -3673,6 +4436,18 @@ const DashboardPage = (() => {
                 </label>
             </div>`;
         }).join('');
+        const rolePreviewOptions = ['manager', 'senior_manager', 'director', 'vice_director', 'hr', 'art_director', 'admin']
+            .map(role => `<option value="${role}">${escapeHtml(roleDisplayName(role))} (${escapeHtml(role)})</option>`)
+            .join('');
+        const rolePreviewMarkup = AppState.currentUser?.role === 'creator' ? `
+            <div class="dashboard-settings-scene-row dashboard-settings-role-preview">
+                <label for="settingsRolePreviewSelect">Перегляд як роль</label>
+                <select id="settingsRolePreviewSelect" class="dashboard-role-preview-select" onchange="DashboardPage.setDashboardRolePreview(this.value)">
+                    <option value="">Моя роль</option>
+                    ${rolePreviewOptions}
+                </select>
+            </div>
+        ` : '';
 
         // Remove previous settings modal if open
         const prev = document.getElementById('settingsOverlay');
@@ -3688,7 +4463,29 @@ const DashboardPage = (() => {
             <div class="settings-modal">
                 <div class="settings-modal-header">
                     <h2>Налаштування дашборду</h2>
-                    <p>Увімкніть віджети та перетягніть для зміни порядку</p>
+                    <p>Налаштовуйте рольову сцену, нотатки справа і fallback-список віджетів.</p>
+                </div>
+                <div class="dashboard-settings-scene-card">
+                    <div class="dashboard-settings-scene-summary">
+                        <span>Активна сцена</span>
+                        <strong>${escapeHtml(roleDisplayName(effectiveRole))}</strong>
+                        <em>${escapeHtml(effectiveScene.title || 'Mixed scene')}</em>
+                    </div>
+                    ${rolePreviewMarkup}
+                    <label class="dashboard-settings-scene-row">
+                        <span>Writing lane справа</span>
+                        <span class="settings-toggle">
+                            <input type="checkbox" id="settingsWritingLane" ${sceneOptions.writingLane ? 'checked' : ''}>
+                            <span class="settings-toggle-slider"></span>
+                        </span>
+                    </label>
+                    <label class="dashboard-settings-scene-row">
+                        <span>Керована асиметрія зліва</span>
+                        <span class="settings-toggle">
+                            <input type="checkbox" id="settingsControlledChaos" ${sceneOptions.controlledChaos ? 'checked' : ''}>
+                            <span class="settings-toggle-slider"></span>
+                        </span>
+                    </label>
                 </div>
                 <div class="settings-widget-list" id="settingsWidgetList">${widgetItems}</div>
                 <div class="settings-modal-footer">
@@ -3700,6 +4497,8 @@ const DashboardPage = (() => {
 
         document.body.appendChild(overlay);
         _settingsOverlayInitialState = getSettingsOverlayState();
+        const settingsRolePreviewSelect = document.getElementById('settingsRolePreviewSelect');
+        if (settingsRolePreviewSelect) settingsRolePreviewSelect.value = localStorage.getItem('pzp_test_role') || '';
         if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay, {
             isDirty: isSettingsOverlayDirty
         });
@@ -3775,9 +4574,27 @@ const DashboardPage = (() => {
 
         if (!_config) _config = { widgets: [], layout: {}, theme: 'default' };
         _config.widgets = selected;
+        _config.presentationMode = 'mixed-scene';
+        _config.sceneOptions = {
+            writingLane: document.getElementById('settingsWritingLane')?.checked !== false,
+            controlledChaos: document.getElementById('settingsControlledChaos')?.checked !== false
+        };
+        _config.layout = {
+            ...safeObject(_config.layout, {}),
+            mode: _config.mode || 'grid',
+            presentationMode: _config.presentationMode,
+            roleScenePreset: _config.roleScenePreset || null,
+            sceneOptions: _config.sceneOptions,
+            boardMeta: _config.boardMeta,
+            boardState: _config.boardState
+        };
 
         try {
-            await saveDashboardConfig({ widgets: selected });
+            await saveDashboardConfig({
+                widgets: selected,
+                presentationMode: _config.presentationMode,
+                sceneOptions: _config.sceneOptions
+            });
         } catch (err) {
             console.error('Save settings error:', err);
         }
@@ -4843,9 +5660,13 @@ const DashboardPage = (() => {
         escalateReplyExpectation,
         refreshWidget,
         setDashboardMode,
+        setDashboardRolePreview,
+        setDashboardSceneOption,
         setBoardInteractionMode,
         setBoardTool,
         addBoardNote,
+        addBoardNoteToZone,
+        saveWritingZone,
         addBoardText,
         addBoardFrame,
         addBoardWidget,
@@ -4875,6 +5696,11 @@ const DashboardPage = (() => {
         toggleAssistantVoice,
         replayAssistantLine,
         expandAssistantRail,
+        toggleAssistantListening,
+        closeDashboardAssistantPanel,
+        runAssistantQuickPrompt,
+        submitAssistantPrompt,
+        getAssistantContext,
         demoAssistantSpeak,
     };
 })();

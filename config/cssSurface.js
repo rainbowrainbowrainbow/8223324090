@@ -37,6 +37,13 @@ const CSS_SURFACE = [
         reason: 'Login and authentication shell styles used by root, dashboard, and sound pages.'
     },
     {
+        file: 'css/assistant-rail.css',
+        owner: 'shared-crm-assistant',
+        category: 'shared',
+        status: 'active',
+        reason: 'Shared global CRM assistant rail, proactive help panel, voice controls, and dark/mobile states.'
+    },
+    {
         file: 'css/base.css',
         owner: 'shared-ui',
         category: 'shared',

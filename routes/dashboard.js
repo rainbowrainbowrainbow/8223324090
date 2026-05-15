@@ -54,6 +54,179 @@ function countFrom(result) {
     return parseInt(result?.rows?.[0]?.count || 0, 10) || 0;
 }
 
+const BOARD_SCHEMA_VERSION = 1;
+const BOARD_MAX_ITEMS = 80;
+const BOARD_ALLOWED_TYPES = new Set(['widget', 'note', 'text', 'shape', 'frame']);
+const BOARD_ALLOWED_WIDGET_DEPTHS = new Set(['live-compact', 'headline-only', 'live-expanded', 'snapshot-card']);
+
+function parseJsonObject(value, fallback = {}) {
+    if (!value) return { ...fallback };
+    if (typeof value === 'object' && !Array.isArray(value)) return { ...fallback, ...value };
+    if (typeof value === 'string') {
+        try {
+            const parsed = JSON.parse(value);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                return { ...fallback, ...parsed };
+            }
+        } catch {}
+    }
+    return { ...fallback };
+}
+
+function safeNumber(value, fallback, min, max) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    return Math.min(max, Math.max(min, number));
+}
+
+function defaultBoardMeta(overrides = {}) {
+    return {
+        version: BOARD_SCHEMA_VERSION,
+        enabled: true,
+        lastSavedAt: null,
+        dirty: false,
+        privacy: 'private',
+        collaboration: 'personal',
+        ...overrides,
+        version: BOARD_SCHEMA_VERSION,
+        dirty: false,
+        privacy: 'private',
+        collaboration: 'personal'
+    };
+}
+
+function defaultBoardState(overrides = {}) {
+    return {
+        viewport: { x: 0, y: 0, zoom: 1 },
+        items: [],
+        preferences: {
+            snapToGrid: true,
+            showMiniMap: false,
+            maxLiveWidgets: 6
+        },
+        ...overrides
+    };
+}
+
+function sanitizeBoardItem(item, role) {
+    if (!item || typeof item !== 'object') return null;
+    const type = BOARD_ALLOWED_TYPES.has(item.type) ? item.type : null;
+    if (!type) return null;
+    const id = String(item.id || '').trim().slice(0, 80);
+    if (!id) return null;
+    const safe = {
+        id,
+        type,
+        x: safeNumber(item.x, 40, -10000, 10000),
+        y: safeNumber(item.y, 40, -10000, 10000),
+        w: safeNumber(item.w, type === 'widget' ? 320 : 220, 80, 1200),
+        h: safeNumber(item.h, type === 'widget' ? 220 : 120, 60, 900),
+        z: safeNumber(item.z, 1, 0, 9999),
+        locked: item.locked === true,
+        hidden: item.hidden === true
+    };
+
+    if (type === 'widget') {
+        const widgetType = String(item.widgetType || item.widget || '').trim();
+        if (!widgetType || canAccessDashboardWidget(role, widgetType, ROLE_LEVEL) === false) return null;
+        safe.widgetType = widgetType;
+        safe.depth = BOARD_ALLOWED_WIDGET_DEPTHS.has(item.depth) ? item.depth : 'live-compact';
+        safe.title = String(item.title || '').slice(0, 120);
+    } else {
+        safe.text = String(item.text || '').slice(0, 5000);
+        safe.title = String(item.title || '').slice(0, 120);
+        safe.color = String(item.color || '').slice(0, 40);
+        safe.shape = String(item.shape || 'rect').slice(0, 40);
+    }
+
+    return safe;
+}
+
+function sanitizeBoardState(input, role) {
+    const source = parseJsonObject(input, {});
+    const viewportSource = parseJsonObject(source.viewport, {});
+    const preferencesSource = parseJsonObject(source.preferences, {});
+    const items = Array.isArray(source.items)
+        ? source.items.slice(0, BOARD_MAX_ITEMS).map(item => sanitizeBoardItem(item, role)).filter(Boolean)
+        : [];
+
+    return defaultBoardState({
+        viewport: {
+            x: safeNumber(viewportSource.x, 0, -10000, 10000),
+            y: safeNumber(viewportSource.y, 0, -10000, 10000),
+            zoom: safeNumber(viewportSource.zoom, 1, 0.25, 2)
+        },
+        items,
+        preferences: {
+            snapToGrid: preferencesSource.snapToGrid !== false,
+            showMiniMap: preferencesSource.showMiniMap === true,
+            maxLiveWidgets: safeNumber(preferencesSource.maxLiveWidgets, 6, 1, 8)
+        }
+    });
+}
+
+function normalizeDashboardMode(value) {
+    return value === 'board' ? 'board' : 'grid';
+}
+
+function normalizeDashboardConfig(raw, role) {
+    const layout = parseJsonObject(raw?.layout, {});
+    const mode = normalizeDashboardMode(raw?.mode || layout.mode);
+    const boardMeta = defaultBoardMeta(parseJsonObject(raw?.boardMeta || layout.boardMeta, {}));
+    const boardState = sanitizeBoardState(raw?.boardState || layout.boardState, role);
+    return {
+        layout: {
+            ...layout,
+            mode,
+            boardMeta,
+            boardState
+        },
+        widgets: Array.isArray(raw?.widgets)
+            ? raw.widgets.filter(type => canAccessDashboardWidget(role, type, ROLE_LEVEL) !== false)
+            : [],
+        theme: raw?.theme || 'default',
+        mode,
+        boardMeta,
+        boardState
+    };
+}
+
+function buildPersistedDashboardConfig(existingRaw, body, role) {
+    const existing = normalizeDashboardConfig(existingRaw || {}, role);
+    const incomingLayout = body && Object.prototype.hasOwnProperty.call(body, 'layout')
+        ? parseJsonObject(body.layout, {})
+        : {};
+    const mode = normalizeDashboardMode(body?.mode || incomingLayout.mode || existing.mode);
+    const boardMeta = defaultBoardMeta({
+        ...existing.boardMeta,
+        ...parseJsonObject(incomingLayout.boardMeta, {}),
+        ...parseJsonObject(body?.boardMeta, {}),
+        lastSavedAt: body?.boardMeta?.lastSavedAt || incomingLayout.boardMeta?.lastSavedAt || new Date().toISOString()
+    });
+    const boardState = body && (Object.prototype.hasOwnProperty.call(body, 'boardState') || incomingLayout.boardState)
+        ? sanitizeBoardState(body.boardState || incomingLayout.boardState, role)
+        : existing.boardState;
+    const widgets = Array.isArray(body?.widgets)
+        ? body.widgets.filter(type => canAccessDashboardWidget(role, type, ROLE_LEVEL) !== false)
+        : existing.widgets;
+    const layout = {
+        ...existing.layout,
+        ...incomingLayout,
+        mode,
+        boardMeta,
+        boardState
+    };
+
+    return {
+        layout,
+        widgets,
+        theme: body?.theme || existing.theme || 'default',
+        mode,
+        boardMeta,
+        boardState
+    };
+}
+
 async function buildEventRiskSummary(user) {
     const today = getKyivDateStr();
     const tomorrow = addDays(today, 1);
@@ -160,18 +333,20 @@ router.get('/config', async (req, res) => {
         );
 
         if (result.rows.length > 0) {
-            return res.json({ success: true, config: result.rows[0] });
+            return res.json({ success: true, config: normalizeDashboardConfig(result.rows[0], req.user.role) });
         }
 
         // Return defaults based on role
         const defaultWidgets = getDefaultWidgets(req.user.role);
+        const defaultConfig = normalizeDashboardConfig({
+            layout: {},
+            widgets: defaultWidgets,
+            theme: 'default',
+            mode: 'grid'
+        }, req.user.role);
         res.json({
             success: true,
-            config: {
-                layout: {},
-                widgets: defaultWidgets,
-                theme: 'default'
-            },
+            config: defaultConfig,
             isDefault: true
         });
     } catch (err) {
@@ -183,18 +358,24 @@ router.get('/config', async (req, res) => {
 // PUT /api/dashboard/config — save user's dashboard configuration
 router.put('/config', async (req, res) => {
     try {
-        const { layout, widgets, theme } = req.body;
-        const safeWidgets = Array.isArray(widgets)
-            ? widgets.filter(type => canAccessDashboardWidget(req.user.role, type, ROLE_LEVEL) === true)
-            : [];
+        const existingResult = await pool.query(
+            'SELECT layout, widgets, theme FROM dashboard_configs WHERE user_id = $1',
+            [req.user.id]
+        );
+        const existingRaw = existingResult.rows[0] || {
+            layout: {},
+            widgets: getDefaultWidgets(req.user.role),
+            theme: 'default'
+        };
+        const nextConfig = buildPersistedDashboardConfig(existingRaw, req.body || {}, req.user.role);
         await pool.query(`
             INSERT INTO dashboard_configs (user_id, layout, widgets, theme, updated_at)
             VALUES ($1, $2, $3, $4, NOW())
             ON CONFLICT (user_id)
             DO UPDATE SET layout = $2, widgets = $3, theme = $4, updated_at = NOW()
-        `, [req.user.id, JSON.stringify(layout || {}), JSON.stringify(safeWidgets), theme || 'default']);
+        `, [req.user.id, JSON.stringify(nextConfig.layout), JSON.stringify(nextConfig.widgets), nextConfig.theme || 'default']);
 
-        res.json({ success: true });
+        res.json({ success: true, config: normalizeDashboardConfig(nextConfig, req.user.role) });
     } catch (err) {
         log.error('Failed to save dashboard config', err);
         res.status(500).json({ error: 'Failed to save dashboard config' });

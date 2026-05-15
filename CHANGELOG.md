@@ -4,6 +4,16 @@
 
 ---
 
+## v0.50.1 - Dashboard Board Foundation Engine (2026-05-15)
+
+### Dashboard / Board Foundation [codex]
+- **Board mode** - додано керований режим board поверх існуючого dashboard config без окремого сховища або заміни grid dashboard.
+- **Engine contract** - закладено `grid|board`, `view|edit`, `boardMeta.version`, нормалізований `boardState`, базову selection/object discipline та widget click-vs-drag контракт.
+- **Надійність** - додано dirty-state indicator, debounced autosave, local recovery draft, undo/redo foundation і safe fallback для несумісного board config.
+- **Governance** - phase 1 лишається personal-first: без realtime collaboration, без Miro-overreach і з performance cap для live widgets.
+
+---
+
 ## v0.50.0 - Sidebar Aurora Redesign (2026-05-15)
 
 ### Sidebar / Navigation [codex]

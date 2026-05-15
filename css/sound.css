@@ -1,6 +1,6 @@
 /**
  * sound.css — Sound Page styles (Library + Announcements + Projects + Log)
- * v38.2.1: Full tabbed interface, design tokens, WCAG
+ * v0.50.28: Full tabbed interface, design tokens, WCAG, dark log contrast
  */
 
 .sound-page { padding: 24px; min-height: 100vh; }
@@ -167,8 +167,9 @@ body.dark-mode .sound-create-btn.music { background: rgba(245,158,11,0.1); color
 .sound-empty-sub { font-size: var(--font-sm, 13px); color: var(--gray-400); margin-top: 4px; }
 
 /* ═══ Dark mode ═══ */
-body.dark-mode .sound-header h1 { color: var(--gray-200, #E2E8F0); }
-body.dark-mode .sound-search { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--gray-200); }
+body.dark-mode .sound-header h1 { color: #F8FAFC; }
+body.dark-mode .sound-header .subtitle { color: #E2E8F0; }
+body.dark-mode .sound-search { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: #E2E8F0; }
 body.dark-mode .sound-search::placeholder { color: var(--gray-600); }
 body.dark-mode .sound-search:focus { border-color: var(--primary); }
 body.dark-mode .sound-cat-btn { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); color: var(--gray-400); }
@@ -189,27 +190,35 @@ body.dark-mode .sound-project-card:hover { border-color: rgba(255,255,255,0.12);
 body.dark-mode .sound-project-name { color: var(--gray-200); }
 body.dark-mode .sound-project-desc { color: var(--gray-500); }
 body.dark-mode .sound-project-footer { color: var(--gray-500); }
-body.dark-mode .sound-stat-card { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.06); }
-body.dark-mode .sound-stat-num { color: var(--gray-200, #E2E8F0); }
-body.dark-mode .sound-stat-label { color: var(--gray-500); }
+body.dark-mode .sound-stat-card { background: rgba(255,255,255,0.055); border-color: rgba(255,255,255,0.10); }
+body.dark-mode .sound-stat-num { color: #F8FAFC; }
+body.dark-mode .sound-stat-label { color: #CBD5E1; }
 body.dark-mode .sound-log-entry:hover { background: rgba(255,255,255,0.04); }
-body.dark-mode .sound-log-label { color: var(--gray-200, #E2E8F0); }
-body.dark-mode .sound-log-title { color: var(--gray-400); }
-body.dark-mode .sound-log-details { color: var(--gray-500); }
-body.dark-mode .sound-log-date-header { color: var(--gray-400); border-color: rgba(255,255,255,0.08); }
-body.dark-mode .sound-log-date-count { background: rgba(255,255,255,0.08); color: var(--gray-400); }
-body.dark-mode .sound-log-type-badge { background: rgba(255,255,255,0.08); color: var(--gray-400); }
-body.dark-mode .sound-filter-btn { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); color: var(--gray-400); }
+body.dark-mode .sound-log-time { color: #BFDBFE; }
+body.dark-mode .sound-log-label { color: #F8FAFC; }
+body.dark-mode .sound-log-title { color: #DBEAFE; }
+body.dark-mode .sound-log-details { color: #E2E8F0; }
+body.dark-mode .sound-log-date-header { color: #BAE6FD; border-color: rgba(255,255,255,0.10); }
+body.dark-mode .sound-log-date-count { background: rgba(255,255,255,0.10); color: #E2E8F0; }
+body.dark-mode .sound-log-type-badge { background: rgba(148,163,184,0.18); color: #E2E8F0; }
+body.dark-mode .sound-filter-btn { background: rgba(255,255,255,0.055); border-color: rgba(255,255,255,0.12); color: #CBD5E1; }
 body.dark-mode .sound-filter-btn.active { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: var(--white); border-color: var(--primary); }
-body.dark-mode .sound-filter-btn:hover:not(.active) { border-color: var(--primary); color: var(--primary); }
-body.dark-mode .sound-log-date-filter label { color: var(--gray-400); }
-body.dark-mode .sound-log-date-filter input[type="date"] { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--gray-200, #E2E8F0); color-scheme: dark; }
+body.dark-mode .sound-filter-btn:hover:not(.active) { border-color: rgba(52,211,153,0.55); color: #A7F3D0; background: rgba(16,185,129,0.10); }
+body.dark-mode .sound-log-date-filter label { color: #CBD5E1; }
+body.dark-mode .sound-log-date-filter input[type="date"] { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.16); color: #F8FAFC; color-scheme: dark; }
 body.dark-mode .btn-outline { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: var(--gray-400); }
 body.dark-mode .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
 body.dark-mode .btn-primary-sm { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color: var(--white); }
 body.dark-mode .sound-empty { color: var(--gray-500); }
-body.dark-mode .sound-log-sep { color: var(--gray-600); }
-body.dark-mode .sound-log-tag { color: var(--gray-500); }
+body.dark-mode .sound-log-sep { color: #64748B; }
+body.dark-mode .sound-log-tag { color: #E2E8F0; }
+body.dark-mode .sound-log-action-play .sound-log-label { color: #86EFAC; }
+body.dark-mode .sound-log-action-tts .sound-log-label,
+body.dark-mode .sound-log-action-schedule .sound-log-label { color: #C4B5FD; }
+body.dark-mode .sound-log-action-create .sound-log-label { color: #93C5FD; }
+body.dark-mode .sound-log-action-delete .sound-log-label { color: #FCA5A5; }
+body.dark-mode .sound-log-action-update .sound-log-label { color: #FCD34D; }
+body.dark-mode .sound-log-action-upload .sound-log-label { color: #67E8F9; }
 body.dark-mode .sound-delivery-ok { color: #34d399; }
 body.dark-mode .sound-delivery-pending { color: #fbbf24; }
 body.dark-mode .sound-delivery-fail { color: #f87171; }

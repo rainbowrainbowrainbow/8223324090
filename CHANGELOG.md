@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.28 - Sound Log Dark Theme Contrast Fix (2026-05-16)
+
+### Sound / Log [codex]
+- **Dark Theme** - виправлено контраст вкладки **Лог подій**, щоб заголовок, subtitle, фільтри, дати, статистика, записи та теги були читабельні в чорній темі.
+- **Action Labels** - для типів подій додано яскраві dark-mode accent-и, тому `Програвання`, `TTS`, `Створення`, `Зміни` та інші написи більше не зливаються з фоном.
+- **Form Controls** - date-фільтри та chip-кнопки отримали стабільні темні стани hover/active без втрати видимості.
+
+---
+
 ## v0.50.27 - Sidebar Group Animation Polish (2026-05-16)
 
 ### Sidebar / Navigation [codex]

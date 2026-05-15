@@ -5,17 +5,19 @@
  * Usage:
  *   node scripts/version-sync.js              # Check mode
  *   node scripts/version-sync.js --fix        # Fix mode
- *   node scripts/version-sync.js --bump patch # Bump package.json + derived markers
+ *   node scripts/version-sync.js --fix --bump patch --label "Release Label"
+ *                                             # Bump package.json + release label + derived markers
  *
  * Synced/checked surfaces:
- *   1. package.json version (source of truth)
+ *   1. package.json version + eventGenix.releaseLabel (source of truth)
  *   2. package-lock.json root package versions
  *   3. HTML/CSS/JS/image asset query strings in href/src attributes and quoted asset refs
- *   4. first-screen version and changelog button on login-capable pages, including dashboard.html
- *   5. index.html latest changelog modal entry version
- *   6. CHANGELOG.md latest heading version
+ *   4. first-screen release badge, tagline, and changelog button
+ *   5. index.html latest changelog modal entry version + label
+ *   6. CHANGELOG.md latest heading version + label
  *   7. sw.js CACHE_NAME and API_CACHE_NAME
  *   8. server.js inline versioned asset references
+ *   9. /api/version static route contract uses services/release.js
  */
 
 const fs = require('fs');
@@ -25,6 +27,7 @@ const ROOT = path.resolve(__dirname, '..');
 const FIX = process.argv.includes('--fix');
 const BUMP = process.argv.indexOf('--bump');
 const BUMP_TYPE = BUMP !== -1 ? process.argv[BUMP + 1] : null;
+const LABEL_ARG = readArg('--label') || readArg('--release-label');
 
 const RED = '\x1b[31m';
 const GREEN = '\x1b[32m';
@@ -57,6 +60,29 @@ function readJson(file) {
 
 function writeJson(file, value) {
     write(file, JSON.stringify(value, null, 2) + '\n');
+}
+
+function readArg(name) {
+    const idx = process.argv.indexOf(name);
+    if (idx === -1) return null;
+    const value = process.argv[idx + 1];
+    return value && !value.startsWith('--') ? value : null;
+}
+
+function htmlEscape(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function normalizeLabel(value) {
+    return String(value || '').trim();
+}
+
+function getReleaseLabel(pkg) {
+    return normalizeLabel(pkg.eventGenix?.releaseLabel || pkg.releaseLabel);
 }
 
 function report(file, what, actual, expected, fixable = true) {
@@ -163,51 +189,75 @@ function syncPackageLock(version) {
     if (FIX && changed) writeJson(file, lock);
 }
 
-function syncFirstScreenLabels(file, version, { checkLatestModal = false } = {}) {
+function syncFirstScreenLabels(file, version, releaseLabel, { checkLatestModal = false, releaseLabelInText = false } = {}) {
     if (!exists(file)) return;
 
     let html = read(file);
+    const suffix = releaseLabelInText && releaseLabel ? ` — ${releaseLabel}` : '';
 
-    const taglineRegex = /(<p class="tagline">AI First CRM v)([\d.]+)([^<]*<\/p>)/;
-    const taglineMatch = html.match(taglineRegex);
-    if (taglineMatch && taglineMatch[2] !== version) {
-        report(file, 'tagline version', taglineMatch[2], version);
-        if (FIX) html = html.replace(taglineRegex, `$1${version}$3`);
-    } else if (taglineMatch) {
-        ok(file, 'tagline version');
+    const releaseBadgeRegex = /<div class="login-release-badge"[^>]*>[^<]*<\/div>/;
+    const releaseBadgeMatch = html.match(releaseBadgeRegex);
+    if (releaseBadgeMatch) {
+        const expectedText = `${version}${releaseLabel ? ` ${releaseLabel}` : ''}`;
+        const expectedBadge = `<div class="login-release-badge" aria-label="Поточний реліз ${htmlEscape(expectedText)}">✨ ${htmlEscape(expectedText)}</div>`;
+        if (releaseBadgeMatch[0] !== expectedBadge) {
+            report(file, 'login release badge', releaseBadgeMatch[0], expectedBadge);
+            if (FIX) html = html.replace(releaseBadgeRegex, expectedBadge);
+        } else {
+            ok(file, 'login release badge');
+        }
     }
 
-    const changelogButtonRegex = /(<button[^>]*id="changelogBtn"[^>]*>[^<]*v)([\d.]+)/;
+    const taglineRegex = /<p class="tagline">[^<]*<\/p>/;
+    const taglineMatch = html.match(taglineRegex);
+    if (taglineMatch) {
+        const expectedTagline = `<p class="tagline">AI First CRM v${version}${htmlEscape(suffix)}</p>`;
+        if (taglineMatch[0] !== expectedTagline) {
+            report(file, 'tagline', taglineMatch[0], expectedTagline);
+            if (FIX) html = html.replace(taglineRegex, expectedTagline);
+        } else {
+            ok(file, 'tagline');
+        }
+    }
+
+    const changelogButtonRegex = /<button[^>]*id="changelogBtn"[^>]*>[^<]*<\/button>/;
     const buttonMatch = html.match(changelogButtonRegex);
-    if (buttonMatch && buttonMatch[2] !== version) {
-        report(file, 'changelog button', buttonMatch[2], version);
-        if (FIX) html = html.replace(changelogButtonRegex, `$1${version}`);
-    } else if (buttonMatch) {
-        ok(file, 'changelog button');
+    if (buttonMatch) {
+        const expectedButtonText = `Що нового у v${version}${releaseLabelInText && releaseLabel ? `: ${releaseLabel}` : ''}`;
+        const expectedButton = buttonMatch[0].replace(/>[^<]*<\/button>/, `>${htmlEscape(expectedButtonText)}</button>`);
+        if (buttonMatch[0] !== expectedButton) {
+            report(file, 'changelog button', buttonMatch[0], expectedButton);
+            if (FIX) html = html.replace(changelogButtonRegex, expectedButton);
+        } else {
+            ok(file, 'changelog button');
+        }
     }
 
     if (checkLatestModal) {
-        const latestModalRegex = /(<div class="changelog-list">[\s\S]*?<h4>[\s\S]*?v)([\d.]+)/;
+        const latestModalRegex = /(<div class="changelog-list">[\s\S]*?<h4>)([\s\S]*?)(<\/h4>)/;
         const latestModalMatch = html.match(latestModalRegex);
-        if (latestModalMatch && latestModalMatch[2] !== version) {
-            report(file, 'latest changelog modal entry', latestModalMatch[2], version);
-            if (FIX) html = html.replace(latestModalRegex, `$1${version}`);
-        } else if (latestModalMatch) {
-            ok(file, 'latest changelog modal entry');
+        if (latestModalMatch) {
+            const expectedHeading = `v${version}${releaseLabel ? ` — ${releaseLabel}` : ''}`;
+            if (latestModalMatch[2] !== expectedHeading) {
+                report(file, 'latest changelog modal entry', latestModalMatch[2], expectedHeading);
+                if (FIX) html = html.replace(latestModalRegex, `$1${htmlEscape(expectedHeading)}$3`);
+            } else {
+                ok(file, 'latest changelog modal entry');
+            }
         }
     }
 
     if (FIX) write(file, html);
 }
 
-function checkMarkdownChangelog(version) {
+function checkMarkdownChangelog(version, releaseLabel) {
     const file = 'CHANGELOG.md';
     if (!exists(file)) return;
 
     const markdown = read(file);
-    const latestHeading = markdown.match(/^## v([\d.]+)/m);
+    const latestHeading = markdown.match(/^## v([\d.]+)\s+[-—]\s+(.+)$/m);
     if (!latestHeading) {
-        report(file, 'latest heading', 'missing', `v${version}`, false);
+        report(file, 'latest heading', 'missing', `v${version} - ${releaseLabel}`, false);
         return;
     }
 
@@ -215,6 +265,33 @@ function checkMarkdownChangelog(version) {
         report(file, 'latest heading version', latestHeading[1], version, false);
     } else {
         ok(file, 'latest heading version');
+    }
+
+    const headingLabel = normalizeLabel(latestHeading[2].replace(/\s*\([^)]*\)\s*$/, ''));
+    if (headingLabel !== releaseLabel) {
+        report(file, 'latest heading label', latestHeading[2], releaseLabel, false);
+    } else {
+        ok(file, 'latest heading label');
+    }
+}
+
+function checkApiVersionContract() {
+    const routeFile = 'routes/settings.js';
+    const serviceFile = 'services/release.js';
+    if (!exists(routeFile) || !exists(serviceFile)) return;
+
+    const route = read(routeFile);
+    const service = read(serviceFile);
+    if (!route.includes("require('../services/release')") || !route.includes('getReleaseMetadata()')) {
+        report(routeFile, '/api/version release source', 'inline or missing', 'services/release.js getReleaseMetadata()', false);
+    } else {
+        ok(routeFile, '/api/version release source');
+    }
+
+    if (!service.includes("require('../package.json')") || !service.includes('releaseLabel')) {
+        report(serviceFile, 'canonical package metadata', 'missing', 'package.json version + releaseLabel', false);
+    } else {
+        ok(serviceFile, 'canonical package metadata');
     }
 }
 
@@ -249,29 +326,45 @@ let pkg = readJson('package.json');
 let version = pkg.version;
 
 try {
+    let pkgChanged = false;
     if (BUMP_TYPE) {
         version = bumpVersion(version, BUMP_TYPE);
         pkg.version = version;
-        writeJson('package.json', pkg);
+        pkgChanged = true;
         console.log(`${CYAN}Bumped${RESET} package.json -> ${BOLD}v${version}${RESET}\n`);
     }
+    if (LABEL_ARG !== null) {
+        pkg.eventGenix = pkg.eventGenix || {};
+        pkg.eventGenix.releaseLabel = normalizeLabel(LABEL_ARG);
+        pkgChanged = true;
+        console.log(`${CYAN}Release label${RESET} package.json -> ${BOLD}${pkg.eventGenix.releaseLabel}${RESET}\n`);
+    }
+    if (pkgChanged) writeJson('package.json', pkg);
 } catch (err) {
     console.error(`${RED}${err.message}${RESET}`);
     process.exit(1);
 }
 
-console.log(`${BOLD}Version sync: v${version}${RESET} (source: package.json)\n`);
+const releaseLabel = getReleaseLabel(pkg);
+if (!releaseLabel) {
+    report('package.json', 'eventGenix.releaseLabel', 'missing', 'non-empty release label', false);
+} else {
+    ok('package.json', 'eventGenix.releaseLabel');
+}
+
+console.log(`${BOLD}Version sync: v${version}${releaseLabel ? ` — ${releaseLabel}` : ''}${RESET} (source: package.json)\n`);
 
 syncPackageLock(version);
 syncAssetVersions('index.html', version);
-syncFirstScreenLabels('index.html', version, { checkLatestModal: true });
-syncFirstScreenLabels('dashboard.html', version);
+syncFirstScreenLabels('index.html', version, releaseLabel, { checkLatestModal: true, releaseLabelInText: true });
+syncFirstScreenLabels('dashboard.html', version, releaseLabel);
 syncServiceWorker(version);
 
 for (const file of collectVersionedAssetFiles()) {
     if (file !== 'index.html') syncAssetVersions(file, version);
 }
-checkMarkdownChangelog(version);
+checkMarkdownChangelog(version, releaseLabel);
+checkApiVersionContract();
 
 console.log('');
 if (issues === 0) {

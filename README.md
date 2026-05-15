@@ -164,17 +164,18 @@ CI does not run PostgreSQL-backed API/integration suites, production deploy veri
 
 ## Version And Changelog Discipline
 
-`package.json` is the version source of truth. The version helper is `scripts/version-sync.js`; it checks `package-lock.json`, visible UI labels, latest changelog markers, asset cache tags, service-worker cache names, and known inline asset references.
+`package.json` is the single source of truth for product release metadata: `version` is the canonical release number and `eventGenix.releaseLabel` is the canonical visible release label. The version helper is `scripts/version-sync.js`; it checks `package-lock.json`, login release badge, tagline, changelog CTA, latest changelog markers, asset cache tags, service-worker cache names, known inline asset references, and the `/api/version` route contract.
 
-The active release train is now `0.47.x`. `0.47.0` is the base release for this convention, and mini updates should increment patch only: `0.47.1`, `0.47.2`, `0.47.3`, etc. Existing `v43.*`, `v0.44.*`, `v0.45.*`, and `v0.46.*` changelog entries, code comments, migration notes, and audit docs are historical records; do not use them as the active version source and do not return new release markers to those older lines without an explicit version-policy task.
+The active release train is now `0.50.x`. Mini updates should increment patch only: `0.50.33`, `0.50.34`, `0.50.35`, etc. Existing `v43.*`, `v0.44.*`, `v0.45.*`, `v0.46.*`, `v0.47.*`, `v0.48.*`, and `v0.49.*` changelog entries, code comments, migration notes, and audit docs are historical records; do not use them as the active version source and do not return new release markers to those older lines without an explicit version-policy task.
 
 For user-visible or deployable product changes:
 
-1. Bump `package.json` intentionally.
-2. Run `node scripts/version-sync.js` to inspect current version state.
-3. Run `npm run version:sync` only when you intend to update generated version references.
-4. Update the `index.html` changelog modal entry for the release.
-5. Update `CHANGELOG.md` when the change is release-relevant.
+1. Bump canonical metadata with `npm run version:bump -- patch --label "Release Label"` or edit `package.json` intentionally.
+2. Update the `index.html` changelog modal entry for the release.
+3. Update `CHANGELOG.md` when the change is release-relevant.
+4. Run `npm run version:sync` only when you intend to update generated version references.
+5. Run `npm run check:version`; it must fail on any drift between `package.json`, visible UI, cache-bust tags, changelog, service-worker caches, or `/api/version` ownership.
+6. After deploy, run `npm run version:smoke -- https://<live-crm-host>` and treat a mismatch as an incomplete deploy.
 
 Documentation-only changes normally do not need a product version bump unless a release marker is explicitly requested.
 

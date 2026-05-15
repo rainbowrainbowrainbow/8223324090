@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.33 - Version System Hardening (2026-05-16)
+
+### Release / Version [codex]
+- **Version Truth** - `package.json` тепер містить не тільки canonical `version`, а й canonical `eventGenix.releaseLabel`, з якого синхронізуються видимі release labels.
+- **Hard Gate** - `scripts/version-sync.js` тепер ловить drift у login release badge, tagline, changelog CTA, modal heading, `CHANGELOG.md`, `?v=` asset tags, service-worker cache names і `/api/version` route contract.
+- **Deploy Smoke** - додано `npm run version:smoke`, який звіряє live `/api/version` і login HTML з очікуваною версією перед завершенням релізу.
+
+---
+
 ## v0.50.32 - HR Interactive Company Structure (2026-05-16)
 
 ### HR / Structure [codex]

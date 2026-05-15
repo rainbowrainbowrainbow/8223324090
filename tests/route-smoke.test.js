@@ -583,12 +583,15 @@ describe('route-level API safety smoke', () => {
     it('keeps version and health public through the actual settings router', async () => {
         const version = await request('GET', '/api/version');
         assert.equal(version.status, 200, JSON.stringify(version.data));
+        assert.equal(version.data.success, true);
         assert.equal(version.data.version, pkg.version);
+        assert.equal(version.data.releaseLabel, pkg.eventGenix.releaseLabel);
         assert.equal(version.data.name, 'Event Genix');
 
         const health = await request('GET', '/api/health');
         assert.equal(health.status, 200, JSON.stringify(health.data));
         assert.equal(health.data.version, pkg.version);
+        assert.equal(health.data.releaseLabel, pkg.eventGenix.releaseLabel);
         assert.equal(health.data.status, 'ok');
         assert.equal(health.data.database, 'connected');
     });

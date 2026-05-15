@@ -91,14 +91,16 @@ Notes:
 
 ## Versioning And Changelog
 
-- `package.json` is the version source of truth.
-- Active release train: `0.47.x`. The base release is `0.47.0`; mini updates increment the patch only (`0.47.1`, `0.47.2`, `0.47.3`, etc.) unless the user explicitly requests a new version-policy transition.
-- Do not return active release markers to the old `43.x.x` or `0.44.x` lines without an explicit version-policy task. Existing `v43.*` and `v0.44.*` changelog entries, comments, migrations, and audit notes are historical references, not current source-of-truth markers.
+- `package.json` is the release source of truth: `version` is the canonical number and `eventGenix.releaseLabel` is the canonical visible release label.
+- Active release train: `0.50.x`. Mini updates increment the patch only (`0.50.33`, `0.50.34`, `0.50.35`, etc.) unless the user explicitly requests a new version-policy transition.
+- Do not return active release markers to old `43.x.x`, `0.44.x`, `0.45.x`, `0.46.x`, `0.47.x`, `0.48.x`, or `0.49.x` lines without an explicit version-policy task. Existing historical changelog entries, comments, migrations, and audit notes are historical references, not current source-of-truth markers.
 - `scripts/version-sync.js` checks/synchronizes version references from `package.json` into `package-lock.json`, HTML asset cache tags, first-screen version text, latest changelog markers, service-worker cache names, and known inline asset references.
 - For user-visible or deployable product changes:
   - update `package.json` version intentionally;
   - run `node scripts/version-sync.js` to check current state;
-  - use `npm run version:sync` only when you intend to update version references;
+  - use `npm run version:sync` only when you intend to update generated version references;
+  - use `npm run version:bump -- patch --label "Release Label"` for the canonical patch-release flow when starting a release bump;
+  - after deploy, use `npm run version:smoke -- https://<live-crm-host>` to verify live `/api/version` and login HTML match `package.json`;
   - add/update the `index.html` changelog modal entry;
   - update `CHANGELOG.md` if the change is release-relevant.
 - User-facing release notes must be written in Ukrainian:

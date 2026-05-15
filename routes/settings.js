@@ -8,6 +8,7 @@ const { createLogger } = require('../utils/logger');
 const { logAdminAction } = require('../services/adminAudit');
 const { settingsCache } = require('../services/cache');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
+const { getReleaseMetadata } = require('../services/release');
 
 const { requireRole, requireMinRole, authenticateToken } = require('../middleware/auth');
 const log = createLogger('Settings');
@@ -16,13 +17,12 @@ const log = createLogger('Settings');
 // Duplicates removed from below auth wall
 
 router.get('/version', (req, res) => {
-    const pkg = require('../package.json');
-    res.json({ version: pkg.version, name: 'Event Genix', testMode: process.env.TEST_MODE === 'true' });
+    res.json(getReleaseMetadata());
 });
 
 router.get('/health', async (req, res) => {
-    const pkg = require('../package.json');
-    const checks = { version: pkg.version, database: 'unknown', uptime: process.uptime(), timestamp: new Date().toISOString() };
+    const release = getReleaseMetadata();
+    const checks = { version: release.version, releaseLabel: release.releaseLabel, database: 'unknown', uptime: process.uptime(), timestamp: new Date().toISOString() };
     const mem = process.memoryUsage();
     checks.memory = { rss: Math.round(mem.rss / 1024 / 1024) + 'MB', heap: Math.round(mem.heapUsed / 1024 / 1024) + '/' + Math.round(mem.heapTotal / 1024 / 1024) + 'MB' };
     try {

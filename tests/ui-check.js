@@ -101,6 +101,10 @@ checkPage('index.html', (doc, html) => {
     check('Booking pinata mode selector exists', !!doc.getElementById('pinataMode'));
     check('Booking client pinata service fields exist', !!doc.getElementById('clientPinataServiceFields') && !!doc.getElementById('clientPinataServicePrice'));
     check('Park pinata filler excludes client-owned option', !html.includes('value="Клієнта"'));
+    check('login release badge matches package version', doc.querySelector('.login-release-badge')?.textContent.includes(pkg.version));
+    check('login release badge matches package release label', doc.querySelector('.login-release-badge')?.textContent.includes(pkg.eventGenix.releaseLabel));
+    check('login tagline matches package release contract', html.includes(`AI First CRM v${pkg.version} — ${pkg.eventGenix.releaseLabel}`));
+    check('login changelog button matches package release contract', doc.getElementById('changelogBtn')?.textContent.includes(`v${pkg.version}: ${pkg.eventGenix.releaseLabel}`));
 });
 
 checkPage('dashboard.html', (doc, html) => {

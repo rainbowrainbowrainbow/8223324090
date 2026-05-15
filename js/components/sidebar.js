@@ -1,5 +1,5 @@
 /**
- * js/components/sidebar.js — Sidebar Aurora v0.50.7
+ * js/components/sidebar.js — Sidebar Aurora v0.50.10
  * Living dual-theme sidebar with micro-interactions.
  */
 const Sidebar = (() => {
@@ -9,9 +9,7 @@ const Sidebar = (() => {
         userRetryStarted: false,
         badgeTimer: null,
         taskWidgetTimer: null,
-        funnelWidgetTimer: null,
-        nowTimer: null,
-        eventTimer: null
+        funnelWidgetTimer: null
     };
     const GROUP_STATE_VERSION = 'collapsed-by-default-v1';
 
@@ -364,7 +362,6 @@ const Sidebar = (() => {
         container.classList.add('rendered');
 
         _ensureAuroraLayer();
-        _ensureNowCard();
         _ensurePillsRow();
         _ensureActiveIndicator();
         _initCollapsedTooltips(container);
@@ -490,45 +487,6 @@ const Sidebar = (() => {
         sidebar.insertBefore(aurora, sidebar.firstChild);
     }
 
-    function _ensureNowCard() {
-        const sidebar = document.getElementById('sidebarNav');
-        if (!sidebar || document.getElementById('sidebarNowCard')) return;
-        const links = sidebar.querySelector('.sidebar-links');
-        if (!links) return;
-        const card = document.createElement('div');
-        card.id = 'sidebarNowCard';
-        card.className = 'sidebar-now-card';
-        card.innerHTML = `
-            <div class="sidebar-now-top">
-                <div class="sidebar-now-avatar-wrap">
-                    <span class="sidebar-now-avatar" id="sidebarNowAvatar">?</span>
-                </div>
-                <div class="sidebar-now-user">
-                    <div class="sidebar-now-name" id="sidebarNowName">—</div>
-                    <div class="sidebar-now-greeting" id="sidebarNowGreeting">—</div>
-                </div>
-                <div class="sidebar-now-time" id="sidebarNowTime">--:--</div>
-            </div>
-            <div class="sidebar-now-event empty" id="sidebarNowEvent">
-                <div class="sidebar-now-event-left">
-                    <span class="sidebar-now-event-dot"></span>
-                    <div class="sidebar-pulse-viz" aria-hidden="true">
-                        <span></span><span></span><span></span><span></span><span></span>
-                    </div>
-                </div>
-                <div class="sidebar-now-event-body">
-                    <button type="button" class="sidebar-now-event-label sidebar-dashboard-jump" id="sidebarDashboardJump" data-sidebar-stop-profile="true" onclick="Sidebar.openDashboard(event)" title="Відкрити дашборд">
-                        ${_renderIcon('dashboard', 'sidebar-dashboard-jump-icon')}
-                        <span>Дашборд</span>
-                    </button>
-                    <div class="sidebar-now-event-title" id="sidebarNowEventTitle">Подій немає</div>
-                    <div class="sidebar-now-event-meta" id="sidebarNowEventMeta">Вільний час</div>
-                </div>
-            </div>`;
-        sidebar.insertBefore(card, links);
-        _bindProfileEntry(card);
-    }
-
     function _sidebarRoleLabel(role) {
         const labels = {
             creator: 'Creator',
@@ -566,103 +524,6 @@ const Sidebar = (() => {
             .filter(Boolean)
             .filter((role, index, list) => list.indexOf(role) === index);
         return roles.length ? roles.slice(0, 3).join(' · ') : 'Користувач CRM';
-    }
-
-    function _refreshNowCard() {
-        const nameEl = document.getElementById('sidebarNowName');
-        const greetEl = document.getElementById('sidebarNowGreeting');
-        const timeEl = document.getElementById('sidebarNowTime');
-        if (!nameEl) return;
-
-        const user = _getCurrentSidebarUser();
-        const now = new Date();
-
-        nameEl.textContent = user?.name || user?.username || 'Гість';
-        greetEl.textContent = _sidebarRoleLine(user);
-        timeEl.textContent = now.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
-
-        const avatarEl = document.getElementById('sidebarNowAvatar');
-        if (avatarEl && user) _paintUserAvatar(avatarEl, user);
-
-        clearTimeout(_state.nowTimer);
-        _state.nowTimer = setTimeout(_refreshNowCard, 60000 - (Date.now() % 60000));
-    }
-
-    function _todayIsoDate() {
-        const now = new Date();
-        const tzOffset = now.getTimezoneOffset() * 60000;
-        return new Date(now.getTime() - tzOffset).toISOString().slice(0, 10);
-    }
-
-    function _bookingDateTime(booking, timeKey) {
-        const date = booking?.date || _todayIsoDate();
-        const time = booking?.[timeKey] || booking?.time || '00:00';
-        return new Date(`${date}T${String(time).slice(0, 5)}:00`);
-    }
-
-    async function _refreshCurrentEvent() {
-        const titleEl = document.getElementById('sidebarNowEventTitle');
-        const metaEl = document.getElementById('sidebarNowEventMeta');
-        const eventEl = document.getElementById('sidebarNowEvent');
-        if (!titleEl || !metaEl) return;
-        const token = localStorage.getItem('pzp_token');
-        if (!token) return;
-        try {
-            const date = _todayIsoDate();
-            const res = await fetch(`/api/bookings/${encodeURIComponent(date)}`, {
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-            if (!res.ok) throw new Error('bookings unavailable');
-            const data = await res.json();
-            const bookings = Array.isArray(data) ? data : (data.bookings || []);
-            const now = new Date();
-            const enriched = bookings
-                .map((booking) => {
-                    const start = _bookingDateTime(booking, 'time');
-                    const duration = Number(booking.duration || 0);
-                    const end = new Date(start.getTime() + Math.max(duration, 30) * 60000);
-                    return { booking, start, end };
-                })
-                .sort((a, b) => a.start - b.start);
-            const current = enriched.find(item => item.start <= now && item.end >= now);
-            const next = !current ? enriched.find(item => item.start > now) : null;
-            const item = current || next;
-            if (!item) {
-                titleEl.textContent = 'Подій немає';
-                metaEl.textContent = 'Вільний час';
-                eventEl?.classList.add('empty');
-            } else {
-                const booking = item.booking;
-                const fmt = (d) => d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
-                const room = booking.room || booking.roomLabel || '';
-                const program = booking.programName || booking.program_name || booking.label || '';
-                const kids = booking.kidsCount || booking.kids_count || '';
-                titleEl.textContent = [room, program].filter(Boolean).join(' · ') || 'Бронювання';
-                const metaParts = [`${fmt(item.start)}-${fmt(item.end)}`];
-                if (kids) metaParts.push(`${kids} дітей`);
-                metaEl.textContent = metaParts.join(' · ');
-                eventEl?.classList.remove('empty');
-            }
-        } catch {
-            titleEl.textContent = 'Подій немає';
-            metaEl.textContent = 'Вільний час';
-            eventEl?.classList.add('empty');
-        }
-        clearTimeout(_state.eventTimer);
-        _state.eventTimer = setTimeout(_refreshCurrentEvent, 300000);
-    }
-
-    function openDashboard(event) {
-        if (event) {
-            event.preventDefault();
-            event.stopPropagation();
-        }
-        const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
-        if (currentPath === '/dashboard') return;
-        document.body.classList.add('shell-baseline', 'page-exiting');
-        document.body.classList.remove('shell-ready');
-        document.body.setAttribute('aria-busy', 'true');
-        window.location.href = '/dashboard';
     }
 
     function _ensurePillsRow() {
@@ -948,8 +809,6 @@ const Sidebar = (() => {
 
     function initUserCard() {
         let user = _getCurrentSidebarUser();
-        _ensureNowCard();
-        _refreshNowCard();
         if (!user) return;
         const avatarEl = document.getElementById('sidebarUserAvatar');
         const compactAvatarEl = document.getElementById('sidebarCompactAvatar');
@@ -962,7 +821,6 @@ const Sidebar = (() => {
         if (roleEl) roleEl.textContent = _sidebarRoleLine(user);
         _bindProfileEntry(cardEl);
         _bindProfileEntry(nameEl);
-        _bindProfileEntry(document.getElementById('sidebarNowCard'));
     }
 
     function _paintUserAvatar(el, user) {
@@ -1134,8 +992,6 @@ const Sidebar = (() => {
         _ensureCollapsedGroupsBaseline();
         render(containerSelector);
         initToggle();
-        _refreshNowCard();
-        _refreshCurrentEvent();
         _initPageTransitions();
         // Fill user card immediately + keep retrying until avatar shows real initial
         if (!_state.userRetryStarted) {
@@ -1219,7 +1075,7 @@ const Sidebar = (() => {
 
     async function _retryUserCard() {
         initUserCard();
-        const avatarEl = document.getElementById('sidebarNowAvatar') || document.getElementById('sidebarUserAvatar');
+        const avatarEl = document.getElementById('sidebarUserAvatar');
         const stillDefault = !avatarEl || avatarEl.textContent.trim() === '?';
         if (!stillDefault) return; // Already showing real initial
 
@@ -1290,7 +1146,6 @@ const Sidebar = (() => {
         checkPageAccess,
         toggleGroup,
         openAlerts,
-        openDashboard,
         initUserCard,
         markShellReady: _markShellReady,
         clearShellReady: _clearShellReady,

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.10 - Sidebar Profile Cleanup (2026-05-15)
+
+### Sidebar / Dashboard Cleanup [codex]
+- **Profile duplicate** - прибрано зайву окрему профільну картку, яка дублювала інформацію про користувача.
+- **Dashboard menu** - sidebar став нижчим і чистішим: лишається один основний профільний блок.
+- **UI guard** - додано static smoke check проти повернення `sidebar-now-card`.
+
+---
+
 ## v0.50.9 - Sidebar Status Rail (2026-05-15)
 
 ### Sidebar / Status Rail [codex]

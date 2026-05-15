@@ -158,7 +158,7 @@
         <a href="/">Увійти в систему</a>
     </div>
 
-    <div id="mainApp">
+    <div id="mainApp" class="main-app hidden">
         <!-- Бокове меню -->
         <aside class="sidebar-nav" id="sidebarNav">
             <div class="sidebar-header" id="sidebarHeader">
@@ -270,6 +270,8 @@
         }
 
         renderRoom();
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
     }
 
     function renderRoom() {

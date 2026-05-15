@@ -297,10 +297,16 @@ const unexpectedMainShellPages = shellPages.filter(page => (
     && page.doc.querySelector('main.main-content')
     && !page.doc.querySelector('main#main-content.page-container')
 ));
+const mainAppShellPages = shellPages.filter(page => page.doc.getElementById('mainApp'));
+const missingHiddenMainAppPages = mainAppShellPages.filter(page => {
+    const main = page.doc.getElementById('mainApp');
+    return !main.classList.contains('main-app') || !main.classList.contains('hidden');
+});
 
 check('No standard page nests main-content inside page-container', nestedShellPages.length === 0);
 check('No shell containers use inline left offsets', inlineOffsetPages.length === 0);
 check('Only documented full-app pages use main-content shell', unexpectedMainShellPages.length === 0);
+check('All mainApp shells start from hidden main-app baseline', missingHiddenMainAppPages.length === 0);
 shellPages.forEach(page => page.dom.window.close());
 
 // Check sidebar nav items
@@ -315,12 +321,32 @@ check('Sidebar has Центр керування', sidebarCode.includes('Цен�
 
 check('Sidebar navigation no longer delays on visible old DOM', !sidebarCode.includes('setTimeout(() => { window.location.href = href; }, 180)') && sidebarCode.includes('requestAnimationFrame(navigate)'));
 check('Sidebar init is idempotent for shared bindings', sidebarCode.includes('transitionsBound') && sidebarCode.includes('sidebarToggleBound') && sidebarCode.includes('sidebarOverlayBound') && sidebarCode.includes('sidebarLinkBound'));
-check('Sidebar marks shared shell ready after baseline init', sidebarCode.includes("classList.add('shell-ready')") && sidebarCode.includes("classList.remove('shell-ready')"));
-check('Layout gates page group animations behind shell readiness', layoutCss.includes('body[data-page-group]:not(.shell-ready) #mainApp:not(.hidden)') && layoutCss.includes('body.shell-ready[data-page-group="crm"]'));
+const sidebarInitBody = sidebarCode.match(/function init\(containerSelector\) \{([\s\S]*?)\n    \}/)?.[1] || '';
+check('Sidebar exposes explicit shell-ready API', sidebarCode.includes('markShellReady: _markShellReady') && sidebarCode.includes('clearShellReady: _clearShellReady'));
+check('Sidebar init does not mark shell ready before page bootstrap', !sidebarInitBody.includes('_markShellReady()'));
+check('Auth exposes shared authenticated shell reveal helper', authCode.includes('function showAuthenticatedPageShell()') && authCode.includes('Sidebar.markShellReady') && authCode.includes('function clearAuthenticatedPageShell()'));
+check('Layout hides mainApp until shell readiness without depending on hidden class', layoutCss.includes('body[data-page-group]:not(.shell-ready) #mainApp {') && !layoutCss.includes('#mainApp:not(.hidden)'));
+check('Layout gates page group animations behind shell readiness', layoutCss.includes('body.shell-ready[data-page-group="crm"]'));
 check('Page exit uses neutral shell veil instead of old shell animation', layoutCss.includes('body.page-exiting::before') && layoutCss.includes('body.page-exiting #mainApp') && !layoutCss.includes('animation: ptFadeOut 0.18s'));
 
 const trainingPageCode = fs.readFileSync(path.join(ROOT, 'js/training-page.js'), 'utf8');
+const chatPageCode = fs.readFileSync(path.join(ROOT, 'js/chat-page.js'), 'utf8');
 check('Training page script does not double-initialize sidebar', !trainingPageCode.includes('Sidebar.init('));
+check('Chat page no longer uses early first-paint hack', !chatPageCode.includes('Show main app FIRST') && chatPageCode.includes('showAuthenticatedPageShell'));
+const shellReadyExemptPages = new Set(['index.html']);
+const noExplicitShellReadyPages = mainAppShellPages.filter(page => {
+    if (shellReadyExemptPages.has(page.file)) return false;
+    const html = fs.readFileSync(path.join(ROOT, page.file), 'utf8');
+    const pageScripts = getHtmlScripts(html)
+        .filter(src => src !== 'js/auth.js' && src !== 'js/components/sidebar.js')
+        .map(src => {
+            const scriptPath = path.join(ROOT, src);
+            return fs.existsSync(scriptPath) ? fs.readFileSync(scriptPath, 'utf8') : '';
+        })
+        .join('\n');
+    return !/(showAuthenticatedPageShell\s*\(|Sidebar\.markShellReady\s*\(|showMainApp\s*\()/.test(html + '\n' + pageScripts);
+});
+check('Every standalone mainApp page has an explicit post-auth shell-ready handoff', noExplicitShellReadyPages.length === 0);
 const legacySidebarTogglePages = htmlFiles.filter(file => fs.readFileSync(path.join(ROOT, file), 'utf8').includes('Sidebar toggle for mobile'));
 check('Top-level pages do not keep page-local sidebar toggle bindings', legacySidebarTogglePages.length === 0);
 

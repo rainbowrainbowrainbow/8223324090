@@ -84,8 +84,18 @@ const ContentPage = (() => {
 
     // ── Init ──
     function init() {
+        if (!localStorage.getItem('pzp_token')) {
+            window.location.href = '/';
+            return;
+        }
+        try {
+            const savedUser = localStorage.getItem('pzp_current_user');
+            if (savedUser && typeof AppState !== 'undefined') AppState.currentUser = JSON.parse(savedUser);
+        } catch {}
         currentWeekStart = getMonday(new Date());
         initTabs();
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
         loadCalendar();
     }
 

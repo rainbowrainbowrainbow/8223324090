@@ -53,7 +53,7 @@
         </div>
     </div>
 
-    <div id="mainApp" class="hidden">
+    <div id="mainApp" class="main-app hidden">
         <!-- Sidebar -->
         <aside class="sidebar-nav" id="sidebarNav">
             <div class="sidebar-header" id="sidebarHeader">
@@ -246,7 +246,6 @@
             if (user) {
                 AppState.currentUser = user;
                 document.getElementById('loginScreen').classList.add('hidden');
-                document.getElementById('mainApp').classList.remove('hidden');
                 document.getElementById('currentUser').textContent = user.name;
                 if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
                 DashboardPage.init();

@@ -151,6 +151,8 @@ const ReportsPage = (() => {
             loadSubmitters(),
             loadHashtags()
         ]);
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
     }
 
     // ==========================================

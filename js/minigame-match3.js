@@ -1280,6 +1280,8 @@ async function initGamePage() {
         console.error('Status error', e);
     }
     renderGameUI();
+    if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+    else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
 }
 
 function renderGameUI() {

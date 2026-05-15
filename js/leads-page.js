@@ -120,9 +120,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check TEST_MODE badge
     checkTestMode();
 
+    try {
+        const savedUser = localStorage.getItem('pzp_current_user');
+        if (savedUser && typeof AppState !== 'undefined') AppState.currentUser = JSON.parse(savedUser);
+    } catch {}
+
     setupEvents();
     await loadUsers();
     await loadLeads();
+    if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+    else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
     openWorkspaceFromUrl();
 });
 

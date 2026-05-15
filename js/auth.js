@@ -120,6 +120,7 @@ async function login(username, password) {
 function logout() {
     // v9.1: Disconnect WebSocket on logout
     if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
+    clearAuthenticatedPageShell();
 
     AppState.currentUser = null;
     clearAuthStorage();
@@ -181,6 +182,7 @@ function clearPrivateClientCaches() {
 }
 
 function showLoginScreen() {
+    clearAuthenticatedPageShell();
     // v31.7.1: Redirect to canonical login page from sub-pages
     const path = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
     if (path !== '/' && path !== '/index') {
@@ -192,6 +194,32 @@ function showLoginScreen() {
     // Hide floating buttons that are outside mainApp
     const sidebarToggle = document.getElementById('sidebarToggle');
     if (sidebarToggle) sidebarToggle.classList.add('hidden');
+}
+
+function clearAuthenticatedPageShell() {
+    if (typeof Sidebar !== 'undefined' && Sidebar.clearShellReady) Sidebar.clearShellReady();
+    else {
+        document.body.classList.remove('shell-ready');
+        document.documentElement.classList.remove('shell-ready');
+    }
+}
+
+function showAuthenticatedPageShell() {
+    document.getElementById('loginScreen')?.classList.add('hidden');
+    const mainApp = document.getElementById('mainApp');
+    if (mainApp) {
+        mainApp.classList.remove('hidden');
+        if (mainApp.style.display === 'none') mainApp.style.display = '';
+    }
+
+    const _userEl = document.getElementById('currentUser');
+    if (_userEl && AppState.currentUser?.name) _userEl.textContent = AppState.currentUser.name;
+
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    if (sidebarToggle) sidebarToggle.classList.remove('hidden');
+
+    if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
+    if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
 }
 
 // v22.0.0: Role hierarchy — 26 roles (higher index = more permissions)
@@ -345,7 +373,6 @@ function isManagement() {
 
 function showMainApp() {
     document.getElementById('loginScreen')?.classList.add('hidden');
-    document.getElementById('mainApp')?.classList.remove('hidden');
     const _userEl = document.getElementById('currentUser');
     if (_userEl && AppState.currentUser?.name) _userEl.textContent = AppState.currentUser.name;
     // Show floating buttons hidden during logout
@@ -465,6 +492,8 @@ function showMainApp() {
         // Clean URL without reload
         history.replaceState(null, '', '/');
     }
+
+    showAuthenticatedPageShell();
 }
 
 // v10.6: Personal cabinet — full rebuild with tabs, achievements, shift, inbox, progress ring

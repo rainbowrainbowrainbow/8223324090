@@ -867,7 +867,11 @@
             } catch (e) {}
         }
 
-        document.getElementById('mainApp')?.classList.remove('hidden');
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        else {
+            document.getElementById('mainApp')?.classList.remove('hidden');
+            if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+        }
         loadSessions();
         initKleshnyaWS();
 

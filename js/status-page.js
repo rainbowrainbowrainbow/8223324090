@@ -153,7 +153,10 @@
     }
 
     // Load on page ready
-    loadStatus();
+    loadStatus().finally(() => {
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+    });
 
     // Auto-refresh every 60 seconds
     const _statusInterval = setInterval(loadStatus, 60000);

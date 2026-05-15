@@ -28,7 +28,8 @@ let editTags = [];
     const token = localStorage.getItem('pzp_token');
     if (!token) {
         document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
+        document.getElementById('mainApp')?.classList.add('hidden');
+        if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
         return;
     }
 
@@ -40,10 +41,12 @@ let editTags = [];
         if (!res.ok) throw new Error('Token invalid');
         const data = await res.json();
         const user = data.user || data;
+        if (typeof AppState !== 'undefined') AppState.currentUser = user;
         document.getElementById('currentUser').textContent = user.name || user.username;
     } catch {
         document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp').style.display = 'none';
+        document.getElementById('mainApp')?.classList.add('hidden');
+        if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
         return;
     }
 
@@ -83,6 +86,8 @@ async function initPage() {
 
     renderTagChips();
     updateCollectionFilters();
+    if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+    else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
 }
 
 // ==========================================

@@ -114,7 +114,9 @@ async function initProfilePage() {
     try {
         const r = await fetch('/api/auth/verify', { headers: getAuthHeaders(false) });
         if (!r.ok) { window.location.href = '/'; return; }
-        const user = await r.json();
+        const data = await r.json();
+        const user = data.user || data;
+        if (typeof AppState !== 'undefined') AppState.currentUser = user;
         currentUserId = user.id;
     } catch (e) { window.location.href = '/'; return; }
 
@@ -126,6 +128,8 @@ async function initProfilePage() {
     // Load data
     await loadProfileData(viewUserId);
     renderProfile();
+    if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+    else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
 }
 
 async function loadProfileData(userId) {

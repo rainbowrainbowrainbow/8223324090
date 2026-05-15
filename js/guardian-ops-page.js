@@ -455,6 +455,8 @@
                     return false;
                 }
             }
+            if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+            else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
             return true;
         } catch (err) {
             console.error('Guardian ops auth failed', err);

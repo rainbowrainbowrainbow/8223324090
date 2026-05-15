@@ -12,7 +12,7 @@
     flex-direction: column;
 }
 
-body[data-page-group]:not(.shell-ready) #mainApp:not(.hidden) {
+body[data-page-group]:not(.shell-ready) #mainApp {
     visibility: hidden;
 }
 

@@ -56,6 +56,8 @@ async function initShopPage() {
     shopInventory = inventory || [];
     shopWallet = wallet;
     renderShop();
+    if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+    else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
 }
 
 function renderShop() {

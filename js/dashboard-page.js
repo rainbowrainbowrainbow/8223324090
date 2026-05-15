@@ -90,6 +90,8 @@ const DashboardPage = (() => {
 
         // Render greeting
         renderGreeting();
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
         loadWorkQueue();
     }
 

@@ -46,9 +46,9 @@
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <div class="login-release-badge" aria-label="Поточний реліз 0.47 Комунікації">🛰️ 0.47 Комунікації</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.49.2 — dashboard work queue polish</p>
+                <p class="tagline">AI First CRM v0.49.2 — dashboard queue + navigation first paint</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.49.2: Dashboard Work Queue</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.49.2: Dashboard + Navigation</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1279,11 +1279,12 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.49.2 — Dashboard Work Queue Ukrainian + Density Fix (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.2 — Dashboard Work Queue + Navigation First Paint Fix (Клешня, 15.05.2026)</h4>
                     <ul>
                         <li><b>UI</b> — повністю українізовано Work Queue, аналітику черги, робочу зону вирішення та дії виконання.</li>
                         <li><b>UX</b> — робочу чергу перебудовано в щільніший master/detail layout з bucket-и ліворуч і sticky-панеллю вирішення праворуч.</li>
                         <li><b>Polish</b> — технічні risk keys замінені на людиночитні українські назви перед показом у dashboard.</li>
+                        <li><b>Navigation</b> — first-paint контракт сторінок уніфіковано: <code>Sidebar.init()</code> більше не відкриває shell передчасно, а <code>mainApp</code> стартує з прихованого baseline до auth/page-ready сигналу.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">

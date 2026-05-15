@@ -825,7 +825,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const token = localStorage.getItem('pzp_token');
     if (!token) {
         window.location.href = '/';
-        document.getElementById('mainApp').style.display = 'none';
+        document.getElementById('mainApp')?.classList.add('hidden');
+        if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
         return;
     }
 
@@ -848,9 +849,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const xlsxBtn = document.getElementById('exportXlsxBtn');
             if (xlsxBtn) xlsxBtn.style.display = '';
         }
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
     } catch {
         window.location.href = '/';
-        document.getElementById('mainApp').style.display = 'none';
+        document.getElementById('mainApp')?.classList.add('hidden');
+        if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
         return;
     }
 

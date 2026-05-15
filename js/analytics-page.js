@@ -486,7 +486,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const token = localStorage.getItem('pzp_token');
     if (!token) {
         window.location.href = '/';
-        document.getElementById('mainApp').style.display = 'none';
+        document.getElementById('mainApp')?.classList.add('hidden');
+        if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
         return;
     }
 
@@ -495,9 +496,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!user) throw new Error('Invalid token');
         AppState.currentUser = user;
         const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name || user.username;
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
     } catch {
         window.location.href = '/';
-        document.getElementById('mainApp').style.display = 'none';
+        document.getElementById('mainApp')?.classList.add('hidden');
+        if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
         return;
     }
 

@@ -30,6 +30,8 @@ const CopilotPage = (() => {
 
         document.getElementById('copilotApp')?.classList.remove('hidden');
         document.getElementById('accessDenied')?.classList.add('hidden');
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
 
         // Bind nav
         document.querySelectorAll('.copilot-nav-item').forEach(item => {

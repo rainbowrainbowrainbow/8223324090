@@ -247,6 +247,11 @@ const Sidebar = (() => {
         document.documentElement.classList.add('shell-ready');
     }
 
+    function _clearShellReady() {
+        document.body.classList.remove('shell-ready');
+        document.documentElement.classList.remove('shell-ready');
+    }
+
     // ═══ TOGGLE GROUP ══════════════════════════════════════════════
     function toggleGroup(key, btn) {
         if (!btn) return;
@@ -434,7 +439,6 @@ const Sidebar = (() => {
         } else {
             initUserCard();
         }
-        _markShellReady();
     }
 
     // ─── Page transition animations ────────────────────────────────
@@ -566,5 +570,17 @@ const Sidebar = (() => {
         }
     };
 
-    return { init, render, initToggle, checkPageAccess, toggleGroup, initUserCard, NAV_ITEMS, SIDEBAR_ACCESS, hasAccess };
+    return {
+        init,
+        render,
+        initToggle,
+        checkPageAccess,
+        toggleGroup,
+        initUserCard,
+        markShellReady: _markShellReady,
+        clearShellReady: _clearShellReady,
+        NAV_ITEMS,
+        SIDEBAR_ACCESS,
+        hasAccess
+    };
 })();

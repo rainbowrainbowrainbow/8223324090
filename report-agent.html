@@ -175,7 +175,7 @@
         <a href="/">Увійти в систему</a>
     </div>
 
-    <div id="mainApp">
+    <div id="mainApp" class="main-app hidden">
         <aside class="sidebar-nav" id="sidebarNav">
             <div class="sidebar-header" id="sidebarHeader">
                 <div class="sidebar-brand">
@@ -350,6 +350,8 @@
                 }
             }
         } catch {}
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
     })();
     </script>
     <script src="js/role-panel.js?v=0.49.2"></script>

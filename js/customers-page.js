@@ -1317,6 +1317,9 @@ async function initPage() {
     document.getElementById('exportVcfBtn').style.display = canManage ? '' : 'none';
     document.getElementById('importVcfBtn').style.display = canManage ? '' : 'none';
 
+    if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+    else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
     // Tabs

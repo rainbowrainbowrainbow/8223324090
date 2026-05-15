@@ -1416,11 +1416,13 @@
             if (savedUser) {
                 try {
                     var parsed = JSON.parse(savedUser);
+                    if (typeof AppState !== 'undefined') AppState.currentUser = parsed;
                     var userEl = document.getElementById('currentUser');
                     if (userEl) userEl.textContent = parsed.name || parsed.username || '';
                 } catch (e) { /* ignore */ }
             }
-            document.getElementById('mainApp').classList.remove('hidden');
+            if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+            else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
             if (typeof ParkWS !== 'undefined') ParkWS.connect();
             init();
         });

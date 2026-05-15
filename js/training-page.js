@@ -7,7 +7,6 @@
 
     const token = localStorage.getItem('pzp_token');
     if (!token) { window.location.href = '/'; return; }
-
     const API = window.API_BASE || '';
     const headers = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
 
@@ -18,6 +17,8 @@
     // ═══ Init ═══
     initTabs();
     initRoleFilter();
+    if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+    else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
     loadOverviewStats();
     loadArticles();
 

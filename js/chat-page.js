@@ -188,6 +188,7 @@
                 _currentUserId = String(parsed.id || parsed.userId);
                 _currentUsername = parsed.username;
                 window._chatUserRole = parsed.role || '';
+                if (typeof AppState !== 'undefined') AppState.currentUser = parsed;
                 var userEl = document.getElementById('currentUser');
                 if (userEl) userEl.textContent = parsed.name || parsed.username || '';
             } catch (e) {
@@ -195,8 +196,8 @@
             }
         }
 
-        // Show main app FIRST (prevent white page)
-        document.getElementById('mainApp')?.classList.remove('hidden');
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
 
         // Connect WebSocket
         if (typeof ParkWS !== 'undefined') ParkWS.connect();

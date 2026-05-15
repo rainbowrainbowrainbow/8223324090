@@ -1387,7 +1387,8 @@ async function initPage() {
 
     AppState.currentUser = user;
     const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name;
-    if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
+    if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+    else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
 
     const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr'];
     const canManage = MANAGE_ROLES.includes(user.role);

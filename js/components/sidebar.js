@@ -1,5 +1,5 @@
 /**
- * js/components/sidebar.js — Sidebar Aurora v0.50.3
+ * js/components/sidebar.js — Sidebar Aurora v0.50.4
  * Living dual-theme sidebar with micro-interactions.
  */
 const Sidebar = (() => {
@@ -532,7 +532,10 @@ const Sidebar = (() => {
                     </div>
                 </div>
                 <div class="sidebar-now-event-body">
-                    <div class="sidebar-now-event-label" id="sidebarNowEventLabel">Зараз</div>
+                    <button type="button" class="sidebar-now-event-label sidebar-dashboard-jump" id="sidebarDashboardJump" data-sidebar-stop-profile="true" onclick="Sidebar.openDashboard(event)" title="Відкрити дашборд">
+                        ${_renderIcon('dashboard', 'sidebar-dashboard-jump-icon')}
+                        <span>Дашборд</span>
+                    </button>
                     <div class="sidebar-now-event-title" id="sidebarNowEventTitle">Подій немає</div>
                     <div class="sidebar-now-event-meta" id="sidebarNowEventMeta">Вільний час</div>
                 </div>
@@ -594,7 +597,6 @@ const Sidebar = (() => {
     async function _refreshCurrentEvent() {
         const titleEl = document.getElementById('sidebarNowEventTitle');
         const metaEl = document.getElementById('sidebarNowEventMeta');
-        const labelEl = document.getElementById('sidebarNowEventLabel');
         const eventEl = document.getElementById('sidebarNowEvent');
         if (!titleEl || !metaEl) return;
         const token = localStorage.getItem('pzp_token');
@@ -622,7 +624,6 @@ const Sidebar = (() => {
             if (!item) {
                 titleEl.textContent = 'Подій немає';
                 metaEl.textContent = 'Вільний час';
-                if (labelEl) labelEl.textContent = 'Зараз';
                 eventEl?.classList.add('empty');
             } else {
                 const booking = item.booking;
@@ -634,7 +635,6 @@ const Sidebar = (() => {
                 const metaParts = [`${fmt(item.start)}-${fmt(item.end)}`];
                 if (kids) metaParts.push(`${kids} дітей`);
                 metaEl.textContent = metaParts.join(' · ');
-                if (labelEl) labelEl.textContent = current ? 'Зараз' : 'Наступне';
                 eventEl?.classList.remove('empty');
             }
         } catch {
@@ -644,6 +644,19 @@ const Sidebar = (() => {
         }
         clearTimeout(_state.eventTimer);
         _state.eventTimer = setTimeout(_refreshCurrentEvent, 300000);
+    }
+
+    function openDashboard(event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+        if (currentPath === '/dashboard') return;
+        document.body.classList.add('shell-baseline', 'page-exiting');
+        document.body.classList.remove('shell-ready');
+        document.body.setAttribute('aria-busy', 'true');
+        window.location.href = '/dashboard';
     }
 
     function _getSidebarAiMode() {
@@ -1355,6 +1368,7 @@ const Sidebar = (() => {
         checkPageAccess,
         toggleGroup,
         openAlerts,
+        openDashboard,
         openAiCompanion,
         initUserCard,
         markShellReady: _markShellReady,

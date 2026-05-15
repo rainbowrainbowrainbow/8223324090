@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.4 - Sidebar Dashboard Jump (2026-05-15)
+
+### Sidebar / Navigation [codex]
+- **Dashboard jump** - пасивний напис `Зараз` у верхній панелі sidebar замінено на інтерактивну кнопку переходу на Dashboard.
+- **UX** - кнопка має компактний pill-стиль, hover/focus-стани і не конфліктує з кліком по профілю.
+- **Навігація** - швидкий перехід на Dashboard тепер доступний прямо з верхньої картки sidebar.
+
+---
+
 ## v0.50.3 - Sidebar AI Companion Placeholder (2026-05-15)
 
 ### Sidebar / AI Companion [codex]

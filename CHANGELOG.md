@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.41 - Profile Cabinet Notes Panel Cleanup (2026-05-16)
+
+### Profile / My Cabinet [codex]
+- **Notes Removed** - блок `Нотатки` прибрано з власного профілю/кабінету, щоб нижня частина сторінки не показувала зайву порожню панель.
+- **Right Panel Removed** - глобальний `role-panel` більше не підключається на `profile.html`, тому права floating-панель не перекриває і не дублює кабінет.
+- **Data Safety** - нотатки не видалялись із backend/API; прибрано саме UI surface і зайвий fetch у профілі.
+
+---
+
 ## v0.50.40 - Price List Categories Print Redesign (2026-05-16)
 
 ### Designs / Price List [codex]

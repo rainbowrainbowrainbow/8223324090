@@ -215,7 +215,7 @@ async function loadProfileData(userId) {
         isOwnProfile ? apiGet('/wallet') : null,
         isOwnProfile ? apiGet('/inventory') : null,
         apiGet('/achievements'),
-        isOwnProfile ? apiGet('/notes') : null,
+        null, // notes retired from My Cabinet/profile surface
         null, // room removed
         isOwnProfile ? apiGet('/quests/daily') : null,
         isOwnProfile ? apiGet('/quests/titles') : null,
@@ -473,7 +473,6 @@ function renderWorkProfileOverview() {
                     : '<div class="profile-empty-professional">Активності ще немає.</div>'}
             </section>
 
-            ${isOwnProfile ? `<section class="profile-work-panel profile-work-panel-wide">${renderNotes()}</section>` : ''}
         </div>`;
 }
 

@@ -117,7 +117,11 @@ const Sidebar = (() => {
 
     // ═══ ACCORDION STATE ══════════════════════════════════════════
     function _getGroupState() {
-        try { return JSON.parse(localStorage.getItem('pzp_sidebar_groups') || '{}'); }
+        try {
+            const parsed = JSON.parse(localStorage.getItem('pzp_sidebar_groups') || '{}');
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+            return parsed;
+        }
         catch { return {}; }
     }
     function _ensureCollapsedGroupsBaseline() {
@@ -127,10 +131,17 @@ const Sidebar = (() => {
             localStorage.setItem('pzp_sidebar_group_state_version', GROUP_STATE_VERSION);
         } catch {}
     }
-    function _setGroupState(key, open) {
-        const s = _getGroupState();
-        s[key] = open;
-        localStorage.setItem('pzp_sidebar_groups', JSON.stringify(s));
+    function _saveGroupStateFromDom(sidebar) {
+        const root = sidebar || document.getElementById('sidebarNav');
+        if (!root) return;
+        const next = {};
+        root.querySelectorAll('.sidebar-group[data-group-key]').forEach((group) => {
+            const key = group.dataset.groupKey;
+            const items = group.querySelector('.sidebar-group-items');
+            if (!key || !items) return;
+            next[key] = items.classList.contains('open');
+        });
+        localStorage.setItem('pzp_sidebar_groups', JSON.stringify(next));
     }
     function _isGroupOpen(key, defaultOpen) {
         const s = _getGroupState();
@@ -275,7 +286,7 @@ const Sidebar = (() => {
         const isOpen = items.classList.contains('open');
         items.classList.toggle('open', !isOpen);
         btn.classList.toggle('open', !isOpen);
-        _setGroupState(key, !isOpen);
+        _saveGroupStateFromDom(document.getElementById('sidebarNav'));
     }
 
     // ═══ ACCESS CHECK ══════════════════════════════════════════════

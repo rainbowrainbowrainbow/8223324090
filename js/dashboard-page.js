@@ -16,7 +16,7 @@ const DashboardPage = (() => {
     const BOARD_RELATION_TYPES = new Set(['idea', 'depends', 'blocks', 'feeds', 'inspires']);
     const BOARD_WORKSPACE_MODES = new Set(['board:view', 'board:edit', 'board:draw', 'board:connect', 'object:text-edit', 'object:widget-inspect']);
     const BOARD_AI_PRESETS = new Set(['expand', 'mood-pack', 'cluster', 'summarize', 'tasks', 'remix', 'name-frame', 'prompt-to-board']);
-    const DASHBOARD_RETIRED_WIDGETS = new Set(['finance_today', 'reports_today', 'account_stats', 'week_bookings']);
+    const DASHBOARD_RETIRED_WIDGETS = new Set(['finance_today', 'reports_today', 'account_stats', 'week_bookings', 'my_focus']);
     const DASHBOARD_PRESENTATION_MODES = new Set(['mixed-scene', 'flat-grid']);
 
     // Widget definitions — all available widgets

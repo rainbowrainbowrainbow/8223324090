@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.39 - Dashboard Remove My Focus Widget (2026-05-16)
+
+### Dashboard [codex]
+- **Widget Cleanup** - `Мій фокус` retired from dashboard scene/grid/settings surfaces so it no longer renders as a separate widget.
+- **Saved Config Safety** - old saved dashboard configs that still contain `my_focus` are filtered by the widget normalization layer.
+- **Data Semantics Preserved** - task focus data and `focus_rank` logic remain intact for task/profile flows; only the dashboard widget surface is removed.
+
+---
+
 ## v0.50.38 - Sidebar Stack Overlap Fix (2026-05-16)
 
 ### Sidebar / Aurora [codex]

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.50.38",
+  "version": "0.50.39",
   "eventGenix": {
-    "releaseLabel": "Sidebar Stack Overlap Fix"
+    "releaseLabel": "Dashboard Remove My Focus Widget"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

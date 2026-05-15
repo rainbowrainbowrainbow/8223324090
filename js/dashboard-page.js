@@ -1,5 +1,5 @@
 /**
- * js/dashboard-page.js — Dashboard page logic (v0.50.1)
+ * js/dashboard-page.js — Dashboard page logic (v0.50.5)
  * Widget-based personalized dashboard with safe board foundation mode.
  */
 
@@ -1921,7 +1921,8 @@ const DashboardPage = (() => {
         if (item.type === 'frame') {
             return `<div class="board-frame-label">${escapeHtml(item.text || 'Frame')}</div>`;
         }
-        return `<div class="board-note-text" contenteditable="${_boardInteractionMode === 'edit' && !item.locked ? 'true' : 'false'}" data-board-text="${escapeHtml(item.id)}">${escapeHtml(item.text || '')}</div>`;
+        const readonly = item.locked ? ' readonly aria-readonly="true"' : '';
+        return `<textarea class="board-note-text board-note-editor" data-board-text="${escapeHtml(item.id)}" placeholder="Нотатка"${readonly}>${escapeHtml(item.text || '')}</textarea>`;
     }
 
     function boardWidgetHref(type) {
@@ -1942,6 +1943,11 @@ const DashboardPage = (() => {
         canvas.querySelectorAll('.dashboard-board-item').forEach(el => {
             el.addEventListener('click', event => {
                 if (_boardInteractionMode !== 'edit') return;
+                if (isBoardInteractiveTarget(event.target)) {
+                    event.stopPropagation();
+                    selectBoardItem(el.dataset.boardItemId, { render: false });
+                    return;
+                }
                 event.stopPropagation();
                 selectBoardItem(el.dataset.boardItemId);
             });
@@ -1952,8 +1958,11 @@ const DashboardPage = (() => {
         });
         canvas.querySelectorAll('[data-board-text]').forEach(textEl => {
             textEl.addEventListener('focus', () => {
-                textEl.dataset.originalText = textEl.textContent || '';
+                textEl.dataset.originalText = boardTextValue(textEl);
+                delete textEl.dataset.undoPushed;
+                selectBoardItem(textEl.dataset.boardText, { render: false });
             });
+            textEl.addEventListener('input', () => handleBoardTextInput(textEl));
             textEl.addEventListener('blur', () => commitBoardTextEdit(textEl));
         });
         canvas.onclick = event => {
@@ -1961,23 +1970,41 @@ const DashboardPage = (() => {
         };
     }
 
+    function isBoardInteractiveTarget(target) {
+        return !!(target && target.closest && target.closest('button, a, input, textarea, select, [contenteditable="true"], [data-board-text]'));
+    }
+
     function findBoardItem(id) {
         return getBoardItems().find(item => item.id === id) || null;
     }
 
-    function selectBoardItem(id) {
+    function selectBoardItem(id, options = {}) {
         _boardSelectedId = id || null;
+        if (options.render === false) {
+            syncBoardSelectionClasses();
+            syncBoardToolbar();
+            return;
+        }
         renderBoard();
+    }
+
+    function syncBoardSelectionClasses() {
+        const canvas = document.getElementById('dashboardBoardCanvas');
+        if (!canvas) return;
+        canvas.querySelectorAll('.dashboard-board-item').forEach(el => {
+            el.classList.toggle('selected', !!_boardSelectedId && el.dataset.boardItemId === _boardSelectedId);
+        });
     }
 
     function beginBoardDrag(event, element) {
         if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
+        if (isBoardInteractiveTarget(event.target)) return;
         const id = element.dataset.boardItemId;
         const item = findBoardItem(id);
         if (!item || item.locked) return;
         event.preventDefault();
         event.stopPropagation();
-        selectBoardItem(id);
+        selectBoardItem(id, { render: false });
         const rect = element.getBoundingClientRect();
         _boardDrag = {
             id,
@@ -2027,17 +2054,43 @@ const DashboardPage = (() => {
         renderBoard();
     }
 
+    function boardTextValue(textEl) {
+        if (!textEl) return '';
+        return 'value' in textEl ? String(textEl.value || '') : String(textEl.textContent || '');
+    }
+
+    function handleBoardTextInput(textEl) {
+        const id = textEl.dataset.boardText;
+        const item = findBoardItem(id);
+        if (!item || item.locked) return;
+        let next = boardTextValue(textEl);
+        if (next.length > 5000) {
+            next = next.slice(0, 5000);
+            if ('value' in textEl) textEl.value = next;
+            else textEl.textContent = next;
+        }
+        if (String(item.text || '') === next) return;
+        if (textEl.dataset.undoPushed !== 'true') {
+            pushBoardUndo('text-edit');
+            textEl.dataset.undoPushed = 'true';
+        }
+        item.text = next;
+        markBoardDirty('text-edit');
+    }
+
     function commitBoardTextEdit(textEl) {
         const id = textEl.dataset.boardText;
         const item = findBoardItem(id);
         if (!item || item.locked) return;
         const previous = textEl.dataset.originalText || '';
-        const next = (textEl.textContent || '').trim();
-        if (previous === next) return;
-        pushBoardUndo('text-edit');
-        item.text = next.slice(0, 5000);
-        markBoardDirty('text-edit');
-        renderBoard();
+        const next = boardTextValue(textEl).slice(0, 5000);
+        if (textEl.dataset.undoPushed !== 'true' && previous !== next) {
+            pushBoardUndo('text-edit');
+            item.text = next;
+            markBoardDirty('text-edit');
+        }
+        delete textEl.dataset.undoPushed;
+        textEl.dataset.originalText = next;
     }
 
     function nextBoardZ() {
@@ -2236,6 +2289,7 @@ const DashboardPage = (() => {
             if (!_config || _config.mode !== 'board') return;
             const editable = event.target && event.target.closest && event.target.closest('input, textarea, [contenteditable="true"]');
             const mod = event.ctrlKey || event.metaKey;
+            if (editable && mod && event.key.toLowerCase() === 'z') return;
             if (mod && event.key.toLowerCase() === 'z') {
                 event.preventDefault();
                 if (event.shiftKey) redoBoard();

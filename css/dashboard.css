@@ -195,6 +195,7 @@
 }
 
 .dashboard-board-item.selected {
+    z-index: 10000 !important;
     border-color: rgba(16, 185, 129, 0.55);
     box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12), 0 16px 42px rgba(15, 23, 42, 0.14);
 }
@@ -266,6 +267,11 @@
     padding: 10px;
 }
 
+.dashboard-board-item.type-note .dashboard-board-item-content,
+.dashboard-board-item.type-text .dashboard-board-item-content {
+    overflow: hidden;
+}
+
 .board-widget-live {
     min-height: 100%;
 }
@@ -301,18 +307,37 @@
 }
 
 .board-note-text {
+    width: 100%;
+    height: 100%;
+    display: block;
+    margin: 0;
+    padding: 8px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
     min-height: 100%;
     outline: none;
+    resize: none;
     white-space: pre-wrap;
     word-break: break-word;
     color: var(--text-primary, #172033);
+    font-family: inherit;
     font-size: 14px;
     line-height: 1.45;
+    cursor: text;
+    user-select: text;
+    box-sizing: border-box;
 }
 
-.board-note-text[contenteditable="true"]:focus {
+.board-note-text:focus {
     box-shadow: inset 0 0 0 2px rgba(16, 185, 129, 0.18);
-    border-radius: 8px;
+    border-color: rgba(16, 185, 129, 0.28);
+    background: rgba(16, 185, 129, 0.035);
+}
+
+.board-note-text[readonly] {
+    cursor: not-allowed;
+    opacity: 0.82;
 }
 
 .board-shape {

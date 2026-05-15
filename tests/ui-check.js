@@ -375,6 +375,9 @@ check('Task detail overlay uses guarded close instead of direct backdrop removal
 check('Task detail save sends stale-write version from selected task', tasksCode.includes('dataset.taskVersion') && tasksCode.includes('version: document.getElementById'));
 const dashboardPageCode = fs.readFileSync(path.join(ROOT, 'js/dashboard-page.js'), 'utf8');
 check('Dashboard team online renders last-seen presence states', dashboardPageCode.includes('formatTeamLastSeen') && dashboardPageCode.includes('онлайн зараз') && dashboardPageCode.includes('був ${minutes} хв тому') && dashboardPageCode.includes('team-presence-last-seen'));
+check('Dashboard board notes use a stable textarea editor', dashboardPageCode.includes('<textarea class="board-note-text board-note-editor"') && !dashboardPageCode.includes('contenteditable="${_boardInteractionMode'));
+check('Dashboard board note focus does not force a rerender', dashboardPageCode.includes("selectBoardItem(textEl.dataset.boardText, { render: false })") && dashboardPageCode.includes('handleBoardTextInput(textEl)'));
+check('Dashboard board drag ignores note editors and controls', dashboardPageCode.includes('function isBoardInteractiveTarget') && dashboardPageCode.includes('if (isBoardInteractiveTarget(event.target)) return;'));
 const dashboardRouteCode = fs.readFileSync(path.join(ROOT, 'routes/dashboard.js'), 'utf8');
 check('Dashboard team online endpoint distinguishes websocket online from last seen', dashboardRouteCode.includes('getOnlineUserIds') && dashboardRouteCode.includes('lastSeenSource') && dashboardRouteCode.includes('recentlyActive'));
 check('Omni page applies contextual search query', omniHtml.includes('applyQueryContext') && omniHtml.includes("params.get('search')"));

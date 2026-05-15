@@ -1,6 +1,6 @@
 /**
- * js/components/sidebar.js — Sidebar Navigation v34.0.0
- * Accordion groups, unified nav, all pages consistent
+ * js/components/sidebar.js — Sidebar Aurora v0.50.0
+ * Living dual-theme sidebar with micro-interactions.
  */
 const Sidebar = (() => {
     const _state = {
@@ -9,7 +9,9 @@ const Sidebar = (() => {
         userRetryStarted: false,
         badgeTimer: null,
         taskWidgetTimer: null,
-        funnelWidgetTimer: null
+        funnelWidgetTimer: null,
+        nowTimer: null,
+        eventTimer: null
     };
     const GROUP_STATE_VERSION = 'collapsed-by-default-v1';
 
@@ -212,7 +214,7 @@ const Sidebar = (() => {
     function _renderIcon(icon, className = 'nav-icon') {
         const key = _iconKey(icon);
         const safeKey = ICON_DRAWINGS[key] ? key : 'crm';
-        return `<span class="${className} eg-icon eg-icon--${safeKey}" aria-hidden="true"><svg class="eg-icon-svg" viewBox="0 0 24 24" focusable="false">${ICON_DRAWINGS[safeKey]}</svg></span>`;
+        return `<span class="${className} eg-icon eg-icon--${safeKey}" aria-hidden="true"><span class="nav-icon-magnet"><svg class="eg-icon-svg" viewBox="0 0 24 24" focusable="false">${ICON_DRAWINGS[safeKey]}</svg></span></span>`;
     }
 
     // ═══ ACCORDION STATE ══════════════════════════════════════════
@@ -343,9 +345,13 @@ const Sidebar = (() => {
                 onclickAttr = ` onclick="event.preventDefault();if(typeof ${item.action}==='function')${item.action}();"`;
             }
 
+            const badgeType = _badgeTypeFor(item);
+            const badgeClass = badgeType === 'alerts' ? ' nav-badge alert' : ' nav-badge';
+
             html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.href}"${onclickAttr}>
   ${_renderIcon(item.icon)}
   <span class="nav-text">${item.label}</span>
+  ${badgeType ? `<span class="${badgeClass.trim()}" data-badge-type="${badgeType}" style="display:none"></span>` : ''}
 </a>`;
         }
 
@@ -357,11 +363,18 @@ const Sidebar = (() => {
         container.innerHTML = html;
         container.classList.add('rendered');
 
-        _ensurePinnedTasksWidget();
+        _ensureAuroraLayer();
+        _ensureNowCard();
+        _ensurePillsRow();
+        _ensureActiveIndicator();
         _initCollapsedTooltips(container);
+        _initSpotlight();
+        _initRipple();
+        _initMagnetic();
         _fetchLiveBadges();
         _refreshTaskMiniWidget();
         _refreshFunnelWidget();
+        _queueActiveIndicatorUpdate();
     }
 
     function _markShellReady() {
@@ -387,6 +400,7 @@ const Sidebar = (() => {
         items.classList.toggle('open', !isOpen);
         btn.classList.toggle('open', !isOpen);
         _saveGroupStateFromDom(document.getElementById('sidebarNav'));
+        _queueActiveIndicatorUpdate();
     }
 
     // ═══ ACCESS CHECK ══════════════════════════════════════════════
@@ -397,6 +411,19 @@ const Sidebar = (() => {
         if (access === true) return true;
         if (!access) return false;
         return access.includes(role);
+    }
+
+    function _badgeTypeFor(item) {
+        const href = String(item?.href || '');
+        if (href === '/chat') return 'unread';
+        if (href === '/sales-funnel') return 'leads_new';
+        if (href === '/dashboard') return 'alerts';
+        return '';
+    }
+
+    function _queueActiveIndicatorUpdate() {
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(_updateActiveIndicator);
+        else setTimeout(_updateActiveIndicator, 0);
     }
 
     // ═══ COLLAPSED TOOLTIPS ═══
@@ -453,62 +480,272 @@ const Sidebar = (() => {
         });
     }
 
-    // ═══ USER CARD ═══
-    function _ensurePinnedTasksWidget() {
+    // ═══ AURORA SHELL ═══
+    function _ensureAuroraLayer() {
         const sidebar = document.getElementById('sidebarNav');
-        if (!sidebar || document.getElementById('sidebarPinnedZone')) return;
+        if (!sidebar || sidebar.querySelector('.sidebar-aurora')) return;
+        const aurora = document.createElement('div');
+        aurora.className = 'sidebar-aurora';
+        aurora.innerHTML = '<div class="sidebar-aurora-blob-1"></div><div class="sidebar-aurora-blob-2"></div>';
+        sidebar.insertBefore(aurora, sidebar.firstChild);
+    }
+
+    function _ensureNowCard() {
+        const sidebar = document.getElementById('sidebarNav');
+        if (!sidebar || document.getElementById('sidebarNowCard')) return;
         const links = sidebar.querySelector('.sidebar-links');
         if (!links) return;
-        const zone = document.createElement('div');
-        zone.id = 'sidebarPinnedZone';
-        zone.className = 'sidebar-pinned-zone';
-        zone.innerHTML = `
-            <a href="/tasks?view=my" class="sidebar-task-widget" id="sidebarTaskWidget">
-                ${_renderIcon('task', 'sidebar-task-widget-icon')}
-                <span class="sidebar-task-widget-main">
-                    <span class="sidebar-task-widget-title">Мої задачі</span>
-                    <span class="sidebar-task-widget-meta" id="sidebarTaskWidgetMeta">Завантаження...</span>
-                </span>
-                <span class="sidebar-task-widget-count" id="sidebarTaskWidgetCount">–</span>
+        const card = document.createElement('div');
+        card.id = 'sidebarNowCard';
+        card.className = 'sidebar-now-card';
+        card.innerHTML = `
+            <div class="sidebar-now-top">
+                <div class="sidebar-now-avatar-wrap">
+                    <span class="sidebar-now-avatar" id="sidebarNowAvatar">?</span>
+                </div>
+                <div class="sidebar-now-user">
+                    <div class="sidebar-now-name" id="sidebarNowName">—</div>
+                    <div class="sidebar-now-greeting" id="sidebarNowGreeting">—</div>
+                </div>
+                <div class="sidebar-now-time" id="sidebarNowTime">--:--</div>
+            </div>
+            <div class="sidebar-now-event empty" id="sidebarNowEvent">
+                <div class="sidebar-now-event-left">
+                    <span class="sidebar-now-event-dot"></span>
+                    <div class="sidebar-pulse-viz" aria-hidden="true">
+                        <span></span><span></span><span></span><span></span><span></span>
+                    </div>
+                </div>
+                <div class="sidebar-now-event-body">
+                    <div class="sidebar-now-event-label" id="sidebarNowEventLabel">Зараз</div>
+                    <div class="sidebar-now-event-title" id="sidebarNowEventTitle">Подій немає</div>
+                    <div class="sidebar-now-event-meta" id="sidebarNowEventMeta">Вільний час</div>
+                </div>
+            </div>`;
+        sidebar.insertBefore(card, links);
+        _bindProfileEntry(card);
+    }
+
+    function _refreshNowCard() {
+        const nameEl = document.getElementById('sidebarNowName');
+        const greetEl = document.getElementById('sidebarNowGreeting');
+        const timeEl = document.getElementById('sidebarNowTime');
+        if (!nameEl) return;
+
+        const user = _getCurrentSidebarUser();
+        const now = new Date();
+        const hour = now.getHours();
+        const greet = hour < 5 ? 'Доброї ночі'
+            : hour < 12 ? 'Доброго ранку'
+            : hour < 18 ? 'Гарного дня'
+            : 'Доброго вечора';
+        const labels = {
+            creator: 'Creator',
+            director: 'Директор',
+            vice_director: 'Заст. директора',
+            senior_manager: 'Ст. менеджер',
+            manager: 'Менеджер',
+            admin: 'Адмін',
+            hr: 'HR',
+            accountant: 'Бухгалтер',
+            animator: 'Аніматор',
+            instructor: 'Інструктор',
+            art_director: 'Арт директор'
+        };
+
+        nameEl.textContent = user?.name || user?.username || 'Гість';
+        greetEl.textContent = user?.role ? `${greet}, ${labels[user.role] || user.role}` : greet;
+        timeEl.textContent = now.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+
+        const avatarEl = document.getElementById('sidebarNowAvatar');
+        if (avatarEl && user) _paintUserAvatar(avatarEl, user);
+
+        clearTimeout(_state.nowTimer);
+        _state.nowTimer = setTimeout(_refreshNowCard, 60000 - (Date.now() % 60000));
+    }
+
+    function _todayIsoDate() {
+        const now = new Date();
+        const tzOffset = now.getTimezoneOffset() * 60000;
+        return new Date(now.getTime() - tzOffset).toISOString().slice(0, 10);
+    }
+
+    function _bookingDateTime(booking, timeKey) {
+        const date = booking?.date || _todayIsoDate();
+        const time = booking?.[timeKey] || booking?.time || '00:00';
+        return new Date(`${date}T${String(time).slice(0, 5)}:00`);
+    }
+
+    async function _refreshCurrentEvent() {
+        const titleEl = document.getElementById('sidebarNowEventTitle');
+        const metaEl = document.getElementById('sidebarNowEventMeta');
+        const labelEl = document.getElementById('sidebarNowEventLabel');
+        const eventEl = document.getElementById('sidebarNowEvent');
+        if (!titleEl || !metaEl) return;
+        const token = localStorage.getItem('pzp_token');
+        if (!token) return;
+        try {
+            const date = _todayIsoDate();
+            const res = await fetch(`/api/bookings/${encodeURIComponent(date)}`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (!res.ok) throw new Error('bookings unavailable');
+            const data = await res.json();
+            const bookings = Array.isArray(data) ? data : (data.bookings || []);
+            const now = new Date();
+            const enriched = bookings
+                .map((booking) => {
+                    const start = _bookingDateTime(booking, 'time');
+                    const duration = Number(booking.duration || 0);
+                    const end = new Date(start.getTime() + Math.max(duration, 30) * 60000);
+                    return { booking, start, end };
+                })
+                .sort((a, b) => a.start - b.start);
+            const current = enriched.find(item => item.start <= now && item.end >= now);
+            const next = !current ? enriched.find(item => item.start > now) : null;
+            const item = current || next;
+            if (!item) {
+                titleEl.textContent = 'Подій немає';
+                metaEl.textContent = 'Вільний час';
+                if (labelEl) labelEl.textContent = 'Зараз';
+                eventEl?.classList.add('empty');
+            } else {
+                const booking = item.booking;
+                const fmt = (d) => d.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+                const room = booking.room || booking.roomLabel || '';
+                const program = booking.programName || booking.program_name || booking.label || '';
+                const kids = booking.kidsCount || booking.kids_count || '';
+                titleEl.textContent = [room, program].filter(Boolean).join(' · ') || 'Бронювання';
+                const metaParts = [`${fmt(item.start)}-${fmt(item.end)}`];
+                if (kids) metaParts.push(`${kids} дітей`);
+                metaEl.textContent = metaParts.join(' · ');
+                if (labelEl) labelEl.textContent = current ? 'Зараз' : 'Наступне';
+                eventEl?.classList.remove('empty');
+            }
+        } catch {
+            titleEl.textContent = 'Подій немає';
+            metaEl.textContent = 'Вільний час';
+            eventEl?.classList.add('empty');
+        }
+        clearTimeout(_state.eventTimer);
+        _state.eventTimer = setTimeout(_refreshCurrentEvent, 300000);
+    }
+
+    function _ensurePillsRow() {
+        const sidebar = document.getElementById('sidebarNav');
+        if (!sidebar || document.getElementById('sidebarPills')) return;
+        const links = sidebar.querySelector('.sidebar-links');
+        if (!links) return;
+        const row = document.createElement('div');
+        row.id = 'sidebarPills';
+        row.className = 'sidebar-pills';
+        row.innerHTML = `
+            <a href="/tasks?view=my" class="sidebar-pill sidebar-pill--tasks" id="sidebarPillTasks">
+                <div class="sidebar-pill-top">
+                    <span class="sidebar-pill-icon">${_renderIcon('task', 'sidebar-pill-icon-inner')}</span>
+                    <span class="sidebar-pill-label">Задачі</span>
+                </div>
+                <div class="sidebar-pill-value" id="sidebarPillTasksValue">–</div>
+                <div class="sidebar-pill-meta" id="sidebarPillTasksMeta">Завантаження...</div>
             </a>
-            <button type="button" class="sidebar-alert-widget" id="sidebarAlertWidget" onclick="Sidebar.openAlerts(event)" title="Сповіщення">
-                ${_renderIcon('alert', 'sidebar-alert-widget-icon')}
-                <span class="sidebar-alert-widget-main">
-                    <span class="sidebar-alert-widget-title">Сповіщення</span>
-                    <span class="sidebar-alert-widget-meta" id="sidebarAlertWidgetMeta">Завантаження...</span>
-                </span>
-                <span class="sidebar-alert-widget-count" id="sidebarAlertWidgetCount" style="display:none">0</span>
+            <button type="button" class="sidebar-pill sidebar-pill--alerts" id="sidebarPillAlerts" onclick="Sidebar.openAlerts(event)">
+                <div class="sidebar-pill-top">
+                    <span class="sidebar-pill-icon">${_renderIcon('alert', 'sidebar-pill-icon-inner')}</span>
+                    <span class="sidebar-pill-label">Алерти</span>
+                </div>
+                <div class="sidebar-pill-value" id="sidebarPillAlertsValue">0</div>
+                <div class="sidebar-pill-meta" id="sidebarPillAlertsMeta">Все спокійно</div>
             </button>
-            <a href="/sales-funnel" class="sidebar-funnel-widget" id="sidebarFunnelWidget" title="Воронка">
-                ${_renderIcon('funnel', 'sidebar-funnel-widget-icon')}
-                <span class="sidebar-funnel-widget-main">
-                    <span class="sidebar-funnel-widget-title">Воронка</span>
-                    <span class="sidebar-funnel-widget-meta" id="sidebarFunnelWidgetMeta">Завантаження...</span>
-                </span>
-                <span class="sidebar-funnel-widget-count" id="sidebarFunnelWidgetCount">0</span>
-            </a>
-            <nav class="sidebar-quick-nav" aria-label="Швидкі переходи">
-                <a href="/staff" class="sidebar-quick-nav-link" title="Графік">
-                    ${_renderIcon('calendar', 'sidebar-quick-nav-icon')}
-                    <span class="sidebar-quick-nav-text">Графік</span>
-                </a>
-                <a href="/" class="sidebar-quick-nav-link" title="Таймлайн">
-                    ${_renderIcon('timeline', 'sidebar-quick-nav-icon')}
-                    <span class="sidebar-quick-nav-text">Таймлайн</span>
-                </a>
-                <a href="/chat" class="sidebar-quick-nav-link" title="Чат">
-                    ${_renderIcon('chat', 'sidebar-quick-nav-icon')}
-                    <span class="sidebar-quick-nav-text">Чат</span>
-                </a>
-            </nav>`;
-        const currentPath = window.location.pathname || '/';
-        zone.querySelectorAll('.sidebar-quick-nav-link[href]').forEach((link) => {
-            const href = link.getAttribute('href') || '';
-            const isTimeline = href === '/' && (currentPath === '/' || currentPath.endsWith('/index.html'));
-            const isSection = href !== '/' && currentPath.startsWith(href);
-            link.classList.toggle('active', isTimeline || isSection);
+            <a href="/sales-funnel" class="sidebar-pill sidebar-pill--funnel" id="sidebarPillFunnel">
+                <div class="sidebar-pill-top">
+                    <span class="sidebar-pill-icon">${_renderIcon('funnel', 'sidebar-pill-icon-inner')}</span>
+                    <span class="sidebar-pill-label">Воронка</span>
+                </div>
+                <div class="sidebar-pill-value" id="sidebarPillFunnelValue">0</div>
+                <div class="sidebar-pill-meta" id="sidebarPillFunnelMeta">Без нових лідів</div>
+            </a>`;
+        sidebar.insertBefore(row, links);
+    }
+
+    function _ensureActiveIndicator() {
+        const links = document.querySelector('#sidebarNav .sidebar-links');
+        if (!links || document.getElementById('sidebarActiveIndicator')) return;
+        const indicator = document.createElement('div');
+        indicator.id = 'sidebarActiveIndicator';
+        indicator.className = 'sidebar-active-indicator';
+        links.appendChild(indicator);
+    }
+
+    function _updateActiveIndicator() {
+        const indicator = document.getElementById('sidebarActiveIndicator');
+        const active = document.querySelector('#sidebarNav .nav-link.active');
+        const links = indicator?.parentElement;
+        if (!indicator) return;
+        if (!active || !active.closest('.sidebar-group-items.open')) {
+            indicator.classList.remove('visible');
+            return;
+        }
+        const activeRect = active.getBoundingClientRect();
+        const linksRect = links ? links.getBoundingClientRect() : { top: 0 };
+        const top = activeRect.top - linksRect.top + (links?.scrollTop || 0);
+        indicator.style.transform = `translateY(${Math.round(top)}px)`;
+        indicator.classList.add('visible');
+    }
+
+    function _initSpotlight() {
+        const sidebar = document.getElementById('sidebarNav');
+        if (!sidebar || sidebar.dataset.spotlightBound === 'true') return;
+        sidebar.dataset.spotlightBound = 'true';
+        sidebar.addEventListener('mousemove', (event) => {
+            const rect = sidebar.getBoundingClientRect();
+            sidebar.style.setProperty('--sb-mx', `${event.clientX - rect.left}px`);
+            sidebar.style.setProperty('--sb-my', `${event.clientY - rect.top}px`);
         });
-        sidebar.insertBefore(zone, links);
+        sidebar.addEventListener('mouseleave', () => {
+            sidebar.style.setProperty('--sb-mx', '50%');
+            sidebar.style.setProperty('--sb-my', '-20%');
+        });
+    }
+
+    function _motionReduced() {
+        return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+
+    function _initRipple() {
+        const sidebar = document.getElementById('sidebarNav');
+        if (!sidebar || sidebar.dataset.rippleBound === 'true' || _motionReduced()) return;
+        sidebar.dataset.rippleBound = 'true';
+        sidebar.addEventListener('click', (event) => {
+            const link = event.target.closest('.nav-link');
+            if (!link) return;
+            const rect = link.getBoundingClientRect();
+            const ripple = document.createElement('span');
+            ripple.className = 'sidebar-ripple';
+            ripple.style.left = `${event.clientX - rect.left}px`;
+            ripple.style.top = `${event.clientY - rect.top}px`;
+            link.appendChild(ripple);
+            setTimeout(() => ripple.remove(), 700);
+        });
+    }
+
+    function _initMagnetic() {
+        const sidebar = document.getElementById('sidebarNav');
+        if (!sidebar || _motionReduced()) return;
+        sidebar.querySelectorAll('.nav-link').forEach((link) => {
+            if (link.dataset.magBound === 'true') return;
+            const inner = link.querySelector('.nav-icon-magnet');
+            if (!inner) return;
+            link.dataset.magBound = 'true';
+            link.addEventListener('mousemove', (event) => {
+                const rect = inner.getBoundingClientRect();
+                const dx = (event.clientX - (rect.left + rect.width / 2)) / Math.max(rect.width, 1);
+                const dy = (event.clientY - (rect.top + rect.height / 2)) / Math.max(rect.height, 1);
+                inner.style.transform = `translate(${dx * 3}px, ${dy * 3}px) rotate(${dx * 6}deg)`;
+            });
+            link.addEventListener('mouseleave', () => {
+                inner.style.transform = '';
+            });
+        });
     }
 
     function _alertSetFromStorage(key) {
@@ -517,7 +754,7 @@ const Sidebar = (() => {
     }
 
     function _renderSidebarAlerts(data) {
-        const widget = document.getElementById('sidebarAlertWidget');
+        const widget = document.getElementById('sidebarPillAlerts');
         if (!widget) return;
         const alerts = Array.isArray(data?.alerts) ? data.alerts : [];
         const dismissed = _alertSetFromStorage('crm_alerts_dismissed');
@@ -526,10 +763,9 @@ const Sidebar = (() => {
         const unread = active.filter(alert => !read.has(alert.id));
         const count = unread.length;
         const first = unread[0] || active[0] || null;
-        const countEl = document.getElementById('sidebarAlertWidgetCount');
-        const metaEl = document.getElementById('sidebarAlertWidgetMeta');
+        const countEl = document.getElementById('sidebarPillAlertsValue');
+        const metaEl = document.getElementById('sidebarPillAlertsMeta');
         if (countEl) {
-            countEl.style.display = count > 0 ? 'inline-flex' : 'none';
             countEl.textContent = count > 99 ? '99+' : String(count);
         }
         if (metaEl) {
@@ -559,7 +795,7 @@ const Sidebar = (() => {
             clearTimeout(_state.taskWidgetTimer);
             _state.taskWidgetTimer = null;
         }
-        const widget = document.getElementById('sidebarTaskWidget');
+        const widget = document.getElementById('sidebarPillTasks');
         if (!widget) return;
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
@@ -589,8 +825,8 @@ const Sidebar = (() => {
                 activeCount = mine.filter(task => !['done', 'cancelled', 'archived'].includes(task.status)).length;
                 overdueCount = mine.filter(task => task.deadline && new Date(task.deadline) < new Date() && task.status !== 'done').length;
             }
-            const countEl = document.getElementById('sidebarTaskWidgetCount');
-            const metaEl = document.getElementById('sidebarTaskWidgetMeta');
+            const countEl = document.getElementById('sidebarPillTasksValue');
+            const metaEl = document.getElementById('sidebarPillTasksMeta');
             if (countEl) countEl.textContent = activeCount > 99 ? '99+' : String(activeCount);
             if (metaEl) {
                 const parts = [`${activeCount} активних`];
@@ -607,7 +843,7 @@ const Sidebar = (() => {
             clearTimeout(_state.funnelWidgetTimer);
             _state.funnelWidgetTimer = null;
         }
-        const widget = document.getElementById('sidebarFunnelWidget');
+        const widget = document.getElementById('sidebarPillFunnel');
         if (!widget) return;
         const user = _getCurrentSidebarUser();
         const role = user?.role || (typeof getUserRole === 'function' ? getUserRole() : null);
@@ -627,8 +863,8 @@ const Sidebar = (() => {
             const newCount = newR.status === 'fulfilled' ? Number(newR.value?.count || 0) : 0;
             const displayCount = actionCount > 0 ? actionCount : newCount;
             const firstLead = hotLeads[0] || null;
-            const countEl = document.getElementById('sidebarFunnelWidgetCount');
-            const metaEl = document.getElementById('sidebarFunnelWidgetMeta');
+            const countEl = document.getElementById('sidebarPillFunnelValue');
+            const metaEl = document.getElementById('sidebarPillFunnelMeta');
 
             if (countEl) countEl.textContent = displayCount > 99 ? '99+' : String(displayCount);
             if (metaEl) {
@@ -662,6 +898,8 @@ const Sidebar = (() => {
 
     function initUserCard() {
         let user = _getCurrentSidebarUser();
+        _ensureNowCard();
+        _refreshNowCard();
         if (!user) return;
         const avatarEl = document.getElementById('sidebarUserAvatar');
         const compactAvatarEl = document.getElementById('sidebarCompactAvatar');
@@ -678,6 +916,7 @@ const Sidebar = (() => {
         if (roleEl) roleEl.textContent = LABELS[user.role] || user.role || '';
         _bindProfileEntry(cardEl);
         _bindProfileEntry(nameEl);
+        _bindProfileEntry(document.getElementById('sidebarNowCard'));
     }
 
     function _paintUserAvatar(el, user) {
@@ -847,6 +1086,8 @@ const Sidebar = (() => {
         _ensureCollapsedGroupsBaseline();
         render(containerSelector);
         initToggle();
+        _refreshNowCard();
+        _refreshCurrentEvent();
         _initPageTransitions();
         // Fill user card immediately + keep retrying until avatar shows real initial
         if (!_state.userRetryStarted) {
@@ -900,6 +1141,7 @@ const Sidebar = (() => {
                                 l.classList.toggle('active', lHash === hrefHash);
                             }
                         });
+                        _queueActiveIndicatorUpdate();
                     }
                     return;
                 }
@@ -929,7 +1171,7 @@ const Sidebar = (() => {
 
     async function _retryUserCard() {
         initUserCard();
-        const avatarEl = document.getElementById('sidebarUserAvatar');
+        const avatarEl = document.getElementById('sidebarNowAvatar') || document.getElementById('sidebarUserAvatar');
         const stillDefault = !avatarEl || avatarEl.textContent.trim() === '?';
         if (!stillDefault) return; // Already showing real initial
 

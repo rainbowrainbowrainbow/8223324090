@@ -4,6 +4,7 @@ const CSS_APP_SHELL_PRECACHE = [
     'css/base.css',
     'css/auth.css',
     'css/layout.css',
+    'css/sidebar-aurora.css',
     'css/timeline.css',
     'css/panel.css',
     'css/modals.css',
@@ -132,6 +133,13 @@ const CSS_SURFACE = [
         category: 'shared-large',
         status: 'active-large',
         reason: 'Shared layout, sidebar, and content frame styles.'
+    },
+    {
+        file: 'css/sidebar-aurora.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Sidebar Aurora visual layer and dual-theme micro-interactions for the shared CRM menu.'
     },
     {
         file: 'css/minigame.css',

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.50.0 - Sidebar Aurora Redesign (2026-05-15)
+
+### Sidebar / Navigation [codex]
+- **Aurora UI** - sidebar винесено в окремий `css/sidebar-aurora.css` з живим aurora glow, spotlight за курсором, ripple-кліками та плавним активним індикатором.
+- **Now card** - стара user-картка замінена на робочу картку "Зараз" з аватаром, живим часом і поточною/наступною подією з бронювань.
+- **Pill-статистика** - задачі, алерти й воронка стали компактними pill-метриками замість великих stacked widgets.
+- **Темна/світла тема** - новий sidebar працює через CSS-змінні та має однакову читабельність у двох темах.
+- **Сумісність** - `NAV_ITEMS`, `SIDEBAR_ACCESS`, `data-page-access`, hash-action handlers і збережений стан груп лишилися на старих контрактах.
+
+---
+
 ## v0.49.26 - Dashboard Funnel Widget Simplification (2026-05-15)
 
 ### Dashboard / Widgets [codex]

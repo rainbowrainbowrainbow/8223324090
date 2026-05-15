@@ -2652,6 +2652,16 @@ body.dark-mode .sidebar-theme-btn:hover {
     color: #F8FAFC;
 }
 
+/* Sidebar Aurora v0.50.0: keep legacy dark sidebar rules from repainting the new shell. */
+body.dark-mode .sidebar-now-card,
+body.dark-mode .sidebar-pill {
+    color: var(--sb-text);
+}
+
+body.dark-mode .sidebar-active-indicator {
+    border-color: var(--sb-primary-border);
+}
+
 /* Dashboard team presence: only live online users stay green */
 body.dark-mode .team-presence-member {
     background: rgba(30, 33, 55, 0.68);

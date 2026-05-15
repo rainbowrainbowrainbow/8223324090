@@ -38,6 +38,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/graduation.css` | graduation | `page-scoped-large` | active-large | Graduation event builder and embedded view styles. |
 | `css/kleshnya-widget.css` | kleshnya | `feature-shared` | active | Root shell Kleshnya widget styles. |
 | `css/layout.css` | shared-ui | `shared-large` | active-large | Shared layout, sidebar, and content frame styles. |
+| `css/sidebar-aurora.css` | shared-ui | `shared` | active | Sidebar Aurora visual layer and dual-theme micro-interactions for the shared CRM menu. |
 | `css/minigame.css` | game | `page-scoped-large` | active-large | Gamification game styles; large-file consolidation candidate. |
 | `css/modals.css` | shared-ui | `shared-large` | active-large | Shared modal and profile modal styles across CRM pages. |
 | `css/pages.css` | shared-ui | `shared` | active | Shared page-level layout helpers for static CRM pages. |
@@ -52,9 +53,9 @@ this document, and `npm run test:ui` coverage in the same pack.
 
 The Service Worker currently pre-caches this CSS subset from `sw.js`:
 
-`css/base.css`, `css/auth.css`, `css/layout.css`, `css/timeline.css`,
-`css/panel.css`, `css/modals.css`, `css/controls.css`, `css/features.css`,
-`css/dark-mode.css`, and `css/responsive.css`.
+`css/base.css`, `css/auth.css`, `css/layout.css`, `css/sidebar-aurora.css`,
+`css/timeline.css`, `css/panel.css`, `css/modals.css`, `css/controls.css`,
+`css/features.css`, `css/dark-mode.css`, and `css/responsive.css`.
 
 Changing that list is a cache behavior change. Update
 `config/cssSurface.js`, this document, and focused verification in the same

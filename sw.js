@@ -19,18 +19,19 @@
  *   <script src="js/ws.js"></script>
  */
 
-const CACHE_NAME = 'event-genix-v0.49.26';
-const API_CACHE_NAME = 'event-genix-api-v0.49.26';
+const CACHE_NAME = 'event-genix-v0.50.0';
+const API_CACHE_NAME = 'event-genix-api-v0.50.0';
 
 // App Shell — static assets to pre-cache on install
 const APP_SHELL = [
     '/',
     '/index.html',
     '/manifest.json',
-    // CSS modules (10 files)
+    // CSS modules (11 files)
     '/css/base.css',
     '/css/auth.css',
     '/css/layout.css',
+    '/css/sidebar-aurora.css',
     '/css/timeline.css',
     '/css/panel.css',
     '/css/modals.css',

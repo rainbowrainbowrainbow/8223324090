@@ -311,6 +311,7 @@ shellPages.forEach(page => page.dom.window.close());
 // Check sidebar nav items
 const sidebarCode = fs.readFileSync(path.join(ROOT, 'js/components/sidebar.js'), 'utf8');
 const layoutCss = fs.readFileSync(path.join(ROOT, 'css/layout.css'), 'utf8');
+const sidebarAuroraCss = fs.readFileSync(path.join(ROOT, 'css/sidebar-aurora.css'), 'utf8');
 check('Sidebar has /designs', sidebarCode.includes("href: '/designs'"));
 check('Sidebar has /designs#catalogs', sidebarCode.includes("href: '/designs#catalogs'"));
 check('Sidebar has /designer', sidebarCode.includes("href: '/designer'"));
@@ -320,6 +321,7 @@ check('Sidebar has Центр керування', sidebarCode.includes('Цен�
 
 check('Sidebar navigation no longer delays on visible old DOM', !sidebarCode.includes('setTimeout(() => { window.location.href = href; }, 180)') && sidebarCode.includes('requestAnimationFrame(navigate)'));
 check('Sidebar init is idempotent for shared bindings', sidebarCode.includes('transitionsBound') && sidebarCode.includes('sidebarToggleBound') && sidebarCode.includes('sidebarOverlayBound') && sidebarCode.includes('sidebarLinkBound'));
+check('Sidebar status widgets are grouped into one compact stack', sidebarCode.includes('aria-label\', \'Швидкий стан CRM') && sidebarAuroraCss.includes('.sidebar-pill + .sidebar-pill') && sidebarAuroraCss.includes('grid-template-rows: auto auto'));
 const sidebarInitBody = sidebarCode.match(/function init\(containerSelector\) \{([\s\S]*?)\n    \}/)?.[1] || '';
 check('Sidebar exposes explicit shell-ready API', sidebarCode.includes('markShellReady: _markShellReady') && sidebarCode.includes('clearShellReady: _clearShellReady'));
 check('Sidebar init does not mark shell ready before page bootstrap', !sidebarInitBody.includes('_markShellReady()'));

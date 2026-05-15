@@ -761,6 +761,7 @@ const Sidebar = (() => {
         const row = document.createElement('div');
         row.id = 'sidebarPills';
         row.className = 'sidebar-pills';
+        row.setAttribute('aria-label', 'Швидкий стан CRM');
         row.innerHTML = `
             <a href="/tasks?view=my" class="sidebar-pill sidebar-pill--tasks" id="sidebarPillTasks">
                 <div class="sidebar-pill-top">

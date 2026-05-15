@@ -569,22 +569,30 @@ body.dark-mode .sidebar-nav {
   margin: 0 14px 10px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
   flex-shrink: 0;
+  padding: 6px;
+  border: 1px solid var(--sb-border);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(16, 185, 129, 0.055), transparent 48%),
+    var(--sb-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  overflow: hidden;
 }
 
 .sidebar-pill {
   min-width: 0;
-  min-height: 44px;
+  min-height: 34px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-rows: auto auto;
   align-items: center;
-  column-gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--sb-border);
-  border-radius: 12px;
-  background: var(--sb-surface);
+  column-gap: 8px;
+  padding: 6px 7px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
   color: inherit;
   text-align: left;
   text-decoration: none;
@@ -594,10 +602,13 @@ body.dark-mode .sidebar-nav {
 }
 
 .sidebar-pill:hover {
-  transform: translateY(-1px);
   border-color: var(--sb-primary-border);
   background: var(--sb-surface-hi);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.07);
+}
+
+.sidebar-pill + .sidebar-pill {
+  margin-top: 2px;
 }
 
 .sidebar-pill-top {
@@ -611,10 +622,10 @@ body.dark-mode .sidebar-nav {
 }
 
 .sidebar-pill-icon {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border: 1px solid var(--sb-border);
-  border-radius: 9px;
+  border-radius: 8px;
   background: var(--sb-chip);
   display: inline-flex;
   align-items: center;
@@ -624,8 +635,8 @@ body.dark-mode .sidebar-nav {
 }
 
 .sidebar-pill-icon .eg-icon-svg {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
 }
 
 .sidebar-pill--tasks .sidebar-pill-icon { color: var(--sb-primary); }
@@ -635,7 +646,7 @@ body.dark-mode .sidebar-nav {
 .sidebar-pill-label {
   min-width: 0;
   color: var(--sb-text);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 900;
   letter-spacing: 0;
   text-transform: none;
@@ -648,14 +659,14 @@ body.dark-mode .sidebar-nav {
   grid-column: 2;
   grid-row: 1 / span 2;
   justify-self: end;
-  min-width: 30px;
-  height: 30px;
-  padding: 0 8px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
   border-radius: 999px;
   background: var(--sb-chip);
   color: var(--sb-text);
   font-family: "Space Grotesk", system-ui, sans-serif;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -668,9 +679,9 @@ body.dark-mode .sidebar-nav {
   grid-column: 1;
   grid-row: 2;
   min-width: 0;
-  margin: 1px 0 0 36px;
+  margin: 0 0 0 32px;
   color: var(--sb-text-dim);
-  font-size: 10.5px;
+  font-size: 9.5px;
   font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
@@ -682,13 +693,13 @@ body.dark-mode .sidebar-nav {
 .sidebar-pill.has-alerts,
 .sidebar-pill.has-critical {
   border-color: rgba(239, 68, 68, 0.32);
-  background: linear-gradient(135deg, var(--sb-danger-bg), var(--sb-surface));
+  background: linear-gradient(135deg, var(--sb-danger-bg), transparent 70%);
 }
 
 .sidebar-pill.has-action,
 .sidebar-pill.has-new {
   border-color: rgba(245, 158, 11, 0.32);
-  background: linear-gradient(135deg, var(--sb-amber-bg), var(--sb-surface));
+  background: linear-gradient(135deg, var(--sb-amber-bg), transparent 70%);
 }
 
 .sidebar-links {

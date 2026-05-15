@@ -7,8 +7,10 @@ const Sidebar = (() => {
         transitionsBound: false,
         scrollRestored: false,
         userRetryStarted: false,
-        badgeTimer: null
+        badgeTimer: null,
+        taskWidgetTimer: null
     };
+    const GROUP_STATE_VERSION = 'collapsed-by-default-v1';
 
     // ═══ NAV_ITEMS ════════════════════════════════════════════════
     const NAV_ITEMS = [
@@ -117,6 +119,13 @@ const Sidebar = (() => {
         try { return JSON.parse(localStorage.getItem('pzp_sidebar_groups') || '{}'); }
         catch { return {}; }
     }
+    function _ensureCollapsedGroupsBaseline() {
+        try {
+            if (localStorage.getItem('pzp_sidebar_group_state_version') === GROUP_STATE_VERSION) return;
+            localStorage.setItem('pzp_sidebar_groups', '{}');
+            localStorage.setItem('pzp_sidebar_group_state_version', GROUP_STATE_VERSION);
+        } catch {}
+    }
     function _setGroupState(key, open) {
         const s = _getGroupState();
         s[key] = open;
@@ -124,7 +133,7 @@ const Sidebar = (() => {
     }
     function _isGroupOpen(key, defaultOpen) {
         const s = _getGroupState();
-        return key in s ? s[key] : (defaultOpen !== false);
+        return key in s ? s[key] : false;
     }
 
     // Get the first hash for a given base path (e.g. '/sound' → 'library')
@@ -158,17 +167,17 @@ const Sidebar = (() => {
                 );
                 if (!hasChildren) { currentGroupKey = '__skip__'; continue; }
 
-                // Force open if current page is in this group
+                // Mark group that contains the current page without forcing it open.
                 const hasActive = NAV_ITEMS.some(c => {
                     if (c.group !== item.key || c.noActive || c.isHashLink) return false;
                     const cBase = c.href.split('#')[0];
                     return currentPath === cBase || (cBase !== '/' && currentPath.startsWith(cBase));
                 });
-                const finalOpen = hasActive || _isGroupOpen(item.key, item.defaultOpen);
+                const finalOpen = _isGroupOpen(item.key, item.defaultOpen);
 
                 html += `
-<div class="sidebar-group" data-group-key="${item.key}">
-  <button class="sidebar-group-header${finalOpen ? ' open' : ''}"
+<div class="sidebar-group${hasActive ? ' has-active' : ''}" data-group-key="${item.key}">
+  <button class="sidebar-group-header${finalOpen ? ' open' : ''}${hasActive ? ' has-active' : ''}"
           onclick="Sidebar.toggleGroup('${item.key}', this)"
           title="${item.label}">
     <span class="nav-icon">${item.icon}</span>
@@ -238,6 +247,8 @@ const Sidebar = (() => {
 
         _initCollapsedTooltips(container);
         _fetchLiveBadges();
+        _ensurePinnedTasksWidget();
+        _refreshTaskMiniWidget();
     }
 
     function _markShellReady() {
@@ -329,30 +340,157 @@ const Sidebar = (() => {
     }
 
     // ═══ USER CARD ═══
-    function initUserCard() {
-        let user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
-        // Fallback: read from localStorage if AppState not populated yet
-        if (!user) {
-            try {
-                const saved = localStorage.getItem('pzp_current_user');
-                if (saved) user = JSON.parse(saved);
-            } catch {}
+    function _ensurePinnedTasksWidget() {
+        const sidebar = document.getElementById('sidebarNav');
+        if (!sidebar || document.getElementById('sidebarPinnedZone')) return;
+        const links = sidebar.querySelector('.sidebar-links');
+        if (!links) return;
+        const zone = document.createElement('div');
+        zone.id = 'sidebarPinnedZone';
+        zone.className = 'sidebar-pinned-zone';
+        zone.innerHTML = `
+            <a href="/tasks?view=my" class="sidebar-task-widget" id="sidebarTaskWidget">
+                <span class="sidebar-task-widget-icon">✅</span>
+                <span class="sidebar-task-widget-main">
+                    <span class="sidebar-task-widget-title">Мої задачі</span>
+                    <span class="sidebar-task-widget-meta" id="sidebarTaskWidgetMeta">Завантаження...</span>
+                </span>
+                <span class="sidebar-task-widget-count" id="sidebarTaskWidgetCount">–</span>
+            </a>
+            <a href="/tasks?view=focus" class="sidebar-pinned-task-link">
+                <span>🎯</span><span class="nav-text">Фокус дня</span>
+            </a>`;
+        sidebar.insertBefore(zone, links);
+    }
+
+    async function _refreshTaskMiniWidget() {
+        if (_state.taskWidgetTimer) {
+            clearTimeout(_state.taskWidgetTimer);
+            _state.taskWidgetTimer = null;
         }
+        const widget = document.getElementById('sidebarTaskWidget');
+        if (!widget) return;
+        const token = localStorage.getItem('pzp_token');
+        if (!token) return;
+        try {
+            const profile = await fetch('/api/auth/profile', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            }).then(r => r.ok ? r.json() : null).catch(() => null);
+            let activeCount = 0;
+            let overdueCount = 0;
+            if (profile?.tasks) {
+                const tasks = profile.tasks || {};
+                activeCount = Number(tasks.assigned || 0) + Number(tasks.in_progress || 0);
+                overdueCount = Number(tasks.overdue || 0);
+            } else {
+                const rows = await fetch('/api/tasks?limit=80', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                }).then(r => r.ok ? r.json() : []).catch(() => []);
+                const user = _getCurrentSidebarUser();
+                const userId = Number(user?.id || user?.userId || 0);
+                const tokens = new Set([user?.username, user?.name].map(v => String(v || '').trim()).filter(Boolean));
+                const mine = Array.isArray(rows) ? rows.filter(task => {
+                    const ownerId = Number(task.owner_user_id || task.ownerUserId || 0);
+                    if (userId && ownerId && userId === ownerId) return true;
+                    if (ownerId) return false;
+                    return tokens.has(String(task.assigned_to || task.assignedTo || '').trim()) || tokens.has(String(task.owner || '').trim());
+                }) : [];
+                activeCount = mine.filter(task => !['done', 'cancelled', 'archived'].includes(task.status)).length;
+                overdueCount = mine.filter(task => task.deadline && new Date(task.deadline) < new Date() && task.status !== 'done').length;
+            }
+            const countEl = document.getElementById('sidebarTaskWidgetCount');
+            const metaEl = document.getElementById('sidebarTaskWidgetMeta');
+            if (countEl) countEl.textContent = activeCount > 99 ? '99+' : String(activeCount);
+            if (metaEl) {
+                const parts = [`${activeCount} активних`];
+                if (overdueCount > 0) parts.push(`${overdueCount} протерм.`);
+                metaEl.textContent = parts.join(' · ');
+            }
+            widget.classList.toggle('has-overdue', overdueCount > 0);
+        } catch {}
+        _state.taskWidgetTimer = setTimeout(_refreshTaskMiniWidget, 300000);
+    }
+
+    function _getCurrentSidebarUser() {
+        let user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+        if (user) return user;
+        try {
+            const saved = localStorage.getItem('pzp_current_user');
+            return saved ? JSON.parse(saved) : null;
+        } catch {
+            return null;
+        }
+    }
+
+    function initUserCard() {
+        let user = _getCurrentSidebarUser();
         if (!user) return;
         const avatarEl = document.getElementById('sidebarUserAvatar');
+        const compactAvatarEl = document.getElementById('sidebarCompactAvatar');
         const nameEl = document.getElementById('sidebarUserName');
         const roleEl = document.getElementById('sidebarUserRole');
+        const cardEl = document.getElementById('sidebarUserCard');
         const LABELS = { creator:'🏆 Creator', director:'🦁 Директор', vice_director:'🌟 Заст. директора',
             senior_manager:'📋 Ст. менеджер', manager:'📋 Менеджер', admin:'👑 Адмін',
             hr:'🤝 HR', accountant:'💰 Бухгалтер', animator:'🎭 Аніматор',
             instructor:'🎓 Інструктор', art_director:'🎨 Арт директор' };
-        if (avatarEl) {
-            avatarEl.textContent = (user.name || '?').charAt(0).toUpperCase();
-            const colors = ['#6366f1','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444'];
-            avatarEl.style.background = colors[(user.id || 0) % colors.length];
-        }
+        _paintUserAvatar(avatarEl, user);
+        _paintUserAvatar(compactAvatarEl, user);
         if (nameEl) nameEl.textContent = user.name || user.username || '';
         if (roleEl) roleEl.textContent = LABELS[user.role] || user.role || '';
+        _bindProfileEntry(cardEl);
+        _bindProfileEntry(nameEl);
+    }
+
+    function _paintUserAvatar(el, user) {
+        if (!el || !user) return;
+        const photo = user.avatar_url || user.avatarUrl || user.photo_url || user.photoUrl || user.image_url || user.imageUrl;
+        el.classList.toggle('has-photo', !!photo);
+        if (photo) {
+            el.innerHTML = `<img src="${_escAttr(photo)}" alt="">`;
+            el.style.background = 'transparent';
+            return;
+        }
+        const label = user.name || user.username || '?';
+        const initial = label.trim().charAt(0).toUpperCase() || '?';
+        const roleColors = {
+            creator: '#f59e0b',
+            director: '#6366f1',
+            vice_director: '#8b5cf6',
+            senior_manager: '#0ea5e9',
+            manager: '#10b981',
+            admin: '#06b6d4',
+            hr: '#ec4899',
+            accountant: '#22c55e',
+            art_director: '#a855f7',
+            marketer: '#f97316'
+        };
+        const colors = ['#6366f1','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444'];
+        el.textContent = initial;
+        el.style.background = roleColors[user.role] || colors[(user.id || 0) % colors.length];
+    }
+
+    function _bindProfileEntry(el) {
+        if (!el || el.dataset.sidebarProfileBound === 'true') return;
+        el.dataset.sidebarProfileBound = 'true';
+        el.setAttribute('role', 'link');
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('title', 'Відкрити профіль');
+        const go = () => { window.location.href = '/profile'; };
+        el.addEventListener('click', (e) => {
+            e.preventDefault();
+            go();
+        });
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                go();
+            }
+        });
+    }
+
+    function _escAttr(value) {
+        return String(value || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     }
 
     // ═══ TOGGLE SIDEBAR (mobile/desktop) ══════════════════════════
@@ -360,6 +498,7 @@ const Sidebar = (() => {
         const toggle = document.getElementById('sidebarToggle');
         const sidebar = document.getElementById('sidebarNav');
         const overlay = document.getElementById('sidebarOverlay');
+        _ensureCompactProfileAvatar(sidebar);
         if (toggle && sidebar && toggle.dataset.sidebarToggleBound !== 'true') {
             toggle.dataset.sidebarToggleBound = 'true';
             toggle.addEventListener('click', () => {
@@ -385,10 +524,22 @@ const Sidebar = (() => {
         // Theme toggle — inject at bottom of sidebar
         _initThemeToggle(sidebar);
 
-        // v37.3: Collapse disabled — always expanded, all groups open
+        // Keep the sidebar full-width; accordion groups start collapsed and persist user choice.
         localStorage.removeItem('pzp_sidebar_collapsed');
-        localStorage.removeItem('pzp_sidebar_groups');
         if (sidebar) sidebar.classList.remove('collapsed');
+    }
+
+    function _ensureCompactProfileAvatar(sidebar) {
+        if (!sidebar || document.getElementById('sidebarCompactProfile')) return;
+        const brand = sidebar.querySelector('.sidebar-brand');
+        if (!brand) return;
+        const link = document.createElement('a');
+        link.id = 'sidebarCompactProfile';
+        link.className = 'sidebar-compact-profile';
+        link.href = '/profile';
+        link.title = 'Відкрити профіль';
+        link.innerHTML = '<span class="sidebar-user-avatar" id="sidebarCompactAvatar">?</span>';
+        brand.appendChild(link);
     }
 
     function _initThemeToggle(sidebar) {
@@ -429,6 +580,7 @@ const Sidebar = (() => {
 
     function init(containerSelector) {
         document.body.classList.add('shell-baseline');
+        _ensureCollapsedGroupsBaseline();
         render(containerSelector);
         initToggle();
         _initPageTransitions();

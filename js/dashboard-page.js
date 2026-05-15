@@ -583,8 +583,12 @@ const DashboardPage = (() => {
     }
 
     function shouldAssistantSubtitleScroll(text = '', wrap = null, el = null) {
-        if (String(text).trim().length > 90) return true;
-        return !!(wrap && el && el.scrollWidth > wrap.clientWidth + 12);
+        const normalized = String(text).trim();
+        if (normalized.length > 180) return true;
+        return !!(wrap && el && (
+            el.scrollWidth > wrap.clientWidth + 32 ||
+            el.scrollHeight > wrap.clientHeight + 8
+        ));
     }
 
     function toggleAssistantVoice() {

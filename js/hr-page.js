@@ -213,6 +213,7 @@ function initNewTabs() {
     document.getElementById('btnStartOnboarding')?.addEventListener('click', showStartOnboarding);
     document.getElementById('btnAddCostume')?.addEventListener('click', showAddCostume);
     document.getElementById('btnSaveCompanyStructure')?.addEventListener('click', saveCompanyStructure);
+    initCompanyOrgChart();
 }
 
 // ==========================================
@@ -911,6 +912,50 @@ async function saveStaffEdit() {
 // BACKOFFICE FOUNDATION: STRUCTURE / POOLS
 // ==========================================
 
+const DEFAULT_COMPANY_STRUCTURE_TEXT = [
+    'Директор',
+    '  Заступник директора',
+    '    Топ-менеджер -> Менеджер(и)',
+    '    HR',
+    '    Бухгалтер',
+    '    Арт-директор -> Адміністратори -> Старший батутіст, Аніматори, Офіціанти, Бариста, Рецепція',
+    '    Маркетолог',
+    '    IT-спеціаліст',
+    '  Шеф-кухар -> Кухарі, Мийка',
+    '  Шеф-кондитер -> Кондитери, Мийка цех',
+    '  Технічний персонал -> Гардероб, Прибирання, Завгосп'
+].join('\n');
+
+function initCompanyOrgChart() {
+    const nodes = document.querySelectorAll('.hr-org-node');
+    if (!nodes.length) return;
+
+    nodes.forEach(node => {
+        if (node.dataset.orgBound === '1') return;
+        node.dataset.orgBound = '1';
+        node.addEventListener('click', () => selectCompanyOrgNode(node));
+    });
+
+    const active = document.querySelector('.hr-org-node.is-active') || nodes[0];
+    if (active) selectCompanyOrgNode(active);
+
+    const structureText = document.getElementById('companyStructureText');
+    if (structureText && !structureText.value.trim()) {
+        structureText.value = DEFAULT_COMPANY_STRUCTURE_TEXT;
+    }
+}
+
+function selectCompanyOrgNode(node) {
+    if (!node) return;
+    document.querySelectorAll('.hr-org-node.is-active').forEach(item => item.classList.remove('is-active'));
+    node.classList.add('is-active');
+
+    const title = document.getElementById('hrOrgDetailTitle');
+    const text = document.getElementById('hrOrgDetailText');
+    if (title) title.textContent = node.dataset.orgRole || node.textContent.trim();
+    if (text) text.textContent = node.dataset.orgDesc || 'Роль у структурі компанії.';
+}
+
 async function loadCompanyStructure() {
     const statusEl = document.getElementById('companyStructureStatus');
     if (statusEl) statusEl.textContent = 'Завантаження...';
@@ -921,15 +966,20 @@ async function loadCompanyStructure() {
     }
     const structure = data.data || data.structure || {};
     const structureText = document.getElementById('companyStructureText');
+    const notesText = document.getElementById('companyStructureNotes');
     const instructionsText = document.getElementById('companyInstructionsText');
-    if (structureText) structureText.value = structure.structure || structure.structure_text || '';
+    const savedStructure = structure.structure || structure.structure_text || '';
+    if (structureText) structureText.value = DEFAULT_COMPANY_STRUCTURE_TEXT;
+    if (notesText) notesText.value = savedStructure && savedStructure !== DEFAULT_COMPANY_STRUCTURE_TEXT ? savedStructure : '';
     if (instructionsText) instructionsText.value = structure.instructions || structure.instructions_text || '';
     if (statusEl) statusEl.textContent = structure.updatedAt ? `Оновлено: ${new Date(structure.updatedAt).toLocaleString('uk-UA')}` : '';
+    initCompanyOrgChart();
 }
 
 async function saveCompanyStructure() {
+    const notes = document.getElementById('companyStructureNotes')?.value || '';
     const payload = {
-        structure: document.getElementById('companyStructureText')?.value || '',
+        structure: notes.trim() || document.getElementById('companyStructureText')?.value || DEFAULT_COMPANY_STRUCTURE_TEXT,
         instructions: document.getElementById('companyInstructionsText')?.value || ''
     };
     const data = await hrFetch('/company-structure', {

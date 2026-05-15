@@ -681,7 +681,7 @@ const Sidebar = (() => {
                     <span class="sidebar-pill-label">Задачі</span>
                 </div>
                 <div class="sidebar-pill-value" id="sidebarPillTasksValue">–</div>
-                <div class="sidebar-pill-meta" id="sidebarPillTasksMeta">Завантаження...</div>
+                <div class="sidebar-pill-meta" id="sidebarPillTasksMeta">оновлення...</div>
             </a>
             <button type="button" class="sidebar-pill sidebar-pill--alerts" id="sidebarPillAlerts" onclick="Sidebar.openAlerts(event)">
                 <div class="sidebar-pill-top">
@@ -689,7 +689,7 @@ const Sidebar = (() => {
                     <span class="sidebar-pill-label">Алерти</span>
                 </div>
                 <div class="sidebar-pill-value" id="sidebarPillAlertsValue">0</div>
-                <div class="sidebar-pill-meta" id="sidebarPillAlertsMeta">Все спокійно</div>
+                <div class="sidebar-pill-meta" id="sidebarPillAlertsMeta">спокійно</div>
             </button>
             <a href="/sales-funnel" class="sidebar-pill sidebar-pill--funnel" id="sidebarPillFunnel">
                 <div class="sidebar-pill-top">
@@ -697,7 +697,7 @@ const Sidebar = (() => {
                     <span class="sidebar-pill-label">Воронка</span>
                 </div>
                 <div class="sidebar-pill-value" id="sidebarPillFunnelValue">0</div>
-                <div class="sidebar-pill-meta" id="sidebarPillFunnelMeta">Без нових лідів</div>
+                <div class="sidebar-pill-meta" id="sidebarPillFunnelMeta">без нових</div>
             </a>`;
         sidebar.insertBefore(row, links);
     }
@@ -804,10 +804,15 @@ const Sidebar = (() => {
             countEl.textContent = count > 99 ? '99+' : String(count);
         }
         if (metaEl) {
-            if (!active.length) metaEl.textContent = 'Все спокійно';
-            else if (count > 0) metaEl.textContent = `${count} нових`;
-            else metaEl.textContent = `${active.length} переглянуто`;
+            if (!active.length) metaEl.textContent = 'спокійно';
+            else if (count > 0) metaEl.textContent = 'нові';
+            else metaEl.textContent = 'перегл.';
         }
+        const alertTitle = !active.length
+            ? 'Алерти: все спокійно. Натисніть, щоб відкрити повну інформацію.'
+            : `Алерти: ${count} нових, ${active.length} активних. Натисніть, щоб відкрити повну інформацію.`;
+        widget.title = alertTitle;
+        widget.setAttribute('aria-label', alertTitle);
         widget.classList.toggle('has-alerts', active.length > 0);
         widget.classList.toggle('has-critical', unread.some(alert => alert.level === 'critical'));
     }
@@ -864,10 +869,15 @@ const Sidebar = (() => {
             const metaEl = document.getElementById('sidebarPillTasksMeta');
             if (countEl) countEl.textContent = activeCount > 99 ? '99+' : String(activeCount);
             if (metaEl) {
-                const parts = [`${activeCount} активних`];
-                if (overdueCount > 0) parts.push(`${overdueCount} протерм.`);
+                const parts = ['актив.'];
+                if (overdueCount > 0) parts.push(`${overdueCount} простр.`);
                 metaEl.textContent = parts.join(' · ');
             }
+            const taskTitle = overdueCount > 0
+                ? `Задачі: ${activeCount} активних, ${overdueCount} прострочених. Натисніть, щоб відкрити всі задачі.`
+                : `Задачі: ${activeCount} активних. Натисніть, щоб відкрити всі задачі.`;
+            widget.title = taskTitle;
+            widget.setAttribute('aria-label', taskTitle);
             widget.classList.toggle('has-overdue', overdueCount > 0);
         } catch {}
         _state.taskWidgetTimer = setTimeout(_refreshTaskMiniWidget, 300000);
@@ -905,14 +915,19 @@ const Sidebar = (() => {
             if (metaEl) {
                 if (actionCount > 0) {
                     metaEl.textContent = newCount > 0
-                        ? `${actionCount} чекає дії · ${newCount} нових`
-                        : `${actionCount} чекає дії`;
+                        ? `дії · ${newCount} нов.`
+                        : 'дії';
                 } else if (newCount > 0) {
-                    metaEl.textContent = `${newCount} нових лідів`;
+                    metaEl.textContent = 'нові';
                 } else {
-                    metaEl.textContent = 'Без нових лідів';
+                    metaEl.textContent = 'без нових';
                 }
             }
+            const funnelTitle = actionCount > 0
+                ? `Воронка: ${actionCount} лідів чекає дії, ${newCount} нових. Натисніть, щоб відкрити повну воронку.`
+                : `Воронка: ${newCount} нових лідів. Натисніть, щоб відкрити повну воронку.`;
+            widget.title = funnelTitle;
+            widget.setAttribute('aria-label', funnelTitle);
             widget.classList.toggle('has-action', actionCount > 0);
             widget.classList.toggle('has-new', actionCount === 0 && newCount > 0);
             widget.href = firstLead?.id ? `/sales-funnel?lead=${encodeURIComponent(firstLead.id)}` : '/sales-funnel';

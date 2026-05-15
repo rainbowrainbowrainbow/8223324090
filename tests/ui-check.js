@@ -321,7 +321,7 @@ check('Sidebar has Центр керування', sidebarCode.includes('Цен�
 
 check('Sidebar navigation no longer delays on visible old DOM', !sidebarCode.includes('setTimeout(() => { window.location.href = href; }, 180)') && sidebarCode.includes('requestAnimationFrame(navigate)'));
 check('Sidebar init is idempotent for shared bindings', sidebarCode.includes('transitionsBound') && sidebarCode.includes('sidebarToggleBound') && sidebarCode.includes('sidebarOverlayBound') && sidebarCode.includes('sidebarLinkBound'));
-check('Sidebar status widgets are grouped into one compact stack', sidebarCode.includes('aria-label\', \'Швидкий стан CRM') && sidebarAuroraCss.includes('.sidebar-pill + .sidebar-pill') && sidebarAuroraCss.includes('grid-template-rows: auto auto'));
+check('Sidebar status widgets render as one horizontal segmented rail', sidebarCode.includes('aria-label\', \'Швидкий стан CRM') && sidebarAuroraCss.includes('grid-template-columns: repeat(3, minmax(0, 1fr))') && sidebarCode.includes('Натисніть, щоб відкрити повну'));
 check('Sidebar dashboard surface does not render the removed AI placeholder card', !sidebarCode.includes('sidebar-ai-companion') && !sidebarCode.includes('openAiCompanion') && !sidebarAuroraCss.includes('.sidebar-ai-companion'));
 check('Sidebar profile card shows account role instead of time-based greeting', sidebarCode.includes('function _sidebarRoleLine') && !sidebarCode.includes('Доброго ранку') && !sidebarCode.includes('Доброго вечора') && !sidebarCode.includes('Гарного дня'));
 const sidebarInitBody = sidebarCode.match(/function init\(containerSelector\) \{([\s\S]*?)\n    \}/)?.[1] || '';

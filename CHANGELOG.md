@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.9 - Sidebar Status Rail (2026-05-15)
+
+### Sidebar / Status Rail [codex]
+- **Status rail** - задачі, алерти й воронку зібрано в один горизонтальний segmented-блок замість трьох рядків.
+- **Compact info** - кожен сегмент показує власний лічильник і короткий стан, а повний опис доступний через hover/assistive label.
+- **Navigation** - сегменти лишились окремо клікабельними: задачі відкривають tasks, алерти відкривають сповіщення, воронка відкриває funnel.
+
+---
+
 ## v0.50.8 - Sidebar Role Line (2026-05-15)
 
 ### Sidebar / Profile Card [codex]

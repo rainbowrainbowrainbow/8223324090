@@ -1443,6 +1443,13 @@ describe('work queue endpoint', () => {
             if (value.startsWith('/api/dashboard/config')) {
                 return { ok: true, status: 200, json: async () => ({ success: true, config: { widgets: [], layout: {}, theme: 'default' } }) };
             }
+            if (value.startsWith('/api/dashboard/widgets/funnel')) {
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ success: true, data: { meta: { funnelInsights: currentQueue.meta.funnelInsights } } })
+                };
+            }
             if (value.startsWith('/api/work-queue/replies/41/history')) {
                 return {
                     ok: true,
@@ -1517,6 +1524,11 @@ describe('work queue endpoint', () => {
         vm.runInContext(dashboardJs, dom.getInternalVMContext());
         const DashboardPage = vm.runInContext('DashboardPage', dom.getInternalVMContext());
         await DashboardPage.init();
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+        assert.ok(dom.window.document.querySelector('#widget-funnel .dashboard-funnel-compact'), 'dashboard init should render the compact funnel widget instead of the giant work queue panel');
+
+        DashboardPage.setWorkQueueReplyScope('all');
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
 

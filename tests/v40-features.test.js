@@ -1,17 +1,17 @@
 /**
  * tests/v40-features.test.js — Tests for v40.0 features
- * Dashboard widgets (21 types), partial updates, alerts, staff
+ * Dashboard widgets, partial updates, alerts, staff
  */
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const { authRequest, request, testDate } = require('./helpers');
 
 // ==========================================
-// ALL 21 DASHBOARD WIDGETS
+// ALL DASHBOARD WIDGETS
 // ==========================================
-describe('Dashboard Widgets — All 21 types (v40)', () => {
+describe('Dashboard Widgets — all registered types (v40)', () => {
     const widgets = [
-        'quick_stats', 'tasks', 'bookings_today', 'my_schedule',
+        'quick_stats', 'tasks', 'my_focus', 'funnel', 'bookings_today', 'my_schedule',
         'team_online', 'alerts', 'exceptions', 'leads_new',
         'finance_today', 'weather', 'currency', 'announcements',
         'reports_today', 'catalogs', 'account_stats',

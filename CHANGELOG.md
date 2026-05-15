@@ -4,6 +4,15 @@
 
 ---
 
+## v0.49.26 - Dashboard Funnel Widget Simplification (2026-05-15)
+
+### Dashboard / Widgets [codex]
+- **Dashboard** - велику панель "Робоча черга" прибрано з основного потоку dashboard, щоб головний екран не виглядав як операційна консоль.
+- **Воронка** - замість важкого work queue slab додано компактний widget "Воронка" у форматі звичайних dashboard cards.
+- **Архітектура** - widget бере дані з наявного `funnelInsights` через dashboard endpoint, без дублювання нового джерела даних.
+
+---
+
 ## v0.49.25 - Sidebar Modern Icon System (2026-05-15)
 
 ### Sidebar / Navigation [codex]

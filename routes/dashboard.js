@@ -13,6 +13,7 @@ const { buildTaskVisibilityScope, normalizeUserId, taskOwnerState, userNameToken
 const { buildTaskOperationsSummary, deriveTaskIntelligence } = require('../services/taskIntelligence');
 const { getOnlineUserIds } = require('../services/websocket');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
+const { buildWorkQueue } = require('../services/workQueue');
 
 const log = createLogger('Dashboard');
 
@@ -129,9 +130,9 @@ async function buildEventRiskSummary(user) {
     return {
         eventRiskSummary: summary,
         cards: [
-            { key: 'today_unconfirmed', label: 'Непідтверджені сьогодні', count: summary.todayUnconfirmed, kind: 'needs_confirmation', href: '/dashboard#workQueuePanel', why: 'preliminary bookings with event date today' },
-            { key: 'tomorrow_unconfirmed', label: 'Непідтверджені завтра', count: summary.tomorrowUnconfirmed, kind: 'needs_confirmation', href: '/dashboard#workQueuePanel', why: 'preliminary bookings with event date tomorrow' },
-            { key: 'late_preliminary', label: 'Критично пізні preliminary', count: summary.latePreliminary, kind: 'late_preliminary', href: '/dashboard#workQueuePanel', why: 'preliminary bookings starting in the next 2 hours' },
+            { key: 'today_unconfirmed', label: 'Непідтверджені сьогодні', count: summary.todayUnconfirmed, kind: 'needs_confirmation', href: '/', why: 'preliminary bookings with event date today' },
+            { key: 'tomorrow_unconfirmed', label: 'Непідтверджені завтра', count: summary.tomorrowUnconfirmed, kind: 'needs_confirmation', href: '/', why: 'preliminary bookings with event date tomorrow' },
+            { key: 'late_preliminary', label: 'Критично пізні preliminary', count: summary.latePreliminary, kind: 'late_preliminary', href: '/', why: 'preliminary bookings starting in the next 2 hours' },
             { key: 'booking_linked_overdue_prep', label: 'Прострочені prep-задачі по бронюваннях', count: summary.bookingLinkedOverduePrep, kind: 'booking_linked_overdue_prep', href: '/tasks?source_type=booking&overdue=1', why: 'only tasks with source_type=booking and matching source_id are counted' },
             { key: 'resource_warnings', label: 'Resource warnings сьогодні', count: summary.resourceWarnings, kind: 'resource_warning', href: '/dashboard#widget-exceptions', why: 'today bookings without assigned line/animator' }
         ],
@@ -478,6 +479,20 @@ router.get('/widgets/:type', async (req, res) => {
                     LIMIT 8
                 `);
                 data = { leads: result.rows, total: result.rows.length };
+                break;
+            }
+
+            case 'funnel': {
+                const queue = await buildWorkQueue({
+                    pool,
+                    user: req.user,
+                    limit: 1,
+                    replyScope: 'all',
+                    replySla: 'all',
+                    replyOwner: 'all',
+                    replyEscalation: 'all'
+                });
+                data = { meta: { funnelInsights: queue?.meta?.funnelInsights || {} } };
                 break;
             }
 

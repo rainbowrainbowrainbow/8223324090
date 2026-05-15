@@ -107,8 +107,7 @@ checkPage('dashboard.html', (doc, html) => {
     check('loginForm exists', !!doc.getElementById('loginForm'));
     check('mainApp exists', !!doc.getElementById('mainApp'));
     check('dashboardGrid exists', !!doc.getElementById('dashboardGrid'));
-    check('dashboard work queue explainability region exists', !!doc.getElementById('workQueueExplainability'));
-    check('dashboard work queue reply scope controls exist', !!doc.getElementById('workQueueScopeControls'));
+    check('dashboard omits giant work queue panel from main flow', !doc.getElementById('workQueuePanel') && !doc.getElementById('workQueueBody'));
     check('dashboard login tagline matches package version', html.includes(`AI First CRM v${pkg.version}`));
     check('dashboard changelog button matches package version', html.includes(`Що нового у v${pkg.version}`));
 });
@@ -385,6 +384,7 @@ check('Explainability shared styles exist', pagesCss.includes('.explain-filter-s
 check('Tasks counts are category-aware', tasksCode.includes('const active = filterByCategory(allTasks.filter') && tasksCode.includes('taskEmptyState'));
 check('Leads, Customers, Omni expose clearable filter summaries', leadsCode.includes('resetLeadFilters') && customersCode.includes('resetCustomerFilters') && omniHtml.includes('resetOmniFilters'));
 check('Dashboard work queue surfaces endpoint metadata', dashboardPageCode.includes('renderWorkQueueExplainability') && dashboardPageCode.includes('omittedBuckets'));
+check('Dashboard renders compact funnel widget from work queue insights', dashboardPageCode.includes('funnel:') && dashboardPageCode.includes('loadFunnelWidget') && dashboardPageCode.includes('renderCompactFunnelWidget') && dashboardPageCode.includes('funnelInsights'));
 
 // Check unsafe dismiss guardrails for critical editable surfaces
 console.log('\nunsafe dismiss guardrails');

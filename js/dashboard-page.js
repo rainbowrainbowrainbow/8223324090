@@ -16,6 +16,7 @@ const DashboardPage = (() => {
         event_risk_summary: { icon: '⚠️', title: 'Ризики подій', minRole: 'admin' },
         exceptions:     { icon: '🚨', title: 'Що потребує уваги', minRole: 'admin' },
         leads_new:      { icon: '🔥', title: 'Нові ліди', minRole: 'manager' },
+        funnel:         { icon: '◈', title: 'Воронка', minRole: 'manager' },
         finance_today:  { icon: '💰', title: 'Фінанси сьогодні', minRole: 'senior_manager' },
         weather:        { icon: '🌤', title: 'Погода', minRole: null },
         currency:       { icon: '💱', title: 'Курси валют', minRole: 'manager' },
@@ -93,7 +94,6 @@ const DashboardPage = (() => {
         renderGreeting();
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
         else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
-        loadWorkQueue();
     }
 
     async function loadConfig() {
@@ -106,12 +106,14 @@ const DashboardPage = (() => {
 
             if (data.success) {
                 _config = data.config;
+                _config.widgets = normalizeDashboardWidgets(_config.widgets || []);
                 renderWidgets();
             }
         } catch (err) {
             console.error('Dashboard config error:', err);
             // Render with defaults
             _config = { widgets: ['tasks', 'my_schedule', 'weather'], layout: {}, theme: 'default' };
+            _config.widgets = normalizeDashboardWidgets(_config.widgets);
             renderWidgets();
         }
     }
@@ -1449,7 +1451,7 @@ const DashboardPage = (() => {
         const grid = document.getElementById('dashboardGrid');
         if (!grid || !_config) return;
 
-        const widgets = _config.widgets || [];
+        const widgets = normalizeDashboardWidgets(_config.widgets || []);
         grid.innerHTML = '';
 
         for (const widgetKey of widgets) {
@@ -1489,9 +1491,24 @@ const DashboardPage = (() => {
         }
     }
 
+    function normalizeDashboardWidgets(widgets) {
+        const list = Array.isArray(widgets) ? widgets.filter(Boolean) : [];
+        const funnelDef = WIDGET_DEFS.funnel;
+        const canSeeFunnel = funnelDef && (!funnelDef.minRole || typeof hasMinRole !== 'function' || hasMinRole(funnelDef.minRole));
+        if (canSeeFunnel && !list.includes('funnel')) {
+            return ['funnel', ...list];
+        }
+        return list;
+    }
+
     async function loadWidgetData(type) {
         const container = document.getElementById(`widget-${type}`);
         if (!container) return;
+
+        if (type === 'funnel') {
+            await loadFunnelWidget(container);
+            return;
+        }
 
         try {
             const resp = await fetch(`/api/dashboard/widgets/${type}`, {
@@ -1512,8 +1529,100 @@ const DashboardPage = (() => {
         }
     }
 
+    async function loadFunnelWidget(container) {
+        try {
+            const resp = await fetch('/api/dashboard/widgets/funnel', {
+                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
+            });
+            if (resp.status === 403 || resp.status === 401) {
+                container.innerHTML = '<div class="widget-empty">Воронка недоступна для вашої ролі</div>';
+                return;
+            }
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const result = await resp.json();
+            const queue = result.data || {};
+            _widgetData.funnel = queue;
+            renderCompactFunnelWidget(queue, container);
+        } catch (err) {
+            console.error('Funnel widget load error:', err);
+            container.innerHTML = '<div class="widget-empty">Не вдалося завантажити воронку</div>';
+        }
+    }
+
+    function renderCompactFunnelWidget(queue, container) {
+        const funnel = queue?.meta?.funnelInsights || {};
+        const stages = Array.isArray(funnel.stages)
+            ? funnel.stages
+                .filter(stage => Number(stage.total || 0) > 0)
+                .sort((a, b) => {
+                    const waitingDiff = Number(b.waitingAction || 0) - Number(a.waitingAction || 0);
+                    return waitingDiff || Number(b.total || 0) - Number(a.total || 0);
+                })
+                .slice(0, 4)
+            : [];
+        const total = Number(funnel.total || 0);
+        const waitingAction = Number(funnel.waitingAction || 0);
+        const hotStage = funnel.hotStage || stages.find(stage => Number(stage.waitingAction || 0) > 0) || stages[0] || null;
+        const hiddenCount = Math.max(0, (Array.isArray(funnel.stages) ? funnel.stages.filter(stage => Number(stage.total || 0) > 0).length : 0) - stages.length);
+
+        if (!total && !stages.length) {
+            container.innerHTML = `
+                <div class="dashboard-funnel-compact empty">
+                    <div>
+                        <strong>Воронка спокійна</strong>
+                        <span>Немає лідів, які чекають дії.</span>
+                    </div>
+                    <a class="dashboard-funnel-open" href="${escapeHtml(funnel.href || '/sales-funnel')}">Відкрити</a>
+                </div>
+            `;
+            return;
+        }
+
+        const stageChips = stages.map(stage => {
+            const waiting = Number(stage.waitingAction || 0);
+            const count = Number(stage.total || 0);
+            const href = stage.href || `/sales-funnel?stage=${encodeURIComponent(stage.stage || '')}`;
+            return `
+                <a class="dashboard-funnel-stage-chip${waiting > 0 ? ' needs-action' : ''}" href="${escapeHtml(href)}">
+                    <span>${escapeHtml(stage.label || stage.stage || 'Етап')}</span>
+                    <strong>${waiting}/${count}</strong>
+                </a>
+            `;
+        }).join('');
+
+        container.innerHTML = `
+            <div class="dashboard-funnel-compact">
+                <div class="dashboard-funnel-metrics-row">
+                    <div class="dashboard-funnel-metric">
+                        <strong>${total}</strong>
+                        <span>активних</span>
+                    </div>
+                    <div class="dashboard-funnel-metric warning">
+                        <strong>${waitingAction}</strong>
+                        <span>чекає дії</span>
+                    </div>
+                    <div class="dashboard-funnel-metric subtle">
+                        <strong>${escapeHtml(hotStage?.label || 'без етапу')}</strong>
+                        <span>гарячий етап</span>
+                    </div>
+                </div>
+                <div class="dashboard-funnel-stages">
+                    ${stageChips}
+                    ${hiddenCount ? `<span class="dashboard-funnel-stage-chip muted">+${hiddenCount} ще</span>` : ''}
+                </div>
+                <div class="dashboard-funnel-footer">
+                    <span>${waitingAction > 0 ? 'Потрібна дія по лідах' : 'Немає критичної черги'}</span>
+                    <a class="dashboard-funnel-open" href="${escapeHtml(funnel.href || '/sales-funnel')}">Відкрити</a>
+                </div>
+            </div>
+        `;
+    }
+
     function renderWidgetContent(type, data, container) {
         switch (type) {
+            case 'funnel':
+                renderCompactFunnelWidget(data, container);
+                break;
             case 'quick_stats':
                 renderQuickStats(data, container);
                 break;
@@ -1622,7 +1731,7 @@ const DashboardPage = (() => {
                 ? 'critical'
                 : (count > 0 ? 'warning' : 'quiet');
             return `
-                <a class="event-risk-card ${tone}" href="${escapeHtml(card.href || '/dashboard#workQueuePanel')}" title="${escapeHtml(card.why || '')}">
+                <a class="event-risk-card ${tone}" href="${escapeHtml(card.href || '/tasks')}" title="${escapeHtml(card.why || '')}">
                     <span>${escapeHtml(card.label || card.key || 'Risk')}</span>
                     <strong>${count}</strong>
                 </a>
@@ -2725,6 +2834,10 @@ const DashboardPage = (() => {
     }
 
     function refreshWorkQueue() {
+        if (document.getElementById('widget-funnel')) {
+            loadWidgetData('funnel');
+            return;
+        }
         loadWorkQueue();
     }
 

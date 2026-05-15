@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.27 - Sidebar Group Animation Polish (2026-05-16)
+
+### Sidebar / Navigation [codex]
+- **Group Header** - виправлено active/open стан груп sidebar, щоб зелена підсвітка не виглядала так, ніби вилітає за межі картки.
+- **Arrow Sync** - прибрано конфлікт двох chevron-систем, через який стрілка групи виглядала кривою та несинхронною.
+- **UI Polish** - групи меню отримали рівний contained border, стабільне вирівнювання і спокійніший hover/active ритм у світлій та темній темах.
+
+---
+
 ## v0.50.26 - Timeline Animator Visibility Fix (2026-05-16)
 
 ### Timeline / Booking Visibility [codex]

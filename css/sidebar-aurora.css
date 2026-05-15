@@ -1,5 +1,5 @@
 /* ==========================================================================
-   SIDEBAR AURORA - v0.50.0
+   SIDEBAR AURORA - v0.50.27
    Living dual-theme sidebar with production-safe micro-interactions.
    ========================================================================== */
 
@@ -792,25 +792,57 @@ body.dark-mode .sidebar-nav {
 }
 
 .sidebar-group-header {
-  display: flex !important;
+  position: relative;
+  display: grid !important;
+  grid-template-columns: 28px minmax(0, 1fr) 18px;
   align-items: center;
   gap: 7px !important;
-  min-height: 38px;
+  min-height: 42px;
   margin: 4px 0 1px;
-  padding: 6px 12px !important;
-  border: 0 !important;
-  border-radius: 12px !important;
+  padding: 7px 10px 7px 12px !important;
+  border: 1px solid transparent !important;
+  border-radius: 14px !important;
   background: transparent !important;
   color: var(--sb-text-faint) !important;
-  font-size: 10px !important;
+  font-size: 12px !important;
   font-weight: 900 !important;
-  letter-spacing: 0.095em !important;
+  letter-spacing: 0.045em !important;
   text-transform: uppercase;
+  box-sizing: border-box;
+  overflow: hidden;
+  box-shadow: none !important;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .sidebar-group-header:hover,
 .sidebar-group-header.has-active {
   color: var(--sb-primary-fg) !important;
+}
+
+.sidebar-group-header.open,
+.sidebar-group-header.has-active {
+  border-color: var(--sb-primary-border) !important;
+  background:
+    radial-gradient(circle at 14% 50%, var(--sb-primary-bg), transparent 42%),
+    linear-gradient(135deg, var(--sb-surface) 0%, var(--sb-surface-hi) 100%) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), 0 8px 22px rgba(15,23,42,0.055) !important;
+}
+
+.sidebar-group-header.has-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 11px;
+  bottom: 11px;
+  width: 3px;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(180deg, var(--sb-primary-fg), var(--sb-primary));
+  box-shadow: 0 0 12px var(--sb-primary-glow);
+}
+
+.sidebar-group-header.has-active:not(.open)::after {
+  content: none !important;
+  display: none !important;
 }
 
 .sidebar-group-header .nav-icon {
@@ -820,15 +852,31 @@ body.dark-mode .sidebar-nav {
   color: currentColor !important;
 }
 
+.sidebar-group-label {
+  min-width: 0;
+  color: inherit !important;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sidebar-group-arrow {
-  margin-left: auto;
-  width: 13px !important;
-  height: 13px !important;
+  justify-self: end;
+  margin-left: 0 !important;
+  width: 12px !important;
+  height: 12px !important;
   opacity: 0.72;
   border-right: 2px solid currentColor;
   border-bottom: 2px solid currentColor;
   transform: rotate(45deg);
   transition: transform 0.22s ease, opacity 0.16s ease;
+}
+
+.sidebar-group-arrow::before,
+.sidebar-group-arrow::after {
+  content: none !important;
+  display: none !important;
 }
 
 .sidebar-group-header.open .sidebar-group-arrow {

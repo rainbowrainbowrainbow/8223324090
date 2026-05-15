@@ -1,4 +1,7 @@
 node_modules/
+.env
+.env.*
+!.env.example
 uploads/chat/
 uploads/designs/
 uploads/profile-avatars/

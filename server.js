@@ -8,6 +8,9 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const compression = require('compression');
+const { loadLocalEnv } = require('./utils/loadLocalEnv');
+
+loadLocalEnv(__dirname);
 
 // --- Core modules ---
 const { pool, initDatabase } = require('./db');

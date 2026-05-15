@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.7 - Sidebar AI Placeholder Cleanup (2026-05-15)
+
+### Sidebar / Dashboard Surface [codex]
+- **AI placeholder** - прибрано зайвий demo/AI-блок `Імітація / Почати` з верхньої частини меню.
+- **Dashboard UX** - sidebar більше не витрачає місце на підготовчий блок, який не був потрібен у поточному dashboard flow.
+- **Cleanup** - видалено рендер, таймери, CSS і публічний handler placeholder-картки.
+
+---
+
 ## v0.50.6 - Sidebar Status Stack (2026-05-15)
 
 ### Sidebar / Compact Status [codex]

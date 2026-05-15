@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.36 - My Cabinet Cluster Visual Polish (2026-05-16)
+
+### Profile / My Cabinet [codex]
+- **Cluster** - у верхньому My Cabinet cluster прибрано захист від усічених підписів і зафіксовано clean icon-only face.
+- **Counts** - цифри піднято з нижнього badge-кута в центральний rhythm плитки та зроблено більшими й читабельнішими.
+- **Notifications** - центральна плитка лишається bell-first shortcut для сповіщень, з окремим alert count акцентом.
+
+---
+
 ## v0.50.35 - Catalog Viewer Wide-Screen Stability Fix (2026-05-16)
 
 ### Catalogs / Designs [codex]

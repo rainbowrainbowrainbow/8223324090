@@ -296,6 +296,159 @@ body.dark-mode .nav-icon--status {
     color: #60A5FA;
 }
 
+/* Sidebar modern action system v0.49.25 — dark mode */
+body.dark-mode .sidebar-nav {
+    --sidebar-ink: #F8FAFC;
+    --sidebar-muted: #CBD5E1;
+    --sidebar-line: rgba(148, 163, 184, 0.18);
+    --sidebar-chip: rgba(255, 255, 255, 0.055);
+    --sidebar-chip-hover: rgba(255, 255, 255, 0.085);
+    --sidebar-selected: rgba(16, 185, 129, 0.14);
+    --sidebar-selected-line: rgba(52, 211, 153, 0.30);
+}
+
+body.dark-mode .sidebar-nav .eg-icon--dashboard,
+body.dark-mode .sidebar-nav .eg-icon--timeline,
+body.dark-mode .sidebar-nav .eg-icon--calendar,
+body.dark-mode .sidebar-nav .eg-icon--center {
+    --eg-icon-rgb: 96, 165, 250;
+}
+
+body.dark-mode .sidebar-nav .eg-icon--task,
+body.dark-mode .sidebar-nav .eg-icon--crm,
+body.dark-mode .sidebar-nav .eg-icon--management,
+body.dark-mode .sidebar-nav .eg-icon--users,
+body.dark-mode .sidebar-nav .eg-icon--hr,
+body.dark-mode .sidebar-nav .eg-icon--training {
+    --eg-icon-rgb: 94, 234, 212;
+}
+
+body.dark-mode .sidebar-nav .eg-icon--chat,
+body.dark-mode .sidebar-nav .eg-icon--ai,
+body.dark-mode .sidebar-nav .eg-icon--game,
+body.dark-mode .sidebar-nav .eg-icon--art,
+body.dark-mode .sidebar-nav .eg-icon--content,
+body.dark-mode .sidebar-nav .eg-icon--designer,
+body.dark-mode .sidebar-nav .eg-icon--image,
+body.dark-mode .sidebar-nav .eg-icon--folder,
+body.dark-mode .sidebar-nav .eg-icon--book {
+    --eg-icon-rgb: 196, 181, 253;
+}
+
+body.dark-mode .sidebar-nav .eg-icon--alert,
+body.dark-mode .sidebar-nav .eg-icon--warehouse,
+body.dark-mode .sidebar-nav .eg-icon--finance,
+body.dark-mode .sidebar-nav .eg-icon--programs,
+body.dark-mode .sidebar-nav .eg-icon--afisha,
+body.dark-mode .sidebar-nav .eg-icon--ticket {
+    --eg-icon-rgb: 251, 191, 36;
+}
+
+body.dark-mode .sidebar-nav .eg-icon--funnel {
+    --eg-icon-rgb: 248, 113, 113;
+}
+
+body.dark-mode .sidebar-nav .eg-icon--analytics,
+body.dark-mode .sidebar-nav .eg-icon--mail,
+body.dark-mode .sidebar-nav .eg-icon--sound,
+body.dark-mode .sidebar-nav .eg-icon--music,
+body.dark-mode .sidebar-nav .eg-icon--megaphone,
+body.dark-mode .sidebar-nav .eg-icon--project {
+    --eg-icon-rgb: 56, 189, 248;
+}
+
+body.dark-mode .sidebar-nav .eg-icon--system,
+body.dark-mode .sidebar-nav .eg-icon--guardian,
+body.dark-mode .sidebar-nav .eg-icon--sun,
+body.dark-mode .sidebar-nav .eg-icon--moon {
+    --eg-icon-rgb: 203, 213, 225;
+}
+
+body.dark-mode .sidebar-nav .nav-icon,
+body.dark-mode .sidebar-task-widget-icon,
+body.dark-mode .sidebar-alert-widget-icon,
+body.dark-mode .sidebar-funnel-widget-icon,
+body.dark-mode .sidebar-quick-nav-icon,
+body.dark-mode .sidebar-group-header .nav-icon {
+    background:
+        linear-gradient(135deg, rgba(var(--eg-icon-rgb), 0.18), rgba(var(--eg-icon-rgb), 0.055)),
+        rgba(255, 255, 255, 0.055) !important;
+    border-color: rgba(var(--eg-icon-rgb), 0.18) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 1px 2px rgba(0, 0, 0, 0.20) !important;
+    color: rgb(var(--eg-icon-rgb));
+}
+
+body.dark-mode .sidebar-links .nav-link {
+    border-color: transparent;
+    color: #CBD5E1;
+}
+
+body.dark-mode .sidebar-links .nav-link:hover {
+    background: var(--sidebar-chip-hover);
+    border-color: var(--sidebar-line);
+    color: #F8FAFC;
+}
+
+body.dark-mode .sidebar-links .nav-link.active {
+    background: var(--sidebar-selected);
+    border-color: var(--sidebar-selected-line);
+    color: #A7F3D0;
+    box-shadow:
+        inset 3px 0 0 #34D399,
+        0 6px 16px rgba(0, 0, 0, 0.16);
+}
+
+body.dark-mode .sidebar-group-header.open,
+body.dark-mode .sidebar-group-header.has-active {
+    background: rgba(255, 255, 255, 0.055);
+    border-color: rgba(148, 163, 184, 0.14);
+}
+
+body.dark-mode .sidebar-group-header:hover {
+    background: rgba(255, 255, 255, 0.075);
+    border-color: rgba(148, 163, 184, 0.18);
+}
+
+body.dark-mode .sidebar-task-widget,
+body.dark-mode .sidebar-alert-widget,
+body.dark-mode .sidebar-funnel-widget {
+    background:
+        linear-gradient(135deg, rgba(var(--sidebar-widget-rgb, 16, 185, 129), 0.14), transparent),
+        rgba(255, 255, 255, 0.045);
+    border-color: rgba(var(--sidebar-widget-rgb, 16, 185, 129), 0.22);
+}
+
+body.dark-mode .sidebar-task-widget:hover,
+body.dark-mode .sidebar-alert-widget:hover,
+body.dark-mode .sidebar-funnel-widget:hover {
+    background:
+        linear-gradient(135deg, rgba(var(--sidebar-widget-rgb), 0.18), transparent),
+        rgba(255, 255, 255, 0.07);
+    border-color: rgba(var(--sidebar-widget-rgb), 0.34);
+}
+
+body.dark-mode .sidebar-quick-nav-link {
+    background:
+        linear-gradient(135deg, rgba(var(--eg-icon-rgb), 0.075), transparent),
+        rgba(255, 255, 255, 0.045);
+    border-color: rgba(148, 163, 184, 0.14);
+}
+
+body.dark-mode .sidebar-quick-nav-link:hover,
+body.dark-mode .sidebar-quick-nav-link.active {
+    background:
+        linear-gradient(135deg, rgba(var(--eg-icon-rgb), 0.13), transparent),
+        rgba(255, 255, 255, 0.075);
+    border-color: rgba(var(--eg-icon-rgb), 0.24);
+}
+
+body.dark-mode .sidebar-theme-btn:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(148, 163, 184, 0.16);
+}
+
 body.dark-mode .sidebar-collapse-btn {
     color: var(--gray-500);
     border-color: var(--gray-200);

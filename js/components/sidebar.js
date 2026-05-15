@@ -245,9 +245,9 @@ const Sidebar = (() => {
         container.innerHTML = html;
         container.classList.add('rendered');
 
+        _ensurePinnedTasksWidget();
         _initCollapsedTooltips(container);
         _fetchLiveBadges();
-        _ensurePinnedTasksWidget();
         _refreshTaskMiniWidget();
     }
 
@@ -321,6 +321,7 @@ const Sidebar = (() => {
             const alertCount = alertsR.status === 'fulfilled' ? (alertsR.value?.count || 0) : 0;
             const leadsNew = leadsR.status === 'fulfilled' ? (leadsR.value?.count || 0) : 0;
             _setBadge('alerts', alertCount > 0 ? alertCount : null);
+            if (alertsR.status === 'fulfilled') _renderSidebarAlerts(alertsR.value);
             _setBadge('leads_new', leadsNew > 0 ? leadsNew : null);
         } catch {}
         const chatUnread = typeof ChatState !== 'undefined' ? (ChatState.totalUnread || 0) : 0;
@@ -357,10 +358,58 @@ const Sidebar = (() => {
                 </span>
                 <span class="sidebar-task-widget-count" id="sidebarTaskWidgetCount">–</span>
             </a>
-            <a href="/tasks?view=focus" class="sidebar-pinned-task-link">
-                <span>🎯</span><span class="nav-text">Фокус дня</span>
-            </a>`;
+            <button type="button" class="sidebar-alert-widget" id="sidebarAlertWidget" onclick="Sidebar.openAlerts(event)" title="Сповіщення">
+                <span class="sidebar-alert-widget-icon">🔔</span>
+                <span class="sidebar-alert-widget-main">
+                    <span class="sidebar-alert-widget-title">Сповіщення</span>
+                    <span class="sidebar-alert-widget-meta" id="sidebarAlertWidgetMeta">Завантаження...</span>
+                </span>
+                <span class="sidebar-alert-widget-count" id="sidebarAlertWidgetCount" style="display:none">0</span>
+            </button>`;
         sidebar.insertBefore(zone, links);
+    }
+
+    function _alertSetFromStorage(key) {
+        try { return new Set(JSON.parse(localStorage.getItem(key) || '[]')); }
+        catch { return new Set(); }
+    }
+
+    function _renderSidebarAlerts(data) {
+        const widget = document.getElementById('sidebarAlertWidget');
+        if (!widget) return;
+        const alerts = Array.isArray(data?.alerts) ? data.alerts : [];
+        const dismissed = _alertSetFromStorage('crm_alerts_dismissed');
+        const read = _alertSetFromStorage('crm_alerts_read_v2');
+        const active = alerts.filter(alert => !dismissed.has(alert.id));
+        const unread = active.filter(alert => !read.has(alert.id));
+        const count = unread.length;
+        const first = unread[0] || active[0] || null;
+        const countEl = document.getElementById('sidebarAlertWidgetCount');
+        const metaEl = document.getElementById('sidebarAlertWidgetMeta');
+        if (countEl) {
+            countEl.style.display = count > 0 ? 'inline-flex' : 'none';
+            countEl.textContent = count > 99 ? '99+' : String(count);
+        }
+        if (metaEl) {
+            if (!active.length) metaEl.textContent = 'Все спокійно';
+            else if (count > 0) metaEl.textContent = `${count} нових · ${first?.title || 'Є нові алерти'}`;
+            else metaEl.textContent = `${active.length} прочитано · ${first?.title || 'Алерти'}`;
+        }
+        widget.classList.toggle('has-alerts', active.length > 0);
+        widget.classList.toggle('has-critical', unread.some(alert => alert.level === 'critical'));
+    }
+
+    function openAlerts(event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        if (typeof _ensureAlertElements === 'function') _ensureAlertElements();
+        if (typeof toggleAlertsPanel === 'function') {
+            toggleAlertsPanel(event);
+            return;
+        }
+        window.location.href = '/dashboard';
     }
 
     async function _refreshTaskMiniWidget() {
@@ -696,6 +745,9 @@ const Sidebar = (() => {
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
         if (c) render('#' + c.id);
     });
+    window.addEventListener('crm:alerts-updated', (event) => {
+        _renderSidebarAlerts({ alerts: event.detail?.alerts || [] });
+    });
 
     // ─── Sidebar action helpers ──────────────────────────────────
     // On timeline (index.html) — open modal directly
@@ -728,6 +780,7 @@ const Sidebar = (() => {
         initToggle,
         checkPageAccess,
         toggleGroup,
+        openAlerts,
         initUserCard,
         markShellReady: _markShellReady,
         clearShellReady: _clearShellReady,

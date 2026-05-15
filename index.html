@@ -16,19 +16,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.49.5">
-    <link rel="stylesheet" href="css/auth.css?v=0.49.5">
-    <link rel="stylesheet" href="css/layout.css?v=0.49.5">
-    <link rel="stylesheet" href="css/timeline.css?v=0.49.5">
-    <link rel="stylesheet" href="css/panel.css?v=0.49.5">
-    <link rel="stylesheet" href="css/modals.css?v=0.49.5">
-    <link rel="stylesheet" href="css/controls.css?v=0.49.5">
-    <link rel="stylesheet" href="css/features.css?v=0.49.5">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.49.5">
-    <link rel="stylesheet" href="css/responsive.css?v=0.49.5">
-    <link rel="stylesheet" href="css/pages.css?v=0.49.5">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.49.5">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.49.5">
+    <link rel="stylesheet" href="css/base.css?v=0.49.8">
+    <link rel="stylesheet" href="css/auth.css?v=0.49.8">
+    <link rel="stylesheet" href="css/layout.css?v=0.49.8">
+    <link rel="stylesheet" href="css/timeline.css?v=0.49.8">
+    <link rel="stylesheet" href="css/panel.css?v=0.49.8">
+    <link rel="stylesheet" href="css/modals.css?v=0.49.8">
+    <link rel="stylesheet" href="css/controls.css?v=0.49.8">
+    <link rel="stylesheet" href="css/features.css?v=0.49.8">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.49.8">
+    <link rel="stylesheet" href="css/responsive.css?v=0.49.8">
+    <link rel="stylesheet" href="css/pages.css?v=0.49.8">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.49.8">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.49.8">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -46,9 +46,9 @@
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <div class="login-release-badge" aria-label="Поточний реліз 0.47 Комунікації">🛰️ 0.47 Комунікації</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.49.5 — compact sidebar navigation</p>
+                <p class="tagline">AI First CRM v0.49.8 — tasks os foundation</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.49.5: Меню</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.49.8: Tasks OS</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1278,6 +1278,32 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.49.8 — Tasks OS Foundation + Sidebar/Профіль Polish (Клешня, 15.05.2026)</h4>
+                    <ul>
+                        <li><b>Tasks OS</b> — додано foundation для personal/private/team задач, workflow state, focus, snooze, reminders metadata, subtasks і My Cabinet projection.</li>
+                        <li><b>My Cabinet</b> — у профілі зʼявились вкладки <code>Мій день</code> і <code>Мої задачі</code> як персональний робочий cockpit.</li>
+                        <li><b>Tasks</b> — сторінка задач отримала нові OS views, focus lane і quick capture з personal/private/waiting/focus intent.</li>
+                        <li><b>Dashboard</b> — додано snapshot-віджет <b>Мій фокус</b> без дублювання повного tasks board.</li>
+                        <li><b>Меню</b> — sidebar має клікабельний профіль, task mini-widget, дубль alerts замість <code>Фокус дня</code> і виправлений dark-mode contrast.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.49.7 — Sidebar Alerts Duplicate (Клешня, 15.05.2026)</h4>
+                    <ul>
+                        <li><b>Меню</b> — прибрано pinned-пункт <code>Фокус дня</code> з sidebar.</li>
+                        <li><b>Сповіщення</b> — на його місці додано компактний дубль alerts з кількістю нових і коротким preview.</li>
+                        <li><b>UX</b> — клік по sidebar alerts відкриває існуючу панель сповіщень без окремого дубльованого workflow.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.49.6 — Professional Profile Workspace (Клешня, 15.05.2026)</h4>
+                    <ul>
+                        <li><b>Профіль</b> — особистий кабінет впорядковано як робочий профіль працівника з чистим overview, KPI, задачами й активністю.</li>
+                        <li><b>Navigation</b> — клік по імені користувача в правому хедері більше не відкриває стару profile-модалку, а веде на нову сторінку профілю.</li>
+                        <li><b>Design</b> — прибрано gamification-first hero з першого екрану; ігрові елементи лишились у другорядних вкладках.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.49.5 — Sidebar Task Widget + Profile Link (Клешня, 15.05.2026)</h4>
                     <ul>
@@ -6306,28 +6332,28 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.49.5"></script>
-    <script src="js/api.js?v=0.49.5"></script>
-    <script src="js/ui.js?v=0.49.5"></script>
-    <script src="js/auth.js?v=0.49.5"></script>
-    <script src="js/timeline.js?v=0.49.5"></script>
-    <script src="js/booking.js?v=0.49.5"></script>
-    <script src="js/settings.js?v=0.49.5"></script>
-    <script src="js/booking-form.js?v=0.49.5"></script>
-    <script src="js/booking-linked.js?v=0.49.5"></script>
-    <script src="js/settings-dashboard.js?v=0.49.5"></script>
-    <script src="js/settings-history.js?v=0.49.5"></script>
-    <script src="js/settings-afisha.js?v=0.49.5"></script>
-    <script src="js/settings-certificates.js?v=0.49.5"></script>
-    <script src="js/offline.js?v=0.49.5"></script>
-    <script src="js/search.js?v=0.49.5"></script>
-    <script src="js/ws.js?v=0.49.5"></script>
-    <script src="js/app.js?v=0.49.5"></script>
-    <script src="js/kleshnya-widget.js?v=0.49.5"></script>
-    <script src="js/components/sidebar.js?v=0.49.5"></script>
+    <script src="js/config.js?v=0.49.8"></script>
+    <script src="js/api.js?v=0.49.8"></script>
+    <script src="js/ui.js?v=0.49.8"></script>
+    <script src="js/auth.js?v=0.49.8"></script>
+    <script src="js/timeline.js?v=0.49.8"></script>
+    <script src="js/booking.js?v=0.49.8"></script>
+    <script src="js/settings.js?v=0.49.8"></script>
+    <script src="js/booking-form.js?v=0.49.8"></script>
+    <script src="js/booking-linked.js?v=0.49.8"></script>
+    <script src="js/settings-dashboard.js?v=0.49.8"></script>
+    <script src="js/settings-history.js?v=0.49.8"></script>
+    <script src="js/settings-afisha.js?v=0.49.8"></script>
+    <script src="js/settings-certificates.js?v=0.49.8"></script>
+    <script src="js/offline.js?v=0.49.8"></script>
+    <script src="js/search.js?v=0.49.8"></script>
+    <script src="js/ws.js?v=0.49.8"></script>
+    <script src="js/app.js?v=0.49.8"></script>
+    <script src="js/kleshnya-widget.js?v=0.49.8"></script>
+    <script src="js/components/sidebar.js?v=0.49.8"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=0.49.5"></script>
-    <script src="js/alerts.js?v=0.49.5"></script>
+    <script src="js/role-panel.js?v=0.49.8"></script>
+    <script src="js/alerts.js?v=0.49.8"></script>
 </body>
 </html>
 

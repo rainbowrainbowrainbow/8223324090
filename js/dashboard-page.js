@@ -8,6 +8,7 @@ const DashboardPage = (() => {
     const WIDGET_DEFS = {
         quick_stats:    { icon: '📊', title: 'Швидка статистика', minRole: 'admin' },
         tasks:          { icon: '📋', title: 'Мої задачі', minRole: null },
+        my_focus:       { icon: '🎯', title: 'Мій фокус', minRole: null },
         bookings_today: { icon: '📅', title: 'Бронювання сьогодні', minRole: 'admin' },
         my_schedule:    { icon: '🕐', title: 'Мій графік', minRole: null },
         team_online:    { icon: '👥', title: 'Команда онлайн', minRole: 'manager' },
@@ -1478,6 +1479,9 @@ const DashboardPage = (() => {
             case 'tasks':
                 renderTasks(data, container);
                 break;
+            case 'my_focus':
+                renderMyFocus(data, container);
+                break;
             case 'bookings_today':
                 renderBookings(data, container);
                 break;
@@ -1616,6 +1620,37 @@ const DashboardPage = (() => {
 
         const footer = `<div class="widget-footer"><a href="/tasks" class="widget-footer-link">Всі задачі →</a></div>`;
         container.innerHTML = `<div class="widget-task-list">${items}</div>${footer}`;
+    }
+
+    function renderMyFocus(data, container) {
+        const tasks = Array.isArray(data.tasks) ? data.tasks.slice(0, 3) : [];
+        const header = `
+            <div class="dashboard-focus-summary">
+                <div><b>${tasks.length}</b><span>у фокусі</span></div>
+                <div><b>${data.overdueCount || 0}</b><span>прострочено</span></div>
+                <div><b>${data.waitingCount || 0}</b><span>чекаю</span></div>
+            </div>`;
+        if (!tasks.length) {
+            container.innerHTML = `${header}<div class="widget-empty">Фокус дня порожній</div><div class="widget-footer"><a href="/profile?tab=myday" class="widget-footer-link">Відкрити Мій день →</a></div>`;
+            return;
+        }
+        const items = tasks.map(t => {
+            const deadline = t.deadline ? formatDeadline(t.deadline) : '';
+            const kind = t.task_kind || t.taskKind || 'action';
+            return `<div class="widget-task-item" onclick="DashboardPage.openTask(${t.id})" title="Відкрити задачу">
+                <div class="widget-task-icon ${t.priority || 'normal'}"></div>
+                <div class="widget-task-info">
+                    <div class="widget-task-title">${escapeHtml(t.title)}</div>
+                    <div class="widget-task-meta">${escapeHtml(kind)}${deadline ? ' · ' + deadline : ''}</div>
+                </div>
+                <div class="widget-task-arrow">›</div>
+            </div>`;
+        }).join('');
+        container.innerHTML = `${header}<div class="widget-task-list">${items}</div>
+            <div class="widget-footer">
+                <a href="/profile?tab=myday" class="widget-footer-link">Мій день →</a>
+                <a href="/tasks?view=focus" class="widget-footer-link">Всі фокуси →</a>
+            </div>`;
     }
 
     function renderBookings(data, container) {

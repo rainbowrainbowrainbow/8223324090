@@ -15,8 +15,17 @@ const {
     createTokenPair, rotateRefreshToken, revokeRefreshToken, revokeAllUserTokens, cleanupRefreshTokens
 } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
+const { buildTaskOwnerMatch, normalizeUserId } = require('../services/taskPolicy');
 
 const log = createLogger('Auth');
+
+function profileTaskOwnerWhere(user, alias = '') {
+    const params = [];
+    const prefix = alias ? `${alias}.` : '';
+    const match = buildTaskOwnerMatch(user, params, alias || 'tasks')
+        .replaceAll(`${alias || 'tasks'}.`, prefix);
+    return { match, params };
+}
 
 router.post('/login', async (req, res) => {
     try {
@@ -144,6 +153,10 @@ router.get('/profile', authenticateToken, async (req, res) => {
         );
         if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
         const user = userResult.rows[0];
+        const ownerScope = profileTaskOwnerWhere(user);
+        const ownerWhere = ownerScope.match;
+        const ownerParams = ownerScope.params;
+        const ownerT = profileTaskOwnerWhere(user, 't');
         const MANAGEMENT_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'admin'];
         const isAdminRole = MANAGEMENT_ROLES.includes(user.role);
 
@@ -168,48 +181,48 @@ router.get('/profile', authenticateToken, async (req, res) => {
             // 2: Tasks stats by status
             pool.query(
                 `SELECT status, COUNT(*)::int as count FROM tasks
-                 WHERE assigned_to = $1 OR owner = $1
+                 WHERE ${ownerWhere}
                  GROUP BY status`,
-                [username]
+                ownerParams
             ),
             // 3: Overdue tasks WITH DETAILS (not just count)
             pool.query(
-                `SELECT id, title, deadline, priority, category FROM tasks
-                 WHERE (assigned_to = $1 OR owner = $1)
+                `SELECT id, title, deadline, priority, category, task_mode, task_kind, visibility, workflow_state FROM tasks
+                 WHERE ${ownerWhere}
                  AND status != 'done' AND deadline IS NOT NULL AND deadline < NOW()
                  ORDER BY deadline ASC LIMIT 10`,
-                [username]
+                ownerParams
             ),
             // 4: Upcoming deadline tasks (within 48h — extended from 24h)
             pool.query(
-                `SELECT id, title, deadline, priority, category, status FROM tasks
-                 WHERE (assigned_to = $1 OR owner = $1)
+                `SELECT id, title, deadline, priority, category, status, task_mode, task_kind, visibility, workflow_state FROM tasks
+                 WHERE ${ownerWhere}
                  AND status != 'done' AND deadline IS NOT NULL
                  AND deadline > NOW() AND deadline < NOW() + INTERVAL '48 hours'
                  ORDER BY deadline ASC LIMIT 10`,
-                [username]
+                ownerParams
             ),
             // 5: Tasks by category
             pool.query(
                 `SELECT COALESCE(category, 'other') as category, COUNT(*)::int as count FROM tasks
-                 WHERE (assigned_to = $1 OR owner = $1) AND status != 'done'
+                 WHERE ${ownerWhere} AND status != 'done'
                  GROUP BY category ORDER BY count DESC`,
-                [username]
+                ownerParams
             ),
             // 6: Avg completion time (hours)
             pool.query(
                 `SELECT ROUND(AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) / 3600)::numeric, 1) as avg_hours
                  FROM tasks
-                 WHERE (assigned_to = $1 OR owner = $1) AND status = 'done' AND completed_at IS NOT NULL`,
-                [username]
+                 WHERE ${ownerWhere} AND status = 'done' AND completed_at IS NOT NULL`,
+                ownerParams
             ),
             // 7: Escalation history (not just count — last 5)
             pool.query(
                 `SELECT tl.task_id, tl.old_value, tl.new_value, tl.created_at, t.title
                  FROM task_logs tl JOIN tasks t ON tl.task_id = t.id
-                 WHERE tl.action = 'escalated' AND t.assigned_to = $1
+                 WHERE tl.action = 'escalated' AND ${ownerT.match}
                  ORDER BY tl.created_at DESC LIMIT 5`,
-                [username]
+                ownerT.params
             ),
             // 8: Bookings created + by status
             pool.query(
@@ -256,13 +269,15 @@ router.get('/profile', authenticateToken, async (req, res) => {
             ),
             // 14: My tasks list (active, last 15)
             pool.query(
-                `SELECT id, title, status, priority, deadline, category, dependency_ids FROM tasks
-                 WHERE (assigned_to = $1 OR owner = $1) AND status != 'done'
+                `SELECT id, title, status, priority, deadline, category, dependency_ids,
+                        task_mode, task_kind, visibility, workflow_state, focus_rank, remind_at, snoozed_until
+                 FROM tasks
+                 WHERE ${ownerWhere} AND status != 'done'
                  ORDER BY CASE WHEN deadline IS NOT NULL AND deadline < NOW() THEN 0 ELSE 1 END,
                  CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
                  deadline ASC NULLS LAST
                  LIMIT 15`,
-                [username]
+                ownerParams
             ),
             // 15: Today's shift (match user to staff by name)
             pool.query(
@@ -284,10 +299,10 @@ router.get('/profile', authenticateToken, async (req, res) => {
             // 18: Delta — tasks done this week vs last week
             pool.query(
                 `SELECT
-                    COUNT(*) FILTER (WHERE completed_at >= $2) ::int as this_week,
-                    COUNT(*) FILTER (WHERE completed_at >= $3 AND completed_at < $2) ::int as last_week
-                 FROM tasks WHERE (assigned_to = $1 OR owner = $1) AND status = 'done' AND completed_at IS NOT NULL`,
-                [username, weekAgo.toISOString(), twoWeeksAgo.toISOString()]
+                    COUNT(*) FILTER (WHERE completed_at >= $${ownerParams.length + 1}) ::int as this_week,
+                    COUNT(*) FILTER (WHERE completed_at >= $${ownerParams.length + 2} AND completed_at < $${ownerParams.length + 1}) ::int as last_week
+                 FROM tasks WHERE ${ownerWhere} AND status = 'done' AND completed_at IS NOT NULL`,
+                [...ownerParams, weekAgo.toISOString(), twoWeeksAgo.toISOString()]
             ),
             // 19: Delta — bookings this week vs last week
             pool.query(
@@ -304,11 +319,16 @@ router.get('/profile', authenticateToken, async (req, res) => {
                     COALESCE(t_agg.overdue_tasks, 0)::int as overdue_tasks
                  FROM users u
                  LEFT JOIN (
-                    SELECT assigned_to,
-                           COUNT(*) FILTER (WHERE status != 'done') as open_tasks,
-                           COUNT(*) FILTER (WHERE status != 'done' AND deadline IS NOT NULL AND deadline < NOW()) as overdue_tasks
-                    FROM tasks GROUP BY assigned_to
-                 ) t_agg ON t_agg.assigned_to = u.username
+                    SELECT owner_map.id AS user_id,
+                           COUNT(*) FILTER (WHERE t.status != 'done') as open_tasks,
+                           COUNT(*) FILTER (WHERE t.status != 'done' AND t.deadline IS NOT NULL AND t.deadline < NOW()) as overdue_tasks
+                    FROM tasks t
+                    JOIN users owner_map
+                      ON owner_map.id = t.owner_user_id
+                      OR (t.owner_user_id IS NULL AND (t.assigned_to = owner_map.username OR t.owner = owner_map.username))
+                    WHERE COALESCE(t.visibility, 'team') = 'team'
+                    GROUP BY owner_map.id
+                 ) t_agg ON t_agg.user_id = u.id
                  WHERE u.role != 'viewer'
                  ORDER BY u.name`
             ) : Promise.resolve({ rows: [] }),
@@ -322,9 +342,9 @@ router.get('/profile', authenticateToken, async (req, res) => {
                 `SELECT
                     COUNT(*) FILTER (WHERE status = 'done' AND completed_at::date = CURRENT_DATE) ::int as done_today,
                     COUNT(*) FILTER (WHERE status != 'done') ::int as remaining
-                 FROM tasks WHERE (assigned_to = $1 OR owner = $1)
-                 AND (date = $2 OR (deadline IS NOT NULL AND deadline::date = CURRENT_DATE) OR date IS NULL)`,
-                [username, today]
+                 FROM tasks WHERE ${ownerWhere}
+                 AND (date = $${ownerParams.length + 1} OR (deadline IS NOT NULL AND deadline::date = CURRENT_DATE) OR date IS NULL)`,
+                [...ownerParams, today]
             )
         ]);
 
@@ -627,16 +647,25 @@ router.patch('/tasks/:id/quick-status', authenticateToken, async (req, res) => {
         if (!['todo', 'in_progress', 'done'].includes(status)) {
             return res.status(400).json({ error: 'Invalid status' });
         }
-        const task = await pool.query('SELECT id, status, assigned_to, owner FROM tasks WHERE id = $1', [parseInt(id)]);
+        const task = await pool.query('SELECT id, status, assigned_to, owner, owner_user_id FROM tasks WHERE id = $1', [parseInt(id)]);
         if (task.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
         const t = task.rows[0];
         // Only assigned user, owner, or admin can change status
-        const canChange = t.assigned_to === req.user.username || t.owner === req.user.username || req.user.role === 'admin';
+        const userId = normalizeUserId(req.user);
+        const typedOwnerId = Number(t.owner_user_id || 0);
+        const canChange = (typedOwnerId > 0 && userId === typedOwnerId)
+            || (!typedOwnerId && (t.assigned_to === req.user.username || t.owner === req.user.username))
+            || ['creator', 'director', 'vice_director', 'senior_manager', 'admin'].includes(req.user.role);
         if (!canChange) return res.status(403).json({ error: 'Недостатньо прав' });
 
         const oldStatus = t.status;
         await pool.query(
-            `UPDATE tasks SET status = $1, completed_at = CASE WHEN $1 = 'done' THEN NOW() ELSE NULL END, updated_at = NOW() WHERE id = $2`,
+            `UPDATE tasks
+             SET status = $1,
+                 workflow_state = CASE WHEN $1 = 'done' THEN 'done' WHEN $1 = 'in_progress' THEN 'in_progress' ELSE COALESCE(NULLIF(workflow_state, 'done'), 'todo') END,
+                 completed_at = CASE WHEN $1 = 'done' THEN NOW() ELSE NULL END,
+                 updated_at = NOW()
+             WHERE id = $2`,
             [status, parseInt(id)]
         );
         // Log the change

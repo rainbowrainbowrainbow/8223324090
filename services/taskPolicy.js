@@ -28,13 +28,25 @@ function buildLegacyOwnerMatch(alias, tokenRefs) {
     return `(${alias}.owner_user_id IS NULL AND (${alias}.assigned_to IN (${values}) OR ${alias}.owner IN (${values})))`;
 }
 
+function buildTaskOwnerMatch(user, params, alias = 't') {
+    const userId = normalizeUserId(user);
+    const tokenRefs = userNameTokens(user).map(token => pushParam(params, token));
+    const legacyMatch = buildLegacyOwnerMatch(alias, tokenRefs);
+    const typedMatch = userId ? `${alias}.owner_user_id = ${pushParam(params, userId)}` : 'FALSE';
+    return `(${typedMatch} OR ${legacyMatch})`;
+}
+
 function buildTaskVisibilityScope(user, params, alias = 't') {
     const perms = getPermissions(user?.role);
-    if (perms.taskVisibility === 'all') return '';
 
     const userId = normalizeUserId(user);
     const tokenRefs = userNameTokens(user).map(token => pushParam(params, token));
     const legacyMatch = buildLegacyOwnerMatch(alias, tokenRefs);
+    const typedOwnMatch = userId ? `${alias}.owner_user_id = ${pushParam(params, userId)}` : 'FALSE';
+    const ownMatch = `(${typedOwnMatch} OR ${legacyMatch})`;
+    const privacyMatch = `(COALESCE(${alias}.visibility, 'team') = 'team' OR ${ownMatch})`;
+
+    if (perms.taskVisibility === 'all') return `AND ${privacyMatch}`;
 
     if (perms.taskVisibility === 'department') {
         const userIdRef = pushParam(params, userId || 0);
@@ -78,7 +90,7 @@ function buildTaskVisibilityScope(user, params, alias = 't') {
             ) owner_tokens
             WHERE token IS NOT NULL AND token <> ''
         `;
-        return `AND (
+        return `AND ${privacyMatch} AND (
             ${alias}.owner_user_id = ${userIdRef}
             OR ${alias}.owner_user_id IN (${departmentUsers})
             OR (${alias}.owner_user_id IS NULL AND (${alias}.assigned_to IN (${departmentLegacyTokens}) OR ${alias}.owner IN (${departmentLegacyTokens})))
@@ -87,8 +99,7 @@ function buildTaskVisibilityScope(user, params, alias = 't') {
     }
 
     if (!userId && !tokenRefs.length) return 'AND 1 = 0';
-    const typedMatch = userId ? `${alias}.owner_user_id = ${pushParam(params, userId)}` : 'FALSE';
-    return `AND (${typedMatch} OR ${legacyMatch})`;
+    return `AND ${ownMatch}`;
 }
 
 function ownsTask(user, task = {}) {
@@ -101,6 +112,8 @@ function ownsTask(user, task = {}) {
 
 function canViewTask(user, task = {}) {
     const perms = getPermissions(user?.role);
+    const privateVisibility = ['private', 'me_only'].includes(String(task.visibility || '').trim());
+    if (privateVisibility && !ownsTask(user, task)) return false;
     if (perms.taskVisibility === 'all') return true;
     if (perms.taskVisibility === 'department') return true;
     return ownsTask(user, task);
@@ -108,6 +121,8 @@ function canViewTask(user, task = {}) {
 
 function canMutateTask(user, task = {}) {
     const perms = getPermissions(user?.role);
+    const privateVisibility = ['private', 'me_only'].includes(String(task.visibility || '').trim());
+    if (privateVisibility && !ownsTask(user, task)) return false;
     if (perms.taskVisibility === 'all') return true;
     if (perms.taskVisibility === 'department') return true;
     return ownsTask(user, task);
@@ -130,6 +145,7 @@ function taskOwnerState(task = {}) {
 
 module.exports = {
     ACTIVE_TASK_STATUS_SQL,
+    buildTaskOwnerMatch,
     buildTaskVisibilityScope,
     canViewTask,
     canMutateTask,

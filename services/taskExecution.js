@@ -223,6 +223,7 @@ async function completeTask(taskId, actor, options = {}) {
         const result = await query.query(
             `UPDATE tasks
              SET status = 'done',
+                 workflow_state = 'done',
                  completed_at = NOW(),
                  updated_at = NOW(),
                  escalation_level = 0,

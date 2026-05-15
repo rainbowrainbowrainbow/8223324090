@@ -8,13 +8,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.49.5">
-    <link rel="stylesheet" href="css/layout.css?v=0.49.5">
-    <link rel="stylesheet" href="css/pages.css?v=0.49.5">
-    <link rel="stylesheet" href="css/modals.css?v=0.49.5">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.49.5">
-    <link rel="stylesheet" href="css/responsive.css?v=0.49.5">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.49.5">
+    <link rel="stylesheet" href="css/base.css?v=0.49.8">
+    <link rel="stylesheet" href="css/layout.css?v=0.49.8">
+    <link rel="stylesheet" href="css/pages.css?v=0.49.8">
+    <link rel="stylesheet" href="css/modals.css?v=0.49.8">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.49.8">
+    <link rel="stylesheet" href="css/responsive.css?v=0.49.8">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.49.8">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -276,12 +276,17 @@
 
             <!-- Board view tabs -->
             <div class="board-tabs" id="boardTabs">
-                <button type="button" class="board-tab active" data-view="today">Сьогодні <span class="tab-count" id="countToday">0</span></button>
-                <button type="button" class="board-tab" data-view="week">Тиждень <span class="tab-count" id="countWeek">0</span></button>
+                <button type="button" class="board-tab active" data-view="inbox">Інбокс <span class="tab-count" id="countInbox">0</span></button>
+                <button type="button" class="board-tab" data-view="focus">Фокус <span class="tab-count" id="countFocus">0</span></button>
+                <button type="button" class="board-tab" data-view="today">Сьогодні <span class="tab-count" id="countToday">0</span></button>
+                <button type="button" class="board-tab" data-view="next">Наступні <span class="tab-count" id="countNext">0</span></button>
+                <button type="button" class="board-tab" data-view="waiting">Чекаю <span class="tab-count" id="countWaiting">0</span></button>
+                <button type="button" class="board-tab" data-view="team">Командні <span class="tab-count" id="countTeam">0</span></button>
                 <button type="button" class="board-tab" data-view="my">Мої <span class="tab-count" id="countMy">0</span></button>
                 <button type="button" class="board-tab" data-view="board">Канбан</button>
-                <button type="button" class="board-tab" data-view="archive">📦 Архів</button>
+                <button type="button" class="board-tab" data-view="routines">Рутини</button>
                 <button type="button" class="board-tab" data-view="templates">Шаблони</button>
+                <button type="button" class="board-tab" data-view="archive">📦 Архів</button>
             </div>
 
             <!-- Category chips -->
@@ -317,11 +322,40 @@
                     <option value="human">Людина</option>
                     <option value="bot">Бот</option>
                 </select>
+                <select id="taskMode" title="Режим задачі">
+                    <option value="work">Робоча</option>
+                    <option value="personal">Особиста</option>
+                    <option value="private">Приватна</option>
+                    <option value="system">Системна</option>
+                </select>
+                <select id="taskKind" title="Тип наміру">
+                    <option value="action">Дія</option>
+                    <option value="reminder">Нагадування</option>
+                    <option value="followup">Follow-up</option>
+                    <option value="deep_work">Deep work</option>
+                    <option value="waiting">Чекаю</option>
+                    <option value="idea">Ідея</option>
+                    <option value="checklist">Checklist</option>
+                    <option value="routine">Рутина</option>
+                </select>
+                <select id="taskVisibility" title="Видимість">
+                    <option value="team">Командна</option>
+                    <option value="me_only">Тільки мені</option>
+                    <option value="private">Приватна</option>
+                </select>
                 <input type="time" id="taskDeadlineTime" title="Дедлайн (час)" style="width:100px">
                 <select id="taskAssignedTo" title="Відповідальний" style="width:auto;max-width:140px">
                     <option value="">— нікому —</option>
                 </select>
                 <button type="button" id="addTaskBtn">+ Додати</button>
+            </div>
+            <div class="task-capture-chips" id="taskCaptureChips">
+                <button type="button" data-capture-chip="today">Сьогодні</button>
+                <button type="button" data-capture-chip="tomorrow">Завтра</button>
+                <button type="button" data-capture-chip="personal">Особиста</button>
+                <button type="button" data-capture-chip="private">Приватна</button>
+                <button type="button" data-capture-chip="focus">У фокус</button>
+                <button type="button" data-capture-chip="waiting">Чекаю</button>
             </div>
 
             <!-- v33.4: Bulk toolbar -->
@@ -333,6 +367,7 @@
             </div>
 
             <!-- Task board content -->
+            <div id="focusLane" class="tasks-focus-lane"></div>
             <div id="boardContent"></div>
 
             <!-- Templates section (hidden by default) -->
@@ -380,15 +415,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.49.5"></script>
-    <script src="js/notification.js?v=0.49.5"></script>
-    <script src="js/api.js?v=0.49.5"></script>
-    <script src="js/auth.js?v=0.49.5"></script>
-    <script src="js/components/sidebar.js?v=0.49.5"></script>
+    <script src="js/config.js?v=0.49.8"></script>
+    <script src="js/notification.js?v=0.49.8"></script>
+    <script src="js/api.js?v=0.49.8"></script>
+    <script src="js/auth.js?v=0.49.8"></script>
+    <script src="js/components/sidebar.js?v=0.49.8"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/tasks-page.js?v=0.49.5"></script>
-    <script src="js/alerts.js?v=0.49.5"></script>
-    <script src="js/role-panel.js?v=0.49.5"></script>
-    <script src="js/ui.js?v=0.49.5"></script>
+    <script src="js/tasks-page.js?v=0.49.8"></script>
+    <script src="js/alerts.js?v=0.49.8"></script>
+    <script src="js/role-panel.js?v=0.49.8"></script>
+    <script src="js/ui.js?v=0.49.8"></script>
 </body>
 </html>

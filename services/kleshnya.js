@@ -66,7 +66,11 @@ async function createTask(data) {
         title, description, date, priority = 'normal', assigned_to, owner, owner_user_id,
         task_type = 'human', deadline, time_window_start, time_window_end,
         dependency_ids = [], control_policy, source_type = 'manual', source_id,
-        category = 'admin', template_id, afisha_id, created_by = 'kleshnya'
+        category = 'admin', template_id, afisha_id, created_by = 'kleshnya',
+        task_mode = 'work', task_kind = 'action', visibility = 'team', workflow_state = 'todo',
+        remind_at = null, snoozed_until = null, last_notified_at = null, next_notification_at = null,
+        evening_review_date = null, focus_rank = 0, related_entity_type = null, related_entity_id = null,
+        source_module = null, effort_minutes = null
     } = data;
 
     if (!title || !title.trim()) throw new Error('title required');
@@ -76,12 +80,19 @@ async function createTask(data) {
     const result = await pool.query(
         `INSERT INTO tasks (title, description, date, priority, assigned_to, owner, owner_user_id, created_by,
          task_type, deadline, time_window_start, time_window_end, dependency_ids,
-         control_policy, source_type, source_id, category, template_id, afisha_id, type)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING *`,
+         control_policy, source_type, source_id, category, template_id, afisha_id, type,
+         task_mode, task_kind, visibility, workflow_state, remind_at, snoozed_until,
+         last_notified_at, next_notification_at, evening_review_date, focus_rank,
+         related_entity_type, related_entity_id, source_module, effort_minutes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+                 $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34) RETURNING *`,
         [title.trim(), description || null, date || null, priority, assigned_to || null, owner || null,
          owner_user_id || null, created_by, task_type, deadline || null, time_window_start || null, time_window_end || null,
          dependency_ids, JSON.stringify(policy), source_type, source_id || null,
-         category, template_id || null, afisha_id || null, source_type === 'recurring' ? 'recurring' : 'manual']
+         category, template_id || null, afisha_id || null, source_type === 'recurring' ? 'recurring' : 'manual',
+         task_mode, task_kind, visibility, workflow_state, remind_at, snoozed_until,
+         last_notified_at, next_notification_at, evening_review_date, focus_rank,
+         related_entity_type, related_entity_id, source_module, effort_minutes]
     );
 
     const task = result.rows[0];
@@ -112,7 +123,14 @@ async function updateTaskStatus(taskId, newStatus, actor = 'system') {
 
     const currentVersion = task.version || 1;
     const updateResult = await pool.query(
-        `UPDATE tasks SET status=$1, updated_at=NOW(), completed_at=CASE WHEN $4='done' THEN NOW() ELSE NULL END, escalation_level=0, version=version+1 WHERE id=$2 AND version=$3`,
+        `UPDATE tasks
+         SET status=$1,
+             workflow_state=CASE WHEN $4='done' THEN 'done' WHEN $4='in_progress' THEN 'in_progress' ELSE COALESCE(NULLIF(workflow_state, 'done'), 'todo') END,
+             updated_at=NOW(),
+             completed_at=CASE WHEN $4='done' THEN NOW() ELSE NULL END,
+             escalation_level=0,
+             version=version+1
+         WHERE id=$2 AND version=$3`,
         [newStatus, taskId, currentVersion, newStatus]
     );
 

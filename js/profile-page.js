@@ -21,6 +21,8 @@ let leaderboardData = null;
 let achCatFilter = 'all';
 let leaderboardSort = 'xp';
 let activeTab = 'profile';
+let myCabinetData = null;
+let myTasksSegment = 'all';
 
 // v30.8.0 — Gamification v3 state
 let allStreaks = null;
@@ -43,7 +45,7 @@ function _hasUnclaimedQuests() {
 }
 
 function escapeHtml(str) {
-    if (!str) return '';
+    if (str === null || str === undefined) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
@@ -54,6 +56,46 @@ function formatDate(d) {
 }
 
 function formatCoins(n) { return (n || 0).toLocaleString('uk-UA'); }
+
+function profileUser(data = profileData) {
+    return data?.user || data || {};
+}
+
+function profileDisplayName(data = profileData) {
+    const user = profileUser(data);
+    return data?.displayName || user.name || user.username || data?.username || 'Користувач';
+}
+
+function profileUsername(data = profileData) {
+    const user = profileUser(data);
+    return user.username || data?.username || '';
+}
+
+function profileRole(data = profileData) {
+    const user = profileUser(data);
+    return user.role || data?.role || '';
+}
+
+function profileRoleLabel(role) {
+    const labels = {
+        creator: 'Creator',
+        director: 'Директор',
+        vice_director: 'Заступник директора',
+        senior_manager: 'Старший менеджер',
+        manager: 'Менеджер',
+        admin: 'Адміністратор',
+        hr: 'HR',
+        accountant: 'Бухгалтер',
+        animator: 'Аніматор',
+        instructor: 'Інструктор',
+        art_director: 'Арт директор'
+    };
+    return labels[role] || role || 'Працівник';
+}
+
+function profileInitial(data = profileData) {
+    return profileDisplayName(data).trim().charAt(0).toUpperCase() || '?';
+}
 
 const RARITY_LABELS = { common: 'Звичайний', uncommon: 'Незвичайний', rare: 'Рідкісний', epic: 'Епічний', legendary: 'Легендарний' };
 const CATEGORY_EMOJIS = { background: '🖼️', weapon: '⚔️', hat: '🎩', outfit: '👕', frame: '🖼️', coupon: '🎫', effect: '✨', wallpaper: '🏠', floor: '🟫', furniture: '🪑' };
@@ -90,6 +132,14 @@ async function apiPut(path, body) {
     } catch (e) { console.error('API PUT', path, e); return null; }
 }
 
+async function apiPatch(path, body) {
+    try {
+        const r = await fetch(`/api${path}`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify(body) });
+        if (handleAuthError(r)) return null;
+        return await r.json();
+    } catch (e) { console.error('API PATCH', path, e); return null; }
+}
+
 async function apiDelete(path) {
     try {
         const r = await fetch(`/api${path}`, { method: 'DELETE', headers: getAuthHeaders(false) });
@@ -124,6 +174,11 @@ async function initProfilePage() {
     const params = new URLSearchParams(window.location.search);
     const viewUserId = parseInt(params.get('id')) || currentUserId;
     isOwnProfile = viewUserId === currentUserId;
+    const requestedTab = params.get('tab');
+    const allowedOwnTabs = ['profile', 'myday', 'mytasks', 'achievements', 'inventory', 'shop', 'leaderboard', 'quests', 'season', 'teams', 'referral'];
+    if (isOwnProfile && requestedTab && allowedOwnTabs.includes(requestedTab)) {
+        activeTab = requestedTab;
+    }
 
     // Load data
     await loadProfileData(viewUserId);
@@ -142,7 +197,8 @@ async function loadProfileData(userId) {
         null, // room removed
         isOwnProfile ? apiGet('/quests/daily') : null,
         isOwnProfile ? apiGet('/quests/titles') : null,
-        isOwnProfile ? apiGet('/streaks') : null
+        isOwnProfile ? apiGet('/streaks') : null,
+        isOwnProfile ? apiGet('/tasks/my-cabinet') : null
     ]);
 
     profileData = results[0];
@@ -154,6 +210,7 @@ async function loadProfileData(userId) {
     questsData = results[6];
     titlesData = results[7];
     allStreaks = results[8];
+    myCabinetData = results[9];
 }
 
 // ==========================================
@@ -166,24 +223,21 @@ function renderProfile() {
     }
 
     const p = profileData;
-    const equipped = p.equipped || {};
-
-    // Emoji mappings
-    const bgMap = { bg_park: '🌳', bg_dino: '🦕', bg_neon: '💜', bg_space: '🌌', bg_gold: '✨' };
-    const hatMap = { hat_dino: '🦕', hat_crown: '👑', hat_chef: '👨‍🍳' };
-    const bodyMap = { out_animator: '🎭', out_pirate: '🏴‍☠️', out_space: '🚀' };
-    const weaponMap = { wp_sword: '⚔️', wp_laser: '🔦', wp_dino_bone: '🦴', wp_trident: '🔱' };
-
-    const bgEmoji = equipped.background ? (bgMap[equipped.background.code] || '🖼️') : '🌳';
-    const hatEmoji = equipped.head ? (hatMap[equipped.head.code] || '🎩') : '';
-    const bodyEmoji = equipped.body ? (bodyMap[equipped.body.code] || '👕') : '';
-    const weaponEmoji = equipped.hand ? (weaponMap[equipped.hand.code] || '⚔️') : '';
-    const frameRarity = equipped.frame?.rarity || '';
-    const effectCode = equipped.effect?.code || '';
-
-    const avatarLetter = (p.displayName || p.username || '?')[0].toUpperCase();
+    const name = profileDisplayName(p);
+    const username = profileUsername(p);
+    const role = profileRole(p);
+    const roleLabel = profileRoleLabel(role);
+    const avatarLetter = profileInitial(p);
     const completedAch = myAchievements.filter(a => a.completed);
     const totalAch = myAchievements.filter(a => !a.isSecret || a.completed).length;
+    const activeTasks = Number(p.tasks?.assigned || 0) + Number(p.tasks?.in_progress || 0);
+    const overdueTasks = Number(p.tasks?.overdue || 0);
+    const doneToday = Number(p.dayProgress?.tasksDoneToday || 0);
+    const remainingToday = Number(p.dayProgress?.tasksRemaining || 0);
+    const shift = p.todayShift;
+    const shiftLabel = shift
+        ? `${escapeHtml(shift.start || '')}${shift.end ? ' - ' + escapeHtml(shift.end) : ''}`
+        : 'Сьогодні без зміни';
 
     // Active title
     const activeTitleDef = titlesData?.titles?.find(t => t.code === titlesData.activeTitle);
@@ -192,63 +246,61 @@ function renderProfile() {
         : '';
 
     let html = `
-    <div class="profile-page">
-        <div style="margin-bottom:16px">
-            <a href="/" style="color:var(--primary);text-decoration:none;font-weight:600">\u2190 Назад</a>
+    <div class="profile-page profile-work-mode">
+        <div class="profile-page-head">
+            <a href="/">\u2190 Назад до CRM</a>
+            <span>Профіль працівника</span>
         </div>
 
-        <div class="profile-header">
-            <div class="character-display">
-                <div class="character-bg">${escapeHtml(bgEmoji)}</div>
-                <div class="character-avatar">${escapeHtml(avatarLetter)}</div>
-                ${hatEmoji ? `<div class="character-hat">${escapeHtml(hatEmoji)}</div>` : ''}
-                ${bodyEmoji ? `<div class="character-body">${escapeHtml(bodyEmoji)}</div>` : ''}
-                ${weaponEmoji ? `<div class="character-weapon">${escapeHtml(weaponEmoji)}</div>` : ''}
-                ${frameRarity ? `<div class="character-frame" data-rarity="${escapeHtml(frameRarity)}"></div>` : ''}
-                ${effectCode ? `<div class="character-effect effect-${escapeHtml(effectCode.replace('fx_', ''))}"></div>` : ''}
-                <div class="character-name">${escapeHtml(p.displayName || p.username)} ${titleHtml}</div>
+        <div class="profile-header profile-work-header">
+            <div class="profile-identity-block">
+                <div class="profile-work-avatar">${escapeHtml(avatarLetter)}</div>
+                <div class="profile-identity-copy">
+                    <div class="profile-kicker">Особистий робочий профіль</div>
+                    <h1>${escapeHtml(name)}</h1>
+                    <div class="profile-role-line">
+                        <span>${escapeHtml(roleLabel)}</span>
+                        ${username ? `<span>@${escapeHtml(username)}</span>` : ''}
+                        <span class="${p.user?.telegramConnected ? 'is-ok' : ''}">${p.user?.telegramConnected ? 'Telegram підключено' : 'Telegram не підключено'}</span>
+                    </div>
+                    ${titleHtml ? `<div class="profile-title-row">${titleHtml}</div>` : ''}
+                    ${p.bio ? `<div class="profile-bio">${escapeHtml(p.bio)}</div>` : ''}
+                </div>
             </div>
 
-            <div class="profile-info">
-                <h1>${escapeHtml(p.displayName || p.username)}</h1>
-                ${titleHtml ? `<div style="margin:-4px 0 8px">${titleHtml}</div>` : ''}
-                <div class="profile-role">${escapeHtml(p.role)}</div>
-                ${p.bio ? `<div class="profile-bio">${escapeHtml(p.bio)}</div>` : ''}
-
-                <div style="display:flex;gap:12px;flex-wrap:wrap">
-                    <div style="text-align:center;padding:10px 16px;background:rgba(255,255,255,0.15);border-radius:10px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);min-width:80px">
-                        <div style="font-size:20px;font-weight:800;color:#fff">\ud83d\udcb0 ${formatCoins(isOwnProfile ? walletData?.coins : p.coins)}</div>
-                        <div style="font-size:11px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px">Монети</div>
-                    </div>
-                    <div style="text-align:center;padding:10px 16px;background:rgba(255,255,255,0.15);border-radius:10px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);min-width:80px">
-                        <div style="font-size:20px;font-weight:800;color:#fff">${completedAch.length}/${totalAch}</div>
-                        <div style="font-size:11px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px">Ачивки</div>
-                    </div>
-                    <div style="text-align:center;padding:10px 16px;background:rgba(255,255,255,0.15);border-radius:10px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);min-width:80px">
-                        <div style="font-size:20px;font-weight:800;color:#fff">\ud83d\udd25 ${p.currentStreak || 0}</div>
-                        <div style="font-size:11px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px">Streak</div>
-                    </div>
+            <div class="profile-work-summary">
+                <div class="profile-work-stat ${overdueTasks > 0 ? 'danger' : ''}">
+                    <b>${activeTasks}</b>
+                    <span>активних задач</span>
                 </div>
-
-                ${isOwnProfile ? `
-                <div style="display:flex;gap:8px;flex-wrap:wrap">
-                    <a href="/shop" class="shop-buy-btn" style="text-decoration:none">\ud83d\uded2 Магазин</a>
-                    <a href="/game" class="shop-buy-btn" style="text-decoration:none;background:#22c55e">\ud83c\udfae Міні-гра</a>
-                </div>` : ''}
+                <div class="profile-work-stat">
+                    <b>${doneToday}/${doneToday + remainingToday}</b>
+                    <span>сьогодні</span>
+                </div>
+                <div class="profile-work-stat">
+                    <b>${completedAch.length}/${totalAch || 0}</b>
+                    <span>досягнення</span>
+                </div>
+                <div class="profile-work-stat wide">
+                    <b>${shiftLabel}</b>
+                    <span>${shift?.department || shift?.position || 'робочий графік'}</span>
+                </div>
             </div>
         </div>
 
         <!-- TABS -->
-        <div class="profile-tabs" style="margin:16px 0 0">
-            <button class="profile-tab ${activeTab === 'profile' ? 'active' : ''}" onclick="switchTab('profile')">👤 Профіль</button>
-            <button class="profile-tab ${activeTab === 'achievements' ? 'active' : ''}" onclick="switchTab('achievements')">🏆 Ачивки</button>
-            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'inventory' ? 'active' : ''}" onclick="switchTab('inventory')">🎒 Інвентар</button>` : ''}
-            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'shop' ? 'active' : ''}" onclick="switchTab('shop')">🛒 Магазин</button>` : ''}
-            <button class="profile-tab ${activeTab === 'leaderboard' ? 'active' : ''}" onclick="switchTab('leaderboard')">📊 Рейтинг</button>
-            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'quests' ? 'active' : ''}" onclick="switchTab('quests')" style="position:relative">📋 Щоденні${_hasUnclaimedQuests() ? '<span style="position:absolute;top:2px;right:2px;width:8px;height:8px;background:#ef4444;border-radius:50%;animation:badge-pulse 1.5s infinite"></span>' : ''}</button>` : ''}
-            <button class="profile-tab ${activeTab === 'season' ? 'active' : ''}" onclick="switchTab('season')">⭐ Сезон</button>
-            <button class="profile-tab ${activeTab === 'teams' ? 'active' : ''}" onclick="switchTab('teams')">⚡ Команди</button>
-            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'referral' ? 'active' : ''}" onclick="switchTab('referral')">🤝 Реферали</button>` : ''}
+        <div class="profile-tabs profile-work-tabs">
+            <button class="profile-tab ${activeTab === 'profile' ? 'active' : ''}" onclick="switchTab('profile')">Огляд</button>
+            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'myday' ? 'active' : ''}" onclick="switchTab('myday')">Мій день</button>` : ''}
+            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'mytasks' ? 'active' : ''}" onclick="switchTab('mytasks')">Мої задачі</button>` : ''}
+            <button class="profile-tab ${activeTab === 'achievements' ? 'active' : ''}" onclick="switchTab('achievements')">Досягнення</button>
+            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'inventory' ? 'active' : ''}" onclick="switchTab('inventory')">Інвентар</button>` : ''}
+            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'shop' ? 'active' : ''}" onclick="switchTab('shop')">Магазин</button>` : ''}
+            <button class="profile-tab ${activeTab === 'leaderboard' ? 'active' : ''}" onclick="switchTab('leaderboard')">Рейтинг</button>
+            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'quests' ? 'active' : ''}" onclick="switchTab('quests')" style="position:relative">Щоденні${_hasUnclaimedQuests() ? '<span style="position:absolute;top:2px;right:2px;width:8px;height:8px;background:#ef4444;border-radius:50%;animation:badge-pulse 1.5s infinite"></span>' : ''}</button>` : ''}
+            <button class="profile-tab ${activeTab === 'season' ? 'active' : ''}" onclick="switchTab('season')">Сезон</button>
+            <button class="profile-tab ${activeTab === 'teams' ? 'active' : ''}" onclick="switchTab('teams')">Команди</button>
+            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'referral' ? 'active' : ''}" onclick="switchTab('referral')">Реферали</button>` : ''}
         </div>
 
         <div id="tabContent">
@@ -262,6 +314,9 @@ function renderProfile() {
 
 async function switchTab(tab) {
     activeTab = tab;
+    if (isOwnProfile && (tab === 'myday' || tab === 'mytasks') && !myCabinetData) {
+        myCabinetData = await apiGet('/tasks/my-cabinet');
+    }
 
     // Lazy load data for tabs that need it
     if (tab === 'shop' && shopItems.length === 0) await loadShopItems();
@@ -284,6 +339,8 @@ async function switchTab(tab) {
 
 function renderTabContent() {
     switch (activeTab) {
+        case 'myday': return renderMyDayTab();
+        case 'mytasks': return renderMyTasksTab();
         case 'achievements': return renderAchievements();
         case 'inventory': return renderInventory();
         case 'shop': return renderShopTab();
@@ -294,13 +351,332 @@ function renderTabContent() {
         case 'season': return renderSeasonTab();
         case 'teams': return renderTeamsTab();
         case 'referral': return renderReferralTab();
-        default: return `
-            ${isOwnProfile ? renderStreakWidget() : ''}
-            ${isOwnProfile ? renderLevelProgress() : ''}
-            ${isOwnProfile ? renderDailyPreview() : ''}
-            ${isOwnProfile ? renderNotes() : ''}
-        `;
+        default: return renderWorkProfileOverview();
     }
+}
+
+function renderWorkProfileOverview() {
+    const p = profileData || {};
+    const tasks = p.tasks || {};
+    const day = p.dayProgress || {};
+    const shift = p.todayShift;
+    const myTasks = Array.isArray(p.myTasks) ? p.myTasks : [];
+    const overdue = Array.isArray(tasks.overdueList) ? tasks.overdueList : [];
+    const upcoming = Array.isArray(tasks.upcoming) ? tasks.upcoming : [];
+    const recentActivity = Array.isArray(p.recentActivity) ? p.recentActivity.slice(0, 6) : [];
+    const pointTotal = p.points?.permanentTotal || p.points?.permanentThisMonth || walletData?.coins || 0;
+    const streakCurrent = p.streak?.current || p.currentStreak || 0;
+    const completedToday = Number(day.tasksDoneToday || 0);
+    const remainingToday = Number(day.tasksRemaining || 0);
+
+    return `
+        <div class="profile-work-overview">
+            <section class="profile-work-panel profile-work-panel-primary">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Сьогодні</span>
+                        <h2>Робочий стан</h2>
+                    </div>
+                    <a href="/tasks?view=today">Відкрити задачі</a>
+                </div>
+                <div class="profile-status-grid">
+                    ${profileOverviewMetric('Задачі сьогодні', `${completedToday}/${completedToday + remainingToday}`, 'закрито / всього')}
+                    ${profileOverviewMetric('У роботі', Number(tasks.in_progress || 0), 'активний execution')}
+                    ${profileOverviewMetric('Прострочено', Number(tasks.overdue || 0), 'потребує уваги', Number(tasks.overdue || 0) > 0 ? 'danger' : 'ok')}
+                    ${profileOverviewMetric('Зміна', shift ? `${shift.start || ''}${shift.end ? ' - ' + shift.end : ''}` : 'Без зміни', shift?.position || shift?.department || 'графік')}
+                </div>
+            </section>
+
+            <section class="profile-work-panel">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Execution</span>
+                        <h2>Мої активні задачі</h2>
+                    </div>
+                    <span>${myTasks.length}</span>
+                </div>
+                ${myTasks.length
+                    ? `<div class="profile-work-list">${myTasks.slice(0, 6).map(renderProfileTaskRow).join('')}</div>`
+                    : '<div class="profile-empty-professional">Активних задач немає.</div>'}
+            </section>
+
+            <section class="profile-work-panel">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Контроль</span>
+                        <h2>Ризики й дедлайни</h2>
+                    </div>
+                    <span>${overdue.length + upcoming.length}</span>
+                </div>
+                ${overdue.length || upcoming.length
+                    ? `<div class="profile-work-list">
+                        ${overdue.slice(0, 4).map(task => renderProfileTaskRow(task, 'Прострочено')).join('')}
+                        ${upcoming.slice(0, 4).map(task => renderProfileTaskRow(task, 'Скоро')).join('')}
+                    </div>`
+                    : '<div class="profile-empty-professional">Критичних дедлайнів поруч немає.</div>'}
+            </section>
+
+            <section class="profile-work-panel profile-work-panel-compact">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Поведінка</span>
+                        <h2>Прогрес</h2>
+                    </div>
+                </div>
+                <div class="profile-compact-metrics">
+                    ${profileOverviewMetric('Баланс', formatCoins(pointTotal), 'внутрішні бали')}
+                    ${profileOverviewMetric('Streak', streakCurrent, 'днів активності')}
+                    ${profileOverviewMetric('Бронювання', Number(p.bookings?.total || 0), 'створено')}
+                </div>
+            </section>
+
+            <section class="profile-work-panel profile-work-panel-compact">
+                <div class="profile-panel-head">
+                    <div>
+                        <span class="profile-kicker">Audit</span>
+                        <h2>Остання активність</h2>
+                    </div>
+                </div>
+                ${recentActivity.length
+                    ? `<div class="profile-activity-compact">${recentActivity.map(renderProfileActivityRow).join('')}</div>`
+                    : '<div class="profile-empty-professional">Активності ще немає.</div>'}
+            </section>
+
+            ${isOwnProfile ? `<section class="profile-work-panel profile-work-panel-wide">${renderNotes()}</section>` : ''}
+        </div>`;
+}
+
+function profileOverviewMetric(label, value, hint, tone = '') {
+    return `
+        <div class="profile-overview-metric ${tone}">
+            <b>${escapeHtml(value)}</b>
+            <span>${escapeHtml(label)}</span>
+            <small>${escapeHtml(hint || '')}</small>
+        </div>`;
+}
+
+function renderProfileTaskRow(task, tag = '') {
+    const due = task.deadline ? profileFormatTime(task.deadline) : 'Без дедлайну';
+    const priority = task.priority || 'medium';
+    return `
+        <div class="profile-task-row ${task.isOverdue || tag === 'Прострочено' ? 'is-overdue' : ''}">
+            <div>
+                <b>${escapeHtml(task.title || 'Без назви')}</b>
+                <span>${escapeHtml(tag || task.status || 'todo')} · ${escapeHtml(due)}</span>
+            </div>
+            <small>${escapeHtml(priority)}</small>
+        </div>`;
+}
+
+function renderProfileActivityRow(item) {
+    const action = PROFILE_ACTION_NAMES[item.action] || item.action || 'Активність';
+    const detail = profileActivityDetail(item);
+    return `
+        <div class="profile-activity-row">
+            <span>${escapeHtml(action)}</span>
+            <b>${escapeHtml(detail || 'Оновлення')}</b>
+            <small>${profileFormatTime(item.created_at)}</small>
+        </div>`;
+}
+
+function cabinetList(name) {
+    const list = myCabinetData?.[name];
+    return Array.isArray(list) ? list : [];
+}
+
+function taskModeLabel(task) {
+    const mode = task?.taskMode || task?.task_mode || 'work';
+    return { work: 'Робоча', personal: 'Особиста', private: 'Приватна', system: 'Системна' }[mode] || mode;
+}
+
+function taskKindLabel(task) {
+    const kind = task?.taskKind || task?.task_kind || 'action';
+    return {
+        action: 'Дія',
+        reminder: 'Нагадування',
+        followup: 'Follow-up',
+        deep_work: 'Deep work',
+        checklist: 'Checklist',
+        routine: 'Рутина',
+        waiting: 'Чекаю',
+        idea: 'Ідея',
+        decision: 'Рішення'
+    }[kind] || kind;
+}
+
+function renderCabinetTaskCard(task, compact = false) {
+    const due = task.deadline || task.remindAt || task.remind_at || task.date;
+    const subDone = Number(task.subtask_done_count || task.subtaskDoneCount || 0);
+    const subTotal = Number(task.subtask_count || task.subtaskCount || 0);
+    return `
+        <div class="cabinet-task-card">
+            <div class="cabinet-task-main">
+                <div class="cabinet-task-title">${escapeHtml(task.title || 'Без назви')}</div>
+                <div class="cabinet-task-meta">
+                    <span>${taskModeLabel(task)}</span>
+                    <span>${taskKindLabel(task)}</span>
+                    ${due ? `<span>${formatDate(due)}</span>` : ''}
+                    ${subTotal ? `<span>${subDone}/${subTotal}</span>` : ''}
+                </div>
+            </div>
+            <div class="cabinet-task-actions">
+                <button title="Готово" onclick="setCabinetTaskStatus(${task.id}, 'done')">✓</button>
+                ${Number(task.focusRank || task.focus_rank || 0) > 0 ? '' : `<button title="У фокус" onclick="focusCabinetTask(${task.id})">🎯</button>`}
+                ${compact ? '' : `<button title="Snooze" onclick="snoozeCabinetTask(${task.id}, 60)">⏰</button>`}
+                <button title="Відкрити" onclick="window.location.href='/tasks?task=${task.id}'">↗</button>
+            </div>
+        </div>`;
+}
+
+function renderCabinetSection(title, list, emptyText, compact = false) {
+    return `
+        <section class="cabinet-task-section">
+            <div class="cabinet-section-head">
+                <h3>${escapeHtml(title)}</h3>
+                <span>${list.length}</span>
+            </div>
+            ${list.length
+                ? list.map(task => renderCabinetTaskCard(task, compact)).join('')
+                : `<div class="cabinet-empty">${escapeHtml(emptyText)}</div>`}
+        </section>`;
+}
+
+function renderMyDayTab() {
+    const data = myCabinetData || {};
+    const stats = data.stats || {};
+    const focus = cabinetList('focus');
+    const today = cabinetList('today').filter(t => !focus.some(f => f.id === t.id));
+    const overdue = cabinetList('overdue');
+    const waiting = cabinetList('waiting');
+    const privateTasks = cabinetList('private').slice(0, 4);
+    return `
+        <div class="cabinet-shell">
+            <div class="cabinet-hero">
+                <div>
+                    <div class="cabinet-kicker">Personal command center</div>
+                    <h2>Мій день</h2>
+                    <p>Фокус, очікування, приватні задачі й короткий review без шуму повного board.</p>
+                </div>
+                <div class="cabinet-stats">
+                    <div><b>${stats.todayDone || 0}</b><span>закрито</span></div>
+                    <div><b>${stats.todayPlanned || 0}</b><span>сьогодні</span></div>
+                    <div><b>${stats.overdueCount || 0}</b><span>прострочено</span></div>
+                    <div><b>${stats.waitingCount || 0}</b><span>чекаю</span></div>
+                </div>
+            </div>
+            <form class="cabinet-capture" onsubmit="createCabinetTask(event, 'personal')">
+                <input id="cabinetTaskTitle" placeholder="Швидко зафіксувати задачу собі">
+                <select id="cabinetTaskKind">
+                    <option value="action">Дія</option>
+                    <option value="reminder">Нагадування</option>
+                    <option value="followup">Follow-up</option>
+                    <option value="deep_work">Deep work</option>
+                    <option value="waiting">Чекаю</option>
+                    <option value="idea">Ідея</option>
+                </select>
+                <button type="submit">Додати</button>
+                <button type="button" onclick="createCabinetTask(event, 'private')">Приватна</button>
+            </form>
+            <div class="cabinet-grid">
+                ${renderCabinetSection('3 головні фокуси', focus, 'Фокус дня порожній. Додай 1-3 задачі, які справді рухають день.')}
+                ${renderCabinetSection('Сьогодні', today, 'На сьогодні немає активних задач.')}
+                ${renderCabinetSection('Прострочено', overdue, 'Немає прострочених задач.', true)}
+                ${renderCabinetSection('Чекаю', waiting, 'Нічого не зависло в очікуванні.', true)}
+                ${renderCabinetSection('Приватне', privateTasks, 'Приватний шар порожній.', true)}
+                <section class="cabinet-task-section">
+                    <div class="cabinet-section-head"><h3>Вечірній review</h3><span>5 хв</span></div>
+                    <div class="cabinet-review">
+                        <p>Що завершено, що перенести, що зависло, що краще делегувати?</p>
+                        <a href="/tasks?view=waiting">Відкрити waiting</a>
+                        <a href="/tasks?view=focus">Почистити фокус</a>
+                    </div>
+                </section>
+            </div>
+        </div>`;
+}
+
+function renderMyTasksTab() {
+    const all = cabinetList('all');
+    const segments = [
+        ['all', 'Всі мої'],
+        ['personal', 'Особисті'],
+        ['private', 'Приватні'],
+        ['work', 'Робочі'],
+        ['waiting', 'Чекаю'],
+        ['idea', 'Ідеї']
+    ];
+    const filtered = all.filter(task => {
+        if (myTasksSegment === 'all') return true;
+        if (myTasksSegment === 'waiting') return (task.workflowState || task.workflow_state) === 'waiting' || (task.taskKind || task.task_kind) === 'waiting';
+        if (myTasksSegment === 'idea') return (task.taskKind || task.task_kind) === 'idea';
+        return (task.taskMode || task.task_mode || 'work') === myTasksSegment || (task.visibility === myTasksSegment);
+    });
+    return `
+        <div class="cabinet-shell">
+            <div class="cabinet-toolbar">
+                <div>
+                    <div class="cabinet-kicker">Personal projection</div>
+                    <h2>Мої задачі</h2>
+                </div>
+                <a href="/tasks?view=my" class="cabinet-link-btn">Повний Tasks</a>
+            </div>
+            <div class="cabinet-segments">
+                ${segments.map(([id, label]) => `<button class="${myTasksSegment === id ? 'active' : ''}" onclick="setMyTasksSegment('${id}')">${label}</button>`).join('')}
+            </div>
+            <div class="cabinet-list">
+                ${filtered.length ? filtered.map(task => renderCabinetTaskCard(task)).join('') : '<div class="cabinet-empty">У цьому сегменті поки немає задач.</div>'}
+            </div>
+        </div>`;
+}
+
+function setMyTasksSegment(segment) {
+    myTasksSegment = segment;
+    const tabContent = document.getElementById('tabContent');
+    if (tabContent) tabContent.innerHTML = renderTabContent();
+}
+
+async function refreshMyCabinetTab() {
+    myCabinetData = await apiGet('/tasks/my-cabinet');
+    const tabContent = document.getElementById('tabContent');
+    if (tabContent && (activeTab === 'myday' || activeTab === 'mytasks')) {
+        tabContent.innerHTML = renderTabContent();
+    }
+}
+
+async function setCabinetTaskStatus(taskId, status) {
+    await apiPatch(`/auth/tasks/${taskId}/quick-status`, { status });
+    await refreshMyCabinetTab();
+}
+
+async function focusCabinetTask(taskId) {
+    await apiPost(`/tasks/${taskId}/focus`, { enabled: true, rank: 1 });
+    await refreshMyCabinetTab();
+}
+
+async function snoozeCabinetTask(taskId, minutes) {
+    await apiPost(`/tasks/${taskId}/snooze`, { minutes });
+    await refreshMyCabinetTab();
+}
+
+async function createCabinetTask(event, mode) {
+    event.preventDefault();
+    const input = document.getElementById('cabinetTaskTitle');
+    const title = String(input?.value || '').trim();
+    if (!title) return;
+    const kind = document.getElementById('cabinetTaskKind')?.value || 'action';
+    const current = (typeof AppState !== 'undefined' && AppState.currentUser) ? AppState.currentUser : {};
+    await apiPost('/tasks', {
+        title,
+        ownerUserId: current.id || current.user_id,
+        task_mode: mode === 'private' ? 'private' : 'personal',
+        task_kind: kind,
+        visibility: mode === 'private' ? 'private' : 'me_only',
+        workflow_state: 'inbox',
+        source_type: 'profile',
+        source_module: 'my_cabinet'
+    });
+    if (input) input.value = '';
+    await refreshMyCabinetTab();
 }
 
 // ==========================================

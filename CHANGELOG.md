@@ -4,6 +4,43 @@
 
 ---
 
+## v0.49.8 - Tasks OS Foundation + Sidebar/Профіль Polish (2026-05-15)
+
+### Tasks OS + My Cabinet [codex]
+- **Tasks model** - додано foundation для `task_mode`, `task_kind`, `visibility`, `workflow_state`, focus/reminder/snooze metadata, subtasks і personal task preferences через міграцію `179_tasks_os_my_cabinet.sql`.
+- **Tasks API** - розширено `/api/tasks`: фільтри personal/private/focus/workflow, `/api/tasks/my-cabinet`, focus/snooze endpoints і checklist endpoints.
+- **My Cabinet** - у профілі додано вкладки "Мій день" і "Мої задачі" як персональну проекцію задач без дублювання повного board.
+- **Tasks page** - додано OS views `Інбокс`, `Фокус`, `Наступні`, `Чекаю`, `Командні`, `Рутини`, focus lane і quick capture з personal/private/waiting/focus intent.
+- **Dashboard** - додано snapshot-віджет "Мій фокус" поверх існуючої dashboard architecture.
+- **Chat/Alerts** - task capture передає personal-aware payload; chat підтримує self-task flow, а alert-created tasks ідуть у canonical task model.
+
+### Sidebar + Profile [codex]
+- **Профіль** - особистий кабінет впорядковано як серйозний робочий профіль; клік по імені в header веде на новий `/profile`, а не на стару модалку.
+- **Меню** - групи меню стартують згорнутими, профіль у sidebar клікабельний, аватарка підтримує фото, а pinned task mini-widget показує активні задачі.
+- **Сповіщення** - pinned "Фокус дня" у sidebar замінено компактним дублем alerts з кількістю нових і preview, який відкриває існуючу панель сповіщень.
+- **Dark mode** - виправлено контраст імені користувача, ролі, pinned-віджетів і груп меню в sidebar.
+
+---
+
+## v0.49.7 - Sidebar Alerts Duplicate (2026-05-15)
+
+### Sidebar Alerts [codex]
+- **Меню** - прибрано pinned-пункт "Фокус дня" з sidebar.
+- **Сповіщення** - замість нього додано компактний дубль alerts з кількістю нових і коротким preview.
+- **UX** - sidebar alerts відкриває існуючу панель сповіщень, не створюючи другого alert workflow.
+
+---
+
+## v0.49.6 - Professional Profile Workspace (2026-05-15)
+
+### Profile Workspace [codex]
+- **Профіль** - особистий кабінет впорядковано як робочий профіль працівника: identity, role, Telegram status, задачі, зміна, дедлайни й остання активність винесені в чистий overview.
+- **Navigation** - клік по імені користувача в правому хедері більше не відкриває стару profile-модалку, а веде на нову сторінку `/profile`.
+- **Design** - gamification-first hero прибрано з першого екрану; ігрові механіки лишаються другорядними вкладками, не основним робочим станом.
+- **UX** - вкладки профілю отримали стриманіші назви без зайвого візуального шуму.
+
+---
+
 ## v0.49.5 - Sidebar Task Widget + Profile Link (2026-05-15)
 
 ### Sidebar Navigation [codex]

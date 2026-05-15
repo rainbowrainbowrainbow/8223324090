@@ -1683,8 +1683,16 @@
             priority: 'normal',
             category: 'operational',
             ownerUserId: payload.ownerUserId,
+            task_mode: payload.task_mode || payload.taskMode || 'work',
+            task_kind: payload.task_kind || payload.taskKind || 'action',
+            visibility: payload.visibility || 'team',
+            workflow_state: payload.workflow_state || payload.workflowState || 'inbox',
+            focus_rank: payload.focus_rank || payload.focusRank || 0,
             sourceType: payload.sourceType || 'chat_message',
-            sourceId: payload.sourceId || null
+            sourceId: payload.sourceId || null,
+            source_module: payload.source_module || payload.sourceModule || 'chat',
+            related_entity_type: payload.related_entity_type || payload.relatedEntityType || 'chat',
+            related_entity_id: payload.related_entity_id || payload.relatedEntityId || payload.sourceId || null
         };
         var resp = await fetch('/api/tasks', {
             method: 'POST',
@@ -1764,6 +1772,10 @@
                     var task = await _createCanonicalChatTask({
                         title: text,
                         ownerUserId: ownerUserId,
+                        task_mode: currentOwnerId && String(ownerUserId) === String(currentOwnerId) ? 'personal' : 'work',
+                        task_kind: 'followup',
+                        visibility: currentOwnerId && String(ownerUserId) === String(currentOwnerId) ? 'me_only' : 'team',
+                        workflow_state: 'inbox',
                         sourceType: msg && msg.id ? 'chat_message' : 'chat_channel',
                         sourceId: msg && msg.id ? String(msg.id) : (_currentChannel ? String(_currentChannel.id) : null),
                         description: 'З чату' + (_currentChannel?.name ? ' ' + _currentChannel.name : '') + ' від @' + author + ':\n' + msgText + '\n\nЗадача: ' + text
@@ -5492,6 +5504,10 @@
                 var selfTask = await _createCanonicalChatTask({
                     title: selfTitle,
                     ownerUserId: currentOwnerId,
+                    task_mode: 'personal',
+                    task_kind: 'action',
+                    visibility: 'me_only',
+                    workflow_state: 'inbox',
                     sourceType: 'chat_command',
                     sourceId: _currentChannel ? String(_currentChannel.id) : null,
                     description: 'Self-task з команди /task у чаті' + (_currentChannel?.name ? ' ' + _currentChannel.name : '') + '.'
@@ -5530,6 +5546,10 @@
             var task = await _createCanonicalChatTask({
                 title: title,
                 ownerUserId: targetOwner.id,
+                task_mode: 'work',
+                task_kind: 'action',
+                visibility: 'team',
+                workflow_state: 'inbox',
                 sourceType: 'chat_command',
                 sourceId: _currentChannel ? String(_currentChannel.id) : null,
                 description: 'Задача з команди /task у чаті' + (_currentChannel?.name ? ' ' + _currentChannel.name : '') + '. Виконавець підтверджений оператором: @' + targetUsername + '.'

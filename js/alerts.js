@@ -58,6 +58,7 @@ async function loadAlertBell() {
         const read = _getRead();
         const unread = _alertsData.filter(a => !read.has(a.id));
         _updateBadge(badge, unread);
+        _emitAlertsUpdated();
     } catch { /* silent */ }
 }
 
@@ -68,6 +69,12 @@ function _updateBadge(badge, unread) {
     const hasCritical = unread.some(a => a.level === 'critical');
     badge.classList.toggle('critical', hasCritical);
     badge.classList.toggle('pulse', hasCritical);
+}
+
+function _emitAlertsUpdated() {
+    try {
+        window.dispatchEvent(new CustomEvent('crm:alerts-updated', { detail: { alerts: _alertsData } }));
+    } catch {}
 }
 
 // ─── Panel toggle ───────────────────────────────
@@ -92,6 +99,7 @@ async function _renderPanel() {
         const alerts = data.alerts || [];
         const dismissed = _getDismissed();
         _alertsData = alerts.filter(a => !dismissed.has(a.id));
+        _emitAlertsUpdated();
 
         if (!_alertsData.length) {
             p.innerHTML = `<div class="ap-header"><span class="ap-title">🔔 Сповіщення</span></div>
@@ -252,6 +260,7 @@ function _dismissAlert(alertId) {
     _alertsData = _alertsData.filter(a => a.id !== alertId);
     const badge = document.getElementById('alertBadge');
     if (badge) { const read = _getRead(); _updateBadge(badge, _alertsData.filter(a => !read.has(a.id))); }
+    _emitAlertsUpdated();
     if (!_alertsData.length) setTimeout(_renderPanel, 350);
 }
 
@@ -259,6 +268,7 @@ function _markAllRead() {
     const r = _getRead();
     _alertsData.forEach(a => r.add(a.id));
     _saveRead(r);
+    _emitAlertsUpdated();
     loadAlertBell();
     _renderPanel();
 }
@@ -316,7 +326,21 @@ async function _submitAlertTask(btn, alertId) {
         const token = localStorage.getItem('pzp_token');
         const resp = await fetch('/api/tasks', {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            body: JSON.stringify({ title: text.slice(0, 100), description: text, date: new Date().toISOString().slice(0, 10), priority: alert?.level === 'critical' ? 'high' : 'normal', source_type: 'alert' })
+            body: JSON.stringify({
+                title: text.slice(0, 100),
+                description: text,
+                date: new Date().toISOString().slice(0, 10),
+                priority: alert?.level === 'critical' ? 'high' : 'normal',
+                task_mode: 'work',
+                task_kind: alert?.level === 'critical' ? 'followup' : 'reminder',
+                visibility: 'team',
+                workflow_state: 'inbox',
+                source_type: 'alert',
+                source_id: alertId,
+                source_module: 'alerts',
+                related_entity_type: alert?.type || 'alert',
+                related_entity_id: alertId
+            })
         });
         if (resp.ok) {
             const data = await resp.json();
@@ -346,6 +370,7 @@ document.addEventListener('DOMContentLoaded', () => {
             _alertsData = payload.alerts.filter(a => !dismissed.has(a.id));
             const badge = document.getElementById('alertBadge');
             if (badge) { const read = _getRead(); _updateBadge(badge, _alertsData.filter(a => !read.has(a.id))); }
+            _emitAlertsUpdated();
             const p = document.getElementById('alertsPanel');
             if (p?.classList.contains('open')) _renderPanel();
         } else { loadAlertBell(); }

@@ -11,7 +11,7 @@ router.use(authenticateToken);
 router.param('id', (req, res, next, val) => { if (val && !/^\d+$/.test(val)) return res.status(400).json({ error: 'Invalid ID format' }); next(); });
 const { createLogger } = require('../utils/logger');
 const { getPermissions } = require('../config/roles');
-const { buildTaskVisibilityScope, canMutateTask } = require('../services/taskPolicy');
+const { buildTaskOwnerMatch, buildTaskVisibilityScope, canMutateTask, normalizeUserId } = require('../services/taskPolicy');
 const {
     completeTask,
     getAssignableTaskOwner,
@@ -62,6 +62,104 @@ const VALID_STATUSES = ['todo', 'in_progress', 'done'];
 const VALID_PRIORITIES = ['low', 'normal', 'high'];
 const VALID_CATEGORIES = ['event', 'purchase', 'admin', 'trampoline', 'personal', 'improvement', 'operational', 'maintenance'];
 const VALID_TASK_TYPES = ['human', 'bot'];
+const VALID_TASK_MODES = ['work', 'personal', 'private', 'system'];
+const VALID_TASK_KINDS = ['action', 'reminder', 'followup', 'deep_work', 'checklist', 'routine', 'waiting', 'idea', 'decision'];
+const VALID_TASK_VISIBILITIES = ['team', 'me_only', 'private'];
+const VALID_WORKFLOW_STATES = ['inbox', 'todo', 'in_progress', 'waiting', 'scheduled', 'done', 'archived'];
+
+function isTruthy(value) {
+    return value === true || value === 'true' || value === '1' || value === 1;
+}
+
+function enumValue(value, allowed, fallback) {
+    const raw = String(value || '').trim();
+    return allowed.includes(raw) ? raw : fallback;
+}
+
+function workflowFromStatus(status = 'todo') {
+    if (status === 'done') return 'done';
+    if (status === 'archived') return 'archived';
+    if (status === 'in_progress') return 'in_progress';
+    return 'todo';
+}
+
+function defaultVisibilityForMode(mode, explicitVisibility) {
+    if (VALID_TASK_VISIBILITIES.includes(explicitVisibility)) return explicitVisibility;
+    if (mode === 'private') return 'private';
+    if (mode === 'personal') return 'me_only';
+    return 'team';
+}
+
+function normalizeOptionalDateTime(value) {
+    if (value === undefined) return undefined;
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : value;
+}
+
+function normalizeTaskOsFields(body = {}, oldTask = {}) {
+    const mode = enumValue(body.task_mode ?? body.taskMode ?? oldTask.task_mode, VALID_TASK_MODES, oldTask.task_mode || 'work');
+    const visibility = defaultVisibilityForMode(mode, body.visibility ?? oldTask.visibility);
+    const kind = enumValue(body.task_kind ?? body.taskKind ?? oldTask.task_kind, VALID_TASK_KINDS, oldTask.task_kind || 'action');
+    const workflow = enumValue(
+        body.workflow_state ?? body.workflowState ?? oldTask.workflow_state,
+        VALID_WORKFLOW_STATES,
+        oldTask.workflow_state || workflowFromStatus(body.status || oldTask.status || 'todo')
+    );
+    const focusRankRaw = body.focus_rank ?? body.focusRank ?? oldTask.focus_rank ?? 0;
+    const focusRank = Math.max(0, Math.min(99, parseInt(focusRankRaw, 10) || 0));
+    const effortRaw = body.effort_minutes ?? body.effortMinutes ?? oldTask.effort_minutes;
+    const effortMinutes = effortRaw === undefined || effortRaw === null || effortRaw === ''
+        ? null
+        : Math.max(1, parseInt(effortRaw, 10) || 0) || null;
+
+    return {
+        task_mode: mode,
+        task_kind: kind,
+        visibility,
+        workflow_state: workflow,
+        focus_rank: focusRank,
+        remind_at: normalizeOptionalDateTime(body.remind_at ?? body.remindAt ?? oldTask.remind_at),
+        snoozed_until: normalizeOptionalDateTime(body.snoozed_until ?? body.snoozedUntil ?? oldTask.snoozed_until),
+        last_notified_at: normalizeOptionalDateTime(body.last_notified_at ?? body.lastNotifiedAt ?? oldTask.last_notified_at),
+        next_notification_at: normalizeOptionalDateTime(body.next_notification_at ?? body.nextNotificationAt ?? oldTask.next_notification_at),
+        evening_review_date: body.evening_review_date ?? body.eveningReviewDate ?? oldTask.evening_review_date ?? null,
+        related_entity_type: body.related_entity_type ?? body.relatedEntityType ?? oldTask.related_entity_type ?? null,
+        related_entity_id: body.related_entity_id ?? body.relatedEntityId ?? oldTask.related_entity_id ?? null,
+        source_module: body.source_module ?? body.sourceModule ?? oldTask.source_module ?? null,
+        effort_minutes: effortMinutes
+    };
+}
+
+function taskDateOnly(value) {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
+    return d.toISOString().slice(0, 10);
+}
+
+function todayKyivDate() {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(new Date());
+    const map = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${map.year}-${map.month}-${map.day}`;
+}
+
+function addDays(dateText, days) {
+    const d = new Date(`${dateText}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+}
+
+function minutesFromNow(minutes) {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + minutes);
+    return d.toISOString();
+}
 
 async function resolveTypedTaskOwner(input = {}, actor = null) {
     const ownerUserId = input.owner_user_id ?? input.ownerUserId;
@@ -79,11 +177,29 @@ async function resolveTypedTaskOwner(input = {}, actor = null) {
 function normalizeTaskPayload(row) {
     const ownerLabel = row.owner_name || row.owner_username || row.assigned_to || row.owner || null;
     const ownerState = row.owner_user_id ? 'typed' : (row.assigned_to || row.owner ? 'legacy_unknown_owner' : 'unassigned');
+    const status = row.status || 'todo';
+    const taskMode = row.task_mode || 'work';
+    const taskKind = row.task_kind || 'action';
+    const visibility = row.visibility || (taskMode === 'private' ? 'private' : 'team');
+    const workflowState = row.workflow_state || workflowFromStatus(status);
     return {
         ...row,
         ownerLabel,
         ownerState,
         ownerUserId: row.owner_user_id || null,
+        taskMode,
+        taskKind,
+        visibility,
+        workflowState,
+        focusRank: row.focus_rank || 0,
+        remindAt: row.remind_at || null,
+        snoozedUntil: row.snoozed_until || null,
+        nextNotificationAt: row.next_notification_at || null,
+        eveningReviewDate: row.evening_review_date || null,
+        relatedEntityType: row.related_entity_type || null,
+        relatedEntityId: row.related_entity_id || null,
+        sourceModule: row.source_module || null,
+        effortMinutes: row.effort_minutes || null,
         intelligence: deriveTaskIntelligence({
             ...row,
             owner_label: ownerLabel,
@@ -113,31 +229,45 @@ function sendTaskActionError(res, err) {
 // GET /api/tasks — list with optional filters + pagination (v19.10)
 router.get('/', async (req, res) => {
     try {
-        const { status, date, assigned_to, owner, owner_user_id, afisha_id, type, task_type, category, date_from, date_to, page, limit: lim } = req.query;
+        const {
+            status, date, assigned_to, owner, owner_user_id, afisha_id, type, task_type, category,
+            task_mode, taskMode, task_kind, taskKind, visibility: visibilityFilter, workflow_state, workflowState,
+            date_from, date_to, page, limit: lim, mine, private: privateOnly, focus,
+            related_entity_type, relatedEntityType, related_entity_id, relatedEntityId, source_module, sourceModule
+        } = req.query;
         const conditions = [];
         const params = [];
         let idx = 1;
 
-        if (status && VALID_STATUSES.includes(status)) {
-            conditions.push(`status = $${idx++}`);
-            params.push(status);
+        if (status) {
+            const statuses = String(status).split(',').map(s => s.trim()).filter(s => VALID_STATUSES.includes(s));
+            if (statuses.length === 1) {
+                conditions.push(`t.status = $${idx++}`);
+                params.push(statuses[0]);
+            } else if (statuses.length > 1) {
+                conditions.push(`t.status = ANY($${idx++}::text[])`);
+                params.push(statuses);
+            }
         }
         if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-            conditions.push(`date = $${idx++}`);
+            conditions.push(`t.date = $${idx++}`);
             params.push(date);
         }
         if (date_from && /^\d{4}-\d{2}-\d{2}$/.test(date_from)) {
-            conditions.push(`date >= $${idx++}`);
+            conditions.push(`t.date >= $${idx++}`);
             params.push(date_from);
         }
         if (date_to && /^\d{4}-\d{2}-\d{2}$/.test(date_to)) {
-            conditions.push(`date <= $${idx++}`);
+            conditions.push(`t.date <= $${idx++}`);
             params.push(date_to);
         }
         if (assigned_to) {
             if (/^\d+$/.test(String(assigned_to))) {
                 conditions.push(`t.owner_user_id = $${idx++}`);
                 params.push(parseInt(assigned_to, 10));
+            } else if (assigned_to === 'me') {
+                conditions.push(buildTaskOwnerMatch(req.user, params, 't'));
+                idx = params.length + 1;
             } else {
                 conditions.push(`(t.owner_user_id IS NULL AND t.assigned_to = $${idx++})`);
                 params.push(assigned_to);
@@ -160,12 +290,56 @@ router.get('/', async (req, res) => {
             params.push(type);
         }
         if (task_type && VALID_TASK_TYPES.includes(task_type)) {
-            conditions.push(`task_type = $${idx++}`);
+            conditions.push(`t.task_type = $${idx++}`);
             params.push(task_type);
         }
         if (category && VALID_CATEGORIES.includes(category)) {
-            conditions.push(`category = $${idx++}`);
+            conditions.push(`t.category = $${idx++}`);
             params.push(category);
+        }
+        const modeFilter = task_mode || taskMode;
+        if (modeFilter && VALID_TASK_MODES.includes(modeFilter)) {
+            conditions.push(`COALESCE(t.task_mode, 'work') = $${idx++}`);
+            params.push(modeFilter);
+        }
+        const kindFilter = task_kind || taskKind;
+        if (kindFilter && VALID_TASK_KINDS.includes(kindFilter)) {
+            conditions.push(`COALESCE(t.task_kind, 'action') = $${idx++}`);
+            params.push(kindFilter);
+        }
+        if (visibilityFilter && VALID_TASK_VISIBILITIES.includes(visibilityFilter)) {
+            conditions.push(`COALESCE(t.visibility, 'team') = $${idx++}`);
+            params.push(visibilityFilter);
+        }
+        const workflowFilter = workflow_state || workflowState;
+        if (workflowFilter && VALID_WORKFLOW_STATES.includes(workflowFilter)) {
+            conditions.push(`COALESCE(t.workflow_state, 'todo') = $${idx++}`);
+            params.push(workflowFilter);
+        }
+        if (isTruthy(mine)) {
+            conditions.push(buildTaskOwnerMatch(req.user, params, 't'));
+            idx = params.length + 1;
+        }
+        if (isTruthy(privateOnly)) {
+            conditions.push(`COALESCE(t.visibility, 'team') = 'private'`);
+        }
+        if (isTruthy(focus)) {
+            conditions.push(`COALESCE(t.focus_rank, 0) > 0`);
+        }
+        const relType = related_entity_type || relatedEntityType;
+        const relId = related_entity_id || relatedEntityId;
+        const srcModule = source_module || sourceModule;
+        if (relType) {
+            conditions.push(`t.related_entity_type = $${idx++}`);
+            params.push(String(relType).slice(0, 80));
+        }
+        if (relId) {
+            conditions.push(`t.related_entity_id = $${idx++}`);
+            params.push(String(relId).slice(0, 120));
+        }
+        if (srcModule) {
+            conditions.push(`t.source_module = $${idx++}`);
+            params.push(String(srcModule).slice(0, 80));
         }
 
         // Role/object visibility: typed owner_user_id first, legacy string fallback for unmapped tasks.
@@ -230,6 +404,178 @@ router.get('/owners', async (req, res) => {
 });
 
 // GET /api/tasks/:id — single task
+async function ensureTaskPreferences(userId) {
+    const result = await pool.query(
+        `INSERT INTO task_user_preferences (user_id)
+         VALUES ($1)
+         ON CONFLICT (user_id) DO UPDATE SET updated_at = task_user_preferences.updated_at
+         RETURNING *`,
+        [userId]
+    );
+    return result.rows[0];
+}
+
+// GET /api/tasks/preferences — personal task OS preferences
+router.get('/preferences', async (req, res) => {
+    try {
+        const userId = normalizeUserId(req.user);
+        if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+        const prefs = await ensureTaskPreferences(userId);
+        res.json({ success: true, preferences: prefs });
+    } catch (err) {
+        log.error('Task preferences lookup error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// PATCH /api/tasks/preferences — update personal task OS preferences
+router.patch('/preferences', async (req, res) => {
+    try {
+        const userId = normalizeUserId(req.user);
+        if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+        await ensureTaskPreferences(userId);
+
+        const allowed = {
+            focus_limit: value => Math.max(1, Math.min(9, parseInt(value, 10) || 3)),
+            digest_mode: value => ['off', 'important_only', 'daily', 'all'].includes(value) ? value : 'important_only',
+            default_task_mode: value => VALID_TASK_MODES.includes(value) ? value : 'personal',
+            default_privacy: value => VALID_TASK_VISIBILITIES.includes(value) ? value : 'me_only',
+            show_private_in_tasks_page: value => isTruthy(value),
+            enable_telegram_reminders: value => isTruthy(value),
+            enable_evening_review: value => isTruthy(value)
+        };
+        const sets = [];
+        const values = [];
+        Object.entries(allowed).forEach(([field, normalize]) => {
+            const camel = field.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
+            const raw = req.body[field] !== undefined ? req.body[field] : req.body[camel];
+            if (raw !== undefined) {
+                values.push(normalize(raw));
+                sets.push(`${field} = $${values.length}`);
+            }
+        });
+        if (!sets.length) {
+            const prefs = await ensureTaskPreferences(userId);
+            return res.json({ success: true, preferences: prefs });
+        }
+        values.push(userId);
+        const result = await pool.query(
+            `UPDATE task_user_preferences
+             SET ${sets.join(', ')}, updated_at = NOW()
+             WHERE user_id = $${values.length}
+             RETURNING *`,
+            values
+        );
+        res.json({ success: true, preferences: result.rows[0] });
+    } catch (err) {
+        log.error('Task preferences update error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/tasks/my-cabinet — personal task projection for Profile/My Cabinet
+router.get('/my-cabinet', async (req, res) => {
+    try {
+        const userId = normalizeUserId(req.user);
+        if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
+        const ownParams = [];
+        const ownMatch = buildTaskOwnerMatch(req.user, ownParams, 't');
+        const today = todayKyivDate();
+        const tomorrow = addDays(today, 1);
+        const nextWeek = addDays(today, 7);
+
+        const result = await pool.query(
+            `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
+                    COALESCE(st.total, 0)::int AS subtask_count,
+                    COALESCE(st.done, 0)::int AS subtask_done_count
+             FROM tasks t
+             LEFT JOIN users u ON u.id = t.owner_user_id
+             LEFT JOIN (
+                SELECT task_id,
+                       COUNT(*)::int AS total,
+                       COUNT(*) FILTER (WHERE is_done = true)::int AS done
+                FROM task_subtasks
+                GROUP BY task_id
+             ) st ON st.task_id = t.id
+             WHERE ${ownMatch}
+               AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
+             ORDER BY
+                CASE WHEN COALESCE(t.focus_rank, 0) > 0 THEN 0 ELSE 1 END,
+                COALESCE(t.focus_rank, 99),
+                COALESCE(t.deadline, t.remind_at, t.date::timestamp, t.created_at) ASC
+             LIMIT 160`,
+            ownParams
+        );
+        const rows = result.rows.map(normalizeTaskPayload);
+
+        const buckets = {
+            focus: [],
+            today: [],
+            next: [],
+            waiting: [],
+            private: [],
+            overdue: [],
+            inbox: []
+        };
+        rows.forEach(task => {
+            const dueDate = taskDateOnly(task.deadline || task.remindAt || task.date);
+            const workflow = task.workflowState || 'todo';
+            const visibility = task.visibility || 'team';
+            const mode = task.taskMode || 'work';
+            if (Number(task.focusRank || 0) > 0) buckets.focus.push(task);
+            if (workflow === 'waiting' || task.taskKind === 'waiting') buckets.waiting.push(task);
+            if (visibility === 'private' || mode === 'private') buckets.private.push(task);
+            if (workflow === 'inbox') buckets.inbox.push(task);
+            if (dueDate && dueDate < today) buckets.overdue.push(task);
+            if (dueDate === today || workflow === 'in_progress') buckets.today.push(task);
+            if (dueDate && dueDate >= tomorrow && dueDate <= nextWeek) buckets.next.push(task);
+        });
+
+        const doneParams = [];
+        const doneOwnerMatch = buildTaskOwnerMatch(req.user, doneParams, 't');
+        doneParams.push(today);
+        const doneResult = await pool.query(
+            `SELECT COUNT(*)::int AS done_today
+             FROM tasks t
+             WHERE ${doneOwnerMatch}
+               AND COALESCE(t.status, 'todo') = 'done'
+               AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = $${doneParams.length}`,
+            doneParams
+        );
+        const prefs = await ensureTaskPreferences(userId);
+        res.json({
+            success: true,
+            focus: buckets.focus.slice(0, prefs.focus_limit || 3),
+            today: buckets.today,
+            next: buckets.next,
+            waiting: buckets.waiting,
+            private: buckets.private,
+            overdue: buckets.overdue,
+            inbox: buckets.inbox,
+            all: rows,
+            preferences: prefs,
+            stats: {
+                todayDone: doneResult.rows[0]?.done_today || 0,
+                todayPlanned: buckets.today.length,
+                waitingCount: buckets.waiting.length,
+                overdueCount: buckets.overdue.length,
+                privateCount: buckets.private.length,
+                inboxCount: buckets.inbox.length,
+                focusCount: buckets.focus.length
+            },
+            meta: {
+                canonicalOwnerField: 'tasks.owner_user_id',
+                projection: 'my_cabinet',
+                privacyRule: 'private/me_only tasks are owner-only'
+            }
+        });
+    } catch (err) {
+        log.error('My cabinet task projection error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -273,6 +619,155 @@ router.get('/:id/history', async (req, res) => {
     } catch (err) {
         log.error('Get task action history error', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+async function loadMutableTask(id, user) {
+    const params = [id];
+    const visibility = buildTaskVisibilityScope(user, params, 't');
+    const result = await pool.query(`SELECT t.* FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, params);
+    if (!result.rows.length) {
+        const err = new Error('Task not found');
+        err.statusCode = 404;
+        throw err;
+    }
+    const task = result.rows[0];
+    if (!canMutateTask(user, task)) {
+        const err = new Error('Недостатньо прав для зміни задачі');
+        err.statusCode = 403;
+        throw err;
+    }
+    return task;
+}
+
+// GET /api/tasks/:id/subtasks — checklist projection
+router.get('/:id/subtasks', async (req, res) => {
+    try {
+        const params = [req.params.id];
+        const visibility = buildTaskVisibilityScope(req.user, params, 't');
+        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, params);
+        if (!visible.rows.length) return res.status(404).json({ error: 'Task not found' });
+        const result = await pool.query(
+            `SELECT *
+             FROM task_subtasks
+             WHERE task_id = $1
+             ORDER BY sort_order ASC, id ASC`,
+            [req.params.id]
+        );
+        res.json({ success: true, subtasks: result.rows });
+    } catch (err) {
+        log.error('Get subtasks error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/tasks/:id/subtasks — add checklist item
+router.post('/:id/subtasks', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        await loadMutableTask(req.params.id, req.user);
+        const title = String(req.body.title || '').trim();
+        if (!title) return res.status(400).json({ error: 'title required' });
+        const result = await pool.query(
+            `INSERT INTO task_subtasks (task_id, title, sort_order)
+             VALUES ($1, $2, COALESCE($3, 0))
+             RETURNING *`,
+            [req.params.id, title, parseInt(req.body.sort_order ?? req.body.sortOrder ?? 0, 10) || 0]
+        );
+        await pool.query(
+            `UPDATE tasks
+             SET task_kind = CASE WHEN task_kind = 'action' THEN 'checklist' ELSE task_kind END,
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [req.params.id]
+        );
+        res.json({ success: true, subtask: result.rows[0] });
+    } catch (err) {
+        return sendTaskActionError(res, err);
+    }
+});
+
+// PATCH /api/tasks/:id/subtasks/:subtaskId — toggle/update checklist item
+router.patch('/:id/subtasks/:subtaskId', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        await loadMutableTask(req.params.id, req.user);
+        const sets = [];
+        const values = [];
+        if (req.body.title !== undefined) {
+            values.push(String(req.body.title || '').trim());
+            sets.push(`title = $${values.length}`);
+        }
+        if (req.body.is_done !== undefined || req.body.isDone !== undefined) {
+            const done = isTruthy(req.body.is_done !== undefined ? req.body.is_done : req.body.isDone);
+            values.push(done);
+            sets.push(`is_done = $${values.length}`);
+            sets.push(`completed_at = CASE WHEN $${values.length} = true THEN NOW() ELSE NULL END`);
+        }
+        if (req.body.sort_order !== undefined || req.body.sortOrder !== undefined) {
+            values.push(parseInt(req.body.sort_order ?? req.body.sortOrder, 10) || 0);
+            sets.push(`sort_order = $${values.length}`);
+        }
+        if (!sets.length) return res.status(400).json({ error: 'No changes' });
+        values.push(req.params.id, req.params.subtaskId);
+        const result = await pool.query(
+            `UPDATE task_subtasks
+             SET ${sets.join(', ')}
+             WHERE task_id = $${values.length - 1} AND id = $${values.length}
+             RETURNING *`,
+            values
+        );
+        if (!result.rows.length) return res.status(404).json({ error: 'Subtask not found' });
+        res.json({ success: true, subtask: result.rows[0] });
+    } catch (err) {
+        return sendTaskActionError(res, err);
+    }
+});
+
+// POST /api/tasks/:id/focus — pin/unpin in personal focus lane
+router.post('/:id/focus', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        await loadMutableTask(req.params.id, req.user);
+        const enabled = req.body.enabled === undefined ? true : isTruthy(req.body.enabled);
+        const rank = enabled ? Math.max(1, Math.min(99, parseInt(req.body.rank ?? req.body.focusRank ?? 1, 10) || 1)) : 0;
+        const result = await pool.query(
+            `UPDATE tasks
+             SET focus_rank = $1,
+                 workflow_state = CASE WHEN $1 > 0 AND workflow_state IN ('inbox','todo') THEN 'in_progress' ELSE workflow_state END,
+                 updated_at = NOW(),
+                 version = COALESCE(version, 1) + 1
+             WHERE id = $2
+             RETURNING *`,
+            [rank, req.params.id]
+        );
+        res.json({ success: true, task: normalizeTaskPayload(result.rows[0]) });
+    } catch (err) {
+        return sendTaskActionError(res, err);
+    }
+});
+
+// POST /api/tasks/:id/snooze — postpone reminder/attention state
+router.post('/:id/snooze', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        await loadMutableTask(req.params.id, req.user);
+        let until = normalizeOptionalDateTime(req.body.until || req.body.snoozed_until || req.body.snoozedUntil);
+        if (!until) {
+            const minutes = parseInt(req.body.minutes ?? req.body.snoozeMinutes ?? 0, 10);
+            const hours = parseInt(req.body.hours ?? req.body.snoozeHours ?? 0, 10);
+            until = minutesFromNow(minutes || (hours ? hours * 60 : 60));
+        }
+        const result = await pool.query(
+            `UPDATE tasks
+             SET snoozed_until = $1,
+                 next_notification_at = $1,
+                 workflow_state = 'scheduled',
+                 updated_at = NOW(),
+                 version = COALESCE(version, 1) + 1
+             WHERE id = $2
+             RETURNING *`,
+            [until, req.params.id]
+        );
+        res.json({ success: true, task: normalizeTaskPayload(result.rows[0]) });
+    } catch (err) {
+        return sendTaskActionError(res, err);
     }
 });
 
@@ -387,6 +882,7 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         const control_policy = b.control_policy || b.controlPolicy;
         const source_type = b.source_type || b.sourceType;
         const source_id = b.source_id || b.sourceId;
+        const osFields = normalizeTaskOsFields(b, { status: 'todo' });
 
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
         if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Invalid date' });
@@ -432,7 +928,8 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             category: VALID_CATEGORIES.includes(category) ? category : 'admin',
             template_id: template_id || null,
             afisha_id: afisha_id || null,
-            created_by: username
+            created_by: username,
+            ...osFields
         });
 
         res.json({
@@ -491,6 +988,8 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const taskStatus = VALID_STATUSES.includes(status) ? status : 'todo';
         const taskPriority = VALID_PRIORITIES.includes(priority) ? priority : 'normal';
         const taskCategory = VALID_CATEGORIES.includes(category) ? category : undefined;
+        const osFields = normalizeTaskOsFields({ ...b, status: taskStatus }, old);
+        if (taskStatus === 'done') osFields.workflow_state = 'done';
         const setClauses = ['title=$1', 'description=$2', 'date=$3', 'status=$4', 'priority=$5',
             'assigned_to=$6', 'owner=$7', 'owner_user_id=$8', `updated_at=NOW()`, `completed_at=CASE WHEN $9='done' THEN NOW() ELSE NULL END`,
             'version=COALESCE(version,1)+1'];
@@ -518,6 +1017,10 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             setClauses.push(`time_window_end=$${paramIdx++}`);
             values.push(time_window_end || null);
         }
+        Object.entries(osFields).forEach(([field, value]) => {
+            setClauses.push(`${field}=$${paramIdx++}`);
+            values.push(value);
+        });
 
         values.push(id);
         let whereClause = `WHERE id=$${paramIdx}`;
@@ -691,13 +1194,13 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
         let result;
         if (action === 'archive') {
             result = await pool.query(
-                `UPDATE tasks t SET status = 'archived', updated_at = NOW()
+                `UPDATE tasks t SET status = 'archived', workflow_state = 'archived', updated_at = NOW()
                  WHERE t.id = ANY($1::int[]) ${visibility} AND COALESCE(t.status, 'todo') NOT IN ('archived')`,
                 params
             );
         } else if (action === 'done') {
             result = await pool.query(
-                `UPDATE tasks t SET status = 'done', completed_at = NOW(), updated_at = NOW()
+                `UPDATE tasks t SET status = 'done', workflow_state = 'done', completed_at = NOW(), updated_at = NOW()
                  WHERE t.id = ANY($1::int[]) ${visibility} AND COALESCE(t.status, 'todo') NOT IN ('done','archived')`,
                 params
             );

@@ -219,6 +219,7 @@ router.get('/widgets/:type', async (req, res) => {
                 const result = await pool.query(`
                     SELECT t.id, t.title, t.status, t.priority, t.deadline, t.category,
                            t.owner_user_id, t.assigned_to, t.owner, t.updated_at, t.created_at,
+                           t.task_mode, t.task_kind, t.visibility, t.workflow_state, t.focus_rank,
                            u.name AS owner_name, u.username AS owner_username
                     FROM tasks t
                     LEFT JOIN users u ON u.id = t.owner_user_id
@@ -232,6 +233,43 @@ router.get('/widgets/:type', async (req, res) => {
                 `, params);
                 const tasks = taskWidgetPayload(result.rows);
                 data = { tasks, intelligence: buildTaskOperationsSummary(tasks) };
+                break;
+            }
+
+            case 'my_focus': {
+                const params = [];
+                const ownFilter = buildOwnTaskFilter(req.user, params, 't');
+                const result = await pool.query(`
+                    SELECT t.id, t.title, t.status, t.priority, t.deadline, t.category,
+                           t.owner_user_id, t.assigned_to, t.owner, t.updated_at, t.created_at,
+                           t.task_mode, t.task_kind, t.visibility, t.workflow_state, t.focus_rank,
+                           u.name AS owner_name, u.username AS owner_username
+                    FROM tasks t
+                    LEFT JOIN users u ON u.id = t.owner_user_id
+                    WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'cancelled', 'archived')
+                    ${ownFilter}
+                    ORDER BY
+                        CASE WHEN COALESCE(t.focus_rank, 0) > 0 THEN 0 ELSE 1 END,
+                        COALESCE(t.focus_rank, 99),
+                        t.deadline ASC NULLS LAST,
+                        t.updated_at DESC
+                    LIMIT 6
+                `, params);
+                const countParams = [];
+                const countOwn = buildOwnTaskFilter(req.user, countParams, 't');
+                const counts = await pool.query(`
+                    SELECT
+                        COUNT(*) FILTER (WHERE t.deadline IS NOT NULL AND t.deadline < NOW() AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived'))::int AS overdue_count,
+                        COUNT(*) FILTER (WHERE (COALESCE(t.workflow_state, 'todo') = 'waiting' OR COALESCE(t.task_kind, 'action') = 'waiting') AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived'))::int AS waiting_count
+                    FROM tasks t
+                    WHERE 1=1 ${countOwn}
+                `, countParams);
+                const tasks = taskWidgetPayload(result.rows);
+                data = {
+                    tasks,
+                    overdueCount: counts.rows[0]?.overdue_count || 0,
+                    waitingCount: counts.rows[0]?.waiting_count || 0
+                };
                 break;
             }
 

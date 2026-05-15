@@ -447,6 +447,77 @@ body.dark-mode.page-exiting::before {
     color: var(--gray-800);
 }
 
+.sidebar-alert-widget {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    padding: 8px 10px;
+    border: 1px solid rgba(245,158,11,0.18);
+    border-radius: 8px;
+    background: rgba(245,158,11,0.07);
+    color: var(--gray-700);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sidebar-alert-widget:hover {
+    background: rgba(245,158,11,0.12);
+    border-color: rgba(245,158,11,0.28);
+}
+
+.sidebar-alert-widget.has-critical {
+    border-color: rgba(239,68,68,0.28);
+    background: rgba(239,68,68,0.07);
+}
+
+.sidebar-alert-widget-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.72);
+}
+
+.sidebar-alert-widget-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sidebar-alert-widget-title {
+    color: var(--gray-800);
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.sidebar-alert-widget-meta {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sidebar-alert-widget-count {
+    min-width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    align-items: center;
+    justify-content: center;
+    background: #ef4444;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 900;
+}
+
 /* Collapsed: hide user card + context */
 .sidebar-nav.collapsed .sidebar-user-card,
 .sidebar-nav.collapsed .sidebar-day-context,
@@ -461,7 +532,14 @@ body.dark-mode.page-exiting::before {
 }
 .sidebar-nav.collapsed .sidebar-task-widget-main,
 .sidebar-nav.collapsed .sidebar-pinned-task-link .nav-text,
-.sidebar-nav.collapsed .sidebar-task-widget-count { display: none; }
+.sidebar-nav.collapsed .sidebar-task-widget-count,
+.sidebar-nav.collapsed .sidebar-alert-widget-main,
+.sidebar-nav.collapsed .sidebar-alert-widget-count { display: none !important; }
+.sidebar-nav.collapsed .sidebar-alert-widget {
+    display: flex;
+    justify-content: center;
+    padding: 7px;
+}
 
 /* ═══ TOOLTIP ═══ */
 @keyframes tooltipIn { from{opacity:0;transform:translateY(-50%) translateX(-4px)} to{opacity:1;transform:translateY(-50%) translateX(0)} }
@@ -714,6 +792,13 @@ body.dark-mode .sidebar-task-widget {
 }
 body.dark-mode .sidebar-task-widget-icon { background: rgba(255,255,255,0.08); }
 body.dark-mode .sidebar-pinned-task-link:hover { background: rgba(255,255,255,0.05); }
+body.dark-mode .sidebar-alert-widget {
+    background: rgba(245,158,11,0.1);
+    border-color: rgba(245,158,11,0.18);
+    color: var(--gray-200);
+}
+body.dark-mode .sidebar-alert-widget-icon { background: rgba(255,255,255,0.08); }
+body.dark-mode .sidebar-alert-widget-title { color: var(--gray-100); }
 
 /* Timeline-specific action buttons section */
 .sidebar-actions {

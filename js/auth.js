@@ -69,6 +69,14 @@ async function closeProfileModal(force = false) {
     return true;
 }
 
+function openProfilePage() {
+    if (window.location.pathname === '/profile') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+    }
+    window.location.href = '/profile';
+}
+
 // ==========================================
 // АВТОРИЗАЦІЯ
 // ==========================================
@@ -523,9 +531,12 @@ function showMainApp() {
     // v10.3: Personal cabinet — click on username
     const userNameEl = document.getElementById('currentUser');
     if (userNameEl) {
-        userNameEl.addEventListener('click', openProfileModal);
+        userNameEl.setAttribute('role', 'link');
+        userNameEl.setAttribute('tabindex', '0');
+        userNameEl.setAttribute('title', 'Відкрити профіль');
+        userNameEl.addEventListener('click', openProfilePage);
         userNameEl.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openProfileModal(); }
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openProfilePage(); }
         });
     }
 
@@ -1391,12 +1402,12 @@ function initProfileHandler() {
     if (!el || el.dataset.profileInit) return;
     el.dataset.profileInit = '1';
     el.classList.add('user-name-clickable');
-    el.setAttribute('role', 'button');
+    el.setAttribute('role', 'link');
     el.setAttribute('tabindex', '0');
-    el.setAttribute('title', 'Особистий кабінет');
-    el.addEventListener('click', openProfileModal);
+    el.setAttribute('title', 'Відкрити профіль');
+    el.addEventListener('click', openProfilePage);
     el.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openProfileModal(); }
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openProfilePage(); }
     });
 
     // Init modal close for sub-pages that don't include app.js

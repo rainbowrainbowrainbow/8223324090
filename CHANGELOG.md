@@ -4,6 +4,16 @@
 
 ---
 
+## v0.50.14 - Dashboard Board Tools & Notes Repair (2026-05-15)
+
+### Dashboard / Board Mode [codex]
+- **Board tools** - у dashboard board mode додано text, frame, brush/highlighter/eraser foundation і кілька типів фігур: line, arrow, rect, round rect, ellipse, diamond.
+- **Legacy notes repair** - старі board notes з payload keys `kind`, `content`, `body`, `noteText`, `label` тепер мігруються в canonical `text` і залишаються редагованими.
+- **Clear all** - додано дію `Очистити все` з confirm flow, очищенням items/drawings і undo snapshot.
+- **Config round-trip** - frontend і backend dashboard config тепер зберігають `boardState.drawings` та `activeTool`, не відрізаючи drawing state при save/load.
+
+---
+
 ## v0.50.13 - Sidebar Status Cell Clarity (2026-05-15)
 
 ### Sidebar / Status Cells [codex]

@@ -55,9 +55,12 @@ function countFrom(result) {
 }
 
 const BOARD_SCHEMA_VERSION = 1;
-const BOARD_MAX_ITEMS = 80;
+const BOARD_MAX_ITEMS = 120;
+const BOARD_MAX_DRAWINGS = 500;
 const BOARD_ALLOWED_TYPES = new Set(['widget', 'note', 'text', 'shape', 'frame']);
 const BOARD_ALLOWED_WIDGET_DEPTHS = new Set(['live-compact', 'headline-only', 'live-expanded', 'snapshot-card']);
+const BOARD_ALLOWED_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser']);
+const BOARD_ALLOWED_SHAPES = new Set(['line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
 
 function parseJsonObject(value, fallback = {}) {
     if (!value) return { ...fallback };
@@ -77,6 +80,39 @@ function safeNumber(value, fallback, min, max) {
     const number = Number(value);
     if (!Number.isFinite(number)) return fallback;
     return Math.min(max, Math.max(min, number));
+}
+
+function normalizeBoardTool(value) {
+    return BOARD_ALLOWED_TOOLS.has(value) ? value : 'select';
+}
+
+function normalizeBoardShape(value) {
+    return BOARD_ALLOWED_SHAPES.has(value) ? value : 'rect';
+}
+
+function sanitizeBoardStroke(stroke, index = 0) {
+    if (!stroke || typeof stroke !== 'object' || !Array.isArray(stroke.points) || stroke.points.length < 2) return null;
+    const tool = normalizeBoardTool(stroke.tool);
+    if (tool === 'select' || tool === 'hand' || tool === 'eraser') return null;
+    const points = stroke.points
+        .slice(0, 2000)
+        .map(point => {
+            if (!Array.isArray(point) || point.length < 2) return null;
+            return [
+                safeNumber(point[0], 0, -10000, 10000),
+                safeNumber(point[1], 0, -10000, 10000)
+            ];
+        })
+        .filter(Boolean);
+    if (points.length < 2) return null;
+    return {
+        id: String(stroke.id || `stroke-${Date.now()}-${index}`).slice(0, 90),
+        tool,
+        color: String(stroke.color || (tool === 'highlighter' ? '#f59e0b' : '#10b981')).slice(0, 32),
+        width: safeNumber(stroke.width, tool === 'highlighter' ? 12 : 2, 1, 24),
+        opacity: safeNumber(stroke.opacity, tool === 'highlighter' ? 0.34 : 0.9, 0.05, 1),
+        points
+    };
 }
 
 function defaultBoardMeta(overrides = {}) {
@@ -99,10 +135,15 @@ function defaultBoardState(overrides = {}) {
     return {
         viewport: { x: 0, y: 0, zoom: 1 },
         items: [],
+        drawings: [],
+        activeTool: 'select',
         preferences: {
             snapToGrid: true,
             showMiniMap: false,
-            maxLiveWidgets: 6
+            maxLiveWidgets: 6,
+            strokeColor: '#10b981',
+            fillColor: 'rgba(16, 185, 129, 0.10)',
+            strokeWidth: 2
         },
         ...overrides
     };
@@ -110,7 +151,9 @@ function defaultBoardState(overrides = {}) {
 
 function sanitizeBoardItem(item, role) {
     if (!item || typeof item !== 'object') return null;
-    const type = BOARD_ALLOWED_TYPES.has(item.type) ? item.type : null;
+    const rawType = String(item.type || item.kind || '').trim();
+    const inferredType = rawType || (item.noteText || item.content || item.body || item.label ? 'note' : '');
+    const type = BOARD_ALLOWED_TYPES.has(inferredType) ? inferredType : null;
     if (!type) return null;
     const id = String(item.id || '').trim().slice(0, 80);
     if (!id) return null;
@@ -133,10 +176,11 @@ function sanitizeBoardItem(item, role) {
         safe.depth = BOARD_ALLOWED_WIDGET_DEPTHS.has(item.depth) ? item.depth : 'live-compact';
         safe.title = String(item.title || '').slice(0, 120);
     } else {
-        safe.text = String(item.text || '').slice(0, 5000);
-        safe.title = String(item.title || '').slice(0, 120);
+        const legacyText = item.text ?? item.content ?? item.body ?? item.noteText ?? item.label ?? '';
+        safe.text = String(legacyText || '').slice(0, 5000);
+        safe.title = String(item.title || item.label || '').slice(0, 120);
         safe.color = String(item.color || '').slice(0, 40);
-        safe.shape = String(item.shape || 'rect').slice(0, 40);
+        safe.shape = normalizeBoardShape(item.shape || 'rect');
     }
 
     return safe;
@@ -149,6 +193,9 @@ function sanitizeBoardState(input, role) {
     const items = Array.isArray(source.items)
         ? source.items.slice(0, BOARD_MAX_ITEMS).map(item => sanitizeBoardItem(item, role)).filter(Boolean)
         : [];
+    const drawings = Array.isArray(source.drawings)
+        ? source.drawings.slice(0, BOARD_MAX_DRAWINGS).map(sanitizeBoardStroke).filter(Boolean)
+        : [];
 
     return defaultBoardState({
         viewport: {
@@ -157,10 +204,15 @@ function sanitizeBoardState(input, role) {
             zoom: safeNumber(viewportSource.zoom, 1, 0.25, 2)
         },
         items,
+        drawings,
+        activeTool: normalizeBoardTool(source.activeTool),
         preferences: {
             snapToGrid: preferencesSource.snapToGrid !== false,
             showMiniMap: preferencesSource.showMiniMap === true,
-            maxLiveWidgets: safeNumber(preferencesSource.maxLiveWidgets, 6, 1, 8)
+            maxLiveWidgets: safeNumber(preferencesSource.maxLiveWidgets, 6, 1, 8),
+            strokeColor: String(preferencesSource.strokeColor || '#10b981').slice(0, 32),
+            fillColor: String(preferencesSource.fillColor || 'rgba(16, 185, 129, 0.10)').slice(0, 64),
+            strokeWidth: safeNumber(preferencesSource.strokeWidth, 2, 1, 12)
         }
     });
 }

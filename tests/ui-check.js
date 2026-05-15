@@ -340,8 +340,10 @@ check('Page exit uses neutral shell veil instead of old shell animation', layout
 
 const trainingPageCode = fs.readFileSync(path.join(ROOT, 'js/training-page.js'), 'utf8');
 const chatPageCode = fs.readFileSync(path.join(ROOT, 'js/chat-page.js'), 'utf8');
+const dashboardHtml = fs.readFileSync(path.join(ROOT, 'dashboard.html'), 'utf8');
 const dashboardPageCode = fs.readFileSync(path.join(ROOT, 'js/dashboard-page.js'), 'utf8');
 const dashboardCss = fs.readFileSync(path.join(ROOT, 'css/dashboard.css'), 'utf8');
+const dashboardRouteCode = fs.readFileSync(path.join(ROOT, 'routes/dashboard.js'), 'utf8');
 check('Training page script does not double-initialize sidebar', !trainingPageCode.includes('Sidebar.init('));
 check('Chat page no longer uses early first-paint hack', !chatPageCode.includes('Show main app FIRST') && chatPageCode.includes('showAuthenticatedPageShell'));
 check('Dashboard retires bulky low-signal widgets from the main surface', dashboardPageCode.includes('DASHBOARD_RETIRED_WIDGETS') && ['finance_today', 'reports_today', 'account_stats', 'week_bookings'].every(key => dashboardPageCode.includes(key)) && dashboardPageCode.includes('!DASHBOARD_RETIRED_WIDGETS.has'));
@@ -391,7 +393,10 @@ check('Dashboard team online renders last-seen presence states', dashboardPageCo
 check('Dashboard board notes use a stable textarea editor', dashboardPageCode.includes('<textarea class="board-note-text board-note-editor"') && !dashboardPageCode.includes('contenteditable="${_boardInteractionMode'));
 check('Dashboard board note focus does not force a rerender', dashboardPageCode.includes("selectBoardItem(textEl.dataset.boardText, { render: false })") && dashboardPageCode.includes('handleBoardTextInput(textEl)'));
 check('Dashboard board drag ignores note editors and controls', dashboardPageCode.includes('function isBoardInteractiveTarget') && dashboardPageCode.includes('if (isBoardInteractiveTarget(event.target)) return;'));
-const dashboardRouteCode = fs.readFileSync(path.join(ROOT, 'routes/dashboard.js'), 'utf8');
+check('Dashboard board exposes drawing tools and clear-all action', dashboardPageCode.includes('function setBoardTool') && dashboardPageCode.includes('function clearBoardContent') && dashboardPageCode.includes('function addBoardText') && dashboardPageCode.includes('function addBoardFrame') && dashboardHtml.includes('data-board-tool="brush"') && dashboardHtml.includes('DashboardPage.clearBoardContent()'));
+check('Dashboard board preserves drawing state through frontend and backend config', dashboardPageCode.includes('normalizeBoardStroke') && dashboardPageCode.includes('drawings: drawingsRaw') && dashboardRouteCode.includes('sanitizeBoardStroke') && dashboardRouteCode.includes('drawings,') && dashboardRouteCode.includes('activeTool: normalizeBoardTool'));
+check('Dashboard board repairs legacy note payloads', dashboardPageCode.includes('item.noteText || item.content || item.body || item.label') && dashboardPageCode.includes('legacy-note-upgrade') && dashboardRouteCode.includes('item.noteText || item.content || item.body || item.label'));
+check('Dashboard board renders shape variants', dashboardPageCode.includes("addBoardShape(shape = 'rect')") && dashboardCss.includes('.board-shape-arrow::after') && dashboardCss.includes('.board-shape-diamond'));
 check('Dashboard team online endpoint distinguishes websocket online from last seen', dashboardRouteCode.includes('getOnlineUserIds') && dashboardRouteCode.includes('lastSeenSource') && dashboardRouteCode.includes('recentlyActive'));
 check('Omni page applies contextual search query', omniHtml.includes('applyQueryContext') && omniHtml.includes("params.get('search')"));
 check('Center hot leads update canonical pipeline stage', centerCode.includes('JSON.stringify({ pipeline_stage: status })'));

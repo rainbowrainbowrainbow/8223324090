@@ -8,17 +8,17 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.50.13">
-    <link rel="stylesheet" href="css/auth.css?v=0.50.13">
-    <link rel="stylesheet" href="css/layout.css?v=0.50.13">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.13">
-    <link rel="stylesheet" href="css/pages.css?v=0.50.13">
-    <link rel="stylesheet" href="css/modals.css?v=0.50.13">
-    <link rel="stylesheet" href="css/dashboard.css?v=0.50.13">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.13">
-    <link rel="stylesheet" href="css/responsive.css?v=0.50.13">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.50.13">
-    <link rel="stylesheet" href="css/decision-screen.css?v=0.50.13">
+    <link rel="stylesheet" href="css/base.css?v=0.50.14">
+    <link rel="stylesheet" href="css/auth.css?v=0.50.14">
+    <link rel="stylesheet" href="css/layout.css?v=0.50.14">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.14">
+    <link rel="stylesheet" href="css/pages.css?v=0.50.14">
+    <link rel="stylesheet" href="css/modals.css?v=0.50.14">
+    <link rel="stylesheet" href="css/dashboard.css?v=0.50.14">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.14">
+    <link rel="stylesheet" href="css/responsive.css?v=0.50.14">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.50.14">
+    <link rel="stylesheet" href="css/decision-screen.css?v=0.50.14">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -34,9 +34,9 @@
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.50.13</p>
+                <p class="tagline">AI First CRM v0.50.14</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.50.13</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.50.14</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -117,13 +117,30 @@
                             <button type="button" id="boardViewModeBtn" class="dashboard-mode-btn active" onclick="DashboardPage.setBoardInteractionMode('view')">View</button>
                             <button type="button" id="boardEditModeBtn" class="dashboard-mode-btn" onclick="DashboardPage.setBoardInteractionMode('edit')">Edit</button>
                         </div>
-                        <button type="button" class="dashboard-btn" onclick="DashboardPage.addBoardNote()">Note</button>
-                        <button type="button" class="dashboard-btn" onclick="DashboardPage.addBoardWidget()">Widget</button>
-                        <button type="button" class="dashboard-btn" onclick="DashboardPage.addBoardShape()">Shape</button>
-                        <button type="button" id="boardUndoBtn" class="dashboard-btn" onclick="DashboardPage.undoBoard()" disabled>Undo</button>
-                        <button type="button" id="boardRedoBtn" class="dashboard-btn" onclick="DashboardPage.redoBoard()" disabled>Redo</button>
-                        <button type="button" class="dashboard-btn" onclick="DashboardPage.resetBoardView()">Reset view</button>
-                        <span class="board-save-status" id="boardSaveStatus" data-state="saved">Збережено</span>
+                        <div class="board-tools-group" role="group" aria-label="Board tools">
+                            <button type="button" class="dashboard-btn" data-board-tool="select" onclick="DashboardPage.setBoardTool('select')">Select</button>
+                            <button type="button" class="dashboard-btn" data-board-tool="hand" onclick="DashboardPage.setBoardTool('hand')">Hand</button>
+                            <button type="button" class="dashboard-btn" onclick="DashboardPage.addBoardNote()">Note</button>
+                            <button type="button" class="dashboard-btn" onclick="DashboardPage.addBoardText()">Text</button>
+                            <button type="button" class="dashboard-btn" data-board-tool="brush" onclick="DashboardPage.setBoardTool('brush')">Brush</button>
+                            <button type="button" class="dashboard-btn" data-board-tool="highlighter" onclick="DashboardPage.setBoardTool('highlighter')">Highlighter</button>
+                            <button type="button" class="dashboard-btn" data-board-tool="eraser" onclick="DashboardPage.setBoardTool('eraser')">Eraser</button>
+                            <button type="button" class="dashboard-btn" onclick="DashboardPage.addBoardShape('line')">Line</button>
+                            <button type="button" class="dashboard-btn" onclick="DashboardPage.addBoardShape('arrow')">Arrow</button>
+                            <button type="button" class="dashboard-btn" onclick="DashboardPage.addBoardShape('rect')">Rect</button>
+                            <button type="button" class="dashboard-btn" onclick="DashboardPage.addBoardShape('round-rect')">Round Rect</button>
+                            <button type="button" class="dashboard-btn" onclick="DashboardPage.addBoardShape('ellipse')">Ellipse</button>
+                            <button type="button" class="dashboard-btn" onclick="DashboardPage.addBoardShape('diamond')">Diamond</button>
+                            <button type="button" class="dashboard-btn" onclick="DashboardPage.addBoardFrame()">Frame</button>
+                            <button type="button" class="dashboard-btn" onclick="DashboardPage.addBoardWidget()">Widget</button>
+                        </div>
+                        <div class="board-actions-group" role="group" aria-label="Board actions">
+                            <button type="button" id="boardUndoBtn" class="dashboard-btn" onclick="DashboardPage.undoBoard()" disabled>Undo</button>
+                            <button type="button" id="boardRedoBtn" class="dashboard-btn" onclick="DashboardPage.redoBoard()" disabled>Redo</button>
+                            <button type="button" class="dashboard-btn danger" onclick="DashboardPage.clearBoardContent()">Очистити все</button>
+                            <button type="button" class="dashboard-btn" onclick="DashboardPage.resetBoardView()">Reset view</button>
+                            <span class="board-save-status" id="boardSaveStatus" data-state="saved">Збережено</span>
+                        </div>
                     </div>
                 </div>
 
@@ -217,16 +234,16 @@
     </div>
 
     <!-- Scripts -->
-    <script src="js/config.js?v=0.50.13"></script>
-    <script src="js/notification.js?v=0.50.13"></script>
-    <script src="js/api.js?v=0.50.13"></script>
-    <script src="js/auth.js?v=0.50.13"></script>
-    <script src="js/components/sidebar.js?v=0.50.13"></script>
+    <script src="js/config.js?v=0.50.14"></script>
+    <script src="js/notification.js?v=0.50.14"></script>
+    <script src="js/api.js?v=0.50.14"></script>
+    <script src="js/auth.js?v=0.50.14"></script>
+    <script src="js/components/sidebar.js?v=0.50.14"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/decision-screen.js?v=0.50.13"></script>
-    <script src="js/dashboard-page.js?v=0.50.13"></script>
-    <script src="js/ui.js?v=0.50.13"></script>
-    <script src="js/catalogs.js?v=0.50.13"></script>
+    <script src="js/decision-screen.js?v=0.50.14"></script>
+    <script src="js/dashboard-page.js?v=0.50.14"></script>
+    <script src="js/ui.js?v=0.50.14"></script>
+    <script src="js/catalogs.js?v=0.50.14"></script>
     <script>
     // Login handler
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -266,8 +283,8 @@
         window.location.href = '/';
     })();
     </script>
-    <script src="js/alerts.js?v=0.50.13"></script>
-    <script src="js/role-panel.js?v=0.50.13"></script>
+    <script src="js/alerts.js?v=0.50.14"></script>
+    <script src="js/role-panel.js?v=0.50.14"></script>
 
     <!-- Decision Screen overlay -->
     <div id="decisionScreen" class="hidden"

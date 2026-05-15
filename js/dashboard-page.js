@@ -10,6 +10,8 @@ const DashboardPage = (() => {
     const BOARD_SAVE_DEBOUNCE_MS = 900;
     const BOARD_ALLOWED_TYPES = new Set(['widget', 'note', 'text', 'shape', 'frame']);
     const BOARD_ALLOWED_DEPTHS = new Set(['live-compact', 'headline-only']);
+    const BOARD_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser']);
+    const BOARD_ALLOWED_SHAPES = new Set(['line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
     const DASHBOARD_RETIRED_WIDGETS = new Set(['finance_today', 'reports_today', 'account_stats', 'week_bookings']);
 
     // Widget definitions — all available widgets
@@ -51,7 +53,9 @@ const DashboardPage = (() => {
     let _boardUndoStack = [];
     let _boardRedoStack = [];
     let _boardDrag = null;
+    let _boardDrawing = null;
     let _boardConfigCorrupt = false;
+    let _boardLegacyUpgradePending = false;
     let _boardKeyboardBound = false;
     let _boardRecoveryKey = 'eg_dashboard_board_draft_guest';
     let _workQueueReplyScope = normalizeWorkQueueReplyScope(localStorage.getItem('eg_reply_backlog_scope'));
@@ -86,10 +90,15 @@ const DashboardPage = (() => {
             boardState: {
                 viewport: { x: 0, y: 0, zoom: 1 },
                 items: [],
+                drawings: [],
+                activeTool: 'select',
                 preferences: {
                     snapToGrid: true,
                     showMiniMap: false,
-                    maxLiveWidgets: BOARD_LIVE_WIDGET_CAP
+                    maxLiveWidgets: BOARD_LIVE_WIDGET_CAP,
+                    strokeColor: '#10b981',
+                    fillColor: 'rgba(16, 185, 129, 0.10)',
+                    strokeWidth: 2
                 }
             }
         };
@@ -114,6 +123,39 @@ const DashboardPage = (() => {
         return value === 'board' ? 'board' : 'grid';
     }
 
+    function normalizeBoardTool(value) {
+        return BOARD_TOOLS.has(value) ? value : 'select';
+    }
+
+    function normalizeBoardShape(value) {
+        return BOARD_ALLOWED_SHAPES.has(value) ? value : 'rect';
+    }
+
+    function normalizeBoardStroke(stroke, index = 0) {
+        if (!stroke || typeof stroke !== 'object' || !Array.isArray(stroke.points) || stroke.points.length < 2) return null;
+        const tool = normalizeBoardTool(stroke.tool);
+        if (tool === 'select' || tool === 'hand' || tool === 'eraser') return null;
+        const points = stroke.points
+            .slice(0, 2000)
+            .map(point => {
+                if (!Array.isArray(point) || point.length < 2) return null;
+                return [
+                    safeNumber(point[0], 0, -10000, 10000),
+                    safeNumber(point[1], 0, -10000, 10000)
+                ];
+            })
+            .filter(Boolean);
+        if (points.length < 2) return null;
+        return {
+            id: String(stroke.id || `stroke-${Date.now()}-${index}`).slice(0, 90),
+            tool,
+            color: String(stroke.color || (tool === 'highlighter' ? '#f59e0b' : '#10b981')).slice(0, 32),
+            width: safeNumber(stroke.width, tool === 'highlighter' ? 12 : 2, 1, 24),
+            opacity: safeNumber(stroke.opacity, tool === 'highlighter' ? 0.34 : 0.9, 0.05, 1),
+            points
+        };
+    }
+
     function canUseWidget(widgetKey) {
         if (DASHBOARD_RETIRED_WIDGETS.has(widgetKey)) return false;
         const def = WIDGET_DEFS[widgetKey];
@@ -123,8 +165,13 @@ const DashboardPage = (() => {
 
     function normalizeBoardItem(item, index = 0) {
         if (!item || typeof item !== 'object') return null;
-        const type = BOARD_ALLOWED_TYPES.has(item.type) ? item.type : null;
+        const rawType = String(item.type || item.kind || '').trim();
+        const inferredType = rawType || (item.noteText || item.content || item.body || item.label ? 'note' : '');
+        const type = BOARD_ALLOWED_TYPES.has(inferredType) ? inferredType : null;
         if (!type) return null;
+        if (item.kind || (!Object.prototype.hasOwnProperty.call(item, 'text') && (item.noteText || item.content || item.body || item.label))) {
+            _boardLegacyUpgradePending = true;
+        }
         const fallbackId = `board-${type}-${Date.now()}-${index}`;
         const safe = {
             id: String(item.id || fallbackId).slice(0, 90),
@@ -144,10 +191,11 @@ const DashboardPage = (() => {
             safe.depth = BOARD_ALLOWED_DEPTHS.has(item.depth) ? item.depth : 'live-compact';
             safe.title = String(item.title || WIDGET_DEFS[widgetType]?.title || widgetType).slice(0, 120);
         } else {
-            safe.text = String(item.text || (type === 'note' ? 'Нова нотатка' : '')).slice(0, 5000);
-            safe.title = String(item.title || '').slice(0, 120);
+            const legacyText = item.text ?? item.content ?? item.body ?? item.noteText ?? item.label ?? '';
+            safe.text = String(legacyText || (type === 'note' ? 'Нова нотатка' : '')).slice(0, 5000);
+            safe.title = String(item.title || item.label || '').slice(0, 120);
             safe.color = String(item.color || '').slice(0, 40);
-            safe.shape = String(item.shape || 'rect').slice(0, 40);
+            safe.shape = normalizeBoardShape(item.shape || 'rect');
         }
         return safe;
     }
@@ -158,18 +206,25 @@ const DashboardPage = (() => {
         const viewport = safeObject(source.viewport, {});
         const preferences = safeObject(source.preferences, {});
         const itemsRaw = Array.isArray(source.items) ? source.items : [];
+        const drawingsRaw = Array.isArray(source.drawings) ? source.drawings : [];
         if (source.items && !Array.isArray(source.items)) _boardConfigCorrupt = true;
+        if (source.drawings && !Array.isArray(source.drawings)) _boardConfigCorrupt = true;
         return {
             viewport: {
                 x: safeNumber(viewport.x, 0, -10000, 10000),
                 y: safeNumber(viewport.y, 0, -10000, 10000),
                 zoom: safeNumber(viewport.zoom, 1, 0.25, 2)
             },
-            items: itemsRaw.slice(0, 80).map(normalizeBoardItem).filter(Boolean),
+            items: itemsRaw.slice(0, 120).map(normalizeBoardItem).filter(Boolean),
+            drawings: drawingsRaw.slice(0, 500).map(normalizeBoardStroke).filter(Boolean),
+            activeTool: normalizeBoardTool(source.activeTool),
             preferences: {
                 snapToGrid: preferences.snapToGrid !== false,
                 showMiniMap: preferences.showMiniMap === true,
-                maxLiveWidgets: safeNumber(preferences.maxLiveWidgets, BOARD_LIVE_WIDGET_CAP, 1, 8)
+                maxLiveWidgets: safeNumber(preferences.maxLiveWidgets, BOARD_LIVE_WIDGET_CAP, 1, 8),
+                strokeColor: String(preferences.strokeColor || '#10b981').slice(0, 32),
+                fillColor: String(preferences.fillColor || 'rgba(16, 185, 129, 0.10)').slice(0, 64),
+                strokeWidth: safeNumber(preferences.strokeWidth, 2, 1, 12)
             }
         };
     }
@@ -351,6 +406,9 @@ const DashboardPage = (() => {
         controls?.classList.toggle('hidden', !isBoard);
         viewBtn?.classList.toggle('active', _boardInteractionMode === 'view');
         editBtn?.classList.toggle('active', _boardInteractionMode === 'edit');
+        document.querySelectorAll('[data-board-tool]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.boardTool === (_config?.boardState?.activeTool || 'select'));
+        });
         if (undoBtn) undoBtn.disabled = _boardUndoStack.length === 0;
         if (redoBtn) redoBtn.disabled = _boardRedoStack.length === 0;
         if (status) {
@@ -420,8 +478,14 @@ const DashboardPage = (() => {
             const data = await resp.json();
 
             if (data.success) {
+                _boardLegacyUpgradePending = false;
                 _config = normalizeDashboardConfig(data.config);
+                const shouldPersistLegacyUpgrade = _boardLegacyUpgradePending;
                 await restoreBoardDraftIfNeeded();
+                if (shouldPersistLegacyUpgrade) {
+                    _boardLegacyUpgradePending = false;
+                    markBoardDirty('legacy-note-upgrade');
+                }
                 renderWidgets();
             }
         } catch (err) {
@@ -1823,13 +1887,21 @@ const DashboardPage = (() => {
         return _config.boardState.items;
     }
 
+    function getBoardDrawings() {
+        if (!_config.boardState) _config.boardState = createDefaultDashboardConfig().boardState;
+        if (!Array.isArray(_config.boardState.drawings)) _config.boardState.drawings = [];
+        return _config.boardState.drawings;
+    }
+
     function renderBoard() {
         const shell = document.getElementById('dashboardBoardShell');
         const canvas = document.getElementById('dashboardBoardCanvas');
         if (!shell || !canvas || !_config) return;
         shell.classList.remove('hidden');
         canvas.dataset.interactionMode = _boardInteractionMode;
+        canvas.dataset.activeTool = _config.boardState?.activeTool || 'select';
         const items = getBoardItems();
+        const drawings = getBoardDrawings();
 
         if (_boardConfigCorrupt) {
             canvas.innerHTML = `
@@ -1842,7 +1914,7 @@ const DashboardPage = (() => {
             return;
         }
 
-        if (!items.length) {
+        if (!items.length && !drawings.length) {
             canvas.innerHTML = `
                 <div class="dashboard-board-empty">
                     <strong>Порожній board mode</strong>
@@ -1853,19 +1925,34 @@ const DashboardPage = (() => {
                     </div>
                 </div>
             `;
+            bindBoardCanvasHandlers(canvas);
             return;
         }
 
-        canvas.innerHTML = items
+        canvas.innerHTML = renderBoardDrawingLayer(drawings) + items
             .slice()
             .sort((a, b) => Number(a.z || 0) - Number(b.z || 0))
             .map(renderBoardItem)
             .join('');
 
         bindBoardItemHandlers();
+        bindBoardCanvasHandlers(canvas);
         items.filter(item => item.type === 'widget' && item.depth === 'live-compact' && !item.hidden)
             .slice(0, BOARD_LIVE_WIDGET_CAP)
             .forEach(item => loadWidgetData(item.widgetType, document.getElementById(`board-widget-${item.id}`)));
+    }
+
+    function boardStrokePath(points = []) {
+        return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${Number(point[0] || 0)} ${Number(point[1] || 0)}`).join(' ');
+    }
+
+    function renderBoardDrawingLayer(drawings = []) {
+        const paths = drawings.map(stroke => {
+            const path = boardStrokePath(stroke.points || []);
+            if (!path) return '';
+            return `<path id="board-stroke-${escapeHtml(stroke.id)}" class="board-drawing-stroke board-drawing-${escapeHtml(stroke.tool)}" d="${escapeHtml(path)}" stroke="${escapeHtml(stroke.color || '#10b981')}" stroke-width="${Number(stroke.width || 2)}" stroke-opacity="${Number(stroke.opacity || 0.9)}"></path>`;
+        }).join('');
+        return `<svg class="dashboard-board-drawing-layer" viewBox="0 0 1200 720" preserveAspectRatio="none" aria-hidden="true">${paths}</svg>`;
     }
 
     function renderBoardItem(item) {
@@ -1918,13 +2005,13 @@ const DashboardPage = (() => {
             return `<div class="board-widget-live" id="board-widget-${escapeHtml(item.id)}"><div class="widget-loading">Завантаження...</div></div>`;
         }
         if (item.type === 'shape') {
-            return `<div class="board-shape board-shape-${escapeHtml(item.shape || 'rect')}"></div>`;
+            return `<div class="board-shape board-shape-${escapeHtml(item.shape || 'rect')}" data-board-shape></div>`;
         }
         if (item.type === 'frame') {
             return `<div class="board-frame-label">${escapeHtml(item.text || 'Frame')}</div>`;
         }
         const readonly = item.locked ? ' readonly aria-readonly="true"' : '';
-        return `<textarea class="board-note-text board-note-editor" data-board-text="${escapeHtml(item.id)}" placeholder="Нотатка"${readonly}>${escapeHtml(item.text || '')}</textarea>`;
+        return `<textarea class="board-note-text board-note-editor" data-board-text="${escapeHtml(item.id)}" data-board-item-id="${escapeHtml(item.id)}" placeholder="Нотатка" spellcheck="true"${readonly}>${escapeHtml(item.text || '')}</textarea>`;
     }
 
     function boardWidgetHref(type) {
@@ -1959,6 +2046,14 @@ const DashboardPage = (() => {
             handle.addEventListener('pointerdown', event => beginBoardDrag(event, el));
         });
         canvas.querySelectorAll('[data-board-text]').forEach(textEl => {
+            textEl.addEventListener('pointerdown', event => {
+                event.stopPropagation();
+            });
+            textEl.addEventListener('click', event => {
+                event.stopPropagation();
+                selectBoardItem(textEl.dataset.boardText, { render: false });
+                if (_boardInteractionMode === 'view' && typeof textEl.focus === 'function') textEl.focus();
+            });
             textEl.addEventListener('focus', () => {
                 textEl.dataset.originalText = boardTextValue(textEl);
                 delete textEl.dataset.undoPushed;
@@ -1967,6 +2062,11 @@ const DashboardPage = (() => {
             textEl.addEventListener('input', () => handleBoardTextInput(textEl));
             textEl.addEventListener('blur', () => commitBoardTextEdit(textEl));
         });
+    }
+
+    function bindBoardCanvasHandlers(canvas) {
+        if (!canvas) return;
+        canvas.onpointerdown = beginBoardCanvasPointer;
         canvas.onclick = event => {
             if (_boardInteractionMode === 'edit' && event.target === canvas) selectBoardItem(null);
         };
@@ -1974,6 +2074,111 @@ const DashboardPage = (() => {
 
     function isBoardInteractiveTarget(target) {
         return !!(target && target.closest && target.closest('button, a, input, textarea, select, [contenteditable="true"], [data-board-text]'));
+    }
+
+    function boardPointFromEvent(event) {
+        const canvas = document.getElementById('dashboardBoardCanvas');
+        if (!canvas) return [0, 0];
+        const rect = canvas.getBoundingClientRect();
+        return [
+            Math.round(event.clientX - rect.left),
+            Math.round(event.clientY - rect.top)
+        ];
+    }
+
+    function beginBoardCanvasPointer(event) {
+        if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
+        if (event.target?.closest?.('.dashboard-board-item') || isBoardInteractiveTarget(event.target)) return;
+        if (event.target?.closest?.('.dashboard-board-empty, .dashboard-board-warning')) return;
+        const tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
+        if (tool === 'brush' || tool === 'highlighter') {
+            beginBoardStroke(event, tool);
+            return;
+        }
+        if (tool === 'eraser') {
+            eraseBoardStrokeAt(event);
+        }
+    }
+
+    function beginBoardStroke(event, tool) {
+        if (!_config?.boardState) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const preferences = safeObject(_config.boardState.preferences, {});
+        const point = boardPointFromEvent(event);
+        const stroke = normalizeBoardStroke({
+            id: `stroke-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            tool,
+            color: tool === 'highlighter' ? '#f59e0b' : String(preferences.strokeColor || '#10b981'),
+            width: tool === 'highlighter' ? Math.max(10, Number(preferences.strokeWidth || 2) * 5) : Number(preferences.strokeWidth || 2),
+            opacity: tool === 'highlighter' ? 0.34 : 0.9,
+            points: [point, point]
+        }, getBoardDrawings().length);
+        if (!stroke) return;
+        pushBoardUndo('draw');
+        getBoardDrawings().push(stroke);
+        _boardDrawing = { strokeId: stroke.id, moved: false };
+        event.currentTarget?.setPointerCapture?.(event.pointerId);
+        document.addEventListener('pointermove', handleBoardStrokeMove);
+        document.addEventListener('pointerup', endBoardStroke, { once: true });
+        renderBoard();
+    }
+
+    function handleBoardStrokeMove(event) {
+        if (!_boardDrawing) return;
+        const stroke = getBoardDrawings().find(item => item.id === _boardDrawing.strokeId);
+        if (!stroke) return;
+        const point = boardPointFromEvent(event);
+        const previous = stroke.points[stroke.points.length - 1] || point;
+        if (Math.abs(point[0] - previous[0]) < 2 && Math.abs(point[1] - previous[1]) < 2) return;
+        stroke.points.push(point);
+        _boardDrawing.moved = true;
+        const path = document.getElementById(`board-stroke-${stroke.id}`);
+        if (path) path.setAttribute('d', boardStrokePath(stroke.points));
+    }
+
+    function endBoardStroke() {
+        document.removeEventListener('pointermove', handleBoardStrokeMove);
+        const drawing = _boardDrawing;
+        _boardDrawing = null;
+        if (!drawing) return;
+        const drawings = getBoardDrawings();
+        const index = drawings.findIndex(item => item.id === drawing.strokeId);
+        if (index < 0) return;
+        if (!drawing.moved) {
+            drawings.splice(index, 1);
+            renderBoard();
+            return;
+        }
+        markBoardDirty('draw');
+        renderBoard();
+    }
+
+    function distanceToStroke(point, stroke) {
+        return (stroke.points || []).reduce((min, next) => {
+            const dx = Number(next[0] || 0) - point[0];
+            const dy = Number(next[1] || 0) - point[1];
+            return Math.min(min, Math.sqrt(dx * dx + dy * dy));
+        }, Infinity);
+    }
+
+    function eraseBoardStrokeAt(event) {
+        const point = boardPointFromEvent(event);
+        const drawings = getBoardDrawings();
+        let index = -1;
+        let best = Infinity;
+        drawings.forEach((stroke, idx) => {
+            const distance = distanceToStroke(point, stroke);
+            if (distance < best) {
+                best = distance;
+                index = idx;
+            }
+        });
+        if (index < 0 || best > 22) return;
+        pushBoardUndo('erase');
+        drawings.splice(index, 1);
+        markBoardDirty('erase');
+        renderBoard();
     }
 
     function findBoardItem(id) {
@@ -2119,8 +2324,31 @@ const DashboardPage = (() => {
         addBoardItem({ type: 'note', w: 260, h: 150, text: 'Нова нотатка' });
     }
 
-    function addBoardShape() {
-        addBoardItem({ type: 'shape', w: 220, h: 120, shape: 'rect', title: 'Shape' });
+    function addBoardText() {
+        addBoardItem({ type: 'text', w: 320, h: 160, text: 'Новий текстовий блок', title: 'Text' });
+    }
+
+    function addBoardFrame() {
+        addBoardItem({ type: 'frame', w: 420, h: 260, text: 'Нова зона', title: 'Frame' });
+    }
+
+    function addBoardShape(shape = 'rect') {
+        const safeShape = normalizeBoardShape(shape);
+        const shapeTitles = {
+            line: 'Line',
+            arrow: 'Arrow',
+            rect: 'Rectangle',
+            'round-rect': 'Rounded Rectangle',
+            ellipse: 'Ellipse',
+            diamond: 'Diamond'
+        };
+        addBoardItem({
+            type: 'shape',
+            w: safeShape === 'line' || safeShape === 'arrow' ? 260 : 220,
+            h: safeShape === 'line' || safeShape === 'arrow' ? 70 : 120,
+            shape: safeShape,
+            title: shapeTitles[safeShape] || 'Shape'
+        });
     }
 
     function addBoardWidget() {
@@ -2281,6 +2509,35 @@ const DashboardPage = (() => {
         _boardInteractionMode = mode === 'edit' ? 'edit' : 'view';
         if (_boardInteractionMode === 'view') _boardSelectedId = null;
         syncBoardToolbar();
+        renderBoard();
+    }
+
+    function setBoardTool(tool) {
+        if (!_config?.boardState) return;
+        const nextTool = normalizeBoardTool(tool);
+        _config.boardState.activeTool = nextTool;
+        if (nextTool !== 'select' && nextTool !== 'hand') {
+            _boardInteractionMode = 'edit';
+        }
+        markBoardDirty('tool');
+        syncBoardToolbar();
+        renderBoard();
+    }
+
+    async function clearBoardContent() {
+        if (!_config?.boardState) return;
+        const hasContent = getBoardItems().length > 0 || getBoardDrawings().length > 0;
+        if (!hasContent) return;
+        const message = 'Очистити всі нотатки, фігури, текстові блоки, frames і малювання на board?';
+        const confirmed = typeof confirmModal === 'function'
+            ? await confirmModal(message, { type: 'warning', okText: 'Очистити', cancelText: 'Скасувати' })
+            : window.confirm(message);
+        if (!confirmed) return;
+        pushBoardUndo('clear-all');
+        _config.boardState.items = [];
+        _config.boardState.drawings = [];
+        _boardSelectedId = null;
+        markBoardDirty('clear-all');
         renderBoard();
     }
 
@@ -4461,7 +4718,10 @@ const DashboardPage = (() => {
         refreshWidget,
         setDashboardMode,
         setBoardInteractionMode,
+        setBoardTool,
         addBoardNote,
+        addBoardText,
+        addBoardFrame,
         addBoardWidget,
         addBoardShape,
         seedBoardWidgets,
@@ -4472,6 +4732,7 @@ const DashboardPage = (() => {
         toggleBoardItemHidden,
         undoBoard,
         redoBoard,
+        clearBoardContent,
         resetBoardView,
         resetBoardState,
         openTask,

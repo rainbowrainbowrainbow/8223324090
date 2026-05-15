@@ -8,17 +8,17 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.50.15">
-    <link rel="stylesheet" href="css/auth.css?v=0.50.15">
-    <link rel="stylesheet" href="css/layout.css?v=0.50.15">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.15">
-    <link rel="stylesheet" href="css/pages.css?v=0.50.15">
-    <link rel="stylesheet" href="css/modals.css?v=0.50.15">
-    <link rel="stylesheet" href="css/dashboard.css?v=0.50.15">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.15">
-    <link rel="stylesheet" href="css/responsive.css?v=0.50.15">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.50.15">
-    <link rel="stylesheet" href="css/decision-screen.css?v=0.50.15">
+    <link rel="stylesheet" href="css/base.css?v=0.50.16">
+    <link rel="stylesheet" href="css/auth.css?v=0.50.16">
+    <link rel="stylesheet" href="css/layout.css?v=0.50.16">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.16">
+    <link rel="stylesheet" href="css/pages.css?v=0.50.16">
+    <link rel="stylesheet" href="css/modals.css?v=0.50.16">
+    <link rel="stylesheet" href="css/dashboard.css?v=0.50.16">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.16">
+    <link rel="stylesheet" href="css/responsive.css?v=0.50.16">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.50.16">
+    <link rel="stylesheet" href="css/decision-screen.css?v=0.50.16">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -34,9 +34,9 @@
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.50.15</p>
+                <p class="tagline">AI First CRM v0.50.16</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.50.15</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.50.16</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -87,6 +87,25 @@
             <div class="header-content">
                 <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
                 <button type="button" class="alert-bell-btn" id="alertBell" onclick="toggleAlertsPanel(event)" title="Алерти"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="alert-badge" id="alertBadge" style="display:none">0</span></button>
+                <div class="dashboard-assistant-rail" id="dashboardAssistantRail" data-mode="idle" aria-live="polite" aria-label="Стан голосового асистента">
+                    <div class="assistant-rail-presence" id="assistantRailPresence">
+                        <div class="assistant-rail-avatar" id="assistantRailAvatar" aria-hidden="true">AI</div>
+                        <div class="assistant-rail-status-stack">
+                            <div class="assistant-rail-topline">
+                                <span class="assistant-rail-name">Клешня</span>
+                                <span class="assistant-rail-state assistant-state-idle" id="assistantRailState">Готовий</span>
+                            </div>
+                            <div class="assistant-rail-subtitles-wrap" id="assistantRailSubtitlesWrap">
+                                <div class="assistant-rail-subtitles" id="assistantRailSubtitles">Субтитри з’являться тут, коли асистент почне говорити.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="assistant-rail-actions" aria-label="Керування голосовим асистентом">
+                        <button type="button" class="assistant-rail-btn" id="assistantRailVoiceToggle" onclick="DashboardPage.toggleAssistantVoice()" title="Увімкнути або вимкнути голос" aria-label="Увімкнути або вимкнути голос">🔊</button>
+                        <button type="button" class="assistant-rail-btn" id="assistantRailReplayBtn" onclick="DashboardPage.replayAssistantLine()" title="Повторити останню репліку" aria-label="Повторити останню репліку">↺</button>
+                        <button type="button" class="assistant-rail-btn" id="assistantRailExpandBtn" onclick="DashboardPage.expandAssistantRail()" title="Розгорнути assistant rail" aria-label="Розгорнути assistant rail">⋯</button>
+                    </div>
+                </div>
                 <div class="user-panel">
                     <span id="currentUser" class="user-name" role="button" tabindex="0" title="Особистий кабінет"></span>
                     <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
@@ -234,16 +253,16 @@
     </div>
 
     <!-- Scripts -->
-    <script src="js/config.js?v=0.50.15"></script>
-    <script src="js/notification.js?v=0.50.15"></script>
-    <script src="js/api.js?v=0.50.15"></script>
-    <script src="js/auth.js?v=0.50.15"></script>
-    <script src="js/components/sidebar.js?v=0.50.15"></script>
+    <script src="js/config.js?v=0.50.16"></script>
+    <script src="js/notification.js?v=0.50.16"></script>
+    <script src="js/api.js?v=0.50.16"></script>
+    <script src="js/auth.js?v=0.50.16"></script>
+    <script src="js/components/sidebar.js?v=0.50.16"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/decision-screen.js?v=0.50.15"></script>
-    <script src="js/dashboard-page.js?v=0.50.15"></script>
-    <script src="js/ui.js?v=0.50.15"></script>
-    <script src="js/catalogs.js?v=0.50.15"></script>
+    <script src="js/decision-screen.js?v=0.50.16"></script>
+    <script src="js/dashboard-page.js?v=0.50.16"></script>
+    <script src="js/ui.js?v=0.50.16"></script>
+    <script src="js/catalogs.js?v=0.50.16"></script>
     <script>
     // Login handler
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -283,8 +302,8 @@
         window.location.href = '/';
     })();
     </script>
-    <script src="js/alerts.js?v=0.50.15"></script>
-    <script src="js/role-panel.js?v=0.50.15"></script>
+    <script src="js/alerts.js?v=0.50.16"></script>
+    <script src="js/role-panel.js?v=0.50.16"></script>
 
     <!-- Decision Screen overlay -->
     <div id="decisionScreen" class="hidden"

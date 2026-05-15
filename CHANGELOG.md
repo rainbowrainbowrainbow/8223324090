@@ -4,6 +4,16 @@
 
 ---
 
+## v0.50.16 - Dashboard Assistant Voice Rail (2026-05-15)
+
+### Dashboard / Assistant Rail [codex]
+- **Header rail** - у центральній зоні dashboard header додано постійну assistant-панель для статусу, голосу й субтитрів.
+- **Voice presence** - rail підтримує стани `Готовий`, `Думаю`, `Зайнятий`, `Слухаю`, `Говорю`, `Тиша` і `Помилка`, щоб користувач бачив, що робить асистент.
+- **Subtitles ticker** - довгі репліки плавно прокручуються тільки коли не влазять у рядок; на hover/focus рух ставиться на паузу.
+- **Hooks** - додано frontend-контракт `setAssistantRailState`, `toggleAssistantVoice`, `replayAssistantLine` і `demoAssistantSpeak` для майбутнього підключення реального голосового/LLM pipeline.
+
+---
+
 ## v0.50.15 - Profile Photo Upload (2026-05-15)
 
 ### Profile / Avatar [codex]

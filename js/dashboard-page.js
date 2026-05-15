@@ -72,6 +72,24 @@ const DashboardPage = (() => {
     let _taskActionHistoryState = { itemId: null, taskId: null, status: 'idle', events: [], error: null };
     let _taskOwnerPickerState = null;
     let _settingsOverlayInitialState = '';
+    let _assistantRailState = {
+        mode: 'idle',
+        voiceEnabled: localStorage.getItem('eg_dashboard_assistant_voice') !== 'off',
+        subtitle: 'Субтитри з’являться тут, коли асистент почне говорити.',
+        tickerText: '',
+        lastSpokenLine: '',
+        updatedAt: null
+    };
+    const ASSISTANT_RAIL_MODES = new Set(['idle', 'thinking', 'busy', 'listening', 'speaking', 'muted', 'error']);
+    const ASSISTANT_RAIL_LABELS = {
+        idle: 'Готовий',
+        thinking: 'Думаю',
+        busy: 'Зайнятий',
+        listening: 'Слухаю',
+        speaking: 'Говорю',
+        muted: 'Тиша',
+        error: 'Помилка'
+    };
 
     function createDefaultDashboardConfig() {
         return {
@@ -509,7 +527,111 @@ const DashboardPage = (() => {
 
         const role = getUserRole();
         const roleName = ROLE_NAMES[role] || role;
-        greetingEl.textContent = `${greeting}, ${AppState.currentUser.name}! (${roleName})`;
+        greetingEl.textContent = `${greeting}, ${AppState.currentUser.name}!`;
+        setAssistantRailState({
+            mode: _assistantRailState.voiceEnabled ? 'idle' : 'muted',
+            subtitle: `Я на зв’язку. Можу показувати субтитри, голосовий статус і підказки по CRM. Роль акаунта: ${roleName}.`
+        });
+    }
+
+    function normalizeAssistantRailMode(value) {
+        return ASSISTANT_RAIL_MODES.has(value) ? value : 'idle';
+    }
+
+    function setAssistantRailState(patch = {}) {
+        const nextMode = normalizeAssistantRailMode(patch.mode ?? _assistantRailState.mode);
+        const subtitle = Object.prototype.hasOwnProperty.call(patch, 'subtitle')
+            ? String(patch.subtitle || '')
+            : _assistantRailState.subtitle;
+        const tickerText = Object.prototype.hasOwnProperty.call(patch, 'tickerText')
+            ? String(patch.tickerText || '')
+            : _assistantRailState.tickerText;
+        _assistantRailState = {
+            ..._assistantRailState,
+            ...patch,
+            mode: nextMode,
+            subtitle,
+            tickerText,
+            updatedAt: new Date().toISOString()
+        };
+        renderAssistantRail();
+    }
+
+    function renderAssistantRail() {
+        const rail = document.getElementById('dashboardAssistantRail');
+        const stateEl = document.getElementById('assistantRailState');
+        const subtitlesWrap = document.getElementById('assistantRailSubtitlesWrap');
+        const subtitlesEl = document.getElementById('assistantRailSubtitles');
+        const voiceBtn = document.getElementById('assistantRailVoiceToggle');
+        const replayBtn = document.getElementById('assistantRailReplayBtn');
+        if (!rail || !stateEl || !subtitlesEl || !voiceBtn) return;
+
+        const text = _assistantRailState.tickerText || _assistantRailState.subtitle || '...';
+        rail.dataset.mode = _assistantRailState.mode;
+        stateEl.textContent = ASSISTANT_RAIL_LABELS[_assistantRailState.mode] || ASSISTANT_RAIL_LABELS.idle;
+        stateEl.className = `assistant-rail-state assistant-state-${_assistantRailState.mode}`;
+        subtitlesEl.textContent = text;
+        subtitlesEl.classList.remove('is-ticker');
+        voiceBtn.textContent = _assistantRailState.voiceEnabled ? '🔊' : '🔇';
+        voiceBtn.setAttribute('aria-pressed', _assistantRailState.voiceEnabled ? 'true' : 'false');
+        if (replayBtn) replayBtn.disabled = !(_assistantRailState.lastSpokenLine || _assistantRailState.subtitle);
+
+        requestAnimationFrame(() => {
+            const shouldScroll = shouldAssistantSubtitleScroll(text, subtitlesWrap, subtitlesEl);
+            subtitlesEl.classList.toggle('is-ticker', shouldScroll);
+        });
+    }
+
+    function shouldAssistantSubtitleScroll(text = '', wrap = null, el = null) {
+        if (String(text).trim().length > 90) return true;
+        return !!(wrap && el && el.scrollWidth > wrap.clientWidth + 12);
+    }
+
+    function toggleAssistantVoice() {
+        const next = !_assistantRailState.voiceEnabled;
+        localStorage.setItem('eg_dashboard_assistant_voice', next ? 'on' : 'off');
+        setAssistantRailState({
+            voiceEnabled: next,
+            mode: next ? 'idle' : 'muted',
+            subtitle: next
+                ? 'Голос увімкнено. Субтитри лишаються активними, щоб було видно останню репліку.'
+                : 'Голос вимкнено. Асистент відповідатиме текстом і субтитрами без озвучення.'
+        });
+    }
+
+    function replayAssistantLine() {
+        const line = _assistantRailState.lastSpokenLine || _assistantRailState.subtitle || 'Немає останньої репліки для повтору.';
+        setAssistantRailState({
+            mode: _assistantRailState.voiceEnabled ? 'speaking' : 'idle',
+            subtitle: line,
+            lastSpokenLine: line
+        });
+        if (_assistantRailState.voiceEnabled) {
+            window.clearTimeout(replayAssistantLine._timer);
+            replayAssistantLine._timer = window.setTimeout(() => {
+                if (_assistantRailState.mode === 'speaking') setAssistantRailState({ mode: 'idle' });
+            }, 2600);
+        }
+    }
+
+    function expandAssistantRail() {
+        setAssistantRailState({
+            mode: 'thinking',
+            subtitle: 'Повна історія голосових реплік і LLM-подій буде відкриватися тут у наступному кроці.'
+        });
+        if (typeof showNotification === 'function') {
+            showNotification('Assistant rail готовий для підключення історії голосу та субтитрів.', 'info');
+        }
+    }
+
+    function demoAssistantSpeak(text) {
+        const line = String(text || '').trim();
+        if (!line) return;
+        setAssistantRailState({
+            mode: _assistantRailState.voiceEnabled ? 'speaking' : 'idle',
+            subtitle: line,
+            lastSpokenLine: line
+        });
     }
 
     async function loadWorkQueue() {
@@ -4745,6 +4867,11 @@ const DashboardPage = (() => {
         switchTestRole,
         resetTestRole,
         switchTestUser,
+        setAssistantRailState,
+        toggleAssistantVoice,
+        replayAssistantLine,
+        expandAssistantRail,
+        demoAssistantSpeak,
     };
 })();
 

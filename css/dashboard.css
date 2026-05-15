@@ -28,6 +28,262 @@
     margin-top: 2px;
 }
 
+.dashboard-assistant-rail {
+    flex: 1 1 420px;
+    min-width: 260px;
+    max-width: 760px;
+    margin: 0 10px;
+    min-height: 54px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.94), rgba(248,250,252,0.88));
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+}
+
+.assistant-rail-presence {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.assistant-rail-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    background: rgba(16, 185, 129, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.14);
+    color: #047857;
+    font-family: var(--font-heading, 'Space Grotesk'), sans-serif;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+}
+
+.assistant-rail-status-stack {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.assistant-rail-topline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.assistant-rail-name {
+    color: var(--text-primary, #172033);
+    font-size: 13px;
+    font-weight: 900;
+}
+
+.assistant-rail-state {
+    min-height: 22px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.assistant-state-idle { background: rgba(148, 163, 184, 0.12); color: #475569; }
+.assistant-state-thinking { background: rgba(59, 130, 246, 0.12); color: #1d4ed8; }
+.assistant-state-busy { background: rgba(245, 158, 11, 0.14); color: #b45309; }
+.assistant-state-listening { background: rgba(139, 92, 246, 0.14); color: #6d28d9; }
+.assistant-state-speaking { background: rgba(16, 185, 129, 0.15); color: #047857; }
+.assistant-state-muted { background: rgba(148, 163, 184, 0.12); color: #64748b; }
+.assistant-state-error { background: rgba(239, 68, 68, 0.12); color: #b91c1c; }
+
+.assistant-rail-subtitles-wrap {
+    min-width: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.assistant-rail-subtitles {
+    max-width: 100%;
+    color: var(--gray-600, #475569);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    will-change: transform;
+}
+
+.assistant-rail-subtitles.is-ticker {
+    display: inline-block;
+    min-width: 100%;
+    padding-right: 64px;
+    overflow: visible;
+    text-overflow: clip;
+    animation: assistantTicker 14s linear infinite;
+}
+
+.assistant-rail-subtitles-wrap:hover .assistant-rail-subtitles.is-ticker,
+.dashboard-assistant-rail:focus-within .assistant-rail-subtitles.is-ticker {
+    animation-play-state: paused;
+}
+
+@keyframes assistantTicker {
+    0%, 12% { transform: translateX(0); }
+    88%, 100% { transform: translateX(-36%); }
+}
+
+.assistant-rail-actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.assistant-rail-btn {
+    width: 32px;
+    height: 32px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 10px;
+    background: rgba(255,255,255,0.78);
+    color: var(--gray-700, #374151);
+    cursor: pointer;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 900;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.assistant-rail-btn:hover,
+.assistant-rail-btn:focus-visible {
+    border-color: rgba(16, 185, 129, 0.28);
+    background: rgba(16, 185, 129, 0.10);
+    outline: none;
+    transform: translateY(-1px);
+}
+
+.assistant-rail-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.dashboard-assistant-rail[data-mode="speaking"] .assistant-rail-avatar,
+.dashboard-assistant-rail[data-mode="listening"] .assistant-rail-avatar {
+    animation: assistantPulse 1.4s ease-in-out infinite;
+}
+
+.dashboard-assistant-rail[data-mode="busy"] {
+    border-color: rgba(245, 158, 11, 0.22);
+    background: linear-gradient(135deg, rgba(255,250,235,0.94), rgba(255,247,237,0.86));
+}
+
+.dashboard-assistant-rail[data-mode="busy"] .assistant-rail-subtitles {
+    color: #9a3412;
+}
+
+.dashboard-assistant-rail[data-mode="error"] {
+    border-color: rgba(239, 68, 68, 0.24);
+}
+
+@keyframes assistantPulse {
+    0%, 100% { box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.14), 0 0 0 0 rgba(16, 185, 129, 0.16); }
+    50% { box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.22), 0 0 0 10px rgba(16, 185, 129, 0.02); }
+}
+
+body.dark-mode .dashboard-assistant-rail {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0.72));
+    border-color: rgba(148, 163, 184, 0.16);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.22);
+}
+
+body.dark-mode .assistant-rail-name {
+    color: #f8fafc;
+}
+
+body.dark-mode .assistant-rail-subtitles {
+    color: #cbd5e1;
+}
+
+body.dark-mode .assistant-rail-avatar,
+body.dark-mode .assistant-rail-btn {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.12);
+    color: #a7f3d0;
+}
+
+body.dark-mode .dashboard-assistant-rail[data-mode="busy"] {
+    border-color: rgba(251, 191, 36, 0.28);
+    background: linear-gradient(135deg, rgba(68, 48, 16, 0.68), rgba(30, 41, 59, 0.72));
+}
+
+body.dark-mode .dashboard-assistant-rail[data-mode="busy"] .assistant-rail-subtitles {
+    color: #fde68a;
+}
+
+@media (max-width: 980px) {
+    .dashboard-assistant-rail {
+        flex-basis: 320px;
+        max-width: none;
+        min-height: 48px;
+        padding: 7px 10px;
+    }
+
+    .assistant-rail-avatar {
+        width: 34px;
+        height: 34px;
+    }
+
+    .assistant-rail-subtitles {
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 640px) {
+    .dashboard-assistant-rail {
+        order: 10;
+        flex: 1 0 100%;
+        margin: 0;
+        min-width: 0;
+    }
+}
+
+@media (max-width: 390px) {
+    .assistant-rail-actions {
+        gap: 4px;
+    }
+
+    .assistant-rail-btn {
+        width: 30px;
+        height: 30px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .assistant-rail-subtitles.is-ticker,
+    .dashboard-assistant-rail[data-mode="speaking"] .assistant-rail-avatar,
+    .dashboard-assistant-rail[data-mode="listening"] .assistant-rail-avatar {
+        animation: none;
+    }
+}
+
 .dashboard-actions {
     display: flex;
     gap: 8px;

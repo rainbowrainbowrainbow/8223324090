@@ -350,6 +350,9 @@ check('Training page script does not double-initialize sidebar', !trainingPageCo
 check('Chat page no longer uses early first-paint hack', !chatPageCode.includes('Show main app FIRST') && chatPageCode.includes('showAuthenticatedPageShell'));
 check('Dashboard retires bulky low-signal widgets from the main surface', dashboardPageCode.includes('DASHBOARD_RETIRED_WIDGETS') && ['finance_today', 'reports_today', 'account_stats', 'week_bookings'].every(key => dashboardPageCode.includes(key)) && dashboardPageCode.includes('!DASHBOARD_RETIRED_WIDGETS.has'));
 check('Dashboard grid keeps widgets at natural height', dashboardCss.includes('align-items: start') && dashboardCss.includes('align-self: start'));
+check('Dashboard header has assistant voice/subtitle rail', dashboardHtml.includes('id="dashboardAssistantRail"') && dashboardHtml.includes('id="assistantRailSubtitles"') && dashboardHtml.includes('DashboardPage.toggleAssistantVoice()') && dashboardHtml.includes('DashboardPage.replayAssistantLine()'));
+check('Dashboard assistant rail has stateful presence contract', dashboardPageCode.includes('ASSISTANT_RAIL_MODES') && dashboardPageCode.includes('function setAssistantRailState') && dashboardPageCode.includes('function renderAssistantRail') && dashboardPageCode.includes('function shouldAssistantSubtitleScroll') && dashboardPageCode.includes('function demoAssistantSpeak'));
+check('Dashboard assistant rail styles include partial ticker and mode visuals', dashboardCss.includes('@keyframes assistantTicker') && dashboardCss.includes('.assistant-rail-subtitles.is-ticker') && dashboardCss.includes('[data-mode="speaking"]') && dashboardCss.includes('[data-mode="busy"]') && dashboardCss.includes('body.dark-mode .dashboard-assistant-rail'));
 const shellReadyExemptPages = new Set(['index.html']);
 const noExplicitShellReadyPages = mainAppShellPages.filter(page => {
     if (shellReadyExemptPages.has(page.file)) return false;

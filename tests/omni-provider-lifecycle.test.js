@@ -14,6 +14,7 @@ function clearModules() {
         '../db',
         '../routes/omnichannel',
         '../services/omni-hub',
+        '../services/omni-accounts',
         '../services/omni-normalizer',
         '../services/kleshnya-chat',
         '../services/websocket',

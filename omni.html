@@ -7,14 +7,14 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.50.24">
-    <link rel="stylesheet" href="css/layout.css?v=0.50.24">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.24">
-    <link rel="stylesheet" href="css/pages.css?v=0.50.24">
-    <link rel="stylesheet" href="css/modals.css?v=0.50.24">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.24">
-    <link rel="stylesheet" href="css/responsive.css?v=0.50.24">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.50.24">
+    <link rel="stylesheet" href="css/base.css?v=0.50.25">
+    <link rel="stylesheet" href="css/layout.css?v=0.50.25">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.25">
+    <link rel="stylesheet" href="css/pages.css?v=0.50.25">
+    <link rel="stylesheet" href="css/modals.css?v=0.50.25">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.25">
+    <link rel="stylesheet" href="css/responsive.css?v=0.50.25">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.50.25">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -89,6 +89,132 @@
             color: #000;
             border-color: var(--accent-color, #F5C842);
         }
+
+        .omni-accounts-panel {
+            margin-top: 12px;
+            padding: 12px;
+            border: 1px solid var(--border-color, #e2e8f0);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.82);
+            backdrop-filter: blur(12px);
+        }
+
+        .omni-accounts-panel-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .omni-accounts-panel-head h3 {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 900;
+            color: var(--text-primary, #1a202c);
+        }
+
+        .omni-accounts-refresh,
+        .omni-account-btn {
+            border: 1px solid var(--border-color, #e2e8f0);
+            border-radius: 8px;
+            background: var(--bg-primary, #fff);
+            color: var(--text-primary, #1a202c);
+            font-size: 12px;
+            font-weight: 800;
+            padding: 6px 9px;
+            cursor: pointer;
+        }
+
+        .omni-account-btn.secondary {
+            color: var(--text-secondary, #718096);
+            background: transparent;
+        }
+
+        .omni-account-inline-btn {
+            margin-left: 8px;
+            border: 1px solid currentColor;
+            border-radius: 999px;
+            background: transparent;
+            color: inherit;
+            font-size: 11px;
+            font-weight: 900;
+            padding: 3px 8px;
+            cursor: pointer;
+        }
+
+        .omni-accounts-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+        }
+
+        .omni-account-card {
+            border: 1px solid var(--border-color, #e2e8f0);
+            border-radius: 10px;
+            padding: 10px;
+            background: var(--bg-primary, #fff);
+            transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+        }
+
+        .omni-account-card.healthy { border-color: rgba(16,185,129,0.28); }
+        .omni-account-card.warning { border-color: rgba(245,158,11,0.34); }
+        .omni-account-card.danger { border-color: rgba(239,68,68,0.34); }
+        .omni-account-card.is-highlighted {
+            box-shadow: 0 0 0 3px rgba(245,200,66,0.24);
+            transform: translateY(-1px);
+        }
+
+        .omni-account-card-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+
+        .omni-account-card-top strong {
+            font-size: 13px;
+            font-weight: 900;
+        }
+
+        .omni-account-status {
+            font-size: 11px;
+            font-weight: 900;
+            white-space: nowrap;
+        }
+
+        .omni-account-status.healthy { color: #059669; }
+        .omni-account-status.warning { color: #D97706; }
+        .omni-account-status.danger { color: #DC2626; }
+
+        .omni-account-meta {
+            min-height: 28px;
+            color: var(--text-secondary, #718096);
+            font-size: 12px;
+            line-height: 1.35;
+        }
+
+        .omni-account-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+        }
+
+        .omni-accounts-alarm {
+            margin-top: 12px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(245,158,11,0.32);
+            background: rgba(245,158,11,0.12);
+            color: #92400E;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.35;
+        }
+
+        .omni-accounts-alarm.hidden { display: none; }
 
         .omni-conv-list {
             flex: 1;
@@ -562,6 +688,10 @@
                 inset: 0;
                 z-index: 100;
             }
+            .omni-accounts-panel {
+                max-height: 34vh;
+                overflow-y: auto;
+            }
         }
 
         /* Dark mode overrides */
@@ -573,6 +703,13 @@
         }
         .dark-mode .omni-msg.inbound {
             background: rgba(255,255,255,0.08);
+        }
+        .dark-mode .omni-accounts-panel,
+        .dark-mode .omni-account-card {
+            background: rgba(26,26,46,0.9);
+        }
+        .dark-mode .omni-accounts-alarm {
+            color: #FBBF24;
         }
     </style>
 </head>
@@ -642,6 +779,14 @@
                             <button type="button" class="omni-channel-btn" data-channel="instagram">IG</button>
                             <button type="button" class="omni-channel-btn" data-channel="binotel">Tel</button>
                         </div>
+                        <div class="omni-accounts-alarm hidden" id="omniAccountsAlarm" role="alert" aria-live="assertive"></div>
+                        <div class="omni-accounts-panel" id="omniAccountsPanel">
+                            <div class="omni-accounts-panel-head">
+                                <h3>Підключення каналів</h3>
+                                <button type="button" class="omni-accounts-refresh" id="omniAccountsRefresh">Перевірити</button>
+                            </div>
+                            <div class="omni-accounts-grid" id="omniAccountsGrid"></div>
+                        </div>
                         <div id="omniExplainability" hidden></div>
                     </div>
                     <div class="omni-stats" id="omniStats">
@@ -703,12 +848,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.50.24"></script>
-    <script src="js/api.js?v=0.50.24"></script>
-    <script src="js/auth.js?v=0.50.24"></script>
-    <script src="js/components/sidebar.js?v=0.50.24"></script>
+    <script src="js/config.js?v=0.50.25"></script>
+    <script src="js/api.js?v=0.50.25"></script>
+    <script src="js/auth.js?v=0.50.25"></script>
+    <script src="js/components/sidebar.js?v=0.50.25"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.50.24"></script>
+    <script src="js/ws.js?v=0.50.25"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -726,6 +871,8 @@
         let quickReplies = [];
         let activeChannel = 'all';
         let searchQuery = '';
+        let omniAccounts = [];
+        let accountPanelChannel = null;
 
         // DOM refs
         const $ = id => document.getElementById(id);
@@ -736,6 +883,9 @@
         const emptyState = $('omniEmpty');
         const quickRepliesEl = $('omniQuickReplies');
         const statsEl = $('omniStats');
+        const accountsGrid = $('omniAccountsGrid');
+        const accountsAlarm = $('omniAccountsAlarm');
+        const accountsRefresh = $('omniAccountsRefresh');
         const searchInput = $('omniSearch');
         const input = $('omniInput');
         const sendBtn = $('omniSendBtn');
@@ -824,7 +974,104 @@
             }
         }
 
+        async function loadOmniAccounts() {
+            const res = await api('/accounts');
+            if (!res || !res.success) {
+                omniAccounts = [];
+                renderOmniAccounts();
+                return;
+            }
+            omniAccounts = Array.isArray(res.accounts) ? res.accounts : [];
+            renderOmniAccounts();
+            updateSendControls(currentConversation());
+        }
+
         // ---- Render ----
+        function omniAccountForChannel(channel) {
+            const normalized = String(channel || '').toLowerCase();
+            return omniAccounts.find(acc => String(acc.channel || '').toLowerCase() === normalized) || null;
+        }
+
+        function omniAccountTone(acc) {
+            if (!acc) return 'warning';
+            if (acc.connected && acc.sendCapable) return 'healthy';
+            if (acc.connected) return 'warning';
+            return 'danger';
+        }
+
+        function omniAccountStatusLabel(acc) {
+            if (!acc) return 'Статус невідомий';
+            if (acc.connected && acc.sendCapable) return 'Підключено';
+            if (acc.connected) return 'Обмежено';
+            return 'Не підключено';
+        }
+
+        function renderOmniAccounts() {
+            if (!accountsGrid) return;
+            if (!omniAccounts.length) {
+                accountsGrid.innerHTML = '<div class="omni-account-card warning">Статус каналів поки недоступний.</div>';
+                renderOmniAccountsAlarm();
+                return;
+            }
+
+            accountsGrid.innerHTML = omniAccounts.map(acc => {
+                const tone = omniAccountTone(acc);
+                const actionLabel = acc.connected ? (acc.sendCapable ? 'Керувати' : 'Налаштувати') : 'Підключити';
+                const highlighted = accountPanelChannel && accountPanelChannel === acc.channel ? ' is-highlighted' : '';
+                return '<div class="omni-account-card ' + tone + highlighted + '" data-account-channel="' + esc(acc.channel) + '">' +
+                    '<div class="omni-account-card-top">' +
+                        '<strong>' + esc(acc.label || acc.channel) + '</strong>' +
+                        '<span class="omni-account-status ' + tone + '">' + esc(omniAccountStatusLabel(acc)) + '</span>' +
+                    '</div>' +
+                    '<div class="omni-account-meta">' + esc(acc.accountName || acc.warning || 'Акаунт не підключений') + '</div>' +
+                    '<div class="omni-account-actions">' +
+                        '<button type="button" class="omni-account-btn" data-account-action="connect" data-channel="' + esc(acc.channel) + '">' + actionLabel + '</button>' +
+                        '<button type="button" class="omni-account-btn secondary" data-account-action="recheck" data-channel="' + esc(acc.channel) + '">Перевірити</button>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+            renderOmniAccountsAlarm();
+            highlightAccountFromQuery();
+        }
+
+        function renderOmniAccountsAlarm() {
+            if (!accountsAlarm) return;
+            const limited = omniAccounts.filter(a => !a.connected || a.sendCapable === false);
+            if (!limited.length) {
+                accountsAlarm.classList.add('hidden');
+                accountsAlarm.textContent = '';
+                return;
+            }
+            const disconnected = limited.filter(a => !a.connected);
+            accountsAlarm.classList.remove('hidden');
+            accountsAlarm.textContent = disconnected.length
+                ? 'Omni: ' + disconnected.length + ' канал(и) не підключені. Відправка або прийом можуть бути недоступні.'
+                : 'Omni: частина каналів працює в обмеженому режимі.';
+        }
+
+        function accountGuidanceMessage(channel) {
+            const acc = omniAccountForChannel(channel);
+            const label = acc?.label || CHANNEL_NAMES[channel] || channel || 'Канал';
+            if (!acc) return label + ' недоступний для відправки з CRM. Перевірте блок «Підключення каналів».';
+            if (!acc.connected) return label + ' не підключений до Omni. Підключіть акаунт у блоці «Підключення каналів».';
+            if (acc.sendCapable === false) return label + ' працює в обмеженому режимі. Налаштуйте канал у блоці «Підключення каналів».';
+            return label + ' тимчасово недоступний для відправки з CRM.';
+        }
+
+        function showAccountPanelForChannel(channel) {
+            accountPanelChannel = String(channel || '').toLowerCase();
+            renderOmniAccounts();
+            const card = document.querySelector('[data-account-channel="' + accountPanelChannel + '"]');
+            if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function highlightAccountFromQuery() {
+            if (!accountPanelChannel) return;
+            document.querySelectorAll('.omni-account-card').forEach(card => {
+                card.classList.toggle('is-highlighted', card.dataset.accountChannel === accountPanelChannel);
+            });
+        }
+
         function replySlaLabel(conv) {
             if (!conv || !conv.waitingReply) return '';
             switch (conv.replySlaState) {
@@ -927,7 +1174,11 @@
         }
 
         function canSendConversation(conv) {
-            return Boolean(conv && conv.sendCapable !== false && !SEND_DISABLED_CHANNELS.has(String(conv.channel || '').toLowerCase()));
+            if (!conv) return false;
+            const channel = String(conv.channel || '').toLowerCase();
+            const account = omniAccountForChannel(channel) || conv.accountStatus || null;
+            if (account && (!account.connected || account.sendCapable === false)) return false;
+            return Boolean(conv.sendCapable !== false && !SEND_DISABLED_CHANNELS.has(channel));
         }
 
         function sendTruthTone(sendTruth) {
@@ -1017,7 +1268,11 @@
             const tone = sendTruth ? sendTruthTone(sendTruth) : 'warning';
             sendTruthEl.hidden = false;
             sendTruthEl.className = 'omni-send-truth ' + tone;
-            sendTruthEl.textContent = message;
+            if (sendTruth?.status === 'channel_unavailable' && sendTruth.channel) {
+                sendTruthEl.innerHTML = esc(message) + ' <button type="button" class="omni-account-inline-btn" data-account-jump="' + esc(sendTruth.channel) + '">Підключення каналів</button>';
+            } else {
+                sendTruthEl.textContent = message;
+            }
         }
 
         function updateSendControls(conv) {
@@ -1031,7 +1286,7 @@
                 setSendFeedback({
                     status: 'channel_unavailable',
                     channel: conv.channel,
-                    message: (CHANNEL_NAMES[conv.channel] || conv.channel || 'Канал') + ' недоступний для відправки з CRM. Відкривайте історію без compose-дії.'
+                    message: accountGuidanceMessage(conv.channel)
                 });
             }
         }
@@ -1323,7 +1578,39 @@
             conversationQueryApplied = true;
             loadConversations();
         });
+
+        if (accountsRefresh) {
+            accountsRefresh.addEventListener('click', async () => {
+                await loadOmniAccounts();
+                if (typeof loadAlertBell === 'function') loadAlertBell();
+            });
+        }
+
+        if (accountsGrid) {
+            accountsGrid.addEventListener('click', async e => {
+                const btn = e.target.closest('[data-account-action]');
+                if (!btn) return;
+                const channel = btn.dataset.channel;
+                const action = btn.dataset.accountAction;
+                btn.disabled = true;
+                const res = await api('/accounts/' + encodeURIComponent(channel) + '/' + action, { method: 'POST' });
+                btn.disabled = false;
+                if (!res.success) {
+                    setSendFeedback({ status: 'provider_failed_immediate', channel, message: res.error || 'Не вдалося оновити статус каналу.' });
+                    return;
+                }
+                if (res.message) setSendFeedback({ status: 'saved', channel, message: res.message });
+                await loadOmniAccounts();
+                if (typeof loadAlertBell === 'function') loadAlertBell();
+            });
+        }
         document.addEventListener('click', e => {
+            const jump = e.target.closest('[data-account-jump]');
+            if (jump) {
+                e.preventDefault();
+                showAccountPanelForChannel(jump.dataset.accountJump);
+                return;
+            }
             const clear = e.target.closest('[data-explain-clear="omni"]');
             if (!clear) return;
             e.preventDefault();
@@ -1373,6 +1660,9 @@
 
         function applyQueryContext() {
             const params = new URLSearchParams(window.location.search);
+            if (params.get('panel') === 'accounts') {
+                accountPanelChannel = String(params.get('channel') || '').toLowerCase() || null;
+            }
             const queryConversation = parseInt(params.get('conversation') || params.get('conversationId') || '0', 10);
             if (Number.isInteger(queryConversation) && queryConversation > 0) {
                 selectedConversationQueryId = queryConversation;
@@ -1397,10 +1687,12 @@
         // ---- Init ----
         async function init() {
             applyQueryContext();
+            await loadOmniAccounts();
             await Promise.all([loadConversations(), loadQuickReplies(), loadStats()]);
             setupWS();
             // Refresh every 30s
             setInterval(() => {
+                loadOmniAccounts();
                 loadConversations();
                 loadStats();
             }, 30000);
@@ -1429,8 +1721,8 @@
         });
     })();
     </script>
-    <script src="js/role-panel.js?v=0.50.24"></script>
-    <script src="js/ui.js?v=0.50.24"></script>
-    <script src="js/alerts.js?v=0.50.24"></script>
+    <script src="js/role-panel.js?v=0.50.25"></script>
+    <script src="js/ui.js?v=0.50.25"></script>
+    <script src="js/alerts.js?v=0.50.25"></script>
 </body>
 </html>

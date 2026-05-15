@@ -14,6 +14,7 @@ const { buildTaskOperationsSummary, deriveTaskIntelligence } = require('../servi
 const { getOnlineUserIds } = require('../services/websocket');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { buildWorkQueue } = require('../services/workQueue');
+const { getOmniAccountAlerts } = require('../services/omni-accounts');
 
 const log = createLogger('Dashboard');
 
@@ -1332,6 +1333,7 @@ router.get('/alerts', async (req, res) => {
                 action: { label: '💰 Відкрити касу', prompt: 'Каса не відкрита — відкрити.', assignRole: 'admin' }
             });
         }
+        alerts.push(...getOmniAccountAlerts());
         res.json({ success: true, alerts, count: alerts.length });
     } catch (err) {
         res.status(500).json({ success: false, error: 'Internal server error' });

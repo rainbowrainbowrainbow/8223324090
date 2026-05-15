@@ -12,6 +12,7 @@ function clearModules() {
     [
         '../db',
         '../services/omni-hub',
+        '../services/omni-accounts',
         '../services/kleshnya-chat',
         '../services/websocket',
         '../services/telegram',
@@ -230,6 +231,49 @@ describe('Communication Send Truth v1', () => {
             err => err.code === 'CHANNEL_UNAVAILABLE' && err.sendTruth?.status === 'channel_unavailable'
         );
         assert.equal(pool.state.connectCalled, false);
+    });
+
+    it('surfaces Omni account connectivity truth and disconnected alerts', () => {
+        const previous = {
+            TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+            VIBER_TOKEN: process.env.VIBER_TOKEN,
+            TURBOSMS_TOKEN: process.env.TURBOSMS_TOKEN,
+            FB_PAGE_TOKEN: process.env.FB_PAGE_TOKEN,
+            IG_PAGE_TOKEN: process.env.IG_PAGE_TOKEN,
+            BINOTEL_WEBHOOK_SECRET: process.env.BINOTEL_WEBHOOK_SECRET,
+        };
+        delete process.env.TELEGRAM_BOT_TOKEN;
+        delete process.env.VIBER_TOKEN;
+        process.env.TURBOSMS_TOKEN = 'sms-token';
+        delete process.env.FB_PAGE_TOKEN;
+        delete process.env.IG_PAGE_TOKEN;
+        process.env.BINOTEL_WEBHOOK_SECRET = 'binotel-secret';
+        clearModules();
+        const accounts = require('../services/omni-accounts');
+
+        try {
+            const statuses = accounts.getOmniAccountStatuses({ now: new Date('2099-05-15T10:00:00Z') });
+            const sms = statuses.find(acc => acc.channel === 'sms');
+            const telegram = statuses.find(acc => acc.channel === 'telegram');
+            const binotel = statuses.find(acc => acc.channel === 'binotel');
+            assert.equal(sms.status, 'connected');
+            assert.equal(sms.sendCapable, true);
+            assert.equal(telegram.status, 'disconnected');
+            assert.equal(telegram.sendCapable, false);
+            assert.equal(binotel.status, 'limited');
+            assert.equal(binotel.sendCapable, false);
+
+            const alerts = accounts.getOmniAccountAlerts({ now: new Date('2099-05-15T10:00:00Z') });
+            assert.ok(alerts.some(alert => alert.id === 'omni_telegram_disconnected'));
+            assert.ok(alerts.some(alert => alert.id === 'omni_binotel_limited'));
+            assert.ok(alerts.every(alert => alert.source === 'omni_accounts'));
+        } finally {
+            Object.entries(previous).forEach(([key, value]) => {
+                if (value === undefined) delete process.env[key];
+                else process.env[key] = value;
+            });
+            clearModules();
+        }
     });
 
     it('maintains durable last inbound timestamp when inbound messages are saved', async () => {

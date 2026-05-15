@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.25 - Omni Account Connections & Alerts (2026-05-15)
+
+### Omni / Account Connectivity [codex]
+- **Omni Accounts** - в Omni додано control-panel підключень каналів зі статусом Telegram, Viber, SMS, Facebook, Instagram і Binotel.
+- **Alerts** - непідключені або обмежені канали тепер показують local alarm у Omni і додаються в global alerts bell як operational issue.
+- **Guided Recovery** - `channel_unavailable` та disabled compose більше ведуть користувача до блоку **Підключення каналів**, а не лишають його з глухою помилкою.
+
+---
+
 ## v0.50.24 - Chat Runtime Audit & Theme Stabilization (2026-05-15)
 
 ### Chat / Runtime Audit [codex]

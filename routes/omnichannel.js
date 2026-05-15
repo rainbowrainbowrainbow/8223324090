@@ -9,6 +9,7 @@ const express = require('express');
 const router = express.Router();
 const { createLogger } = require('../utils/logger');
 const { authenticateToken: auth } = require('../middleware/auth');
+const { getOmniAccountStatuses, getOmniAccountStatus } = require('../services/omni-accounts');
 
 const log = createLogger('OmniRoutes');
 
@@ -212,6 +213,41 @@ router.post('/webhook/binotel', async (req, res) => {
 // CRM API (auth required)
 // ═══════════════════════════════════════════════
 
+// Account/channel connectivity control-plane
+router.get('/accounts', auth, async (req, res) => {
+    try {
+        res.json({ success: true, accounts: getOmniAccountStatuses() });
+    } catch (err) {
+        log.error('Get omni accounts error:', err.message);
+        res.status(500).json({ success: false, error: 'Не вдалося отримати статус каналів Omni' });
+    }
+});
+
+router.post('/accounts/:channel/recheck', auth, async (req, res) => {
+    try {
+        const account = getOmniAccountStatus(req.params.channel);
+        if (!account) return res.status(404).json({ success: false, error: 'Канал Omni не знайдено' });
+        res.json({ success: true, account, message: 'Статус каналу перевірено' });
+    } catch (err) {
+        log.error('Recheck omni account error:', err.message);
+        res.status(500).json({ success: false, error: 'Не вдалося перевірити канал Omni' });
+    }
+});
+
+router.post('/accounts/:channel/connect', auth, async (req, res) => {
+    try {
+        const account = getOmniAccountStatus(req.params.channel);
+        if (!account) return res.status(404).json({ success: false, error: 'Канал Omni не знайдено' });
+        const message = account.connected
+            ? 'Канал уже має backend-конфігурацію. Перевірте статус або оновіть provider credentials.'
+            : 'Підключення цього каналу потребує backend credentials/OAuth у середовищі CRM. Ключі не вводяться у браузері.';
+        res.json({ success: true, account, action: 'configuration_required', message });
+    } catch (err) {
+        log.error('Connect omni account error:', err.message);
+        res.status(500).json({ success: false, error: 'Не вдалося підготувати підключення Omni-каналу' });
+    }
+});
+
 // List conversations
 router.get('/conversations', auth, async (req, res) => {
     try {
@@ -296,7 +332,7 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
         if (err.code === 'CHANNEL_UNAVAILABLE') {
             return res.status(err.statusCode || 400).json({
                 success: false,
-                error: 'Канал недоступний для відправки з CRM',
+                error: err.sendTruth?.message || 'Канал недоступний для відправки з CRM',
                 sendTruth: err.sendTruth || null
             });
         }

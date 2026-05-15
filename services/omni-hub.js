@@ -10,6 +10,7 @@ const { sendViber } = require('./omni-viber');
 const { sendSMS } = require('./omni-sms');
 const { sendFacebook } = require('./omni-facebook');
 const { sendInstagram } = require('./omni-instagram');
+const { getOmniAccountStatus, getOmniUnavailableMessage } = require('./omni-accounts');
 const {
   booleanValue,
   deriveReplySlaState,
@@ -43,7 +44,8 @@ const MAX_SEARCH_LEN = 255;
 
 class ChannelUnavailableError extends Error {
   constructor(channel) {
-    super(`Channel ${channel || 'unknown'} is not send-capable`);
+    const message = getOmniUnavailableMessage(channel);
+    super(message);
     this.code = 'CHANNEL_UNAVAILABLE';
     this.statusCode = 400;
     this.sendTruth = buildSendTruth('channel_unavailable', {
@@ -51,7 +53,8 @@ class ChannelUnavailableError extends Error {
       savedInCrm: false,
       providerAttempted: false,
       providerAccepted: false,
-      error: 'Канал недоступний для відправки з CRM',
+      error: message,
+      message,
     });
   }
 }
@@ -166,6 +169,7 @@ function normalizeProviderResult(channel, delivery) {
       savedInCrm: false,
       providerAttempted: false,
       providerAccepted: false,
+      message: getOmniUnavailableMessage(normalized),
     });
   }
 
@@ -346,6 +350,11 @@ function mapConversationRow(row) {
   const replyExpected = booleanValue(row.reply_expected);
   const waitingReply = isActiveWaitingReply(row);
   const replySlaState = deriveReplySlaState(row);
+  const accountStatus = getOmniAccountStatus(row.channel);
+  const channelSendCapable = isSendCapableChannel(row.channel);
+  const accountSendCapable = accountStatus
+    ? accountStatus.connected && accountStatus.sendCapable
+    : channelSendCapable;
   return {
     id: row.id,
     channel: row.channel,
@@ -380,8 +389,11 @@ function mapConversationRow(row) {
     lastMessage: row.last_message || null,
     unreadCount: row.unread_count,
     meta: row.meta,
-    sendCapable: isSendCapableChannel(row.channel),
-    sendReadiness: isSendCapableChannel(row.channel) ? 'send_capable' : 'inbound_only',
+    accountStatus,
+    sendCapable: channelSendCapable && accountSendCapable,
+    sendReadiness: channelSendCapable && accountSendCapable
+      ? 'send_capable'
+      : (accountStatus?.status || 'inbound_only'),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

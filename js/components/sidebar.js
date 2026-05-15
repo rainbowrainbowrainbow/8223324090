@@ -8,7 +8,8 @@ const Sidebar = (() => {
         scrollRestored: false,
         userRetryStarted: false,
         badgeTimer: null,
-        taskWidgetTimer: null
+        taskWidgetTimer: null,
+        funnelWidgetTimer: null
     };
     const GROUP_STATE_VERSION = 'collapsed-by-default-v1';
 
@@ -249,6 +250,7 @@ const Sidebar = (() => {
         _initCollapsedTooltips(container);
         _fetchLiveBadges();
         _refreshTaskMiniWidget();
+        _refreshFunnelWidget();
     }
 
     function _markShellReady() {
@@ -365,7 +367,15 @@ const Sidebar = (() => {
                     <span class="sidebar-alert-widget-meta" id="sidebarAlertWidgetMeta">Завантаження...</span>
                 </span>
                 <span class="sidebar-alert-widget-count" id="sidebarAlertWidgetCount" style="display:none">0</span>
-            </button>`;
+            </button>
+            <a href="/sales-funnel" class="sidebar-funnel-widget" id="sidebarFunnelWidget" title="Воронка">
+                <span class="sidebar-funnel-widget-icon">🔥</span>
+                <span class="sidebar-funnel-widget-main">
+                    <span class="sidebar-funnel-widget-title">Воронка</span>
+                    <span class="sidebar-funnel-widget-meta" id="sidebarFunnelWidgetMeta">Завантаження...</span>
+                </span>
+                <span class="sidebar-funnel-widget-count" id="sidebarFunnelWidgetCount">0</span>
+            </a>`;
         sidebar.insertBefore(zone, links);
     }
 
@@ -458,6 +468,52 @@ const Sidebar = (() => {
             widget.classList.toggle('has-overdue', overdueCount > 0);
         } catch {}
         _state.taskWidgetTimer = setTimeout(_refreshTaskMiniWidget, 300000);
+    }
+
+    async function _refreshFunnelWidget() {
+        if (_state.funnelWidgetTimer) {
+            clearTimeout(_state.funnelWidgetTimer);
+            _state.funnelWidgetTimer = null;
+        }
+        const widget = document.getElementById('sidebarFunnelWidget');
+        if (!widget) return;
+        const user = _getCurrentSidebarUser();
+        const role = user?.role || (typeof getUserRole === 'function' ? getUserRole() : null);
+        const canSeeFunnel = role ? hasAccess({ access: 'leads' }, role) : true;
+        widget.hidden = !canSeeFunnel;
+        if (!canSeeFunnel) return;
+
+        const token = localStorage.getItem('pzp_token');
+        if (!token) return;
+        try {
+            const [hotR, newR] = await Promise.allSettled([
+                fetch('/api/leads/hot', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.ok ? r.json() : null),
+                fetch('/api/leads/new-count', { headers: { 'Authorization': 'Bearer ' + token } }).then(r => r.ok ? r.json() : null)
+            ]);
+            const hotLeads = hotR.status === 'fulfilled' && Array.isArray(hotR.value?.leads) ? hotR.value.leads : [];
+            const actionCount = hotLeads.length;
+            const newCount = newR.status === 'fulfilled' ? Number(newR.value?.count || 0) : 0;
+            const displayCount = actionCount > 0 ? actionCount : newCount;
+            const firstLead = hotLeads[0] || null;
+            const countEl = document.getElementById('sidebarFunnelWidgetCount');
+            const metaEl = document.getElementById('sidebarFunnelWidgetMeta');
+
+            if (countEl) countEl.textContent = displayCount > 99 ? '99+' : String(displayCount);
+            if (metaEl) {
+                if (actionCount > 0) {
+                    const name = firstLead?.client_name || firstLead?.clientName || 'лід';
+                    metaEl.textContent = `${actionCount} чекає дії · ${name}`;
+                } else if (newCount > 0) {
+                    metaEl.textContent = `${newCount} нових лідів`;
+                } else {
+                    metaEl.textContent = 'Без нових лідів';
+                }
+            }
+            widget.classList.toggle('has-action', actionCount > 0);
+            widget.classList.toggle('has-new', actionCount === 0 && newCount > 0);
+            widget.href = firstLead?.id ? `/sales-funnel?lead=${encodeURIComponent(firstLead.id)}` : '/sales-funnel';
+        } catch {}
+        _state.funnelWidgetTimer = setTimeout(_refreshFunnelWidget, 300000);
     }
 
     function _getCurrentSidebarUser() {

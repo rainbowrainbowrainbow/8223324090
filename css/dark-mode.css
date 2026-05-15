@@ -133,6 +133,32 @@ body.dark-mode .sidebar-alert-widget-title {
 body.dark-mode .sidebar-alert-widget-meta {
     color: #CBD5E1 !important;
 }
+body.dark-mode .sidebar-funnel-widget {
+    background: linear-gradient(135deg, rgba(14,165,233,0.16), rgba(16,185,129,0.10));
+    border-color: rgba(56,189,248,0.24);
+    color: #F8FAFC;
+}
+body.dark-mode .sidebar-funnel-widget:hover {
+    background: linear-gradient(135deg, rgba(14,165,233,0.22), rgba(16,185,129,0.14));
+    border-color: rgba(56,189,248,0.34);
+}
+body.dark-mode .sidebar-funnel-widget.has-action {
+    background: linear-gradient(135deg, rgba(239,68,68,0.18), rgba(245,158,11,0.12));
+    border-color: rgba(248,113,113,0.32);
+}
+body.dark-mode .sidebar-funnel-widget.has-new {
+    background: linear-gradient(135deg, rgba(16,185,129,0.16), rgba(14,165,233,0.12));
+    border-color: rgba(52,211,153,0.30);
+}
+body.dark-mode .sidebar-funnel-widget-icon {
+    background: rgba(255,255,255,0.10);
+}
+body.dark-mode .sidebar-funnel-widget-title {
+    color: #F8FAFC !important;
+}
+body.dark-mode .sidebar-funnel-widget-meta {
+    color: #CBD5E1 !important;
+}
 
 body.dark-mode .sidebar-logo {
     border-bottom-color: var(--gray-200);

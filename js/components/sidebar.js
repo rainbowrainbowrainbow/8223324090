@@ -115,6 +115,106 @@ const Sidebar = (() => {
         training:       [..._MGR_UP, 'hr', 'senior_instructor', 'instructor'],
     };
 
+    const ICON_ALIASES = {
+        '📋': 'crm',
+        '🏠': 'dashboard',
+        '📅': 'calendar',
+        '✅': 'task',
+        '💬': 'chat',
+        '📦': 'warehouse',
+        '🎛️': 'center',
+        '👔': 'management',
+        '👥': 'users',
+        '🔥': 'funnel',
+        '✉': 'mail',
+        '💰': 'finance',
+        '📊': 'analytics',
+        '🤖': 'ai',
+        '🤝': 'hr',
+        '🗓️': 'timeline',
+        '🎓': 'training',
+        '📸': 'camera',
+        '🎨': 'art',
+        '📱': 'content',
+        '🎪': 'programs',
+        '🎭': 'afisha',
+        '🎫': 'ticket',
+        '📐': 'designer',
+        '🖼️': 'image',
+        '📂': 'folder',
+        '📖': 'book',
+        '🔊': 'sound',
+        '🎵': 'music',
+        '📢': 'megaphone',
+        '🎬': 'project',
+        '⚙️': 'system',
+        '🦞': 'ai',
+        '🛡️': 'guardian',
+        '🎮': 'game',
+        '⚠️': 'alert',
+        '☀️': 'sun',
+        '🌙': 'moon',
+        task: 'task',
+        alert: 'alert',
+        funnel: 'funnel',
+        calendar: 'calendar',
+        timeline: 'timeline',
+        chat: 'chat',
+        sun: 'sun',
+        moon: 'moon'
+    };
+
+    const ICON_DRAWINGS = {
+        crm: '<path d="M9 3h6l1 2h2v16H6V5h2z"/><path d="M8 5h8M9 10h6M9 14h5M9 18h4"/>',
+        dashboard: '<path d="M4 11l8-7 8 7"/><path d="M6 10v10h5v-6h2v6h5V10"/>',
+        calendar: '<rect x="4" y="5" width="16" height="15" rx="3"/><path d="M8 3v4M16 3v4M4 10h16M8 14h2M12 14h2M16 14h2"/>',
+        timeline: '<path d="M5 7h14M5 17h14"/><circle cx="8" cy="7" r="2"/><circle cx="16" cy="17" r="2"/><path d="M10 7c4 0 0 10 4 10"/>',
+        task: '<rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 12l3 3 5-6"/>',
+        chat: '<path d="M5 6h14v9H9l-4 4z"/><path d="M8 10h8M8 13h5"/>',
+        warehouse: '<path d="M4 9l8-5 8 5-8 5z"/><path d="M4 9v8l8 5 8-5V9"/><path d="M12 14v8"/>',
+        center: '<path d="M5 7h14M5 12h14M5 17h14"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="11" cy="17" r="2"/>',
+        management: '<path d="M8 6h8l-2 4h-4z"/><path d="M9 10l-2 10h10l-2-10"/><path d="M12 10v10"/>',
+        users: '<circle cx="9" cy="8" r="3"/><path d="M3 20c1-4 4-6 6-6s5 2 6 6"/><circle cx="17" cy="9" r="2"/><path d="M15 15c2 0 4 2 5 5"/>',
+        funnel: '<path d="M4 5h16l-6 7v5l-4 2v-7z"/>',
+        mail: '<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M4 8l8 6 8-6"/>',
+        finance: '<path d="M5 8h14v10H5z"/><path d="M7 8V6h10v2"/><circle cx="12" cy="13" r="2"/>',
+        analytics: '<path d="M5 19V5"/><path d="M5 19h14"/><path d="M8 16v-5M12 16V8M16 16v-8"/>',
+        ai: '<rect x="6" y="7" width="12" height="10" rx="3"/><path d="M9 7V4M15 7V4M9 12h.01M15 12h.01M10 16h4"/><path d="M4 12h2M18 12h2"/>',
+        hr: '<path d="M7 18c1-3 3-5 5-5s4 2 5 5"/><circle cx="12" cy="8" r="3"/><path d="M5 11l2 2M19 11l-2 2"/>',
+        training: '<path d="M4 8l8-4 8 4-8 4z"/><path d="M8 11v4c2 2 6 2 8 0v-4"/><path d="M20 8v5"/>',
+        camera: '<path d="M6 8h3l1.5-2h3L15 8h3v10H6z"/><circle cx="12" cy="13" r="3"/>',
+        art: '<path d="M7 17c3 2 9 1 11-3 2-5-2-9-7-8-4 1-7 5-6 9 0 1 1 2 2 2z"/><circle cx="9" cy="10" r=".8"/><circle cx="12" cy="8" r=".8"/><circle cx="15" cy="10" r=".8"/>',
+        content: '<rect x="8" y="3" width="8" height="18" rx="2"/><path d="M11 18h2M10 6h4"/>',
+        programs: '<path d="M5 19h14L16 7l-4-3-4 3z"/><path d="M8 11h8M9 15h6"/>',
+        afisha: '<path d="M7 5h10v14H7z"/><path d="M9 9h6M9 13h6M9 17h3"/>',
+        ticket: '<path d="M5 8h14v8H5z"/><path d="M8 8c0 2-1 2-3 2M8 16c0-2-1-2-3-2M16 8c0 2 1 2 3 2M16 16c0-2 1-2 3-2M12 8v8"/>',
+        designer: '<path d="M5 19l14-14"/><path d="M7 17h5v2H5v-7h2z"/><path d="M15 5l4 4"/>',
+        image: '<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M6 17l4-4 3 3 2-2 3 3"/>',
+        folder: '<path d="M4 7h6l2 2h8v9H4z"/>',
+        book: '<path d="M5 5h7v15H5zM12 5h7v15h-7"/><path d="M8 9h2M15 9h2"/>',
+        sound: '<path d="M5 10h4l5-4v12l-5-4H5z"/><path d="M17 9c1 2 1 4 0 6M19 7c2 3 2 7 0 10"/>',
+        music: '<path d="M9 18a2 2 0 1 1-2-2"/><path d="M17 16a2 2 0 1 1-2-2"/><path d="M9 16V6l8-2v10"/>',
+        megaphone: '<path d="M4 13h3l9 4V7l-9 4H4z"/><path d="M7 13l2 6"/>',
+        project: '<path d="M5 6h14v12H5z"/><path d="M5 10h14M8 6l3 4M14 6l3 4"/>',
+        system: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>',
+        guardian: '<path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z"/><path d="M9 12l2 2 4-5"/>',
+        game: '<rect x="5" y="9" width="14" height="8" rx="4"/><path d="M8 13h4M10 11v4M16 12h.01M18 14h.01"/>',
+        alert: '<path d="M12 4l9 16H3z"/><path d="M12 9v5M12 17h.01"/>',
+        sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/>',
+        moon: '<path d="M17 3a8 8 0 1 0 4 12 7 7 0 0 1-4-12z"/>'
+    };
+
+    function _iconKey(icon) {
+        const raw = String(icon || 'crm');
+        return ICON_ALIASES[raw] || raw;
+    }
+
+    function _renderIcon(icon, className = 'nav-icon') {
+        const key = _iconKey(icon);
+        const safeKey = ICON_DRAWINGS[key] ? key : 'crm';
+        return `<span class="${className} eg-icon eg-icon--${safeKey}" aria-hidden="true"><svg class="eg-icon-svg" viewBox="0 0 24 24" focusable="false">${ICON_DRAWINGS[safeKey]}</svg></span>`;
+    }
+
     // ═══ ACCORDION STATE ══════════════════════════════════════════
     function _getGroupState() {
         try {
@@ -192,7 +292,7 @@ const Sidebar = (() => {
   <button class="sidebar-group-header${finalOpen ? ' open' : ''}${hasActive ? ' has-active' : ''}"
           onclick="Sidebar.toggleGroup('${item.key}', this)"
           title="${item.label}">
-    <span class="nav-icon">${item.icon}</span>
+    ${_renderIcon(item.icon)}
     <span class="nav-text sidebar-group-label">${item.label}</span>
     <span class="sidebar-group-arrow"></span>
   </button>
@@ -244,7 +344,7 @@ const Sidebar = (() => {
             }
 
             html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.href}"${onclickAttr}>
-  <span class="nav-icon">${item.icon}</span>
+  ${_renderIcon(item.icon)}
   <span class="nav-text">${item.label}</span>
 </a>`;
         }
@@ -364,7 +464,7 @@ const Sidebar = (() => {
         zone.className = 'sidebar-pinned-zone';
         zone.innerHTML = `
             <a href="/tasks?view=my" class="sidebar-task-widget" id="sidebarTaskWidget">
-                <span class="sidebar-task-widget-icon">✅</span>
+                ${_renderIcon('task', 'sidebar-task-widget-icon')}
                 <span class="sidebar-task-widget-main">
                     <span class="sidebar-task-widget-title">Мої задачі</span>
                     <span class="sidebar-task-widget-meta" id="sidebarTaskWidgetMeta">Завантаження...</span>
@@ -372,7 +472,7 @@ const Sidebar = (() => {
                 <span class="sidebar-task-widget-count" id="sidebarTaskWidgetCount">–</span>
             </a>
             <button type="button" class="sidebar-alert-widget" id="sidebarAlertWidget" onclick="Sidebar.openAlerts(event)" title="Сповіщення">
-                <span class="sidebar-alert-widget-icon">⚠️</span>
+                ${_renderIcon('alert', 'sidebar-alert-widget-icon')}
                 <span class="sidebar-alert-widget-main">
                     <span class="sidebar-alert-widget-title">Сповіщення</span>
                     <span class="sidebar-alert-widget-meta" id="sidebarAlertWidgetMeta">Завантаження...</span>
@@ -380,7 +480,7 @@ const Sidebar = (() => {
                 <span class="sidebar-alert-widget-count" id="sidebarAlertWidgetCount" style="display:none">0</span>
             </button>
             <a href="/sales-funnel" class="sidebar-funnel-widget" id="sidebarFunnelWidget" title="Воронка">
-                <span class="sidebar-funnel-widget-icon">🔥</span>
+                ${_renderIcon('funnel', 'sidebar-funnel-widget-icon')}
                 <span class="sidebar-funnel-widget-main">
                     <span class="sidebar-funnel-widget-title">Воронка</span>
                     <span class="sidebar-funnel-widget-meta" id="sidebarFunnelWidgetMeta">Завантаження...</span>
@@ -389,15 +489,15 @@ const Sidebar = (() => {
             </a>
             <nav class="sidebar-quick-nav" aria-label="Швидкі переходи">
                 <a href="/staff" class="sidebar-quick-nav-link" title="Графік">
-                    <span class="sidebar-quick-nav-icon">📅</span>
+                    ${_renderIcon('calendar', 'sidebar-quick-nav-icon')}
                     <span class="sidebar-quick-nav-text">Графік</span>
                 </a>
                 <a href="/" class="sidebar-quick-nav-link" title="Таймлайн">
-                    <span class="sidebar-quick-nav-icon">🗓️</span>
+                    ${_renderIcon('timeline', 'sidebar-quick-nav-icon')}
                     <span class="sidebar-quick-nav-text">Таймлайн</span>
                 </a>
                 <a href="/chat" class="sidebar-quick-nav-link" title="Чат">
-                    <span class="sidebar-quick-nav-icon">💬</span>
+                    ${_renderIcon('chat', 'sidebar-quick-nav-icon')}
                     <span class="sidebar-quick-nav-text">Чат</span>
                 </a>
             </nav>`;
@@ -716,13 +816,14 @@ const Sidebar = (() => {
         btn.type = 'button';
         btn.className = 'sidebar-theme-btn';
         btn.title = 'Змінити тему';
-        btn.innerHTML = `<span class="nav-icon">${isDark ? '☀️' : '🌙'}</span><span class="nav-text">${isDark ? 'Світла тема' : 'Темна тема'}</span>`;
+        btn.innerHTML = `${_renderIcon(isDark ? 'sun' : 'moon')}<span class="nav-text">${isDark ? 'Світла тема' : 'Темна тема'}</span>`;
 
         btn.addEventListener('click', () => {
             const nowDark = document.body.classList.toggle('dark-mode');
             localStorage.setItem('pzp_dark_mode', String(nowDark));
             document.documentElement.setAttribute('data-theme', nowDark ? 'dark' : 'light');
-            btn.querySelector('.nav-icon').textContent = nowDark ? '☀️' : '🌙';
+            const iconEl = btn.querySelector('.nav-icon');
+            if (iconEl) iconEl.outerHTML = _renderIcon(nowDark ? 'sun' : 'moon');
             btn.querySelector('.nav-text').textContent = nowDark ? 'Світла тема' : 'Темна тема';
             // Sync hidden checkbox if exists (for app.js compatibility)
             const cb = document.getElementById('darkModeToggle');

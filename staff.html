@@ -8,13 +8,13 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.49.18">
-    <link rel="stylesheet" href="css/layout.css?v=0.49.18">
-    <link rel="stylesheet" href="css/pages.css?v=0.49.18">
-    <link rel="stylesheet" href="css/modals.css?v=0.49.18">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.49.18">
-    <link rel="stylesheet" href="css/responsive.css?v=0.49.18">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.49.18">
+    <link rel="stylesheet" href="css/base.css?v=0.49.20">
+    <link rel="stylesheet" href="css/layout.css?v=0.49.20">
+    <link rel="stylesheet" href="css/pages.css?v=0.49.20">
+    <link rel="stylesheet" href="css/modals.css?v=0.49.20">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.49.20">
+    <link rel="stylesheet" href="css/responsive.css?v=0.49.20">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.49.20">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -797,6 +797,370 @@
         [data-theme="dark"] .emp-freelance td:first-child { border-left-color: var(--gray-600); }
         [data-theme="dark"] .emp-freelance .emp-avatar { border-color: var(--gray-600); }
 
+        /* Staff schedule dark theme v0.49.20 — works for body.dark-mode first paint and html[data-theme] */
+        body.dark-mode .page-container,
+        [data-theme="dark"] .page-container {
+            color: #E5E7EB;
+        }
+
+        body.dark-mode .page-header h2,
+        [data-theme="dark"] .page-header h2 {
+            color: #F8FAFC;
+        }
+
+        body.dark-mode .schedule-controls .week-nav button,
+        [data-theme="dark"] .schedule-controls .week-nav button {
+            background: rgba(30, 41, 59, 0.94);
+            border-color: rgba(148, 163, 184, 0.18);
+            color: #E5E7EB;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+        }
+
+        body.dark-mode .schedule-controls .week-nav button:hover,
+        [data-theme="dark"] .schedule-controls .week-nav button:hover {
+            background: rgba(51, 65, 85, 0.96);
+            border-color: rgba(52, 211, 153, 0.42);
+            color: #FFFFFF;
+        }
+
+        body.dark-mode .schedule-controls .week-label,
+        [data-theme="dark"] .schedule-controls .week-label {
+            color: #C4B5FD;
+        }
+
+        body.dark-mode .schedule-toolbar .btn-page-secondary,
+        [data-theme="dark"] .schedule-toolbar .btn-page-secondary {
+            background: rgba(30, 27, 75, 0.82);
+            border-color: rgba(167, 139, 250, 0.24);
+            color: #EDE9FE;
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+        }
+
+        body.dark-mode .schedule-toolbar .btn-page-secondary:hover,
+        [data-theme="dark"] .schedule-toolbar .btn-page-secondary:hover {
+            background: rgba(49, 46, 129, 0.9);
+            border-color: rgba(196, 181, 253, 0.42);
+            color: #FFFFFF;
+        }
+
+        body.dark-mode .dept-chip,
+        [data-theme="dark"] .dept-chip {
+            background: rgba(15, 23, 42, 0.82);
+            border-color: rgba(148, 163, 184, 0.12);
+            color: #CBD5E1;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+        }
+
+        body.dark-mode .dept-chip[data-dept="all"],
+        [data-theme="dark"] .dept-chip[data-dept="all"] { color: #E5E7EB; }
+        body.dark-mode .dept-chip[data-dept="animators"],
+        [data-theme="dark"] .dept-chip[data-dept="animators"] { color: #5EEAD4; }
+        body.dark-mode .dept-chip[data-dept="admin"],
+        [data-theme="dark"] .dept-chip[data-dept="admin"] { color: #A5B4FC; }
+        body.dark-mode .dept-chip[data-dept="cafe"],
+        [data-theme="dark"] .dept-chip[data-dept="cafe"] { color: #FDBA74; }
+        body.dark-mode .dept-chip[data-dept="tech"],
+        [data-theme="dark"] .dept-chip[data-dept="tech"] { color: #FCA5A5; }
+        body.dark-mode .dept-chip[data-dept="cleaning"],
+        [data-theme="dark"] .dept-chip[data-dept="cleaning"] { color: #C4B5FD; }
+        body.dark-mode .dept-chip[data-dept="trampoline"],
+        [data-theme="dark"] .dept-chip[data-dept="trampoline"] { color: #67E8F9; }
+        body.dark-mode .dept-chip[data-dept="security"],
+        [data-theme="dark"] .dept-chip[data-dept="security"] { color: #CBD5E1; }
+
+        body.dark-mode .summary-chip,
+        [data-theme="dark"] .summary-chip {
+            background: rgba(15, 23, 42, 0.86);
+            border-color: rgba(148, 163, 184, 0.16);
+            color: #CBD5E1;
+            box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22);
+        }
+
+        body.dark-mode .summary-chip .chip-count,
+        [data-theme="dark"] .summary-chip .chip-count {
+            color: #F8FAFC;
+        }
+
+        body.dark-mode .schedule-wrapper,
+        [data-theme="dark"] .schedule-wrapper {
+            background: #0B1120;
+            border-color: rgba(148, 163, 184, 0.18);
+            box-shadow: 0 22px 54px rgba(0, 0, 0, 0.34);
+        }
+
+        body.dark-mode .schedule-table,
+        [data-theme="dark"] .schedule-table {
+            background: #0F172A;
+            color: #E5E7EB;
+        }
+
+        body.dark-mode .schedule-table thead th,
+        [data-theme="dark"] .schedule-table thead th {
+            background: #111827;
+            color: #CBD5E1;
+            border-bottom-color: rgba(148, 163, 184, 0.24);
+            box-shadow: inset 0 -1px 0 rgba(255,255,255,0.04);
+        }
+
+        body.dark-mode .schedule-table thead th:first-child,
+        [data-theme="dark"] .schedule-table thead th:first-child {
+            background: #111827;
+        }
+
+        body.dark-mode .schedule-table thead th.today,
+        [data-theme="dark"] .schedule-table thead th.today {
+            background: linear-gradient(135deg, #059669, #0F766E);
+            color: #FFFFFF;
+        }
+
+        body.dark-mode .schedule-table td,
+        [data-theme="dark"] .schedule-table td {
+            border-bottom-color: rgba(148, 163, 184, 0.12);
+            border-right-color: rgba(148, 163, 184, 0.10);
+        }
+
+        body.dark-mode .schedule-table td:first-child,
+        [data-theme="dark"] .schedule-table td:first-child {
+            background: #111827;
+            border-right-color: rgba(148, 163, 184, 0.18);
+            box-shadow: 10px 0 22px rgba(0, 0, 0, 0.18);
+        }
+
+        body.dark-mode .schedule-table tbody tr:not(.dept-row):not(.sub-group-row):hover td,
+        body.dark-mode .schedule-table tbody tr:not(.dept-row):not(.sub-group-row):hover td:first-child,
+        [data-theme="dark"] .schedule-table tbody tr:not(.dept-row):not(.sub-group-row):hover td,
+        [data-theme="dark"] .schedule-table tbody tr:not(.dept-row):not(.sub-group-row):hover td:first-child {
+            background: rgba(20, 184, 166, 0.08);
+        }
+
+        body.dark-mode .dept-row td,
+        [data-theme="dark"] .dept-row td {
+            background: linear-gradient(90deg, #1F2937, #111827);
+            color: #E5E7EB;
+            border-top-color: rgba(148, 163, 184, 0.22);
+        }
+
+        body.dark-mode .sub-group-row td,
+        [data-theme="dark"] .sub-group-row td {
+            background: rgba(15, 23, 42, 0.92);
+            color: #94A3B8;
+            border-top-color: rgba(148, 163, 184, 0.14);
+        }
+
+        body.dark-mode .dept-count,
+        [data-theme="dark"] .dept-count {
+            background: rgba(148, 163, 184, 0.18);
+            color: #CBD5E1;
+        }
+
+        body.dark-mode .sub-group-count,
+        [data-theme="dark"] .sub-group-count {
+            background: rgba(148, 163, 184, 0.12);
+            color: #94A3B8;
+        }
+
+        body.dark-mode .emp-name,
+        [data-theme="dark"] .emp-name {
+            color: #E5E7EB;
+        }
+
+        body.dark-mode .emp-position,
+        [data-theme="dark"] .emp-position {
+            color: #94A3B8;
+        }
+
+        body.dark-mode .emp-hours,
+        [data-theme="dark"] .emp-hours {
+            background: rgba(20, 184, 166, 0.16);
+            color: #5EEAD4;
+        }
+
+        body.dark-mode .sch-cell,
+        [data-theme="dark"] .sch-cell {
+            color: #CBD5E1;
+        }
+
+        body.dark-mode .sch-cell:hover,
+        [data-theme="dark"] .sch-cell:hover {
+            background: rgba(45, 212, 191, 0.11);
+            box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.18);
+        }
+
+        body.dark-mode .sch-cell .sch-time,
+        [data-theme="dark"] .sch-cell .sch-time {
+            color: #D1D5DB;
+        }
+
+        body.dark-mode .sch-cell .sch-note,
+        [data-theme="dark"] .sch-cell .sch-note {
+            color: #94A3B8;
+        }
+
+        body.dark-mode .sch-cell.status-working,
+        [data-theme="dark"] .sch-cell.status-working {
+            background: rgba(16, 185, 129, 0.13);
+        }
+        body.dark-mode .sch-cell.status-working .sch-label,
+        [data-theme="dark"] .sch-cell.status-working .sch-label {
+            color: #86EFAC;
+            background: rgba(16, 185, 129, 0.18);
+        }
+
+        body.dark-mode .sch-cell.status-dayoff,
+        [data-theme="dark"] .sch-cell.status-dayoff {
+            background: rgba(100, 116, 139, 0.14);
+        }
+        body.dark-mode .sch-cell.status-dayoff .sch-label,
+        [data-theme="dark"] .sch-cell.status-dayoff .sch-label {
+            color: #CBD5E1;
+            background: rgba(148, 163, 184, 0.14);
+        }
+
+        body.dark-mode .sch-cell.status-vacation,
+        [data-theme="dark"] .sch-cell.status-vacation {
+            background: rgba(59, 130, 246, 0.14);
+        }
+        body.dark-mode .sch-cell.status-vacation .sch-label,
+        [data-theme="dark"] .sch-cell.status-vacation .sch-label {
+            color: #93C5FD;
+            background: rgba(59, 130, 246, 0.18);
+        }
+
+        body.dark-mode .sch-cell.status-sick,
+        [data-theme="dark"] .sch-cell.status-sick {
+            background: rgba(239, 68, 68, 0.13);
+        }
+        body.dark-mode .sch-cell.status-sick .sch-label,
+        [data-theme="dark"] .sch-cell.status-sick .sch-label {
+            color: #FCA5A5;
+            background: rgba(239, 68, 68, 0.18);
+        }
+
+        body.dark-mode .sch-cell.status-remote,
+        [data-theme="dark"] .sch-cell.status-remote {
+            background: rgba(245, 158, 11, 0.14);
+        }
+        body.dark-mode .sch-cell.status-remote .sch-label,
+        [data-theme="dark"] .sch-cell.status-remote .sch-label {
+            color: #FCD34D;
+            background: rgba(245, 158, 11, 0.18);
+        }
+        body.dark-mode .sch-cell.status-remote .sch-time,
+        [data-theme="dark"] .sch-cell.status-remote .sch-time {
+            color: #FDE68A;
+        }
+
+        body.dark-mode .sch-cell.status-unset,
+        [data-theme="dark"] .sch-cell.status-unset {
+            background: rgba(15, 23, 42, 0.26);
+        }
+        body.dark-mode .sch-cell.status-unset .sch-label,
+        [data-theme="dark"] .sch-cell.status-unset .sch-label {
+            color: rgba(148, 163, 184, 0.32);
+        }
+        body.dark-mode .sch-cell.status-unset:hover,
+        [data-theme="dark"] .sch-cell.status-unset:hover {
+            background: rgba(51, 65, 85, 0.58);
+        }
+
+        body.dark-mode .sch-cell.today-col,
+        [data-theme="dark"] .sch-cell.today-col {
+            box-shadow: inset 0 0 0 2px rgba(52, 211, 153, 0.28);
+        }
+
+        body.dark-mode .load-table .load-total td,
+        [data-theme="dark"] .load-table .load-total td {
+            background: #1F2937;
+            border-top-color: rgba(148, 163, 184, 0.22);
+        }
+        body.dark-mode .load-cell-working,
+        [data-theme="dark"] .load-cell-working { color: #86EFAC; background: rgba(16,185,129,0.14); }
+        body.dark-mode .load-cell-dayoff,
+        [data-theme="dark"] .load-cell-dayoff { color: #CBD5E1; background: rgba(148,163,184,0.12); }
+        body.dark-mode .load-cell-vacation,
+        [data-theme="dark"] .load-cell-vacation { color: #93C5FD; background: rgba(59,130,246,0.14); }
+        body.dark-mode .load-cell-sick,
+        [data-theme="dark"] .load-cell-sick { color: #FCA5A5; background: rgba(239,68,68,0.14); }
+        body.dark-mode .load-cell-remote,
+        [data-theme="dark"] .load-cell-remote { color: #FCD34D; background: rgba(245,158,11,0.14); }
+        body.dark-mode .load-cell-unset,
+        [data-theme="dark"] .load-cell-unset { color: #94A3B8; background: rgba(148,163,184,0.08); }
+
+        body.dark-mode .link-badge:hover,
+        [data-theme="dark"] .link-badge:hover {
+            background: rgba(148, 163, 184, 0.16);
+        }
+
+        body.dark-mode .link-stats-bar,
+        [data-theme="dark"] .link-stats-bar {
+            background: rgba(15, 23, 42, 0.86);
+            border: 1px solid rgba(148, 163, 184, 0.14);
+            color: #CBD5E1;
+        }
+
+        body.dark-mode .link-user-item,
+        [data-theme="dark"] .link-user-item {
+            border-bottom-color: rgba(148, 163, 184, 0.12);
+            color: #E5E7EB;
+        }
+
+        body.dark-mode .link-user-item:hover,
+        [data-theme="dark"] .link-user-item:hover {
+            background: rgba(51, 65, 85, 0.72);
+        }
+
+        body.dark-mode .link-user-role,
+        [data-theme="dark"] .link-user-role {
+            color: #94A3B8;
+        }
+
+        body.dark-mode .bulk-results-table th,
+        [data-theme="dark"] .bulk-results-table th {
+            background: #1F2937;
+            color: #CBD5E1;
+        }
+
+        body.dark-mode .bulk-results-table td,
+        [data-theme="dark"] .bulk-results-table td {
+            border-bottom-color: rgba(148, 163, 184, 0.12);
+            color: #E5E7EB;
+        }
+
+        body.dark-mode .sch-modal,
+        [data-theme="dark"] .sch-modal {
+            background: #111827;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            color: #E5E7EB;
+            box-shadow: 0 28px 70px rgba(0, 0, 0, 0.46);
+        }
+
+        body.dark-mode .sch-modal h3,
+        [data-theme="dark"] .sch-modal h3 {
+            color: #F8FAFC;
+        }
+
+        body.dark-mode .sch-modal label,
+        [data-theme="dark"] .sch-modal label {
+            color: #94A3B8;
+        }
+
+        body.dark-mode .sch-modal select,
+        body.dark-mode .sch-modal input,
+        [data-theme="dark"] .sch-modal select,
+        [data-theme="dark"] .sch-modal input {
+            background: #0F172A;
+            border-color: rgba(148, 163, 184, 0.24);
+            color: #E5E7EB;
+        }
+
+        body.dark-mode .sch-modal select:focus,
+        body.dark-mode .sch-modal input:focus,
+        [data-theme="dark"] .sch-modal select:focus,
+        [data-theme="dark"] .sch-modal input:focus {
+            border-color: rgba(52, 211, 153, 0.72);
+            box-shadow: 0 0 0 3px rgba(16,185,129,0.18);
+        }
+
         /* Print styles */
         @media print {
             .sidebar-nav, .sidebar-overlay, .header, .schedule-controls,
@@ -1085,15 +1449,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.49.18"></script>
-    <script src="js/config.js?v=0.49.18"></script>
-    <script src="js/notification.js?v=0.49.18"></script>
-    <script src="js/api.js?v=0.49.18"></script>
-    <script src="js/auth.js?v=0.49.18"></script>
-    <script src="js/components/sidebar.js?v=0.49.18"></script>
+    <script src="js/ui.js?v=0.49.20"></script>
+    <script src="js/config.js?v=0.49.20"></script>
+    <script src="js/notification.js?v=0.49.20"></script>
+    <script src="js/api.js?v=0.49.20"></script>
+    <script src="js/auth.js?v=0.49.20"></script>
+    <script src="js/components/sidebar.js?v=0.49.20"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/staff-page.js?v=0.49.18"></script>
-    <script src="js/role-panel.js?v=0.49.18"></script>
-    <script src="js/alerts.js?v=0.49.18"></script>
+    <script src="js/staff-page.js?v=0.49.20"></script>
+    <script src="js/role-panel.js?v=0.49.20"></script>
+    <script src="js/alerts.js?v=0.49.20"></script>
 </body>
 </html>

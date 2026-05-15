@@ -213,6 +213,56 @@ body.dark-mode .nav-icon {
 }
 body.dark-mode .nav-link:hover .nav-icon { background: rgba(255,255,255,0.1); }
 body.dark-mode .nav-link.active .nav-icon { background: rgba(16,185,129,0.2); }
+body.dark-mode .eg-icon--task,
+body.dark-mode .eg-icon--calendar {
+    color: #4ADE80;
+}
+body.dark-mode .eg-icon--alert,
+body.dark-mode .eg-icon--warehouse,
+body.dark-mode .eg-icon--finance,
+body.dark-mode .eg-icon--programs,
+body.dark-mode .eg-icon--afisha,
+body.dark-mode .eg-icon--ticket {
+    color: #FBBF24;
+}
+body.dark-mode .eg-icon--funnel {
+    color: #F87171;
+}
+body.dark-mode .eg-icon--dashboard,
+body.dark-mode .eg-icon--timeline,
+body.dark-mode .eg-icon--center,
+body.dark-mode .eg-icon--analytics,
+body.dark-mode .eg-icon--mail,
+body.dark-mode .eg-icon--sound,
+body.dark-mode .eg-icon--music,
+body.dark-mode .eg-icon--megaphone,
+body.dark-mode .eg-icon--project {
+    color: #60A5FA;
+}
+body.dark-mode .eg-icon--chat,
+body.dark-mode .eg-icon--ai,
+body.dark-mode .eg-icon--game,
+body.dark-mode .eg-icon--art,
+body.dark-mode .eg-icon--content,
+body.dark-mode .eg-icon--designer,
+body.dark-mode .eg-icon--image,
+body.dark-mode .eg-icon--folder,
+body.dark-mode .eg-icon--book {
+    color: #C4B5FD;
+}
+body.dark-mode .eg-icon--crm,
+body.dark-mode .eg-icon--management,
+body.dark-mode .eg-icon--users,
+body.dark-mode .eg-icon--hr,
+body.dark-mode .eg-icon--training {
+    color: #5EEAD4;
+}
+body.dark-mode .eg-icon--system,
+body.dark-mode .eg-icon--guardian,
+body.dark-mode .eg-icon--sun,
+body.dark-mode .eg-icon--moon {
+    color: #CBD5E1;
+}
 
 body.dark-mode .sidebar-group-header {
     color: #CBD5E1;

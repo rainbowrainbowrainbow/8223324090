@@ -231,7 +231,7 @@ body.dark-mode.page-exiting::before {
 
 .sidebar-links .nav-link.hidden { display: none; }
 
-/* Nav icon — emoji-based v37.5.0 with colored backgrounds */
+/* Nav icon — custom SVG set, stable across OS/browser emoji styles */
 .nav-icon {
     display: inline-flex;
     align-items: center;
@@ -240,13 +240,92 @@ body.dark-mode.page-exiting::before {
     height: 28px;
     border-radius: 8px;
     background: var(--gray-50);
-    font-size: 15px;
+    color: var(--gray-500);
+    font-size: 0;
     flex-shrink: 0;
     letter-spacing: 0;
     transition: transform var(--speed-fast) var(--ease-smooth),
                 background var(--speed-fast) var(--ease-smooth),
                 box-shadow var(--speed-fast) var(--ease-smooth);
     line-height: 1;
+}
+
+.eg-icon-svg {
+    width: 15px;
+    height: 15px;
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+}
+
+.eg-icon--task,
+.eg-icon--calendar {
+    color: #16A34A;
+}
+
+.eg-icon--alert {
+    color: #D97706;
+}
+
+.eg-icon--funnel {
+    color: #EF4444;
+}
+
+.eg-icon--chat,
+.eg-icon--ai,
+.eg-icon--game {
+    color: #7C3AED;
+}
+
+.eg-icon--dashboard,
+.eg-icon--timeline,
+.eg-icon--center {
+    color: #2563EB;
+}
+
+.eg-icon--crm,
+.eg-icon--management,
+.eg-icon--users,
+.eg-icon--hr,
+.eg-icon--training {
+    color: #0F766E;
+}
+
+.eg-icon--warehouse,
+.eg-icon--finance,
+.eg-icon--programs,
+.eg-icon--afisha,
+.eg-icon--ticket {
+    color: #D97706;
+}
+
+.eg-icon--analytics,
+.eg-icon--mail,
+.eg-icon--sound,
+.eg-icon--music,
+.eg-icon--megaphone,
+.eg-icon--project {
+    color: #0284C7;
+}
+
+.eg-icon--art,
+.eg-icon--content,
+.eg-icon--designer,
+.eg-icon--image,
+.eg-icon--folder,
+.eg-icon--book {
+    color: #8B5CF6;
+}
+
+.eg-icon--system,
+.eg-icon--guardian,
+.eg-icon--sun,
+.eg-icon--moon {
+    color: #64748B;
 }
 
 .nav-link:hover .nav-icon {
@@ -283,9 +362,13 @@ body.dark-mode.page-exiting::before {
 .sidebar-nav.collapsed .nav-icon {
     width: 34px;
     height: 34px;
-    font-size: 18px;
     border-radius: 10px;
     background: var(--gray-50);
+}
+
+.sidebar-nav.collapsed .nav-icon .eg-icon-svg {
+    width: 17px;
+    height: 17px;
 }
 
 /* ═══ SIDEBAR REDESIGN v33.14.0 ═══ */
@@ -396,6 +479,13 @@ body.dark-mode.page-exiting::before {
     align-items: center;
     justify-content: center;
     background: rgba(255,255,255,0.72);
+}
+
+.sidebar-task-widget-icon .eg-icon-svg,
+.sidebar-alert-widget-icon .eg-icon-svg,
+.sidebar-funnel-widget-icon .eg-icon-svg {
+    width: 14px;
+    height: 14px;
 }
 
 .sidebar-task-widget-main {
@@ -653,6 +743,11 @@ body.dark-mode.page-exiting::before {
     box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
 }
 
+.sidebar-quick-nav-icon .eg-icon-svg {
+    width: 13px;
+    height: 13px;
+}
+
 .sidebar-quick-nav-text {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -753,6 +848,15 @@ body.dark-mode.page-exiting::before {
     color: inherit;
     text-decoration: none;
     font-weight: inherit;
+}
+
+.sidebar-group-header .nav-icon {
+    background: transparent;
+}
+
+.sidebar-group-header .nav-icon .eg-icon-svg {
+    width: 13px;
+    height: 13px;
 }
 .sidebar-group-header:hover {
     background: rgba(15,23,42,0.045);
@@ -862,7 +966,6 @@ body.dark-mode.page-exiting::before {
 .sidebar-nav.collapsed .sidebar-group-header .nav-icon {
     width: 28px !important;
     height: 28px !important;
-    font-size: 18px !important;
     border-radius: 6px !important;
     background: transparent !important;
 }

@@ -595,18 +595,36 @@ body.dark-mode .page-fatal-error {
 }
 
 .tasks-focus-lane {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 10px;
-    margin: 12px 0;
+    display: flex;
+    gap: 12px;
+    margin: 12px 0 16px;
+    align-items: stretch;
+    flex-wrap: wrap;
 }
 
 .focus-lane-card {
-    border: 1px solid var(--gray-200, #e5e7eb);
-    border-radius: 8px;
-    background: var(--white, #fff);
-    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 72px;
+    border: 1px solid rgba(15, 23, 42, 0.06);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.55);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+    backdrop-filter: blur(10px);
+    padding: 12px 14px;
     min-width: 0;
+}
+
+.focus-lane-card.focus-only {
+    min-width: 280px;
+    max-width: 520px;
+}
+
+body.dark-mode .focus-lane-card {
+    border-color: rgba(148, 163, 184, 0.22);
+    background: rgba(15, 23, 42, 0.58);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
 .focus-lane-card span,
@@ -621,11 +639,6 @@ body.dark-mode .page-fatal-error {
     margin: 4px 0;
     color: var(--gray-900, #111827);
     font-size: 22px;
-}
-
-.focus-lane-card.danger {
-    border-color: rgba(239, 68, 68, 0.28);
-    background: rgba(239, 68, 68, 0.06);
 }
 
 .task-os-badge {
@@ -847,6 +860,11 @@ body.dark-mode .page-fatal-error {
     .cabinet-stats,
     .dashboard-focus-summary {
         grid-template-columns: 1fr;
+    }
+
+    .focus-lane-card.focus-only {
+        min-width: 100%;
+        max-width: none;
     }
 
     .cabinet-hero,

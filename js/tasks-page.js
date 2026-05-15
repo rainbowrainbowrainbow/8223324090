@@ -203,8 +203,9 @@ async function initPage() {
         else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
         bootStep('shell:ready');
         const requestedView = new URLSearchParams(window.location.search).get('view');
-        const allowedViews = ['inbox', 'focus', 'today', 'next', 'waiting', 'team', 'my', 'week', 'board', 'routines', 'archive', 'templates'];
+        const allowedViews = ['inbox', 'today', 'next', 'waiting', 'team', 'my', 'week', 'board', 'routines', 'archive', 'templates'];
         if (requestedView && allowedViews.includes(requestedView)) currentView = requestedView;
+        if (requestedView === 'focus' || currentView === 'focus') currentView = 'today';
 
         await _loadAssigneeDropdown();
         bootStep('owners:loaded', { count: _assigneeList.length });
@@ -550,7 +551,6 @@ function getCategoryLabel(cat = currentCategory) {
 function getViewLabel(view = currentView) {
     const labels = {
         inbox: 'Інбокс',
-        focus: 'Фокус',
         today: 'Сьогодні',
         next: 'Наступні',
         waiting: 'Чекаю',
@@ -693,7 +693,6 @@ function updateCounts() {
         if (el) el.textContent = value;
     };
     setCount('countInbox', active.filter(isInboxTask).length);
-    setCount('countFocus', active.filter(isFocusTask).length);
     setCount('countToday', todayTasks.length);
     setCount('countWeek', weekTasks.length);
     setCount('countNext', nextTasks.length);
@@ -710,7 +709,6 @@ function renderBoard() {
 
     switch (currentView) {
         case 'inbox': renderSimpleTaskView(container, 'inbox', t => isInboxTask(t), 'Інбокс чистий. Нові задачі без контексту зʼявлятимуться тут.'); break;
-        case 'focus': renderSimpleTaskView(container, 'focus', t => isFocusTask(t), 'Фокус порожній. Познач 1-3 задачі як фокус дня.'); break;
         case 'today': renderTodayView(container); break;
         case 'next': renderSimpleTaskView(container, 'next', t => {
             const today = getTodayStr();
@@ -747,29 +745,11 @@ function renderFocusLane() {
     const lane = document.getElementById('focusLane');
     if (!lane || currentView === 'templates') return;
     const active = allTasks.filter(isActiveTask);
-    const overdue = active.filter(t => {
-        const due = taskDueDate(t);
-        return due && due < getTodayStr();
-    });
     const focus = active.filter(isFocusTask).sort((a, b) => taskFocusRank(a) - taskFocusRank(b)).slice(0, 3);
-    const waiting = active.filter(isWaitingTask).slice(0, 3);
-    const quickWins = active.filter(t => Number(t.effortMinutes || t.effort_minutes || 0) > 0 && Number(t.effortMinutes || t.effort_minutes || 0) <= 10).slice(0, 3);
     lane.innerHTML = `
-        <div class="focus-lane-card">
+        <div class="focus-lane-card focus-only">
             <span>🎯 Фокус дня</span><b>${focus.length}</b>
             <small>${focus.map(t => escapeHtml(t.title)).join(' · ') || 'не задано'}</small>
-        </div>
-        <div class="focus-lane-card danger">
-            <span>⏰ Прострочено</span><b>${overdue.length}</b>
-            <small>${overdue[0] ? escapeHtml(overdue[0].title) : 'чисто'}</small>
-        </div>
-        <div class="focus-lane-card">
-            <span>👥 Чекаю</span><b>${waiting.length}</b>
-            <small>${waiting[0] ? escapeHtml(waiting[0].title) : 'нічого не зависло'}</small>
-        </div>
-        <div class="focus-lane-card">
-            <span>⚡ Швидкі перемоги</span><b>${quickWins.length}</b>
-            <small>${quickWins[0] ? escapeHtml(quickWins[0].title) : 'познач effort ≤ 10 хв'}</small>
         </div>`;
 }
 

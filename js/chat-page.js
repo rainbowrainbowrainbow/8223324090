@@ -128,6 +128,42 @@
         return h;
     }
 
+    function _isInConfiguredNightWindow() {
+        var hour = new Date().getHours();
+        var autoStart = parseInt(localStorage.getItem('pzp_night_start') || '19', 10);
+        var autoEnd = parseInt(localStorage.getItem('pzp_night_end') || '7', 10);
+        return (autoStart > autoEnd) ? (hour >= autoStart || hour < autoEnd) : (hour >= autoStart && hour < autoEnd);
+    }
+
+    function _resolveChatThemeState() {
+        var savedDark = localStorage.getItem('pzp_dark_mode');
+        var autoNight = localStorage.getItem('pzp_autoNight') !== 'false';
+        var isNight = _isInConfiguredNightWindow();
+        var systemDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var isDark = false;
+
+        if (savedDark === 'true') isDark = true;
+        else if (savedDark === 'false') isDark = false;
+        else if (autoNight) isDark = isNight;
+        else isDark = Boolean(systemDark);
+
+        return {
+            isDark: isDark,
+            isAuto: savedDark === null,
+            isNightAuto: savedDark === null && autoNight && isNight && isDark,
+            autoNight: autoNight
+        };
+    }
+
+    function _applyChatThemeFromStorage() {
+        var state = _resolveChatThemeState();
+        document.body.classList.toggle('dark-mode', state.isDark);
+        document.body.classList.toggle('night-auto', state.isNightAuto);
+        document.documentElement.setAttribute('data-theme', state.isDark ? 'dark' : 'light');
+        if (typeof AppState !== 'undefined') AppState.darkMode = state.isDark;
+        return state;
+    }
+
     async function _api(method, path, body) {
         var opts = { method: method, headers: _headers() };
         if (body) opts.body = JSON.stringify(body);
@@ -191,22 +227,7 @@
         _preloadSounds();
         _loadOfflineQueue();
 
-        // Dark mode — unified key pzp_dark_mode
-        var savedDark = localStorage.getItem('pzp_dark_mode');
-        if (savedDark === 'true') {
-            document.body.classList.add('dark-mode');
-            document.documentElement.setAttribute('data-theme', 'dark');
-        } else if (savedDark === null) {
-            // Auto: check time-based
-            var autoStart = parseInt(localStorage.getItem('pzp_night_start') || '19', 10);
-            var autoEnd = parseInt(localStorage.getItem('pzp_night_end') || '7', 10);
-            var nowHour = new Date().getHours();
-            var isAutoNight = (autoStart > autoEnd) ? (nowHour >= autoStart || nowHour < autoEnd) : (nowHour >= autoStart && nowHour < autoEnd);
-            if (isAutoNight) {
-                document.body.classList.add('dark-mode');
-                document.documentElement.setAttribute('data-theme', 'dark');
-            }
-        }
+        _applyChatThemeFromStorage();
 
         // Auth check (standalone page pattern)
         var token = localStorage.getItem('pzp_token');
@@ -659,7 +680,9 @@
         list.innerHTML = '';
         var f = (filter || '').toLowerCase();
         _newChanAllUsers.filter(function(u) {
-            return (!f || u.username.toLowerCase().includes(f) || (u.displayName || '').toLowerCase().includes(f))
+            var username = String(u.username || '').toLowerCase();
+            var displayName = String(u.displayName || '').toLowerCase();
+            return (!f || username.includes(f) || displayName.includes(f))
                 && _newChanSelectedMembers.indexOf(u.id) === -1;
         }).slice(0, 8).forEach(function(u) {
             var item = document.createElement('div');
@@ -697,6 +720,7 @@
 
     if (_newChannelBtn) {
         _newChannelBtn.addEventListener('click', async function () {
+            _closeChatTransientPanels();
             _newChannelOverlay.style.display = 'flex';
             _newChannelName.value = '';
             _newChannelDesc.value = '';
@@ -738,7 +762,7 @@
                     for (var i = 0; i < _newChanSelectedMembers.length; i++) {
                         try {
                             var u = _newChanAllUsers?.find(function(x) { return x.id === _newChanSelectedMembers[i]; });
-                            if (u) await _api('POST', '/channels/' + channel.id + '/members', { username: u.username });
+                            if (u) await _api('POST', '/channels/' + channel.id + '/members', u.username ? { username: u.username } : { userId: u.id });
                         } catch (e) { /* skip */ }
                     }
                     _channels.unshift(channel);
@@ -771,6 +795,7 @@
 
     if (_dmBtn) {
         _dmBtn.addEventListener('click', function () {
+            _closeChatTransientPanels();
             _dmOverlay.style.display = 'flex';
             _dmSearch.value = '';
             _renderDmUserList('');
@@ -862,6 +887,7 @@
 
     function _openAddMemberModal() {
         if (!_addMemberOverlay) return;
+        _closeChatTransientPanels();
         _addMemberOverlay.style.display = 'flex';
         _addMemberSearch.value = '';
         _renderAddMemberList('');
@@ -909,6 +935,11 @@
     // ==========================================
     // USER PROFILE PANEL
     // ==========================================
+    function _setInfoPanelTitle(title) {
+        var el = document.getElementById('chatInfoPanelTitle');
+        if (el) el.textContent = title || 'Канал';
+    }
+
     async function _showUserProfile(userId) {
         if (!_infoPanel) return;
         try {
@@ -916,7 +947,7 @@
             if (!profile) return;
             _infoBtn.classList.remove('active');
             _pinBtn.classList.remove('active');
-            document.getElementById('chatInfoPanelTitle').textContent = 'Профіль';
+            _setInfoPanelTitle('Профіль');
             var body = document.getElementById('chatInfoPanelBody');
             var isProfileBot = profile.username === 'openclaw';
             var isProfileGuardian = profile.username === 'guardian';
@@ -1077,7 +1108,7 @@
             } else {
                 _infoBtn.classList.remove('active');
                 _pinBtn.classList.add('active');
-                document.getElementById('chatInfoPanelTitle').textContent = 'Закріплені';
+                _setInfoPanelTitle('Закріплені');
                 await _renderPinnedPanel();
                 _infoPanel.classList.add('open');
             }
@@ -1987,7 +2018,7 @@
             } else {
                 if (_pinBtn) _pinBtn.classList.remove('active');
                 _infoBtn.classList.add('active');
-                document.getElementById('chatInfoPanelTitle').textContent = _currentChannel ? _currentChannel.name : 'Канал';
+                _setInfoPanelTitle(_currentChannel ? _currentChannel.name : 'Канал');
                 _renderInfoPanel();
                 _infoPanel.classList.add('open');
             }
@@ -2108,7 +2139,7 @@
                     _currentChannel.description = newDesc.trim();
                     document.getElementById('chatHeaderName').textContent = '#' + newName.trim();
                     document.getElementById('chatHeaderDesc').textContent = newDesc.trim();
-                    document.getElementById('chatInfoPanelTitle').textContent = '#' + newName.trim();
+                    _setInfoPanelTitle('#' + newName.trim());
                     _loadChannels();
                     if (typeof showNotification === 'function') showNotification('✅ Канал оновлено', 'success');
                 } catch(e) { if (typeof showNotification === 'function') showNotification('Помилка збереження', 'error'); }
@@ -2300,38 +2331,109 @@
     var _themeLabel = document.getElementById('chatThemeLabel');
     var _themeAutoBtn = document.getElementById('chatThemeAutoBtn');
     var _themeSettings = document.getElementById('chatThemeSettings');
+    var _themeResetAutoBtn = document.getElementById('chatResetAutoThemeBtn');
+
+    function _setElementDisplay(el, visible, displayValue) {
+        if (!el) return false;
+        var wasVisible = el.style.display !== 'none' && el.style.display !== '';
+        el.style.display = visible ? (displayValue || 'block') : 'none';
+        return wasVisible !== visible;
+    }
+
+    function _isElementVisible(el) {
+        return Boolean(el && el.style.display !== 'none' && el.style.display !== '');
+    }
+
+    function _closeChatTransientPanels() {
+        var closed = false;
+        var statusPicker = document.getElementById('chatStatusPicker');
+        var wallpaperPicker = document.getElementById('chatWallpaperPicker');
+        var moodPicker = document.getElementById('chatMoodPicker');
+        var soundPanel = document.getElementById('soundSettingsPanel');
+        if (_isElementVisible(_themeSettings)) closed = _setElementDisplay(_themeSettings, false) || closed;
+        if (_isElementVisible(statusPicker)) closed = _setElementDisplay(statusPicker, false) || closed;
+        if (_isElementVisible(wallpaperPicker)) closed = _setElementDisplay(wallpaperPicker, false) || closed;
+        if (_isElementVisible(moodPicker)) closed = _setElementDisplay(moodPicker, false) || closed;
+        if (soundPanel && !soundPanel.classList.contains('hidden')) {
+            soundPanel.classList.add('hidden');
+            closed = true;
+        }
+        if (_sidebar && _sidebar.classList.contains('open')) {
+            _sidebar.classList.remove('open');
+            if (_overlay) _overlay.classList.remove('visible');
+            closed = true;
+        }
+        if (_themeAutoBtn && _themeSettings) {
+            _themeAutoBtn.setAttribute('aria-expanded', String(_isElementVisible(_themeSettings)));
+        }
+        return closed;
+    }
+
+    function _closeChatModalOverlays() {
+        var closed = false;
+        ['chatNewChannelOverlay', 'chatDmOverlay', 'chatAddMemberOverlay', 'chatForwardOverlay'].forEach(function (id) {
+            var overlay = document.getElementById(id);
+            if (_isElementVisible(overlay)) closed = _setElementDisplay(overlay, false) || closed;
+        });
+        return closed;
+    }
 
     function _updateThemeUI() {
+        var state = _resolveChatThemeState();
         var isDark = document.body.classList.contains('dark-mode');
         if (_themeIcon) _themeIcon.textContent = isDark ? '☀️' : '🌙';
-        if (_themeLabel) _themeLabel.textContent = isDark ? 'Світла' : 'Темна';
+        if (_themeLabel) _themeLabel.textContent = (state.isAuto ? 'Авто · ' : '') + (isDark ? 'Темна' : 'Світла');
+        if (_themeBtn) {
+            _themeBtn.setAttribute('aria-pressed', String(isDark));
+            _themeBtn.title = 'Переключити тему. Поточний режим: ' + (state.isAuto ? 'авто, ' : '') + (isDark ? 'темна' : 'світла');
+        }
+        if (_themeAutoBtn) {
+            _themeAutoBtn.classList.toggle('active', state.isAuto);
+            _themeAutoBtn.setAttribute('aria-expanded', String(_isElementVisible(_themeSettings)));
+            _themeAutoBtn.title = state.isAuto ? 'Авто-тема активна' : 'Налаштування авто-теми';
+        }
     }
+    _applyChatThemeFromStorage();
     _updateThemeUI();
 
     if (_themeBtn) {
         _themeBtn.addEventListener('click', function () {
             var isDark = document.body.classList.contains('dark-mode');
-            document.body.classList.toggle('dark-mode', !isDark);
-            document.documentElement.setAttribute('data-theme', !isDark ? 'dark' : 'light');
-            document.body.classList.remove('night-auto');
             localStorage.setItem('pzp_dark_mode', String(!isDark));
+            _applyChatThemeFromStorage();
+            _closeChatTransientPanels();
             _updateThemeUI();
         });
     }
 
     if (_themeAutoBtn) {
-        _themeAutoBtn.addEventListener('click', function () {
+        _themeAutoBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var statusPicker = document.getElementById('chatStatusPicker');
+            if (_isElementVisible(statusPicker)) _setElementDisplay(statusPicker, false);
             var isVisible = _themeSettings && _themeSettings.style.display !== 'none';
             if (_themeSettings) _themeSettings.style.display = isVisible ? 'none' : 'block';
+            _updateThemeUI();
+        });
+    }
+
+    if (_themeResetAutoBtn) {
+        _themeResetAutoBtn.addEventListener('click', function () {
+            localStorage.removeItem('pzp_dark_mode');
+            _applyChatThemeFromStorage();
+            _updateThemeUI();
         });
     }
 
     // v33.7.0: Status picker
     var _statusBtn = document.getElementById('chatStatusBtn');
     if (_statusBtn) {
-        _statusBtn.addEventListener('click', function() {
+        _statusBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (_isElementVisible(_themeSettings)) _setElementDisplay(_themeSettings, false);
             var picker = document.getElementById('chatStatusPicker');
             if (picker) picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+            _updateThemeUI();
         });
     }
     window._setUserStatus = async function(emoji, text) {
@@ -2348,6 +2450,22 @@
             if (typeof showNotification === 'function') showNotification('Помилка: ' + e.message, 'error');
         }
     };
+
+    document.addEventListener('click', function (e) {
+        var statusArea = document.querySelector('.chat-status-area');
+        var themeArea = document.querySelector('.chat-theme-toggle');
+        var inStatus = statusArea && statusArea.contains(e.target);
+        var inTheme = themeArea && themeArea.contains(e.target);
+        var inThemeSettings = _themeSettings && _themeSettings.contains(e.target);
+        if (!inStatus) {
+            var picker = document.getElementById('chatStatusPicker');
+            if (_isElementVisible(picker)) _setElementDisplay(picker, false);
+        }
+        if (!inTheme && !inThemeSettings && _isElementVisible(_themeSettings)) {
+            _setElementDisplay(_themeSettings, false);
+            _updateThemeUI();
+        }
+    });
 
     // ==========================================
     // v33.9.0: WALLPAPERS, PREFERENCES, EFFECTS
@@ -2568,9 +2686,13 @@
 
         _nightStartSel.addEventListener('change', function () {
             localStorage.setItem('pzp_night_start', _nightStartSel.value);
+            _applyChatThemeFromStorage();
+            _updateThemeUI();
         });
         _nightEndSel.addEventListener('change', function () {
             localStorage.setItem('pzp_night_end', _nightEndSel.value);
+            _applyChatThemeFromStorage();
+            _updateThemeUI();
         });
     }
 
@@ -2578,15 +2700,11 @@
         _autoNightCb.checked = localStorage.getItem('pzp_autoNight') !== 'false';
         _autoNightCb.addEventListener('change', function () {
             localStorage.setItem('pzp_autoNight', String(_autoNightCb.checked));
-            if (!_autoNightCb.checked) {
-                // Remove auto if was auto-applied
-                if (document.body.classList.contains('night-auto')) {
-                    document.body.classList.remove('dark-mode', 'night-auto');
-                    document.documentElement.setAttribute('data-theme', 'light');
-                    localStorage.removeItem('pzp_dark_mode');
-                    _updateThemeUI();
-                }
+            if (_autoNightCb.checked) {
+                localStorage.removeItem('pzp_dark_mode');
             }
+            _applyChatThemeFromStorage();
+            _updateThemeUI();
         });
     }
 
@@ -2597,7 +2715,7 @@
         _themeBtn.addEventListener('mousedown', function () {
             _themeLongPress = setTimeout(function () {
                 localStorage.removeItem('pzp_dark_mode');
-                _checkAutoNightMode();
+                _applyChatThemeFromStorage();
                 _updateThemeUI();
             }, 1500);
         });
@@ -6685,23 +6803,8 @@
     // FEATURE 18: AUTO NIGHT MODE (configurable)
     // ==========================================
     function _checkAutoNightMode() {
-        var hour = new Date().getHours();
-        var autoStart = parseInt(localStorage.getItem('pzp_night_start') || '19', 10);
-        var autoEnd = parseInt(localStorage.getItem('pzp_night_end') || '7', 10);
-        var isNight = (autoStart > autoEnd) ? (hour >= autoStart || hour < autoEnd) : (hour >= autoStart && hour < autoEnd);
-        var savedDark = localStorage.getItem('pzp_dark_mode');
-        var autoNight = localStorage.getItem('pzp_autoNight') !== 'false'; // Default enabled
-
-        if (autoNight && isNight && savedDark === null) {
-            document.body.classList.add('dark-mode');
-            document.documentElement.setAttribute('data-theme', 'dark');
-            document.body.classList.add('night-auto');
-        } else if (autoNight && !isNight && savedDark === null) {
-            if (document.body.classList.contains('night-auto')) {
-                document.body.classList.remove('dark-mode', 'night-auto');
-                document.documentElement.setAttribute('data-theme', 'light');
-            }
-        }
+        _applyChatThemeFromStorage();
+        _updateThemeUI();
     }
 
     // Check on init and every 5 minutes
@@ -7254,6 +7357,8 @@
     // Escape closes panels
     document.addEventListener('keydown', function (e) {
         if (e.key !== 'Escape') return;
+        if (_closeChatModalOverlays()) return;
+        if (_closeChatTransientPanels()) return;
         var lightbox = document.querySelector('.chat-lightbox-overlay');
         if (lightbox) { lightbox.remove(); return; }
         var threadPanel = document.getElementById('chatThreadPanel');

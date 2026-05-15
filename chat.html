@@ -7,16 +7,16 @@
     <title>Event Genix | Командний чат</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.50.23">
-    <link rel="stylesheet" href="css/layout.css?v=0.50.23">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.23">
-    <link rel="stylesheet" href="css/pages.css?v=0.50.23">
-    <link rel="stylesheet" href="css/modals.css?v=0.50.23">
-    <link rel="stylesheet" href="css/chat.css?v=0.50.23">
-    <link rel="stylesheet" href="css/agents.css?v=0.50.23">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.23">
-    <link rel="stylesheet" href="css/responsive.css?v=0.50.23">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.50.23">
+    <link rel="stylesheet" href="css/base.css?v=0.50.24">
+    <link rel="stylesheet" href="css/layout.css?v=0.50.24">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.24">
+    <link rel="stylesheet" href="css/pages.css?v=0.50.24">
+    <link rel="stylesheet" href="css/modals.css?v=0.50.24">
+    <link rel="stylesheet" href="css/chat.css?v=0.50.24">
+    <link rel="stylesheet" href="css/agents.css?v=0.50.24">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.24">
+    <link rel="stylesheet" href="css/responsive.css?v=0.50.24">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.50.24">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -25,8 +25,20 @@
 </head>
 <body data-page-group="crm">
     <script>
-    // Dark mode flash prevention
-    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    // Dark mode flash prevention: mirrors the shared pzp_dark_mode/pzp_autoNight contract.
+    (function(){
+        var s=localStorage.getItem('pzp_dark_mode');
+        var auto=localStorage.getItem('pzp_autoNight')!=='false';
+        var h=new Date().getHours();
+        var start=parseInt(localStorage.getItem('pzp_night_start')||'19',10);
+        var end=parseInt(localStorage.getItem('pzp_night_end')||'7',10);
+        var night=(start>end)?(h>=start||h<end):(h>=start&&h<end);
+        var sys=window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;
+        var dark=s==='true'||(s===null&&(auto?night:sys));
+        document.body.classList.toggle('dark-mode',dark);
+        document.body.classList.toggle('night-auto',dark&&s===null&&auto&&night);
+        document.documentElement.setAttribute('data-theme',dark?'dark':'light');
+    })();
     </script>
     <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
     <div id="loginOverlay" class="page-login-overlay hidden">
@@ -129,6 +141,7 @@
                             <label class="chat-theme-setting-row">
                                 <input type="checkbox" id="chatAutoNight" checked> Авто нічна тема
                             </label>
+                            <button type="button" class="chat-theme-reset-btn" id="chatResetAutoThemeBtn">Повернути авто</button>
                         </div>
                         <!-- v33.9.0: Mood + Wallpaper + Signature -->
                         <div class="chat-my-info" style="padding:6px 12px;border-top:1px solid var(--border-color,#e5e7eb)">
@@ -460,11 +473,14 @@
 
                 <!-- Right panel (info / pinned / profile) -->
                 <div class="chat-info-panel" id="chatInfoPanel">
+                    <div class="chat-info-panel-header">
+                        <h3 class="chat-info-panel-title" id="chatInfoPanelTitle">Канал</h3>
+                        <button type="button" class="chat-info-panel-close" id="chatInfoPanelClose">&times;</button>
+                    </div>
                     <div class="chat-info-tabs">
                         <button type="button" class="chat-info-tab active" data-tab="members" onclick="_switchInfoTab('members')">👥</button>
                         <button type="button" class="chat-info-tab" data-tab="pinned" onclick="_switchInfoTab('pinned')">📌</button>
                         <button type="button" class="chat-info-tab" data-tab="notes" onclick="_switchInfoTab('notes')">📝</button>
-                        <button type="button" class="chat-info-panel-close" id="chatInfoPanelClose" style="margin-left:auto">&times;</button>
                     </div>
                     <div class="chat-info-tab-content" id="infoTab-members">
                         <div class="chat-info-panel-body" id="chatInfoPanelBody"></div>
@@ -653,18 +669,18 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.50.23"></script>
-    <script src="js/notification.js?v=0.50.23"></script>
-    <script src="js/api.js?v=0.50.23"></script>
-    <script src="js/auth.js?v=0.50.23"></script>
-    <script src="js/components/sidebar.js?v=0.50.23"></script>
+    <script src="js/config.js?v=0.50.24"></script>
+    <script src="js/notification.js?v=0.50.24"></script>
+    <script src="js/api.js?v=0.50.24"></script>
+    <script src="js/auth.js?v=0.50.24"></script>
+    <script src="js/components/sidebar.js?v=0.50.24"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.50.23"></script>
-    <script src="js/sound-engine.js?v=0.50.23"></script>
-    <script src="js/chat-page.js?v=0.50.23"></script>
-    <script src="js/ui.js?v=0.50.23"></script>
-    <script src="js/agents-panel.js?v=0.50.23"></script>
-    <script src="js/role-panel.js?v=0.50.23"></script>
+    <script src="js/ws.js?v=0.50.24"></script>
+    <script src="js/sound-engine.js?v=0.50.24"></script>
+    <script src="js/chat-page.js?v=0.50.24"></script>
+    <script src="js/ui.js?v=0.50.24"></script>
+    <script src="js/agents-panel.js?v=0.50.24"></script>
+    <script src="js/role-panel.js?v=0.50.24"></script>
     <script>
     // Sound Settings Panel — v28.0.0
     (function () {
@@ -729,6 +745,6 @@
         }
     })();
     </script>
-    <script src="js/alerts.js?v=0.50.23"></script>
+    <script src="js/alerts.js?v=0.50.24"></script>
 </body>
 </html>

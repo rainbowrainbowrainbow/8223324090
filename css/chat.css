@@ -125,6 +125,19 @@
     color: var(--gray-700);
 }
 
+.chat-theme-reset-btn {
+    width: 100%;
+    margin-top: 6px;
+    padding: 6px 8px;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    background: var(--white);
+    color: var(--gray-700);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
 body.dark-mode .chat-sidebar-footer {
     border-top-color: var(--gray-700, #374151);
 }
@@ -141,6 +154,12 @@ body.dark-mode .chat-theme-btn:hover {
 
 body.dark-mode .chat-theme-settings {
     background: var(--gray-800, #1f2937);
+}
+
+body.dark-mode .chat-theme-reset-btn {
+    border-color: var(--gray-600, #4b5563);
+    background: var(--gray-700, #374151);
+    color: var(--gray-200, #e5e7eb);
 }
 
 body.dark-mode .chat-theme-setting-row {

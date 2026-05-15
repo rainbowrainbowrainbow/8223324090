@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.24 - Chat Runtime Audit & Theme Stabilization (2026-05-15)
+
+### Chat / Runtime Audit [codex]
+- **Chat Audit** - виконано системний audit bootstrap, theme, overlay і right-panel interaction зон чату замість точкового cosmetic fix.
+- **Theme** - стабілізовано manual/auto theme contract у chat: `pzp_dark_mode`, `pzp_autoNight`, нічне вікно, `body.dark-mode`, `body.night-auto` і `data-theme` тепер синхронізуються.
+- **Stability** - додано відсутній runtime title node для right info panel, уніфіковано close behavior для status/theme/modals через outside click та Escape.
+
+---
+
 ## v0.50.23 - Tasks Top Cleanup (2026-05-15)
 
 ### Tasks / UI Cleanup [codex]

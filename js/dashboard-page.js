@@ -3977,13 +3977,16 @@ const DashboardPage = (() => {
         const items = data.leads.slice(0, 6).map(l => {
             const color = sourceColors[l.source] || '#718096';
             const date = new Date(l.created_at).toLocaleDateString('uk-UA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-            return `<div class="widget-lead-item">
+            const leadId = l.id || l.lead_id || l.leadId;
+            const href = leadId ? `/sales-funnel?lead=${encodeURIComponent(leadId)}` : '/sales-funnel';
+            const name = l.name || 'Без імені';
+            return `<a class="widget-lead-item" href="${escapeHtml(href)}" aria-label="Відкрити лід ${escapeHtml(name)}">
                 <div class="lead-source-dot" style="background:${color}" title="${escapeHtml(l.source || '')}"></div>
                 <div class="lead-info">
-                    <div class="lead-name">${escapeHtml(l.name || 'Без імені')}</div>
+                    <div class="lead-name">${escapeHtml(name)}</div>
                     <div class="lead-meta">${escapeHtml(l.phone || '')} · ${date}</div>
                 </div>
-            </div>`;
+            </a>`;
         }).join('');
         container.innerHTML = `<div class="widget-lead-list">${items}</div>`;
     }

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.30 - Dashboard New Leads Widget Links (2026-05-16)
+
+### Dashboard / Leads [codex]
+- **Нові ліди** - елементи віджета стали клікабельними і ведуть прямо у workspace конкретного ліда через `/sales-funnel?lead=<id>`.
+- **UX** - додано зрозумілий hover/focus стан для списку, щоб було видно, що кожен лід відкривається.
+- **Fallback** - якщо у рядка немає id, клік безпечно відкриває загальну воронку лідів.
+
+---
+
 ## v0.50.29 - My Cabinet Icon Cluster Redesign (2026-05-16)
 
 ### Profile / My Cabinet [codex]

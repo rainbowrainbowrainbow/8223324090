@@ -1026,6 +1026,45 @@ const PAGE_THEMES = {
 let catalogPackages = [];
 let currentCatalogPage = 0;
 let _viewerCatalogType = 'graduation'; // 'graduation' or auto-catalog slug
+const CATALOG_UI_MODES = {
+    LIST: 'catalog_list',
+    INLINE: 'catalog_inline_editor',
+    VIEWER: 'catalog_fullscreen_viewer'
+};
+let _catalogUiMode = CATALOG_UI_MODES.LIST;
+let _catalogReturnMode = CATALOG_UI_MODES.LIST;
+
+function setCatalogUiMode(mode) {
+    _catalogUiMode = mode;
+    const tab = document.getElementById('tabCatalogs');
+    const inline = document.getElementById('inlineCatalogView');
+    const viewer = document.getElementById('catalogViewer');
+    if (!tab || !viewer) return;
+
+    const tabChildren = Array.from(tab.children).filter(el => el.id !== 'inlineCatalogView' && el.id !== 'catalogViewer');
+    document.body.classList.toggle('catalog-viewer-open', mode === CATALOG_UI_MODES.VIEWER);
+    document.body.classList.toggle('catalog-inline-open', mode === CATALOG_UI_MODES.INLINE);
+    document.body.style.overflow = mode === CATALOG_UI_MODES.VIEWER ? 'hidden' : '';
+
+    if (mode === CATALOG_UI_MODES.LIST) {
+        tabChildren.forEach(el => { el.style.display = ''; });
+        if (inline) inline.style.display = 'none';
+        viewer.style.display = 'none';
+        return;
+    }
+
+    if (mode === CATALOG_UI_MODES.INLINE) {
+        tabChildren.forEach(el => { el.style.display = 'none'; });
+        if (inline) inline.style.display = '';
+        viewer.style.display = 'none';
+        return;
+    }
+
+    if (mode === CATALOG_UI_MODES.VIEWER) {
+        if (inline) inline.style.display = 'none';
+        viewer.style.display = 'flex';
+    }
+}
 
 async function loadCatalogs() {
     try {
@@ -1067,11 +1106,18 @@ async function openCatalog(catalogId) {
 function renderCatalogViewer() {
     currentCatalogPage = 0;
     const viewer = document.getElementById('catalogViewer');
-    viewer.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
+    if (!viewer) return;
+    const inline = document.getElementById('inlineCatalogView');
+    _catalogReturnMode = (document.body.classList.contains('catalog-inline-open') || (inline && inline.style.display !== 'none' && inline.offsetParent !== null))
+        ? CATALOG_UI_MODES.INLINE
+        : CATALOG_UI_MODES.LIST;
+    setCatalogUiMode(CATALOG_UI_MODES.VIEWER);
     renderCurrentPage();
 
     // Keyboard navigation
+    if (viewer._keyHandler) {
+        document.removeEventListener('keydown', viewer._keyHandler);
+    }
     viewer._keyHandler = (e) => {
         if (e.key === 'ArrowRight') catalogNext();
         else if (e.key === 'ArrowLeft') catalogPrev();
@@ -1107,18 +1153,11 @@ function catalogPrev() {
 
 function closeCatalog() {
     const viewer = document.getElementById('catalogViewer');
-    viewer.style.display = 'none';
-    document.body.style.overflow = '';
-    if (viewer._keyHandler) {
+    if (viewer && viewer._keyHandler) {
         document.removeEventListener('keydown', viewer._keyHandler);
         viewer._keyHandler = null;
     }
-    // Return to catalog list (show all tabCatalogs children, hide inline view)
-    const inlineView = document.getElementById('inlineCatalogView');
-    if (inlineView) inlineView.style.display = 'none';
-    document.querySelectorAll('#tabCatalogs > *:not(#inlineCatalogView)').forEach(el => { el.style.display = ''; });
-    const tabCatalogs = document.getElementById('tabCatalogs');
-    if (tabCatalogs) tabCatalogs.style.display = '';
+    setCatalogUiMode(_catalogReturnMode === CATALOG_UI_MODES.INLINE ? CATALOG_UI_MODES.INLINE : CATALOG_UI_MODES.LIST);
 }
 
 function printCatalog(catalogId) {
@@ -1133,8 +1172,8 @@ function printCatalog(catalogId) {
 
 function doPrintCatalog() {
     const viewer = document.getElementById('catalogViewer');
-    viewer.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
+    if (!viewer) return;
+    setCatalogUiMode(CATALOG_UI_MODES.VIEWER);
     document.body.classList.add('printing-catalog');
 
     const container = document.getElementById('catalogPages');
@@ -1213,7 +1252,7 @@ function buildCatalogPageHtml(pkg) {
             </div>
             <!-- FOOTER -->
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.50.34" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.50.35" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>
@@ -1307,7 +1346,7 @@ function buildAutoPageHtml(page) {
                 ${page.description && itemsHtml ? `<div class="cat-desc" style="margin-top:12px">${esc(page.description)}</div>` : ''}
             </div>
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.50.34" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.50.35" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>
@@ -1335,17 +1374,17 @@ function printCatalogPage(catalogId, slugOrPageNum) {
     const container = document.getElementById('catalogPages');
     const prevHtml = container.innerHTML;
     const viewer = document.getElementById('catalogViewer');
-    const wasHidden = viewer.style.display === 'none';
+    const previousMode = _catalogUiMode;
 
     container.innerHTML = renderFn(pkg);
-    if (wasHidden) viewer.style.display = 'flex';
+    setCatalogUiMode(CATALOG_UI_MODES.VIEWER);
     document.body.classList.add('printing-catalog');
 
     setTimeout(() => {
         window.print();
         document.body.classList.remove('printing-catalog');
         container.innerHTML = prevHtml;
-        if (wasHidden) viewer.style.display = 'none';
+        setCatalogUiMode(previousMode === CATALOG_UI_MODES.INLINE ? CATALOG_UI_MODES.INLINE : CATALOG_UI_MODES.LIST);
     }, 400);
 }
 
@@ -1355,6 +1394,8 @@ function printCatalogPage(catalogId, slugOrPageNum) {
 try {
     window.openCatalog = openCatalog;
     window.closeCatalog = closeCatalog;
+    window.CATALOG_UI_MODES = CATALOG_UI_MODES;
+    window.setCatalogUiMode = setCatalogUiMode;
     window.catalogNext = catalogNext;
     window.catalogPrev = catalogPrev;
     window.printCatalog = printCatalog;

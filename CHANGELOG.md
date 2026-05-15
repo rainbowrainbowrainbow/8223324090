@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.35 - Catalog Viewer Wide-Screen Stability Fix (2026-05-16)
+
+### Catalogs / Designs [codex]
+- **Catalog UI Modes** - list, inline editor і fullscreen viewer зведено в один явний mode contract, щоб режими не лишали ghost-surfaces поверх каталогу.
+- **Viewer Isolation** - fullscreen catalog viewer отримав `catalog-viewer-open` body-state, вищий stacking layer і блокування fixed/floating CRM panels під час перегляду.
+- **Responsive Viewer** - catalog page lane стабілізовано для wide desktop, laptop, tablet і mobile через safe gutters, overflow isolation і ширший контрольований content width.
+
+---
+
 ## v0.50.34 - Sidebar Category Density & Chevron Polish (2026-05-16)
 
 ### Sidebar / Aurora [codex]

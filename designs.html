@@ -8,16 +8,16 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.50.34">
-    <link rel="stylesheet" href="css/layout.css?v=0.50.34">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.34">
-    <link rel="stylesheet" href="css/pages.css?v=0.50.34">
-    <link rel="stylesheet" href="css/modals.css?v=0.50.34">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.34">
-    <link rel="stylesheet" href="css/responsive.css?v=0.50.34">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.50.34">
-    <link rel="stylesheet" href="css/designs.css?v=0.50.34">
-    <link rel="stylesheet" href="css/catalog.css?v=0.50.34">
+    <link rel="stylesheet" href="css/base.css?v=0.50.35">
+    <link rel="stylesheet" href="css/layout.css?v=0.50.35">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.35">
+    <link rel="stylesheet" href="css/pages.css?v=0.50.35">
+    <link rel="stylesheet" href="css/modals.css?v=0.50.35">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.35">
+    <link rel="stylesheet" href="css/responsive.css?v=0.50.35">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.50.35">
+    <link rel="stylesheet" href="css/designs.css?v=0.50.35">
+    <link rel="stylesheet" href="css/catalog.css?v=0.50.35">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -1323,16 +1323,16 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/ui.js?v=0.50.34"></script>
-    <script src="js/config.js?v=0.50.34"></script>
-    <script src="js/notification.js?v=0.50.34"></script>
-    <script src="js/api.js?v=0.50.34"></script>
-    <script src="js/auth.js?v=0.50.34"></script>
-    <script src="js/components/sidebar.js?v=0.50.34"></script>
+    <script src="js/ui.js?v=0.50.35"></script>
+    <script src="js/config.js?v=0.50.35"></script>
+    <script src="js/notification.js?v=0.50.35"></script>
+    <script src="js/api.js?v=0.50.35"></script>
+    <script src="js/auth.js?v=0.50.35"></script>
+    <script src="js/components/sidebar.js?v=0.50.35"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/catalogs.js?v=0.50.34"></script>
-    <script src="js/designs-page.js?v=0.50.34"></script>
-    <script src="js/role-panel.js?v=0.50.34"></script>
+    <script src="js/catalogs.js?v=0.50.35"></script>
+    <script src="js/designs-page.js?v=0.50.35"></script>
+    <script src="js/role-panel.js?v=0.50.35"></script>
     <script>
     // v38.9.0: Create catalog modal functions
     function rememberEditableOverlay(overlay) {
@@ -1526,10 +1526,14 @@
             if (!r || !r.ok) return;
             var d = await r.json();
             _pagesData = d.pages || [];
-            document.querySelectorAll('#tabCatalogs > *:not(#inlineCatalogView)').forEach(function(el) { el.style.display = 'none'; });
             var viewEl = document.getElementById('inlineCatalogView');
             if (!viewEl) { viewEl = document.createElement('div'); viewEl.id = 'inlineCatalogView'; document.getElementById('tabCatalogs').appendChild(viewEl); }
-            viewEl.style.display = '';
+            if (typeof setCatalogUiMode === 'function' && window.CATALOG_UI_MODES) {
+                setCatalogUiMode(window.CATALOG_UI_MODES.INLINE);
+            } else {
+                document.querySelectorAll('#tabCatalogs > *:not(#inlineCatalogView):not(#catalogViewer)').forEach(function(el) { el.style.display = 'none'; });
+                viewEl.style.display = '';
+            }
             try { var cr = await apiFetch('/api/catalogs/definitions'); if (cr && cr.ok) { var cd = await cr.json(); _pagesCatalogDef = (cd.catalogs || []).find(function(c2) { return c2.id === catalogId; }); } } catch(e) {}
             renderCatalogPagesEditor();
         } catch (err) { console.error('openCatalogPages:', err); }
@@ -1874,14 +1878,17 @@
     window.openCatalogPages = openCatalogPages;
 
     function closeInlineCatalogView() {
-        var v = document.getElementById('inlineCatalogView');
-        if (v) v.style.display = 'none';
-        // Also close fullscreen viewer if open
-        var viewer = document.getElementById('catalogViewer');
-        if (viewer) viewer.style.display = 'none';
-        document.body.style.overflow = '';
-        // Show catalog list
-        document.querySelectorAll('#tabCatalogs > *:not(#inlineCatalogView)').forEach(function(el) { el.style.display = ''; });
+        if (typeof setCatalogUiMode === 'function' && window.CATALOG_UI_MODES) {
+            setCatalogUiMode(window.CATALOG_UI_MODES.LIST);
+        } else {
+            var v = document.getElementById('inlineCatalogView');
+            if (v) v.style.display = 'none';
+            var viewer = document.getElementById('catalogViewer');
+            if (viewer) viewer.style.display = 'none';
+            document.body.classList.remove('catalog-inline-open', 'catalog-viewer-open');
+            document.body.style.overflow = '';
+            document.querySelectorAll('#tabCatalogs > *:not(#inlineCatalogView):not(#catalogViewer)').forEach(function(el) { el.style.display = ''; });
+        }
         _pagesCatalogId = null;
     }
 
@@ -2432,6 +2439,6 @@
         }
     });
     </script>
-    <script src="js/alerts.js?v=0.50.34"></script>
+    <script src="js/alerts.js?v=0.50.35"></script>
 </body>
 </html>

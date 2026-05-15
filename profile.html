@@ -7,15 +7,15 @@
     <title>Event Genix | Робочий профіль</title>
     <meta name="description" content="Event Genix — робочий профіль працівника, задачі, графік і операційні показники">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.50.11">
-    <link rel="stylesheet" href="css/layout.css?v=0.50.11">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.11">
-    <link rel="stylesheet" href="css/pages.css?v=0.50.11">
-    <link rel="stylesheet" href="css/modals.css?v=0.50.11">
-    <link rel="stylesheet" href="css/controls.css?v=0.50.11">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.11">
-    <link rel="stylesheet" href="css/responsive.css?v=0.50.11">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.50.11">
+    <link rel="stylesheet" href="css/base.css?v=0.50.12">
+    <link rel="stylesheet" href="css/layout.css?v=0.50.12">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.12">
+    <link rel="stylesheet" href="css/pages.css?v=0.50.12">
+    <link rel="stylesheet" href="css/modals.css?v=0.50.12">
+    <link rel="stylesheet" href="css/controls.css?v=0.50.12">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.12">
+    <link rel="stylesheet" href="css/responsive.css?v=0.50.12">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.50.12">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -1263,20 +1263,40 @@
         }
 
         /* --- Dark mode overrides --- */
+        body.dark-mode .profile-page.profile-work-mode {
+            --profile-dark-text: #F8FAFC;
+            --profile-dark-secondary: #CBD5E1;
+            --profile-dark-muted: #94A3B8;
+            --profile-dark-surface: rgba(15, 23, 42, 0.88);
+            --profile-dark-surface-soft: rgba(30, 41, 59, 0.78);
+            --profile-dark-surface-raised: rgba(51, 65, 85, 0.70);
+            --profile-dark-border: rgba(148, 163, 184, 0.22);
+            color: var(--profile-dark-secondary);
+        }
+
+        body.dark-mode .profile-page-head {
+            color: var(--profile-dark-muted);
+        }
+
+        body.dark-mode .profile-page-head a {
+            color: #A7F3D0;
+        }
+
+        body.dark-mode .profile-page-head a:hover {
+            color: #6EE7B7;
+        }
+
         body.dark-mode .profile-header {
-            background: linear-gradient(135deg, #4338ca, #312e81);
+            background: linear-gradient(135deg, #111827, #1e1b4b);
         }
 
         body.dark-mode .profile-work-header,
         body.dark-mode .profile-work-panel,
         body.dark-mode .profile-work-tabs {
-            background: rgba(255,255,255,0.05);
-            border-color: rgba(255,255,255,0.1);
-            box-shadow: none;
-        }
-
-        body.dark-mode .profile-work-header {
-            color: var(--gray-100);
+            background: linear-gradient(135deg, var(--profile-dark-surface), rgba(15, 23, 42, 0.74));
+            border-color: var(--profile-dark-border);
+            color: var(--profile-dark-secondary);
+            box-shadow: 0 20px 48px rgba(0,0,0,0.28);
         }
 
         body.dark-mode .profile-identity-copy h1,
@@ -1285,8 +1305,46 @@
         body.dark-mode .profile-work-stat b,
         body.dark-mode .profile-overview-metric b,
         body.dark-mode .profile-task-row b,
-        body.dark-mode .profile-activity-row b {
-            color: var(--gray-100);
+        body.dark-mode .profile-activity-row b,
+        body.dark-mode .cabinet-hero h2,
+        body.dark-mode .cabinet-toolbar h2,
+        body.dark-mode .cabinet-section-head h3,
+        body.dark-mode .cabinet-task-title {
+            color: var(--profile-dark-text);
+        }
+
+        body.dark-mode .profile-kicker,
+        body.dark-mode .cabinet-kicker {
+            color: var(--profile-dark-muted);
+        }
+
+        body.dark-mode .profile-work-stat span,
+        body.dark-mode .profile-overview-metric small,
+        body.dark-mode .profile-task-row span,
+        body.dark-mode .profile-task-row small,
+        body.dark-mode .profile-activity-row span,
+        body.dark-mode .profile-activity-row small,
+        body.dark-mode .profile-panel-head a,
+        body.dark-mode .profile-panel-head > span,
+        body.dark-mode .profile-avatar-preview-hint,
+        body.dark-mode .profile-avatar-note,
+        body.dark-mode .cabinet-hero p,
+        body.dark-mode .cabinet-task-meta,
+        body.dark-mode .cabinet-empty,
+        body.dark-mode .cabinet-review {
+            color: var(--profile-dark-secondary);
+        }
+
+        body.dark-mode .profile-overview-metric span,
+        body.dark-mode .profile-role-line span,
+        body.dark-mode .profile-title-row .title-badge {
+            color: var(--profile-dark-secondary);
+        }
+
+        body.dark-mode .profile-role-line span.is-ok {
+            color: #A7F3D0;
+            background: rgba(16, 185, 129, 0.14);
+            border-color: rgba(52, 211, 153, 0.35);
         }
 
         body.dark-mode .profile-work-stat,
@@ -1294,14 +1352,64 @@
         body.dark-mode .profile-task-row,
         body.dark-mode .profile-activity-row,
         body.dark-mode .profile-empty-professional,
-        body.dark-mode .profile-role-line span {
-            background: rgba(255,255,255,0.06);
-            border-color: rgba(255,255,255,0.08);
+        body.dark-mode .profile-role-line span,
+        body.dark-mode .profile-title-row .title-badge,
+        body.dark-mode .cabinet-hero,
+        body.dark-mode .cabinet-toolbar,
+        body.dark-mode .cabinet-task-section,
+        body.dark-mode .cabinet-list,
+        body.dark-mode .cabinet-stats div,
+        body.dark-mode .cabinet-task-card {
+            background: var(--profile-dark-surface-soft);
+            border-color: var(--profile-dark-border);
         }
 
-        body.dark-mode .profile-work-tabs .profile-tab.active {
-            background: rgba(255,255,255,0.12);
-            color: var(--gray-100);
+        body.dark-mode .profile-work-stat.danger,
+        body.dark-mode .profile-overview-metric.danger,
+        body.dark-mode .profile-task-row.is-overdue {
+            background: rgba(127, 29, 29, 0.34);
+            border-color: rgba(248, 113, 113, 0.34);
+        }
+
+        body.dark-mode .profile-overview-metric.ok {
+            background: rgba(6, 78, 59, 0.30);
+            border-color: rgba(52, 211, 153, 0.28);
+        }
+
+        body.dark-mode .profile-work-tabs {
+            background: rgba(15, 23, 42, 0.90);
+        }
+
+        body.dark-mode .profile-work-tabs .profile-tab,
+        body.dark-mode .cabinet-segments button {
+            background: rgba(148, 163, 184, 0.10);
+            border-color: rgba(148, 163, 184, 0.14);
+            color: var(--profile-dark-secondary);
+        }
+
+        body.dark-mode .profile-work-tabs .profile-tab:hover,
+        body.dark-mode .cabinet-segments button:hover {
+            background: rgba(148, 163, 184, 0.18);
+            color: var(--profile-dark-text);
+        }
+
+        body.dark-mode .profile-work-tabs .profile-tab.active,
+        body.dark-mode .cabinet-segments button.active {
+            background: rgba(16, 185, 129, 0.20);
+            border-color: rgba(52, 211, 153, 0.38);
+            color: #A7F3D0;
+            box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.16) inset;
+        }
+
+        body.dark-mode .cabinet-capture input,
+        body.dark-mode .cabinet-capture select {
+            background: rgba(15, 23, 42, 0.76);
+            border-color: var(--profile-dark-border);
+            color: var(--profile-dark-text);
+        }
+
+        body.dark-mode .cabinet-capture input::placeholder {
+            color: var(--profile-dark-muted);
         }
 
         body.dark-mode .achievement-card,
@@ -1322,11 +1430,11 @@
 
         body.dark-mode .profile-tab {
             background: rgba(255,255,255,0.08);
-            color: rgba(255,255,255,0.6);
+            color: var(--profile-dark-secondary, #CBD5E1);
         }
 
         body.dark-mode .profile-avatar-controls label {
-            color: var(--gray-200);
+            color: var(--profile-dark-secondary);
         }
 
         body.dark-mode .profile-avatar-emoji-grid button,
@@ -1336,7 +1444,7 @@
         body.dark-mode .profile-avatar-url-row input {
             background: rgba(255,255,255,0.06);
             border-color: rgba(255,255,255,0.12);
-            color: var(--gray-100);
+            color: var(--profile-dark-text);
         }
 
         body.dark-mode .profile-avatar-action-row .profile-settings-primary {
@@ -2155,16 +2263,16 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.50.11"></script>
-    <script src="js/notification.js?v=0.50.11"></script>
-    <script src="js/api.js?v=0.50.11"></script>
-    <script src="js/auth.js?v=0.50.11"></script>
-    <script src="js/components/sidebar.js?v=0.50.11"></script>
+    <script src="js/config.js?v=0.50.12"></script>
+    <script src="js/notification.js?v=0.50.12"></script>
+    <script src="js/api.js?v=0.50.12"></script>
+    <script src="js/auth.js?v=0.50.12"></script>
+    <script src="js/components/sidebar.js?v=0.50.12"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ui.js?v=0.50.11"></script>
-    <script src="js/achievement-popup.js?v=0.50.11"></script>
-    <script src="js/profile-page.js?v=0.50.11"></script>
-    <script src="js/role-panel.js?v=0.50.11"></script>
-    <script src="js/alerts.js?v=0.50.11"></script>
+    <script src="js/ui.js?v=0.50.12"></script>
+    <script src="js/achievement-popup.js?v=0.50.12"></script>
+    <script src="js/profile-page.js?v=0.50.12"></script>
+    <script src="js/role-panel.js?v=0.50.12"></script>
+    <script src="js/alerts.js?v=0.50.12"></script>
 </body>
 </html>

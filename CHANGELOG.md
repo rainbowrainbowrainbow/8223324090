@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.12 - Profile Dark Contrast (2026-05-15)
+
+### Profile / Dark Mode [codex]
+- **Темна тема профілю** - виправлено низький контраст у робочому профілі: ім'я, заголовки, метрики, задачі й активність тепер читаються на темному фоні.
+- **Profile surfaces** - профільні картки, таби, бейджі, рядки задач і My Cabinet отримали окремі темні text/surface tokens замість помилкового `gray-100`.
+- **UI guard** - додано static smoke check, який перевіряє наявність читабельних dark-mode правил для профілю.
+
+---
+
 ## v0.50.11 - Dashboard Widget Cleanup (2026-05-15)
 
 ### Dashboard / Widget Density [codex]

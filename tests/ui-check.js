@@ -225,6 +225,7 @@ const darkModeCss = fs.readFileSync(path.join(ROOT, 'css', 'dark-mode.css'), 'ut
 const catalogCss = fs.readFileSync(path.join(ROOT, 'css', 'catalog.css'), 'utf8');
 const contentCss = fs.readFileSync(path.join(ROOT, 'css', 'content.css'), 'utf8');
 const achievementsCss = fs.readFileSync(path.join(ROOT, 'css', 'achievements.css'), 'utf8');
+const profilePageHtml = fs.readFileSync(path.join(ROOT, 'profile.html'), 'utf8');
 check('Dark mode defines shared text aliases', darkModeCss.includes('--text: #F8FAFC;') && darkModeCss.includes('--text-primary: #F8FAFC;') && darkModeCss.includes('--text-secondary: #CBD5E1;') && darkModeCss.includes('--text-muted: #94A3B8;'));
 check('Dark mode defines shared surface/card aliases', darkModeCss.includes('--surface: #1E1E38;') && darkModeCss.includes('--card-bg: #1E1E38;') && darkModeCss.includes('--bg-card: #1E1E38;') && darkModeCss.includes('--border-color: rgba(255,255,255,0.12);'));
 check('Dark placeholders and empty states use readable muted token', darkModeCss.includes('body.dark-mode .program-search-input::placeholder { color: var(--text-muted); }') && darkModeCss.includes('body.dark-mode .login-form input::placeholder') && darkModeCss.includes('body.dark-mode .empty-state-hint { color: var(--text-muted); }'));
@@ -232,6 +233,9 @@ check('Dark native selects keep opened options readable', darkModeCss.includes('
 check('Dark customer/task muted labels avoid low-contrast gray', darkModeCss.includes('body.dark-mode .customer-age { color: var(--text-muted); }') && darkModeCss.includes('body.dark-mode .task-no-assignee { color: var(--text-muted); }') && !darkModeCss.includes('body.dark-mode .customer-age { color: #64748B; }'));
 check('Dark catalog muted text avoids low-alpha white', catalogCss.includes('body.dark-mode .catalog-card-meta { color: var(--text-muted, #94A3B8); }') && catalogCss.includes('body.dark-mode .cat-page-detail { color: var(--text-muted, #94A3B8); }') && !catalogCss.includes('body.dark-mode .catalog-card-meta { color: rgba(255,255,255,0.4); }'));
 check('Dark content/profile muted CTAs use readable muted token', contentCss.includes('body.dark-mode .content-bcard-slug { color: var(--text-muted, #94A3B8); }') && achievementsCss.includes('body.dark-mode .add-note-btn { border-color: #3D3D5C; color: var(--text-muted, #94A3B8); }'));
+check('Profile dark mode defines readable local text tokens', profilePageHtml.includes('--profile-dark-text: #F8FAFC;') && profilePageHtml.includes('--profile-dark-secondary: #CBD5E1;') && profilePageHtml.includes('--profile-dark-muted: #94A3B8;'));
+check('Profile dark mode uses text tokens for primary work content', profilePageHtml.includes('body.dark-mode .profile-identity-copy h1') && profilePageHtml.includes('body.dark-mode .profile-task-row b') && profilePageHtml.includes('color: var(--profile-dark-text);'));
+check('Profile dark mode covers work tabs and cabinet cards', profilePageHtml.includes('body.dark-mode .profile-work-tabs .profile-tab.active') && profilePageHtml.includes('body.dark-mode .cabinet-task-section') && profilePageHtml.includes('body.dark-mode .cabinet-capture input'));
 
 const criticalJS = [
     'js/config.js', 'js/api.js', 'js/auth.js', 'js/ui.js', 'js/app.js',

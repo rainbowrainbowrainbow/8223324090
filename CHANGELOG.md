@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.29 - My Cabinet Icon Cluster Redesign (2026-05-16)
+
+### Profile / My Cabinet [codex]
+- **Icon Cluster** - верхній блок My Cabinet перезібрано в три великі icon-only плитки для задач, сповіщень і воронки без урізаних текстових підписів.
+- **Notifications** - центральна плитка тепер використовує bell-іконку і відкриває наявну alerts-панель CRM.
+- **Counters** - лічильники стабілізовано для `0..99`, зі зрозумілим `99+` для великих значень і без приховування нуля.
+
+---
+
 ## v0.50.28 - Sound Log Dark Theme Contrast Fix (2026-05-16)
 
 ### Sound / Log [codex]

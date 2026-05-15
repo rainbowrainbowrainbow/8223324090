@@ -23,6 +23,7 @@ let leaderboardSort = 'xp';
 let activeTab = 'profile';
 let myCabinetData = null;
 let myTasksSegment = 'all';
+let cabinetPulseCounts = { alerts: 0, funnel: 0 };
 
 // v30.8.0 — Gamification v3 state
 let allStreaks = null;
@@ -219,7 +220,9 @@ async function loadProfileData(userId) {
         isOwnProfile ? apiGet('/quests/daily') : null,
         isOwnProfile ? apiGet('/quests/titles') : null,
         isOwnProfile ? apiGet('/streaks') : null,
-        isOwnProfile ? apiGet('/tasks/my-cabinet') : null
+        isOwnProfile ? apiGet('/tasks/my-cabinet') : null,
+        isOwnProfile ? apiGet('/dashboard/alerts') : null,
+        isOwnProfile ? apiGet('/leads/new-count') : null
     ]);
 
     profileData = results[0];
@@ -232,6 +235,7 @@ async function loadProfileData(userId) {
     titlesData = results[7];
     allStreaks = results[8];
     myCabinetData = results[9];
+    syncCabinetPulseCounts(results[10], results[11]);
 }
 
 // ==========================================
@@ -339,6 +343,9 @@ async function switchTab(tab) {
     activeTab = tab;
     if (isOwnProfile && (tab === 'myday' || tab === 'mytasks') && !myCabinetData) {
         myCabinetData = await apiGet('/tasks/my-cabinet');
+    }
+    if (isOwnProfile && (tab === 'myday' || tab === 'mytasks')) {
+        await refreshCabinetPulseCounts();
     }
 
     // Lazy load data for tabs that need it
@@ -723,6 +730,79 @@ function cabinetList(name) {
     return Array.isArray(list) ? list : [];
 }
 
+function syncCabinetPulseCounts(alertsData, funnelData) {
+    const alerts = Array.isArray(alertsData?.alerts) ? alertsData.alerts : [];
+    const readIds = (() => {
+        try { return new Set(JSON.parse(localStorage.getItem('crm_alerts_read_v2') || '[]')); } catch { return new Set(); }
+    })();
+    const dismissedIds = (() => {
+        try { return new Set(JSON.parse(localStorage.getItem('crm_alerts_dismissed') || '[]')); } catch { return new Set(); }
+    })();
+    const unreadAlerts = alerts.filter(alert => alert?.id && !readIds.has(alert.id) && !dismissedIds.has(alert.id));
+    cabinetPulseCounts = {
+        alerts: Number(alertsData?.count ?? unreadAlerts.length ?? 0) || 0,
+        funnel: Number(funnelData?.count || funnelData?.newCount || funnelData?.total || 0) || 0
+    };
+}
+
+async function refreshCabinetPulseCounts() {
+    const [alertsData, funnelData] = await Promise.all([
+        apiGet('/dashboard/alerts'),
+        apiGet('/leads/new-count')
+    ]);
+    syncCabinetPulseCounts(alertsData, funnelData);
+}
+
+function formatCabinetPulseCount(value) {
+    const n = Number(value || 0);
+    if (!Number.isFinite(n) || n <= 0) return '0';
+    if (n > 99) return '99+';
+    return String(Math.floor(n));
+}
+
+function cabinetPulseIcon(type) {
+    const icons = {
+        tasks: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8.5 6.5h9"/><path d="M8.5 12h9"/><path d="M8.5 17.5h6"/><path d="m3.8 6.5.9.9 1.8-2"/><path d="m3.8 12 .9.9 1.8-2"/><rect x="3" y="3" width="18" height="18" rx="5"/></svg>',
+        bell: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 9.8a6 6 0 0 0-12 0c0 7-2.3 7.7-2.3 7.7h16.6S18 16.8 18 9.8Z"/><path d="M10 20a2.2 2.2 0 0 0 4 0"/><path d="M12 3V2"/></svg>',
+        funnel: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.5 5.5h15L14 12.4v4.4l-4 1.9v-6.3L4.5 5.5Z"/><path d="M8 8h8"/></svg>'
+    };
+    return icons[type] || '';
+}
+
+function renderCabinetPulseCluster() {
+    const stats = myCabinetData?.stats || {};
+    const tasksCount = Number(stats.todayPlanned || stats.openCount || cabinetList('all').length || 0);
+    const alertsCount = cabinetPulseCounts.alerts;
+    const funnelCount = cabinetPulseCounts.funnel;
+    return `
+        <div class="cabinet-pulse-cluster" aria-label="Швидкі індикатори My Cabinet">
+            <button type="button" class="cabinet-pulse-btn cabinet-pulse-btn--tasks" title="Задачі" aria-label="Задачі: ${formatCabinetPulseCount(tasksCount)}" onclick="switchTab('mytasks')">
+                <span class="cabinet-pulse-icon">${cabinetPulseIcon('tasks')}</span>
+                <span class="cabinet-pulse-count">${formatCabinetPulseCount(tasksCount)}</span>
+            </button>
+            <button type="button" class="cabinet-pulse-btn cabinet-pulse-btn--alerts" title="Сповіщення" aria-label="Сповіщення: ${formatCabinetPulseCount(alertsCount)}" onclick="openCabinetAlerts(event)">
+                <span class="cabinet-pulse-icon">${cabinetPulseIcon('bell')}</span>
+                <span class="cabinet-pulse-count cabinet-pulse-count--alert">${formatCabinetPulseCount(alertsCount)}</span>
+            </button>
+            <button type="button" class="cabinet-pulse-btn cabinet-pulse-btn--funnel" title="Воронка" aria-label="Воронка: ${formatCabinetPulseCount(funnelCount)}" onclick="openCabinetFunnel()">
+                <span class="cabinet-pulse-icon">${cabinetPulseIcon('funnel')}</span>
+                <span class="cabinet-pulse-count">${formatCabinetPulseCount(funnelCount)}</span>
+            </button>
+        </div>`;
+}
+
+function openCabinetAlerts(event) {
+    if (typeof toggleAlertsPanel === 'function') {
+        toggleAlertsPanel(event);
+        return;
+    }
+    window.location.href = '/dashboard?panel=alerts';
+}
+
+function openCabinetFunnel() {
+    window.location.href = '/sales-funnel';
+}
+
 function taskModeLabel(task) {
     const mode = task?.taskMode || task?.task_mode || 'work';
     return { work: 'Робоча', personal: 'Особиста', private: 'Приватна', system: 'Системна' }[mode] || mode;
@@ -781,8 +861,6 @@ function renderCabinetSection(title, list, emptyText, compact = false) {
 }
 
 function renderMyDayTab() {
-    const data = myCabinetData || {};
-    const stats = data.stats || {};
     const focus = cabinetList('focus');
     const today = cabinetList('today').filter(t => !focus.some(f => f.id === t.id));
     const overdue = cabinetList('overdue');
@@ -796,13 +874,8 @@ function renderMyDayTab() {
                     <h2>Мій день</h2>
                     <p>Фокус, очікування, приватні задачі й короткий review без шуму повного board.</p>
                 </div>
-                <div class="cabinet-stats">
-                    <div><b>${stats.todayDone || 0}</b><span>закрито</span></div>
-                    <div><b>${stats.todayPlanned || 0}</b><span>сьогодні</span></div>
-                    <div><b>${stats.overdueCount || 0}</b><span>прострочено</span></div>
-                    <div><b>${stats.waitingCount || 0}</b><span>чекаю</span></div>
-                </div>
             </div>
+            ${renderCabinetPulseCluster()}
             <form class="cabinet-capture" onsubmit="createCabinetTask(event, 'personal')">
                 <input id="cabinetTaskTitle" placeholder="Швидко зафіксувати задачу собі">
                 <select id="cabinetTaskKind">
@@ -859,6 +932,7 @@ function renderMyTasksTab() {
                 </div>
                 <a href="/tasks?view=my" class="cabinet-link-btn">Повний Tasks</a>
             </div>
+            ${renderCabinetPulseCluster()}
             <div class="cabinet-segments">
                 ${segments.map(([id, label]) => `<button class="${myTasksSegment === id ? 'active' : ''}" onclick="setMyTasksSegment('${id}')">${label}</button>`).join('')}
             </div>
@@ -876,6 +950,7 @@ function setMyTasksSegment(segment) {
 
 async function refreshMyCabinetTab() {
     myCabinetData = await apiGet('/tasks/my-cabinet');
+    await refreshCabinetPulseCounts();
     const tabContent = document.getElementById('tabContent');
     if (tabContent && (activeTab === 'myday' || activeTab === 'mytasks')) {
         tabContent.innerHTML = renderTabContent();

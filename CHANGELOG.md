@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.38 - Sidebar Stack Overlap Fix (2026-05-16)
+
+### Sidebar / Aurora [codex]
+- **Layout Contract** - dashboard jump, quick status block and accordion groups now keep separate vertical slots so sidebar cards do not visually stack on top of each other.
+- **Accordion Spacing** - sidebar links and category rows use an explicit flex column rhythm with stable gaps and no negative/animated overlap between neighboring blocks.
+- **Interaction Polish** - active dashboard jump no longer moves upward on hover/active state, preventing it from touching the first `CRM` accordion surface on compact heights.
+
+---
+
 ## v0.50.37 - Dashboard Board Creative Workspace & AI Upgrade (2026-05-16)
 
 ### Dashboard / Board [codex]

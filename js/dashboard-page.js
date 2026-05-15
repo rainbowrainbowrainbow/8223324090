@@ -491,6 +491,12 @@ const DashboardPage = (() => {
         `;
     }
 
+    function syncWorkQueuePanelMode() {
+        const hasSelection = Boolean(_workQueueSelectedItemId && _workQueueItemsById.has(_workQueueSelectedItemId));
+        document.getElementById('workQueuePanel')?.classList.toggle('has-triage-selection', hasSelection);
+        document.getElementById('workQueueBody')?.classList.toggle('has-triage-selection', hasSelection);
+    }
+
     function renderWorkQueue(queue, container) {
         const buckets = Array.isArray(queue.buckets) ? queue.buckets : [];
         const visibleBuckets = buckets.filter(bucket => bucket.count > 0 || (bucket.items && bucket.items.length > 0));
@@ -543,6 +549,7 @@ const DashboardPage = (() => {
             ${renderQueueIntelligenceSummary(queue)}
             <div class="work-queue-buckets" aria-label="Пункти робочої черги">${bucketsHtml}</div>
             ${renderTriageWorkspace()}`;
+        syncWorkQueuePanelMode();
         updateReplyOpsSelectionState();
     }
 
@@ -1165,13 +1172,7 @@ const DashboardPage = (() => {
         const visibleCount = _workQueueVisibleItemIds.length;
         if (!selected) {
             return `
-                <section class="work-queue-resolution-workspace empty" id="workQueueResolutionWorkspace" tabindex="-1" aria-label="Робоча зона тріажу й вирішення">
-                    <div class="work-queue-triage-empty">
-                        <span class="work-queue-triage-eyebrow">Робоча зона вирішення</span>
-                        <h3>Оберіть пункт</h3>
-                        <p>Причина, ризик, контекст і дії. Видимо: ${visibleCount}.</p>
-                    </div>
-                </section>
+                <section class="work-queue-resolution-workspace empty" id="workQueueResolutionWorkspace" tabindex="-1" aria-label="Робоча зона тріажу й вирішення" hidden aria-hidden="true"></section>
             `;
         }
 
@@ -1248,6 +1249,7 @@ const DashboardPage = (() => {
         const target = document.getElementById('workQueueResolutionWorkspace');
         if (!target) return;
         target.outerHTML = renderTriageWorkspace();
+        syncWorkQueuePanelMode();
         updateTriageSelectionStyles();
         if (focus) {
             window.setTimeout(() => {

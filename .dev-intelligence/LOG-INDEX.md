@@ -29,3 +29,4 @@
 | 2026-05-14 | S22 | Booking Visibility v1.1 | #crm #bookings #visibility #authz #linked-routes | team/line/location/reporting scope remains separate | QUICK |
 | 2026-05-15 | S23 | Dashboard Queue Compact Widget | #dashboard #workqueue #ux #density | немає | QUICK |
 | 2026-05-15 | S24 | Dashboard Queue Widget Follow-up | #dashboard #workqueue #ux #density | немає | QUICK |
+| 2026-05-15 | S25 | Dashboard Queue True Widget Mode | #dashboard #workqueue #ux #density | немає | QUICK |

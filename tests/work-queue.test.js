@@ -1504,7 +1504,6 @@ describe('work queue endpoint', () => {
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
 
         const body = dom.window.document.getElementById('workQueueBody');
-        assert.match(body.textContent, /Робоча зона вирішення/);
         assert.match(body.querySelector('.work-queue-intelligence-head')?.textContent || '', /Черга/);
         assert.doesNotMatch(body.textContent, /Аналітика черги v1/);
         assert.match(body.textContent, /без глобального скорингу/);
@@ -1512,11 +1511,15 @@ describe('work queue endpoint', () => {
         assert.equal(body.querySelectorAll('.work-queue-detail-btn').length, 3);
         assert.ok(body.querySelector('.work-queue-buckets .work-queue-bucket'), 'queue buckets should render inside the compact scroll rail');
         assert.equal(body.querySelector('.work-queue-resolution-workspace')?.previousElementSibling?.classList.contains('work-queue-buckets'), true);
+        assert.equal(body.classList.contains('has-triage-selection'), false, 'empty workspace must not reserve the detail column');
+        assert.equal(body.querySelector('.work-queue-resolution-workspace')?.hidden, true);
 
         DashboardPage.selectTriageItem(encodeURIComponent('waiting_reply:conversation:41'));
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         let workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
+        assert.equal(body.classList.contains('has-triage-selection'), true);
+        assert.equal(workspace.hidden, false);
         assert.match(workspace.textContent, /Reply Client/);
         assert.match(workspace.textContent, /Дії/);
         assert.match(workspace.textContent, /Історія дій по відповідях/);
@@ -1573,7 +1576,7 @@ describe('work queue endpoint', () => {
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
-        assert.match(workspace.textContent, /Оберіть пункт/);
+        assert.equal(workspace.hidden, true);
         assert.equal(body.querySelectorAll('.is-triage-selected').length, 0);
 
         DashboardPage.selectTriageItem(encodeURIComponent('callback_due:lead_interaction:4'));
@@ -1581,7 +1584,7 @@ describe('work queue endpoint', () => {
         DashboardPage.clearTriageSelection();
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
-        assert.match(workspace.textContent, /Оберіть пункт/);
+        assert.equal(workspace.hidden, true);
     });
 
     it('wires dashboard waiting-reply rendering without unread heuristics', () => {
@@ -1637,7 +1640,7 @@ describe('work queue endpoint', () => {
         assert.match(dashboardJs, /taskOwnerPickerSelect/);
         assert.match(dashboardJs, /knownIds\.has\(ownerUserId\)/);
         assert.match(dashboardJs, /never_on_route_out|лише перехід у контекст/i);
-        assert.match(dashboardJs, /Робоча зона вирішення/);
+        assert.match(dashboardJs, /work-queue-resolution-workspace empty/);
         assert.match(dashboardJs, /\/api\/work-queue\/replies\/.*\/escalate/);
         assert.match(dashboardJs, /work-queue\/replies/);
         assert.match(dashboardJs, /work-queue-state-pill/);

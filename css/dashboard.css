@@ -64,7 +64,7 @@
 
 /* Work Queue v1 */
 .work-queue-panel {
-    width: min(100%, 1040px);
+    width: min(100%, 740px);
     margin-bottom: 8px;
     padding: 8px;
     border: 1px solid rgba(0,0,0,0.08);
@@ -72,6 +72,10 @@
     background: rgba(255,255,255,0.94);
     box-shadow: var(--shadow-sm);
     overflow: hidden;
+}
+
+.work-queue-panel.has-triage-selection {
+    width: min(100%, 1040px);
 }
 
 .event-risk-summary-grid {
@@ -123,6 +127,13 @@
     gap: 12px;
     align-items: flex-start;
     margin-bottom: 8px;
+}
+
+.work-queue-head .dashboard-btn {
+    min-height: 26px;
+    padding: 0 9px;
+    border-radius: 7px;
+    font-size: 11px;
 }
 
 .work-queue-head h2 {
@@ -333,7 +344,7 @@
 }
 
 .work-queue-intelligence {
-    grid-column: 1 / -1;
+    grid-column: 1;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     gap: 3px 6px;
@@ -440,6 +451,10 @@
     border: 1px solid rgba(15,23,42,0.12);
     border-radius: 8px;
     background: rgba(255,255,255,0.86);
+}
+
+.work-queue-body:not(.has-triage-selection) .work-queue-resolution-workspace {
+    display: none;
 }
 
 .work-queue-resolution-workspace:focus {
@@ -700,11 +715,15 @@
 
 .work-queue-body {
     display: grid;
-    grid-template-columns: minmax(0, 680px) minmax(260px, 320px);
+    grid-template-columns: minmax(0, 1fr);
     gap: 6px;
     align-items: start;
     justify-content: start;
     min-width: 0;
+}
+
+.work-queue-body.has-triage-selection {
+    grid-template-columns: minmax(0, 680px) minmax(260px, 320px);
 }
 
 .work-queue-buckets {

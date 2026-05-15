@@ -244,16 +244,16 @@ const DashboardPage = (() => {
                 without_owner: 'Без власника'
             },
             escalation: {
-                all: 'Усі escalation',
-                escalated: 'Тільки escalated',
-                not_escalated: 'Без escalation'
+                all: 'Усі ескалації',
+                escalated: 'Лише ескальовані',
+                not_escalated: 'Без ескалації'
             },
             preset: {
-                all: 'Увесь backlog',
+                all: 'Усі',
                 mine_overdue: 'Мої прострочені',
-                team_overdue: 'Команда прострочені',
-                unassigned: 'Без власника',
-                escalated: 'Escalated'
+                team_overdue: 'Прострочені команди',
+                unassigned: 'Без відповідального',
+                escalated: 'Ескальовані'
             }
         };
         return labels[type]?.[value] || value || 'Усі';
@@ -284,25 +284,25 @@ const DashboardPage = (() => {
         const unassignedCount = items.filter(item => !item.meta?.replyOwnerUserId).length;
 
         return `
-            <section class="reply-ops-console" aria-label="Reply operations console">
+            <section class="reply-ops-console" aria-label="Операції з відповідями">
                 <div class="reply-ops-toolbar">
                     <div class="reply-ops-title">
-                        <span>Reply Operations</span>
+                        <span>Операції з відповідями</span>
                         <small>${escapeHtml(workQueueReplyScopeLabel(_workQueueReplyScope))} · ${escapeHtml(replyConsoleFilterLabel('preset', filters.preset))}</small>
                     </div>
-                    <div class="reply-ops-summary" aria-label="Підсумок видимого reply backlog">
+                    <div class="reply-ops-summary" aria-label="Підсумок видимого беклогу відповідей">
                         <span class="reply-ops-chip">Видимо ${visibleCount}</span>
-                        <span class="reply-ops-chip danger">Overdue ${overdueCount}</span>
-                        <span class="reply-ops-chip warning">Due soon ${dueSoonCount}</span>
-                        <span class="reply-ops-chip">Escalated ${escalatedCount}</span>
-                        <span class="reply-ops-chip muted">Без власника ${unassignedCount}</span>
+                        <span class="reply-ops-chip danger">Прострочено ${overdueCount}</span>
+                        <span class="reply-ops-chip warning">Скоро дедлайн ${dueSoonCount}</span>
+                        <span class="reply-ops-chip">Ескальовано ${escalatedCount}</span>
+                        <span class="reply-ops-chip muted">Без відповідального ${unassignedCount}</span>
                     </div>
                 </div>
                 <div class="reply-ops-filters">
-                    ${renderReplyConsoleSelect('replyOpsPreset', 'Preset', 'preset', ['all', 'mine_overdue', 'team_overdue', 'unassigned', 'escalated'], filters.preset)}
+                    ${renderReplyConsoleSelect('replyOpsPreset', 'Набір', 'preset', ['all', 'mine_overdue', 'team_overdue', 'unassigned', 'escalated'], filters.preset)}
                     ${renderReplyConsoleSelect('replyOpsSla', 'SLA', 'sla', ['all', 'overdue', 'due_soon', 'on_track', 'none'], filters.sla)}
-                    ${renderReplyConsoleSelect('replyOpsOwner', 'Owner', 'owner', ['all', 'with_owner', 'without_owner'], filters.owner)}
-                    ${renderReplyConsoleSelect('replyOpsEscalation', 'Escalation', 'escalation', ['all', 'escalated', 'not_escalated'], filters.escalation)}
+                    ${renderReplyConsoleSelect('replyOpsOwner', 'Відповідальний', 'owner', ['all', 'with_owner', 'without_owner'], filters.owner)}
+                    ${renderReplyConsoleSelect('replyOpsEscalation', 'Ескалація', 'escalation', ['all', 'escalated', 'not_escalated'], filters.escalation)}
                     <button type="button" class="reply-ops-link-btn" onclick="DashboardPage.resetReplyConsoleFilters()">Скинути</button>
                 </div>
                 <div class="reply-ops-bulkbar" aria-live="polite">
@@ -312,8 +312,8 @@ const DashboardPage = (() => {
                         <span id="replyOpsSelectionCount">Обрано 0</span>
                     </div>
                     <div class="reply-ops-bulk-actions">
-                        <button type="button" class="work-queue-action-btn reply-ops-bulk-action" data-reply-bulk-action onclick="DashboardPage.bulkReassignReplyOwners(this)" disabled>Власник</button>
-                        <button type="button" class="work-queue-action-btn reply-ops-bulk-action" data-reply-bulk-action onclick="DashboardPage.bulkSnoozeReplySla(this)" disabled>SLA +24г</button>
+                        <button type="button" class="work-queue-action-btn reply-ops-bulk-action" data-reply-bulk-action onclick="DashboardPage.bulkReassignReplyOwners(this)" disabled>Відповідальний</button>
+                        <button type="button" class="work-queue-action-btn reply-ops-bulk-action" data-reply-bulk-action onclick="DashboardPage.bulkSnoozeReplySla(this)" disabled>SLA +24 год</button>
                         <button type="button" class="work-queue-action-btn danger reply-ops-bulk-action" data-reply-bulk-action onclick="DashboardPage.bulkClearReplyExpectations(this)" disabled>Очистити</button>
                     </div>
                     <div class="reply-ops-feedback${_replyOpsFlash?.tone ? ' ' + _replyOpsFlash.tone : ''}" id="replyOpsFeedback" role="status" aria-live="polite">${escapeHtml(_replyOpsFlash?.message || '')}</div>
@@ -326,7 +326,7 @@ const DashboardPage = (() => {
         switch (band) {
             case 'critical': return 'Критично';
             case 'action_today': return 'Дія сьогодні';
-            case 'watch': return 'Watch';
+            case 'watch': return 'На контролі';
             case 'suggested': return 'Підказка';
             default: return 'Операційний сигнал';
         }
@@ -334,11 +334,122 @@ const DashboardPage = (() => {
 
     function intelligenceConfidenceLabel(confidence) {
         switch (confidence) {
-            case 'high': return 'High';
-            case 'medium': return 'Medium';
-            case 'low': return 'Low';
-            default: return confidence || 'Medium';
+            case 'high': return 'Висока';
+            case 'medium': return 'Середня';
+            case 'low': return 'Низька';
+            case 'exact': return 'Точна';
+            case 'durable': return 'Довірена';
+            default: return confidence ? humanizeQueueRiskType(confidence) : 'Середня';
         }
+    }
+
+    function humanizeQueueRiskType(type) {
+        const normalized = String(type || '').trim();
+        const map = {
+            missing_deadline: 'немає дедлайну',
+            missing_owner: 'немає відповідального',
+            legacy_unknown_owner: 'legacy-відповідальний без user id',
+            reply_expected: 'очікується відповідь клієнта',
+            reply_escalated: 'відповідь ескальована',
+            reply_overdue: 'прострочена відповідь клієнту',
+            reply_sla_overdue: 'прострочена SLA відповіді',
+            reply_sla_due_soon: 'SLA відповіді скоро спливає',
+            reply_sla_on_track: 'SLA відповіді в нормі',
+            reply_sla_missing: 'SLA відповіді не задана',
+            reply_unassigned: 'немає відповідального за відповідь',
+            due_soon: 'наближається дедлайн',
+            unassigned: 'немає відповідального',
+            late_preliminary: 'пізнє попереднє бронювання',
+            no_owner: 'без відповідального',
+            stale_followup: 'прострочений follow-up',
+            waiting_reply: 'очікування відповіді клієнта',
+            callback_due: 'потрібен зворотний контакт',
+            callback_due_today: 'зворотний контакт сьогодні',
+            callback_due_soon: 'зворотний контакт скоро',
+            task_overdue: 'прострочена задача',
+            deadline_today: 'дедлайн сьогодні',
+            future_deadline: 'майбутній дедлайн',
+            critical_priority: 'критичний пріоритет',
+            overdue_high_priority: 'високий пріоритет прострочення',
+            overdue_unassigned: 'прострочено без відповідального',
+            stale_in_progress: 'зависла задача в роботі',
+            booking_needs_confirmation: 'бронювання потребує підтвердження',
+            confirmation_due_today: 'підтвердження потрібне сьогодні',
+            confirmation_due_soon: 'підтвердження скоро потрібне',
+            event_soon: 'подія наближається',
+            event_near_window: 'подія в найближчому вікні',
+            event_watch_window: 'подія на контролі',
+            lead_idle_heuristic: 'лід давно без активності',
+            tomorrow_booking_prep: 'підготовка бронювання на завтра',
+            visible_overdue_tasks: 'видимі прострочені задачі',
+            unassigned_overdue_tasks: 'прострочені задачі без відповідального',
+            unassigned_urgent_replies: 'термінові відповіді без відповідального',
+            escalated_replies: 'ескальовані відповіді',
+            queue_signal: 'сигнал черги',
+            critical: 'критично',
+            action_today: 'дія сьогодні',
+            watch: 'на контролі',
+            suggested: 'підказка',
+            high: 'висока',
+            medium: 'середня',
+            low: 'низька'
+        };
+        if (!normalized) return 'невідомий ризик';
+        return map[normalized] || normalized.replaceAll('_', ' ');
+    }
+
+    function humanizeQueueBottleneck(label, type) {
+        const normalized = String(label || type || '').trim();
+        const labelMap = {
+            'Unassigned urgent replies': 'термінові відповіді без відповідального',
+            'Escalated replies': 'ескальовані відповіді',
+            'Visible overdue task pressure': 'тиск видимих прострочених задач',
+            'Unassigned overdue tasks': 'прострочені задачі без відповідального'
+        };
+        if (labelMap[normalized]) return labelMap[normalized];
+        return humanizeQueueRiskType(type || normalized);
+    }
+
+    function humanizeQueueActionLabel(label, type = '') {
+        const normalized = String(label || type || '').trim();
+        const map = {
+            'Open Omni and reply': 'Відкрити комунікацію й відповісти',
+            'Open reply escalation context': 'Відкрити контекст ескалації відповіді',
+            'Open lead and call client': 'Відкрити лід і звʼязатися з клієнтом',
+            'Confirm booking': 'Підтвердити бронювання',
+            'Open booking context': 'Відкрити контекст бронювання',
+            'Review event context': 'Перевірити контекст події',
+            'Review lead context': 'Перевірити контекст ліда',
+            'Review tomorrow booking': 'Перевірити бронювання на завтра',
+            'Open context': 'Відкрити контекст',
+            'Open task context': 'Відкрити контекст задачі',
+            'Open overdue task': 'Відкрити прострочену задачу',
+            'Open task': 'Відкрити задачу',
+            'Complete or reassign task': 'Виконати або перепризначити задачу',
+            'Assign owner before execution': 'Призначити відповідального перед виконанням',
+            'Assign owner': 'Призначити відповідального',
+            'Assign owner now': 'Призначити відповідального зараз',
+            'Start or reschedule task': 'Почати або перенести задачу',
+            'Review task plan': 'Перевірити план задачі',
+            'Inspect blockage': 'Перевірити блокер',
+            reply_now: 'Відповісти клієнту',
+            open_reply_escalation: 'Відкрити ескалацію відповіді',
+            open_lead_for_callback: 'Відкрити лід для контакту',
+            confirm_booking: 'Підтвердити бронювання',
+            open_booking_context: 'Відкрити контекст бронювання',
+            review_event_context: 'Перевірити контекст події',
+            review_lead: 'Перевірити лід',
+            open_context: 'Відкрити контекст',
+            open_task: 'Відкрити задачу',
+            open_task_or_case: 'Відкрити задачу або кейс',
+            complete_or_reassign: 'Виконати або перепризначити',
+            assign_owner: 'Призначити відповідального',
+            start_or_reschedule: 'Почати або перенести',
+            review_task_plan: 'Перевірити план задачі',
+            inspect_blockage: 'Перевірити блокер'
+        };
+        if (!normalized) return '';
+        return map[normalized] || normalized;
     }
 
     function renderQueueIntelligenceSummary(queue) {
@@ -356,23 +467,23 @@ const DashboardPage = (() => {
         if (!queue?.items?.length && !critical && !actionToday && !watch && !suggested) return '';
 
         return `
-            <section class="work-queue-intelligence" aria-label="Manager queue intelligence summary">
+            <section class="work-queue-intelligence" aria-label="Аналітика робочої черги">
                 <div class="work-queue-intelligence-head">
                     <div>
-                        <span class="work-queue-triage-eyebrow">Queue Intelligence v1</span>
-                        <h3>Bucket-aware priority bands</h3>
+                        <span class="work-queue-triage-eyebrow">Аналітика черги v1</span>
+                        <h3>Пріоритетні групи за категоріями</h3>
                     </div>
-                    <span class="work-queue-intelligence-scope">Visible queue data only · no global score</span>
+                    <span class="work-queue-intelligence-scope">Лише видимі дані черги · без глобального скорингу</span>
                 </div>
                 <div class="work-queue-intelligence-chips">
                     <span class="queue-band-pill band-critical">Критично ${critical}</span>
                     <span class="queue-band-pill band-action_today">Дія сьогодні ${actionToday}</span>
-                    <span class="queue-band-pill band-watch">Watch ${watch}</span>
+                    <span class="queue-band-pill band-watch">На контролі ${watch}</span>
                     <span class="queue-band-pill band-suggested">Підказки ${suggested}</span>
                 </div>
                 <div class="work-queue-intelligence-notes">
-                    <span>${escapeHtml(topRisk ? `Top risk: ${topRisk.type} (${topRisk.count})` : 'Ризики формуються з bucket-specific полів')}</span>
-                    <span>${escapeHtml(topBottleneck ? `Bottleneck: ${topBottleneck.label || topBottleneck.type} (${topBottleneck.count})` : 'Bottleneck-и рахуються лише з видимої черги')}</span>
+                    <span>${escapeHtml(topRisk ? `Головний ризик: ${humanizeQueueRiskType(topRisk.type)} (${topRisk.count})` : 'Ризики формуються з полів конкретної категорії')}</span>
+                    <span>${escapeHtml(topBottleneck ? `Вузьке місце: ${humanizeQueueBottleneck(topBottleneck.label, topBottleneck.type)} (${topBottleneck.count})` : 'Вузькі місця рахуються лише з видимої черги')}</span>
                 </div>
             </section>
         `;
@@ -408,7 +519,7 @@ const DashboardPage = (() => {
             container.innerHTML = `${renderReplyOperationsConsole(queue, visibleReplyItems)}
                 ${renderQueueIntelligenceSummary(queue)}
                 ${renderTriageWorkspace()}
-                <div class="widget-empty reply-ops-empty">Немає термінових пунктів у доступних buckets черги. Waiting reply зʼявиться лише для розмов із явним reply expectation.</div>`;
+                <div class="widget-empty reply-ops-empty">Немає термінових пунктів у доступних категоріях черги. Очікування відповіді зʼявляється лише для розмов із явною потребою відповісти клієнту.</div>`;
             return;
         }
 
@@ -421,7 +532,7 @@ const DashboardPage = (() => {
             return `
                 <div class="work-queue-bucket bucket-${bucket.key}">
                     <div class="work-queue-bucket-head">
-                        <span class="work-queue-bucket-title">${escapeHtml(bucket.label || bucket.key)}</span>
+                        <span class="work-queue-bucket-title">${escapeHtml(workQueueBucketLabel(bucket.key, bucket.label))}</span>
                         <span class="work-queue-count">${bucket.count || 0}</span>
                     </div>
                     <div class="work-queue-items">${items}</div>
@@ -443,17 +554,17 @@ const DashboardPage = (() => {
         const replyBacklog = meta.replyBacklog || {};
 
         if (warnings.length) filters.push({ label: 'Увага', value: `${warnings.length} джерел не відповіли` });
-        if (replyBacklog.scope) filters.push({ label: 'Reply backlog', value: workQueueReplyScopeLabel(replyBacklog.scope) });
+        if (replyBacklog.scope) filters.push({ label: 'Беклог відповідей', value: workQueueReplyScopeLabel(replyBacklog.scope) });
         if (omitted.length) filters.push({ label: 'Не включено', value: omitted.map(key => bucketMap.get(key) || key).join(', ') });
         const activeHeuristic = heuristic.filter(key => (buckets || []).some(bucket => bucket.key === key && bucket.count > 0));
         if (activeHeuristic.length) {
             filters.push({ label: 'Підказки', value: activeHeuristic.map(key => bucketMap.get(key) || key).join(', ') });
         }
         if (meta.intelligence?.model) {
-            filters.push({ label: 'Intelligence', value: 'bucket-aware bands, no global score' });
+            filters.push({ label: 'Аналітика', value: 'пріоритети за категоріями без глобального скорингу' });
         }
 
-        const note = !visibleCount ? 'Порожньо: доступні durable сигнали зараз не дали термінових пунктів' : '';
+        const note = !visibleCount ? 'Порожньо: доступні довірені сигнали зараз не дали термінових пунктів' : '';
         const html = Explainability.renderFilterSummary(filters, {
             label: 'Пояснення черги',
             note
@@ -474,20 +585,21 @@ const DashboardPage = (() => {
         return String(item?.id || `${item?.bucket || 'item'}:${item?.sourceType || 'source'}:${item?.sourceId || ''}`);
     }
 
-    function workQueueBucketLabel(key) {
+    function workQueueBucketLabel(key, fallbackLabel = '') {
         const item = _workQueueItemsById.get(_workQueueSelectedItemId);
-        if (item?.bucket === key && item?.bucketLabel) return item.bucketLabel;
+        if (item?.bucket === key && item?.bucketLabel && !/^[a-z0-9_ /-]+$/i.test(String(item.bucketLabel))) return item.bucketLabel;
+        if (fallbackLabel && !/^[a-z0-9_ /-]+$/i.test(String(fallbackLabel))) return fallbackLabel;
         const labels = {
             overdue: 'Прострочені задачі',
             today: 'Сьогодні',
             tomorrow: 'Завтра',
-            callback_due: 'Callback due',
-            waiting_reply: 'Waiting reply',
+            callback_due: 'Потрібен контакт',
+            waiting_reply: 'Очікує відповіді',
             needs_confirmation: 'Потребує підтвердження',
             event_soon: 'Подія скоро',
-            idle_lead: 'Idle lead'
+            idle_lead: 'Лід без активності'
         };
-        return labels[key] || key || 'Пункт черги';
+        return labels[key] || humanizeQueueRiskType(key) || 'Пункт черги';
     }
 
     function triageRiskLabel(item) {
@@ -502,30 +614,81 @@ const DashboardPage = (() => {
         return 'Операційний сигнал';
     }
 
+    function humanizeQueueSignal(signal) {
+        return signal ? humanizeQueueRiskType(signal) : '';
+    }
+
+    function humanizeQueueReasonText(text) {
+        const value = String(text || '').trim();
+        if (!value) return '';
+        const timestamp = value.match(/\(([^)]+)\)/)?.[1];
+        const suffix = timestamp ? ` (${timestamp})` : '';
+        if (/reply_sla_at is overdue/i.test(value)) return `SLA відповіді прострочена${suffix}.`;
+        if (/reply_sla_at is due soon/i.test(value)) return `SLA відповіді скоро спливає${suffix}.`;
+        if (/reply_sla_at is still on track/i.test(value)) return `SLA відповіді поки в нормі${suffix}.`;
+        if (/No reply_sla_at is present/i.test(value)) return 'SLA відповіді не задана, тому прострочення не виводиться автоматично.';
+        if (/linked conversation_reply escalation task exists/i.test(value)) return `Є повʼязана задача ескалації відповіді${suffix}.`;
+        if (/reply_owner_user_id is empty/i.test(value)) return 'Відповідальний за відповідь ще не заданий як ID користувача.';
+        if (/lead_interactions\.follow_up_date placed this item in callback_due/i.test(value)) return `Дата follow-up поставила цей пункт у зворотний контакт${suffix}.`;
+        if (/This is callback\/follow-up work/i.test(value)) return 'Це робота зі зворотним контактом, а не канонічне очікування відповіді.';
+        if (/Booking is preliminary and starts within the next 2 hours/i.test(value)) return `Попереднє бронювання стартує протягом найближчих 2 годин${suffix}.`;
+        if (/Booking is preliminary and in the today\/tomorrow confirmation window/i.test(value)) return `Попереднє бронювання у вікні підтвердження сьогодні/завтра${suffix}.`;
+        if (/booking status risk from bookings\.status/i.test(value)) return 'Це ризик статусу бронювання з bookings.status, а не проста ознака наближення події.';
+        if (/leads\.event_date is inside the queue event window/i.test(value)) return `Дата події потрапляє у робоче вікно черги${suffix}.`;
+        if (/flags timing pressure/i.test(value)) return 'Це сигнал наближення часу, а не доказ фінальної готовності.';
+        if (/Lead appears idle/i.test(value)) return 'Лід виглядає неактивним за останнім контактом або датою створення.';
+        if (/queue heuristic/i.test(value) && /must not outrank/i.test(value)) return 'Це підказка черги, яка не переважає прострочені відповіді чи задачі.';
+        if (/Queue item came from/i.test(value)) return `Пункт потрапив у чергу за сигналом: ${humanizeQueueSignal(value.replace(/^Queue item came from\s+/i, '').replace(/\.$/, ''))}.`;
+        if (/No stronger bucket-specific intelligence rule/i.test(value)) return 'Для цього пункту немає сильнішого правила аналітики категорії.';
+        if (/Booking is visible in tomorrow prep/i.test(value)) return 'Бронювання видиме у підготовці на завтра.';
+        if (/preparation pressure/i.test(value)) return 'Це сигнал підготовки, а не помилка підтвердження.';
+        if (/tasks\.owner_user_id is empty and no legacy owner label/i.test(value)) return 'У задачі немає ID відповідального і legacy-мітки відповідального.';
+        if (/tasks\.owner_user_id is empty; legacy owner text exists/i.test(value)) return 'У задачі немає ID відповідального; legacy-текст не є канонічною особою.';
+        if (/Task owner is typed through tasks\.owner_user_id=/i.test(value)) return value.replace(/Task owner is typed through tasks\.owner_user_id=/i, 'Відповідальний задачі заданий через tasks.owner_user_id=');
+        if (/Task deadline\/date is before today/i.test(value)) return `Дедлайн або дата задачі вже минули${suffix}.`;
+        if (/Task deadline\/date is today/i.test(value)) return `Дедлайн або дата задачі сьогодні${suffix}.`;
+        if (/Task deadline\/date is future-visible/i.test(value)) return `Дедлайн задачі у найближчому плані${suffix}.`;
+        if (/No tasks\.deadline\/tasks\.date is present/i.test(value)) return 'У задачі немає дедлайну або дати, тому терміновість лишається підказкою.';
+        if (/Task priority is/i.test(value)) return `Пріоритет задачі: ${humanizeQueueRiskType(value.replace(/^Task priority is\s+/i, '').replace(/\.$/, ''))}.`;
+        if (/Task has been in progress\/stale/i.test(value)) return value.replace(/Task has been in progress\/stale for about/i, 'Задача зависла в роботі приблизно').replace(/based on updated_at\/created_at/i, 'за updated_at/created_at');
+        if (/Task has legacy string ownership/i.test(value)) return 'Задача має legacy-текст відповідального; дія дозволена через перевірку видимості задачі, а перепризначення збереже ID відповідального.';
+        if (/Task inline execution is unavailable until task object visibility is proven/i.test(value)) return 'Дія задачі недоступна, доки не доведено видимість цієї задачі.';
+        if (/Callback completion\/defer remains route-out only/i.test(value)) return 'Завершення або перенесення зворотного контакту поки доступне лише через перехід у контекст; спільного результату для черги ще немає.';
+        if (/Event-soon items are review\/context signals/i.test(value)) return 'Пункти з наближенням події є сигналами для перевірки контексту, а не діями виконання.';
+        if (/No bucket-specific durable execution action is defined/i.test(value)) return 'Для цього пункту черги не визначено збереженої дії конкретної категорії.';
+        if (/Reply escalation is only available for overdue waiting replies/i.test(value)) return 'Ескалація доступна лише для простроченого очікування відповіді.';
+        return value
+            .replaceAll('waiting_reply', 'очікування відповіді')
+            .replaceAll('bucket-specific', 'для конкретної категорії')
+            .replaceAll('route-out only', 'лише перехід у контекст')
+            .replaceAll('canonical', 'канонічний')
+            .replaceAll('reply debt', 'борг відповіді');
+    }
+
     function triageReasonText(item) {
         if (Array.isArray(item?.intelligence?.why) && item.intelligence.why.length) {
-            return item.intelligence.why.join(' ');
+            return item.intelligence.why.map(humanizeQueueReasonText).filter(Boolean).join(' ');
         }
-        const signal = item?.meta?.signal ? ` Сигнал: ${item.meta.signal}.` : '';
+        const signal = item?.meta?.signal ? ` Сигнал: ${humanizeQueueSignal(item.meta.signal)}.` : '';
         switch (item?.bucket) {
             case 'waiting_reply':
-                return `Є явний reply expectation у розмові; waiting почався ${formatQueueDateTime(item.meta?.awaitingReplySince || item.meta?.waitingSince)}.${signal}`;
+                return `У розмові явно очікується відповідь клієнту; очікування почалося ${formatQueueDateTime(item.meta?.awaitingReplySince || item.meta?.waitingSince)}.${signal}`;
             case 'callback_due':
-                return `Запланований callback/follow-up вже у видимій черзі. Це не waiting_reply і не закривається reply-діями.${signal}`;
+                return `Запланований зворотний контакт уже у видимій черзі. Це не очікування відповіді й не закривається діями відповіді.${signal}`;
             case 'overdue':
-                return `Задача прострочена за deadline/date і потребує переходу в task або linked context.${signal}`;
+                return `Задача прострочена за дедлайном або датою і потребує переходу в задачу чи повʼязаний контекст.${signal}`;
             case 'today':
                 return `Задача має робочий дедлайн на сьогодні.${signal}`;
             case 'tomorrow':
                 return `Задача або подія стоїть у найближчому плані на завтра.${signal}`;
             case 'needs_confirmation':
-                return `Бронювання має durable status preliminary у сьогодні/завтра confirmation window. Inline-confirm іде тільки через narrow booking confirmation endpoint; event_soon лишається timing cue.${signal}`;
+                return `Бронювання має попередній статус у вікні підтвердження сьогодні/завтра. Швидке підтвердження йде тільки через вузький endpoint бронювання; наближення події лишається окремим часовим сигналом.${signal}`;
             case 'event_soon':
-                return `Подія наближається, тож менеджеру потрібен швидкий exact-context review. Це timing cue, не booking readiness signal.${signal}`;
+                return `Подія наближається, тому менеджеру потрібна швидка перевірка точного контексту. Це часовий сигнал, а не доказ готовності бронювання.${signal}`;
             case 'idle_lead':
-                return `Лід виглядає неактивним за queue heuristic. Це підказка, не canonical reply debt.${signal}`;
+                return `Лід виглядає неактивним за підказкою черги. Це лише підказка, не канонічний борг відповіді.${signal}`;
             default:
-                return `Пункт потрапив у робочу чергу за доступним durable або heuristic сигналом.${signal}`;
+                return `Пункт потрапив у робочу чергу за доступним довіреним або підказковим сигналом.${signal}`;
         }
     }
 
@@ -537,14 +700,14 @@ const DashboardPage = (() => {
     function getTriageLinks(item) {
         const links = [];
         const meta = item?.meta || {};
-        addTriageLink(links, meta.exactHref || item?.href, 'Відкрити exact context', 'primary');
+        addTriageLink(links, meta.exactHref || item?.href, 'Відкрити точний контекст', 'primary');
         addTriageLink(links, meta.leadHref, 'Лід');
-        addTriageLink(links, meta.replyEscalationHref, 'Escalation task');
+        addTriageLink(links, meta.replyEscalationHref, 'Задача ескалації');
         if (item?.taskId) addTriageLink(links, `/tasks?open=${encodeURIComponent(item.taskId)}`, 'Задача');
         if (item?.leadId) addTriageLink(links, `/sales-funnel?lead=${encodeURIComponent(item.leadId)}`, 'Лід');
-        if (item?.meta?.conversationId) addTriageLink(links, `/omni?conversation=${encodeURIComponent(item.meta.conversationId)}`, 'Omni');
+        if (item?.meta?.conversationId) addTriageLink(links, `/omni?conversation=${encodeURIComponent(item.meta.conversationId)}`, 'Комунікація');
         if (item?.bookingId && item.href) addTriageLink(links, item.href, 'Бронювання');
-        if (!links.length) addTriageLink(links, '/dashboard', 'Повернутись до dashboard');
+        if (!links.length) addTriageLink(links, '/dashboard', 'Повернутись до дашборда');
         return links;
     }
 
@@ -556,17 +719,17 @@ const DashboardPage = (() => {
 
     function executionDepthLabel(item) {
         const depth = item?.execution?.depth;
-        if (item?.bucket === 'waiting_reply') return 'Reply-first inline execution';
-        if (depth === 'limited_task_route_out') return 'Task rail: route-out only';
-        if (depth === 'summary_route_out') return 'Summary/review only';
-        if (depth === 'review_route_out') return 'Context review only';
-        return item?.execution?.routeOutOnly ? 'Route-out only' : 'Bucket-specific execution';
+        if (item?.bucket === 'waiting_reply') return 'Дії відповіді виконуються прямо з черги';
+        if (depth === 'limited_task_route_out') return 'Задача відкривається через перехід у контекст';
+        if (depth === 'summary_route_out') return 'Лише перегляд і коротке резюме';
+        if (depth === 'review_route_out') return 'Лише перевірка контексту';
+        return item?.execution?.routeOutOnly ? 'Лише перехід у контекст' : 'Дії доступні для цієї категорії';
     }
 
     function executionUnavailableText(item) {
-        if (item?.execution?.unavailableReason) return item.execution.unavailableReason;
-        if (item?.bucket === 'waiting_reply') return 'Reply actions mutate canonical reply fields and refetch the visible queue.';
-        return 'Inline execution is not enabled for this bucket.';
+        if (item?.execution?.unavailableReason) return humanizeQueueReasonText(item.execution.unavailableReason);
+        if (item?.bucket === 'waiting_reply') return 'Дії відповіді змінюють канонічні поля очікування й повторно завантажують видиму чергу.';
+        return 'Для цієї категорії немає безпечної inline-дії.';
     }
 
     function renderExecutionFeedback() {
@@ -606,29 +769,54 @@ const DashboardPage = (() => {
     function replyActionHistoryTitle(actionType) {
         switch (actionType) {
             case 'reply_expectation_cleared':
-                return 'Expectation cleared';
+                return 'Очікування відповіді очищено';
             case 'reply_sla_snoozed':
-                return 'SLA moved';
+                return 'SLA перенесено';
             case 'reply_owner_reassigned':
-                return 'Owner reassigned';
+                return 'Відповідального змінено';
             case 'reply_escalated':
-                return 'Escalation created/reused';
+                return 'Ескалацію створено або перевикористано';
             case 'reply_escalation_closed':
-                return 'Escalation closed';
+                return 'Ескалацію закрито';
             default:
-                return 'Reply action';
+                return 'Дія відповіді';
         }
     }
 
     function historyValueLabel(value) {
-        if (value === undefined || value === null || value === '') return 'none';
-        if (typeof value === 'boolean') return value ? 'yes' : 'no';
+        if (value === undefined || value === null || value === '') return 'немає';
+        if (typeof value === 'boolean') return value ? 'так' : 'ні';
         if (typeof value === 'string') {
             const date = new Date(value);
             if (!Number.isNaN(date.getTime()) && /T|\d{4}-\d{2}-\d{2}/.test(value)) return formatQueueDateTime(value);
-            return value;
+            const valueMap = {
+                todo: 'до виконання',
+                done: 'виконано',
+                cancelled: 'скасовано',
+                in_progress: 'в роботі',
+                waiting_reply: 'очікування відповіді',
+                preliminary: 'попереднє',
+                confirmed: 'підтверджено'
+            };
+            return valueMap[value] || humanizeQueueActionLabel(value, value);
         }
         return String(value);
+    }
+
+    function humanizeHistorySummary(summary) {
+        const value = String(summary || '').trim();
+        const map = {
+            'Reply owner reassigned': 'Відповідального за відповідь змінено',
+            'Reply SLA moved': 'SLA відповіді перенесено',
+            'Reply expectation cleared': 'Очікування відповіді очищено',
+            'Reply execution action recorded': 'Дію відповіді записано',
+            'Task completed': 'Задачу виконано',
+            'Task owner reassigned': 'Відповідального задачі змінено',
+            'Task rescheduled': 'Дедлайн задачі перенесено',
+            'Task execution action': 'Дія задачі',
+            'Booking confirmed': 'Бронювання підтверджено'
+        };
+        return map[value] || humanizeQueueActionLabel(value, value);
     }
 
     function renderReplyActionHistoryChange(event) {
@@ -641,24 +829,24 @@ const DashboardPage = (() => {
             return `${historyValueLabel(oldValue.replySlaAt)} -> ${historyValueLabel(newValue.replySlaAt)}`;
         }
         if (event?.actionType === 'reply_expectation_cleared') {
-            return `waiting_reply ${historyValueLabel(oldValue.replyExpected)} -> ${historyValueLabel(newValue.replyExpected)}`;
+            return `очікування відповіді ${historyValueLabel(oldValue.replyExpected)} -> ${historyValueLabel(newValue.replyExpected)}`;
         }
         if (event?.actionType === 'reply_escalated' || event?.actionType === 'reply_escalation_closed') {
-            return `task ${historyValueLabel(oldValue.replyEscalationTaskId)} -> ${historyValueLabel(newValue.replyEscalationTaskId)}`;
+            return `задача ${historyValueLabel(oldValue.replyEscalationTaskId)} -> ${historyValueLabel(newValue.replyEscalationTaskId)}`;
         }
-        return event?.summary || '';
+        return humanizeHistorySummary(event?.summary);
     }
 
     function renderReplyActionHistoryRows(events) {
         return (events || []).map(event => {
-            const actor = event.actor?.name || (event.actor?.userId ? `User #${event.actor.userId}` : 'Unknown actor');
+            const actor = event.actor?.name || (event.actor?.userId ? `Користувач #${event.actor.userId}` : 'Невідомий виконавець');
             const created = event.createdAt ? formatQueueDateTime(event.createdAt) : '';
             const change = renderReplyActionHistoryChange(event);
             return `
                 <li class="reply-action-history-row">
                     <div>
                         <strong>${escapeHtml(replyActionHistoryTitle(event.actionType))}</strong>
-                        <span>${escapeHtml(event.summary || '')}</span>
+                        <span>${escapeHtml(humanizeHistorySummary(event.summary))}</span>
                     </div>
                     <p>${escapeHtml(actor)}${created ? ` · ${escapeHtml(created)}` : ''}</p>
                     ${change ? `<code>${escapeHtml(change)}</code>` : ''}
@@ -674,20 +862,20 @@ const DashboardPage = (() => {
         const status = state.status || 'idle';
         let body = '';
         if (status === 'loading' || status === 'idle') {
-            body = '<p class="reply-action-history-state" role="status">Loading reply execution history...</p>';
+            body = '<p class="reply-action-history-state" role="status">Завантажуємо історію дій по відповідях...</p>';
         } else if (status === 'error') {
             body = `
-                <p class="reply-action-history-state error">Could not load reply execution history.</p>
-                <button type="button" class="work-queue-action-btn" onclick="DashboardPage.reloadReplyActionHistory()">Retry</button>
+                <p class="reply-action-history-state error">Не вдалося завантажити історію дій по відповідях.</p>
+                <button type="button" class="work-queue-action-btn" onclick="DashboardPage.reloadReplyActionHistory()">Спробувати ще раз</button>
             `;
         } else if (!state.events.length) {
-            body = '<p class="reply-action-history-state">No reply execution history yet.</p>';
+            body = '<p class="reply-action-history-state">Історії дій по відповідях ще немає.</p>';
         } else {
             body = `<ol class="reply-action-history-list">${renderReplyActionHistoryRows(state.events)}</ol>`;
         }
         return `
-            <div class="work-queue-triage-card reply-action-history-card" id="replyActionHistoryPanel" aria-label="Reply Action History">
-                <h4>Reply Action History</h4>
+            <div class="work-queue-triage-card reply-action-history-card" id="replyActionHistoryPanel" aria-label="Історія дій по відповідях">
+                <h4>Історія дій по відповідях</h4>
                 ${body}
             </div>
         `;
@@ -717,13 +905,13 @@ const DashboardPage = (() => {
     function taskActionHistoryTitle(actionType) {
         switch (actionType) {
             case 'task_completed':
-                return 'Task completed';
+                return 'Задачу виконано';
             case 'task_owner_reassigned':
-                return 'Owner reassigned';
+                return 'Відповідального змінено';
             case 'task_rescheduled':
-                return 'Task rescheduled';
+                return 'Дедлайн перенесено';
             default:
-                return 'Task action';
+                return 'Дія задачі';
         }
     }
 
@@ -731,7 +919,7 @@ const DashboardPage = (() => {
         const oldValue = event?.oldValue || {};
         const newValue = event?.newValue || {};
         if (event?.actionType === 'task_completed') {
-            return `status ${historyValueLabel(oldValue.status)} -> ${historyValueLabel(newValue.status)}`;
+            return `статус ${historyValueLabel(oldValue.status)} -> ${historyValueLabel(newValue.status)}`;
         }
         if (event?.actionType === 'task_owner_reassigned') {
             return `${historyValueLabel(oldValue.assignedTo || oldValue.ownerUserId)} -> ${historyValueLabel(newValue.assignedTo || newValue.ownerUserId)}`;
@@ -739,19 +927,19 @@ const DashboardPage = (() => {
         if (event?.actionType === 'task_rescheduled') {
             return `${historyValueLabel(oldValue.deadline || oldValue.date)} -> ${historyValueLabel(newValue.deadline || newValue.date)}`;
         }
-        return event?.summary || '';
+        return humanizeHistorySummary(event?.summary);
     }
 
     function renderTaskActionHistoryRows(events) {
         return (events || []).map(event => {
-            const actor = event.actor?.name || (event.actor?.userId ? `User #${event.actor.userId}` : 'Unknown actor');
+            const actor = event.actor?.name || (event.actor?.userId ? `Користувач #${event.actor.userId}` : 'Невідомий виконавець');
             const created = event.createdAt ? formatQueueDateTime(event.createdAt) : '';
             const change = renderTaskActionHistoryChange(event);
             return `
                 <li class="reply-action-history-row">
                     <div>
                         <strong>${escapeHtml(taskActionHistoryTitle(event.actionType))}</strong>
-                        <span>${escapeHtml(event.summary || '')}</span>
+                        <span>${escapeHtml(humanizeHistorySummary(event.summary))}</span>
                     </div>
                     <p>${escapeHtml(actor)}${created ? ` · ${escapeHtml(created)}` : ''}</p>
                     ${change ? `<code>${escapeHtml(change)}</code>` : ''}
@@ -767,20 +955,20 @@ const DashboardPage = (() => {
         const status = state.status || 'idle';
         let body = '';
         if (status === 'loading' || status === 'idle') {
-            body = '<p class="reply-action-history-state" role="status">Loading task execution history...</p>';
+            body = '<p class="reply-action-history-state" role="status">Завантажуємо історію дій по задачі...</p>';
         } else if (status === 'error') {
             body = `
-                <p class="reply-action-history-state error">Could not load task execution history.</p>
-                <button type="button" class="work-queue-action-btn" onclick="DashboardPage.reloadTaskActionHistory()">Retry</button>
+                <p class="reply-action-history-state error">Не вдалося завантажити історію дій по задачі.</p>
+                <button type="button" class="work-queue-action-btn" onclick="DashboardPage.reloadTaskActionHistory()">Спробувати ще раз</button>
             `;
         } else if (!state.events.length) {
-            body = '<p class="reply-action-history-state">No task execution history yet.</p>';
+            body = '<p class="reply-action-history-state">Історії дій по задачі ще немає.</p>';
         } else {
             body = `<ol class="reply-action-history-list">${renderTaskActionHistoryRows(state.events)}</ol>`;
         }
         return `
-            <div class="work-queue-triage-card reply-action-history-card" id="taskActionHistoryPanel" aria-label="Task Action History">
-                <h4>Task Action History</h4>
+            <div class="work-queue-triage-card reply-action-history-card" id="taskActionHistoryPanel" aria-label="Історія дій по задачі">
+                <h4>Історія дій по задачі</h4>
                 ${body}
             </div>
         `;
@@ -893,8 +1081,8 @@ const DashboardPage = (() => {
             _workQueueSelectedItemId = previousItemId;
         }
         const selectedMessage = _workQueueSelectedItemId && _workQueueItemsById.has(_workQueueSelectedItemId)
-            ? ' Наступний фокус оновлено після refetch.'
-            : ' Після refetch немає наступного видимого item.';
+            ? ' Наступний фокус оновлено після повторного завантаження.'
+            : ' Після повторного завантаження немає наступного видимого пункту.';
         setExecutionFeedback(`${message}${selectedMessage}`, 'success');
         renderTriageWorkspaceOnly(true);
         await loadReplyActionHistoryForSelected();
@@ -909,16 +1097,16 @@ const DashboardPage = (() => {
             const isOverdue = item.meta?.replySlaState === 'overdue';
             const escalationHref = item.meta?.replyEscalationHref;
             const escalationAction = escalationHref
-                ? `<a class="work-queue-triage-link" href="${escapeHtml(escalationHref)}">Відкрити escalation</a>`
-                : `<button type="button" class="work-queue-action-btn" data-triage-reply-action onclick="DashboardPage.escalateReplyExpectation(${conversationId}, this)" ${isOverdue ? '' : 'disabled title="Reply escalation is available only for overdue waiting replies"'}>Escalate overdue</button>`;
+                ? `<a class="work-queue-triage-link" href="${escapeHtml(escalationHref)}">Відкрити ескалацію</a>`
+                : `<button type="button" class="work-queue-action-btn" data-triage-reply-action onclick="DashboardPage.escalateReplyExpectation(${conversationId}, this)" ${isOverdue ? '' : 'disabled title="Ескалація доступна лише для простроченого очікування відповіді"'}>Ескалювати прострочення</button>`;
             return `
-                <div class="work-queue-triage-actions" aria-label="Reply execution actions">
-                    <button type="button" class="work-queue-action-btn" data-triage-reply-action onclick="DashboardPage.reassignReplyOwner(${conversationId}, this, ${currentOwnerUserId})">Змінити власника</button>
-                    <button type="button" class="work-queue-action-btn" data-triage-reply-action onclick="DashboardPage.snoozeReplySla(${conversationId}, this)">SLA +24г</button>
-                    <button type="button" class="work-queue-action-btn danger" data-triage-reply-action onclick="DashboardPage.clearReplyExpectation(${conversationId}, this)">Очистити expectation</button>
+                <div class="work-queue-triage-actions" aria-label="Дії з відповіддю">
+                    <button type="button" class="work-queue-action-btn" data-triage-reply-action onclick="DashboardPage.reassignReplyOwner(${conversationId}, this, ${currentOwnerUserId})">Змінити відповідального</button>
+                    <button type="button" class="work-queue-action-btn" data-triage-reply-action onclick="DashboardPage.snoozeReplySla(${conversationId}, this)">SLA +24 год</button>
+                    <button type="button" class="work-queue-action-btn danger" data-triage-reply-action onclick="DashboardPage.clearReplyExpectation(${conversationId}, this)">Очистити очікування</button>
                     ${escalationAction}
                 </div>
-                <p class="work-queue-triage-action-note">Auto-advance дозволений тільки після durable mutation і refetch. Open context не вважається resolution.</p>
+                <p class="work-queue-triage-action-note">Автоперехід дозволений лише після збереженої дії та повторного завантаження. Просте відкриття контексту не вважається вирішенням.</p>
             `;
         }
 
@@ -926,28 +1114,28 @@ const DashboardPage = (() => {
             const taskId = Number(item.taskId || item.sourceId || 0);
             const ownerState = item.meta?.ownerState || 'unassigned';
             const ownerNote = ownerState === 'legacy_unknown_owner'
-                ? ' Legacy owner буде замінено typed owner при reassignment.'
+                ? ' Legacy-відповідальний буде замінений ID користувача під час перепризначення.'
                 : '';
             return `
-                <div class="work-queue-triage-actions" aria-label="Task execution actions">
-                    <button type="button" class="work-queue-action-btn" data-triage-task-action onclick="DashboardPage.completeQueueTask(${taskId}, this)">Mark done</button>
-                    <button type="button" class="work-queue-action-btn" data-triage-task-action onclick="DashboardPage.reassignQueueTaskOwner(${taskId}, this, ${Number(item.meta?.ownerUserId || 0)})">Reassign owner</button>
-                    <button type="button" class="work-queue-action-btn" data-triage-task-action onclick="DashboardPage.rescheduleQueueTask(${taskId}, this)">Deadline +24h</button>
+                <div class="work-queue-triage-actions" aria-label="Дії з задачею">
+                    <button type="button" class="work-queue-action-btn" data-triage-task-action onclick="DashboardPage.completeQueueTask(${taskId}, this)">Позначити виконаною</button>
+                    <button type="button" class="work-queue-action-btn" data-triage-task-action onclick="DashboardPage.reassignQueueTaskOwner(${taskId}, this, ${Number(item.meta?.ownerUserId || 0)})">Змінити відповідального</button>
+                    <button type="button" class="work-queue-action-btn" data-triage-task-action onclick="DashboardPage.rescheduleQueueTask(${taskId}, this)">Дедлайн +24 год</button>
                 </div>
-                <p class="work-queue-triage-action-note">Task actions use object-level visibility, canonical tasks.owner_user_id/deadline/status, action history, and refetch after mutation.${escapeHtml(ownerNote)}</p>
+                <p class="work-queue-triage-action-note">Дії по задачі працюють через перевірку видимості задачі, канонічні поля tasks.owner_user_id / deadline / status, історію змін і повторне завантаження після збереження.${escapeHtml(ownerNote)}</p>
             `;
         }
 
         if (item?.bucket === 'needs_confirmation' && item?.execution?.inline) {
             const bookingId = String(item.bookingId || item.sourceId || '');
             const lateNote = item.meta?.latePreliminary
-                ? ' This is a late preliminary risk because the booking starts within 2 hours.'
+                ? ' Це пізній preliminary-ризик, бо бронювання стартує протягом 2 годин.'
                 : '';
             return `
-                <div class="work-queue-triage-actions" aria-label="Booking confirmation actions">
-                    <button type="button" class="work-queue-action-btn" data-triage-booking-action onclick="DashboardPage.confirmQueueBooking('${escapeHtml(bookingId)}', this)">Confirm booking</button>
+                <div class="work-queue-triage-actions" aria-label="Дії з підтвердження бронювання">
+                    <button type="button" class="work-queue-action-btn" data-triage-booking-action onclick="DashboardPage.confirmQueueBooking('${escapeHtml(bookingId)}', this)">Підтвердити бронювання</button>
                 </div>
-                <p class="work-queue-triage-action-note">Confirmation uses POST /api/bookings/:id/confirm and writes bookings.status, confirmed_at, confirmed_by and history.${escapeHtml(lateNote)}</p>
+                <p class="work-queue-triage-action-note">Підтвердження використовує POST /api/bookings/:id/confirm і записує bookings.status, confirmed_at, confirmed_by та history.${escapeHtml(lateNote)}</p>
             `;
         }
 
@@ -973,11 +1161,11 @@ const DashboardPage = (() => {
         const visibleCount = _workQueueVisibleItemIds.length;
         if (!selected) {
             return `
-                <section class="work-queue-resolution-workspace empty" id="workQueueResolutionWorkspace" tabindex="-1" aria-label="Triage and resolution workspace">
+                <section class="work-queue-resolution-workspace empty" id="workQueueResolutionWorkspace" tabindex="-1" aria-label="Робоча зона тріажу й вирішення">
                     <div class="work-queue-triage-empty">
-                        <span class="work-queue-triage-eyebrow">Resolution workspace</span>
-                        <h3>Оберіть пункт черги для тріажу</h3>
-                        <p>У workspace зʼявляться причина потрапляння в чергу, owner/risk snapshot, exact-context links і безпечні bucket-specific дії. Видимо пунктів: ${visibleCount}.</p>
+                        <span class="work-queue-triage-eyebrow">Робоча зона вирішення</span>
+                        <h3>Оберіть пункт черги</h3>
+                        <p>Тут зʼявляться причина, ризик, контекст і доступні дії. Видимо пунктів: ${visibleCount}.</p>
                     </div>
                 </section>
             `;
@@ -992,22 +1180,25 @@ const DashboardPage = (() => {
         const reason = triageReasonText(selected);
         const confidence = selected.intelligence?.confidence
             ? intelligenceConfidenceLabel(selected.intelligence.confidence)
-            : (selected.confidence === 'suggested' ? 'Підказка' : 'Exact');
-        const recommended = selected.intelligence?.recommendedAction?.label || selected.actionLabel || '';
+            : intelligenceConfidenceLabel(selected.confidence || 'exact');
+        const recommended = humanizeQueueActionLabel(
+            selected.intelligence?.recommendedAction?.label || selected.actionLabel || '',
+            selected.intelligence?.recommendedAction?.type || ''
+        );
         const riskTypes = Array.isArray(selected.intelligence?.riskTypes)
-            ? selected.intelligence.riskTypes.join(', ')
+            ? selected.intelligence.riskTypes.map(humanizeQueueRiskType).join(', ')
             : '';
         const inlineDepth = executionDepthLabel(selected);
         const prevDisabled = index <= 0 ? 'disabled' : '';
         const nextDisabled = index < 0 || index >= _workQueueVisibleItemIds.length - 1 ? 'disabled' : '';
 
         return `
-            <section class="work-queue-resolution-workspace" id="workQueueResolutionWorkspace" tabindex="-1" aria-label="Triage and resolution workspace">
+            <section class="work-queue-resolution-workspace" id="workQueueResolutionWorkspace" tabindex="-1" aria-label="Робоча зона тріажу й вирішення">
                 <div class="work-queue-triage-head">
                     <div>
                         <span class="work-queue-triage-eyebrow">${escapeHtml(bucket)}</span>
                         <h3>${escapeHtml(selected.title || selected.actionLabel || 'Пункт черги')}</h3>
-                        <p>${escapeHtml(selected.subtitle || 'Контекст доступний через exact links нижче.')}</p>
+                        <p>${escapeHtml(selected.subtitle || 'Контекст доступний через точні посилання нижче.')}</p>
                     </div>
                     <div class="work-queue-triage-nav" aria-label="Навігація пунктами черги">
                         <button type="button" class="work-queue-action-btn" onclick="DashboardPage.previousTriageItem()" ${prevDisabled}>Назад</button>
@@ -1023,22 +1214,22 @@ const DashboardPage = (() => {
                         <p>${escapeHtml(reason)}</p>
                     </div>
                     <div class="work-queue-triage-card">
-                        <h4>Owner / risk</h4>
+                        <h4>Відповідальний / ризик</h4>
                         <div class="work-queue-triage-metrics">
-                            ${renderTriageMetric('Власник', owner || 'Не призначено')}
+                            ${renderTriageMetric('Відповідальний', owner || 'Не призначено')}
                             ${renderTriageMetric('Ризик', risk)}
-                            ${renderTriageMetric('Risk types', riskTypes)}
+                            ${renderTriageMetric('Типи ризику', riskTypes)}
                             ${renderTriageMetric('Термін', dueAt ? formatQueueDateTime(dueAt) : 'Без терміну')}
                             ${renderTriageMetric('Достовірність', confidence)}
                         </div>
                     </div>
                     <div class="work-queue-triage-card">
-                        <h4>Exact context</h4>
+                        <h4>Точний контекст</h4>
                         <div class="work-queue-triage-links">${renderTriageLinks(selected)}</div>
                     </div>
                     <div class="work-queue-triage-card">
-                        <h4>Execution v6</h4>
-                        ${renderTriageMetric('Recommended', recommended)}
+                        <h4>Дії</h4>
+                        ${renderTriageMetric('Рекомендація', recommended)}
                         <p class="work-queue-triage-depth">${escapeHtml(inlineDepth)}</p>
                         ${renderTriageActions(selected)}
                     </div>
@@ -1126,7 +1317,7 @@ const DashboardPage = (() => {
             ? `<span class="queue-band-pill band-${escapeHtml(band)}">${escapeHtml(priorityBandLabel(band))}</span>`
             : '';
         const recommendation = item.intelligence?.recommendedAction?.label
-            ? `<span>${escapeHtml(item.intelligence.recommendedAction.label)}</span>`
+            ? `<span>${escapeHtml(humanizeQueueActionLabel(item.intelligence.recommendedAction.label, item.intelligence.recommendedAction.type))}</span>`
             : '';
         const due = item.dueAt ? `<span>${formatQueueDateTime(item.dueAt)}</span>` : '';
         const waitingSince = isWaitingReply && item.meta?.awaitingReplySince
@@ -1148,15 +1339,15 @@ const DashboardPage = (() => {
         const selectionControl = isWaitingReply && conversationId > 0 ? `
             <label class="work-queue-select" onclick="event.stopPropagation()">
                 <input type="checkbox"
-                    aria-label="Обрати reply backlog item ${conversationId}"
+                    aria-label="Обрати пункт беклогу відповідей ${conversationId}"
                     onchange="DashboardPage.toggleReplySelection(${conversationId}, this.checked)"
                     ${selected ? 'checked' : ''}>
             </label>
         ` : '';
         const actions = isWaitingReply && conversationId > 0 ? `
-            <span class="work-queue-reply-actions" aria-label="Дії reply backlog">
-                <button type="button" class="work-queue-action-btn" onclick="DashboardPage.reassignReplyOwner(${conversationId}, this, ${currentOwnerUserId})">Власник</button>
-                <button type="button" class="work-queue-action-btn" onclick="DashboardPage.snoozeReplySla(${conversationId}, this)">SLA +24г</button>
+            <span class="work-queue-reply-actions" aria-label="Дії з відповіддю">
+                <button type="button" class="work-queue-action-btn" onclick="DashboardPage.reassignReplyOwner(${conversationId}, this, ${currentOwnerUserId})">Відповідальний</button>
+                <button type="button" class="work-queue-action-btn" onclick="DashboardPage.snoozeReplySla(${conversationId}, this)">SLA +24 год</button>
                 <button type="button" class="work-queue-action-btn danger" onclick="DashboardPage.clearReplyExpectation(${conversationId}, this)">Очистити</button>
             </span>
         ` : '';
@@ -1178,7 +1369,7 @@ const DashboardPage = (() => {
                         <span class="work-queue-title">${escapeHtml(item.title || item.actionLabel || 'Пункт черги')}</span>
                         <span class="work-queue-meta">${meta}${item.subtitle ? ' · ' + escapeHtml(String(item.subtitle).slice(0, 90)) : ''}</span>
                     </span>
-                    <span class="work-queue-action">${escapeHtml(item.actionLabel || 'Відкрити')}</span>
+                    <span class="work-queue-action">${escapeHtml(humanizeQueueActionLabel(item.actionLabel || 'Відкрити'))}</span>
                 </a>
                 <div class="work-queue-reply-row">${actionRow}</div>
             </div>
@@ -2556,8 +2747,8 @@ const DashboardPage = (() => {
         const applied = Number(counts.applied || 0);
         const failed = Number(counts.failed || 0);
         if (failed > 0 && applied > 0) return `Частково виконано: ${applied} успішно, ${failed} з помилкою.`;
-        if (failed > 0) return `Не вдалося виконати для ${failed} item.`;
-        return `Готово: оновлено ${applied} item.`;
+        if (failed > 0) return `Не вдалося виконати для ${failed} пунктів.`;
+        return `Готово: оновлено ${applied} пунктів.`;
     }
 
     async function runReplyBulkAction(button, path, payload) {
@@ -2568,7 +2759,7 @@ const DashboardPage = (() => {
             button.disabled = true;
             button.setAttribute('aria-busy', 'true');
         }
-        setReplyOpsFeedback('Виконуємо bulk action...');
+        setReplyOpsFeedback('Виконуємо масову дію...');
         try {
             const resp = await fetch(path, {
                 method: 'POST',
@@ -2585,8 +2776,8 @@ const DashboardPage = (() => {
             return data;
         } catch (err) {
             console.error('Reply backlog bulk action error:', err);
-            setReplyOpsFeedback(err.message || 'Не вдалося виконати bulk action', 'error');
-            alert(err.message || 'Не вдалося виконати bulk action');
+            setReplyOpsFeedback(err.message || 'Не вдалося виконати масову дію', 'error');
+            alert(err.message || 'Не вдалося виконати масову дію');
             throw err;
         } finally {
             if (button) {
@@ -2636,13 +2827,13 @@ const DashboardPage = (() => {
         const token = localStorage.getItem('pzp_token');
         if (!token) throw new Error('Немає активної сесії');
         const previousItemId = options.previousItemId || _workQueueSelectedItemId || null;
-        const actionLabel = options.actionLabel || 'Reply execution action applied.';
+        const actionLabel = options.actionLabel || 'Дію з відповіддю виконано.';
 
         if (button) {
             button.disabled = true;
             button.setAttribute('aria-busy', 'true');
         }
-        setExecutionFeedback('Виконуємо durable reply action...', '');
+        setExecutionFeedback('Виконуємо збережену дію з відповіддю...', '');
         renderTriageWorkspaceOnly(false);
         try {
             const resp = await fetch(path, {
@@ -2661,9 +2852,9 @@ const DashboardPage = (() => {
             return data;
         } catch (err) {
             console.error('Reply backlog action error:', err);
-            setExecutionFeedback(err.message || 'Reply execution action failed; queue focus was not advanced.', 'error');
+            setExecutionFeedback(err.message || 'Не вдалося виконати дію з відповіддю; фокус черги не змінено.', 'error');
             renderTriageWorkspaceOnly(true);
-            alert(err.message || 'Не вдалося оновити reply backlog');
+            alert(err.message || 'Не вдалося оновити беклог відповідей');
             throw err;
         } finally {
             if (button) {
@@ -2677,13 +2868,13 @@ const DashboardPage = (() => {
         const token = localStorage.getItem('pzp_token');
         if (!token) throw new Error('Немає активної сесії');
         const previousItemId = options.previousItemId || _workQueueSelectedItemId || null;
-        const actionLabel = options.actionLabel || 'Task execution action applied.';
+        const actionLabel = options.actionLabel || 'Дію по задачі виконано.';
 
         if (button) {
             button.disabled = true;
             button.setAttribute('aria-busy', 'true');
         }
-        setExecutionFeedback('Виконуємо durable task action...', '');
+        setExecutionFeedback('Виконуємо збережену дію по задачі...', '');
         renderTriageWorkspaceOnly(false);
         try {
             const resp = await fetch(path, {
@@ -2702,7 +2893,7 @@ const DashboardPage = (() => {
             return data;
         } catch (err) {
             console.error('Task queue action error:', err);
-            setExecutionFeedback(err.message || 'Task execution action failed; queue focus was not advanced.', 'error');
+            setExecutionFeedback(err.message || 'Не вдалося виконати дію по задачі; фокус черги не змінено.', 'error');
             renderTriageWorkspaceOnly(true);
             alert(err.message || 'Не вдалося оновити задачу');
             throw err;
@@ -2718,13 +2909,13 @@ const DashboardPage = (() => {
         const token = localStorage.getItem('pzp_token');
         if (!token) throw new Error('Немає активної сесії');
         const previousItemId = options.previousItemId || _workQueueSelectedItemId || null;
-        const actionLabel = options.actionLabel || 'Booking confirmation applied.';
+        const actionLabel = options.actionLabel || 'Підтвердження бронювання виконано.';
 
         if (button) {
             button.disabled = true;
             button.setAttribute('aria-busy', 'true');
         }
-        setExecutionFeedback('Виконуємо durable booking confirmation...', '');
+        setExecutionFeedback('Виконуємо підтвердження бронювання...', '');
         renderTriageWorkspaceOnly(false);
         try {
             const resp = await fetch(path, {
@@ -2743,7 +2934,7 @@ const DashboardPage = (() => {
             return data;
         } catch (err) {
             console.error('Booking queue action error:', err);
-            setExecutionFeedback(err.message || 'Booking confirmation failed; queue focus was not advanced.', 'error');
+            setExecutionFeedback(err.message || 'Не вдалося підтвердити бронювання; фокус черги не змінено.', 'error');
             renderTriageWorkspaceOnly(true);
             alert(err.message || 'Не вдалося підтвердити бронювання');
             throw err;
@@ -2758,14 +2949,14 @@ const DashboardPage = (() => {
     function confirmQueueBooking(bookingId, button) {
         const id = String(bookingId || '').trim();
         if (!id) return;
-        if (!window.confirm('Підтвердити preliminary бронювання?')) return;
+        if (!window.confirm('Підтвердити попереднє бронювання?')) return;
         return runBookingQueueAction(
             button,
             `/api/bookings/${encodeURIComponent(id)}/confirm`,
             { source: 'queue' },
             {
                 previousItemId: _workQueueSelectedItemId || `booking:needs_confirmation:${id}`,
-                actionLabel: 'Booking confirmed through narrow confirmation contract.'
+                actionLabel: 'Бронювання підтверджено через вузький confirmation contract.'
             }
         );
     }
@@ -2779,7 +2970,7 @@ const DashboardPage = (() => {
             { sourceSurface: 'manager_queue_task_execution_v2' },
             {
                 previousItemId: _workQueueSelectedItemId || `task:overdue:${taskId}`,
-                actionLabel: 'Task completed through canonical tasks.status.'
+                actionLabel: 'Задачу виконано через канонічне поле tasks.status.'
             }
         );
     }
@@ -2792,7 +2983,7 @@ const DashboardPage = (() => {
             { snoozeHours: 24, sourceSurface: 'manager_queue_task_execution_v2' },
             {
                 previousItemId: _workQueueSelectedItemId || `task:overdue:${taskId}`,
-                actionLabel: 'Task deadline moved by 24 hours through tasks.deadline.'
+                actionLabel: 'Дедлайн задачі перенесено на 24 години через tasks.deadline.'
             }
         );
     }
@@ -2812,8 +3003,8 @@ const DashboardPage = (() => {
             <div class="reply-owner-picker-card">
                 <div class="reply-owner-picker-head">
                     <div>
-                        <h3 id="taskOwnerPickerTitle">Reassign task owner</h3>
-                        <p id="taskOwnerPickerHint">Choose an active assignable user. Saved value is canonical users.id.</p>
+                        <h3 id="taskOwnerPickerTitle">Змінити відповідального задачі</h3>
+                        <p id="taskOwnerPickerHint">Оберіть активного користувача, якого можна призначити. Збережеться users.id.</p>
                     </div>
                     <button type="button" class="reply-owner-picker-close" aria-label="Закрити" onclick="DashboardPage.closeTaskOwnerPicker()">×</button>
                 </div>
@@ -2848,7 +3039,7 @@ const DashboardPage = (() => {
             return `<option value="${user.id}"${user.id === currentId ? ' selected' : ''}>${escapeHtml(`${label}${role}`)}</option>`;
         }).join('');
         setTaskOwnerPickerBody(`
-            <label class="reply-owner-picker-label" for="taskOwnerPickerSelect">Task owner</label>
+            <label class="reply-owner-picker-label" for="taskOwnerPickerSelect">Відповідальний задачі</label>
             <select id="taskOwnerPickerSelect" class="reply-owner-picker-select" aria-describedby="taskOwnerPickerHint">${options}</select>
         `, true);
         const select = document.getElementById('taskOwnerPickerSelect');
@@ -2956,7 +3147,7 @@ const DashboardPage = (() => {
             { ownerUserId, sourceSurface: 'manager_queue_task_execution_v2' },
             {
                 previousItemId: _workQueueSelectedItemId || `task:overdue:${state.taskId}`,
-                actionLabel: 'Task owner reassigned through canonical tasks.owner_user_id.'
+                actionLabel: 'Відповідального задачі змінено через канонічне поле tasks.owner_user_id.'
             }
         );
         await closeTaskOwnerPicker(true);
@@ -2978,7 +3169,7 @@ const DashboardPage = (() => {
                 <div class="reply-owner-picker-head">
                     <div>
                         <h3 id="replyOwnerPickerTitle">Змінити відповідального</h3>
-                        <p id="replyOwnerPickerHint">Оберіть активного manager-up користувача. Зберігається canonical user id.</p>
+                        <p id="replyOwnerPickerHint">Оберіть активного користувача з правом призначення. Збережеться user id.</p>
                     </div>
                     <button type="button" class="reply-owner-picker-close" aria-label="Закрити" onclick="DashboardPage.closeReplyOwnerPicker()">×</button>
                 </div>
@@ -3159,7 +3350,7 @@ const DashboardPage = (() => {
                 { ownerUserId, sourceSurface: 'manager_queue_execution_v6' },
                 {
                     previousItemId: `waiting_reply:conversation:${state.conversationId}`,
-                    actionLabel: 'Reply owner reassigned through canonical reply_owner_user_id.'
+                    actionLabel: 'Відповідального за відповідь змінено через reply_owner_user_id.'
                 }
             );
         }
@@ -3174,7 +3365,7 @@ const DashboardPage = (() => {
             { snoozeHours: 24, sourceSurface: 'manager_queue_execution_v6' },
             {
                 previousItemId: `waiting_reply:conversation:${conversationId}`,
-                actionLabel: 'Reply SLA moved by 24 hours through reply_sla_at.'
+                actionLabel: 'SLA відповіді перенесено на 24 години через reply_sla_at.'
             }
         );
     }
@@ -3188,7 +3379,7 @@ const DashboardPage = (() => {
             { sourceSurface: 'manager_queue_execution_v6' },
             {
                 previousItemId: `waiting_reply:conversation:${conversationId}`,
-                actionLabel: 'Reply expectation cleared without claiming an inbound reply.'
+                actionLabel: 'Очікування відповіді очищено без позначки, що клієнт відповів.'
             }
         );
     }
@@ -3201,7 +3392,7 @@ const DashboardPage = (() => {
             { sourceSurface: 'manager_queue_execution_v6' },
             {
                 previousItemId: `waiting_reply:conversation:${conversationId}`,
-                actionLabel: 'Overdue reply escalation task created or reused by conversation_reply anchor.'
+                actionLabel: 'Задачу ескалації простроченої відповіді створено або перевикористано через conversation_reply.'
             }
         );
     }

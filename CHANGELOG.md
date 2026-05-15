@@ -4,6 +4,15 @@
 
 ---
 
+## v0.49.2 - Dashboard Work Queue Ukrainian + Density Fix (2026-05-15)
+
+### Dashboard Work Queue [codex]
+- **UI** - повністю українізовано блок робочої черги на dashboard: операції з відповідями, аналітика черги, робоча зона вирішення, історія дій і execution actions більше не показують англомовні службові заголовки.
+- **UX** - work queue перебудовано в щільніший desktop master/detail layout: bucket-и лишаються зліва, а робоча зона вирішення стала компактною sticky-панеллю справа з mobile fallback в одну колонку.
+- **Polish** - технічні risk/action keys на кшталт `missing_deadline`, `reply_escalated` і backend action labels мапляться у людиночитні українські назви перед показом у UI.
+
+---
+
 ## v0.49.1 - Navigation Page Switch Flicker Fix (2026-05-15)
 
 ### Navigation Stability [codex]

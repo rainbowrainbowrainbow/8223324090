@@ -1504,9 +1504,10 @@ describe('work queue endpoint', () => {
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
 
         const body = dom.window.document.getElementById('workQueueBody');
-        assert.match(body.textContent, /Resolution workspace/);
-        assert.match(body.textContent, /Queue Intelligence v1/);
-        assert.match(body.textContent, /no global score/);
+        assert.match(body.textContent, /Робоча зона вирішення/);
+        assert.match(body.textContent, /Аналітика черги v1/);
+        assert.match(body.textContent, /без глобального скорингу/);
+        assert.doesNotMatch(body.textContent, /reply_escalated|missing_deadline|Queue Intelligence|Resolution workspace/);
         assert.equal(body.querySelectorAll('.work-queue-detail-btn').length, 3);
 
         DashboardPage.selectTriageItem(encodeURIComponent('waiting_reply:conversation:41'));
@@ -1514,13 +1515,13 @@ describe('work queue endpoint', () => {
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         let workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
         assert.match(workspace.textContent, /Reply Client/);
-        assert.match(workspace.textContent, /Execution v6/);
-        assert.match(workspace.textContent, /Reply Action History/);
-        assert.match(workspace.textContent, /Owner reassigned/);
-        assert.match(workspace.textContent, /Reply-first inline execution/);
+        assert.match(workspace.textContent, /Дії/);
+        assert.match(workspace.textContent, /Історія дій по відповідях/);
+        assert.match(workspace.textContent, /Відповідального змінено/);
+        assert.match(workspace.textContent, /Дії відповіді виконуються прямо з черги/);
         assert.match(workspace.textContent, /conversations\.reply_expected/);
-        assert.match(workspace.textContent, /Open reply escalation context/);
-        assert.match(workspace.textContent, /reply_escalated/);
+        assert.match(workspace.textContent, /Відкрити контекст ескалації відповіді/);
+        assert.match(workspace.textContent, /відповідь ескальована/);
         assert.equal(workspace.querySelectorAll('[data-triage-reply-action]').length, 3);
         assert.ok(workspace.querySelector('a[href="/omni?conversation=41"]'));
         assert.ok(workspace.querySelector('a[href="/sales-funnel?lead=41"]'));
@@ -1530,8 +1531,8 @@ describe('work queue endpoint', () => {
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
         assert.match(workspace.textContent, /Callback Client/);
-        assert.match(workspace.textContent, /not canonical waiting_reply/);
-        assert.match(workspace.textContent, /route-out only/i);
+        assert.match(workspace.textContent, /не канонічне очікування відповіді/);
+        assert.match(workspace.textContent, /лише через перехід у контекст/i);
         assert.equal(workspace.querySelectorAll('[data-triage-reply-action]').length, 0);
         assert.equal(workspace.querySelector('#replyActionHistoryPanel'), null);
         assert.ok(workspace.querySelector('a[href="/sales-funnel?lead=11"]'));
@@ -1542,15 +1543,15 @@ describe('work queue endpoint', () => {
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
         assert.match(workspace.textContent, /Overdue task/);
-        assert.match(workspace.textContent, /Task Action History/);
-        assert.match(workspace.textContent, /Task completed/);
-        assert.match(workspace.textContent, /Task actions use object-level visibility/);
+        assert.match(workspace.textContent, /Історія дій по задачі/);
+        assert.match(workspace.textContent, /Задачу виконано/);
+        assert.match(workspace.textContent, /Дії по задачі працюють через перевірку видимості задачі/);
         assert.equal(workspace.querySelectorAll('[data-triage-task-action]').length, 3);
 
         await DashboardPage.completeQueueTask(1, null);
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
-        assert.match(workspace.textContent, /Task completed through canonical tasks\.status/);
+        assert.match(workspace.textContent, /Задачу виконано через канонічне поле tasks\.status/);
         assert.equal(body.querySelector('[data-work-queue-item-id="task:overdue:1"]'), null);
 
         DashboardPage.selectTriageItem(encodeURIComponent('waiting_reply:conversation:41'));
@@ -1559,7 +1560,7 @@ describe('work queue endpoint', () => {
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         workspace = dom.window.document.getElementById('workQueueResolutionWorkspace');
-        assert.match(workspace.textContent, /Reply expectation cleared/);
+        assert.match(workspace.textContent, /Очікування відповіді очищено/);
         assert.match(workspace.textContent, /Callback Client/);
         assert.equal(workspace.querySelector('#replyActionHistoryPanel'), null, 'history from cleared reply must not leak into the next selected item');
         assert.ok(body.querySelector('[data-work-queue-item-id="callback_due:lead_interaction:4"].is-triage-selected'));
@@ -1619,12 +1620,12 @@ describe('work queue endpoint', () => {
         assert.match(dashboardJs, /clearReplyExpectation/);
         assert.match(dashboardJs, /escalateReplyExpectation/);
         assert.match(dashboardJs, /refetchQueueAfterDurableExecution/);
-        assert.match(dashboardJs, /Reply Action History/);
+        assert.match(dashboardJs, /Історія дій по відповідях/);
         assert.match(dashboardJs, /replyActionHistoryPanel/);
         assert.match(dashboardJs, /loadReplyActionHistoryForSelected/);
         assert.match(dashboardJs, /\/api\/work-queue\/replies\/.*\/history/);
         assert.match(dashboardJs, /reloadReplyActionHistory/);
-        assert.match(dashboardJs, /Task Action History/);
+        assert.match(dashboardJs, /Історія дій по задачі/);
         assert.match(dashboardJs, /data-triage-task-action/);
         assert.match(dashboardJs, /\/api\/work-queue\/tasks\/.*\/done/);
         assert.match(dashboardJs, /\/api\/work-queue\/tasks\/.*\/owner/);
@@ -1632,8 +1633,8 @@ describe('work queue endpoint', () => {
         assert.match(dashboardJs, /\/api\/work-queue\/tasks\/.*\/history/);
         assert.match(dashboardJs, /taskOwnerPickerSelect/);
         assert.match(dashboardJs, /knownIds\.has\(ownerUserId\)/);
-        assert.match(dashboardJs, /never_on_route_out|route-out only/i);
-        assert.match(dashboardJs, /Execution v6/);
+        assert.match(dashboardJs, /never_on_route_out|лише перехід у контекст/i);
+        assert.match(dashboardJs, /Робоча зона вирішення/);
         assert.match(dashboardJs, /\/api\/work-queue\/replies\/.*\/escalate/);
         assert.match(dashboardJs, /work-queue\/replies/);
         assert.match(dashboardJs, /work-queue-state-pill/);
@@ -1644,7 +1645,8 @@ describe('work queue endpoint', () => {
         assert.match(dashboardJs, /nextTriageItem/);
         assert.match(dashboardJs, /previousTriageItem/);
         assert.match(dashboardJs, /data-triage-reply-action/);
-        assert.match(dashboardJs, /Route-out only|route-out only/);
+        assert.match(dashboardJs, /Лише перехід у контекст|лише перехід у контекст/);
+        assert.doesNotMatch(dashboardJs, /Reply Operations|Queue Intelligence v1|Resolution workspace|Owner \/ risk|Exact context|Execution v6|Mark done|Reassign owner|Deadline \+24h/);
         assert.doesNotMatch(dashboardJs, /unread_count\s*>\s*0/i);
         assert.match(dashboardCss, /bucket-waiting_reply/);
         assert.match(dashboardCss, /is-waiting-reply/);

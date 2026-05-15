@@ -80,7 +80,7 @@ const BOOKING_VISIBILITY_MATRIX = [
         classification: 'compatible-fallback'
     },
     {
-        actor: 'staff profile assigned as booking host or second animator',
+        actor: 'staff profile assigned as booking primary line, legacy host, or second animator',
         view: true,
         edit: false,
         queue: true,
@@ -188,6 +188,10 @@ function bookingSecondAnimator(booking = {}) {
     return normalizeBookingValue(booking.second_animator ?? booking.secondAnimator);
 }
 
+function bookingLineStaffId(booking = {}) {
+    return normalizePositiveInteger(booking.line_id ?? booking.lineId);
+}
+
 function bookingHostStaffId(booking = {}) {
     return normalizePositiveInteger(booking.hosts ?? booking.host_id ?? booking.hostId);
 }
@@ -206,6 +210,7 @@ function staffScopedHostMatch(user, booking = {}) {
     const staffIds = userStaffIds(user);
     if (!staffIds.length) return false;
     const bookingStaffIds = [
+        bookingLineStaffId(booking),
         bookingHostStaffId(booking),
         bookingSecondAnimatorStaffId(booking)
     ].filter(Boolean);
@@ -249,7 +254,7 @@ function classifyBookingVisibility(user, booking = {}) {
             canEdit: false,
             classification: 'fully-classified',
             scopeSource: 'staff-host-assignment',
-            reason: 'durable employee_profiles.staff_id assignment matches booking host/second animator'
+            reason: 'durable employee_profiles.staff_id assignment matches booking primary line/host/second animator'
         });
     }
 
@@ -301,15 +306,34 @@ function buildStaffHostCondition(user, params, alias) {
             WHERE ep.user_id = ${userRef}
               AND COALESCE(ep.is_active, true) IS TRUE
               AND ep.staff_id IS NOT NULL
-              AND (${alias}.hosts = ep.staff_id OR ${alias}.second_animator = ep.staff_id::text)
+              AND (${alias}.line_id = ep.staff_id::text OR ${alias}.hosts = ep.staff_id OR ${alias}.second_animator = ep.staff_id::text)
+        )`);
+        conditions.push(`EXISTS (
+            SELECT 1
+            FROM users u
+            JOIN staff s ON COALESCE(s.is_active, true) IS TRUE
+              AND (
+                (NULLIF(BTRIM(u.name), '') IS NOT NULL AND LOWER(BTRIM(s.name)) = LOWER(BTRIM(u.name)))
+                OR (NULLIF(BTRIM(u.username), '') IS NOT NULL AND LOWER(BTRIM(s.name)) = LOWER(BTRIM(u.username)))
+                OR (NULLIF(BTRIM(u.telegram_username), '') IS NOT NULL AND LOWER(BTRIM(COALESCE(s.telegram_username, ''))) = LOWER(BTRIM(u.telegram_username)))
+                OR (NULLIF(BTRIM(u.telegram_chat_id::text), '') IS NOT NULL AND NULLIF(BTRIM(COALESCE(s.telegram_id::text, '')), '') = BTRIM(u.telegram_chat_id::text))
+              )
+            WHERE u.id = ${userRef}
+              AND (
+                ${alias}.line_id = s.id::text
+                OR ${alias}.hosts = s.id
+                OR ${alias}.second_animator = s.id::text
+                OR LOWER(BTRIM(COALESCE(${alias}.second_animator, ''))) = LOWER(BTRIM(s.name))
+              )
         )`);
     }
 
     const staffIds = userStaffIds(user);
     if (staffIds.length) {
+        const lineRefs = staffIds.map(staffId => pushParam(params, String(staffId))).join(',');
         const hostRefs = staffIds.map(staffId => pushParam(params, staffId)).join(',');
         const secondAnimatorRefs = staffIds.map(staffId => pushParam(params, String(staffId))).join(',');
-        conditions.push(`(${alias}.hosts IN (${hostRefs}) OR ${alias}.second_animator IN (${secondAnimatorRefs}))`);
+        conditions.push(`(${alias}.line_id IN (${lineRefs}) OR ${alias}.hosts IN (${hostRefs}) OR ${alias}.second_animator IN (${secondAnimatorRefs}))`);
     }
 
     if (!conditions.length) return 'FALSE';
@@ -382,7 +406,7 @@ function getVisibleBookingScope(user, params = [], alias = 'b') {
         reason: hasStaffHost && hasLegacy
             ? 'durable staff host assignment plus exact legacy created_by/second_animator compatibility'
             : (hasStaffHost
-                ? 'durable employee_profiles.staff_id assignment matches booking host/second animator'
+                ? 'durable employee_profiles.staff_id assignment matches booking primary line/host/second animator'
                 : 'exact legacy created_by/second_animator match only')
     });
 }

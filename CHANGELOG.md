@@ -4,6 +4,15 @@
 
 ---
 
+## v0.50.26 - Timeline Animator Visibility Fix (2026-05-16)
+
+### Timeline / Booking Visibility [codex]
+- **Animator Timeline** - виправлено видимість бронювань для акаунтів аніматорів: staff scope тепер враховує `bookings.line_id`, тобто реальну лінію таймлайну.
+- **Женя / Staff Accounts** - додано fallback через зв'язку `users` -> `staff`, щоб прив'язані staff-акаунти не отримували порожній таймлайн через стару перевірку по `hosts`.
+- **Regression Test** - додано тест, який гарантує, що аніматор бачить івенти своєї primary line навіть коли `hosts` є кількістю аніматорів, а не staff id.
+
+---
+
 ## v0.50.25 - Omni Account Connections & Alerts (2026-05-15)
 
 ### Omni / Account Connectivity [codex]

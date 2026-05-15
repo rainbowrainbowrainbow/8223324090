@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.50.39",
+  "version": "0.50.40",
   "eventGenix": {
-    "releaseLabel": "Dashboard Remove My Focus Widget"
+    "releaseLabel": "Price List Categories Print Redesign"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

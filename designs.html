@@ -8,16 +8,16 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.50.39">
-    <link rel="stylesheet" href="css/layout.css?v=0.50.39">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.39">
-    <link rel="stylesheet" href="css/pages.css?v=0.50.39">
-    <link rel="stylesheet" href="css/modals.css?v=0.50.39">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.39">
-    <link rel="stylesheet" href="css/responsive.css?v=0.50.39">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.50.39">
-    <link rel="stylesheet" href="css/designs.css?v=0.50.39">
-    <link rel="stylesheet" href="css/catalog.css?v=0.50.39">
+    <link rel="stylesheet" href="css/base.css?v=0.50.40">
+    <link rel="stylesheet" href="css/layout.css?v=0.50.40">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.50.40">
+    <link rel="stylesheet" href="css/pages.css?v=0.50.40">
+    <link rel="stylesheet" href="css/modals.css?v=0.50.40">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.50.40">
+    <link rel="stylesheet" href="css/responsive.css?v=0.50.40">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.50.40">
+    <link rel="stylesheet" href="css/designs.css?v=0.50.40">
+    <link rel="stylesheet" href="css/catalog.css?v=0.50.40">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -183,32 +183,145 @@
         }
 
         /* Price list tab */
-        .price-section { margin-bottom: 32px; }
-        .price-section-header {
-            font-size: 18px; font-weight: 800; margin-bottom: 12px;
-            padding-bottom: 8px; border-bottom: 2px solid var(--gray-200);
-            display: flex; align-items: center; gap: 8px;
-        }
-        .price-table {
-            width: 100%; border-collapse: collapse; background: rgba(255,255,255,0.5);
-            backdrop-filter: blur(20px); border-radius: 12px; overflow: hidden;
-        }
-        .price-table th {
-            text-align: left; padding: 10px 14px; font-size: 12px; font-weight: 800;
-            text-transform: uppercase; letter-spacing: 0.5px; color: var(--gray-500);
-            background: rgba(0,0,0,0.03); border-bottom: 2px solid var(--gray-200);
-        }
-        .price-table td {
-            padding: 10px 14px; font-size: 14px; border-bottom: 1px solid var(--gray-100);
-        }
-        .price-table tr:last-child td { border-bottom: none; }
-        .price-table .price-icon { font-size: 20px; }
-        .price-table .price-name { font-weight: 700; }
-        .price-table .price-value { font-weight: 800; color: var(--primary-dark); white-space: nowrap; }
-        .price-table .price-per-child { font-size: 11px; color: var(--gray-400); }
-        .price-table .price-details { font-size: 12px; color: var(--gray-500); }
         .price-actions {
-            display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
+            display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; align-items: center;
+        }
+        .price-action-btn,
+        .price-view-btn {
+            min-height: 38px; padding: 9px 14px; border-radius: 12px; border: 1px solid rgba(15,23,42,0.10);
+            background: rgba(255,255,255,0.72); color: var(--gray-800); font-weight: 800;
+            cursor: pointer; font-family: inherit; box-shadow: 0 8px 24px rgba(15,23,42,0.06);
+        }
+        .price-action-btn {
+            background: linear-gradient(135deg, #0F766E, #10B981); color: #fff; border: none;
+        }
+        .price-view-btn.active { background: #111827; color: #fff; border-color: #111827; }
+        .price-sheet {
+            --price-ink: #172033;
+            --price-muted: #64748B;
+            --price-line: rgba(15,23,42,0.10);
+            --price-paper: rgba(255,255,255,0.92);
+            display: flex; flex-direction: column; gap: 18px;
+            color: var(--price-ink);
+        }
+        .price-sheet-hero {
+            position: relative; overflow: hidden; display: flex; justify-content: space-between; gap: 22px;
+            padding: clamp(22px, 4vw, 38px); border-radius: 26px;
+            background:
+                radial-gradient(circle at 88% 12%, rgba(16,185,129,0.18), transparent 32%),
+                linear-gradient(135deg, rgba(255,255,255,0.98), rgba(238,242,255,0.86));
+            border: 1px solid rgba(148,163,184,0.22);
+            box-shadow: 0 22px 60px rgba(15,23,42,0.12);
+        }
+        .price-sheet-hero::after {
+            content: ''; position: absolute; right: 28px; bottom: -36px; width: 170px; height: 170px;
+            border-radius: 42px; transform: rotate(12deg);
+            background: linear-gradient(135deg, rgba(16,185,129,0.16), rgba(244,114,182,0.14));
+            pointer-events: none;
+        }
+        .price-sheet-kicker {
+            display: inline-flex; align-items: center; gap: 8px; margin-bottom: 8px;
+            color: #0F766E; font-size: 12px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase;
+        }
+        .price-sheet-hero h1 { margin: 0; max-width: 760px; font-size: clamp(28px, 4vw, 48px); line-height: 1.02; letter-spacing: 0; }
+        .price-sheet-hero p { margin: 12px 0 0; max-width: 650px; color: var(--price-muted); font-weight: 650; line-height: 1.55; }
+        .price-sheet-summary {
+            position: relative; z-index: 1; min-width: 170px; align-self: stretch; display: flex; flex-direction: column; justify-content: center;
+            padding: 18px; border-radius: 22px; background: rgba(255,255,255,0.72); border: 1px solid rgba(15,23,42,0.08);
+        }
+        .price-sheet-summary strong { font-size: 44px; line-height: 1; color: #0F766E; }
+        .price-sheet-summary span { margin-top: 6px; color: var(--price-ink); font-weight: 900; }
+        .price-sheet-summary small { margin-top: 10px; color: var(--price-muted); font-weight: 700; }
+        .price-sheet-note {
+            padding: 14px 16px; border-radius: 16px; background: rgba(16,185,129,0.08);
+            border: 1px solid rgba(16,185,129,0.18); color: #115E59; line-height: 1.5; font-weight: 650;
+        }
+        .price-category {
+            page-break-inside: avoid; break-inside: avoid; padding: 18px; border-radius: 24px;
+            background: var(--price-paper); border: 1px solid rgba(148,163,184,0.22);
+            box-shadow: 0 16px 42px rgba(15,23,42,0.08);
+        }
+        .price-category-head {
+            display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: center;
+            padding-bottom: 16px; border-bottom: 1px solid var(--price-line);
+        }
+        .price-category-mark {
+            width: 62px; height: 62px; display: inline-flex; align-items: center; justify-content: center;
+            border-radius: 22px; font-size: 30px; background: rgba(15,23,42,0.05);
+            box-shadow: inset 0 0 0 1px rgba(15,23,42,0.06);
+        }
+        .price-category-title span { display: block; margin-bottom: 4px; color: var(--price-muted); font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; }
+        .price-category-title h2 { margin: 0; font-size: clamp(22px, 3vw, 32px); line-height: 1.08; }
+        .price-category-title p { margin: 6px 0 0; color: var(--price-muted); line-height: 1.45; font-weight: 650; }
+        .price-category-count {
+            min-width: 44px; height: 44px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center;
+            border-radius: 999px; background: #111827; color: #fff; font-weight: 900;
+        }
+        .price-accent-mint .price-category-mark { background: rgba(16,185,129,0.12); }
+        .price-accent-rose .price-category-mark { background: rgba(244,114,182,0.14); }
+        .price-accent-violet .price-category-mark { background: rgba(139,92,246,0.14); }
+        .price-accent-amber .price-category-mark { background: rgba(245,158,11,0.15); }
+        .price-accent-blue .price-category-mark { background: rgba(59,130,246,0.14); }
+        .price-subcategory { margin-top: 16px; }
+        .price-subcategory-head {
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            margin-bottom: 10px; padding: 0 2px;
+        }
+        .price-subcategory-head h3 { margin: 0; font-size: 15px; color: var(--price-ink); font-weight: 900; }
+        .price-subcategory-head span {
+            min-width: 28px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+            border-radius: 999px; background: rgba(15,23,42,0.07); color: var(--price-muted); font-size: 12px; font-weight: 900;
+        }
+        .price-items-list { display: flex; flex-direction: column; gap: 10px; }
+        .price-item-card {
+            display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center;
+            padding: 14px; border-radius: 18px; background: rgba(248,250,252,0.86);
+            border: 1px solid rgba(148,163,184,0.18);
+        }
+        .price-item-main { display: grid; grid-template-columns: auto 1fr; gap: 12px; min-width: 0; align-items: start; }
+        .price-item-icon {
+            width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+            border-radius: 13px; background: #fff; color: #0F766E; font-size: 18px; font-weight: 900;
+        }
+        .price-item-card h4 { margin: 0; color: var(--price-ink); font-size: 15px; font-weight: 900; }
+        .price-item-details { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 7px; color: var(--price-muted); font-size: 12px; font-weight: 800; }
+        .price-item-details span { color: rgba(100,116,139,0.55); }
+        .price-item-card p { margin: 7px 0 0; color: var(--price-muted); font-size: 12px; line-height: 1.45; }
+        .price-item-side { text-align: right; white-space: nowrap; }
+        .price-item-price { font-size: 19px; font-weight: 950; color: #0F766E; }
+        .price-unit { display: block; margin-top: 2px; font-size: 11px; color: var(--price-muted); font-weight: 800; }
+        .price-item-code { margin-top: 4px; color: var(--price-muted); font-size: 11px; font-weight: 900; }
+        .price-empty-category {
+            margin-top: 16px; padding: 18px; border-radius: 18px; border: 1px dashed rgba(100,116,139,0.36);
+            color: var(--price-muted); background: rgba(248,250,252,0.74);
+        }
+        .price-empty-category strong { display: block; color: var(--price-ink); margin-bottom: 4px; }
+        .price-graduation-bridge {
+            display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center;
+            padding: 22px; border-radius: 24px; color: #fff;
+            background: linear-gradient(135deg, #172033, #312E81 55%, #0F766E);
+            box-shadow: 0 18px 48px rgba(15,23,42,0.20);
+        }
+        .price-graduation-copy h2 { margin: 0; font-size: 28px; }
+        .price-graduation-copy p { margin: 8px 0 0; max-width: 760px; color: rgba(255,255,255,0.78); line-height: 1.55; font-weight: 650; }
+        .price-graduation-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+        .price-graduation-actions button {
+            min-height: 40px; padding: 10px 14px; border: none; border-radius: 13px;
+            background: #fff; color: #172033; font-family: inherit; font-weight: 900; cursor: pointer;
+        }
+        .price-graduation-actions button.secondary { background: rgba(255,255,255,0.14); color: #fff; border: 1px solid rgba(255,255,255,0.20); }
+        .price-print-footer { color: var(--price-muted); font-size: 12px; text-align: center; padding: 6px 0 0; }
+        #priceContent[data-view="compact"] .price-sheet-hero { padding: 22px; }
+        #priceContent[data-view="compact"] .price-sheet-hero h1 { font-size: 30px; }
+        #priceContent[data-view="compact"] .price-category { padding: 14px; }
+        #priceContent[data-view="compact"] .price-category-head { padding-bottom: 12px; }
+        #priceContent[data-view="compact"] .price-item-card { padding: 10px 12px; border-radius: 14px; }
+        @media (max-width: 760px) {
+            .price-sheet-hero, .price-graduation-bridge { grid-template-columns: 1fr; display: grid; }
+            .price-sheet-hero { flex-direction: column; }
+            .price-sheet-summary { min-width: 0; }
+            .price-category-head, .price-item-card { grid-template-columns: 1fr; }
+            .price-item-side { text-align: left; }
         }
 
         /* Calendar tab */
@@ -362,13 +475,42 @@
         @media print {
             .header, .design-tabs, .design-filters, .drop-zone,
             .tag-chips, .price-actions, .lightbox, .design-edit-overlay,
-            .user-panel, .notification, .skip-link, .page-login-overlay { display: none !important; }
-            body { background: var(--white) !important; }
-            .page-container { padding: 0 !important; max-width: none !important; }
-            .price-table { page-break-inside: avoid; }
-            .price-section { page-break-inside: avoid; }
-            .price-table th { background: #f5f5f5 !important; }
-            .price-section-header { font-size: 16px; }
+            .user-panel, .notification, .skip-link, .page-login-overlay,
+            .sidebar-nav, .sidebar-overlay, .role-panel-fab, .role-panel,
+            #tabGallery, #tabCollections, #tabCalendar, #tabCatalogs { display: none !important; }
+            @page { size: A4 portrait; margin: 14mm 12mm; }
+            * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+            html, body { background: #fff !important; color: #111827 !important; }
+            .page-container { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+            #mainApp, #tabPrice, #priceContent { display: block !important; }
+            .price-sheet { gap: 10mm; color: #111827 !important; }
+            .price-sheet-hero {
+                padding: 12mm !important; border-radius: 0 !important; box-shadow: none !important;
+                border: 1px solid #CBD5E1 !important; background: #F8FAFC !important;
+            }
+            .price-sheet-hero::after { display: none !important; }
+            .price-sheet-hero h1 { font-size: 28pt !important; }
+            .price-sheet-hero p, .price-category-title p, .price-item-card p, .price-item-details,
+            .price-print-footer { color: #475569 !important; }
+            .price-sheet-summary { background: #fff !important; box-shadow: none !important; border: 1px solid #CBD5E1 !important; }
+            .price-sheet-note { background: #ECFDF5 !important; border-color: #A7F3D0 !important; color: #064E3B !important; }
+            .price-category {
+                page-break-inside: avoid; break-inside: avoid; border-radius: 0 !important;
+                box-shadow: none !important; background: #fff !important; border: 1px solid #CBD5E1 !important;
+            }
+            .price-subcategory { page-break-inside: avoid; break-inside: avoid; }
+            .price-item-card {
+                page-break-inside: avoid; break-inside: avoid; background: #F8FAFC !important;
+                box-shadow: none !important; border: 1px solid #E2E8F0 !important;
+            }
+            .price-category-mark, .price-item-icon { background: #fff !important; border: 1px solid #E2E8F0 !important; }
+            .price-category-count { background: #111827 !important; color: #fff !important; }
+            .price-item-price, .price-sheet-summary strong, .price-sheet-kicker { color: #047857 !important; }
+            .price-graduation-bridge {
+                page-break-inside: avoid; break-inside: avoid; border-radius: 0 !important; box-shadow: none !important;
+                background: #111827 !important; color: #fff !important;
+            }
+            .price-graduation-actions { display: none !important; }
         }
 
         /* Empty state */
@@ -422,19 +564,62 @@
             background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12);
             color: var(--gray-200);
         }
-        body.dark-mode .price-table {
-            background: rgba(255,255,255,0.04);
+        body.dark-mode .price-action-btn { box-shadow: 0 14px 28px rgba(0,0,0,0.30); }
+        body.dark-mode .price-view-btn {
+            background: rgba(255,255,255,0.07); color: #DDE7F3; border-color: rgba(148,163,184,0.18);
         }
-        body.dark-mode .price-table th {
-            background: rgba(255,255,255,0.06); color: var(--gray-400);
-            border-bottom-color: rgba(255,255,255,0.1);
+        body.dark-mode .price-view-btn.active { background: rgba(16,185,129,0.18); color: #A7F3D0; border-color: rgba(16,185,129,0.34); }
+        body.dark-mode .price-sheet {
+            --price-ink: #E5EEF8;
+            --price-muted: #9AA8BA;
+            --price-line: rgba(148,163,184,0.18);
+            --price-paper: rgba(18,24,42,0.92);
         }
-        body.dark-mode .price-table td {
-            color: var(--gray-300); border-bottom-color: rgba(255,255,255,0.06);
+        body.dark-mode .price-sheet-hero {
+            background:
+                radial-gradient(circle at 88% 12%, rgba(16,185,129,0.20), transparent 34%),
+                linear-gradient(135deg, rgba(21,28,48,0.98), rgba(31,29,58,0.90));
+            border-color: rgba(148,163,184,0.20);
+            box-shadow: 0 24px 64px rgba(0,0,0,0.32);
         }
-        body.dark-mode .price-table .price-name { color: var(--gray-200); }
-        body.dark-mode .price-table .price-value { color: #6EE7B7; }
-        body.dark-mode .price-section-header { color: var(--gray-200); border-bottom-color: rgba(255,255,255,0.1); }
+        body.dark-mode .price-sheet-summary {
+            background: rgba(8,13,25,0.68); border-color: rgba(148,163,184,0.18);
+        }
+        body.dark-mode .price-sheet-summary span,
+        body.dark-mode .price-category-title h2,
+        body.dark-mode .price-subcategory-head h3,
+        body.dark-mode .price-item-card h4,
+        body.dark-mode .price-empty-category strong { color: #E5EEF8; }
+        body.dark-mode .price-sheet-note {
+            background: rgba(16,185,129,0.10); border-color: rgba(16,185,129,0.24); color: #A7F3D0;
+        }
+        body.dark-mode .price-category {
+            background: rgba(18,24,42,0.86); border-color: rgba(148,163,184,0.18);
+            box-shadow: 0 18px 46px rgba(0,0,0,0.28);
+        }
+        body.dark-mode .price-category-mark,
+        body.dark-mode .price-item-icon {
+            background: rgba(255,255,255,0.06); box-shadow: inset 0 0 0 1px rgba(148,163,184,0.16);
+        }
+        body.dark-mode .price-category-count { background: rgba(16,185,129,0.16); color: #A7F3D0; }
+        body.dark-mode .price-subcategory-head span {
+            background: rgba(148,163,184,0.12); color: #CBD5E1;
+        }
+        body.dark-mode .price-item-card {
+            background: rgba(8,13,25,0.54); border-color: rgba(148,163,184,0.15);
+        }
+        body.dark-mode .price-item-details span { color: rgba(154,168,186,0.55); }
+        body.dark-mode .price-item-price,
+        body.dark-mode .price-sheet-summary strong,
+        body.dark-mode .price-sheet-kicker { color: #6EE7B7; }
+        body.dark-mode .price-empty-category {
+            background: rgba(8,13,25,0.44); border-color: rgba(148,163,184,0.24);
+        }
+        body.dark-mode .price-graduation-bridge {
+            background: linear-gradient(135deg, #0B1020, #27245A 58%, #075E56);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.36);
+        }
+        body.dark-mode .price-print-footer { color: #94A3B8; }
         body.dark-mode .calendar-day {
             background: rgba(255,255,255,0.04);
         }
@@ -512,8 +697,9 @@
             .calendar-dot { width: 20px; height: 20px; }
 
             /* Price */
-            .price-table th, .price-table td { padding: 8px 10px; font-size: 13px; }
-            .price-section-header { font-size: 15px; }
+            .price-category { padding: 14px; border-radius: 18px; }
+            .price-category-mark { width: 50px; height: 50px; border-radius: 18px; }
+            .price-graduation-actions { justify-content: flex-start; }
         }
 
         @media (max-width: 480px) {
@@ -1021,7 +1207,9 @@
             <!-- ==================== PRICE TAB ==================== -->
             <div id="tabPrice" style="display:none">
                 <div class="price-actions">
-                    <button onclick="window.print()" style="padding:10px 20px; border:none; border-radius:8px; background:var(--primary); color:#fff; font-weight:700; cursor:pointer; font-family:inherit;">Друкувати</button>
+                    <button type="button" class="price-action-btn" onclick="printPriceSheet()">Друк / PDF</button>
+                    <button type="button" class="price-view-btn active" data-price-view="presentation" onclick="setPriceViewMode('presentation')">Презентаційний</button>
+                    <button type="button" class="price-view-btn" data-price-view="compact" onclick="setPriceViewMode('compact')">Компактний</button>
                 </div>
                 <div id="priceContent"></div>
             </div>
@@ -1323,16 +1511,16 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/ui.js?v=0.50.39"></script>
-    <script src="js/config.js?v=0.50.39"></script>
-    <script src="js/notification.js?v=0.50.39"></script>
-    <script src="js/api.js?v=0.50.39"></script>
-    <script src="js/auth.js?v=0.50.39"></script>
-    <script src="js/components/sidebar.js?v=0.50.39"></script>
+    <script src="js/ui.js?v=0.50.40"></script>
+    <script src="js/config.js?v=0.50.40"></script>
+    <script src="js/notification.js?v=0.50.40"></script>
+    <script src="js/api.js?v=0.50.40"></script>
+    <script src="js/auth.js?v=0.50.40"></script>
+    <script src="js/components/sidebar.js?v=0.50.40"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/catalogs.js?v=0.50.39"></script>
-    <script src="js/designs-page.js?v=0.50.39"></script>
-    <script src="js/role-panel.js?v=0.50.39"></script>
+    <script src="js/catalogs.js?v=0.50.40"></script>
+    <script src="js/designs-page.js?v=0.50.40"></script>
+    <script src="js/role-panel.js?v=0.50.40"></script>
     <script>
     // v38.9.0: Create catalog modal functions
     function rememberEditableOverlay(overlay) {
@@ -2439,6 +2627,6 @@
         }
     });
     </script>
-    <script src="js/alerts.js?v=0.50.39"></script>
+    <script src="js/alerts.js?v=0.50.40"></script>
 </body>
 </html>

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.50.40 - Price List Categories Print Redesign (2026-05-16)
+
+### Designs / Price List [codex]
+- **Category Logic** - прайс-лист перебудовано у фіксований порядок `Меню -> Торти -> Розважальні програми -> Піньяти -> Костюми` з normalization layer для фактичних `products`.
+- **Visual Hierarchy** - вкладка `Прайс-лист` отримала документний sales-flow з hero, category/subcategory блоками, item cards, ціною, деталями та fallback-сигналами для неповних даних.
+- **Dark + Print** - screen view має окремий dark-mode pass, а друк/PDF отримав A4-friendly light layout без CRM chrome, з контрольованими page breaks.
+- **Catalog Flow** - випускний каталог вбудовано в той самий sales-контур через bridge-блок із переходом до існуючого catalog viewer/PDF flow без дублювання даних.
+
+---
+
 ## v0.50.39 - Dashboard Remove My Focus Widget (2026-05-16)
 
 ### Dashboard [codex]

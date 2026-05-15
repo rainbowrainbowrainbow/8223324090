@@ -698,66 +698,305 @@ window.deleteCollection = deleteCollection;
 // ==========================================
 // PRICE LIST
 // ==========================================
+const PRICE_CATEGORY_ORDER = ['menu', 'cakes', 'entertainment-programs', 'pinatas', 'costumes'];
+const PRICE_CATEGORY_META = {
+    menu: {
+        label: 'Меню',
+        kicker: 'Їжа та частування',
+        description: 'Позиції для банкету, дитячого столу та кулінарних форматів.',
+        icon: '🍽',
+        accent: 'mint'
+    },
+    cakes: {
+        label: 'Торти',
+        kicker: 'Святкові десерти',
+        description: 'Торти, капкейки, кейк-попси та солодкі позиції для фіналу події.',
+        icon: '🎂',
+        accent: 'rose'
+    },
+    'entertainment-programs': {
+        label: 'Розважальні програми',
+        kicker: 'Анімація, квести, шоу',
+        description: 'Основні сценарії, шоу, майстер-класи та активності для дітей.',
+        icon: '✨',
+        accent: 'violet'
+    },
+    pinatas: {
+        label: 'Піньяти',
+        kicker: 'Додатковий wow-момент',
+        description: 'Піньяти та повʼязані формати для яскравого фіналу свята.',
+        icon: '🪅',
+        accent: 'amber'
+    },
+    costumes: {
+        label: 'Костюми',
+        kicker: 'Образи та персонажі',
+        description: 'Костюми, персонажі та тематичні образи для програм.',
+        icon: '🎭',
+        accent: 'blue'
+    },
+    other: {
+        label: 'Інші послуги',
+        kicker: 'Потрібна класифікація',
+        description: 'Позиції без точної категорії. Це сигнал для подальшого очищення прайсу.',
+        icon: '▦',
+        accent: 'slate'
+    }
+};
+
+const PRICE_SUBCATEGORY_LABELS = {
+    menu: {
+        pizza: 'Піца та кухня',
+        sweets: 'Солодкі майстер-класи',
+        service: 'Сервіс меню'
+    },
+    cakes: {
+        desserts: 'Десертні формати',
+        custom: 'Індивідуальні торти'
+    },
+    'entertainment-programs': {
+        quest: 'Квести',
+        animation: 'Анімація',
+        show: 'Шоу',
+        photo: 'Фото та відео',
+        masterclass: 'Майстер-класи'
+    },
+    pinatas: {
+        formats: 'Формати піньяти',
+        filler: 'Піньяти з наповненням'
+    },
+    costumes: {
+        characters: 'Персонажі',
+        rental: 'Оренда костюмів'
+    },
+    other: {
+        fallback: 'Інше в категорії'
+    }
+};
+
+function getProductText(product) {
+    return [product.id, product.code, product.label, product.name, product.category]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+}
+
+function resolvePriceCategory(product) {
+    const raw = String(product.category || '').toLowerCase();
+    const text = getProductText(product);
+
+    if (['menu', 'food', 'banquet', 'catering'].includes(raw)) return 'menu';
+    if (['cake', 'cakes', 'dessert', 'desserts'].includes(raw)) return 'cakes';
+    if (['costume', 'costumes', 'character', 'characters'].includes(raw)) return 'costumes';
+    if (raw === 'pinata') return 'pinatas';
+
+    if (raw === 'masterclass') {
+        if (/(cake|cupcake|капк|кейк|торт|десерт)/i.test(text)) return 'cakes';
+        if (/(pizza|піца|цукер|прян|cookie|candy)/i.test(text)) return 'menu';
+        return 'entertainment-programs';
+    }
+
+    if (['quest', 'animation', 'show', 'photo'].includes(raw)) return 'entertainment-programs';
+    return 'other';
+}
+
+function resolvePriceSubcategory(product, categoryKey) {
+    const raw = String(product.category || '').toLowerCase();
+    const text = getProductText(product);
+
+    if (categoryKey === 'menu') {
+        if (/(pizza|піца)/i.test(text)) return 'pizza';
+        if (/(цукер|прян|cookie|candy)/i.test(text)) return 'sweets';
+        return 'service';
+    }
+    if (categoryKey === 'cakes') {
+        if (/(cake|cupcake|капк|кейк|торт|десерт)/i.test(text)) return 'desserts';
+        return 'custom';
+    }
+    if (categoryKey === 'entertainment-programs') {
+        if (PRICE_SUBCATEGORY_LABELS['entertainment-programs'][raw]) return raw;
+        return 'masterclass';
+    }
+    if (categoryKey === 'pinatas') {
+        return product.hasFiller ? 'filler' : 'formats';
+    }
+    if (categoryKey === 'costumes') {
+        return raw === 'costume_rental' || /rent|оренд/i.test(text) ? 'rental' : 'characters';
+    }
+    return 'fallback';
+}
+
+function buildPriceGroups(products) {
+    const groups = {};
+    [...PRICE_CATEGORY_ORDER, 'other'].forEach(key => {
+        groups[key] = { meta: PRICE_CATEGORY_META[key], subcategories: {}, count: 0 };
+    });
+
+    (Array.isArray(products) ? products : [])
+        .filter(p => p && p.isActive !== false)
+        .forEach(product => {
+            const categoryKey = resolvePriceCategory(product);
+            const group = groups[categoryKey] || groups.other;
+            const subKey = resolvePriceSubcategory(product, categoryKey);
+            const subLabels = PRICE_SUBCATEGORY_LABELS[categoryKey] || PRICE_SUBCATEGORY_LABELS.other;
+            if (!group.subcategories[subKey]) {
+                group.subcategories[subKey] = {
+                    key: subKey,
+                    label: subLabels[subKey] || 'Інше в категорії',
+                    items: []
+                };
+            }
+            group.subcategories[subKey].items.push(product);
+            group.count += 1;
+        });
+
+    Object.values(groups).forEach(group => {
+        Object.values(group.subcategories).forEach(sub => {
+            sub.items.sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0) || String(a.name || '').localeCompare(String(b.name || ''), 'uk'));
+        });
+    });
+
+    return groups;
+}
+
+function renderPriceItem(product) {
+    const priceText = product.isPerChild
+        ? `${formatPrice(product.price)} <span class="price-unit">/ дитина</span>`
+        : formatPrice(product.price);
+    const details = [
+        product.duration ? `${product.duration} хв` : '',
+        product.ageRange ? product.ageRange : '',
+        product.kidsCapacity ? `${product.kidsCapacity} дітей` : '',
+        product.hosts ? `${product.hosts} аніматор(и)` : ''
+    ].filter(Boolean);
+    const note = product.description || (product.hasFiller ? 'Потребує уточнення наповнення перед подією.' : '');
+
+    return `<article class="price-item-card">
+        <div class="price-item-main">
+            <span class="price-item-icon" aria-hidden="true">${product.icon || '•'}</span>
+            <div>
+                <h4>${esc(product.name || product.label || 'Позиція прайсу')}</h4>
+                <div class="price-item-details">${details.map(esc).join('<span>•</span>') || 'Умови уточнюються менеджером'}</div>
+                ${note ? `<p>${esc(note)}</p>` : ''}
+            </div>
+        </div>
+        <div class="price-item-side">
+            <div class="price-item-price">${priceText}</div>
+            ${product.label ? `<div class="price-item-code">${esc(product.label)}</div>` : ''}
+        </div>
+    </article>`;
+}
+
+function renderPriceCategory(categoryKey, group) {
+    const meta = group.meta || PRICE_CATEGORY_META.other;
+    const subcategories = Object.values(group.subcategories);
+    const empty = subcategories.length === 0;
+    const body = empty
+        ? `<div class="price-empty-category">
+                <strong>Позиції ще не заведені</strong>
+                <span>Категорія лишається у прайсі як контрольна точка для структури.</span>
+           </div>`
+        : subcategories.map(sub => `<section class="price-subcategory">
+                <div class="price-subcategory-head">
+                    <h3>${esc(sub.label)}</h3>
+                    <span>${sub.items.length}</span>
+                </div>
+                <div class="price-items-list">${sub.items.map(renderPriceItem).join('')}</div>
+            </section>`).join('');
+
+    return `<section class="price-category price-accent-${meta.accent}" data-price-category="${categoryKey}">
+        <div class="price-category-head">
+            <div class="price-category-mark" aria-hidden="true">${meta.icon}</div>
+            <div class="price-category-title">
+                <span>${esc(meta.kicker)}</span>
+                <h2>${esc(meta.label)}</h2>
+                <p>${esc(meta.description)}</p>
+            </div>
+            <div class="price-category-count">${group.count || 0}</div>
+        </div>
+        ${body}
+    </section>`;
+}
+
+function renderPriceGraduationBridge() {
+    return `<section class="price-graduation-bridge">
+        <div class="price-graduation-copy">
+            <span class="price-sheet-kicker">Каталог у цьому ж sales-контурі</span>
+            <h2>Випускні 2026</h2>
+            <p>Прайс і випускний каталог тепер читаються як одна продажна секція: менеджер може одразу перейти до пакетів, відкрити перегляд або підготувати PDF.</p>
+        </div>
+        <div class="price-graduation-actions">
+            <button type="button" onclick="openGraduationCatalogFromPrice()">Відкрити каталог</button>
+            <button type="button" class="secondary" onclick="downloadCatalog('graduation','Випускні 2026')">PDF каталогу</button>
+        </div>
+    </section>`;
+}
+
+async function openGraduationCatalogFromPrice() {
+    const catalogsTab = document.querySelector('.design-tab[data-tab="catalogs"]');
+    if (catalogsTab) catalogsTab.click();
+    if (typeof loadCatalogs === 'function') await loadCatalogs();
+    if (typeof loadDynamicCatalogCards === 'function') loadDynamicCatalogCards();
+    await openCatalog('graduation');
+}
+window.openGraduationCatalogFromPrice = openGraduationCatalogFromPrice;
+
+function setPriceViewMode(mode) {
+    const content = document.getElementById('priceContent');
+    const safeMode = mode === 'compact' ? 'compact' : 'presentation';
+    if (content) content.dataset.view = safeMode;
+    document.querySelectorAll('[data-price-view]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.priceView === safeMode);
+    });
+}
+window.setPriceViewMode = setPriceViewMode;
+
+function printPriceSheet() {
+    document.body.classList.add('printing-price');
+    window.setTimeout(() => window.print(), 40);
+    window.setTimeout(() => document.body.classList.remove('printing-price'), 1000);
+}
+window.printPriceSheet = printPriceSheet;
+
 async function loadPriceList() {
     const content = document.getElementById('priceContent');
-    content.innerHTML = '<div class="empty-state">Завантаження...</div>';
+    content.innerHTML = '<div class="empty-state">Завантаження прайсу...</div>';
 
     try {
         const res = await apiFetch(`${PRODUCTS_API}`);
         if (!res) return;
         const products = await res.json();
+        const groups = buildPriceGroups(products);
+        const totalItems = Object.values(groups).reduce((sum, group) => sum + Number(group.count || 0), 0);
+        const updated = new Date().toLocaleDateString('uk-UA', { day: '2-digit', month: 'long', year: 'numeric' });
+        const orderedKeys = [...PRICE_CATEGORY_ORDER, ...(groups.other.count ? ['other'] : [])];
 
-        // Group by category
-        const groups = {};
-        const catOrder = ['quest', 'animation', 'show', 'photo', 'masterclass', 'pinata'];
-        const catNames = {
-            quest: '🗝️ Квести', animation: '🎪 Анімація', show: '✨ Шоу',
-            photo: '📸 Фото послуги', masterclass: '🎨 Майстер-класи', pinata: '🪅 Піньяти'
-        };
-
-        for (const p of products) {
-            if (!p.isActive) continue;
-            if (!groups[p.category]) groups[p.category] = [];
-            groups[p.category].push(p);
-        }
-
-        let html = '';
-        for (const cat of catOrder) {
-            const items = groups[cat];
-            if (!items || items.length === 0) continue;
-
-            html += `<div class="price-section">
-                <div class="price-section-header">${catNames[cat] || cat}</div>
-                <table class="price-table">
-                    <thead><tr>
-                        <th></th><th>Програма</th><th>Тривалість</th><th>Ціна</th><th>Деталі</th>
-                    </tr></thead>
-                    <tbody>`;
-
-            for (const p of items) {
-                const priceText = p.isPerChild
-                    ? `${formatPrice(p.price)} <span class="price-per-child">/ дитина</span>`
-                    : formatPrice(p.price);
-                const details = [
-                    p.ageRange ? `${p.ageRange}` : '',
-                    p.kidsCapacity ? `${p.kidsCapacity} дітей` : '',
-                    p.hosts ? `${p.hosts} аніматор(ів)` : ''
-                ].filter(Boolean).join(' · ');
-
-                html += `<tr>
-                    <td class="price-icon">${p.icon || ''}</td>
-                    <td class="price-name">${esc(p.name)}</td>
-                    <td>${p.duration ? p.duration + ' хв' : '—'}</td>
-                    <td class="price-value">${priceText}</td>
-                    <td class="price-details">${details}</td>
-                </tr>`;
-            }
-            html += '</tbody></table></div>';
-        }
-
-        content.innerHTML = html || '<div class="empty-state"><span>💰</span>Немає програм</div>';
+        content.dataset.view = content.dataset.view || 'presentation';
+        content.innerHTML = `<section class="price-sheet">
+            <header class="price-sheet-hero">
+                <div>
+                    <span class="price-sheet-kicker">Прайс-лист Event Genix</span>
+                    <h1>Послуги, програми та продажні каталоги</h1>
+                    <p>Структуровано у послідовний документ: категорії, підкатегорії, ціни, умови та повʼязаний каталог випускних.</p>
+                </div>
+                <div class="price-sheet-summary" aria-label="Коротка статистика прайсу">
+                    <strong>${totalItems}</strong>
+                    <span>активних позицій</span>
+                    <small>Оновлено: ${updated}</small>
+                </div>
+            </header>
+            <div class="price-sheet-note">
+                <strong>Примітка для менеджера:</strong>
+                ціни можуть уточнюватись залежно від формату події, кількості гостей, наповнення та індивідуальних побажань.
+            </div>
+            ${orderedKeys.map(key => renderPriceCategory(key, groups[key])).join('')}
+            ${renderPriceGraduationBridge()}
+            <footer class="price-print-footer">
+                Event Genix CRM · прайс для клієнтського показу, друку та PDF · ${updated}
+            </footer>
+        </section>`;
     } catch (err) {
-        content.innerHTML = '<div class="empty-state">Помилка завантаження</div>';
+        content.innerHTML = '<div class="empty-state">Помилка завантаження прайсу</div>';
         console.error('Price list error:', err);
     }
 }
@@ -1252,7 +1491,7 @@ function buildCatalogPageHtml(pkg) {
             </div>
             <!-- FOOTER -->
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.50.39" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.50.40" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>
@@ -1346,7 +1585,7 @@ function buildAutoPageHtml(page) {
                 ${page.description && itemsHtml ? `<div class="cat-desc" style="margin-top:12px">${esc(page.description)}</div>` : ''}
             </div>
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.50.39" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.50.40" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>

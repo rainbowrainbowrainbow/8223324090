@@ -1,5 +1,5 @@
 /**
- * js/components/sidebar.js — Sidebar Aurora v0.50.0
+ * js/components/sidebar.js — Sidebar Aurora v0.50.3
  * Living dual-theme sidebar with micro-interactions.
  */
 const Sidebar = (() => {
@@ -11,7 +11,8 @@ const Sidebar = (() => {
         taskWidgetTimer: null,
         funnelWidgetTimer: null,
         nowTimer: null,
-        eventTimer: null
+        eventTimer: null,
+        aiCompanionTimer: null
     };
     const GROUP_STATE_VERSION = 'collapsed-by-default-v1';
 
@@ -374,6 +375,7 @@ const Sidebar = (() => {
         _fetchLiveBadges();
         _refreshTaskMiniWidget();
         _refreshFunnelWidget();
+        _refreshAiCompanion();
         _queueActiveIndicatorUpdate();
     }
 
@@ -509,6 +511,19 @@ const Sidebar = (() => {
                 </div>
                 <div class="sidebar-now-time" id="sidebarNowTime">--:--</div>
             </div>
+            <div class="sidebar-ai-companion" id="sidebarAiCompanion" data-ai-mode="mock" data-sidebar-stop-profile="true">
+                <div class="sidebar-ai-status">
+                    <span class="sidebar-ai-dot" aria-hidden="true"></span>
+                    <div class="sidebar-ai-copy">
+                        <div class="sidebar-ai-title">
+                            <span>AI помічник</span>
+                            <em id="sidebarAiModeLabel">імітація</em>
+                        </div>
+                        <div class="sidebar-ai-line" id="sidebarAiLine">Готую коротку підказку по цій сторінці.</div>
+                    </div>
+                </div>
+                <button type="button" class="sidebar-ai-start" onclick="Sidebar.openAiCompanion(event)">Почати</button>
+            </div>
             <div class="sidebar-now-event empty" id="sidebarNowEvent">
                 <div class="sidebar-now-event-left">
                     <span class="sidebar-now-event-dot"></span>
@@ -629,6 +644,100 @@ const Sidebar = (() => {
         }
         clearTimeout(_state.eventTimer);
         _state.eventTimer = setTimeout(_refreshCurrentEvent, 300000);
+    }
+
+    function _getSidebarAiMode() {
+        const raw = String(
+            window.EventGenixAIMode ||
+            localStorage.getItem('eg_sidebar_ai_mode') ||
+            localStorage.getItem('pzp_ai_mode') ||
+            'mock'
+        ).trim().toLowerCase();
+        return raw === 'live' || raw === 'real' || raw === 'llm' ? 'live' : 'mock';
+    }
+
+    function _getAiCompanionPhrases() {
+        const path = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+        if (path === '/tasks') {
+            return [
+                'Демо: бачу задачі й готую підказку, що винести у фокус.',
+                'Можу підсвітити прострочене, waiting і швидкі перемоги.',
+                'Пізніше тут буде живий аналіз задач через LLM.'
+            ];
+        }
+        if (path === '/sales-funnel' || path === '/leads') {
+            return [
+                'Демо: стежу за лідами, які чекають дії.',
+                'Підкажу, де воронка охолола або завис follow-up.',
+                'Пізніше тут буде живий AI-аналіз воронки.'
+            ];
+        }
+        if (path === '/dashboard') {
+            return [
+                'Демо: збираю короткий операційний підсумок дня.',
+                'Підкажу, що важливіше: алерти, задачі чи воронка.',
+                'Пізніше тут буде живий AI-радар dashboard.'
+            ];
+        }
+        if (path === '/chat') {
+            return [
+                'Демо: можу допомогти перетворити повідомлення на задачу.',
+                'Підкажу, де є follow-up або незакритий контекст.',
+                'Пізніше тут буде живий AI-помічник чату.'
+            ];
+        }
+        if (path === '/staff') {
+            return [
+                'Демо: перевіряю графік на порожні місця і навантаження.',
+                'Підкажу, хто не на зв’язку або де потрібна заміна.',
+                'Пізніше тут буде живий AI-аналіз графіка.'
+            ];
+        }
+        return [
+            'Демо: готовий підказати, що варто зробити далі.',
+            'Поки це заглушка, але місце вже підготовлене під LLM.',
+            'Коли індикатор зелений, тут працюватиме реальний AI.'
+        ];
+    }
+
+    function _refreshAiCompanion() {
+        const box = document.getElementById('sidebarAiCompanion');
+        const labelEl = document.getElementById('sidebarAiModeLabel');
+        const lineEl = document.getElementById('sidebarAiLine');
+        if (!box || !labelEl || !lineEl) return;
+
+        const mode = _getSidebarAiMode();
+        box.dataset.aiMode = mode;
+        labelEl.textContent = mode === 'live' ? 'LLM' : 'імітація';
+        box.setAttribute(
+            'title',
+            mode === 'live'
+                ? 'Зелений індикатор: підключений реальний AI'
+                : 'Помаранчевий індикатор: зараз показуються демо-підказки'
+        );
+
+        const phrases = _getAiCompanionPhrases();
+        const index = Math.floor(Date.now() / 45000) % phrases.length;
+        lineEl.textContent = phrases[index];
+
+        clearTimeout(_state.aiCompanionTimer);
+        _state.aiCompanionTimer = setTimeout(_refreshAiCompanion, 45000);
+    }
+
+    function openAiCompanion(event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        const fab = document.getElementById('kleshnyaFab');
+        if (fab && typeof fab.click === 'function') {
+            fab.click();
+            return;
+        }
+        if (typeof showNotification === 'function') {
+            showNotification('AI-чат підготовлено. Поки відкриваю Менеджер AI.', 'info');
+        }
+        window.location.href = '/copilot';
     }
 
     function _ensurePillsRow() {
@@ -900,6 +1009,7 @@ const Sidebar = (() => {
         let user = _getCurrentSidebarUser();
         _ensureNowCard();
         _refreshNowCard();
+        _refreshAiCompanion();
         if (!user) return;
         const avatarEl = document.getElementById('sidebarUserAvatar');
         const compactAvatarEl = document.getElementById('sidebarCompactAvatar');
@@ -962,10 +1072,12 @@ const Sidebar = (() => {
         el.setAttribute('title', 'Відкрити профіль');
         const go = () => { window.location.href = '/profile'; };
         el.addEventListener('click', (e) => {
+            if (e.target.closest('[data-sidebar-stop-profile="true"]')) return;
             e.preventDefault();
             go();
         });
         el.addEventListener('keydown', (e) => {
+            if (e.target.closest('[data-sidebar-stop-profile="true"]')) return;
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 go();
@@ -1088,6 +1200,7 @@ const Sidebar = (() => {
         initToggle();
         _refreshNowCard();
         _refreshCurrentEvent();
+        _refreshAiCompanion();
         _initPageTransitions();
         // Fill user card immediately + keep retrying until avatar shows real initial
         if (!_state.userRetryStarted) {
@@ -1242,6 +1355,7 @@ const Sidebar = (() => {
         checkPageAccess,
         toggleGroup,
         openAlerts,
+        openAiCompanion,
         initUserCard,
         markShellReady: _markShellReady,
         clearShellReady: _clearShellReady,

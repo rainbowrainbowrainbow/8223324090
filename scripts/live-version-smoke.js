@@ -26,6 +26,15 @@ function normalizeBase(url) {
     }
 }
 
+function htmlEscape(text) {
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 async function fetchText(url) {
     const res = await fetch(url, { headers: { Accept: 'text/html,application/json' } });
     if (!res.ok) fail(`${url} returned HTTP ${res.status}`);
@@ -57,7 +66,7 @@ async function main() {
     if (!html.includes(`v${expectedVersion}`) && !html.includes(`?v=${expectedVersion}`)) {
         fail(`login HTML does not expose v${expectedVersion} or ?v=${expectedVersion}`);
     }
-    if (expectedLabel && !html.includes(expectedLabel)) {
+    if (expectedLabel && !html.includes(expectedLabel) && !html.includes(htmlEscape(expectedLabel))) {
         fail(`login HTML does not expose release label "${expectedLabel}"`);
     }
 

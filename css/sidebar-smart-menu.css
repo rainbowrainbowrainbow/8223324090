@@ -1,57 +1,66 @@
 /* css/sidebar-smart-menu.css — compact customizable sidebar menu */
 
 body.sidebar-smart-compact .sidebar-header {
-    padding-bottom: 4px;
+    padding-bottom: 3px;
 }
 
 body.sidebar-smart-compact .sidebar-brand {
-    padding: 8px 12px 4px;
+    padding: 7px 11px 3px;
 }
 
 body.sidebar-smart-compact .sidebar-brand .logo-img-small {
-    width: 30px;
-    height: 30px;
+    width: 29px;
+    height: 29px;
+}
+
+body.sidebar-smart-compact .em-logo-title {
+    font-size: 1.02em;
+}
+
+body.sidebar-smart-compact .em-logo-sub {
+    font-size: .56em;
 }
 
 body.sidebar-smart-compact .sidebar-user-card {
-    margin: 2px 8px 6px;
-    padding: 7px 9px;
-    gap: 8px;
-    border-radius: 12px;
+    min-height: 46px;
+    margin: 2px 8px 5px;
+    padding: 6px 8px;
+    gap: 7px;
+    border-radius: 11px;
 }
 
 body.sidebar-smart-compact .sidebar-user-avatar {
-    width: 30px;
-    height: 30px;
+    width: 29px;
+    height: 29px;
 }
 
 body.sidebar-smart-compact .sidebar-user-name {
-    font-size: 12px;
+    font-size: 11.7px;
 }
 
 body.sidebar-smart-compact .sidebar-user-role {
-    font-size: 10px;
+    font-size: 9.8px;
 }
 
 body.sidebar-smart-compact .sidebar-pills {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-    padding: 6px 8px;
+    gap: 5px;
+    padding: 5px 8px;
 }
 
 body.sidebar-smart-compact .sidebar-pill {
-    min-height: 50px;
-    padding: 7px 5px;
-    border-radius: 14px;
+    min-height: 44px;
+    padding: 6px 4px;
+    border-radius: 13px;
 }
 
 body.sidebar-smart-compact .sidebar-pill-icon {
-    transform: scale(.88);
+    transform: scale(.82);
 }
 
 body.sidebar-smart-compact .sidebar-pill-value {
-    font-size: 16px;
+    font-size: 15px;
     line-height: 1;
 }
 
@@ -60,16 +69,16 @@ body.sidebar-smart-compact .sidebar-pill-meta {
 }
 
 .sidebar-smart-menu-wrap {
-    padding: 6px 8px 8px;
-    border-bottom: 1px solid rgba(148, 163, 184, .18);
+    padding: 5px 8px 7px;
+    border-bottom: 1px solid rgba(148, 163, 184, .16);
 }
 
 .sidebar-smart-menu {
-    border: 1px solid rgba(16, 185, 129, .18);
-    background: linear-gradient(135deg, rgba(16, 185, 129, .10), rgba(37, 99, 235, .055));
-    border-radius: 15px;
-    padding: 7px;
-    box-shadow: 0 8px 24px rgba(15, 23, 42, .08);
+    border: 1px solid rgba(16, 185, 129, .16);
+    background: linear-gradient(135deg, rgba(16, 185, 129, .09), rgba(37, 99, 235, .05));
+    border-radius: 14px;
+    padding: 6px;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, .07);
 }
 
 .smart-menu-head {
@@ -77,27 +86,27 @@ body.sidebar-smart-compact .sidebar-pill-meta {
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    margin-bottom: 6px;
+    margin-bottom: 5px;
     padding: 0 2px;
 }
 
 .smart-menu-title {
     color: var(--gray-500, #64748b);
-    font-size: 9.5px;
+    font-size: 9px;
     font-weight: 900;
-    letter-spacing: .12em;
+    letter-spacing: .11em;
     text-transform: uppercase;
 }
 
 .smart-menu-edit {
-    width: 23px;
-    height: 23px;
+    width: 22px;
+    height: 22px;
     border: 1px solid rgba(16, 185, 129, .22);
     border-radius: 999px;
-    background: rgba(255, 255, 255, .72);
+    background: rgba(255, 255, 255, .70);
     color: #0f766e;
     cursor: pointer;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 900;
     line-height: 1;
 }
@@ -109,24 +118,24 @@ body.sidebar-smart-compact .sidebar-pill-meta {
 
 .smart-menu-links {
     display: grid;
-    gap: 5px;
+    gap: 4px;
 }
 
 .smart-menu-link,
 .smart-menu-add {
-    min-height: 34px;
+    min-height: 31px;
     display: grid;
-    grid-template-columns: 25px minmax(0, 1fr) auto;
+    grid-template-columns: 23px minmax(0, 1fr) auto;
     align-items: center;
-    gap: 8px;
-    padding: 5px 8px;
-    border-radius: 11px;
-    border: 1px solid rgba(148, 163, 184, .16);
-    background: rgba(255, 255, 255, .68);
+    gap: 7px;
+    padding: 4px 7px;
+    border-radius: 10px;
+    border: 1px solid rgba(148, 163, 184, .15);
+    background: rgba(255, 255, 255, .64);
     color: var(--gray-800, #1f2937);
     text-decoration: none;
     font: inherit;
-    font-size: 12.5px;
+    font-size: 12px;
     font-weight: 900;
     text-align: left;
     cursor: pointer;
@@ -134,26 +143,26 @@ body.sidebar-smart-compact .sidebar-pill-meta {
 
 .smart-menu-link:hover,
 .smart-menu-add:hover {
-    background: rgba(255, 255, 255, .92);
-    border-color: rgba(16, 185, 129, .24);
+    background: rgba(255, 255, 255, .90);
+    border-color: rgba(16, 185, 129, .23);
 }
 
 .smart-menu-link.active {
-    border-color: rgba(16, 185, 129, .34);
-    background: rgba(16, 185, 129, .14);
+    border-color: rgba(16, 185, 129, .32);
+    background: rgba(16, 185, 129, .13);
     color: #0f766e;
 }
 
 .smart-menu-icon {
-    width: 25px;
-    height: 25px;
+    width: 23px;
+    height: 23px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 9px;
-    background: rgba(255, 255, 255, .8);
-    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, .14);
-    font-size: 13px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, .80);
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, .13);
+    font-size: 12px;
 }
 
 .smart-menu-label {
@@ -164,22 +173,22 @@ body.sidebar-smart-compact .sidebar-pill-meta {
 }
 
 .smart-menu-badge {
-    padding: 2px 6px;
+    padding: 2px 5px;
     border-radius: 999px;
     background: rgba(37, 99, 235, .10);
     color: #2563eb;
-    font-size: 9px;
+    font-size: 8.5px;
     font-weight: 900;
     text-transform: uppercase;
-    letter-spacing: .04em;
+    letter-spacing: .035em;
 }
 
 .smart-menu-add {
     grid-template-columns: 1fr;
     justify-items: center;
-    min-height: 30px;
+    min-height: 28px;
     color: var(--gray-500, #64748b);
-    background: rgba(255, 255, 255, .42);
+    background: rgba(255, 255, 255, .38);
 }
 
 .sidebar-dashboard-duplicate-hidden {
@@ -187,69 +196,70 @@ body.sidebar-smart-compact .sidebar-pill-meta {
 }
 
 body.sidebar-smart-compact .sidebar-links {
-    padding: 5px 8px 10px;
-    gap: 1px;
+    padding: 4px 8px 10px;
+    gap: 0;
 }
 
 body.sidebar-smart-compact .sidebar-links .nav-link {
-    min-height: 31px;
-    padding: 5px 10px;
+    min-height: 28px;
+    padding: 4px 9px;
     gap: 7px;
-    border-radius: 10px;
-    font-size: 12.5px;
+    border-radius: 9px;
+    font-size: 12px;
     font-weight: 800;
 }
 
 body.sidebar-smart-compact .nav-icon {
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     border-radius: 8px;
 }
 
 body.sidebar-smart-compact .eg-icon-svg {
-    width: 13.5px;
-    height: 13.5px;
+    width: 12.8px;
+    height: 12.8px;
 }
 
 body.sidebar-smart-compact .sidebar-group + .sidebar-group {
-    margin-top: 3px;
-    padding-top: 4px;
+    margin-top: 2px;
+    padding-top: 3px;
 }
 
 body.sidebar-smart-compact .sidebar-group-header {
-    min-height: 30px;
-    padding: 5px 9px;
-    border-radius: 10px;
+    min-height: 28px;
+    padding: 4px 8px;
+    border-radius: 9px;
 }
 
 body.sidebar-smart-compact .sidebar-group-label {
-    font-size: 9.5px;
-    letter-spacing: .08em;
+    font-size: 9px;
+    letter-spacing: .075em;
 }
 
 body.sidebar-smart-compact .sidebar-group-header .nav-icon {
-    width: 17px !important;
-    height: 17px !important;
+    width: 16px !important;
+    height: 16px !important;
 }
 
 body.sidebar-smart-compact .sidebar-group-header .nav-icon .eg-icon-svg {
-    width: 12px;
-    height: 12px;
+    width: 11.5px;
+    height: 11.5px;
 }
 
 body.sidebar-smart-compact .sidebar-group-inner {
-    padding-bottom: 2px;
+    padding-bottom: 1px;
 }
 
 body.sidebar-smart-compact .sidebar-group-inner .nav-link,
 body.sidebar-smart-compact .sidebar-group-inner .nav-link.active {
-    padding-left: 11px;
+    padding-left: 10px;
 }
 
-body.sidebar-smart-compact .sidebar-collapse-btn {
-    min-height: 34px;
+body.sidebar-smart-compact .sidebar-collapse-btn,
+body.sidebar-smart-compact .sidebar-theme-btn {
+    min-height: 32px;
     margin: 4px 8px 8px;
-    padding: 7px 10px;
+    padding: 6px 9px;
     font-size: 12px;
 }
 

@@ -395,7 +395,8 @@ const pagesWithObsoleteRightPanel = htmlFiles.filter(file => {
     return scripts.includes(obsoleteScript) || styles.includes(obsoleteStyle);
 });
 const roleSwitcherCss = fs.readFileSync(path.join(ROOT, 'css', 'role-switcher.css'), 'utf8');
-check('Obsolete right-side role panel is not mounted by any page', pagesWithObsoleteRightPanel.length === 0 && !fs.existsSync(path.join(ROOT, 'js', 'role-panel.js')));
+const rolePanelTombstone = fs.readFileSync(path.join(ROOT, 'js', 'role-panel.js'), 'utf8');
+check('Obsolete right-side role panel is not mounted by any page', pagesWithObsoleteRightPanel.length === 0 && rolePanelTombstone.includes('Compatibility tombstone') && !rolePanelTombstone.includes('createElement'));
 check('Role switcher CSS keeps creator preview without right-panel chrome', roleSwitcherCss.includes('.role-switcher-dropdown') && !roleSwitcherCss.includes('.role-panel-fab') && !roleSwitcherCss.includes('.role-panel {'));
 
 // Check lead modal action binding

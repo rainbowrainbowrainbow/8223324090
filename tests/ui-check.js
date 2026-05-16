@@ -385,6 +385,18 @@ const noExplicitShellReadyPages = mainAppShellPages.filter(page => {
 check('Every standalone mainApp page has an explicit post-auth shell-ready handoff', noExplicitShellReadyPages.length === 0);
 const legacySidebarTogglePages = htmlFiles.filter(file => fs.readFileSync(path.join(ROOT, file), 'utf8').includes('Sidebar toggle for mobile'));
 check('Top-level pages do not keep page-local sidebar toggle bindings', legacySidebarTogglePages.length === 0);
+const pagesWithObsoleteRightPanel = htmlFiles.filter(file => {
+    const html = fs.readFileSync(path.join(ROOT, file), 'utf8');
+    const scripts = getHtmlScripts(html);
+    const styles = [...html.matchAll(/<link\s+[^>]*href=["']([^"']+)["']/g)]
+        .map(m => m[1].split('?')[0]);
+    const obsoleteScript = ['js', 'role-panel.js'].join('/');
+    const obsoleteStyle = ['css', 'role-panel.css'].join('/');
+    return scripts.includes(obsoleteScript) || styles.includes(obsoleteStyle);
+});
+const roleSwitcherCss = fs.readFileSync(path.join(ROOT, 'css', 'role-switcher.css'), 'utf8');
+check('Obsolete right-side role panel is not mounted by any page', pagesWithObsoleteRightPanel.length === 0 && !fs.existsSync(path.join(ROOT, 'js', 'role-panel.js')));
+check('Role switcher CSS keeps creator preview without right-panel chrome', roleSwitcherCss.includes('.role-switcher-dropdown') && !roleSwitcherCss.includes('.role-panel-fab') && !roleSwitcherCss.includes('.role-panel {'));
 
 // Check lead modal action binding
 const leadsCode = fs.readFileSync(path.join(ROOT, 'js/leads-page.js'), 'utf8');

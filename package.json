@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.51.9",
+  "version": "0.51.10",
   "eventGenix": {
-    "releaseLabel": "Dark Shell Prepaint Fix"
+    "releaseLabel": "Right Panel Removal"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -1,0 +1,238 @@
+/**
+ * css/role-switcher.css — creator-only role preview switcher.
+ *
+ * The obsolete right-side role panel/FAB has been removed from the app shell.
+ * This file intentionally keeps only the header role-switcher styles used by
+ * auth.js for creator QA flows.
+ */
+
+.role-switcher {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.role-switcher-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #6366F1;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.role-switcher-btn:hover {
+    background: rgba(99, 102, 241, 0.2);
+    border-color: rgba(99, 102, 241, 0.5);
+    transform: translateY(-1px);
+}
+
+.role-switcher-icon { font-size: 16px; }
+.role-switcher-label { font-weight: 600; }
+
+.role-switcher-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 240px;
+    width: 280px;
+    max-height: 480px;
+    overflow-y: auto;
+    background: rgba(255, 255, 255, 0.97);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+    padding: 8px;
+    z-index: 1100;
+    transform-origin: top right;
+    transform: scale(0.95) translateY(-8px);
+    opacity: 0;
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+}
+
+.role-switcher-dropdown:not(.hidden) {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+    pointer-events: all;
+}
+
+.role-switcher-section { padding: 4px 0; }
+
+.role-switcher-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--gray-400, #a0aec0);
+    padding: 4px 8px 6px;
+}
+
+.role-switcher-divider {
+    height: 1px;
+    background: var(--gray-100, #edf2f7);
+    margin: 4px 0;
+}
+
+.role-switcher-role-btn,
+.role-switcher-user-btn {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text-primary, #1a202c);
+    text-align: left;
+    transition: background 0.15s ease;
+    gap: 6px;
+}
+
+.role-switcher-role-btn:hover,
+.role-switcher-user-btn:hover {
+    background: rgba(99, 102, 241, 0.08);
+}
+
+.role-switcher-role-btn.active {
+    background: rgba(99, 102, 241, 0.12);
+    color: #6366F1;
+    font-weight: 600;
+}
+
+.role-switcher-role-btn.reset,
+.role-switcher-user-btn.reset {
+    color: var(--warning, #d69e2e);
+    font-weight: 600;
+    border-top: 1px solid var(--gray-100, #edf2f7);
+    border-radius: 0 0 8px 8px;
+    margin-top: 4px;
+    padding-top: 8px;
+}
+
+.role-switcher-user-btn {
+    justify-content: space-between;
+}
+
+.role-switcher-user-name { font-weight: 500; }
+
+.role-switcher-user-role {
+    font-size: 11px;
+    color: var(--gray-400, #a0aec0);
+}
+
+.role-switcher-user-btn.active {
+    background: rgba(99, 102, 241, 0.12);
+}
+
+.role-switcher-check { color: #6366F1; font-weight: 700; }
+
+.role-switcher-loading,
+.role-switcher-error {
+    padding: 12px 10px;
+    font-size: 12px;
+    color: var(--gray-400, #a0aec0);
+    text-align: center;
+}
+
+.role-switcher-error { color: var(--danger, #e53e3e); }
+
+.role-switcher-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    animation: roleSwitcherBadgePulse 2s ease-in-out infinite;
+}
+
+.role-switcher-badge.role {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+}
+
+.role-switcher-badge.imp {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: #fff;
+}
+
+.role-switcher-badge-close {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.8);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 2px;
+    font-family: inherit;
+}
+
+.role-switcher-badge-close:hover { color: #fff; }
+
+@keyframes roleSwitcherBadgePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.85; }
+}
+
+.dark-mode .role-switcher-btn {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: rgba(99, 102, 241, 0.3);
+    color: #A5B4FC;
+}
+
+.dark-mode .role-switcher-btn:hover {
+    background: rgba(99, 102, 241, 0.25);
+}
+
+.dark-mode .role-switcher-dropdown {
+    background: rgba(20, 20, 40, 0.97);
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.dark-mode .role-switcher-role-btn,
+.dark-mode .role-switcher-user-btn {
+    color: var(--gray-100, #edf2f7);
+}
+
+.dark-mode .role-switcher-role-btn:hover,
+.dark-mode .role-switcher-user-btn:hover {
+    background: rgba(99, 102, 241, 0.15);
+}
+
+.dark-mode .role-switcher-role-btn.active {
+    background: rgba(99, 102, 241, 0.2);
+    color: #A5B4FC;
+}
+
+.dark-mode .role-switcher-divider {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 480px) {
+    .role-switcher-label {
+        display: none;
+    }
+
+    .role-switcher-dropdown {
+        width: 260px;
+        right: -40px;
+    }
+}

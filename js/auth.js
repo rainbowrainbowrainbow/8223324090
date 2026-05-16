@@ -1674,7 +1674,7 @@ const RoleSwitcher = (() => {
         // Update in-memory user role reference for all UI components
         _applyRoleSwitch(role);
 
-        // Dispatch event for role-panel
+        // Dispatch event for sidebar/header components that preview role changes.
         window.dispatchEvent(new CustomEvent('roleSwitched', { detail: { role, mode: 'role' } }));
 
         // Close dropdown

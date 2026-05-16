@@ -182,9 +182,6 @@ body.catalog-viewer-open {
     overflow: hidden;
 }
 
-body.catalog-viewer-open .role-panel-fab,
-body.catalog-viewer-open .role-panel,
-body.catalog-viewer-open .role-panel-overlay,
 body.catalog-viewer-open .kleshnya-fab,
 body.catalog-viewer-open .kleshnya-panel,
 body.catalog-viewer-open .kleshnya-widget,

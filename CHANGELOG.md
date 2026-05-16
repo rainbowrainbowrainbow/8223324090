@@ -4,6 +4,15 @@
 
 ---
 
+## v0.51.10 - Right Panel Removal (2026-05-16)
+
+### Navigation Shell / Right Panel [codex]
+- **Right Panel Removed** - застарілий правий floating drawer з вертикальною кнопкою `ПАНЕЛЬ` прибрано з активного shell mount path на всіх CRM-сторінках.
+- **Clean Render Path** - видалено `js/role-panel.js`, старі role-panel стилі та HTML-підключення, щоб drawer не міг повернутись через responsive, portal або cached script path.
+- **Role Switcher Preserved** - creator-only role preview залишився через окремий `css/role-switcher.css`, без правого drawer chrome і без втручання в лівий sidebar.
+
+---
+
 ## v0.51.9 - Dark Shell Prepaint Fix (2026-05-16)
 
 ### Sidebar / Dark First Paint [codex]

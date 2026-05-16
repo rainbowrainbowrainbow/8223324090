@@ -597,7 +597,6 @@ const Sidebar = (() => {
                 <a href="/dashboard" class="sidebar-dashboard-jump" id="sidebarDashboardJump" data-page-access="/dashboard" aria-label="Відкрити Дашборд CRM">
                     <span class="sidebar-dashboard-jump-icon">${_renderIcon('dashboard', 'sidebar-dashboard-jump-svg')}</span>
                     <span class="sidebar-dashboard-jump-copy">
-                        <span class="sidebar-dashboard-jump-kicker">Головний екран</span>
                         <span class="sidebar-dashboard-jump-title">Дашборд</span>
                     </span>
                     <span class="sidebar-dashboard-jump-arrow" aria-hidden="true">→</span>

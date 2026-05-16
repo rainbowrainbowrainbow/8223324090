@@ -16,20 +16,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.51.0">
-    <link rel="stylesheet" href="css/auth.css?v=0.51.0">
-    <link rel="stylesheet" href="css/layout.css?v=0.51.0">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.51.0">
-    <link rel="stylesheet" href="css/timeline.css?v=0.51.0">
-    <link rel="stylesheet" href="css/panel.css?v=0.51.0">
-    <link rel="stylesheet" href="css/modals.css?v=0.51.0">
-    <link rel="stylesheet" href="css/controls.css?v=0.51.0">
-    <link rel="stylesheet" href="css/features.css?v=0.51.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.51.0">
-    <link rel="stylesheet" href="css/responsive.css?v=0.51.0">
-    <link rel="stylesheet" href="css/pages.css?v=0.51.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.51.0">
-    <link rel="stylesheet" href="css/role-panel.css?v=0.51.0">
+    <link rel="stylesheet" href="css/base.css?v=0.51.1">
+    <link rel="stylesheet" href="css/auth.css?v=0.51.1">
+    <link rel="stylesheet" href="css/layout.css?v=0.51.1">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.51.1">
+    <link rel="stylesheet" href="css/timeline.css?v=0.51.1">
+    <link rel="stylesheet" href="css/panel.css?v=0.51.1">
+    <link rel="stylesheet" href="css/modals.css?v=0.51.1">
+    <link rel="stylesheet" href="css/controls.css?v=0.51.1">
+    <link rel="stylesheet" href="css/features.css?v=0.51.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.51.1">
+    <link rel="stylesheet" href="css/responsive.css?v=0.51.1">
+    <link rel="stylesheet" href="css/pages.css?v=0.51.1">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.51.1">
+    <link rel="stylesheet" href="css/role-panel.css?v=0.51.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -45,11 +45,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.51.0 AI Rail Live Center">✨ 0.51.0 AI Rail Live Center</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.51.1 Sidebar Dashboard Jump Polish">✨ 0.51.1 Sidebar Dashboard Jump Polish</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.51.0 — AI Rail Live Center</p>
+                <p class="tagline">AI First CRM v0.51.1 — Sidebar Dashboard Jump Polish</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.51.0: AI Rail Live Center</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.51.1: Sidebar Dashboard Jump Polish</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1271,12 +1271,11 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.51.0 — AI Rail Live Center</h4>
+                    <h4>v0.51.1 — Sidebar Dashboard Jump Polish</h4>
                     <ul>
-                        <li><b>Centered Rail</b> — верхній AI rail тепер монтується в окремий центрований слот header і не з'їжджає через різну ширину бокових блоків.</li>
-                        <li><b>Live Speaking Ticker</b> — під час відповіді асистента subtitle-стрічка оживає як speaking ticker, а не лишається статичним текстом.</li>
-                        <li><b>Presence States</b> — thinking, listening і speaking стани стали виразнішими для живого тестування у світлій та темній темі.</li>
-                        <li><b>Text Fallback</b> — якщо голос вимкнений, rail все одно показує активну репліку текстом і лишає останній рядок видимим після завершення.</li>
+                        <li><b>Sidebar</b> — у швидкій кнопці переходу прибрано підпис <b>Головний екран</b>, щоб блок не виглядав перевантаженим.</li>
+                        <li><b>Dashboard Jump</b> — залишено тільки читабельний напис <b>Дашборд</b> без обрізання в компактному sidebar.</li>
+                        <li><b>Visual Polish</b> — плитку, іконку й стрілку трохи зменшено, щоб sidebar виглядав акуратніше й не стискав текст.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -6751,28 +6750,28 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.51.0"></script>
-    <script src="js/api.js?v=0.51.0"></script>
-    <script src="js/ui.js?v=0.51.0"></script>
-    <script src="js/auth.js?v=0.51.0"></script>
-    <script src="js/timeline.js?v=0.51.0"></script>
-    <script src="js/booking.js?v=0.51.0"></script>
-    <script src="js/settings.js?v=0.51.0"></script>
-    <script src="js/booking-form.js?v=0.51.0"></script>
-    <script src="js/booking-linked.js?v=0.51.0"></script>
-    <script src="js/settings-dashboard.js?v=0.51.0"></script>
-    <script src="js/settings-history.js?v=0.51.0"></script>
-    <script src="js/settings-afisha.js?v=0.51.0"></script>
-    <script src="js/settings-certificates.js?v=0.51.0"></script>
-    <script src="js/offline.js?v=0.51.0"></script>
-    <script src="js/search.js?v=0.51.0"></script>
-    <script src="js/ws.js?v=0.51.0"></script>
-    <script src="js/app.js?v=0.51.0"></script>
-    <script src="js/kleshnya-widget.js?v=0.51.0"></script>
-    <script src="js/components/sidebar.js?v=0.51.0"></script>
+    <script src="js/config.js?v=0.51.1"></script>
+    <script src="js/api.js?v=0.51.1"></script>
+    <script src="js/ui.js?v=0.51.1"></script>
+    <script src="js/auth.js?v=0.51.1"></script>
+    <script src="js/timeline.js?v=0.51.1"></script>
+    <script src="js/booking.js?v=0.51.1"></script>
+    <script src="js/settings.js?v=0.51.1"></script>
+    <script src="js/booking-form.js?v=0.51.1"></script>
+    <script src="js/booking-linked.js?v=0.51.1"></script>
+    <script src="js/settings-dashboard.js?v=0.51.1"></script>
+    <script src="js/settings-history.js?v=0.51.1"></script>
+    <script src="js/settings-afisha.js?v=0.51.1"></script>
+    <script src="js/settings-certificates.js?v=0.51.1"></script>
+    <script src="js/offline.js?v=0.51.1"></script>
+    <script src="js/search.js?v=0.51.1"></script>
+    <script src="js/ws.js?v=0.51.1"></script>
+    <script src="js/app.js?v=0.51.1"></script>
+    <script src="js/kleshnya-widget.js?v=0.51.1"></script>
+    <script src="js/components/sidebar.js?v=0.51.1"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/role-panel.js?v=0.51.0"></script>
-    <script src="js/alerts.js?v=0.51.0"></script>
+    <script src="js/role-panel.js?v=0.51.1"></script>
+    <script src="js/alerts.js?v=0.51.1"></script>
 </body>
 </html>
 

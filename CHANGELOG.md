@@ -4,6 +4,15 @@
 
 ---
 
+## v0.51.1 - Sidebar Dashboard Jump Polish (2026-05-16)
+
+### Sidebar / Dashboard Jump [codex]
+- **Label Cleanup** - прибрано малий підпис `Головний екран` із швидкої sidebar-кнопки, щоб блок не читався як дворядковий обрізаний віджет.
+- **Readable Dashboard Title** - у плитці залишено тільки `Дашборд`, з більшим і стабільнішим title rhythm без зайвого uppercase-шуму.
+- **Compact Button** - кнопку, іконку та arrow-control трохи зменшено, щоб вона займала менше вертикального місця й не обрізала текст у вузькому sidebar.
+
+---
+
 ## v0.51.0 - AI Rail Live Center (2026-05-16)
 
 ### CRM Assistant Rail [codex]

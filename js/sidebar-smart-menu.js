@@ -12,6 +12,20 @@
     let sidebarObserver = null;
     let renderTimer = null;
 
+    function defer(fn, delay = 0) {
+        const timer = typeof window.setTimeout === 'function'
+            ? window.setTimeout.bind(window)
+            : (typeof setTimeout === 'function' ? setTimeout : null);
+        if (timer) timer(fn, delay);
+    }
+
+    function cancelDefer(timerId) {
+        const cancel = typeof window.clearTimeout === 'function'
+            ? window.clearTimeout.bind(window)
+            : (typeof clearTimeout === 'function' ? clearTimeout : null);
+        if (cancel && timerId) cancel(timerId);
+    }
+
     function normalizePath(value) {
         const raw = String(value || '/').split('#')[0];
         return raw.replace(/\.html$/, '').replace(/\/$/, '') || '/';
@@ -38,6 +52,19 @@
         try {
             localStorage.setItem(key, JSON.stringify(value));
         } catch { /* storage may be disabled */ }
+    }
+
+    function readCounts() {
+        const stored = readJson(COUNTS_KEY, {});
+        if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
+        const normalized = {};
+        Object.entries(stored).forEach(([path, value]) => {
+            const key = normalizePath(path);
+            if (!key || key === '/dashboard') return;
+            const count = Number(value);
+            normalized[key] = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+        });
+        return normalized;
     }
 
     function getRole() {
@@ -67,7 +94,10 @@
 
     function getPinned() {
         const stored = readJson(PINNED_KEY, []);
-        if (!Array.isArray(stored)) return [];
+        if (!Array.isArray(stored)) {
+            writeJson(PINNED_KEY, []);
+            return [];
+        }
         const next = [];
         for (const path of stored) {
             const normalized = normalizePath(path);
@@ -76,6 +106,7 @@
             next.push(normalized);
             if (next.length >= PINNED_LIMIT) break;
         }
+        if (JSON.stringify(stored) !== JSON.stringify(next)) writeJson(PINNED_KEY, next);
         return next;
     }
 
@@ -84,7 +115,7 @@
         if (visitRecordedForPath === current) return;
         const item = getItemByPath(current);
         if (!item || current === '/dashboard') return;
-        const counts = readJson(COUNTS_KEY, {});
+        const counts = readCounts();
         counts[current] = Number(counts[current] || 0) + 1;
         writeJson(COUNTS_KEY, counts);
         visitRecordedForPath = current;
@@ -92,7 +123,7 @@
 
     function getAutoPath(pinned) {
         const pinnedSet = new Set(pinned);
-        const counts = readJson(COUNTS_KEY, {});
+        const counts = readCounts();
         const candidates = getAvailableItems()
             .filter(item => {
                 const path = normalizePath(item.href);
@@ -104,7 +135,8 @@
             .filter(entry => entry.count > 0)
             .sort((a, b) => b.count - a.count)[0];
 
-        return normalizePath((visited?.item || candidates[0] || {}).href || '');
+        const selected = visited?.item || candidates[0] || null;
+        return selected ? normalizePath(selected.href) : '';
     }
 
     function renderIcon(item) {
@@ -167,8 +199,16 @@
     }
 
     function scheduleRender() {
-        if (renderTimer) window.clearTimeout(renderTimer);
-        renderTimer = window.setTimeout(() => {
+        if (renderTimer) cancelDefer(renderTimer);
+        const timer = typeof window.setTimeout === 'function'
+            ? window.setTimeout.bind(window)
+            : (typeof setTimeout === 'function' ? setTimeout : null);
+        if (!timer) {
+            renderSmartMenu();
+            hideDuplicateDashboard();
+            return;
+        }
+        renderTimer = timer(() => {
             renderTimer = null;
             renderSmartMenu();
             hideDuplicateDashboard();
@@ -177,7 +217,7 @@
 
     function bindSidebarObserver() {
         const links = document.getElementById('sidebarLinks');
-        if (!links || sidebarObserver) return;
+        if (!links || sidebarObserver || typeof MutationObserver === 'undefined') return;
         sidebarObserver = new MutationObserver(() => scheduleRender());
         sidebarObserver.observe(links, { childList: true, subtree: true });
     }
@@ -259,7 +299,7 @@
     }
 
     function boot() {
-        INIT_RETRY_MS.forEach(delay => window.setTimeout(init, delay));
+        INIT_RETRY_MS.forEach(delay => defer(init, delay));
     }
 
     window.SidebarSmartMenu = {
@@ -276,5 +316,5 @@
         boot();
     }
 
-    window.addEventListener('roleSwitched', () => setTimeout(init, 0));
+    window.addEventListener('roleSwitched', () => defer(init, 0));
 })();

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.51.13",
+  "version": "0.52.0",
   "eventGenix": {
-    "releaseLabel": "Sidebar Smart Menu Loader Stabilization"
+    "releaseLabel": "Sidebar Custom Smart Menu"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

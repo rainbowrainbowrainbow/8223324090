@@ -4,6 +4,15 @@
 
 ---
 
+## v0.52.0 - Sidebar Custom Smart Menu
+
+### Sidebar / Custom Smart Menu [codex]
+- **Fixed Dashboard** - `Дашборд` is always the first smart-menu tab and cannot be removed.
+- **Frequent Auto Tab** - one accessible most-visited tab is selected automatically, excluding Dashboard and manually pinned tabs.
+- **Pinned Tabs** - users can pin up to two accessible tabs, with localStorage persistence and safe cleanup after role changes.
+
+---
+
 ## v0.51.13 - Sidebar Smart Menu Loader Stabilization
 
 ### Sidebar / Smart Menu Loading [codex]

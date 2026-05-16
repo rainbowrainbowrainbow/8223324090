@@ -4,6 +4,15 @@
 
 ---
 
+## v0.51.11 - Sidebar Group Hierarchy Polish (2026-05-16)
+
+### Sidebar / Group Hierarchy [codex]
+- **Connected Groups** - відкриті групи CRM, Управління та інші accordion-блоки більше не виглядають як окремі капсули над підменю.
+- **Submenu Guides** - додано тонкі вертикальні guide-лінії та короткі відводи до пунктів, щоб було зрозуміло де головна група, а де вкладені пункти.
+- **Compact Rhythm** - smart compact sidebar отримав той самий зв'язаний ритм без зміни доступів, ролей або структури лівої навігації.
+
+---
+
 ## v0.51.10 - Right Panel Removal (2026-05-16)
 
 ### Navigation Shell / Right Panel [codex]

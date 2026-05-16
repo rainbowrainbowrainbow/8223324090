@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.51.10",
+  "version": "0.51.11",
   "eventGenix": {
-    "releaseLabel": "Right Panel Removal"
+    "releaseLabel": "Sidebar Group Hierarchy Polish"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

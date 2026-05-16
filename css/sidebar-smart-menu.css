@@ -231,6 +231,35 @@ body.sidebar-smart-compact .sidebar-group-header {
     border-radius: 9px;
 }
 
+body.sidebar-smart-compact .sidebar-group-header.open {
+    border-radius: 9px 9px 7px 7px !important;
+}
+
+body.sidebar-smart-compact .sidebar-group-header.open + .sidebar-group-items {
+    margin-top: 0;
+    padding-top: 5px;
+    padding-bottom: 7px;
+}
+
+body.sidebar-smart-compact .sidebar-group-header.open + .sidebar-group-items::before {
+    left: 18px;
+    bottom: 8px;
+}
+
+body.sidebar-smart-compact .sidebar-group-header.open + .sidebar-group-items::after {
+    left: 18px;
+    width: 12px;
+}
+
+body.sidebar-smart-compact .sidebar-group-header.open + .sidebar-group-items > .sidebar-group-inner {
+    padding-left: 7px;
+}
+
+body.sidebar-smart-compact .sidebar-group-header.open + .sidebar-group-items > .sidebar-group-inner > .nav-link::before {
+    left: -4px;
+    width: 6px;
+}
+
 body.sidebar-smart-compact .sidebar-group-label {
     font-size: 9px;
     letter-spacing: .075em;

@@ -968,6 +968,8 @@ body.dark-mode .sidebar-nav {
 
 .sidebar-group-header.open {
   border-color: var(--sb-primary-border) !important;
+  border-bottom-color: color-mix(in srgb, var(--sb-primary) 18%, transparent) !important;
+  border-radius: 11px 11px 8px 8px !important;
   background:
     radial-gradient(circle at 13% 50%, color-mix(in srgb, var(--sb-primary) 14%, transparent), transparent 44%),
     linear-gradient(135deg, color-mix(in srgb, var(--sb-surface) 76%, transparent), color-mix(in srgb, var(--sb-surface-hi) 82%, transparent)) !important;
@@ -1012,7 +1014,71 @@ body.dark-mode .sidebar-nav {
 }
 
 .sidebar-group-items {
+  position: relative;
   margin-top: 4px;
+}
+
+.sidebar-group-header.open + .sidebar-group-items {
+  margin-top: 0;
+  padding-top: 6px;
+  padding-bottom: 8px;
+}
+
+.sidebar-group-header.open + .sidebar-group-items::before {
+  content: "";
+  position: absolute;
+  left: 21px;
+  top: -1px;
+  bottom: 10px;
+  width: 1px;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--sb-primary-fg) 78%, transparent),
+      color-mix(in srgb, var(--sb-primary) 38%, transparent) 58%,
+      transparent
+    );
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.sidebar-group-header.open + .sidebar-group-items::after {
+  content: "";
+  position: absolute;
+  left: 21px;
+  top: -1px;
+  width: 15px;
+  height: 1px;
+  background: color-mix(in srgb, var(--sb-primary) 34%, transparent);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.sidebar-group-header.open + .sidebar-group-items > .sidebar-group-inner {
+  position: relative;
+  padding-left: 8px;
+}
+
+.sidebar-group-header.open + .sidebar-group-items > .sidebar-group-inner > .nav-link::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  width: 7px;
+  height: 1px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sb-primary) 32%, transparent);
+  opacity: 0.48;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.sidebar-group-header.open + .sidebar-group-items > .sidebar-group-inner > .nav-link.active::before {
+  width: 10px;
+  background: color-mix(in srgb, var(--sb-primary-fg) 70%, var(--sb-primary));
+  opacity: 0.9;
+  box-shadow: 0 0 10px var(--sb-primary-glow);
 }
 
 .sidebar-group:last-of-type .sidebar-group-header::after {
@@ -1197,6 +1263,12 @@ body.dark-mode .sidebar-nav {
 .sidebar-nav.collapsed .sidebar-group-chevron,
 .sidebar-nav.collapsed .sidebar-group-pulse,
 .sidebar-nav.collapsed .sidebar-group-signal {
+  display: none !important;
+}
+
+.sidebar-nav.collapsed .sidebar-group-header.open + .sidebar-group-items::before,
+.sidebar-nav.collapsed .sidebar-group-header.open + .sidebar-group-items::after,
+.sidebar-nav.collapsed .sidebar-group-header.open + .sidebar-group-items > .sidebar-group-inner > .nav-link::before {
   display: none !important;
 }
 

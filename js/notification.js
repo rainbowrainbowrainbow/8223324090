@@ -66,12 +66,23 @@
     }
 
     function scheduleSidebarSmartMenu() {
-        window.setTimeout(ensureSidebarSmartMenuAssets, 0);
-        window.setTimeout(ensureSidebarSmartMenuAssets, 250);
+        var ensure = window.ensureSidebarSmartMenuAssets || ensureSidebarSmartMenuAssets;
+        var timer = typeof window.setTimeout === 'function'
+            ? window.setTimeout.bind(window)
+            : (typeof setTimeout === 'function' ? setTimeout : null);
+        if (!timer) return;
+        [0, 80, 240, 700, 1500].forEach(function(delay) {
+            timer(function() { ensure(); }, delay);
+        });
     }
 
     window.showNotification = showNotification;
-    window.ensureSidebarSmartMenuAssets = ensureSidebarSmartMenuAssets;
+    if (!window.ensureSidebarSmartMenuAssets) {
+        window.ensureSidebarSmartMenuAssets = ensureSidebarSmartMenuAssets;
+    }
+    if (!window.scheduleSidebarSmartMenuAssets) {
+        window.scheduleSidebarSmartMenuAssets = scheduleSidebarSmartMenu;
+    }
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', scheduleSidebarSmartMenu, { once: true });

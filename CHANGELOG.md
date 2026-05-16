@@ -4,6 +4,15 @@
 
 ---
 
+## v0.51.13 - Sidebar Smart Menu Loader Stabilization
+
+### Sidebar / Smart Menu Loading [codex]
+- **Shared Loader** - smart menu assets now load from the authenticated shell, so pages without `notification.js` also mount the quick menu.
+- **Duplicate Dashboard Guard** - duplicate `Дашборд` inside the CRM group stays hidden after sidebar rerenders and role switches.
+- **Idempotent Assets** - smart menu CSS/JS are injected once with retry-safe guards, preventing duplicate style/script tags.
+
+---
+
 ## v0.51.12 - Sidebar Quick Menu Repair (2026-05-16)
 
 ### Sidebar / Quick Menu [codex]

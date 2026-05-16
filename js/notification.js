@@ -1,5 +1,5 @@
 /**
- * js/notification.js — Centralized notification system v38.11
+ * js/notification.js — Centralized notification system v38.12
  * Single source of truth — replaces 16 duplicate showNotification() functions
  */
 (function() {
@@ -24,5 +24,58 @@
             setTimeout(function() { t.remove(); }, 300);
         }, 3500);
     }
+
+    function assetVersion() {
+        var script = Array.from(document.scripts || []).find(function(item) {
+            return /(^|\/)js\/notification\.js/.test(item.getAttribute('src') || '');
+        });
+        if (!script) return '';
+        try {
+            return new URL(script.src, window.location.href).searchParams.get('v') || '';
+        } catch {
+            return '';
+        }
+    }
+
+    function assetSuffix() {
+        var version = assetVersion();
+        return version ? '?v=' + encodeURIComponent(version) : '';
+    }
+
+    function ensureSidebarSmartMenuAssets() {
+        if (!document.getElementById('sidebarNav')) return;
+        var suffix = assetSuffix();
+
+        if (!document.querySelector('link[data-sidebar-smart-menu-css]')) {
+            var link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'css/sidebar-smart-menu.css' + suffix;
+            link.dataset.sidebarSmartMenuCss = 'true';
+            document.head.appendChild(link);
+        }
+
+        if (!window.SidebarSmartMenu && !document.querySelector('script[data-sidebar-smart-menu-js]')) {
+            var script = document.createElement('script');
+            script.src = 'js/sidebar-smart-menu.js' + suffix;
+            script.defer = true;
+            script.dataset.sidebarSmartMenuJs = 'true';
+            document.body.appendChild(script);
+        } else if (window.SidebarSmartMenu && typeof window.SidebarSmartMenu.init === 'function') {
+            window.SidebarSmartMenu.init();
+        }
+    }
+
+    function scheduleSidebarSmartMenu() {
+        window.setTimeout(ensureSidebarSmartMenuAssets, 0);
+        window.setTimeout(ensureSidebarSmartMenuAssets, 250);
+    }
+
     window.showNotification = showNotification;
+    window.ensureSidebarSmartMenuAssets = ensureSidebarSmartMenuAssets;
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', scheduleSidebarSmartMenu, { once: true });
+    } else {
+        scheduleSidebarSmartMenu();
+    }
 })();

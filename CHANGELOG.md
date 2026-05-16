@@ -4,6 +4,15 @@
 
 ---
 
+## v0.51.5 - Sidebar Quick Icons Clean Surface (2026-05-16)
+
+### Sidebar / Quick Counters [codex]
+- **Outer Cards Removed** - quick-кнопки задач, алертів і воронки більше не мають власних card-рамок поверх загального контейнера.
+- **Clean Icon Orbs** - видимими лишились чисті іконки та числові капсули, без вкладених прямокутників і візуальних накладок.
+- **State Safety** - alert/action стани більше не можуть домальовувати старий background або border поверх нового icon-only дизайну.
+
+---
+
 ## v0.51.4 - Sidebar Quick Icons Layer Fix (2026-05-16)
 
 ### Sidebar / Quick Counters [codex]

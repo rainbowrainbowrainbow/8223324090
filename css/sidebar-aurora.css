@@ -512,25 +512,23 @@ body.dark-mode .sidebar-nav {
 .sidebar-pill {
   position: relative;
   display: grid;
-  min-height: 82px;
+  min-height: 76px;
   grid-template-columns: 1fr;
-  grid-template-rows: 48px 24px;
+  grid-template-rows: 46px 24px;
   align-content: center;
   align-items: center;
   justify-items: center;
   gap: 4px;
-  padding: 8px 6px 7px;
+  padding: 6px 4px 6px;
   isolation: isolate;
-  border-radius: 18px;
+  border: 0 !important;
+  border-radius: 14px;
   text-align: center;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at 50% -8%, color-mix(in srgb, currentColor 11%, transparent), transparent 56%),
-    color-mix(in srgb, var(--sb-surface-hi) 72%, transparent);
-  border-color: color-mix(in srgb, currentColor 22%, var(--sb-border));
+  overflow: visible;
+  background: transparent !important;
+  box-shadow: none !important;
   transition:
     transform 0.18s ease,
-    border-color 0.18s ease,
     background-color 0.18s ease,
     box-shadow 0.18s ease;
 }
@@ -542,7 +540,8 @@ body.dark-mode .sidebar-nav {
 .sidebar-pill:hover,
 .sidebar-pill:focus-visible {
   transform: translateY(-1px);
-  box-shadow: 0 13px 28px rgba(15, 23, 42, 0.15);
+  background: color-mix(in srgb, currentColor 7%, transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 12%, transparent) !important;
 }
 
 .sidebar-pill-top {
@@ -550,8 +549,8 @@ body.dark-mode .sidebar-nav {
   align-items: center;
   justify-content: center;
   grid-row: 1;
-  width: 48px;
-  height: 48px;
+  width: 46px;
+  height: 46px;
 }
 
 .sidebar-pill-icon {
@@ -559,8 +558,8 @@ body.dark-mode .sidebar-nav {
   grid-row: 1;
   align-self: center;
   justify-self: center;
-  width: 44px;
-  height: 44px;
+  width: 42px;
+  height: 42px;
   border-radius: 15px;
   border-width: 1px;
   box-shadow:
@@ -638,20 +637,19 @@ body.dark-mode .sidebar-nav {
 .sidebar-pill.has-critical,
 .sidebar-pill.has-action,
 .sidebar-pill.has-new {
-  background:
-    radial-gradient(circle at 50% -8%, color-mix(in srgb, currentColor 13%, transparent), transparent 56%),
-    color-mix(in srgb, var(--sb-surface-hi) 72%, transparent);
+  background: transparent !important;
+  border-color: transparent !important;
 }
 
 .sidebar-pill.has-overdue,
 .sidebar-pill.has-alerts,
 .sidebar-pill.has-critical {
-  border-color: color-mix(in srgb, var(--sb-danger) 30%, var(--sb-border));
+  box-shadow: none !important;
 }
 
 .sidebar-pill.has-action,
 .sidebar-pill.has-new {
-  border-color: color-mix(in srgb, var(--sb-amber) 30%, var(--sb-border));
+  box-shadow: none !important;
 }
 
 .sidebar-pill-meta {

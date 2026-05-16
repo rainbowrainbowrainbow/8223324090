@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.51.4",
+  "version": "0.51.5",
   "eventGenix": {
-    "releaseLabel": "Sidebar Quick Icons Layer Fix"
+    "releaseLabel": "Sidebar Quick Icons Clean Surface"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

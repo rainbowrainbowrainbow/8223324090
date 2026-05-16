@@ -203,27 +203,37 @@
         modal.className = 'smart-menu-modal-overlay';
         modal.innerHTML = `
             <div class="smart-menu-modal" role="dialog" aria-modal="true" aria-label="Налаштування швидкого меню">
-                <h2>Швидке меню</h2>
-                <p>Дашборд показується завжди. Ще одна вкладка підтягується автоматично як найчастіша серед невибраних. Вручну можна додати до 2 вкладок.</p>
+                <div class="smart-menu-modal-head">
+                    <div>
+                        <h2>Швидке меню</h2>
+                        <p>Дашборд показується завжди. Ще одна вкладка підтягується автоматично, вручну можна додати до 2 вкладок.</p>
+                    </div>
+                    <button type="button" class="smart-menu-close" onclick="SidebarSmartMenu.close()" aria-label="Закрити">×</button>
+                </div>
                 <div class="smart-menu-options">
-                    ${options.map(item => {
+                    ${options.length ? options.map(item => {
                         const path = normalizePath(item.href);
                         return `<label class="smart-menu-option">
                             <input type="checkbox" value="${escapeHtml(path)}" ${selected.has(path) ? 'checked' : ''} onchange="SidebarSmartMenu.enforceLimit(this)">
                             <span>${escapeHtml(item.icon || '•')}</span>
                             <strong>${escapeHtml(item.label)}</strong>
                         </label>`;
-                    }).join('')}
+                    }).join('') : '<div class="smart-menu-empty">Немає доступних вкладок для додавання.</div>'}
                 </div>
                 <div class="smart-menu-modal-actions">
-                    <button type="button" class="dashboard-btn" onclick="document.getElementById('sidebarSmartMenuModal').remove()">Скасувати</button>
-                    <button type="button" class="dashboard-btn primary" onclick="SidebarSmartMenu.save()">Зберегти</button>
+                    <button type="button" class="smart-menu-btn" onclick="SidebarSmartMenu.close()">Скасувати</button>
+                    <button type="button" class="smart-menu-btn primary" onclick="SidebarSmartMenu.save()">Зберегти</button>
                 </div>
             </div>`;
         modal.addEventListener('click', (event) => {
             if (event.target === modal) modal.remove();
         });
+        modal.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') modal.remove();
+        });
         document.body.appendChild(modal);
+        const firstInput = modal.querySelector('input, button');
+        if (firstInput) firstInput.focus({ preventScroll: true });
     }
 
     function saveModal() {
@@ -233,6 +243,11 @@
         writeJson(PINNED_KEY, selected);
         document.getElementById('sidebarSmartMenuModal')?.remove();
         renderSmartMenu();
+        if (typeof showNotification === 'function') showNotification('Швидке меню оновлено', 'success');
+    }
+
+    function closeModal() {
+        document.getElementById('sidebarSmartMenuModal')?.remove();
     }
 
     function init() {
@@ -250,6 +265,7 @@
     window.SidebarSmartMenu = {
         init,
         open: openModal,
+        close: closeModal,
         save: saveModal,
         enforceLimit
     };

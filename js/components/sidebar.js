@@ -615,6 +615,45 @@ const Sidebar = (() => {
     function _initPillTooltips() {
         const sidebar = document.getElementById('sidebarNav');
         if (!sidebar) return;
+        let tooltip = document.getElementById('sidebarPillTooltip');
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.id = 'sidebarPillTooltip';
+            tooltip.className = 'sidebar-pill-tooltip';
+            tooltip.setAttribute('role', 'tooltip');
+            tooltip.setAttribute('aria-hidden', 'true');
+            document.body.appendChild(tooltip);
+        }
+
+        const hideTooltip = () => {
+            tooltip.classList.remove('is-visible', 'is-left');
+            tooltip.setAttribute('aria-hidden', 'true');
+            tooltip.textContent = '';
+        };
+
+        const showTooltip = (pill) => {
+            const text = String(pill?.dataset?.sidebarTooltip || pill?.getAttribute('aria-label') || '').trim();
+            if (!text) return;
+            const pillRect = pill.getBoundingClientRect();
+            const sidebarRect = sidebar.getBoundingClientRect();
+            const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+            const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
+            const width = Math.min(320, Math.max(240, viewportWidth - sidebarRect.right - 28));
+            const placeRight = sidebarRect.right + width + 14 < viewportWidth;
+            const left = placeRight ? sidebarRect.right + 12 : Math.max(12, sidebarRect.left - width - 12);
+            const top = Math.min(
+                Math.max(12, pillRect.top + (pillRect.height / 2) - 32),
+                Math.max(12, viewportHeight - 96)
+            );
+            tooltip.textContent = text;
+            tooltip.style.width = `${width}px`;
+            tooltip.style.left = `${left}px`;
+            tooltip.style.top = `${top}px`;
+            tooltip.classList.toggle('is-left', !placeRight);
+            tooltip.classList.add('is-visible');
+            tooltip.setAttribute('aria-hidden', 'false');
+        };
+
         sidebar.querySelectorAll('.sidebar-pill').forEach((pill) => {
             if (pill.dataset.tooltipBound === 'true') return;
             pill.dataset.tooltipBound = 'true';
@@ -622,17 +661,29 @@ const Sidebar = (() => {
             const clear = () => {
                 if (timer) clearTimeout(timer);
                 timer = null;
-                setTimeout(() => pill.classList.remove('show-tip'), 180);
+                hideTooltip();
+                pill.classList.remove('show-tip');
             };
-            pill.addEventListener('pointerdown', () => {
+            const schedule = () => {
                 if (timer) clearTimeout(timer);
-                timer = setTimeout(() => pill.classList.add('show-tip'), 520);
-            });
+                timer = setTimeout(() => {
+                    pill.classList.add('show-tip');
+                    showTooltip(pill);
+                }, 280);
+            };
+            pill.addEventListener('pointerenter', schedule);
+            pill.addEventListener('focus', schedule);
+            pill.addEventListener('pointerdown', schedule);
             pill.addEventListener('pointerup', clear);
             pill.addEventListener('pointercancel', clear);
             pill.addEventListener('pointerleave', clear);
             pill.addEventListener('blur', clear);
         });
+        if (sidebar.dataset.pillTooltipGlobalBound !== 'true') {
+            sidebar.dataset.pillTooltipGlobalBound = 'true';
+            window.addEventListener('scroll', hideTooltip, { passive: true });
+            window.addEventListener('resize', hideTooltip);
+        }
     }
 
     function _ensureActiveIndicator() {

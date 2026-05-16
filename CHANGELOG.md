@@ -4,6 +4,15 @@
 
 ---
 
+## v0.51.6 - Sidebar Quick Tooltip Fix (2026-05-16)
+
+### Sidebar / Quick Counters [codex]
+- **Readable Tooltips** - підказки quick-карток винесено з вузького sidebar-блока в один floating tooltip біля правого краю меню.
+- **No Overlap** - tooltip більше не накладається на іконки, лічильники та сусідні quick-картки.
+- **Pointer + Keyboard** - підказки працюють на hover, focus і hold, та закриваються при leave, blur, scroll або resize.
+
+---
+
 ## v0.51.5 - Sidebar Quick Icons Clean Surface (2026-05-16)
 
 ### Sidebar / Quick Counters [codex]

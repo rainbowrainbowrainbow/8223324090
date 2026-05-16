@@ -4,6 +4,15 @@
 
 ---
 
+## v0.51.7 - Sidebar Operational Rail Polish (2026-05-16)
+
+### Sidebar / Operational Rail [codex]
+- **Operational Counters** - quick-картки задач, алертів і воронки отримали стани zero, live, hot і critical замість однакового декоративного вигляду.
+- **Smart Groups** - групи CRM та Управління тепер показують компактний індикатор, якщо всередині є активні задачі, алерти або ліди.
+- **Light Theme Polish** - світлу тему sidebar зроблено менш стерильною, з сильнішим фоном, контрастом і спокійнішим premium rhythm.
+
+---
+
 ## v0.51.6 - Sidebar Quick Tooltip Fix (2026-05-16)
 
 ### Sidebar / Quick Counters [codex]

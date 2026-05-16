@@ -313,6 +313,7 @@ const Sidebar = (() => {
           title="${item.label}">
     ${_renderIcon(item.icon)}
     <span class="nav-text sidebar-group-label">${item.label}</span>
+    <span class="sidebar-group-signal" id="sidebarGroupSignal-${item.key}" hidden aria-hidden="true"></span>
     ${_renderGroupChevron()}
   </button>
   <div class="sidebar-group-items${finalOpen ? ' open' : ''}">
@@ -384,6 +385,7 @@ const Sidebar = (() => {
         _ensurePillsRow();
         _ensureDashboardJump();
         _initPillTooltips();
+        _syncGroupSignals();
         _ensureActiveIndicator();
         _initCollapsedTooltips(container);
         _initSpotlight();
@@ -436,6 +438,62 @@ const Sidebar = (() => {
         if (href === '/chat') return 'unread';
         if (href === '/sales-funnel') return 'leads_new';
         return '';
+    }
+
+    const GROUP_SIGNAL_SOURCES = {
+        crm: ['sidebarPillTasks', 'sidebarPillAlerts'],
+        mgmt: ['sidebarPillFunnel']
+    };
+
+    const SIGNAL_RANK = { idle: 0, live: 1, hot: 2, critical: 3 };
+
+    function _formatSignalCount(value) {
+        const count = Number(value || 0);
+        if (!Number.isFinite(count) || count <= 0) return '';
+        return count > 99 ? '99+' : String(Math.floor(count));
+    }
+
+    function _setPillOperationalState(widget, count, options = {}) {
+        if (!widget) return;
+        const safeCount = Math.max(0, Number(count || 0));
+        const severity = options.critical ? 'critical' : (options.hot ? 'hot' : (safeCount > 0 ? 'live' : 'idle'));
+        widget.dataset.sidebarCount = String(safeCount);
+        widget.dataset.sidebarSeverity = severity;
+        widget.classList.remove('is-zero', 'is-live', 'is-hot', 'is-critical', 'is-pressed');
+        widget.classList.add(safeCount > 0 ? 'is-live' : 'is-zero');
+        if (severity === 'hot') widget.classList.add('is-hot');
+        if (severity === 'critical') widget.classList.add('is-critical');
+        _syncGroupSignals();
+    }
+
+    function _syncGroupSignals() {
+        const sidebar = document.getElementById('sidebarNav');
+        if (!sidebar) return;
+        Object.entries(GROUP_SIGNAL_SOURCES).forEach(([groupKey, ids]) => {
+            let total = 0;
+            let topSeverity = 'idle';
+            ids.forEach((id) => {
+                const el = document.getElementById(id);
+                if (!el || el.hidden) return;
+                const count = Number(el.dataset.sidebarCount || 0);
+                if (Number.isFinite(count) && count > 0) total += count;
+                const severity = el.dataset.sidebarSeverity || 'idle';
+                if ((SIGNAL_RANK[severity] || 0) > (SIGNAL_RANK[topSeverity] || 0)) topSeverity = severity;
+            });
+            const group = sidebar.querySelector(`.sidebar-group[data-group-key="${groupKey}"]`);
+            const header = group?.querySelector('.sidebar-group-header');
+            const signal = group?.querySelector('.sidebar-group-signal');
+            if (!group || !header || !signal) return;
+            const hasSignal = total > 0;
+            signal.textContent = _formatSignalCount(total);
+            signal.hidden = !hasSignal;
+            signal.classList.toggle('is-critical', topSeverity === 'critical');
+            signal.classList.toggle('is-hot', topSeverity === 'hot');
+            group.classList.toggle('has-signal', hasSignal);
+            header.classList.toggle('has-signal', hasSignal);
+            header.classList.toggle('signal-critical', topSeverity === 'critical');
+            header.classList.toggle('signal-hot', topSeverity === 'hot');
+        });
     }
 
     function _queueActiveIndicatorUpdate() {
@@ -663,6 +721,7 @@ const Sidebar = (() => {
                 timer = null;
                 hideTooltip();
                 pill.classList.remove('show-tip');
+                pill.classList.remove('is-pressed');
             };
             const schedule = () => {
                 if (timer) clearTimeout(timer);
@@ -673,7 +732,10 @@ const Sidebar = (() => {
             };
             pill.addEventListener('pointerenter', schedule);
             pill.addEventListener('focus', schedule);
-            pill.addEventListener('pointerdown', schedule);
+            pill.addEventListener('pointerdown', () => {
+                pill.classList.add('is-pressed');
+                schedule();
+            });
             pill.addEventListener('pointerup', clear);
             pill.addEventListener('pointercancel', clear);
             pill.addEventListener('pointerleave', clear);
@@ -798,6 +860,10 @@ const Sidebar = (() => {
         _setPillDescription(widget, alertTitle);
         widget.classList.toggle('has-alerts', active.length > 0);
         widget.classList.toggle('has-critical', unread.some(alert => alert.level === 'critical'));
+        _setPillOperationalState(widget, active.length, {
+            critical: unread.some(alert => alert.level === 'critical'),
+            hot: count > 0
+        });
     }
 
     function openAlerts(event) {
@@ -861,6 +927,7 @@ const Sidebar = (() => {
                 : `Задачі: ${activeCount} активних. Натисніть, щоб відкрити всі задачі.`;
             _setPillDescription(widget, taskTitle);
             widget.classList.toggle('has-overdue', overdueCount > 0);
+            _setPillOperationalState(widget, activeCount, { critical: overdueCount > 0 });
         } catch {}
         _state.taskWidgetTimer = setTimeout(_refreshTaskMiniWidget, 300000);
     }
@@ -911,6 +978,7 @@ const Sidebar = (() => {
             _setPillDescription(widget, funnelTitle);
             widget.classList.toggle('has-action', actionCount > 0);
             widget.classList.toggle('has-new', actionCount === 0 && newCount > 0);
+            _setPillOperationalState(widget, displayCount, { hot: actionCount > 0 || newCount > 0 });
             widget.href = firstLead?.id ? `/sales-funnel?lead=${encodeURIComponent(firstLead.id)}` : '/sales-funnel';
         } catch {}
         _state.funnelWidgetTimer = setTimeout(_refreshFunnelWidget, 300000);

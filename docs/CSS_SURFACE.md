@@ -40,6 +40,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/kleshnya-widget.css` | kleshnya | `feature-shared` | active | Root shell Kleshnya widget styles. |
 | `css/layout.css` | shared-ui | `shared-large` | active-large | Shared layout, sidebar, and content frame styles. |
 | `css/sidebar-aurora.css` | shared-ui | `shared` | active | Sidebar Aurora visual layer and dual-theme micro-interactions for the shared CRM menu. |
+| `css/sidebar-smart-menu.css` | shared-ui | `shared` | active | Optional smart sidebar menu customizer styles for compact dashboard shortcuts. |
 | `css/minigame.css` | game | `page-scoped-large` | active-large | Gamification game styles; large-file consolidation candidate. |
 | `css/modals.css` | shared-ui | `shared-large` | active-large | Shared modal and profile modal styles across CRM pages. |
 | `css/pages.css` | shared-ui | `shared` | active | Shared page-level layout helpers for static CRM pages. |

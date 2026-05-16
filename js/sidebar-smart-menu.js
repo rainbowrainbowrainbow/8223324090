@@ -1,5 +1,6 @@
 /**
  * js/sidebar-smart-menu.js — Dashboard smart menu customizer (v0.51.5)
+ * Optional styles: "css/sidebar-smart-menu.css"
  * Turns the fixed Dashboard jump into: Dashboard + 1 auto tab + up to 2 pinned tabs.
  */
 (function () {

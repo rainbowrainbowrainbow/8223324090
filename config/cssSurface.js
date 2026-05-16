@@ -149,6 +149,13 @@ const CSS_SURFACE = [
         reason: 'Sidebar Aurora visual layer and dual-theme micro-interactions for the shared CRM menu.'
     },
     {
+        file: 'css/sidebar-smart-menu.css',
+        owner: 'shared-ui',
+        category: 'shared',
+        status: 'active',
+        reason: 'Optional smart sidebar menu customizer styles for compact dashboard shortcuts.'
+    },
+    {
         file: 'css/minigame.css',
         owner: 'game',
         category: 'page-scoped-large',

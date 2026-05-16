@@ -125,6 +125,47 @@
 .design-card-actions .btn-delete { background: #FFEBEE; color: #C62828; }
 .design-card-actions .btn-delete:hover { background: #FFCDD2; }
 
+html[data-theme="dark"] .design-filters,
+body.dark-mode .design-filters,
+html[data-theme="dark"] .drop-zone,
+body.dark-mode .drop-zone,
+html[data-theme="dark"] .design-card,
+body.dark-mode .design-card,
+html[data-theme="dark"] .collection-card,
+body.dark-mode .collection-card,
+html[data-theme="dark"] .add-collection-bar,
+body.dark-mode .add-collection-bar {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
+html[data-theme="dark"] .design-filters,
+body.dark-mode .design-filters,
+html[data-theme="dark"] .add-collection-bar,
+body.dark-mode .add-collection-bar {
+    background: rgba(17, 24, 39, 0.92) !important;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+html[data-theme="dark"] .design-card,
+body.dark-mode .design-card,
+html[data-theme="dark"] .collection-card,
+body.dark-mode .collection-card {
+    background: rgba(15, 23, 42, 0.92) !important;
+    border-color: rgba(148, 163, 184, 0.14) !important;
+}
+
+html[data-theme="dark"] .design-card-img,
+body.dark-mode .design-card-img {
+    background: #111827 !important;
+}
+
+html[data-theme="dark"] .drop-zone,
+body.dark-mode .drop-zone {
+    background: rgba(15, 23, 42, 0.74) !important;
+    border-color: rgba(148, 163, 184, 0.20) !important;
+}
+
 /* Collections section */
 .collections-grid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

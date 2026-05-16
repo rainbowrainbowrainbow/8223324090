@@ -45,8 +45,11 @@
   isolation: isolate;
   min-width: 220px;
   max-width: 220px;
-  overflow-x: clip !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
   scrollbar-gutter: stable;
+  clip-path: inset(0);
+  background-clip: padding-box;
 }
 
 body.dark-mode .sidebar-nav {

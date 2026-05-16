@@ -4,6 +4,15 @@
 
 ---
 
+## v0.51.9 - Dark Shell Prepaint Fix (2026-05-16)
+
+### Sidebar / Dark First Paint [codex]
+- **Dark Prepaint** - HTML сторінки виставляють `data-theme="dark"` ще в `<head>`, щоб при переході між сторінками не мигав білий кадр.
+- **Designs Dark Surface** - у вкладці Дизайни темні картки, пошук і drop-zone більше не використовують прозорий backdrop-filter, який давав світлий прямокутний шлейф.
+- **Sidebar Clip Guard** - sidebar додатково зафіксовано через hidden horizontal overflow і clip-path, щоб декоративні aurora-шари не могли виходити в контент.
+
+---
+
 ## v0.51.8 - Sidebar Shell Bleed Fix (2026-05-16)
 
 ### Sidebar / Shell Stability [codex]

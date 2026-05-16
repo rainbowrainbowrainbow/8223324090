@@ -4,6 +4,15 @@
 
 ---
 
+## v0.52.2 - Sidebar Compact Rhythm Polish
+
+### Sidebar / Compact Rhythm [codex]
+- **Compact Rhythm** - sidebar brand, user card, status pills, smart menu, nav rows and group headers use tighter spacing so more items fit vertically.
+- **Calmer Surface** - smart menu and quick counters are smaller and quieter while keeping active, frequent and pinned states readable.
+- **Responsive Safety** - collapsed and dark sidebar states keep icon-only behavior, readable contrast and no horizontal overflow.
+
+---
+
 ## v0.52.1 - Sidebar Custom Smart Menu Guard
 
 ### Sidebar / Custom Smart Menu [codex]

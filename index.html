@@ -1279,6 +1279,65 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
+                    <h4>v0.51.1 — Sidebar Dashboard Jump Polish</h4>
+                    <ul>
+                        <li><b>Sidebar</b> — прибрано малий підпис <code>Головний екран</code> із швидкої кнопки dashboard, щоб плитка не виглядала обрізаною.</li>
+                        <li><b>Dashboard Jump</b> — у кнопці залишено тільки читабельний напис <code>Дашборд</code> з компактнішим ритмом і стабільним arrow-control.</li>
+                        <li><b>Layout</b> — кнопку, іконку та відступи трохи зменшено, щоб блок займав менше місця у вузькому sidebar.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.51.0 — AI Rail Live Center</h4>
+                    <ul>
+                        <li><b>Centered Rail</b> — верхній AI rail перенесено у справді центрований header-slot, незалежний від різної ширини лівих і правих блоків.</li>
+                        <li><b>Live Speaking Ticker</b> — speaking-стан отримав живу subtitle-стрічку, яка працює як поведінка комунікації, а не тільки як overflow-патч.</li>
+                        <li><b>Presence States</b> — thinking, listening і speaking стали виразнішими, з кращим glow, ticker-контрастом і text-only fallback.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.50.41 — Profile Cabinet Notes Panel Cleanup (Клешня, 16.05.2026)</h4>
+                    <ul>
+                        <li><b>Profile</b> — блок <code>Нотатки</code> прибрано з власного кабінету, щоб нижня частина сторінки не показувала зайву порожню панель.</li>
+                        <li><b>Right Panel</b> — глобальний <code>role-panel</code> більше не підключається на <code>profile.html</code>, тому права floating-панель не перекриває кабінет.</li>
+                        <li><b>Data Safety</b> — backend/API нотаток не видалявся; прибрано саме зайвий UI surface і непотрібний fetch у профілі.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.50.40 — Price List Categories Print Redesign (Клешня, 16.05.2026)</h4>
+                    <ul>
+                        <li><b>Price List</b> — прайс перебудовано у фіксований порядок категорій: Меню, Торти, Розважальні програми, Піньяти, Костюми.</li>
+                        <li><b>Visual Hierarchy</b> — вкладка отримала sales-flow з hero, category/subcategory блоками, item cards, цінами та fallback-сигналами для неповних даних.</li>
+                        <li><b>Print + Dark Mode</b> — додано A4-friendly print/PDF режим без CRM chrome і окремий dark-mode pass для screen view.</li>
+                        <li><b>Catalog Flow</b> — випускний каталог вбудовано в той самий sales-контур без дублювання даних.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.50.39 — Dashboard Remove My Focus Widget (Клешня, 16.05.2026)</h4>
+                    <ul>
+                        <li><b>Dashboard</b> — віджет <code>Мій фокус</code> прибрано зі scene/grid/settings surfaces, щоб він більше не займав місце на головній.</li>
+                        <li><b>Saved Config Safety</b> — старі dashboard-конфіги з <code>my_focus</code> фільтруються normalization layer і не ламають сцену.</li>
+                        <li><b>Task Semantics</b> — focus-data і <code>focus_rank</code> залишились у задачах; видалено тільки dashboard widget surface.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.50.38 — Sidebar Stack Overlap Fix (Клешня, 16.05.2026)</h4>
+                    <ul>
+                        <li><b>Sidebar Layout</b> — dashboard jump, quick status block і accordion groups отримали окремі вертикальні слоти без накладання карток.</li>
+                        <li><b>Accordion Spacing</b> — links і category rows використовують стабільний flex-column rhythm без negative/animated overlap.</li>
+                        <li><b>Interaction Polish</b> — active dashboard jump більше не підстрибує вгору на hover/active і не торкається першої CRM-групи.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.50.37 — Dashboard Board Creative Workspace &amp; AI Upgrade (Клешня, 16.05.2026)</h4>
+                    <ul>
+                        <li><b>Workspace Logic</b> — board отримав явний interaction contract для view, edit, draw, connect, text-edit і widget-inspect режимів.</li>
+                        <li><b>Creative Palette</b> — toolbar зібрано у grouped navigation, insert, draw, connect, AI і action flows.</li>
+                        <li><b>Connectors</b> — додано connector model, anchor buttons, relation types, line/arrow/curve styles і live reroute після move/resize.</li>
+                        <li><b>AI Board</b> — додано Suno-style board-native presets: expand idea, mood pack, auto cluster, summarize, extract tasks, remix, name frame і prompt-to-board.</li>
+                        <li><b>Visual Polish</b> — selected/editing/widget-inspect/connector/anchor states приведено до чистішої premium-мови без грубих обводок.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.50.36 — My Cabinet Cluster Visual Polish (Клешня, 16.05.2026)</h4>
                     <ul>
                         <li><b>Cluster</b> — у верхньому My Cabinet cluster прибрано усічені підписи та зафіксовано clean icon-only face.</li>

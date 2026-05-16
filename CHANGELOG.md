@@ -4,6 +4,15 @@
 
 ---
 
+## v0.51.4 - Sidebar Quick Icons Layer Fix (2026-05-16)
+
+### Sidebar / Quick Counters [codex]
+- **Layer Cleanup** - прибрано зайві внутрішні рамки та старі alert/action backgrounds, які накладались поверх нових icon-only плиток.
+- **Cleaner Surface** - quick-картки задач, алертів і воронки тепер мають один чистий glass-surface без подвійних контурів і випадкових плям.
+- **Counter Alignment** - іконки та нижні числові капсули вирівняно стабільніше, щоб блок виглядав зібрано у темному sidebar.
+
+---
+
 ## v0.51.3 - Sidebar Quick Icons Polish (2026-05-16)
 
 ### Sidebar / Quick Counters [codex]

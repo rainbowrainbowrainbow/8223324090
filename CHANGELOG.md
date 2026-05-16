@@ -4,6 +4,16 @@
 
 ---
 
+## v0.51.0 - AI Rail Live Center (2026-05-16)
+
+### CRM Assistant Rail [codex]
+- **Centered Header Slot** - верхній AI rail перенесено в окремий центрований host у header, щоб він не з'їжджав через різну ширину лівих і правих блоків.
+- **Live Speaking Ticker** - speaking-стан тепер запускає живу subtitle-стрічку як поведінку комунікації, а не тільки як overflow-патч для довгого тексту.
+- **Presence States** - thinking, listening і speaking отримали виразніші active states, glow і readable ticker у світлій та темній темі.
+- **Text-Only Fallback** - якщо голос вимкнений або TTS недоступний, rail все одно показує відповідь як активну speaking-репліку й лишає останній текст видимим після завершення.
+
+---
+
 ## v0.50.41 - Profile Cabinet Notes Panel Cleanup (2026-05-16)
 
 ### Profile / My Cabinet [codex]

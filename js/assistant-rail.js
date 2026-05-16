@@ -57,6 +57,7 @@
     let proactiveShownForPage = null;
     let pageInteractionDetected = false;
     let interactionWatchersBound = false;
+    let speakingIdleTimer = null;
     let initCount = 0;
 
     function escapeHtml(value) {
@@ -96,13 +97,36 @@
         }
     }
 
+    function ensureAssistantRailHost(headerContent) {
+        let host = headerContent.querySelector('#crmAssistantRailHost');
+        if (!host) {
+            host = document.createElement('div');
+            host.id = 'crmAssistantRailHost';
+            host.className = 'crm-assistant-rail-host';
+            host.setAttribute('aria-hidden', 'false');
+            const userPanel = headerContent.querySelector('.user-panel');
+            if (userPanel) headerContent.insertBefore(host, userPanel);
+            else headerContent.appendChild(host);
+        }
+        headerContent.classList.add('assistant-rail-mounted');
+        return host;
+    }
+
     function ensureMounted() {
         const headerContent = document.querySelector('.header .header-content');
         if (!headerContent) return false;
-        if (document.getElementById('crmAssistantRail')) return true;
 
         const legacyDashboardRail = document.getElementById('dashboardAssistantRail');
         if (legacyDashboardRail) legacyDashboardRail.remove();
+
+        const host = ensureAssistantRailHost(headerContent);
+        const existingRail = document.getElementById('crmAssistantRail');
+        if (existingRail) {
+            if (existingRail.parentElement !== host) host.appendChild(existingRail);
+            bindRailControls();
+            render();
+            return true;
+        }
 
         const rail = document.createElement('div');
         rail.id = 'crmAssistantRail';
@@ -131,9 +155,7 @@
             </div>
         `;
 
-        const userPanel = headerContent.querySelector('.user-panel');
-        if (userPanel) headerContent.insertBefore(rail, userPanel);
-        else headerContent.appendChild(rail);
+        host.appendChild(rail);
 
         bindRailControls();
         render();
@@ -141,19 +163,47 @@
     }
 
     function bindRailControls() {
+        const rail = document.getElementById('crmAssistantRail');
+        if (!rail || rail.dataset.controlsBound === 'true') return;
+        rail.dataset.controlsBound = 'true';
         document.getElementById('crmAssistantMicBtn')?.addEventListener('click', toggleListening);
         document.getElementById('crmAssistantVoiceToggle')?.addEventListener('click', toggleVoice);
         document.getElementById('crmAssistantReplayBtn')?.addEventListener('click', replayLastLine);
         document.getElementById('crmAssistantExpandBtn')?.addEventListener('click', expand);
     }
 
-    function shouldSubtitleScroll(text = '', wrap = null, el = null) {
+    function shouldSubtitleScroll(text = '', wrap = null, el = null, mode = state.mode) {
         const normalized = String(text).trim();
-        if (normalized.length > 150) return true;
-        return !!(wrap && el && (
+        if (mode === 'error' || mode === 'listening') return false;
+        const overflows = !!(wrap && el && (
             el.scrollWidth > wrap.clientWidth + 32 ||
             el.scrollHeight > wrap.clientHeight + 8
         ));
+        if (mode === 'speaking') return normalized.length > 72 || overflows;
+        if (mode === 'thinking') return normalized.length > 120 || overflows;
+        if (normalized.length > 150) return true;
+        return overflows;
+    }
+
+    function clearSpeakingIdleTimer() {
+        if (!speakingIdleTimer) return;
+        window.clearTimeout(speakingIdleTimer);
+        speakingIdleTimer = null;
+    }
+
+    function scheduleSpeakingIdleFallback(text) {
+        clearSpeakingIdleTimer();
+        const holdMs = Math.min(9000, Math.max(3800, String(text || '').length * 55));
+        speakingIdleTimer = window.setTimeout(() => {
+            speakingIdleTimer = null;
+            if (state.mode === 'speaking' && state.lastSpokenLine === text) {
+                setState({ mode: 'idle', tickerText: '' });
+            }
+        }, holdMs);
+    }
+
+    function isLiveMode(mode) {
+        return ['thinking', 'listening', 'speaking'].includes(mode);
     }
 
     function render() {
@@ -168,10 +218,13 @@
 
         const text = state.tickerText || state.subtitle || '...';
         rail.dataset.mode = state.mode;
+        rail.dataset.live = isLiveMode(state.mode) ? 'true' : 'false';
         stateEl.textContent = LABELS[state.mode] || LABELS.idle;
         stateEl.className = `assistant-rail-state assistant-state-${state.mode}`;
         subtitlesEl.textContent = text;
-        subtitlesEl.classList.remove('is-ticker');
+        subtitlesEl.classList.remove('is-ticker', 'is-live-line');
+        subtitlesEl.removeAttribute('data-ticker-text');
+        subtitlesEl.style.removeProperty('--assistant-ticker-duration');
         voiceBtn.textContent = state.voiceEnabled ? '🔊' : '🔇';
         voiceBtn.setAttribute('aria-pressed', state.voiceEnabled ? 'true' : 'false');
         if (micBtn) {
@@ -183,7 +236,18 @@
         if (replayBtn) replayBtn.disabled = !(state.lastSpokenLine || state.subtitle);
 
         requestAnimationFrame(() => {
-            subtitlesEl.classList.toggle('is-ticker', shouldSubtitleScroll(text, subtitlesWrap, subtitlesEl));
+            const liveLine = isLiveMode(state.mode);
+            const ticker = shouldSubtitleScroll(text, subtitlesWrap, subtitlesEl, state.mode);
+            subtitlesEl.classList.toggle('is-live-line', liveLine);
+            subtitlesEl.classList.toggle('is-ticker', ticker);
+            if (ticker) {
+                subtitlesEl.setAttribute('data-ticker-text', text);
+                const duration = Math.min(28, Math.max(14, Math.ceil(String(text).length / 8)));
+                subtitlesEl.style.setProperty('--assistant-ticker-duration', `${duration}s`);
+            } else {
+                subtitlesEl.removeAttribute('data-ticker-text');
+                subtitlesEl.style.removeProperty('--assistant-ticker-duration');
+            }
         });
     }
 
@@ -396,11 +460,11 @@
         audioPlayer = new Audio(audioUrl);
         audioPlayer.onended = () => {
             stopAudioPlayback();
-            if (state.mode === 'speaking') setState({ mode: 'idle' });
+            if (state.mode === 'speaking') setState({ mode: 'idle', tickerText: '' });
         };
         audioPlayer.onerror = () => {
             stopAudioPlayback();
-            if (state.mode === 'speaking') setState({ mode: 'idle' });
+            if (state.mode === 'speaking') setState({ mode: 'idle', tickerText: '' });
         };
         await audioPlayer.play();
     }
@@ -409,19 +473,24 @@
         const text = String(reply?.subtitle || reply?.text || '').trim();
         if (!text) return;
         appendHistory('assistant', text);
+        const shouldPlayAudio = state.voiceEnabled && !options.textOnly;
+        clearSpeakingIdleTimer();
         setState({
-            mode: state.voiceEnabled && !options.textOnly ? 'speaking' : 'idle',
+            mode: 'speaking',
             subtitle: text,
             tickerText: text,
             lastSpokenLine: text
         });
         renderHistory();
-        if (!state.voiceEnabled || options.textOnly) return;
+        if (!shouldPlayAudio) {
+            scheduleSpeakingIdleFallback(text);
+            return;
+        }
         try {
             await speakText(text);
         } catch (err) {
             console.warn('[crm-assistant] speech playback failed:', err);
-            if (state.mode === 'speaking') setState({ mode: 'idle' });
+            if (state.mode === 'speaking') setState({ mode: 'idle', tickerText: '' });
         }
     }
 

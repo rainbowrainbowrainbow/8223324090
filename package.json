@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.50.41",
+  "version": "0.51.0",
   "eventGenix": {
-    "releaseLabel": "Profile Cabinet Notes Panel Cleanup"
+    "releaseLabel": "AI Rail Live Center"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

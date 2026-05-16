@@ -1,5 +1,5 @@
 /**
- * js/sidebar-smart-menu.js — Dashboard smart menu customizer (v0.51.5)
+ * js/sidebar-smart-menu.js — Dashboard smart menu customizer (v0.51.8)
  * Optional styles: "css/sidebar-smart-menu.css"
  * Turns the fixed Dashboard jump into: Dashboard + 1 auto tab + up to 2 pinned tabs.
  */
@@ -7,10 +7,22 @@
     const PINNED_KEY = 'pzp_sidebar_smart_menu_pinned';
     const COUNTS_KEY = 'pzp_sidebar_smart_menu_counts';
     const PINNED_LIMIT = 2;
+    const INIT_RETRY_MS = [0, 80, 240, 700];
+    let visitRecordedForPath = '';
+    let sidebarObserver = null;
+    let renderTimer = null;
 
     function normalizePath(value) {
         const raw = String(value || '/').split('#')[0];
         return raw.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+    }
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
     }
 
     function readJson(key, fallback) {
@@ -30,7 +42,7 @@
 
     function getRole() {
         if (typeof getUserRole === 'function') return getUserRole();
-        return AppState?.currentUser?.role || null;
+        return window.AppState?.currentUser?.role || null;
     }
 
     function getAvailableItems() {
@@ -69,11 +81,13 @@
 
     function recordCurrentVisit() {
         const current = normalizePath(window.location.pathname);
+        if (visitRecordedForPath === current) return;
         const item = getItemByPath(current);
         if (!item || current === '/dashboard') return;
         const counts = readJson(COUNTS_KEY, {});
         counts[current] = Number(counts[current] || 0) + 1;
         writeJson(COUNTS_KEY, counts);
+        visitRecordedForPath = current;
     }
 
     function getAutoPath(pinned) {
@@ -109,15 +123,15 @@
         if (!item) return '';
         const path = normalizePath(item.href);
         const badge = kind === 'auto' ? '<span class="smart-menu-badge">часта</span>' : '';
-        return `<a href="${item.href}" class="smart-menu-link${isActive(path) ? ' active' : ''}" data-smart-menu-kind="${kind}">
+        return `<a href="${escapeHtml(item.href)}" class="smart-menu-link${isActive(path) ? ' active' : ''}" data-smart-menu-kind="${kind}">
             ${renderIcon(item)}
-            <span class="smart-menu-label">${item.label}</span>
+            <span class="smart-menu-label">${escapeHtml(item.label)}</span>
             ${badge}
         </a>`;
     }
 
     function hideDuplicateDashboard() {
-        document.querySelectorAll('#sidebarLinks .nav-link[data-page-access="/dashboard"]').forEach(link => {
+        document.querySelectorAll('#sidebarLinks a.nav-link[href="/dashboard"], #sidebarLinks .nav-link[data-page-access="/dashboard"]').forEach(link => {
             link.classList.add('sidebar-dashboard-duplicate-hidden');
             link.setAttribute('aria-hidden', 'true');
             link.tabIndex = -1;
@@ -126,7 +140,7 @@
 
     function renderSmartMenu() {
         const wrap = document.getElementById('sidebarDashboardJumpWrap');
-        if (!wrap) return;
+        if (!wrap) return false;
         const dashboard = getItemByPath('/dashboard') || { href: '/dashboard', icon: '🏠', label: 'Дашборд' };
         const pinned = getPinned();
         const autoPath = getAutoPath(pinned);
@@ -139,7 +153,7 @@
             <div class="sidebar-smart-menu" aria-label="Швидке меню">
                 <div class="smart-menu-head">
                     <span class="smart-menu-title">Швидке меню</span>
-                    <button type="button" class="smart-menu-edit" onclick="SidebarSmartMenu.open()" title="Налаштувати вкладки">+</button>
+                    <button type="button" class="smart-menu-edit" onclick="SidebarSmartMenu.open()" title="Налаштувати вкладки" aria-label="Налаштувати швидке меню">+</button>
                 </div>
                 <div class="smart-menu-links">
                     ${renderLink(dashboard, 'base')}
@@ -149,6 +163,23 @@
                 </div>
             </div>`;
         hideDuplicateDashboard();
+        return true;
+    }
+
+    function scheduleRender() {
+        if (renderTimer) window.clearTimeout(renderTimer);
+        renderTimer = window.setTimeout(() => {
+            renderTimer = null;
+            renderSmartMenu();
+            hideDuplicateDashboard();
+        }, 0);
+    }
+
+    function bindSidebarObserver() {
+        const links = document.getElementById('sidebarLinks');
+        if (!links || sidebarObserver) return;
+        sidebarObserver = new MutationObserver(() => scheduleRender());
+        sidebarObserver.observe(links, { childList: true, subtree: true });
     }
 
     function enforceLimit(input) {
@@ -173,14 +204,14 @@
         modal.innerHTML = `
             <div class="smart-menu-modal" role="dialog" aria-modal="true" aria-label="Налаштування швидкого меню">
                 <h2>Швидке меню</h2>
-                <p>Дашборд показується завжди. Ще одна вкладка підтягується автоматично як найчастіша. Вручну можна додати до 2 вкладок.</p>
+                <p>Дашборд показується завжди. Ще одна вкладка підтягується автоматично як найчастіша серед невибраних. Вручну можна додати до 2 вкладок.</p>
                 <div class="smart-menu-options">
                     ${options.map(item => {
                         const path = normalizePath(item.href);
                         return `<label class="smart-menu-option">
-                            <input type="checkbox" value="${path}" ${selected.has(path) ? 'checked' : ''} onchange="SidebarSmartMenu.enforceLimit(this)">
-                            <span>${item.icon || '•'}</span>
-                            <strong>${item.label}</strong>
+                            <input type="checkbox" value="${escapeHtml(path)}" ${selected.has(path) ? 'checked' : ''} onchange="SidebarSmartMenu.enforceLimit(this)">
+                            <span>${escapeHtml(item.icon || '•')}</span>
+                            <strong>${escapeHtml(item.label)}</strong>
                         </label>`;
                     }).join('')}
                 </div>
@@ -207,7 +238,13 @@
     function init() {
         document.body.classList.add('sidebar-smart-compact');
         recordCurrentVisit();
+        bindSidebarObserver();
         renderSmartMenu();
+        hideDuplicateDashboard();
+    }
+
+    function boot() {
+        INIT_RETRY_MS.forEach(delay => window.setTimeout(init, delay));
     }
 
     window.SidebarSmartMenu = {
@@ -218,9 +255,9 @@
     };
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
+        document.addEventListener('DOMContentLoaded', boot, { once: true });
     } else {
-        setTimeout(init, 0);
+        boot();
     }
 
     window.addEventListener('roleSwitched', () => setTimeout(init, 0));

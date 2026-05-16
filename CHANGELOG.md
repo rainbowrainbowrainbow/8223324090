@@ -4,6 +4,15 @@
 
 ---
 
+## v0.51.8 - Sidebar Shell Bleed Fix (2026-05-16)
+
+### Sidebar / Shell Stability [codex]
+- **Bleed Guard** - sidebar отримав жорсткий paint containment і horizontal clipping, щоб декоративний шар не залишав світлий шлейф у контенті.
+- **Stable Width** - ширина меню більше не стрибає при відкритті груп CRM, Управління, HR та інших accordion-блоків.
+- **Reserved Signals** - group-badge тепер має зарезервований слот і не змінює геометрію кнопки при появі або зникненні лічильника.
+
+---
+
 ## v0.51.7 - Sidebar Operational Rail Polish (2026-05-16)
 
 ### Sidebar / Operational Rail [codex]

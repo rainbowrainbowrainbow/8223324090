@@ -313,7 +313,7 @@ const Sidebar = (() => {
           title="${item.label}">
     ${_renderIcon(item.icon)}
     <span class="nav-text sidebar-group-label">${item.label}</span>
-    <span class="sidebar-group-signal" id="sidebarGroupSignal-${item.key}" hidden aria-hidden="true"></span>
+    <span class="sidebar-group-signal" id="sidebarGroupSignal-${item.key}" aria-hidden="true"></span>
     ${_renderGroupChevron()}
   </button>
   <div class="sidebar-group-items${finalOpen ? ' open' : ''}">
@@ -486,7 +486,8 @@ const Sidebar = (() => {
             if (!group || !header || !signal) return;
             const hasSignal = total > 0;
             signal.textContent = _formatSignalCount(total);
-            signal.hidden = !hasSignal;
+            signal.classList.toggle('is-visible', hasSignal);
+            signal.setAttribute('aria-hidden', hasSignal ? 'false' : 'true');
             signal.classList.toggle('is-critical', topSeverity === 'critical');
             signal.classList.toggle('is-hot', topSeverity === 'hot');
             group.classList.toggle('has-signal', hasSignal);

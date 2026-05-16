@@ -4,6 +4,15 @@
 
 ---
 
+## v0.51.2 - Sidebar Logo Animation Polish (2026-05-16)
+
+### Sidebar / Brand Logo [codex]
+- **Logo Frame Removed** - прибрано глобальну рамку/outline з верхнього sidebar-логотипа, щоб значок Event Genix не виглядав як випадкова framed-картинка.
+- **Soft Animation** - додано спокійну анімацію логотипа з легким підйомом, поворотом і glow, без агресивного миготіння.
+- **Reduced Motion** - анімація логотипа вимикається через `prefers-reduced-motion`, щоб не ламати accessibility.
+
+---
+
 ## v0.51.1 - Sidebar Dashboard Jump Polish (2026-05-16)
 
 ### Sidebar / Dashboard Jump [codex]

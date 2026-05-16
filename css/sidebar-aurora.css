@@ -193,7 +193,17 @@ body.dark-mode .sidebar-nav {
   width: 36px !important;
   height: 36px !important;
   border-radius: 11px !important;
-  box-shadow: 0 8px 24px -8px var(--sb-primary-glow), inset 0 1px 0 rgba(255, 255, 255, 0.26);
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: 0 10px 26px -12px var(--sb-primary-glow);
+  transform-origin: center;
+  animation: sbBrandLogoAlive 5.8s ease-in-out infinite;
+}
+
+.sidebar-brand:hover .logo-img-small,
+.sidebar-brand:hover .sidebar-brand-logo {
+  animation-duration: 3.8s;
+  filter: drop-shadow(0 0 10px var(--sb-primary-glow));
 }
 
 .sidebar-brand-name,
@@ -212,6 +222,20 @@ body.dark-mode .sidebar-nav {
   font-weight: 800 !important;
   letter-spacing: 0.08em !important;
   text-transform: uppercase;
+}
+
+@keyframes sbBrandLogoAlive {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg) scale(1);
+    filter: drop-shadow(0 0 0 rgba(16, 185, 129, 0));
+  }
+  45% {
+    transform: translateY(-1px) rotate(4deg) scale(1.035);
+    filter: drop-shadow(0 0 9px var(--sb-primary-glow));
+  }
+  70% {
+    transform: translateY(0) rotate(-2deg) scale(1.01);
+  }
 }
 
 .sidebar-compact-profile {
@@ -1014,6 +1038,8 @@ body.dark-mode .sidebar-nav {
   .sidebar-group-chevron,
   .sidebar-group-header,
   .sidebar-group-pulse,
+  .sidebar-brand .logo-img-small,
+  .sidebar-brand-logo,
   .sidebar-active-indicator::after,
   .sidebar-group-items.open > .sidebar-group-inner > .nav-link {
     animation: none !important;

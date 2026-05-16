@@ -4,6 +4,15 @@
 
 ---
 
+## v0.51.3 - Sidebar Quick Icons Polish (2026-05-16)
+
+### Sidebar / Quick Counters [codex]
+- **Text Removed** - прибрано обрізані підписи з верхніх quick-карток задач, алертів і воронки, щоб блок читався як чистий icon-only counter rail.
+- **Unified Icons** - SVG-іконки перезібрано в один спільний stroke-style: задачі, сповіщення і воронка тепер виглядають як одна система, а не три різні випадкові символи.
+- **Counter Polish** - лічильники перенесено в охайні нижні капсули, підсилено hover/focus стани й темний режим без втрати читабельності.
+
+---
+
 ## v0.51.2 - Sidebar Logo Animation Polish (2026-05-16)
 
 ### Sidebar / Brand Logo [codex]

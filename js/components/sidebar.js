@@ -217,9 +217,9 @@ const Sidebar = (() => {
 
     function _renderStatusIcon(type) {
         const drawings = {
-            tasks: '<rect x="5" y="5" width="14" height="14" rx="4"/><path d="M8.5 12.2l2.2 2.2 4.9-5.3"/><path d="M8 18.5h8"/>',
-            alerts: '<path d="M12 4.5l8.2 14.2H3.8z"/><path d="M12 9v4.7"/><circle cx="12" cy="16.4" r=".8"/><path d="M5.7 5.8C7.2 4.2 9.4 3.2 12 3.2s4.8 1 6.3 2.6"/>',
-            funnel: '<path d="M4.5 5.5h15L14 12.4v4.2l-4 1.9v-6.1z"/><circle cx="7.5" cy="6" r="1.2"/><circle cx="16.5" cy="6" r="1.2"/><circle cx="12" cy="17.6" r="1.2"/>'
+            tasks: '<rect x="6.2" y="6.2" width="11.6" height="11.6" rx="3.1"/><path d="M9.2 12.2l2 2 4-4.5"/><path d="M8.6 4.4h6.8"/><path d="M8.6 19.6h6.8"/>',
+            alerts: '<path d="M8.1 10.4a3.9 3.9 0 0 1 7.8 0c0 3 1.3 4.1 2.1 5H6c.8-.9 2.1-2 2.1-5z"/><path d="M10.5 17.5a1.7 1.7 0 0 0 3 0"/><path d="M12 4.2v1.4"/><path d="M5.4 7.1l1.2 1.1M18.6 7.1l-1.2 1.1"/>',
+            funnel: '<path d="M6.4 6.7h11.2l-4.2 5.2v3.3l-2.8 1.4v-4.7z"/><circle cx="8" cy="6.7" r="1.1"/><circle cx="16" cy="6.7" r="1.1"/><circle cx="12" cy="17.5" r="1.1"/><path d="M8 19.7h8"/>'
         };
         const safe = drawings[type] ? type : 'tasks';
         return `<svg class="sidebar-status-svg sidebar-status-svg--${safe}" viewBox="0 0 24 24" focusable="false" aria-hidden="true">${drawings[safe]}</svg>`;
@@ -556,26 +556,23 @@ const Sidebar = (() => {
         row.className = 'sidebar-pills';
         row.setAttribute('aria-label', 'Швидкий стан CRM');
         row.innerHTML = `
-            <a href="/tasks?view=my" class="sidebar-pill sidebar-pill--tasks" id="sidebarPillTasks" data-sidebar-tooltip="Мої задачі: відкриває персональний список задач, активні й прострочені.">
+            <a href="/tasks?view=my" class="sidebar-pill sidebar-pill--tasks" id="sidebarPillTasks" title="Задачі" aria-label="Задачі" data-sidebar-tooltip="Мої задачі: відкриває персональний список задач, активні й прострочені.">
                 <div class="sidebar-pill-top">
                     <span class="sidebar-pill-icon">${_renderStatusIcon('tasks')}</span>
-                    <span class="sidebar-pill-label">Задачі</span>
                 </div>
                 <div class="sidebar-pill-value" id="sidebarPillTasksValue">–</div>
                 <div class="sidebar-pill-meta" id="sidebarPillTasksMeta">оновлення...</div>
             </a>
-            <button type="button" class="sidebar-pill sidebar-pill--alerts" id="sidebarPillAlerts" onclick="Sidebar.openAlerts(event)" data-sidebar-tooltip="Сповіщення: відкриває повну панель алертів і ризиків, які потребують уваги.">
+            <button type="button" class="sidebar-pill sidebar-pill--alerts" id="sidebarPillAlerts" title="Алерти" aria-label="Алерти" onclick="Sidebar.openAlerts(event)" data-sidebar-tooltip="Сповіщення: відкриває повну панель алертів і ризиків, які потребують уваги.">
                 <div class="sidebar-pill-top">
                     <span class="sidebar-pill-icon">${_renderStatusIcon('alerts')}</span>
-                    <span class="sidebar-pill-label">Алерти</span>
                 </div>
                 <div class="sidebar-pill-value" id="sidebarPillAlertsValue">0</div>
                 <div class="sidebar-pill-meta" id="sidebarPillAlertsMeta">спокійно</div>
             </button>
-            <a href="/sales-funnel" class="sidebar-pill sidebar-pill--funnel" id="sidebarPillFunnel" data-sidebar-tooltip="Воронка: відкриває ліди, які чекають дії, нові звернення і гарячі етапи.">
+            <a href="/sales-funnel" class="sidebar-pill sidebar-pill--funnel" id="sidebarPillFunnel" title="Воронка" aria-label="Воронка" data-sidebar-tooltip="Воронка: відкриває ліди, які чекають дії, нові звернення і гарячі етапи.">
                 <div class="sidebar-pill-top">
                     <span class="sidebar-pill-icon">${_renderStatusIcon('funnel')}</span>
-                    <span class="sidebar-pill-label">Воронка</span>
                 </div>
                 <div class="sidebar-pill-value" id="sidebarPillFunnelValue">0</div>
                 <div class="sidebar-pill-meta" id="sidebarPillFunnelMeta">без нових</div>

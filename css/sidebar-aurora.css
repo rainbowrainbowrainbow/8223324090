@@ -499,34 +499,67 @@ body.dark-mode .sidebar-nav {
   transform: translateX(2px);
 }
 
-/* Clearer status cells: icon-first, count-second, explanation on hover/hold */
+/* Sidebar quick counters: icon-only, unified status language */
 .sidebar-pills {
   position: relative;
   z-index: 20;
   overflow: visible;
+  gap: 7px;
+  padding: 7px;
+  border-radius: 18px;
 }
 
 .sidebar-pill {
   position: relative;
-  min-height: 88px;
+  display: grid;
+  min-height: 78px;
   grid-template-columns: 1fr;
-  grid-template-rows: 40px auto;
-  align-content: start;
-  align-items: start;
+  grid-template-rows: 46px 24px;
+  align-content: center;
+  align-items: center;
   justify-items: center;
-  gap: 8px;
-  padding: 10px 8px 9px;
+  gap: 4px;
+  padding: 8px 6px 7px;
   isolation: isolate;
-  border-radius: 17px;
+  border-radius: 18px;
   text-align: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, currentColor 13%, transparent), transparent 58%),
+    color-mix(in srgb, var(--sb-surface-hi) 72%, transparent);
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.sidebar-pill::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  z-index: -1;
+  border-radius: 15px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, currentColor 10%, transparent), transparent 70%);
+  opacity: 0.82;
+  pointer-events: none;
+}
+
+.sidebar-pill:hover,
+.sidebar-pill:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 13px 28px rgba(15, 23, 42, 0.15);
 }
 
 .sidebar-pill-top {
-  display: flex;
-  flex-direction: column;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
+  justify-content: center;
+  grid-row: 1;
+  width: 46px;
+  height: 46px;
 }
 
 .sidebar-pill-icon {
@@ -534,18 +567,22 @@ body.dark-mode .sidebar-nav {
   grid-row: 1;
   align-self: center;
   justify-self: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 13px;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 8px 18px rgba(15,23,42,0.07);
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+  border-width: 1px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.22),
+    inset 0 -12px 24px color-mix(in srgb, currentColor 8%, transparent),
+    0 9px 18px rgba(15,23,42,0.08);
 }
 
 .sidebar-status-svg {
-  width: 20px;
-  height: 20px;
+  width: 23px;
+  height: 23px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 2.1;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
   transition: transform 0.16s ease;
@@ -563,44 +600,44 @@ body.dark-mode .sidebar-nav {
 }
 
 .sidebar-pill--alerts .sidebar-pill-icon {
-  background: linear-gradient(135deg, rgba(239,68,68,0.18), rgba(245,158,11,0.08));
+  background: linear-gradient(135deg, rgba(239,68,68,0.18), rgba(239,68,68,0.055));
   border-color: rgba(239,68,68,0.28);
   color: var(--sb-danger);
 }
 
 .sidebar-pill--funnel .sidebar-pill-icon {
-  background: linear-gradient(135deg, rgba(245,158,11,0.18), rgba(239,68,68,0.08));
+  background: linear-gradient(135deg, rgba(245,158,11,0.18), rgba(245,158,11,0.055));
   border-color: rgba(245,158,11,0.30);
   color: var(--sb-amber);
 }
 
 .sidebar-pill-label {
-  grid-column: 1;
-  grid-row: 2;
-  align-self: start;
-  justify-self: center;
-  max-width: 100%;
-  color: var(--sb-text);
-  font-size: 12px;
-  font-weight: 900;
-  line-height: 1.08;
-  letter-spacing: -0.015em;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: none !important;
 }
 
 .sidebar-pill-value {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  min-width: 23px;
-  height: 23px;
-  padding: 0 6px;
+  position: static;
+  grid-column: 1;
+  grid-row: 2;
+  min-width: 30px;
+  height: 24px;
+  padding: 0 9px;
   border-radius: 999px;
-  font-size: 13px;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 2px 8px rgba(15,23,42,0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sb-text);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.2), rgba(255,255,255,0.04)),
+    color-mix(in srgb, var(--sb-surface-hi) 74%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    0 6px 14px rgba(15,23,42,0.1);
 }
 
 .sidebar-pill-meta {

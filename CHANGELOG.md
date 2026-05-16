@@ -4,6 +4,15 @@
 
 ---
 
+## v0.52.1 - Sidebar Custom Smart Menu Guard
+
+### Sidebar / Custom Smart Menu [codex]
+- **Duplicate Hidden For Real** - duplicate `Дашборд` inside the CRM group now loses to the stronger sidebar CSS and is actually hidden.
+- **Cache Safe Release** - patch release bumps asset tags so the corrected smart menu CSS is fetched by browsers.
+- **Custom Menu Preserved** - fixed Dashboard, frequent auto tab, and up to two pinned tabs remain the active smart-menu contract.
+
+---
+
 ## v0.52.0 - Sidebar Custom Smart Menu
 
 ### Sidebar / Custom Smart Menu [codex]

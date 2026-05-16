@@ -199,6 +199,8 @@ body.sidebar-smart-compact .sidebar-pill-meta {
     border-style: dashed;
 }
 
+#sidebarLinks .sidebar-dashboard-duplicate-hidden,
+.sidebar-links .sidebar-dashboard-duplicate-hidden,
 .sidebar-dashboard-duplicate-hidden {
     display: none !important;
 }

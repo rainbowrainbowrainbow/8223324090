@@ -3491,3 +3491,100 @@ body.dark-mode .sidebar-nav::after,
   min-width: 0 !important;
   letter-spacing: 0.12em !important;
 }
+
+/* v0.55.24: collapsed sidebar must stay a rail and never cover page content on hover. */
+:root {
+  --eg-sidebar-collapsed-w: 74px;
+}
+
+body.dark-mode .sidebar-nav,
+.sidebar-nav {
+  box-shadow: inset -1px 0 0 rgba(255,255,255,0.035) !important;
+}
+
+@media (min-width: 1024px) {
+  body.shell-ready .sidebar-overlay {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  body.shell-ready .sidebar-nav.collapsed,
+  body.shell-ready .sidebar-nav.collapsed:hover {
+    width: var(--eg-sidebar-collapsed-w) !important;
+    min-width: var(--eg-sidebar-collapsed-w) !important;
+    max-width: var(--eg-sidebar-collapsed-w) !important;
+    overflow-x: hidden !important;
+    box-shadow: inset -1px 0 0 rgba(255,255,255,0.035) !important;
+  }
+
+  body.shell-ready .sidebar-nav.collapsed ~ .header,
+  body.shell-ready .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header {
+    margin-left: var(--eg-sidebar-collapsed-w) !important;
+  }
+
+  body.shell-ready .sidebar-nav.collapsed ~ .header ~ .page-container,
+  body.shell-ready .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .page-container,
+  body.shell-ready .sidebar-nav.collapsed ~ .header ~ .main-content,
+  body.shell-ready .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .main-content {
+    margin-left: var(--eg-sidebar-collapsed-w) !important;
+    width: calc(100% - var(--eg-sidebar-collapsed-w)) !important;
+  }
+
+  body.shell-ready .sidebar-nav.collapsed ~ .header ~ .main-content.panel-open,
+  body.shell-ready .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .main-content.panel-open {
+    width: calc(100% - var(--eg-sidebar-collapsed-w) - 340px) !important;
+  }
+
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-command-deck {
+    margin: 0 6px 10px !important;
+    padding: 7px 5px !important;
+    border-radius: 16px !important;
+  }
+
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-identity-card {
+    grid-template-columns: 1fr !important;
+    justify-items: center !important;
+    padding: 5px 0 !important;
+  }
+
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-identity-avatar {
+    width: 34px !important;
+    height: 34px !important;
+    border-radius: 12px !important;
+  }
+
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-focus-deck {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+    margin-top: 7px !important;
+  }
+
+  body.shell-ready .sidebar-nav.collapsed:hover .focus-chip {
+    min-height: 30px !important;
+    grid-template-columns: 1fr !important;
+    justify-items: center !important;
+    padding: 5px 0 !important;
+    border-radius: 11px !important;
+  }
+
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-identity-main,
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-identity-chevron,
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-identity-health,
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-command-kicker,
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-primary-action,
+  body.shell-ready .sidebar-nav.collapsed:hover .focus-chip-label,
+  body.shell-ready .sidebar-nav.collapsed:hover .focus-chip-icon,
+  body.shell-ready .sidebar-nav.collapsed:hover .focus-chip-meta,
+  body.shell-ready .sidebar-nav.collapsed:hover .nav-copy,
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-group-chevron,
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-design-extras,
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-today-dock,
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-alert-hero,
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-alert-hero-head,
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-alert-hero-meta,
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-alert-hero-actions,
+  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-alert-hero-stack {
+    display: none !important;
+  }
+}

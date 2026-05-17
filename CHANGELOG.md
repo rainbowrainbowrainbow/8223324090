@@ -4,6 +4,16 @@
 
 ---
 
+## v0.55.24 - Навігація: без накладання меню
+
+### Sidebar / Interaction Contract [codex]
+- **Collapsed rail** - згорнуте меню на desktop більше не розкривається поверх сторінки від hover; повний sidebar відкривається тільки явною дією користувача.
+- **Shell offsets** - `header`, `main-content` і `page-container` у collapsed/full states використовують ті самі ширини, що й фактичний sidebar.
+- **Visual bleed** - прибрано широкий правий shadow/veil, який затемнював графік і виглядав як накладання меню на контент.
+- **Guardrail** - додано UI-smoke перевірки для collapsed rail, hover-поведінки й однакових offsets у shell.
+
+---
+
 ## v0.55.23 - Навігація: стабільне меню на сторінках
 
 ### Sidebar / Cross-page Geometry [codex]

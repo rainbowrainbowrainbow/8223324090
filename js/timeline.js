@@ -199,6 +199,14 @@ function getTimeRange(date) {
     };
 }
 
+function getLineSubtitle(line) {
+    if (line && line.shiftStart && line.shiftEnd) {
+        return `${String(line.shiftStart).slice(0, 5)}-${String(line.shiftEnd).slice(0, 5)} · зі зміни`;
+    }
+    if (line && line.source === 'staff_schedule') return 'зі зміни';
+    return 'редагувати';
+}
+
 function getLeadConversionContextFromUrl() {
     const params = new URLSearchParams(window.location.search);
     const leadId = parseInt(params.get('leadId') || params.get('lead'), 10);
@@ -354,7 +362,7 @@ async function renderTimeline() {
         lineEl.innerHTML = `
             <div class="line-header" style="border-left-color: ${escapeHtml(line.color)}" data-line-id="${escapeHtml(line.id)}">
                 <span class="line-name">${escapeHtml(line.name)}</span>
-                <span class="line-sub">редагувати</span>
+                <span class="line-sub">${escapeHtml(getLineSubtitle(line))}</span>
             </div>
             <div class="line-grid" data-line-id="${escapeHtml(line.id)}">
                 ${renderGridCells(line.id, selectedDate)}

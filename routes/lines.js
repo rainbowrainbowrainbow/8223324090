@@ -3,7 +3,7 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { validateDate, ensureDefaultLines } = require('../services/booking');
+const { validateDate, syncScheduledAnimatorLines } = require('../services/booking');
 const { broadcast } = require('../services/websocket');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
@@ -16,17 +16,41 @@ router.use(authenticateToken);
 router.get('/:date', async (req, res) => {
     try {
         const { date } = req.params;
-        await ensureDefaultLines(date);
+        if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date format' });
+
+        const sync = await syncScheduledAnimatorLines(date);
         const result = await pool.query(
-            'SELECT * FROM lines_by_date WHERE date = $1 ORDER BY id',
+            `SELECT
+                 l.*,
+                 ss.shift_start,
+                 ss.shift_end,
+                 ss.status AS shift_status,
+                 s.id AS staff_id
+             FROM lines_by_date l
+             LEFT JOIN staff s ON l.line_id = s.id::text
+             LEFT JOIN staff_schedule ss
+                ON ss.staff_id = s.id
+               AND ss.date = l.date
+               AND ss.status IN ('working', 'remote')
+             WHERE l.date = $1
+             ORDER BY
+                CASE WHEN ss.staff_id IS NULL THEN 1 ELSE 0 END,
+                ss.shift_start NULLS LAST,
+                l.id`,
             [date]
         );
         const lines = result.rows.map(row => ({
             id: row.line_id,
             name: row.name,
             color: row.color,
-            fromSheet: row.from_sheet
+            fromSheet: row.from_sheet,
+            staffId: row.staff_id || null,
+            shiftStart: row.shift_start || null,
+            shiftEnd: row.shift_end || null,
+            shiftStatus: row.shift_status || null,
+            source: row.staff_id ? 'staff_schedule' : (row.from_sheet ? 'sheet' : 'manual')
         }));
+        res.set('X-Timeline-Lines-Source', sync.source);
         res.json(lines);
     } catch (err) {
         log.error('Error fetching lines', err);

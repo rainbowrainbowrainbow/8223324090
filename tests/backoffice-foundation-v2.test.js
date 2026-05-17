@@ -18,6 +18,9 @@ describe('backoffice foundation v2 contracts', () => {
     const designsHtml = readRepoFile('designs.html');
     const staffPage = readRepoFile('js', 'staff-page.js');
     const staffHtml = readRepoFile('staff.html');
+    const linesRoute = readRepoFile('routes', 'lines.js');
+    const bookingService = readRepoFile('services', 'booking.js');
+    const timelinePage = readRepoFile('js', 'timeline.js');
     const sidebar = readRepoFile('js', 'components', 'sidebar.js');
     const sidebarAurora = readRepoFile('css', 'sidebar-aurora.css');
     const ui = readRepoFile('js', 'ui.js');
@@ -90,6 +93,18 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(staffHtml, /\[data-theme="dark"\] \.dept-chip\[data-dept="all"\]\.active/);
         assert.match(staffHtml, /color:\s*#F8FAFC/);
         assert.match(staffHtml, /hover[\s\S]*color:\s*#FFFFFF/);
+    });
+
+    it('uses animator shifts as the timeline line source of truth', () => {
+        assert.match(bookingService, /function getScheduledAnimatorLines/);
+        assert.match(bookingService, /FROM staff_schedule ss[\s\S]*JOIN staff s ON s\.id = ss\.staff_id/);
+        assert.match(bookingService, /ss\.status IN \('working', 'remote'\)/);
+        assert.match(bookingService, /s\.department = 'animators'/);
+        assert.match(bookingService, /INSERT INTO lines_by_date[\s\S]*ON CONFLICT \(date, line_id\)/);
+        assert.match(linesRoute, /syncScheduledAnimatorLines\(date\)/);
+        assert.match(linesRoute, /X-Timeline-Lines-Source/);
+        assert.match(timelinePage, /function getLineSubtitle/);
+        assert.match(timelinePage, /зі зміни/);
     });
 
     it('keeps sidebar menu clicks from drawing the floating active frame', () => {

@@ -185,10 +185,96 @@ function mapBookingRow(row) {
     };
 }
 
+// --- Timeline animator lines ---
+
+const AUTO_LINE_COLORS = ['#10B981', '#3B82F6', '#F97316', '#06B6D4', '#84CC16', '#EC4899', '#64748B', '#8B5CF6'];
+
+function lineColorForIndex(index, fallback) {
+    if (fallback && /^#[0-9A-Fa-f]{3,8}$/.test(String(fallback))) return fallback;
+    return AUTO_LINE_COLORS[index % AUTO_LINE_COLORS.length];
+}
+
+async function getScheduledAnimatorLines(date, db = pool) {
+    const result = await db.query(
+        `SELECT
+             s.id AS staff_id,
+             s.name,
+             s.color,
+             ss.shift_start,
+             ss.shift_end,
+             ss.status
+         FROM staff_schedule ss
+         JOIN staff s ON s.id = ss.staff_id
+         WHERE ss.date = $1
+           AND s.is_active = true
+           AND ss.status IN ('working', 'remote')
+           AND (
+                s.department = 'animators'
+                OR s.role_type = 'animator'
+                OR LOWER(COALESCE(s.position, '')) LIKE '%animator%'
+                OR LOWER(COALESCE(s.position, '')) LIKE '%аніматор%'
+           )
+         ORDER BY COALESCE(ss.shift_start, '99:99'), s.name`,
+        [date]
+    );
+
+    return result.rows.map((row, index) => ({
+        id: String(row.staff_id),
+        name: row.name,
+        color: lineColorForIndex(index, row.color),
+        shiftStart: row.shift_start,
+        shiftEnd: row.shift_end,
+        fromSheet: true,
+        source: 'staff_schedule'
+    }));
+}
+
+async function syncScheduledAnimatorLines(date, db = pool) {
+    const scheduledLines = await getScheduledAnimatorLines(date, db);
+
+    if (scheduledLines.length === 0) {
+        await ensureDefaultLines(date, db);
+        return { source: 'defaults', count: 0 };
+    }
+
+    for (const line of scheduledLines) {
+        await db.query(
+            `INSERT INTO lines_by_date (date, line_id, name, color, from_sheet)
+             VALUES ($1, $2, $3, $4, true)
+             ON CONFLICT (date, line_id)
+             DO UPDATE SET
+                name = EXCLUDED.name,
+                color = EXCLUDED.color,
+                from_sheet = true`,
+            [date, line.id, line.name, line.color]
+        );
+    }
+
+    await db.query(
+        `DELETE FROM lines_by_date l
+         WHERE l.date = $1
+           AND l.line_id IN ($2, $3)
+           AND NOT EXISTS (
+                SELECT 1 FROM bookings b
+                WHERE b.date = l.date
+                  AND b.line_id = l.line_id
+                  AND b.status != 'cancelled'
+           )
+           AND NOT EXISTS (
+                SELECT 1 FROM afisha a
+                WHERE a.date = l.date
+                  AND a.line_id = l.line_id
+           )`,
+        [date, `line1_${date}`, `line2_${date}`]
+    );
+
+    return { source: 'staff_schedule', count: scheduledLines.length };
+}
+
 // --- Default lines ---
 
-async function ensureDefaultLines(date) {
-    const existing = await pool.query('SELECT COUNT(*) FROM lines_by_date WHERE date = $1', [date]);
+async function ensureDefaultLines(date, db = pool) {
+    const existing = await db.query('SELECT COUNT(*) FROM lines_by_date WHERE date = $1', [date]);
     const count = parseInt(existing.rows[0].count);
     // v12.6: Only create defaults when NO lines exist (count === 0)
     // Previously count < 2 caused phantom "Аніматор 1/2" to reappear after user deleted a line
@@ -198,7 +284,7 @@ async function ensureDefaultLines(date) {
             { id: 'line2_' + date, name: 'Аніматор 2', color: '#2196F3' }
         ];
         for (const line of defaults) {
-            await pool.query(
+            await db.query(
                 'INSERT INTO lines_by_date (date, line_id, name, color) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
                 [date, line.id, line.name, line.color]
             );
@@ -228,6 +314,6 @@ module.exports = {
     validateDate, validateTime, validateId, validateSettingKey,
     timeToMinutes, minutesToTime, MIN_PAUSE, ALL_ROOMS,
     checkRoomConflict, checkServerConflicts, checkServerDuplicate,
-    mapBookingRow, ensureDefaultLines,
+    mapBookingRow, ensureDefaultLines, getScheduledAnimatorLines, syncScheduledAnimatorLines,
     getKyivDate, getKyivDateStr, getKyivTimeStr
 };

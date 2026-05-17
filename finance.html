@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.55.3">
-    <link rel="stylesheet" href="css/layout.css?v=0.55.3">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.3">
-    <link rel="stylesheet" href="css/pages.css?v=0.55.3">
-    <link rel="stylesheet" href="css/modals.css?v=0.55.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.3">
-    <link rel="stylesheet" href="css/responsive.css?v=0.55.3">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.3">
+    <link rel="stylesheet" href="css/base.css?v=0.55.4">
+    <link rel="stylesheet" href="css/layout.css?v=0.55.4">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.4">
+    <link rel="stylesheet" href="css/pages.css?v=0.55.4">
+    <link rel="stylesheet" href="css/modals.css?v=0.55.4">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.4">
+    <link rel="stylesheet" href="css/responsive.css?v=0.55.4">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -358,6 +358,326 @@
             transition: width 0.3s ease;
         }
 
+        /* Salary workspace */
+        .salary-topbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        .salary-mode-switch {
+            display: inline-flex;
+            gap: 3px;
+            padding: 3px;
+            background: var(--gray-100);
+            border-radius: var(--radius);
+        }
+
+        .salary-mode-btn {
+            min-height: 40px;
+            padding: 8px 14px;
+            border: none;
+            border-radius: var(--radius-sm);
+            background: transparent;
+            color: var(--gray-600);
+            font: inherit;
+            font-size: 13px;
+            font-weight: 800;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .salary-mode-btn.active {
+            background: var(--white);
+            color: var(--gray-900);
+            box-shadow: var(--shadow-xs);
+        }
+
+        .salary-workspace {
+            display: grid;
+            grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(260px, 340px);
+            gap: 14px;
+            align-items: start;
+        }
+
+        .salary-staff-list,
+        .salary-main-panel,
+        .salary-preview-panel {
+            border: 1px solid var(--gray-100);
+            background: var(--white);
+            border-radius: 8px;
+            min-width: 0;
+        }
+
+        .salary-staff-list {
+            padding: 8px;
+            max-height: 720px;
+            overflow: auto;
+        }
+
+        .salary-main-panel,
+        .salary-preview-panel {
+            padding: 16px;
+        }
+
+        .salary-panel-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .salary-panel-title h3,
+        .salary-panel-title h4 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 900;
+            color: var(--gray-900);
+        }
+
+        .salary-muted {
+            color: var(--gray-500);
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .salary-staff-item {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 10px;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            background: transparent;
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+            min-height: 58px;
+        }
+
+        .salary-staff-item:hover {
+            background: rgba(16,185,129,0.04);
+        }
+
+        .salary-staff-item.active {
+            border-color: rgba(16,185,129,0.35);
+            background: rgba(16,185,129,0.08);
+        }
+
+        .salary-staff-name {
+            font-weight: 900;
+            color: var(--gray-900);
+            font-size: 13px;
+        }
+
+        .salary-staff-meta {
+            margin-top: 2px;
+            color: var(--gray-500);
+            font-size: 11px;
+        }
+
+        .salary-staff-amount {
+            font-weight: 900;
+            color: #10B981;
+            white-space: nowrap;
+            font-size: 13px;
+        }
+
+        .salary-pill,
+        .salary-status {
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: var(--gray-100);
+            color: var(--gray-600);
+            font-size: 11px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .salary-pill.per_shift { background: #ECFDF5; color: #047857; }
+        .salary-pill.hourly { background: #EFF6FF; color: #1D4ED8; }
+        .salary-pill.monthly_fixed { background: #FEF3C7; color: #92400E; }
+        .salary-pill.percent { background: #F5F3FF; color: #6D28D9; }
+        .salary-pill.hybrid { background: #EEF2FF; color: #4338CA; }
+        .salary-pill.manual { background: #F3F4F6; color: #374151; }
+
+        .salary-status.reviewed { background: #E0F2FE; color: #0369A1; }
+        .salary-status.approved { background: #DCFCE7; color: #166534; }
+        .salary-status.paid { background: #FEF9C3; color: #854D0E; }
+
+        .salary-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .salary-summary-card {
+            border: 1px solid var(--gray-100);
+            border-radius: 8px;
+            padding: 12px;
+            min-width: 0;
+        }
+
+        .salary-summary-card b {
+            display: block;
+            font-size: 18px;
+            font-weight: 900;
+            color: var(--gray-900);
+            overflow-wrap: anywhere;
+        }
+
+        .salary-summary-card span {
+            display: block;
+            margin-top: 4px;
+            color: var(--gray-500);
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .salary-form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .salary-form-grid label,
+        .salary-block label {
+            display: block;
+            margin-bottom: 4px;
+            color: var(--gray-500);
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .salary-form-grid input,
+        .salary-form-grid select,
+        .salary-block input,
+        .salary-block select {
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
+            min-height: 44px;
+            box-sizing: border-box;
+            padding: 10px 12px;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            background: var(--white);
+            color: var(--gray-900);
+            font: inherit;
+            font-size: 14px;
+        }
+
+        .salary-blocks {
+            display: grid;
+            gap: 10px;
+            margin: 12px 0;
+        }
+
+        .salary-block {
+            border: 1px solid var(--gray-100);
+            border-left: 3px solid #10B981;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .salary-block--bonus { border-left-color: #22C55E; }
+        .salary-block--deduction { border-left-color: #EF4444; }
+        .salary-block--advance { border-left-color: #F59E0B; }
+        .salary-block--percent { border-left-color: #6366F1; }
+
+        .salary-block h4 {
+            margin: 0 0 10px 0;
+            font-size: 13px;
+            font-weight: 900;
+            color: var(--gray-800);
+        }
+
+        .salary-inline-result {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin: 12px 0;
+            padding: 10px 12px;
+            border-radius: 8px;
+            background: var(--gray-50);
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .salary-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        .salary-preview-card {
+            display: grid;
+            gap: 8px;
+        }
+
+        .salary-preview-row,
+        .salary-preview-total {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--gray-100);
+            font-size: 13px;
+        }
+
+        .salary-preview-total {
+            margin-top: 4px;
+            padding-top: 12px;
+            border-top: 2px solid var(--gray-200);
+            border-bottom: none;
+            font-size: 15px;
+            font-weight: 900;
+        }
+
+        .salary-plus { color: #10B981; }
+        .salary-minus { color: #EF4444; }
+
+        .salary-lines {
+            margin-top: 14px;
+            display: grid;
+            gap: 6px;
+        }
+
+        .salary-line-item {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            font-size: 12px;
+            color: var(--gray-600);
+        }
+
+        .salary-report-tools {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
         /* Dark mode */
         body.dark-mode .fin-stat-card {
             background: #2A2A4A;
@@ -374,7 +694,10 @@
         }
         body.dark-mode .fin-table-wrap,
         body.dark-mode .fin-chart,
-        body.dark-mode .fin-cat-section {
+        body.dark-mode .fin-cat-section,
+        body.dark-mode .salary-staff-list,
+        body.dark-mode .salary-main-panel,
+        body.dark-mode .salary-preview-panel {
             background: #2A2A4A;
             border-color: #3D3D5C;
         }
@@ -432,6 +755,50 @@
         }
         body.dark-mode .fin-type-badge.income { background: #064E3B; color: #6EE7B7; }
         body.dark-mode .fin-type-badge.expense { background: #7F1D1D; color: #FCA5A5; }
+        body.dark-mode .salary-mode-switch,
+        body.dark-mode .salary-pill,
+        body.dark-mode .salary-status {
+            background: #1E1E38;
+        }
+        body.dark-mode .salary-mode-btn { color: #9CA3AF; }
+        body.dark-mode .salary-mode-btn.active {
+            background: #2A2A4A;
+            color: #E2E8F0;
+        }
+        body.dark-mode .salary-panel-title h3,
+        body.dark-mode .salary-panel-title h4,
+        body.dark-mode .salary-staff-name,
+        body.dark-mode .salary-summary-card b,
+        body.dark-mode .salary-block h4 {
+            color: #F8FAFC;
+        }
+        body.dark-mode .salary-muted,
+        body.dark-mode .salary-staff-meta,
+        body.dark-mode .salary-summary-card span,
+        body.dark-mode .salary-line-item {
+            color: #CBD5E1;
+        }
+        body.dark-mode .salary-staff-item.active,
+        body.dark-mode .salary-staff-item:hover {
+            background: rgba(16,185,129,0.12);
+        }
+        body.dark-mode .salary-summary-card,
+        body.dark-mode .salary-block,
+        body.dark-mode .salary-preview-row,
+        body.dark-mode .salary-inline-result {
+            border-color: #3D3D5C;
+        }
+        body.dark-mode .salary-inline-result {
+            background: #1E1E38;
+        }
+        body.dark-mode .salary-form-grid input,
+        body.dark-mode .salary-form-grid select,
+        body.dark-mode .salary-block input,
+        body.dark-mode .salary-block select {
+            background: #1E1E38;
+            border-color: #3D3D5C;
+            color: #E2E8F0;
+        }
 
         /* Personal account cards */
         .fin-personal-card {
@@ -465,6 +832,23 @@
             .fin-filter-select { min-width: 0; }
             .fin-categories {
                 grid-template-columns: 1fr;
+            }
+            .salary-workspace {
+                grid-template-columns: 1fr;
+            }
+            .salary-staff-list {
+                max-height: 260px;
+            }
+            .salary-summary-grid,
+            .salary-form-grid {
+                grid-template-columns: 1fr;
+            }
+            .salary-mode-switch {
+                width: 100%;
+                overflow-x: auto;
+            }
+            .salary-mode-btn {
+                flex: 1 0 auto;
             }
             .fin-bar-label { font-size: 8px; }
         }
@@ -657,25 +1041,21 @@
 
             <!-- Salary tab -->
             <div id="tabSalary" style="display:none">
-                <div class="fin-filters" style="margin-bottom: 16px">
+                <div class="salary-topbar">
                     <input type="month" id="salaryMonth" class="fin-filter-date" style="width:180px">
+                    <div class="salary-mode-switch" role="tablist" aria-label="Режими зарплат">
+                        <button type="button" class="salary-mode-btn active" data-mode="overview" role="tab" aria-selected="true">Огляд</button>
+                        <button type="button" class="salary-mode-btn" data-mode="builder" role="tab" aria-selected="false">Конструктор</button>
+                        <button type="button" class="salary-mode-btn" data-mode="report" role="tab" aria-selected="false">Звіт</button>
+                    </div>
+                    <button type="button" class="btn-page-primary" id="salaryCreateSchemeBtn">+ Нова схема</button>
+                    <button type="button" class="btn-page-secondary" id="salaryGenerateReportBtn">Згенерувати звіт</button>
                 </div>
 
-                <div class="fin-table-wrap">
-                    <table class="fin-table">
-                        <thead>
-                            <tr>
-                                <th>Працівник</th>
-                                <th>Відділ</th>
-                                <th>Посада</th>
-                                <th>Ставка ₴/год</th>
-                                <th>Години</th>
-                                <th>Нараховано ₴</th>
-                            </tr>
-                        </thead>
-                        <tbody id="salaryTableBody"></tbody>
-                        <tfoot id="salaryTableFoot"></tfoot>
-                    </table>
+                <div class="salary-workspace">
+                    <aside class="salary-staff-list" id="salaryStaffList" aria-label="Працівники payroll"></aside>
+                    <section class="salary-main-panel" id="salaryMainPanel" aria-live="polite"></section>
+                    <aside class="salary-preview-panel" id="salaryPreviewPanel" aria-live="polite"></aside>
                 </div>
             </div>
 
@@ -925,13 +1305,13 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/ui.js?v=0.55.3"></script>
-    <script src="js/config.js?v=0.55.3"></script>
-    <script src="js/notification.js?v=0.55.3"></script>
-    <script src="js/api.js?v=0.55.3"></script>
-    <script src="js/auth.js?v=0.55.3"></script>
-    <script src="js/components/sidebar.js?v=0.55.3"></script>
+    <script src="js/ui.js?v=0.55.4"></script>
+    <script src="js/config.js?v=0.55.4"></script>
+    <script src="js/notification.js?v=0.55.4"></script>
+    <script src="js/api.js?v=0.55.4"></script>
+    <script src="js/auth.js?v=0.55.4"></script>
+    <script src="js/components/sidebar.js?v=0.55.4"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/finance-page.js?v=0.55.3"></script><script src="js/alerts.js?v=0.55.3"></script>
+    <script src="js/finance-page.js?v=0.55.4"></script><script src="js/alerts.js?v=0.55.4"></script>
 </body>
 </html>

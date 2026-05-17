@@ -4,6 +4,16 @@
 
 ---
 
+## v0.55.4 - Salary Schemes & Payroll Workspace
+
+### Payroll / Finance [codex]
+- **Payroll Workspace** - вкладку `Фінанси → Зарплати` перезібрано з плоского погодинного звіту в робочий простір із режимами огляду, конструктора і звіту.
+- **Salary Schemes** - додано foundation для схем `per_shift`, `hourly`, `monthly_fixed`, `percent`, `hybrid` і `manual` з окремим backend contract.
+- **Calculator Preview** - для простих кейсів є сценарій “сума за вихід”, а для складних - блоки бази, бонусів, відсотків, утримань і авансів із payslip preview.
+- **Reports** - додано payroll snapshot layer для майбутніх автоматичних зарплатних звітів зі статусами `draft / reviewed / approved / paid`.
+
+---
+
 ## v0.55.3 - Profile Nav Polish + Reward Claim Contract
 
 ### Profile / Rewards [codex]

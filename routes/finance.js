@@ -11,6 +11,7 @@ const { createLogger } = require('../utils/logger');
 
 const { requireRole } = require('../middleware/auth');
 const { publish } = require('../services/eventBus');
+const { getSalaryReport } = require('../services/payroll');
 const log = createLogger('Finance');
 const FINANCE_BOOKING_REPORTING_SCOPE = 'finance-full-role'; // Intentional broad finance semantics for creator/director/accountant.
 function _escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -475,40 +476,8 @@ router.get('/report/salary', async (req, res) => {
         if (!month || !/^\d{4}-\d{2}$/.test(month)) {
             return res.status(400).json({ error: 'month (YYYY-MM) required' });
         }
-        const [year, mon] = month.split('-');
-        const from = `${year}-${mon}-01`;
-        const lastDay = new Date(parseInt(year), parseInt(mon), 0).getDate();
-        const to = `${year}-${mon}-${String(lastDay).padStart(2, '0')}`;
-
-        const result = await pool.query(`
-            SELECT s.id, s.name, s.department, s.position,
-                COALESCE(s.hourly_rate, 0)::numeric AS hourly_rate,
-                COALESCE(SUM(tr.total_worked_minutes), 0)::int AS total_minutes,
-                COALESCE(ROUND(SUM(tr.total_worked_minutes) / 60.0 * s.hourly_rate), 0)::int AS estimated_salary
-            FROM staff s
-            LEFT JOIN hr_time_records tr ON tr.staff_id = s.id
-                AND tr.record_date >= $1 AND tr.record_date <= $2
-            WHERE s.is_active = true
-            GROUP BY s.id, s.name, s.department, s.position, s.hourly_rate
-            HAVING COALESCE(SUM(tr.total_worked_minutes), 0) > 0
-            ORDER BY estimated_salary DESC
-        `, [from, to]);
-
-        const totalSalary = result.rows.reduce((sum, r) => sum + r.estimated_salary, 0);
-
-        res.json({
-            month,
-            staff: result.rows.map(r => ({
-                id: r.id,
-                name: r.name,
-                department: r.department,
-                position: r.position,
-                hourlyRate: parseFloat(r.hourly_rate),
-                totalHours: Math.round(r.total_minutes / 60 * 10) / 10,
-                estimatedSalary: r.estimated_salary
-            })),
-            totalSalary
-        });
+        const report = await getSalaryReport(month);
+        res.json(report);
     } catch (err) {
         log.error('GET /report/salary error', err);
         res.status(500).json({ error: 'Internal server error' });

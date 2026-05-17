@@ -67,6 +67,7 @@ focused route tests in the same pack.
 | `/api/omni` | `routes/omnichannel.js` | omnichannel |
 | `/api/packages` | `routes/packages.js` | packages |
 | `/api/page-statuses` | `routes/page-statuses.js` | page-statuses |
+| `/api/payroll` | `routes/payroll.js` | payroll |
 | `/api/personal-accounts` | `routes/personal-accounts.js` | personal-accounts |
 | `/api/points` | `routes/points.js` | points |
 | `/api/print` | `routes/print.js` | print |

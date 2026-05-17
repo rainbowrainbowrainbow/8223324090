@@ -52,6 +52,10 @@ const FinState = {
     dashboard: null,
     monthlyReport: null,
     salaryReport: null,
+    salaryWorkspace: null,
+    salaryMode: 'overview',
+    selectedSalaryStaffId: null,
+    creatingSalaryScheme: false,
     page: 1,
     totalPages: 1,
     editingId: null,
@@ -74,13 +78,29 @@ const DEPT_LABELS = {
     security: 'Охорона'
 };
 
+const SALARY_SCHEME_LABELS = {
+    per_shift: 'Сума за вихід',
+    hourly: 'Погодинна',
+    monthly_fixed: 'Фікс за місяць',
+    percent: 'Відсоток',
+    hybrid: 'Гібридна',
+    manual: 'Ручна'
+};
+
+const SALARY_STATUS_LABELS = {
+    draft: 'Чернетка',
+    reviewed: 'Перевірено',
+    approved: 'Затверджено',
+    paid: 'Виплачено'
+};
+
 // ==========================================
 // FORMATTING
 // ==========================================
 
 function formatMoney(amount) {
     if (!amount && amount !== 0) return '0 ₴';
-    return amount.toLocaleString('uk-UA') + ' ₴';
+    return (Number(amount) || 0).toLocaleString('uk-UA') + ' ₴';
 }
 
 function formatDate(dateStr) {
@@ -179,11 +199,27 @@ async function fetchSalaryReport() {
     try {
         const month = document.getElementById('salaryMonth')?.value;
         if (!month) return;
-        const res = await apiRequest('GET', `/api/finance/report/salary?month=${month}`);
-        FinState.salaryReport = res;
-        renderSalaryReport(res);
+        const [report, workspace] = await Promise.all([
+            apiRequest('GET', `/api/finance/report/salary?month=${month}`),
+            apiRequest('GET', `/api/payroll/schemes?month=${month}`)
+        ]);
+        FinState.salaryReport = report;
+        FinState.salaryWorkspace = {
+            ...(workspace || {}),
+            ...(report || {}),
+            staff: report?.staff || workspace?.staff || [],
+            schemes: workspace?.schemes || [],
+            totals: report?.totals || workspace?.totals || {},
+            month
+        };
+        const rows = FinState.salaryWorkspace.staff || [];
+        if (!rows.some(row => String(row.staffId || row.id) === String(FinState.selectedSalaryStaffId))) {
+            FinState.selectedSalaryStaffId = rows[0]?.staffId || rows[0]?.id || null;
+        }
+        renderSalaryWorkspace();
     } catch (err) {
         console.error('Failed to fetch salary report', err);
+        showNotification('Не вдалося завантажити зарплати', 'error');
     }
 }
 
@@ -424,32 +460,581 @@ function renderMonthlyChart(months) {
 // ==========================================
 
 function renderSalaryReport(data) {
-    if (!data) return;
-    const tbody = document.getElementById('salaryTableBody');
-    const tfoot = document.getElementById('salaryTableFoot');
+    renderSalaryReportTable(data || FinState.salaryWorkspace);
+}
 
-    if (!data.staff || data.staff.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--gray-400);padding:24px">Немає даних за період</td></tr>';
-        tfoot.innerHTML = '';
+function getSalaryRows() {
+    return FinState.salaryWorkspace?.staff || FinState.salaryReport?.staff || [];
+}
+
+function getSelectedSalaryRow() {
+    const rows = getSalaryRows();
+    return rows.find(row => String(row.staffId || row.id) === String(FinState.selectedSalaryStaffId)) || rows[0] || null;
+}
+
+function getSalarySchemes() {
+    return FinState.salaryWorkspace?.schemes || [];
+}
+
+function getEditableSchemeForRow(row) {
+    if (!row) return null;
+    const schemes = getSalarySchemes();
+    return schemes.find(s => String(s.id) === String(row.schemeId))
+        || schemes.find(s => String(s.staffId) === String(row.staffId || row.id) && s.isActive)
+        || null;
+}
+
+function salaryNumber(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+}
+
+function salarySchemePill(type) {
+    const schemeType = type || 'hourly';
+    return `<span class="salary-pill ${schemeType}">${SALARY_SCHEME_LABELS[schemeType] || schemeType}</span>`;
+}
+
+function salaryStatusPill(status) {
+    const value = status || 'draft';
+    return `<span class="salary-status ${value}">${SALARY_STATUS_LABELS[value] || value}</span>`;
+}
+
+function renderSalaryWorkspace() {
+    renderSalaryModeButtons();
+    renderSalaryStaffList();
+    renderSalaryMainPanel();
+    renderSalaryPreviewPanel();
+}
+
+function setSalaryMode(mode) {
+    if (!['overview', 'builder', 'report'].includes(mode)) return;
+    FinState.salaryMode = mode;
+    if (mode !== 'builder') FinState.creatingSalaryScheme = false;
+    renderSalaryWorkspace();
+}
+
+function renderSalaryModeButtons() {
+    document.querySelectorAll('.salary-mode-btn').forEach(btn => {
+        const active = btn.dataset.mode === FinState.salaryMode;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+}
+
+function renderSalaryStaffList() {
+    const container = document.getElementById('salaryStaffList');
+    if (!container) return;
+    const rows = getSalaryRows();
+    if (!rows.length) {
+        container.innerHTML = '<div class="salary-muted" style="padding:12px">Немає працівників для payroll за цей місяць.</div>';
         return;
     }
 
-    tbody.innerHTML = data.staff.map(s => `
-        <tr>
-            <td style="font-weight:600">${escapeHtml(s.name)}</td>
-            <td>${DEPT_LABELS[s.department] || escapeHtml(s.department)}</td>
-            <td>${escapeHtml(s.position)}</td>
-            <td>${s.hourlyRate} ₴</td>
-            <td>${s.totalHours} год</td>
-            <td class="fin-amount-expense">${formatMoney(s.estimatedSalary)}</td>
-        </tr>
-    `).join('');
+    container.innerHTML = rows.map(row => {
+        const staffId = row.staffId || row.id;
+        const active = String(staffId) === String(FinState.selectedSalaryStaffId);
+        return `
+            <button type="button" class="salary-staff-item ${active ? 'active' : ''}" data-staff-id="${staffId}">
+                <span style="min-width:0">
+                    <span class="salary-staff-name">${escapeHtml(row.name)}</span>
+                    <span class="salary-staff-meta">${escapeHtml(DEPT_LABELS[row.department] || row.department || '—')} · ${escapeHtml(row.position || row.roleType || '—')}</span>
+                    <span style="display:block;margin-top:6px">${salarySchemePill(row.schemeType)}</span>
+                </span>
+                <span class="salary-staff-amount">${formatMoney(row.netAmount || row.estimatedSalary || 0)}</span>
+            </button>
+        `;
+    }).join('');
+}
 
-    tfoot.innerHTML = `
-        <tr>
-            <td colspan="5" style="text-align:right;font-weight:800">РАЗОМ:</td>
-            <td class="fin-amount-expense" style="font-weight:800">${formatMoney(data.totalSalary)}</td>
-        </tr>
+function renderSalaryMainPanel() {
+    const panel = document.getElementById('salaryMainPanel');
+    if (!panel) return;
+    if (FinState.salaryMode === 'builder') {
+        renderSalaryBuilder(panel);
+    } else if (FinState.salaryMode === 'report') {
+        renderSalaryReportTable(FinState.salaryWorkspace);
+    } else {
+        renderSalaryOverview(panel);
+    }
+}
+
+function renderSalaryOverview(panel) {
+    const data = FinState.salaryWorkspace || {};
+    const rows = getSalaryRows();
+    const selected = getSelectedSalaryRow();
+    const totals = data.totals || {};
+    const typeCounts = rows.reduce((acc, row) => {
+        const key = row.schemeType || 'hourly';
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+    }, {});
+
+    panel.innerHTML = `
+        <div class="salary-panel-title">
+            <h3>Огляд зарплат за ${escapeHtml(data.month || '')}</h3>
+            <span class="salary-muted">${rows.length} працівників</span>
+        </div>
+        <div class="salary-summary-grid">
+            <div class="salary-summary-card"><b>${formatMoney(totals.base || 0)}</b><span>База</span></div>
+            <div class="salary-summary-card"><b>${formatMoney(totals.bonuses || 0)}</b><span>Бонуси / %</span></div>
+            <div class="salary-summary-card"><b>${formatMoney((totals.deductions || 0) + (totals.advances || 0))}</b><span>Утримано</span></div>
+            <div class="salary-summary-card"><b>${formatMoney(totals.net || data.totalSalary || 0)}</b><span>До виплати</span></div>
+        </div>
+        <div class="salary-blocks">
+            <div class="salary-block">
+                <h4>Типи схем</h4>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    ${Object.keys(typeCounts).map(type => `${salarySchemePill(type)} <span class="salary-muted">${typeCounts[type]}</span>`).join('')}
+                </div>
+            </div>
+            <div class="salary-block salary-block--base">
+                <h4>${selected ? escapeHtml(selected.name) : 'Працівник не вибраний'}</h4>
+                ${selected ? `
+                    <div class="salary-form-grid" style="margin-bottom:0">
+                        <div><span class="salary-muted">Схема</span><br>${salarySchemePill(selected.schemeType)}</div>
+                        <div><span class="salary-muted">Статус звіту</span><br>${salaryStatusPill(selected.status)}</div>
+                        <div><span class="salary-muted">Години</span><br><b>${salaryNumber(selected.hoursWorked || selected.totalHours).toLocaleString('uk-UA')} год</b></div>
+                        <div><span class="salary-muted">Виходи</span><br><b>${salaryNumber(selected.daysWorked || selected.shifts).toLocaleString('uk-UA')}</b></div>
+                    </div>
+                ` : '<div class="salary-muted">Оберіть працівника у списку.</div>'}
+            </div>
+        </div>
+    `;
+}
+
+function renderSalaryBuilder(panel) {
+    const row = getSelectedSalaryRow();
+    if (!row) {
+        panel.innerHTML = '<div class="salary-muted">Оберіть працівника, щоб налаштувати зарплатну схему.</div>';
+        return;
+    }
+    const scheme = FinState.creatingSalaryScheme ? null : getEditableSchemeForRow(row);
+    const config = scheme?.config || {};
+    const schemeType = scheme?.schemeType || row.schemeType || 'per_shift';
+    const title = scheme?.title || row.schemeTitle || SALARY_SCHEME_LABELS[schemeType] || '';
+
+    panel.innerHTML = `
+        <div class="salary-panel-title">
+            <h3>${FinState.creatingSalaryScheme || !scheme ? 'Нова зарплатна схема' : 'Конструктор схеми'}</h3>
+            <span class="salary-muted">${escapeHtml(row.name)}</span>
+        </div>
+        <div class="salary-form-grid">
+            <div>
+                <label>Назва схеми</label>
+                <input type="text" class="salary-builder-input" data-field="title" value="${escapeHtml(title)}" placeholder="Сума за вихід">
+            </div>
+            <div>
+                <label>Тип схеми</label>
+                <select class="salary-builder-input" data-field="schemeType">
+                    ${Object.keys(SALARY_SCHEME_LABELS).map(type => `<option value="${type}" ${type === schemeType ? 'selected' : ''}>${SALARY_SCHEME_LABELS[type]}</option>`).join('')}
+                </select>
+            </div>
+        </div>
+        <div id="salaryBuilderFields">${renderSalaryBuilderFields(schemeType, config, row)}</div>
+        <div class="salary-inline-result">
+            <span>Preview до виплати</span>
+            <b id="salaryBuilderNet">${formatMoney(0)}</b>
+        </div>
+        <div class="salary-actions">
+            <button type="button" class="btn-page-secondary" id="salaryResetBuilderBtn">Скинути</button>
+            <button type="button" class="btn-page-primary" id="salarySaveSchemeBtn">Зберегти схему</button>
+        </div>
+    `;
+    updateSalaryBuilderPreview();
+}
+
+function renderSalaryBuilderFields(type, config, row) {
+    const c = config || {};
+    if (type === 'per_shift') {
+        return `
+            <div class="salary-block salary-block--base">
+                <h4>Простий сценарій: сума за вихід</h4>
+                <div class="salary-form-grid">
+                    <div>
+                        <label>Сума за 1 вихід</label>
+                        <input type="number" min="0" step="1" class="salary-builder-input" data-field="perShiftRate" value="${salaryNumber(c.rate ?? c.perShiftRate ?? c.amount)}" placeholder="1500">
+                    </div>
+                    <div>
+                        <label>Кількість виходів для preview</label>
+                        <input type="number" min="0" step="1" class="salary-builder-input" data-field="shiftCount" value="${salaryNumber(c.shiftCount ?? c.shifts ?? row.daysWorked ?? row.shifts)}" placeholder="12">
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    if (type === 'hourly') {
+        return `
+            <div class="salary-block salary-block--base">
+                <h4>Погодинна схема</h4>
+                <div class="salary-form-grid">
+                    <div>
+                        <label>Ставка за годину</label>
+                        <input type="number" min="0" step="1" class="salary-builder-input" data-field="hourlyRate" value="${salaryNumber(c.hourlyRate ?? c.rate ?? row.hourlyRate)}">
+                    </div>
+                    <div>
+                        <label>Години для preview</label>
+                        <input type="number" min="0" step="0.5" class="salary-builder-input" data-field="hours" value="${salaryNumber(c.hours ?? row.hoursWorked ?? row.totalHours)}">
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    if (type === 'monthly_fixed') {
+        return `
+            <div class="salary-block salary-block--base">
+                <h4>Фікс за місяць</h4>
+                <div class="salary-form-grid">
+                    <div>
+                        <label>Місячна сума</label>
+                        <input type="number" min="0" step="1" class="salary-builder-input" data-field="monthlyAmount" value="${salaryNumber(c.monthlyAmount ?? c.fixedAmount ?? c.amount)}">
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    if (type === 'percent') {
+        return `
+            <div class="salary-block salary-block--percent">
+                <h4>Відсоток від показника</h4>
+                <div class="salary-form-grid">
+                    <div>
+                        <label>Відсоток</label>
+                        <input type="number" min="0" step="0.1" class="salary-builder-input" data-field="percentRate" value="${salaryNumber(c.percentRate ?? c.rate)}">
+                    </div>
+                    <div>
+                        <label>База для preview</label>
+                        <input type="number" min="0" step="1" class="salary-builder-input" data-field="percentBase" value="${salaryNumber(c.percentBase ?? c.baseAmount)}">
+                    </div>
+                    <div>
+                        <label>Джерело</label>
+                        <select class="salary-builder-input" data-field="sourceMetric">
+                            <option value="manual" ${(c.sourceMetric || c.source || 'manual') === 'manual' ? 'selected' : ''}>Ручний показник</option>
+                            <option value="finance_income" ${(c.sourceMetric || c.source) === 'finance_income' ? 'selected' : ''}>Дохід місяця</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    if (type === 'manual') {
+        return `
+            <div class="salary-block salary-block--base">
+                <h4>Ручна fallback схема</h4>
+                <div class="salary-form-grid">
+                    <div>
+                        <label>Сума до нарахування</label>
+                        <input type="number" min="0" step="1" class="salary-builder-input" data-field="manualAmount" value="${salaryNumber(c.manualAmount ?? c.amount)}">
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    const base = c.base || {};
+    const bonus = (Array.isArray(c.bonusRules) && c.bonusRules[0]) || {};
+    const percent = (Array.isArray(c.percentRules) && c.percentRules[0]) || {};
+    const deduction = (Array.isArray(c.deductions) && c.deductions[0]) || {};
+    const advance = (Array.isArray(c.advances) && c.advances[0]) || {};
+    return `
+        <div class="salary-blocks">
+            <div class="salary-block salary-block--base">
+                <h4>Базова частина</h4>
+                <div class="salary-form-grid">
+                    <div>
+                        <label>Тип бази</label>
+                        <select class="salary-builder-input" data-field="baseKind">
+                            ${['hourly','per_shift','monthly_fixed','manual'].map(kind => `<option value="${kind}" ${(base.kind || c.baseKind || 'hourly') === kind ? 'selected' : ''}>${SALARY_SCHEME_LABELS[kind] || kind}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label>Ставка / сума</label>
+                        <input type="number" min="0" step="1" class="salary-builder-input" data-field="baseRate" value="${salaryNumber(base.rate ?? base.amount ?? c.baseRate ?? c.baseAmount)}">
+                    </div>
+                    <div>
+                        <label>Кількість для preview</label>
+                        <input type="number" min="0" step="0.5" class="salary-builder-input" data-field="baseQuantity" value="${salaryNumber(base.quantity ?? c.baseQuantity ?? row.hoursWorked ?? row.totalHours)}">
+                    </div>
+                </div>
+            </div>
+            <div class="salary-block salary-block--bonus">
+                <h4>Бонуси</h4>
+                <div class="salary-form-grid">
+                    <div><label>Назва</label><input type="text" class="salary-builder-input" data-field="bonusLabel" value="${escapeHtml(bonus.label || 'Премія')}"></div>
+                    <div><label>Сума</label><input type="number" min="0" step="1" class="salary-builder-input" data-field="bonusAmount" value="${salaryNumber(bonus.amount ?? c.bonusAmount)}"></div>
+                </div>
+            </div>
+            <div class="salary-block salary-block--percent">
+                <h4>Відсоткова частина</h4>
+                <div class="salary-form-grid">
+                    <div><label>%</label><input type="number" min="0" step="0.1" class="salary-builder-input" data-field="hybridPercentRate" value="${salaryNumber(percent.rate ?? percent.percentRate)}"></div>
+                    <div><label>База</label><input type="number" min="0" step="1" class="salary-builder-input" data-field="hybridPercentBase" value="${salaryNumber(percent.baseAmount ?? percent.percentBase)}"></div>
+                </div>
+            </div>
+            <div class="salary-block salary-block--deduction">
+                <h4>Утримання / штрафи</h4>
+                <div class="salary-form-grid">
+                    <div><label>Назва</label><input type="text" class="salary-builder-input" data-field="deductionLabel" value="${escapeHtml(deduction.label || 'Утримання')}"></div>
+                    <div><label>Сума</label><input type="number" min="0" step="1" class="salary-builder-input" data-field="deductionAmount" value="${salaryNumber(deduction.amount ?? c.deductionAmount)}"></div>
+                </div>
+            </div>
+            <div class="salary-block salary-block--advance">
+                <h4>Аванси / вже виплачено</h4>
+                <div class="salary-form-grid">
+                    <div><label>Назва</label><input type="text" class="salary-builder-input" data-field="advanceLabel" value="${escapeHtml(advance.label || 'Аванс')}"></div>
+                    <div><label>Сума</label><input type="number" min="0" step="1" class="salary-builder-input" data-field="advanceAmount" value="${salaryNumber(advance.amount ?? c.advanceAmount)}"></div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function fieldValue(name) {
+    return document.getElementById('salaryMainPanel')?.querySelector(`[data-field="${name}"]`)?.value || '';
+}
+
+function collectSalaryBuilderDraft() {
+    const row = getSelectedSalaryRow();
+    const type = fieldValue('schemeType') || row?.schemeType || 'per_shift';
+    const title = fieldValue('title') || SALARY_SCHEME_LABELS[type] || '';
+    let config = {};
+
+    if (type === 'per_shift') {
+        config = { rate: salaryNumber(fieldValue('perShiftRate')), shiftCount: salaryNumber(fieldValue('shiftCount')) };
+    } else if (type === 'hourly') {
+        config = { hourlyRate: salaryNumber(fieldValue('hourlyRate')), hours: salaryNumber(fieldValue('hours')) };
+    } else if (type === 'monthly_fixed') {
+        config = { monthlyAmount: salaryNumber(fieldValue('monthlyAmount')) };
+    } else if (type === 'percent') {
+        config = {
+            percentRate: salaryNumber(fieldValue('percentRate')),
+            percentBase: salaryNumber(fieldValue('percentBase')),
+            sourceMetric: fieldValue('sourceMetric') || 'manual'
+        };
+    } else if (type === 'manual') {
+        config = { manualAmount: salaryNumber(fieldValue('manualAmount')) };
+    } else {
+        const bonusAmount = salaryNumber(fieldValue('bonusAmount'));
+        const percentRate = salaryNumber(fieldValue('hybridPercentRate'));
+        const deductionAmount = salaryNumber(fieldValue('deductionAmount'));
+        const advanceAmount = salaryNumber(fieldValue('advanceAmount'));
+        config = {
+            base: {
+                kind: fieldValue('baseKind') || 'hourly',
+                rate: salaryNumber(fieldValue('baseRate')),
+                amount: salaryNumber(fieldValue('baseRate')),
+                quantity: salaryNumber(fieldValue('baseQuantity'))
+            },
+            bonusRules: bonusAmount ? [{ kind: 'fixed', label: fieldValue('bonusLabel') || 'Премія', amount: bonusAmount }] : [],
+            percentRules: percentRate ? [{ kind: 'percent', label: 'Відсоток', rate: percentRate, baseAmount: salaryNumber(fieldValue('hybridPercentBase')) }] : [],
+            deductions: deductionAmount ? [{ kind: 'fixed', label: fieldValue('deductionLabel') || 'Утримання', amount: deductionAmount }] : [],
+            advances: advanceAmount ? [{ kind: 'fixed', label: fieldValue('advanceLabel') || 'Аванс', amount: advanceAmount }] : []
+        };
+    }
+
+    return { row, schemeType: type, title, config };
+}
+
+function payrollSummaryFromLines(lines) {
+    const grossGroups = ['base', 'bonus', 'percent', 'manual'];
+    const base = lines.filter(x => x.group === 'base').reduce((sum, x) => sum + salaryNumber(x.amount), 0);
+    const bonuses = lines.filter(x => x.group === 'bonus').reduce((sum, x) => sum + salaryNumber(x.amount), 0);
+    const percent = lines.filter(x => x.group === 'percent').reduce((sum, x) => sum + salaryNumber(x.amount), 0);
+    const manual = lines.filter(x => x.group === 'manual').reduce((sum, x) => sum + salaryNumber(x.amount), 0);
+    const gross = lines.filter(x => grossGroups.includes(x.group)).reduce((sum, x) => sum + salaryNumber(x.amount), 0);
+    const deductions = lines.filter(x => x.group === 'deduction').reduce((sum, x) => sum + Math.abs(salaryNumber(x.amount)), 0);
+    const advances = lines.filter(x => x.group === 'advance').reduce((sum, x) => sum + Math.abs(salaryNumber(x.amount)), 0);
+    return { base, bonuses, percent, manual, gross, deductions, advances, net: gross - deductions - advances };
+}
+
+function calcSalaryDraftPreview() {
+    const draft = collectSalaryBuilderDraft();
+    const row = draft.row || {};
+    const cfg = draft.config || {};
+    const lines = [];
+    const add = (group, label, amount, quantity, rate) => lines.push({ group, label, amount: Math.round(salaryNumber(amount)), quantity, rate });
+
+    if (draft.schemeType === 'per_shift') {
+        add('base', 'Сума за вихід', cfg.rate * cfg.shiftCount, cfg.shiftCount, cfg.rate);
+    } else if (draft.schemeType === 'hourly') {
+        add('base', 'Погодинна ставка', cfg.hourlyRate * cfg.hours, cfg.hours, cfg.hourlyRate);
+    } else if (draft.schemeType === 'monthly_fixed') {
+        add('base', 'Фікс за місяць', cfg.monthlyAmount);
+    } else if (draft.schemeType === 'percent') {
+        add('percent', `Відсоток ${cfg.percentRate}%`, cfg.percentBase * cfg.percentRate / 100, cfg.percentBase, cfg.percentRate);
+    } else if (draft.schemeType === 'manual') {
+        add('manual', 'Ручна сума', cfg.manualAmount);
+    } else {
+        const base = cfg.base || {};
+        if (base.kind === 'monthly_fixed' || base.kind === 'manual') add('base', SALARY_SCHEME_LABELS[base.kind], base.amount || base.rate);
+        else add('base', SALARY_SCHEME_LABELS[base.kind] || 'База', salaryNumber(base.rate) * salaryNumber(base.quantity), base.quantity, base.rate);
+        (cfg.bonusRules || []).forEach(x => add('bonus', x.label || 'Бонус', x.amount));
+        (cfg.percentRules || []).forEach(x => add('percent', x.label || 'Відсоток', salaryNumber(x.baseAmount) * salaryNumber(x.rate) / 100, x.baseAmount, x.rate));
+        (cfg.deductions || []).forEach(x => add('deduction', x.label || 'Утримання', x.amount));
+        (cfg.advances || []).forEach(x => add('advance', x.label || 'Аванс', x.amount));
+    }
+
+    return {
+        name: row.name || '',
+        schemeType: draft.schemeType,
+        schemeTitle: draft.title,
+        lines,
+        summary: payrollSummaryFromLines(lines),
+        status: 'draft'
+    };
+}
+
+function renderSalaryPreviewPanel() {
+    const panel = document.getElementById('salaryPreviewPanel');
+    if (!panel) return;
+    const payload = FinState.salaryMode === 'builder' ? calcSalaryDraftPreview() : getSelectedSalaryRow();
+    if (!payload) {
+        panel.innerHTML = '<div class="salary-muted">Оберіть працівника для preview.</div>';
+        return;
+    }
+    const summary = payload.summary || {
+        base: payload.baseAmount || 0,
+        bonuses: (payload.bonusesAmount || 0) - (payload.percentAmount || 0),
+        percent: payload.percentAmount || 0,
+        gross: payload.grossAmount || 0,
+        deductions: payload.deductionsAmount || 0,
+        advances: payload.advancesAmount || 0,
+        net: payload.netAmount || payload.estimatedSalary || 0
+    };
+    const lines = payload.lines || [];
+    panel.innerHTML = `
+        <div class="salary-panel-title">
+            <h4>Preview / Payslip</h4>
+            ${salaryStatusPill(payload.status)}
+        </div>
+        <div style="margin-bottom:12px">
+            <div style="font-weight:900">${escapeHtml(payload.name || 'Нова схема')}</div>
+            <div style="margin-top:6px">${salarySchemePill(payload.schemeType)}</div>
+        </div>
+        <div class="salary-preview-card">
+            <div class="salary-preview-row"><span>База</span><b>${formatMoney(summary.base || 0)}</b></div>
+            <div class="salary-preview-row"><span>Бонуси / %</span><b class="salary-plus">+ ${formatMoney((summary.bonuses || 0) + (summary.percent || 0) + (summary.manual || 0))}</b></div>
+            <div class="salary-preview-row"><span>Утримання</span><b class="salary-minus">- ${formatMoney(summary.deductions || 0)}</b></div>
+            <div class="salary-preview-row"><span>Аванси</span><b class="salary-minus">- ${formatMoney(summary.advances || 0)}</b></div>
+            <div class="salary-preview-total"><span>До виплати</span><b>${formatMoney(summary.net || 0)}</b></div>
+        </div>
+        <div class="salary-lines">
+            ${lines.length ? lines.map(item => `
+                <div class="salary-line-item">
+                    <span>${escapeHtml(item.label || item.lineType || item.group)}</span>
+                    <b>${['deduction','advance'].includes(item.group) ? '-' : '+'}${formatMoney(Math.abs(salaryNumber(item.amount)))}</b>
+                </div>
+            `).join('') : '<div class="salary-muted">Line items зʼявляться після налаштування схеми.</div>'}
+        </div>
+    `;
+}
+
+function updateSalaryBuilderPreview() {
+    if (FinState.salaryMode !== 'builder') return;
+    const net = document.getElementById('salaryBuilderNet');
+    if (net) net.textContent = formatMoney(calcSalaryDraftPreview().summary.net);
+    renderSalaryPreviewPanel();
+}
+
+async function saveSalaryScheme() {
+    const draft = collectSalaryBuilderDraft();
+    if (!draft.row) return;
+    const existing = FinState.creatingSalaryScheme ? null : getEditableSchemeForRow(draft.row);
+    const body = {
+        staffId: draft.row.staffId || draft.row.id,
+        schemeType: draft.schemeType,
+        title: draft.title,
+        isActive: true,
+        config: draft.config
+    };
+    try {
+        if (existing?.id) await apiRequest('PATCH', `/api/payroll/schemes/${existing.id}`, body);
+        else await apiRequest('POST', '/api/payroll/schemes', body);
+        FinState.creatingSalaryScheme = false;
+        showNotification('Зарплатну схему збережено');
+        await fetchSalaryReport();
+        FinState.salaryMode = 'builder';
+        renderSalaryWorkspace();
+    } catch (err) {
+        showNotification(err.message || 'Не вдалося зберегти схему', 'error');
+    }
+}
+
+async function generateSalaryReport() {
+    const month = document.getElementById('salaryMonth')?.value;
+    if (!month) return;
+    try {
+        const result = await apiRequest('POST', `/api/payroll/generate?month=${month}`, {});
+        showNotification(`Звіт згенеровано: ${result.generated || 0}`);
+        FinState.salaryMode = 'report';
+        await fetchSalaryReport();
+    } catch (err) {
+        showNotification(err.message || 'Не вдалося згенерувати звіт', 'error');
+    }
+}
+
+function renderSalaryReportTable(data) {
+    const panel = document.getElementById('salaryMainPanel');
+    if (!panel) return;
+    const rows = data?.staff || [];
+    const totals = data?.totals || {};
+    if (!rows.length) {
+        panel.innerHTML = '<div class="salary-muted">Немає зарплатних даних за цей період.</div>';
+        return;
+    }
+
+    panel.innerHTML = `
+        <div class="salary-report-tools">
+            <div>
+                <div style="font-weight:900">Звіт за ${escapeHtml(data.month || '')}</div>
+                <div class="salary-muted">Breakdown по схемах, нарахуваннях, утриманнях і авансах.</div>
+            </div>
+            <button type="button" class="btn-page-secondary" id="salaryReportRefreshBtn">Оновити</button>
+        </div>
+        <div class="fin-table-wrap">
+            <table class="fin-table">
+                <thead>
+                    <tr>
+                        <th>Працівник</th>
+                        <th>Відділ</th>
+                        <th>Посада</th>
+                        <th>Схема</th>
+                        <th>База</th>
+                        <th>Бонуси / %</th>
+                        <th>Утримання</th>
+                        <th>Аванс</th>
+                        <th>До виплати</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody id="salaryTableBody">
+                    ${rows.map(row => `
+                        <tr data-staff-id="${row.staffId || row.id}">
+                            <td style="font-weight:700">${escapeHtml(row.name)}</td>
+                            <td>${escapeHtml(DEPT_LABELS[row.department] || row.department || '—')}</td>
+                            <td>${escapeHtml(row.position || row.roleType || '—')}</td>
+                            <td>${salarySchemePill(row.schemeType)}</td>
+                            <td>${formatMoney(row.baseAmount || 0)}</td>
+                            <td class="salary-plus">${formatMoney(row.bonusesAmount || 0)}</td>
+                            <td class="salary-minus">${formatMoney(row.deductionsAmount || 0)}</td>
+                            <td class="salary-minus">${formatMoney(row.advancesAmount || 0)}</td>
+                            <td class="fin-amount-expense">${formatMoney(row.netAmount || row.estimatedSalary || 0)}</td>
+                            <td>${salaryStatusPill(row.status)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+                <tfoot id="salaryTableFoot">
+                    <tr>
+                        <td colspan="4" style="text-align:right;font-weight:900">Разом:</td>
+                        <td>${formatMoney(totals.base || 0)}</td>
+                        <td class="salary-plus">${formatMoney(totals.bonuses || 0)}</td>
+                        <td class="salary-minus">${formatMoney(totals.deductions || 0)}</td>
+                        <td class="salary-minus">${formatMoney(totals.advances || 0)}</td>
+                        <td class="fin-amount-expense">${formatMoney(totals.net || data.totalSalary || 0)}</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
     `;
 }
 
@@ -981,7 +1566,57 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('yearFilter')?.addEventListener('change', fetchMonthlyReport);
 
     // Salary month change
-    document.getElementById('salaryMonth')?.addEventListener('change', fetchSalaryReport);
+    document.getElementById('salaryMonth')?.addEventListener('change', () => {
+        FinState.creatingSalaryScheme = false;
+        fetchSalaryReport();
+    });
+    document.querySelectorAll('.salary-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => setSalaryMode(btn.dataset.mode));
+    });
+    document.getElementById('salaryCreateSchemeBtn')?.addEventListener('click', () => {
+        if (!FinState.selectedSalaryStaffId) {
+            const first = getSalaryRows()[0];
+            FinState.selectedSalaryStaffId = first?.staffId || first?.id || null;
+        }
+        FinState.creatingSalaryScheme = true;
+        setSalaryMode('builder');
+    });
+    document.getElementById('salaryGenerateReportBtn')?.addEventListener('click', generateSalaryReport);
+    document.getElementById('salaryStaffList')?.addEventListener('click', (event) => {
+        const item = event.target.closest('[data-staff-id]');
+        if (!item) return;
+        FinState.selectedSalaryStaffId = item.dataset.staffId;
+        FinState.creatingSalaryScheme = false;
+        renderSalaryWorkspace();
+    });
+    document.getElementById('salaryMainPanel')?.addEventListener('input', (event) => {
+        if (!event.target.classList.contains('salary-builder-input')) return;
+        updateSalaryBuilderPreview();
+    });
+    document.getElementById('salaryMainPanel')?.addEventListener('change', (event) => {
+        if (event.target.matches('[data-field="schemeType"]')) {
+            const fields = document.getElementById('salaryBuilderFields');
+            const row = getSelectedSalaryRow();
+            if (fields && row) fields.innerHTML = renderSalaryBuilderFields(event.target.value, {}, row);
+            updateSalaryBuilderPreview();
+            return;
+        }
+        if (event.target.classList.contains('salary-builder-input')) updateSalaryBuilderPreview();
+    });
+    document.getElementById('salaryMainPanel')?.addEventListener('click', (event) => {
+        const row = event.target.closest('tr[data-staff-id]');
+        if (row) {
+            FinState.selectedSalaryStaffId = row.dataset.staffId;
+            renderSalaryWorkspace();
+            return;
+        }
+        if (event.target.id === 'salarySaveSchemeBtn') saveSalaryScheme();
+        if (event.target.id === 'salaryResetBuilderBtn') {
+            FinState.creatingSalaryScheme = false;
+            renderSalaryWorkspace();
+        }
+        if (event.target.id === 'salaryReportRefreshBtn') fetchSalaryReport();
+    });
 
     // v30.6: Shift buttons
     document.getElementById('openShiftBtn')?.addEventListener('click', openShift);

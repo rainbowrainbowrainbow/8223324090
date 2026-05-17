@@ -4,13 +4,13 @@
 
 ---
 
-## v0.55.16 - Навігація: sidebar і AI topbar redesign
+## v0.55.17 - Навігація: closer Claude Design shell
 
-### Shared Shell / Claude Design Handoff [codex]
-- **Sidebar** - застосовано дизайн із handoff для лівої навігації: operator card отримав live health state, pulse/focus chips і hero-alert з пріоритетним операційним сигналом.
-- **AI topbar** - верхню панель Клешні перезібрано у live AI strip з орбом, state badges, quick prompts та inline input для коротких запитів.
-- **Dark UI** - surfaces, glow-акценти, контраст тексту і responsive-поведінку sidebar/header вирівняно під темний CRM shell.
-- **Safety** - перевірено статичний shell preview без CRM-БД: sidebar command deck і AI rail монтуються без JS-помилок та не перекривають user panel на desktop preview.
+### Shared Shell / Claude Design Parity [codex]
+- **Sidebar** - sidebar наближено до Claude Design: ширший matte shell, shield-style brand, operator card, alert hero і блок `+ Додатково`.
+- **AI topbar** - Клешню винесено з floating overlay у широку AI-панель під topbar, як у дизайн-макеті.
+- **Header** - topbar отримав компактний status `Клешня · готова`, темні controls, search і user block у стилі макету.
+- **Responsive** - ширина sidebar і AI panel адаптуються через clamp; prompts/inline controls стискаються на середніх екранах.
 
 ---
 

@@ -115,15 +115,34 @@
     }
 
     function ensureAssistantRailHost(headerContent) {
-        let host = headerContent.querySelector('#crmAssistantRailHost');
+        const header = headerContent.closest('.header');
+        let status = headerContent.querySelector('#crmAssistantTopStatus');
+        if (!status) {
+            status = document.createElement('div');
+            status.id = 'crmAssistantTopStatus';
+            status.className = 'crm-assistant-top-status';
+            status.innerHTML = `
+                <span class="crm-assistant-top-status-dot" aria-hidden="true"></span>
+                <span>Клешня</span>
+                <span aria-hidden="true">·</span>
+                <strong id="crmAssistantTopStatusLabel">готова</strong>
+            `;
+            const firstControl = headerContent.querySelector('.btn-search, .user-panel');
+            if (firstControl) headerContent.insertBefore(status, firstControl);
+            else headerContent.prepend(status);
+        }
+
+        let host = document.getElementById('crmAssistantRailHost');
         if (!host) {
             host = document.createElement('div');
             host.id = 'crmAssistantRailHost';
             host.className = 'crm-assistant-rail-host';
             host.setAttribute('aria-hidden', 'false');
-            const userPanel = headerContent.querySelector('.user-panel');
-            if (userPanel) headerContent.insertBefore(host, userPanel);
-            else headerContent.appendChild(host);
+        }
+        if (header) {
+            if (host.previousElementSibling !== header) header.insertAdjacentElement('afterend', host);
+        } else if (host.parentElement !== headerContent) {
+            headerContent.appendChild(host);
         }
         headerContent.classList.add('assistant-rail-mounted');
         return host;
@@ -265,6 +284,10 @@
         rail.dataset.live = isLiveMode(state.mode) ? 'true' : 'false';
         stateEl.textContent = LABELS[state.mode] || LABELS.idle;
         stateEl.className = `assistant-rail-state assistant-state-${state.mode}`;
+        const topStatus = document.getElementById('crmAssistantTopStatus');
+        const topStatusLabel = document.getElementById('crmAssistantTopStatusLabel');
+        if (topStatus) topStatus.dataset.aiState = UI_STATES[state.mode] || 'ready';
+        if (topStatusLabel) topStatusLabel.textContent = (LABELS[state.mode] || LABELS.idle).toLowerCase();
         subtitlesEl.textContent = text;
         subtitlesEl.classList.remove('is-ticker', 'is-live-line');
         subtitlesEl.removeAttribute('data-ticker-text');

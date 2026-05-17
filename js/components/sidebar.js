@@ -727,6 +727,46 @@ const Sidebar = (() => {
             sidebar.insertBefore(deck, links);
         }
 
+        let extras = document.getElementById('sidebarDesignExtras');
+        if (!extras) {
+            extras = document.createElement('div');
+            extras.id = 'sidebarDesignExtras';
+            extras.className = 'sidebar-design-extras';
+            extras.innerHTML = `
+                <button type="button" class="sidebar-design-extras-head" aria-expanded="true">
+                    <span class="sidebar-design-extras-dot" aria-hidden="true"></span>
+                    <span><b>+</b> Додатково</span>
+                    <span class="sidebar-design-extras-chevron" aria-hidden="true">⌃</span>
+                </button>
+                <div class="sidebar-design-extra-list">
+                    <a class="sidebar-design-extra-link sidebar-design-extra-link--notion" href="https://notion.so" target="_blank" rel="noopener">
+                        <span class="sidebar-design-extra-icon">N</span>
+                        <span class="sidebar-design-extra-copy">
+                            <span>Notion · daily ops</span>
+                            <small>notion.so</small>
+                        </span>
+                        <span class="sidebar-design-extra-open" aria-hidden="true">↗</span>
+                    </a>
+                    <a class="sidebar-design-extra-link sidebar-design-extra-link--google" href="https://calendar.google.com" target="_blank" rel="noopener">
+                        <span class="sidebar-design-extra-icon">G</span>
+                        <span class="sidebar-design-extra-copy">
+                            <span>Календар Google</span>
+                            <small>calendar.google.com</small>
+                        </span>
+                        <span class="sidebar-design-extra-open" aria-hidden="true">↗</span>
+                    </a>
+                    <a class="sidebar-design-extra-link sidebar-design-extra-link--mono" href="https://web.monobank.ua" target="_blank" rel="noopener">
+                        <span class="sidebar-design-extra-icon">$</span>
+                        <span class="sidebar-design-extra-copy">
+                            <span>Mono бізнес</span>
+                            <small>web.monobank.ua</small>
+                        </span>
+                        <span class="sidebar-design-extra-open" aria-hidden="true">↗</span>
+                    </a>
+                </div>`;
+        }
+        if (extras.nextElementSibling !== links) sidebar.insertBefore(extras, links);
+
         const alertsChip = document.getElementById('focusChipAlerts');
         if (alertsChip && alertsChip.dataset.alertsBound !== 'true') {
             alertsChip.dataset.alertsBound = 'true';

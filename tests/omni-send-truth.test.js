@@ -61,7 +61,8 @@ function createManualSendPool(conversation) {
         savedTruth: null,
         deliveryUpdates: [],
         conversationUpdates: [],
-        replyExpectationUpdates: []
+        replyExpectationUpdates: [],
+        connectionStatusQueries: []
     };
     const client = {
         query: async (sql, params = []) => {
@@ -86,6 +87,29 @@ function createManualSendPool(conversation) {
         state,
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
+            if (/FROM omni_provider_connections WHERE channel = \$1/i.test(text)) {
+                const channel = String(params[0] || conversation.channel || 'telegram');
+                state.connectionStatusQueries.push(channel);
+                return {
+                    rows: [{
+                        channel,
+                        provider_kind: channel === 'binotel' ? 'telephony' : 'bot',
+                        status: channel === 'binotel' ? 'history_only' : 'connected',
+                        credentials: {},
+                        account_display_name: channel,
+                        masked_identifier: channel,
+                        send_enabled: channel !== 'binotel',
+                        receive_enabled: true,
+                        warning: null,
+                        last_checked_at: '2099-05-13T09:59:00Z',
+                        last_changed_at: '2099-05-13T09:58:00Z',
+                        changed_by: 'Test Manager',
+                        last_test_at: null,
+                        last_test_status: null,
+                        last_test_message: null
+                    }]
+                };
+            }
             if (/SELECT \* FROM conversations WHERE id = \$1/i.test(text)) {
                 return { rows: [conversation] };
             }
@@ -260,12 +284,12 @@ describe('Communication Send Truth v1', () => {
             assert.equal(sms.sendCapable, true);
             assert.equal(telegram.status, 'disconnected');
             assert.equal(telegram.sendCapable, false);
-            assert.equal(binotel.status, 'limited');
+            assert.equal(binotel.status, 'history_only');
             assert.equal(binotel.sendCapable, false);
 
             const alerts = accounts.getOmniAccountAlerts({ now: new Date('2099-05-15T10:00:00Z') });
             assert.ok(alerts.some(alert => alert.id === 'omni_telegram_disconnected'));
-            assert.ok(alerts.some(alert => alert.id === 'omni_binotel_limited'));
+            assert.ok(alerts.some(alert => alert.id === 'omni_binotel_history_only'));
             assert.ok(alerts.every(alert => alert.source === 'omni_accounts'));
         } finally {
             Object.entries(previous).forEach(([key, value]) => {
@@ -546,5 +570,46 @@ describe('Communication Send Truth v1', () => {
         assert.match(omniRoute, /replyOwnerUserId = req\.user\?\.id \|\| null/);
         assert.match(omniRoute, /replyOwnerUserId,/);
         assert.match(omniHtml, /Провайдер прийняв запит/);
+    });
+
+    it('defines the manual connection control-plane persistence surface', () => {
+        const repoRoot = path.resolve(__dirname, '..');
+        const migration = fs.readFileSync(
+            path.join(repoRoot, 'db/migrations/181_omni_provider_connections.sql'),
+            'utf8'
+        );
+        const accountsService = fs.readFileSync(path.join(repoRoot, 'services/omni-accounts.js'), 'utf8');
+        const omniRoute = fs.readFileSync(path.join(repoRoot, 'routes/omnichannel.js'), 'utf8');
+
+        assert.match(migration, /MIGRATION_KIND: schema/);
+        assert.match(migration, /CREATE TABLE IF NOT EXISTS omni_provider_connections/);
+        assert.match(migration, /credentials JSONB NOT NULL DEFAULT '\{\}'::jsonb/);
+        assert.match(migration, /changed_by_user_id INTEGER REFERENCES users\(id\)/);
+        assert.match(migration, /last_test_status/);
+        assert.match(accountsService, /encryptSecret/);
+        assert.match(accountsService, /SECRET_PREFIX/);
+        assert.match(accountsService, /setupFieldsForClient/);
+        assert.match(accountsService, /resolveOmniRuntimeConfig/);
+        assert.match(accountsService, /report_bot/);
+        assert.match(omniRoute, /requireMinRole\('manager'\)/);
+        assert.match(omniRoute, /\/accounts\/:channel\/test/);
+        assert.match(omniRoute, /\/accounts\/:channel\/disconnect/);
+        assert.match(omniRoute, /auditConnectionAction\(req, 'disconnect'/);
+    });
+
+    it('wires the human-friendly connection center UX', () => {
+        const repoRoot = path.resolve(__dirname, '..');
+        const omniHtml = fs.readFileSync(path.join(repoRoot, 'omni.html'), 'utf8');
+
+        assert.match(omniHtml, /id="omniAccountSummary"/);
+        assert.match(omniHtml, /id="omniConnectionModal"/);
+        assert.match(omniHtml, /openConnectModal/);
+        assert.match(omniHtml, /openDisconnectModal/);
+        assert.match(omniHtml, /collectConnectionFields/);
+        assert.match(omniHtml, /data-account-action="test"/);
+        assert.match(omniHtml, /data-account-action="disconnect"/);
+        assert.match(omniHtml, /Відправка заблокована/);
+        assert.match(omniHtml, /Наслідки відключення/);
+        assert.match(omniHtml, /Порядок підключення/);
     });
 });

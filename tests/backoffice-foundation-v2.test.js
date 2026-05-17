@@ -13,12 +13,20 @@ describe('backoffice foundation v2 contracts', () => {
     const centerRoute = readRepoFile('routes', 'center.js');
     const centerPage = readRepoFile('js', 'center-page.js');
     const centerHtml = readRepoFile('center.html');
+    const productsRoute = readRepoFile('routes', 'products.js');
+    const designsPage = readRepoFile('js', 'designs-page.js');
+    const designsHtml = readRepoFile('designs.html');
     const staffPage = readRepoFile('js', 'staff-page.js');
+    const staffHtml = readRepoFile('staff.html');
+    const sidebar = readRepoFile('js', 'components', 'sidebar.js');
+    const sidebarAurora = readRepoFile('css', 'sidebar-aurora.css');
     const ui = readRepoFile('js', 'ui.js');
     const warehouseRoute = readRepoFile('routes', 'warehouse.js');
     const warehousePage = readRepoFile('js', 'warehouse-page.js');
     const warehouseHtml = readRepoFile('warehouse.html');
     const migration = readRepoFile('db', 'migrations', '177_backoffice_foundation_v1.sql');
+    const chatUniqueMigration = readRepoFile('db', 'migrations', '164_chat_channel_provisioning_unique.sql');
+    const productPriceMigration = readRepoFile('db', 'migrations', '180_product_price_rules.sql');
 
     it('keeps department work legacy-compatible when final source image is missing', () => {
         assert.match(staffPage, /function getDepartmentOptionsFromStaffState/);
@@ -50,6 +58,44 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(centerPage, /appendPricePositionsPanel/);
         assert.match(centerPage, /createPriceForProduct/);
         assert.match(centerHtml, /price-position-panel/);
+    });
+
+    it('keeps design price sheet tied to Price Center instead of duplicated product prices', () => {
+        assert.match(productsRoute, /LEFT JOIN LATERAL \([\s\S]*FROM price_rules pr[\s\S]*WHERE pr\.product_id = p\.id/);
+        assert.match(productsRoute, /priceSource:\s*hasCenterPrice \? 'price_rules' : 'products'/);
+        assert.match(productsRoute, /upsertProductPriceRule/);
+        assert.match(productsRoute, /buildProductPriceRuleCode/);
+
+        assert.match(designsPage, /function renderPriceSourceBadge/);
+        assert.match(designsPage, /priceSource === 'price_rules'/);
+        assert.match(designsPage, /Центр ціни є основним прайсом/);
+        assert.match(designsPage, /Ярлик:/);
+
+        assert.match(designsHtml, /price-source-strip/);
+        assert.match(designsHtml, /price-source-badge/);
+
+        assert.match(productPriceMigration, /MIGRATION_KIND: data-fix/);
+        assert.match(productPriceMigration, /INSERT INTO price_rules[\s\S]*product_id/);
+        assert.match(productPriceMigration, /updated_by='migration_180_product_price_rules'/);
+    });
+
+    it('keeps chat channel unique migration executable in PL/pgSQL', () => {
+        assert.match(chatUniqueMigration, /FROM chat_channels[\s\S]*WHERE line_id IS NOT NULL[\s\S]*AND type = 'room'[\s\S]*GROUP BY line_id/);
+        assert.match(chatUniqueMigration, /EXECUTE 'CREATE UNIQUE INDEX uniq_chat_channels_room_line_active[\s\S]*type = ''room''/);
+    });
+
+    it('keeps the schedule all-departments chip readable in dark theme', () => {
+        assert.match(staffHtml, /body\.dark-mode \.dept-chip\[data-dept="all"\]\.active/);
+        assert.match(staffHtml, /\[data-theme="dark"\] \.dept-chip\[data-dept="all"\]\.active/);
+        assert.match(staffHtml, /color:\s*#F8FAFC/);
+        assert.match(staffHtml, /hover[\s\S]*color:\s*#FFFFFF/);
+    });
+
+    it('keeps sidebar menu clicks from drawing the floating active frame', () => {
+        assert.match(sidebar, /function _ensureActiveIndicator\(\) \{[\s\S]*sidebarActiveIndicator'\)\?\.remove\(\);[\s\S]*\}/);
+        assert.match(sidebar, /function _updateActiveIndicator\(\) \{[\s\S]*indicator\.remove\(\);[\s\S]*\}/);
+        assert.match(sidebarAurora, /\.sidebar-active-indicator \{[\s\S]*display:\s*none !important/);
+        assert.match(sidebarAurora, /\.sidebar-active-indicator\.visible \{[\s\S]*opacity:\s*0/);
     });
 
     it('keeps warehouse as explicit owner partition and does not invent transfer semantics', () => {

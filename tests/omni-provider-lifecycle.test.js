@@ -23,6 +23,7 @@ function clearModules() {
         '../services/omni-sms',
         '../services/omni-facebook',
         '../services/omni-instagram',
+        '../services/adminAudit',
         '../middleware/auth',
     ].forEach(modulePath => {
         try { delete require.cache[require.resolve(modulePath)]; } catch {}
@@ -131,7 +132,20 @@ function createLifecyclePool() {
 function loadOmniRouter(hubMock) {
     clearModules();
     installMock('../services/omni-hub', hubMock);
-    installMock('../middleware/auth', { authenticateToken: (req, res, next) => next() });
+    installMock('../middleware/auth', {
+        authenticateToken: (req, res, next) => next(),
+        requireMinRole: () => (req, res, next) => next(),
+    });
+    installMock('../services/adminAudit', { logAdminAction: async () => {} });
+    installMock('../services/omni-accounts', {
+        resolveOmniRuntimeConfig: async () => ({}),
+        getOmniAccountStatusesAsync: async () => [],
+        getOmniAccountStatusAsync: async () => null,
+        upsertOmniConnection: async () => ({}),
+        recheckOmniConnection: async () => ({}),
+        testOmniConnection: async () => ({}),
+        disconnectOmniConnection: async () => ({}),
+    });
     return require('../routes/omnichannel');
 }
 

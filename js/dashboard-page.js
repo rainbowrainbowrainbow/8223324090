@@ -23,7 +23,6 @@ const DashboardPage = (() => {
     const WIDGET_DEFS = {
         quick_stats:    { icon: '📊', title: 'Швидка статистика', minRole: 'admin' },
         tasks:          { icon: '📋', title: 'Мої задачі', minRole: null },
-        my_focus:       { icon: '🎯', title: 'Мій фокус', minRole: null },
         bookings_today: { icon: '📅', title: 'Бронювання сьогодні', minRole: 'admin' },
         my_schedule:    { icon: '🕐', title: 'Мій графік', minRole: null },
         team_online:    { icon: '👥', title: 'Команда онлайн', minRole: 'manager' },
@@ -49,15 +48,15 @@ const DashboardPage = (() => {
     };
 
     const ROLE_DASHBOARD_BASE_WIDGETS = {
-        creator: ['quick_stats', 'my_focus', 'funnel', 'director_pnl', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'catalogs', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts', 'hr_overview', 'content_pipeline', 'operations'],
-        director: ['director_pnl', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts'],
-        vice_director: ['operations', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'weather', 'announcements', 'tasks', 'my_schedule', 'alerts'],
-        senior_manager: ['quick_stats', 'my_focus', 'funnel', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements', 'tasks', 'my_schedule', 'alerts'],
-        manager: ['staff_today', 'event_risk_summary', 'exceptions', 'my_focus', 'funnel', 'tasks', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements', 'team_tasks', 'team_online', 'alerts', 'quick_stats'],
+        creator: ['quick_stats', 'funnel', 'director_pnl', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'catalogs', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts', 'hr_overview', 'content_pipeline', 'operations'],
+        director: ['director_pnl', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts'],
+        vice_director: ['operations', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'weather', 'announcements', 'tasks', 'my_schedule', 'alerts'],
+        senior_manager: ['quick_stats', 'funnel', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements', 'tasks', 'my_schedule', 'alerts'],
+        manager: ['staff_today', 'event_risk_summary', 'exceptions', 'funnel', 'tasks', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements', 'team_tasks', 'team_online', 'alerts', 'quick_stats'],
         admin: ['event_risk_summary', 'exceptions', 'tasks', 'bookings_today', 'my_schedule', 'weather', 'announcements', 'alerts', 'quick_stats', 'catalogs'],
-        hr: ['hr_overview', 'staff_today', 'tasks', 'team_online', 'my_schedule', 'announcements', 'weather', 'alerts', 'my_focus'],
+        hr: ['hr_overview', 'staff_today', 'tasks', 'team_online', 'my_schedule', 'announcements', 'weather', 'alerts'],
         art_director: ['content_pipeline', 'tasks', 'my_schedule', 'bookings_today', 'weather', 'announcements', 'alerts', 'catalogs', 'quick_stats'],
-        _default: ['my_focus', 'tasks', 'my_schedule', 'weather', 'announcements', 'alerts'],
+        _default: ['tasks', 'my_schedule', 'weather', 'announcements', 'alerts'],
     };
 
     const ROLE_DASHBOARD_SCENES = {
@@ -66,7 +65,7 @@ const DashboardPage = (() => {
             description: 'Повний огляд CRM з операційним кластером, executive контролем і окремою смугою для думок.',
             zones: {
                 leftCluster: ['funnel', 'tasks', 'team_tasks', 'leads_new', 'staff_today', 'bookings_today'],
-                centerControl: ['my_focus', 'alerts', 'quick_stats', 'weather', 'announcements', 'my_schedule'],
+                centerControl: ['alerts', 'quick_stats', 'weather', 'announcements', 'my_schedule'],
                 lowerSupport: ['director_pnl', 'operations', 'event_risk_summary', 'exceptions', 'team_online', 'currency'],
                 specialty: ['hr_overview', 'content_pipeline', 'catalogs'],
                 rightWritingLane: ['notes-zone-primary', 'notes-zone-secondary', 'decision-zone']
@@ -78,7 +77,7 @@ const DashboardPage = (() => {
             description: 'Контроль бронювань, ризиків, задач і системних довідників без executive шуму.',
             zones: {
                 leftCluster: ['event_risk_summary', 'exceptions', 'bookings_today', 'tasks'],
-                centerControl: ['my_focus', 'alerts', 'quick_stats', 'my_schedule'],
+                centerControl: ['alerts', 'quick_stats', 'my_schedule'],
                 lowerSupport: ['announcements', 'weather', 'catalogs'],
                 rightWritingLane: ['notes-zone-primary', 'admin-zone']
             },
@@ -89,7 +88,7 @@ const DashboardPage = (() => {
             description: 'Ліди, команда, задачі й сьогоднішні події з місцем для швидких нотаток.',
             zones: {
                 leftCluster: ['funnel', 'leads_new', 'tasks', 'team_tasks'],
-                centerControl: ['my_focus', 'alerts', 'staff_today', 'team_online', 'bookings_today'],
+                centerControl: ['alerts', 'staff_today', 'team_online', 'bookings_today'],
                 lowerSupport: ['event_risk_summary', 'exceptions', 'my_schedule', 'weather', 'announcements'],
                 rightWritingLane: ['notes-zone-primary']
             },
@@ -100,7 +99,7 @@ const DashboardPage = (() => {
             description: 'Командна воронка, ризики, задачі й швидка статистика для зміни.',
             zones: {
                 leftCluster: ['funnel', 'team_tasks', 'staff_today', 'leads_new'],
-                centerControl: ['my_focus', 'quick_stats', 'event_risk_summary', 'exceptions'],
+                centerControl: ['quick_stats', 'event_risk_summary', 'exceptions'],
                 lowerSupport: ['bookings_today', 'team_online', 'alerts', 'weather', 'announcements'],
                 rightWritingLane: ['notes-zone-primary', 'decision-zone']
             },
@@ -111,7 +110,7 @@ const DashboardPage = (() => {
             description: 'Executive контроль: P&L, ризики, винятки й рішення без операційного перевантаження.',
             zones: {
                 leftCluster: ['director_pnl', 'quick_stats', 'funnel'],
-                centerControl: ['alerts', 'my_focus', 'event_risk_summary', 'exceptions'],
+                centerControl: ['alerts', 'event_risk_summary', 'exceptions'],
                 lowerSupport: ['team_tasks', 'staff_today', 'bookings_today', 'team_online', 'weather', 'announcements'],
                 rightWritingLane: ['notes-zone-primary', 'decision-zone']
             },
@@ -122,7 +121,7 @@ const DashboardPage = (() => {
             description: 'Операційний контроль, ризики подій і команда з помірною асиметрією.',
             zones: {
                 leftCluster: ['operations', 'event_risk_summary', 'exceptions', 'bookings_today'],
-                centerControl: ['my_focus', 'alerts', 'quick_stats', 'staff_today', 'team_online'],
+                centerControl: ['alerts', 'quick_stats', 'staff_today', 'team_online'],
                 lowerSupport: ['funnel', 'team_tasks', 'weather', 'announcements'],
                 rightWritingLane: ['notes-zone-primary', 'ops-zone']
             },
@@ -130,10 +129,10 @@ const DashboardPage = (() => {
         },
         hr: {
             title: 'HR people scene',
-            description: 'Люди, зміни, команда й особистий фокус із чистою note lane для кадрових спостережень.',
+            description: 'Люди, зміни й команда із чистою note lane для кадрових спостережень.',
             zones: {
                 leftCluster: ['hr_overview', 'tasks'],
-                centerControl: ['staff_today', 'team_online', 'my_focus', 'alerts'],
+                centerControl: ['staff_today', 'team_online', 'alerts'],
                 lowerSupport: ['my_schedule', 'announcements', 'weather'],
                 rightWritingLane: ['notes-zone-primary', 'people-zone']
             },
@@ -2536,10 +2535,10 @@ const DashboardPage = (() => {
         if (ROLE_DASHBOARD_SCENES[role]) return ROLE_DASHBOARD_SCENES[role];
         return {
             title: 'Default dashboard scene',
-            description: 'Особистий фокус, задачі, графік і базові операційні сигнали.',
+            description: 'Задачі, графік і базові операційні сигнали.',
             zones: {
                 leftCluster: ['tasks', 'my_schedule'],
-                centerControl: ['my_focus', 'alerts'],
+                centerControl: ['alerts'],
                 lowerSupport: ['weather', 'announcements'],
                 rightWritingLane: ['notes-zone-primary']
             },
@@ -2564,7 +2563,7 @@ const DashboardPage = (() => {
     function targetLaneForWidget(widgetKey) {
         if (['director_pnl', 'operations', 'hr_overview', 'content_pipeline', 'catalogs'].includes(widgetKey)) return 'specialty';
         if (['quick_stats', 'bookings_today', 'event_risk_summary', 'exceptions', 'my_schedule', 'weather', 'currency', 'announcements'].includes(widgetKey)) return 'lowerSupport';
-        if (['my_focus', 'alerts', 'team_online', 'staff_today'].includes(widgetKey)) return 'centerControl';
+        if (['alerts', 'team_online', 'staff_today'].includes(widgetKey)) return 'centerControl';
         return 'leftCluster';
     }
 
@@ -2999,7 +2998,6 @@ const DashboardPage = (() => {
     function boardWidgetHref(type) {
         const hrefs = {
             tasks: '/tasks',
-            my_focus: '/tasks?view=focus',
             my_schedule: '/staff',
             funnel: '/sales-funnel',
             alerts: '/dashboard',
@@ -4191,9 +4189,6 @@ const DashboardPage = (() => {
             case 'tasks':
                 renderTasks(data, container);
                 break;
-            case 'my_focus':
-                renderMyFocus(data, container);
-                break;
             case 'bookings_today':
                 renderBookings(data, container);
                 break;
@@ -4332,37 +4327,6 @@ const DashboardPage = (() => {
 
         const footer = `<div class="widget-footer"><a href="/tasks" class="widget-footer-link">Всі задачі →</a></div>`;
         container.innerHTML = `<div class="widget-task-list">${items}</div>${footer}`;
-    }
-
-    function renderMyFocus(data, container) {
-        const tasks = Array.isArray(data.tasks) ? data.tasks.slice(0, 3) : [];
-        const header = `
-            <div class="dashboard-focus-summary">
-                <div><b>${tasks.length}</b><span>у фокусі</span></div>
-                <div><b>${data.overdueCount || 0}</b><span>прострочено</span></div>
-                <div><b>${data.waitingCount || 0}</b><span>чекаю</span></div>
-            </div>`;
-        if (!tasks.length) {
-            container.innerHTML = `${header}<div class="widget-empty">Фокус дня порожній</div><div class="widget-footer"><a href="/profile?tab=myday" class="widget-footer-link">Відкрити Мій день →</a></div>`;
-            return;
-        }
-        const items = tasks.map(t => {
-            const deadline = t.deadline ? formatDeadline(t.deadline) : '';
-            const kind = t.task_kind || t.taskKind || 'action';
-            return `<div class="widget-task-item" onclick="DashboardPage.openTask(${t.id})" title="Відкрити задачу">
-                <div class="widget-task-icon ${t.priority || 'normal'}"></div>
-                <div class="widget-task-info">
-                    <div class="widget-task-title">${escapeHtml(t.title)}</div>
-                    <div class="widget-task-meta">${escapeHtml(kind)}${deadline ? ' · ' + deadline : ''}</div>
-                </div>
-                <div class="widget-task-arrow">›</div>
-            </div>`;
-        }).join('');
-        container.innerHTML = `${header}<div class="widget-task-list">${items}</div>
-            <div class="widget-footer">
-                <a href="/profile?tab=myday" class="widget-footer-link">Мій день →</a>
-                <a href="/tasks?view=focus" class="widget-footer-link">Всі фокуси →</a>
-            </div>`;
     }
 
     function renderBookings(data, container) {

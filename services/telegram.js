@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { pool } = require('../db');
 const { formatBookingNotification } = require('./templates');
 const { createLogger } = require('../utils/logger');
+const { resolveOmniRuntimeConfig } = require('./omni-accounts');
 
 const log = createLogger('Telegram');
 
@@ -76,9 +77,11 @@ function isRetryableError(err) {
 let webhookSet = false;
 let cachedBotUsername = null;
 
-function telegramRequest(method, body) {
+async function telegramRequest(method, body) {
+    const runtime = await resolveOmniRuntimeConfig('telegram');
+    const token = runtime.botToken || TELEGRAM_BOT_TOKEN;
     // Skip if no token configured
-    if (!TELEGRAM_BOT_TOKEN) {
+    if (!token) {
         return Promise.resolve({ ok: false, description: 'No bot token configured' });
     }
     // Circuit breaker check
@@ -93,7 +96,7 @@ function telegramRequest(method, body) {
         const data = body ? JSON.stringify(body) : '';
         const options = {
             hostname: 'api.telegram.org',
-            path: `/bot${TELEGRAM_BOT_TOKEN}/${method}`,
+            path: `/bot${token}/${method}`,
             method: body ? 'POST' : 'GET',
             headers: body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {},
             timeout: TELEGRAM_SOCKET_TIMEOUT
@@ -185,7 +188,8 @@ async function getConfiguredThreadId() {
 
 async function sendTelegramMessage(chatId, text, options = {}) {
     // v43.7.0: Short-circuit when no token to avoid log spam
-    if (!TELEGRAM_BOT_TOKEN) {
+    const runtime = await resolveOmniRuntimeConfig('telegram');
+    if (!(runtime.botToken || TELEGRAM_BOT_TOKEN)) {
         return { ok: false, description: 'No bot token configured' };
     }
     const maxRetries = options.retries || 3;
@@ -472,6 +476,11 @@ async function sendTelegramPhoto(chatId, photoBuffer, caption, options = {}) {
     }
 
     const threadId = await getConfiguredThreadId();
+    const runtime = await resolveOmniRuntimeConfig('telegram');
+    const token = runtime.botToken || TELEGRAM_BOT_TOKEN;
+    if (!token) {
+        return { ok: false, description: 'No bot token configured' };
+    }
     const boundary = '----TgBoundary' + Date.now().toString(16);
 
     const parts = [];
@@ -510,7 +519,7 @@ async function sendTelegramPhoto(chatId, photoBuffer, caption, options = {}) {
 
         const req = https.request({
             hostname: 'api.telegram.org',
-            path: `/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`,
+            path: `/bot${token}/sendPhoto`,
             method: 'POST',
             headers: {
                 'Content-Type': `multipart/form-data; boundary=${boundary}`,

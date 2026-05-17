@@ -839,7 +839,6 @@ function renderCabinetTaskCard(task, compact = false) {
             </div>
             <div class="cabinet-task-actions">
                 <button title="Готово" onclick="setCabinetTaskStatus(${task.id}, 'done')">✓</button>
-                ${Number(task.focusRank || task.focus_rank || 0) > 0 ? '' : `<button title="У фокус" onclick="focusCabinetTask(${task.id})">🎯</button>`}
                 ${compact ? '' : `<button title="Snooze" onclick="snoozeCabinetTask(${task.id}, 60)">⏰</button>`}
                 <button title="Відкрити" onclick="window.location.href='/tasks?task=${task.id}'">↗</button>
             </div>
@@ -860,8 +859,7 @@ function renderCabinetSection(title, list, emptyText, compact = false) {
 }
 
 function renderMyDayTab() {
-    const focus = cabinetList('focus');
-    const today = cabinetList('today').filter(t => !focus.some(f => f.id === t.id));
+    const today = cabinetList('today');
     const overdue = cabinetList('overdue');
     const waiting = cabinetList('waiting');
     const privateTasks = cabinetList('private').slice(0, 4);
@@ -871,7 +869,7 @@ function renderMyDayTab() {
                 <div>
                     <div class="cabinet-kicker">Personal command center</div>
                     <h2>Мій день</h2>
-                    <p>Фокус, очікування, приватні задачі й короткий review без шуму повного board.</p>
+                    <p>Сьогоднішні, приватні задачі й короткий review без шуму повного board.</p>
                 </div>
             </div>
             ${renderCabinetPulseCluster()}
@@ -889,7 +887,6 @@ function renderMyDayTab() {
                 <button type="button" onclick="createCabinetTask(event, 'private')">Приватна</button>
             </form>
             <div class="cabinet-grid">
-                ${renderCabinetSection('3 головні фокуси', focus, 'Фокус дня порожній. Додай 1-3 задачі, які справді рухають день.')}
                 ${renderCabinetSection('Сьогодні', today, 'На сьогодні немає активних задач.')}
                 ${renderCabinetSection('Прострочено', overdue, 'Немає прострочених задач.', true)}
                 ${renderCabinetSection('Чекаю', waiting, 'Нічого не зависло в очікуванні.', true)}
@@ -899,7 +896,7 @@ function renderMyDayTab() {
                     <div class="cabinet-review">
                         <p>Що завершено, що перенести, що зависло, що краще делегувати?</p>
                         <a href="/tasks?view=waiting">Відкрити waiting</a>
-                        <a href="/tasks?view=focus">Почистити фокус</a>
+                        <a href="/tasks?view=today">Відкрити сьогодні</a>
                     </div>
                 </section>
             </div>
@@ -958,11 +955,6 @@ async function refreshMyCabinetTab() {
 
 async function setCabinetTaskStatus(taskId, status) {
     await apiPatch(`/auth/tasks/${taskId}/quick-status`, { status });
-    await refreshMyCabinetTab();
-}
-
-async function focusCabinetTask(taskId) {
-    await apiPost(`/tasks/${taskId}/focus`, { enabled: true, rank: 1 });
     await refreshMyCabinetTab();
 }
 

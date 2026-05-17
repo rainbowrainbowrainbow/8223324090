@@ -594,53 +594,6 @@ body.dark-mode .page-fatal-error {
     border-color: var(--primary, #2563eb);
 }
 
-.tasks-focus-lane {
-    display: flex;
-    gap: 12px;
-    margin: 12px 0 16px;
-    align-items: stretch;
-    flex-wrap: wrap;
-}
-
-.focus-lane-card {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-height: 72px;
-    border: 1px solid rgba(15, 23, 42, 0.06);
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.55);
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
-    backdrop-filter: blur(10px);
-    padding: 12px 14px;
-    min-width: 0;
-}
-
-.focus-lane-card.focus-only {
-    min-width: 280px;
-    max-width: 520px;
-}
-
-body.dark-mode .focus-lane-card {
-    border-color: rgba(148, 163, 184, 0.22);
-    background: rgba(15, 23, 42, 0.58);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-}
-
-.focus-lane-card span,
-.focus-lane-card small {
-    display: block;
-    color: var(--gray-500, #6b7280);
-    font-size: 12px;
-}
-
-.focus-lane-card b {
-    display: block;
-    margin: 4px 0;
-    color: var(--gray-900, #111827);
-    font-size: 22px;
-}
-
 .task-os-badge {
     display: inline-flex;
     align-items: center;
@@ -989,16 +942,10 @@ body.dark-mode .cabinet-pulse-count--alert {
         padding-bottom: 4px;
     }
 
-    .tasks-focus-lane,
     .cabinet-grid,
     .cabinet-stats,
     .dashboard-focus-summary {
         grid-template-columns: 1fr;
-    }
-
-    .focus-lane-card.focus-only {
-        min-width: 100%;
-        max-width: none;
     }
 
     .cabinet-hero,

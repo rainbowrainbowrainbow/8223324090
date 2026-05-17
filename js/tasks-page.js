@@ -223,12 +223,10 @@ async function initPage() {
                 const catFilters = document.getElementById('catFilters');
                 const quickAdd = document.getElementById('quickAdd');
                 const boardContent = document.getElementById('boardContent');
-                const focusLane = document.getElementById('focusLane');
                 const templatesSection = document.getElementById('templatesSection');
                 if (catFilters) catFilters.style.display = isTemplates ? 'none' : '';
                 if (quickAdd) quickAdd.style.display = (isTemplates || userPermissions?.canCreateTasks === false) ? 'none' : '';
                 if (boardContent) boardContent.style.display = isTemplates ? 'none' : '';
-                if (focusLane) focusLane.style.display = isTemplates ? 'none' : '';
                 if (templatesSection) templatesSection.style.display = isTemplates ? '' : 'none';
                 updateTaskExplainability();
 
@@ -366,16 +364,6 @@ async function apiPatchTaskStatus(id, status) {
         if (handleAuthError(response)) return null;
         return await response.json();
     } catch (err) { console.error('API patchTaskStatus error:', err); return null; }
-}
-
-async function apiFocusTask(id, enabled = true) {
-    try {
-        const response = await fetch(`${API_BASE}/tasks/${id}/focus`, {
-            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ enabled, rank: enabled ? 1 : 0 })
-        });
-        if (handleAuthError(response)) return null;
-        return await response.json();
-    } catch (err) { console.error('API focusTask error:', err); return null; }
 }
 
 async function apiSnoozeTask(id, minutes = 60) {
@@ -569,14 +557,12 @@ function taskMode(t = {}) { return t.taskMode || t.task_mode || 'work'; }
 function taskKind(t = {}) { return t.taskKind || t.task_kind || 'action'; }
 function taskVisibility(t = {}) { return t.visibility || (taskMode(t) === 'private' ? 'private' : 'team'); }
 function taskWorkflow(t = {}) { return t.workflowState || t.workflow_state || (t.status === 'done' ? 'done' : 'todo'); }
-function taskFocusRank(t = {}) { return Number(t.focusRank || t.focus_rank || 0); }
 function taskDueDate(t = {}) { return (t.deadline || t.remindAt || t.remind_at || t.date || '').slice(0, 10); }
 function isActiveTask(t) { return !['done', 'archived', 'cancelled'].includes(t.status); }
 function isWaitingTask(t) { return taskWorkflow(t) === 'waiting' || taskKind(t) === 'waiting'; }
 function isPrivateTask(t) { return taskVisibility(t) === 'private' || taskMode(t) === 'private'; }
 function isTeamTask(t) { return taskVisibility(t) === 'team' && taskMode(t) === 'work'; }
-function isInboxTask(t) { return taskWorkflow(t) === 'inbox' || (!t.date && !t.deadline && taskFocusRank(t) === 0 && isActiveTask(t)); }
-function isFocusTask(t) { return taskFocusRank(t) > 0 && isActiveTask(t); }
+function isInboxTask(t) { return taskWorkflow(t) === 'inbox' || (!t.date && !t.deadline && isActiveTask(t)); }
 function isRoutineTask(t) { return taskKind(t) === 'routine' || t.type === 'recurring'; }
 
 function taskModeBadge(t) {
@@ -705,7 +691,6 @@ function renderBoard() {
     const container = document.getElementById('boardContent');
     updateCounts();
     updateTaskExplainability();
-    renderFocusLane();
 
     switch (currentView) {
         case 'inbox': renderSimpleTaskView(container, 'inbox', t => isInboxTask(t), 'Інбокс чистий. Нові задачі без контексту зʼявлятимуться тут.'); break;
@@ -730,8 +715,6 @@ function renderBoard() {
 function renderSimpleTaskView(container, view, predicate, emptyText) {
     const baseTasks = allTasks.filter(predicate);
     const tasks = filterByCategory(baseTasks).sort((a, b) => {
-        const focusDiff = taskFocusRank(a) - taskFocusRank(b);
-        if (focusDiff) return focusDiff;
         return String(a.deadline || a.remindAt || a.date || a.created_at || '').localeCompare(String(b.deadline || b.remindAt || b.date || b.created_at || ''));
     });
     if (!tasks.length) {
@@ -739,18 +722,6 @@ function renderSimpleTaskView(container, view, predicate, emptyText) {
         return;
     }
     container.innerHTML = tasks.map(t => renderTaskCard(t)).join('');
-}
-
-function renderFocusLane() {
-    const lane = document.getElementById('focusLane');
-    if (!lane || currentView === 'templates') return;
-    const active = allTasks.filter(isActiveTask);
-    const focus = active.filter(isFocusTask).sort((a, b) => taskFocusRank(a) - taskFocusRank(b)).slice(0, 3);
-    lane.innerHTML = `
-        <div class="focus-lane-card focus-only">
-            <span>🎯 Фокус дня</span><b>${focus.length}</b>
-            <small>${focus.map(t => escapeHtml(t.title)).join(' · ') || 'не задано'}</small>
-        </div>`;
 }
 
 // ==========================================
@@ -942,7 +913,6 @@ function renderTaskCard(t) {
     // v10.0: Task type badge
     const taskType = t.task_type || 'human';
     const typeBadge = `<span class="badge-type badge-${taskType}">${taskType === 'bot' ? 'Бот' : 'Людина'}</span>`;
-    const focusBadge = taskFocusRank(t) > 0 ? '<span class="task-os-badge focus">Фокус</span>' : '';
     const reminderBadge = (t.remindAt || t.remind_at || t.snoozedUntil || t.snoozed_until)
         ? '<span class="task-os-badge reminder">Нагадування</span>'
         : '';
@@ -989,7 +959,6 @@ function renderTaskCard(t) {
             ${typeBadge}
             ${taskModeBadge(t)}
             ${taskKindBadge(t)}
-            ${focusBadge}
             ${reminderBadge}
             ${subtaskBadge}
             <span>${catInfo.icon} ${catInfo.label}</span>
@@ -1002,7 +971,6 @@ function renderTaskCard(t) {
         </div>
         <div class="task-card-actions">
             <button class="${btnClass}" onclick="cycleStatus(${t.id}, '${nextStatus}')">${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
-            ${taskFocusRank(t) > 0 ? `<button onclick="toggleTaskFocus(event, ${t.id}, false)">Зняти фокус</button>` : `<button onclick="toggleTaskFocus(event, ${t.id}, true)">Фокус</button>`}
             ${!isWaitingTask(t) ? `<button onclick="markTaskWaiting(event, ${t.id})">Чекаю</button>` : ''}
             <button onclick="snoozeTaskQuick(event, ${t.id}, 60)">+1 год</button>
             ${!userPermissions || userPermissions.canDeleteTasks ? `<button class="btn-delete" onclick="deleteTask(${t.id})">✕</button>` : ''}
@@ -1077,7 +1045,7 @@ async function addTask() {
     const kind = document.getElementById('taskKind')?.value || (captureIntent.waiting ? 'waiting' : 'action');
     const visibility = defaultVisibilityForTaskMode(mode, document.getElementById('taskVisibility')?.value || 'team');
     const today = dateFromCaptureIntent();
-    const workflow = captureIntent.waiting ? 'waiting' : (captureIntent.focus ? 'in_progress' : 'inbox');
+    const workflow = captureIntent.waiting ? 'waiting' : 'inbox';
 
     const data = {
         title,
@@ -1089,7 +1057,6 @@ async function addTask() {
         task_kind: kind,
         visibility,
         workflow_state: workflow,
-        focus_rank: captureIntent.focus ? 1 : 0,
         source_type: 'manual',
         source_module: 'tasks'
     };
@@ -1123,15 +1090,6 @@ async function cycleStatus(taskId, newStatus) {
         if (newStatus === 'done') loadMyPoints();
     } else {
         showNotification('Помилка зміни статусу', 'error');
-    }
-}
-
-async function toggleTaskFocus(event, taskId, enabled) {
-    event.stopPropagation();
-    const result = await apiFocusTask(taskId, enabled);
-    if (result?.success) {
-        await loadAllTasks();
-        if (typeof showNotification === 'function') showNotification(enabled ? 'Додано у фокус' : 'Знято з фокусу', 'success');
     }
 }
 
@@ -1452,7 +1410,6 @@ async function openTaskDetail(taskId) {
                         ${['inbox','todo','in_progress','waiting','scheduled','done','archived'].map(w => `<option value="${w}" ${taskWorkflow(t)===w?'selected':''}>${escapeHtml(w)}</option>`).join('')}
                     </select></div>
                     <div><label ${_lbl}>Нагадати</label><input id="_tdRemindAt" type="datetime-local" value="${remindIso}" ${_inp}></div>
-                    <div><label ${_lbl}>Focus rank</label><input id="_tdFocusRank" type="number" min="0" max="99" value="${taskFocusRank(t)}" ${_inp}></div>
                 </div>
                 <div style="border:1px solid var(--gray-100);border-radius:10px;padding:10px;background:rgba(15,23,42,0.03)">
                     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--gray-600)">
@@ -1605,7 +1562,6 @@ async function saveTaskDetail(taskId) {
             visibility: document.getElementById('_tdVisibility')?.value || 'team',
             workflow_state: document.getElementById('_tdWorkflow')?.value || (selectedStatus === 'done' ? 'done' : 'todo'),
             remind_at: document.getElementById('_tdRemindAt')?.value || null,
-            focus_rank: parseInt(document.getElementById('_tdFocusRank')?.value || '0', 10) || 0,
             version: document.getElementById('taskDetailOverlay')?.dataset?.taskVersion || undefined
         };
         const res = await fetch(`/api/tasks/${taskId}`, {

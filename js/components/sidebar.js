@@ -750,28 +750,13 @@ const Sidebar = (() => {
     }
 
     function _ensureActiveIndicator() {
-        const links = document.querySelector('#sidebarNav .sidebar-links');
-        if (!links || document.getElementById('sidebarActiveIndicator')) return;
-        const indicator = document.createElement('div');
-        indicator.id = 'sidebarActiveIndicator';
-        indicator.className = 'sidebar-active-indicator';
-        links.appendChild(indicator);
+        document.getElementById('sidebarActiveIndicator')?.remove();
     }
 
     function _updateActiveIndicator() {
         const indicator = document.getElementById('sidebarActiveIndicator');
-        const active = document.querySelector('#sidebarNav .nav-link.active');
-        const links = indicator?.parentElement;
         if (!indicator) return;
-        if (!active || !active.closest('.sidebar-group-items.open')) {
-            indicator.classList.remove('visible');
-            return;
-        }
-        const activeRect = active.getBoundingClientRect();
-        const linksRect = links ? links.getBoundingClientRect() : { top: 0 };
-        const top = activeRect.top - linksRect.top + (links?.scrollTop || 0);
-        indicator.style.transform = `translateY(${Math.round(top)}px)`;
-        indicator.classList.add('visible');
+        indicator.remove();
     }
 
     function _initSpotlight() {

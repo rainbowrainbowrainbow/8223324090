@@ -20,6 +20,7 @@ const https = require('https');
 const crypto = require('crypto');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { resolveOmniRuntimeConfig } = require('./omni-accounts');
 
 const log = createLogger('ReportBot');
 
@@ -48,8 +49,10 @@ function isCircuitOpen() {
     return true;
 }
 
-function reportBotRequest(method, body) {
-    if (!REPORT_BOT_TOKEN) {
+async function reportBotRequest(method, body) {
+    const runtime = await resolveOmniRuntimeConfig('report_bot');
+    const token = runtime.botToken || REPORT_BOT_TOKEN;
+    if (!token) {
         return Promise.resolve({ ok: false, description: 'No report bot token' });
     }
     if (isCircuitOpen()) {
@@ -60,7 +63,7 @@ function reportBotRequest(method, body) {
         const data = body ? JSON.stringify(body) : '';
         const options = {
             hostname: 'api.telegram.org',
-            path: `/bot${REPORT_BOT_TOKEN}/${method}`,
+            path: `/bot${token}/${method}`,
             method: body ? 'POST' : 'GET',
             headers: body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {},
             timeout: SOCKET_TIMEOUT
@@ -124,6 +127,16 @@ async function sendMessage(chatId, text, options = {}) {
 
 async function answerCallback(callbackQueryId, text) {
     return reportBotRequest('answerCallbackQuery', { callback_query_id: callbackQueryId, text });
+}
+
+async function getReportBotWebhookSecret() {
+    const runtime = await resolveOmniRuntimeConfig('report_bot');
+    return runtime.webhookSecret || REPORT_WEBHOOK_SECRET;
+}
+
+async function getReportBotApiKey() {
+    const runtime = await resolveOmniRuntimeConfig('report_bot');
+    return runtime.apiKey || process.env.REPORT_BOT_API_KEY || '';
 }
 
 async function clearInlineKeyboard(chatId, messageId) {
@@ -733,12 +746,13 @@ async function handleCommand(chatId, text, message) {
 let webhookSet = false;
 
 async function ensureReportBotWebhook(appUrl) {
-    if (!REPORT_BOT_TOKEN || webhookSet) return;
+    const runtime = await resolveOmniRuntimeConfig('report_bot');
+    if (!(runtime.botToken || REPORT_BOT_TOKEN) || webhookSet) return;
     try {
         const webhookUrl = `${appUrl}/api/report-bot/webhook`;
         const result = await reportBotRequest('setWebhook', {
             url: webhookUrl,
-            secret_token: REPORT_WEBHOOK_SECRET
+            secret_token: runtime.webhookSecret || REPORT_WEBHOOK_SECRET
         });
         if (result && result.ok) {
             webhookSet = true;
@@ -752,7 +766,8 @@ async function ensureReportBotWebhook(appUrl) {
 }
 
 async function registerReportBotCommands() {
-    if (!REPORT_BOT_TOKEN) return;
+    const runtime = await resolveOmniRuntimeConfig('report_bot');
+    if (!(runtime.botToken || REPORT_BOT_TOKEN)) return;
     try {
         await reportBotRequest('setMyCommands', {
             commands: [
@@ -787,5 +802,7 @@ module.exports = {
     ensureReportBotWebhook,
     registerReportBotCommands,
     REPORT_BOT_TOKEN,
-    REPORT_WEBHOOK_SECRET
+    REPORT_WEBHOOK_SECRET,
+    getReportBotWebhookSecret,
+    getReportBotApiKey
 };

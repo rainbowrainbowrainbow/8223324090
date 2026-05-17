@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.52.2">
-    <link rel="stylesheet" href="css/layout.css?v=0.52.2">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.52.2">
-    <link rel="stylesheet" href="css/pages.css?v=0.52.2">
-    <link rel="stylesheet" href="css/modals.css?v=0.52.2">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.52.2">
-    <link rel="stylesheet" href="css/responsive.css?v=0.52.2">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.52.2">
+    <link rel="stylesheet" href="css/base.css?v=0.53.0">
+    <link rel="stylesheet" href="css/layout.css?v=0.53.0">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.53.0">
+    <link rel="stylesheet" href="css/pages.css?v=0.53.0">
+    <link rel="stylesheet" href="css/modals.css?v=0.53.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.53.0">
+    <link rel="stylesheet" href="css/responsive.css?v=0.53.0">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.53.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -858,6 +858,19 @@
 
         body.dark-mode .dept-chip[data-dept="all"],
         [data-theme="dark"] .dept-chip[data-dept="all"] { color: #E5E7EB; }
+        body.dark-mode .dept-chip[data-dept="all"].active,
+        [data-theme="dark"] .dept-chip[data-dept="all"].active {
+            background: linear-gradient(135deg, rgba(15, 118, 110, 0.94), rgba(14, 165, 155, 0.86));
+            border-color: rgba(94, 234, 212, 0.58);
+            color: #F8FAFC;
+            box-shadow: 0 12px 28px rgba(20, 184, 166, 0.24), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+        }
+        body.dark-mode .dept-chip[data-dept="all"].active:hover,
+        [data-theme="dark"] .dept-chip[data-dept="all"].active:hover {
+            background: linear-gradient(135deg, rgba(13, 148, 136, 0.98), rgba(45, 212, 191, 0.88));
+            border-color: rgba(153, 246, 228, 0.72);
+            color: #FFFFFF;
+        }
         body.dark-mode .dept-chip[data-dept="animators"],
         [data-theme="dark"] .dept-chip[data-dept="animators"] { color: #5EEAD4; }
         body.dark-mode .dept-chip[data-dept="admin"],
@@ -1454,13 +1467,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.52.2"></script>
-    <script src="js/config.js?v=0.52.2"></script>
-    <script src="js/notification.js?v=0.52.2"></script>
-    <script src="js/api.js?v=0.52.2"></script>
-    <script src="js/auth.js?v=0.52.2"></script>
-    <script src="js/components/sidebar.js?v=0.52.2"></script>
+    <script src="js/ui.js?v=0.53.0"></script>
+    <script src="js/config.js?v=0.53.0"></script>
+    <script src="js/notification.js?v=0.53.0"></script>
+    <script src="js/api.js?v=0.53.0"></script>
+    <script src="js/auth.js?v=0.53.0"></script>
+    <script src="js/components/sidebar.js?v=0.53.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/staff-page.js?v=0.52.2"></script><script src="js/alerts.js?v=0.52.2"></script>
+    <script src="js/staff-page.js?v=0.53.0"></script><script src="js/alerts.js?v=0.53.0"></script>
 </body>
 </html>

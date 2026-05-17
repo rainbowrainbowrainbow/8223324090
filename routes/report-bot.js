@@ -17,26 +17,47 @@ const log = createLogger('ReportBotRoute');
 
 const REPORT_BOT_API_KEY = process.env.REPORT_BOT_API_KEY || '';
 
+const reportBotService = require('../services/report-bot');
+
 const {
     handleCommand,
     handleCallback,
     handleTextMessage,
     handlePhoto,
-    handleVoice,
-    REPORT_WEBHOOK_SECRET
-} = require('../services/report-bot');
+    handleVoice
+} = reportBotService;
+
+async function resolveReportBotWebhookSecret() {
+    if (typeof reportBotService.getReportBotWebhookSecret === 'function') {
+        return reportBotService.getReportBotWebhookSecret();
+    }
+    return process.env.REPORT_WEBHOOK_SECRET || '';
+}
+
+async function resolveReportBotApiKey() {
+    if (typeof reportBotService.getReportBotApiKey === 'function') {
+        return reportBotService.getReportBotApiKey();
+    }
+    return process.env.REPORT_BOT_API_KEY || REPORT_BOT_API_KEY;
+}
 
 // ==========================================
 // API Key middleware for bot-to-CRM endpoints
 // ==========================================
-function requireBotApiKey(req, res, next) {
-    if (!REPORT_BOT_API_KEY) {
-        log.warn('REPORT_BOT_API_KEY not configured');
-        return res.status(503).json({ error: 'Bot API not configured' });
-    }
-    const key = req.headers['x-api-key'] || req.query.api_key;
-    if (key !== REPORT_BOT_API_KEY) {
-        return res.status(403).json({ error: 'Invalid API key' });
+async function requireBotApiKey(req, res, next) {
+    try {
+        const configuredKey = await resolveReportBotApiKey();
+        if (!configuredKey) {
+            log.warn('REPORT_BOT_API_KEY not configured');
+            return res.status(503).json({ error: 'Bot API not configured' });
+        }
+        const key = req.headers['x-api-key'] || req.query.api_key;
+        if (key !== configuredKey) {
+            return res.status(403).json({ error: 'Invalid API key' });
+        }
+    } catch (err) {
+        log.error('Report bot API key check failed', err);
+        return res.status(503).json({ error: 'Bot API key check failed' });
     }
     next();
 }
@@ -166,7 +187,8 @@ function duplicateSubmitResponse(row) {
 
 router.post('/webhook', async (req, res) => {
     const secretHeader = req.headers['x-telegram-bot-api-secret-token'];
-    if (secretHeader !== REPORT_WEBHOOK_SECRET) {
+    const expectedSecret = await resolveReportBotWebhookSecret();
+    if (secretHeader !== expectedSecret) {
         return res.sendStatus(403);
     }
 

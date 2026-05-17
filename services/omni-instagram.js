@@ -7,6 +7,7 @@
  */
 const https = require('https');
 const { createLogger } = require('../utils/logger');
+const { resolveOmniRuntimeConfig } = require('./omni-accounts');
 
 const log = createLogger('OmniInstagram');
 
@@ -27,7 +28,7 @@ if (!IG_PAGE_TOKEN) {
  * @param {object|null} body - JSON payload (null for GET)
  * @returns {Promise<object>} parsed response
  */
-function igRequest(method, path, body) {
+function igRequest(method, path, body, token = IG_PAGE_TOKEN) {
     return new Promise((resolve, reject) => {
         const payload = body ? JSON.stringify(body) : null;
 
@@ -40,7 +41,7 @@ function igRequest(method, path, body) {
             method,
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${IG_PAGE_TOKEN}`,
+                'Authorization': `Bearer ${token}`,
                 ...(payload && { 'Content-Length': Buffer.byteLength(payload) })
             }
         };
@@ -98,7 +99,9 @@ function igRequest(method, path, body) {
  * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
  */
 async function sendInstagram(recipientId, text) {
-    if (!IG_PAGE_TOKEN) {
+    const runtime = await resolveOmniRuntimeConfig('instagram');
+    const token = runtime.pageToken || runtime.token || IG_PAGE_TOKEN;
+    if (!token) {
         log.warn('sendInstagram called but IG_PAGE_TOKEN not configured');
         return { success: false, error: 'IG_PAGE_TOKEN not configured' };
     }
@@ -115,7 +118,7 @@ async function sendInstagram(recipientId, text) {
 
         log.debug('Sending Instagram DM', { recipientId });
 
-        const response = await igRequest('POST', '/me/messages', body);
+        const response = await igRequest('POST', '/me/messages', body, token);
 
         log.info('Instagram DM sent', { recipientId, messageId: response.message_id });
         return { success: true, messageId: response.message_id };
@@ -132,7 +135,9 @@ async function sendInstagram(recipientId, text) {
  * @returns {Promise<{success: boolean, commentId?: string, error?: string}>}
  */
 async function replyToComment(commentId, text) {
-    if (!IG_PAGE_TOKEN) {
+    const runtime = await resolveOmniRuntimeConfig('instagram');
+    const token = runtime.pageToken || runtime.token || IG_PAGE_TOKEN;
+    if (!token) {
         log.warn('replyToComment called but IG_PAGE_TOKEN not configured');
         return { success: false, error: 'IG_PAGE_TOKEN not configured' };
     }
@@ -144,7 +149,7 @@ async function replyToComment(commentId, text) {
     try {
         log.debug('Replying to IG comment', { commentId });
 
-        const response = await igRequest('POST', `/${commentId}/replies`, { message: text });
+        const response = await igRequest('POST', `/${commentId}/replies`, { message: text }, token);
 
         log.info('IG comment reply sent', { parentCommentId: commentId, replyId: response.id });
         return { success: true, commentId: response.id };

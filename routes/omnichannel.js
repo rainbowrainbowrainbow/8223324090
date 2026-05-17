@@ -8,8 +8,17 @@ const crypto = require('crypto');
 const express = require('express');
 const router = express.Router();
 const { createLogger } = require('../utils/logger');
-const { authenticateToken: auth } = require('../middleware/auth');
-const { getOmniAccountStatuses, getOmniAccountStatus } = require('../services/omni-accounts');
+const { authenticateToken: auth, requireMinRole } = require('../middleware/auth');
+const { logAdminAction } = require('../services/adminAudit');
+const {
+    getOmniAccountStatusesAsync,
+    getOmniAccountStatusAsync,
+    upsertOmniConnection,
+    recheckOmniConnection,
+    testOmniConnection,
+    disconnectOmniConnection,
+    resolveOmniRuntimeConfig,
+} = require('../services/omni-accounts');
 
 const log = createLogger('OmniRoutes');
 
@@ -30,8 +39,9 @@ function getNormalizer() {
 // Webhook signature verification helpers
 // ═══════════════════════════════════════════════
 
-function verifyViberSignature(req) {
-    const token = process.env.VIBER_TOKEN;
+async function verifyViberSignature(req) {
+    const runtime = await resolveOmniRuntimeConfig('viber');
+    const token = runtime.token || process.env.VIBER_TOKEN;
     if (!token) return true; // skip if not configured
     const sig = req.headers['x-viber-content-signature'];
     if (!sig) return false;
@@ -45,8 +55,9 @@ function verifyViberSignature(req) {
     }
 }
 
-function verifyWebhookSecret(req, envKey) {
-    const secret = process.env[envKey];
+async function verifyWebhookSecret(req, envKey, channel, fieldName = 'webhookSecret') {
+    const runtime = channel ? await resolveOmniRuntimeConfig(channel) : {};
+    const secret = runtime[fieldName] || process.env[envKey];
     if (!secret) return true; // skip if not configured
     const provided = req.headers['x-webhook-secret'];
     if (!provided) return false;
@@ -57,15 +68,21 @@ function verifyWebhookSecret(req, envKey) {
     }
 }
 
-function verifyMetaSignature(req) {
-    const secret = process.env.META_APP_SECRET;
+async function verifyMetaSignature(req) {
+    const facebook = await resolveOmniRuntimeConfig('facebook');
+    const instagram = await resolveOmniRuntimeConfig('instagram');
+    const secret = facebook.appSecret || instagram.appSecret || process.env.META_APP_SECRET;
     if (!secret) return true; // skip if not configured
     const sig = req.headers['x-hub-signature-256'];
     if (!sig) return false;
     const expected = 'sha256=' + crypto.createHmac('sha256', secret)
         .update(JSON.stringify(req.body))
         .digest('hex');
-    return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+    try {
+        return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+    } catch {
+        return false;
+    }
 }
 
 function parseId(val) {
@@ -102,7 +119,7 @@ router.post('/webhook/telegram', async (req, res) => {
 // Viber webhook
 router.post('/webhook/viber', async (req, res) => {
     try {
-        if (!verifyViberSignature(req)) {
+        if (!await verifyViberSignature(req)) {
             log.warn('Viber webhook signature verification failed');
             return res.status(403).json({ status: 1, status_message: 'invalid signature' });
         }
@@ -130,7 +147,7 @@ router.post('/webhook/viber', async (req, res) => {
 // SMS webhook (TurboSMS delivery reports or inbound)
 router.post('/webhook/sms', async (req, res) => {
     try {
-        if (!verifyWebhookSecret(req, 'SMS_WEBHOOK_SECRET')) {
+        if (!await verifyWebhookSecret(req, 'SMS_WEBHOOK_SECRET', 'sms')) {
             log.warn('SMS webhook secret verification failed');
             return res.status(403).json({ ok: false, error: 'invalid secret' });
         }
@@ -163,7 +180,7 @@ router.get('/webhook/meta', (req, res) => {
 
 router.post('/webhook/meta', async (req, res) => {
     try {
-        if (!verifyMetaSignature(req)) {
+        if (!await verifyMetaSignature(req)) {
             log.warn('Meta webhook signature verification failed');
             return res.status(403).json({ ok: false, error: 'invalid signature' });
         }
@@ -194,7 +211,7 @@ router.post('/webhook/meta', async (req, res) => {
 // Binotel webhook (phone calls)
 router.post('/webhook/binotel', async (req, res) => {
     try {
-        if (!verifyWebhookSecret(req, 'BINOTEL_WEBHOOK_SECRET')) {
+        if (!await verifyWebhookSecret(req, 'BINOTEL_WEBHOOK_SECRET', 'binotel')) {
             log.warn('Binotel webhook secret verification failed');
             return res.status(403).json({ ok: false, error: 'invalid secret' });
         }
@@ -213,38 +230,85 @@ router.post('/webhook/binotel', async (req, res) => {
 // CRM API (auth required)
 // ═══════════════════════════════════════════════
 
+const manageConnections = requireMinRole('manager');
+
+async function auditConnectionAction(req, action, channel, result) {
+    logAdminAction(`omni_connection_${action}`, 'omni_connections', {
+        username: req.user?.username || req.user?.name || null,
+        target: channel,
+        details: {
+            channel,
+            status: result?.account?.status || null,
+            sendCapable: result?.account?.sendCapable ?? null,
+            receiveCapable: result?.account?.receiveCapable ?? null
+        },
+        ip: req.ip,
+        requestId: req.headers['x-request-id'] || null
+    }).catch(() => {});
+}
+
 // Account/channel connectivity control-plane
-router.get('/accounts', auth, async (req, res) => {
+router.get('/accounts', auth, manageConnections, async (req, res) => {
     try {
-        res.json({ success: true, accounts: getOmniAccountStatuses() });
+        res.json({ success: true, accounts: await getOmniAccountStatusesAsync() });
     } catch (err) {
         log.error('Get omni accounts error:', err.message);
         res.status(500).json({ success: false, error: 'Не вдалося отримати статус каналів Omni' });
     }
 });
 
-router.post('/accounts/:channel/recheck', auth, async (req, res) => {
+router.get('/accounts/:channel', auth, manageConnections, async (req, res) => {
     try {
-        const account = getOmniAccountStatus(req.params.channel);
+        const account = await getOmniAccountStatusAsync(req.params.channel);
         if (!account) return res.status(404).json({ success: false, error: 'Канал Omni не знайдено' });
-        res.json({ success: true, account, message: 'Статус каналу перевірено' });
+        res.json({ success: true, account });
     } catch (err) {
-        log.error('Recheck omni account error:', err.message);
-        res.status(500).json({ success: false, error: 'Не вдалося перевірити канал Omni' });
+        log.error('Get omni account error:', err.message);
+        res.status(500).json({ success: false, error: 'Не вдалося отримати канал Omni' });
     }
 });
 
-router.post('/accounts/:channel/connect', auth, async (req, res) => {
+router.post('/accounts/:channel/recheck', auth, manageConnections, async (req, res) => {
     try {
-        const account = getOmniAccountStatus(req.params.channel);
-        if (!account) return res.status(404).json({ success: false, error: 'Канал Omni не знайдено' });
-        const message = account.connected
-            ? 'Канал уже має backend-конфігурацію. Перевірте статус або оновіть provider credentials.'
-            : 'Підключення цього каналу потребує backend credentials/OAuth у середовищі CRM. Ключі не вводяться у браузері.';
-        res.json({ success: true, account, action: 'configuration_required', message });
+        const result = await recheckOmniConnection(req.params.channel, req.user);
+        await auditConnectionAction(req, 'recheck', req.params.channel, result);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        log.error('Recheck omni account error:', err.message);
+        res.status(err.statusCode || 500).json({ success: false, error: err.message || 'Не вдалося перевірити канал Omni', details: err.details || null });
+    }
+});
+
+router.post('/accounts/:channel/test', auth, manageConnections, async (req, res) => {
+    try {
+        const result = await testOmniConnection(req.params.channel, req.user);
+        await auditConnectionAction(req, 'test', req.params.channel, result);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        log.error('Test omni account error:', err.message);
+        res.status(err.statusCode || 500).json({ success: false, error: err.message || 'Не вдалося протестувати канал Omni', details: err.details || null });
+    }
+});
+
+router.post('/accounts/:channel/connect', auth, manageConnections, async (req, res) => {
+    try {
+        const result = await upsertOmniConnection(req.params.channel, req.body || {}, req.user);
+        await auditConnectionAction(req, 'connect', req.params.channel, result);
+        res.json({ success: true, ...result });
     } catch (err) {
         log.error('Connect omni account error:', err.message);
-        res.status(500).json({ success: false, error: 'Не вдалося підготувати підключення Omni-каналу' });
+        res.status(err.statusCode || 500).json({ success: false, error: err.message || 'Не вдалося підключити Omni-канал', details: err.details || null });
+    }
+});
+
+router.post('/accounts/:channel/disconnect', auth, manageConnections, async (req, res) => {
+    try {
+        const result = await disconnectOmniConnection(req.params.channel, req.user);
+        await auditConnectionAction(req, 'disconnect', req.params.channel, result);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        log.error('Disconnect omni account error:', err.message);
+        res.status(err.statusCode || 500).json({ success: false, error: err.message || 'Не вдалося відключити Omni-канал', details: err.details || null });
     }
 });
 

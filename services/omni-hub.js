@@ -10,7 +10,12 @@ const { sendViber } = require('./omni-viber');
 const { sendSMS } = require('./omni-sms');
 const { sendFacebook } = require('./omni-facebook');
 const { sendInstagram } = require('./omni-instagram');
-const { getOmniAccountStatus, getOmniUnavailableMessage } = require('./omni-accounts');
+const {
+  getOmniAccountStatus,
+  getOmniUnavailableMessage,
+  getOmniAccountStatusAsync,
+  getOmniUnavailableMessageAsync,
+} = require('./omni-accounts');
 const {
   booleanValue,
   deriveReplySlaState,
@@ -43,8 +48,8 @@ const MAX_NAME_LEN = 255;
 const MAX_SEARCH_LEN = 255;
 
 class ChannelUnavailableError extends Error {
-  constructor(channel) {
-    const message = getOmniUnavailableMessage(channel);
+  constructor(channel, message) {
+    message = message || getOmniUnavailableMessage(channel);
     super(message);
     this.code = 'CHANNEL_UNAVAILABLE';
     this.statusCode = 400;
@@ -101,6 +106,21 @@ function normalizeChannel(channel) {
 function isSendCapableChannel(channel) {
   const normalized = normalizeChannel(channel);
   return VALID_CHANNELS.includes(normalized) && !INBOUND_ONLY_CHANNELS.has(normalized);
+}
+
+async function assertRuntimeSendCapable(channel) {
+  const normalized = normalizeChannel(channel);
+  if (!isSendCapableChannel(normalized)) {
+    throw new ChannelUnavailableError(normalized);
+  }
+  const account = await getOmniAccountStatusAsync(normalized);
+  if (!account || !account.connected || account.sendCapable === false) {
+    throw new ChannelUnavailableError(
+      normalized,
+      await getOmniUnavailableMessageAsync(normalized)
+    );
+  }
+  return account;
 }
 
 function sendTruthMessage(status, details = {}) {
@@ -1349,8 +1369,10 @@ async function generateAndSendAIResponse(conversation, message) {
     return null;
   }
 
-  if (!isSendCapableChannel(conversation.channel)) {
-    logger.warn(`AI response skipped because ${conversation.channel} is not send-capable`);
+  try {
+    await assertRuntimeSendCapable(conversation.channel);
+  } catch (err) {
+    logger.warn(`AI response skipped because ${conversation.channel} is not send-capable: ${err.message}`);
     return null;
   }
 
@@ -1519,9 +1541,7 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
   }
 
   const conversation = mapConversationRow(convResult.rows[0]);
-  if (!isSendCapableChannel(conversation.channel)) {
-    throw new ChannelUnavailableError(conversation.channel);
-  }
+  await assertRuntimeSendCapable(conversation.channel);
   const replyExpectation = normalizeReplyExpectationOptions(options);
 
   let client;

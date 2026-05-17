@@ -32,7 +32,7 @@ BEGIN
             SELECT 1
             FROM chat_channels
             WHERE line_id IS NOT NULL
-              AND type = ''room''
+              AND type = 'room'
               AND COALESCE(is_archived, false) = false
             GROUP BY line_id
             HAVING COUNT(*) > 1

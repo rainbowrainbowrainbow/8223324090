@@ -1718,7 +1718,6 @@
             task_kind: payload.task_kind || payload.taskKind || 'action',
             visibility: payload.visibility || 'team',
             workflow_state: payload.workflow_state || payload.workflowState || 'inbox',
-            focus_rank: payload.focus_rank || payload.focusRank || 0,
             sourceType: payload.sourceType || 'chat_message',
             sourceId: payload.sourceId || null,
             source_module: payload.source_module || payload.sourceModule || 'chat',
@@ -6079,22 +6078,28 @@
         var el = document.createElement('div');
         el.className = 'guardian-log-entry severity-' + (ev.severity || 'info');
 
-        var icon = '🔍';
-        if (ev.type === 'mask') icon = '🛡️';
-        else if (ev.type === 'mute') icon = '🚨';
-        else if (ev.type === 'warn') icon = '⚠️';
-        else if (ev.type === 'scan') icon = '👁️';
+        var icon = '\u{1F50D}';
+        if (ev.type === 'mask') icon = '\u{1F6E1}\uFE0F';
+        else if (ev.type === 'mute') icon = '\u{1F6A8}';
+        else if (ev.type === 'warn') icon = '\u26A0\uFE0F';
+        else if (ev.type === 'scan') icon = '\u{1F441}\uFE0F';
 
         var time = '';
         try {
             time = new Date(ev.timestamp).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         } catch (e) { time = ''; }
 
+        var actionLabel = String(ev.type || 'event').slice(0, 32);
+        var details = _esc(ev.details || ev.type || '');
         el.innerHTML =
             '<div class="guardian-log-entry-icon">' + icon + '</div>' +
             '<div class="guardian-log-entry-body">' +
-                '<div class="guardian-log-entry-text"><b>@' + _esc(ev.username || '?') + '</b> — ' + _esc(ev.details || ev.type) + '</div>' +
-                '<div class="guardian-log-entry-time">' + time + '</div>' +
+                '<div class="guardian-log-entry-top">' +
+                    '<b>@' + _esc(ev.username || '?') + '</b>' +
+                    '<span class="guardian-log-entry-type">' + _esc(actionLabel) + '</span>' +
+                    '<time class="guardian-log-entry-time">' + time + '</time>' +
+                '</div>' +
+                '<div class="guardian-log-entry-text">' + details + '</div>' +
             '</div>';
         return el;
     }

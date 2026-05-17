@@ -212,6 +212,19 @@ body.dark-mode .ds-card--critical { background: rgba(239, 68, 68, 0.12); }
 body.dark-mode .ds-card--important { background: rgba(245, 158, 11, 0.12); }
 body.dark-mode .ds-card--normal { background: rgba(59, 130, 246, 0.12); }
 body.dark-mode h3.ds-title { color: #E2E8F0; }
+body.dark-mode .ds-desc { color: #CBD5E1; }
+body.dark-mode .ds-time,
+body.dark-mode .ds-meta,
+body.dark-mode .ds-empty-text,
+body.dark-mode .ds-hint { color: #A8B3C5; }
+body.dark-mode .ds-card {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+body.dark-mode .ds-link { color: #5EEAD4; }
+body.dark-mode .ds-btn--approve { background: rgba(16, 185, 129, 0.18); color: #86EFAC; }
+body.dark-mode .ds-btn--reject { background: rgba(239, 68, 68, 0.18); color: #FCA5A5; }
 body.dark-mode .ds-btn--defer { background: rgba(255, 255, 255, 0.08); color: #CBD5E1; }
 body.dark-mode .ds-btn--defer:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
 body.dark-mode .ds-footer { border-top-color: rgba(255, 255, 255, 0.06); }

@@ -6,6 +6,7 @@
  */
 const https = require('https');
 const { createLogger } = require('../utils/logger');
+const { resolveOmniRuntimeConfig } = require('./omni-accounts');
 
 const log = createLogger('OmniViber');
 
@@ -25,7 +26,7 @@ if (!VIBER_TOKEN) {
  * @param {object} body - JSON payload
  * @returns {Promise<object>} parsed response
  */
-function viberRequest(path, body) {
+function viberRequest(path, body, token = VIBER_TOKEN) {
     return new Promise((resolve, reject) => {
         const payload = JSON.stringify(body);
 
@@ -36,7 +37,7 @@ function viberRequest(path, body) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-Viber-Auth-Token': VIBER_TOKEN,
+                'X-Viber-Auth-Token': token,
                 'Content-Length': Buffer.byteLength(payload)
             }
         };
@@ -92,7 +93,10 @@ function viberRequest(path, body) {
  * @returns {Promise<{success: boolean, messageToken?: number, error?: string}>}
  */
 async function sendViber(receiverId, text, options = {}) {
-    if (!VIBER_TOKEN) {
+    const runtime = await resolveOmniRuntimeConfig('viber');
+    const token = runtime.token || VIBER_TOKEN;
+    const senderName = runtime.senderName || VIBER_SENDER_NAME;
+    if (!token) {
         log.warn('sendViber called but VIBER_TOKEN not configured');
         return { success: false, error: 'VIBER_TOKEN not configured' };
     }
@@ -107,8 +111,8 @@ async function sendViber(receiverId, text, options = {}) {
             type: options.type || 'text',
             text,
             sender: {
-                name: options.senderName || VIBER_SENDER_NAME,
-                ...(options.senderAvatar && { avatar: options.senderAvatar })
+                name: options.senderName || senderName,
+                ...((options.senderAvatar || runtime.senderAvatar) && { avatar: options.senderAvatar || runtime.senderAvatar })
             }
         };
 
@@ -124,7 +128,7 @@ async function sendViber(receiverId, text, options = {}) {
 
         log.debug('Sending Viber message', { receiverId, type: body.type });
 
-        const response = await viberRequest('/pa/send_message', body);
+        const response = await viberRequest('/pa/send_message', body, token);
 
         if (response.status === 0) {
             log.info('Viber message sent', { receiverId, messageToken: response.message_token });
@@ -146,7 +150,9 @@ async function sendViber(receiverId, text, options = {}) {
  * @returns {Promise<{success: boolean, error?: string}>}
  */
 async function setViberWebhook(url, eventTypes) {
-    if (!VIBER_TOKEN) {
+    const runtime = await resolveOmniRuntimeConfig('viber');
+    const token = runtime.token || VIBER_TOKEN;
+    if (!token) {
         log.warn('setViberWebhook called but VIBER_TOKEN not configured');
         return { success: false, error: 'VIBER_TOKEN not configured' };
     }
@@ -163,7 +169,7 @@ async function setViberWebhook(url, eventTypes) {
 
         log.info('Setting Viber webhook', { url });
 
-        const response = await viberRequest('/pa/set_webhook', body);
+        const response = await viberRequest('/pa/set_webhook', body, token);
 
         if (response.status === 0) {
             log.info('Viber webhook registered', { url, eventTypes: response.event_types });

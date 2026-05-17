@@ -11,14 +11,14 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.52.2">
-    <link rel="stylesheet" href="css/layout.css?v=0.52.2">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.52.2">
-    <link rel="stylesheet" href="css/pages.css?v=0.52.2">
-    <link rel="stylesheet" href="css/modals.css?v=0.52.2">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.52.2">
-    <link rel="stylesheet" href="css/responsive.css?v=0.52.2">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.52.2">
+    <link rel="stylesheet" href="css/base.css?v=0.53.0">
+    <link rel="stylesheet" href="css/layout.css?v=0.53.0">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.53.0">
+    <link rel="stylesheet" href="css/pages.css?v=0.53.0">
+    <link rel="stylesheet" href="css/modals.css?v=0.53.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.53.0">
+    <link rel="stylesheet" href="css/responsive.css?v=0.53.0">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.53.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -118,6 +118,37 @@
             color: var(--text-primary, #1a202c);
         }
 
+        .omni-account-summary {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        .omni-account-summary-item {
+            border: 1px solid rgba(148,163,184,0.24);
+            border-radius: 10px;
+            padding: 8px;
+            background: rgba(255,255,255,0.62);
+        }
+
+        .omni-account-summary-item strong {
+            display: block;
+            font-size: 18px;
+            line-height: 1;
+            color: var(--text-primary, #111827);
+        }
+
+        .omni-account-summary-item span {
+            display: block;
+            margin-top: 4px;
+            font-size: 10px;
+            font-weight: 900;
+            color: var(--text-secondary, #64748b);
+            text-transform: uppercase;
+            letter-spacing: 0;
+        }
+
         .omni-accounts-refresh,
         .omni-account-btn {
             border: 1px solid var(--border-color, #e2e8f0);
@@ -199,6 +230,49 @@
             line-height: 1.35;
         }
 
+        .omni-account-impact {
+            margin-top: 8px;
+            padding: 8px;
+            border-radius: 8px;
+            background: rgba(15,23,42,0.04);
+            color: var(--text-primary, #1a202c);
+            font-size: 12px;
+            line-height: 1.35;
+        }
+
+        .omni-account-hint {
+            margin-top: 6px;
+            color: var(--text-secondary, #718096);
+            font-size: 12px;
+            line-height: 1.35;
+        }
+
+        .omni-account-caps {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 8px;
+        }
+
+        .omni-account-cap {
+            border-radius: 999px;
+            padding: 3px 7px;
+            background: rgba(148,163,184,0.16);
+            color: var(--text-secondary, #64748b);
+            font-size: 10px;
+            font-weight: 900;
+        }
+
+        .omni-account-cap.on {
+            background: rgba(16,185,129,0.16);
+            color: #047857;
+        }
+
+        .omni-account-cap.off {
+            background: rgba(239,68,68,0.12);
+            color: #B91C1C;
+        }
+
         .omni-account-actions {
             display: flex;
             gap: 8px;
@@ -219,6 +293,190 @@
         }
 
         .omni-accounts-alarm.hidden { display: none; }
+
+        .omni-connection-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 2200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+            background: rgba(2,6,23,0.62);
+        }
+
+        .omni-connection-modal[hidden] {
+            display: none;
+        }
+
+        .omni-connection-dialog {
+            width: min(720px, 100%);
+            max-height: min(86vh, 760px);
+            overflow: auto;
+            border: 1px solid rgba(148,163,184,0.28);
+            border-radius: 16px;
+            background: var(--bg-primary, #fff);
+            color: var(--text-primary, #111827);
+            box-shadow: 0 24px 80px rgba(2,6,23,0.35);
+        }
+
+        .omni-connection-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 18px 18px 12px;
+            border-bottom: 1px solid var(--border-color, #e2e8f0);
+        }
+
+        .omni-connection-head h3 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 900;
+        }
+
+        .omni-connection-head p {
+            margin: 4px 0 0;
+            color: var(--text-secondary, #64748b);
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .omni-connection-close {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color, #e2e8f0);
+            background: transparent;
+            color: inherit;
+            font-size: 20px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .omni-connection-body {
+            padding: 16px 18px;
+        }
+
+        .omni-connection-steps,
+        .omni-connection-warning {
+            margin-bottom: 14px;
+            padding: 12px;
+            border-radius: 12px;
+            background: rgba(14,165,233,0.10);
+            color: var(--text-primary, #111827);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .omni-connection-warning {
+            background: rgba(239,68,68,0.10);
+            border: 1px solid rgba(239,68,68,0.20);
+        }
+
+        .omni-connection-steps ol {
+            margin: 8px 0 0 20px;
+            padding: 0;
+        }
+
+        .omni-connection-webhook {
+            margin-top: 10px;
+            padding: 9px 10px;
+            border-radius: 8px;
+            background: rgba(15,23,42,0.06);
+            font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+            font-size: 12px;
+            overflow-wrap: anywhere;
+        }
+
+        .omni-connection-fields {
+            display: grid;
+            gap: 12px;
+        }
+
+        .omni-connection-field label {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 5px;
+            font-size: 13px;
+            font-weight: 900;
+        }
+
+        .omni-connection-field label span {
+            color: var(--text-secondary, #64748b);
+            font-size: 11px;
+            font-weight: 900;
+        }
+
+        .omni-connection-field input {
+            width: 100%;
+            border: 1px solid var(--border-color, #d1d5db);
+            border-radius: 10px;
+            background: var(--bg-primary, #fff);
+            color: var(--text-primary, #111827);
+            padding: 10px 12px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .omni-connection-field input:focus {
+            border-color: rgba(16,185,129,0.72);
+            box-shadow: 0 0 0 3px rgba(16,185,129,0.14);
+        }
+
+        .omni-connection-field small {
+            display: block;
+            margin-top: 5px;
+            color: var(--text-secondary, #64748b);
+            font-size: 12px;
+            line-height: 1.35;
+        }
+
+        .omni-connection-result {
+            margin-top: 12px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(245,158,11,0.12);
+            color: #92400E;
+            font-size: 13px;
+            font-weight: 800;
+            line-height: 1.4;
+        }
+
+        .omni-connection-result.success {
+            background: rgba(16,185,129,0.12);
+            color: #047857;
+        }
+
+        .omni-connection-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 12px 18px 18px;
+            border-top: 1px solid var(--border-color, #e2e8f0);
+        }
+
+        .omni-connection-actions button {
+            border: 1px solid var(--border-color, #d1d5db);
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .omni-connection-actions .primary {
+            border-color: rgba(16,185,129,0.72);
+            background: #10B981;
+            color: #fff;
+        }
+
+        .omni-connection-actions .danger {
+            border-color: rgba(239,68,68,0.72);
+            background: #EF4444;
+            color: #fff;
+        }
 
         .omni-conv-list {
             flex: 1;
@@ -682,19 +940,48 @@
         @media (max-width: 768px) {
             .omni-container {
                 grid-template-columns: 1fr;
+                height: auto;
+                min-height: calc(100vh - 56px);
+                overflow: visible;
             }
             .omni-sidebar {
-                display: none;
-            }
-            .omni-sidebar.mobile-show {
                 display: flex;
-                position: absolute;
-                inset: 0;
-                z-index: 100;
+                position: relative;
+                min-height: auto;
+                max-height: none;
+                overflow: visible;
+                border-right: 0;
+                border-bottom: 1px solid var(--border-color, #e2e8f0);
+            }
+            .omni-sidebar-header {
+                max-height: none;
+                overflow: visible;
+            }
+            .omni-conv-list {
+                max-height: 42vh;
+            }
+            .omni-chat {
+                min-height: 58vh;
             }
             .omni-accounts-panel {
-                max-height: 34vh;
+                max-height: none;
                 overflow-y: auto;
+            }
+            .omni-account-summary {
+                grid-template-columns: 1fr;
+            }
+            .omni-connection-modal {
+                align-items: stretch;
+                padding: 8px;
+            }
+            .omni-connection-dialog {
+                max-height: calc(100vh - 16px);
+            }
+            .omni-connection-actions {
+                flex-direction: column-reverse;
+            }
+            .omni-connection-actions button {
+                width: 100%;
             }
         }
 
@@ -709,9 +996,22 @@
             background: rgba(255,255,255,0.08);
         }
         .dark-mode .omni-accounts-panel,
-        .dark-mode .omni-account-card {
+        .dark-mode .omni-account-card,
+        .dark-mode .omni-connection-dialog {
             background: rgba(26,26,46,0.9);
         }
+        .dark-mode .omni-account-summary-item,
+        .dark-mode .omni-account-impact,
+        .dark-mode .omni-connection-webhook {
+            background: rgba(255,255,255,0.08);
+        }
+        .dark-mode .omni-connection-field input {
+            background: rgba(15,23,42,0.92);
+            color: #F8FAFC;
+            border-color: rgba(148,163,184,0.28);
+        }
+        .dark-mode .omni-account-cap.on { color: #6EE7B7; }
+        .dark-mode .omni-account-cap.off { color: #FCA5A5; }
         .dark-mode .omni-accounts-alarm {
             color: #FBBF24;
         }
@@ -789,6 +1089,7 @@
                                 <h3>Підключення каналів</h3>
                                 <button type="button" class="omni-accounts-refresh" id="omniAccountsRefresh">Перевірити</button>
                             </div>
+                            <div class="omni-account-summary" id="omniAccountSummary" aria-live="polite"></div>
                             <div class="omni-accounts-grid" id="omniAccountsGrid"></div>
                         </div>
                         <div id="omniExplainability" hidden></div>
@@ -837,6 +1138,25 @@
         </main>
     </div>
 
+    <div class="omni-connection-modal" id="omniConnectionModal" hidden role="dialog" aria-modal="true" aria-labelledby="omniConnectionTitle">
+        <div class="omni-connection-dialog">
+            <div class="omni-connection-head">
+                <div>
+                    <h3 id="omniConnectionTitle">Підключення каналу</h3>
+                    <p id="omniConnectionSubtitle">Заповніть дані провайдера і запустіть перевірку.</p>
+                </div>
+                <button type="button" class="omni-connection-close" id="omniConnectionClose" aria-label="Закрити">×</button>
+            </div>
+            <form id="omniConnectionForm">
+                <div class="omni-connection-body" id="omniConnectionBody"></div>
+                <div class="omni-connection-actions" id="omniConnectionActions">
+                    <button type="button" id="omniConnectionCancel">Скасувати</button>
+                    <button type="submit" class="primary" id="omniConnectionSubmit">Зберегти і перевірити</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Profile modal -->
     <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
         <div class="modal-content modal-medium">
@@ -852,12 +1172,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.52.2"></script>
-    <script src="js/api.js?v=0.52.2"></script>
-    <script src="js/auth.js?v=0.52.2"></script>
-    <script src="js/components/sidebar.js?v=0.52.2"></script>
+    <script src="js/config.js?v=0.53.0"></script>
+    <script src="js/api.js?v=0.53.0"></script>
+    <script src="js/auth.js?v=0.53.0"></script>
+    <script src="js/components/sidebar.js?v=0.53.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.52.2"></script>
+    <script src="js/ws.js?v=0.53.0"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -888,14 +1208,24 @@
         const quickRepliesEl = $('omniQuickReplies');
         const statsEl = $('omniStats');
         const accountsGrid = $('omniAccountsGrid');
+        const accountSummaryEl = $('omniAccountSummary');
         const accountsAlarm = $('omniAccountsAlarm');
         const accountsRefresh = $('omniAccountsRefresh');
+        const connectionModal = $('omniConnectionModal');
+        const connectionForm = $('omniConnectionForm');
+        const connectionBody = $('omniConnectionBody');
+        const connectionTitle = $('omniConnectionTitle');
+        const connectionSubtitle = $('omniConnectionSubtitle');
+        const connectionSubmit = $('omniConnectionSubmit');
+        const connectionCancel = $('omniConnectionCancel');
+        const connectionClose = $('omniConnectionClose');
         const searchInput = $('omniSearch');
         const input = $('omniInput');
         const sendBtn = $('omniSendBtn');
         const replyExpectedEl = $('omniReplyExpected');
         const sendTruthEl = $('omniSendTruth');
         const caseContextEl = $('omniCaseContext');
+        let connectionModalState = null;
         let isSending = false;
 
         // ---- Auth ----
@@ -1005,32 +1335,71 @@
 
         function omniAccountStatusLabel(acc) {
             if (!acc) return 'Статус невідомий';
-            if (acc.connected && acc.sendCapable) return 'Підключено';
-            if (acc.connected) return 'Обмежено';
-            return 'Не підключено';
+            return acc.statusLabel || (acc.connected && acc.sendCapable ? 'Підключено' : (acc.connected ? 'Обмежено' : 'Не підключено'));
+        }
+
+        function renderOmniAccountSummary() {
+            if (!accountSummaryEl) return;
+            const connected = omniAccounts.filter(a => a.connected && a.sendCapable).length;
+            const warnings = omniAccounts.filter(a => a.connected && !a.sendCapable).length;
+            const broken = omniAccounts.filter(a => !a.connected).length;
+            accountSummaryEl.innerHTML =
+                '<div class="omni-account-summary-item"><strong>' + connected + '</strong><span>готові</span></div>' +
+                '<div class="omni-account-summary-item"><strong>' + warnings + '</strong><span>частково</span></div>' +
+                '<div class="omni-account-summary-item"><strong>' + broken + '</strong><span>зламані</span></div>';
+        }
+
+        function accountCapabilityHtml(acc) {
+            return '<div class="omni-account-caps">' +
+                '<span class="omni-account-cap ' + (acc.sendCapable ? 'on' : 'off') + '">' + (acc.sendCapable ? 'Відправка увімкнена' : 'Відправка заблокована') + '</span>' +
+                '<span class="omni-account-cap ' + (acc.receiveCapable ? 'on' : 'off') + '">' + (acc.receiveCapable ? 'Прийом/історія є' : 'Прийом не підтверджено') + '</span>' +
+                '<span class="omni-account-cap">' + esc(acc.providerKind || 'provider') + '</span>' +
+            '</div>';
+        }
+
+        function formatAccountTime(value) {
+            if (!value) return '';
+            try { return new Date(value).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); }
+            catch { return ''; }
         }
 
         function renderOmniAccounts() {
             if (!accountsGrid) return;
+            renderOmniAccountSummary();
             if (!omniAccounts.length) {
-                accountsGrid.innerHTML = '<div class="omni-account-card warning">Статус каналів поки недоступний.</div>';
+                accountsGrid.innerHTML = '<div class="omni-account-card warning"><strong>Канали ще не завантажені</strong><div class="omni-account-hint">Натисніть «Перевірити» або перезавантажте сторінку. Без backend-статусу CRM не буде вважати канал готовим.</div></div>';
                 renderOmniAccountsAlarm();
                 return;
             }
 
             accountsGrid.innerHTML = omniAccounts.map(acc => {
                 const tone = omniAccountTone(acc);
-                const actionLabel = acc.connected ? (acc.sendCapable ? 'Керувати' : 'Налаштувати') : 'Підключити';
+                const actionLabel = acc.connected ? 'Керувати' : 'Підключити';
                 const highlighted = accountPanelChannel && accountPanelChannel === acc.channel ? ' is-highlighted' : '';
+                const changed = formatAccountTime(acc.lastChangedAt);
+                const checked = formatAccountTime(acc.lastCheckedAt);
+                const tested = formatAccountTime(acc.lastTestAt);
+                const audit = [
+                    checked ? 'перевірено ' + checked : null,
+                    changed ? 'змінено ' + changed : null,
+                    acc.changedBy ? 'ким: ' + acc.changedBy : null,
+                    tested ? 'тест ' + tested : null
+                ].filter(Boolean).join(' · ');
                 return '<div class="omni-account-card ' + tone + highlighted + '" data-account-channel="' + esc(acc.channel) + '">' +
                     '<div class="omni-account-card-top">' +
                         '<strong>' + esc(acc.label || acc.channel) + '</strong>' +
                         '<span class="omni-account-status ' + tone + '">' + esc(omniAccountStatusLabel(acc)) + '</span>' +
                     '</div>' +
-                    '<div class="omni-account-meta">' + esc(acc.accountName || acc.warning || 'Акаунт не підключений') + '</div>' +
+                    '<div class="omni-account-meta">' + esc(acc.accountName || acc.maskedIdentifier || 'Акаунт не підключений') + (acc.maskedIdentifier ? ' · ' + esc(acc.maskedIdentifier) : '') + '</div>' +
+                    accountCapabilityHtml(acc) +
+                    '<div class="omni-account-impact">' + esc(acc.warning || acc.businessImpact || 'Стан каналу контрольований CRM.') + '</div>' +
+                    '<div class="omni-account-hint">' + esc(acc.nextActionHint || 'Оберіть дію нижче.') + '</div>' +
+                    (audit ? '<div class="omni-account-hint">' + esc(audit) + '</div>' : '') +
                     '<div class="omni-account-actions">' +
                         '<button type="button" class="omni-account-btn" data-account-action="connect" data-channel="' + esc(acc.channel) + '">' + actionLabel + '</button>' +
                         '<button type="button" class="omni-account-btn secondary" data-account-action="recheck" data-channel="' + esc(acc.channel) + '">Перевірити</button>' +
+                        '<button type="button" class="omni-account-btn secondary" data-account-action="test" data-channel="' + esc(acc.channel) + '">Тест</button>' +
+                        (acc.supportedActions && acc.supportedActions.includes('disconnect') ? '<button type="button" class="omni-account-btn secondary" data-account-action="disconnect" data-channel="' + esc(acc.channel) + '">Відключити</button>' : '') +
                     '</div>' +
                 '</div>';
             }).join('');
@@ -1049,16 +1418,16 @@
             const disconnected = limited.filter(a => !a.connected);
             accountsAlarm.classList.remove('hidden');
             accountsAlarm.textContent = disconnected.length
-                ? 'Omni: ' + disconnected.length + ' канал(и) не підключені. Відправка або прийом можуть бути недоступні.'
-                : 'Omni: частина каналів працює в обмеженому режимі.';
+                ? 'Omni: ' + disconnected.length + ' канал(и) не підключені. Відправка заблокована, доки адміністратор не завершить підключення.'
+                : 'Omni: частина каналів працює в обмеженому режимі. Відкрийте картку, щоб побачити наслідки і наступну дію.';
         }
 
         function accountGuidanceMessage(channel) {
             const acc = omniAccountForChannel(channel);
             const label = acc?.label || CHANNEL_NAMES[channel] || channel || 'Канал';
             if (!acc) return label + ' недоступний для відправки з CRM. Перевірте блок «Підключення каналів».';
-            if (!acc.connected) return label + ' не підключений до Omni. Підключіть акаунт у блоці «Підключення каналів».';
-            if (acc.sendCapable === false) return label + ' працює в обмеженому режимі. Налаштуйте канал у блоці «Підключення каналів».';
+            if (!acc.connected) return label + ' не підключений. Відкрийте «Підключення каналів» і завершіть setup. ' + (acc.nextActionHint || '');
+            if (acc.sendCapable === false) return label + ' не може відправляти з CRM зараз. ' + (acc.nextActionHint || 'Перевірте канал у блоці «Підключення каналів».');
             return label + ' тимчасово недоступний для відправки з CRM.';
         }
 
@@ -1074,6 +1443,142 @@
             document.querySelectorAll('.omni-account-card').forEach(card => {
                 card.classList.toggle('is-highlighted', card.dataset.accountChannel === accountPanelChannel);
             });
+        }
+
+        function closeConnectionModal() {
+            if (!connectionModal) return;
+            connectionModal.hidden = true;
+            connectionModalState = null;
+            if (connectionBody) connectionBody.innerHTML = '';
+        }
+
+        function fieldInputType(field) {
+            if (field.type === 'secret' || field.type === 'password' || field.type === 'token') return 'password';
+            if (field.type === 'url') return 'url';
+            return 'text';
+        }
+
+        function openConnectModal(channel) {
+            const acc = omniAccountForChannel(channel);
+            if (!acc || !connectionModal) return;
+            connectionModalState = { mode: 'connect', channel: acc.channel };
+            connectionTitle.textContent = (acc.connected ? 'Керувати ' : 'Підключити ') + (acc.label || acc.channel);
+            connectionSubtitle.textContent = acc.businessImpact || 'Заповніть дані провайдера і запустіть перевірку.';
+            const steps = Array.isArray(acc.setupSteps) ? acc.setupSteps : [];
+            const fields = Array.isArray(acc.setupFields) ? acc.setupFields : [];
+            connectionSubmit.textContent = 'Зберегти і перевірити';
+            connectionSubmit.className = 'primary';
+            connectionBody.innerHTML =
+                '<div class="omni-connection-steps"><strong>Порядок підключення</strong>' +
+                    (steps.length ? '<ol>' + steps.map(step => '<li>' + esc(step) + '</li>').join('') + '</ol>' : '') +
+                    (acc.webhookUrl ? '<div class="omni-connection-webhook">' + esc(acc.webhookUrl) + '</div>' : '') +
+                '</div>' +
+                '<div class="omni-connection-fields">' +
+                fields.map(field => {
+                    const required = field.required ? 'обовʼязково' : 'опційно';
+                    const placeholder = field.hasSavedValue && field.maskedValue
+                        ? 'Збережено: ' + field.maskedValue + ' (залиште порожнім, щоб не змінювати)'
+                        : (field.placeholder || '');
+                    const value = field.type === 'secret' ? '' : (field.value || '');
+                    return '<div class="omni-connection-field">' +
+                        '<label for="conn_' + esc(field.name) + '">' + esc(field.label || field.name) + '<span>' + required + '</span></label>' +
+                        '<input id="conn_' + esc(field.name) + '" name="' + esc(field.name) + '" type="' + fieldInputType(field) + '" ' +
+                            (field.required && !field.hasSavedValue ? 'required ' : '') +
+                            'autocomplete="off" placeholder="' + esc(placeholder) + '" value="' + esc(value) + '">' +
+                        (field.hint ? '<small>' + esc(field.hint) + '</small>' : '') +
+                    '</div>';
+                }).join('') +
+                '</div>' +
+                '<div class="omni-connection-result" id="omniConnectionResult" hidden></div>';
+            connectionModal.hidden = false;
+            const firstInput = connectionBody.querySelector('input');
+            if (firstInput) firstInput.focus();
+        }
+
+        function openDisconnectModal(channel) {
+            const acc = omniAccountForChannel(channel);
+            if (!acc || !connectionModal) return;
+            connectionModalState = { mode: 'disconnect', channel: acc.channel };
+            connectionTitle.textContent = 'Відключити ' + (acc.label || acc.channel);
+            connectionSubtitle.textContent = 'Потрібне підтвердження, бо це впливає на роботу менеджерів.';
+            connectionSubmit.textContent = 'Відключити канал';
+            connectionSubmit.className = 'danger';
+            connectionBody.innerHTML =
+                '<div class="omni-connection-warning"><strong>Наслідки відключення</strong><br>' +
+                esc((acc.label || acc.channel) + ': відправка з CRM буде зупинена. Якщо канал приймає webhook, нові події можуть перестати коректно оброблятись. Після відключення кнопка «Підключити» залишиться доступною на цій картці.') +
+                '</div>' +
+                '<div class="omni-connection-result" id="omniConnectionResult" hidden></div>';
+            connectionModal.hidden = false;
+            connectionSubmit.focus();
+        }
+
+        function setConnectionResult(text, success) {
+            const resultEl = $('omniConnectionResult');
+            if (!resultEl) return;
+            resultEl.hidden = !text;
+            resultEl.textContent = text || '';
+            resultEl.className = 'omni-connection-result' + (success ? ' success' : '');
+        }
+
+        function collectConnectionFields() {
+            const fields = {};
+            if (!connectionBody) return fields;
+            connectionBody.querySelectorAll('input[name]').forEach(inputEl => {
+                const value = inputEl.value.trim();
+                if (value) fields[inputEl.name] = value;
+            });
+            return fields;
+        }
+
+        async function submitConnectionModal(event) {
+            event.preventDefault();
+            if (!connectionModalState) return;
+            const { mode, channel } = connectionModalState;
+            connectionSubmit.disabled = true;
+            connectionCancel.disabled = true;
+            setConnectionResult('Виконуємо дію...', false);
+            const path = mode === 'disconnect'
+                ? '/accounts/' + encodeURIComponent(channel) + '/disconnect'
+                : '/accounts/' + encodeURIComponent(channel) + '/connect';
+            const payload = mode === 'disconnect' ? {} : { fields: collectConnectionFields() };
+            const res = await api(path, {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+            connectionSubmit.disabled = false;
+            connectionCancel.disabled = false;
+            if (!res.success) {
+                setConnectionResult(res.error || 'Не вдалося виконати дію. Перевірте поля і спробуйте ще раз.', false);
+                return;
+            }
+            setConnectionResult(res.message || 'Готово. Стан каналу оновлено.', true);
+            if (res.account) {
+                omniAccounts = omniAccounts.map(acc => acc.channel === res.account.channel ? res.account : acc);
+                renderOmniAccounts();
+                updateSendControls(currentConversation());
+            }
+            if (typeof loadAlertBell === 'function') loadAlertBell();
+            setTimeout(closeConnectionModal, 900);
+        }
+
+        async function runAccountAction(channel, action, button) {
+            if (action === 'connect') return openConnectModal(channel);
+            if (action === 'disconnect') return openDisconnectModal(channel);
+            if (!['recheck', 'test'].includes(action)) return;
+            button.disabled = true;
+            const res = await api('/accounts/' + encodeURIComponent(channel) + '/' + action, { method: 'POST' });
+            button.disabled = false;
+            if (!res.success) {
+                setSendFeedback({ status: 'provider_failed_immediate', channel, message: res.error || 'Не вдалося оновити статус каналу.' });
+                return;
+            }
+            if (res.account) {
+                omniAccounts = omniAccounts.map(acc => acc.channel === res.account.channel ? res.account : acc);
+                renderOmniAccounts();
+                updateSendControls(currentConversation());
+            }
+            if (res.message) setSendFeedback({ status: 'saved', channel, message: res.message });
+            if (typeof loadAlertBell === 'function') loadAlertBell();
         }
 
         function replySlaLabel(conv) {
@@ -1596,18 +2101,20 @@
                 if (!btn) return;
                 const channel = btn.dataset.channel;
                 const action = btn.dataset.accountAction;
-                btn.disabled = true;
-                const res = await api('/accounts/' + encodeURIComponent(channel) + '/' + action, { method: 'POST' });
-                btn.disabled = false;
-                if (!res.success) {
-                    setSendFeedback({ status: 'provider_failed_immediate', channel, message: res.error || 'Не вдалося оновити статус каналу.' });
-                    return;
-                }
-                if (res.message) setSendFeedback({ status: 'saved', channel, message: res.message });
-                await loadOmniAccounts();
-                if (typeof loadAlertBell === 'function') loadAlertBell();
+                await runAccountAction(channel, action, btn);
             });
         }
+        if (connectionForm) connectionForm.addEventListener('submit', submitConnectionModal);
+        if (connectionCancel) connectionCancel.addEventListener('click', closeConnectionModal);
+        if (connectionClose) connectionClose.addEventListener('click', closeConnectionModal);
+        if (connectionModal) {
+            connectionModal.addEventListener('click', e => {
+                if (e.target === connectionModal) closeConnectionModal();
+            });
+        }
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && connectionModal && !connectionModal.hidden) closeConnectionModal();
+        });
         document.addEventListener('click', e => {
             const jump = e.target.closest('[data-account-jump]');
             if (jump) {
@@ -1724,7 +2231,7 @@
             init();
         });
     })();
-    </script><script src="js/ui.js?v=0.52.2"></script>
-    <script src="js/alerts.js?v=0.52.2"></script>
+    </script><script src="js/ui.js?v=0.53.0"></script>
+    <script src="js/alerts.js?v=0.53.0"></script>
 </body>
 </html>

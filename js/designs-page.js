@@ -859,6 +859,25 @@ function buildPriceGroups(products) {
     return groups;
 }
 
+function isCenterPrice(product) {
+    return product && product.priceSource === 'price_rules' && product.priceCode;
+}
+
+function renderPriceSourceBadge(product) {
+    if (isCenterPrice(product)) {
+        return `<span class="price-source-badge is-linked" title="Ціна читається з Центру ціни: ${esc(product.priceCode)}">Центр ціни</span>`;
+    }
+    return '<span class="price-source-badge is-legacy" title="Позиція ще не має привʼязки price_rules.product_id">Потрібна привʼязка</span>';
+}
+
+function renderPriceReference(product) {
+    const references = [];
+    if (product.label) references.push(`<span>Ярлик: ${esc(product.label)}</span>`);
+    if (product.priceCode) references.push(`<span>Код ціни: ${esc(product.priceCode)}</span>`);
+    if (!references.length && product.id) references.push(`<span>Позиція: ${esc(product.id)}</span>`);
+    return references.length ? `<div class="price-item-code">${references.join('')}</div>` : '';
+}
+
 function renderPriceItem(product) {
     const priceText = product.isPerChild
         ? `${formatPrice(product.price)} <span class="price-unit">/ дитина</span>`
@@ -882,7 +901,8 @@ function renderPriceItem(product) {
         </div>
         <div class="price-item-side">
             <div class="price-item-price">${priceText}</div>
-            ${product.label ? `<div class="price-item-code">${esc(product.label)}</div>` : ''}
+            <div class="price-item-source">${renderPriceSourceBadge(product)}</div>
+            ${renderPriceReference(product)}
         </div>
     </article>`;
 }
@@ -968,6 +988,8 @@ async function loadPriceList() {
         const products = await res.json();
         const groups = buildPriceGroups(products);
         const totalItems = Object.values(groups).reduce((sum, group) => sum + Number(group.count || 0), 0);
+        const linkedItems = (Array.isArray(products) ? products : []).filter(isCenterPrice).length;
+        const unlinkedItems = Math.max(totalItems - linkedItems, 0);
         const updated = new Date().toLocaleDateString('uk-UA', { day: '2-digit', month: 'long', year: 'numeric' });
         const orderedKeys = [...PRICE_CATEGORY_ORDER, ...(groups.other.count ? ['other'] : [])];
 
@@ -982,12 +1004,24 @@ async function loadPriceList() {
                 <div class="price-sheet-summary" aria-label="Коротка статистика прайсу">
                     <strong>${totalItems}</strong>
                     <span>активних позицій</span>
+                    <em>${linkedItems}/${totalItems || 0} з Центру ціни</em>
                     <small>Оновлено: ${updated}</small>
                 </div>
             </header>
+            <div class="price-source-strip">
+                <div>
+                    <span class="price-sheet-kicker">Джерело цін</span>
+                    <strong>Центр ціни є основним прайсом</strong>
+                    <p>Позиції на цій панелі працюють як ярлики: назва, опис і умови живуть у каталозі продуктів, а сума береться з привʼязаного правила Центру ціни.</p>
+                </div>
+                <div class="price-source-metrics" aria-label="Стан привʼязки прайсу">
+                    <span><b>${linkedItems}</b> привʼязані</span>
+                    <span><b>${unlinkedItems}</b> резервні</span>
+                </div>
+            </div>
             <div class="price-sheet-note">
                 <strong>Примітка для менеджера:</strong>
-                ціни можуть уточнюватись залежно від формату події, кількості гостей, наповнення та індивідуальних побажань.
+                змінюйте суму в Центрі ціни; ця панель показує привʼязану ціну та ярлик позиції без ручного дублювання.
             </div>
             ${orderedKeys.map(key => renderPriceCategory(key, groups[key])).join('')}
             ${renderPriceGraduationBridge()}
@@ -1491,7 +1525,7 @@ function buildCatalogPageHtml(pkg) {
             </div>
             <!-- FOOTER -->
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.52.2" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.53.0" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>
@@ -1585,7 +1619,7 @@ function buildAutoPageHtml(page) {
                 ${page.description && itemsHtml ? `<div class="cat-desc" style="margin-top:12px">${esc(page.description)}</div>` : ''}
             </div>
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.52.2" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.53.0" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>

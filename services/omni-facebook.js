@@ -6,6 +6,7 @@
  */
 const https = require('https');
 const { createLogger } = require('../utils/logger');
+const { resolveOmniRuntimeConfig } = require('./omni-accounts');
 
 const log = createLogger('OmniFacebook');
 
@@ -26,7 +27,7 @@ if (!FB_PAGE_TOKEN) {
  * @param {object|null} body - JSON payload (null for GET)
  * @returns {Promise<object>} parsed response
  */
-function fbRequest(method, path, body) {
+function fbRequest(method, path, body, token = FB_PAGE_TOKEN) {
     return new Promise((resolve, reject) => {
         const payload = body ? JSON.stringify(body) : null;
 
@@ -39,7 +40,7 @@ function fbRequest(method, path, body) {
             method,
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${FB_PAGE_TOKEN}`,
+                'Authorization': `Bearer ${token}`,
                 ...(payload && { 'Content-Length': Buffer.byteLength(payload) })
             }
         };
@@ -102,7 +103,9 @@ function fbRequest(method, path, body) {
  * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
  */
 async function sendFacebook(recipientId, text, options = {}) {
-    if (!FB_PAGE_TOKEN) {
+    const runtime = await resolveOmniRuntimeConfig('facebook');
+    const token = runtime.pageToken || runtime.token || FB_PAGE_TOKEN;
+    if (!token) {
         log.warn('sendFacebook called but FB_PAGE_TOKEN not configured');
         return { success: false, error: 'FB_PAGE_TOKEN not configured' };
     }
@@ -140,7 +143,7 @@ async function sendFacebook(recipientId, text, options = {}) {
 
         log.debug('Sending Facebook message', { recipientId, hasAttachment: !!options.attachment });
 
-        const response = await fbRequest('POST', '/me/messages', body);
+        const response = await fbRequest('POST', '/me/messages', body, token);
 
         log.info('Facebook message sent', { recipientId, messageId: response.message_id });
         return { success: true, messageId: response.message_id };
@@ -157,7 +160,9 @@ async function sendFacebook(recipientId, text, options = {}) {
  * @returns {Promise<{success: boolean, commentId?: string, error?: string}>}
  */
 async function replyToComment(commentId, text) {
-    if (!FB_PAGE_TOKEN) {
+    const runtime = await resolveOmniRuntimeConfig('facebook');
+    const token = runtime.pageToken || runtime.token || FB_PAGE_TOKEN;
+    if (!token) {
         log.warn('replyToComment called but FB_PAGE_TOKEN not configured');
         return { success: false, error: 'FB_PAGE_TOKEN not configured' };
     }
@@ -169,7 +174,7 @@ async function replyToComment(commentId, text) {
     try {
         log.debug('Replying to FB comment', { commentId });
 
-        const response = await fbRequest('POST', `/${commentId}/comments`, { message: text });
+        const response = await fbRequest('POST', `/${commentId}/comments`, { message: text }, token);
 
         log.info('FB comment reply sent', { parentCommentId: commentId, replyId: response.id });
         return { success: true, commentId: response.id };
@@ -186,7 +191,9 @@ async function replyToComment(commentId, text) {
  * @returns {Promise<{success: boolean, profile?: object, error?: string}>}
  */
 async function getUserProfile(userId, fields) {
-    if (!FB_PAGE_TOKEN) {
+    const runtime = await resolveOmniRuntimeConfig('facebook');
+    const token = runtime.pageToken || runtime.token || FB_PAGE_TOKEN;
+    if (!token) {
         log.warn('getUserProfile called but FB_PAGE_TOKEN not configured');
         return { success: false, error: 'FB_PAGE_TOKEN not configured' };
     }
@@ -206,7 +213,7 @@ async function getUserProfile(userId, fields) {
 
         log.debug('Fetching FB user profile', { userId, fields: fieldList });
 
-        const response = await fbRequest('GET', `/${userId}?fields=${encodeURIComponent(fieldList)}`, null);
+        const response = await fbRequest('GET', `/${userId}?fields=${encodeURIComponent(fieldList)}`, null, token);
 
         log.info('FB user profile fetched', { userId, name: response.first_name });
         return {

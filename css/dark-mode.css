@@ -2705,3 +2705,165 @@ body.dark-mode .team-presence-member.is-offline .team-online-dot {
     background: #64748B;
     box-shadow: none;
 }
+
+/* Chat dashboard dark polish */
+body.dark-mode .chat-layout,
+body.dark-mode .chat-main {
+    background: #0B1120;
+}
+
+body.dark-mode .chat-sidebar,
+body.dark-mode .chat-header,
+body.dark-mode .chat-input-area {
+    background:
+        linear-gradient(180deg, rgba(15,23,42,0.96), rgba(17,24,39,0.94));
+    border-color: rgba(148,163,184,0.16);
+}
+
+body.dark-mode .chat-sidebar {
+    box-shadow: inset -1px 0 0 rgba(255,255,255,0.04);
+}
+
+body.dark-mode .chat-sidebar-title,
+body.dark-mode .chat-header-name,
+body.dark-mode .chat-channel-name,
+body.dark-mode .chat-profile-name,
+body.dark-mode .chat-info-panel-title,
+body.dark-mode .chat-info-member-name,
+body.dark-mode .chat-modal-title,
+body.dark-mode .chat-mention-item-name {
+    color: #F8FAFC;
+}
+
+body.dark-mode .chat-header-desc,
+body.dark-mode .chat-channel-preview,
+body.dark-mode .chat-channel-time,
+body.dark-mode .chat-empty-hint,
+body.dark-mode .chat-profile-username,
+body.dark-mode .chat-info-member-role,
+body.dark-mode .chat-mention-item-role {
+    color: #94A3B8;
+}
+
+body.dark-mode .chat-header-action-btn,
+body.dark-mode .chat-sidebar-action-btn,
+body.dark-mode .chat-input-icon-btn,
+body.dark-mode .chat-voice-btn,
+body.dark-mode .chat-theme-btn {
+    background: rgba(15,23,42,0.72);
+    border-color: rgba(148,163,184,0.18);
+    color: #CBD5E1;
+}
+
+body.dark-mode .chat-header-action-btn:hover,
+body.dark-mode .chat-sidebar-action-btn:hover,
+body.dark-mode .chat-input-icon-btn:hover,
+body.dark-mode .chat-voice-btn:hover,
+body.dark-mode .chat-theme-btn:hover {
+    background: rgba(20,184,166,0.12);
+    border-color: rgba(94,234,212,0.28);
+    color: #5EEAD4;
+}
+
+body.dark-mode .chat-messages {
+    background-color: #0B1120;
+    background-image:
+        linear-gradient(rgba(148,163,184,0.055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148,163,184,0.055) 1px, transparent 1px);
+    background-size: 28px 28px;
+}
+
+body.dark-mode .chat-bubble {
+    background:
+        linear-gradient(180deg, rgba(30,41,59,0.96), rgba(15,23,42,0.94));
+    border-color: rgba(148,163,184,0.18);
+    box-shadow: 0 12px 26px rgba(0,0,0,0.28);
+}
+
+body.dark-mode .chat-message.own .chat-bubble {
+    background: linear-gradient(135deg, rgba(6,95,70,0.98), rgba(5,150,105,0.86));
+    border-color: rgba(94,234,212,0.28);
+}
+
+body.dark-mode .chat-bubble-content,
+body.dark-mode .chat-thread-msg-text,
+body.dark-mode .chat-context-item,
+body.dark-mode .chat-modal-field label,
+body.dark-mode .chat-profile-field {
+    color: #E5E7EB;
+}
+
+body.dark-mode .chat-codeblock,
+body.dark-mode .chat-inline-code,
+body.dark-mode .chat-file-attachment,
+body.dark-mode .chat-link-preview {
+    background: rgba(2,6,23,0.42);
+    border-color: rgba(148,163,184,0.16);
+}
+
+body.dark-mode .chat-input {
+    background: rgba(2,6,23,0.48);
+    border-color: rgba(148,163,184,0.22);
+    color: #F8FAFC;
+}
+
+body.dark-mode .chat-input:focus {
+    border-color: rgba(94,234,212,0.42);
+    box-shadow: 0 0 0 3px rgba(45,212,191,0.12);
+}
+
+body.dark-mode .chat-send-btn {
+    background: linear-gradient(135deg, #10B981, #0F766E);
+    box-shadow: 0 10px 24px rgba(16,185,129,0.26);
+}
+
+body.dark-mode .guardian-watch-bar {
+    background:
+        linear-gradient(180deg, rgba(15,23,42,0.92), rgba(17,24,39,0.88));
+    border-bottom-color: rgba(148,163,184,0.14);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+body.dark-mode .guardian-watch-log-btn,
+body.dark-mode .guardian-watch-digest-btn,
+body.dark-mode .guardian-watch-analytics-btn,
+body.dark-mode .guardian-health-indicator {
+    background: rgba(15,23,42,0.74);
+    border-color: rgba(129,140,248,0.24);
+    color: #CBD5E1;
+}
+
+body.dark-mode .guardian-log-panel {
+    background: rgba(11,17,32,0.98);
+    border-bottom-color: rgba(129,140,248,0.22);
+    box-shadow: 0 20px 48px rgba(0,0,0,0.42);
+}
+
+body.dark-mode .guardian-log-header {
+    background: linear-gradient(180deg, rgba(99,102,241,0.18), rgba(20,184,166,0.08));
+    color: #E0E7FF;
+}
+
+body.dark-mode .guardian-log-entry {
+    background: rgba(15,23,42,0.84);
+    border-color: rgba(148,163,184,0.16);
+}
+
+body.dark-mode .guardian-log-entry-top b,
+body.dark-mode .guardian-log-entry-text {
+    color: #E5E7EB;
+}
+
+body.dark-mode .guardian-log-entry-type {
+    background: rgba(129,140,248,0.18);
+    color: #C7D2FE;
+}
+
+body.dark-mode .guardian-log-entry-time {
+    color: #94A3B8;
+}
+
+body.dark-mode .guardian-stats-summary {
+    background: rgba(15,23,42,0.68);
+    border-color: rgba(148,163,184,0.14);
+}

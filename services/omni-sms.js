@@ -7,6 +7,7 @@
  */
 const https = require('https');
 const { createLogger } = require('../utils/logger');
+const { resolveOmniRuntimeConfig } = require('./omni-accounts');
 
 const log = createLogger('OmniSMS');
 
@@ -26,7 +27,7 @@ if (!TURBOSMS_TOKEN) {
  * @param {object} body - JSON payload
  * @returns {Promise<object>} parsed response
  */
-function turboSmsRequest(path, body) {
+function turboSmsRequest(path, body, token = TURBOSMS_TOKEN) {
     return new Promise((resolve, reject) => {
         const payload = JSON.stringify(body);
 
@@ -37,7 +38,7 @@ function turboSmsRequest(path, body) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${TURBOSMS_TOKEN}`,
+                'Authorization': `Bearer ${token}`,
                 'Content-Length': Buffer.byteLength(payload)
             }
         };
@@ -109,7 +110,10 @@ function normalizePhone(phone) {
  * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
  */
 async function sendSMS(phone, text) {
-    if (!TURBOSMS_TOKEN) {
+    const runtime = await resolveOmniRuntimeConfig('sms');
+    const token = runtime.token || TURBOSMS_TOKEN;
+    const sender = runtime.sender || TURBOSMS_SENDER;
+    if (!token) {
         log.warn('sendSMS called but TURBOSMS_TOKEN not configured');
         return { success: false, error: 'TURBOSMS_TOKEN not configured' };
     }
@@ -123,14 +127,14 @@ async function sendSMS(phone, text) {
         const body = {
             recipients: [normalizedPhone],
             sms: {
-                sender: TURBOSMS_SENDER,
+                sender,
                 text
             }
         };
 
         log.debug('Sending SMS', { phone: normalizedPhone });
 
-        const response = await turboSmsRequest('/message/send.json', body);
+        const response = await turboSmsRequest('/message/send.json', body, token);
 
         if (response.response_code === 0 && response.response_result) {
             const result = response.response_result[0];
@@ -160,7 +164,10 @@ async function sendSMS(phone, text) {
  * @returns {Promise<{success: boolean, results?: Array<{phone: string, messageId?: string, error?: string}>, error?: string}>}
  */
 async function sendBulkSMS(phones, text) {
-    if (!TURBOSMS_TOKEN) {
+    const runtime = await resolveOmniRuntimeConfig('sms');
+    const token = runtime.token || TURBOSMS_TOKEN;
+    const sender = runtime.sender || TURBOSMS_SENDER;
+    if (!token) {
         log.warn('sendBulkSMS called but TURBOSMS_TOKEN not configured');
         return { success: false, error: 'TURBOSMS_TOKEN not configured' };
     }
@@ -178,14 +185,14 @@ async function sendBulkSMS(phones, text) {
         const body = {
             recipients: normalizedPhones,
             sms: {
-                sender: TURBOSMS_SENDER,
+                sender,
                 text
             }
         };
 
         log.debug('Sending bulk SMS', { count: normalizedPhones.length });
 
-        const response = await turboSmsRequest('/message/send.json', body);
+        const response = await turboSmsRequest('/message/send.json', body, token);
 
         if (response.response_code === 0 && response.response_result) {
             const results = response.response_result.map((result, index) => {

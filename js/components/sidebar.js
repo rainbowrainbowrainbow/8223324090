@@ -10,13 +10,19 @@ const Sidebar = (() => {
         badgeTimer: null,
         taskWidgetTimer: null,
         funnelWidgetTimer: null,
-        roleRenderApplied: false
+        roleRenderApplied: false,
+        extraEditingId: ''
     };
     const GROUP_STATE_VERSION = 'ai-cockpit-v2';
     const TODAY_DOCK_STORAGE_KEY = 'eg_sidebar_today_dock_items_v1';
     const TODAY_DOCK_DEFAULT_HREFS = ['/dashboard', '/', '/tasks', '/chat'];
     const TODAY_MENU_HREFS = ['/dashboard', '/', '/tasks'];
     const EXTRA_MENU_HREFS = ['/dashboard', '/', '/tasks', '/chat'];
+    const EXTRA_MENU_STORAGE_KEY = 'eg_sidebar_extra_menu_items_v1';
+    const EXTRA_MENU_EDIT_STORAGE_KEY = 'eg_sidebar_extra_menu_edit_v1';
+    const EXTRA_MENU_DEFAULT_DESCRIPTION = 'вкладка CRM';
+    const EXTRA_MENU_CUSTOM_DESCRIPTION = 'користувацька сторінка';
+    const EXTRA_MENU_ICON_FALLBACK = 'crm';
     const COMMAND_DEFAULT_STATE = {
         tasksActive: 0,
         tasksOverdue: 0,
@@ -330,10 +336,114 @@ const Sidebar = (() => {
         return TODAY_MENU_HREFS.map(href => byHref.get(href)).filter(Boolean);
     }
 
-    function _getExtraMenuItems(role) {
-        const items = _getTodayDockItems(role);
-        const byHref = new Map(items.map(item => [item.href, item]));
-        return EXTRA_MENU_HREFS.map(href => byHref.get(href)).filter(Boolean);
+    function _normalizeExtraHref(value) {
+        let href = String(value || '').trim();
+        if (!href) return '';
+        if (/^(https?:\/\/|mailto:|tel:|#)/i.test(href)) return href;
+        if (!href.startsWith('/')) href = '/' + href;
+        return href.replace(/\.html(?=$|#|\?)/i, '');
+    }
+
+    function _isExternalExtraHref(href) {
+        return /^(https?:\/\/|mailto:|tel:)/i.test(String(href || ''));
+    }
+
+    function _makeExtraMenuId() {
+        return 'extra_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+    }
+
+    function _labelFromExtraHref(href) {
+        const clean = String(href || '').replace(/^https?:\/\//i, '').replace(/^\/+/, '').split(/[?#]/)[0];
+        const last = clean.split('/').filter(Boolean).pop();
+        return last ? last.replace(/[-_]+/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase()) : 'Сторінка';
+    }
+
+    function _normalizeCustomExtraItem(item) {
+        if (!item || typeof item !== 'object') return null;
+        const href = _normalizeExtraHref(item.href);
+        if (!href) return null;
+        return {
+            id: String(item.id || _makeExtraMenuId()),
+            label: String(item.label || _labelFromExtraHref(href)).trim() || 'Сторінка',
+            href,
+            description: String(item.description || EXTRA_MENU_CUSTOM_DESCRIPTION).trim() || EXTRA_MENU_CUSTOM_DESCRIPTION,
+            icon: String(item.icon || EXTRA_MENU_ICON_FALLBACK).trim() || EXTRA_MENU_ICON_FALLBACK,
+            hidden: item.hidden === true,
+            custom: true
+        };
+    }
+
+    function _readCustomExtraItems() {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(EXTRA_MENU_STORAGE_KEY) || '[]');
+            if (!Array.isArray(parsed)) return [];
+            return parsed.map(_normalizeCustomExtraItem).filter(Boolean);
+        } catch {
+            return [];
+        }
+    }
+
+    function _saveCustomExtraItems(items) {
+        const normalized = (Array.isArray(items) ? items : []).map(_normalizeCustomExtraItem).filter(Boolean);
+        try {
+            localStorage.setItem(EXTRA_MENU_STORAGE_KEY, JSON.stringify(normalized));
+        } catch {}
+        return normalized;
+    }
+
+    function _getDefaultExtraMenuItems(role) {
+        const available = NAV_ITEMS.filter(item => item.href && item.type !== 'group' && (!role || hasAccess(item, role)));
+        const byHref = new Map(available.map(item => [item.href, item]));
+        return EXTRA_MENU_HREFS
+            .map(href => byHref.get(href))
+            .filter(Boolean)
+            .map(item => ({
+                ...item,
+                custom: false,
+                locked: true,
+                description: item.statusKey ? '' : EXTRA_MENU_DEFAULT_DESCRIPTION
+            }));
+    }
+
+    function _getExtraMenuItems(role, includeHidden = false) {
+        const defaults = _getDefaultExtraMenuItems(role);
+        const custom = _readCustomExtraItems().filter(item => includeHidden || !item.hidden);
+        return defaults.concat(custom);
+    }
+
+    function _isExtraMenuEditorOpen() {
+        try {
+            return localStorage.getItem(EXTRA_MENU_EDIT_STORAGE_KEY) === 'true';
+        } catch {
+            return false;
+        }
+    }
+
+    function _setExtraMenuEditorOpen(open) {
+        try {
+            localStorage.setItem(EXTRA_MENU_EDIT_STORAGE_KEY, open ? 'true' : 'false');
+        } catch {}
+    }
+
+    function _getExtraIconOptions() {
+        return [
+            ['crm', 'CRM'],
+            ['dashboard', 'Дашборд'],
+            ['calendar', 'Календар'],
+            ['task', 'Задачі'],
+            ['chat', 'Чат'],
+            ['mail', 'Комунікації'],
+            ['funnel', 'Ліди'],
+            ['finance', 'Фінанси'],
+            ['analytics', 'Аналітика'],
+            ['warehouse', 'Склад'],
+            ['users', 'Клієнти'],
+            ['training', 'Навчання'],
+            ['content', 'Контент'],
+            ['sound', 'Звук'],
+            ['system', 'Система'],
+            ['ai', 'AI']
+        ];
     }
 
     function _readTodayDockSelection(items) {
@@ -385,19 +495,153 @@ const Sidebar = (() => {
         </a>`;
     }
 
-    function _renderExtraMenuLink(item, currentPath, currentHash) {
+    function _renderExtraMenuLink(item, currentPath, currentHash, options = {}) {
         const isActive = _isSidebarItemActive(item, currentPath, currentHash);
         const statusText = _navStatusFor(item);
         const badgeType = _badgeTypeFor(item);
         const badgeClass = badgeType === 'alerts' ? ' sidebar-design-extra-badge alert' : ' sidebar-design-extra-badge';
-        return `<a class="sidebar-design-extra-link${isActive ? ' active' : ''}" href="${_escAttr(item.href)}">
+        const description = item.statusKey
+            ? `<small data-sidebar-status-key="${_escAttr(item.statusKey)}"${statusText ? '' : ' hidden'}>${_escAttr(statusText || '')}</small>`
+            : `<small>${_escAttr(item.description || EXTRA_MENU_DEFAULT_DESCRIPTION)}</small>`;
+        const body = `
             ${_renderIcon(item.icon, 'sidebar-design-extra-icon')}
             <span class="sidebar-design-extra-copy">
                 <span>${_escAttr(item.label)}</span>
-                ${item.statusKey ? `<small data-sidebar-status-key="${_escAttr(item.statusKey)}"${statusText ? '' : ' hidden'}>${_escAttr(statusText || '')}</small>` : '<small>вкладка CRM</small>'}
+                ${description}
             </span>
-            ${badgeType ? `<span class="${badgeClass.trim()}" data-badge-type="${badgeType}" style="display:none"></span>` : '<span class="sidebar-design-extra-open" aria-hidden="true">›</span>'}
+            ${badgeType ? `<span class="${badgeClass.trim()}" data-badge-type="${badgeType}" style="display:none"></span>` : '<span class="sidebar-design-extra-open" aria-hidden="true">›</span>'}`;
+        if (options.editMode && item.custom) {
+            return `<div class="sidebar-design-extra-link sidebar-design-extra-link--editable" data-sidebar-extra-id="${_escAttr(item.id)}">
+                ${body}
+                <span class="sidebar-design-extra-actions" data-sidebar-stop-profile="true">
+                    <button type="button" class="sidebar-design-extra-action" data-sidebar-extra-edit="${_escAttr(item.id)}" aria-label="Редагувати ${_escAttr(item.label)}">✎</button>
+                    <button type="button" class="sidebar-design-extra-action danger" data-sidebar-extra-delete="${_escAttr(item.id)}" aria-label="Видалити ${_escAttr(item.label)}">×</button>
+                </span>
+            </div>`;
+        }
+        const targetAttrs = _isExternalExtraHref(item.href) ? ' target="_blank" rel="noopener noreferrer"' : '';
+        return `<a class="sidebar-design-extra-link${isActive ? ' active' : ''}" href="${_escAttr(item.href)}"${targetAttrs}>
+            ${body}
         </a>`;
+    }
+
+    function _renderExtraMenuForm(item = null) {
+        const isEdit = !!item;
+        const selectedIcon = item?.icon || EXTRA_MENU_ICON_FALLBACK;
+        const iconOptions = _getExtraIconOptions().map(([value, label]) =>
+            `<option value="${_escAttr(value)}"${value === selectedIcon ? ' selected' : ''}>${_escAttr(label)}</option>`
+        ).join('');
+        return `<form class="sidebar-extra-form" data-sidebar-extra-form>
+            <input type="hidden" name="id" value="${_escAttr(item?.id || '')}">
+            <label class="sidebar-extra-field">
+                <span>Назва</span>
+                <input class="sidebar-extra-input" name="label" type="text" maxlength="42" value="${_escAttr(item?.label || '')}" placeholder="Наприклад: Випускний" required>
+            </label>
+            <label class="sidebar-extra-field">
+                <span>Сторінка або URL</span>
+                <input class="sidebar-extra-input" name="href" type="text" value="${_escAttr(item?.href || '')}" placeholder="/graduation або https://..." required>
+            </label>
+            <label class="sidebar-extra-field">
+                <span>Опис</span>
+                <input class="sidebar-extra-input" name="description" type="text" maxlength="52" value="${_escAttr(item?.description || '')}" placeholder="короткий підпис під назвою">
+            </label>
+            <label class="sidebar-extra-field">
+                <span>Іконка</span>
+                <select class="sidebar-extra-input" name="icon">${iconOptions}</select>
+            </label>
+            <div class="sidebar-extra-form-actions">
+                <button type="submit" class="sidebar-extra-save">${isEdit ? 'Зберегти' : '+ Додати сторінку'}</button>
+                ${isEdit ? '<button type="button" class="sidebar-extra-cancel" data-sidebar-extra-cancel>Скасувати</button>' : ''}
+            </div>
+        </form>`;
+    }
+
+    function _renderExtraMenuEditor(customItems) {
+        const editing = customItems.find(item => item.id === _state.extraEditingId) || null;
+        const customCount = customItems.length;
+        return `<div class="sidebar-extra-editor" data-sidebar-extra-editor>
+            <div class="sidebar-extra-editor-title">
+                <span>Свої сторінки</span>
+                <small>${customCount ? `${customCount} додано` : 'можна додати будь-який шлях або URL'}</small>
+            </div>
+            ${_renderExtraMenuForm(editing)}
+        </div>`;
+    }
+
+    function _bindExtraMenuEditor(extras) {
+        if (!extras) return;
+        const toggle = extras.querySelector('[data-sidebar-extra-toggle-editor]');
+        if (toggle && toggle.dataset.sidebarExtraToggleBound !== 'true') {
+            toggle.dataset.sidebarExtraToggleBound = 'true';
+            toggle.addEventListener('click', () => {
+                const nextOpen = !_isExtraMenuEditorOpen();
+                _setExtraMenuEditorOpen(nextOpen);
+                if (!nextOpen) _state.extraEditingId = '';
+                _ensureCommandDeck();
+            });
+        }
+
+        extras.querySelectorAll('[data-sidebar-extra-edit]').forEach((btn) => {
+            if (btn.dataset.sidebarExtraEditBound === 'true') return;
+            btn.dataset.sidebarExtraEditBound = 'true';
+            btn.addEventListener('click', () => {
+                _state.extraEditingId = btn.dataset.sidebarExtraEdit || '';
+                _setExtraMenuEditorOpen(true);
+                _ensureCommandDeck();
+            });
+        });
+
+        extras.querySelectorAll('[data-sidebar-extra-delete]').forEach((btn) => {
+            if (btn.dataset.sidebarExtraDeleteBound === 'true') return;
+            btn.dataset.sidebarExtraDeleteBound = 'true';
+            btn.addEventListener('click', () => {
+                const id = btn.dataset.sidebarExtraDelete || '';
+                if (!id) return;
+                if (!window.confirm('Видалити цю сторінку з блоку «Додатково»?')) return;
+                const items = _readCustomExtraItems().filter(item => item.id !== id);
+                _saveCustomExtraItems(items);
+                if (_state.extraEditingId === id) _state.extraEditingId = '';
+                _ensureCommandDeck();
+            });
+        });
+
+        const cancel = extras.querySelector('[data-sidebar-extra-cancel]');
+        if (cancel && cancel.dataset.sidebarExtraCancelBound !== 'true') {
+            cancel.dataset.sidebarExtraCancelBound = 'true';
+            cancel.addEventListener('click', () => {
+                _state.extraEditingId = '';
+                _ensureCommandDeck();
+            });
+        }
+
+        const form = extras.querySelector('[data-sidebar-extra-form]');
+        if (form && form.dataset.sidebarExtraFormBound !== 'true') {
+            form.dataset.sidebarExtraFormBound = 'true';
+            form.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const data = new FormData(form);
+                const id = String(data.get('id') || '').trim();
+                const nextItem = _normalizeCustomExtraItem({
+                    id: id || _makeExtraMenuId(),
+                    label: data.get('label'),
+                    href: data.get('href'),
+                    description: data.get('description') || EXTRA_MENU_CUSTOM_DESCRIPTION,
+                    icon: data.get('icon') || EXTRA_MENU_ICON_FALLBACK
+                });
+                if (!nextItem) return;
+                const items = _readCustomExtraItems();
+                const existingIndex = items.findIndex(item => item.id === nextItem.id);
+                if (existingIndex >= 0) {
+                    items[existingIndex] = nextItem;
+                } else {
+                    items.push(nextItem);
+                }
+                _saveCustomExtraItems(items);
+                _state.extraEditingId = '';
+                _setExtraMenuEditorOpen(true);
+                _ensureCommandDeck();
+            });
+        }
     }
 
     function _ensureTodayDock(links) {
@@ -844,24 +1088,31 @@ const Sidebar = (() => {
         const savedUser = _getCurrentSidebarUser();
         const role = _getSidebarActiveRole(savedUser);
         const extraItems = _getExtraMenuItems(role);
+        const customExtraItems = _readCustomExtraItems();
+        const extraEditorOpen = _isExtraMenuEditorOpen();
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
         const currentHash = location.hash.replace('#', '');
         let extras = document.getElementById('sidebarDesignExtras');
         if (!extras) {
             extras = document.createElement('div');
             extras.id = 'sidebarDesignExtras';
-            extras.className = 'sidebar-design-extras';
         }
+        extras.className = `sidebar-design-extras${extraEditorOpen ? ' is-editing' : ''}`;
         extras.innerHTML = `
+                <div class="sidebar-design-extras-head-row">
                 <button type="button" class="sidebar-design-extras-head" aria-expanded="true">
                     <span class="sidebar-design-extras-dot" aria-hidden="true"></span>
                     <span><b>+</b> Додатково</span>
                     <span class="sidebar-design-extras-chevron" aria-hidden="true">⌃</span>
                 </button>
+                    <button type="button" class="sidebar-design-extras-manage" data-sidebar-extra-toggle-editor aria-expanded="${extraEditorOpen ? 'true' : 'false'}">${extraEditorOpen ? 'Готово' : 'Редагувати'}</button>
+                </div>
                 <div class="sidebar-design-extra-list">
-                    ${extraItems.map(item => _renderExtraMenuLink(item, currentPath, currentHash)).join('')}
-                </div>`;
+                    ${extraItems.map(item => _renderExtraMenuLink(item, currentPath, currentHash, { editMode: extraEditorOpen })).join('')}
+                </div>
+                ${extraEditorOpen ? _renderExtraMenuEditor(customExtraItems) : ''}`;
         if (extras.nextElementSibling !== links) sidebar.insertBefore(extras, links);
+        _bindExtraMenuEditor(extras);
 
         const alertsChip = document.getElementById('focusChipAlerts');
         if (alertsChip && alertsChip.dataset.alertsBound !== 'true') {

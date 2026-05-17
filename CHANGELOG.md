@@ -4,6 +4,16 @@
 
 ---
 
+## v0.55.3 - Profile Nav Polish + Reward Claim Contract
+
+### Profile / Rewards [codex]
+- **Profile** - верхню навігацію профілю перероблено в чистішу system-aligned menu surface з розділенням primary і secondary tab layers.
+- **Rewards** - claim/reward flow у профілі уніфіковано для daily quests, seasonal quests і achievement-related surfaces.
+- **UX** - кнопки `Забрати` мають pending/success/error state, а баланс і статус нагород оновлюються одразу.
+- **Backend** - виправлено reward lookup у daily quest claim route, щоб отримання нагороди не ламалось на некоректному SQL.
+
+---
+
 ## v0.55.2 - Chat Settings Auth UAT Hardening
 
 ### Chat Settings / Auth [codex]

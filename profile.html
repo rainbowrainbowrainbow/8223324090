@@ -11,14 +11,14 @@
     <title>Event Genix | Робочий профіль</title>
     <meta name="description" content="Event Genix — робочий профіль працівника, задачі, графік і операційні показники">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.55.2">
-    <link rel="stylesheet" href="css/layout.css?v=0.55.2">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.2">
-    <link rel="stylesheet" href="css/pages.css?v=0.55.2">
-    <link rel="stylesheet" href="css/modals.css?v=0.55.2">
-    <link rel="stylesheet" href="css/controls.css?v=0.55.2">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.2">
-    <link rel="stylesheet" href="css/responsive.css?v=0.55.2">
+    <link rel="stylesheet" href="css/base.css?v=0.55.3">
+    <link rel="stylesheet" href="css/layout.css?v=0.55.3">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.3">
+    <link rel="stylesheet" href="css/pages.css?v=0.55.3">
+    <link rel="stylesheet" href="css/modals.css?v=0.55.3">
+    <link rel="stylesheet" href="css/controls.css?v=0.55.3">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.3">
+    <link rel="stylesheet" href="css/responsive.css?v=0.55.3">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -180,40 +180,129 @@
             transition: width 0.6s ease;
         }
 
-        /* --- Navigation Tabs --- */
-        .profile-tabs {
+        /* --- Profile navigation system --- */
+        .profile-primary-tabs {
             display: flex;
-            gap: 4px;
-            margin-bottom: 24px;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: none;
-            padding-bottom: 2px;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 10px;
+            margin: 0 0 22px;
+            border-radius: 18px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.66));
+            border: 1px solid rgba(148,163,184,0.16);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.85), 0 12px 30px rgba(15,23,42,0.06);
         }
 
-        .profile-tabs::-webkit-scrollbar { display: none; }
-
-        .profile-tab {
-            padding: 10px 16px;
-            border: none;
-            background: var(--gray-100);
-            border-radius: var(--radius-sm, 8px);
-            font-size: 14px;
-            font-weight: 600;
+        .profile-primary-tab {
+            position: relative;
+            border: 1px solid transparent;
+            background: transparent;
             color: var(--gray-600);
+            border-radius: 12px;
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 800;
             cursor: pointer;
             white-space: nowrap;
-            transition: all 0.15s;
+            transition: all .16s ease;
             font-family: inherit;
         }
 
-        .profile-tab:hover {
-            background: var(--gray-200);
+        .profile-primary-tab:hover {
+            background: rgba(255,255,255,0.72);
+            color: var(--gray-900);
         }
 
-        .profile-tab.active {
+        .profile-primary-tab.active {
+            background: var(--white);
+            color: var(--gray-900);
+            border-color: rgba(148,163,184,0.18);
+            box-shadow: 0 1px 3px rgba(15,23,42,0.08), 0 10px 20px rgba(15,23,42,0.06);
+        }
+
+        .profile-secondary-tabs {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+
+        .profile-secondary-tab {
+            padding: 7px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(148,163,184,0.16);
+            background: rgba(255,255,255,0.72);
+            color: var(--gray-600);
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all .16s ease;
+        }
+
+        .profile-secondary-tab:hover {
+            border-color: rgba(99,102,241,0.24);
+            color: var(--gray-900);
+        }
+
+        .profile-secondary-tab.active {
             background: var(--primary);
-            color: white;
+            color: #fff;
+            border-color: transparent;
+        }
+
+        .profile-reward-dot {
+            position: absolute;
+            top: 5px;
+            right: 6px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ef4444;
+            box-shadow: 0 0 0 3px rgba(239,68,68,0.14);
+            animation: badge-pulse 1.5s infinite;
+        }
+
+        .quest-claim-btn.is-pending,
+        .quest-claim-btn:disabled {
+            opacity: .7;
+            cursor: wait;
+            filter: grayscale(.08);
+        }
+
+        .quest-claim-btn.is-compact {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+
+        .achievement-state,
+        .reward-state-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .achievement-state--claimed,
+        .reward-state-badge--claimed {
+            background: rgba(34,197,94,0.12);
+            color: #15803d;
+        }
+
+        .achievement-state--progress {
+            background: rgba(59,130,246,0.10);
+            color: #1d4ed8;
+        }
+
+        .achievement-state--locked {
+            background: rgba(148,163,184,0.14);
+            color: #475569;
         }
 
         @keyframes badge-pulse {
@@ -954,30 +1043,7 @@
         }
 
         .profile-work-tabs {
-            margin: 0 0 16px;
-            padding: 4px;
-            border-radius: 10px;
-            background: var(--gray-100);
-            border: 1px solid var(--gray-200);
-        }
-
-        .profile-work-tabs .profile-tab {
-            border-radius: 8px;
-            background: transparent;
-            color: var(--gray-600);
-            font-size: 13px;
-            padding: 9px 13px;
-        }
-
-        .profile-work-tabs .profile-tab:hover {
-            background: rgba(255,255,255,0.7);
-            color: var(--gray-900);
-        }
-
-        .profile-work-tabs .profile-tab.active {
-            background: var(--white);
-            color: var(--gray-900);
-            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+            margin-bottom: 18px;
         }
 
         .profile-work-overview {
@@ -1441,29 +1507,64 @@
             border-color: rgba(52, 211, 153, 0.28);
         }
 
-        body.dark-mode .profile-work-tabs {
-            background: rgba(15, 23, 42, 0.90);
+        body.dark-mode .profile-primary-tabs {
+            background: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.78));
+            border-color: var(--profile-dark-border);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 16px 34px rgba(2,6,23,0.28);
         }
 
-        body.dark-mode .profile-work-tabs .profile-tab,
+        body.dark-mode .profile-primary-tab,
         body.dark-mode .cabinet-segments button {
             background: rgba(148, 163, 184, 0.10);
             border-color: rgba(148, 163, 184, 0.14);
             color: var(--profile-dark-secondary);
         }
 
-        body.dark-mode .profile-work-tabs .profile-tab:hover,
+        body.dark-mode .profile-primary-tab:hover,
         body.dark-mode .cabinet-segments button:hover {
             background: rgba(148, 163, 184, 0.18);
             color: var(--profile-dark-text);
         }
 
-        body.dark-mode .profile-work-tabs .profile-tab.active,
+        body.dark-mode .profile-primary-tab.active,
         body.dark-mode .cabinet-segments button.active {
             background: rgba(16, 185, 129, 0.20);
             border-color: rgba(52, 211, 153, 0.38);
             color: #A7F3D0;
             box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.16) inset;
+        }
+
+        body.dark-mode .profile-secondary-tab {
+            background: rgba(148, 163, 184, 0.10);
+            border-color: rgba(148, 163, 184, 0.16);
+            color: var(--profile-dark-secondary);
+        }
+
+        body.dark-mode .profile-secondary-tab:hover {
+            background: rgba(148, 163, 184, 0.18);
+            color: var(--profile-dark-text);
+        }
+
+        body.dark-mode .profile-secondary-tab.active {
+            background: rgba(99, 102, 241, 0.28);
+            border-color: rgba(129, 140, 248, 0.34);
+            color: #E0E7FF;
+        }
+
+        body.dark-mode .achievement-state--claimed,
+        body.dark-mode .reward-state-badge--claimed {
+            background: rgba(22, 101, 52, 0.34);
+            color: #BBF7D0;
+        }
+
+        body.dark-mode .achievement-state--progress {
+            background: rgba(30, 64, 175, 0.34);
+            color: #BFDBFE;
+        }
+
+        body.dark-mode .achievement-state--locked {
+            background: rgba(148,163,184,0.14);
+            color: var(--profile-dark-secondary);
         }
 
         body.dark-mode .cabinet-capture input,
@@ -1491,11 +1592,6 @@
         body.dark-mode .achievement-card.unlocked {
             background: linear-gradient(135deg, rgba(251,191,36,0.1), rgba(255,255,255,0.05));
             border-color: rgba(251,191,36,0.3);
-        }
-
-        body.dark-mode .profile-tab {
-            background: rgba(255,255,255,0.08);
-            color: var(--profile-dark-secondary, #CBD5E1);
         }
 
         body.dark-mode .profile-avatar-controls label {
@@ -1528,11 +1624,6 @@
             background: var(--primary);
             border-color: var(--primary);
             color: #fff;
-        }
-
-        body.dark-mode .profile-tab.active {
-            background: var(--primary);
-            color: white;
         }
 
         body.dark-mode .leaderboard-item:hover {
@@ -1830,6 +1921,20 @@
         }
 
         .quest-claim-btn:hover { filter: brightness(1.1); }
+
+        .quest-claim-btn.is-pending,
+        .quest-claim-btn:disabled {
+            opacity: .7;
+            cursor: wait;
+            filter: grayscale(.08);
+        }
+
+        .quest-claim-btn.is-compact {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            white-space: nowrap;
+        }
 
         /* --- Team Cards --- */
         .teams-grid {
@@ -2221,6 +2326,36 @@
                 margin-bottom: 12px;
             }
 
+            .profile-primary-tabs {
+                gap: 6px;
+                padding: 8px;
+                overflow-x: auto;
+                flex-wrap: nowrap;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+
+            .profile-primary-tabs::-webkit-scrollbar {
+                display: none;
+            }
+
+            .profile-primary-tab {
+                padding: 9px 12px;
+                font-size: 12px;
+            }
+
+            .profile-secondary-tabs {
+                overflow-x: auto;
+                flex-wrap: nowrap;
+                padding-bottom: 4px;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+
+            .profile-secondary-tabs::-webkit-scrollbar {
+                display: none;
+            }
+
             .profile-avatar-editor {
                 grid-template-columns: 1fr;
             }
@@ -2272,6 +2407,18 @@
             .streak-roadmap {
                 gap: 0;
                 overflow-x: auto;
+            }
+        }
+
+        @media print {
+            .profile-primary-tabs,
+            .profile-primary-tab,
+            .profile-secondary-tabs,
+            .profile-secondary-tab {
+                box-shadow: none !important;
+                overflow: hidden;
+                page-break-inside: avoid;
+                break-inside: avoid;
             }
         }
     </style>
@@ -2340,15 +2487,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.55.2"></script>
-    <script src="js/notification.js?v=0.55.2"></script>
-    <script src="js/api.js?v=0.55.2"></script>
-    <script src="js/auth.js?v=0.55.2"></script>
-    <script src="js/components/sidebar.js?v=0.55.2"></script>
+    <script src="js/config.js?v=0.55.3"></script>
+    <script src="js/notification.js?v=0.55.3"></script>
+    <script src="js/api.js?v=0.55.3"></script>
+    <script src="js/auth.js?v=0.55.3"></script>
+    <script src="js/components/sidebar.js?v=0.55.3"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ui.js?v=0.55.2"></script>
-    <script src="js/achievement-popup.js?v=0.55.2"></script>
-    <script src="js/profile-page.js?v=0.55.2"></script>
-    <script src="js/alerts.js?v=0.55.2"></script>
+    <script src="js/ui.js?v=0.55.3"></script>
+    <script src="js/achievement-popup.js?v=0.55.3"></script>
+    <script src="js/profile-page.js?v=0.55.3"></script>
+    <script src="js/alerts.js?v=0.55.3"></script>
 </body>
 </html>

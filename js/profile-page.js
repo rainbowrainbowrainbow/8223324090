@@ -36,6 +36,8 @@ let monthlyCategory = 'overall';
 let monthlyYear = new Date().getFullYear();
 let monthlyMonth = new Date().getMonth() + 1;
 let leaderboardMode = 'overall'; // 'overall' or 'monthly'
+let rewardClaimPending = new Set();
+let achievementCheckPending = false;
 
 // ==========================================
 // UTILITIES
@@ -43,6 +45,77 @@ let leaderboardMode = 'overall'; // 'overall' or 'monthly'
 function _hasUnclaimedQuests() {
     if (!questsData?.quests) return false;
     return questsData.quests.some(q => q.completed && !q.claimed);
+}
+
+function rewardClaimKey(kind, id) {
+    return `${kind}:${id}`;
+}
+
+function isRewardClaimPending(kind, id) {
+    return rewardClaimPending.has(rewardClaimKey(kind, id));
+}
+
+function setRewardClaimPending(kind, id, pending) {
+    const key = rewardClaimKey(kind, id);
+    if (pending) rewardClaimPending.add(key);
+    else rewardClaimPending.delete(key);
+}
+
+function renderRewardClaimButton(kind, id, label = 'Забрати', options = {}) {
+    const pending = isRewardClaimPending(kind, id);
+    const action = kind === 'season' ? `claimSeasonQuest(${id})` : `claimQuest(${id})`;
+    const click = options.stopPropagation
+        ? `event.stopPropagation();${action}`
+        : action;
+    const className = `quest-claim-btn ${pending ? 'is-pending' : ''} ${options.compact ? 'is-compact' : ''}`.trim();
+    return `<button class="${className}" ${pending ? 'disabled aria-busy="true"' : ''} onclick="${click}">${pending ? 'Забираю...' : label}</button>`;
+}
+
+async function refreshProfileRewardSurfaces(options = {}) {
+    const {
+        reloadAchievements = false,
+        reloadQuests = true,
+        reloadWallet = true,
+        reloadSeason = false,
+        reloadProfile = false
+    } = options;
+
+    if (reloadProfile && currentUserId) {
+        profileData = await apiGet(isOwnProfile ? '/auth/profile' : `/auth/profile/${currentUserId}`);
+    }
+    if (reloadAchievements) myAchievements = await apiGet('/achievements') || [];
+    if (reloadQuests && isOwnProfile) questsData = await apiGet('/quests/daily');
+    if (reloadWallet && isOwnProfile) walletData = await apiGet('/wallet');
+    if (reloadSeason && isOwnProfile) {
+        seasonalQuests = null;
+        await loadSeasonalQuests();
+    }
+
+    renderProfile();
+}
+
+async function checkProfileAutoRewards() {
+    if (!isOwnProfile || achievementCheckPending) return;
+    achievementCheckPending = true;
+    try {
+        const result = await apiPost('/achievements/check', {});
+        await apiPost('/quests/check-titles', {});
+        const awardedCount = result?.count || result?.awarded?.length || 0;
+        if (awardedCount > 0) {
+            if (typeof showNotification === 'function') {
+                showNotification(`🎉 Нові досягнення: ${awardedCount}. Нагороду зараховано`, 'success');
+            }
+            await refreshProfileRewardSurfaces({
+                reloadAchievements: true,
+                reloadQuests: false,
+                reloadWallet: true
+            });
+        }
+    } catch (error) {
+        console.warn('Profile auto reward check failed', error);
+    } finally {
+        achievementCheckPending = false;
+    }
 }
 
 function escapeHtml(str) {
@@ -315,19 +388,19 @@ function renderProfile() {
         </div>
 
         <!-- TABS -->
-        <div class="profile-tabs profile-work-tabs">
-            <button class="profile-tab ${activeTab === 'profile' ? 'active' : ''}" onclick="switchTab('profile')">Огляд</button>
-            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'myday' ? 'active' : ''}" onclick="switchTab('myday')">Мій день</button>` : ''}
-            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'mytasks' ? 'active' : ''}" onclick="switchTab('mytasks')">Мої задачі</button>` : ''}
-            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'settings' ? 'active' : ''}" onclick="switchTab('settings')">Налаштування</button>` : ''}
-            <button class="profile-tab ${activeTab === 'achievements' ? 'active' : ''}" onclick="switchTab('achievements')">Досягнення</button>
-            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'inventory' ? 'active' : ''}" onclick="switchTab('inventory')">Інвентар</button>` : ''}
-            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'shop' ? 'active' : ''}" onclick="switchTab('shop')">Магазин</button>` : ''}
-            <button class="profile-tab ${activeTab === 'leaderboard' ? 'active' : ''}" onclick="switchTab('leaderboard')">Рейтинг</button>
-            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'quests' ? 'active' : ''}" onclick="switchTab('quests')" style="position:relative">Щоденні${_hasUnclaimedQuests() ? '<span style="position:absolute;top:2px;right:2px;width:8px;height:8px;background:#ef4444;border-radius:50%;animation:badge-pulse 1.5s infinite"></span>' : ''}</button>` : ''}
-            <button class="profile-tab ${activeTab === 'season' ? 'active' : ''}" onclick="switchTab('season')">Сезон</button>
-            <button class="profile-tab ${activeTab === 'teams' ? 'active' : ''}" onclick="switchTab('teams')">Команди</button>
-            ${isOwnProfile ? `<button class="profile-tab ${activeTab === 'referral' ? 'active' : ''}" onclick="switchTab('referral')">Реферали</button>` : ''}
+        <div class="profile-primary-tabs profile-work-tabs" role="tablist" aria-label="Розділи профілю">
+            <button class="profile-primary-tab ${activeTab === 'profile' ? 'active' : ''}" onclick="switchTab('profile')">Огляд</button>
+            ${isOwnProfile ? `<button class="profile-primary-tab ${activeTab === 'myday' ? 'active' : ''}" onclick="switchTab('myday')">Мій день</button>` : ''}
+            ${isOwnProfile ? `<button class="profile-primary-tab ${activeTab === 'mytasks' ? 'active' : ''}" onclick="switchTab('mytasks')">Мої задачі</button>` : ''}
+            ${isOwnProfile ? `<button class="profile-primary-tab ${activeTab === 'settings' ? 'active' : ''}" onclick="switchTab('settings')">Налаштування</button>` : ''}
+            <button class="profile-primary-tab ${activeTab === 'achievements' ? 'active' : ''}" onclick="switchTab('achievements')">Досягнення</button>
+            ${isOwnProfile ? `<button class="profile-primary-tab ${activeTab === 'inventory' ? 'active' : ''}" onclick="switchTab('inventory')">Інвентар</button>` : ''}
+            ${isOwnProfile ? `<button class="profile-primary-tab ${activeTab === 'shop' ? 'active' : ''}" onclick="switchTab('shop')">Магазин</button>` : ''}
+            <button class="profile-primary-tab ${activeTab === 'leaderboard' ? 'active' : ''}" onclick="switchTab('leaderboard')">Рейтинг</button>
+            ${isOwnProfile ? `<button class="profile-primary-tab ${activeTab === 'quests' ? 'active' : ''}" onclick="switchTab('quests')">Щоденні${_hasUnclaimedQuests() ? '<span class="profile-reward-dot" aria-label="Є нагороди"></span>' : ''}</button>` : ''}
+            <button class="profile-primary-tab ${activeTab === 'season' ? 'active' : ''}" onclick="switchTab('season')">Сезон</button>
+            <button class="profile-primary-tab ${activeTab === 'teams' ? 'active' : ''}" onclick="switchTab('teams')">Команди</button>
+            ${isOwnProfile ? `<button class="profile-primary-tab ${activeTab === 'referral' ? 'active' : ''}" onclick="switchTab('referral')">Реферали</button>` : ''}
         </div>
 
         <div id="tabContent">
@@ -364,7 +437,7 @@ async function switchTab(tab) {
         attachProfileListeners();
     }
     // Update tab buttons
-    document.querySelectorAll('.profile-tab').forEach(btn => {
+    document.querySelectorAll('.profile-primary-tab').forEach(btn => {
         const tabName = btn.getAttribute('onclick')?.match(/switchTab\('(\w+)'\)/)?.[1];
         btn.classList.toggle('active', tabName === tab);
     });
@@ -1088,19 +1161,24 @@ function renderAchievements() {
     const filtered = achCatFilter === 'all' ? visible : visible.filter(a => a.category === achCatFilter);
 
     const tabsHtml = ACH_CATEGORIES.map(c =>
-        `<button class="profile-tab ${achCatFilter === c.id ? 'active' : ''}" style="font-size:13px;padding:6px 14px"
+        `<button class="profile-secondary-tab ${achCatFilter === c.id ? 'active' : ''}"
                  onclick="setAchCat('${c.id}')">${c.label}</button>`
     ).join('');
 
     let cardsHtml = filtered.map(a => {
         const pct = a.target > 1 ? Math.min(100, Math.round((a.progress / a.target) * 100)) : (a.completed ? 100 : 0);
+        const rewardState = a.completed
+            ? '<span class="achievement-state achievement-state--claimed">Нагороду зараховано</span>'
+            : (a.progress > 0
+                ? '<span class="achievement-state achievement-state--progress">У процесі</span>'
+                : '<span class="achievement-state achievement-state--locked">Заблоковано</span>');
         return `
         <div class="achievement-card ${a.completed ? 'completed unlocked' : ''} ${!a.completed && a.progress === 0 ? 'locked' : ''}">
             <div class="achievement-icon">${a.icon}</div>
             <div class="achievement-info">
                 <h3>${escapeHtml(a.name)} <span class="rarity-badge rarity-${a.rarity}">${RARITY_LABELS[a.rarity] || a.rarity}</span></h3>
                 <p>${escapeHtml(a.description)}</p>
-                <div class="achievement-reward">+${a.rewardCoins} 💰</div>
+                <div class="achievement-reward">+${a.rewardCoins} 💰 ${rewardState}</div>
                 ${a.target > 1 ? `
                 <div class="achievement-progress" style="height:6px;background:var(--gray-200);border-radius:3px;margin-top:6px">
                     <div class="achievement-progress-fill" style="width:${pct}%;height:100%;border-radius:3px;background:var(--primary);transition:width 0.4s"></div>
@@ -1116,7 +1194,7 @@ function renderAchievements() {
     return `
     <div class="achievements-section" style="margin-top:16px">
         <h3 style="margin-bottom:12px">🏆 Ачивки (${visible.filter(a => a.completed).length}/${visible.length})</h3>
-        <div class="profile-tabs" style="margin-bottom:14px">${tabsHtml}</div>
+        <div class="profile-secondary-tabs">${tabsHtml}</div>
         <div class="achievements-grid">${cardsHtml}</div>
     </div>`;
 }
@@ -1167,8 +1245,9 @@ function renderDailyPreview() {
         const icon = QUEST_ICONS[q.questType] || '📋';
         const pct = q.targetValue > 0 ? Math.min(100, Math.round((q.progress / q.targetValue) * 100)) : 0;
         const canClaim = q.completed && !q.claimed;
+        const pending = isRewardClaimPending('quest', q.id);
         return `
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;${canClaim ? 'opacity:1' : ''}">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;${canClaim || pending ? 'opacity:1' : ''}">
             <span style="font-size:18px;flex-shrink:0">${icon}</span>
             <div style="flex:1;min-width:0">
                 <div style="font-size:13px;font-weight:600;color:var(--gray-700);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(q.title)}</div>
@@ -1177,7 +1256,7 @@ function renderDailyPreview() {
                 </div>
             </div>
             <span style="font-size:11px;color:var(--gray-400);flex-shrink:0">${q.progress}/${q.targetValue}</span>
-            ${canClaim ? `<button onclick="event.stopPropagation();claimQuest(${q.id})" style="padding:4px 10px;border:none;border-radius:6px;background:#22c55e;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">Забрати</button>` : ''}
+            ${canClaim || pending ? renderRewardClaimButton('quest', q.id, 'Забрати', { stopPropagation: true, compact: true }) : ''}
         </div>`;
     }).join('');
 
@@ -1210,6 +1289,7 @@ function renderQuests() {
         const icon = QUEST_ICONS[q.questType] || '📋';
         const pct = q.targetValue > 0 ? Math.min(100, Math.round((q.progress / q.targetValue) * 100)) : 0;
         const canClaim = q.completed && !q.claimed;
+        const pending = isRewardClaimPending('quest', q.id);
 
         html += `
         <div class="quest-card ${q.completed ? 'completed' : ''} ${q.claimed ? 'claimed' : ''}">
@@ -1221,8 +1301,8 @@ function renderQuests() {
             </div>
             <div style="text-align:right">
                 <div class="quest-reward">+${q.rewardCoins} \ud83d\udcb0</div>
-                ${canClaim ? `<button class="quest-claim-btn" onclick="claimQuest(${q.id})">Забрати</button>` : ''}
-                ${q.claimed ? '<span style="font-size:11px;color:var(--primary)">Отримано</span>' : ''}
+                ${canClaim || pending ? renderRewardClaimButton('quest', q.id, 'Забрати') : ''}
+                ${q.claimed ? '<span class="reward-state-badge reward-state-badge--claimed">Отримано</span>' : ''}
             </div>
         </div>`;
     }
@@ -1339,10 +1419,10 @@ function setLeaderboardSort(sort) {
 function renderLeaderboardTab() {
     // Mode toggle: Overall vs Monthly
     const modeHtml = `
-    <div style="display:flex;gap:4px;margin-bottom:12px">
-        <button class="profile-tab ${leaderboardMode === 'overall' ? 'active' : ''}" style="font-size:13px;padding:6px 14px"
+    <div class="profile-secondary-tabs">
+        <button class="profile-secondary-tab ${leaderboardMode === 'overall' ? 'active' : ''}"
                 onclick="setLeaderboardMode('overall')">🏅 Загальний</button>
-        <button class="profile-tab ${leaderboardMode === 'monthly' ? 'active' : ''}" style="font-size:13px;padding:6px 14px"
+        <button class="profile-secondary-tab ${leaderboardMode === 'monthly' ? 'active' : ''}"
                 onclick="setLeaderboardMode('monthly')">📅 Щомісячний</button>
     </div>`;
 
@@ -1362,7 +1442,7 @@ function renderLeaderboardTab() {
     ];
 
     const tabsHtml = sortTabs.map(s =>
-        `<button class="profile-tab ${leaderboardSort === s.id ? 'active' : ''}" style="font-size:13px;padding:6px 14px"
+        `<button class="profile-secondary-tab ${leaderboardSort === s.id ? 'active' : ''}"
                  onclick="setLeaderboardSort('${s.id}')">${s.label}</button>`
     ).join('');
 
@@ -1395,7 +1475,7 @@ function renderLeaderboardTab() {
     <div style="margin-top:16px">
         <h3 style="margin-bottom:12px">📊 Рейтинг</h3>
         ${modeHtml}
-        <div class="profile-tabs" style="margin-bottom:14px">${tabsHtml}</div>
+        <div class="profile-secondary-tabs">${tabsHtml}</div>
         <div class="leaderboard-list">${listHtml}</div>
     </div>`;
 }
@@ -1411,7 +1491,7 @@ function renderMonthlyLeaderboard() {
     ];
 
     const catTabs = categories.map(c =>
-        `<button class="profile-tab ${monthlyCategory === c.id ? 'active' : ''}" style="font-size:12px;padding:5px 12px"
+        `<button class="profile-secondary-tab ${monthlyCategory === c.id ? 'active' : ''}"
                  onclick="setMonthlyFilter('${c.id}')">${c.label}</button>`
     ).join('');
 
@@ -1444,7 +1524,7 @@ function renderMonthlyLeaderboard() {
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
             <h4>📅 ${months[monthlyMonth - 1]} ${monthlyYear}</h4>
         </div>
-        <div class="profile-tabs" style="margin-bottom:14px">${catTabs}</div>
+        <div class="profile-secondary-tabs">${catTabs}</div>
         ${listHtml}
     </div>`;
 }
@@ -1494,18 +1574,32 @@ function attachProfileListeners() {
         });
     });
 
-    // Check for new achievements and titles
-    apiPost('/achievements/check', {});
-    if (isOwnProfile) apiPost('/quests/check-titles', {});
+    // Check for auto-awarded achievements/titles without exposing fake manual claim UX.
+    checkProfileAutoRewards();
 }
 
 async function claimQuest(questId) {
-    const result = await apiPost(`/quests/claim/${questId}`);
-    if (result?.success) {
-        questsData = await apiGet('/quests/daily');
-        walletData = await apiGet('/wallet');
-        const tabContent = document.getElementById('tabContent');
-        if (tabContent && activeTab === 'quests') tabContent.innerHTML = renderTabContent();
+    if (isRewardClaimPending('quest', questId)) return;
+    setRewardClaimPending('quest', questId, true);
+    renderProfile();
+    try {
+        const result = await apiPost(`/quests/claim/${questId}`);
+        if (result?.success) {
+            if (typeof showNotification === 'function') {
+                showNotification(`🎉 Отримано: +${result.reward || result.coins || 0} 💰`, 'success');
+            }
+            setRewardClaimPending('quest', questId, false);
+            await refreshProfileRewardSurfaces({ reloadQuests: true, reloadWallet: true });
+            return;
+        }
+        if (typeof showNotification === 'function') {
+            showNotification(result?.error || 'Не вдалося забрати нагороду', 'error');
+        }
+    } finally {
+        if (isRewardClaimPending('quest', questId)) {
+            setRewardClaimPending('quest', questId, false);
+            renderProfile();
+        }
     }
 }
 
@@ -1782,6 +1876,7 @@ function renderSeasonTab() {
         const completed = q.completed;
         const claimed = q.claimed;
         const canClaim = completed && !claimed;
+        const pending = isRewardClaimPending('season', q.id);
 
         return `
         <div class="season-quest-card ${completed ? 'completed' : ''} ${claimed ? 'claimed' : ''}">
@@ -1799,8 +1894,8 @@ function renderSeasonTab() {
                 </div>
             </div>
             <div>
-                ${canClaim ? `<button class="quest-claim-btn" onclick="claimSeasonQuest(${q.id})">Забрати!</button>` : ''}
-                ${claimed ? '<span style="color:var(--primary);font-size:12px;font-weight:700">✅ Отримано</span>' : ''}
+                ${canClaim || pending ? renderRewardClaimButton('season', q.id, 'Забрати!') : ''}
+                ${claimed ? '<span class="reward-state-badge reward-state-badge--claimed">✅ Отримано</span>' : ''}
             </div>
         </div>`;
     }).join('');
@@ -1849,17 +1944,26 @@ function renderSeasonTab() {
 }
 
 async function claimSeasonQuest(questId) {
-    const result = await apiPost(`/gamification/seasons/${questId}/claim`);
-    if (result?.success) {
-        if (typeof showNotification === 'function') showNotification(`🎉 Отримано: +${result.coins || 0} 🪙`, 'success');
-        if (result.title && typeof AchievementPopup !== 'undefined') {
-            AchievementPopup.show({ name: result.title, description: 'Новий титул за сезонний квест!', icon: '🏷️', rarity: 'epic', reward_coins: result.coins });
+    if (isRewardClaimPending('season', questId)) return;
+    setRewardClaimPending('season', questId, true);
+    renderProfile();
+    try {
+        const result = await apiPost(`/gamification/seasons/${questId}/claim`);
+        if (result?.success) {
+            if (typeof showNotification === 'function') showNotification(`🎉 Отримано: +${result.coins || 0} 🪙`, 'success');
+            if (result.title && typeof AchievementPopup !== 'undefined') {
+                AchievementPopup.show({ name: result.title, description: 'Новий титул за сезонний квест!', icon: '🏷️', rarity: 'epic', reward_coins: result.coins });
+            }
+            setRewardClaimPending('season', questId, false);
+            await refreshProfileRewardSurfaces({ reloadQuests: true, reloadWallet: true, reloadSeason: true });
+            return;
         }
-        seasonalQuests = null;
-        walletData = await apiGet('/wallet');
-        switchTab('season');
-    } else {
-        if (typeof showNotification === 'function') showNotification(result?.error || 'Помилка', 'error');
+        if (typeof showNotification === 'function') showNotification(result?.error || 'Не вдалося забрати сезонну нагороду', 'error');
+    } finally {
+        if (isRewardClaimPending('season', questId)) {
+            setRewardClaimPending('season', questId, false);
+            renderProfile();
+        }
     }
 }
 

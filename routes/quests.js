@@ -118,7 +118,11 @@ router.post('/claim/:questId', requireRole(...ANY_ROLE), async (req, res) => {
         }
 
         // Get reward amount
-        const qDef = await client.query('SELECT * FROM daily_quests LIMIT 200 WHERE id = $1', [questId]);
+        const qDef = await client.query('SELECT * FROM daily_quests WHERE id = $1 LIMIT 1', [questId]);
+        if (qDef.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Квест не знайдено' });
+        }
         const reward = qDef.rows[0].reward_coins;
 
         // Award coins

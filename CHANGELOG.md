@@ -4,6 +4,14 @@
 
 ---
 
+## v0.54.8 - Sidebar Role Switch Fix
+
+### Sidebar / Role-aware Navigation [codex]
+- **Role switch** - sidebar тепер пріоритезує runtime role з `getUserRole()` над stored profile role, щоб перемикання ролей одразу змінювало доступні групи, funnel chip і primary action.
+- **Guardrail** - додано UI-check, який не дозволить повернути старий порядок ролей і знову показувати sales/funnel для неактуальної ролі.
+
+---
+
 ## v0.54.7 - Sidebar AI Cockpit Hardening
 
 ### Sidebar / AI-first Navigation [codex]

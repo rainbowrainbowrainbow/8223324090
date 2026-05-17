@@ -304,7 +304,7 @@ const Sidebar = (() => {
         if (!container) return;
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
         const savedUser = _getCurrentSidebarUser();
-        const role = _getSidebarPrimaryRole(savedUser) || (typeof getUserRole === 'function' ? getUserRole() : null) || null;
+        const role = _getSidebarActiveRole(savedUser);
 
         let currentGroupKey = null;
         let html = '';
@@ -786,7 +786,7 @@ const Sidebar = (() => {
         const actionEl = document.getElementById('sidebarPrimaryAction');
         if (!actionEl) return;
         const user = _getCurrentSidebarUser();
-        const role = _getSidebarPrimaryRole(user) || (typeof getUserRole === 'function' ? getUserRole() : '');
+        const role = _getSidebarActiveRole(user);
         const action = _getSidebarPrimaryAction(role, _commandState);
         actionEl.querySelector('.sidebar-primary-action-kicker')?.replaceChildren(document.createTextNode(action.kicker));
         actionEl.querySelector('.sidebar-primary-action-label')?.replaceChildren(document.createTextNode(action.label));
@@ -959,7 +959,7 @@ const Sidebar = (() => {
         const widget = document.getElementById('focusChipFunnel');
         if (!widget) return;
         const user = _getCurrentSidebarUser();
-        const role = _getSidebarPrimaryRole(user) || (typeof getUserRole === 'function' ? getUserRole() : null);
+        const role = _getSidebarActiveRole(user);
         const canSeeFunnel = role ? hasAccess({ access: 'leads' }, role) : true;
         widget.hidden = !canSeeFunnel;
         _syncFocusDeckAccess(canSeeFunnel);
@@ -1022,12 +1022,21 @@ const Sidebar = (() => {
         return String(user?.role || user?.account_role || user?.accountRole || roles[0] || '').trim();
     }
 
+    function _getSidebarActiveRole(user = _getCurrentSidebarUser()) {
+        try {
+            const runtimeRole = typeof getUserRole === 'function' ? String(getUserRole() || '').trim() : '';
+            return runtimeRole || _getSidebarPrimaryRole(user);
+        } catch {
+            return _getSidebarPrimaryRole(user);
+        }
+    }
+
     function _syncFocusDeckAccess(forceFunnelAccess = null) {
         const deck = document.getElementById('sidebarFocusDeck');
         const funnel = document.getElementById('focusChipFunnel');
         if (!deck || !funnel) return;
         const user = _getCurrentSidebarUser();
-        const role = _getSidebarPrimaryRole(user) || (typeof getUserRole === 'function' ? getUserRole() : null);
+        const role = _getSidebarActiveRole(user);
         const canSeeFunnel = forceFunnelAccess === null
             ? (role ? hasAccess({ access: 'leads' }, role) : true)
             : !!forceFunnelAccess;

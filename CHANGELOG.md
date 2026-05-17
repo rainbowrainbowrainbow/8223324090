@@ -4,6 +4,15 @@
 
 ---
 
+## v0.55.7 - Аналітика: темна тема без білих фонів
+
+### Analytics / Release [codex]
+- **Опис релізу** - назву і видимий опис analytics-релізу переписано конкретніше: тепер одразу видно, що fix прибирає білі фони в темній Аналітиці.
+- **Dark Theme** - release notes явно описують темні KPI, charts, tables, period tabs і segment blocks як одну систему без light-mode поверхонь.
+- **Deploy** - версійні маркери, cache-bust теги, changelog і `/api/version` піднято на `v0.55.7` для чистого production smoke.
+
+---
+
 ## v0.55.6 - Аналітика: темна тема і контраст
 
 ### Analytics / Dark Theme [codex]

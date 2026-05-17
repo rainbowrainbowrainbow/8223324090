@@ -11,12 +11,28 @@
         return document.getElementById(id);
     }
 
+    function _authToken() {
+        return localStorage.getItem('pzp_token') || localStorage.getItem('authToken') || '';
+    }
+
     function _headers() {
-        var token = localStorage.getItem('pzp_token') || localStorage.getItem('authToken') || '';
+        var token = _authToken();
         return Object.assign(
             { 'Content-Type': 'application/json' },
             token ? { Authorization: 'Bearer ' + token } : {}
         );
+    }
+
+    function _isAuthError(err) {
+        return err && (err.status === 401 || err.status === 403);
+    }
+
+    function _handleAuthRequired() {
+        if (typeof handleAuthError === 'function') {
+            handleAuthError({ status: 401 });
+            return;
+        }
+        window.location.href = '/';
     }
 
     async function _request(method, path, body) {
@@ -31,6 +47,9 @@
             var err = new Error(data.error || data.message || 'Request failed');
             err.status = resp.status;
             err.data = data;
+            if (_isAuthError(err) && typeof handleAuthError === 'function') {
+                handleAuthError(resp);
+            }
             throw err;
         }
         return data;
@@ -61,9 +80,18 @@
         } else if (config.status === 'missing_key') {
             label = 'Немає shared key';
             tone = 'warning';
+        } else if (config.status === 'error') {
+            label = config.message || 'Помилка';
+            tone = 'warning';
         }
         el.textContent = label;
         el.dataset.tone = tone;
+    }
+
+    function _setLoadFailedStatus(message) {
+        var config = { status: 'error', message: message || 'Помилка завантаження' };
+        _setStatus($('chatAiStatus'), config);
+        _setStatus($('guardianAiStatus'), config);
     }
 
     function _fillCheckbox(id, value) {
@@ -102,11 +130,19 @@
     }
 
     async function _load() {
+        if (!_authToken()) {
+            _handleAuthRequired();
+            return;
+        }
         try {
             var data = await _request('GET', '/api/settings/chat');
             _render(data);
+            _revealShell();
         } catch (err) {
+            if (_isAuthError(err)) return;
             console.error('[ChatSettings] load failed', err);
+            _setLoadFailedStatus('Не вдалося завантажити');
+            _revealShell();
             _notify('Не вдалось завантажити налаштування чату', 'error');
         }
     }
@@ -122,6 +158,7 @@
             _setStatus($('chatAiStatus'), data);
             _notify('AI налаштування чату збережено', 'success');
         } catch (err) {
+            if (_isAuthError(err)) return;
             console.error('[ChatSettings] save AI failed', err);
             _notify('Не вдалось зберегти AI налаштування', 'error');
         }
@@ -135,6 +172,7 @@
             _setStatus($('chatAiStatus'), result);
             _notify(result.message || 'AI підключення працює', 'success');
         } catch (err) {
+            if (_isAuthError(err)) return;
             var result = err.data || {};
             _setStatus($('chatAiStatus'), result);
             _notify(result.message || 'AI підключення не пройшло перевірку', 'warning');
@@ -153,6 +191,7 @@
             });
             _notify('Інтеграції чату збережено', 'success');
         } catch (err) {
+            if (_isAuthError(err)) return;
             console.error('[ChatSettings] save integrations failed', err);
             _notify('Не вдалось зберегти інтеграції', 'error');
         }
@@ -172,6 +211,7 @@
             _setStatus($('guardianAiStatus'), data.ai || {});
             _notify('Guardian налаштування збережено', 'success');
         } catch (err) {
+            if (_isAuthError(err)) return;
             console.error('[ChatSettings] save Guardian failed', err);
             _notify('Не вдалось зберегти Guardian налаштування', 'error');
         }
@@ -192,12 +232,10 @@
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
             _bind();
-            _revealShell();
             _load();
         });
     } else {
         _bind();
-        _revealShell();
         _load();
     }
 })();

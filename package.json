@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.55.1",
+  "version": "0.55.2",
   "eventGenix": {
-    "releaseLabel": "Chat Guardian / AI / Settings / Verification Sweep"
+    "releaseLabel": "Chat Settings Auth UAT Hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

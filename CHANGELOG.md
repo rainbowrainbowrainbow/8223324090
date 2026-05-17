@@ -4,6 +4,15 @@
 
 ---
 
+## v0.55.2 - Chat Settings Auth UAT Hardening
+
+### Chat Settings / Auth [codex]
+- **Settings Auth** - `/chat-settings` більше не показує робочий shell до успішної auth/API-перевірки.
+- **UAT Flow** - неавторизований production smoke тепер переходить у нормальний login flow замість зависання на статусі `Завантаження`.
+- **Visibility** - помилки завантаження settings отримали явний статус у AI/Guardian блоках без сирих ключів у frontend.
+
+---
+
 ## v0.55.1 - Chat Guardian / AI / Settings / Verification Sweep
 
 ### Chat / Guardian / Settings [codex]

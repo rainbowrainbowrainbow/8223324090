@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.54.3",
+  "version": "0.54.4",
   "eventGenix": {
-    "releaseLabel": "Match-3 Game Over CTA Visibility Fix"
+    "releaseLabel": "My Cabinet Quick Cluster Redesign"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

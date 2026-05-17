@@ -341,6 +341,9 @@ function renderProfile() {
 
 async function switchTab(tab) {
     activeTab = tab;
+    if (tab === 'mytasks') {
+        setCabinetQuickMode('tasks');
+    }
     if (isOwnProfile && (tab === 'myday' || tab === 'mytasks') && !myCabinetData) {
         myCabinetData = await apiGet('/tasks/my-cabinet');
     }
@@ -759,13 +762,27 @@ function formatCabinetPulseCount(value) {
     return String(Math.floor(n));
 }
 
-function cabinetPulseIcon(type) {
-    const icons = {
-        tasks: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8.5 6.5h9"/><path d="M8.5 12h9"/><path d="M8.5 17.5h6"/><path d="m3.8 6.5.9.9 1.8-2"/><path d="m3.8 12 .9.9 1.8-2"/><rect x="3" y="3" width="18" height="18" rx="5"/></svg>',
-        bell: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 9.8a6 6 0 0 0-12 0c0 7-2.3 7.7-2.3 7.7h16.6S18 16.8 18 9.8Z"/><path d="M10 20a2.2 2.2 0 0 0 4 0"/><path d="M12 3V2"/></svg>',
-        funnel: '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.5 5.5h15L14 12.4v4.4l-4 1.9v-6.3L4.5 5.5Z"/><path d="M8 8h8"/></svg>'
-    };
-    return icons[type] || '';
+function getCabinetQuickMode() {
+    if (activeTab === 'mytasks') return 'tasks';
+    const saved = localStorage.getItem('cabinetQuickMode');
+    return ['tasks', 'alerts', 'funnel'].includes(saved) ? saved : 'tasks';
+}
+
+function setCabinetQuickMode(mode) {
+    if (!['tasks', 'alerts', 'funnel'].includes(mode)) return;
+    localStorage.setItem('cabinetQuickMode', mode);
+}
+
+function syncCabinetQuickMode(mode) {
+    if (!['tasks', 'alerts', 'funnel'].includes(mode)) return;
+    setCabinetQuickMode(mode);
+    const root = document.querySelector('.cabinet-quick-cluster');
+    if (!root) return;
+    root.querySelectorAll('.cabinet-quick-segment').forEach(btn => {
+        const isActive = btn.dataset.mode === mode;
+        btn.classList.toggle('is-active', isActive);
+        btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
 }
 
 function renderCabinetPulseCluster() {
@@ -773,24 +790,53 @@ function renderCabinetPulseCluster() {
     const tasksCount = Number(stats.todayPlanned || stats.openCount || cabinetList('all').length || 0);
     const alertsCount = cabinetPulseCounts.alerts;
     const funnelCount = cabinetPulseCounts.funnel;
-    return `
-        <div class="cabinet-pulse-cluster" aria-label="Швидкі індикатори My Cabinet">
-            <button type="button" class="cabinet-pulse-btn cabinet-pulse-btn--tasks" title="Задачі" aria-label="Задачі: ${formatCabinetPulseCount(tasksCount)}" onclick="switchTab('mytasks')">
-                <span class="cabinet-pulse-icon">${cabinetPulseIcon('tasks')}</span>
-                <span class="cabinet-pulse-count">${formatCabinetPulseCount(tasksCount)}</span>
-            </button>
-            <button type="button" class="cabinet-pulse-btn cabinet-pulse-btn--alerts" title="Сповіщення" aria-label="Сповіщення: ${formatCabinetPulseCount(alertsCount)}" onclick="openCabinetAlerts(event)">
-                <span class="cabinet-pulse-icon">${cabinetPulseIcon('bell')}</span>
-                <span class="cabinet-pulse-count cabinet-pulse-count--alert">${formatCabinetPulseCount(alertsCount)}</span>
-            </button>
-            <button type="button" class="cabinet-pulse-btn cabinet-pulse-btn--funnel" title="Воронка" aria-label="Воронка: ${formatCabinetPulseCount(funnelCount)}" onclick="openCabinetFunnel()">
-                <span class="cabinet-pulse-icon">${cabinetPulseIcon('funnel')}</span>
-                <span class="cabinet-pulse-count">${formatCabinetPulseCount(funnelCount)}</span>
-            </button>
-        </div>`;
+    const activeMode = getCabinetQuickMode();
+    const items = [
+        {
+            id: 'tasks',
+            label: '\u0417\u0430\u0434\u0430\u0447\u0456',
+            count: formatCabinetPulseCount(tasksCount),
+            tone: tasksCount > 0 ? 'live' : 'zero',
+            action: "switchTab('mytasks')"
+        },
+        {
+            id: 'alerts',
+            label: '\u0410\u043b\u0435\u0440\u0442\u0438',
+            count: formatCabinetPulseCount(alertsCount),
+            tone: alertsCount >= 10 ? 'critical' : alertsCount > 0 ? 'hot' : 'zero',
+            action: 'openCabinetAlerts(event)'
+        },
+        {
+            id: 'funnel',
+            label: '\u0412\u043e\u0440\u043e\u043d\u043a\u0430',
+            count: formatCabinetPulseCount(funnelCount),
+            tone: funnelCount > 0 ? 'live' : 'zero',
+            action: 'openCabinetFunnel()'
+        }
+    ];
+    const segmentsHtml = items.map(item => {
+        const isActive = item.id === activeMode;
+        return [
+            '<button type="button"',
+            ' class="cabinet-quick-segment cabinet-quick-segment--' + item.id + ' cabinet-quick-segment--' + item.tone + (isActive ? ' is-active' : '') + '"',
+            ' data-mode="' + item.id + '"',
+            ' role="tab"',
+            ' aria-selected="' + (isActive ? 'true' : 'false') + '"',
+            ' title="' + escapeHtml(item.label) + ': ' + item.count + '"',
+            ' onclick="syncCabinetQuickMode(\'' + item.id + '\'); ' + item.action + '">',
+            '<span class="cabinet-quick-plate"></span>',
+            '<span class="cabinet-quick-body">',
+            '<span class="cabinet-quick-label">' + escapeHtml(item.label) + '</span>',
+            '<span class="cabinet-quick-count">' + item.count + '</span>',
+            '</span>',
+            '</button>'
+        ].join('');
+    }).join('');
+    return '<div class="cabinet-quick-cluster" role="tablist" aria-label="\u0428\u0432\u0438\u0434\u043a\u0438\u0439 \u0432\u0438\u0431\u0456\u0440 \u0440\u043e\u0431\u043e\u0447\u043e\u0433\u043e \u0440\u0435\u0436\u0438\u043c\u0443 My Cabinet">' + segmentsHtml + '</div>';
 }
 
 function openCabinetAlerts(event) {
+    syncCabinetQuickMode('alerts');
     if (typeof toggleAlertsPanel === 'function') {
         toggleAlertsPanel(event);
         return;
@@ -799,6 +845,7 @@ function openCabinetAlerts(event) {
 }
 
 function openCabinetFunnel() {
+    syncCabinetQuickMode('funnel');
     window.location.href = '/sales-funnel';
 }
 

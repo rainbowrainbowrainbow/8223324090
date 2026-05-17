@@ -4,6 +4,15 @@
 
 ---
 
+## v0.54.4 - My Cabinet Quick Cluster Redesign
+
+### My Cabinet / Quick Menu [codex]
+- **My Cabinet** - кластер `Задачі / Алерти / Воронка` перероблено з іконкових badge-плиток у цілісний segmented quick-menu.
+- **Visual System** - прибрано icon-first treatment, додано tinted segment surfaces, інтегровані count surfaces і виразний active state.
+- **UX** - quick cluster тепер працює як вибір робочого режиму з selected-state логікою, dark/mobile/print підтримкою і без окремих floating badges.
+
+---
+
 ## v0.54.3 - Match-3 Game Over CTA Visibility Fix
 
 ### Match-3 / Game Over CTA [codex]

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.55.22 - Навігація: повернено шестерню
+
+### Sidebar / Brand Mark [codex]
+- **Event Genix logo** - у sidebar повернено справжню шестерню `images/gear-logo.svg` замість Claude-style shield mark.
+- **Brand CSS** - вимкнено псевдо-іконки `.sidebar-brand::before` / `.sidebar-brand::after`, які перекривали реальний логотип.
+- **Motion** - для брендового логотипа прибрано зайву анімацію й glow, щоб шестерня виглядала стабільно та не відволікала.
+- **Guardrail** - додано UI-smoke перевірку, яка фіксує, що шестерня показується, а shield-псевдоелементи вимкнені.
+
+---
+
 ## v0.55.21 - Навігація: повний sidebar shell
 
 ### Shared Shell / Cross-page Guardrail [codex]

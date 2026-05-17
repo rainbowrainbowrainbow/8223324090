@@ -3371,3 +3371,27 @@ body.dark-mode .sidebar-nav::after,
     font-size: 11px;
   }
 }
+
+/* v0.55.22: restore the real Event Genix gear logo instead of the Claude-style shield mark. */
+.sidebar-brand::before,
+.sidebar-brand::after {
+  display: none !important;
+  content: none !important;
+}
+
+.sidebar-brand .logo-img-small {
+  display: block !important;
+  width: 44px !important;
+  height: 44px !important;
+  flex: 0 0 44px !important;
+  border-radius: 0 !important;
+  object-fit: contain !important;
+  box-shadow: none !important;
+  filter: none !important;
+  animation: none !important;
+}
+
+.sidebar-brand:hover .logo-img-small {
+  filter: none !important;
+  animation: none !important;
+}

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <script>
+    (function(){try{var s=localStorage.getItem('pzp_dark_mode');var auto=localStorage.getItem('pzp_autoNight')!=='false';var h=new Date().getHours();var start=parseInt(localStorage.getItem('pzp_night_start')||'19',10);var end=parseInt(localStorage.getItem('pzp_night_end')||'7',10);var night=(start>end)?(h>=start||h<end):(h>=start&&h<end);var sys=window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;var d=s==='true'||(s===null&&(auto?night:sys));document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';document.addEventListener('DOMContentLoaded',function(){document.body.classList.toggle('dark-mode',d);});}catch(e){}})();
+    </script>
+    <script type="text/javascript">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","w841e2emn0");</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Genix | Налаштування чату</title>
+    <meta name="description" content="Event Genix — налаштування Chat AI, Guardian та інтеграцій">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=0.55.1">
+    <link rel="stylesheet" href="css/layout.css?v=0.55.1">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.1">
+    <link rel="stylesheet" href="css/pages.css?v=0.55.1">
+    <link rel="stylesheet" href="css/modals.css?v=0.55.1">
+    <link rel="stylesheet" href="css/chat.css?v=0.55.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.1">
+    <link rel="stylesheet" href="css/responsive.css?v=0.55.1">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body data-page-group="crm">
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <div id="loginOverlay" class="page-login-overlay hidden">
+        <a href="/">Увійти в систему</a>
+    </div>
+    <div id="loginScreen" class="login-screen hidden"></div>
+
+    <div id="mainApp" class="main-app hidden">
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-sub">AI First CRM</span>
+                    </div>
+                </div>
+                <div class="sidebar-user-card" id="sidebarUserCard">
+                    <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="sidebarUserName"></div>
+                        <div class="sidebar-user-role" id="sidebarUserRole"></div>
+                    </div>
+                    <div class="sidebar-user-status online" id="sidebarUserStatus">●</div>
+                </div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+            <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+                <span class="collapse-icon">◀</span>
+                <span class="collapse-text">Згорнути</span>
+            </button>
+        </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
+
+        <header class="header">
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name" role="button" tabindex="0"></span>
+                    <button type="button" id="logoutBtn" class="btn-logout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content chat-settings-page" id="main-content">
+            <div class="chat-settings-header">
+                <div>
+                    <div class="chat-settings-eyebrow">Chat control plane</div>
+                    <h1>Налаштування чату</h1>
+                    <p>AI summary, Guardian і інтеграції керуються тут, а не всередині робочого потоку розмови.</p>
+                </div>
+                <a class="chat-settings-back" href="/chat">Назад у чат</a>
+            </div>
+
+            <div class="chat-settings-alert" id="chatSettingsAlert" hidden></div>
+
+            <section class="chat-settings-grid" aria-label="Налаштування чату">
+                <article class="chat-settings-section" aria-labelledby="chatAiTitle">
+                    <div class="chat-settings-section-head">
+                        <div>
+                            <h2 id="chatAiTitle">AI для чату</h2>
+                            <p>Єдиний provider/model overlay поверх shared key source.</p>
+                        </div>
+                        <span class="chat-settings-status" id="chatAiStatus">Завантаження</span>
+                    </div>
+                    <div class="chat-settings-form">
+                        <label class="chat-settings-toggle">
+                            <input type="checkbox" id="chatAiEnabled">
+                            <span>Увімкнено</span>
+                        </label>
+                        <label>
+                            <span>Provider</span>
+                            <select id="chatAiProvider">
+                                <option value="auto">Auto / shared</option>
+                                <option value="openrouter">OpenRouter</option>
+                                <option value="anthropic">Anthropic</option>
+                                <option value="openai">OpenAI</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>Модель</span>
+                            <input type="text" id="chatAiModel" placeholder="За замовчуванням для provider">
+                        </label>
+                        <div class="chat-settings-keyline">
+                            <span>Ключ / джерело</span>
+                            <strong id="chatAiKeySource">crm_ai_default</strong>
+                        </div>
+                        <div class="chat-settings-actions">
+                            <button type="button" class="chat-settings-primary" id="chatAiSaveBtn">Зберегти AI</button>
+                            <button type="button" class="chat-settings-secondary" id="chatAiTestBtn">Перевірити підключення</button>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="chat-settings-section" aria-labelledby="chatIntegrationsTitle">
+                    <div class="chat-settings-section-head">
+                        <div>
+                            <h2 id="chatIntegrationsTitle">Інтеграції каналів</h2>
+                            <p>Runtime-функції чату без сирих ключів у frontend.</p>
+                        </div>
+                    </div>
+                    <div class="chat-settings-checks">
+                        <label><input type="checkbox" id="chatIntegrationChannels"> Канали та DM</label>
+                        <label><input type="checkbox" id="chatIntegrationSummary"> AI summary</label>
+                        <label><input type="checkbox" id="chatIntegrationGuardian"> Guardian</label>
+                        <label><input type="checkbox" id="chatIntegrationNotifications"> Сповіщення</label>
+                    </div>
+                    <button type="button" class="chat-settings-primary" id="chatIntegrationsSaveBtn">Зберегти інтеграції</button>
+                </article>
+
+                <article class="chat-settings-section" aria-labelledby="chatGuardianTitle">
+                    <div class="chat-settings-section-head">
+                        <div>
+                            <h2 id="chatGuardianTitle">Guardian / Security</h2>
+                            <p>Дайджест, журнал безпеки й аналітика працюють через спільний AI contract.</p>
+                        </div>
+                        <span class="chat-settings-status" id="guardianAiStatus">Завантаження</span>
+                    </div>
+                    <div class="chat-settings-checks">
+                        <label><input type="checkbox" id="guardianEnabled"> Guardian увімкнено</label>
+                        <label><input type="checkbox" id="guardianDigestEnabled"> Дайджести</label>
+                        <label><input type="checkbox" id="guardianSecurityLogEnabled"> Журнал безпеки</label>
+                        <label><input type="checkbox" id="guardianAnalyticsEnabled"> Аналітика</label>
+                    </div>
+                    <div class="chat-settings-form chat-settings-form-compact">
+                        <label>
+                            <span>Guardian provider</span>
+                            <select id="guardianProvider">
+                                <option value="auto">Auto / shared</option>
+                                <option value="openrouter">OpenRouter</option>
+                                <option value="anthropic">Anthropic</option>
+                                <option value="openai">OpenAI</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>Guardian model</span>
+                            <input type="text" id="guardianModel" placeholder="За замовчуванням для provider">
+                        </label>
+                    </div>
+                    <button type="button" class="chat-settings-primary" id="guardianSaveBtn">Зберегти Guardian</button>
+                </article>
+            </section>
+        </main>
+    </div>
+
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Profile">
+        <div class="modal-content modal-medium">
+            <span class="modal-close">&times;</span>
+            <h3>Profile</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/config.js?v=0.55.1"></script>
+    <script src="js/notification.js?v=0.55.1"></script>
+    <script src="js/api.js?v=0.55.1"></script>
+    <script src="js/auth.js?v=0.55.1"></script>
+    <script src="js/components/sidebar.js?v=0.55.1"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/chat-settings-page.js?v=0.55.1"></script>
+    <script src="js/ui.js?v=0.55.1"></script>
+    <script src="js/alerts.js?v=0.55.1"></script>
+</body>
+</html>

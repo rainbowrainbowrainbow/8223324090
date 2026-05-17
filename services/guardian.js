@@ -19,6 +19,7 @@ const { createLogger } = require('../utils/logger');
 const { broadcastToChannel, sendToUser, broadcast } = require('./websocket');
 const { provisionGuardianDirectorDm } = require('./guardianDmProvisioning');
 const { claimGuardianMute } = require('./guardianIdempotency');
+const { callUnifiedChatCompletion, hasAnySharedAIKey, getAvailableProviders } = require('./ai-config');
 const {
     GUARDIAN_DIRECTOR_DM_REQUESTED,
     GUARDIAN_TELEGRAM_ALERT_REQUESTED,
@@ -75,16 +76,10 @@ const _spamTracker = {};
 const SPAM_WINDOW_MS = 30 * 1000;
 const SPAM_THRESHOLD = 10;
 
-// AI setup — OpenRouter (cheap models) or Anthropic fallback
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const AI_ENABLED = !!(OPENROUTER_API_KEY || ANTHROPIC_API_KEY);
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'google/gemma-2-9b-it:free';
-
-if (OPENROUTER_API_KEY) {
-    log.info(`Guardian AI enabled (OpenRouter: ${OPENROUTER_MODEL})`);
-} else if (ANTHROPIC_API_KEY) {
-    log.info('Guardian AI enabled (Anthropic fallback)');
+// AI setup — shared CRM AI key source with Guardian-specific provider/model overlay.
+const AI_ENABLED = hasAnySharedAIKey();
+if (AI_ENABLED) {
+    log.info(`Guardian AI enabled via shared key source (${getAvailableProviders().join(', ')})`);
 }
 
 /**
@@ -94,56 +89,24 @@ if (OPENROUTER_API_KEY) {
 async function callLLM(systemPrompt, userMessage, maxTokens) {
     maxTokens = maxTokens || 300;
 
-    if (OPENROUTER_API_KEY) {
-        try {
-            const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': 'Bearer ' + OPENROUTER_API_KEY,
-                    'Content-Type': 'application/json',
-                    'HTTP-Referer': 'https://park-zp.railway.app',
-                    'X-Title': 'Park Guardian AI'
-                },
-                body: JSON.stringify({
-                    model: OPENROUTER_MODEL,
-                    max_tokens: maxTokens,
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userMessage }
-                    ]
-                })
-            });
-            if (!resp.ok) {
-                const errText = await resp.text();
-                log.error('OpenRouter API error', { status: resp.status, body: errText });
-                return null;
-            }
-            const data = await resp.json();
-            return data.choices?.[0]?.message?.content?.trim() || null;
-        } catch (err) {
-            log.error('OpenRouter call failed', err.message);
-            return null;
-        }
+    const result = await callUnifiedChatCompletion({
+        scope: 'guardian_ai',
+        title: 'Event Genix Guardian AI',
+        systemPrompt,
+        userMessage,
+        maxTokens
+    });
+
+    if (!result.ok) {
+        log.warn('Guardian AI unavailable', {
+            reason: result.reason,
+            provider: result.provider,
+            status: result.status
+        });
+        return null;
     }
 
-    if (ANTHROPIC_API_KEY) {
-        try {
-            const Anthropic = require('@anthropic-ai/sdk');
-            const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-            const response = await anthropic.messages.create({
-                model: 'claude-haiku-4-5-20251001',
-                max_tokens: maxTokens,
-                system: systemPrompt,
-                messages: [{ role: 'user', content: userMessage }]
-            });
-            return response.content[0]?.text?.trim() || null;
-        } catch (err) {
-            log.error('Anthropic call failed', err.message);
-            return null;
-        }
-    }
-
-    return null;
+    return result.text || null;
 }
 
 /**
@@ -2707,10 +2670,11 @@ async function cmdLearn(args) {
 
 function cmdConfig() {
     const state = getGuardianState();
-    const aiEnabled = !!process.env.ANTHROPIC_API_KEY;
+    const aiProviders = getAvailableProviders();
+    const aiEnabled = aiProviders.length > 0;
 
     let text = `⚙️ **Конфігурація Guardian**\n\n`;
-    text += `🤖 AI аналіз: ${aiEnabled ? '✅ Увімкнено' : '❌ Вимкнено'}\n`;
+    text += `🤖 AI аналіз: ${aiEnabled ? '✅ Увімкнено' : '❌ Вимкнено'}${aiEnabled ? ` (${aiProviders.join(', ')})` : ''}\n`;
     text += `${state.mood.emoji} Поточний настрій: ${state.mood.label}\n`;
     text += `🔇 Тривалість мʼюту: ${MUTE_DURATION_MS / 1000}с (авто) / 5 хв (ручний)\n`;
     text += `📨 Спам поріг: ${SPAM_THRESHOLD} повідомлень / ${SPAM_WINDOW_MS / 1000}с\n`;

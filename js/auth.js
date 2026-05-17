@@ -454,6 +454,7 @@ const PAGE_ACCESS = {
     '/':          _ALL_STAFF,
     '/tasks':     _ALL_STAFF,
     '/chat':      _ALL_STAFF,
+    '/chat-settings': ['creator', 'director', 'admin'],
     '/kleshnya':  _ALL_STAFF,
     '/center':    _MANAGER_UP,
     '/art':       _ART_ACCESS,

@@ -24,6 +24,7 @@ and focused tests in the same pack.
 | `art-director.html` | `/art` | art-director | canonical-page | Legacy `/art-director` and `/art-director.html` redirect to `/art`. |
 | `center.html` | `/center` | center | canonical-page | Entertainment center operations page. |
 | `chat.html` | `/chat` | chat | canonical-page | `/kleshnya` redirects to this messenger surface. |
+| `chat-settings.html` | `/chat-settings` | chat | canonical-page | Dedicated Chat AI, Guardian, and integrations settings page. |
 | `checkin.html` | `/checkin` | checkin | canonical-page | Staff check-in page. |
 | `content.html` | `/content` | content | canonical-page | Content matrix page. |
 | `copilot.html` | `/copilot` | copilot | canonical-page | Sales/copilot workspace. |

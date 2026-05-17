@@ -1077,13 +1077,84 @@
         if (el) el.textContent = title || 'Канал';
     }
 
+    var _chatPanelState = { active: null };
+
+    function _closeAllChatPanels() {
+        _chatPanelState.active = null;
+
+        var infoPanel = document.getElementById('chatInfoPanel');
+        if (infoPanel) infoPanel.classList.remove('open');
+
+        ['guardianLogPanel', 'guardianDigestPanel', 'guardianAnalyticsPanel'].forEach(function (id) {
+            var panel = document.getElementById(id);
+            if (panel) panel.style.display = 'none';
+        });
+
+        ['chatInfoBtn', 'chatPinBtn', 'guardianLogBtn', 'guardianDigestBtn', 'guardianAnalyticsBtn'].forEach(function (id) {
+            var btn = document.getElementById(id);
+            if (btn) btn.classList.remove('active');
+        });
+
+        if (typeof _guardianLogOpen !== 'undefined') _guardianLogOpen = false;
+        if (typeof _digestOpen !== 'undefined') _digestOpen = false;
+        if (typeof _analyticsOpen !== 'undefined') _analyticsOpen = false;
+    }
+
+    function _activateChatPanel(panelName) {
+        _chatPanelState.active = panelName;
+
+        if (panelName === 'info' || panelName === 'pins' || panelName === 'profile') {
+            var infoPanel = document.getElementById('chatInfoPanel');
+            if (infoPanel) infoPanel.classList.add('open');
+            if (panelName === 'info') document.getElementById('chatInfoBtn')?.classList.add('active');
+            if (panelName === 'pins') document.getElementById('chatPinBtn')?.classList.add('active');
+            return;
+        }
+
+        var panelMap = {
+            guardianLog: 'guardianLogPanel',
+            digest: 'guardianDigestPanel',
+            guardianAnalytics: 'guardianAnalyticsPanel'
+        };
+        var buttonMap = {
+            guardianLog: 'guardianLogBtn',
+            digest: 'guardianDigestBtn',
+            guardianAnalytics: 'guardianAnalyticsBtn'
+        };
+        var panel = document.getElementById(panelMap[panelName]);
+        var btn = document.getElementById(buttonMap[panelName]);
+        if (panel) panel.style.display = panelName === 'guardianLog' ? 'flex' : 'block';
+        if (btn) btn.classList.add('active');
+
+        if (panelName === 'guardianLog') _guardianLogOpen = true;
+        if (panelName === 'digest') _digestOpen = true;
+        if (panelName === 'guardianAnalytics') _analyticsOpen = true;
+    }
+
+    function _toggleChatPanel(panelName, renderFn) {
+        var samePanel = _chatPanelState.active === panelName;
+        _closeAllChatPanels();
+        if (samePanel) return false;
+        if (typeof renderFn === 'function') renderFn();
+        _activateChatPanel(panelName);
+        return true;
+    }
+
+    async function _toggleChatPanelAsync(panelName, renderFn) {
+        var samePanel = _chatPanelState.active === panelName;
+        _closeAllChatPanels();
+        if (samePanel) return false;
+        if (typeof renderFn === 'function') await renderFn();
+        _activateChatPanel(panelName);
+        return true;
+    }
+
     async function _showUserProfile(userId) {
         if (!_infoPanel) return;
         try {
             var profile = await _api('GET', '/users/' + userId + '/profile');
             if (!profile) return;
-            _infoBtn.classList.remove('active');
-            _pinBtn.classList.remove('active');
+            _closeAllChatPanels();
             _setInfoPanelTitle('Профіль');
             var body = document.getElementById('chatInfoPanelBody');
             var isProfileBot = profile.username === 'openclaw';
@@ -1145,7 +1216,7 @@
             if (dmBtn) {
                 dmBtn.addEventListener('click', function () {
                     _startDm(parseInt(dmBtn.dataset.dmUser, 10));
-                    _infoPanel.classList.remove('open');
+                    _closeAllChatPanels();
                 });
             }
             // Tasks button handler
@@ -1164,7 +1235,7 @@
                 });
             }
 
-            _infoPanel.classList.add('open');
+            _activateChatPanel('profile');
         } catch (err) {
             console.error('[Chat] Profile error:', err);
         }
@@ -1238,17 +1309,10 @@
     if (_pinBtn) {
         _pinBtn.addEventListener('click', async function () {
             if (!_currentChannel) return;
-            var isOpen = _infoPanel.classList.contains('open') && document.getElementById('chatInfoPanelTitle')?.textContent === 'Закріплені';
-            if (isOpen) {
-                _infoPanel.classList.remove('open');
-                _pinBtn.classList.remove('active');
-            } else {
-                _infoBtn.classList.remove('active');
-                _pinBtn.classList.add('active');
+            await _toggleChatPanelAsync('pins', async function () {
                 _setInfoPanelTitle('Закріплені');
                 await _renderPinnedPanel();
-                _infoPanel.classList.add('open');
-            }
+            });
         });
     }
 
@@ -2150,24 +2214,15 @@
     if (_infoBtn) {
         _infoBtn.addEventListener('click', function () {
             if (!_currentChannel) return;
-            var isOpen = _infoPanel.classList.contains('open') && document.getElementById('chatInfoPanelTitle')?.textContent === 'Учасники';
-            if (isOpen) {
-                _infoPanel.classList.remove('open');
-                _infoBtn.classList.remove('active');
-            } else {
-                if (_pinBtn) _pinBtn.classList.remove('active');
-                _infoBtn.classList.add('active');
+            _toggleChatPanel('info', function () {
                 _setInfoPanelTitle(_currentChannel ? _currentChannel.name : 'Канал');
                 _renderInfoPanel();
-                _infoPanel.classList.add('open');
-            }
+            });
         });
     }
     if (_infoPanelClose) {
         _infoPanelClose.addEventListener('click', function () {
-            _infoPanel.classList.remove('open');
-            if (_infoBtn) _infoBtn.classList.remove('active');
-            if (_pinBtn) _pinBtn.classList.remove('active');
+            _closeAllChatPanels();
         });
     }
 
@@ -2337,7 +2392,7 @@
                 if (!await confirmModal('Архівувати канал "' + _currentChannel.name + '"?', { type: 'danger' })) return;
                 try {
                     await _api('PATCH', '/channels/' + _currentChannel.id, { isArchived: true });
-                    _infoPanel.classList.remove('open');
+                    _closeAllChatPanels();
                     _loadChannels();
                     if (typeof showNotification === 'function') showNotification('📦 Канал архівовано', 'success');
                 } catch(e) { if (typeof showNotification === 'function') showNotification('Помилка архівування', 'error'); }
@@ -2351,7 +2406,7 @@
                 if (!await confirmModal('Видалити канал "' + _currentChannel.name + '"? Це незворотньо!', { type: 'danger' })) return;
                 try {
                     await _api('DELETE', '/channels/' + _currentChannel.id);
-                    _infoPanel.classList.remove('open');
+                    _closeAllChatPanels();
                     _loadChannels();
                     if (typeof showNotification === 'function') showNotification('🗑️ Канал видалено', 'success');
                 } catch(e) { if (typeof showNotification === 'function') showNotification('Помилка видалення', 'error'); }
@@ -3024,12 +3079,8 @@
         // Apply wallpaper
         _applyWallpaper();
 
-        // Close right panel
-        if (_infoPanel && _infoPanel.classList.contains('open')) {
-            _infoPanel.classList.remove('open');
-            if (_infoBtn) _infoBtn.classList.remove('active');
-            if (_pinBtn) _pinBtn.classList.remove('active');
-        }
+        // Close active info/guardian surface on channel switch.
+        _closeAllChatPanels();
 
         // Set mute button state from channel data
         if (_muteBtn) {
@@ -6006,22 +6057,17 @@
 
     if (_digestBtn) {
         _digestBtn.addEventListener('click', function () {
-            // console.log('[Guardian] Digest button clicked, panel:', !!_digestPanel);
-            _digestOpen = !_digestOpen;
-            _digestBtn.classList.toggle('active', _digestOpen);
-            if (_digestPanel) _digestPanel.style.display = _digestOpen ? 'block' : 'none';
-            if (_digestOpen) {
+            _toggleChatPanel('digest', function () {
                 _digestCurrentDate = new Date();
                 _loadDigest(_digestCurrentDate);
-            }
+            });
         });
     } else {
         console.warn('[Guardian] Digest button #guardianDigestBtn not found in DOM');
     }
     if (_digestClose) {
         _digestClose.addEventListener('click', function () {
-            _digestOpen = false;
-            if (_digestPanel) _digestPanel.style.display = 'none';
+            _closeAllChatPanels();
         });
     }
     if (_digestPrev) {
@@ -6064,6 +6110,27 @@
             console.error('[Guardian] Generate digest error:', e);
             _digestContent.innerHTML = '<div class="guardian-digest-empty">❌ Помилка генерації дайджесту</div>';
         }
+    }
+
+    function _renderGuardianStat(stat) {
+        var value = Number(stat.value || 0);
+        var tone = stat.tone || 'neutral';
+        return '<div class="guardian-digest-stat guardian-digest-stat--' + _esc(tone) + '" data-stat="' + _esc(stat.key || '') + '">' +
+            '<span class="guardian-digest-stat-value">' + value + '</span>' +
+            '<span class="guardian-digest-stat-label">' + _esc(stat.label || '') + '</span>' +
+        '</div>';
+    }
+
+    function _formatGuardianDigestSummary(raw) {
+        var summary = _esc(raw || 'Немає даних');
+        summary = summary.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+        summary = summary.replace(/(^|<br>|\n)-\s+/g, '$1• ');
+        summary = summary.replace(/&lt;b&gt;/g, '<b>').replace(/&lt;\/b&gt;/g, '</b>');
+        summary = summary.replace(/&lt;i&gt;/g, '<i>').replace(/&lt;\/i&gt;/g, '</i>');
+        summary = summary.replace(/&lt;br\s*\/?&gt;/g, '<br>');
+        summary = summary.replace(/&lt;li&gt;/g, '<li>').replace(/&lt;\/li&gt;/g, '</li>');
+        summary = summary.replace(/&lt;ul&gt;/g, '<ul>').replace(/&lt;\/ul&gt;/g, '</ul>');
+        return summary.replace(/\n/g, '<br>');
     }
 
     async function _loadDigest(date) {
@@ -6119,20 +6186,15 @@
             }
 
             // Stats bar
+            var conflictsDetected = report.conflictsDetected || 0;
+            var sensitiveMasked = report.sensitiveMasked || 0;
             var statsHtml = '<div class="guardian-digest-stats">' +
-                '<div class="guardian-digest-stat"><span class="guardian-digest-stat-value">' + (report.conflictsDetected || 0) + '</span><span class="guardian-digest-stat-label">Блокувань</span></div>' +
-                '<div class="guardian-digest-stat"><span class="guardian-digest-stat-value">' + (report.sensitiveMasked || 0) + '</span><span class="guardian-digest-stat-label">Замасковано</span></div>' +
+                _renderGuardianStat({ key: 'conflicts', value: conflictsDetected, label: 'Блокувань', tone: conflictsDetected > 0 ? 'danger' : 'neutral' }) +
+                _renderGuardianStat({ key: 'masked', value: sensitiveMasked, label: 'Замасковано', tone: sensitiveMasked > 0 ? 'warning' : 'neutral' }) +
                 '</div>';
 
             // Format summary — allow safe HTML tags
-            var summary = _esc(report.summary || 'Немає даних');
-            // Restore safe HTML tags from guardian reports
-            summary = summary.replace(/&lt;b&gt;/g, '<b>').replace(/&lt;\/b&gt;/g, '</b>');
-            summary = summary.replace(/&lt;i&gt;/g, '<i>').replace(/&lt;\/i&gt;/g, '</i>');
-            summary = summary.replace(/&lt;br\s*\/?&gt;/g, '<br>');
-            summary = summary.replace(/&lt;li&gt;/g, '<li>').replace(/&lt;\/li&gt;/g, '</li>');
-            summary = summary.replace(/&lt;ul&gt;/g, '<ul>').replace(/&lt;\/ul&gt;/g, '</ul>');
-            summary = summary.replace(/\n/g, '<br>');
+            var summary = _formatGuardianDigestSummary(report.summary);
 
             _digestContent.innerHTML = statsHtml + '<div class="guardian-digest-body">' + summary + '</div>';
         } catch (e) {
@@ -6178,11 +6240,8 @@
                 _guardianLogBtn.style.display = 'none';
             }
             _guardianLogBtn.addEventListener('click', function () {
-                _guardianLogOpen = !_guardianLogOpen;
-                if (_guardianLogPanel) {
-                    _guardianLogPanel.style.display = _guardianLogOpen ? 'block' : 'none';
-                }
-                if (_guardianLogOpen) {
+                var opened = _toggleChatPanel('guardianLog');
+                if (opened) {
                     _guardianUnreadCount = 0;
                     if (_guardianLogBadge) _guardianLogBadge.style.display = 'none';
                     // Load recent events from API
@@ -6193,8 +6252,7 @@
 
         if (_guardianLogClose) {
             _guardianLogClose.addEventListener('click', function () {
-                _guardianLogOpen = false;
-                if (_guardianLogPanel) _guardianLogPanel.style.display = 'none';
+                _closeAllChatPanels();
             });
         }
     }
@@ -6380,11 +6438,8 @@
                 _analyticsBtn.style.display = '';
             }
             _analyticsBtn.addEventListener('click', function () {
-                _analyticsOpen = !_analyticsOpen;
-                if (_analyticsPanel) {
-                    _analyticsPanel.style.display = _analyticsOpen ? 'block' : 'none';
-                }
-                if (_analyticsOpen) {
+                var opened = _toggleChatPanel('guardianAnalytics');
+                if (opened) {
                     _loadAnalyticsTab('overview');
                 }
             });
@@ -6393,8 +6448,7 @@
         // Analytics close
         if (_analyticsClose) {
             _analyticsClose.addEventListener('click', function () {
-                _analyticsOpen = false;
-                if (_analyticsPanel) _analyticsPanel.style.display = 'none';
+                _closeAllChatPanels();
             });
         }
 
@@ -7541,6 +7595,10 @@
             if (closeBtn) closeBtn.click();
             return;
         }
+        if (_chatPanelState && _chatPanelState.active) {
+            _closeAllChatPanels();
+            return;
+        }
         var infoPanel = document.getElementById('chatInfoPanel');
         if (infoPanel && infoPanel.classList.contains('open')) {
             var infCloseBtn = document.getElementById('chatInfoPanelClose');
@@ -7556,7 +7614,7 @@
     });
 
     // Add aria-labels to header buttons
-    ['chatSearchMsgBtn', 'chatPinBtn', 'chatMuteBtn', 'chatWallpaperBtn', 'chatSummaryBtn', 'chatStatsBtn', 'chatInfoBtn'].forEach(function (id) {
+    ['chatSearchMsgBtn', 'chatPinBtn', 'chatMuteBtn', 'chatWallpaperBtn', 'chatSummaryBtn', 'chatStatsBtn', 'chatSettingsBtn', 'chatInfoBtn'].forEach(function (id) {
         var btn = document.getElementById(id);
         if (btn && !btn.getAttribute('aria-label')) btn.setAttribute('aria-label', btn.title || '');
     });

@@ -32,6 +32,14 @@ const ROOT_HTML_SURFACE = [
         purpose: 'Team messenger and assistant surface. /kleshnya redirects here.'
     },
     {
+        file: 'chat-settings.html',
+        canonicalPath: '/chat-settings',
+        owner: 'chat',
+        status: 'canonical-page',
+        aliases: [],
+        purpose: 'Dedicated Chat AI, Guardian, and integrations settings page.'
+    },
+    {
         file: 'checkin.html',
         canonicalPath: '/checkin',
         owner: 'checkin',

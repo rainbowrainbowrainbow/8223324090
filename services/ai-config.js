@@ -1,0 +1,432 @@
+/**
+ * services/ai-config.js — shared AI provider/key resolver.
+ *
+ * Chat summary and Guardian use the same CRM AI key source. Per-scope settings
+ * may choose provider/model/enabled state, but secrets stay server-side env
+ * values and are never returned to the frontend.
+ */
+
+const { pool } = require('../db');
+const { settingsCache } = require('./cache');
+const { createLogger } = require('../utils/logger');
+
+const log = createLogger('AIConfig');
+
+const KEY_SOURCE = 'crm_ai_default';
+const SETTINGS_KEYS = {
+    chat_ai: 'chat_ai_config',
+    guardian_ai: 'chat_guardian_config',
+    chat_integrations: 'chat_integrations_config'
+};
+
+const PROVIDERS = ['auto', 'openrouter', 'anthropic', 'openai'];
+
+const DEFAULT_MODELS = {
+    openrouter: process.env.SUMMARY_MODEL || process.env.OPENROUTER_MODEL || 'google/gemma-2-9b-it:free',
+    anthropic: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
+    openai: process.env.OPENAI_MODEL || 'gpt-4o-mini'
+};
+
+const DEFAULT_AI_SETTINGS = {
+    enabled: true,
+    provider: 'auto',
+    model: '',
+    keySource: KEY_SOURCE
+};
+
+const DEFAULT_INTEGRATIONS = {
+    channels: true,
+    summary: true,
+    guardian: true,
+    notifications: true
+};
+
+const DEFAULT_GUARDIAN_SETTINGS = {
+    enabled: true,
+    digestEnabled: true,
+    securityLogEnabled: true,
+    analyticsEnabled: true,
+    provider: 'auto',
+    model: '',
+    keySource: KEY_SOURCE
+};
+
+function normalizeScope(scope) {
+    if (scope === 'guardian' || scope === 'guardian_ai') return 'guardian_ai';
+    return 'chat_ai';
+}
+
+function normalizeProvider(provider) {
+    const value = String(provider || 'auto').toLowerCase();
+    return PROVIDERS.includes(value) ? value : 'auto';
+}
+
+function normalizeModel(model) {
+    return String(model || '').trim().slice(0, 128);
+}
+
+function getProviderKey(provider) {
+    if (provider === 'openrouter') return process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_KEY || '';
+    if (provider === 'anthropic') return process.env.ANTHROPIC_API_KEY || '';
+    if (provider === 'openai') return process.env.OPENAI_API_KEY || '';
+    return '';
+}
+
+function getAvailableProviders() {
+    return ['openrouter', 'anthropic', 'openai'].filter(provider => Boolean(getProviderKey(provider)));
+}
+
+function hasAnySharedAIKey() {
+    return getAvailableProviders().length > 0;
+}
+
+function pickProvider(requestedProvider) {
+    const requested = normalizeProvider(requestedProvider);
+    if (requested !== 'auto' && getProviderKey(requested)) return requested;
+    const available = getAvailableProviders();
+    return available[0] || (requested === 'auto' ? 'openrouter' : requested);
+}
+
+function safeParseJson(value, fallback) {
+    if (!value || typeof value !== 'string') return { ...fallback };
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' ? { ...fallback, ...parsed } : { ...fallback };
+    } catch {
+        return { ...fallback };
+    }
+}
+
+async function readSettingJson(key, fallback) {
+    const cached = settingsCache.get(key);
+    if (cached !== null) return safeParseJson(cached, fallback);
+
+    const { rows } = await pool.query('SELECT value FROM settings WHERE key = $1', [key]);
+    const value = rows[0]?.value || null;
+    settingsCache.set(key, value);
+    return safeParseJson(value, fallback);
+}
+
+async function writeSettingJson(key, value) {
+    const stringValue = JSON.stringify(value || {});
+    await pool.query(
+        `INSERT INTO settings (key, value) VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+        [key, stringValue]
+    );
+    settingsCache.invalidate(key);
+    return stringValue;
+}
+
+function sanitizeAISettings(input, fallback) {
+    const base = { ...fallback, ...(input || {}) };
+    const provider = normalizeProvider(base.provider);
+    return {
+        enabled: base.enabled !== false,
+        provider,
+        model: normalizeModel(base.model),
+        keySource: KEY_SOURCE
+    };
+}
+
+function sanitizeIntegrations(input) {
+    const base = { ...DEFAULT_INTEGRATIONS, ...(input || {}) };
+    return {
+        channels: base.channels !== false,
+        summary: base.summary !== false,
+        guardian: base.guardian !== false,
+        notifications: base.notifications !== false
+    };
+}
+
+async function getStoredChatAISettings() {
+    const raw = await readSettingJson(SETTINGS_KEYS.chat_ai, DEFAULT_AI_SETTINGS);
+    return sanitizeAISettings(raw, DEFAULT_AI_SETTINGS);
+}
+
+async function saveChatAISettings(input) {
+    const settings = sanitizeAISettings(input, DEFAULT_AI_SETTINGS);
+    await writeSettingJson(SETTINGS_KEYS.chat_ai, settings);
+    return settings;
+}
+
+async function getStoredGuardianSettings() {
+    const raw = await readSettingJson(SETTINGS_KEYS.guardian_ai, DEFAULT_GUARDIAN_SETTINGS);
+    const ai = sanitizeAISettings(raw, DEFAULT_GUARDIAN_SETTINGS);
+    return {
+        enabled: raw.enabled !== false,
+        digestEnabled: raw.digestEnabled !== false,
+        securityLogEnabled: raw.securityLogEnabled !== false,
+        analyticsEnabled: raw.analyticsEnabled !== false,
+        provider: ai.provider,
+        model: ai.model,
+        keySource: KEY_SOURCE
+    };
+}
+
+async function saveGuardianSettings(input) {
+    const current = await getStoredGuardianSettings();
+    const settings = {
+        ...current,
+        ...(input || {})
+    };
+    const normalized = {
+        enabled: settings.enabled !== false,
+        digestEnabled: settings.digestEnabled !== false,
+        securityLogEnabled: settings.securityLogEnabled !== false,
+        analyticsEnabled: settings.analyticsEnabled !== false,
+        provider: normalizeProvider(settings.provider),
+        model: normalizeModel(settings.model),
+        keySource: KEY_SOURCE
+    };
+    await writeSettingJson(SETTINGS_KEYS.guardian_ai, normalized);
+    return normalized;
+}
+
+async function getStoredIntegrationsSettings() {
+    const raw = await readSettingJson(SETTINGS_KEYS.chat_integrations, DEFAULT_INTEGRATIONS);
+    return sanitizeIntegrations(raw);
+}
+
+async function saveIntegrationsSettings(input) {
+    const settings = sanitizeIntegrations(input);
+    await writeSettingJson(SETTINGS_KEYS.chat_integrations, settings);
+    return settings;
+}
+
+async function getUnifiedAIConfig(options = {}) {
+    const scope = normalizeScope(options.scope);
+    const stored = scope === 'guardian_ai'
+        ? await getStoredGuardianSettings()
+        : await getStoredChatAISettings();
+    const requestedProvider = normalizeProvider(stored.provider);
+    const provider = pickProvider(requestedProvider);
+    const keyConfigured = Boolean(getProviderKey(provider));
+    const model = stored.model || DEFAULT_MODELS[provider] || DEFAULT_MODELS.openrouter;
+    const status = stored.enabled === false
+        ? 'disabled'
+        : (keyConfigured ? 'ok' : 'missing_key');
+
+    return {
+        scope,
+        enabled: stored.enabled !== false,
+        provider,
+        requestedProvider,
+        model,
+        keySource: KEY_SOURCE,
+        keyConfigured,
+        status,
+        availableProviders: getAvailableProviders()
+    };
+}
+
+function publicAIConfig(config) {
+    return {
+        enabled: config.enabled,
+        provider: config.provider,
+        requestedProvider: config.requestedProvider,
+        model: config.model,
+        keySource: config.keySource,
+        keyConfigured: config.keyConfigured,
+        status: config.status,
+        availableProviders: config.availableProviders
+    };
+}
+
+async function fetchWithTimeout(url, options, timeoutMs = 12000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+async function callOpenRouter(config, systemPrompt, userMessage, maxTokens, title) {
+    const resp = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': 'Bearer ' + getProviderKey('openrouter'),
+            'Content-Type': 'application/json',
+            'HTTP-Referer': process.env.PUBLIC_BASE_URL || 'https://park-zp.railway.app',
+            'X-Title': title || 'Event Genix AI'
+        },
+        body: JSON.stringify({
+            model: config.model,
+            max_tokens: maxTokens,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userMessage }
+            ]
+        })
+    });
+
+    if (!resp.ok) {
+        const body = await resp.text();
+        const err = new Error('OpenRouter API error');
+        err.status = resp.status;
+        err.body = body.slice(0, 500);
+        throw err;
+    }
+    const data = await resp.json();
+    return {
+        text: data.choices?.[0]?.message?.content?.trim() || '',
+        usage: data.usage || {}
+    };
+}
+
+async function callAnthropic(config, systemPrompt, userMessage, maxTokens) {
+    const Anthropic = require('@anthropic-ai/sdk');
+    const anthropic = new Anthropic({ apiKey: getProviderKey('anthropic') });
+    const response = await anthropic.messages.create({
+        model: config.model,
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }]
+    });
+    return {
+        text: response.content?.[0]?.text?.trim() || '',
+        usage: {
+            prompt_tokens: response.usage?.input_tokens || 0,
+            completion_tokens: response.usage?.output_tokens || 0
+        }
+    };
+}
+
+async function callOpenAI(config, systemPrompt, userMessage, maxTokens) {
+    const resp = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': 'Bearer ' + getProviderKey('openai'),
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            model: config.model,
+            max_tokens: maxTokens,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userMessage }
+            ]
+        })
+    });
+
+    if (!resp.ok) {
+        const body = await resp.text();
+        const err = new Error('OpenAI API error');
+        err.status = resp.status;
+        err.body = body.slice(0, 500);
+        throw err;
+    }
+    const data = await resp.json();
+    return {
+        text: data.choices?.[0]?.message?.content?.trim() || '',
+        usage: data.usage || {}
+    };
+}
+
+async function callUnifiedChatCompletion(options = {}) {
+    const config = await getUnifiedAIConfig({ scope: options.scope });
+    if (!config.enabled) {
+        return { ok: false, reason: 'disabled', ...publicAIConfig(config) };
+    }
+    if (!config.keyConfigured) {
+        return { ok: false, reason: 'missing_key', ...publicAIConfig(config) };
+    }
+
+    const maxTokens = options.maxTokens || 800;
+    try {
+        let result;
+        if (config.provider === 'anthropic') {
+            result = await callAnthropic(config, options.systemPrompt, options.userMessage, maxTokens);
+        } else if (config.provider === 'openai') {
+            result = await callOpenAI(config, options.systemPrompt, options.userMessage, maxTokens);
+        } else {
+            result = await callOpenRouter(config, options.systemPrompt, options.userMessage, maxTokens, options.title);
+        }
+        return {
+            ok: true,
+            text: result.text,
+            usage: result.usage || {},
+            ...publicAIConfig(config)
+        };
+    } catch (err) {
+        log.error('Unified AI completion failed', {
+            scope: config.scope,
+            provider: config.provider,
+            status: err.status,
+            message: err.message
+        });
+        return { ok: false, reason: 'provider_error', error: err.message, ...publicAIConfig(config) };
+    }
+}
+
+async function testUnifiedAIConfig(options = {}) {
+    const config = await getUnifiedAIConfig({ scope: options.scope || 'chat_ai' });
+    if (!config.enabled || !config.keyConfigured) {
+        return {
+            ok: false,
+            message: config.enabled ? 'AI key source is not configured.' : 'AI is disabled for this scope.',
+            ...publicAIConfig(config)
+        };
+    }
+
+    if (!options.live) {
+        return {
+            ok: true,
+            message: 'Config resolved. Live provider call was not requested.',
+            ...publicAIConfig(config)
+        };
+    }
+
+    const result = await callUnifiedChatCompletion({
+        scope: config.scope,
+        title: 'Event Genix Chat AI Settings Test',
+        systemPrompt: 'Ти перевіряєш підключення AI для Event Genix CRM. Відповідай дуже коротко.',
+        userMessage: 'Відповідай одним словом: OK',
+        maxTokens: 16
+    });
+    return {
+        ok: result.ok,
+        message: result.ok ? 'Provider responded successfully.' : (result.reason || 'Provider test failed.'),
+        sample: result.ok ? result.text : undefined,
+        ...publicAIConfig(result)
+    };
+}
+
+async function getChatSettingsBundle() {
+    const [chatConfig, guardianConfig, integrations] = await Promise.all([
+        getUnifiedAIConfig({ scope: 'chat_ai' }),
+        getUnifiedAIConfig({ scope: 'guardian_ai' }),
+        getStoredIntegrationsSettings()
+    ]);
+    const guardianStored = await getStoredGuardianSettings();
+    return {
+        chatAi: publicAIConfig(chatConfig),
+        guardian: {
+            ...guardianStored,
+            ai: publicAIConfig(guardianConfig)
+        },
+        integrations,
+        keySource: KEY_SOURCE
+    };
+}
+
+module.exports = {
+    SETTINGS_KEYS,
+    KEY_SOURCE,
+    DEFAULT_MODELS,
+    getAvailableProviders,
+    hasAnySharedAIKey,
+    getUnifiedAIConfig,
+    publicAIConfig,
+    callUnifiedChatCompletion,
+    testUnifiedAIConfig,
+    getChatSettingsBundle,
+    getStoredChatAISettings,
+    saveChatAISettings,
+    getStoredGuardianSettings,
+    saveGuardianSettings,
+    getStoredIntegrationsSettings,
+    saveIntegrationsSettings
+};

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.55.1 - Chat Guardian / AI / Settings / Verification Sweep
+
+### Chat / Guardian / Settings [codex]
+- **Chat UX** - виправлено visibility ключових Guardian stats, стабілізовано date divider і прибрано panel overlay collisions.
+- **Guardian** - digest, security log та analytics переведені під єдиний panel-state manager замість незалежних накладених surface-ів.
+- **Settings** - AI, integration та Guardian configuration винесено в окрему сторінку `/chat-settings`.
+- **AI Contract** - chat summary і Guardian використовують unified provider/key configuration із shared key source `crm_ai_default`.
+- **Verification** - додано UI/API guardrails для chat verification sweep і фіксації known gaps після deploy.
+
+---
+
 ## v0.55.0 - Tasks Taxonomy + Checklist Infrastructure
 
 ### Tasks / Operations [codex]

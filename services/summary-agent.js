@@ -7,11 +7,9 @@
 
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { callUnifiedChatCompletion } = require('./ai-config');
 
 const log = createLogger('SummaryAgent');
-
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const SUMMARY_MODEL = process.env.SUMMARY_MODEL || process.env.OPENROUTER_MODEL || 'google/gemma-2-9b-it:free';
 
 // Pricing per 1M tokens (USD) — update as models change
 const MODEL_PRICING = {
@@ -28,56 +26,45 @@ const MODEL_PRICING = {
  * Call OpenRouter API and track usage
  */
 async function callLLM(systemPrompt, userMessage, maxTokens, service) {
-    if (!OPENROUTER_API_KEY) {
-        log.warn('No OPENROUTER_API_KEY set — summary agent disabled');
-        return null;
-    }
-
     maxTokens = maxTokens || 1000;
     service = service || 'summary';
 
     try {
-        const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': 'Bearer ' + OPENROUTER_API_KEY,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://park-zp.railway.app',
-                'X-Title': 'Event Genix Summary Agent'
-            },
-            body: JSON.stringify({
-                model: SUMMARY_MODEL,
-                max_tokens: maxTokens,
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userMessage }
-                ]
-            })
+        const result = await callUnifiedChatCompletion({
+            scope: 'chat_ai',
+            title: 'Event Genix Summary Agent',
+            systemPrompt,
+            userMessage,
+            maxTokens
         });
 
-        if (!resp.ok) {
-            const errText = await resp.text();
-            log.error('OpenRouter error', { status: resp.status, body: errText });
+        if (!result.ok) {
+            log.warn('Summary AI unavailable', {
+                reason: result.reason,
+                provider: result.provider,
+                scope: result.scope,
+                status: result.status
+            });
             return null;
         }
 
-        const data = await resp.json();
-        const text = data.choices?.[0]?.message?.content?.trim() || null;
-
         // Track usage
-        const usage = data.usage || {};
+        const usage = result.usage || {};
         const promptTokens = usage.prompt_tokens || 0;
         const completionTokens = usage.completion_tokens || 0;
         const totalTokens = promptTokens + completionTokens;
 
-        const pricing = MODEL_PRICING[SUMMARY_MODEL] || MODEL_PRICING['default'];
+        const pricing = MODEL_PRICING[result.model] || MODEL_PRICING['default'];
         const costUsd = (promptTokens * pricing.input + completionTokens * pricing.output) / 1_000_000;
 
-        await trackUsage(service, SUMMARY_MODEL, promptTokens, completionTokens, totalTokens, costUsd, {});
+        await trackUsage(service, result.model, promptTokens, completionTokens, totalTokens, costUsd, {
+            provider: result.provider,
+            keySource: result.keySource
+        });
 
-        return { text, tokens: totalTokens, cost: costUsd, model: SUMMARY_MODEL };
+        return { text: result.text, tokens: totalTokens, cost: costUsd, model: result.model };
     } catch (err) {
-        log.error('OpenRouter call failed', err.message);
+        log.error('Summary AI call failed', err.message);
         return null;
     }
 }
@@ -149,7 +136,7 @@ async function summarizeChannel(channelId, hoursBack, requestedBy) {
     const userMsg = `Зроби резюме цієї розмови (${messages.length} повідомлень):\n\n${chatLog}`;
 
     const result = await callLLM(systemPrompt, userMsg, 1000, 'summary');
-    if (!result) return { summary: 'Помилка генерації резюме. OpenRouter недоступний.', tokens: 0, cost: 0 };
+    if (!result) return { summary: 'Помилка генерації резюме. AI provider недоступний або вимкнений у налаштуваннях.', tokens: 0, cost: 0 };
 
     // Save summary to DB
     try {

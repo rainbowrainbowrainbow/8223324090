@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.55.0",
+  "version": "0.55.1",
   "eventGenix": {
-    "releaseLabel": "Tasks Taxonomy + Checklist Infrastructure"
+    "releaseLabel": "Chat Guardian / AI / Settings / Verification Sweep"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

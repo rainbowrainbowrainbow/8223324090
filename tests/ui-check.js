@@ -215,6 +215,15 @@ checkPage('chat.html', (doc) => {
     const messages = doc.getElementById('chatMessages');
     check('Chat dialog state slot wraps messages area', !!messagesArea && !!dialogState && !!messages && messagesArea.contains(dialogState) && messagesArea.contains(messages));
     check('Chat dialog state sits before message list', !!dialogState && !!messages && dialogState.nextElementSibling?.id === 'chatMessages');
+    check('Chat header links to dedicated settings page', doc.getElementById('chatSettingsBtn')?.getAttribute('href') === '/chat-settings');
+    check('Guardian panels exist for managed replacement flow', !!doc.getElementById('guardianDigestPanel') && !!doc.getElementById('guardianLogPanel') && !!doc.getElementById('guardianAnalyticsPanel') && !!doc.getElementById('chatInfoPanel'));
+});
+
+checkPage('chat-settings.html', (doc) => {
+    check('Chat settings page exposes AI controls', !!doc.getElementById('chatAiEnabled') && !!doc.getElementById('chatAiProvider') && !!doc.getElementById('chatAiModel'));
+    check('Chat settings page exposes test connection', !!doc.getElementById('chatAiTestBtn'));
+    check('Chat settings page exposes integrations controls', !!doc.getElementById('chatIntegrationSummary') && !!doc.getElementById('chatIntegrationGuardian'));
+    check('Chat settings page exposes Guardian controls', !!doc.getElementById('guardianEnabled') && !!doc.getElementById('guardianProvider') && !!doc.getElementById('guardianModel'));
 });
 
 checkPage('tasks.html', (doc) => {
@@ -271,7 +280,7 @@ const criticalJS = [
     'js/designs-page.js', 'js/copilot-page.js',
     'js/dashboard-page.js', 'js/finance-page.js', 'js/analytics-page.js',
     'js/hr-page.js', 'js/staff-page.js', 'js/customers-page.js',
-    'js/tasks-page.js', 'js/leads-page.js', 'js/chat-page.js',
+    'js/tasks-page.js', 'js/leads-page.js', 'js/chat-page.js', 'js/chat-settings-page.js',
     'js/warehouse-page.js', 'js/reports-page.js',
     'js/booking.js', 'js/timeline.js', 'js/settings.js',
     'js/graduation.js', 'js/sound-page.js', 'js/guardian-ops-page.js',
@@ -309,7 +318,7 @@ check('No inline logoutBtn click handlers remain', inlineLogoutOwners.length ===
 
 // Check shared layout shell guardrails
 console.log('\nlayout shell guardrails');
-const fullAppShellPages = new Set(['chat.html', 'copilot.html', 'designer.html', 'index.html', 'omni.html', 'training.html']);
+const fullAppShellPages = new Set(['chat.html', 'chat-settings.html', 'copilot.html', 'designer.html', 'index.html', 'omni.html', 'training.html']);
 const shellPages = htmlFiles
     .map(file => {
         const html = fs.readFileSync(path.join(ROOT, file), 'utf8');
@@ -388,6 +397,10 @@ check('Chat transient panels close through shared outside/Escape handling', chat
 check('Chat bootstrap resolves initial dialog target canonically', chatPageCode.includes('function _resolveInitialChannelTarget') && chatPageCode.includes('function _getUrlChannelId') && chatPageCode.includes('window.__chatPendingOpenChannelId') && chatPageCode.includes('chatLastActiveChannelId') && !chatPageCode.includes('_selectChannel(_channels[0])'));
 check('Chat bootstrap renders visible dialog loading and empty states', chatHtml.includes('id="chatDialogState"') && chatPageCode.includes('function _showDialogLoadingState') && chatPageCode.includes('function _renderDialogEmptyState') && chatPageCode.includes('data-chat-dialog-retry') && chatCss.includes('.chat-dialog-state.visible') && chatCss.includes('@keyframes chatDialogSpin'));
 check('Chat selected dialog is persisted for token resume', chatPageCode.includes("localStorage.setItem(CHAT_LAST_ACTIVE_CHANNEL_KEY, String(channel.id))") && chatPageCode.includes('await _selectChannel(initialChannel)') && chatPageCode.includes('_rememberPendingDialogOpen(channel.id);'));
+check('Chat guardian/info panels use one panel-state manager', chatPageCode.includes('var _chatPanelState = { active: null }') && chatPageCode.includes('function _closeAllChatPanels') && chatPageCode.includes("_toggleChatPanel('guardianLog'") && chatPageCode.includes("_toggleChatPanel('digest'") && chatPageCode.includes("_toggleChatPanel('guardianAnalytics'"));
+check('Chat digest stats have readable tone classes', chatPageCode.includes('function _renderGuardianStat') && chatPageCode.includes('guardian-digest-stat--') && chatCss.includes('.guardian-digest-stat--danger') && chatCss.includes('.guardian-digest-stat--warning'));
+check('Chat date divider has dark readable badge', chatCss.includes('body.dark-mode .chat-date-divider span') && chatCss.includes('background: rgba(15,23,42,0.82)') && chatCss.includes('color: #E2E8F0'));
+check('Chat settings page has dedicated script and shared key source UI', chatCss.includes('.chat-settings-page') && fs.readFileSync(path.join(ROOT, 'js', 'chat-settings-page.js'), 'utf8').includes('/api/settings/chat/ai/test') && fs.readFileSync(path.join(ROOT, 'chat-settings.html'), 'utf8').includes('crm_ai_default'));
 check('Match-3 game-over CTAs use semantic visible action group', minigameCode.includes('function renderGameOverActions') && minigameCode.includes('class="go-actions"') && minigameCode.includes('game-btn-overlay-secondary') && !minigameCode.includes('style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px"'));
 check('Match-3 overlay secondary CTAs have mobile-visible styling', minigameCss.includes('.game-btn-overlay-secondary') && minigameCss.includes('.go-actions') && minigameCss.includes('grid-template-columns: 1fr 1fr') && minigameCss.includes('.go-action-primary'));
 check('Dashboard retires bulky low-signal widgets from the main surface', dashboardPageCode.includes('DASHBOARD_RETIRED_WIDGETS') && ['finance_today', 'reports_today', 'account_stats', 'week_bookings'].every(key => dashboardPageCode.includes(key)) && dashboardPageCode.includes('!DASHBOARD_RETIRED_WIDGETS.has'));

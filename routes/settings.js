@@ -9,6 +9,17 @@ const { logAdminAction } = require('../services/adminAudit');
 const { settingsCache } = require('../services/cache');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { getReleaseMetadata } = require('../services/release');
+const {
+    getChatSettingsBundle,
+    getUnifiedAIConfig,
+    publicAIConfig,
+    testUnifiedAIConfig,
+    saveChatAISettings,
+    getStoredIntegrationsSettings,
+    saveIntegrationsSettings,
+    getStoredGuardianSettings,
+    saveGuardianSettings
+} = require('../services/ai-config');
 
 const { requireRole, requireMinRole, authenticateToken } = require('../middleware/auth');
 const log = createLogger('Settings');
@@ -39,6 +50,136 @@ router.get('/health', async (req, res) => {
 
 // v39.8: Security — require authentication for remaining endpoints
 router.use(authenticateToken);
+
+const CHAT_SETTINGS_ROLES = ['creator', 'director', 'admin'];
+
+function auditChatSettings(req, target, details) {
+    logAdminAction('chat_settings_update', 'settings', {
+        username: req.user?.username,
+        target,
+        details,
+        ip: req.ip,
+        requestId: req.headers['x-request-id']
+    });
+}
+
+// v0.55.1: Dedicated chat/AI/integration/guardian settings surface.
+router.get('/settings/chat', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+    try {
+        res.json(await getChatSettingsBundle());
+    } catch (err) {
+        log.error('GET /settings/chat error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.put('/settings/chat', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+    try {
+        const body = req.body || {};
+        if (body.chatAi) await saveChatAISettings(body.chatAi);
+        if (body.integrations) await saveIntegrationsSettings(body.integrations);
+        if (body.guardian) await saveGuardianSettings(body.guardian);
+        auditChatSettings(req, 'chat_bundle', {
+            updated: Object.keys(body).filter(key => ['chatAi', 'integrations', 'guardian'].includes(key))
+        });
+        res.json(await getChatSettingsBundle());
+    } catch (err) {
+        log.error('PUT /settings/chat error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/settings/chat/ai', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+    try {
+        res.json(publicAIConfig(await getUnifiedAIConfig({ scope: 'chat_ai' })));
+    } catch (err) {
+        log.error('GET /settings/chat/ai error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.put('/settings/chat/ai', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+    try {
+        await saveChatAISettings(req.body || {});
+        auditChatSettings(req, 'chat_ai', {
+            provider: req.body?.provider,
+            model: req.body?.model,
+            enabled: req.body?.enabled !== false,
+            keySource: 'crm_ai_default'
+        });
+        res.json(publicAIConfig(await getUnifiedAIConfig({ scope: 'chat_ai' })));
+    } catch (err) {
+        log.error('PUT /settings/chat/ai error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/settings/chat/ai/test', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+    try {
+        const result = await testUnifiedAIConfig({
+            scope: 'chat_ai',
+            live: req.body?.live !== false
+        });
+        res.status(result.ok ? 200 : 503).json(result);
+    } catch (err) {
+        log.error('POST /settings/chat/ai/test error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/settings/chat/integrations', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+    try {
+        res.json(await getStoredIntegrationsSettings());
+    } catch (err) {
+        log.error('GET /settings/chat/integrations error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.put('/settings/chat/integrations', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+    try {
+        const settings = await saveIntegrationsSettings(req.body || {});
+        auditChatSettings(req, 'chat_integrations', settings);
+        res.json(settings);
+    } catch (err) {
+        log.error('PUT /settings/chat/integrations error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/settings/chat/guardian', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+    try {
+        const [settings, ai] = await Promise.all([
+            getStoredGuardianSettings(),
+            getUnifiedAIConfig({ scope: 'guardian_ai' })
+        ]);
+        res.json({ ...settings, ai: publicAIConfig(ai) });
+    } catch (err) {
+        log.error('GET /settings/chat/guardian error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.put('/settings/chat/guardian', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+    try {
+        const settings = await saveGuardianSettings(req.body || {});
+        auditChatSettings(req, 'guardian_ai', {
+            enabled: settings.enabled,
+            digestEnabled: settings.digestEnabled,
+            securityLogEnabled: settings.securityLogEnabled,
+            analyticsEnabled: settings.analyticsEnabled,
+            provider: settings.provider,
+            model: settings.model,
+            keySource: settings.keySource
+        });
+        const ai = await getUnifiedAIConfig({ scope: 'guardian_ai' });
+        res.json({ ...settings, ai: publicAIConfig(ai) });
+    } catch (err) {
+        log.error('PUT /settings/chat/guardian error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 router.get('/stats/:dateFrom/:dateTo', requireRole('creator', 'director'), async (req, res) => {
     try {
         const { dateFrom, dateTo } = req.params;

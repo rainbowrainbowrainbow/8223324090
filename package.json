@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.55.4",
+  "version": "0.55.5",
   "eventGenix": {
-    "releaseLabel": "Salary Schemes & Payroll Workspace"
+    "releaseLabel": "Зарплатні схеми, калькулятор і звіти"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

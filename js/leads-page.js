@@ -240,9 +240,48 @@ function getIdleColor(lead) {
     return 'idle-red';
 }
 
+function ensureKanbanSummarySlot(kanbanWrap) {
+    let layoutEl = document.getElementById('leadsKanbanLayout');
+    if (!layoutEl && kanbanWrap && kanbanWrap.parentNode) {
+        layoutEl = document.createElement('div');
+        layoutEl.id = 'leadsKanbanLayout';
+        layoutEl.className = 'leads-kanban-layout';
+        kanbanWrap.parentNode.insertBefore(layoutEl, kanbanWrap);
+        layoutEl.appendChild(kanbanWrap);
+    }
+
+    let slotEl = document.getElementById('kanbanSummarySlot');
+    if (!slotEl && layoutEl) {
+        slotEl = document.createElement('div');
+        slotEl.id = 'kanbanSummarySlot';
+        slotEl.className = 'kanban-summary-slot';
+        slotEl.style.display = 'none';
+        layoutEl.appendChild(slotEl);
+    }
+
+    let funnelEl = document.getElementById('kanbanFunnel');
+    if (!funnelEl && slotEl) {
+        funnelEl = document.createElement('div');
+        funnelEl.id = 'kanbanFunnel';
+        slotEl.appendChild(funnelEl);
+    } else if (funnelEl && slotEl && funnelEl.parentNode !== slotEl) {
+        slotEl.appendChild(funnelEl);
+    }
+
+    return { layoutEl, slotEl, funnelEl };
+}
+
+function getKanbanFunnelElements() {
+    return ensureKanbanSummarySlot(document.getElementById('kanbanView'));
+}
+
 function hideFunnelBar() {
-    const funnelEl = document.getElementById('kanbanFunnel');
-    if (funnelEl) funnelEl.style.display = 'none';
+    const { funnelEl, slotEl } = getKanbanFunnelElements();
+    if (funnelEl) {
+        funnelEl.innerHTML = '';
+        funnelEl.style.display = 'none';
+    }
+    if (slotEl) slotEl.style.display = 'none';
 }
 
 function todayKyiv(offsetDays = 0) {
@@ -982,15 +1021,12 @@ function renderKanban() {
         grouped[stage].push(l);
     }
 
-    // Render funnel bar above kanban
-    let funnelEl = document.getElementById('kanbanFunnel');
-    if (!funnelEl) {
-        funnelEl = document.createElement('div');
-        funnelEl.id = 'kanbanFunnel';
-        kanbanWrap.parentNode.insertBefore(funnelEl, kanbanWrap);
+    const { funnelEl, slotEl } = ensureKanbanSummarySlot(kanbanWrap);
+    if (funnelEl && slotEl) {
+        funnelEl.innerHTML = renderFunnelBar(grouped);
+        funnelEl.style.display = '';
+        slotEl.style.display = '';
     }
-    funnelEl.innerHTML = renderFunnelBar(grouped);
-    funnelEl.style.display = '';
 
     kanbanWrap.innerHTML = PIPELINE_STAGES.map(stage => {
         const leads = grouped[stage.key] || [];

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.54.1 - Leads Funnel Below Kanban (Клешня, 2026-05-17)
+
+### Ліди / Kanban Layout [codex]
+- **Ліди** - різнокольоровий funnel summary перенесено під kanban-дошку, щоб primary focus лишався на роботі з картками.
+- **Layout** - додано стабільний нижній summary-slot замість крихкої вставки funnel перед kanban.
+- **UX** - funnel-аналітика тепер працює як вторинний summary footer після дошки, а не як header-блок перед нею.
+
+---
+
 ## v0.54.0 - Sidebar AI-first full rethink
 
 ### Sidebar / Navigation IA [codex]

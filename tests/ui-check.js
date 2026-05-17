@@ -188,6 +188,8 @@ checkPage('leads.html', (doc, html) => {
     const leadShell = doc.querySelector('main#main-content.page-container');
     const leadsApp = doc.getElementById('leadsApp');
     const leadWorkspace = doc.getElementById('leadWorkspace');
+    const kanbanView = doc.getElementById('kanbanView');
+    const kanbanSummarySlot = doc.getElementById('kanbanSummarySlot');
     check('Leads explainability region exists', !!doc.getElementById('leadsExplainability'));
     check('Lead edit modal date input exists', leadDate?.type === 'date');
     check('Lead edit modal children input exists', leadChildren?.type === 'number');
@@ -199,6 +201,7 @@ checkPage('leads.html', (doc, html) => {
     check('Leads app wrapper does not own shell offset', !!leadsApp && !leadsApp.classList.contains('main-content'));
     check('Leads unified workspace shell exists', !!leadWorkspace && !!doc.getElementById('leadWorkspaceBody'));
     check('Leads unified workspace has close control', doc.getElementById('leadWorkspaceClose')?.type === 'button');
+    check('Leads kanban summary slot is a stable footer after kanban', !!kanbanView && !!kanbanSummarySlot && kanbanView.parentElement?.id === 'leadsKanbanLayout' && kanbanView.nextElementSibling?.id === 'kanbanSummarySlot' && kanbanSummarySlot.querySelector('#kanbanFunnel'));
     check('Lead modal grid allows narrow WebKit date inputs', html.includes('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)'));
     check('Lead modal controls can shrink inside grid columns', html.includes('min-width: 0; max-width: 100%'));
     check('Lead modal responsive row is scoped', html.includes('.lead-modal .form-row { grid-template-columns: 1fr; }'));
@@ -412,6 +415,7 @@ check('Lead workspace opens via query-driven endpoint', leadsCode.includes('getW
 check('Lead workspace uses canonical pipeline stage', leadsCode.includes('canonical: pipeline_stage') && leadsCode.includes('PIPELINE_STAGES.find'));
 check('Lead workspace links customer/task/omni context', leadsCode.includes('/customers?open=') && leadsCode.includes('/tasks?open=') && leadsCode.includes('/omni?search='));
 check('Lead customer linking uses searchable existing-customer dropdown', leadsCode.includes('leadCustomerSelect') && leadsCode.includes('apiSearchCustomers') && leadsCode.includes('submitLeadCustomerLinkExisting') && leadsCode.includes('submitLeadCustomerCreateNew'));
+check('Lead kanban funnel renders into footer summary slot', leadsCode.includes('ensureKanbanSummarySlot') && leadsCode.includes('kanbanSummarySlot') && leadsCode.includes('slotEl.appendChild(funnelEl)') && !leadsCode.includes('kanbanWrap.parentNode.insertBefore(funnelEl, kanbanWrap)'));
 
 const customersCode = fs.readFileSync(path.join(ROOT, 'js/customers-page.js'), 'utf8');
 const tasksCode = fs.readFileSync(path.join(ROOT, 'js/tasks-page.js'), 'utf8');

@@ -1998,3 +1998,88 @@ body.dark-mode .crm-assistant-rail .assistant-rail-btn {
         grid-template-columns: 1fr;
     }
 }
+
+/* v0.55.31: light theme completion for the shared topbar assistant shell. */
+body:not(.dark-mode) .header {
+    background: #f8fafc !important;
+    border-bottom: 1px solid rgba(15,23,42,0.08) !important;
+    box-shadow: 0 1px 0 rgba(15,23,42,0.04) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-top-status {
+    color: rgba(15,23,42,0.70) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-top-status strong {
+    color: rgba(15,23,42,0.76) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-rail-host {
+    background: linear-gradient(180deg, #f8fafc 0%, #eef6f4 100%) !important;
+    border-top: 1px solid rgba(15,23,42,0.06) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-rail-host .crm-assistant-rail,
+body:not(.dark-mode) .crm-assistant-rail {
+    background:
+        radial-gradient(240px 140px at 2% 48%, rgba(16,185,129,0.13), transparent 74%),
+        linear-gradient(180deg, rgba(255,255,255,0.96), rgba(241,245,249,0.90)) !important;
+    border-color: rgba(16,185,129,0.20) !important;
+    box-shadow: 0 14px 32px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.90) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-name {
+    color: #0f172a !important;
+}
+
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-state {
+    background: rgba(16,185,129,0.13) !important;
+    color: #047857 !important;
+}
+
+body:not(.dark-mode) .assistant-rail-engine {
+    color: rgba(71,85,105,0.46) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-subtitles,
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-subtitles.is-live-line {
+    color: #334155 !important;
+}
+
+body:not(.dark-mode) .assistant-rail-context-chip,
+body:not(.dark-mode) .assistant-rail-prompts button {
+    background: rgba(255,255,255,0.72) !important;
+    border-color: rgba(15,23,42,0.10) !important;
+    color: #334155 !important;
+}
+
+body:not(.dark-mode) .assistant-rail-context-chip strong {
+    color: #0f172a !important;
+}
+
+body:not(.dark-mode) .assistant-rail-inline-form {
+    background: rgba(255,255,255,0.78) !important;
+    border-color: rgba(15,23,42,0.10) !important;
+    color: #0f172a !important;
+}
+
+body:not(.dark-mode) .assistant-rail-inline-form input {
+    color: #0f172a !important;
+}
+
+body:not(.dark-mode) .assistant-rail-inline-form input::placeholder {
+    color: rgba(71,85,105,0.62) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-btn {
+    background: rgba(255,255,255,0.78) !important;
+    border-color: rgba(15,23,42,0.10) !important;
+    color: #334155 !important;
+}
+
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-btn:hover,
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-btn:focus-visible {
+    background: rgba(16,185,129,0.12) !important;
+    border-color: rgba(16,185,129,0.26) !important;
+    color: #047857 !important;
+}

@@ -4268,3 +4268,149 @@ body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-summary,
     --eg-claude-sidebar-w: min(82vw, 300px);
   }
 }
+
+/* v0.55.31: light theme sidebar completion + stable identity layout.
+   Health badges must not steal horizontal space from the profile name. */
+.sidebar-nav:not(.collapsed) .sidebar-identity-title-line,
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-title-line {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  align-items: start !important;
+  gap: 5px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-name,
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-name {
+  width: 100% !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+  hyphens: none !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-health,
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-health {
+  justify-self: start !important;
+  max-width: 100% !important;
+}
+
+body:not(.dark-mode) .sidebar-nav {
+  --sb-design-bg: #f7fbfa;
+  --sb-design-panel: #ffffff;
+  --sb-design-panel-2: #f3f8f7;
+  --sb-design-line: rgba(15,23,42,0.10);
+  --sb-design-line-2: rgba(15,23,42,0.14);
+  --sb-design-text: #0f172a;
+  --sb-design-text-2: #334155;
+  --sb-design-dim: rgba(51,65,85,0.72);
+  --sb-design-mute: rgba(71,85,105,0.58);
+  --sb-design-green: #059669;
+  --sb-design-red: #dc2626;
+  --sb-design-amber: #b45309;
+  background:
+    radial-gradient(220px 180px at 0% 0%, rgba(16,185,129,0.13), transparent 72%),
+    linear-gradient(180deg, #ffffff 0%, #f4faf8 58%, #eef6f4 100%) !important;
+  border-right-color: rgba(15,23,42,0.10) !important;
+  box-shadow: inset -1px 0 0 rgba(15,23,42,0.045), 12px 0 34px rgba(15,23,42,0.08) !important;
+}
+
+body:not(.dark-mode) .sidebar-brand {
+  border-bottom-color: rgba(15,23,42,0.08) !important;
+}
+
+body:not(.dark-mode) .sidebar-brand .em-logo-title {
+  color: #0f172a !important;
+}
+
+body:not(.dark-mode) .sidebar-brand .em-logo-sub {
+  color: #64748b !important;
+}
+
+body:not(.dark-mode) .sidebar-command-deck {
+  background:
+    radial-gradient(210px 150px at 0% 0%, rgba(16,185,129,0.12), transparent 70%),
+    linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.92)) !important;
+  border-color: rgba(15,23,42,0.10) !important;
+  box-shadow: 0 14px 28px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.90) !important;
+}
+
+body:not(.dark-mode) .sidebar-identity-card {
+  background:
+    radial-gradient(160px 90px at 0% 0%, rgba(16,185,129,0.12), transparent 74%),
+    linear-gradient(135deg, rgba(255,255,255,0.96), rgba(241,245,249,0.86)) !important;
+  border-color: rgba(15,23,42,0.08) !important;
+}
+
+body:not(.dark-mode) .sidebar-identity-name {
+  color: #0f172a !important;
+}
+
+body:not(.dark-mode) .sidebar-identity-role {
+  color: rgba(71,85,105,0.74) !important;
+}
+
+body:not(.dark-mode) .sidebar-identity-summary {
+  color: rgba(30,41,59,0.86) !important;
+}
+
+body:not(.dark-mode) .sidebar-identity-health {
+  background: rgba(239,68,68,0.10) !important;
+  border-color: rgba(239,68,68,0.20) !important;
+  color: #b91c1c !important;
+}
+
+body:not(.dark-mode) .sidebar-identity-health[data-tone="ok"],
+body:not(.dark-mode) .sidebar-identity-health[data-tone="ready"] {
+  background: rgba(16,185,129,0.12) !important;
+  border-color: rgba(16,185,129,0.22) !important;
+  color: #047857 !important;
+}
+
+body:not(.dark-mode) .focus-chip,
+body:not(.dark-mode) .sidebar-today-menu-btn,
+body:not(.dark-mode) .sidebar-design-extra-link,
+body:not(.dark-mode) .sidebar-links .nav-link {
+  background: rgba(255,255,255,0.76) !important;
+  border-color: rgba(15,23,42,0.09) !important;
+  color: #1e293b !important;
+}
+
+body:not(.dark-mode) .focus-chip:hover,
+body:not(.dark-mode) .sidebar-today-menu-btn:hover,
+body:not(.dark-mode) .sidebar-design-extra-link:hover,
+body:not(.dark-mode) .sidebar-links .nav-link:hover {
+  background: rgba(236,253,245,0.86) !important;
+  border-color: rgba(16,185,129,0.20) !important;
+}
+
+body:not(.dark-mode) .sidebar-today-menu-btn.active,
+body:not(.dark-mode) .sidebar-design-extra-link.active,
+body:not(.dark-mode) .sidebar-links .nav-link.active {
+  background: rgba(16,185,129,0.13) !important;
+  border-color: rgba(16,185,129,0.28) !important;
+  color: #064e3b !important;
+}
+
+body:not(.dark-mode) .sidebar-alert-hero {
+  background:
+    radial-gradient(180px 110px at 0% 0%, rgba(239,68,68,0.10), transparent 72%),
+    linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,247,247,0.86)) !important;
+  border-color: rgba(239,68,68,0.18) !important;
+  color: #111827 !important;
+}
+
+body:not(.dark-mode) .sidebar-alert-title {
+  color: #111827 !important;
+}
+
+body:not(.dark-mode) .sidebar-alert-meta,
+body:not(.dark-mode) .sidebar-design-extra-desc,
+body:not(.dark-mode) .nav-status,
+body:not(.dark-mode) .nav-subtitle {
+  color: rgba(71,85,105,0.76) !important;
+}
+
+body:not(.dark-mode) .sidebar-today-head,
+body:not(.dark-mode) .sidebar-design-extras-head,
+body:not(.dark-mode) .sidebar-group-label {
+  color: rgba(71,85,105,0.72) !important;
+}

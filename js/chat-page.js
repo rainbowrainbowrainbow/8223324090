@@ -26,6 +26,13 @@
     var _channelMembers = [];
     var _taskOwnerCandidates = null;
     var CHAT_LAST_ACTIVE_CHANNEL_KEY = 'chatLastActiveChannelId';
+    var _omniWorkspace = {
+        mode: 'inbox',
+        inboxFilter: 'all',
+        accountStatuses: null,
+        accountLoadedAt: null,
+        accountLoading: false
+    };
 
     // Emoji data (Telegram categories)
     var EMOJI_CATEGORIES = [
@@ -323,20 +330,14 @@
         }
         if (state) {
             state.className = 'chat-dialog-state visible empty';
-            state.innerHTML =
-                '<div class="chat-dialog-state-card">' +
-                    '<div class="chat-dialog-title">' + _esc(title) + '</div>' +
-                    '<div class="chat-dialog-hint">' + _esc(hint) + '</div>' +
-                    '<div class="chat-dialog-actions">' +
-                        '<button type="button" class="chat-state-btn" data-chat-dialog-retry>Оновити</button>' +
-                    '</div>' +
-                '</div>';
-            var retry = state.querySelector('[data-chat-dialog-retry]');
-            if (retry) {
-                retry.addEventListener('click', function () {
-                    _loadChannels();
-                });
-            }
+            state.innerHTML = _renderOmniStateCard({
+                tone: opts && opts.tone ? opts.tone : 'neutral',
+                kicker: opts && opts.kicker ? opts.kicker : 'Inbox',
+                title: title,
+                text: hint,
+                primary: opts && opts.primary ? opts.primary : { label: 'Оновити', action: 'refresh-channels' },
+                secondary: opts && opts.secondary ? opts.secondary : { label: 'Канали', action: 'open-channels' }
+            });
         }
         var headerName = document.getElementById('chatHeaderName');
         var headerDesc = document.getElementById('chatHeaderDesc');
@@ -355,6 +356,423 @@
             state.className = 'chat-dialog-state hidden';
             state.innerHTML = '';
         }
+    }
+
+    function _canManageOmniSetup() {
+        var role = String(window._chatUserRole || '').toLowerCase();
+        return Boolean(_isAdmin) || ['admin', 'creator', 'director', 'owner'].includes(role);
+    }
+
+    function _renderOmniStateCard(opts) {
+        opts = opts || {};
+        var tone = opts.tone || 'neutral';
+        var actions = '';
+        if (opts.primary) {
+            var retryAttr = opts.primary.action === 'refresh-channels' ? ' data-chat-dialog-retry' : '';
+            actions += '<button type="button" class="omni-primary-btn" data-omni-action="' + _esc(opts.primary.action || '') + '"' + retryAttr + '>' + _esc(opts.primary.label || '') + '</button>';
+        }
+        if (opts.secondary) {
+            actions += '<button type="button" class="omni-secondary-btn" data-omni-action="' + _esc(opts.secondary.action || '') + '">' + _esc(opts.secondary.label || '') + '</button>';
+        }
+        return '<div class="omni-state-card omni-state-card--' + _esc(tone) + '">' +
+            (opts.kicker ? '<div class="omni-state-card-kicker">' + _esc(opts.kicker) + '</div>' : '') +
+            '<div class="omni-state-card-title">' + _esc(opts.title || 'Стан не визначено') + '</div>' +
+            '<div class="omni-state-card-text">' + _esc(opts.text || '') + '</div>' +
+            (actions ? '<div class="omni-state-card-actions">' + actions + '</div>' : '') +
+        '</div>';
+    }
+
+    function _setOmniMode(mode, options) {
+        options = options || {};
+        mode = ['inbox', 'channels', 'health'].includes(mode) ? mode : 'inbox';
+        _omniWorkspace.mode = mode;
+        var layout = document.querySelector('.chat-layout');
+        if (layout) layout.setAttribute('data-omni-mode', mode);
+        document.querySelectorAll('[data-omni-mode-btn]').forEach(function (btn) {
+            var active = btn.dataset.omniModeBtn === mode;
+            btn.classList.toggle('active', active);
+            btn.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        if (mode !== 'inbox') {
+            if (_sidebar) _sidebar.classList.remove('open');
+            if (_overlay) _overlay.classList.remove('visible');
+        }
+        if (!options.skipRender) _renderOmniWorkspace(options);
+    }
+
+    function _renderOmniWorkspace(options) {
+        options = options || {};
+        if (_omniWorkspace.mode === 'channels') {
+            return _renderChannelSetupWorkspace(options);
+        }
+        if (_omniWorkspace.mode === 'health') {
+            return _renderHealthWorkspace(options);
+        }
+        _applyOmniInboxFilters();
+        return null;
+    }
+
+    function _omniProviderDefaults() {
+        return [
+            { channel: 'telegram', label: 'Telegram', providerKind: 'bot' },
+            { channel: 'viber', label: 'Viber', providerKind: 'messenger' },
+            { channel: 'sms', label: 'SMS', providerKind: 'sms' },
+            { channel: 'instagram', label: 'Instagram', providerKind: 'meta' },
+            { channel: 'facebook', label: 'Facebook', providerKind: 'meta' },
+            { channel: 'binotel', label: 'Binotel', providerKind: 'telephony' },
+            { channel: 'report_bot', label: 'Report Bot', providerKind: 'bot' }
+        ];
+    }
+
+    function _normalizeOmniAccounts(accounts) {
+        var byChannel = {};
+        (accounts || []).forEach(function (acc) {
+            var key = String(acc && acc.channel || '').toLowerCase();
+            if (key) byChannel[key] = acc;
+        });
+        return _omniProviderDefaults().map(function (def) {
+            var existing = byChannel[def.channel] || {};
+            return Object.assign({}, def, existing, {
+                label: existing.label || def.label,
+                providerKind: existing.providerKind || existing.provider_kind || def.providerKind
+            });
+        });
+    }
+
+    async function _fetchOmniAccounts(force) {
+        if (!force && _omniWorkspace.accountStatuses) return _omniWorkspace.accountStatuses;
+        _omniWorkspace.accountLoading = true;
+        try {
+            var resp = await fetch('/api/omni/accounts', { headers: _headers(false) });
+            if (resp.status === 401) {
+                localStorage.removeItem('pzp_token');
+                window.location.href = '/';
+                return [];
+            }
+            if (resp.status === 403) {
+                var forbidden = new Error('forbidden');
+                forbidden.code = 'forbidden';
+                throw forbidden;
+            }
+            if (!resp.ok) {
+                var err = await resp.json().catch(function () { return {}; });
+                throw new Error(err.error || 'Не вдалося отримати стан каналів');
+            }
+            var data = await resp.json();
+            var accounts = Array.isArray(data) ? data : (data.accounts || []);
+            _omniWorkspace.accountStatuses = _normalizeOmniAccounts(accounts);
+            _omniWorkspace.accountLoadedAt = new Date();
+            return _omniWorkspace.accountStatuses;
+        } finally {
+            _omniWorkspace.accountLoading = false;
+        }
+    }
+
+    function _mapChannelHealthState(raw) {
+        raw = raw || {};
+        var status = String(raw.status || raw.code || '').toLowerCase();
+        var warning = String(raw.warning || raw.lastErrorHuman || raw.last_error_human || raw.lastTestMessage || raw.last_test_message || raw.error || '').toLowerCase();
+        var connected = raw.connected === true || status === 'connected';
+        var sendCapable = raw.sendCapable !== false && raw.send_enabled !== false;
+        if (connected && status === 'connected' && sendCapable) {
+            return { tone: 'success', severity: 'stable', label: 'Підключено', text: 'Канал готовий до роботи з повідомленнями.' };
+        }
+        if (status === 'history_only' || raw.inboundOnly) {
+            return { tone: 'neutral', severity: 'stable', label: 'Тільки історія', text: 'Канал приймає події або історію, але не відправляє повідомлення з CRM.' };
+        }
+        if (status === 'limited' || status === 'webhook_missing') {
+            return { tone: 'warning', severity: 'attention', label: 'Потребує перевірки', text: 'Канал працює частково. Перевірте webhook або прийом подій.' };
+        }
+        if (status === 'token_expired' || /auth|token|unauthorized|forbidden|invalid/.test(warning)) {
+            return { tone: 'danger', severity: 'critical', label: 'Помилка авторизації', text: 'Потрібно оновити токен або повторно прив’язати акаунт.' };
+        }
+        if (status === 'misconfigured' || /not configured|missing|config/.test(warning)) {
+            return { tone: 'warning', severity: 'attention', label: 'Потрібна конфігурація', text: 'Налаштування каналу ще не завершено.' };
+        }
+        if (status === 'provider_unreachable' || /unreachable|timeout|network/.test(warning)) {
+            return { tone: 'danger', severity: 'critical', label: 'Тимчасово недоступно', text: 'Провайдер не відповів під час перевірки. Повторіть тест після перевірки кабінету.' };
+        }
+        if (!connected || status === 'disconnected') {
+            return { tone: 'warning', severity: 'attention', label: 'Потребує підключення', text: 'Акаунт не підключений. Повідомлення не надсилатимуться до завершення налаштування.' };
+        }
+        if (!sendCapable) {
+            return { tone: 'warning', severity: 'attention', label: 'Відправка заблокована', text: 'Канал видно в CRM, але відправка зараз недоступна.' };
+        }
+        return { tone: 'neutral', severity: 'attention', label: 'Потребує перевірки', text: 'Є нестандартний стан. Відкрийте деталі каналу або запустіть перевірку.' };
+    }
+
+    function _formatOmniDate(value) {
+        if (!value) return 'ще не перевірявся';
+        try {
+            return new Date(value).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        } catch (e) {
+            return 'ще не перевірявся';
+        }
+    }
+
+    function _renderOmniLoading(title) {
+        return '<div class="omni-workspace-loading">' +
+            '<div class="chat-dialog-spinner" aria-hidden="true"></div>' +
+            '<span>' + _esc(title || 'Оновлюємо workspace') + '</span>' +
+        '</div>';
+    }
+
+    function _renderOmniModeHeader(kicker, title, text, action) {
+        return '<div class="omni-mode-header">' +
+            '<div>' +
+                '<div class="omni-mode-kicker">' + _esc(kicker || '') + '</div>' +
+                '<h2>' + _esc(title || '') + '</h2>' +
+                '<p>' + _esc(text || '') + '</p>' +
+            '</div>' +
+            (action ? '<button type="button" class="omni-secondary-btn" data-omni-action="' + _esc(action.action) + '">' + _esc(action.label) + '</button>' : '') +
+        '</div>';
+    }
+
+    async function _renderChannelSetupWorkspace(options) {
+        options = options || {};
+        var root = document.getElementById('omniChannelsWorkspace');
+        if (!root) return;
+        if (!_canManageOmniSetup()) {
+            root.innerHTML = _renderOmniStateCard({
+                tone: 'warning',
+                kicker: 'Канали',
+                title: 'Канали керуються адміністратором',
+                text: 'Inbox доступний для роботи з діалогами. Підключення провайдерів і токени бачать тільки ролі, які можуть їх змінювати.',
+                primary: { label: 'Повернутись в Inbox', action: 'back-inbox' }
+            });
+            return;
+        }
+        root.innerHTML = _renderOmniLoading('Перевіряємо канали');
+        try {
+            var accounts = await _fetchOmniAccounts(options.force === true);
+            root.innerHTML =
+                _renderOmniModeHeader('Канали', 'Підключення каналів', 'Окрема робоча площина для Telegram, Viber, SMS, Meta і телефонії без шуму в inbox.', { label: 'Оновити стан', action: 'refresh-omni-health' }) +
+                '<div class="omni-channel-grid">' +
+                    accounts.map(function (account) {
+                        var state = _mapChannelHealthState(account);
+                        var rawDetails = account.warning || account.lastTestMessage || account.last_test_message || account.nextActionHint || '';
+                        return '<article class="omni-channel-card omni-channel-card--' + _esc(state.tone) + '">' +
+                            '<div class="omni-channel-card-head">' +
+                                '<div>' +
+                                    '<h3>' + _esc(account.label || account.channel || 'Канал') + '</h3>' +
+                                    '<p>' + _esc(account.providerKind || 'provider') + '</p>' +
+                                '</div>' +
+                                '<span class="omni-status-badge omni-status-badge--' + _esc(state.tone) + '">' + _esc(state.label) + '</span>' +
+                            '</div>' +
+                            '<p class="omni-channel-summary">' + _esc(state.text) + '</p>' +
+                            '<dl class="omni-channel-meta">' +
+                                '<div><dt>Відправка</dt><dd>' + (account.sendCapable === false ? 'Недоступна' : 'Доступна') + '</dd></div>' +
+                                '<div><dt>Остання перевірка</dt><dd>' + _esc(_formatOmniDate(account.lastCheckedAt || account.last_checked_at || account.lastTestAt || account.last_test_at)) + '</dd></div>' +
+                            '</dl>' +
+                            '<div class="omni-channel-actions">' +
+                                '<button type="button" class="omni-primary-btn" data-omni-action="open-settings">Підключити</button>' +
+                                '<button type="button" class="omni-secondary-btn" data-omni-action="refresh-omni-health">Перевірити</button>' +
+                            '</div>' +
+                            (rawDetails ? '<details class="omni-technical-details"><summary>Технічні деталі</summary><p>' + _esc(rawDetails) + '</p></details>' : '') +
+                        '</article>';
+                    }).join('') +
+                '</div>';
+        } catch (err) {
+            root.innerHTML = _renderOmniStateCard({
+                tone: err && err.code === 'forbidden' ? 'warning' : 'danger',
+                kicker: 'Канали',
+                title: err && err.code === 'forbidden' ? 'Недостатньо прав для налаштувань' : 'Не вдалося отримати стан каналів',
+                text: err && err.code === 'forbidden'
+                    ? 'Підключення каналів доступне адміністраторам, директорам або власнику CRM.'
+                    : (err && err.message ? err.message : 'Повторіть перевірку або відкрийте налаштування комунікацій.'),
+                primary: { label: 'Повернутись в Inbox', action: 'back-inbox' },
+                secondary: { label: 'Оновити', action: 'refresh-omni-health' }
+            });
+        }
+    }
+
+    async function _renderHealthWorkspace(options) {
+        options = options || {};
+        var root = document.getElementById('omniHealthWorkspace');
+        if (!root) return;
+        if (!_canManageOmniSetup()) {
+            root.innerHTML = _renderOmniStateCard({
+                tone: 'warning',
+                kicker: 'Стан',
+                title: 'Діагностика доступна адміністраторам',
+                text: 'Оператор бачить робочий inbox без сирих технічних помилок. Для проблем із каналами зверніться до адміністратора.',
+                primary: { label: 'Повернутись в Inbox', action: 'back-inbox' }
+            });
+            return;
+        }
+        root.innerHTML = _renderOmniLoading('Збираємо стан OmniClaw');
+        try {
+            var accounts = await _fetchOmniAccounts(options.force === true);
+            var mapped = accounts.map(function (account) {
+                return { account: account, state: _mapChannelHealthState(account) };
+            });
+            var critical = mapped.filter(function (x) { return x.state.severity === 'critical'; }).length;
+            var attention = mapped.filter(function (x) { return x.state.severity === 'attention'; }).length;
+            var stable = mapped.filter(function (x) { return x.state.severity === 'stable'; }).length;
+            var incidents = mapped.filter(function (x) { return x.state.tone !== 'success'; });
+            root.innerHTML =
+                _renderOmniModeHeader('Стан', 'Діагностика OmniClaw', 'Короткий health view для каналів, Guardian і службових контурів без змішування з переписками.', { label: 'Оновити', action: 'refresh-omni-health' }) +
+                '<section class="omni-health-hero">' +
+                    '<div class="omni-health-kpi omni-health-kpi--danger"><span class="omni-health-kpi-value">' + critical + '</span><span class="omni-health-kpi-label">Критичні</span></div>' +
+                    '<div class="omni-health-kpi omni-health-kpi--warning"><span class="omni-health-kpi-value">' + attention + '</span><span class="omni-health-kpi-label">Потребують уваги</span></div>' +
+                    '<div class="omni-health-kpi omni-health-kpi--success"><span class="omni-health-kpi-value">' + stable + '</span><span class="omni-health-kpi-label">Стабільні</span></div>' +
+                '</section>' +
+                '<section class="omni-health-list">' +
+                    (incidents.length ? incidents.map(function (item) {
+                        return '<article class="omni-health-incident omni-health-incident--' + _esc(item.state.tone) + '">' +
+                            '<div><b>' + _esc(item.account.label || item.account.channel || 'Канал') + '</b><p>' + _esc(item.state.text) + '</p></div>' +
+                            '<span class="omni-status-badge omni-status-badge--' + _esc(item.state.tone) + '">' + _esc(item.state.label) + '</span>' +
+                        '</article>';
+                    }).join('') : _renderOmniStateCard({
+                        tone: 'success',
+                        kicker: 'Стан',
+                        title: 'Критичних проблем не видно',
+                        text: 'Підключені канали не повідомляють про блокуючі стани.'
+                    })) +
+                '</section>' +
+                '<section class="omni-health-services">' +
+                    '<article><b>Guardian</b><span>' + (_isAdmin ? 'Адмінський журнал доступний у workspace.' : 'Працює у тихому режимі для операторів.') + '</span></article>' +
+                    '<article><b>AI summary</b><span>Резюме переміщено в меню More, щоб не перевантажувати runtime header.</span></article>' +
+                    '<article><b>Inbox bootstrap</b><span>channelId, останній активний канал і створення DM/каналу використовують існуючий open-dialog flow.</span></article>' +
+                '</section>';
+        } catch (err) {
+            root.innerHTML = _renderOmniStateCard({
+                tone: err && err.code === 'forbidden' ? 'warning' : 'danger',
+                kicker: 'Стан',
+                title: err && err.code === 'forbidden' ? 'Недостатньо прав для діагностики' : 'Не вдалося зібрати стан OmniClaw',
+                text: err && err.code === 'forbidden'
+                    ? 'Health workspace доступний адміністраторам, директорам або власнику CRM.'
+                    : (err && err.message ? err.message : 'Повторіть перевірку.'),
+                primary: { label: 'Повернутись в Inbox', action: 'back-inbox' },
+                secondary: { label: 'Оновити', action: 'refresh-omni-health' }
+            });
+        }
+    }
+
+    function _applyOmniInboxFilters() {
+        var q = '';
+        var search = document.getElementById('chatSearchInput');
+        if (search) q = search.value.toLowerCase().trim();
+        var activeFilter = _omniWorkspace.inboxFilter || 'all';
+        var visibleCount = 0;
+        document.querySelectorAll('.chat-channel-item').forEach(function (el) {
+            var text = el.textContent.toLowerCase();
+            var hasUnread = el.classList.contains('has-unread');
+            var matchesFilter = activeFilter === 'all' || (activeFilter === 'unread' && hasUnread) || (activeFilter === 'action' && hasUnread);
+            var visible = (!q || text.includes(q)) && matchesFilter;
+            el.style.display = visible ? '' : 'none';
+            if (visible) visibleCount++;
+        });
+        document.querySelectorAll('.chat-section-label').forEach(function (label) {
+            var node = label.nextElementSibling;
+            var hasVisible = false;
+            while (node && !node.classList.contains('chat-section-label')) {
+                if (node.classList.contains('chat-channel-item') && node.style.display !== 'none') {
+                    hasVisible = true;
+                    break;
+                }
+                node = node.nextElementSibling;
+            }
+            label.style.display = hasVisible ? '' : 'none';
+        });
+        var list = document.getElementById('chatChannelsList');
+        if (!list) return;
+        var empty = document.getElementById('chatChannelsFilterEmpty');
+        if (!empty) {
+            empty = document.createElement('div');
+            empty.id = 'chatChannelsFilterEmpty';
+            empty.className = 'omni-list-empty';
+            empty.textContent = 'За цим фільтром немає розмов.';
+            list.appendChild(empty);
+        }
+        empty.style.display = _channels.length && visibleCount === 0 ? 'block' : 'none';
+    }
+
+    function _handleOmniAction(action) {
+        if (!action) return;
+        if (action === 'new-dm') {
+            var dmBtn = document.getElementById('chatNewDm');
+            if (dmBtn) dmBtn.click();
+            return;
+        }
+        if (action === 'new-channel') {
+            var channelBtn = document.getElementById('chatNewChannel');
+            if (channelBtn) channelBtn.click();
+            return;
+        }
+        if (action === 'open-channels') return _setOmniMode('channels');
+        if (action === 'open-health') return _setOmniMode('health');
+        if (action === 'back-inbox') return _setOmniMode('inbox');
+        if (action === 'refresh-channels') return _loadChannels();
+        if (action === 'refresh-omni-health') {
+            _omniWorkspace.accountStatuses = null;
+            return _renderOmniWorkspace({ force: true });
+        }
+        if (action === 'open-settings') {
+            window.location.href = '/chat-settings';
+        }
+    }
+
+    function _initOmniWorkspaceUI() {
+        document.querySelectorAll('[data-omni-mode-btn]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                _setOmniMode(btn.dataset.omniModeBtn || 'inbox');
+            });
+        });
+        document.querySelectorAll('[data-omni-filter]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                _omniWorkspace.inboxFilter = btn.dataset.omniFilter || 'all';
+                document.querySelectorAll('[data-omni-filter]').forEach(function (other) {
+                    other.classList.toggle('active', other === btn);
+                });
+                _applyOmniInboxFilters();
+            });
+        });
+        document.addEventListener('click', function (event) {
+            var actionEl = event.target.closest('[data-omni-action]');
+            if (actionEl) {
+                event.preventDefault();
+                _handleOmniAction(actionEl.dataset.omniAction);
+            }
+        });
+        var moreBtn = document.getElementById('omniMoreBtn');
+        var moreMenu = document.getElementById('omniMoreMenu');
+        if (moreBtn && moreMenu) {
+            moreBtn.addEventListener('click', function (event) {
+                event.stopPropagation();
+                var isHidden = moreMenu.hasAttribute('hidden');
+                if (isHidden) {
+                    moreMenu.removeAttribute('hidden');
+                    moreBtn.setAttribute('aria-expanded', 'true');
+                } else {
+                    moreMenu.setAttribute('hidden', '');
+                    moreBtn.setAttribute('aria-expanded', 'false');
+                }
+            });
+            moreMenu.addEventListener('click', function (event) {
+                var btn = event.target.closest('[data-omni-more-action]');
+                if (!btn) return;
+                var map = {
+                    mute: 'chatMuteBtn',
+                    wallpaper: 'chatWallpaperBtn',
+                    summary: 'chatSummaryBtn',
+                    stats: 'chatStatsBtn',
+                    sound: 'soundToggleBtn',
+                    settings: 'chatSettingsBtn'
+                };
+                var target = document.getElementById(map[btn.dataset.omniMoreAction] || '');
+                if (target) target.click();
+                moreMenu.setAttribute('hidden', '');
+                moreBtn.setAttribute('aria-expanded', 'false');
+            });
+            document.addEventListener('click', function (event) {
+                if (!moreMenu.hasAttribute('hidden') && !event.target.closest('.omni-more-wrapper')) {
+                    moreMenu.setAttribute('hidden', '');
+                    moreBtn.setAttribute('aria-expanded', 'false');
+                }
+            });
+        }
+        _setOmniMode('inbox', { skipRender: true });
     }
 
     function _checkAuthAndInit() {
@@ -423,13 +841,11 @@
     var _searchInput = document.getElementById('chatSearchInput');
     if (_searchInput) {
         _searchInput.addEventListener('input', function () {
-            var q = this.value.toLowerCase().trim();
-            document.querySelectorAll('.chat-channel-item').forEach(function (el) {
-                var name = (el.querySelector('.chat-channel-name') || {}).textContent || '';
-                el.style.display = name.toLowerCase().includes(q) ? '' : 'none';
-            });
+            _applyOmniInboxFilters();
         });
     }
+
+    _initOmniWorkspaceUI();
 
     // Input handlers
     var _input = document.getElementById('chatInput');
@@ -3010,6 +3426,10 @@
             addSection('ОСОБИСТІ');
             dmChannels.forEach(function(ch, idx) { list.appendChild(_createChannelEl(ch, idx)); });
         }
+        if (!_channels.length) {
+            list.innerHTML = '<div class="omni-list-empty">Доступних розмов поки немає.</div>';
+        }
+        _applyOmniInboxFilters();
     }
 
     function _createChannelEl(ch, idx) {
@@ -3172,12 +3592,14 @@
         container.innerHTML = '';
 
         if (messages.length === 0) {
-            container.innerHTML =
-                '<div class="chat-empty">' +
-                    '<div class="chat-empty-icon"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>' +
-                    '<div class="chat-empty-title">Почніть спілкування!</div>' +
-                    '<div class="chat-empty-hint">Напишіть перше повідомлення у канал ' + _esc(_currentChannel ? _currentChannel.name : '') + '</div>' +
-                '</div>';
+            container.innerHTML = _renderOmniStateCard({
+                tone: 'neutral',
+                kicker: _currentChannel ? _currentChannel.name : 'Inbox',
+                title: 'Повідомлень ще немає',
+                text: 'Канал підключений до inbox. Напишіть перше повідомлення, щоб почати роботу.',
+                primary: { label: 'Оновити', action: 'refresh-channels' },
+                secondary: { label: 'Стан каналів', action: 'open-health' }
+            });
             return;
         }
 

@@ -7,16 +7,16 @@
     <title>Event Genix | Командний чат</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.55.9">
-    <link rel="stylesheet" href="css/layout.css?v=0.55.9">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.9">
-    <link rel="stylesheet" href="css/pages.css?v=0.55.9">
-    <link rel="stylesheet" href="css/modals.css?v=0.55.9">
-    <link rel="stylesheet" href="css/chat.css?v=0.55.9">
-    <link rel="stylesheet" href="css/agents.css?v=0.55.9">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.9">
-    <link rel="stylesheet" href="css/responsive.css?v=0.55.9">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.9">
+    <link rel="stylesheet" href="css/base.css?v=0.55.10">
+    <link rel="stylesheet" href="css/layout.css?v=0.55.10">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.10">
+    <link rel="stylesheet" href="css/pages.css?v=0.55.10">
+    <link rel="stylesheet" href="css/modals.css?v=0.55.10">
+    <link rel="stylesheet" href="css/chat.css?v=0.55.10">
+    <link rel="stylesheet" href="css/agents.css?v=0.55.10">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.10">
+    <link rel="stylesheet" href="css/responsive.css?v=0.55.10">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.10">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -86,12 +86,29 @@
         </header>
 
         <main class="main-content">
-            <div class="chat-layout">
+            <div class="chat-layout omni-workspace-shell" data-omni-mode="inbox">
+                <div class="omni-workspace-topbar">
+                    <div class="omni-workspace-brand">
+                        <div class="omni-workspace-title">OmniClaw</div>
+                        <div class="omni-workspace-subtitle">Комунікації, канали і стан інтеграцій</div>
+                    </div>
+                    <div class="omni-workspace-modes" role="tablist" aria-label="Режими OmniClaw">
+                        <button type="button" class="omni-mode-btn active" data-omni-mode-btn="inbox" role="tab" aria-selected="true">Inbox</button>
+                        <button type="button" class="omni-mode-btn" data-omni-mode-btn="channels" role="tab" aria-selected="false">Канали</button>
+                        <button type="button" class="omni-mode-btn" data-omni-mode-btn="health" role="tab" aria-selected="false">Стан</button>
+                    </div>
+                    <div class="omni-workspace-actions">
+                        <a href="/chat-settings" class="omni-topbar-btn" id="omniOpenSettingsBtn" data-page-access="/chat-settings">Налаштування</a>
+                    </div>
+                </div>
                 <!-- Chat channels sidebar -->
                 <div class="chat-sidebar" id="chatSidebar">
                     <div class="chat-sidebar-header">
                         <div class="chat-sidebar-top">
-                            <h2 class="chat-sidebar-title">Канали</h2>
+                            <div>
+                                <h2 class="chat-sidebar-title">Комунікації</h2>
+                                <p class="omni-sidebar-subtitle">Робочі діалоги та канали</p>
+                            </div>
                             <div class="chat-sidebar-top-actions">
                                 <button type="button" class="chat-sidebar-action-btn" id="chatNewDm" title="Особисте повідомлення">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -103,7 +120,12 @@
                         </div>
                         <div class="chat-search">
                             <svg class="chat-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                            <input type="text" class="chat-search-input" id="chatSearchInput" aria-label="Пошук каналів..." placeholder="Пошук каналів...">
+                            <input type="text" class="chat-search-input" id="chatSearchInput" aria-label="Пошук розмов..." placeholder="Пошук розмов...">
+                        </div>
+                        <div class="omni-filter-strip" role="group" aria-label="Фільтри inbox">
+                            <button type="button" class="omni-filter-chip active" data-omni-filter="all">Усі</button>
+                            <button type="button" class="omni-filter-chip" data-omni-filter="unread">Непрочитані</button>
+                            <button type="button" class="omni-filter-chip" data-omni-filter="action">Потрібна дія</button>
                         </div>
                     </div>
                     <div class="chat-channels-list" id="chatChannelsList"></div>
@@ -174,6 +196,8 @@
 
                 <!-- Chat main area -->
                 <div class="chat-main">
+                    <section class="omni-mode-panel omni-mode-panel--channels" id="omniChannelsWorkspace" aria-live="polite"></section>
+                    <section class="omni-mode-panel omni-mode-panel--health" id="omniHealthWorkspace" aria-live="polite"></section>
                     <div class="chat-header">
                         <button type="button" class="chat-header-toggle" id="chatToggleSidebar">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -189,19 +213,19 @@
                             <button type="button" class="chat-header-action-btn" id="chatPinBtn" title="Закріплені повідомлення">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2L12 12"/><path d="M18 8L18 12C18 15.31 15.31 18 12 18C8.69 18 6 15.31 6 12L6 8"/><path d="M12 18L12 22"/></svg>
                             </button>
-                            <button type="button" class="chat-header-action-btn" id="chatMuteBtn" title="Сповіщення каналу">
+                            <button type="button" class="chat-header-action-btn omni-secondary-runtime-action" id="chatMuteBtn" title="Сповіщення каналу">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                             </button>
-                            <button type="button" class="chat-header-action-btn" id="chatWallpaperBtn" title="Фон чату">
+                            <button type="button" class="chat-header-action-btn omni-secondary-runtime-action" id="chatWallpaperBtn" title="Фон чату">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
                             </button>
-                            <button type="button" class="chat-header-action-btn" id="chatSummaryBtn" title="Резюме розмови (AI)">
+                            <button type="button" class="chat-header-action-btn omni-secondary-runtime-action" id="chatSummaryBtn" title="Резюме розмови (AI)">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                             </button>
-                            <button type="button" class="chat-header-action-btn" id="chatStatsBtn" title="Статистика чату">
+                            <button type="button" class="chat-header-action-btn omni-secondary-runtime-action" id="chatStatsBtn" title="Статистика чату">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/></svg>
                             </button>
-                            <a class="chat-header-action-btn" id="chatSettingsBtn" href="/chat-settings" data-page-access="/chat-settings" title="Налаштування чату">
+                            <a class="chat-header-action-btn omni-secondary-runtime-action" id="chatSettingsBtn" href="/chat-settings" data-page-access="/chat-settings" title="Налаштування чату">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6l-.09.09a2 2 0 1 1-3.82 0L10 20a1.65 1.65 0 0 0-1-.6 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1l-.09-.09a2 2 0 1 1 0-3.82L4 10a1.65 1.65 0 0 0 .6-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6l.09-.09a2 2 0 1 1 3.82 0L14 4a1.65 1.65 0 0 0 1 .6 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.37.34.7.6 1l.09.09a2 2 0 1 1 0 3.82L20 14c-.26.3-.46.63-.6 1z"/></svg>
                             </a>
                             <button type="button" class="chat-header-action-btn" id="chatInfoBtn" title="Учасники каналу">
@@ -209,7 +233,7 @@
                             </button>
                             <!-- Sound settings toggle v28.0.0 -->
                             <div class="chat-sound-wrapper" style="position:relative">
-                                <button type="button" class="chat-header-action-btn chat-sound-toggle" id="soundToggleBtn" title="Звукові сповіщення">
+                                <button type="button" class="chat-header-action-btn chat-sound-toggle omni-secondary-runtime-action" id="soundToggleBtn" title="Звукові сповіщення">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
                                 </button>
                                 <div class="sound-settings-panel hidden" id="soundSettingsPanel">
@@ -234,6 +258,19 @@
                                         </select>
                                     </div>
                                     <button type="button" id="soundTestBtn" class="sound-test-btn">▶ Тест</button>
+                                </div>
+                            </div>
+                            <div class="omni-more-wrapper">
+                                <button type="button" class="chat-header-action-btn" id="omniMoreBtn" aria-expanded="false" aria-controls="omniMoreMenu" title="Ще">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+                                </button>
+                                <div class="omni-more-menu" id="omniMoreMenu" hidden>
+                                    <button type="button" data-omni-more-action="mute">Сповіщення</button>
+                                    <button type="button" data-omni-more-action="wallpaper">Фон чату</button>
+                                    <button type="button" data-omni-more-action="summary">AI резюме</button>
+                                    <button type="button" data-omni-more-action="stats">Статистика</button>
+                                    <button type="button" data-omni-more-action="sound">Звуки</button>
+                                    <button type="button" data-omni-more-action="settings">Налаштування</button>
                                 </div>
                             </div>
                         </div>
@@ -397,12 +434,14 @@
                     <div class="chat-messages-area" id="chatMessagesArea">
                         <div id="chatDialogState" class="chat-dialog-state hidden"></div>
                         <div class="chat-messages" id="chatMessages">
-                            <div class="chat-empty">
-                            <div class="chat-empty-icon">
-                                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                            </div>
-                            <div class="chat-empty-title">Командний чат</div>
-                            <div class="chat-empty-hint">Оберіть канал зліва, щоб почати спілкування з командою</div>
+                            <div class="omni-state-card omni-state-card--neutral">
+                                <div class="omni-state-card-kicker">Inbox</div>
+                                <div class="omni-state-card-title">Оберіть розмову</div>
+                                <div class="omni-state-card-text">Відкрийте діалог зліва або створіть новий DM чи канал для команди.</div>
+                                <div class="omni-state-card-actions">
+                                    <button type="button" class="omni-primary-btn" data-omni-action="new-dm">Новий DM</button>
+                                    <button type="button" class="omni-secondary-btn" data-omni-action="new-channel">Новий канал</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -675,17 +714,17 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.55.9"></script>
-    <script src="js/notification.js?v=0.55.9"></script>
-    <script src="js/api.js?v=0.55.9"></script>
-    <script src="js/auth.js?v=0.55.9"></script>
-    <script src="js/components/sidebar.js?v=0.55.9"></script>
+    <script src="js/config.js?v=0.55.10"></script>
+    <script src="js/notification.js?v=0.55.10"></script>
+    <script src="js/api.js?v=0.55.10"></script>
+    <script src="js/auth.js?v=0.55.10"></script>
+    <script src="js/components/sidebar.js?v=0.55.10"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.55.9"></script>
-    <script src="js/sound-engine.js?v=0.55.9"></script>
-    <script src="js/chat-page.js?v=0.55.9"></script>
-    <script src="js/ui.js?v=0.55.9"></script>
-    <script src="js/agents-panel.js?v=0.55.9"></script><script>
+    <script src="js/ws.js?v=0.55.10"></script>
+    <script src="js/sound-engine.js?v=0.55.10"></script>
+    <script src="js/chat-page.js?v=0.55.10"></script>
+    <script src="js/ui.js?v=0.55.10"></script>
+    <script src="js/agents-panel.js?v=0.55.10"></script><script>
     // Sound Settings Panel — v28.0.0
     (function () {
         'use strict';
@@ -749,6 +788,6 @@
         }
     })();
     </script>
-    <script src="js/alerts.js?v=0.55.9"></script>
+    <script src="js/alerts.js?v=0.55.10"></script>
 </body>
 </html>

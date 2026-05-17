@@ -4,6 +4,17 @@
 
 ---
 
+## v0.55.10 - OmniClaw: Inbox, канали і стан
+
+### OmniClaw / Communications [codex]
+- **OmniClaw** - сторінку чату перезібрано в workspace з режимами `Inbox`, `Канали` і `Стан`, щоб переписки, підключення каналів і діагностика не змішувались в одну площину.
+- **Inbox UX** - runtime header спрощено до core actions і меню `More`, додано фільтри розмов та actionable empty states для порожніх або недоступних діалогів.
+- **Channels / Health** - стани Telegram, Viber, SMS, Meta і телефонії мапляться у human-readable cards з CTA замість сирих provider-помилок.
+- **Dark Theme** - додано читабельний surface contract для OmniClaw topbar, status cards, channel cards, health KPI і меню у темному режимі.
+- **Deploy** - версійні маркери, cache-bust теги, changelog і `/api/version` піднято на `v0.55.10` для production smoke.
+
+---
+
 ## v0.55.9 - Рахунки: системний checkbox у модалці
 
 ### Finance UI / Release [codex]

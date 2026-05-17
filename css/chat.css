@@ -8515,6 +8515,720 @@ body.dark-mode .guardian-digest-generate-btn {
 }
 
 /* ==========================================
+   OMNICLAW WORKSPACE REBUILD
+   ========================================== */
+.chat-layout.omni-workspace-shell {
+    display: grid;
+    grid-template-columns: var(--chat-sidebar-width) minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
+    background: #EEF4F7;
+}
+
+.omni-workspace-topbar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 66px;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(148,163,184,0.18);
+    background: rgba(255,255,255,0.94);
+    box-shadow: 0 10px 26px rgba(15,23,42,0.05);
+    z-index: 5;
+}
+
+.omni-workspace-brand {
+    min-width: 0;
+}
+
+.omni-workspace-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    font-weight: 800;
+    color: #0F172A;
+}
+
+.omni-workspace-subtitle,
+.omni-sidebar-subtitle {
+    margin: 2px 0 0;
+    color: #64748B;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.omni-workspace-modes {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px;
+    border: 1px solid rgba(148,163,184,0.18);
+    border-radius: 14px;
+    background: rgba(15,23,42,0.04);
+}
+
+.omni-mode-btn {
+    min-height: 38px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: #475569;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.omni-mode-btn:hover {
+    background: rgba(16,185,129,0.08);
+    color: #047857;
+}
+
+.omni-mode-btn.active {
+    background: #0F172A;
+    color: #F8FAFC;
+    box-shadow: 0 10px 22px rgba(15,23,42,0.18);
+}
+
+.omni-topbar-btn,
+.omni-primary-btn,
+.omni-secondary-btn {
+    min-height: 36px;
+    border-radius: 10px;
+    border: 1px solid rgba(148,163,184,0.18);
+    padding: 0 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-weight: 800;
+    font-size: 13px;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.omni-topbar-btn,
+.omni-secondary-btn {
+    background: rgba(255,255,255,0.86);
+    color: #334155;
+}
+
+.omni-primary-btn {
+    background: linear-gradient(135deg, #10B981, #059669);
+    border-color: rgba(16,185,129,0.28);
+    color: #fff;
+}
+
+.omni-topbar-btn:hover,
+.omni-secondary-btn:hover {
+    background: rgba(16,185,129,0.08);
+    border-color: rgba(16,185,129,0.26);
+    color: #047857;
+}
+
+.omni-primary-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 22px rgba(16,185,129,0.18);
+}
+
+.chat-layout.omni-workspace-shell .chat-sidebar,
+.chat-layout.omni-workspace-shell .chat-main,
+.chat-layout.omni-workspace-shell .chat-info-panel {
+    grid-row: 2;
+    min-height: 0;
+}
+
+.chat-layout.omni-workspace-shell .chat-sidebar {
+    grid-column: 1;
+}
+
+.chat-layout.omni-workspace-shell .chat-main {
+    grid-column: 2;
+}
+
+.chat-layout.omni-workspace-shell .chat-info-panel {
+    grid-column: 3;
+}
+
+.omni-filter-strip {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.omni-filter-strip::-webkit-scrollbar {
+    display: none;
+}
+
+.omni-filter-chip {
+    min-height: 30px;
+    flex: 0 0 auto;
+    border: 1px solid rgba(148,163,184,0.20);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.76);
+    color: #64748B;
+    padding: 0 10px;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.omni-filter-chip.active,
+.omni-filter-chip:hover {
+    border-color: rgba(16,185,129,0.28);
+    background: rgba(16,185,129,0.10);
+    color: #047857;
+}
+
+.chat-sidebar-footer .chat-theme-toggle,
+.chat-sidebar-footer .chat-theme-settings,
+.chat-sidebar-footer .chat-my-info,
+.chat-sidebar-footer #chatWallpaperPicker {
+    display: none !important;
+}
+
+.omni-secondary-runtime-action {
+    display: none !important;
+}
+
+.omni-more-wrapper {
+    position: relative;
+}
+
+.omni-more-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    width: 190px;
+    padding: 6px;
+    border: 1px solid rgba(148,163,184,0.20);
+    border-radius: 14px;
+    background: rgba(255,255,255,0.98);
+    box-shadow: 0 18px 42px rgba(15,23,42,0.16);
+    z-index: 40;
+}
+
+.omni-more-menu[hidden] {
+    display: none;
+}
+
+.omni-more-menu button {
+    width: 100%;
+    min-height: 34px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: #334155;
+    font-weight: 700;
+    text-align: left;
+    padding: 0 10px;
+    cursor: pointer;
+}
+
+.omni-more-menu button:hover {
+    background: rgba(16,185,129,0.08);
+    color: #047857;
+}
+
+.omni-mode-panel {
+    display: none;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 20px;
+    background: #F8FAFC;
+}
+
+.chat-layout[data-omni-mode="channels"] .chat-sidebar,
+.chat-layout[data-omni-mode="channels"] .chat-sidebar-overlay,
+.chat-layout[data-omni-mode="channels"] .chat-header,
+.chat-layout[data-omni-mode="channels"] .chat-search-bar,
+.chat-layout[data-omni-mode="channels"] .guardian-watch-bar,
+.chat-layout[data-omni-mode="channels"] .guardian-digest-panel,
+.chat-layout[data-omni-mode="channels"] .guardian-log-panel,
+.chat-layout[data-omni-mode="channels"] .guardian-analytics-panel,
+.chat-layout[data-omni-mode="channels"] .chat-messages-area,
+.chat-layout[data-omni-mode="channels"] .chat-scroll-bottom,
+.chat-layout[data-omni-mode="channels"] .chat-typing,
+.chat-layout[data-omni-mode="channels"] .chat-input-area,
+.chat-layout[data-omni-mode="channels"] .chat-info-panel,
+.chat-layout[data-omni-mode="health"] .chat-sidebar,
+.chat-layout[data-omni-mode="health"] .chat-sidebar-overlay,
+.chat-layout[data-omni-mode="health"] .chat-header,
+.chat-layout[data-omni-mode="health"] .chat-search-bar,
+.chat-layout[data-omni-mode="health"] .guardian-watch-bar,
+.chat-layout[data-omni-mode="health"] .guardian-digest-panel,
+.chat-layout[data-omni-mode="health"] .guardian-log-panel,
+.chat-layout[data-omni-mode="health"] .guardian-analytics-panel,
+.chat-layout[data-omni-mode="health"] .chat-messages-area,
+.chat-layout[data-omni-mode="health"] .chat-scroll-bottom,
+.chat-layout[data-omni-mode="health"] .chat-typing,
+.chat-layout[data-omni-mode="health"] .chat-input-area,
+.chat-layout[data-omni-mode="health"] .chat-info-panel {
+    display: none !important;
+}
+
+.chat-layout[data-omni-mode="channels"] .chat-main,
+.chat-layout[data-omni-mode="health"] .chat-main {
+    grid-column: 1 / -1;
+}
+
+.chat-layout[data-omni-mode="channels"] .omni-mode-panel--channels,
+.chat-layout[data-omni-mode="health"] .omni-mode-panel--health {
+    display: block;
+}
+
+.omni-mode-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.omni-mode-kicker,
+.omni-state-card-kicker {
+    color: #059669;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.omni-mode-header h2 {
+    margin: 4px 0 6px;
+    color: #0F172A;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 24px;
+}
+
+.omni-mode-header p {
+    margin: 0;
+    max-width: 720px;
+    color: #64748B;
+    line-height: 1.5;
+}
+
+.omni-channel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+}
+
+.omni-channel-card,
+.omni-state-card,
+.omni-health-kpi,
+.omni-health-incident,
+.omni-health-services article {
+    border: 1px solid rgba(148,163,184,0.18);
+    border-radius: 16px;
+    background: rgba(255,255,255,0.94);
+    box-shadow: 0 12px 28px rgba(15,23,42,0.06);
+}
+
+.omni-channel-card {
+    padding: 16px;
+}
+
+.omni-channel-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.omni-channel-card h3 {
+    margin: 0;
+    color: #0F172A;
+    font-size: 17px;
+}
+
+.omni-channel-card-head p,
+.omni-channel-summary,
+.omni-state-card-text,
+.omni-health-incident p,
+.omni-health-services span {
+    color: #64748B;
+    line-height: 1.5;
+}
+
+.omni-channel-card-head p,
+.omni-channel-summary {
+    margin: 3px 0 0;
+    font-size: 13px;
+}
+
+.omni-status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.omni-status-badge--success {
+    background: rgba(16,185,129,0.12);
+    color: #047857;
+}
+
+.omni-status-badge--warning,
+.omni-status-badge--neutral {
+    background: rgba(245,158,11,0.14);
+    color: #B45309;
+}
+
+.omni-status-badge--danger {
+    background: rgba(239,68,68,0.12);
+    color: #DC2626;
+}
+
+.omni-channel-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 14px 0;
+}
+
+.omni-channel-meta div {
+    padding: 10px;
+    border-radius: 12px;
+    background: rgba(241,245,249,0.82);
+}
+
+.omni-channel-meta dt {
+    color: #94A3B8;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.omni-channel-meta dd {
+    margin: 3px 0 0;
+    color: #0F172A;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.omni-channel-actions,
+.omni-state-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.omni-technical-details {
+    margin-top: 12px;
+    color: #64748B;
+    font-size: 12px;
+}
+
+.omni-technical-details summary {
+    cursor: pointer;
+    font-weight: 800;
+}
+
+.omni-state-card {
+    max-width: 520px;
+    margin: auto;
+    padding: 22px;
+    text-align: left;
+}
+
+.omni-state-card-title {
+    margin-top: 5px;
+    color: #0F172A;
+    font-size: 22px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 800;
+}
+
+.omni-state-card-text {
+    margin-top: 8px;
+}
+
+.omni-workspace-loading {
+    min-height: 220px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: #64748B;
+    font-weight: 800;
+}
+
+.omni-list-empty {
+    margin: 10px 8px;
+    padding: 14px;
+    border: 1px dashed rgba(148,163,184,0.26);
+    border-radius: 12px;
+    color: #64748B;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.omni-health-hero {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 14px;
+}
+
+.omni-health-kpi {
+    padding: 16px;
+}
+
+.omni-health-kpi-value {
+    display: block;
+    color: #0F172A;
+    font-size: 34px;
+    font-weight: 900;
+}
+
+.omni-health-kpi-label {
+    color: #64748B;
+    font-weight: 800;
+}
+
+.omni-health-kpi--danger {
+    border-color: rgba(239,68,68,0.20);
+}
+
+.omni-health-kpi--warning {
+    border-color: rgba(245,158,11,0.24);
+}
+
+.omni-health-kpi--success {
+    border-color: rgba(16,185,129,0.22);
+}
+
+.omni-health-list {
+    display: grid;
+    gap: 10px;
+}
+
+.omni-health-incident {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 14px;
+}
+
+.omni-health-incident b {
+    color: #0F172A;
+}
+
+.omni-health-incident p {
+    margin: 4px 0 0;
+}
+
+.omni-health-services {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 14px;
+}
+
+.omni-health-services article {
+    padding: 14px;
+    display: grid;
+    gap: 5px;
+}
+
+.omni-health-services b {
+    color: #0F172A;
+}
+
+body.dark-mode .omni-workspace-topbar,
+[data-theme="dark"] .omni-workspace-topbar {
+    background: rgba(15,23,42,0.94);
+    border-bottom-color: rgba(148,163,184,0.14);
+    box-shadow: 0 16px 34px rgba(2,6,23,0.34);
+}
+
+body.dark-mode .omni-workspace-title,
+body.dark-mode .omni-mode-header h2,
+body.dark-mode .omni-channel-card h3,
+body.dark-mode .omni-channel-meta dd,
+body.dark-mode .omni-state-card-title,
+body.dark-mode .omni-health-kpi-value,
+body.dark-mode .omni-health-incident b,
+body.dark-mode .omni-health-services b,
+[data-theme="dark"] .omni-workspace-title,
+[data-theme="dark"] .omni-mode-header h2,
+[data-theme="dark"] .omni-channel-card h3,
+[data-theme="dark"] .omni-channel-meta dd,
+[data-theme="dark"] .omni-state-card-title,
+[data-theme="dark"] .omni-health-kpi-value,
+[data-theme="dark"] .omni-health-incident b,
+[data-theme="dark"] .omni-health-services b {
+    color: #F8FAFC;
+}
+
+body.dark-mode .omni-workspace-subtitle,
+body.dark-mode .omni-sidebar-subtitle,
+body.dark-mode .omni-mode-header p,
+body.dark-mode .omni-channel-card-head p,
+body.dark-mode .omni-channel-summary,
+body.dark-mode .omni-state-card-text,
+body.dark-mode .omni-health-incident p,
+body.dark-mode .omni-health-services span,
+body.dark-mode .omni-health-kpi-label,
+body.dark-mode .omni-list-empty,
+[data-theme="dark"] .omni-workspace-subtitle,
+[data-theme="dark"] .omni-sidebar-subtitle,
+[data-theme="dark"] .omni-mode-header p,
+[data-theme="dark"] .omni-channel-card-head p,
+[data-theme="dark"] .omni-channel-summary,
+[data-theme="dark"] .omni-state-card-text,
+[data-theme="dark"] .omni-health-incident p,
+[data-theme="dark"] .omni-health-services span,
+[data-theme="dark"] .omni-health-kpi-label,
+[data-theme="dark"] .omni-list-empty {
+    color: #CBD5E1;
+}
+
+body.dark-mode .omni-workspace-modes,
+[data-theme="dark"] .omni-workspace-modes {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(148,163,184,0.14);
+}
+
+body.dark-mode .omni-mode-btn,
+[data-theme="dark"] .omni-mode-btn {
+    color: #CBD5E1;
+}
+
+body.dark-mode .omni-mode-btn.active,
+[data-theme="dark"] .omni-mode-btn.active {
+    background: rgba(99,102,241,0.28);
+    color: #F8FAFC;
+    box-shadow: 0 12px 28px rgba(99,102,241,0.18);
+}
+
+body.dark-mode .omni-topbar-btn,
+body.dark-mode .omni-secondary-btn,
+body.dark-mode .omni-more-menu,
+body.dark-mode .omni-filter-chip,
+[data-theme="dark"] .omni-topbar-btn,
+[data-theme="dark"] .omni-secondary-btn,
+[data-theme="dark"] .omni-more-menu,
+[data-theme="dark"] .omni-filter-chip {
+    background: rgba(30,41,59,0.88);
+    border-color: rgba(148,163,184,0.16);
+    color: #E2E8F0;
+}
+
+body.dark-mode .omni-mode-panel,
+[data-theme="dark"] .omni-mode-panel {
+    background: #0B1220;
+}
+
+body.dark-mode .omni-channel-card,
+body.dark-mode .omni-state-card,
+body.dark-mode .omni-health-kpi,
+body.dark-mode .omni-health-incident,
+body.dark-mode .omni-health-services article,
+[data-theme="dark"] .omni-channel-card,
+[data-theme="dark"] .omni-state-card,
+[data-theme="dark"] .omni-health-kpi,
+[data-theme="dark"] .omni-health-incident,
+[data-theme="dark"] .omni-health-services article {
+    background: rgba(15,23,42,0.86);
+    border-color: rgba(148,163,184,0.14);
+    box-shadow: 0 16px 36px rgba(2,6,23,0.30);
+}
+
+body.dark-mode .omni-channel-meta div,
+[data-theme="dark"] .omni-channel-meta div {
+    background: rgba(30,41,59,0.78);
+}
+
+body.dark-mode .omni-status-badge--success,
+[data-theme="dark"] .omni-status-badge--success {
+    background: rgba(16,185,129,0.18);
+    color: #6EE7B7;
+}
+
+body.dark-mode .omni-status-badge--warning,
+body.dark-mode .omni-status-badge--neutral,
+[data-theme="dark"] .omni-status-badge--warning,
+[data-theme="dark"] .omni-status-badge--neutral {
+    background: rgba(251,191,36,0.16);
+    color: #FBBF24;
+}
+
+body.dark-mode .omni-status-badge--danger,
+[data-theme="dark"] .omni-status-badge--danger {
+    background: rgba(248,113,113,0.16);
+    color: #FCA5A5;
+}
+
+body.dark-mode .omni-more-menu button,
+[data-theme="dark"] .omni-more-menu button {
+    color: #E2E8F0;
+}
+
+@media (max-width: 980px) {
+    .chat-layout.omni-workspace-shell {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .chat-layout.omni-workspace-shell .chat-main,
+    .chat-layout.omni-workspace-shell .chat-info-panel {
+        grid-column: 1;
+    }
+
+    .omni-workspace-topbar,
+    .omni-mode-header {
+        flex-wrap: wrap;
+    }
+
+    .omni-health-hero,
+    .omni-health-services {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .omni-workspace-topbar {
+        gap: 10px;
+        padding: 10px;
+    }
+
+    .omni-workspace-modes {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .omni-mode-btn {
+        flex: 1;
+        padding: 0 10px;
+    }
+
+    .omni-mode-panel {
+        padding: 14px;
+    }
+
+    .omni-channel-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .omni-channel-card-head,
+    .omni-health-incident {
+        display: grid;
+    }
+}
+
+/* ==========================================
    CHAT SETTINGS CONTROL PLANE
    ========================================== */
 .chat-settings-page {

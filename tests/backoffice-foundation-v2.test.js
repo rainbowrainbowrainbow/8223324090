@@ -25,6 +25,7 @@ describe('backoffice foundation v2 contracts', () => {
     const warehousePage = readRepoFile('js', 'warehouse-page.js');
     const warehouseHtml = readRepoFile('warehouse.html');
     const migration = readRepoFile('db', 'migrations', '177_backoffice_foundation_v1.sql');
+    const warehouseMultiMigration = readRepoFile('db', 'migrations', '184_warehouse_multi_location_contractors.sql');
     const chatUniqueMigration = readRepoFile('db', 'migrations', '164_chat_channel_provisioning_unique.sql');
     const productPriceMigration = readRepoFile('db', 'migrations', '180_product_price_rules.sql');
 
@@ -98,15 +99,17 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(sidebarAurora, /\.sidebar-active-indicator\.visible \{[\s\S]*opacity:\s*0/);
     });
 
-    it('keeps warehouse as explicit owner partition and does not invent transfer semantics', () => {
+    it('keeps warehouse owner partition while declaring location transfer truth', () => {
         assert.match(warehouseRoute, /const VALID_OWNERS = \['park', 'dar', 'shared'\]/);
         assert.match(warehouseRoute, /warehouseMode/);
-        assert.match(warehouseRoute, /transferSemantics:\s*'missing-truth'/);
+        assert.match(warehouseRoute, /transferSemantics:\s*'warehouse_stock_movements'/);
         assert.match(warehouseRoute, /COALESCE\(owner, 'park'\) =/);
         assert.match(warehousePage, /OWNER_LABELS/);
         assert.match(warehousePage, /getOwnerLabel/);
         assert.match(warehouseHtml, /wh-owner-badge/);
-        assert.doesNotMatch(warehouseRoute, /router\.(post|put)\('\/transfer/);
+        assert.match(warehouseRoute, /router\.post\('\/stock\/:id\/transfer'/);
+        assert.match(warehouseMultiMigration, /CREATE TABLE IF NOT EXISTS warehouse_locations/);
+        assert.match(warehouseMultiMigration, /CREATE TABLE IF NOT EXISTS warehouse_stock_movements/);
         assert.doesNotMatch(migration, /CREATE TABLE\s+(IF NOT EXISTS\s+)?warehouses\b/i);
     });
 });

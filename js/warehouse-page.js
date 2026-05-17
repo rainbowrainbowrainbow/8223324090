@@ -15,7 +15,8 @@ const CATEGORIES = [
     { id: 'decor', name: 'Декор', icon: '🎈' },
     { id: 'prizes', name: 'Призи', icon: '🎁' },
     { id: 'office', name: 'Канцелярія', icon: '📎' },
-    { id: 'tech', name: 'Техніка', icon: '🔌' }
+    { id: 'tech', name: 'Техніка', icon: '🔌' },
+    { id: 'pinata', name: 'Піньяти', icon: '🪅' }
 ];
 
 const CAT_MAP = {};
@@ -37,9 +38,13 @@ function getOwnerLabel(owner) {
 
 let allItems = [];
 let currentCategory = 'all';
+let currentStockMode = 'locations';
+let currentLocationId = '';
 let lowStockFilter = false;
 let searchQuery = '';
 let canManage = false;
+let warehouseLocations = [];
+let warehouseContractors = [];
 
 // Modal state
 let qtyModalMode = null; // 'use' or 'restock'
@@ -93,7 +98,9 @@ async function initPage() {
 
     renderCategoryTabs();
     setupEventListeners();
+    await Promise.all([loadLocationsSummary(), loadWarehouseContractors({ silent: true })]);
     await Promise.all([loadStock(), loadHistory()]);
+    switchStockMode('locations');
 }
 
 function setupEventListeners() {
@@ -127,6 +134,12 @@ function setupEventListeners() {
         if (e.target === document.getElementById('qtyModal')) closeQtyModal(false);
     });
 
+    let contractorSearchTimer;
+    document.getElementById('contractorSearchInput')?.addEventListener('input', () => {
+        clearTimeout(contractorSearchTimer);
+        contractorSearchTimer = setTimeout(() => loadWarehouseContractors(), 300);
+    });
+
     // Escape key
     document.addEventListener('keydown', (e) => {
         const modal = document.getElementById('qtyModal');
@@ -158,11 +171,111 @@ function renderCategoryTabs() {
 }
 
 // ==========================================
+// LOCATION MODE
+// ==========================================
+
+async function loadLocationsSummary() {
+    const data = await apiGetWarehouseLocationsSummary();
+    warehouseLocations = data.locations || [];
+    renderLocationCards();
+    renderLocationSelects();
+    updateActiveLocationHint();
+}
+
+function switchStockMode(mode) {
+    currentStockMode = mode || 'locations';
+    document.querySelectorAll('.wh-stock-mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.stockMode === currentStockMode);
+    });
+    const locationsMode = document.getElementById('locationsMode');
+    const categoriesMode = document.getElementById('categoriesMode');
+    if (locationsMode) locationsMode.style.display = currentStockMode === 'locations' ? '' : 'none';
+    if (categoriesMode) categoriesMode.style.display = currentStockMode === 'categories' ? '' : 'none';
+}
+
+function renderLocationCards() {
+    const container = document.getElementById('warehouseLocationCards');
+    if (!container) return;
+    if (!warehouseLocations.length) {
+        container.innerHTML = '<div class="empty-state" style="padding:20px;"><div class="empty-state-text">Склади ще не налаштовані</div></div>';
+        return;
+    }
+    container.innerHTML = warehouseLocations.map(loc => `
+        <button type="button" class="warehouse-location-card${String(currentLocationId) === String(loc.id) ? ' active' : ''}" onclick="openLocationStock(${loc.id})">
+            <div class="warehouse-location-card-title-row">
+                <span class="warehouse-location-card-title">${escapeHtml(loc.name)}</span>
+                <span class="warehouse-location-card-count">${loc.itemsCount || 0}</span>
+            </div>
+            <div class="warehouse-location-card-meta">
+                <span>${loc.lowStockCount || 0} мало</span>
+                <span>${loc.totalUnits || 0} од.</span>
+            </div>
+            <div class="warehouse-location-card-desc">${escapeHtml(loc.description || '')}</div>
+        </button>
+    `).join('');
+}
+
+function renderLocationSelects() {
+    const options = ['<option value="">Всі склади</option>'].concat(
+        warehouseLocations.map(loc => `<option value="${loc.id}">${escapeHtml(loc.name)}</option>`)
+    ).join('');
+    ['locationFilter'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.innerHTML = options;
+            el.value = currentLocationId || '';
+        }
+    });
+
+    const formOptions = ['<option value="">— склад не вибрано —</option>'].concat(
+        warehouseLocations.map(loc => `<option value="${loc.id}">${escapeHtml(loc.name)}</option>`)
+    ).join('');
+    ['wf-location', 'pf-location', 'transferToLocation'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = formOptions;
+    });
+}
+
+async function openLocationStock(locationId) {
+    currentLocationId = String(locationId || '');
+    const filter = document.getElementById('locationFilter');
+    if (filter) filter.value = currentLocationId;
+    renderLocationCards();
+    updateActiveLocationHint();
+    await loadStock();
+}
+
+async function onLocationFilterChange(value) {
+    currentLocationId = value || '';
+    renderLocationCards();
+    updateActiveLocationHint();
+    await loadStock();
+}
+
+function updateActiveLocationHint() {
+    const hint = document.getElementById('activeLocationHint');
+    if (!hint) return;
+    const active = warehouseLocations.find(l => String(l.id) === String(currentLocationId));
+    if (!active) {
+        hint.style.display = 'none';
+        hint.textContent = '';
+        return;
+    }
+    hint.style.display = '';
+    hint.textContent = `Показано склад: ${active.name}`;
+}
+
+// ==========================================
 // STOCK LIST
 // ==========================================
 
 async function loadStock() {
-    const data = await apiGetWarehouse();
+    const data = await apiGetWarehouse({
+        locationId: currentLocationId || '',
+        category: currentCategory !== 'all' ? currentCategory : '',
+        q: searchQuery || '',
+        low_stock: lowStockFilter
+    });
     allItems = data.items || [];
 
     // Low stock banner
@@ -175,20 +288,15 @@ async function loadStock() {
     }
 
     renderStock();
+    loadLocationsSummary().catch(() => {});
 }
 
 function getFilteredItems() {
     let filtered = allItems;
 
-    if (currentCategory !== 'all') {
-        filtered = filtered.filter(i => i.category === currentCategory);
-    }
-    if (lowStockFilter) {
-        filtered = filtered.filter(i => i.quantity <= i.minQuantity);
-    }
-    if (searchQuery) {
-        filtered = filtered.filter(i => i.name.toLowerCase().includes(searchQuery));
-    }
+    if (currentCategory !== 'all') filtered = filtered.filter(i => i.category === currentCategory);
+    if (lowStockFilter) filtered = filtered.filter(i => i.quantity <= i.minQuantity);
+    if (searchQuery) filtered = filtered.filter(i => (i.name || '').toLowerCase().includes(searchQuery));
     return filtered;
 }
 
@@ -215,6 +323,9 @@ function renderStock() {
             <div class="wh-actions">
                 <button class="wh-btn danger" onclick="openUseModal(${item.id})" title="Списати">−</button>
                 <button class="wh-btn restock" onclick="openRestockModal(${item.id})" title="Поповнити">+</button>
+                <button class="wh-btn" onclick="openTransferModal(${item.id})" title="Перемістити">⇄</button>
+                <button class="wh-btn" onclick="createProcurementFromStockItem(${item.id})" title="Створити закупку">🛒</button>
+                <button class="wh-btn" onclick="openMovementModal(${item.id})" title="Історія руху">↺</button>
                 <button class="wh-btn" onclick="openItemForm(${item.id})" title="Редагувати">✏️</button>
                 <button class="wh-btn danger" onclick="deleteItem(${item.id})" title="Видалити">🗑</button>
             </div>
@@ -226,8 +337,10 @@ function renderStock() {
         `;
 
         return `<tr class="${isLow ? 'low-stock' : ''}">
-            <td><span class="wh-item-name">${escapeHtml(item.name)}</span>${item.notes ? `<br><span class="wh-qty-info">${escapeHtml(item.notes)}</span>` : ''}</td>
+            <td><span class="wh-item-name">${escapeHtml(item.name)}</span>${item.sku ? `<br><span class="wh-qty-info">SKU: ${escapeHtml(item.sku)}</span>` : ''}${item.notes ? `<br><span class="wh-qty-info">${escapeHtml(item.notes)}</span>` : ''}</td>
             <td><span class="wh-cat-badge">${cat.icon} ${cat.name}</span></td>
+            <td><span class="wh-owner-badge">${escapeHtml(item.locationName || 'Без складу')}</span></td>
+            <td>${item.preferredContractorName ? `<span class="wh-owner-badge">${escapeHtml(item.preferredContractorName)}</span>` : '<span class="wh-qty-info">—</span>'}</td>
             <td><span class="wh-owner-badge">${escapeHtml(getOwnerLabel(item.owner))}</span></td>
             <td><span class="wh-qty ${qtyClass}">${isLow ? '⚠️ ' : ''}${item.quantity}</span><span class="wh-qty-info"> / ${item.minQuantity}</span></td>
             <td>${item.minQuantity}</td>
@@ -247,7 +360,8 @@ function renderStock() {
                 <span class="wh-item-name">${escapeHtml(item.name)}</span>
                 <span class="wh-cat-badge">${cat.icon} ${cat.name}</span>
             </div>
-            <div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">${escapeHtml(getOwnerLabel(item.owner))}</div>
+            <div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">${escapeHtml(item.locationName || 'Без складу')} · ${escapeHtml(getOwnerLabel(item.owner))}</div>
+            ${item.preferredContractorName ? `<div style="font-size:12px;color:var(--gray-500);margin-bottom:4px;">Підрядник: ${escapeHtml(item.preferredContractorName)}</div>` : ''}
             ${item.notes ? `<div style="font-size:12px;color:var(--gray-400);margin-bottom:6px;">${escapeHtml(item.notes)}</div>` : ''}
             <div class="wh-card-qty">
                 <div>
@@ -257,6 +371,8 @@ function renderStock() {
                 <div class="wh-actions">
                     <button class="wh-btn danger" onclick="openUseModal(${item.id})" title="Списати">−</button>
                     <button class="wh-btn restock" onclick="openRestockModal(${item.id})" title="Поповнити">+</button>
+                    ${canManage ? `<button class="wh-btn" onclick="openTransferModal(${item.id})" title="Перемістити">⇄</button>` : ''}
+                    ${canManage ? `<button class="wh-btn" onclick="createProcurementFromStockItem(${item.id})" title="Закупка">🛒</button>` : ''}
                     ${canManage ? `<button class="wh-btn" onclick="openItemForm(${item.id})" title="Редагувати">✏️</button>` : ''}
                 </div>
             </div>
@@ -282,6 +398,16 @@ function openItemForm(itemId = null) {
         document.getElementById('wf-min').value = item.minQuantity || 0;
         document.getElementById('wf-unit').value = item.unit || 'шт';
         document.getElementById('wf-notes').value = item.notes || '';
+        const locEl = document.getElementById('wf-location');
+        if (locEl) locEl.value = item.locationId || '';
+        const contractorEl = document.getElementById('wf-contractor');
+        if (contractorEl) contractorEl.value = item.preferredContractorId || '';
+        const skuEl = document.getElementById('wf-sku');
+        if (skuEl) skuEl.value = item.sku || '';
+        const priceEl = document.getElementById('wf-purchase-price');
+        if (priceEl) priceEl.value = item.purchaseUnitPrice || 0;
+        const procuredEl = document.getElementById('wf-procured-externally');
+        if (procuredEl) procuredEl.checked = item.isProcuredExternally === true;
         var ownerEl = document.getElementById('wf-owner');
         if (ownerEl) ownerEl.value = item.owner || 'park';
         // Disable quantity field for edit (use +/- buttons instead)
@@ -294,6 +420,16 @@ function openItemForm(itemId = null) {
         document.getElementById('wf-min').value = 0;
         document.getElementById('wf-unit').value = 'шт';
         document.getElementById('wf-notes').value = '';
+        const locElNew = document.getElementById('wf-location');
+        if (locElNew) locElNew.value = currentLocationId || '';
+        const contractorElNew = document.getElementById('wf-contractor');
+        if (contractorElNew) contractorElNew.value = '';
+        const skuElNew = document.getElementById('wf-sku');
+        if (skuElNew) skuElNew.value = '';
+        const priceElNew = document.getElementById('wf-purchase-price');
+        if (priceElNew) priceElNew.value = 0;
+        const procuredElNew = document.getElementById('wf-procured-externally');
+        if (procuredElNew) procuredElNew.checked = false;
         var ownerElNew = document.getElementById('wf-owner');
         if (ownerElNew) ownerElNew.value = 'park';
         document.getElementById('wf-quantity').disabled = false;
@@ -315,7 +451,12 @@ async function saveItem() {
         minQuantity: parseInt(document.getElementById('wf-min')?.value) || 0,
         unit: document.getElementById('wf-unit')?.value,
         notes: document.getElementById('wf-notes')?.value.trim() || null,
-        owner: document.getElementById('wf-owner')?.value || 'park'
+        owner: document.getElementById('wf-owner')?.value || 'park',
+        locationId: document.getElementById('wf-location')?.value || null,
+        preferredContractorId: document.getElementById('wf-contractor')?.value || null,
+        sku: document.getElementById('wf-sku')?.value.trim() || null,
+        purchaseUnitPrice: parseFloat(document.getElementById('wf-purchase-price')?.value || '0') || 0,
+        isProcuredExternally: document.getElementById('wf-procured-externally')?.checked === true
     };
 
     if (!item.name) {
@@ -347,6 +488,84 @@ async function deleteItem(itemId) {
         await loadStock();
     } else {
         showNotification('Помилка видалення: ' + (result?.error || 'невідома помилка'), 'error');
+    }
+}
+
+function openTransferModal(itemId) {
+    const item = allItems.find(x => x.id === itemId);
+    if (!item) return;
+    document.getElementById('transferStockId').value = item.id;
+    document.getElementById('transferModalTitle').textContent = `Перемістити: ${item.name}`;
+    document.getElementById('transferQuantity').value = 1;
+    document.getElementById('transferQuantity').max = item.quantity || 1;
+    document.getElementById('transferReason').value = '';
+    renderLocationSelects();
+    const target = document.getElementById('transferToLocation');
+    if (target) {
+        const next = warehouseLocations.find(l => String(l.id) !== String(item.locationId));
+        target.value = next?.id || '';
+    }
+    document.getElementById('transferModal').style.display = '';
+}
+
+function closeTransferModal() {
+    document.getElementById('transferModal').style.display = 'none';
+}
+
+async function confirmTransfer() {
+    const stockId = document.getElementById('transferStockId')?.value;
+    const toLocationId = document.getElementById('transferToLocation')?.value;
+    const quantity = parseInt(document.getElementById('transferQuantity')?.value) || 0;
+    const reason = document.getElementById('transferReason')?.value.trim() || null;
+    if (!stockId || !toLocationId || quantity <= 0) {
+        showNotification('Вкажіть склад і кількість', 'error');
+        return;
+    }
+    const result = await apiTransferWarehouseItem(stockId, { toLocationId, quantity, reason });
+    if (result?.success) {
+        showNotification('Позицію переміщено', 'success');
+        closeTransferModal();
+        await Promise.all([loadStock(), loadHistory()]);
+    } else {
+        showNotification(result?.error || 'Помилка переміщення', 'error');
+    }
+}
+
+async function openMovementModal(itemId) {
+    const item = allItems.find(x => x.id === itemId);
+    document.getElementById('movementModalTitle').textContent = `Історія руху: ${item ? item.name : ''}`;
+    const data = await apiGetWarehouseMovements(itemId);
+    const list = document.getElementById('movementTimeline');
+    const rows = data.movements || [];
+    if (!rows.length) {
+        list.innerHTML = '<div class="empty-state" style="padding:20px;"><div class="empty-state-text">Рухів ще немає</div></div>';
+    } else {
+        list.innerHTML = rows.map(m => {
+            const time = new Date(m.created_at).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            return `<div class="wh-history-item">
+                <span class="wh-history-change plus">${escapeHtml(m.movement_type)}</span>
+                <span class="wh-history-name">${escapeHtml(m.from_location_name || '—')} → ${escapeHtml(m.to_location_name || '—')}</span>
+                <span class="wh-history-reason">${Number(m.quantity || 0)} · ${escapeHtml(m.reason || '')}</span>
+                <span class="wh-history-meta">${escapeHtml(m.created_by || '')} · ${time}</span>
+            </div>`;
+        }).join('');
+    }
+    document.getElementById('movementModal').style.display = '';
+}
+
+function closeMovementModal() {
+    document.getElementById('movementModal').style.display = 'none';
+}
+
+async function createProcurementFromStockItem(itemId) {
+    const result = await apiCreateProcurementFromStockItem(itemId, { targetLocationId: currentLocationId || null });
+    if (result?.success && result.list) {
+        showNotification('Закупку створено з дефіциту', 'success');
+        switchPageTab('procurement');
+        await loadProcLists();
+        openProcDetail(result.list.id);
+    } else {
+        showNotification(result?.error || 'Не вдалося створити закупку', 'error');
     }
 }
 
@@ -508,21 +727,176 @@ function switchPageTab(tab) {
     document.querySelectorAll('.wh-page-tab').forEach(t => t.classList.toggle('active', t.dataset.pageTab === tab));
     document.getElementById('stockTab').style.display = tab === 'stock' ? '' : 'none';
     document.getElementById('procurementTab').style.display = tab === 'procurement' ? '' : 'none';
+    const contractorsEl = document.getElementById('contractorsTab');
+    if (contractorsEl) contractorsEl.style.display = tab === 'contractors' ? '' : 'none';
     var pinataEl = document.getElementById('pinataTab');
     if (pinataEl) pinataEl.style.display = tab === 'pinata' ? '' : 'none';
     if (tab === 'procurement' && procLists.length === 0) loadProcLists();
+    if (tab === 'contractors') loadWarehouseContractors();
 }
 // Hash-based tab switch (from alerts: /warehouse#procurement)
 (function() {
     var hash = window.location.hash.replace('#', '');
-    if (hash === 'procurement' || hash === 'pinata') {
+    if (hash === 'procurement' || hash === 'pinata' || hash === 'contractors') {
         document.addEventListener('DOMContentLoaded', function() { setTimeout(function() { switchPageTab(hash); }, 100); });
     }
     window.addEventListener('hashchange', function() {
         var h = window.location.hash.replace('#', '');
-        if (h === 'procurement' || h === 'pinata' || h === 'stock') switchPageTab(h);
+        if (h === 'procurement' || h === 'pinata' || h === 'stock' || h === 'contractors') switchPageTab(h);
     });
 })();
+
+// ==========================================
+// CONTRACTORS
+// ==========================================
+
+async function loadWarehouseContractors(options = {}) {
+    const category = document.getElementById('contractorCategoryFilter')?.value || '';
+    const q = document.getElementById('contractorSearchInput')?.value.trim() || '';
+    const data = await apiGetContractors({ category, q, active: true });
+    warehouseContractors = data.contractors || [];
+    renderContractorCards();
+    populateContractorSelects();
+    if (!options.silent && !warehouseContractors.length) {
+        const empty = document.getElementById('contractorEmptyState');
+        if (empty) empty.style.display = '';
+    }
+}
+
+function populateContractorSelects() {
+    const options = ['<option value="">— не вибрано —</option>'].concat(
+        warehouseContractors.map(c => `<option value="${c.id}">${escapeHtml(c.name)}${c.category ? ' · ' + escapeHtml(c.category) : ''}</option>`)
+    ).join('');
+    ['wf-contractor', 'pf-contractor', 'pd-item-contractor'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = id === 'pd-item-contractor' ? options.replace('— не вибрано —', 'Підрядник') : options;
+    });
+}
+
+function renderContractorCards() {
+    const container = document.getElementById('contractorCards');
+    const empty = document.getElementById('contractorEmptyState');
+    if (!container) return;
+    if (!warehouseContractors.length) {
+        container.innerHTML = '';
+        if (empty) empty.style.display = '';
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+    container.innerHTML = warehouseContractors.map(c => {
+        const contact = [c.phone, c.telegram_username ? '@' + c.telegram_username : ''].filter(Boolean).join(' · ') || 'Контакт не задано';
+        const reliability = Number(c.reliability_score || c.avg_reliability || 0);
+        return `<article class="contractor-card">
+            <div class="contractor-card-head">
+                <div>
+                    <div class="contractor-title">${escapeHtml(c.name)}</div>
+                    <div class="contractor-meta">${escapeHtml(c.category || 'general')} · reliability ${reliability.toFixed(1)}</div>
+                </div>
+                ${c.is_preferred ? '<span class="wh-owner-badge">preferred</span>' : ''}
+            </div>
+            <div class="contractor-meta">${escapeHtml(contact)}</div>
+            <div class="contractor-note">${escapeHtml(c.ordering_notes || c.notes || c.price_note || '')}</div>
+            <div class="contractor-actions">
+                <button type="button" class="wh-mini-btn primary" onclick="openContractorOrderContext(${c.id})">Order context</button>
+                <button type="button" class="wh-mini-btn" onclick="openContractorForm(${c.id})">Редагувати</button>
+            </div>
+        </article>`;
+    }).join('');
+}
+
+function openContractorForm(id = null) {
+    const c = id ? warehouseContractors.find(x => String(x.id) === String(id)) : null;
+    document.getElementById('cf-id').value = c?.id || '';
+    document.getElementById('cf-name').value = c?.name || '';
+    document.getElementById('cf-category').value = c?.category || 'general';
+    document.getElementById('cf-phone').value = c?.phone || '';
+    document.getElementById('cf-telegram').value = c?.telegram_username || '';
+    document.getElementById('cf-channel').value = c?.preferred_channel || 'phone';
+    document.getElementById('cf-reliability').value = c?.reliability_score || c?.avg_reliability || 0;
+    document.getElementById('cf-intro').value = c?.intro_context || '';
+    document.getElementById('cf-first-template').value = c?.first_message_template || '';
+    document.getElementById('cf-repeat-template').value = c?.repeat_order_template || '';
+    document.getElementById('cf-notes').value = c?.ordering_notes || c?.notes || '';
+    document.getElementById('cf-preferred').checked = c?.is_preferred === true;
+    document.getElementById('contractorFormTitle').textContent = c ? 'Редагувати підрядника' : 'Новий підрядник';
+    document.getElementById('contractorFormModal').style.display = '';
+}
+
+function closeContractorForm() {
+    document.getElementById('contractorFormModal').style.display = 'none';
+}
+
+async function saveContractor() {
+    const id = document.getElementById('cf-id')?.value;
+    const payload = {
+        name: document.getElementById('cf-name')?.value.trim(),
+        category: document.getElementById('cf-category')?.value || 'general',
+        phone: document.getElementById('cf-phone')?.value.trim() || null,
+        telegram_username: document.getElementById('cf-telegram')?.value.trim().replace(/^@/, '') || null,
+        preferredChannel: document.getElementById('cf-channel')?.value || 'phone',
+        reliabilityScore: parseFloat(document.getElementById('cf-reliability')?.value || '0') || 0,
+        introContext: document.getElementById('cf-intro')?.value.trim() || null,
+        firstMessageTemplate: document.getElementById('cf-first-template')?.value.trim() || null,
+        repeatOrderTemplate: document.getElementById('cf-repeat-template')?.value.trim() || null,
+        orderingNotes: document.getElementById('cf-notes')?.value.trim() || null,
+        notes: document.getElementById('cf-notes')?.value.trim() || null,
+        isPreferred: document.getElementById('cf-preferred')?.checked === true,
+        specialty: [document.getElementById('cf-category')?.value || 'general']
+    };
+    if (!payload.name) {
+        showNotification('Назва підрядника обовʼязкова', 'error');
+        return;
+    }
+    const result = id ? await apiUpdateContractor(id, payload) : await apiCreateContractor(payload);
+    if (result?.success) {
+        showNotification('Підрядника збережено', 'success');
+        closeContractorForm();
+        await loadWarehouseContractors();
+    } else {
+        showNotification(result?.error || 'Помилка збереження підрядника', 'error');
+    }
+}
+
+async function openContractorOrderContext(contractorId, opts = {}) {
+    const ctx = await apiGetContractorOrderContext(contractorId, opts);
+    if (!ctx?.success) {
+        showNotification('Не вдалося завантажити order-context', 'error');
+        return;
+    }
+    document.getElementById('contractorContactTitle').textContent = `Підрядник: ${ctx.contractor.name}`;
+    document.getElementById('contractorContactMeta').innerHTML = [
+        ctx.contractor.phone ? `📞 ${escapeHtml(ctx.contractor.phone)}` : '',
+        ctx.contractor.telegramUsername ? `Telegram: @${escapeHtml(ctx.contractor.telegramUsername)}` : '',
+        ctx.contractor.preferredChannel ? `Канал: ${escapeHtml(ctx.contractor.preferredChannel)}` : '',
+        ctx.missingContact ? '<b style="color:#EF4444">Немає контакту</b>' : ''
+    ].filter(Boolean).join(' · ');
+    document.getElementById('contractorFirstMessageDraft').value = ctx.firstMessageDraft || '';
+    document.getElementById('contractorContactModal').style.display = '';
+}
+
+async function openProcItemContractorCard(procurementItemId) {
+    const item = (currentProcDetail?.items || []).find(x => String(x.id) === String(procurementItemId));
+    const contractorId = item?.contractorId || currentProcDetail?.contractorId;
+    if (!contractorId) {
+        showNotification('Для цієї позиції не задано підрядника', 'error');
+        return;
+    }
+    await openContractorOrderContext(contractorId, { procurementItemId });
+}
+
+function closeContractorContactModal() {
+    document.getElementById('contractorContactModal').style.display = 'none';
+}
+
+async function copyContractorDraft() {
+    const text = document.getElementById('contractorFirstMessageDraft')?.value || '';
+    try {
+        await navigator.clipboard.writeText(text);
+        showNotification('Текст скопійовано', 'success');
+    } catch (err) {
+        showNotification('Не вдалося скопіювати текст', 'error');
+    }
+}
 
 // ==========================================
 // v17.0: PROCUREMENT
@@ -564,6 +938,8 @@ function renderProcLists() {
                 <span>${escapeHtml(list.departmentLabel)}</span>
                 ${list.plannedDate ? `<span>📅 ${list.plannedDate}</span>` : ''}
                 ${list.assignedName ? `<span>👤 ${escapeHtml(list.assignedName)}</span>` : ''}
+                ${list.targetLocationName ? `<span>🏬 ${escapeHtml(list.targetLocationName)}</span>` : ''}
+                ${list.contractorName ? `<span>🤝 ${escapeHtml(list.contractorName)}</span>` : ''}
                 <span>${list.itemCount || 0} позицій</span>
             </div>
             <div class="proc-card-footer">
@@ -582,6 +958,10 @@ function openProcForm(listId = null) {
     document.getElementById('pf-title').value = '';
     document.getElementById('pf-department').value = document.getElementById('procDeptFilter')?.value || 'animators';
     document.getElementById('pf-date').value = '';
+    const pfLocation = document.getElementById('pf-location');
+    if (pfLocation) pfLocation.value = currentLocationId || '';
+    const pfContractor = document.getElementById('pf-contractor');
+    if (pfContractor) pfContractor.value = '';
     document.getElementById('pf-notes').value = '';
     document.getElementById('procFormTitle').textContent = 'Новий список закупок';
 
@@ -592,6 +972,8 @@ function openProcForm(listId = null) {
             document.getElementById('pf-title').value = list.title;
             document.getElementById('pf-department').value = list.department;
             document.getElementById('pf-date').value = list.plannedDate || '';
+            if (pfLocation) pfLocation.value = list.targetLocationId || '';
+            if (pfContractor) pfContractor.value = list.contractorId || '';
             document.getElementById('pf-notes').value = list.notes || '';
             document.getElementById('procFormTitle').textContent = 'Редагувати список';
         }
@@ -609,6 +991,8 @@ async function saveProcList() {
         title: document.getElementById('pf-title')?.value.trim(),
         department: document.getElementById('pf-department')?.value,
         plannedDate: document.getElementById('pf-date')?.value || null,
+        targetLocationId: document.getElementById('pf-location')?.value || null,
+        contractorId: document.getElementById('pf-contractor')?.value || null,
         notes: document.getElementById('pf-notes')?.value.trim() || null
     };
 
@@ -643,7 +1027,10 @@ async function openProcDetail(listId) {
     document.getElementById('procDetailTitle').textContent = data.title;
 
     const statusBadge = `<span class="proc-status-badge proc-status-${data.status}">${escapeHtml(data.statusLabel)}</span>`;
-    document.getElementById('procDetailMeta').innerHTML =         `${data.departmentLabel} ${statusBadge} ${data.plannedDate ? `· 📅 ${data.plannedDate}` : ''} ${data.assignedName ? `· 👤 ${escapeHtml(data.assignedName)}` : ''}`;
+    document.getElementById('procDetailMeta').innerHTML =
+        `${data.departmentLabel} ${statusBadge} ${data.plannedDate ? `· 📅 ${data.plannedDate}` : ''} ${data.assignedName ? `· 👤 ${escapeHtml(data.assignedName)}` : ''} ${data.targetLocationName ? `· 🏬 ${escapeHtml(data.targetLocationName)}` : ''} ${data.contractorName ? `· 🤝 ${escapeHtml(data.contractorName)}` : ''}`;
+    const pdContractor = document.getElementById('pd-item-contractor');
+    if (pdContractor) pdContractor.value = data.contractorId || '';
 
     renderProcDetailItems(data.items || []);
 
@@ -669,7 +1056,11 @@ function renderProcDetailItems(items) {
                    onchange="toggleProcItem(${currentProcListId}, ${item.id}, this.checked)">
             <span class="${nameClass}">${escapeHtml(item.name)}</span>
             <span style="color:var(--gray-400);font-size:12px;">${item.quantity} ${escapeHtml(item.unit)}</span>
+            ${item.targetLocationName ? `<span class="wh-owner-badge">${escapeHtml(item.targetLocationName)}</span>` : ''}
+            ${item.contractorName ? `<span class="wh-owner-badge">${escapeHtml(item.contractorName)}</span>` : ''}
             <span class="proc-item-price">${priceFmt}</span>
+            ${item.contractorId || currentProcDetail?.contractorId ? `<button class="wh-btn" onclick="openProcItemContractorCard(${item.id})" title="Контакт підрядника" style="width:28px;height:28px;font-size:12px;">🤝</button>` : ''}
+            <button class="wh-btn restock" onclick="receiveProcItem(${item.id})" title="Оприбуткувати" style="width:28px;height:28px;font-size:12px;">↧</button>
             <button class="wh-btn danger" onclick="removeProcItem(${currentProcListId}, ${item.id})" title="Видалити" style="width:28px;height:28px;font-size:12px;">✕</button>
         </div>`;
     }).join('');
@@ -686,6 +1077,7 @@ async function addProcItem() {
     const name = document.getElementById('pd-item-name')?.value.trim();
     const qty = parseInt(document.getElementById('pd-item-qty')?.value) || 1;
     const price = parseInt(document.getElementById('pd-item-price')?.value) || 0;
+    const contractorId = document.getElementById('pd-item-contractor')?.value || currentProcDetail?.contractorId || null;
 
     if (!name) {
         showNotification('Вкажіть назву позиції', 'error');
@@ -693,7 +1085,7 @@ async function addProcItem() {
     }
 
     const result = await apiAddProcurementItem(currentProcListId, {
-        name, quantity: qty, estimatedPrice: price
+        name, quantity: qty, estimatedPrice: price, contractorId
     });
 
     if (result && result.success) {
@@ -721,6 +1113,25 @@ async function removeProcItem(listId, itemId) {
         await openProcDetail(listId);
     } catch (e) {
         showNotification('Помилка видалення: ' + e.message, 'error');
+    }
+}
+
+async function receiveProcItem(itemId) {
+    if (!currentProcListId) return;
+    const item = (currentProcDetail?.items || []).find(x => String(x.id) === String(itemId));
+    const locationId = currentProcDetail?.targetLocationId || item?.targetLocationId || currentLocationId || '';
+    const result = await apiReceiveProcurementItem(currentProcListId, itemId, {
+        receivedQty: item?.quantity || 1,
+        locationId,
+        finalPrice: item?.estimatedPrice || 0,
+        contractorId: item?.contractorId || currentProcDetail?.contractorId || null,
+        warehouseStockId: item?.warehouseStockId || item?.stockId || null
+    });
+    if (result?.success) {
+        showNotification('Позицію оприбутковано на склад', 'success');
+        await Promise.all([openProcDetail(currentProcListId), loadStock(), loadHistory()]);
+    } else {
+        showNotification(result?.error || 'Помилка оприбуткування', 'error');
     }
 }
 
@@ -762,15 +1173,22 @@ async function loadSuggestions() {
         const listResult = await apiCreateProcurementList({
             title: `Поповнення ${DEPT_NAMES[dept] || dept} — ${today}`,
             department: dept,
-            plannedDate: today
+            plannedDate: today,
+            targetLocationId: items[0]?.targetLocationId || null,
+            contractorId: items[0]?.contractorId || null,
+            source: 'low_stock'
         });
         if (listResult && listResult.success && listResult.list) {
             for (const item of items) {
                 await apiAddProcurementItem(listResult.list.id, {
                     name: item.name,
                     stockId: item.stockId,
+                    warehouseStockId: item.stockId,
+                    contractorId: item.contractorId || null,
                     quantity: item.deficit > 0 ? item.deficit : 1,
-                    unit: item.unit
+                    unit: item.unit,
+                    estimatedPrice: item.estimatedPrice || 0,
+                    triggerSource: 'low_stock'
                 });
             }
             created++;

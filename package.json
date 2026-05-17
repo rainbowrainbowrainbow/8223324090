@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.55.10",
+  "version": "0.55.11",
   "eventGenix": {
-    "releaseLabel": "OmniClaw: Inbox, канали і стан"
+    "releaseLabel": "Warehouse: склади, закупки і підрядники"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

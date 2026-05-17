@@ -14,7 +14,8 @@ router.use(authenticateToken);
 // v40: Validate :id param is numeric
 router.param('id', (req, res, next, val) => { if (val && !/^\d+$/.test(val)) return res.status(400).json({ error: 'Invalid ID format' }); next(); });
 
-const VALID_CATEGORIES = ['consumable', 'craft', 'props', 'food', 'decor', 'prizes', 'office', 'tech'];
+const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'];
+const VALID_CATEGORIES = ['consumable', 'craft', 'props', 'food', 'decor', 'prizes', 'office', 'tech', 'pinata'];
 const VALID_UNITS = ['шт', 'рул', 'уп', 'кг', 'л', 'м', 'компл', 'набір'];
 const VALID_OWNERS = ['park', 'dar', 'shared'];
 
@@ -32,7 +33,17 @@ function mapStockRow(row) {
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         updatedBy: row.updated_by,
-        owner: row.owner || 'park'
+        owner: row.owner || 'park',
+        locationId: row.location_id || null,
+        locationName: row.location_name || null,
+        locationSlug: row.location_slug || null,
+        preferredContractorId: row.preferred_contractor_id || null,
+        preferredContractorName: row.preferred_contractor_name || null,
+        purchaseUnitPrice: row.purchase_unit_price !== undefined ? Number(row.purchase_unit_price || 0) : 0,
+        sku: row.sku || null,
+        isProcuredExternally: row.is_procured_externally === true,
+        lastOrderPrice: row.last_order_price !== undefined ? Number(row.last_order_price || 0) : 0,
+        lastOrderedAt: row.last_ordered_at || null
     };
 }
 
@@ -72,36 +83,99 @@ function validateStock(body) {
     return errors;
 }
 
+function toOptionalInt(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const n = Number(value);
+    return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function toOptionalMoney(value) {
+    if (value === undefined || value === null || value === '') return 0;
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+function mapLocationRow(row) {
+    return {
+        id: row.id,
+        slug: row.slug,
+        name: row.name,
+        description: row.description,
+        sortOrder: row.sort_order,
+        itemsCount: Number(row.items_count || 0),
+        lowStockCount: Number(row.low_stock_count || 0),
+        totalUnits: Number(row.total_units || 0),
+        lastMovementAt: row.last_movement_at || null
+    };
+}
+
 // v32.1: Alias /items → / for frontend compatibility
 router.get('/items', (req, res, next) => {
     req.url = '/';
     next();
 });
 
+// GET /api/warehouse/locations-summary - physical warehouse cards
+router.get('/locations-summary', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                l.id,
+                l.slug,
+                l.name,
+                l.description,
+                l.sort_order,
+                COUNT(DISTINCT ws.id) FILTER (WHERE ws.is_active = true)::int AS items_count,
+                COUNT(DISTINCT ws.id) FILTER (WHERE ws.is_active = true AND ws.quantity <= ws.min_quantity)::int AS low_stock_count,
+                COALESCE(SUM(ws.quantity) FILTER (WHERE ws.is_active = true), 0)::numeric AS total_units,
+                (
+                    SELECT MAX(m.created_at)
+                    FROM warehouse_stock_movements m
+                    WHERE m.to_location_id = l.id OR m.from_location_id = l.id
+                ) AS last_movement_at
+            FROM warehouse_locations l
+            LEFT JOIN warehouse_stock ws ON ws.location_id = l.id
+            WHERE l.is_active = true
+            GROUP BY l.id
+            ORDER BY l.sort_order, l.name
+        `);
+        res.json({ success: true, locations: result.rows.map(mapLocationRow) });
+    } catch (err) {
+        log.error('Locations summary error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 // GET /api/warehouse — List all stock items
 router.get('/', async (req, res) => {
     try {
-        const conditions = ['is_active = true'];
+        const conditions = ['ws.is_active = true'];
         const params = [];
         let paramIdx = 1;
 
         if (req.query.category) {
-            conditions.push(`category = $${paramIdx++}`);
+            conditions.push(`ws.category = $${paramIdx++}`);
             params.push(req.query.category);
         }
-        if (req.query.search) {
-            conditions.push(`name ILIKE $${paramIdx++}`);
-            params.push(`%${req.query.search}%`);
+        const search = req.query.search || req.query.q;
+        if (search) {
+            conditions.push(`(ws.name ILIKE $${paramIdx} OR COALESCE(ws.notes, '') ILIKE $${paramIdx} OR COALESCE(ws.sku, '') ILIKE $${paramIdx})`);
+            params.push(`%${search}%`);
+            paramIdx++;
         }
         if (req.query.low_stock === 'true') {
-            conditions.push('quantity <= min_quantity');
+            conditions.push('ws.quantity <= ws.min_quantity');
         }
         if (req.query.owner) {
             if (!VALID_OWNERS.includes(req.query.owner)) {
                 return res.status(400).json({ success: false, error: 'invalid owner' });
             }
-            conditions.push(`COALESCE(owner, 'park') = $${paramIdx++}`);
+            conditions.push(`COALESCE(ws.owner, 'park') = $${paramIdx++}`);
             params.push(req.query.owner);
+        }
+        if (req.query.locationId) {
+            conditions.push(`ws.location_id = $${paramIdx++}`);
+            params.push(req.query.locationId);
         }
         if (req.query.all === 'true') {
             conditions.shift(); // remove is_active filter
@@ -123,13 +197,25 @@ router.get('/', async (req, res) => {
         } catch (e) { /* table already exists */ }
 
         const result = await pool.query(
-            `SELECT * FROM warehouse_stock ${where} ORDER BY category, name`,
+            `SELECT
+                ws.*,
+                wl.name AS location_name,
+                wl.slug AS location_slug,
+                c.name AS preferred_contractor_name,
+                c.last_order_price,
+                c.last_ordered_at
+             FROM warehouse_stock ws
+             LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+             LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
+             ${where}
+             ORDER BY wl.sort_order NULLS LAST, ws.category, ws.sort_order NULLS LAST, ws.name`,
             params
         );
 
         // Count low stock items
         const lowStockResult = await pool.query(
-            'SELECT COUNT(*) FROM warehouse_stock WHERE is_active = true AND quantity <= min_quantity'
+            `SELECT COUNT(*) FROM warehouse_stock ws ${where ? where + ' AND' : 'WHERE'} ws.quantity <= ws.min_quantity`,
+            params
         );
 
         res.json({
@@ -137,9 +223,9 @@ router.get('/', async (req, res) => {
             items: result.rows.map(mapStockRow),
             lowStockCount: parseInt(lowStockResult.rows[0].count),
             warehouseMode: {
-                source: 'warehouse_stock.owner',
-                dimensions: VALID_OWNERS,
-                transferSemantics: 'missing-truth'
+                source: 'warehouse_stock.location_id',
+                dimensions: 'warehouse_locations',
+                transferSemantics: 'warehouse_stock_movements'
             }
         });
     } catch (err) {
@@ -178,10 +264,17 @@ router.get('/pinata-status', async (req, res) => {
     try {
         const [stock, upcoming, designs] = await Promise.all([
             pool.query(
-                `SELECT id, name, quantity, min_quantity, unit
-                 FROM warehouse_stock
-                 WHERE linked_product_type = 'pinata_filler' AND is_active = true
-                 ORDER BY name`
+                `SELECT ws.id, ws.name, ws.quantity, ws.min_quantity, ws.unit,
+                        ws.location_id, wl.name AS location_name
+                 FROM warehouse_stock ws
+                 LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+                 WHERE ws.linked_product_type = 'pinata_filler'
+                   AND ws.is_active = true
+                   AND (
+                        ws.location_id = (SELECT id FROM warehouse_locations WHERE slug = 'animators_room' LIMIT 1)
+                        OR ws.location_id IS NULL
+                   )
+                 ORDER BY ws.name`
             ),
             pool.query(
                 `SELECT id, date, time, pinata_filler, pinata_number, pinata_filler_number, group_name
@@ -270,10 +363,145 @@ router.get('/categories', async (req, res) => {
 });
 
 // GET /api/warehouse/:id — Get single stock item with recent history
+// POST /api/warehouse/stock/:id/transfer - move quantity between physical locations
+router.post('/stock/:id/transfer', requireRole(...MANAGE_ROLES), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { id } = req.params;
+        const { toLocationId, quantity, reason } = req.body;
+        const amount = Number(quantity);
+        const targetLocationId = toOptionalInt(toLocationId);
+
+        if (!targetLocationId) return res.status(400).json({ success: false, error: 'toLocationId is required' });
+        if (!Number.isInteger(amount) || amount <= 0) return res.status(400).json({ success: false, error: 'quantity must be a positive integer' });
+
+        await client.query('BEGIN');
+
+        const source = await client.query(
+            'SELECT * FROM warehouse_stock WHERE id = $1 AND is_active = true FOR UPDATE',
+            [id]
+        );
+        if (!source.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Stock item not found' });
+        }
+
+        const item = source.rows[0];
+        if (Number(item.quantity) < amount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: `Not enough stock (${item.quantity})` });
+        }
+        if (String(item.location_id || '') === String(targetLocationId)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Target location must differ from source' });
+        }
+
+        const location = await client.query('SELECT id FROM warehouse_locations WHERE id = $1 AND is_active = true', [targetLocationId]);
+        if (!location.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'Target location not found' });
+        }
+
+        await client.query(
+            `UPDATE warehouse_stock SET quantity = quantity - $1, updated_at = NOW(), updated_by = $2 WHERE id = $3`,
+            [amount, req.user.username, id]
+        );
+
+        const target = await client.query(
+            `SELECT * FROM warehouse_stock
+             WHERE is_active = true
+               AND location_id = $1
+               AND name = $2
+               AND category = $3
+               AND unit = $4
+               AND COALESCE(owner, 'park') = COALESCE($5, 'park')
+             LIMIT 1 FOR UPDATE`,
+            [targetLocationId, item.name, item.category, item.unit, item.owner || 'park']
+        );
+
+        let targetStockId;
+        if (target.rowCount) {
+            targetStockId = target.rows[0].id;
+            await client.query(
+                `UPDATE warehouse_stock SET quantity = quantity + $1, updated_at = NOW(), updated_by = $2 WHERE id = $3`,
+                [amount, req.user.username, targetStockId]
+            );
+        } else {
+            const created = await client.query(
+                `INSERT INTO warehouse_stock (
+                    name, category, quantity, min_quantity, unit, notes, is_active, updated_by, owner,
+                    location_id, preferred_contractor_id, purchase_unit_price, sku, is_procured_externally
+                 )
+                 VALUES ($1,$2,$3,$4,$5,$6,true,$7,$8,$9,$10,$11,$12,$13)
+                 RETURNING id`,
+                [
+                    item.name, item.category, amount, item.min_quantity, item.unit, item.notes,
+                    req.user.username, item.owner || 'park', targetLocationId, item.preferred_contractor_id || null,
+                    item.purchase_unit_price || 0, item.sku || null, item.is_procured_externally === true
+                ]
+            );
+            targetStockId = created.rows[0].id;
+        }
+
+        await client.query(
+            `INSERT INTO warehouse_stock_movements (
+                warehouse_stock_id, movement_type, from_location_id, to_location_id,
+                quantity, reason, created_by
+             )
+             VALUES ($1, 'transfer', $2, $3, $4, $5, $6)`,
+            [id, item.location_id || null, targetLocationId, amount, reason || 'Переміщення між складами', req.user.username]
+        );
+
+        await client.query(
+            `INSERT INTO warehouse_history (stock_id, change, reason, created_by)
+             VALUES ($1, $2, $3, $4), ($5, $6, $7, $4)`,
+            [
+                id, -amount, reason || 'Переміщення зі складу',
+                req.user.username, targetStockId, amount, reason || 'Переміщення на склад'
+            ]
+        );
+
+        await client.query('COMMIT');
+        res.json({ success: true, sourceStockId: Number(id), targetStockId, quantity: amount });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        log.error('Transfer warehouse item error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// GET /api/warehouse/stock/:id/movements - movement timeline for item
+router.get('/stock/:id/movements', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT m.*, fl.name AS from_location_name, tl.name AS to_location_name
+            FROM warehouse_stock_movements m
+            LEFT JOIN warehouse_locations fl ON fl.id = m.from_location_id
+            LEFT JOIN warehouse_locations tl ON tl.id = m.to_location_id
+            WHERE m.warehouse_stock_id = $1
+            ORDER BY m.created_at DESC
+            LIMIT 80
+        `, [req.params.id]);
+        res.json({ success: true, movements: result.rows });
+    } catch (err) {
+        log.error('Get movement timeline error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const result = await pool.query('SELECT * FROM warehouse_stock WHERE id = $1', [id]);
+        const result = await pool.query(`
+            SELECT ws.*, wl.name AS location_name, wl.slug AS location_slug,
+                   c.name AS preferred_contractor_name, c.last_order_price, c.last_ordered_at
+            FROM warehouse_stock ws
+            LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+            LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
+            WHERE ws.id = $1
+        `, [id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Stock item not found' });
         }
@@ -294,7 +522,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/warehouse — Create new stock item (admin/manager)
-router.post('/', requireRole('admin', 'manager'), async (req, res) => {
+router.post('/', requireRole(...MANAGE_ROLES), async (req, res) => {
     try {
         const errors = validateStock(req.body);
         if (errors.length > 0) {
@@ -303,14 +531,23 @@ router.post('/', requireRole('admin', 'manager'), async (req, res) => {
 
         const {
             name, category = 'consumable', quantity = 0,
-            minQuantity = 0, unit = 'шт', notes = null, owner = 'park'
+            minQuantity = 0, unit = 'шт', notes = null, owner = 'park',
+            locationId = null, preferredContractorId = null, sku = null,
+            purchaseUnitPrice = 0, isProcuredExternally = false
         } = req.body;
 
         const result = await pool.query(
-            `INSERT INTO warehouse_stock (name, category, quantity, min_quantity, unit, notes, updated_by, owner)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `INSERT INTO warehouse_stock (
+                name, category, quantity, min_quantity, unit, notes, updated_by, owner,
+                location_id, preferred_contractor_id, sku, purchase_unit_price, is_procured_externally
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
              RETURNING *`,
-            [name.trim(), category, quantity, minQuantity, unit, notes, req.user.username, owner]
+            [
+                name.trim(), category, quantity, minQuantity, unit, notes, req.user.username, owner,
+                toOptionalInt(locationId), toOptionalInt(preferredContractorId), sku || null,
+                toOptionalMoney(purchaseUnitPrice), isProcuredExternally === true
+            ]
         );
 
         log.info(`Stock created: "${name}" by ${req.user.username}`);
@@ -322,7 +559,7 @@ router.post('/', requireRole('admin', 'manager'), async (req, res) => {
 });
 
 // PUT /api/warehouse/:id — Update stock item (admin/manager)
-router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
+router.put('/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
     try {
         const { id } = req.params;
         const existing = await pool.query('SELECT id FROM warehouse_stock WHERE id = $1', [id]);
@@ -337,15 +574,23 @@ router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
 
         const {
             name, category = 'consumable', minQuantity = 0,
-            unit = 'шт', notes = null, owner = 'park'
+            unit = 'шт', notes = null, owner = 'park',
+            locationId = null, preferredContractorId = null, sku = null,
+            purchaseUnitPrice = 0, isProcuredExternally = false
         } = req.body;
 
         const result = await pool.query(
             `UPDATE warehouse_stock SET
                 name = $1, category = $2, min_quantity = $3,
-                unit = $4, notes = $5, updated_at = NOW(), updated_by = $6, owner = $7
-             WHERE id = $8 RETURNING *`,
-            [name.trim(), category, minQuantity, unit, notes, req.user.username, owner, id]
+                unit = $4, notes = $5, updated_at = NOW(), updated_by = $6, owner = $7,
+                location_id = $8, preferred_contractor_id = $9, sku = $10,
+                purchase_unit_price = $11, is_procured_externally = $12
+             WHERE id = $13 RETURNING *`,
+            [
+                name.trim(), category, minQuantity, unit, notes, req.user.username, owner,
+                toOptionalInt(locationId), toOptionalInt(preferredContractorId), sku || null,
+                toOptionalMoney(purchaseUnitPrice), isProcuredExternally === true, id
+            ]
         );
 
         log.info(`Stock updated: #${id} by ${req.user.username}`);
@@ -357,7 +602,7 @@ router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
 });
 
 // DELETE /api/warehouse/:id — Soft-delete stock item (admin only)
-router.delete('/:id', requireRole('admin'), async (req, res) => {
+router.delete('/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
     try {
         const { id } = req.params;
         const result = await pool.query(
@@ -417,6 +662,15 @@ router.post('/:id/use', async (req, res) => {
             [id, -amount, reason || 'Списання', req.user.username]
         );
 
+        await client.query(
+            `INSERT INTO warehouse_stock_movements (
+                warehouse_stock_id, movement_type, from_location_id, to_location_id,
+                quantity, reason, created_by
+             )
+             VALUES ($1, 'issue', $2, NULL, $3, $4, $5)`,
+            [id, stock.rows[0].location_id || null, amount, reason || 'Списання', req.user.username]
+        );
+
         await client.query('COMMIT');
 
         log.info(`Stock used: #${id} -${amount} by ${req.user.username}`);
@@ -462,6 +716,15 @@ router.post('/:id/restock', async (req, res) => {
             `INSERT INTO warehouse_history (stock_id, change, reason, created_by)
              VALUES ($1, $2, $3, $4)`,
             [id, amount, reason || 'Поповнення', req.user.username]
+        );
+
+        await client.query(
+            `INSERT INTO warehouse_stock_movements (
+                warehouse_stock_id, movement_type, from_location_id, to_location_id,
+                quantity, reason, created_by
+             )
+             VALUES ($1, 'manual_adjustment', NULL, $2, $3, $4, $5)`,
+            [id, stock.rows[0].location_id || null, amount, reason || 'Поповнення', req.user.username]
         );
 
         await client.query('COMMIT');

@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.55.10">
-    <link rel="stylesheet" href="css/layout.css?v=0.55.10">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.10">
-    <link rel="stylesheet" href="css/pages.css?v=0.55.10">
-    <link rel="stylesheet" href="css/modals.css?v=0.55.10">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.10">
-    <link rel="stylesheet" href="css/responsive.css?v=0.55.10">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.10">
+    <link rel="stylesheet" href="css/base.css?v=0.55.11">
+    <link rel="stylesheet" href="css/layout.css?v=0.55.11">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.11">
+    <link rel="stylesheet" href="css/pages.css?v=0.55.11">
+    <link rel="stylesheet" href="css/modals.css?v=0.55.11">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.11">
+    <link rel="stylesheet" href="css/responsive.css?v=0.55.11">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.11">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -483,6 +483,180 @@
         .proc-item-purchased { text-decoration: line-through; opacity: 0.6; }
         .proc-item-price { font-weight: 700; min-width: 70px; text-align: right; }
 
+        .wh-stock-mode-switcher {
+            display: inline-flex;
+            gap: 4px;
+            padding: 4px;
+            margin-bottom: 14px;
+            border: 1px solid var(--gray-200);
+            border-radius: 12px;
+            background: var(--gray-50);
+        }
+        .wh-stock-mode-btn {
+            min-height: 40px;
+            padding: 8px 14px;
+            border: 0;
+            border-radius: 10px;
+            background: transparent;
+            color: var(--gray-600);
+            font-weight: 700;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .wh-stock-mode-btn.active {
+            background: var(--white);
+            color: var(--primary-dark);
+            box-shadow: var(--shadow-xs);
+        }
+        .warehouse-location-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+        .warehouse-location-card {
+            padding: 16px;
+            border: 1px solid var(--gray-200);
+            border-radius: 14px;
+            background: var(--white);
+            text-align: left;
+            cursor: pointer;
+            transition: border-color .18s ease, transform .18s ease, box-shadow .18s ease;
+        }
+        .warehouse-location-card:hover {
+            transform: translateY(-1px);
+            border-color: rgba(16,185,129,.28);
+            box-shadow: 0 10px 24px rgba(15,23,42,.06);
+        }
+        .warehouse-location-card.active {
+            border-color: rgba(16,185,129,.34);
+            box-shadow: 0 0 0 1px rgba(16,185,129,.12), 0 14px 28px rgba(16,185,129,.08);
+        }
+        .warehouse-location-card-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        .warehouse-location-card-title {
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--gray-800);
+        }
+        .warehouse-location-card-count {
+            min-width: 28px;
+            height: 28px;
+            padding: 0 8px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            background: rgba(16,185,129,.10);
+            color: var(--primary-dark);
+            font-size: 12px;
+            font-weight: 800;
+        }
+        .warehouse-location-card-meta,
+        .warehouse-location-card-desc,
+        .wh-active-location-hint {
+            font-size: 12px;
+            color: var(--gray-500);
+        }
+        .warehouse-location-card-meta {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 6px;
+        }
+        .wh-active-location-hint {
+            margin: -8px 0 14px;
+            padding: 9px 12px;
+            border: 1px solid rgba(16,185,129,.18);
+            border-radius: 10px;
+            background: rgba(16,185,129,.06);
+            font-weight: 700;
+        }
+        .wh-form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 12px;
+            width: 100%;
+        }
+        .wh-check-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 44px;
+            font-weight: 700;
+            color: var(--gray-700);
+        }
+        .contractor-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 14px;
+        }
+        .contractor-card {
+            background: var(--white);
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius);
+            padding: 18px;
+            box-shadow: var(--shadow-xs);
+        }
+        .contractor-card-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+        .contractor-title { font-weight: 800; color: var(--gray-800); }
+        .contractor-meta, .contractor-note { color: var(--gray-500); font-size: 12px; }
+        .contractor-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+        .wh-mini-btn {
+            min-height: 34px;
+            padding: 7px 10px;
+            border: 1px solid var(--gray-200);
+            border-radius: 9px;
+            background: var(--white);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .wh-mini-btn.primary { background: var(--primary); border-color: var(--primary); color: white; }
+        .wh-modal textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 12px;
+            border: 1px solid var(--gray-200);
+            border-radius: 10px;
+            font: inherit;
+            color: var(--gray-800);
+            background: var(--white);
+        }
+        body.dark-mode .wh-stock-mode-switcher,
+        body.dark-mode .warehouse-location-card,
+        body.dark-mode .contractor-card,
+        body.dark-mode .wh-mini-btn {
+            background: rgba(15,23,42,.72);
+            border-color: rgba(148,163,184,.18);
+        }
+        body.dark-mode .wh-stock-mode-btn.active {
+            background: rgba(16,185,129,.16);
+            color: #A7F3D0;
+        }
+        body.dark-mode .warehouse-location-card-title,
+        body.dark-mode .contractor-title {
+            color: #F8FAFC;
+        }
+        body.dark-mode .warehouse-location-card-meta,
+        body.dark-mode .warehouse-location-card-desc,
+        body.dark-mode .contractor-meta,
+        body.dark-mode .contractor-note,
+        body.dark-mode .wh-active-location-hint {
+            color: #CBD5E1;
+        }
+
         @media print {
             .header, .skip-link, #notification, .wh-page-tabs,
             .proc-filters, .wh-filters, .wh-actions, .wh-btn,
@@ -498,6 +672,9 @@
             .wh-filters { flex-direction: column; align-items: stretch; }
             .wh-history-item { flex-wrap: wrap; }
             .proc-filters { flex-direction: column; }
+            .warehouse-location-cards { grid-template-columns: 1fr; }
+            .wh-stock-mode-switcher { width: 100%; }
+            .wh-stock-mode-btn { flex: 1; }
         }
     </style>
 </head>
@@ -559,6 +736,7 @@
             <div class="wh-page-tabs">
                 <button type="button" class="wh-page-tab active" data-page-tab="stock" onclick="switchPageTab('stock')">Склад</button>
                 <button type="button" class="wh-page-tab" data-page-tab="procurement" onclick="switchPageTab('procurement')">Закупки</button>
+                <button type="button" class="wh-page-tab" data-page-tab="contractors" onclick="switchPageTab('contractors')">Підрядники</button>
                 <button type="button" class="wh-page-tab" data-page-tab="pinata" onclick="switchPageTab('pinata');loadPinataTab()">🪅 Піньяти</button>
             </div>
 
@@ -575,14 +753,28 @@
                 </div>
             </div>
 
-            <!-- Category tabs -->
-            <div id="categoryTabs" class="category-tabs"></div>
+            <div class="wh-stock-mode-switcher" id="stockModeSwitcher">
+                <button type="button" class="wh-stock-mode-btn active" data-stock-mode="locations" onclick="switchStockMode('locations')">Склади</button>
+                <button type="button" class="wh-stock-mode-btn" data-stock-mode="categories" onclick="switchStockMode('categories')">Категорії</button>
+            </div>
+
+            <div id="locationsMode">
+                <div id="warehouseLocationCards" class="warehouse-location-cards"></div>
+            </div>
+
+            <div id="categoriesMode" style="display:none;">
+                <div id="categoryTabs" class="category-tabs"></div>
+            </div>
 
             <!-- Filters -->
             <div class="wh-filters">
+                <select id="locationFilter" class="proc-filter-select" onchange="onLocationFilterChange(this.value)">
+                    <option value="">Всі склади</option>
+                </select>
                 <input type="text" id="searchInput" class="wh-search" aria-label="Пошук за назвою..." placeholder="Пошук за назвою...">
                 <button type="button" id="lowStockToggle" class="wh-toggle">Мало на складі</button>
             </div>
+            <div id="activeLocationHint" class="wh-active-location-hint" style="display:none;"></div>
 
             <!-- Add/edit form (hidden by default) -->
             <div id="itemForm" class="inline-form" style="display:none;">
@@ -601,6 +793,17 @@
                         <option value="prizes">Призи</option>
                         <option value="office">Канцелярія</option>
                         <option value="tech">Техніка</option>
+                        <option value="pinata">Піньяти</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label>Склад</label>
+                    <select id="wf-location"></select>
+                </div>
+                <div class="form-field">
+                    <label>Підрядник</label>
+                    <select id="wf-contractor">
+                        <option value="">— не задано —</option>
                     </select>
                 </div>
                 <div class="form-field">
@@ -629,6 +832,14 @@
                     <input type="text" id="wf-notes" aria-label="Де купити, постачальник..." placeholder="Де купити, постачальник..." style="min-width:200px">
                 </div>
                 <div class="form-field">
+                    <label>Артикул / код</label>
+                    <input type="text" id="wf-sku" placeholder="PIN-001" style="min-width:140px">
+                </div>
+                <div class="form-field">
+                    <label>Закуп. ціна ₴</label>
+                    <input type="number" id="wf-purchase-price" value="0" min="0" step="0.01" style="width:120px">
+                </div>
+                <div class="form-field">
                     <label>Належить</label>
                     <select id="wf-owner">
                         <option value="park">Парк Закревського</option>
@@ -636,6 +847,10 @@
                         <option value="shared">Спільне</option>
                     </select>
                 </div>
+                <label class="wh-check-row">
+                    <input type="checkbox" id="wf-procured-externally">
+                    <span>Закуповується у підрядника</span>
+                </label>
                 <input type="hidden" id="wf-id" value="">
                 <div style="display:flex; gap:8px; margin-top:20px;">
                     <button type="button" id="saveItemBtn" class="btn-page-primary">Зберегти</button>
@@ -650,6 +865,8 @@
                         <tr>
                             <th>Назва</th>
                             <th>Категорія</th>
+                            <th>Склад</th>
+                            <th>Підрядник</th>
                             <th>Належить</th>
                             <th>Залишок</th>
                             <th>Мін.</th>
@@ -713,6 +930,35 @@
                     <div class="empty-state-text">Списків закупок немає. Створіть перший!</div>
                 </div>
             </div><!-- /procurementTab -->
+
+            <!-- ============ CONTRACTORS TAB ============ -->
+            <div id="contractorsTab" style="display:none;">
+                <div class="page-header">
+                    <h2>Підрядники</h2>
+                    <div style="display:flex;gap:8px;">
+                        <button type="button" onclick="openContractorForm()" class="btn-page-primary">+ Підрядник</button>
+                    </div>
+                </div>
+
+                <div class="proc-filters">
+                    <select id="contractorCategoryFilter" class="proc-filter-select" onchange="loadWarehouseContractors()">
+                        <option value="">Всі категорії</option>
+                        <option value="pinata">Піньяти</option>
+                        <option value="decor">Декор</option>
+                        <option value="printing">Друк</option>
+                        <option value="food">Їжа</option>
+                        <option value="tech">Техніка</option>
+                        <option value="general">Загальні</option>
+                    </select>
+                    <input type="text" id="contractorSearchInput" class="wh-search" placeholder="Пошук підрядника...">
+                </div>
+
+                <div id="contractorCards" class="contractor-grid"></div>
+                <div id="contractorEmptyState" class="empty-state" style="display:none;">
+                    <div class="empty-state-icon">🤝</div>
+                    <div class="empty-state-text">Підрядників поки немає. Додайте першого.</div>
+                </div>
+            </div><!-- /contractorsTab -->
         </main>
     </div>
 
@@ -769,6 +1015,18 @@
                 <input type="date" id="pf-date">
             </div>
             <div class="form-group">
+                <label>Цільовий склад</label>
+                <select id="pf-location">
+                    <option value="">— склад не вибрано —</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Підрядник</label>
+                <select id="pf-contractor">
+                    <option value="">— підрядник не вибраний —</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label>Примітки</label>
                 <input type="text" id="pf-notes" aria-label="Постачальник, коментарі..." placeholder="Постачальник, коментарі...">
             </div>
@@ -792,12 +1050,132 @@
                 <input type="text" id="pd-item-name" aria-label="Позиція" placeholder="Позиція" style="flex:1;min-width:140px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
                 <input type="number" id="pd-item-qty" aria-label="К-сть" placeholder="К-сть" value="1" min="1" style="width:70px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
                 <input type="number" id="pd-item-price" aria-label="Ціна ₴" placeholder="Ціна ₴" value="0" min="0" style="width:90px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
+                <select id="pd-item-contractor" aria-label="Підрядник" style="min-width:150px;padding:10px 12px;border:1px solid var(--gray-200);border-radius:var(--radius-xs);font-size:16px;font-family:inherit;min-height:44px;">
+                    <option value="">Підрядник</option>
+                </select>
                 <button type="button" onclick="addProcItem()" class="btn-page-primary" style="white-space:nowrap;">+ Додати</button>
             </div>
 
             <div class="wh-modal-actions" style="margin-top:20px;">
                 <button type="button" id="procCompleteBtn" onclick="completeProcList()" class="btn-page-primary" style="background:#10B981;">Закупити все</button>
                 <button type="button" onclick="closeProcDetail()" class="btn-page-secondary">Закрити</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transfer modal -->
+    <div id="transferModal" class="wh-modal-overlay" style="display:none;">
+        <div class="wh-modal" style="max-width:520px;">
+            <h3 id="transferModalTitle">Перемістити позицію</h3>
+            <div class="form-group">
+                <label>Куди</label>
+                <select id="transferToLocation"></select>
+            </div>
+            <div class="form-group">
+                <label>Кількість</label>
+                <input type="number" id="transferQuantity" min="1" value="1">
+            </div>
+            <div class="form-group">
+                <label>Причина</label>
+                <input type="text" id="transferReason" placeholder="Наприклад: підготовка до заходу">
+            </div>
+            <input type="hidden" id="transferStockId">
+            <div class="wh-modal-actions">
+                <button type="button" onclick="confirmTransfer()" class="btn-page-primary">Перемістити</button>
+                <button type="button" onclick="closeTransferModal()" class="btn-page-secondary">Скасувати</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Movement modal -->
+    <div id="movementModal" class="wh-modal-overlay" style="display:none;">
+        <div class="wh-modal" style="max-width:680px;">
+            <h3 id="movementModalTitle">Історія руху</h3>
+            <div id="movementTimeline" class="wh-history-list"></div>
+            <div class="wh-modal-actions">
+                <button type="button" onclick="closeMovementModal()" class="btn-page-secondary">Закрити</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contractor form modal -->
+    <div id="contractorFormModal" class="wh-modal-overlay" style="display:none;">
+        <div class="wh-modal" style="max-width:720px;">
+            <h3 id="contractorFormTitle">Новий підрядник</h3>
+            <div class="wh-form-grid">
+                <div class="form-group">
+                    <label>Назва</label>
+                    <input type="text" id="cf-name" placeholder="Назва / контакт">
+                </div>
+                <div class="form-group">
+                    <label>Категорія</label>
+                    <select id="cf-category">
+                        <option value="general">Загальні</option>
+                        <option value="pinata">Піньяти</option>
+                        <option value="decor">Декор</option>
+                        <option value="printing">Друк</option>
+                        <option value="food">Їжа</option>
+                        <option value="tech">Техніка</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Телефон</label>
+                    <input type="text" id="cf-phone" placeholder="+380...">
+                </div>
+                <div class="form-group">
+                    <label>Telegram</label>
+                    <input type="text" id="cf-telegram" placeholder="username">
+                </div>
+                <div class="form-group">
+                    <label>Канал</label>
+                    <select id="cf-channel">
+                        <option value="phone">Телефон</option>
+                        <option value="telegram">Telegram</option>
+                        <option value="mixed">Змішано</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Reliability</label>
+                    <input type="number" id="cf-reliability" min="0" max="5" step="0.1" value="0">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Контекст представлення</label>
+                <textarea id="cf-intro" placeholder="Хто ми і як представлятись"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Шаблон першого повідомлення</label>
+                <textarea id="cf-first-template" placeholder="Підкажіть, будь ласка, чи можете прийняти замовлення по {{item}}?"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Шаблон повторного замовлення</label>
+                <textarea id="cf-repeat-template" placeholder="Хочемо повторити замовлення: {{item}} {{quantity}}"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Нотатки закупівель</label>
+                <input type="text" id="cf-notes" placeholder="Мінімальне замовлення, оплата, графік">
+            </div>
+            <label class="wh-check-row">
+                <input type="checkbox" id="cf-preferred">
+                <span>Preferred contractor</span>
+            </label>
+            <input type="hidden" id="cf-id">
+            <div class="wh-modal-actions">
+                <button type="button" onclick="saveContractor()" class="btn-page-primary">Зберегти</button>
+                <button type="button" onclick="closeContractorForm()" class="btn-page-secondary">Скасувати</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contractor contact modal -->
+    <div id="contractorContactModal" class="wh-modal-overlay" style="display:none;">
+        <div class="wh-modal" style="max-width:680px;">
+            <h3 id="contractorContactTitle">Контакт підрядника</h3>
+            <div id="contractorContactMeta" style="margin-bottom:12px;color:var(--gray-500);"></div>
+            <textarea id="contractorFirstMessageDraft"></textarea>
+            <div class="wh-modal-actions">
+                <button type="button" class="btn-page-primary" onclick="copyContractorDraft()">Скопіювати текст</button>
+                <button type="button" class="btn-page-secondary" onclick="closeContractorContactModal()">Закрити</button>
             </div>
         </div>
     </div>
@@ -827,14 +1205,14 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.55.10"></script>
-    <script src="js/notification.js?v=0.55.10"></script>
-    <script src="js/api.js?v=0.55.10"></script>
-    <script src="js/auth.js?v=0.55.10"></script>
-    <script src="js/components/sidebar.js?v=0.55.10"></script>
+    <script src="js/config.js?v=0.55.11"></script>
+    <script src="js/notification.js?v=0.55.11"></script>
+    <script src="js/api.js?v=0.55.11"></script>
+    <script src="js/auth.js?v=0.55.11"></script>
+    <script src="js/components/sidebar.js?v=0.55.11"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/warehouse-page.js?v=0.55.10"></script>
-    <script src="js/alerts.js?v=0.55.10"></script><script>
+    <script src="js/warehouse-page.js?v=0.55.11"></script>
+    <script src="js/alerts.js?v=0.55.11"></script><script>
     // ─── Pinata Tab (v33.5) ──────────────────
     async function loadPinataTab() {
         try {
@@ -914,6 +1292,6 @@
         loadPinataTab();
     }
     </script>
-    <script src="js/ui.js?v=0.55.10"></script>
+    <script src="js/ui.js?v=0.55.11"></script>
 </body>
 </html>

@@ -36,6 +36,18 @@ const STATUS_UK = {
     cancelled: 'Скасовано'
 };
 
+function toOptionalInt(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const n = Number(value);
+    return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function toMoney(value) {
+    if (value === undefined || value === null || value === '') return 0;
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
 function mapListRow(row) {
     return {
         id: row.id,
@@ -54,7 +66,14 @@ function mapListRow(row) {
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         itemCount: row.item_count !== undefined ? parseInt(row.item_count) : undefined,
-        purchasedCount: row.purchased_count !== undefined ? parseInt(row.purchased_count) : undefined
+        purchasedCount: row.purchased_count !== undefined ? parseInt(row.purchased_count) : undefined,
+        targetLocationId: row.target_location_id || null,
+        targetLocationName: row.target_location_name || null,
+        contractorId: row.contractor_id || null,
+        contractorName: row.contractor_name || null,
+        contractorPhone: row.contractor_phone || null,
+        contractorTelegramUsername: row.contractor_telegram_username || null,
+        source: row.source || 'manual'
     };
 }
 
@@ -70,6 +89,18 @@ function mapItemRow(row) {
         actualPrice: row.actual_price,
         isPurchased: row.is_purchased,
         notes: row.notes,
+        note: row.note || row.notes || null,
+        warehouseStockId: row.warehouse_stock_id || row.stock_id || null,
+        contractorId: row.contractor_id || null,
+        contractorName: row.contractor_name || null,
+        contractorPhone: row.contractor_phone || null,
+        contractorTelegramUsername: row.contractor_telegram_username || null,
+        triggerSource: row.trigger_source || 'manual',
+        receivedQuantity: row.received_quantity !== undefined ? Number(row.received_quantity || 0) : 0,
+        finalPrice: row.final_price !== undefined ? Number(row.final_price || 0) : 0,
+        receivedAt: row.received_at || null,
+        targetLocationId: row.target_location_id || null,
+        targetLocationName: row.target_location_name || null,
         createdAt: row.created_at,
         stockName: row.stock_name || null,
         stockQuantity: row.stock_quantity !== undefined ? row.stock_quantity : null,
@@ -82,6 +113,82 @@ function mapItemRow(row) {
 // ==========================================
 
 // GET /api/procurement — list all procurement lists
+// POST /api/procurement/from-stock-item/:stockItemId - create low-stock procurement draft
+router.post('/from-stock-item/:stockItemId', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { stockItemId } = req.params;
+        const stock = await client.query(`
+            SELECT ws.*, wl.name AS location_name
+            FROM warehouse_stock ws
+            LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+            WHERE ws.id = $1 AND ws.is_active = true
+        `, [stockItemId]);
+        if (!stock.rowCount) return res.status(404).json({ success: false, error: 'Stock item not found' });
+
+        const item = stock.rows[0];
+        const CATEGORY_DEPT = {
+            craft: 'animators', props: 'animators', prizes: 'animators', decor: 'animators', pinata: 'animators',
+            consumable: 'cleaning', office: 'admin', food: 'cafe', tech: 'tech'
+        };
+        const deficit = Math.max(Number(item.min_quantity || 0) - Number(item.quantity || 0), 1);
+        const quantity = Number(req.body.quantity || deficit);
+        const targetLocationId = toOptionalInt(req.body.targetLocationId) || item.location_id || null;
+        const contractorId = toOptionalInt(req.body.contractorId) || item.preferred_contractor_id || null;
+        const today = new Date().toISOString().slice(0, 10);
+
+        await client.query('BEGIN');
+        const list = await client.query(`
+            INSERT INTO procurement_lists (
+                title, department, planned_date, notes, created_by,
+                target_location_id, contractor_id, source
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,'low_stock')
+            RETURNING *
+        `, [
+            `Поповнення: ${item.name}`,
+            CATEGORY_DEPT[item.category] || 'admin',
+            today,
+            `Авто-draft з low stock: ${item.quantity}/${item.min_quantity}`,
+            req.user.username,
+            targetLocationId,
+            contractorId
+        ]);
+
+        const procItem = await client.query(`
+            INSERT INTO procurement_items (
+                list_id, stock_id, warehouse_stock_id, contractor_id, name,
+                quantity, unit, estimated_price, notes, note, trigger_source
+            )
+            VALUES ($1,$2,$2,$3,$4,$5,$6,$7,$8,$8,'low_stock')
+            RETURNING *
+        `, [
+            list.rows[0].id,
+            item.id,
+            contractorId,
+            item.name,
+            quantity,
+            item.unit,
+            item.purchase_unit_price || 0,
+            `Потрібно поповнити склад ${item.location_name || ''}`.trim()
+        ]);
+
+        await client.query('COMMIT');
+        await recalcTotals(list.rows[0].id);
+        res.status(201).json({
+            success: true,
+            list: mapListRow(list.rows[0]),
+            item: mapItemRow(procItem.rows[0])
+        });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        log.error('POST /from-stock-item error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
 router.get('/', async (req, res) => {
     try {
         const conditions = [];
@@ -105,13 +212,19 @@ router.get('/', async (req, res) => {
 
         const result = await pool.query(`
             SELECT pl.*, s.name AS assigned_name,
+                wl.name AS target_location_name,
+                c.name AS contractor_name,
+                c.phone AS contractor_phone,
+                c.telegram_username AS contractor_telegram_username,
                 COUNT(pi.id)::int AS item_count,
                 COUNT(pi.id) FILTER (WHERE pi.is_purchased = true)::int AS purchased_count
             FROM procurement_lists pl
             LEFT JOIN staff s ON pl.assigned_to = s.id
+            LEFT JOIN warehouse_locations wl ON wl.id = pl.target_location_id
+            LEFT JOIN contractors c ON c.id = pl.contractor_id
             LEFT JOIN procurement_items pi ON pi.list_id = pl.id
             ${where}
-            GROUP BY pl.id, s.name
+            GROUP BY pl.id, s.name, wl.name, c.name, c.phone, c.telegram_username
             ORDER BY
                 CASE pl.status
                     WHEN 'in_progress' THEN 1
@@ -137,9 +250,15 @@ router.get('/:id', async (req, res) => {
         const { id } = req.params;
 
         const listResult = await pool.query(`
-            SELECT pl.*, s.name AS assigned_name
+            SELECT pl.*, s.name AS assigned_name,
+                   wl.name AS target_location_name,
+                   c.name AS contractor_name,
+                   c.phone AS contractor_phone,
+                   c.telegram_username AS contractor_telegram_username
             FROM procurement_lists pl
             LEFT JOIN staff s ON pl.assigned_to = s.id
+            LEFT JOIN warehouse_locations wl ON wl.id = pl.target_location_id
+            LEFT JOIN contractors c ON c.id = pl.contractor_id
             WHERE pl.id = $1
         `, [id]);
 
@@ -149,9 +268,18 @@ router.get('/:id', async (req, res) => {
 
         const itemsResult = await pool.query(`
             SELECT pi.*, ws.name AS stock_name, ws.quantity AS stock_quantity,
-                   ws.min_quantity AS stock_min_quantity
+                   ws.min_quantity AS stock_min_quantity,
+                   COALESCE(pi.warehouse_stock_id, pi.stock_id) AS warehouse_stock_id,
+                   c.name AS contractor_name,
+                   c.phone AS contractor_phone,
+                   c.telegram_username AS contractor_telegram_username,
+                   COALESCE(pl.target_location_id, ws.location_id) AS target_location_id,
+                   wl.name AS target_location_name
             FROM procurement_items pi
-            LEFT JOIN warehouse_stock ws ON pi.stock_id = ws.id
+            JOIN procurement_lists pl ON pl.id = pi.list_id
+            LEFT JOIN warehouse_stock ws ON COALESCE(pi.warehouse_stock_id, pi.stock_id) = ws.id
+            LEFT JOIN contractors c ON c.id = COALESCE(pi.contractor_id, pl.contractor_id)
+            LEFT JOIN warehouse_locations wl ON wl.id = COALESCE(pl.target_location_id, ws.location_id)
             WHERE pi.list_id = $1
             ORDER BY pi.is_purchased, pi.id
         `, [id]);
@@ -169,7 +297,7 @@ router.get('/:id', async (req, res) => {
 // POST /api/procurement — create a new procurement list
 router.post('/', async (req, res) => {
     try {
-        const { title, department, plannedDate, assignedTo, notes } = req.body;
+        const { title, department, plannedDate, assignedTo, notes, targetLocationId, contractorId, source } = req.body;
 
         if (!title || typeof title !== 'string' || title.trim().length === 0) {
             return res.status(400).json({ error: 'title is required' });
@@ -179,10 +307,16 @@ router.post('/', async (req, res) => {
         }
 
         const result = await pool.query(`
-            INSERT INTO procurement_lists (title, department, planned_date, assigned_to, notes, created_by)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO procurement_lists (
+                title, department, planned_date, assigned_to, notes, created_by,
+                target_location_id, contractor_id, source
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING *
-        `, [title.trim(), department || 'admin', plannedDate || null, assignedTo || null, notes || null, req.user.username]);
+        `, [
+            title.trim(), department || 'admin', plannedDate || null, assignedTo || null, notes || null, req.user.username,
+            toOptionalInt(targetLocationId), toOptionalInt(contractorId), source || 'manual'
+        ]);
 
         log.info(`Procurement list created: "${title}" by ${req.user.username}`);
         res.status(201).json({ success: true, list: mapListRow(result.rows[0]) });
@@ -196,7 +330,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, department, status, plannedDate, assignedTo, notes } = req.body;
+        const { title, department, status, plannedDate, assignedTo, notes, targetLocationId, contractorId, source } = req.body;
 
         const existing = await pool.query('SELECT * FROM procurement_lists WHERE id = $1', [id]);
         if (existing.rows.length === 0) {
@@ -215,8 +349,9 @@ router.put('/:id', async (req, res) => {
             UPDATE procurement_lists SET
                 title = $1, department = $2, status = $3,
                 planned_date = $4, assigned_to = $5, notes = $6,
+                target_location_id = $7, contractor_id = $8, source = $9,
                 updated_at = NOW()
-            WHERE id = $7 RETURNING *
+            WHERE id = $10 RETURNING *
         `, [
             (title || cur.title).trim(),
             department || cur.department,
@@ -224,6 +359,9 @@ router.put('/:id', async (req, res) => {
             plannedDate !== undefined ? plannedDate : cur.planned_date,
             assignedTo !== undefined ? assignedTo : cur.assigned_to,
             notes !== undefined ? notes : cur.notes,
+            targetLocationId !== undefined ? toOptionalInt(targetLocationId) : cur.target_location_id,
+            contractorId !== undefined ? toOptionalInt(contractorId) : cur.contractor_id,
+            source || cur.source || 'manual',
             id
         ]);
 
@@ -262,7 +400,10 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/items', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, stockId, quantity, unit, estimatedPrice, notes } = req.body;
+        const {
+            name, stockId, warehouseStockId, contractorId, quantity, unit,
+            estimatedPrice, notes, note, triggerSource
+        } = req.body;
 
         // Check list exists
         const list = await pool.query('SELECT id, status FROM procurement_lists WHERE id = $1', [id]);
@@ -275,10 +416,25 @@ router.post('/:id/items', async (req, res) => {
         }
 
         const result = await pool.query(`
-            INSERT INTO procurement_items (list_id, stock_id, name, quantity, unit, estimated_price, notes)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO procurement_items (
+                list_id, stock_id, warehouse_stock_id, contractor_id, name, quantity,
+                unit, estimated_price, notes, note, trigger_source
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING *
-        `, [id, stockId || null, name.trim(), quantity || 1, unit || 'шт', estimatedPrice || 0, notes || null]);
+        `, [
+            id,
+            toOptionalInt(stockId || warehouseStockId),
+            toOptionalInt(warehouseStockId || stockId),
+            toOptionalInt(contractorId),
+            name.trim(),
+            quantity || 1,
+            unit || 'шт',
+            estimatedPrice || 0,
+            notes || null,
+            note || notes || null,
+            triggerSource || 'manual'
+        ]);
 
         // Recalculate total estimated
         await recalcTotals(id);
@@ -294,7 +450,10 @@ router.post('/:id/items', async (req, res) => {
 router.put('/:id/items/:itemId', async (req, res) => {
     try {
         const { id, itemId } = req.params;
-        const { name, quantity, unit, estimatedPrice, actualPrice, isPurchased, notes } = req.body;
+        const {
+            name, quantity, unit, estimatedPrice, actualPrice, isPurchased,
+            notes, note, contractorId, warehouseStockId, stockId
+        } = req.body;
 
         const existing = await pool.query(
             'SELECT * FROM procurement_items WHERE id = $1 AND list_id = $2', [itemId, id]
@@ -308,8 +467,9 @@ router.put('/:id/items/:itemId', async (req, res) => {
             UPDATE procurement_items SET
                 name = $1, quantity = $2, unit = $3,
                 estimated_price = $4, actual_price = $5,
-                is_purchased = $6, notes = $7
-            WHERE id = $8 RETURNING *
+                is_purchased = $6, notes = $7, note = $8,
+                contractor_id = $9, warehouse_stock_id = $10, stock_id = $11
+            WHERE id = $12 RETURNING *
         `, [
             (name || cur.name).trim(),
             quantity !== undefined ? quantity : cur.quantity,
@@ -318,6 +478,10 @@ router.put('/:id/items/:itemId', async (req, res) => {
             actualPrice !== undefined ? actualPrice : cur.actual_price,
             isPurchased !== undefined ? isPurchased : cur.is_purchased,
             notes !== undefined ? notes : cur.notes,
+            note !== undefined ? note : cur.note,
+            contractorId !== undefined ? toOptionalInt(contractorId) : cur.contractor_id,
+            (warehouseStockId !== undefined || stockId !== undefined) ? toOptionalInt(warehouseStockId || stockId) : cur.warehouse_stock_id,
+            (stockId !== undefined || warehouseStockId !== undefined) ? toOptionalInt(stockId || warehouseStockId) : cur.stock_id,
             itemId
         ]);
 
@@ -353,6 +517,25 @@ router.delete('/:id/items/:itemId', async (req, res) => {
 // ==========================================
 
 // POST /api/procurement/:id/complete — mark as purchased + auto-restock warehouse
+// POST /api/procurement/:id/items/:itemId/receive - receive item into a concrete warehouse location
+router.post('/:id/items/:itemId/receive', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const result = await receiveProcurementItem(client, req.params.id, req.params.itemId, req.body, req.user.username);
+        await client.query('COMMIT');
+        await recalcTotals(req.params.id);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        log.error('POST /:id/items/:itemId/receive error', err);
+        const status = err.statusCode || 500;
+        res.status(status).json({ success: false, error: status === 500 ? 'Internal server error' : err.message });
+    } finally {
+        client.release();
+    }
+});
+
 router.post('/:id/complete', async (req, res) => {
     const client = await pool.connect();
     try {
@@ -369,33 +552,18 @@ router.post('/:id/complete', async (req, res) => {
         // Get all items
         const items = await client.query('SELECT * FROM procurement_items WHERE list_id = $1', [id]);
 
-        // Auto-restock linked warehouse items
+        // Receive each open item into its target warehouse location.
         let restockedCount = 0;
         for (const item of items.rows) {
-            if (item.stock_id && !item.is_purchased) {
-                // Restock warehouse
-                await client.query(
-                    `UPDATE warehouse_stock SET quantity = quantity + $1, updated_at = NOW(), updated_by = $2
-                     WHERE id = $3 AND is_active = true`,
-                    [item.quantity, req.user.username, item.stock_id]
-                );
-                await client.query(
-                    `INSERT INTO warehouse_history (stock_id, change, reason, created_by)
-                     VALUES ($1, $2, $3, $4)`,
-                    [item.stock_id, item.quantity, `Закупка #${id}: ${list.rows[0].title}`, req.user.username]
-                );
+            if (!item.is_purchased) {
+                await receiveProcurementItem(client, id, item.id, {}, req.user.username);
                 restockedCount++;
             }
-            // Mark item as purchased
-            await client.query(
-                'UPDATE procurement_items SET is_purchased = true WHERE id = $1',
-                [item.id]
-            );
         }
 
         // Update list status
         await client.query(
-            `UPDATE procurement_lists SET status = 'purchased', updated_at = NOW() WHERE id = $1`,
+            `UPDATE procurement_lists SET status = 'delivered', updated_at = NOW() WHERE id = $1`,
             [id]
         );
 
@@ -420,15 +588,20 @@ router.post('/:id/complete', async (req, res) => {
 router.get('/suggestions/low-stock', async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT id, name, category, quantity, min_quantity, unit
-            FROM warehouse_stock
-            WHERE is_active = true AND quantity <= min_quantity
-            ORDER BY (min_quantity - quantity) DESC, category, name
+            SELECT ws.id, ws.name, ws.category, ws.quantity, ws.min_quantity, ws.unit,
+                   ws.location_id, wl.name AS location_name,
+                   ws.preferred_contractor_id, c.name AS preferred_contractor_name,
+                   ws.purchase_unit_price
+            FROM warehouse_stock ws
+            LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+            LEFT JOIN contractors c ON c.id = ws.preferred_contractor_id
+            WHERE ws.is_active = true AND ws.quantity <= ws.min_quantity
+            ORDER BY (ws.min_quantity - ws.quantity) DESC, ws.category, ws.name
         `);
 
         // Map warehouse categories to departments
         const CATEGORY_DEPT = {
-            craft: 'animators', props: 'animators', prizes: 'animators', decor: 'animators',
+            craft: 'animators', props: 'animators', prizes: 'animators', decor: 'animators', pinata: 'animators',
             consumable: 'cleaning', office: 'admin',
             food: 'cafe', tech: 'tech'
         };
@@ -442,7 +615,12 @@ router.get('/suggestions/low-stock', async (req, res) => {
                 minQuantity: r.min_quantity,
                 deficit: r.min_quantity - r.quantity,
                 unit: r.unit,
-                suggestedDepartment: CATEGORY_DEPT[r.category] || 'admin'
+                suggestedDepartment: CATEGORY_DEPT[r.category] || 'admin',
+                targetLocationId: r.location_id || null,
+                targetLocationName: r.location_name || null,
+                contractorId: r.preferred_contractor_id || null,
+                contractorName: r.preferred_contractor_name || null,
+                estimatedPrice: r.purchase_unit_price || 0
             }))
         });
     } catch (err) {
@@ -535,6 +713,205 @@ router.get('/export-xlsx', async (req, res) => {
 // ==========================================
 // HELPERS
 // ==========================================
+
+function httpError(statusCode, message) {
+    const err = new Error(message);
+    err.statusCode = statusCode;
+    return err;
+}
+
+async function resolveDefaultLocationId(client) {
+    const result = await client.query(
+        `SELECT id FROM warehouse_locations
+         WHERE slug = 'office' AND is_active = true
+         LIMIT 1`
+    );
+    return result.rows[0]?.id || null;
+}
+
+async function ensureReceiptStock(client, item, locationId, username) {
+    let stockId = toOptionalInt(item.warehouse_stock_id || item.stock_id);
+    if (!stockId) {
+        const created = await client.query(
+            `INSERT INTO warehouse_stock (
+                name, category, quantity, min_quantity, unit, notes, is_active,
+                updated_by, location_id, preferred_contractor_id, purchase_unit_price,
+                is_procured_externally
+             )
+             VALUES ($1, 'consumable', 0, 0, $2, $3, true, $4, $5, $6, $7, true)
+             RETURNING *`,
+            [
+                item.name,
+                item.unit || 'шт',
+                item.note || item.notes || null,
+                username,
+                locationId,
+                item.contractor_id || item.list_contractor_id || null,
+                item.estimated_price || 0
+            ]
+        );
+        return created.rows[0];
+    }
+
+    const stock = await client.query('SELECT * FROM warehouse_stock WHERE id = $1 FOR UPDATE', [stockId]);
+    if (!stock.rowCount) throw httpError(404, 'Linked stock item not found');
+    const row = stock.rows[0];
+
+    if (!row.location_id && locationId) {
+        const updated = await client.query(
+            `UPDATE warehouse_stock SET location_id = $1, updated_at = NOW(), updated_by = $2 WHERE id = $3 RETURNING *`,
+            [locationId, username, row.id]
+        );
+        return updated.rows[0];
+    }
+
+    if (locationId && row.location_id && String(row.location_id) !== String(locationId)) {
+        const sibling = await client.query(
+            `SELECT * FROM warehouse_stock
+             WHERE is_active = true
+               AND location_id = $1
+               AND name = $2
+               AND category = $3
+               AND unit = $4
+               AND COALESCE(owner, 'park') = COALESCE($5, 'park')
+             LIMIT 1 FOR UPDATE`,
+            [locationId, row.name, row.category, row.unit, row.owner || 'park']
+        );
+        if (sibling.rowCount) return sibling.rows[0];
+
+        const cloned = await client.query(
+            `INSERT INTO warehouse_stock (
+                name, category, quantity, min_quantity, unit, notes, is_active,
+                updated_by, owner, location_id, preferred_contractor_id,
+                purchase_unit_price, sku, is_procured_externally
+             )
+             VALUES ($1,$2,0,$3,$4,$5,true,$6,$7,$8,$9,$10,$11,$12)
+             RETURNING *`,
+            [
+                row.name, row.category, row.min_quantity, row.unit, row.notes,
+                username, row.owner || 'park', locationId, row.preferred_contractor_id || null,
+                row.purchase_unit_price || 0, row.sku || null, row.is_procured_externally === true
+            ]
+        );
+        return cloned.rows[0];
+    }
+
+    return row;
+}
+
+async function receiveProcurementItem(client, listId, itemId, body = {}, username = 'system') {
+    const itemResult = await client.query(`
+        SELECT pi.*, pl.title AS list_title, pl.target_location_id, pl.contractor_id AS list_contractor_id
+        FROM procurement_items pi
+        JOIN procurement_lists pl ON pl.id = pi.list_id
+        WHERE pi.id = $1 AND pi.list_id = $2
+        FOR UPDATE OF pi
+    `, [itemId, listId]);
+    if (!itemResult.rowCount) throw httpError(404, 'Procurement item not found');
+
+    const item = itemResult.rows[0];
+    const receivedQty = Number(body.receivedQty || body.receivedQuantity || item.quantity || 1);
+    if (!Number.isFinite(receivedQty) || receivedQty <= 0) throw httpError(400, 'receivedQty must be positive');
+
+    const requestedLocationId = toOptionalInt(body.locationId) || item.target_location_id || null;
+    const locationId = requestedLocationId || await resolveDefaultLocationId(client);
+    const stock = await ensureReceiptStock(client, {
+        ...item,
+        warehouse_stock_id: body.warehouseStockId || item.warehouse_stock_id,
+        stock_id: body.stockId || item.stock_id
+    }, locationId, username);
+
+    const finalPrice = body.finalPrice !== undefined
+        ? toMoney(body.finalPrice)
+        : toMoney(item.actual_price || item.final_price || item.estimated_price);
+    const contractorId = toOptionalInt(body.contractorId) || item.contractor_id || item.list_contractor_id || null;
+
+    const updatedStock = await client.query(
+        `UPDATE warehouse_stock
+         SET quantity = quantity + $1,
+             purchase_unit_price = CASE WHEN $2 > 0 THEN $2 ELSE purchase_unit_price END,
+             preferred_contractor_id = COALESCE(preferred_contractor_id, $3),
+             updated_at = NOW(),
+             updated_by = $4
+         WHERE id = $5
+         RETURNING *`,
+        [receivedQty, finalPrice, contractorId, username, stock.id]
+    );
+
+    await client.query(
+        `INSERT INTO warehouse_stock_movements (
+            warehouse_stock_id, movement_type, from_location_id, to_location_id,
+            quantity, reason, related_procurement_item_id, created_by
+         )
+         VALUES ($1, 'receipt', NULL, $2, $3, $4, $5, $6)`,
+        [stock.id, locationId, receivedQty, `Закупка #${listId}: ${item.list_title}`, item.id, username]
+    );
+
+    await client.query(
+        `INSERT INTO warehouse_history (stock_id, change, reason, created_by)
+         VALUES ($1, $2, $3, $4)`,
+        [stock.id, receivedQty, `Закупка #${listId}: ${item.list_title}`, username]
+    );
+
+    const updatedItem = await client.query(
+        `UPDATE procurement_items
+         SET stock_id = $1,
+             warehouse_stock_id = $1,
+             contractor_id = COALESCE(contractor_id, $2),
+             is_purchased = true,
+             received_quantity = COALESCE(received_quantity, 0) + $3,
+             final_price = $4,
+             actual_price = $4,
+             received_at = NOW()
+         WHERE id = $5
+         RETURNING *`,
+        [stock.id, contractorId, receivedQty, finalPrice, item.id]
+    );
+
+    if (contractorId) {
+        await client.query(
+            `INSERT INTO contractor_stock_links (
+                contractor_id, warehouse_stock_id, last_price, is_primary, notes, updated_at
+             )
+             VALUES ($1, $2, $3, true, $4, NOW())
+             ON CONFLICT (contractor_id, warehouse_stock_id) DO UPDATE SET
+                last_price = EXCLUDED.last_price,
+                is_primary = true,
+                notes = COALESCE(contractor_stock_links.notes, EXCLUDED.notes),
+                updated_at = NOW()`,
+            [contractorId, stock.id, finalPrice, `Остання закупка #${listId}`]
+        );
+        await client.query(
+            `UPDATE contractors
+             SET last_ordered_at = NOW(),
+                 last_order_price = $1,
+                 last_order_item_summary = $2,
+                 updated_at = NOW()
+             WHERE id = $3`,
+            [finalPrice, item.name, contractorId]
+        );
+    }
+
+    const remaining = await client.query(
+        `SELECT COUNT(*)::int AS open_count
+         FROM procurement_items
+         WHERE list_id = $1 AND COALESCE(is_purchased, false) = false`,
+        [listId]
+    );
+    if (Number(remaining.rows[0].open_count || 0) === 0) {
+        await client.query(
+            `UPDATE procurement_lists SET status = 'delivered', updated_at = NOW() WHERE id = $1`,
+            [listId]
+        );
+    }
+
+    return {
+        item: mapItemRow(updatedItem.rows[0]),
+        stock: updatedStock.rows[0],
+        receivedQuantity: receivedQty,
+        targetLocationId: locationId
+    };
+}
 
 async function recalcTotals(listId) {
     await pool.query(`

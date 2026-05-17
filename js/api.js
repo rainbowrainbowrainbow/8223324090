@@ -1035,6 +1035,8 @@ async function apiGetWarehouse(filters = {}) {
         const params = new URLSearchParams();
         if (filters.category) params.set('category', filters.category);
         if (filters.search) params.set('search', filters.search);
+        if (filters.q) params.set('q', filters.q);
+        if (filters.locationId) params.set('locationId', filters.locationId);
         if (filters.low_stock) params.set('low_stock', 'true');
         if (filters.all) params.set('all', 'true');
         const qs = params.toString();
@@ -1045,6 +1047,18 @@ async function apiGetWarehouse(filters = {}) {
     } catch (err) {
         console.error('API getWarehouse error:', err);
         return { items: [], lowStockCount: 0 };
+    }
+}
+
+async function apiGetWarehouseLocationsSummary() {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/locations-summary`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { success: false, locations: [] };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getWarehouseLocationsSummary error:', err);
+        return { success: false, locations: [] };
     }
 }
 
@@ -1142,6 +1156,33 @@ async function apiRestockWarehouseItem(id, amount, reason) {
     }
 }
 
+async function apiTransferWarehouseItem(id, data) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/stock/${id}/transfer`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return { success: false };
+        return await response.json();
+    } catch (err) {
+        console.error('API transferWarehouseItem error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiGetWarehouseMovements(id) {
+    try {
+        const response = await fetch(`${API_BASE}/warehouse/stock/${id}/movements`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { success: false, movements: [] };
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getWarehouseMovements error:', err);
+        return { success: false, movements: [] };
+    }
+}
+
 async function apiGetWarehouseHistory(filters = {}) {
     try {
         const params = new URLSearchParams();
@@ -1155,6 +1196,69 @@ async function apiGetWarehouseHistory(filters = {}) {
     } catch (err) {
         console.error('API getWarehouseHistory error:', err);
         return { items: [], total: 0 };
+    }
+}
+
+async function apiGetContractors(filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (filters.category) params.set('category', filters.category);
+        if (filters.q) params.set('q', filters.q);
+        if (filters.active !== undefined) params.set('active', filters.active ? 'true' : 'false');
+        const qs = params.toString();
+        const response = await fetch(`${API_BASE}/contractors${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { contractors: [] };
+        if (!response.ok) throw new Error('API error');
+        const data = await response.json();
+        return Array.isArray(data) ? { contractors: data } : data;
+    } catch (err) {
+        console.error('API getContractors error:', err);
+        return { contractors: [] };
+    }
+}
+
+async function apiCreateContractor(data) {
+    try {
+        const response = await fetch(`${API_BASE}/contractors`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return { success: false };
+        return await response.json();
+    } catch (err) {
+        console.error('API createContractor error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiUpdateContractor(id, data) {
+    try {
+        const response = await fetch(`${API_BASE}/contractors/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return { success: false };
+        return await response.json();
+    } catch (err) {
+        console.error('API updateContractor error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiGetContractorOrderContext(id, filters = {}) {
+    try {
+        const params = new URLSearchParams();
+        if (filters.stockItemId) params.set('stockItemId', filters.stockItemId);
+        if (filters.procurementItemId) params.set('procurementItemId', filters.procurementItemId);
+        const response = await fetch(`${API_BASE}/contractors/${id}/order-context?${params}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        if (!response.ok) throw new Error('API error');
+        return await response.json();
+    } catch (err) {
+        console.error('API getContractorOrderContext error:', err);
+        return null;
     }
 }
 
@@ -1287,6 +1391,36 @@ async function apiGetProcurementSuggestions() {
     } catch (err) {
         console.error('API getProcurementSuggestions error:', err);
         return { suggestions: [] };
+    }
+}
+
+async function apiCreateProcurementFromStockItem(stockItemId, data = {}) {
+    try {
+        const response = await fetch(`${API_BASE}/procurement/from-stock-item/${stockItemId}`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API createProcurementFromStockItem error:', err);
+        return null;
+    }
+}
+
+async function apiReceiveProcurementItem(listId, itemId, data = {}) {
+    try {
+        const response = await fetch(`${API_BASE}/procurement/${listId}/items/${itemId}/receive`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API receiveProcurementItem error:', err);
+        return null;
     }
 }
 

@@ -17,7 +17,7 @@ router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager',
 // GET /api/contractors — list all contractors with stats
 router.get('/', async (req, res) => {
     try {
-        const { category, active } = req.query;
+        const { category, active, q } = req.query;
         let query = 'SELECT * FROM contractors';
         const conditions = [];
         const params = [];
@@ -29,10 +29,14 @@ router.get('/', async (req, res) => {
             params.push(active === 'true');
             conditions.push(`is_active = $${params.length}`);
         }
+        if (q) {
+            params.push(`%${q}%`);
+            conditions.push(`(name ILIKE $${params.length} OR COALESCE(phone, '') ILIKE $${params.length} OR COALESCE(telegram_username, '') ILIKE $${params.length} OR COALESCE(notes, '') ILIKE $${params.length})`);
+        }
         if (conditions.length > 0) {
             query += ' WHERE ' + conditions.join(' AND ');
         }
-        query += ' ORDER BY is_active DESC, avg_reliability DESC, name';
+        query += ' ORDER BY is_active DESC, is_preferred DESC, COALESCE(reliability_score, avg_reliability, 0) DESC, name';
         const result = await pool.query(query, params);
         res.json(result.rows);
     } catch (err) {
@@ -103,6 +107,102 @@ router.get('/overview', async (req, res) => {
 });
 
 // GET /api/contractors/:id — single contractor with full stats
+// GET /api/contractors/:id/order-context - machine-readable contact + ordering draft
+router.get('/:id/order-context', async (req, res) => {
+    try {
+        const { stockItemId, procurementItemId } = req.query;
+        const contractorResult = await pool.query('SELECT * FROM contractors WHERE id = $1', [req.params.id]);
+        if (!contractorResult.rowCount) {
+            return res.status(404).json({ success: false, error: 'Contractor not found' });
+        }
+
+        let stockItem = null;
+        let procurementItem = null;
+        let link = null;
+
+        if (stockItemId) {
+            const stockRes = await pool.query(`
+                SELECT ws.*, wl.name AS location_name
+                FROM warehouse_stock ws
+                LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+                WHERE ws.id = $1
+            `, [stockItemId]);
+            stockItem = stockRes.rows[0] || null;
+        }
+
+        if (procurementItemId) {
+            const procRes = await pool.query(`
+                SELECT pi.*, pl.title AS list_title, wl.name AS target_location_name
+                FROM procurement_items pi
+                JOIN procurement_lists pl ON pl.id = pi.list_id
+                LEFT JOIN warehouse_locations wl ON wl.id = pl.target_location_id
+                WHERE pi.id = $1
+            `, [procurementItemId]);
+            procurementItem = procRes.rows[0] || null;
+            if (!stockItem && (procurementItem?.warehouse_stock_id || procurementItem?.stock_id)) {
+                const stockRes = await pool.query(`
+                    SELECT ws.*, wl.name AS location_name
+                    FROM warehouse_stock ws
+                    LEFT JOIN warehouse_locations wl ON wl.id = ws.location_id
+                    WHERE ws.id = $1
+                `, [procurementItem.warehouse_stock_id || procurementItem.stock_id]);
+                stockItem = stockRes.rows[0] || null;
+            }
+        }
+
+        if (stockItem) {
+            const linkRes = await pool.query(`
+                SELECT *
+                FROM contractor_stock_links
+                WHERE contractor_id = $1 AND warehouse_stock_id = $2
+            `, [req.params.id, stockItem.id]);
+            link = linkRes.rows[0] || null;
+        }
+
+        const c = contractorResult.rows[0];
+        const targetName = procurementItem?.name || stockItem?.name || 'позиція';
+        const targetQty = procurementItem?.quantity ? `${procurementItem.quantity} ${procurementItem.unit || ''}`.trim() : '';
+        const locationText = procurementItem?.target_location_name || stockItem?.location_name || '';
+        const intro = c.intro_context || 'Вітаю! Пише команда Event Genix.';
+        const firstTemplate = c.first_message_template || 'Підкажіть, будь ласка, чи можете прийняти замовлення по позиції: {{item}}.';
+        const repeatTemplate = c.repeat_order_template || 'Вітаю! Хочемо повторити замовлення: {{item}} {{quantity}}.';
+        const vars = { item: targetName, quantity: targetQty, location: locationText, contractor: c.name };
+        const fill = (text) => String(text || '').replace(/\{\{(item|quantity|location|contractor)\}\}/g, (_, key) => vars[key] || '');
+
+        const firstMessageDraft = [intro, fill(firstTemplate), targetQty ? `Кількість: ${targetQty}` : '', locationText ? `Склад: ${locationText}` : '']
+            .filter(Boolean)
+            .join('\n\n');
+
+        res.json({
+            success: true,
+            contractor: {
+                id: c.id,
+                name: c.name,
+                category: c.category,
+                phone: c.phone,
+                telegramUsername: c.telegram_username,
+                telegramChatId: c.telegram_chat_id,
+                preferredChannel: c.preferred_channel || 'phone',
+                orderingNotes: c.ordering_notes || c.notes || null,
+                reliabilityScore: c.reliability_score || c.avg_reliability || 0,
+                leadTimeDays: c.lead_time_days || link?.lead_time_days || null,
+                lastOrderPrice: c.last_order_price || link?.last_price || null,
+                lastOrderedAt: c.last_ordered_at || null
+            },
+            stockItem,
+            procurementItem,
+            contractorStockLink: link,
+            firstMessageDraft,
+            repeatOrderDraft: fill(repeatTemplate),
+            missingContact: !c.phone && !c.telegram_username && !c.telegram_chat_id,
+            warnings: (!c.phone && !c.telegram_username && !c.telegram_chat_id) ? ['missing_contact'] : []
+        });
+    } catch (err) {
+        log.error('Order context error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 router.get('/:id', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM contractors WHERE id = $1', [req.params.id]);
@@ -143,7 +243,11 @@ router.get('/:id', async (req, res) => {
 // POST /api/contractors — create contractor
 router.post('/', async (req, res) => {
     try {
-        const { name, specialty, telegram_chat_id, telegram_username, phone, notes, category, sla_response_minutes } = req.body;
+        const {
+            name, specialty, telegram_chat_id, telegram_username, phone, notes, category, sla_response_minutes,
+            preferredChannel, firstMessageTemplate, repeatOrderTemplate, introContext,
+            orderingNotes, isPreferred, reliabilityScore, priceNote, leadTimeDays, minimumOrderNote
+        } = req.body;
         if (!name || !name.trim()) {
             return res.status(400).json({ error: "Ім'я підрядника обов'язкове" });
         }
@@ -151,8 +255,14 @@ router.post('/', async (req, res) => {
         const inviteToken = 'ctr_' + crypto.randomBytes(8).toString('hex');
 
         const result = await pool.query(
-            `INSERT INTO contractors (name, specialty, telegram_chat_id, telegram_username, invite_token, phone, notes, category, sla_response_minutes)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+            `INSERT INTO contractors (
+                name, specialty, telegram_chat_id, telegram_username, invite_token, phone, notes,
+                category, sla_response_minutes, preferred_channel, first_message_template,
+                repeat_order_template, intro_context, ordering_notes, is_preferred,
+                reliability_score, price_note, lead_time_days, minimum_order_note
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+             RETURNING *`,
             [
                 name.trim(),
                 JSON.stringify(specialty || []),
@@ -162,7 +272,17 @@ router.post('/', async (req, res) => {
                 phone || null,
                 notes || null,
                 category || 'general',
-                sla_response_minutes || 120
+                sla_response_minutes || 120,
+                preferredChannel || 'phone',
+                firstMessageTemplate || null,
+                repeatOrderTemplate || null,
+                introContext || null,
+                orderingNotes || null,
+                isPreferred === true,
+                Number(reliabilityScore || 0),
+                priceNote || null,
+                leadTimeDays || null,
+                minimumOrderNote || null
             ]
         );
 
@@ -178,17 +298,37 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, specialty, telegram_chat_id, telegram_username, phone, notes, is_active, category, sla_response_minutes } = req.body;
+        const {
+            name, specialty, telegram_chat_id, telegram_username, phone, notes, is_active, category, sla_response_minutes,
+            preferredChannel, firstMessageTemplate, repeatOrderTemplate, introContext,
+            orderingNotes, isPreferred, reliabilityScore, priceNote, leadTimeDays, minimumOrderNote
+        } = req.body;
 
         const result = await pool.query(
             `UPDATE contractors SET name=$1, specialty=$2, telegram_chat_id=$3, telegram_username=$4,
-             phone=$5, notes=$6, is_active=$7, category=$8, sla_response_minutes=$9 WHERE id=$10 RETURNING *`,
+             phone=$5, notes=$6, is_active=$7, category=$8, sla_response_minutes=$9,
+             preferred_channel=$10, first_message_template=$11, repeat_order_template=$12,
+             intro_context=$13, ordering_notes=$14, is_preferred=$15,
+             reliability_score=$16, price_note=$17, lead_time_days=$18,
+             minimum_order_note=$19, updated_at=NOW()
+             WHERE id=$20 RETURNING *`,
             [
                 name, JSON.stringify(specialty || []),
                 telegram_chat_id || null, telegram_username || null,
                 phone || null, notes || null,
                 is_active !== false, category || 'general',
-                sla_response_minutes || 120, id
+                sla_response_minutes || 120,
+                preferredChannel || 'phone',
+                firstMessageTemplate || null,
+                repeatOrderTemplate || null,
+                introContext || null,
+                orderingNotes || null,
+                isPreferred === true,
+                Number(reliabilityScore || 0),
+                priceNote || null,
+                leadTimeDays || null,
+                minimumOrderNote || null,
+                id
             ]
         );
 

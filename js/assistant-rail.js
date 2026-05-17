@@ -173,11 +173,12 @@
         rail.setAttribute('aria-label', 'Стан голосового AI-помічника');
         rail.innerHTML = `
             <div class="assistant-rail-presence">
-                <div class="assistant-rail-avatar" id="crmAssistantRailAvatar" aria-hidden="true">
-                    <span class="assistant-rail-orb-core">AI</span>
+                <button type="button" class="assistant-rail-avatar assistant-rail-avatar-btn" id="crmAssistantRailAvatar" title="Відкрити повну AI-картку" aria-label="Відкрити повну AI-картку">
+                    <span class="assistant-rail-orb-core"><span class="assistant-rail-orb-eye"></span></span>
                     <span class="assistant-rail-orb-ripple assistant-rail-orb-ripple--one"></span>
                     <span class="assistant-rail-orb-ripple assistant-rail-orb-ripple--two"></span>
-                </div>
+                    <span class="assistant-rail-avatar-meter" aria-hidden="true"><strong id="crmAssistantSignalCount">0</strong><small>сигн.</small></span>
+                </button>
                 <div class="assistant-rail-status-stack">
                     <div class="assistant-rail-topline">
                         <span class="assistant-rail-name">Клешня</span>
@@ -186,6 +187,17 @@
                     </div>
                     <div class="assistant-rail-subtitles-wrap" id="crmAssistantRailSubtitlesWrap">
                         <div class="assistant-rail-subtitles" id="crmAssistantRailSubtitles">Я поруч, якщо треба допомога по сторінці.</div>
+                    </div>
+                    <div class="assistant-rail-context-strip" aria-label="Контекст AI-помічника">
+                        <button type="button" class="assistant-rail-context-chip" data-crm-assistant-context-prompt="Поясни, що найважливіше на поточній сторінці">
+                            <span>Екран</span><strong id="crmAssistantPageChip">Сторінка</strong>
+                        </button>
+                        <button type="button" class="assistant-rail-context-chip" data-crm-assistant-context-prompt="Що мені робити далі в моїй ролі?">
+                            <span>Роль</span><strong id="crmAssistantRoleChip">CRM</strong>
+                        </button>
+                        <button type="button" class="assistant-rail-context-chip" data-crm-assistant-context-prompt="Покажи ризики, сигнали і наступну дію">
+                            <span>Фокус</span><strong id="crmAssistantFocusChip">Готово</strong>
+                        </button>
                     </div>
                     <div class="assistant-rail-prompts" aria-label="Швидкі запити до Клешні">
                         <button type="button" data-crm-assistant-inline-prompt="Брифінг на сьогодні">› Брифінг</button>
@@ -218,6 +230,7 @@
         const rail = document.getElementById('crmAssistantRail');
         if (!rail || rail.dataset.controlsBound === 'true') return;
         rail.dataset.controlsBound = 'true';
+        document.getElementById('crmAssistantRailAvatar')?.addEventListener('click', expand);
         document.getElementById('crmAssistantMicBtn')?.addEventListener('click', toggleListening);
         document.getElementById('crmAssistantVoiceToggle')?.addEventListener('click', toggleVoice);
         document.getElementById('crmAssistantReplayBtn')?.addEventListener('click', replayLastLine);
@@ -231,6 +244,9 @@
         });
         rail.querySelectorAll('[data-crm-assistant-inline-prompt]').forEach(btn => {
             btn.addEventListener('click', () => runQuickPrompt(btn.dataset.crmAssistantInlinePrompt || btn.textContent || ''));
+        });
+        rail.querySelectorAll('[data-crm-assistant-context-prompt]').forEach(btn => {
+            btn.addEventListener('click', () => runQuickPrompt(btn.dataset.crmAssistantContextPrompt || btn.textContent || ''));
         });
     }
 
@@ -279,11 +295,30 @@
         if (!rail || !stateEl || !subtitlesEl || !voiceBtn) return;
 
         const text = state.tickerText || state.subtitle || '...';
+        const snapshot = buildAssistantSnapshot();
         rail.dataset.mode = state.mode;
         rail.dataset.aiState = UI_STATES[state.mode] || 'ready';
         rail.dataset.live = isLiveMode(state.mode) ? 'true' : 'false';
         stateEl.textContent = LABELS[state.mode] || LABELS.idle;
         stateEl.className = `assistant-rail-state assistant-state-${state.mode}`;
+        const signalCount = document.getElementById('crmAssistantSignalCount');
+        const pageChip = document.getElementById('crmAssistantPageChip');
+        const roleChip = document.getElementById('crmAssistantRoleChip');
+        const focusChip = document.getElementById('crmAssistantFocusChip');
+        if (signalCount) signalCount.textContent = String(snapshot.signalCount);
+        if (pageChip) {
+            pageChip.textContent = snapshot.page;
+            pageChip.title = snapshot.pageFull;
+        }
+        if (roleChip) {
+            roleChip.textContent = snapshot.role;
+            roleChip.title = snapshot.role;
+        }
+        if (focusChip) {
+            focusChip.textContent = snapshot.focus;
+            focusChip.title = snapshot.focusFull;
+        }
+        renderPanelSnapshot();
         const topStatus = document.getElementById('crmAssistantTopStatus');
         const topStatusLabel = document.getElementById('crmAssistantTopStatusLabel');
         if (topStatus) topStatus.dataset.aiState = UI_STATES[state.mode] || 'ready';
@@ -388,6 +423,47 @@
         return {
             activeTab: activeTab?.textContent?.trim() || '',
             badges
+        };
+    }
+
+    function compactText(value, fallback = '', limit = 36) {
+        const text = String(value || fallback || '').replace(/\s+/g, ' ').trim();
+        if (text.length <= limit) return text;
+        return `${text.slice(0, Math.max(0, limit - 1)).trim()}…`;
+    }
+
+    function visibleText(selector, limit = 6) {
+        return Array.from(document.querySelectorAll(selector))
+            .filter(el => {
+                const rect = el.getBoundingClientRect?.();
+                return !rect || (rect.width > 0 && rect.height > 0);
+            })
+            .map(el => el.textContent?.replace(/\s+/g, ' ').trim())
+            .filter(Boolean)
+            .slice(0, limit);
+    }
+
+    function buildAssistantSnapshot(context = null) {
+        const ctx = context || buildPageGuideContext();
+        const warningTexts = visibleText('.alert, .warning, .danger, .error, .is-overdue, .status-danger, .guardian-alert, .chat-alert', 8);
+        const actionTexts = visibleText('.btn-page-primary, .dashboard-btn.primary, button.primary, .primary-action', 5);
+        const rowCount = document.querySelectorAll('tbody tr, .task-card, .lead-card, .booking-card, .report-row, .chat-channel-item').length;
+        const signalCount = (ctx.badges || []).length + warningTexts.length;
+        const focus = ctx.activeTab || warningTexts[0] || actionTexts[0] || ctx.title || 'Готово';
+        return {
+            page: compactText(ctx.title || ctx.page || 'Сторінка', 'Сторінка', 34),
+            pageFull: ctx.title || ctx.page || 'Сторінка',
+            role: compactText(ctx.displayRole || roleLabel(ctx.role) || 'CRM', 'CRM', 28),
+            mode: LABELS[state.mode] || LABELS.idle,
+            voice: state.voiceEnabled ? 'Голос увімкнено' : 'Текстовий режим',
+            focus: compactText(focus, 'Готово', 34),
+            focusFull: focus,
+            signalCount,
+            badges: (ctx.badges || []).slice(0, 6),
+            warnings: warningTexts,
+            actions: actionTexts,
+            rows: rowCount,
+            updated: new Date(state.updatedAt || Date.now()).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
         };
     }
 
@@ -688,6 +764,18 @@
                     </div>
                     <button type="button" class="crm-assistant-panel-close" aria-label="Закрити" id="crmAssistantPanelClose">×</button>
                 </div>
+                <div class="crm-assistant-panel-snapshot" id="crmAssistantPanelSnapshot"></div>
+                <div class="crm-assistant-mode-grid" aria-label="Режими роботи AI">
+                    <button type="button" data-crm-assistant-prompt="Зроби короткий брифінг по цій сторінці і скажи що важливо зараз">
+                        <span>01</span><strong>Брифінг</strong><small>коротко по екрану</small>
+                    </button>
+                    <button type="button" data-crm-assistant-prompt="Знайди ризики, прострочки або місця де потрібна дія">
+                        <span>02</span><strong>Ризики</strong><small>що горить</small>
+                    </button>
+                    <button type="button" data-crm-assistant-prompt="Скажи одну найкращу наступну дію для моєї ролі">
+                        <span>03</span><strong>Наступна дія</strong><small>що зробити</small>
+                    </button>
+                </div>
                 <div class="crm-assistant-history" id="crmAssistantHistory"></div>
                 <div class="crm-assistant-quick-prompts">
                     <button type="button" data-crm-assistant-prompt="Що для мене зараз головне на цій сторінці?">Головне зараз</button>
@@ -711,6 +799,7 @@
         overlay.querySelectorAll('[data-crm-assistant-prompt]').forEach(btn => {
             btn.addEventListener('click', () => runQuickPrompt(btn.dataset.crmAssistantPrompt));
         });
+        renderPanelSnapshot();
         renderHistory();
         document.getElementById('crmAssistantPromptInput')?.focus();
     }
@@ -730,6 +819,39 @@
             </div>
         `).join('');
         container.scrollTop = container.scrollHeight;
+    }
+
+    function renderPanelSnapshot() {
+        const container = document.getElementById('crmAssistantPanelSnapshot');
+        if (!container) return;
+        const snapshot = buildAssistantSnapshot();
+        const badges = snapshot.badges.length
+            ? snapshot.badges.map(item => `<span>${escapeHtml(item)}</span>`).join('')
+            : '<span>сигналів немає</span>';
+        const warnings = snapshot.warnings.length
+            ? snapshot.warnings.map(item => `<li>${escapeHtml(compactText(item, '', 72))}</li>`).join('')
+            : '<li>Критичних текстових попереджень на екрані не видно.</li>';
+        container.innerHTML = `
+            <div class="crm-assistant-snapshot-card crm-assistant-snapshot-card--main">
+                <span>Поточний екран</span>
+                <strong>${escapeHtml(snapshot.pageFull)}</strong>
+                <small>фокус: ${escapeHtml(snapshot.focusFull)}</small>
+            </div>
+            <div class="crm-assistant-snapshot-card">
+                <span>Роль</span>
+                <strong>${escapeHtml(snapshot.role)}</strong>
+                <small>${escapeHtml(snapshot.voice)} · ${escapeHtml(snapshot.updated)}</small>
+            </div>
+            <div class="crm-assistant-snapshot-card">
+                <span>Сигнали</span>
+                <strong>${escapeHtml(snapshot.signalCount)}</strong>
+                <small>${escapeHtml(snapshot.rows)} елементів у видимому робочому полі</small>
+            </div>
+            <div class="crm-assistant-snapshot-wide">
+                <div class="crm-assistant-snapshot-badges">${badges}</div>
+                <ul>${warnings}</ul>
+            </div>
+        `;
     }
 
     async function runQuickPrompt(prompt) {

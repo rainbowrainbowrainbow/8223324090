@@ -4,13 +4,14 @@
 
 ---
 
-## v0.55.28 - Навігація: системний shell offset
+## v0.55.29 - AI-провідник: інтерактивна картка
 
-### Shared Shell / Sidebar Geometry [codex]
-- **Shell offset** - sidebar, header, `main-content` і `page-container` тепер використовують один width token замість старого `220px`.
-- **No overlay** - контент резервує реальну ширину нового меню ще до `shell-ready`, тому sidebar більше не накриває dashboard/widgets під час завантаження або на сторінках зі своїм handoff.
-- **Collapsed state** - згорнуте меню так само має окремий token `--eg-sidebar-collapsed-w`, і сторінки отримують правильний offset без hover-overlay.
-- **Guardrail** - додано UI-smoke перевірку, яка ловить повернення legacy offset і конфліктів між sidebar та page shell.
+### Shared AI Rail / Context Card [codex]
+- **Інтерактивний avatar** - декоративну точку замінено на клікабельну AI-картку з signal meter і прямим входом у повну панель Клешні.
+- **Контекст у topbar** - rail показує поточний екран, роль/режим і робочий фокус, щоб було видно, що AI розуміє стан сторінки.
+- **Повна панель** - розгорнуте вікно отримало snapshot-картки: екран, роль, голос, сигнали, видимі попередження і кількість робочих елементів.
+- **Режими роботи** - додано швидкі інтерактивні режими `Брифінг`, `Ризики`, `Наступна дія`, які одразу запускають релевантний prompt.
+- **Guardrail** - UI-smoke тепер перевіряє, що shared assistant rail має context snapshot, signal meter і mode cards.
 
 ---
 

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.54.6 - Tasks Taxonomy Polish
+
+### Tasks / Operations [codex]
+- **Tasks** - нові taxonomy labels для pack/workflow states приведено до нормального українського тексту замість сирих `draft`, `in_production`, `blocked`.
+- **Dark Mode** - підсилено контраст submenu chips, category chips `Замовлення / Чек-листи`, hot summary cards і operation badges.
+- **QA** - додано UI guardrails для нових Tasks taxonomy controls і dark-mode contrast states.
+
+---
+
 ## v0.54.5 - Tasks Taxonomy + Checklist Infrastructure
 
 ### Tasks / Operations [codex]

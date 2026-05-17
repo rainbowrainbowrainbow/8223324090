@@ -1110,6 +1110,14 @@ body.dark-mode .cabinet-quick-segment.is-active .cabinet-quick-plate {
     color: #C026D3;
 }
 
+body.dark-mode .cat-chip[data-cat="orders"] {
+    color: #F87171;
+}
+
+body.dark-mode .cat-chip[data-cat="checklist"] {
+    color: #E879F9;
+}
+
 .task-card.cat-orders {
     border-left: 4px solid #DC2626;
 }
@@ -1231,13 +1239,63 @@ body.dark-mode .operations-pack-bar {
     border-color: rgba(148, 163, 184, 0.24);
 }
 
+body.dark-mode .subcat-chip {
+    color: #CBD5E1;
+}
+
+body.dark-mode .subcat-chip:hover {
+    border-color: rgba(216, 180, 254, 0.42);
+    color: #F5D0FE;
+}
+
+body.dark-mode .subcat-chip.active {
+    background: linear-gradient(180deg, rgba(109, 40, 217, 0.82), rgba(88, 28, 135, 0.74));
+    border-color: rgba(216, 180, 254, 0.52);
+    color: #FDF4FF;
+    box-shadow: 0 10px 22px rgba(88, 28, 135, 0.24);
+}
+
 body.dark-mode .operations-summary-item span {
     color: #e5e7eb;
+}
+
+body.dark-mode .operations-summary-item small {
+    color: #CBD5E1;
+}
+
+body.dark-mode .operations-summary-item.is-hot {
+    background: rgba(127, 29, 29, 0.34);
+    border-color: rgba(248, 113, 113, 0.36);
+}
+
+body.dark-mode .task-os-badge {
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.24);
+    color: #E2E8F0;
+}
+
+body.dark-mode .task-os-badge.pack-status {
+    background: rgba(14, 165, 233, 0.18);
+    border-color: rgba(125, 211, 252, 0.3);
+    color: #7DD3FC;
+}
+
+body.dark-mode .task-os-badge.blocked {
+    background: rgba(239, 68, 68, 0.18);
+    border-color: rgba(252, 165, 165, 0.3);
+    color: #FCA5A5;
+}
+
+body.dark-mode .task-os-badge.owner-role {
+    background: rgba(34, 197, 94, 0.16);
+    border-color: rgba(134, 239, 172, 0.28);
+    color: #86EFAC;
 }
 
 body.dark-mode .operations-pack-bar input,
 body.dark-mode .operations-pack-bar select {
     background: rgba(15, 23, 42, 0.72);
+    border-color: rgba(148, 163, 184, 0.34);
     color: #e5e7eb;
 }
 

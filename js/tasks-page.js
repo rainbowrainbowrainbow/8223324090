@@ -70,6 +70,23 @@ const OPERATION_PRESETS = {
     cake_with_decor: 'Торт + прикраси',
     purchase_basic: 'Закупка'
 };
+const PACK_STATUS_LABELS = {
+    draft: 'Чернетка',
+    confirmed: 'Підтверджено',
+    in_production: 'У виробництві',
+    ready: 'Готово',
+    issued: 'Видано',
+    cancelled: 'Скасовано'
+};
+const WORKFLOW_LABELS = {
+    inbox: 'Інбокс',
+    todo: 'До виконання',
+    in_progress: 'В роботі',
+    waiting: 'Чекаю',
+    scheduled: 'Заплановано',
+    done: 'Виконано',
+    archived: 'Архів'
+};
 
 const STATUS_CYCLE = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
 const STATUS_ICONS = { todo: '', in_progress: '', done: '' };
@@ -153,6 +170,14 @@ function syncSubcategorySelect(categoryId, subcategoryId) {
 function normalizeChecklistTemplateKey(category, subcategory) {
     if (category !== 'checklist') return null;
     return CHECKLIST_TEMPLATE_BY_SUBCATEGORY[subcategory] || null;
+}
+
+function getPackStatusLabel(status) {
+    return PACK_STATUS_LABELS[status] || status || '';
+}
+
+function getWorkflowLabel(status) {
+    return WORKFLOW_LABELS[status] || status || '';
 }
 
 function getTodayStr() {
@@ -909,11 +934,11 @@ function renderOperationsSummary() {
     });
     host.classList.remove('hidden');
     host.innerHTML = `
-        <div class="operations-summary-item"><span>${stats.draft}</span><small>draft</small></div>
-        <div class="operations-summary-item"><span>${stats.inProduction}</span><small>in production</small></div>
-        <div class="operations-summary-item"><span>${stats.ready}</span><small>ready today</small></div>
-        <div class="operations-summary-item ${stats.blocked ? 'is-hot' : ''}"><span>${stats.blocked}</span><small>blocked</small></div>
-        <div class="operations-summary-item ${stats.overdue ? 'is-hot' : ''}"><span>${stats.overdue}</span><small>overdue</small></div>
+        <div class="operations-summary-item"><span>${stats.draft}</span><small>Чернетки</small></div>
+        <div class="operations-summary-item"><span>${stats.inProduction}</span><small>У виробництві</small></div>
+        <div class="operations-summary-item"><span>${stats.ready}</span><small>Готові сьогодні</small></div>
+        <div class="operations-summary-item ${stats.blocked ? 'is-hot' : ''}"><span>${stats.blocked}</span><small>Заблоковано</small></div>
+        <div class="operations-summary-item ${stats.overdue ? 'is-hot' : ''}"><span>${stats.overdue}</span><small>Протерміновано</small></div>
     `;
 }
 
@@ -1154,10 +1179,10 @@ function renderTaskCard(t) {
     const subtaskDone = Number(t.subtask_done_count || t.subtaskDoneCount || 0);
     const subtaskBadge = subtaskCount ? `<span class="task-os-badge checklist">${subtaskDone}/${subtaskCount}</span>` : '';
     const packStatus = t.packStatus || t.pack_status || '';
-    const packBadge = packStatus ? `<span class="task-os-badge pack-status">${escapeHtml(packStatus)}</span>` : '';
+    const packBadge = packStatus ? `<span class="task-os-badge pack-status">${escapeHtml(getPackStatusLabel(packStatus))}</span>` : '';
     const blockedCount = Number(t.openDependencyCount || t.open_dependency_count || 0);
     const blockedTitles = t.blockedByTitles || t.blocked_by_titles || '';
-    const blockedBadge = blockedCount ? `<span class="task-os-badge blocked" title="Чекає завершення: ${escapeHtml(blockedTitles)}">blocked ${blockedCount}</span>` : '';
+    const blockedBadge = blockedCount ? `<span class="task-os-badge blocked" title="Чекає завершення: ${escapeHtml(blockedTitles)}">Блокерів: ${blockedCount}</span>` : '';
     const ownerRole = t.ownerRole || t.owner_role || '';
     const ownerRoleBadge = ownerRole ? `<span class="task-os-badge owner-role">${escapeHtml(ownerRole)}</span>` : '';
 
@@ -1708,13 +1733,13 @@ async function openTaskDetail(taskId) {
                         <option value="private" ${taskVisibility(t)==='private'?'selected':''}>Приватна</option>
                     </select></div>
                     <div><label ${_lbl}>Workflow</label><select id="_tdWorkflow" ${_inp}>
-                        ${['inbox','todo','in_progress','waiting','scheduled','done','archived'].map(w => `<option value="${w}" ${taskWorkflow(t)===w?'selected':''}>${escapeHtml(w)}</option>`).join('')}
+                        ${['inbox','todo','in_progress','waiting','scheduled','done','archived'].map(w => `<option value="${w}" ${taskWorkflow(t)===w?'selected':''}>${escapeHtml(getWorkflowLabel(w))}</option>`).join('')}
                     </select></div>
                     <div><label ${_lbl}>Нагадати</label><input id="_tdRemindAt" type="datetime-local" value="${remindIso}" ${_inp}></div>
-                    <div><label ${_lbl}>Pack status</label><select id="_tdPackStatus" ${_inp}>
-                        ${['','draft','confirmed','in_production','ready','issued','cancelled'].map(s => `<option value="${s}" ${(t.packStatus || t.pack_status || '')===s?'selected':''}>${escapeHtml(s || '—')}</option>`).join('')}
+                    <div><label ${_lbl}>Стан пакета</label><select id="_tdPackStatus" ${_inp}>
+                        ${['','draft','confirmed','in_production','ready','issued','cancelled'].map(s => `<option value="${s}" ${(t.packStatus || t.pack_status || '')===s?'selected':''}>${escapeHtml(s ? getPackStatusLabel(s) : '—')}</option>`).join('')}
                     </select></div>
-                    <div><label ${_lbl}>Owner role</label><input id="_tdOwnerRole" value="${escapeHtml(t.ownerRole || t.owner_role || '')}" ${_inp}></div>
+                    <div><label ${_lbl}>Роль власника</label><input id="_tdOwnerRole" value="${escapeHtml(t.ownerRole || t.owner_role || '')}" ${_inp}></div>
                     <div><label ${_lbl}>SLA хв</label><input id="_tdSlaMinutes" type="number" min="1" value="${escapeHtml(t.slaMinutes || t.sla_minutes || '')}" ${_inp}></div>
                 </div>
                 <div style="border:1px solid var(--gray-100);border-radius:10px;padding:10px;background:rgba(15,23,42,0.03)">

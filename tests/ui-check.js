@@ -220,6 +220,9 @@ checkPage('chat.html', (doc) => {
 checkPage('tasks.html', (doc) => {
     check('Tasks explainability region exists', !!doc.getElementById('taskExplainability'));
     check('Tasks category filters exist', !!doc.getElementById('catFilters'));
+    check('Tasks subcategory filters host exists', !!doc.getElementById('subcatFilters'));
+    check('Tasks operation pack bar exists', !!doc.getElementById('operationPackBar'));
+    check('Tasks operation pack source fields exist', !!doc.getElementById('operationSourceType') && !!doc.getElementById('operationSourceId'));
     check('Tasks board content exists', !!doc.getElementById('boardContent'));
     check('Tasks top area does not render points strip', !doc.getElementById('pointsBar') && !doc.getElementById('pointsPermanent') && !doc.getElementById('pointsMonthly'));
     check('Tasks page has no Focus tab button', !doc.querySelector('[data-view="focus"]'));
@@ -453,6 +456,11 @@ check('Task detail save sends stale-write version from selected task', tasksCode
 check('Tasks stale focus view falls back safely', tasksCode.includes("requestedView === 'focus'") && tasksCode.includes("currentView = 'today'"));
 check('Tasks page does not fetch points for removed top strip', !tasksCode.includes('apiGetMyPoints') && !tasksCode.includes('loadMyPoints') && !tasksCode.includes('/points/'));
 check('Task detail dirty state has no orphan focus rank field', !tasksCode.includes('_tdFocusRank'));
+check('Tasks taxonomy exposes orders and checklist submenu rails', tasksCode.includes('const TASK_CATEGORY_TREE') && tasksCode.includes('orders:') && tasksCode.includes('checklist:') && tasksCode.includes('confectionery') && tasksCode.includes('cake_decor'));
+check('Tasks operation labels are localized for cards and summary', tasksCode.includes('const PACK_STATUS_LABELS') && tasksCode.includes('Чернетка') && tasksCode.includes('У виробництві') && tasksCode.includes('Готові сьогодні') && tasksCode.includes('Блокерів:'));
+check('Tasks dark taxonomy controls keep readable active contrast', pagesCss.includes('body.dark-mode .subcat-chip.active') && pagesCss.includes('color: #FDF4FF') && pagesCss.includes('body.dark-mode .operations-summary-item small') && pagesCss.includes('body.dark-mode .operations-summary-item.is-hot'));
+check('Tasks dark taxonomy category chips brighten orders and checklist', pagesCss.includes('body.dark-mode .cat-chip[data-cat="orders"]') && pagesCss.includes('color: #F87171') && pagesCss.includes('body.dark-mode .cat-chip[data-cat="checklist"]') && pagesCss.includes('color: #E879F9'));
+check('Tasks dark operation badges keep readable variant colors', pagesCss.includes('body.dark-mode .task-os-badge.pack-status') && pagesCss.includes('color: #7DD3FC') && pagesCss.includes('body.dark-mode .task-os-badge.blocked') && pagesCss.includes('color: #FCA5A5') && pagesCss.includes('body.dark-mode .task-os-badge.owner-role') && pagesCss.includes('color: #86EFAC'));
 check('Dashboard team online renders last-seen presence states', dashboardPageCode.includes('formatTeamLastSeen') && dashboardPageCode.includes('онлайн зараз') && dashboardPageCode.includes('був ${minutes} хв тому') && dashboardPageCode.includes('team-presence-last-seen'));
 check('Dashboard board notes use a stable textarea editor', dashboardPageCode.includes('<textarea class="board-note-text board-note-editor"') && !dashboardPageCode.includes('contenteditable="${_boardInteractionMode'));
 check('Dashboard board note focus does not force a rerender', dashboardPageCode.includes("selectBoardItem(textEl.dataset.boardText, { render: false })") && dashboardPageCode.includes('handleBoardTextInput(textEl)'));

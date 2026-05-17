@@ -4,6 +4,15 @@
 
 ---
 
+## v0.54.3 - Match-3 Game Over CTA Visibility Fix
+
+### Match-3 / Game Over CTA [codex]
+- **3 в ряд** - кнопки `Профіль` і `Кімната` у фінальному overlay отримали видимий secondary glass style замість слабкого ghost-тексту.
+- **CTA hierarchy** - `Ще раз` лишається primary, а post-game навігація тепер читається як активні, клікабельні дії.
+- **Mobile UX** - action group винесено в `.go-actions` з mobile layout `1 + 2`, щоб кнопки не зливалися на вузьких екранах.
+
+---
+
 ## v0.54.2 - Chat token bootstrap & dialog auto-open fix
 
 ### Chat / Bootstrap [codex]

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.54.2",
+  "version": "0.54.3",
   "eventGenix": {
-    "releaseLabel": "Chat token bootstrap & dialog auto-open fix"
+    "releaseLabel": "Match-3 Game Over CTA Visibility Fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

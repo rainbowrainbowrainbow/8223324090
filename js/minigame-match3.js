@@ -1085,6 +1085,16 @@ function updateHeader() {
     }
 }
 
+function renderGameOverActions() {
+    return `
+        <div class="go-actions">
+            <button class="game-btn game-btn-primary go-action-primary" onclick="location.reload()">🔄 Ще раз</button>
+            <button class="game-btn game-btn-overlay-secondary" onclick="location.href='/profile'">👤 Профіль</button>
+            <button class="game-btn game-btn-overlay-secondary" onclick="location.href='/room'">🏠 Кімната</button>
+        </div>
+    `;
+}
+
 function renderGameOver() {
     const boardEl = document.getElementById('gameBoard');
     if (!boardEl) return;
@@ -1104,11 +1114,7 @@ function renderGameOver() {
             </div>
             ${won ? `<div class="go-coins-earned">+${bossCoins} монет 💰 <span class="go-multiplier">x3!</span></div>` : '<div class="go-hint">Спробуй наступної неділі</div>'}
             ${maxCombo >= 3 ? `<div class="go-combo">Макс. комбо: x${Math.min(0.5 + maxCombo * 0.5, 3).toFixed(1)} 🔥</div>` : ''}
-            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px">
-                <button class="game-btn game-btn-primary" onclick="location.reload()">🔄 Ще раз</button>
-                <button class="game-btn game-btn-ghost" onclick="location.href='/profile'">👤 Профіль</button>
-                <button class="game-btn game-btn-ghost" onclick="location.href='/room'">🏠 Кімната</button>
-            </div>
+            ${renderGameOverActions()}
         </div>`;
         return;
     }
@@ -1128,11 +1134,7 @@ function renderGameOver() {
         </div>
         <div class="go-coins-earned">+${coinsEarned} монет 💰</div>
         ${maxCombo >= 3 ? `<div class="go-combo">Макс. комбо: x${Math.min(0.5 + maxCombo * 0.5, 3).toFixed(1)} 🔥</div>` : ''}
-        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px">
-            <button class="game-btn game-btn-primary" onclick="location.reload()">🔄 Ще раз</button>
-            <button class="game-btn game-btn-ghost" onclick="location.href='/profile'">👤 Профіль</button>
-            <button class="game-btn game-btn-ghost" onclick="location.href='/room'">🏠 Кімната</button>
-        </div>
+        ${renderGameOverActions()}
     </div>`;
 }
 

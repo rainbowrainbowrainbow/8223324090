@@ -364,6 +364,8 @@ const trainingPageCode = fs.readFileSync(path.join(ROOT, 'js/training-page.js'),
 const chatPageCode = fs.readFileSync(path.join(ROOT, 'js/chat-page.js'), 'utf8');
 const chatHtml = fs.readFileSync(path.join(ROOT, 'chat.html'), 'utf8');
 const chatCss = fs.readFileSync(path.join(ROOT, 'css', 'chat.css'), 'utf8');
+const minigameCode = fs.readFileSync(path.join(ROOT, 'js', 'minigame-match3.js'), 'utf8');
+const minigameCss = fs.readFileSync(path.join(ROOT, 'css', 'minigame.css'), 'utf8');
 const dashboardHtml = fs.readFileSync(path.join(ROOT, 'dashboard.html'), 'utf8');
 const dashboardPageCode = fs.readFileSync(path.join(ROOT, 'js/dashboard-page.js'), 'utf8');
 const dashboardCss = fs.readFileSync(path.join(ROOT, 'css/dashboard.css'), 'utf8');
@@ -378,6 +380,8 @@ check('Chat transient panels close through shared outside/Escape handling', chat
 check('Chat bootstrap resolves initial dialog target canonically', chatPageCode.includes('function _resolveInitialChannelTarget') && chatPageCode.includes('function _getUrlChannelId') && chatPageCode.includes('window.__chatPendingOpenChannelId') && chatPageCode.includes('chatLastActiveChannelId') && !chatPageCode.includes('_selectChannel(_channels[0])'));
 check('Chat bootstrap renders visible dialog loading and empty states', chatHtml.includes('id="chatDialogState"') && chatPageCode.includes('function _showDialogLoadingState') && chatPageCode.includes('function _renderDialogEmptyState') && chatPageCode.includes('data-chat-dialog-retry') && chatCss.includes('.chat-dialog-state.visible') && chatCss.includes('@keyframes chatDialogSpin'));
 check('Chat selected dialog is persisted for token resume', chatPageCode.includes("localStorage.setItem(CHAT_LAST_ACTIVE_CHANNEL_KEY, String(channel.id))") && chatPageCode.includes('await _selectChannel(initialChannel)') && chatPageCode.includes('_rememberPendingDialogOpen(channel.id);'));
+check('Match-3 game-over CTAs use semantic visible action group', minigameCode.includes('function renderGameOverActions') && minigameCode.includes('class="go-actions"') && minigameCode.includes('game-btn-overlay-secondary') && !minigameCode.includes('style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px"'));
+check('Match-3 overlay secondary CTAs have mobile-visible styling', minigameCss.includes('.game-btn-overlay-secondary') && minigameCss.includes('.go-actions') && minigameCss.includes('grid-template-columns: 1fr 1fr') && minigameCss.includes('.go-action-primary'));
 check('Dashboard retires bulky low-signal widgets from the main surface', dashboardPageCode.includes('DASHBOARD_RETIRED_WIDGETS') && ['finance_today', 'reports_today', 'account_stats', 'week_bookings'].every(key => dashboardPageCode.includes(key)) && dashboardPageCode.includes('!DASHBOARD_RETIRED_WIDGETS.has'));
 check('Dashboard grid keeps widgets at natural height', dashboardCss.includes('align-items: start') && dashboardCss.includes('align-self: start'));
 check('CRM assistant rail is shared and loaded from auth shell', authCode.includes('function initCrmAssistantRail') && authCode.includes('css/assistant-rail.css') && authCode.includes('js/assistant-rail.js') && assistantRailCode.includes('window.CrmAssistantRail'));

@@ -2,7 +2,7 @@
  * staff-page.js — Staff schedule page (v39.1)
  *
  * LLM HINT: This is the frontend for the /staff page.
- * Shows a weekly schedule grid: rows = employees grouped by department, columns = days.
+ * Shows a rolling schedule grid: rows = employees grouped by department, columns = days.
  * Click on a cell to edit shift via modal (status, time, note).
  * v39.1: Account linking — ✅/⚠️ indicators, link modal, bulk create, Excel import.
  * API used: GET /api/staff, GET /api/staff/schedule, PUT /api/staff/schedule,
@@ -20,7 +20,7 @@ function escapeHtml(str) {
 // ==========================================
 
 const StaffState = {
-    weekStart: null,    // Monday of current view
+    weekStart: null,    // First date of the current visible schedule window
     staff: [],
     schedule: {},       // { staffId_date: entry }
     departments: {},
@@ -140,6 +140,8 @@ function getDepartmentOptionsFromStaffState() {
 
 const DAYS_UK = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 const MONTHS_UK = ['січ', 'лют', 'бер', 'кві', 'тра', 'чер', 'лип', 'сер', 'вер', 'жов', 'лис', 'гру'];
+const STAFF_SCHEDULE_WINDOW_DAYS = 9;
+const STAFF_SCHEDULE_TODAY_OFFSET_DAYS = 1;
 
 // ==========================================
 // HELPERS
@@ -164,6 +166,13 @@ function getMonday(d) {
     return date;
 }
 
+function getScheduleFocusStart(d) {
+    const date = new Date(d);
+    date.setDate(date.getDate() - STAFF_SCHEDULE_TODAY_OFFSET_DAYS);
+    date.setHours(0, 0, 0, 0);
+    return date;
+}
+
 function formatDateStr(d) {
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -171,14 +180,18 @@ function formatDateStr(d) {
     return `${year}-${month}-${day}`;
 }
 
-function getWeekDates(monday) {
+function getWeekDates(startDate) {
     const dates = [];
-    for (let i = 0; i < 7; i++) {
-        const d = new Date(monday);
-        d.setDate(monday.getDate() + i);
+    for (let i = 0; i < STAFF_SCHEDULE_WINDOW_DAYS; i++) {
+        const d = new Date(startDate);
+        d.setDate(startDate.getDate() + i);
         dates.push(d);
     }
     return dates;
+}
+
+function getScheduleRangeEnd(dates) {
+    return dates[dates.length - 1];
 }
 
 function todayStr() {
@@ -296,7 +309,7 @@ function renderDeptFilter() {
 function renderWeekLabel() {
     const dates = getWeekDates(StaffState.weekStart);
     const from = dates[0];
-    const to = dates[6];
+    const to = getScheduleRangeEnd(dates);
     const label = `${from.getDate()} ${MONTHS_UK[from.getMonth()]} — ${to.getDate()} ${MONTHS_UK[to.getMonth()]} ${to.getFullYear()}`;
     document.getElementById('weekLabel').textContent = label;
 }
@@ -577,7 +590,7 @@ async function goToWeek(monday) {
     StaffState.weekStart = monday;
     renderWeekLabel();
     const dates = getWeekDates(monday);
-    await fetchSchedule(formatDateStr(dates[0]), formatDateStr(dates[6]));
+    await fetchSchedule(formatDateStr(dates[0]), formatDateStr(getScheduleRangeEnd(dates)));
     renderSchedule();
     if (StaffState.showLoadView) renderLoadView();
 }
@@ -595,7 +608,7 @@ function nextWeek() {
 }
 
 function goToday() {
-    goToWeek(getMonday(new Date()));
+    goToWeek(getScheduleFocusStart(new Date()));
 }
 
 // ==========================================
@@ -742,10 +755,10 @@ async function toggleHours() {
     const btn = document.getElementById('toggleHoursBtn');
 
     if (StaffState.showHours) {
-        // Fetch hours for current week
+        // Fetch hours for the current visible period.
         const dates = getWeekDates(StaffState.weekStart);
         const from = formatDateStr(dates[0]);
-        const to = formatDateStr(dates[6]);
+        const to = formatDateStr(getScheduleRangeEnd(dates));
         const result = await fetchScheduleHours(from, to);
         if (result.success) {
             StaffState.hoursData = result.data;
@@ -1298,7 +1311,7 @@ function handleExcelExport() {
     }
 
     const from = dates[0];
-    const to = dates[6];
+    const to = getScheduleRangeEnd(dates);
     const filename = `grafik_${formatDateStr(from)}_${formatDateStr(to)}.csv`;
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -1415,12 +1428,12 @@ async function initPage() {
     await fetchStaff();
     renderDeptFilter();
 
-    // Init week
-    StaffState.weekStart = getMonday(new Date());
+    // Init the rolling window: yesterday, today, and the upcoming days.
+    StaffState.weekStart = getScheduleFocusStart(new Date());
     renderWeekLabel();
 
     const dates = getWeekDates(StaffState.weekStart);
-    await fetchSchedule(formatDateStr(dates[0]), formatDateStr(dates[6]));
+    await fetchSchedule(formatDateStr(dates[0]), formatDateStr(getScheduleRangeEnd(dates)));
     renderSchedule();
 
     // Event listeners

@@ -95,6 +95,17 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(staffHtml, /hover[\s\S]*color:\s*#FFFFFF/);
     });
 
+    it('opens the staff schedule on yesterday, today, and upcoming days', () => {
+        assert.match(staffPage, /const STAFF_SCHEDULE_WINDOW_DAYS = 9/);
+        assert.match(staffPage, /const STAFF_SCHEDULE_TODAY_OFFSET_DAYS = 1/);
+        assert.match(staffPage, /function getScheduleFocusStart\(d\)/);
+        assert.match(staffPage, /goToWeek\(getScheduleFocusStart\(new Date\(\)\)\)/);
+        assert.match(staffPage, /StaffState\.weekStart = getScheduleFocusStart\(new Date\(\)\)/);
+        assert.match(staffPage, /getScheduleRangeEnd\(dates\)/);
+        assert.doesNotMatch(staffPage, /dates\[6\]/);
+        assert.match(staffHtml, /Вчора, сьогодні і найближчі дні/);
+    });
+
     it('uses animator shifts as the timeline line source of truth', () => {
         assert.match(bookingService, /function getScheduledAnimatorLines/);
         assert.match(bookingService, /FROM staff_schedule ss[\s\S]*JOIN staff s ON s\.id = ss\.staff_id/);

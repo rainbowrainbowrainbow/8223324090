@@ -19,6 +19,9 @@ const Sidebar = (() => {
         alertsActive: 0,
         alertsUnread: 0,
         alertsCritical: 0,
+        alertHeadline: '',
+        alertMeta: '',
+        alertLevel: '',
         hotLeads: 0,
         newLeads: 0
     };
@@ -668,7 +671,13 @@ const Sidebar = (() => {
                     <span class="sidebar-identity-avatar" id="sidebarIdentityAvatar">?</span>
                     <span class="sidebar-identity-main">
                         <span class="sidebar-identity-title-row">
-                            <span class="sidebar-identity-name" id="sidebarIdentityName">Event Genix</span>
+                            <span class="sidebar-identity-title-line">
+                                <span class="sidebar-identity-name" id="sidebarIdentityName">Event Genix</span>
+                                <span class="sidebar-identity-health" id="sidebarIdentityHealth">
+                                    <span class="sidebar-identity-health-dot" aria-hidden="true"></span>
+                                    <span id="sidebarIdentityHealthLabel">Готово</span>
+                                </span>
+                            </span>
                             <span class="sidebar-identity-role" id="sidebarIdentityRole">CRM</span>
                         </span>
                         <span class="sidebar-identity-summary" id="sidebarIdentitySummary">Операційний стан завантажується...</span>
@@ -697,9 +706,21 @@ const Sidebar = (() => {
                     </a>
                 </div>
 
-                <button type="button" class="sidebar-primary-action" id="sidebarPrimaryAction">
-                    <span class="sidebar-primary-action-kicker">AI фокус</span>
+                <button type="button" class="sidebar-primary-action sidebar-alert-hero" id="sidebarPrimaryAction">
+                    <span class="sidebar-alert-hero-stack" aria-hidden="true"></span>
+                    <span class="sidebar-alert-hero-head">
+                        <span class="sidebar-alert-hero-kicker">
+                            <span class="sidebar-alert-hero-dot" aria-hidden="true"></span>
+                            <span class="sidebar-primary-action-kicker">AI фокус</span>
+                        </span>
+                        <span class="sidebar-alert-hero-index" id="sidebarAlertHeroIndex">готово</span>
+                    </span>
                     <span class="sidebar-primary-action-label">Відкрити центр керування</span>
+                    <span class="sidebar-alert-hero-meta" id="sidebarAlertHeroMeta">Короткий маршрут до наступної дії</span>
+                    <span class="sidebar-alert-hero-actions" aria-hidden="true">
+                        <span>Відкрити</span>
+                        <span>›</span>
+                    </span>
                 </button>`;
             sidebar.insertBefore(deck, links);
         } else if (deck.nextElementSibling !== links) {
@@ -779,7 +800,53 @@ const Sidebar = (() => {
         return { label: 'Відкрити центр керування', kicker: 'AI фокус', href: '/dashboard' };
     }
 
+    function _getSidebarHeroTone(state = _commandState) {
+        if (state.alertsCritical > 0) return 'critical';
+        if (state.alertsUnread > 0 || state.tasksOverdue > 0 || state.hotLeads > 0) return 'warning';
+        if (state.tasksActive > 0 || state.newLeads > 0) return 'info';
+        return 'ok';
+    }
+
+    function _sidebarToneLabel(tone) {
+        return {
+            critical: 'КРИТИЧНО',
+            warning: 'УВАГА',
+            info: 'ІНФО',
+            ok: 'УСЕ ОК'
+        }[tone] || 'ГОТОВО';
+    }
+
+    function _getSidebarHeroIndex(state = _commandState, tone = _getSidebarHeroTone(state)) {
+        if (tone === 'critical' || tone === 'warning') {
+            const active = Number(state.alertsActive || state.alertsUnread || 0);
+            if (active > 0) return `1 / ${active}`;
+        }
+        if (state.tasksOverdue > 0) return `${_formatSignalCount(state.tasksOverdue)} простр.`;
+        if (state.hotLeads > 0) return `${_formatSignalCount(state.hotLeads)} лідів`;
+        return 'готово';
+    }
+
+    function _getSidebarHeroMeta(state = _commandState, tone = _getSidebarHeroTone(state)) {
+        if (state.alertHeadline) {
+            return state.alertMeta || 'Алерт потребує уваги';
+        }
+        if (state.tasksOverdue > 0) return 'Задачі · прострочені дедлайни';
+        if (state.hotLeads > 0) return 'Продажі · гарячі ліди чекають дії';
+        if (state.tasksActive > 0) return 'Операції · задачі в роботі';
+        if (tone === 'ok') return 'Наступна дія: перевірити день або відкрити брифінг';
+        return 'Система підказує наступний крок';
+    }
+
     function _updateSidebarCommandDeck() {
+        const tone = _getSidebarHeroTone(_commandState);
+        const deck = document.getElementById('sidebarCommandDeck');
+        if (deck) deck.dataset.tone = tone;
+
+        const healthEl = document.getElementById('sidebarIdentityHealth');
+        const healthLabel = document.getElementById('sidebarIdentityHealthLabel');
+        if (healthEl) healthEl.dataset.tone = tone;
+        if (healthLabel) healthLabel.textContent = _sidebarToneLabel(tone);
+
         const summaryEl = document.getElementById('sidebarIdentitySummary');
         if (summaryEl) summaryEl.textContent = _getSidebarSummaryState();
 
@@ -788,8 +855,13 @@ const Sidebar = (() => {
         const user = _getCurrentSidebarUser();
         const role = _getSidebarActiveRole(user);
         const action = _getSidebarPrimaryAction(role, _commandState);
+        actionEl.dataset.tone = tone;
         actionEl.querySelector('.sidebar-primary-action-kicker')?.replaceChildren(document.createTextNode(action.kicker));
-        actionEl.querySelector('.sidebar-primary-action-label')?.replaceChildren(document.createTextNode(action.label));
+        actionEl.querySelector('.sidebar-primary-action-label')?.replaceChildren(document.createTextNode(_commandState.alertHeadline || action.label));
+        const indexEl = document.getElementById('sidebarAlertHeroIndex');
+        if (indexEl) indexEl.textContent = _getSidebarHeroIndex(_commandState, tone);
+        const metaEl = document.getElementById('sidebarAlertHeroMeta');
+        if (metaEl) metaEl.textContent = _getSidebarHeroMeta(_commandState, tone);
         actionEl.dataset.action = action.action || '';
         actionEl.dataset.href = action.href || '';
         if (actionEl.dataset.primaryBound !== 'true') {
@@ -874,6 +946,9 @@ const Sidebar = (() => {
         _commandState.alertsActive = active.length;
         _commandState.alertsUnread = count;
         _commandState.alertsCritical = unread.filter(alert => alert.level === 'critical').length;
+        _commandState.alertLevel = first?.level || '';
+        _commandState.alertHeadline = String(first?.title || first?.message || first?.description || '').trim();
+        _commandState.alertMeta = String(first?.subtitle || first?.meta || first?.context || first?.type || '').trim();
         _setCommandDescription(widget, alertTitle);
         widget.classList.toggle('has-alerts', active.length > 0);
         widget.classList.toggle('has-critical', unread.some(alert => alert.level === 'critical'));

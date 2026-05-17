@@ -5,15 +5,32 @@
  * consistent rail without copying HTML into each page.
  */
 (function () {
-    const MODES = new Set(['idle', 'thinking', 'busy', 'listening', 'speaking', 'muted', 'error']);
+    const MODES = new Set(['idle', 'thinking', 'busy', 'listening', 'speaking', 'muted', 'error', 'working', 'streaming', 'action', 'success']);
     const LABELS = {
-        idle: 'Готовий',
-        thinking: 'Думаю',
-        busy: 'Зайнятий',
-        listening: 'Слухаю',
-        speaking: 'Говорю',
+        idle: 'ГОТОВА',
+        thinking: 'ОБДУМУЮ',
+        busy: 'ПРАЦЮЮ',
+        working: 'ПРАЦЮЮ',
+        streaming: 'ВІДПОВІДАЮ',
+        action: 'ПРОПОЗИЦІЯ',
+        success: 'ГОТОВО',
+        listening: 'СЛУХАЮ',
+        speaking: 'ВІДПОВІДАЮ',
         muted: 'Тиша',
-        error: 'Помилка'
+        error: 'ПОМИЛКА'
+    };
+    const UI_STATES = {
+        idle: 'ready',
+        thinking: 'thinking',
+        busy: 'working',
+        working: 'working',
+        listening: 'listening',
+        speaking: 'streaming',
+        streaming: 'streaming',
+        action: 'action',
+        success: 'success',
+        muted: 'ready',
+        error: 'error'
     };
     const PAGE_HELP_INTENTS = {
         dashboard: 'Поясни dashboard, bottlenecks і наступну найкориснішу дію.',
@@ -132,22 +149,38 @@
         rail.id = 'crmAssistantRail';
         rail.className = 'crm-assistant-rail';
         rail.setAttribute('data-mode', state.mode);
+        rail.setAttribute('data-ai-state', UI_STATES[state.mode] || 'ready');
         rail.setAttribute('aria-live', 'polite');
         rail.setAttribute('aria-label', 'Стан голосового AI-помічника');
         rail.innerHTML = `
             <div class="assistant-rail-presence">
-                <div class="assistant-rail-avatar" id="crmAssistantRailAvatar" aria-hidden="true">AI</div>
+                <div class="assistant-rail-avatar" id="crmAssistantRailAvatar" aria-hidden="true">
+                    <span class="assistant-rail-orb-core">AI</span>
+                    <span class="assistant-rail-orb-ripple assistant-rail-orb-ripple--one"></span>
+                    <span class="assistant-rail-orb-ripple assistant-rail-orb-ripple--two"></span>
+                </div>
                 <div class="assistant-rail-status-stack">
                     <div class="assistant-rail-topline">
                         <span class="assistant-rail-name">Клешня</span>
                         <span class="assistant-rail-state assistant-state-idle" id="crmAssistantRailState">Готовий</span>
+                        <span class="assistant-rail-engine">claude · клешня v3.2</span>
                     </div>
                     <div class="assistant-rail-subtitles-wrap" id="crmAssistantRailSubtitlesWrap">
                         <div class="assistant-rail-subtitles" id="crmAssistantRailSubtitles">Я поруч, якщо треба допомога по сторінці.</div>
                     </div>
+                    <div class="assistant-rail-prompts" aria-label="Швидкі запити до Клешні">
+                        <button type="button" data-crm-assistant-inline-prompt="Брифінг на сьогодні">› Брифінг</button>
+                        <button type="button" data-crm-assistant-inline-prompt="Хто гарячі ліди?">› Гарячі ліди</button>
+                        <button type="button" data-crm-assistant-inline-prompt="Скласти зміну">› Зміна</button>
+                    </div>
                 </div>
             </div>
             <div class="assistant-rail-actions" aria-label="Керування голосовим AI-помічником">
+                <form class="assistant-rail-inline-form" id="crmAssistantInlineForm" role="search">
+                    <span class="assistant-rail-inline-search" aria-hidden="true">⌕</span>
+                    <input id="crmAssistantInlineInput" type="text" maxlength="240" autocomplete="off" placeholder="Запитати або /команда">
+                    <span class="assistant-rail-inline-hint" aria-hidden="true">/</span>
+                </form>
                 <button type="button" class="assistant-rail-btn" id="crmAssistantMicBtn" title="Голосовий ввід" aria-label="Голосовий ввід">🎙</button>
                 <button type="button" class="assistant-rail-btn" id="crmAssistantVoiceToggle" title="Увімкнути або вимкнути голос" aria-label="Увімкнути або вимкнути голос">🔊</button>
                 <button type="button" class="assistant-rail-btn" id="crmAssistantReplayBtn" title="Повторити останню репліку" aria-label="Повторити останню репліку">↺</button>
@@ -170,6 +203,16 @@
         document.getElementById('crmAssistantVoiceToggle')?.addEventListener('click', toggleVoice);
         document.getElementById('crmAssistantReplayBtn')?.addEventListener('click', replayLastLine);
         document.getElementById('crmAssistantExpandBtn')?.addEventListener('click', expand);
+        document.getElementById('crmAssistantInlineForm')?.addEventListener('submit', event => {
+            event.preventDefault();
+            const input = document.getElementById('crmAssistantInlineInput');
+            const text = String(input?.value || '').trim();
+            if (input) input.value = '';
+            submitPromptText(text);
+        });
+        rail.querySelectorAll('[data-crm-assistant-inline-prompt]').forEach(btn => {
+            btn.addEventListener('click', () => runQuickPrompt(btn.dataset.crmAssistantInlinePrompt || btn.textContent || ''));
+        });
     }
 
     function shouldSubtitleScroll(text = '', wrap = null, el = null, mode = state.mode) {
@@ -203,7 +246,7 @@
     }
 
     function isLiveMode(mode) {
-        return ['thinking', 'listening', 'speaking'].includes(mode);
+        return ['thinking', 'listening', 'speaking', 'busy', 'working', 'streaming', 'action'].includes(mode);
     }
 
     function render() {
@@ -218,6 +261,7 @@
 
         const text = state.tickerText || state.subtitle || '...';
         rail.dataset.mode = state.mode;
+        rail.dataset.aiState = UI_STATES[state.mode] || 'ready';
         rail.dataset.live = isLiveMode(state.mode) ? 'true' : 'false';
         stateEl.textContent = LABELS[state.mode] || LABELS.idle;
         stateEl.className = `assistant-rail-state assistant-state-${state.mode}`;

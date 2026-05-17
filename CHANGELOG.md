@@ -4,7 +4,7 @@
 
 ---
 
-## v0.55.0 - Tasks Taxonomy + Checklist Infrastructure
+## v0.54.5 - Tasks Taxonomy + Checklist Infrastructure
 
 ### Tasks / Operations [codex]
 - **Tasks** - плоскі category filters розширено до taxonomy infrastructure з top-level categories `Замовлення` та `Чек-листи`.

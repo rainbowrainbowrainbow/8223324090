@@ -2,6 +2,7 @@
  * routes/tasks.js — Tasks CRUD + Kleshnya integration (v10.0)
  */
 const router = require('express').Router();
+const crypto = require('crypto');
 const { pool } = require('../db');
 const { requireRole, authenticateToken } = require('../middleware/auth');
 
@@ -22,6 +23,22 @@ const {
 } = require('../services/taskExecution');
 const { listTaskActionHistory } = require('../services/taskActionHistory');
 const { deriveTaskIntelligence } = require('../services/taskIntelligence');
+const {
+    VALID_TASK_CATEGORIES,
+    VALID_TASK_SUBCATEGORIES,
+    ORDER_OPERATION_PRESETS,
+    normalizeTaskCategory,
+    normalizeTaskSubcategory,
+    normalizePackStatus,
+    normalizeChecklistTemplateKey,
+    normalizeSourceEntityType,
+    normalizeSourceEntityId,
+    normalizeUuid,
+    normalizeOwnerRole,
+    normalizeSlaMinutes,
+    getChecklistTemplate,
+    createChecklistSubtasks
+} = require('../services/taskTaxonomy');
 
 const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
 const { formatTaskNotification } = require('../services/templates');
@@ -60,7 +77,7 @@ function taskAssigneeChanged(oldTask = {}, newTask = {}) {
 
 const VALID_STATUSES = ['todo', 'in_progress', 'done'];
 const VALID_PRIORITIES = ['low', 'normal', 'high'];
-const VALID_CATEGORIES = ['event', 'purchase', 'admin', 'trampoline', 'personal', 'improvement', 'operational', 'maintenance'];
+const VALID_CATEGORIES = VALID_TASK_CATEGORIES;
 const VALID_TASK_TYPES = ['human', 'bot'];
 const VALID_TASK_MODES = ['work', 'personal', 'private', 'system'];
 const VALID_TASK_KINDS = ['action', 'reminder', 'followup', 'deep_work', 'checklist', 'routine', 'waiting', 'idea', 'decision'];
@@ -95,6 +112,84 @@ function normalizeOptionalDateTime(value) {
     if (!value) return null;
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : value;
+}
+
+function normalizeTaskOperations(body = {}, oldTask = {}) {
+    const categoryInput = body.category !== undefined ? body.category : oldTask.category;
+    const category = normalizeTaskCategory(categoryInput, oldTask.category || 'admin');
+    const subcategoryInput = body.subcategory !== undefined
+        ? body.subcategory
+        : (body.category_leaf !== undefined ? body.category_leaf
+            : (body.categoryLeaf !== undefined ? body.categoryLeaf : oldTask.subcategory));
+    const subcategory = normalizeTaskSubcategory(category, subcategoryInput);
+    const checklistKeyInput = body.checklist_template_key !== undefined
+        ? body.checklist_template_key
+        : (body.checklistTemplateKey !== undefined ? body.checklistTemplateKey : oldTask.checklist_template_key);
+    const checklistTemplateKey = category === 'checklist'
+        ? normalizeChecklistTemplateKey(checklistKeyInput, subcategory)
+        : null;
+    const sourceEntityType = body.source_entity_type !== undefined
+        ? normalizeSourceEntityType(body.source_entity_type)
+        : (body.sourceEntityType !== undefined ? normalizeSourceEntityType(body.sourceEntityType) : (oldTask.source_entity_type || null));
+    const sourceEntityId = body.source_entity_id !== undefined
+        ? normalizeSourceEntityId(body.source_entity_id)
+        : (body.sourceEntityId !== undefined ? normalizeSourceEntityId(body.sourceEntityId) : (oldTask.source_entity_id || null));
+    const packId = body.pack_id !== undefined
+        ? normalizeUuid(body.pack_id)
+        : (body.packId !== undefined ? normalizeUuid(body.packId) : (oldTask.pack_id || null));
+    const packStatus = body.pack_status !== undefined
+        ? normalizePackStatus(body.pack_status, null)
+        : (body.packStatus !== undefined ? normalizePackStatus(body.packStatus, null) : (oldTask.pack_status || null));
+    const ownerRole = body.owner_role !== undefined
+        ? normalizeOwnerRole(body.owner_role)
+        : (body.ownerRole !== undefined ? normalizeOwnerRole(body.ownerRole) : (oldTask.owner_role || null));
+    const slaMinutes = body.sla_minutes !== undefined
+        ? normalizeSlaMinutes(body.sla_minutes)
+        : (body.slaMinutes !== undefined ? normalizeSlaMinutes(body.slaMinutes) : (oldTask.sla_minutes || null));
+    const escalateAfter = normalizeOptionalDateTime(
+        body.escalate_after !== undefined
+            ? body.escalate_after
+            : (body.escalateAfter !== undefined ? body.escalateAfter : oldTask.escalate_after)
+    );
+
+    return {
+        category,
+        subcategory,
+        checklist_template_key: checklistTemplateKey,
+        source_entity_type: sourceEntityType,
+        source_entity_id: sourceEntityId,
+        pack_id: packId,
+        pack_status: packStatus,
+        owner_role: ownerRole,
+        sla_minutes: slaMinutes,
+        escalate_after: escalateAfter
+    };
+}
+
+function normalizeDependencyIds(value) {
+    if (!Array.isArray(value)) return [];
+    return value
+        .map(id => parseInt(id, 10))
+        .filter(id => Number.isInteger(id) && id > 0);
+}
+
+async function createTaskDependencyRows(taskId, dependencyIds = []) {
+    const ids = normalizeDependencyIds(dependencyIds).filter(id => Number(id) !== Number(taskId));
+    if (!ids.length) return [];
+    const values = [];
+    const placeholders = ids.map((id, index) => {
+        const offset = index * 2;
+        values.push(taskId, id);
+        return `($${offset + 1}, $${offset + 2})`;
+    });
+    const result = await pool.query(
+        `INSERT INTO task_dependencies (task_id, depends_on_task_id)
+         VALUES ${placeholders.join(', ')}
+         ON CONFLICT (task_id, depends_on_task_id) DO NOTHING
+         RETURNING *`,
+        values
+    );
+    return result.rows;
 }
 
 function normalizeTaskOsFields(body = {}, oldTask = {}) {
@@ -200,6 +295,21 @@ function normalizeTaskPayload(row) {
         relatedEntityId: row.related_entity_id || null,
         sourceModule: row.source_module || null,
         effortMinutes: row.effort_minutes || null,
+        subcategory: row.subcategory || null,
+        checklistTemplateKey: row.checklist_template_key || null,
+        sourceEntityType: row.source_entity_type || null,
+        sourceEntityId: row.source_entity_id || null,
+        packId: row.pack_id || null,
+        packStatus: row.pack_status || null,
+        ownerRole: row.owner_role || null,
+        slaMinutes: row.sla_minutes || null,
+        escalateAfter: row.escalate_after || null,
+        subtaskCount: Number(row.subtask_count || 0),
+        subtaskDoneCount: Number(row.subtask_done_count || 0),
+        dependencyCount: Number(row.dependency_count || 0),
+        openDependencyCount: Number(row.open_dependency_count || 0),
+        blockedByTitles: row.blocked_by_titles || null,
+        isBlocked: Number(row.open_dependency_count || 0) > 0,
         intelligence: deriveTaskIntelligence({
             ...row,
             owner_label: ownerLabel,
@@ -230,10 +340,11 @@ function sendTaskActionError(res, err) {
 router.get('/', async (req, res) => {
     try {
         const {
-            status, date, assigned_to, owner, owner_user_id, afisha_id, type, task_type, category,
+            status, date, assigned_to, owner, owner_user_id, afisha_id, type, task_type, category, subcategory,
             task_mode, taskMode, task_kind, taskKind, visibility: visibilityFilter, workflow_state, workflowState,
             date_from, date_to, page, limit: lim, mine, private: privateOnly, focus,
-            related_entity_type, relatedEntityType, related_entity_id, relatedEntityId, source_module, sourceModule
+            related_entity_type, relatedEntityType, related_entity_id, relatedEntityId, source_module, sourceModule,
+            source_entity_type, sourceEntityType, source_entity_id, sourceEntityId, pack_id, packId, pack_status, packStatus
         } = req.query;
         const conditions = [];
         const params = [];
@@ -297,6 +408,15 @@ router.get('/', async (req, res) => {
             conditions.push(`t.category = $${idx++}`);
             params.push(category);
         }
+        if (subcategory && VALID_TASK_SUBCATEGORIES.includes(subcategory)) {
+            if (category === 'orders' && subcategory === 'confectionery') {
+                conditions.push(`t.subcategory = ANY($${idx++}::text[])`);
+                params.push(['confectionery', 'cakes', 'cake_decor']);
+            } else {
+                conditions.push(`t.subcategory = $${idx++}`);
+                params.push(subcategory);
+            }
+        }
         const modeFilter = task_mode || taskMode;
         if (modeFilter && VALID_TASK_MODES.includes(modeFilter)) {
             conditions.push(`COALESCE(t.task_mode, 'work') = $${idx++}`);
@@ -341,6 +461,30 @@ router.get('/', async (req, res) => {
             conditions.push(`t.source_module = $${idx++}`);
             params.push(String(srcModule).slice(0, 80));
         }
+        const srcEntityType = source_entity_type || sourceEntityType;
+        const srcEntityId = source_entity_id || sourceEntityId;
+        const packIdFilter = pack_id || packId;
+        const packStatusFilter = pack_status || packStatus;
+        const normalizedSourceEntityType = normalizeSourceEntityType(srcEntityType);
+        const normalizedSourceEntityId = normalizeSourceEntityId(srcEntityId);
+        const normalizedPackId = normalizeUuid(packIdFilter);
+        const normalizedPackStatus = normalizePackStatus(packStatusFilter, null);
+        if (normalizedSourceEntityType) {
+            conditions.push(`t.source_entity_type = $${idx++}`);
+            params.push(normalizedSourceEntityType);
+        }
+        if (normalizedSourceEntityId) {
+            conditions.push(`t.source_entity_id = $${idx++}`);
+            params.push(normalizedSourceEntityId);
+        }
+        if (normalizedPackId) {
+            conditions.push(`t.pack_id = $${idx++}`);
+            params.push(normalizedPackId);
+        }
+        if (normalizedPackStatus) {
+            conditions.push(`t.pack_status = $${idx++}`);
+            params.push(normalizedPackStatus);
+        }
 
         // Role/object visibility: typed owner_user_id first, legacy string fallback for unmapped tasks.
         if (req.user) {
@@ -357,9 +501,31 @@ router.get('/', async (req, res) => {
         params.push(limit, offset);
 
         const result = await pool.query(
-            `SELECT t.*, u.name AS owner_name, u.username AS owner_username
+            `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
+                    COALESCE(st.total, 0)::int AS subtask_count,
+                    COALESCE(st.done, 0)::int AS subtask_done_count,
+                    COALESCE(dep.total, 0)::int AS dependency_count,
+                    COALESCE(dep.open, 0)::int AS open_dependency_count,
+                    dep.blocked_by_titles
              FROM tasks t
              LEFT JOIN users u ON u.id = t.owner_user_id
+             LEFT JOIN (
+                SELECT task_id,
+                       COUNT(*)::int AS total,
+                       COUNT(*) FILTER (WHERE is_done = true)::int AS done
+                FROM task_subtasks
+                GROUP BY task_id
+             ) st ON st.task_id = t.id
+             LEFT JOIN (
+                SELECT d.task_id,
+                       COUNT(*)::int AS total,
+                       COUNT(*) FILTER (WHERE COALESCE(blocker.status, 'todo') NOT IN ('done','archived','cancelled'))::int AS open,
+                       STRING_AGG(blocker.title, ', ' ORDER BY blocker.id)
+                           FILTER (WHERE COALESCE(blocker.status, 'todo') NOT IN ('done','archived','cancelled')) AS blocked_by_titles
+                FROM task_dependencies d
+                JOIN tasks blocker ON blocker.id = d.depends_on_task_id
+                GROUP BY d.task_id
+             ) dep ON dep.task_id = t.id
              ${where}
              ORDER BY
                 CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END,
@@ -583,9 +749,31 @@ router.get('/:id', async (req, res) => {
         const params = [id];
         const visibility = buildTaskVisibilityScope(req.user, params, 't');
         const result = await pool.query(
-            `SELECT t.*, u.name AS owner_name, u.username AS owner_username
+            `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
+                    COALESCE(st.total, 0)::int AS subtask_count,
+                    COALESCE(st.done, 0)::int AS subtask_done_count,
+                    COALESCE(dep.total, 0)::int AS dependency_count,
+                    COALESCE(dep.open, 0)::int AS open_dependency_count,
+                    dep.blocked_by_titles
              FROM tasks t
              LEFT JOIN users u ON u.id = t.owner_user_id
+             LEFT JOIN (
+                SELECT task_id,
+                       COUNT(*)::int AS total,
+                       COUNT(*) FILTER (WHERE is_done = true)::int AS done
+                FROM task_subtasks
+                GROUP BY task_id
+             ) st ON st.task_id = t.id
+             LEFT JOIN (
+                SELECT d.task_id,
+                       COUNT(*)::int AS total,
+                       COUNT(*) FILTER (WHERE COALESCE(blocker.status, 'todo') NOT IN ('done','archived','cancelled'))::int AS open,
+                       STRING_AGG(blocker.title, ', ' ORDER BY blocker.id)
+                           FILTER (WHERE COALESCE(blocker.status, 'todo') NOT IN ('done','archived','cancelled')) AS blocked_by_titles
+                FROM task_dependencies d
+                JOIN tasks blocker ON blocker.id = d.depends_on_task_id
+                GROUP BY d.task_id
+             ) dep ON dep.task_id = t.id
              WHERE t.id = $1 ${visibility}
              LIMIT 1`,
             params
@@ -857,6 +1045,90 @@ router.get('/:id/logs', async (req, res) => {
     }
 });
 
+// POST /api/tasks/operation-pack — create preset-driven checklist bundle
+router.post('/operation-pack', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const presetKey = String(req.body.preset || req.body.presetKey || '').trim();
+        const preset = ORDER_OPERATION_PRESETS[presetKey];
+        if (!preset) return res.status(400).json({ error: 'Invalid operation preset' });
+
+        const date = req.body.date && /^\d{4}-\d{2}-\d{2}$/.test(req.body.date) ? req.body.date : todayKyivDate();
+        const packId = normalizeUuid(req.body.pack_id || req.body.packId) || crypto.randomUUID();
+        const packStatus = normalizePackStatus(req.body.pack_status || req.body.packStatus, 'draft');
+        const sourceEntityType = normalizeSourceEntityType(req.body.source_entity_type || req.body.sourceEntityType);
+        const sourceEntityId = normalizeSourceEntityId(req.body.source_entity_id || req.body.sourceEntityId);
+        const baseTitle = String(req.body.title || preset.title || 'Операційний пакет').trim();
+        const priority = VALID_PRIORITIES.includes(req.body.priority) ? req.body.priority : 'normal';
+        const username = req.user?.username || 'system';
+        const kleshnya = getKleshnya();
+        const created = [];
+        const taskByTemplateKey = {};
+
+        for (const item of preset.bundle) {
+            const template = getChecklistTemplate(item.templateKey);
+            if (!template) continue;
+            const taskTitle = preset.bundle.length > 1
+                ? `${baseTitle}: ${template.label}`
+                : `${baseTitle}`;
+            const task = await kleshnya.createTask({
+                title: taskTitle,
+                description: item.description || null,
+                date,
+                priority,
+                assigned_to: null,
+                owner_user_id: null,
+                task_type: 'human',
+                source_type: 'operation_pack',
+                source_id: packId,
+                category: 'checklist',
+                subcategory: template.subcategory,
+                checklist_template_key: item.templateKey,
+                source_entity_type: sourceEntityType,
+                source_entity_id: sourceEntityId,
+                pack_id: packId,
+                pack_status: packStatus,
+                owner_role: item.owner_role || template.owner_role,
+                sla_minutes: item.sla_minutes || template.sla_minutes,
+                escalate_after: null,
+                created_by: username,
+                task_mode: 'work',
+                task_kind: 'checklist',
+                visibility: 'team',
+                workflow_state: 'todo',
+                source_module: 'tasks_operation_pack'
+            });
+            const subtasks = await createChecklistSubtasks(pool, task.id, item.templateKey);
+            task.subtask_count = subtasks.length;
+            task.subtask_done_count = 0;
+            created.push(task);
+            taskByTemplateKey[item.templateKey] = task;
+        }
+
+        for (const dependency of preset.dependencies || []) {
+            const task = taskByTemplateKey[dependency.taskTemplateKey];
+            const dependsOn = taskByTemplateKey[dependency.dependsOnTemplateKey];
+            if (task && dependsOn) await createTaskDependencyRows(task.id, [dependsOn.id]);
+        }
+
+        res.json({
+            success: true,
+            packId,
+            preset: presetKey,
+            tasks: created,
+            meta: {
+                packStatus,
+                sourceEntityType,
+                sourceEntityId,
+                checklistTemplates: created.map(task => task.checklist_template_key)
+            }
+        });
+        _alertPush();
+    } catch (err) {
+        log.error('Create operation pack error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // POST /api/tasks — create (via Kleshnya) — admin/user only
 router.post('/', requireRole('admin', 'user'), async (req, res) => {
     try {
@@ -883,6 +1155,10 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         const source_type = b.source_type || b.sourceType;
         const source_id = b.source_id || b.sourceId;
         const osFields = normalizeTaskOsFields(b, { status: 'todo' });
+        const opsFields = normalizeTaskOperations(b, { category: 'admin' });
+        if (opsFields.category === 'checklist' && osFields.task_kind === 'action') {
+            osFields.task_kind = 'checklist';
+        }
 
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
         if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Invalid date' });
@@ -925,12 +1201,27 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             control_policy: control_policy || undefined,
             source_type: source_type || 'manual',
             source_id: source_id || null,
-            category: VALID_CATEGORIES.includes(category) ? category : 'admin',
+            category: opsFields.category,
+            subcategory: opsFields.subcategory,
+            checklist_template_key: opsFields.checklist_template_key,
+            source_entity_type: opsFields.source_entity_type,
+            source_entity_id: opsFields.source_entity_id,
+            pack_id: opsFields.pack_id,
+            pack_status: opsFields.pack_status,
+            owner_role: opsFields.owner_role,
+            sla_minutes: opsFields.sla_minutes,
+            escalate_after: opsFields.escalate_after,
             template_id: template_id || null,
             afisha_id: afisha_id || null,
             created_by: username,
             ...osFields
         });
+        if (task.task_kind === 'checklist' && task.checklist_template_key) {
+            const subtasks = await createChecklistSubtasks(pool, task.id, task.checklist_template_key);
+            task.subtask_count = subtasks.length;
+            task.subtask_done_count = 0;
+        }
+        await createTaskDependencyRows(task.id, dependency_ids);
 
         res.json({
             success: true,
@@ -987,8 +1278,10 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
 
         const taskStatus = VALID_STATUSES.includes(status) ? status : 'todo';
         const taskPriority = VALID_PRIORITIES.includes(priority) ? priority : 'normal';
-        const taskCategory = VALID_CATEGORIES.includes(category) ? category : undefined;
+        const opsFields = normalizeTaskOperations(b, old);
+        const taskCategory = opsFields.category;
         const osFields = normalizeTaskOsFields({ ...b, status: taskStatus }, old);
+        if (taskCategory === 'checklist' && osFields.task_kind === 'action') osFields.task_kind = 'checklist';
         if (taskStatus === 'done') osFields.workflow_state = 'done';
         const setClauses = ['title=$1', 'description=$2', 'date=$3', 'status=$4', 'priority=$5',
             'assigned_to=$6', 'owner=$7', 'owner_user_id=$8', `updated_at=NOW()`, `completed_at=CASE WHEN $9='done' THEN NOW() ELSE NULL END`,
@@ -997,10 +1290,26 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
                         assigned_to || null, owner || null, owner_user_id || null, taskStatus];
         let paramIdx = 10;
 
-        if (taskCategory) {
-            setClauses.push(`category=$${paramIdx++}`);
-            values.push(taskCategory);
-        }
+        setClauses.push(`category=$${paramIdx++}`);
+        values.push(taskCategory);
+        setClauses.push(`subcategory=$${paramIdx++}`);
+        values.push(opsFields.subcategory);
+        setClauses.push(`checklist_template_key=$${paramIdx++}`);
+        values.push(opsFields.checklist_template_key);
+        setClauses.push(`source_entity_type=$${paramIdx++}`);
+        values.push(opsFields.source_entity_type);
+        setClauses.push(`source_entity_id=$${paramIdx++}`);
+        values.push(opsFields.source_entity_id);
+        setClauses.push(`pack_id=$${paramIdx++}`);
+        values.push(opsFields.pack_id);
+        setClauses.push(`pack_status=$${paramIdx++}`);
+        values.push(opsFields.pack_status);
+        setClauses.push(`owner_role=$${paramIdx++}`);
+        values.push(opsFields.owner_role);
+        setClauses.push(`sla_minutes=$${paramIdx++}`);
+        values.push(opsFields.sla_minutes);
+        setClauses.push(`escalate_after=$${paramIdx++}`);
+        values.push(opsFields.escalate_after || null);
         if (task_type && VALID_TASK_TYPES.includes(task_type)) {
             setClauses.push(`task_type=$${paramIdx++}`);
             values.push(task_type);
@@ -1062,6 +1371,16 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         }
 
         const updatedTask = result.rows[0];
+        if (
+            updatedTask.task_kind === 'checklist' &&
+            updatedTask.checklist_template_key &&
+            old.checklist_template_key !== updatedTask.checklist_template_key
+        ) {
+            const existingSubtasks = await pool.query('SELECT COUNT(*)::int AS count FROM task_subtasks WHERE task_id = $1', [updatedTask.id]);
+            if (!existingSubtasks.rows[0]?.count) {
+                await createChecklistSubtasks(pool, updatedTask.id, updatedTask.checklist_template_key);
+            }
+        }
 
         // v19.10/v0.48.12: Notify only when assignment actually changes.
         if (taskAssigneeChanged(old, updatedTask) && (updatedTask.owner_user_id || updatedTask.assigned_to)) {

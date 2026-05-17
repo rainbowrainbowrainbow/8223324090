@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.54.4">
-    <link rel="stylesheet" href="css/layout.css?v=0.54.4">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.54.4">
-    <link rel="stylesheet" href="css/pages.css?v=0.54.4">
-    <link rel="stylesheet" href="css/modals.css?v=0.54.4">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.54.4">
-    <link rel="stylesheet" href="css/responsive.css?v=0.54.4">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.54.4">
+    <link rel="stylesheet" href="css/base.css?v=0.55.0">
+    <link rel="stylesheet" href="css/layout.css?v=0.55.0">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.0">
+    <link rel="stylesheet" href="css/pages.css?v=0.55.0">
+    <link rel="stylesheet" href="css/modals.css?v=0.55.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.0">
+    <link rel="stylesheet" href="css/responsive.css?v=0.55.0">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -275,14 +275,18 @@
                 <button type="button" class="cat-chip active" data-cat="all">Всі</button>
                 <button type="button" class="cat-chip" data-cat="event">Івенти</button>
                 <button type="button" class="cat-chip" data-cat="purchase">Закупівлі</button>
+                <button type="button" class="cat-chip" data-cat="orders">Замовлення</button>
                 <button type="button" class="cat-chip" data-cat="admin">Адмін</button>
                 <button type="button" class="cat-chip" data-cat="trampoline">Батути</button>
                 <button type="button" class="cat-chip" data-cat="personal">Особисті</button>
                 <button type="button" class="cat-chip" data-cat="improvement">Покращення</button>
+                <button type="button" class="cat-chip" data-cat="checklist">Чек-листи</button>
             </div>
+            <div class="subcat-filters hidden" id="subcatFilters"></div>
 
             <!-- Quick add task -->
             <div id="taskExplainability" hidden></div>
+            <div id="operationsSummary" class="operations-summary hidden"></div>
 
             <div class="quick-add" id="quickAdd">
                 <input type="text" id="taskTitle" aria-label="Нова задача..." placeholder="Нова задача...">
@@ -290,10 +294,13 @@
                     <option value="admin">Адмін</option>
                     <option value="event">Івент</option>
                     <option value="purchase">Закупівлі</option>
+                    <option value="orders">Замовлення</option>
                     <option value="trampoline">Батути</option>
                     <option value="personal">Особисті</option>
                     <option value="improvement">Покращення</option>
+                    <option value="checklist">Чек-листи</option>
                 </select>
+                <select id="taskSubcategory" class="hidden"></select>
                 <select id="taskPriority">
                     <option value="normal">Звичайний</option>
                     <option value="high">Високий</option>
@@ -338,6 +345,26 @@
                 <button type="button" data-capture-chip="waiting">Чекаю</button>
             </div>
 
+            <div class="operations-pack-bar" id="operationPackBar">
+                <select id="operationPreset" aria-label="Операційний пакет">
+                    <option value="kitchen_basic">Кухня</option>
+                    <option value="cake_basic">Торт</option>
+                    <option value="cake_with_decor">Торт + прикраси</option>
+                    <option value="hall_prep_basic">Підготовка залу</option>
+                    <option value="purchase_basic">Закупка</option>
+                </select>
+                <input type="text" id="operationPackTitle" aria-label="Назва пакета" placeholder="Назва пакета">
+                <select id="operationSourceType" aria-label="Джерело">
+                    <option value="">Без джерела</option>
+                    <option value="booking">Бронювання</option>
+                    <option value="order">Замовлення</option>
+                    <option value="lead">Лід</option>
+                    <option value="customer">Клієнт</option>
+                </select>
+                <input type="text" id="operationSourceId" aria-label="ID джерела" placeholder="ID джерела">
+                <button type="button" id="createOperationPackBtn">Створити операційний пакет</button>
+            </div>
+
             <!-- v33.4: Bulk toolbar -->
             <div id="bulkToolbar" class="bulk-toolbar-tasks" style="display:none">
                 <span id="bulkCount">0 обрано</span>
@@ -364,9 +391,13 @@
                         <option value="admin">Адмін</option>
                         <option value="event">Івент</option>
                         <option value="purchase">Закупівлі</option>
+                        <option value="orders">Замовлення</option>
                         <option value="trampoline">Батути</option>
                         <option value="personal">Особисті</option>
+                        <option value="improvement">Покращення</option>
+                        <option value="checklist">Чек-листи</option>
                     </select>
+                    <select id="tplSubcategory" class="hidden"></select>
                     <select id="tplPriority">
                         <option value="normal">Звичайний</option>
                         <option value="high">Високий</option>
@@ -394,13 +425,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.54.4"></script>
-    <script src="js/notification.js?v=0.54.4"></script>
-    <script src="js/api.js?v=0.54.4"></script>
-    <script src="js/auth.js?v=0.54.4"></script>
-    <script src="js/components/sidebar.js?v=0.54.4"></script>
+    <script src="js/config.js?v=0.55.0"></script>
+    <script src="js/notification.js?v=0.55.0"></script>
+    <script src="js/api.js?v=0.55.0"></script>
+    <script src="js/auth.js?v=0.55.0"></script>
+    <script src="js/components/sidebar.js?v=0.55.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/tasks-page.js?v=0.54.4"></script>
-    <script src="js/alerts.js?v=0.54.4"></script><script src="js/ui.js?v=0.54.4"></script>
+    <script src="js/tasks-page.js?v=0.55.0"></script>
+    <script src="js/alerts.js?v=0.55.0"></script><script src="js/ui.js?v=0.55.0"></script>
 </body>
 </html>

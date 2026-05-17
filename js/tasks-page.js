@@ -8,13 +8,67 @@
 // CONSTANTS
 // ==========================================
 
-const CAT_LABELS = {
-    event: { icon: '', label: 'Івент', color: '#E65100' },
+const TASK_CATEGORY_TREE = {
+    event: { icon: '', label: 'Івенти', color: '#E65100' },
     purchase: { icon: '', label: 'Закупівлі', color: '#2E7D32' },
+    orders: {
+        icon: '', label: 'Замовлення', color: '#DC2626',
+        children: {
+            kitchen: { label: 'Кухня', color: '#EA580C' },
+            confectionery: { label: 'Кондитерка', color: '#C026D3' },
+            cakes: { label: 'Торти', color: '#A21CAF', parent: 'confectionery' },
+            cake_decor: { label: 'Прикраси', color: '#7C3AED', parent: 'confectionery' }
+        }
+    },
     admin: { icon: '', label: 'Адмін', color: '#1565C0' },
     trampoline: { icon: '', label: 'Батути', color: '#7B1FA2' },
     personal: { icon: '', label: 'Особисті', color: '#455A64' },
-    improvement: { icon: '', label: 'Покращення', color: '#0891B2' }
+    improvement: { icon: '', label: 'Покращення', color: '#0891B2' },
+    checklist: {
+        icon: '', label: 'Чек-листи', color: '#C026D3',
+        children: {
+            hall_prep: { label: 'Підготовка залу', color: '#7C3AED' },
+            kitchen: { label: 'Кухня', color: '#EA580C' },
+            cakes: { label: 'Торт', color: '#A21CAF' },
+            cake_decor: { label: 'Прикраси', color: '#6D28D9' },
+            purchase: { label: 'Закупка', color: '#2E7D32' }
+        }
+    },
+    operational: { icon: '', label: 'Операційні', color: '#16A34A' },
+    maintenance: { icon: '', label: 'Технічні', color: '#64748B' }
+};
+const CAT_LABELS = TASK_CATEGORY_TREE;
+const TOP_LEVEL_ORDER = ['event', 'purchase', 'orders', 'admin', 'trampoline', 'personal', 'improvement', 'checklist'];
+const SUBCATEGORY_RAILS = {
+    orders: [
+        { id: 'all', label: 'Всі замовлення' },
+        { id: 'kitchen', label: 'Кухня' },
+        { id: 'confectionery', label: 'Кондитерка' },
+        { id: 'cakes', label: 'Торти' },
+        { id: 'cake_decor', label: 'Прикраси' }
+    ],
+    checklist: [
+        { id: 'all', label: 'Всі чек-листи' },
+        { id: 'hall_prep', label: 'Підготовка залу' },
+        { id: 'kitchen', label: 'Кухня' },
+        { id: 'cakes', label: 'Торт' },
+        { id: 'cake_decor', label: 'Прикраси' },
+        { id: 'purchase', label: 'Закупка' }
+    ]
+};
+const CHECKLIST_TEMPLATE_BY_SUBCATEGORY = {
+    hall_prep: 'hall_prep_base',
+    kitchen: 'kitchen_base',
+    cakes: 'cake_base',
+    cake_decor: 'cake_decor_base',
+    purchase: 'purchase_base'
+};
+const OPERATION_PRESETS = {
+    hall_prep_basic: 'Підготовка залу',
+    kitchen_basic: 'Кухня',
+    cake_basic: 'Торт',
+    cake_with_decor: 'Торт + прикраси',
+    purchase_basic: 'Закупка'
 };
 
 const STATUS_CYCLE = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
@@ -25,6 +79,7 @@ const PATTERN_LABELS = { daily: 'Щоденно', weekdays: 'Будні', weekly
 
 let currentView = 'inbox';
 let currentCategory = 'all';
+let currentSubcategory = 'all';
 let allTasks = [];
 let userPermissions = null; // v20.9.16: loaded from /api/tasks/permissions
 let pageCurrentUser = null;
@@ -38,6 +93,66 @@ let captureIntent = {};
 function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function getCategoryConfig(category) {
+    return TASK_CATEGORY_TREE[category] || TASK_CATEGORY_TREE.admin;
+}
+
+function getSubcategoryConfig(category, subcategory) {
+    return TASK_CATEGORY_TREE[category]?.children?.[subcategory] || null;
+}
+
+function supportsSubcategory(category) {
+    return category === 'orders' || category === 'checklist';
+}
+
+function getSubcategoryItems(category) {
+    return SUBCATEGORY_RAILS[category] || [];
+}
+
+function getTaxonomyLabel(category, subcategory) {
+    const catInfo = getCategoryConfig(category);
+    const subInfo = getSubcategoryConfig(category, subcategory);
+    return subInfo ? `${catInfo.label} / ${subInfo.label}` : catInfo.label;
+}
+
+function renderCategoryOptions(selected = 'admin') {
+    const optionCats = Array.from(new Set([...TOP_LEVEL_ORDER, 'operational', 'maintenance']));
+    return optionCats.map(cat => {
+        const info = getCategoryConfig(cat);
+        return `<option value="${cat}" ${selected === cat ? 'selected' : ''}>${escapeHtml(info.label)}</option>`;
+    }).join('');
+}
+
+function renderSubcategoryOptions(category, selected = '') {
+    if (!supportsSubcategory(category)) return '<option value="">Без підкатегорії</option>';
+    const options = getSubcategoryItems(category)
+        .filter(item => item.id !== 'all')
+        .map(item => `<option value="${item.id}" ${selected === item.id ? 'selected' : ''}>${escapeHtml(item.label)}</option>`);
+    return '<option value="">Без підкатегорії</option>' + options.join('');
+}
+
+function selectedSubcategoryFor(category, selectId) {
+    if (!supportsSubcategory(category)) return null;
+    return document.getElementById(selectId)?.value || null;
+}
+
+function syncSubcategorySelect(categoryId, subcategoryId) {
+    const category = document.getElementById(categoryId)?.value || 'admin';
+    const sub = document.getElementById(subcategoryId);
+    if (!sub) return;
+    const previous = sub.value;
+    sub.innerHTML = renderSubcategoryOptions(category, previous);
+    const show = supportsSubcategory(category);
+    sub.classList.toggle('hidden', !show);
+    sub.style.display = show ? '' : 'none';
+    if (!show) sub.value = '';
+}
+
+function normalizeChecklistTemplateKey(category, subcategory) {
+    if (category !== 'checklist') return null;
+    return CHECKLIST_TEMPLATE_BY_SUBCATEGORY[subcategory] || null;
 }
 
 function getTodayStr() {
@@ -222,10 +337,16 @@ async function initPage() {
                 const isTemplates = currentView === 'templates';
                 const catFilters = document.getElementById('catFilters');
                 const quickAdd = document.getElementById('quickAdd');
+                const operationPackBar = document.getElementById('operationPackBar');
+                const operationsSummary = document.getElementById('operationsSummary');
                 const boardContent = document.getElementById('boardContent');
                 const templatesSection = document.getElementById('templatesSection');
                 if (catFilters) catFilters.style.display = isTemplates ? 'none' : '';
+                const subcatFilters = document.getElementById('subcatFilters');
+                if (subcatFilters) subcatFilters.style.display = isTemplates ? 'none' : '';
                 if (quickAdd) quickAdd.style.display = (isTemplates || userPermissions?.canCreateTasks === false) ? 'none' : '';
+                if (operationPackBar) operationPackBar.style.display = (isTemplates || userPermissions?.canCreateTasks === false) ? 'none' : '';
+                if (operationsSummary) operationsSummary.style.display = isTemplates ? 'none' : '';
                 if (boardContent) boardContent.style.display = isTemplates ? 'none' : '';
                 if (templatesSection) templatesSection.style.display = isTemplates ? '' : 'none';
                 updateTaskExplainability();
@@ -238,14 +359,23 @@ async function initPage() {
             });
         });
 
-        // Category filter chips
-        document.querySelectorAll('.cat-chip').forEach(chip => {
-            chip.addEventListener('click', () => {
-                document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
-                chip.classList.add('active');
-                currentCategory = chip.dataset.cat;
-                renderBoard();
-            });
+        renderCategoryFilters();
+        renderSubcategoryFilters();
+        document.getElementById('catFilters')?.addEventListener('click', (e) => {
+            const chip = e.target.closest('.cat-chip');
+            if (!chip) return;
+            currentCategory = chip.dataset.cat || 'all';
+            currentSubcategory = 'all';
+            renderCategoryFilters();
+            renderSubcategoryFilters();
+            renderBoard();
+        });
+        document.getElementById('subcatFilters')?.addEventListener('click', (e) => {
+            const chip = e.target.closest('.subcat-chip');
+            if (!chip) return;
+            currentSubcategory = chip.dataset.subcat || 'all';
+            renderSubcategoryFilters();
+            renderBoard();
         });
         document.addEventListener('click', (e) => {
             const clear = e.target.closest('[data-explain-clear="tasks"]');
@@ -256,6 +386,7 @@ async function initPage() {
 
         // Quick add task
         document.getElementById('addTaskBtn')?.addEventListener('click', addTask);
+        document.getElementById('taskCategory')?.addEventListener('change', () => syncSubcategorySelect('taskCategory', 'taskSubcategory'));
         document.getElementById('taskTitle')?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') addTask();
         });
@@ -265,9 +396,13 @@ async function initPage() {
 
         // Templates
         document.getElementById('addTemplateBtn')?.addEventListener('click', addTemplate);
+        document.getElementById('tplCategory')?.addEventListener('change', () => syncSubcategorySelect('tplCategory', 'tplSubcategory'));
         document.getElementById('tplPattern')?.addEventListener('change', (e) => {
             document.getElementById('tplDays').style.display = e.target.value === 'custom' ? '' : 'none';
         });
+        document.getElementById('createOperationPackBtn')?.addEventListener('click', createOperationPack);
+        syncSubcategorySelect('taskCategory', 'taskSubcategory');
+        syncSubcategorySelect('tplCategory', 'tplSubcategory');
 
         // v20.9.16: Load permissions and apply UI restrictions
         const permsResult = await apiGetTaskPermissions();
@@ -299,6 +434,8 @@ function applyPermissionsUI(perms) {
     if (!perms.canCreateTasks) {
         const quickAdd = document.getElementById('quickAdd');
         if (quickAdd) quickAdd.style.display = 'none';
+        const operationPackBar = document.getElementById('operationPackBar');
+        if (operationPackBar) operationPackBar.style.display = 'none';
         // Also hide templates tab (only creators can add templates)
         const templatesTab = document.querySelector('[data-view="templates"]');
         if (templatesTab) templatesTab.style.display = 'none';
@@ -481,6 +618,34 @@ async function apiRescheduleTask(taskId, deadline) {
 // LOAD & RENDER
 // ==========================================
 
+function renderCategoryFilters() {
+    const host = document.getElementById('catFilters');
+    if (!host) return;
+    const items = ['all', ...TOP_LEVEL_ORDER];
+    host.innerHTML = items.map(cat => {
+        const active = currentCategory === cat;
+        const label = cat === 'all' ? 'Всі' : getCategoryConfig(cat).label;
+        return `<button type="button" class="cat-chip ${active ? 'active' : ''}" data-cat="${cat}">${escapeHtml(label)}</button>`;
+    }).join('');
+}
+
+function renderSubcategoryFilters() {
+    const host = document.getElementById('subcatFilters');
+    if (!host) return;
+    if (!supportsSubcategory(currentCategory)) {
+        host.classList.add('hidden');
+        host.innerHTML = '';
+        return;
+    }
+    const items = getSubcategoryItems(currentCategory);
+    host.classList.remove('hidden');
+    host.innerHTML = items.map(item => `
+        <button type="button" class="subcat-chip ${currentSubcategory === item.id ? 'active' : ''}" data-subcat="${item.id}">
+            ${escapeHtml(item.label)}
+        </button>
+    `).join('');
+}
+
 async function loadAllTasks(options = {}) {
     const { fatal = false } = options;
     const board = document.getElementById('boardContent');
@@ -501,14 +666,50 @@ async function loadAllTasks(options = {}) {
     }
 }
 
+async function apiCreateOperationPack(data) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/operation-pack`, {
+            method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) {
+        console.error('API createOperationPack error:', err);
+        return null;
+    }
+}
+
+function filterByTaxonomy(tasks) {
+    let filtered = tasks;
+    if (currentCategory !== 'all') {
+        if (currentCategory === 'checklist') {
+            filtered = filtered.filter(t => (t.category || 'admin') === 'checklist' || taskKind(t) === 'checklist');
+        } else {
+            filtered = filtered.filter(t => (t.category || 'admin') === currentCategory);
+        }
+    }
+    if (supportsSubcategory(currentCategory) && currentSubcategory !== 'all') {
+        if (currentCategory === 'orders' && currentSubcategory === 'confectionery') {
+            filtered = filtered.filter(t => ['confectionery', 'cakes', 'cake_decor'].includes(t.subcategory));
+        } else {
+            filtered = filtered.filter(t => (t.subcategory || null) === currentSubcategory);
+        }
+    }
+    return filtered;
+}
+
 function filterByCategory(tasks) {
-    if (currentCategory === 'all') return tasks;
-    return tasks.filter(t => (t.category || 'admin') === currentCategory);
+    return filterByTaxonomy(tasks);
 }
 
 function getCategoryLabel(cat = currentCategory) {
     if (cat === 'all') return 'Всі категорії';
-    return CAT_LABELS[cat]?.label || cat;
+    return getCategoryConfig(cat)?.label || cat;
+}
+
+function getSubcategoryLabel(cat = currentCategory, subcat = currentSubcategory) {
+    if (!supportsSubcategory(cat) || subcat === 'all') return '';
+    return getSubcategoryConfig(cat, subcat)?.label || subcat;
 }
 
 function getViewLabel(view = currentView) {
@@ -573,7 +774,8 @@ function getVisibilityNote() {
 
 function taskEmptyState(view, unfilteredCount = 0, columnLabel = '') {
     const hasCategory = currentCategory !== 'all';
-    const category = getCategoryLabel();
+    const hasSubcategory = supportsSubcategory(currentCategory) && currentSubcategory !== 'all';
+    const category = hasSubcategory ? `${getCategoryLabel()} / ${getSubcategoryLabel()}` : getCategoryLabel();
     let title = columnLabel ? `Порожньо: ${columnLabel}` : 'Немає задач';
     let message = `У зрізі "${getViewLabel(view)}" немає задач.`;
     let clearAction = '';
@@ -606,9 +808,10 @@ function taskEmptyState(view, unfilteredCount = 0, columnLabel = '') {
 function updateTaskExplainability() {
     const filters = [];
     const visibilityNote = getVisibilityNote();
-    const canReset = currentCategory !== 'all' || currentView !== 'inbox';
+    const canReset = currentCategory !== 'all' || currentSubcategory !== 'all' || currentView !== 'inbox';
     if (currentView !== 'today') filters.push({ label: 'Вигляд', value: getViewLabel() });
     if (currentCategory !== 'all') filters.push({ label: 'Категорія', value: getCategoryLabel() });
+    if (supportsSubcategory(currentCategory) && currentSubcategory !== 'all') filters.push({ label: 'Підкатегорія', value: getSubcategoryLabel() });
 
     const html = window.Explainability
         ? Explainability.renderFilterSummary(filters, {
@@ -623,15 +826,23 @@ function updateTaskExplainability() {
 
 function resetTaskFilters() {
     currentCategory = 'all';
+    currentSubcategory = 'all';
     currentView = 'inbox';
-    document.querySelectorAll('.cat-chip').forEach(chip => chip.classList.toggle('active', chip.dataset.cat === 'all'));
+    renderCategoryFilters();
+    renderSubcategoryFilters();
     document.querySelectorAll('.board-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === 'inbox'));
     const catFilters = document.getElementById('catFilters');
+    const subcatFilters = document.getElementById('subcatFilters');
     const quickAdd = document.getElementById('quickAdd');
+    const operationPackBar = document.getElementById('operationPackBar');
+    const operationsSummary = document.getElementById('operationsSummary');
     const boardContent = document.getElementById('boardContent');
     const templatesSection = document.getElementById('templatesSection');
     if (catFilters) catFilters.style.display = '';
+    if (subcatFilters) subcatFilters.style.display = '';
     if (quickAdd && userPermissions?.canCreateTasks !== false) quickAdd.style.display = '';
+    if (operationPackBar && userPermissions?.canCreateTasks !== false) operationPackBar.style.display = '';
+    if (operationsSummary) operationsSummary.style.display = '';
     if (boardContent) boardContent.style.display = '';
     if (templatesSection) templatesSection.style.display = 'none';
     renderBoard();
@@ -662,10 +873,55 @@ function updateCounts() {
     setCount('countMy', myTasks.length);
 }
 
+function renderOperationsSummary() {
+    const host = document.getElementById('operationsSummary');
+    if (!host) return;
+    if (!supportsSubcategory(currentCategory)) {
+        host.classList.add('hidden');
+        host.innerHTML = '';
+        return;
+    }
+    const visible = filterByTaxonomy(allTasks).filter(t => (t.category === 'orders' || t.category === 'checklist' || t.packId || t.pack_id) && isActiveTask(t));
+    const packMap = new Map();
+    let blocked = 0;
+    let overdue = 0;
+    const now = new Date();
+    visible.forEach(task => {
+        const packId = task.packId || task.pack_id || `task-${task.id}`;
+        if (!packMap.has(packId)) {
+            packMap.set(packId, {
+                status: task.packStatus || task.pack_status || 'draft',
+                readyToday: false
+            });
+        }
+        if (Number(task.openDependencyCount || task.open_dependency_count || 0) > 0) blocked++;
+        if (task.deadline && new Date(task.deadline) < now) overdue++;
+        const due = taskDueDate(task);
+        if ((task.packStatus || task.pack_status) === 'ready' && (!due || due <= getTodayStr())) {
+            packMap.get(packId).readyToday = true;
+        }
+    });
+    const stats = { draft: 0, inProduction: 0, ready: 0, blocked, overdue };
+    packMap.forEach(pack => {
+        if (pack.status === 'draft') stats.draft++;
+        if (pack.status === 'in_production') stats.inProduction++;
+        if (pack.status === 'ready' || pack.readyToday) stats.ready++;
+    });
+    host.classList.remove('hidden');
+    host.innerHTML = `
+        <div class="operations-summary-item"><span>${stats.draft}</span><small>draft</small></div>
+        <div class="operations-summary-item"><span>${stats.inProduction}</span><small>in production</small></div>
+        <div class="operations-summary-item"><span>${stats.ready}</span><small>ready today</small></div>
+        <div class="operations-summary-item ${stats.blocked ? 'is-hot' : ''}"><span>${stats.blocked}</span><small>blocked</small></div>
+        <div class="operations-summary-item ${stats.overdue ? 'is-hot' : ''}"><span>${stats.overdue}</span><small>overdue</small></div>
+    `;
+}
+
 function renderBoard() {
     const container = document.getElementById('boardContent');
     updateCounts();
     updateTaskExplainability();
+    renderOperationsSummary();
 
     switch (currentView) {
         case 'inbox': renderSimpleTaskView(container, 'inbox', t => isInboxTask(t), 'Інбокс чистий. Нові задачі без контексту зʼявлятимуться тут.'); break;
@@ -723,9 +979,10 @@ function renderTodayView(container) {
     }
 
     let html = '';
-    for (const cat of ['event', 'purchase', 'admin', 'trampoline', 'personal', 'improvement']) {
+    const orderedCats = [...TOP_LEVEL_ORDER, 'operational', 'maintenance', ...Object.keys(groups).filter(cat => !TOP_LEVEL_ORDER.includes(cat) && !['operational', 'maintenance'].includes(cat))];
+    for (const cat of orderedCats) {
         if (!groups[cat]) continue;
-        const info = CAT_LABELS[cat];
+        const info = getCategoryConfig(cat);
         html += `<div class="group-header">${info.icon} ${info.label} <span style="font-size:12px;color:var(--gray-400)">(${groups[cat].length})</span></div>`;
         html += groups[cat].map(t => renderTaskCard(t)).join('');
     }
@@ -877,7 +1134,9 @@ function getHealthBadge(score) {
 
 function renderTaskCard(t) {
     const cat = t.category || 'admin';
-    const catInfo = CAT_LABELS[cat] || CAT_LABELS.admin;
+    const catInfo = getCategoryConfig(cat);
+    const subInfo = getSubcategoryConfig(cat, t.subcategory);
+    const taxoLabel = subInfo ? `${catInfo.label} / ${subInfo.label}` : catInfo.label;
     const nextStatus = STATUS_CYCLE[t.status] || 'todo';
     const nextLabel = STATUS_LABELS[nextStatus];
     const priorityIcon = PRIORITY_ICONS[t.priority] || '';
@@ -894,6 +1153,13 @@ function renderTaskCard(t) {
     const subtaskCount = Number(t.subtask_count || t.subtaskCount || 0);
     const subtaskDone = Number(t.subtask_done_count || t.subtaskDoneCount || 0);
     const subtaskBadge = subtaskCount ? `<span class="task-os-badge checklist">${subtaskDone}/${subtaskCount}</span>` : '';
+    const packStatus = t.packStatus || t.pack_status || '';
+    const packBadge = packStatus ? `<span class="task-os-badge pack-status">${escapeHtml(packStatus)}</span>` : '';
+    const blockedCount = Number(t.openDependencyCount || t.open_dependency_count || 0);
+    const blockedTitles = t.blockedByTitles || t.blocked_by_titles || '';
+    const blockedBadge = blockedCount ? `<span class="task-os-badge blocked" title="Чекає завершення: ${escapeHtml(blockedTitles)}">blocked ${blockedCount}</span>` : '';
+    const ownerRole = t.ownerRole || t.owner_role || '';
+    const ownerRoleBadge = ownerRole ? `<span class="task-os-badge owner-role">${escapeHtml(ownerRole)}</span>` : '';
 
     // v10.0: Deadline display
     let deadlineHtml = '';
@@ -925,7 +1191,7 @@ function renderTaskCard(t) {
     const intelHtml = renderTaskIntelligence(t);
 
     return `
-    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''}" data-task-id="${t.id}" onclick="openTaskDetail(${t.id})" style="cursor:pointer">
+    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''}" data-task-id="${t.id}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}" onclick="openTaskDetail(${t.id})" style="cursor:pointer">
         <label class="task-checkbox-wrap" onclick="event.stopPropagation()">
             <input type="checkbox" class="task-bulk-cb" data-id="${t.id}" onchange="updateBulkSelection()">
         </label>
@@ -936,7 +1202,10 @@ function renderTaskCard(t) {
             ${taskKindBadge(t)}
             ${reminderBadge}
             ${subtaskBadge}
-            <span>${catInfo.icon} ${catInfo.label}</span>
+            ${packBadge}
+            ${blockedBadge}
+            ${ownerRoleBadge}
+            <span>${catInfo.icon} ${escapeHtml(taxoLabel)}</span>
             ${t.date ? `<span>${formatDateShort(t.date)}</span>` : ''}
             ${deadlineHtml}
             ${ownerHtml}
@@ -1011,7 +1280,8 @@ async function addTask() {
         return;
     }
 
-    const category = document.getElementById('taskCategory')?.value;
+    const category = document.getElementById('taskCategory')?.value || 'admin';
+    const subcategory = selectedSubcategoryFor(category, 'taskSubcategory');
     const priority = document.getElementById('taskPriority')?.value;
     const taskType = document.getElementById('taskType')?.value || 'human';
     const deadlineTime = document.getElementById('taskDeadlineTime')?.value || '';
@@ -1032,6 +1302,8 @@ async function addTask() {
         task_kind: kind,
         visibility,
         workflow_state: workflow,
+        subcategory,
+        checklist_template_key: normalizeChecklistTemplateKey(category, subcategory),
         source_type: 'manual',
         source_module: 'tasks'
     };
@@ -1054,6 +1326,34 @@ async function addTask() {
         showNotification('Помилка додавання', 'error');
     }
 }
+
+async function createOperationPack() {
+    const preset = document.getElementById('operationPreset')?.value || 'kitchen_basic';
+    const titleInput = document.getElementById('operationPackTitle');
+    const sourceType = document.getElementById('operationSourceType')?.value || '';
+    const sourceId = document.getElementById('operationSourceId')?.value.trim() || '';
+    const title = titleInput?.value.trim() || OPERATION_PRESETS[preset] || 'Операційний пакет';
+    const data = {
+        preset,
+        title,
+        source_entity_type: sourceType || null,
+        source_entity_id: sourceId || null,
+        pack_status: 'draft'
+    };
+    const result = await apiCreateOperationPack(data);
+    if (result?.success) {
+        if (titleInput) titleInput.value = '';
+        showNotification(`Операційний пакет створено: ${result.tasks?.length || 0}`, 'success');
+        currentCategory = 'checklist';
+        currentSubcategory = 'all';
+        renderCategoryFilters();
+        renderSubcategoryFilters();
+        await loadAllTasks();
+        return;
+    }
+    showNotification(result?.error || 'Не вдалося створити операційний пакет', 'error');
+}
+window.createOperationPack = createOperationPack;
 
 async function cycleStatus(taskId, newStatus) {
     const result = newStatus === 'done'
@@ -1129,13 +1429,15 @@ function renderTemplates(templates) {
     grid.innerHTML = templates.map(t => {
         const pattern = PATTERN_LABELS[t.recurrencePattern] || t.recurrencePattern;
         const days = t.recurrenceDays ? ` (${escapeHtml(t.recurrenceDays)})` : '';
-        const cat = CAT_LABELS[t.category] || CAT_LABELS.admin;
+        const cat = getCategoryConfig(t.category || 'admin');
+        const taxoLabel = getTaxonomyLabel(t.category || 'admin', t.subcategory);
 
         return `
         <div class="task-card cat-${t.category || 'admin'}">
             <div class="task-card-title">${escapeHtml(t.title)}</div>
             <div class="task-card-meta">
-                <span>${cat.label}</span>
+                <span>${escapeHtml(taxoLabel)}</span>
+                ${t.defaultTaskKind === 'checklist' ? '<span class="task-os-badge checklist">Checklist</span>' : ''}
                 <span>${pattern}${days}</span>
                 ${t.assignedTo ? `<span>${escapeHtml(t.assignedTo)}</span>` : ''}
                 <span class="badge ${t.isActive ? 'badge-done' : 'badge-normal'}">${t.isActive ? 'Активний' : 'Пауза'}</span>
@@ -1158,14 +1460,25 @@ async function addTemplate() {
     const recurrenceDays = document.getElementById('tplDays')?.value.trim() || null;
     const priority = document.getElementById('tplPriority')?.value;
     const assignedTo = document.getElementById('tplAssignedTo')?.value.trim() || null;
-    const category = document.getElementById('tplCategory')?.value;
+    const category = document.getElementById('tplCategory')?.value || 'admin';
+    const subcategory = selectedSubcategoryFor(category, 'tplSubcategory');
 
     if (recurrencePattern === 'custom' && !recurrenceDays) {
         showNotification('Вкажіть дні для кастомного розкладу', 'error');
         return;
     }
 
-    const result = await apiCreateTemplate({ title, recurrencePattern, recurrenceDays, priority, assignedTo, category });
+    const result = await apiCreateTemplate({
+        title,
+        recurrencePattern,
+        recurrenceDays,
+        priority,
+        assignedTo,
+        category,
+        subcategory,
+        defaultTaskKind: category === 'checklist' ? 'checklist' : 'action',
+        checklistTemplateKey: normalizeChecklistTemplateKey(category, subcategory)
+    });
     if (result && result.success) {
         document.getElementById('tplTitle').value = '';
         document.getElementById('tplDays').value = '';
@@ -1238,7 +1551,7 @@ window.clearBulkSelection = clearBulkSelection;
 let _taskDetailInitialState = null;
 
 function getTaskDetailFormState() {
-    const ids = ['_tdTitle', '_tdDesc', '_tdStatus', '_tdPriority', '_tdDeadline', '_tdAssigned', '_tdCategory', '_tdMode', '_tdKind', '_tdVisibility', '_tdWorkflow', '_tdRemindAt'];
+    const ids = ['_tdTitle', '_tdDesc', '_tdStatus', '_tdPriority', '_tdDeadline', '_tdAssigned', '_tdCategory', '_tdSubcategory', '_tdMode', '_tdKind', '_tdVisibility', '_tdWorkflow', '_tdRemindAt', '_tdPackStatus', '_tdOwnerRole', '_tdSlaMinutes'];
     return ids.map(id => {
         const el = document.getElementById(id);
         return el ? String(el.value || '') : '';
@@ -1288,6 +1601,18 @@ async function closeTaskDetailOverlay(force) {
 }
 window.closeTaskDetailOverlay = closeTaskDetailOverlay;
 
+function syncDetailSubcategoryVisibility() {
+    const category = document.getElementById('_tdCategory')?.value || 'admin';
+    const wrap = document.getElementById('_tdSubcategoryWrap');
+    const select = document.getElementById('_tdSubcategory');
+    if (!wrap || !select) return;
+    const previous = select.value;
+    select.innerHTML = renderSubcategoryOptions(category, previous);
+    const show = supportsSubcategory(category);
+    wrap.style.display = show ? '' : 'none';
+    if (!show) select.value = '';
+}
+
 async function openTaskDetail(taskId) {
     try {
         const token = localStorage.getItem('pzp_token');
@@ -1325,6 +1650,9 @@ async function openTaskDetail(taskId) {
         const taskWhy = Array.isArray(taskIntel.why) ? taskIntel.why.join(' ') : (taskIntel.why || '');
         const _lbl = 'style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:3px"';
         const _inp = 'style="width:100%;padding:8px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box"';
+        const categoryValue = t.category || 'admin';
+        const subcategoryValue = t.subcategory || '';
+        const subcategoryStyle = supportsSubcategory(categoryValue) ? '' : 'display:none';
 
         overlay.dataset.taskVersion = t.version || 1;
         overlay.innerHTML = `<div style="background:var(--white,#fff);border-radius:16px;max-width:520px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
@@ -1356,14 +1684,14 @@ async function openTaskDetail(taskId) {
                         ${ownerSelectHtml}
                     </select></div>
                 </div>
-                <div><label ${_lbl}>Категорія</label><select id="_tdCategory" ${_inp} style="width:100%;padding:8px;border:1px solid var(--gray-200);border-radius:8px;font-size:14px;font-family:inherit">
-                    <option value="admin" ${t.category==='admin'?'selected':''}>Адмін</option>
-                    <option value="event" ${t.category==='event'?'selected':''}>Подія</option>
-                    <option value="purchase" ${t.category==='purchase'?'selected':''}>Закупка</option>
-                    <option value="trampoline" ${t.category==='trampoline'?'selected':''}>Батут</option>
-                    <option value="personal" ${t.category==='personal'?'selected':''}>Особисте</option>
-                    <option value="improvement" ${t.category==='improvement'?'selected':''}>Покращення</option>
-                </select></div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">
+                    <div><label ${_lbl}>Категорія</label><select id="_tdCategory" ${_inp}>
+                        ${renderCategoryOptions(categoryValue)}
+                    </select></div>
+                    <div id="_tdSubcategoryWrap" style="${subcategoryStyle}"><label ${_lbl}>Підкатегорія</label><select id="_tdSubcategory" ${_inp}>
+                        ${renderSubcategoryOptions(categoryValue, subcategoryValue)}
+                    </select></div>
+                </div>
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
                     <div><label ${_lbl}>Режим</label><select id="_tdMode" ${_inp}>
                         <option value="work" ${taskMode(t)==='work'?'selected':''}>Робоча</option>
@@ -1383,6 +1711,11 @@ async function openTaskDetail(taskId) {
                         ${['inbox','todo','in_progress','waiting','scheduled','done','archived'].map(w => `<option value="${w}" ${taskWorkflow(t)===w?'selected':''}>${escapeHtml(w)}</option>`).join('')}
                     </select></div>
                     <div><label ${_lbl}>Нагадати</label><input id="_tdRemindAt" type="datetime-local" value="${remindIso}" ${_inp}></div>
+                    <div><label ${_lbl}>Pack status</label><select id="_tdPackStatus" ${_inp}>
+                        ${['','draft','confirmed','in_production','ready','issued','cancelled'].map(s => `<option value="${s}" ${(t.packStatus || t.pack_status || '')===s?'selected':''}>${escapeHtml(s || '—')}</option>`).join('')}
+                    </select></div>
+                    <div><label ${_lbl}>Owner role</label><input id="_tdOwnerRole" value="${escapeHtml(t.ownerRole || t.owner_role || '')}" ${_inp}></div>
+                    <div><label ${_lbl}>SLA хв</label><input id="_tdSlaMinutes" type="number" min="1" value="${escapeHtml(t.slaMinutes || t.sla_minutes || '')}" ${_inp}></div>
                 </div>
                 <div style="border:1px solid var(--gray-100);border-radius:10px;padding:10px;background:rgba(15,23,42,0.03)">
                     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--gray-600)">
@@ -1409,6 +1742,8 @@ async function openTaskDetail(taskId) {
                 <button onclick="closeTaskDetailOverlay(false)" style="flex:1;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:none;cursor:pointer;font-family:inherit;font-size:13px">Скасувати</button>
             </div>
         </div>`;
+        document.getElementById('_tdCategory')?.addEventListener('change', syncDetailSubcategoryVisibility);
+        syncDetailSubcategoryVisibility();
         resetTaskDetailDirtyState();
         if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay);
         loadTaskHistory(t.id);
@@ -1523,18 +1858,25 @@ async function saveTaskDetail(taskId) {
     }
     try {
         const token = localStorage.getItem('pzp_token');
+        const category = document.getElementById('_tdCategory')?.value || 'admin';
+        const subcategory = selectedSubcategoryFor(category, '_tdSubcategory');
         const body = {
             title,
             description: document.getElementById('_tdDesc')?.value.trim() || null,
             status: selectedStatus,
             priority: document.getElementById('_tdPriority')?.value || 'normal',
-            category: document.getElementById('_tdCategory')?.value || 'admin',
+            category,
+            subcategory,
+            checklist_template_key: normalizeChecklistTemplateKey(category, subcategory),
             deadline: document.getElementById('_tdDeadline')?.value || null,
             task_mode: document.getElementById('_tdMode')?.value || 'work',
             task_kind: document.getElementById('_tdKind')?.value || 'action',
             visibility: document.getElementById('_tdVisibility')?.value || 'team',
             workflow_state: document.getElementById('_tdWorkflow')?.value || (selectedStatus === 'done' ? 'done' : 'todo'),
             remind_at: document.getElementById('_tdRemindAt')?.value || null,
+            pack_status: document.getElementById('_tdPackStatus')?.value || null,
+            owner_role: document.getElementById('_tdOwnerRole')?.value.trim() || null,
+            sla_minutes: document.getElementById('_tdSlaMinutes')?.value || null,
             version: document.getElementById('taskDetailOverlay')?.dataset?.taskVersion || undefined
         };
         const res = await fetch(`/api/tasks/${taskId}`, {

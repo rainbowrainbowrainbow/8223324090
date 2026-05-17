@@ -13,6 +13,7 @@ const { sendBackupToTelegram } = require('./backup');
 const { formatAfishaBlock } = require('./templates');
 const { createLogger } = require('../utils/logger');
 const { canViewBooking, getVisibleBookingScope } = require('./bookingVisibility');
+const { createChecklistSubtasks } = require('./taskTaxonomy');
 
 // Lazy require to avoid circular dependency at load time
 function getRecurringService() {
@@ -482,13 +483,19 @@ async function checkRecurringTasks() {
 
             // Atomic dedup: INSERT ON CONFLICT prevents race conditions
             const insertResult = await pool.query(
-                `INSERT INTO tasks (title, description, date, priority, assigned_to, created_by, type, template_id, category)
-                 VALUES ($1, $2, $3, $4, $5, 'system', 'recurring', $6, $7)
+                `INSERT INTO tasks (title, description, date, priority, assigned_to, created_by, type, template_id, category,
+                 subcategory, task_kind, checklist_template_key, owner_role, sla_minutes)
+                 VALUES ($1, $2, $3, $4, $5, 'system', 'recurring', $6, $7, $8, COALESCE($9, 'action'), $10, $11, $12)
                  ON CONFLICT (template_id, date) WHERE template_id IS NOT NULL DO NOTHING
-                 RETURNING id`,
-                [tpl.title, tpl.description, todayStr, tpl.priority, tpl.assigned_to, tpl.id, tpl.category || 'admin']
+                 RETURNING id, task_kind, checklist_template_key`,
+                [tpl.title, tpl.description, todayStr, tpl.priority, tpl.assigned_to, tpl.id, tpl.category || 'admin',
+                 tpl.subcategory || null, tpl.default_task_kind || 'action', tpl.checklist_template_key || null,
+                 tpl.owner_role || null, tpl.sla_minutes || null]
             );
             if (insertResult.rows.length === 0) continue;
+            if (insertResult.rows[0].task_kind === 'checklist' && insertResult.rows[0].checklist_template_key) {
+                await createChecklistSubtasks(pool, insertResult.rows[0].id, insertResult.rows[0].checklist_template_key);
+            }
             created++;
         }
 

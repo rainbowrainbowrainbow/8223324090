@@ -4,6 +4,17 @@
 
 ---
 
+## v0.55.0 - Tasks Taxonomy + Checklist Infrastructure
+
+### Tasks / Operations [codex]
+- **Tasks** - плоскі category filters розширено до taxonomy infrastructure з top-level categories `Замовлення` та `Чек-листи`.
+- **Operations** - додано контури `Кухня / Кондитерка / Торти / Прикраси` для order-production задач і checklist-паків.
+- **Checklist Packs** - чек-листи піднято до шаблонних operational пакетів із підкроками, прогресом і preset-driven creation.
+- **Workflow** - пакети отримали lifecycle, dependencies, blocked-стани, role ownership і SLA/escalation поля.
+- **Data Model** - задачі й шаблони підтримують `subcategory`, durable template linkage, source entity binding і pack grouping.
+
+---
+
 ## v0.54.4 - My Cabinet Quick Cluster Redesign
 
 ### My Cabinet / Quick Menu [codex]

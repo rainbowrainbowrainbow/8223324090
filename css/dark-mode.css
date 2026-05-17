@@ -1704,30 +1704,64 @@ body.dark-mode .btn-invite-copy {
 }
 
 /* v7.9.2: Kanban board dark mode */
-body.dark-mode .kanban-col {
-    background: rgba(255,255,255,0.05);
-    -webkit-backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+body.dark-mode .kanban-col,
+html[data-theme="dark"] .kanban-col {
+    background: rgba(15, 23, 42, 0.86);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    box-shadow: 0 12px 28px rgba(2, 6, 23, 0.22);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background-clip: padding-box;
+    isolation: isolate;
 }
-body.dark-mode .kanban-col-header {
+body.dark-mode .kanban-col-header,
+html[data-theme="dark"] .kanban-col-header {
     border-bottom-color: var(--gray-300);
     color: #E2E8F0;
 }
-body.dark-mode .kanban-col-count {
+body.dark-mode .kanban-col-count,
+html[data-theme="dark"] .kanban-col-count {
     background: var(--gray-200);
     color: #D1D5DB;
 }
-body.dark-mode .task-card {
-    background: rgba(255,255,255,0.08);
-    -webkit-backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
-    border-left-color: var(--gray-300);
+body.dark-mode .task-card,
+html[data-theme="dark"] .task-card {
+    background: rgba(20, 24, 35, 0.94);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    border-left: 4px solid rgba(148, 163, 184, 0.38);
+    box-shadow: 0 8px 22px rgba(2, 6, 23, 0.26);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background-clip: padding-box;
+    isolation: isolate;
 }
-body.dark-mode .task-card:hover {
-    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+body.dark-mode .task-card:hover,
+html[data-theme="dark"] .task-card:hover {
+    background: rgba(26, 31, 44, 0.96);
+    border-color: rgba(148, 163, 184, 0.17);
+    box-shadow: 0 10px 24px rgba(2, 6, 23, 0.32);
+    transform: none;
 }
-body.dark-mode .task-card-title { color: #E2E8F0; }
-body.dark-mode .task-card-meta { color: #9CA3AF; }
+body.dark-mode .task-card.priority-high,
+html[data-theme="dark"] .task-card.priority-high { border-left-color: #F87171; }
+body.dark-mode .task-card.priority-low,
+html[data-theme="dark"] .task-card.priority-low { border-left-color: #60A5FA; }
+body.dark-mode .task-card.cat-event,
+html[data-theme="dark"] .task-card.cat-event { border-left-color: #FB923C; }
+body.dark-mode .task-card.cat-purchase,
+html[data-theme="dark"] .task-card.cat-purchase { border-left-color: #4ADE80; }
+body.dark-mode .task-card.cat-admin,
+html[data-theme="dark"] .task-card.cat-admin { border-left-color: #60A5FA; }
+body.dark-mode .task-card.cat-trampoline,
+html[data-theme="dark"] .task-card.cat-trampoline { border-left-color: #C084FC; }
+body.dark-mode .task-card.cat-personal,
+html[data-theme="dark"] .task-card.cat-personal { border-left-color: #94A3B8; }
+body.dark-mode .task-card.cat-improvement,
+html[data-theme="dark"] .task-card.cat-improvement { border-left-color: #22D3EE; }
+body.dark-mode .task-card-title,
+html[data-theme="dark"] .task-card-title { color: #E2E8F0; }
+body.dark-mode .task-card-meta,
+html[data-theme="dark"] .task-card-meta { color: #9CA3AF; }
 body.dark-mode .task-card-actions button {
     background: var(--gray-200);
     color: #D1D5DB;
@@ -1744,29 +1778,59 @@ body.dark-mode .task-card-actions .btn-delete {
     background: rgba(198,40,40,0.2);
     color: #EF9A9A;
 }
-body.dark-mode .quick-add {
-    background: rgba(255,255,255,0.05);
+body.dark-mode .quick-add,
+html[data-theme="dark"] .quick-add {
+    background: rgba(15, 23, 42, 0.88);
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    box-shadow: 0 12px 26px rgba(2, 6, 23, 0.24);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background-clip: padding-box;
+    isolation: isolate;
 }
 body.dark-mode .quick-add input,
-body.dark-mode .quick-add select {
-    background: rgba(255,255,255,0.08);
-    border-color: var(--gray-300);
+body.dark-mode .quick-add select,
+html[data-theme="dark"] .quick-add input,
+html[data-theme="dark"] .quick-add select {
+    background: rgba(11, 15, 24, 0.94);
+    border-color: rgba(148, 163, 184, 0.18);
     color: #E2E8F0;
+    box-shadow: none;
 }
 body.dark-mode .group-header {
     color: #D1D5DB;
     border-bottom-color: var(--gray-300);
 }
-body.dark-mode .cat-chip {
-    background: rgba(255,255,255,0.08);
+body.dark-mode .cat-chip,
+html[data-theme="dark"] .cat-chip {
+    background: rgba(15, 23, 42, 0.72);
+    border-color: rgba(148, 163, 184, 0.12);
 }
-body.dark-mode .board-tab {
-    background: rgba(255,255,255,0.05);
+body.dark-mode .board-tab,
+html[data-theme="dark"] .board-tab {
+    background: rgba(15, 23, 42, 0.78);
+    border-color: rgba(148, 163, 184, 0.12);
     color: #9CA3AF;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
 }
 body.dark-mode .board-tab.active {
-    background: rgba(255,255,255,0.12);
-    color: #E2E8F0;
+    background: rgba(16, 185, 129, 0.16);
+    border-color: rgba(52, 211, 153, 0.28);
+    color: #A7F3D0;
+}
+html[data-theme="dark"] .board-tab.active {
+    background: rgba(16, 185, 129, 0.16);
+    border-color: rgba(52, 211, 153, 0.28);
+    color: #A7F3D0;
+}
+
+html.debug-no-blur .board-tab,
+html.debug-no-blur .kanban-col,
+html.debug-no-blur .task-card,
+html.debug-no-blur .quick-add {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
 }
 
 /* Profile modal — v10.6 dark mode */

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.54.9 - Sidebar/Tasks Visual Stability Fix
+
+### Sidebar / Tasks UI Stability [codex]
+- **Sidebar** - прибрано ghost seams, glow bleed і миготливі 1px лінії в Aurora-меню: decorative connectors, group dividers і white inset highlights більше не накладаються на структурні surface states.
+- **Tasks** - dark surfaces для kanban columns, task cards, quick-add і inputs переведено на стабільний solid contract без heavy `backdrop-filter` і напівпрозорого білого скла.
+- **Debug workflow** - додано CSS-перемикачі `html.debug-no-seams`, `html.debug-no-glow` і `html.debug-no-blur`, щоб швидко ізолювати seams, glow layers і blur-композицію під час UAT.
+
+---
+
 ## v0.54.8 - Sidebar Role Switch Fix
 
 ### Sidebar / Role-aware Navigation [codex]

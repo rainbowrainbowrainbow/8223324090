@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.54.8">
-    <link rel="stylesheet" href="css/layout.css?v=0.54.8">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.54.8">
-    <link rel="stylesheet" href="css/pages.css?v=0.54.8">
-    <link rel="stylesheet" href="css/modals.css?v=0.54.8">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.54.8">
-    <link rel="stylesheet" href="css/responsive.css?v=0.54.8">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.54.8">
+    <link rel="stylesheet" href="css/base.css?v=0.54.9">
+    <link rel="stylesheet" href="css/layout.css?v=0.54.9">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.54.9">
+    <link rel="stylesheet" href="css/pages.css?v=0.54.9">
+    <link rel="stylesheet" href="css/modals.css?v=0.54.9">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.54.9">
+    <link rel="stylesheet" href="css/responsive.css?v=0.54.9">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.54.9">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -28,10 +28,11 @@
         .board-tab {
             padding: 8px 16px; border: none; border-radius: 10px;
             font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
-            background: rgba(255,255,255,0.3); color: var(--gray-600);
-            transition: all 0.2s; backdrop-filter: blur(10px);
+            background: rgba(255,255,255,0.74); color: var(--gray-600);
+            border: 1px solid rgba(148,163,184,0.16);
+            transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
         }
-        .board-tab.active { background: var(--primary); color: #fff; }
+        .board-tab.active { background: var(--primary); color: #fff; border-color: transparent; }
         .board-tab .tab-count {
             display: inline-block; min-width: 20px; height: 20px; line-height: 20px;
             text-align: center; border-radius: 10px; font-size: 11px; font-weight: 800;
@@ -68,8 +69,10 @@
         /* Kanban columns (desktop) */
         .kanban { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
         .kanban-col {
-            background: rgba(255,255,255,0.2); border-radius: 16px;
-            padding: 12px; backdrop-filter: blur(10px); min-height: 200px;
+            background: rgba(255,255,255,0.68); border-radius: 16px;
+            border: 1px solid rgba(148,163,184,0.16);
+            padding: 12px; min-height: 200px;
+            background-clip: padding-box; isolation: isolate;
         }
         .kanban-col-header {
             font-weight: 800; font-size: 14px; margin-bottom: 10px;
@@ -99,10 +102,11 @@
         .task-bulk-cb { width: 16px; height: 16px; cursor: pointer; accent-color: #1565C0; }
         /* Task cards */
         .task-card {
-            background: rgba(255,255,255,0.5); border-radius: 12px;
-            padding: 10px 12px 10px 24px; margin-bottom: 8px; border-left: 4px solid var(--gray-300);
-            backdrop-filter: blur(20px); transition: all 0.15s;
-            cursor: pointer; position: relative;
+            background: rgba(255,255,255,0.88); border-radius: 12px;
+            padding: 10px 12px 10px 24px; margin-bottom: 8px;
+            border: 1px solid rgba(148,163,184,0.16); border-left: 4px solid var(--gray-300);
+            transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+            cursor: pointer; position: relative; background-clip: padding-box; isolation: isolate;
         }
         .task-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); transform: translateY(-1px); }
         .task-card.priority-high { border-left-color: #E53935; }
@@ -146,12 +150,13 @@
         /* Quick add (floating) */
         .quick-add {
             display: flex; gap: 8px; margin-bottom: 16px;
-            background: rgba(255,255,255,0.3); backdrop-filter: blur(10px);
-            padding: 10px; border-radius: 12px;
+            background: rgba(255,255,255,0.78);
+            border: 1px solid rgba(148,163,184,0.16);
+            padding: 10px; border-radius: 12px; background-clip: padding-box; isolation: isolate;
         }
         .quick-add input, .quick-add select {
-            padding: 8px 10px; border: 1.5px solid var(--gray-200); border-radius: 8px;
-            font-family: inherit; font-size: 14px; background: rgba(255,255,255,0.6);
+            padding: 8px 10px; border: 1px solid rgba(148,163,184,0.28); border-radius: 8px;
+            font-family: inherit; font-size: 14px; background: rgba(255,255,255,0.94);
         }
         .quick-add input { flex: 1; min-width: 0; }
         .quick-add select { width: auto; }
@@ -425,13 +430,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.54.8"></script>
-    <script src="js/notification.js?v=0.54.8"></script>
-    <script src="js/api.js?v=0.54.8"></script>
-    <script src="js/auth.js?v=0.54.8"></script>
-    <script src="js/components/sidebar.js?v=0.54.8"></script>
+    <script src="js/config.js?v=0.54.9"></script>
+    <script src="js/notification.js?v=0.54.9"></script>
+    <script src="js/api.js?v=0.54.9"></script>
+    <script src="js/auth.js?v=0.54.9"></script>
+    <script src="js/components/sidebar.js?v=0.54.9"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/tasks-page.js?v=0.54.8"></script>
-    <script src="js/alerts.js?v=0.54.8"></script><script src="js/ui.js?v=0.54.8"></script>
+    <script src="js/tasks-page.js?v=0.54.9"></script>
+    <script src="js/alerts.js?v=0.54.9"></script><script src="js/ui.js?v=0.54.9"></script>
 </body>
 </html>

@@ -1458,3 +1458,290 @@ body.dark-mode .crm-assistant-rail .assistant-rail-btn {
         gap: 10px !important;
     }
 }
+
+/* ==========================================================================
+   Claude Design correction: integrated compact AI topbar v0.55.27
+   ========================================================================== */
+
+body.dark-mode .header,
+.header {
+    min-height: 64px !important;
+    background: #0b1217 !important;
+    border-bottom: 1px solid rgba(148,163,184,0.10) !important;
+    box-shadow: none !important;
+}
+
+.header-content.assistant-rail-mounted,
+.header .header-content.assistant-rail-mounted {
+    min-height: 64px !important;
+    padding: 0 18px !important;
+    gap: 12px !important;
+}
+
+.crm-assistant-top-status {
+    font-size: 12px !important;
+    letter-spacing: 0.28em !important;
+    color: rgba(226,232,240,0.70) !important;
+}
+
+.crm-assistant-top-status-dot {
+    width: 12px !important;
+    height: 12px !important;
+    box-shadow: 0 0 0 5px rgba(34,211,160,0.10) !important;
+}
+
+.header .btn-search {
+    min-height: 42px !important;
+    padding: 0 16px !important;
+    border-radius: 12px !important;
+    font-size: 17px !important;
+}
+
+.header .btn-logout {
+    min-height: 48px !important;
+    padding: 0 20px !important;
+    border-radius: 12px !important;
+    font-size: 18px !important;
+}
+
+.crm-assistant-rail-host {
+    position: relative !important;
+    inset: auto !important;
+    z-index: 6 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin-left: var(--eg-claude-sidebar-w) !important;
+    padding: 10px 14px 10px !important;
+    display: block !important;
+    transform: none !important;
+    pointer-events: auto !important;
+    background: linear-gradient(180deg, #0b1217 0%, #071013 100%) !important;
+    border-top: 1px solid rgba(255,255,255,0.035) !important;
+}
+
+.crm-assistant-rail-host .crm-assistant-rail,
+.crm-assistant-rail {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 86px !important;
+    margin: 0 !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 18px !important;
+    padding: 14px 18px !important;
+    border-radius: 18px !important;
+    overflow: hidden !important;
+    background:
+        radial-gradient(220px 120px at 2% 48%, rgba(34,211,160,0.16), transparent 72%),
+        linear-gradient(180deg, rgba(13,29,29,0.94), rgba(8,18,20,0.97)) !important;
+    border-color: rgba(34,211,160,0.18) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04) !important;
+}
+
+.crm-assistant-rail .assistant-rail-presence {
+    min-width: 0 !important;
+    display: grid !important;
+    grid-template-columns: 54px minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 16px !important;
+}
+
+.crm-assistant-rail .assistant-rail-avatar {
+    width: 54px !important;
+    height: 54px !important;
+    padding: 5px !important;
+    align-self: center !important;
+    margin: 0 !important;
+    transform: none !important;
+    border-radius: 999px !important;
+    background: rgba(34,211,160,0.10) !important;
+    box-shadow: 0 0 0 1px rgba(34,211,160,0.20), 0 16px 34px rgba(34,211,160,0.08) !important;
+}
+
+.assistant-rail-orb-core {
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 999px !important;
+    font-size: 0 !important;
+}
+
+.assistant-rail-orb-core::before {
+    width: 10px !important;
+    height: 10px !important;
+    transform: translateY(-1px) !important;
+    background: #a7f3d0 !important;
+}
+
+.crm-assistant-rail .assistant-rail-status-stack {
+    min-width: 0 !important;
+    gap: 5px !important;
+}
+
+.crm-assistant-rail .assistant-rail-topline {
+    position: relative !important;
+    gap: 10px !important;
+    flex-wrap: nowrap !important;
+}
+
+.crm-assistant-rail .assistant-rail-name {
+    font-size: 18px !important;
+    line-height: 1.1 !important;
+    letter-spacing: 0 !important;
+    color: #f8fafc !important;
+}
+
+.crm-assistant-rail .assistant-rail-state {
+    min-height: 22px !important;
+    padding: 0 10px !important;
+    font-size: 10px !important;
+    letter-spacing: 0.22em !important;
+    background: rgba(34,211,160,0.18) !important;
+    color: #5eead4 !important;
+}
+
+.assistant-rail-engine {
+    position: absolute !important;
+    top: 2px !important;
+    left: 47% !important;
+    font-size: 11px !important;
+    letter-spacing: 0.30em !important;
+    color: rgba(226,232,240,0.34) !important;
+}
+
+.crm-assistant-rail .assistant-rail-subtitles-wrap {
+    min-height: 24px !important;
+    margin-top: 0 !important;
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+}
+
+.crm-assistant-rail .assistant-rail-subtitles,
+body.dark-mode .crm-assistant-rail .assistant-rail-subtitles {
+    font-size: 18px !important;
+    line-height: 1.18 !important;
+    font-weight: 700 !important;
+    color: #e5eef2 !important;
+    -webkit-line-clamp: 1 !important;
+}
+
+.assistant-rail-prompts {
+    margin-top: 8px !important;
+    gap: 8px !important;
+    flex-wrap: nowrap !important;
+    overflow: hidden !important;
+}
+
+.assistant-rail-prompts button {
+    min-height: 30px !important;
+    padding: 0 13px !important;
+    font-size: 14px !important;
+    white-space: nowrap !important;
+}
+
+.crm-assistant-rail .assistant-rail-actions {
+    min-width: 0 !important;
+    align-self: center !important;
+    gap: 10px !important;
+}
+
+.assistant-rail-inline-form {
+    width: clamp(320px, 30vw, 520px) !important;
+    min-height: 46px !important;
+    border-radius: 12px !important;
+}
+
+.assistant-rail-inline-form input {
+    padding: 11px 42px !important;
+    font-size: 18px !important;
+}
+
+.crm-assistant-rail .assistant-rail-btn,
+body.dark-mode .crm-assistant-rail .assistant-rail-btn {
+    width: 46px !important;
+    height: 46px !important;
+    border-radius: 12px !important;
+    font-size: 16px !important;
+}
+
+@media (min-width: 1024px) {
+    body.shell-ready .sidebar-nav.collapsed ~ .header + .crm-assistant-rail-host,
+    body.shell-ready .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header + .crm-assistant-rail-host {
+        margin-left: var(--eg-sidebar-collapsed-w) !important;
+    }
+}
+
+@media (max-width: 1320px) {
+    .assistant-rail-engine {
+        display: none !important;
+    }
+
+    .assistant-rail-inline-form {
+        width: clamp(260px, 28vw, 360px) !important;
+    }
+
+    .assistant-rail-prompts {
+        display: none !important;
+    }
+}
+
+@media (max-width: 1180px) {
+    .crm-assistant-rail-host {
+        margin-left: 0 !important;
+        padding: 8px 10px 10px !important;
+    }
+
+    .crm-assistant-rail-host .crm-assistant-rail,
+    .crm-assistant-rail {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+        min-height: 0 !important;
+    }
+
+    .crm-assistant-rail .assistant-rail-actions {
+        justify-content: stretch !important;
+        width: 100% !important;
+    }
+
+    .assistant-rail-inline-form {
+        flex: 1 1 260px !important;
+        width: auto !important;
+    }
+}
+
+@media (max-width: 760px) {
+    .header-content.assistant-rail-mounted,
+    .header .header-content.assistant-rail-mounted {
+        min-height: 58px !important;
+        padding: 0 12px !important;
+    }
+
+    .crm-assistant-top-status {
+        display: none !important;
+    }
+
+    .crm-assistant-rail .assistant-rail-presence {
+        grid-template-columns: 44px minmax(0, 1fr) !important;
+        gap: 12px !important;
+    }
+
+    .crm-assistant-rail .assistant-rail-avatar {
+        width: 44px !important;
+        height: 44px !important;
+    }
+
+    .assistant-rail-orb-core {
+        width: 34px !important;
+        height: 34px !important;
+    }
+
+    .crm-assistant-rail .assistant-rail-subtitles,
+    body.dark-mode .crm-assistant-rail .assistant-rail-subtitles {
+        font-size: 15px !important;
+    }
+
+    .assistant-rail-inline-form {
+        display: none !important;
+    }
+}

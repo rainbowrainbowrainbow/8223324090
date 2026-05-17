@@ -1246,3 +1246,64 @@ body.dark-mode .crm-assistant-rail .assistant-rail-btn {
         height: 34px;
     }
 }
+
+/* ==========================================================================
+   Claude Design parity pass: embedded AI, no decorative motion v0.55.18
+   ========================================================================== */
+
+.crm-assistant-rail-host {
+    padding-top: 6px;
+    background: #0a0e13;
+}
+
+.crm-assistant-rail,
+body.dark-mode .crm-assistant-rail,
+body.dark-mode .crm-assistant-rail[data-mode="speaking"],
+body.dark-mode .crm-assistant-rail[data-mode="thinking"],
+body.dark-mode .crm-assistant-rail[data-mode="listening"],
+body.dark-mode .crm-assistant-rail[data-mode="busy"] {
+    background:
+        radial-gradient(420px 180px at 0% 35%, rgba(34,211,160,0.10), transparent 72%),
+        linear-gradient(180deg, rgba(13,24,25,0.96), rgba(9,17,18,0.98));
+    border-color: rgba(34,211,160,0.18);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.035);
+}
+
+.crm-assistant-rail *,
+.crm-assistant-rail *::before,
+.crm-assistant-rail *::after,
+.crm-assistant-top-status *,
+.crm-assistant-top-status *::before,
+.crm-assistant-top-status *::after {
+    animation: none !important;
+}
+
+.assistant-rail-orb-ripple {
+    display: none !important;
+}
+
+.crm-assistant-rail .assistant-rail-avatar {
+    box-shadow: 0 0 0 1px rgba(34,211,160,0.18);
+}
+
+.assistant-rail-orb-core::before,
+.crm-assistant-rail .assistant-rail-state::before {
+    box-shadow: none !important;
+}
+
+.crm-assistant-rail .assistant-rail-subtitles.is-ticker {
+    display: -webkit-box;
+    transform: none !important;
+    white-space: normal;
+}
+
+.crm-assistant-rail .assistant-rail-subtitles.is-ticker::after {
+    content: none !important;
+}
+
+.crm-assistant-rail .assistant-rail-btn,
+body.dark-mode .crm-assistant-rail .assistant-rail-btn,
+.assistant-rail-inline-form,
+.assistant-rail-prompts button {
+    transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}

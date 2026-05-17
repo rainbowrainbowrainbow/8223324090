@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.55.17">
-    <link rel="stylesheet" href="css/auth.css?v=0.55.17">
-    <link rel="stylesheet" href="css/layout.css?v=0.55.17">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.17">
-    <link rel="stylesheet" href="css/timeline.css?v=0.55.17">
-    <link rel="stylesheet" href="css/panel.css?v=0.55.17">
-    <link rel="stylesheet" href="css/modals.css?v=0.55.17">
-    <link rel="stylesheet" href="css/controls.css?v=0.55.17">
-    <link rel="stylesheet" href="css/features.css?v=0.55.17">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.17">
-    <link rel="stylesheet" href="css/responsive.css?v=0.55.17">
-    <link rel="stylesheet" href="css/pages.css?v=0.55.17">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.55.17">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.17">
+    <link rel="stylesheet" href="css/base.css?v=0.55.18">
+    <link rel="stylesheet" href="css/auth.css?v=0.55.18">
+    <link rel="stylesheet" href="css/layout.css?v=0.55.18">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.18">
+    <link rel="stylesheet" href="css/timeline.css?v=0.55.18">
+    <link rel="stylesheet" href="css/panel.css?v=0.55.18">
+    <link rel="stylesheet" href="css/modals.css?v=0.55.18">
+    <link rel="stylesheet" href="css/controls.css?v=0.55.18">
+    <link rel="stylesheet" href="css/features.css?v=0.55.18">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.18">
+    <link rel="stylesheet" href="css/responsive.css?v=0.55.18">
+    <link rel="stylesheet" href="css/pages.css?v=0.55.18">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.55.18">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.18">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.55.17 Навігація: closer Claude Design shell">✨ 0.55.17 Навігація: closer Claude Design shell</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.55.18 Навігація: Today dock і calm AI shell">✨ 0.55.18 Навігація: Today dock і calm AI shell</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.55.17 — Навігація: closer Claude Design shell</p>
+                <p class="tagline">AI First CRM v0.55.18 — Навігація: Today dock і calm AI shell</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.55.17: Навігація: closer Claude Design shell</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.55.18: Навігація: Today dock і calm AI shell</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1275,12 +1275,12 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.55.17 — Навігація: closer Claude Design shell</h4>
+                    <h4>v0.55.18 — Навігація: Today dock і calm AI shell</h4>
                     <ul>
-                        <li><b>Sidebar</b> — ліву навігацію наближено до Claude Design: ширший matte shell, shield-style brand, operator card і alert hero.</li>
-                        <li><b>Додатково</b> — додано блок швидких зовнішніх сервісів: Notion daily ops, Google Calendar і Mono бізнес.</li>
-                        <li><b>AI topbar</b> — Клешню винесено з floating overlay у широку AI-панель під topbar, як у дизайн-макеті.</li>
-                        <li><b>Header</b> — topbar отримав компактний status <code>Клешня · готова</code>, темні controls, search і user block у стилі макету.</li>
+                        <li><b>Сьогодні</b> — вкладку винесено зі старої accordion-групи в окремий dock-блок за принципом <code>+ Додатково</code>.</li>
+                        <li><b>Налаштування</b> — у блоці <code>Сьогодні</code> можна локально вибрати, які швидкі пункти показувати.</li>
+                        <li><b>Motion</b> — прибрано decorative pulse/ripple/stagger анімації sidebar, щоб shell був ближчий до Claude Design.</li>
+                        <li><b>AI panel</b> — вбудовану AI-панель зроблено спокійнішою: без ripple/ticker-анімацій і з рівнішим surface.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -7073,25 +7073,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.55.17"></script>
-    <script src="js/api.js?v=0.55.17"></script>
-    <script src="js/ui.js?v=0.55.17"></script>
-    <script src="js/auth.js?v=0.55.17"></script>
-    <script src="js/timeline.js?v=0.55.17"></script>
-    <script src="js/booking.js?v=0.55.17"></script>
-    <script src="js/settings.js?v=0.55.17"></script>
-    <script src="js/booking-form.js?v=0.55.17"></script>
-    <script src="js/booking-linked.js?v=0.55.17"></script>
-    <script src="js/settings-dashboard.js?v=0.55.17"></script>
-    <script src="js/settings-history.js?v=0.55.17"></script>
-    <script src="js/settings-afisha.js?v=0.55.17"></script>
-    <script src="js/settings-certificates.js?v=0.55.17"></script>
-    <script src="js/offline.js?v=0.55.17"></script>
-    <script src="js/search.js?v=0.55.17"></script>
-    <script src="js/ws.js?v=0.55.17"></script>
-    <script src="js/app.js?v=0.55.17"></script>
-    <script src="js/kleshnya-widget.js?v=0.55.17"></script>
-    <script src="js/components/sidebar.js?v=0.55.17"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.55.17"></script>
+    <script src="js/config.js?v=0.55.18"></script>
+    <script src="js/api.js?v=0.55.18"></script>
+    <script src="js/ui.js?v=0.55.18"></script>
+    <script src="js/auth.js?v=0.55.18"></script>
+    <script src="js/timeline.js?v=0.55.18"></script>
+    <script src="js/booking.js?v=0.55.18"></script>
+    <script src="js/settings.js?v=0.55.18"></script>
+    <script src="js/booking-form.js?v=0.55.18"></script>
+    <script src="js/booking-linked.js?v=0.55.18"></script>
+    <script src="js/settings-dashboard.js?v=0.55.18"></script>
+    <script src="js/settings-history.js?v=0.55.18"></script>
+    <script src="js/settings-afisha.js?v=0.55.18"></script>
+    <script src="js/settings-certificates.js?v=0.55.18"></script>
+    <script src="js/offline.js?v=0.55.18"></script>
+    <script src="js/search.js?v=0.55.18"></script>
+    <script src="js/ws.js?v=0.55.18"></script>
+    <script src="js/app.js?v=0.55.18"></script>
+    <script src="js/kleshnya-widget.js?v=0.55.18"></script>
+    <script src="js/components/sidebar.js?v=0.55.18"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.55.18"></script>
 </body>
 </html>

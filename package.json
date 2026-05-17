@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.55.17",
+  "version": "0.55.18",
   "eventGenix": {
-    "releaseLabel": "Навігація: closer Claude Design shell"
+    "releaseLabel": "Навігація: Today dock і calm AI shell"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

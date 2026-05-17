@@ -4,6 +4,16 @@
 
 ---
 
+## v0.55.18 - Навігація: Today dock і calm AI shell
+
+### Shared Shell / Claude Design Parity [codex]
+- **Сьогодні** - вкладку `Сьогодні` винесено зі старої accordion-групи в окремий dock-блок за принципом `+ Додатково`.
+- **Налаштування** - у `Сьогодні` додано локальне налаштування видимих швидких пунктів: Дашборд, Таймлайн, Задачі, Чат.
+- **Calm motion** - прибрано decorative pulse/ripple/stagger анімації sidebar, щоб shell був ближчий до статичного Claude Design.
+- **AI panel** - вбудовану AI-панель зроблено спокійнішою: без ripple/ticker-анімацій, з рівнішим surface і менш нав'язливим glow.
+
+---
+
 ## v0.55.17 - Навігація: closer Claude Design shell
 
 ### Shared Shell / Claude Design Parity [codex]

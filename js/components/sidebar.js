@@ -13,6 +13,8 @@ const Sidebar = (() => {
         roleRenderApplied: false
     };
     const GROUP_STATE_VERSION = 'ai-cockpit-v2';
+    const TODAY_DOCK_STORAGE_KEY = 'eg_sidebar_today_dock_items_v1';
+    const TODAY_DOCK_DEFAULT_HREFS = ['/dashboard', '/', '/tasks', '/chat'];
     const COMMAND_DEFAULT_STATE = {
         tasksActive: 0,
         tasksOverdue: 0,
@@ -301,6 +303,107 @@ const Sidebar = (() => {
         return first ? first.href.split('#')[1] : '';
     }
 
+    function _isSidebarItemActive(item, currentPath, currentHash) {
+        if (!item || item.noActive || item.isHashLink) return false;
+        const itemBase = item.href.split('#')[0];
+        const itemHash = item.href.includes('#') ? item.href.split('#')[1] : '';
+        if (itemHash) {
+            if (currentPath !== itemBase) return false;
+            if (currentHash) return currentHash === itemHash;
+            const hasNonHashItem = NAV_ITEMS.some(n => !n.type && n.href === itemBase);
+            if (hasNonHashItem) return false;
+            const firstHash = NAV_ITEMS.find(n => !n.type && n.href?.startsWith(itemBase + '#'));
+            return firstHash?.href === item.href;
+        }
+        return currentPath === item.href && !currentHash;
+    }
+
+    function _getTodayDockItems(role) {
+        return NAV_ITEMS.filter(item => item.group === 'today' && item.type !== 'group' && (!role || hasAccess(item, role)));
+    }
+
+    function _readTodayDockSelection(items) {
+        const available = items.map(item => item.href);
+        let selected = null;
+        try {
+            const parsed = JSON.parse(localStorage.getItem(TODAY_DOCK_STORAGE_KEY) || 'null');
+            if (Array.isArray(parsed)) selected = parsed.filter(href => available.includes(href));
+        } catch {}
+        if (!selected) selected = TODAY_DOCK_DEFAULT_HREFS.filter(href => available.includes(href));
+        if (!selected.length) selected = available.slice(0, Math.min(4, available.length));
+        return selected;
+    }
+
+    function _saveTodayDockSelection(selected) {
+        try {
+            localStorage.setItem(TODAY_DOCK_STORAGE_KEY, JSON.stringify(selected));
+        } catch {}
+    }
+
+    function _renderTodayDockLink(item, currentPath, currentHash) {
+        const isActive = _isSidebarItemActive(item, currentPath, currentHash);
+        const statusText = _navStatusFor(item);
+        const badgeType = _badgeTypeFor(item);
+        const badgeClass = badgeType === 'alerts' ? ' sidebar-today-badge alert' : ' sidebar-today-badge';
+        return `<a href="${_escAttr(item.href)}" class="sidebar-today-link${isActive ? ' active' : ''}">
+            ${_renderIcon(item.icon, 'sidebar-today-icon')}
+            <span class="sidebar-today-link-copy">
+                <span>${_escAttr(item.label)}</span>
+                ${item.statusKey ? `<small data-sidebar-status-key="${_escAttr(item.statusKey)}"${statusText ? '' : ' hidden'}>${_escAttr(statusText || '')}</small>` : '<small>швидкий доступ</small>'}
+            </span>
+            ${badgeType ? `<span class="${badgeClass.trim()}" data-badge-type="${badgeType}" style="display:none"></span>` : ''}
+        </a>`;
+    }
+
+    function _ensureTodayDock(links) {
+        const sidebar = links?.closest?.('#sidebarNav') || document.getElementById('sidebarNav');
+        if (!sidebar || !links) return;
+        const savedUser = _getCurrentSidebarUser();
+        const role = _getSidebarActiveRole(savedUser);
+        const items = _getTodayDockItems(role);
+        let dock = document.getElementById('sidebarTodayDock');
+        if (!items.length) {
+            dock?.remove();
+            return;
+        }
+
+        const selected = _readTodayDockSelection(items);
+        const selectedSet = new Set(selected);
+        const visibleItems = items.filter(item => selectedSet.has(item.href));
+        const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+        const currentHash = location.hash.replace('#', '');
+        const configOpen = dock?.classList.contains('is-configuring') || false;
+
+        if (!dock) {
+            dock = document.createElement('div');
+            dock.id = 'sidebarTodayDock';
+            dock.className = 'sidebar-today-dock';
+        }
+        dock.classList.toggle('is-configuring', configOpen);
+        dock.innerHTML = `
+            <button type="button" class="sidebar-today-head" aria-expanded="${configOpen ? 'true' : 'false'}" onclick="Sidebar.toggleTodayDockConfig(this)">
+                <span class="sidebar-today-dot" aria-hidden="true"></span>
+                <span class="sidebar-today-title">Сьогодні</span>
+                <span class="sidebar-today-count">${visibleItems.length}</span>
+                <span class="sidebar-today-config-label">Налаштувати</span>
+            </button>
+            <div class="sidebar-today-list">
+                ${visibleItems.map(item => _renderTodayDockLink(item, currentPath, currentHash)).join('')}
+            </div>
+            <div class="sidebar-today-config" ${configOpen ? '' : 'hidden'}>
+                ${items.map(item => `
+                    <label class="sidebar-today-config-row">
+                        <input type="checkbox" data-sidebar-stop-profile="true" data-today-dock-key="${_escAttr(item.href)}" ${selectedSet.has(item.href) ? 'checked' : ''} onchange="Sidebar.toggleTodayDockItem('${_escAttr(item.href)}', this.checked)">
+                        <span>${_escAttr(item.label)}</span>
+                    </label>
+                `).join('')}
+            </div>`;
+
+        const extras = document.getElementById('sidebarDesignExtras');
+        const anchor = extras || links;
+        if (dock.nextElementSibling !== anchor) sidebar.insertBefore(dock, anchor);
+    }
+
     // ═══ RENDER ═══════════════════════════════════════════════════
     function render(containerSelector) {
         const container = document.querySelector(containerSelector || '#sidebarNav .sidebar-links');
@@ -316,10 +419,14 @@ const Sidebar = (() => {
             // ── Group header ──────────────────────────────────────
             if (item.type === 'group') {
                 // Close previous group
-                if (currentGroupKey !== null) {
+                if (currentGroupKey !== null && currentGroupKey !== '__skip__' && currentGroupKey !== '__skip_today__') {
                     html += '</div></div></div>'; // inner + items + group
                 }
                 currentGroupKey = item.key;
+                if (item.key === 'today') {
+                    currentGroupKey = '__skip_today__';
+                    continue;
+                }
 
                 // Check if group has accessible children
                 const hasChildren = NAV_ITEMS.some(c =>
@@ -351,40 +458,14 @@ const Sidebar = (() => {
             }
 
             // Skip if group is blocked
-            if (currentGroupKey === '__skip__') continue;
+            if (currentGroupKey === '__skip__' || currentGroupKey === '__skip_today__') continue;
 
             // ── Skip no access ────────────────────────────────────
             if (role && !hasAccess(item, role)) continue;
 
             // ── Render nav-link ───────────────────────────────────
-            const itemBase = item.href.split('#')[0];
-            const itemHash = item.href.includes('#') ? item.href.split('#')[1] : '';
             const currentHash = location.hash.replace('#', '');
-            // v38.9.0: Simple active logic — exact match only
-            // Hash items: active only when URL hash matches exactly
-            // Non-hash items: active only when URL matches AND no hash in URL
-            let isActive = false;
-            if (item.noActive || item.isHashLink) {
-                isActive = false;
-            } else if (itemHash) {
-                // Hash item: active when URL hash matches exactly
-                if (currentPath === itemBase) {
-                    if (currentHash) {
-                        isActive = currentHash === itemHash;
-                    } else {
-                        // No hash in URL — default first hash item ONLY if no non-hash item exists for same base
-                        const hasNonHashItem = NAV_ITEMS.some(n => !n.type && n.href === itemBase);
-                        if (!hasNonHashItem) {
-                            const firstHash = NAV_ITEMS.find(n => !n.type && n.href?.startsWith(itemBase + '#'));
-                            isActive = firstHash?.href === item.href;
-                        }
-                        // If non-hash item exists (/designs), hash items stay inactive when no hash
-                    }
-                }
-            } else {
-                // Non-hash item (e.g. /designs): active when path matches AND no hash
-                isActive = currentPath === item.href && !currentHash;
-            }
+            const isActive = _isSidebarItemActive(item, currentPath, currentHash);
 
             // E9 FIX: simplified onclick
             let onclickAttr = '';
@@ -407,7 +488,7 @@ const Sidebar = (() => {
         }
 
         // Close last group
-        if (currentGroupKey && currentGroupKey !== '__skip__') {
+        if (currentGroupKey && currentGroupKey !== '__skip__' && currentGroupKey !== '__skip_today__') {
             html += '</div></div></div>';
         }
 
@@ -416,6 +497,7 @@ const Sidebar = (() => {
 
         _ensureAuroraLayer();
         _ensureCommandDeck();
+        _ensureTodayDock(container);
         _syncGroupSignals();
         _ensureActiveIndicator();
         _initCollapsedTooltips(container);
@@ -776,6 +858,37 @@ const Sidebar = (() => {
         _hydrateCommandDeckUser();
         _syncFocusDeckAccess();
         _updateSidebarCommandDeck();
+    }
+
+    function toggleTodayDockConfig(btn) {
+        const dock = btn?.closest?.('#sidebarTodayDock') || document.getElementById('sidebarTodayDock');
+        if (!dock) return;
+        const open = !dock.classList.contains('is-configuring');
+        dock.classList.toggle('is-configuring', open);
+        const panel = dock.querySelector('.sidebar-today-config');
+        if (panel) panel.hidden = !open;
+        btn?.setAttribute?.('aria-expanded', open ? 'true' : 'false');
+    }
+
+    function toggleTodayDockItem(href, checked) {
+        const savedUser = _getCurrentSidebarUser();
+        const role = _getSidebarActiveRole(savedUser);
+        const items = _getTodayDockItems(role);
+        const available = items.map(item => item.href);
+        const key = String(href || '');
+        if (!available.includes(key)) return;
+
+        const selected = new Set(_readTodayDockSelection(items));
+        if (checked) {
+            selected.add(key);
+        } else if (selected.size > 1) {
+            selected.delete(key);
+        }
+
+        _saveTodayDockSelection(available.filter(itemHref => selected.has(itemHref)));
+        const links = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
+        if (links) _ensureTodayDock(links);
+        _syncNavStatusLabels();
     }
 
     function _hydrateCommandDeckUser() {
@@ -1515,6 +1628,8 @@ const Sidebar = (() => {
         initToggle,
         checkPageAccess,
         toggleGroup,
+        toggleTodayDockConfig,
+        toggleTodayDockItem,
         openAlerts,
         initUserCard,
         markShellReady: _markShellReady,

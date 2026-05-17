@@ -7,16 +7,16 @@
     <title>Event Genix | Командний чат</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.54.1">
-    <link rel="stylesheet" href="css/layout.css?v=0.54.1">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.54.1">
-    <link rel="stylesheet" href="css/pages.css?v=0.54.1">
-    <link rel="stylesheet" href="css/modals.css?v=0.54.1">
-    <link rel="stylesheet" href="css/chat.css?v=0.54.1">
-    <link rel="stylesheet" href="css/agents.css?v=0.54.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.54.1">
-    <link rel="stylesheet" href="css/responsive.css?v=0.54.1">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.54.1">
+    <link rel="stylesheet" href="css/base.css?v=0.54.2">
+    <link rel="stylesheet" href="css/layout.css?v=0.54.2">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.54.2">
+    <link rel="stylesheet" href="css/pages.css?v=0.54.2">
+    <link rel="stylesheet" href="css/modals.css?v=0.54.2">
+    <link rel="stylesheet" href="css/chat.css?v=0.54.2">
+    <link rel="stylesheet" href="css/agents.css?v=0.54.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.54.2">
+    <link rel="stylesheet" href="css/responsive.css?v=0.54.2">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.54.2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -391,13 +391,16 @@
                         </div>
                     </div>
 
-                    <div class="chat-messages" id="chatMessages">
-                        <div class="chat-empty">
+                    <div class="chat-messages-area" id="chatMessagesArea">
+                        <div id="chatDialogState" class="chat-dialog-state hidden"></div>
+                        <div class="chat-messages" id="chatMessages">
+                            <div class="chat-empty">
                             <div class="chat-empty-icon">
                                 <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                             </div>
                             <div class="chat-empty-title">Командний чат</div>
                             <div class="chat-empty-hint">Оберіть канал зліва, щоб почати спілкування з командою</div>
+                            </div>
                         </div>
                     </div>
 
@@ -669,17 +672,17 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.54.1"></script>
-    <script src="js/notification.js?v=0.54.1"></script>
-    <script src="js/api.js?v=0.54.1"></script>
-    <script src="js/auth.js?v=0.54.1"></script>
-    <script src="js/components/sidebar.js?v=0.54.1"></script>
+    <script src="js/config.js?v=0.54.2"></script>
+    <script src="js/notification.js?v=0.54.2"></script>
+    <script src="js/api.js?v=0.54.2"></script>
+    <script src="js/auth.js?v=0.54.2"></script>
+    <script src="js/components/sidebar.js?v=0.54.2"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.54.1"></script>
-    <script src="js/sound-engine.js?v=0.54.1"></script>
-    <script src="js/chat-page.js?v=0.54.1"></script>
-    <script src="js/ui.js?v=0.54.1"></script>
-    <script src="js/agents-panel.js?v=0.54.1"></script><script>
+    <script src="js/ws.js?v=0.54.2"></script>
+    <script src="js/sound-engine.js?v=0.54.2"></script>
+    <script src="js/chat-page.js?v=0.54.2"></script>
+    <script src="js/ui.js?v=0.54.2"></script>
+    <script src="js/agents-panel.js?v=0.54.2"></script><script>
     // Sound Settings Panel — v28.0.0
     (function () {
         'use strict';
@@ -743,6 +746,6 @@
         }
     })();
     </script>
-    <script src="js/alerts.js?v=0.54.1"></script>
+    <script src="js/alerts.js?v=0.54.2"></script>
 </body>
 </html>

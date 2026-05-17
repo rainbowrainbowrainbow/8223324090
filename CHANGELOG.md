@@ -4,6 +4,15 @@
 
 ---
 
+## v0.54.2 - Chat token bootstrap & dialog auto-open fix
+
+### Chat / Bootstrap [codex]
+- **Chat** - після авторизації по токену чат тепер відкриває релевантний діалог замість порожнього shell-стану.
+- **Bootstrap** - додано єдиний resolver стартового каналу з пріоритетом URL `channelId`, interaction-created dialog, `chatLastActiveChannelId` і fallback на перший доступний канал.
+- **UX Recovery** - область повідомлень отримала loading, empty і retry states, щоб недоступний або ще не створений діалог не виглядав як зависання.
+
+---
+
 ## v0.54.1 - Leads Funnel Below Kanban (Клешня, 2026-05-17)
 
 ### Ліди / Kanban Layout [codex]

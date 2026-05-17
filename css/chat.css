@@ -523,6 +523,101 @@ body.dark-mode .chat-theme-select {
     transition: background 0.4s ease;
 }
 
+.chat-messages-area {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-dialog-state {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(248, 250, 252, 0.92);
+    z-index: 4;
+}
+
+.chat-dialog-state.visible {
+    display: flex;
+}
+
+.chat-dialog-state.hidden {
+    display: none;
+}
+
+.chat-dialog-state-card {
+    width: min(360px, 100%);
+    padding: 24px 20px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 12px;
+    background: var(--card-bg, #fff);
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+    text-align: center;
+}
+
+.chat-dialog-title {
+    margin-bottom: 8px;
+    color: var(--gray-800);
+    font-size: 16px;
+    font-weight: 800;
+}
+
+.chat-dialog-hint {
+    color: var(--gray-500);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.chat-dialog-spinner {
+    width: 32px;
+    height: 32px;
+    margin: 0 auto 12px;
+    border: 3px solid rgba(16, 185, 129, 0.16);
+    border-top-color: var(--primary);
+    border-radius: 999px;
+    animation: chatDialogSpin 0.8s linear infinite;
+}
+
+.chat-dialog-actions {
+    margin-top: 14px;
+}
+
+.chat-state-btn {
+    min-height: 40px;
+    padding: 0 16px;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    border-radius: 10px;
+    background: rgba(16, 185, 129, 0.09);
+    color: var(--primary-dark);
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.chat-state-btn:hover {
+    background: rgba(16, 185, 129, 0.14);
+}
+
+@keyframes chatDialogSpin {
+    to { transform: rotate(360deg); }
+}
+
+body.dark-mode .chat-dialog-state {
+    background: rgba(15, 23, 42, 0.78);
+}
+
+body.dark-mode .chat-dialog-title {
+    color: var(--text-primary, #F8FAFC);
+}
+
+body.dark-mode .chat-dialog-hint {
+    color: var(--text-muted, #94A3B8);
+}
+
 /* ==========================================
    CHAT WALLPAPERS
    ========================================== */
@@ -4071,6 +4166,14 @@ body.dark-mode .chat-theme-select {
 
     .chat-input-row {
         padding: 8px 10px;
+    }
+
+    .chat-dialog-state {
+        padding: 16px;
+    }
+
+    .chat-dialog-state-card {
+        padding: 20px 16px;
     }
 
     .chat-info-panel.open {

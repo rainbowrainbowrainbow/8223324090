@@ -25,6 +25,7 @@
     var _emojiFrequent = [];
     var _channelMembers = [];
     var _taskOwnerCandidates = null;
+    var CHAT_LAST_ACTIVE_CHANNEL_KEY = 'chatLastActiveChannelId';
 
     // Emoji data (Telegram categories)
     var EMOJI_CATEGORIES = [
@@ -220,6 +221,140 @@
         }
         console.error('[chat:init] runtime failure', err);
         _renderChatFatalError(err);
+    }
+
+    function _toPositiveId(value) {
+        var id = parseInt(value, 10);
+        return Number.isFinite(id) && id > 0 ? id : null;
+    }
+
+    function _getUrlChannelId() {
+        try {
+            return _toPositiveId(new URLSearchParams(window.location.search).get('channelId') || '');
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function _getLastActiveChannelId() {
+        try {
+            return _toPositiveId(localStorage.getItem(CHAT_LAST_ACTIVE_CHANNEL_KEY) || '');
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function _rememberPendingDialogOpen(channelId) {
+        window.__chatPendingOpenChannelId = _toPositiveId(channelId);
+    }
+
+    function _findChannelById(channels, channelId) {
+        var targetId = _toPositiveId(channelId);
+        if (!targetId) return null;
+        return (channels || []).find(function (channel) {
+            return Number(channel && channel.id) === targetId;
+        }) || null;
+    }
+
+    function _resolveInitialChannelTarget(channels) {
+        var list = channels || [];
+        var urlChannelId = _getUrlChannelId();
+        if (urlChannelId) return _findChannelById(list, urlChannelId);
+        return _findChannelById(list, window.__chatPendingOpenChannelId)
+            || _findChannelById(list, _getLastActiveChannelId())
+            || list[0]
+            || null;
+    }
+
+    function _getInitialDialogEmptyState(channels) {
+        var urlChannelId = _getUrlChannelId();
+        if (urlChannelId) {
+            return {
+                title: 'Діалог не знайдено',
+                hint: 'Канал #' + urlChannelId + ' недоступний для цього токена або вже видалений.'
+            };
+        }
+        if (!channels || channels.length === 0) {
+            return {
+                title: 'Немає доступних діалогів',
+                hint: 'Після входу чат відкрився, але жоден діалог поки не доступний.'
+            };
+        }
+        return {
+            title: 'Діалог не знайдено',
+            hint: 'Не вдалося відкрити очікуваний діалог. Оновіть список або виберіть канал зліва.'
+        };
+    }
+
+    function _setChatComposerEnabled(enabled) {
+        var input = document.getElementById('chatInput');
+        var sendBtn = document.getElementById('chatSendBtn');
+        if (input) input.disabled = !enabled;
+        if (sendBtn) sendBtn.disabled = !enabled;
+    }
+
+    function _showDialogLoadingState(title, hint) {
+        var state = document.getElementById('chatDialogState');
+        var list = document.getElementById('chatMessages');
+        if (state) {
+            state.className = 'chat-dialog-state visible loading';
+            state.innerHTML =
+                '<div class="chat-dialog-state-card">' +
+                    '<div class="chat-dialog-spinner" aria-hidden="true"></div>' +
+                    '<div class="chat-dialog-title">' + _esc(title || 'Відкриваю діалог…') + '</div>' +
+                    '<div class="chat-dialog-hint">' + _esc(hint || 'Підтягуємо канали та історію повідомлень') + '</div>' +
+                '</div>';
+        }
+        if (list) {
+            list.innerHTML = '';
+            list.classList.remove('switching', 'active');
+        }
+        _setChatComposerEnabled(false);
+    }
+
+    function _renderDialogEmptyState(opts) {
+        var state = document.getElementById('chatDialogState');
+        var list = document.getElementById('chatMessages');
+        var title = opts && opts.title ? opts.title : 'Діалог не знайдено';
+        var hint = opts && opts.hint ? opts.hint : 'Спробуйте оновити список каналів або відкрити інший діалог.';
+        if (list) {
+            list.innerHTML = '';
+            list.classList.remove('switching', 'active');
+        }
+        if (state) {
+            state.className = 'chat-dialog-state visible empty';
+            state.innerHTML =
+                '<div class="chat-dialog-state-card">' +
+                    '<div class="chat-dialog-title">' + _esc(title) + '</div>' +
+                    '<div class="chat-dialog-hint">' + _esc(hint) + '</div>' +
+                    '<div class="chat-dialog-actions">' +
+                        '<button type="button" class="chat-state-btn" data-chat-dialog-retry>Оновити</button>' +
+                    '</div>' +
+                '</div>';
+            var retry = state.querySelector('[data-chat-dialog-retry]');
+            if (retry) {
+                retry.addEventListener('click', function () {
+                    _loadChannels();
+                });
+            }
+        }
+        var headerName = document.getElementById('chatHeaderName');
+        var headerDesc = document.getElementById('chatHeaderDesc');
+        if (headerName) headerName.textContent = title;
+        if (headerDesc) headerDesc.textContent = hint;
+        if (_currentChannel && typeof ParkWS !== 'undefined') {
+            ParkWS.leaveChannel(_currentChannel.id);
+        }
+        _currentChannel = null;
+        _setChatComposerEnabled(false);
+    }
+
+    function _hideDialogTransientStates() {
+        var state = document.getElementById('chatDialogState');
+        if (state) {
+            state.className = 'chat-dialog-state hidden';
+            state.innerHTML = '';
+        }
     }
 
     function _checkAuthAndInit() {
@@ -767,7 +902,8 @@
                     }
                     _channels.unshift(channel);
                     _renderChannels();
-                    _selectChannel(channel);
+                    _rememberPendingDialogOpen(channel.id);
+                    await _selectChannel(channel);
                     _newChannelOverlay.style.display = 'none';
                 }
             } catch (err) {
@@ -853,7 +989,8 @@
                     _channels.unshift(channel);
                 }
                 _renderChannels();
-                _selectChannel(channel);
+                _rememberPendingDialogOpen(channel.id);
+                await _selectChannel(channel);
             }
         } catch (err) {
             console.error('[Chat] DM error:', err);
@@ -1987,10 +2124,13 @@
                 item.innerHTML = '<div class="chat-search-result-channel">#' + _esc(r.channelName || '') + '</div>' +
                     '<div class="chat-search-result-user">' + _esc(r.displayName || r.username) + '</div>' +
                     '<div class="chat-search-result-text">' + _esc((r.content || '').slice(0, 100)) + '</div>';
-                item.addEventListener('click', function () {
+                item.addEventListener('click', async function () {
                     // Navigate to that channel
                     var ch = _channels.find(function (c) { return c.id === r.channelId; });
-                    if (ch) _selectChannel(ch);
+                    if (ch) {
+                        _rememberPendingDialogOpen(ch.id);
+                        await _selectChannel(ch);
+                    }
                     panel.remove();
                 });
                 panel.appendChild(item);
@@ -2728,6 +2868,7 @@
 
     async function _init() {
         try {
+            _showDialogLoadingState();
             var results = await Promise.all([
                 _api('GET', '/channels'),
                 _api('GET', '/users')
@@ -2738,9 +2879,11 @@
 
             _renderChannels();
 
-            // Select first channel
-            if (_channels.length > 0) {
-                _selectChannel(_channels[0]);
+            var initialChannel = _resolveInitialChannelTarget(_channels);
+            if (initialChannel) {
+                await _selectChannel(initialChannel);
+            } else {
+                _renderDialogEmptyState(_getInitialDialogEmptyState(_channels));
             }
             _chatBootStep('render:done');
         } catch (err) {
@@ -2749,18 +2892,28 @@
         }
     }
 
-    async function _loadChannels() {
+    async function _loadChannels(options) {
+        options = options || {};
         try {
+            if (options.showLoading !== false) {
+                _showDialogLoadingState('Оновлюю діалоги…', 'Перевіряємо доступні канали та останню активну розмову');
+            }
             _channels = await _api('GET', '/channels') || [];
             _renderChannels();
-            // v33.7.0: Open channel from URL param
-            var urlChId = parseInt(new URLSearchParams(window.location.search).get('channelId') || '0', 10);
-            if (urlChId) {
-                var target = _channels.find(function(c) { return c.id === urlChId; });
-                if (target) _selectChannel(target);
+            if (options.reselect !== false) {
+                var target = _resolveInitialChannelTarget(_channels);
+                if (target) {
+                    await _selectChannel(target);
+                } else {
+                    _renderDialogEmptyState(_getInitialDialogEmptyState(_channels));
+                }
             }
         } catch (err) {
             console.error('[Chat] Load channels error:', err);
+            _renderDialogEmptyState({
+                title: 'Не вдалося відкрити діалог',
+                hint: err && err.message ? err.message : 'Помилка завантаження каналів'
+            });
         }
     }
 
@@ -2843,11 +2996,15 @@
                 '</div>' +
             '</div>';
 
-        el.addEventListener('click', function () { _selectChannel(ch); });
+        el.addEventListener('click', function () {
+            _rememberPendingDialogOpen(ch.id);
+            _selectChannel(ch);
+        });
         return el;
     }
 
     async function _selectChannel(channel) {
+        if (!channel) return;
         // Leave previous
         if (_currentChannel && typeof ParkWS !== 'undefined') {
             ParkWS.leaveChannel(_currentChannel.id);
@@ -2856,6 +3013,9 @@
         _currentChannel = channel;
         _replyTo = null;
         _cancelReply();
+        try {
+            localStorage.setItem(CHAT_LAST_ACTIVE_CHANNEL_KEY, String(channel.id));
+        } catch (e) { /* ignore storage errors */ }
 
         // Update header
         document.getElementById('chatHeaderName').textContent = channel.name;
@@ -2886,7 +3046,7 @@
 
         // Mark active in sidebar
         document.querySelectorAll('.chat-channel-item').forEach(function (el) {
-            el.classList.toggle('active', parseInt(el.dataset.channelId) === channel.id);
+            el.classList.toggle('active', Number(el.dataset.channelId) === Number(channel.id));
         });
 
         // Close mobile sidebar
@@ -2898,6 +3058,7 @@
 
         // Animate channel switch
         var container = document.getElementById('chatMessages');
+        _showDialogLoadingState('Відкриваю діалог…', 'Завантажуємо історію повідомлень');
         if (container) {
             container.classList.add('switching');
         }
@@ -2906,6 +3067,9 @@
         try {
             var messages = await _api('GET', '/channels/' + channel.id + '/messages');
             _renderMessages(messages || []);
+            _hideDialogTransientStates();
+            _rememberPendingDialogOpen(null);
+            _setChatComposerEnabled(true);
             // Animate in
             if (container) {
                 requestAnimationFrame(function () {
@@ -2933,6 +3097,11 @@
             }
         } catch (err) {
             console.error('[Chat] Load messages error:', err);
+            _renderDialogEmptyState({
+                title: 'Не вдалося відкрити діалог',
+                hint: err && err.message ? err.message : 'Помилка завантаження повідомлень'
+            });
+            return;
         }
 
         // Focus input

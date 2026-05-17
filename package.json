@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.54.1",
+  "version": "0.54.2",
   "eventGenix": {
-    "releaseLabel": "Leads Funnel Below Kanban"
+    "releaseLabel": "Chat token bootstrap & dialog auto-open fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

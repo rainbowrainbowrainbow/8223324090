@@ -15,6 +15,8 @@ const Sidebar = (() => {
     const GROUP_STATE_VERSION = 'ai-cockpit-v2';
     const TODAY_DOCK_STORAGE_KEY = 'eg_sidebar_today_dock_items_v1';
     const TODAY_DOCK_DEFAULT_HREFS = ['/dashboard', '/', '/tasks', '/chat'];
+    const TODAY_MENU_HREFS = ['/dashboard', '/', '/tasks'];
+    const EXTRA_MENU_HREFS = ['/dashboard', '/', '/tasks', '/chat'];
     const COMMAND_DEFAULT_STATE = {
         tasksActive: 0,
         tasksOverdue: 0,
@@ -322,6 +324,18 @@ const Sidebar = (() => {
         return NAV_ITEMS.filter(item => item.group === 'today' && item.type !== 'group' && (!role || hasAccess(item, role)));
     }
 
+    function _getTodayMenuItems(role) {
+        const items = _getTodayDockItems(role);
+        const byHref = new Map(items.map(item => [item.href, item]));
+        return TODAY_MENU_HREFS.map(href => byHref.get(href)).filter(Boolean);
+    }
+
+    function _getExtraMenuItems(role) {
+        const items = _getTodayDockItems(role);
+        const byHref = new Map(items.map(item => [item.href, item]));
+        return EXTRA_MENU_HREFS.map(href => byHref.get(href)).filter(Boolean);
+    }
+
     function _readTodayDockSelection(items) {
         const available = items.map(item => item.href);
         let selected = null;
@@ -355,48 +369,66 @@ const Sidebar = (() => {
         </a>`;
     }
 
+    function _renderTodayMenuButton(item, currentPath, currentHash) {
+        const isActive = _isSidebarItemActive(item, currentPath, currentHash);
+        const badgeType = _badgeTypeFor(item);
+        const badgeClass = badgeType === 'alerts' ? ' sidebar-today-menu-badge alert' : ' sidebar-today-menu-badge';
+        const shortLabels = {
+            '/dashboard': 'Брифінг',
+            '/': 'Таймлайн',
+            '/tasks': 'Задачі'
+        };
+        return `<a href="${_escAttr(item.href)}" class="sidebar-today-menu-btn${isActive ? ' active' : ''}">
+            ${_renderIcon(item.icon, 'sidebar-today-menu-icon')}
+            <span>${_escAttr(shortLabels[item.href] || item.label)}</span>
+            ${badgeType ? `<span class="${badgeClass.trim()}" data-badge-type="${badgeType}" style="display:none"></span>` : ''}
+        </a>`;
+    }
+
+    function _renderExtraMenuLink(item, currentPath, currentHash) {
+        const isActive = _isSidebarItemActive(item, currentPath, currentHash);
+        const statusText = _navStatusFor(item);
+        const badgeType = _badgeTypeFor(item);
+        const badgeClass = badgeType === 'alerts' ? ' sidebar-design-extra-badge alert' : ' sidebar-design-extra-badge';
+        return `<a class="sidebar-design-extra-link${isActive ? ' active' : ''}" href="${_escAttr(item.href)}">
+            ${_renderIcon(item.icon, 'sidebar-design-extra-icon')}
+            <span class="sidebar-design-extra-copy">
+                <span>${_escAttr(item.label)}</span>
+                ${item.statusKey ? `<small data-sidebar-status-key="${_escAttr(item.statusKey)}"${statusText ? '' : ' hidden'}>${_escAttr(statusText || '')}</small>` : '<small>вкладка CRM</small>'}
+            </span>
+            ${badgeType ? `<span class="${badgeClass.trim()}" data-badge-type="${badgeType}" style="display:none"></span>` : '<span class="sidebar-design-extra-open" aria-hidden="true">›</span>'}
+        </a>`;
+    }
+
     function _ensureTodayDock(links) {
         const sidebar = links?.closest?.('#sidebarNav') || document.getElementById('sidebarNav');
         if (!sidebar || !links) return;
         const savedUser = _getCurrentSidebarUser();
         const role = _getSidebarActiveRole(savedUser);
-        const items = _getTodayDockItems(role);
+        const items = _getTodayMenuItems(role);
         let dock = document.getElementById('sidebarTodayDock');
         if (!items.length) {
             dock?.remove();
             return;
         }
 
-        const selected = _readTodayDockSelection(items);
-        const selectedSet = new Set(selected);
-        const visibleItems = items.filter(item => selectedSet.has(item.href));
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
         const currentHash = location.hash.replace('#', '');
-        const configOpen = dock?.classList.contains('is-configuring') || false;
 
         if (!dock) {
             dock = document.createElement('div');
             dock.id = 'sidebarTodayDock';
-            dock.className = 'sidebar-today-dock';
+            dock.className = 'sidebar-today-dock sidebar-today-menu';
         }
-        dock.classList.toggle('is-configuring', configOpen);
+        dock.className = 'sidebar-today-dock sidebar-today-menu';
         dock.innerHTML = `
-            <button type="button" class="sidebar-today-head" aria-expanded="${configOpen ? 'true' : 'false'}" onclick="Sidebar.toggleTodayDockConfig(this)">
+            <div class="sidebar-today-head sidebar-today-head--static">
                 <span class="sidebar-today-dot" aria-hidden="true"></span>
-                <span class="sidebar-today-title">Сьогодні</span>
-                <span class="sidebar-today-count">${visibleItems.length}</span>
-                <span class="sidebar-today-config-label">Налаштувати</span>
-            </button>
-            <div class="sidebar-today-list">
-                ${visibleItems.map(item => _renderTodayDockLink(item, currentPath, currentHash)).join('')}
+                <span class="sidebar-today-title">Меню дня</span>
+                <span class="sidebar-today-count">${items.length}</span>
             </div>
-            <div class="sidebar-today-config" ${configOpen ? '' : 'hidden'}>
-                ${items.map(item => `
-                    <label class="sidebar-today-config-row">
-                        <input type="checkbox" data-sidebar-stop-profile="true" data-today-dock-key="${_escAttr(item.href)}" ${selectedSet.has(item.href) ? 'checked' : ''} onchange="Sidebar.toggleTodayDockItem('${_escAttr(item.href)}', this.checked)">
-                        <span>${_escAttr(item.label)}</span>
-                    </label>
-                `).join('')}
+            <div class="sidebar-today-menu-grid">
+                ${items.map(item => _renderTodayMenuButton(item, currentPath, currentHash)).join('')}
             </div>`;
 
         const extras = document.getElementById('sidebarDesignExtras');
@@ -809,44 +841,26 @@ const Sidebar = (() => {
             sidebar.insertBefore(deck, links);
         }
 
+        const savedUser = _getCurrentSidebarUser();
+        const role = _getSidebarActiveRole(savedUser);
+        const extraItems = _getExtraMenuItems(role);
+        const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+        const currentHash = location.hash.replace('#', '');
         let extras = document.getElementById('sidebarDesignExtras');
         if (!extras) {
             extras = document.createElement('div');
             extras.id = 'sidebarDesignExtras';
             extras.className = 'sidebar-design-extras';
-            extras.innerHTML = `
+        }
+        extras.innerHTML = `
                 <button type="button" class="sidebar-design-extras-head" aria-expanded="true">
                     <span class="sidebar-design-extras-dot" aria-hidden="true"></span>
                     <span><b>+</b> Додатково</span>
                     <span class="sidebar-design-extras-chevron" aria-hidden="true">⌃</span>
                 </button>
                 <div class="sidebar-design-extra-list">
-                    <a class="sidebar-design-extra-link sidebar-design-extra-link--notion" href="https://notion.so" target="_blank" rel="noopener">
-                        <span class="sidebar-design-extra-icon">N</span>
-                        <span class="sidebar-design-extra-copy">
-                            <span>Notion · daily ops</span>
-                            <small>notion.so</small>
-                        </span>
-                        <span class="sidebar-design-extra-open" aria-hidden="true">↗</span>
-                    </a>
-                    <a class="sidebar-design-extra-link sidebar-design-extra-link--google" href="https://calendar.google.com" target="_blank" rel="noopener">
-                        <span class="sidebar-design-extra-icon">G</span>
-                        <span class="sidebar-design-extra-copy">
-                            <span>Календар Google</span>
-                            <small>calendar.google.com</small>
-                        </span>
-                        <span class="sidebar-design-extra-open" aria-hidden="true">↗</span>
-                    </a>
-                    <a class="sidebar-design-extra-link sidebar-design-extra-link--mono" href="https://web.monobank.ua" target="_blank" rel="noopener">
-                        <span class="sidebar-design-extra-icon">$</span>
-                        <span class="sidebar-design-extra-copy">
-                            <span>Mono бізнес</span>
-                            <small>web.monobank.ua</small>
-                        </span>
-                        <span class="sidebar-design-extra-open" aria-hidden="true">↗</span>
-                    </a>
+                    ${extraItems.map(item => _renderExtraMenuLink(item, currentPath, currentHash)).join('')}
                 </div>`;
-        }
         if (extras.nextElementSibling !== links) sidebar.insertBefore(extras, links);
 
         const alertsChip = document.getElementById('focusChipAlerts');

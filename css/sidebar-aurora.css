@@ -3252,3 +3252,122 @@ body.dark-mode .sidebar-nav::after,
     --eg-claude-sidebar-w: 300px;
   }
 }
+
+/* ==========================================================================
+   Sidebar IA correction: CRM extras + three-button day menu v0.55.20
+   ========================================================================== */
+
+.sidebar-today-menu {
+  padding-bottom: 10px !important;
+}
+
+.sidebar-today-head--static {
+  cursor: default !important;
+}
+
+.sidebar-today-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.sidebar-today-menu-btn {
+  min-width: 0;
+  min-height: 54px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 5px;
+  padding: 7px 5px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.035);
+  color: var(--sb-design-text-2);
+  text-decoration: none;
+  position: relative;
+}
+
+.sidebar-today-menu-btn:hover {
+  color: var(--sb-design-text);
+  background: rgba(34,211,160,0.075);
+  border-color: rgba(34,211,160,0.20);
+}
+
+.sidebar-today-menu-btn.active {
+  color: var(--sb-design-green);
+  background: rgba(34,211,160,0.13);
+  border-color: rgba(34,211,160,0.34);
+}
+
+.sidebar-today-menu-icon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: currentColor;
+}
+
+.sidebar-today-menu-icon .eg-icon-svg {
+  width: 18px;
+  height: 18px;
+}
+
+.sidebar-today-menu-btn > span:not(.sidebar-today-menu-icon):not(.sidebar-today-menu-badge) {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.sidebar-today-menu-badge,
+.sidebar-design-extra-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(34,211,160,0.16);
+  color: var(--sb-design-green);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.sidebar-today-menu-badge {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+}
+
+.sidebar-design-extra-link.active {
+  color: var(--sb-design-text);
+  background: rgba(34,211,160,0.105);
+  border-color: rgba(34,211,160,0.28);
+  box-shadow: inset 4px 0 0 var(--sb-design-green);
+}
+
+.sidebar-design-extra-link.active .sidebar-design-extra-icon {
+  color: var(--sb-design-green);
+  background: rgba(34,211,160,0.13);
+  border-color: rgba(34,211,160,0.25);
+}
+
+.sidebar-design-extra-open {
+  color: rgba(231,236,239,0.42) !important;
+  font-size: 18px !important;
+}
+
+@media (max-width: 1280px) {
+  .sidebar-today-menu-btn {
+    min-height: 50px;
+  }
+
+  .sidebar-today-menu-btn > span:not(.sidebar-today-menu-icon):not(.sidebar-today-menu-badge) {
+    font-size: 11px;
+  }
+}

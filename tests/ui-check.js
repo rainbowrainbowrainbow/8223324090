@@ -494,6 +494,8 @@ check('Dashboard team online endpoint distinguishes websocket online from last s
 check('Omni page applies contextual search query', omniHtml.includes('applyQueryContext') && omniHtml.includes("params.get('search')"));
 check('Omni page exposes account connectivity panel', omniHtml.includes('omniAccountsPanel') && omniHtml.includes('omniAccountsGrid') && omniHtml.includes("api('/accounts')"));
 check('Omni page guides unavailable channels to account setup', omniHtml.includes('accountGuidanceMessage') && omniHtml.includes('data-account-jump') && omniHtml.includes('Підключення каналів'));
+check('Omni page separates inbox from channel setup and health workspaces', omniHtml.includes('omni-workspace-modes') && omniHtml.includes('data-omni-mode="inbox"') && omniHtml.includes('id="omniChannelsWorkspace"') && omniHtml.includes('id="omniHealthWorkspace"') && omniHtml.includes('function setOmniMode') && omniHtml.includes('function renderOmniHealthWorkspace'));
+check('Omni channel setup is not embedded in the conversation sidebar', omniHtml.indexOf('id="omniAccountsPanel"') > omniHtml.indexOf('id="omniChannelsWorkspace"') && !omniHtml.includes('omni-chat-empty-icon">Om'));
 check('Center hot leads update canonical pipeline stage', centerCode.includes('JSON.stringify({ pipeline_stage: status })'));
 check('Explainability helper exposes filter summary and empty state renderers', uiCode.includes('window.Explainability') && uiCode.includes('renderFilterSummary') && uiCode.includes('renderEmptyState'));
 check('Explainability shared styles exist', pagesCss.includes('.explain-filter-summary') && pagesCss.includes('.explain-empty') && pagesCss.includes('.explain-clear-btn'));

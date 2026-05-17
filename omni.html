@@ -11,25 +11,121 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.55.13">
-    <link rel="stylesheet" href="css/layout.css?v=0.55.13">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.13">
-    <link rel="stylesheet" href="css/pages.css?v=0.55.13">
-    <link rel="stylesheet" href="css/modals.css?v=0.55.13">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.13">
-    <link rel="stylesheet" href="css/responsive.css?v=0.55.13">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.13">
+    <link rel="stylesheet" href="css/base.css?v=0.55.14">
+    <link rel="stylesheet" href="css/layout.css?v=0.55.14">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.14">
+    <link rel="stylesheet" href="css/pages.css?v=0.55.14">
+    <link rel="stylesheet" href="css/modals.css?v=0.55.14">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.14">
+    <link rel="stylesheet" href="css/responsive.css?v=0.55.14">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.14">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         .main-content { padding: 0 !important; max-width: none !important; }
 
         /* OmniClaw Layout */
+        .omni-workspace-shell {
+            height: calc(100vh - 56px);
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            background: var(--bg-primary, #fff);
+        }
+
+        .omni-workspace-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 18px 24px 14px;
+            border-bottom: 1px solid var(--border-color, #e2e8f0);
+            background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.94));
+        }
+
+        .omni-workspace-title h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 900;
+            color: var(--text-primary, #0f172a);
+            letter-spacing: 0;
+        }
+
+        .omni-workspace-title p {
+            margin: 4px 0 0;
+            color: var(--text-secondary, #64748b);
+            font-size: 13px;
+            line-height: 1.35;
+        }
+
+        .omni-workspace-modes {
+            display: inline-flex;
+            gap: 4px;
+            padding: 4px;
+            border: 1px solid rgba(148,163,184,0.22);
+            border-radius: 14px;
+            background: rgba(15,23,42,0.04);
+            flex-shrink: 0;
+        }
+
+        .omni-mode-btn,
+        .omni-settings-link,
+        .omni-secondary-action {
+            min-height: 38px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 900;
+            text-decoration: none;
+            cursor: pointer;
+            transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+        }
+
+        .omni-mode-btn {
+            border: 0;
+            padding: 0 14px;
+            background: transparent;
+            color: var(--text-secondary, #475569);
+        }
+
+        .omni-mode-btn.active {
+            background: #0F172A;
+            color: #F8FAFC;
+            box-shadow: 0 10px 22px rgba(15,23,42,0.16);
+        }
+
+        .omni-settings-link,
+        .omni-secondary-action {
+            border: 1px solid rgba(148,163,184,0.26);
+            padding: 0 14px;
+            background: rgba(255,255,255,0.74);
+            color: var(--text-primary, #0f172a);
+        }
+
+        .omni-settings-link:hover,
+        .omni-secondary-action:hover {
+            border-color: rgba(16,185,129,0.34);
+            background: rgba(16,185,129,0.08);
+        }
+
         .omni-container {
             display: grid;
-            grid-template-columns: 340px 1fr;
-            height: calc(100vh - 56px);
+            grid-template-columns: minmax(320px, 390px) 1fr;
+            flex: 1;
+            min-height: 0;
             overflow: hidden;
+        }
+
+        .omni-container[data-omni-mode="channels"],
+        .omni-container[data-omni-mode="health"] {
+            grid-template-columns: 1fr;
+        }
+
+        .omni-container[data-omni-mode="channels"] .omni-sidebar,
+        .omni-container[data-omni-mode="health"] .omni-sidebar {
+            display: none;
         }
 
         /* Sidebar — conversation list */
@@ -95,10 +191,9 @@
         }
 
         .omni-accounts-panel {
-            margin-top: 12px;
-            padding: 12px;
+            padding: 16px;
             border: 1px solid var(--border-color, #e2e8f0);
-            border-radius: 12px;
+            border-radius: 16px;
             background: rgba(255,255,255,0.82);
             backdrop-filter: blur(12px);
         }
@@ -113,9 +208,15 @@
 
         .omni-accounts-panel-head h3 {
             margin: 0;
-            font-size: 13px;
+            font-size: 16px;
             font-weight: 900;
             color: var(--text-primary, #1a202c);
+        }
+
+        .omni-panel-note {
+            color: var(--text-secondary, #64748b);
+            font-size: 12px;
+            font-weight: 800;
         }
 
         .omni-account-summary {
@@ -180,8 +281,8 @@
 
         .omni-accounts-grid {
             display: grid;
-            grid-template-columns: 1fr;
-            gap: 8px;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 12px;
         }
 
         .omni-account-card {
@@ -281,7 +382,7 @@
         }
 
         .omni-accounts-alarm {
-            margin-top: 12px;
+            margin: 10px 24px;
             padding: 10px 12px;
             border-radius: 10px;
             border: 1px solid rgba(245,158,11,0.32);
@@ -290,6 +391,18 @@
             font-size: 12px;
             font-weight: 800;
             line-height: 1.35;
+        }
+
+        .omni-accounts-alarm button {
+            margin-left: 10px;
+            border: 1px solid currentColor;
+            border-radius: 999px;
+            background: transparent;
+            color: inherit;
+            font-size: 11px;
+            font-weight: 900;
+            padding: 3px 9px;
+            cursor: pointer;
         }
 
         .omni-accounts-alarm.hidden { display: none; }
@@ -598,6 +711,60 @@
             overflow: hidden;
         }
 
+        .omni-mode-panel {
+            display: none;
+            flex: 1;
+            min-height: 0;
+            overflow: auto;
+            padding: 22px;
+            background: var(--bg-primary, #fff);
+        }
+
+        .omni-container[data-omni-mode="channels"] .omni-channels-workspace,
+        .omni-container[data-omni-mode="health"] .omni-health-workspace {
+            display: block;
+        }
+
+        .omni-container[data-omni-mode="channels"] .omni-chat-empty,
+        .omni-container[data-omni-mode="channels"] .omni-chat-header,
+        .omni-container[data-omni-mode="channels"] .omni-case-context,
+        .omni-container[data-omni-mode="channels"] .omni-chat-messages,
+        .omni-container[data-omni-mode="channels"] .omni-quick-replies,
+        .omni-container[data-omni-mode="channels"] .omni-chat-input,
+        .omni-container[data-omni-mode="channels"] .omni-send-truth,
+        .omni-container[data-omni-mode="health"] .omni-chat-empty,
+        .omni-container[data-omni-mode="health"] .omni-chat-header,
+        .omni-container[data-omni-mode="health"] .omni-case-context,
+        .omni-container[data-omni-mode="health"] .omni-chat-messages,
+        .omni-container[data-omni-mode="health"] .omni-quick-replies,
+        .omni-container[data-omni-mode="health"] .omni-chat-input,
+        .omni-container[data-omni-mode="health"] .omni-send-truth {
+            display: none !important;
+        }
+
+        .omni-mode-panel-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .omni-mode-panel-head h2 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 900;
+            color: var(--text-primary, #0f172a);
+        }
+
+        .omni-mode-panel-head p {
+            max-width: 720px;
+            margin: 5px 0 0;
+            color: var(--text-secondary, #64748b);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
         .omni-chat-empty {
             flex: 1;
             display: flex;
@@ -609,10 +776,137 @@
             padding: 40px;
         }
 
+        .omni-chat-empty-card {
+            width: min(520px, 100%);
+            padding: 26px;
+            border: 1px solid rgba(148,163,184,0.16);
+            border-radius: 18px;
+            background: rgba(255,255,255,0.72);
+            box-shadow: 0 18px 44px rgba(15,23,42,0.08);
+        }
+
         .omni-chat-empty-icon {
-            font-size: 48px;
-            margin-bottom: 16px;
-            opacity: 0.5;
+            width: 58px;
+            height: 58px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 18px;
+            margin-bottom: 14px;
+            background: rgba(16,185,129,0.12);
+            color: #059669;
+            font-size: 28px;
+            font-weight: 900;
+        }
+
+        .omni-chat-empty-title {
+            color: var(--text-primary, #0f172a);
+            font-size: 20px;
+            font-weight: 900;
+        }
+
+        .omni-chat-empty-text {
+            max-width: 420px;
+            margin: 8px auto 0;
+            color: var(--text-secondary, #64748b);
+            font-size: 14px;
+            line-height: 1.45;
+        }
+
+        .omni-empty-actions {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 18px;
+            flex-wrap: wrap;
+        }
+
+        .omni-health-content {
+            display: grid;
+            gap: 16px;
+        }
+
+        .omni-health-hero {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .omni-health-kpi,
+        .omni-health-list,
+        .omni-state-card {
+            border: 1px solid rgba(148,163,184,0.16);
+            border-radius: 16px;
+            background: rgba(255,255,255,0.82);
+            box-shadow: 0 12px 28px rgba(15,23,42,0.06);
+        }
+
+        .omni-health-kpi {
+            padding: 16px;
+        }
+
+        .omni-health-kpi strong {
+            display: block;
+            color: var(--text-primary, #0f172a);
+            font-size: 28px;
+            line-height: 1;
+            font-weight: 900;
+        }
+
+        .omni-health-kpi span {
+            display: block;
+            margin-top: 8px;
+            color: var(--text-secondary, #64748b);
+            font-size: 12px;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .omni-health-kpi.success { border-color: rgba(16,185,129,0.26); }
+        .omni-health-kpi.warning { border-color: rgba(245,158,11,0.30); }
+        .omni-health-kpi.danger { border-color: rgba(239,68,68,0.30); }
+
+        .omni-health-list {
+            overflow: hidden;
+        }
+
+        .omni-health-row {
+            display: grid;
+            grid-template-columns: minmax(140px, 220px) minmax(120px, 180px) 1fr auto;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            border-bottom: 1px solid rgba(148,163,184,0.14);
+        }
+
+        .omni-health-row:last-child {
+            border-bottom: 0;
+        }
+
+        .omni-health-channel {
+            color: var(--text-primary, #0f172a);
+            font-size: 14px;
+            font-weight: 900;
+        }
+
+        .omni-health-message {
+            color: var(--text-secondary, #64748b);
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .omni-state-card {
+            padding: 24px;
+            color: var(--text-secondary, #64748b);
+            text-align: center;
+        }
+
+        .omni-state-card strong {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--text-primary, #0f172a);
+            font-size: 18px;
+            font-weight: 900;
         }
 
         .omni-chat-header {
@@ -938,6 +1232,25 @@
 
         /* Responsive */
         @media (max-width: 768px) {
+            .omni-workspace-shell {
+                height: auto;
+                min-height: calc(100vh - 56px);
+            }
+            .omni-workspace-topbar {
+                align-items: stretch;
+                flex-direction: column;
+                padding: 14px;
+            }
+            .omni-workspace-modes,
+            .omni-settings-link {
+                width: 100%;
+            }
+            .omni-mode-btn {
+                flex: 1;
+            }
+            .omni-accounts-alarm {
+                margin: 10px 14px;
+            }
             .omni-container {
                 grid-template-columns: 1fr;
                 height: auto;
@@ -963,9 +1276,23 @@
             .omni-chat {
                 min-height: 58vh;
             }
+            .omni-mode-panel {
+                padding: 14px;
+            }
+            .omni-mode-panel-head {
+                align-items: stretch;
+                flex-direction: column;
+            }
             .omni-accounts-panel {
                 max-height: none;
                 overflow-y: auto;
+            }
+            .omni-accounts-grid,
+            .omni-health-hero {
+                grid-template-columns: 1fr;
+            }
+            .omni-health-row {
+                grid-template-columns: 1fr;
             }
             .omni-account-summary {
                 grid-template-columns: 1fr;
@@ -986,10 +1313,52 @@
         }
 
         /* Dark mode overrides */
+        .dark-mode .omni-workspace-shell {
+            background: #151528;
+        }
+        .dark-mode .omni-workspace-topbar {
+            background: rgba(15,23,42,0.88);
+            border-bottom-color: rgba(148,163,184,0.14);
+        }
+        .dark-mode .omni-workspace-title h1,
+        .dark-mode .omni-mode-panel-head h2,
+        .dark-mode .omni-chat-empty-title,
+        .dark-mode .omni-health-kpi strong,
+        .dark-mode .omni-health-channel,
+        .dark-mode .omni-state-card strong {
+            color: #F8FAFC;
+        }
+        .dark-mode .omni-workspace-title p,
+        .dark-mode .omni-mode-panel-head p,
+        .dark-mode .omni-chat-empty-text,
+        .dark-mode .omni-health-kpi span,
+        .dark-mode .omni-health-message,
+        .dark-mode .omni-state-card {
+            color: #CBD5E1;
+        }
+        .dark-mode .omni-workspace-modes {
+            background: rgba(255,255,255,0.06);
+            border-color: rgba(148,163,184,0.16);
+        }
+        .dark-mode .omni-mode-btn {
+            color: #CBD5E1;
+        }
+        .dark-mode .omni-mode-btn.active {
+            background: rgba(16,185,129,0.26);
+            color: #F8FAFC;
+            box-shadow: 0 12px 28px rgba(2,6,23,0.32);
+        }
+        .dark-mode .omni-settings-link,
+        .dark-mode .omni-secondary-action {
+            background: rgba(30,41,59,0.74);
+            border-color: rgba(148,163,184,0.18);
+            color: #F8FAFC;
+        }
         .dark-mode .omni-sidebar {
             background: var(--bg-primary, #1a1a2e);
         }
-        .dark-mode .omni-chat {
+        .dark-mode .omni-chat,
+        .dark-mode .omni-mode-panel {
             background: var(--bg-primary, #1a1a2e);
         }
         .dark-mode .omni-msg.inbound {
@@ -997,8 +1366,14 @@
         }
         .dark-mode .omni-accounts-panel,
         .dark-mode .omni-account-card,
-        .dark-mode .omni-connection-dialog {
+        .dark-mode .omni-connection-dialog,
+        .dark-mode .omni-chat-empty-card,
+        .dark-mode .omni-health-kpi,
+        .dark-mode .omni-health-list,
+        .dark-mode .omni-state-card {
             background: rgba(26,26,46,0.9);
+            border-color: rgba(148,163,184,0.14);
+            box-shadow: 0 16px 36px rgba(2,6,23,0.28);
         }
         .dark-mode .omni-account-summary-item,
         .dark-mode .omni-account-impact,
@@ -1068,7 +1443,21 @@
 
         <!-- Main content -->
         <main class="main-content" id="mainContent">
-            <div class="omni-container">
+            <div class="omni-workspace-shell">
+                <div class="omni-workspace-topbar">
+                    <div class="omni-workspace-title">
+                        <h1>OmniClaw</h1>
+                        <p>Робочий inbox, підключення каналів і стан інтеграцій в окремих режимах.</p>
+                    </div>
+                    <div class="omni-workspace-modes" role="tablist" aria-label="Режими OmniClaw">
+                        <button type="button" class="omni-mode-btn active" data-omni-mode="inbox" role="tab" aria-selected="true">Inbox</button>
+                        <button type="button" class="omni-mode-btn" data-omni-mode="channels" role="tab" aria-selected="false">Канали</button>
+                        <button type="button" class="omni-mode-btn" data-omni-mode="health" role="tab" aria-selected="false">Стан</button>
+                    </div>
+                    <a class="omni-settings-link" href="/chat-settings">Налаштування</a>
+                </div>
+                <div class="omni-accounts-alarm hidden" id="omniAccountsAlarm" role="alert" aria-live="assertive"></div>
+                <div class="omni-container" id="omniContainer" data-omni-mode="inbox">
                 <!-- Conversation sidebar -->
                 <div class="omni-sidebar" id="omniSidebar">
                     <div class="omni-sidebar-header">
@@ -1083,15 +1472,6 @@
                             <button type="button" class="omni-channel-btn" data-channel="instagram">IG</button>
                             <button type="button" class="omni-channel-btn" data-channel="binotel">Tel</button>
                         </div>
-                        <div class="omni-accounts-alarm hidden" id="omniAccountsAlarm" role="alert" aria-live="assertive"></div>
-                        <div class="omni-accounts-panel" id="omniAccountsPanel">
-                            <div class="omni-accounts-panel-head">
-                                <h3>Підключення каналів</h3>
-                                <button type="button" class="omni-accounts-refresh" id="omniAccountsRefresh">Перевірити</button>
-                            </div>
-                            <div class="omni-account-summary" id="omniAccountSummary" aria-live="polite"></div>
-                            <div class="omni-accounts-grid" id="omniAccountsGrid"></div>
-                        </div>
                         <div id="omniExplainability" hidden></div>
                     </div>
                     <div class="omni-stats" id="omniStats">
@@ -1105,11 +1485,43 @@
                 <!-- Chat area -->
                 <div class="omni-chat" id="omniChat">
                     <div class="omni-chat-empty" id="omniEmpty">
-                        <div>
-                            <div class="omni-chat-empty-icon">Om</div>
-                            <div>Оберіть розмову або чекайте на нове повідомлення</div>
+                        <div class="omni-chat-empty-card">
+                            <div class="omni-chat-empty-icon">✉</div>
+                            <div class="omni-chat-empty-title">Оберіть розмову</div>
+                            <div class="omni-chat-empty-text">Inbox показує тільки переписки. Підключення каналів і діагностика винесені у вкладки вище.</div>
+                            <div class="omni-empty-actions">
+                                <button type="button" class="omni-secondary-action" data-omni-mode="channels">Канали</button>
+                                <button type="button" class="omni-secondary-action" data-omni-mode="health">Стан</button>
+                            </div>
                         </div>
                     </div>
+                    <section class="omni-mode-panel omni-channels-workspace" id="omniChannelsWorkspace" aria-labelledby="omniChannelsTitle">
+                        <div class="omni-mode-panel-head">
+                            <div>
+                                <h2 id="omniChannelsTitle">Канали</h2>
+                                <p>Тут налаштовуються Telegram, Viber, SMS, соцмережі та телефонія. Inbox не змішується з технічною діагностикою.</p>
+                            </div>
+                            <button type="button" class="omni-accounts-refresh" id="omniAccountsRefresh">Перевірити</button>
+                        </div>
+                        <div class="omni-accounts-panel" id="omniAccountsPanel">
+                            <div class="omni-accounts-panel-head">
+                                <h3>Підключення каналів</h3>
+                                <span class="omni-panel-note">Картки показують стан, наслідки і доступні дії.</span>
+                            </div>
+                            <div class="omni-account-summary" id="omniAccountSummary" aria-live="polite"></div>
+                            <div class="omni-accounts-grid" id="omniAccountsGrid"></div>
+                        </div>
+                    </section>
+                    <section class="omni-mode-panel omni-health-workspace" id="omniHealthWorkspace" aria-labelledby="omniHealthTitle">
+                        <div class="omni-mode-panel-head">
+                            <div>
+                                <h2 id="omniHealthTitle">Стан OmniClaw</h2>
+                                <p>Операційний зріз: що працює, що обмежено і які канали потребують уваги.</p>
+                            </div>
+                            <button type="button" class="omni-accounts-refresh" data-omni-refresh="accounts">Оновити</button>
+                        </div>
+                        <div id="omniHealthContent" class="omni-health-content" aria-live="polite"></div>
+                    </section>
                     <div class="omni-chat-header" id="omniChatHeader" style="display:none">
                         <div class="omni-conv-avatar" id="omniChatAvatar"></div>
                         <div>
@@ -1134,6 +1546,7 @@
                     </div>
                     <div class="omni-send-truth" id="omniSendTruth" hidden aria-live="polite"></div>
                 </div>
+            </div>
             </div>
         </main>
     </div>
@@ -1172,12 +1585,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.55.13"></script>
-    <script src="js/api.js?v=0.55.13"></script>
-    <script src="js/auth.js?v=0.55.13"></script>
-    <script src="js/components/sidebar.js?v=0.55.13"></script>
+    <script src="js/config.js?v=0.55.14"></script>
+    <script src="js/api.js?v=0.55.14"></script>
+    <script src="js/auth.js?v=0.55.14"></script>
+    <script src="js/components/sidebar.js?v=0.55.14"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.55.13"></script>
+    <script src="js/ws.js?v=0.55.14"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -1197,9 +1610,11 @@
         let searchQuery = '';
         let omniAccounts = [];
         let accountPanelChannel = null;
+        let omniMode = 'inbox';
 
         // DOM refs
         const $ = id => document.getElementById(id);
+        const omniContainer = $('omniContainer');
         const convList = $('omniConvList');
         const messages = $('omniMessages');
         const inputArea = $('omniInputArea');
@@ -1211,6 +1626,7 @@
         const accountSummaryEl = $('omniAccountSummary');
         const accountsAlarm = $('omniAccountsAlarm');
         const accountsRefresh = $('omniAccountsRefresh');
+        const healthContent = $('omniHealthContent');
         const connectionModal = $('omniConnectionModal');
         const connectionForm = $('omniConnectionForm');
         const connectionBody = $('omniConnectionBody');
@@ -1269,6 +1685,20 @@
         };
         const SEND_DISABLED_CHANNELS = new Set(['binotel']);
 
+        function setOmniMode(mode) {
+            const nextMode = ['inbox', 'channels', 'health'].includes(mode) ? mode : 'inbox';
+            omniMode = nextMode;
+            if (omniContainer) omniContainer.setAttribute('data-omni-mode', nextMode);
+            document.querySelectorAll('[data-omni-mode]').forEach(btn => {
+                if (!btn.classList.contains('omni-mode-btn')) return;
+                const active = btn.dataset.omniMode === nextMode;
+                btn.classList.toggle('active', active);
+                btn.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+            if (nextMode === 'health') renderOmniHealthWorkspace();
+            if (nextMode === 'channels') highlightAccountFromQuery();
+        }
+
         // ---- Load data ----
         async function loadConversations() {
             const params = new URLSearchParams({ limit: '100', offset: '0' });
@@ -1317,6 +1747,7 @@
             }
             omniAccounts = Array.isArray(res.accounts) ? res.accounts : [];
             renderOmniAccounts();
+            renderOmniHealthWorkspace();
             updateSendControls(currentConversation());
         }
 
@@ -1336,6 +1767,34 @@
         function omniAccountStatusLabel(acc) {
             if (!acc) return 'Статус невідомий';
             return acc.statusLabel || (acc.connected && acc.sendCapable ? 'Підключено' : (acc.connected ? 'Обмежено' : 'Не підключено'));
+        }
+
+        function normalizeAccountMessage(text, acc) {
+            const raw = String(text || '').trim();
+            const lower = raw.toLowerCase();
+            const label = acc?.label || CHANNEL_NAMES[acc?.channel] || 'Канал';
+            if (!raw) return 'Стан каналу контрольований CRM.';
+            if (lower.includes('provider token') || lower.includes('token is not configured') || lower.includes('token missing')) {
+                return label + ': не завершено налаштування токена. Після підключення CRM зможе приймати й надсилати повідомлення.';
+            }
+            if (lower.includes('account') && lower.includes('not connected')) {
+                return label + ': акаунт ще не підключений. Завершіть авторизацію або повторно привʼяжіть канал.';
+            }
+            if (lower.includes('send') && lower.includes('blocked')) {
+                return label + ': відправка тимчасово заблокована, доки канал не буде налаштований.';
+            }
+            return raw;
+        }
+
+        function accountImpactText(acc) {
+            return normalizeAccountMessage(acc?.businessImpact || acc?.warning, acc);
+        }
+
+        function accountNextActionText(acc) {
+            if (!acc) return 'Оновіть стан каналу або зверніться до адміністратора.';
+            if (!acc.connected) return acc.nextActionHint || 'Підключіть акаунт і збережіть дані провайдера.';
+            if (acc.sendCapable === false) return acc.nextActionHint || 'Запустіть перевірку каналу і виправте причину блокування.';
+            return acc.nextActionHint || 'Канал готовий до роботи.';
         }
 
         function renderOmniAccountSummary() {
@@ -1369,6 +1828,7 @@
             if (!omniAccounts.length) {
                 accountsGrid.innerHTML = '<div class="omni-account-card warning"><strong>Канали ще не завантажені</strong><div class="omni-account-hint">Натисніть «Перевірити» або перезавантажте сторінку. Без backend-статусу CRM не буде вважати канал готовим.</div></div>';
                 renderOmniAccountsAlarm();
+                renderOmniHealthWorkspace();
                 return;
             }
 
@@ -1392,8 +1852,8 @@
                     '</div>' +
                     '<div class="omni-account-meta">' + esc(acc.accountName || acc.maskedIdentifier || 'Акаунт не підключений') + (acc.maskedIdentifier ? ' · ' + esc(acc.maskedIdentifier) : '') + '</div>' +
                     accountCapabilityHtml(acc) +
-                    '<div class="omni-account-impact">' + esc(acc.warning || acc.businessImpact || 'Стан каналу контрольований CRM.') + '</div>' +
-                    '<div class="omni-account-hint">' + esc(acc.nextActionHint || 'Оберіть дію нижче.') + '</div>' +
+                    '<div class="omni-account-impact">' + esc(accountImpactText(acc)) + '</div>' +
+                    '<div class="omni-account-hint">' + esc(accountNextActionText(acc)) + '</div>' +
                     (audit ? '<div class="omni-account-hint">' + esc(audit) + '</div>' : '') +
                     '<div class="omni-account-actions">' +
                         '<button type="button" class="omni-account-btn" data-account-action="connect" data-channel="' + esc(acc.channel) + '">' + actionLabel + '</button>' +
@@ -1404,6 +1864,7 @@
                 '</div>';
             }).join('');
             renderOmniAccountsAlarm();
+            renderOmniHealthWorkspace();
             highlightAccountFromQuery();
         }
 
@@ -1417,25 +1878,56 @@
             }
             const disconnected = limited.filter(a => !a.connected);
             accountsAlarm.classList.remove('hidden');
-            accountsAlarm.textContent = disconnected.length
+            const message = disconnected.length
                 ? 'Omni: ' + disconnected.length + ' канал(и) не підключені. Відправка заблокована, доки адміністратор не завершить підключення.'
                 : 'Omni: частина каналів працює в обмеженому режимі. Відкрийте картку, щоб побачити наслідки і наступну дію.';
+            accountsAlarm.innerHTML = esc(message) + '<button type="button" data-omni-mode="channels">Відкрити канали</button>';
+        }
+
+        function renderOmniHealthWorkspace() {
+            if (!healthContent) return;
+            if (!omniAccounts.length) {
+                healthContent.innerHTML = '<div class="omni-state-card"><strong>Стан ще не завантажений</strong><span>Натисніть «Оновити», щоб отримати актуальний зріз каналів.</span></div>';
+                return;
+            }
+            const ready = omniAccounts.filter(a => a.connected && a.sendCapable).length;
+            const limited = omniAccounts.filter(a => a.connected && !a.sendCapable).length;
+            const broken = omniAccounts.filter(a => !a.connected).length;
+            const rows = omniAccounts.map(acc => {
+                const tone = omniAccountTone(acc);
+                const label = omniAccountStatusLabel(acc);
+                const message = accountNextActionText(acc) || accountImpactText(acc);
+                return '<div class="omni-health-row">' +
+                    '<div class="omni-health-channel">' + esc(acc.label || acc.channel) + '</div>' +
+                    '<span class="omni-account-status ' + tone + '">' + esc(label) + '</span>' +
+                    '<div class="omni-health-message">' + esc(message) + '</div>' +
+                    '<button type="button" class="omni-account-btn secondary" data-account-action="' + (acc.connected ? 'recheck' : 'connect') + '" data-channel="' + esc(acc.channel) + '">' + (acc.connected ? 'Перевірити' : 'Підключити') + '</button>' +
+                '</div>';
+            }).join('');
+            healthContent.innerHTML =
+                '<div class="omni-health-hero">' +
+                    '<div class="omni-health-kpi success"><strong>' + ready + '</strong><span>готові</span></div>' +
+                    '<div class="omni-health-kpi warning"><strong>' + limited + '</strong><span>обмежені</span></div>' +
+                    '<div class="omni-health-kpi danger"><strong>' + broken + '</strong><span>потребують підключення</span></div>' +
+                '</div>' +
+                '<div class="omni-health-list">' + rows + '</div>';
         }
 
         function accountGuidanceMessage(channel) {
             const acc = omniAccountForChannel(channel);
             const label = acc?.label || CHANNEL_NAMES[channel] || channel || 'Канал';
-            if (!acc) return label + ' недоступний для відправки з CRM. Перевірте блок «Підключення каналів».';
-            if (!acc.connected) return label + ' не підключений. Відкрийте «Підключення каналів» і завершіть setup. ' + (acc.nextActionHint || '');
-            if (acc.sendCapable === false) return label + ' не може відправляти з CRM зараз. ' + (acc.nextActionHint || 'Перевірте канал у блоці «Підключення каналів».');
+            if (!acc) return label + ' недоступний для відправки з CRM. Відкрийте режим «Канали» і перевірте підключення.';
+            if (!acc.connected) return label + ' не підключений. Відкрийте режим «Канали» і завершіть setup. ' + (acc.nextActionHint || '');
+            if (acc.sendCapable === false) return label + ' не може відправляти з CRM зараз. ' + (acc.nextActionHint || 'Перевірте канал у режимі «Канали».');
             return label + ' тимчасово недоступний для відправки з CRM.';
         }
 
         function showAccountPanelForChannel(channel) {
             accountPanelChannel = String(channel || '').toLowerCase();
+            setOmniMode('channels');
             renderOmniAccounts();
             const card = document.querySelector('[data-account-channel="' + accountPanelChannel + '"]');
-            if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
 
         function highlightAccountFromQuery() {
@@ -2095,8 +2587,9 @@
             });
         }
 
-        if (accountsGrid) {
-            accountsGrid.addEventListener('click', async e => {
+        function bindAccountActions(root) {
+            if (!root) return;
+            root.addEventListener('click', async e => {
                 const btn = e.target.closest('[data-account-action]');
                 if (!btn) return;
                 const channel = btn.dataset.channel;
@@ -2104,6 +2597,8 @@
                 await runAccountAction(channel, action, btn);
             });
         }
+        bindAccountActions(accountsGrid);
+        bindAccountActions(healthContent);
         if (connectionForm) connectionForm.addEventListener('submit', submitConnectionModal);
         if (connectionCancel) connectionCancel.addEventListener('click', closeConnectionModal);
         if (connectionClose) connectionClose.addEventListener('click', closeConnectionModal);
@@ -2115,7 +2610,22 @@
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape' && connectionModal && !connectionModal.hidden) closeConnectionModal();
         });
-        document.addEventListener('click', e => {
+        document.addEventListener('click', async e => {
+            const modeBtn = e.target.closest('[data-omni-mode]');
+            if (modeBtn && modeBtn.dataset.omniMode) {
+                e.preventDefault();
+                setOmniMode(modeBtn.dataset.omniMode);
+                return;
+            }
+            const refreshBtn = e.target.closest('[data-omni-refresh="accounts"]');
+            if (refreshBtn) {
+                e.preventDefault();
+                refreshBtn.disabled = true;
+                await loadOmniAccounts();
+                refreshBtn.disabled = false;
+                if (typeof loadAlertBell === 'function') loadAlertBell();
+                return;
+            }
             const jump = e.target.closest('[data-account-jump]');
             if (jump) {
                 e.preventDefault();
@@ -2199,6 +2709,7 @@
         async function init() {
             applyQueryContext();
             await loadOmniAccounts();
+            if (accountPanelChannel) setOmniMode('channels');
             await Promise.all([loadConversations(), loadQuickReplies(), loadStats()]);
             setupWS();
             // Refresh every 30s
@@ -2231,7 +2742,7 @@
             init();
         });
     })();
-    </script><script src="js/ui.js?v=0.55.13"></script>
-    <script src="js/alerts.js?v=0.55.13"></script>
+    </script><script src="js/ui.js?v=0.55.14"></script>
+    <script src="js/alerts.js?v=0.55.14"></script>
 </body>
 </html>

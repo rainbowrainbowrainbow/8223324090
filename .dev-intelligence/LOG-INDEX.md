@@ -32,3 +32,4 @@
 | 2026-05-15 | S25 | Dashboard Queue True Widget Mode | #dashboard #workqueue #ux #density | немає | QUICK |
 | 2026-05-17 | S26 | Sidebar Shell Offset Deploy | #sidebar #navigation #shell #layout #deploy | none | QUICK |
 | 2026-05-17 | S27 | Assistant Interactive Context Card | #assistant #ai #topbar #ux #context | none | QUICK |
+| 2026-05-17 | S28 | Sidebar Compact Density | #sidebar #navigation #density #layout #ux | none | QUICK |

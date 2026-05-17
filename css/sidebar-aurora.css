@@ -3024,3 +3024,231 @@ body.dark-mode .sidebar-nav::after,
     display: block !important;
   }
 }
+
+/* ==========================================================================
+   Claude Design correction: compact sidebar geometry v0.55.19
+   ========================================================================== */
+
+:root {
+  --eg-claude-sidebar-w: clamp(300px, 18vw, 380px);
+}
+
+.sidebar-nav {
+  width: var(--eg-claude-sidebar-w) !important;
+  min-width: var(--eg-claude-sidebar-w) !important;
+  max-width: var(--eg-claude-sidebar-w) !important;
+}
+
+.sidebar-brand {
+  min-height: 76px !important;
+  padding: 14px 16px !important;
+}
+
+.sidebar-brand::before {
+  width: 44px !important;
+  height: 44px !important;
+  left: 18px !important;
+  top: 18px !important;
+  border-radius: 14px !important;
+}
+
+.sidebar-brand::after {
+  left: 33px !important;
+  top: 31px !important;
+  font-size: 15px !important;
+}
+
+.sidebar-logo-text strong {
+  font-size: 21px !important;
+  letter-spacing: -0.02em !important;
+}
+
+.sidebar-logo-text small {
+  font-size: 11px !important;
+  letter-spacing: 0.19em !important;
+}
+
+.sidebar-command-deck {
+  margin: 14px 14px 16px !important;
+  padding: 14px !important;
+  border-radius: 18px !important;
+}
+
+.sidebar-identity-card {
+  grid-template-columns: 42px minmax(0, 1fr) !important;
+  gap: 11px !important;
+  padding: 12px 14px !important;
+  margin-bottom: 12px !important;
+  border-radius: 14px !important;
+}
+
+.sidebar-identity-avatar {
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: 12px !important;
+}
+
+.sidebar-identity-name {
+  font-size: 21px !important;
+  letter-spacing: -0.02em !important;
+}
+
+.sidebar-identity-health,
+.sidebar-identity-role {
+  font-size: 12px !important;
+  letter-spacing: 0.16em !important;
+}
+
+.sidebar-identity-summary {
+  font-size: 14px !important;
+}
+
+.sidebar-focus-deck {
+  gap: 7px !important;
+  margin-bottom: 12px !important;
+}
+
+.focus-chip {
+  min-height: 40px !important;
+  padding: 6px 8px !important;
+  border-radius: 11px !important;
+}
+
+.focus-chip-value {
+  font-size: 18px !important;
+}
+
+.focus-chip-label {
+  font-size: 10px !important;
+  letter-spacing: 0.14em !important;
+}
+
+.sidebar-alert-hero {
+  min-height: 132px !important;
+  padding: 14px !important;
+  border-radius: 16px !important;
+}
+
+.sidebar-alert-kicker {
+  min-height: 28px !important;
+  font-size: 10px !important;
+  letter-spacing: 0.11em !important;
+}
+
+.sidebar-alert-title {
+  font-size: 20px !important;
+  line-height: 1.18 !important;
+}
+
+.sidebar-alert-meta {
+  font-size: 14px !important;
+}
+
+.sidebar-alert-actions {
+  margin-top: 12px !important;
+  gap: 8px !important;
+}
+
+.sidebar-alert-primary,
+.sidebar-alert-secondary,
+.sidebar-alert-next {
+  min-height: 40px !important;
+  border-radius: 11px !important;
+  font-size: 14px !important;
+}
+
+.sidebar-today-dock,
+.sidebar-design-extras {
+  margin-left: 14px !important;
+  margin-right: 14px !important;
+  margin-bottom: 16px !important;
+}
+
+.sidebar-today-dock {
+  padding-bottom: 12px !important;
+}
+
+.sidebar-today-head,
+.sidebar-design-extras-head {
+  min-height: 30px !important;
+  padding: 0 6px !important;
+  gap: 9px !important;
+  font-size: 11px !important;
+  letter-spacing: 0.20em !important;
+}
+
+.sidebar-today-list,
+.sidebar-design-extras-list {
+  gap: 6px !important;
+  margin-top: 8px !important;
+}
+
+.sidebar-today-link,
+.sidebar-design-extra-link {
+  min-height: 44px !important;
+  grid-template-columns: 32px minmax(0, 1fr) auto !important;
+  gap: 10px !important;
+  padding: 5px 8px !important;
+  border-radius: 11px !important;
+}
+
+.sidebar-today-icon,
+.sidebar-design-extra-icon {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 9px !important;
+}
+
+.sidebar-today-link-copy span,
+.sidebar-design-extra-copy span {
+  font-size: 16px !important;
+  letter-spacing: -0.01em !important;
+}
+
+.sidebar-today-link-copy small,
+.sidebar-design-extra-copy small {
+  font-size: 12px !important;
+}
+
+.sidebar-links {
+  padding: 0 14px 18px !important;
+  gap: 4px !important;
+}
+
+.sidebar-links .nav-link {
+  min-height: 44px !important;
+  padding: 6px 10px !important;
+  grid-template-columns: 32px minmax(0, 1fr) auto !important;
+  gap: 10px !important;
+  border-radius: 11px !important;
+}
+
+.sidebar-links .nav-icon {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 9px !important;
+}
+
+.sidebar-links .nav-text {
+  font-size: 17px !important;
+  letter-spacing: -0.01em !important;
+}
+
+.sidebar-links .nav-status {
+  font-size: 12px !important;
+  margin-top: 1px !important;
+}
+
+.sidebar-theme-btn,
+.sidebar-collapse-btn {
+  margin: auto 14px 12px !important;
+  min-height: 44px !important;
+  border-radius: 11px !important;
+  font-size: 16px !important;
+}
+
+@media (max-width: 1280px) {
+  :root {
+    --eg-claude-sidebar-w: 300px;
+  }
+}

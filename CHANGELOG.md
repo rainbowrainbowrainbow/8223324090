@@ -4,6 +4,15 @@
 
 ---
 
+## v0.54.10 - Leads Kanban Card Text Layout Fix
+
+### Leads / Kanban UI Fix [codex]
+- **Leads / Kanban** - виправлено баг, через який текст у картці міг стискатись і виглядати майже вертикальним у вузькому flex-сценарії.
+- **Layout contract** - name/meta зони перебудовано на стабільний text-vs-badge layout: текст отримав власний wrapper, badge і days-pill більше не стискають контент у вузьку колонку.
+- **UI stability** - довгі імена, телефони та contact strings тепер або коректно переносяться, або акуратно обрізаються еліпсисом без псевдо-вертикального тексту.
+
+---
+
 ## v0.54.9 - Sidebar/Tasks Visual Stability Fix
 
 ### Sidebar / Tasks UI Stability [codex]

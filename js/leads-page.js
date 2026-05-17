@@ -1042,6 +1042,7 @@ function renderKanban() {
             const days = getDaysOnStage(l);
             const daysClass = days > 7 ? 'days-warn' : days > 3 ? 'days-mid' : '';
             const phone = l.phone || '';
+            const phoneLabel = phone || '—';
             const phoneTel = phone.replace(/[^+\d]/g, '');
 
             return `<div class="kanban-card ${idleClass}" draggable="true" data-id="${l.id}" onclick="openLeadWorkspace(${l.id})">
@@ -1049,7 +1050,10 @@ function renderKanban() {
                     <div class="kanban-card-name">${escapeHtml(l.client_name || '—')}</div>
                     <span class="kanban-days ${daysClass}" title="На етапі">${formatDaysLabel(days)}</span>
                 </div>
-                <div class="kanban-card-meta">${escapeHtml(phone)} <span class="lead-type-badge ${lt.cls}">${lt.emoji}</span></div>
+                <div class="kanban-card-meta">
+                    <span class="kanban-card-meta-text" title="${escapeHtml(phoneLabel)}">${escapeHtml(phoneLabel)}</span>
+                    <span class="lead-type-badge ${lt.cls}">${lt.emoji} ${escapeHtml(lt.label)}</span>
+                </div>
                 ${l.event_date ? '<div class="kanban-card-date">📅 ' + new Date(l.event_date).toLocaleDateString('uk-UA') + '</div>' : ''}
                 ${phoneTel ? `<div class="kanban-card-actions" onclick="event.stopPropagation()">
                     <a class="kanban-action-btn" href="tel:${escapeHtml(phoneTel)}" title="Зателефонувати">📞</a>

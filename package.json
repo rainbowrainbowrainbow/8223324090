@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.54.9",
+  "version": "0.54.10",
   "eventGenix": {
-    "releaseLabel": "Sidebar/Tasks Visual Stability Fix"
+    "releaseLabel": "Leads Kanban Card Text Layout Fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -291,11 +291,9 @@
     }
 
     function init() {
-        document.body.classList.add('sidebar-smart-compact');
-        recordCurrentVisit();
-        bindSidebarObserver();
-        renderSmartMenu();
-        hideDuplicateDashboard();
+        document.body.classList.remove('sidebar-smart-compact');
+        document.getElementById('sidebarDashboardJumpWrap')?.remove();
+        document.querySelectorAll('.sidebar-smart-menu-wrap, #sidebarSmartMenuModal').forEach(el => el.remove());
     }
 
     function boot() {

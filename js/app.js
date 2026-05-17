@@ -833,7 +833,8 @@ function initUIControlListeners() {
 
     // v19.2: Desktop sidebar collapse/expand
     const collapseBtn = document.getElementById('sidebarCollapseBtn');
-    if (collapseBtn && sidebar) {
+    if (collapseBtn && sidebar && collapseBtn.dataset.sidebarCollapseBound !== 'true') {
+        collapseBtn.dataset.sidebarCollapseBound = 'true';
         // Restore saved state
         const savedCollapsed = localStorage.getItem('pzp_sidebar_collapsed');
         if (savedCollapsed === 'true') {

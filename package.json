@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.53.1",
+  "version": "0.54.0",
   "eventGenix": {
-    "releaseLabel": "Tasks Cleanup"
+    "releaseLabel": "Sidebar AI-first full rethink"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

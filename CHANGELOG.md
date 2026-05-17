@@ -4,6 +4,16 @@
 
 ---
 
+## v0.54.0 - Sidebar AI-first full rethink
+
+### Sidebar / Navigation IA [codex]
+- **Navigation** - sidebar повністю переосмислено як AI-first command cockpit замість перевантаженого декоративного rail.
+- **IA** - модулі перегруповано у сценарні секції: Сьогодні, Продажі, Команда, Продукт, Система.
+- **Focus deck** - верхній блок перезібрано в єдиний command deck зі статусом, focus chips і primary action.
+- **UX** - зменшено шум, прибрано зайві сигнали, dashboard smart-menu і старі pills, вирівняно візуальну ієрархію меню.
+
+---
+
 ## v0.53.1 - Tasks Cleanup
 
 ### Tasks / UI Cleanup [codex]

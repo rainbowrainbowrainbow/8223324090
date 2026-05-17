@@ -9,70 +9,69 @@ const Sidebar = (() => {
         userRetryStarted: false,
         badgeTimer: null,
         taskWidgetTimer: null,
-        funnelWidgetTimer: null
+        funnelWidgetTimer: null,
+        roleRenderApplied: false
     };
-    const GROUP_STATE_VERSION = 'collapsed-by-default-v1';
+    const GROUP_STATE_VERSION = 'ai-cockpit-v1';
+    const COMMAND_DEFAULT_STATE = {
+        tasksActive: 0,
+        tasksOverdue: 0,
+        alertsActive: 0,
+        alertsUnread: 0,
+        alertsCritical: 0,
+        hotLeads: 0,
+        newLeads: 0
+    };
+    const _commandState = { ...COMMAND_DEFAULT_STATE };
 
     // ═══ NAV_ITEMS ════════════════════════════════════════════════
     const NAV_ITEMS = [
-        // ─── GROUP: CRM ──────────────────────────────────────────
-        { type: 'group', key: 'crm', label: 'CRM', icon: '📋', defaultOpen: true },
-        { href: '/dashboard',    icon: '🏠', label: 'Дашборд',       access: 'all',            group: 'crm' },
-        { href: '/',             icon: '📅', label: 'Таймлайн',       access: 'timeline',       group: 'crm' },
-        { href: '/tasks',        icon: '✅', label: 'Задачі',         access: 'tasks',          group: 'crm' },
-        { href: '/chat',         icon: '💬', label: 'Чат',            access: 'chat',           group: 'crm' },
-        { href: '/warehouse',    icon: '📦', label: 'Склад',          access: 'warehouse',      group: 'crm' },
-        { href: '/center',       icon: '🎛️', label: 'Центр керування', access: 'center',         group: 'crm' },
+        { type: 'group', key: 'today', label: 'Сьогодні', icon: '🏠', priority: 1, defaultOpen: true },
+        { href: '/dashboard',    icon: '🏠', label: 'Дашборд',       access: 'all',            group: 'today' },
+        { href: '/',             icon: '📅', label: 'Таймлайн',      access: 'timeline',       group: 'today' },
+        { href: '/tasks',        icon: '✅', label: 'Задачі',        access: 'tasks',          group: 'today', statusKey: 'tasks' },
+        { href: '/chat',         icon: '💬', label: 'Чат',           access: 'chat',           group: 'today', statusKey: 'chat' },
 
-        // ─── GROUP: Управління ───────────────────────────────────
-        { type: 'group', key: 'mgmt', label: 'Управління', icon: '👔', defaultOpen: true },
-        { href: '/customers',    icon: '👥', label: 'Клієнти',        access: 'customers',      group: 'mgmt' },
-        { href: '/sales-funnel', icon: '🔥', label: 'Ліди',          access: 'leads',          group: 'mgmt' },
-        { href: '/omni',         icon: '✉', label: 'Комунікації',     access: 'omni',           group: 'mgmt' },
-        { href: '/finance',      icon: '💰', label: 'Фінанси',        access: 'finance',        group: 'mgmt' },
-        { href: '/analytics',    icon: '📊', label: 'Аналітика',      access: 'analytics',      group: 'mgmt' },
-        { href: '/reports',      icon: '📋', label: 'Звіти',          access: 'reports',        group: 'mgmt' },
-        { href: '/copilot',      icon: '🤖', label: 'Менеджер AI',    access: 'copilot',        group: 'mgmt' },
+        { type: 'group', key: 'sales', label: 'Продажі', icon: '🔥', priority: 2, defaultOpen: true },
+        { href: '/customers',    icon: '👥', label: 'Клієнти',       access: 'customers',      group: 'sales' },
+        { href: '/sales-funnel', icon: '🔥', label: 'Ліди',          access: 'leads',          group: 'sales', statusKey: 'leads' },
+        { href: '/omni',         icon: '✉', label: 'Комунікації',    access: 'omni',           group: 'sales', statusKey: 'omni' },
+        { href: '/reports',      icon: '📋', label: 'Звіти',         access: 'reports',        group: 'sales' },
+        { href: '/analytics',    icon: '📊', label: 'Аналітика',     access: 'analytics',      group: 'sales' },
+        { href: '/finance',      icon: '💰', label: 'Фінанси',       access: 'finance',        group: 'sales' },
+        { href: '/copilot',      icon: '🤖', label: 'AI менеджер',   access: 'copilot',        group: 'sales' },
 
-        // ─── GROUP: HR ───────────────────────────────────────────
-        { type: 'group', key: 'hr', label: 'HR', icon: '🤝', defaultOpen: true },
-        { href: '/staff',        icon: '🗓️', label: 'Графік',         access: 'schedule_daily', group: 'hr', staffView: 'schedule' },
-        { href: '/hr#team',      icon: '📋', label: 'Команда',        access: 'hr_page',        group: 'hr' },
-        { href: '/hr',           icon: '🤝', label: 'Кадри',          access: 'hr_page',        group: 'hr' },
-        { href: '/training',     icon: '🎓', label: 'Навчання',       access: 'training',       group: 'hr' },
-        { href: '/checkin',      icon: '📸', label: 'Check-in',       access: 'hr_page',        group: 'hr' },
+        { type: 'group', key: 'team', label: 'Команда', icon: '🤝', priority: 3, defaultOpen: false },
+        { href: '/staff',        icon: '🗓️', label: 'Графік',        access: 'schedule_daily', group: 'team', staffView: 'schedule' },
+        { href: '/hr',           icon: '🤝', label: 'Кадри',         access: 'hr_page',        group: 'team' },
+        { href: '/hr#team',      icon: '📋', label: 'Команда HR',    access: 'hr_page',        group: 'team' },
+        { href: '/training',     icon: '🎓', label: 'Навчання',      access: 'training',       group: 'team' },
+        { href: '/checkin',      icon: '📸', label: 'Check-in',      access: 'hr_page',        group: 'team' },
 
-        // ─── GROUP: Арт (розваги, програми, автоматизація) ────────
-        { type: 'group', key: 'art', label: 'Арт', icon: '🎨', defaultOpen: true },
-        { href: '/content',      icon: '📱', label: 'Контент',         access: 'content',        group: 'art' },
-        { href: '/programs',     icon: '🎪', label: 'Програми',       access: 'programs',       group: 'art' },
-        { href: '/art',          icon: '🎨', label: 'Арт директор',   access: 'art',            group: 'art' },
-        { href: '/graduation',   icon: '🎓', label: 'Випускний',      access: 'graduation',     group: 'art' },
-        { href: '#afisha',       icon: '🎭', label: 'Афіша',          access: 'afisha',         group: 'art',
+        { type: 'group', key: 'product', label: 'Продукт', icon: '🎨', priority: 4, defaultOpen: false },
+        { href: '/programs',     icon: '🎪', label: 'Програми',      access: 'programs',       group: 'product' },
+        { href: '/content',      icon: '📱', label: 'Контент',       access: 'content',        group: 'product' },
+        { href: '/art',          icon: '🎨', label: 'Арт директор',  access: 'art',            group: 'product' },
+        { href: '/graduation',   icon: '🎓', label: 'Випускний',     access: 'graduation',     group: 'product' },
+        { href: '/designs',      icon: '🖼️', label: 'Дизайн-борд',   access: 'art',            group: 'product' },
+        { href: '/designs#catalogs', icon: '📂', label: 'Каталоги',  access: 'art',            group: 'product' },
+        { href: '/designer',     icon: '📖', label: 'Стайлгайд',     access: 'art',            group: 'product' },
+        { href: '/sound#projects',      icon: '🎬', label: 'Звук',   access: 'sound',          group: 'product' },
+        { href: '/sound#library',       icon: '🎵', label: 'Бібліотека звуку', access: 'sound', group: 'product' },
+        { href: '/sound#announcements', icon: '📢', label: 'Оголошення', access: 'sound',      group: 'product' },
+        { href: '#afisha',       icon: '🎭', label: 'Афіша',         access: 'afisha',         group: 'product',
           action: 'sidebarOpenAfisha',       isHashLink: true },
-        { href: '#certificates', icon: '🎫', label: 'Сертифікати',    access: 'certificates',   group: 'art',
+        { href: '#certificates', icon: '🎫', label: 'Сертифікати',   access: 'certificates',   group: 'product',
           action: 'sidebarOpenCertificates', isHashLink: true },
 
-        // ─── GROUP: Дизайнер (візуал, каталоги, стайлгайд) ─────
-        { type: 'group', key: 'designer', label: 'Дизайнер', icon: '📐', defaultOpen: true },
-        { href: '/designs',      icon: '🖼️', label: 'Дизайн-борд',    access: 'art',            group: 'designer' },
-        { href: '/designs#catalogs', icon: '📂', label: 'Каталоги',   access: 'art',            group: 'designer' },
-        { href: '/designer',     icon: '📖', label: 'Стайлгайд',      access: 'art',            group: 'designer' },
-
-        // ─── GROUP: Звук ────────────────────────────────────────
-        { type: 'group', key: 'sound', label: 'Звук', icon: '🔊', defaultOpen: true },
-        { href: '/sound#library',       icon: '🎵', label: 'Бібліотека',    access: 'sound',          group: 'sound' },
-        { href: '/sound#announcements', icon: '📢', label: 'Оголошення',    access: 'sound',          group: 'sound' },
-        { href: '/sound#projects',      icon: '🎬', label: 'Проєкти',       access: 'sound',          group: 'sound' },
-        { href: '/sound#log',           icon: '📊', label: 'Лог подій',     access: 'sound',          group: 'sound' },
-
-        // ─── GROUP: Система ──────────────────────────────────────
-        { type: 'group', key: 'system', label: 'Система', icon: '⚙️', defaultOpen: true },
-        { href: '/kleshnya',     icon: '🦞', label: 'Клешня',         access: 'chat',           group: 'system' },
-        { href: '/guardian-ops', icon: '🛡️', label: 'Guardian Ops',   access: 'guardian_ops',   group: 'system' },
-        { href: '/game',         icon: '🎮', label: 'Гра',            access: 'all',            group: 'system' },
-        { href: '/demo',         icon: '🎬', label: 'Demo',           access: 'demo',           group: 'system' },
-        { href: '#settings',     icon: '⚙️', label: 'Налаштування',   access: 'settings',       group: 'system',
+        { type: 'group', key: 'system', label: 'Система', icon: '⚙️', priority: 5, defaultOpen: false },
+        { href: '/kleshnya',     icon: '🤖', label: 'Клешня',        access: 'chat',           group: 'system' },
+        { href: '/guardian-ops', icon: '🛡️', label: 'Guardian Ops',  access: 'guardian_ops',   group: 'system' },
+        { href: '/center',       icon: '🎛️', label: 'Центр керування', access: 'center',       group: 'system' },
+        { href: '/warehouse',    icon: '📦', label: 'Склад',         access: 'warehouse',      group: 'system' },
+        { href: '/game',         icon: '🎮', label: 'Гра',           access: 'all',            group: 'system' },
+        { href: '/demo',         icon: '🎬', label: 'Demo',          access: 'demo',           group: 'system' },
+        { href: '#settings',     icon: '⚙️', label: 'Налаштування',  access: 'settings',       group: 'system',
           action: 'sidebarOpenSettings', isHashLink: true },
     ];
 
@@ -250,6 +249,28 @@ const Sidebar = (() => {
             localStorage.setItem('pzp_sidebar_group_state_version', GROUP_STATE_VERSION);
         } catch {}
     }
+
+    function getRolePreferredGroups(role) {
+        const map = {
+            creator: ['today', 'sales'],
+            director: ['today', 'sales'],
+            vice_director: ['today', 'sales'],
+            manager: ['today', 'sales'],
+            senior_manager: ['today', 'sales'],
+            admin: ['today', 'team'],
+            hr: ['team'],
+            accountant: ['sales'],
+            marketer: ['sales', 'product'],
+            art_director: ['product'],
+            instructor: ['today', 'team'],
+            senior_instructor: ['today', 'team'],
+            security: ['today', 'system'],
+            reception: ['today', 'sales'],
+            it_specialist: ['today', 'system']
+        };
+        return map[String(role || '').trim()] || ['today'];
+    }
+
     function _saveGroupStateFromDom(sidebar) {
         const root = sidebar || document.getElementById('sidebarNav');
         if (!root) return;
@@ -262,9 +283,13 @@ const Sidebar = (() => {
         });
         localStorage.setItem('pzp_sidebar_groups', JSON.stringify(next));
     }
-    function _isGroupOpen(key, defaultOpen) {
+    function _isGroupOpen(key, defaultOpen, role, hasActive = false) {
         const s = _getGroupState();
-        return key in s ? s[key] : false;
+        if (key in s) return s[key];
+        if (hasActive) return true;
+        const preferred = getRolePreferredGroups(role);
+        if (preferred.includes(key)) return true;
+        return !!defaultOpen && preferred.length === 0;
     }
 
     // Get the first hash for a given base path (e.g. '/sound' → 'library')
@@ -278,7 +303,8 @@ const Sidebar = (() => {
         const container = document.querySelector(containerSelector || '#sidebarNav .sidebar-links');
         if (!container) return;
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
-        const role = typeof getUserRole === 'function' ? getUserRole() : null;
+        const savedUser = _getCurrentSidebarUser();
+        const role = (typeof getUserRole === 'function' ? getUserRole() : null) || savedUser?.role || null;
 
         let currentGroupKey = null;
         let html = '';
@@ -304,7 +330,7 @@ const Sidebar = (() => {
                     const cBase = c.href.split('#')[0];
                     return currentPath === cBase || (cBase !== '/' && currentPath.startsWith(cBase));
                 });
-                const finalOpen = _isGroupOpen(item.key, item.defaultOpen);
+                const finalOpen = _isGroupOpen(item.key, item.defaultOpen, role, hasActive);
 
                 html += `
 <div class="sidebar-group${hasActive ? ' has-active' : ''}" data-group-key="${item.key}">
@@ -366,9 +392,13 @@ const Sidebar = (() => {
             const badgeType = _badgeTypeFor(item);
             const badgeClass = badgeType === 'alerts' ? ' nav-badge alert' : ' nav-badge';
 
+            const statusText = _navStatusFor(item);
             html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.href}"${onclickAttr}>
   ${_renderIcon(item.icon)}
-  <span class="nav-text">${item.label}</span>
+  <span class="nav-copy">
+    <span class="nav-text">${item.label}</span>
+    ${item.statusKey ? `<span class="nav-status" data-sidebar-status-key="${item.statusKey}"${statusText ? '' : ' hidden'}>${statusText || ''}</span>` : ''}
+  </span>
   ${badgeType ? `<span class="${badgeClass.trim()}" data-badge-type="${badgeType}" style="display:none"></span>` : ''}
 </a>`;
         }
@@ -382,9 +412,7 @@ const Sidebar = (() => {
         container.classList.add('rendered');
 
         _ensureAuroraLayer();
-        _ensurePillsRow();
-        _ensureDashboardJump();
-        _initPillTooltips();
+        _ensureCommandDeck();
         _syncGroupSignals();
         _ensureActiveIndicator();
         _initCollapsedTooltips(container);
@@ -440,10 +468,37 @@ const Sidebar = (() => {
         return '';
     }
 
-    const GROUP_SIGNAL_SOURCES = {
-        crm: ['sidebarPillTasks', 'sidebarPillAlerts'],
-        mgmt: ['sidebarPillFunnel']
-    };
+    function _navStatusFor(item) {
+        switch (item?.statusKey) {
+            case 'tasks':
+                if (_commandState.tasksOverdue > 0) return `${_formatSignalCount(_commandState.tasksOverdue)} простр.`;
+                if (_commandState.tasksActive > 0) return `${_formatSignalCount(_commandState.tasksActive)} актив.`;
+                return '';
+            case 'leads':
+                if (_commandState.hotLeads > 0) return `${_formatSignalCount(_commandState.hotLeads)} гарячих`;
+                if (_commandState.newLeads > 0) return `${_formatSignalCount(_commandState.newLeads)} нових`;
+                return '';
+            case 'chat': {
+                const unread = typeof ChatState !== 'undefined' ? Number(ChatState.totalUnread || 0) : 0;
+                return unread > 0 ? `${_formatSignalCount(unread)} нових` : '';
+            }
+            case 'omni':
+                return _commandState.alertsCritical > 0 ? 'є ризики' : '';
+            default:
+                return '';
+        }
+    }
+
+    function _syncNavStatusLabels() {
+        document.querySelectorAll('[data-sidebar-status-key]').forEach((el) => {
+            const key = el.dataset.sidebarStatusKey;
+            const text = _navStatusFor({ statusKey: key });
+            el.textContent = text;
+            el.hidden = !text;
+        });
+    }
+
+    const GROUP_SIGNAL_SOURCES = {};
 
     const SIGNAL_RANK = { idle: 0, live: 1, hot: 2, critical: 3 };
 
@@ -451,19 +506,6 @@ const Sidebar = (() => {
         const count = Number(value || 0);
         if (!Number.isFinite(count) || count <= 0) return '';
         return count > 99 ? '99+' : String(Math.floor(count));
-    }
-
-    function _setPillOperationalState(widget, count, options = {}) {
-        if (!widget) return;
-        const safeCount = Math.max(0, Number(count || 0));
-        const severity = options.critical ? 'critical' : (options.hot ? 'hot' : (safeCount > 0 ? 'live' : 'idle'));
-        widget.dataset.sidebarCount = String(safeCount);
-        widget.dataset.sidebarSeverity = severity;
-        widget.classList.remove('is-zero', 'is-live', 'is-hot', 'is-critical', 'is-pressed');
-        widget.classList.add(safeCount > 0 ? 'is-live' : 'is-zero');
-        if (severity === 'hot') widget.classList.add('is-hot');
-        if (severity === 'critical') widget.classList.add('is-critical');
-        _syncGroupSignals();
     }
 
     function _syncGroupSignals() {
@@ -542,6 +584,7 @@ const Sidebar = (() => {
         } catch {}
         const chatUnread = typeof ChatState !== 'undefined' ? (ChatState.totalUnread || 0) : 0;
         _setBadge('unread', chatUnread > 0 ? chatUnread : null);
+        _syncNavStatusLabels();
         _state.badgeTimer = setTimeout(_fetchLiveBadges, 300000);
     }
 
@@ -605,147 +648,159 @@ const Sidebar = (() => {
         return roles.length ? roles.slice(0, 3).join(' · ') : 'Користувач CRM';
     }
 
-    function _ensurePillsRow() {
-        const sidebar = document.getElementById('sidebarNav');
-        if (!sidebar || document.getElementById('sidebarPills')) return;
-        const links = sidebar.querySelector('.sidebar-links');
-        if (!links) return;
-        const row = document.createElement('div');
-        row.id = 'sidebarPills';
-        row.className = 'sidebar-pills';
-        row.setAttribute('aria-label', 'Швидкий стан CRM');
-        row.innerHTML = `
-            <a href="/tasks?view=my" class="sidebar-pill sidebar-pill--tasks" id="sidebarPillTasks" title="Задачі" aria-label="Задачі" data-sidebar-tooltip="Мої задачі: відкриває персональний список задач, активні й прострочені.">
-                <div class="sidebar-pill-top">
-                    <span class="sidebar-pill-icon">${_renderStatusIcon('tasks')}</span>
-                </div>
-                <div class="sidebar-pill-value" id="sidebarPillTasksValue">–</div>
-                <div class="sidebar-pill-meta" id="sidebarPillTasksMeta">оновлення...</div>
-            </a>
-            <button type="button" class="sidebar-pill sidebar-pill--alerts" id="sidebarPillAlerts" title="Алерти" aria-label="Алерти" onclick="Sidebar.openAlerts(event)" data-sidebar-tooltip="Сповіщення: відкриває повну панель алертів і ризиків, які потребують уваги.">
-                <div class="sidebar-pill-top">
-                    <span class="sidebar-pill-icon">${_renderStatusIcon('alerts')}</span>
-                </div>
-                <div class="sidebar-pill-value" id="sidebarPillAlertsValue">0</div>
-                <div class="sidebar-pill-meta" id="sidebarPillAlertsMeta">спокійно</div>
-            </button>
-            <a href="/sales-funnel" class="sidebar-pill sidebar-pill--funnel" id="sidebarPillFunnel" title="Воронка" aria-label="Воронка" data-sidebar-tooltip="Воронка: відкриває ліди, які чекають дії, нові звернення і гарячі етапи.">
-                <div class="sidebar-pill-top">
-                    <span class="sidebar-pill-icon">${_renderStatusIcon('funnel')}</span>
-                </div>
-                <div class="sidebar-pill-value" id="sidebarPillFunnelValue">0</div>
-                <div class="sidebar-pill-meta" id="sidebarPillFunnelMeta">без нових</div>
-            </a>`;
-        sidebar.insertBefore(row, links);
-    }
-
-    function _ensureDashboardJump() {
+    function _ensureCommandDeck() {
         const sidebar = document.getElementById('sidebarNav');
         if (!sidebar) return;
+        sidebar.querySelector('.sidebar-pills')?.remove();
+        sidebar.querySelector('.sidebar-dashboard-jump-wrap')?.remove();
+
         const links = sidebar.querySelector('.sidebar-links');
         if (!links) return;
-        let wrap = document.getElementById('sidebarDashboardJumpWrap');
-        if (!wrap) {
-            wrap = document.createElement('div');
-            wrap.id = 'sidebarDashboardJumpWrap';
-            wrap.className = 'sidebar-dashboard-jump-wrap';
-            wrap.innerHTML = `
-                <a href="/dashboard" class="sidebar-dashboard-jump" id="sidebarDashboardJump" data-page-access="/dashboard" aria-label="Відкрити Дашборд CRM">
-                    <span class="sidebar-dashboard-jump-icon">${_renderIcon('dashboard', 'sidebar-dashboard-jump-svg')}</span>
-                    <span class="sidebar-dashboard-jump-copy">
-                        <span class="sidebar-dashboard-jump-title">Дашборд</span>
+
+        let deck = document.getElementById('sidebarCommandDeck');
+        if (!deck) {
+            deck = document.createElement('div');
+            deck.id = 'sidebarCommandDeck';
+            deck.className = 'sidebar-command-deck';
+            deck.innerHTML = `
+                <button class="sidebar-identity-card" id="sidebarIdentityCard" type="button" aria-label="Відкрити профіль">
+                    <span class="sidebar-identity-avatar" id="sidebarIdentityAvatar">?</span>
+                    <span class="sidebar-identity-main">
+                        <span class="sidebar-identity-title-row">
+                            <span class="sidebar-identity-name" id="sidebarIdentityName">Event Genix</span>
+                            <span class="sidebar-identity-role" id="sidebarIdentityRole">CRM</span>
+                        </span>
+                        <span class="sidebar-identity-summary" id="sidebarIdentitySummary">Операційний стан завантажується...</span>
                     </span>
-                    <span class="sidebar-dashboard-jump-arrow" aria-hidden="true">→</span>
-                </a>`;
-            sidebar.insertBefore(wrap, links);
+                    <span class="sidebar-identity-chevron" aria-hidden="true">›</span>
+                </button>
+
+                <div class="sidebar-focus-deck" id="sidebarFocusDeck" aria-label="Операційний фокус">
+                    <a href="/tasks?view=my" class="focus-chip focus-chip--tasks" id="focusChipTasks" aria-label="Мої задачі">
+                        <span class="focus-chip-icon">${_renderStatusIcon('tasks')}</span>
+                        <span class="focus-chip-value" id="focusChipTasksValue">0</span>
+                        <span class="focus-chip-label">Задачі</span>
+                        <span class="focus-chip-meta" id="focusChipTasksMeta">спокійно</span>
+                    </a>
+                    <button type="button" class="focus-chip focus-chip--alerts" id="focusChipAlerts" aria-label="Алерти">
+                        <span class="focus-chip-icon">${_renderStatusIcon('alerts')}</span>
+                        <span class="focus-chip-value" id="focusChipAlertsValue">0</span>
+                        <span class="focus-chip-label">Алерти</span>
+                        <span class="focus-chip-meta" id="focusChipAlertsMeta">спокійно</span>
+                    </button>
+                    <a href="/sales-funnel" class="focus-chip focus-chip--funnel" id="focusChipFunnel" aria-label="Ліди">
+                        <span class="focus-chip-icon">${_renderStatusIcon('funnel')}</span>
+                        <span class="focus-chip-value" id="focusChipFunnelValue">0</span>
+                        <span class="focus-chip-label">Ліди</span>
+                        <span class="focus-chip-meta" id="focusChipFunnelMeta">без нових</span>
+                    </a>
+                </div>
+
+                <button type="button" class="sidebar-primary-action" id="sidebarPrimaryAction">
+                    <span class="sidebar-primary-action-kicker">AI фокус</span>
+                    <span class="sidebar-primary-action-label">Відкрити центр керування</span>
+                </button>`;
+            sidebar.insertBefore(deck, links);
+        } else if (deck.nextElementSibling !== links) {
+            sidebar.insertBefore(deck, links);
         }
-        const jump = document.getElementById('sidebarDashboardJump');
-        const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
-        if (jump) jump.classList.toggle('active', currentPath === '/dashboard');
+
+        const alertsChip = document.getElementById('focusChipAlerts');
+        if (alertsChip && alertsChip.dataset.alertsBound !== 'true') {
+            alertsChip.dataset.alertsBound = 'true';
+            alertsChip.addEventListener('click', openAlerts);
+        }
+
+        _hydrateCommandDeckUser();
+        _updateSidebarCommandDeck();
     }
 
-    function _setPillDescription(widget, text) {
+    function _hydrateCommandDeckUser() {
+        const user = _getCurrentSidebarUser();
+        if (!user) return;
+        const avatarEl = document.getElementById('sidebarIdentityAvatar');
+        const nameEl = document.getElementById('sidebarIdentityName');
+        const roleEl = document.getElementById('sidebarIdentityRole');
+        const cardEl = document.getElementById('sidebarIdentityCard');
+        _paintUserAvatar(avatarEl, user);
+        if (nameEl) nameEl.textContent = user.name || user.username || 'Event Genix';
+        if (roleEl) roleEl.textContent = _sidebarRoleLine(user);
+        _bindProfileEntry(cardEl);
+    }
+
+    function _setCommandDescription(widget, text) {
         if (!widget || !text) return;
         widget.removeAttribute('title');
         widget.setAttribute('aria-label', text);
-        widget.setAttribute('data-sidebar-tooltip', text);
     }
 
-    function _initPillTooltips() {
-        const sidebar = document.getElementById('sidebarNav');
-        if (!sidebar) return;
-        let tooltip = document.getElementById('sidebarPillTooltip');
-        if (!tooltip) {
-            tooltip = document.createElement('div');
-            tooltip.id = 'sidebarPillTooltip';
-            tooltip.className = 'sidebar-pill-tooltip';
-            tooltip.setAttribute('role', 'tooltip');
-            tooltip.setAttribute('aria-hidden', 'true');
-            document.body.appendChild(tooltip);
+    function _setFocusChipOperationalState(widget, count, options = {}) {
+        if (!widget) return;
+        const safeCount = Math.max(0, Number(count || 0));
+        const severity = options.critical ? 'critical' : (options.hot ? 'hot' : (safeCount > 0 ? 'live' : 'idle'));
+        widget.dataset.sidebarCount = String(safeCount);
+        widget.dataset.sidebarSeverity = severity;
+        widget.classList.remove('is-zero', 'is-live', 'is-hot', 'is-critical');
+        widget.classList.add(safeCount > 0 ? 'is-live' : 'is-zero');
+        if (severity === 'hot') widget.classList.add('is-hot');
+        if (severity === 'critical') widget.classList.add('is-critical');
+        _updateSidebarCommandDeck();
+        _syncNavStatusLabels();
+    }
+
+    function _getSidebarSummaryState() {
+        if (_commandState.alertsCritical > 0) return `Є ${_formatSignalCount(_commandState.alertsCritical)} критичних алертів`;
+        if (_commandState.alertsUnread > 0) return `${_formatSignalCount(_commandState.alertsUnread)} нових алертів потребують уваги`;
+        if (_commandState.tasksOverdue > 0) return `${_formatSignalCount(_commandState.tasksOverdue)} прострочені задачі у фокусі`;
+        if (_commandState.hotLeads > 0) return `${_formatSignalCount(_commandState.hotLeads)} гарячих лідів чекають дії`;
+        if (_commandState.tasksActive > 0) return `${_formatSignalCount(_commandState.tasksActive)} задачі в роботі`;
+        return 'Система стабільна';
+    }
+
+    function _getSidebarPrimaryAction(role, state) {
+        const salesRoles = ['creator', 'director', 'vice_director', 'manager', 'senior_manager', 'marketer', 'reception'];
+        if (state.alertsCritical > 0 || state.alertsUnread > 0) {
+            return { label: 'Розібрати алерти', kicker: state.alertsCritical > 0 ? 'Критично' : 'Увага', action: 'alerts' };
         }
+        if (state.tasksOverdue > 0) {
+            return { label: 'Закрити прострочені задачі', kicker: 'Фокус', href: '/tasks?view=my&filter=overdue' };
+        }
+        if ((state.hotLeads > 0 || state.newLeads > 0) && salesRoles.includes(role)) {
+            return { label: 'Обробити гарячі ліди', kicker: 'Продажі', href: '/sales-funnel?filter=hot' };
+        }
+        if (['hr', 'admin'].includes(role)) {
+            return { label: 'Перевірити команду', kicker: 'Команда', href: '/hr#team' };
+        }
+        if (['art_director', 'marketer'].includes(role)) {
+            return { label: 'Відкрити контент-потік', kicker: 'Продукт', href: '/content' };
+        }
+        return { label: 'Відкрити центр керування', kicker: 'AI фокус', href: '/dashboard' };
+    }
 
-        const hideTooltip = () => {
-            tooltip.classList.remove('is-visible', 'is-left');
-            tooltip.setAttribute('aria-hidden', 'true');
-            tooltip.textContent = '';
-        };
+    function _updateSidebarCommandDeck() {
+        const summaryEl = document.getElementById('sidebarIdentitySummary');
+        if (summaryEl) summaryEl.textContent = _getSidebarSummaryState();
 
-        const showTooltip = (pill) => {
-            const text = String(pill?.dataset?.sidebarTooltip || pill?.getAttribute('aria-label') || '').trim();
-            if (!text) return;
-            const pillRect = pill.getBoundingClientRect();
-            const sidebarRect = sidebar.getBoundingClientRect();
-            const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
-            const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
-            const width = Math.min(320, Math.max(240, viewportWidth - sidebarRect.right - 28));
-            const placeRight = sidebarRect.right + width + 14 < viewportWidth;
-            const left = placeRight ? sidebarRect.right + 12 : Math.max(12, sidebarRect.left - width - 12);
-            const top = Math.min(
-                Math.max(12, pillRect.top + (pillRect.height / 2) - 32),
-                Math.max(12, viewportHeight - 96)
-            );
-            tooltip.textContent = text;
-            tooltip.style.width = `${width}px`;
-            tooltip.style.left = `${left}px`;
-            tooltip.style.top = `${top}px`;
-            tooltip.classList.toggle('is-left', !placeRight);
-            tooltip.classList.add('is-visible');
-            tooltip.setAttribute('aria-hidden', 'false');
-        };
-
-        sidebar.querySelectorAll('.sidebar-pill').forEach((pill) => {
-            if (pill.dataset.tooltipBound === 'true') return;
-            pill.dataset.tooltipBound = 'true';
-            let timer = null;
-            const clear = () => {
-                if (timer) clearTimeout(timer);
-                timer = null;
-                hideTooltip();
-                pill.classList.remove('show-tip');
-                pill.classList.remove('is-pressed');
-            };
-            const schedule = () => {
-                if (timer) clearTimeout(timer);
-                timer = setTimeout(() => {
-                    pill.classList.add('show-tip');
-                    showTooltip(pill);
-                }, 280);
-            };
-            pill.addEventListener('pointerenter', schedule);
-            pill.addEventListener('focus', schedule);
-            pill.addEventListener('pointerdown', () => {
-                pill.classList.add('is-pressed');
-                schedule();
+        const actionEl = document.getElementById('sidebarPrimaryAction');
+        if (!actionEl) return;
+        const user = _getCurrentSidebarUser();
+        const role = user?.role || (typeof getUserRole === 'function' ? getUserRole() : '');
+        const action = _getSidebarPrimaryAction(role, _commandState);
+        actionEl.querySelector('.sidebar-primary-action-kicker')?.replaceChildren(document.createTextNode(action.kicker));
+        actionEl.querySelector('.sidebar-primary-action-label')?.replaceChildren(document.createTextNode(action.label));
+        actionEl.dataset.action = action.action || '';
+        actionEl.dataset.href = action.href || '';
+        if (actionEl.dataset.primaryBound !== 'true') {
+            actionEl.dataset.primaryBound = 'true';
+            actionEl.addEventListener('click', (event) => {
+                const actionName = actionEl.dataset.action;
+                const href = actionEl.dataset.href;
+                if (actionName === 'alerts') {
+                    openAlerts(event);
+                    return;
+                }
+                if (href) window.location.href = href;
             });
-            pill.addEventListener('pointerup', clear);
-            pill.addEventListener('pointercancel', clear);
-            pill.addEventListener('pointerleave', clear);
-            pill.addEventListener('blur', clear);
-        });
-        if (sidebar.dataset.pillTooltipGlobalBound !== 'true') {
-            sidebar.dataset.pillTooltipGlobalBound = 'true';
-            window.addEventListener('scroll', hideTooltip, { passive: true });
-            window.addEventListener('resize', hideTooltip);
         }
     }
 
@@ -821,7 +876,7 @@ const Sidebar = (() => {
     }
 
     function _renderSidebarAlerts(data) {
-        const widget = document.getElementById('sidebarPillAlerts');
+        const widget = document.getElementById('focusChipAlerts');
         if (!widget) return;
         const alerts = Array.isArray(data?.alerts) ? data.alerts : [];
         const dismissed = _alertSetFromStorage('crm_alerts_dismissed');
@@ -830,8 +885,8 @@ const Sidebar = (() => {
         const unread = active.filter(alert => !read.has(alert.id));
         const count = unread.length;
         const first = unread[0] || active[0] || null;
-        const countEl = document.getElementById('sidebarPillAlertsValue');
-        const metaEl = document.getElementById('sidebarPillAlertsMeta');
+        const countEl = document.getElementById('focusChipAlertsValue');
+        const metaEl = document.getElementById('focusChipAlertsMeta');
         if (countEl) {
             countEl.textContent = count > 99 ? '99+' : String(count);
         }
@@ -843,10 +898,13 @@ const Sidebar = (() => {
         const alertTitle = !active.length
             ? 'Алерти: все спокійно. Натисніть, щоб відкрити повну інформацію.'
             : `Алерти: ${count} нових, ${active.length} активних. Натисніть, щоб відкрити повну інформацію.`;
-        _setPillDescription(widget, alertTitle);
+        _commandState.alertsActive = active.length;
+        _commandState.alertsUnread = count;
+        _commandState.alertsCritical = unread.filter(alert => alert.level === 'critical').length;
+        _setCommandDescription(widget, alertTitle);
         widget.classList.toggle('has-alerts', active.length > 0);
         widget.classList.toggle('has-critical', unread.some(alert => alert.level === 'critical'));
-        _setPillOperationalState(widget, active.length, {
+        _setFocusChipOperationalState(widget, active.length, {
             critical: unread.some(alert => alert.level === 'critical'),
             hot: count > 0
         });
@@ -870,7 +928,7 @@ const Sidebar = (() => {
             clearTimeout(_state.taskWidgetTimer);
             _state.taskWidgetTimer = null;
         }
-        const widget = document.getElementById('sidebarPillTasks');
+        const widget = document.getElementById('focusChipTasks');
         if (!widget) return;
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
@@ -900,8 +958,8 @@ const Sidebar = (() => {
                 activeCount = mine.filter(task => !['done', 'cancelled', 'archived'].includes(task.status)).length;
                 overdueCount = mine.filter(task => task.deadline && new Date(task.deadline) < new Date() && task.status !== 'done').length;
             }
-            const countEl = document.getElementById('sidebarPillTasksValue');
-            const metaEl = document.getElementById('sidebarPillTasksMeta');
+            const countEl = document.getElementById('focusChipTasksValue');
+            const metaEl = document.getElementById('focusChipTasksMeta');
             if (countEl) countEl.textContent = activeCount > 99 ? '99+' : String(activeCount);
             if (metaEl) {
                 const parts = ['актив.'];
@@ -911,9 +969,11 @@ const Sidebar = (() => {
             const taskTitle = overdueCount > 0
                 ? `Задачі: ${activeCount} активних, ${overdueCount} прострочених. Натисніть, щоб відкрити всі задачі.`
                 : `Задачі: ${activeCount} активних. Натисніть, щоб відкрити всі задачі.`;
-            _setPillDescription(widget, taskTitle);
+            _commandState.tasksActive = activeCount;
+            _commandState.tasksOverdue = overdueCount;
+            _setCommandDescription(widget, taskTitle);
             widget.classList.toggle('has-overdue', overdueCount > 0);
-            _setPillOperationalState(widget, activeCount, { critical: overdueCount > 0 });
+            _setFocusChipOperationalState(widget, activeCount, { critical: overdueCount > 0 });
         } catch {}
         _state.taskWidgetTimer = setTimeout(_refreshTaskMiniWidget, 300000);
     }
@@ -923,7 +983,7 @@ const Sidebar = (() => {
             clearTimeout(_state.funnelWidgetTimer);
             _state.funnelWidgetTimer = null;
         }
-        const widget = document.getElementById('sidebarPillFunnel');
+        const widget = document.getElementById('focusChipFunnel');
         if (!widget) return;
         const user = _getCurrentSidebarUser();
         const role = user?.role || (typeof getUserRole === 'function' ? getUserRole() : null);
@@ -943,8 +1003,8 @@ const Sidebar = (() => {
             const newCount = newR.status === 'fulfilled' ? Number(newR.value?.count || 0) : 0;
             const displayCount = actionCount > 0 ? actionCount : newCount;
             const firstLead = hotLeads[0] || null;
-            const countEl = document.getElementById('sidebarPillFunnelValue');
-            const metaEl = document.getElementById('sidebarPillFunnelMeta');
+            const countEl = document.getElementById('focusChipFunnelValue');
+            const metaEl = document.getElementById('focusChipFunnelMeta');
 
             if (countEl) countEl.textContent = displayCount > 99 ? '99+' : String(displayCount);
             if (metaEl) {
@@ -961,10 +1021,12 @@ const Sidebar = (() => {
             const funnelTitle = actionCount > 0
                 ? `Воронка: ${actionCount} лідів чекає дії, ${newCount} нових. Натисніть, щоб відкрити повну воронку.`
                 : `Воронка: ${newCount} нових лідів. Натисніть, щоб відкрити повну воронку.`;
-            _setPillDescription(widget, funnelTitle);
+            _commandState.hotLeads = actionCount;
+            _commandState.newLeads = newCount;
+            _setCommandDescription(widget, funnelTitle);
             widget.classList.toggle('has-action', actionCount > 0);
             widget.classList.toggle('has-new', actionCount === 0 && newCount > 0);
-            _setPillOperationalState(widget, displayCount, { hot: actionCount > 0 || newCount > 0 });
+            _setFocusChipOperationalState(widget, displayCount, { hot: actionCount > 0 || newCount > 0 });
             widget.href = firstLead?.id ? `/sales-funnel?lead=${encodeURIComponent(firstLead.id)}` : '/sales-funnel';
         } catch {}
         _state.funnelWidgetTimer = setTimeout(_refreshFunnelWidget, 300000);
@@ -995,6 +1057,13 @@ const Sidebar = (() => {
         if (roleEl) roleEl.textContent = _sidebarRoleLine(user);
         _bindProfileEntry(cardEl);
         _bindProfileEntry(nameEl);
+        _hydrateCommandDeckUser();
+        _updateSidebarCommandDeck();
+        if (!_state.roleRenderApplied && Object.keys(_getGroupState()).length === 0) {
+            _state.roleRenderApplied = true;
+            const links = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
+            if (links?.id) render('#' + links.id);
+        }
     }
 
     function _paintUserAvatar(el, user) {
@@ -1062,8 +1131,19 @@ const Sidebar = (() => {
         const toggle = document.getElementById('sidebarToggle');
         const sidebar = document.getElementById('sidebarNav');
         const overlay = document.getElementById('sidebarOverlay');
+        const collapseBtn = document.getElementById('sidebarCollapseBtn');
         _removeLegacySidebarActions(sidebar);
         _ensureCompactProfileAvatar(sidebar);
+        if (collapseBtn && sidebar && collapseBtn.dataset.sidebarCollapseBound !== 'true') {
+            collapseBtn.dataset.sidebarCollapseBound = 'true';
+            if (localStorage.getItem('pzp_sidebar_collapsed') === 'true') {
+                sidebar.classList.add('collapsed');
+            }
+            collapseBtn.addEventListener('click', () => {
+                const isCollapsed = sidebar.classList.toggle('collapsed');
+                localStorage.setItem('pzp_sidebar_collapsed', String(isCollapsed));
+            });
+        }
         if (toggle && sidebar && toggle.dataset.sidebarToggleBound !== 'true') {
             toggle.dataset.sidebarToggleBound = 'true';
             toggle.addEventListener('click', () => {
@@ -1081,7 +1161,7 @@ const Sidebar = (() => {
         if (sidebar && sidebar.dataset.sidebarLinkBound !== 'true') {
             sidebar.dataset.sidebarLinkBound = 'true';
             sidebar.addEventListener('click', (e) => {
-                const link = e.target.closest('.nav-link, .sidebar-quick-nav-link, .sidebar-dashboard-jump');
+                const link = e.target.closest('.nav-link, .sidebar-quick-nav-link, .focus-chip, .sidebar-primary-action');
                 if (!link) return;
                 if (window.innerWidth <= 768 && overlay) { sidebar.classList.remove('open'); overlay.classList.add('hidden'); }
             });
@@ -1089,9 +1169,7 @@ const Sidebar = (() => {
         // Theme toggle — inject at bottom of sidebar
         _initThemeToggle(sidebar);
 
-        // Keep the sidebar full-width; accordion groups start collapsed and persist user choice.
-        localStorage.removeItem('pzp_sidebar_collapsed');
-        if (sidebar) sidebar.classList.remove('collapsed');
+        // Desktop collapsed state remains owned by the shared shell controls.
     }
 
     function _removeLegacySidebarActions(sidebar) {

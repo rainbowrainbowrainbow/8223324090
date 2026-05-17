@@ -72,6 +72,11 @@ function fmtNum(n) {
     return n.toLocaleString('uk-UA');
 }
 
+function safeCssAccent(value, fallback = '#6366F1') {
+    const color = String(value || '').trim();
+    return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color) ? color : fallback;
+}
+
 function growthBadge(pct) {
     if (pct > 0) return `<span class="an-growth up">▲ ${pct}%</span>`;
     if (pct < 0) return `<span class="an-growth down">▼ ${Math.abs(pct)}%</span>`;
@@ -168,7 +173,11 @@ function renderKPIs(data) {
         </div>
         <div class="an-kpi-card orange">
             <div class="an-kpi-label">Фін. дохід / витрати</div>
-            <div class="an-kpi-value" style="font-size:22px">${fmtMoney(f.income)} <span style="font-size:16px;color:var(--gray-400)">/</span> <span style="color:#EF4444">${fmtMoney(f.expense)}</span></div>
+            <div class="an-kpi-value an-kpi-value--split">
+                ${fmtMoney(f.income)}
+                <span class="an-inline-divider">/</span>
+                <span class="an-danger-text">${fmtMoney(f.expense)}</span>
+            </div>
             <div class="an-kpi-sub">
                 ${growthBadge(f.profitGrowth)}
                 <span class="an-kpi-prev">Прибуток: ${fmtMoney(f.profit)}</span>
@@ -184,7 +193,11 @@ function renderKPIs(data) {
         </div>
         <div class="an-kpi-card red">
             <div class="an-kpi-label">HR: годин / працівників</div>
-            <div class="an-kpi-value" style="font-size:22px">${h.totalHours || 0} <span style="font-size:14px;color:var(--gray-400)">год</span> / ${h.activeStaff || 0} <span style="font-size:14px;color:var(--gray-400)">осіб</span></div>
+            <div class="an-kpi-value an-kpi-value--split">
+                ${h.totalHours || 0} <span class="an-inline-meta">год</span>
+                <span class="an-inline-divider">/</span>
+                ${h.activeStaff || 0} <span class="an-inline-meta">осіб</span>
+            </div>
         </div>
     `;
 }
@@ -205,8 +218,8 @@ function renderCharts(data) {
                 <div class="an-chart-title">Доходи бронювань по днях</div>
                 <div id="dailyBookingsChart" class="an-bar-chart"></div>
                 <div class="an-legend">
-                    <div class="an-legend-item"><div class="an-legend-dot" style="background:#10B981"></div> Виручка</div>
-                    <div class="an-legend-item"><div class="an-legend-dot" style="background:#3B82F6"></div> Кількість</div>
+                    <div class="an-legend-item"><div class="an-legend-dot an-legend-dot--success"></div> Виручка</div>
+                    <div class="an-legend-item"><div class="an-legend-dot an-legend-dot--info"></div> Кількість</div>
                 </div>
             </div>
 
@@ -214,8 +227,8 @@ function renderCharts(data) {
                 <div class="an-chart-title">Фінансові потоки по днях</div>
                 <div id="dailyFinanceChart" class="an-bar-chart"></div>
                 <div class="an-legend">
-                    <div class="an-legend-item"><div class="an-legend-dot" style="background:#10B981"></div> Доходи</div>
-                    <div class="an-legend-item"><div class="an-legend-dot" style="background:#EF4444"></div> Витрати</div>
+                    <div class="an-legend-item"><div class="an-legend-dot an-legend-dot--success"></div> Доходи</div>
+                    <div class="an-legend-item"><div class="an-legend-dot an-legend-dot--danger"></div> Витрати</div>
                 </div>
             </div>
 
@@ -226,7 +239,7 @@ function renderCharts(data) {
                 </div>
                 <div class="an-chart-container">
                     <div class="an-chart-title">Навантаження по днях тижня</div>
-                    <div id="weekdayChart" class="an-bar-chart" style="height:120px"></div>
+                    <div id="weekdayChart" class="an-bar-chart an-bar-chart--short"></div>
                 </div>
             </div>
 
@@ -253,7 +266,7 @@ function renderCharts(data) {
 
 function renderDailyBookingsChart(daily) {
     const el = document.getElementById('dailyBookingsChart');
-    if (!daily.length) { el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px">Немає даних</div>'; return; }
+    if (!daily.length) { el.innerHTML = '<div class="an-empty-state">Немає даних</div>'; return; }
     const maxRev = Math.max(...daily.map(d => d.revenue), 1);
     const maxCnt = Math.max(...daily.map(d => d.count), 1);
     el.innerHTML = daily.map(d => {
@@ -271,7 +284,7 @@ function renderDailyBookingsChart(daily) {
 
 function renderDailyFinanceChart(daily) {
     const el = document.getElementById('dailyFinanceChart');
-    if (!daily.length) { el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:40px">Немає даних</div>'; return; }
+    if (!daily.length) { el.innerHTML = '<div class="an-empty-state">Немає даних</div>'; return; }
     const maxVal = Math.max(...daily.map(d => Math.max(d.income, d.expense)), 1);
     el.innerHTML = daily.map(d => {
         const incH = Math.max((d.income / maxVal) * 140, 2);
@@ -288,22 +301,22 @@ function renderDailyFinanceChart(daily) {
 
 function renderTopPrograms(programs) {
     const el = document.getElementById('topProgramsChart');
-    if (!programs.length) { el.innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:8px">Немає даних</div>'; return; }
+    if (!programs.length) { el.innerHTML = '<div class="an-empty-state an-empty-state--compact">Немає даних</div>'; return; }
     const maxRev = Math.max(...programs.map(p => p.revenue), 1);
     el.innerHTML = `<table class="an-mini-table">${programs.map((p, i) => {
         const rankClass = i < 3 ? `rank-${i + 1}` : 'rank-n';
         return `<tr>
             <td style="width:40px"><span class="rank ${rankClass}">${i + 1}</span></td>
-            <td style="font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.name) || '—'}</td>
-            <td style="width:40px;text-align:center;font-size:12px;color:var(--gray-400)">${p.count}x</td>
-            <td style="text-align:right;font-weight:700;color:#10B981">${fmtMoney(p.revenue)}</td>
+            <td class="an-program-name">${escapeHtml(p.name) || '—'}</td>
+            <td class="an-table-count" style="width:40px">${p.count}x</td>
+            <td class="an-money-positive">${fmtMoney(p.revenue)}</td>
         </tr>`;
     }).join('')}</table>`;
 }
 
 function renderWeekdayChart(weekday) {
     const el = document.getElementById('weekdayChart');
-    if (!weekday.length) { el.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:30px">Немає даних</div>'; return; }
+    if (!weekday.length) { el.innerHTML = '<div class="an-empty-state an-empty-state--chart">Немає даних</div>'; return; }
     const maxCnt = Math.max(...weekday.map(w => w.count), 1);
     el.innerHTML = weekday.map(w => {
         const h = Math.max((w.count / maxCnt) * 100, 2);
@@ -318,42 +331,45 @@ function renderWeekdayChart(weekday) {
 
 function renderFinCategories(cats) {
     const el = document.getElementById('finCatsChart');
-    if (!cats.length) { el.innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:8px">Немає даних</div>'; return; }
+    if (!cats.length) { el.innerHTML = '<div class="an-empty-state an-empty-state--compact">Немає даних</div>'; return; }
     const maxTotal = Math.max(...cats.map(c => c.total), 1);
-    el.innerHTML = cats.slice(0, 8).map(c => `
-        <div class="an-hbar-row">
-            <span class="an-hbar-label">${escapeHtml(c.icon) || ''} ${escapeHtml(c.name)}</span>
-            <div class="an-hbar-track">
-                <div class="an-hbar-fill" style="width:${Math.round(c.total / maxTotal * 100)}%;background:${c.color || '#6366F1'}"></div>
+    el.innerHTML = cats.slice(0, 8).map(c => {
+        const accent = safeCssAccent(c.color);
+        return `
+            <div class="an-hbar-row">
+                <span class="an-hbar-label">${escapeHtml(c.icon) || ''} ${escapeHtml(c.name)}</span>
+                <div class="an-hbar-track">
+                    <div class="an-hbar-fill" style="width:${Math.round(c.total / maxTotal * 100)}%;--an-hbar-accent:${accent}"></div>
+                </div>
+                <span class="an-hbar-value">${fmtMoney(c.total)}</span>
             </div>
-            <span class="an-hbar-value">${fmtMoney(c.total)}</span>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 function renderSegments(seg) {
     const el = document.getElementById('segmentsChart');
-    if (!seg || !seg.total) { el.innerHTML = '<div style="color:var(--gray-400);font-size:13px;padding:8px">Немає даних</div>'; return; }
+    if (!seg || !seg.total) { el.innerHTML = '<div class="an-empty-state an-empty-state--compact">Немає даних</div>'; return; }
     el.innerHTML = `
         <div class="an-segments">
             <div class="an-segment">
-                <div class="an-segment-count" style="color:#10B981">${seg.champions || 0}</div>
+                <div class="an-segment-count an-segment-count--champions">${seg.champions || 0}</div>
                 <div class="an-segment-label">Чемпіони (5+)</div>
             </div>
             <div class="an-segment">
-                <div class="an-segment-count" style="color:#3B82F6">${seg.loyal || 0}</div>
+                <div class="an-segment-count an-segment-count--loyal">${seg.loyal || 0}</div>
                 <div class="an-segment-label">Лояльні (3-4)</div>
             </div>
             <div class="an-segment">
-                <div class="an-segment-count" style="color:#F59E0B">${seg.potential || 0}</div>
+                <div class="an-segment-count an-segment-count--potential">${seg.potential || 0}</div>
                 <div class="an-segment-label">Нові (1-2)</div>
             </div>
             <div class="an-segment">
-                <div class="an-segment-count" style="color:#94A3B8">${seg.inactive || 0}</div>
+                <div class="an-segment-count an-segment-count--inactive">${seg.inactive || 0}</div>
                 <div class="an-segment-label">Неактивні</div>
             </div>
         </div>
-        <div style="text-align:center;margin-top:8px;font-size:12px;color:var(--gray-400)">Всього: ${seg.total} клієнтів</div>
+        <div class="an-segment-total">Всього: ${seg.total} клієнтів</div>
     `;
 }
 
@@ -380,19 +396,19 @@ function renderDealsLifecycle(data) {
             <div class="an-charts-row">
                 <div class="an-chart-container">
                     <div class="an-chart-title">${fmtDate(data.period?.from)} — ${fmtDate(data.period?.to)}</div>
-                    <div class="an-kpi-grid" style="margin-bottom:12px">
+                    <div class="an-kpi-grid an-kpi-grid--compact">
                         <div class="an-kpi-card blue"><div class="an-kpi-label">Прийнято</div><div class="an-kpi-value">${fmtNum(data.accepted)}</div></div>
                         <div class="an-kpi-card green"><div class="an-kpi-label">Закрито</div><div class="an-kpi-value">${fmtNum(data.closed)}</div></div>
                         <div class="an-kpi-card teal"><div class="an-kpi-label">Конверсія</div><div class="an-kpi-value">${data.conversionRatio || 0}%</div></div>
                     </div>
-                    <div style="font-size:12px;color:var(--gray-400)">Accepted: deposit_received/waiting. Closed: completed/closed.</div>
+                    <div class="an-helper-text">Accepted: deposit_received/waiting. Closed: completed/closed.</div>
                 </div>
                 <div class="an-chart-container">
                     <div class="an-chart-title">Динаміка за датами</div>
-                    <div class="an-bar-chart" style="height:140px">${bars || '<div style="color:var(--gray-400);font-size:13px;padding:8px">Немає даних</div>'}</div>
+                    <div class="an-bar-chart an-bar-chart--deals">${bars || '<div class="an-empty-state an-empty-state--chart">Немає даних</div>'}</div>
                     <div class="an-legend">
-                        <div class="an-legend-item"><div class="an-legend-dot" style="background:#3B82F6"></div> Прийнято</div>
-                        <div class="an-legend-item"><div class="an-legend-dot" style="background:#10B981"></div> Закрито</div>
+                        <div class="an-legend-item"><div class="an-legend-dot an-legend-dot--info"></div> Прийнято</div>
+                        <div class="an-legend-item"><div class="an-legend-dot an-legend-dot--success"></div> Закрито</div>
                     </div>
                 </div>
             </div>
@@ -414,7 +430,7 @@ function renderComparison(data) {
         <div class="an-section">
             <h3 class="an-section-title">Порівняння з попереднім періодом</h3>
             <div class="an-chart-container">
-                <div class="an-chart-title" style="margin-bottom:8px">
+                <div class="an-chart-title an-chart-title--spaced">
                     Поточний: ${fmtPeriod(data.current)} &nbsp;vs&nbsp; Попередній: ${fmtPeriod(data.previous)}
                 </div>
                 <table class="an-comp-table">
@@ -432,7 +448,7 @@ function renderComparison(data) {
                             const fmt = isMoney ? fmtMoney : fmtNum;
                             return `<tr>
                                 <td>${m.label}</td>
-                                <td style="font-weight:700">${fmt(m.current)}</td>
+                                <td class="an-comp-current">${fmt(m.current)}</td>
                                 <td>${fmt(m.previous)}</td>
                                 <td>${growthBadge(m.growth)}</td>
                             </tr>`;

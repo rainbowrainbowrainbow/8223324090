@@ -4,6 +4,16 @@
 
 ---
 
+## v0.55.6 - Аналітика: темна тема і контраст
+
+### Analytics / Dark Theme [codex]
+- **Dark Theme** - вкладку `Аналітика` переведено на власний dark surface contract без білих карток, світлих chart-поверхонь і light-mode table/segment плям.
+- **Typography** - вирівняно primary, secondary і muted text для KPI, charts, tables, helper text і segment blocks, щоб тексти читалися впевнено в dark mode.
+- **Charts & Tables** - period tabs, KPI cards, chart containers, table headers, horizontal tracks, legends і customer segments отримали єдині dark-aware кольори.
+- **Maintainability** - критичні inline color styles у `js/analytics-page.js` замінено semantic classes; динамічні кольори фінкатегорій проходять через safe CSS color fallback.
+
+---
+
 ## v0.55.5 - Зарплатні схеми, калькулятор і звіти
 
 ### Payroll / Release [codex]

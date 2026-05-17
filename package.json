@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.55.14",
+  "version": "0.55.15",
   "eventGenix": {
-    "releaseLabel": "OmniClaw: чистий inbox і канали окремо"
+    "releaseLabel": "Звіти: без зайвих графіків"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

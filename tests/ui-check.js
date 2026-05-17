@@ -237,6 +237,14 @@ checkPage('tasks.html', (doc) => {
     check('Tasks page has no Focus tab button', !doc.querySelector('[data-view="focus"]'));
 });
 
+checkPage('reports.html', (doc, html) => {
+    const reportsCode = fs.readFileSync(path.join(ROOT, 'js', 'reports-page.js'), 'utf8');
+    const removedChartText = ['Динаміка прибутку', 'Витрати по категоріях', 'Доходи vs Витрати (по днях)'];
+    check('Reports page removes low-signal chart blocks', removedChartText.every(text => !html.includes(text)));
+    check('Reports page has no chart canvases or Chart.js CDN', !doc.getElementById('barChart') && !doc.getElementById('pieChart') && !doc.getElementById('lineChart') && !html.includes('cdn.jsdelivr.net/npm/chart.js'));
+    check('Reports page script no longer renders Chart.js widgets', !reportsCode.includes('renderCharts') && !reportsCode.includes('new Chart(') && !reportsCode.includes('rpt-chart'));
+});
+
 // ═══════════════════════════════════════════════════
 // JS FILE CHECKS
 // ═══════════════════════════════════════════════════

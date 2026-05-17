@@ -1,11 +1,11 @@
 /**
  * js/reports-page.js — Reports page frontend (v32.7)
  *
- * Summary cards, filters, table with sorting/pagination, Chart.js charts,
+ * Summary cards, filters, table with sorting/pagination,
  * on-duty accountants, hashtag dashboard, add/edit modal with hashtag support.
  */
 
-/* global apiVerifyToken, initDarkMode, Chart */
+/* global apiVerifyToken, initDarkMode */
 
 const ReportsPage = (() => {
     let _reports = [];
@@ -19,11 +19,6 @@ const ReportsPage = (() => {
     let _expandedRow = null;
     let _editingId = null;
     let _modalHashtags = [];
-
-    // Chart instances
-    let _barChart = null;
-    let _pieChart = null;
-    let _lineChart = null;
 
     const EXPENSE_CATEGORIES = ['Афіша', 'ЗП', 'Майстер-класи', 'ДАР', 'Костюми', 'Квести', 'Реквізит', 'Аквагрим', 'Декорації', 'Офіс', 'Інше'];
     const DEFAULT_HASHTAGS = ['СШ-Парк', 'СШ-Особистий', 'ДАР'];
@@ -88,8 +83,6 @@ const ReportsPage = (() => {
         done: 'Опрацьовано',
         rejected: 'Відхилено'
     };
-
-    const PIE_COLORS = ['#8B5CF6', '#EC4899', '#F97316', '#EAB308', '#22C55E', '#06B6D4', '#6366F1', '#F43F5E'];
 
     // ==========================================
     // DATE RANGE HELPERS
@@ -169,7 +162,6 @@ const ReportsPage = (() => {
 
             _summary = await apiRequest('GET', url);
             renderSummaryCards();
-            renderCharts();
         } catch (err) {
             console.error('Load summary error:', err);
         }
@@ -497,124 +489,6 @@ const ReportsPage = (() => {
     function goPage(page) {
         _page = page;
         loadReports();
-    }
-
-    // ==========================================
-    // RENDER: Charts (Chart.js)
-    // ==========================================
-
-    function renderCharts() {
-        if (!_summary) return;
-        renderBarChart();
-        renderPieChart();
-        renderLineChart();
-    }
-
-    function renderBarChart() {
-        const canvas = document.getElementById('barChart');
-        if (!canvas || !_summary) return;
-
-        const daily = _summary.daily || [];
-        const days = {};
-        daily.forEach(d => {
-            const key = d.day?.slice(0, 10) || d.day;
-            if (!days[key]) days[key] = { income: 0, expense: 0 };
-            days[key][d.type] = parseFloat(d.total) || 0;
-        });
-
-        const labels = Object.keys(days).sort().map(k => k.slice(5));
-        const incomeData = Object.keys(days).sort().map(k => days[k].income);
-        const expenseData = Object.keys(days).sort().map(k => days[k].expense);
-
-        if (_barChart) _barChart.destroy();
-        _barChart = new Chart(canvas, {
-            type: 'bar',
-            data: {
-                labels,
-                datasets: [
-                    { label: 'Доходи', data: incomeData, backgroundColor: 'rgba(16,185,129,0.7)', borderRadius: 4 },
-                    { label: 'Витрати', data: expenseData, backgroundColor: 'rgba(239,68,68,0.7)', borderRadius: 4 }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'top', labels: { font: { family: 'Inter', size: 12 } } } },
-                scales: { y: { beginAtZero: true, ticks: { callback: v => (v / 1000) + 'k' } } }
-            }
-        });
-    }
-
-    function renderPieChart() {
-        const canvas = document.getElementById('pieChart');
-        if (!canvas || !_summary) return;
-
-        const categories = (_summary.categories || []).filter(c => c.type === 'expense');
-        if (categories.length === 0) {
-            if (_pieChart) _pieChart.destroy();
-            _pieChart = null;
-            return;
-        }
-
-        const labels = categories.map(c => c.category || 'Інше');
-        const data = categories.map(c => parseFloat(c.total) || 0);
-
-        if (_pieChart) _pieChart.destroy();
-        _pieChart = new Chart(canvas, {
-            type: 'doughnut',
-            data: {
-                labels,
-                datasets: [{ data, backgroundColor: PIE_COLORS.slice(0, labels.length), borderWidth: 2 }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'right', labels: { font: { family: 'Inter', size: 11 }, padding: 12 } }
-                }
-            }
-        });
-    }
-
-    function renderLineChart() {
-        const canvas = document.getElementById('lineChart');
-        if (!canvas || !_summary) return;
-
-        const daily = _summary.daily || [];
-        const days = {};
-        daily.forEach(d => {
-            const key = d.day?.slice(0, 10) || d.day;
-            if (!days[key]) days[key] = { income: 0, expense: 0 };
-            days[key][d.type] = parseFloat(d.total) || 0;
-        });
-
-        const sortedKeys = Object.keys(days).sort();
-        const labels = sortedKeys.map(k => k.slice(5));
-        const profitData = sortedKeys.map(k => days[k].income - days[k].expense);
-
-        if (_lineChart) _lineChart.destroy();
-        _lineChart = new Chart(canvas, {
-            type: 'line',
-            data: {
-                labels,
-                datasets: [{
-                    label: 'Прибуток',
-                    data: profitData,
-                    borderColor: '#6366F1',
-                    backgroundColor: 'rgba(99,102,241,0.1)',
-                    fill: true,
-                    tension: 0.3,
-                    pointRadius: 3,
-                    pointBackgroundColor: '#6366F1'
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: { y: { ticks: { callback: v => (v / 1000) + 'k' } } }
-            }
-        });
     }
 
     // ==========================================

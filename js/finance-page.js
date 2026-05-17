@@ -1058,9 +1058,10 @@ function isTransEditDirty() {
 }
 
 function getAccountModalState() {
-    const ids = ['accName', 'accEmoji', 'accType', 'accDescription'];
+    const ids = ['accName', 'accEmoji', 'accType', 'accDescription', 'accIsPersonal'];
     return ids.map(id => {
         const el = document.getElementById(id);
+        if (el?.type === 'checkbox') return el.checked ? '1' : '0';
         return el ? String(el.value || '') : '';
     }).join('|');
 }
@@ -2062,7 +2063,7 @@ async function loadAccounts() {
             return;
         }
         container.innerHTML = accounts.map(a => {
-            const typeLabel = { cash: 'Готівка', card: 'Карта', bank: 'Банк' }[a.type] || a.type;
+            const typeLabel = { cash: 'Готівка', card: 'Карта', bank: 'Банк', personal: 'Особистий' }[a.type] || a.type;
             return `<div class="fin-stat-card" style="display:flex;align-items:center;gap:12px;margin-bottom:8px;border-left:3px solid ${a.type === 'cash' ? '#10B981' : a.type === 'card' ? '#6366F1' : '#F59E0B'}">
                 <span style="font-size:24px">${escapeHtml(a.emoji)}</span>
                 <div style="flex:1">
@@ -2083,6 +2084,8 @@ function openAddAccountModal() {
     document.getElementById('accEmoji').value = '💳';
     document.getElementById('accType').value = 'cash';
     document.getElementById('accDescription').value = '';
+    const personalInput = document.getElementById('accIsPersonal');
+    if (personalInput) personalInput.checked = false;
     _accountModalInitialState = getAccountModalState();
     modal?.classList.remove('hidden');
     if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.remember(modal);
@@ -2124,11 +2127,13 @@ async function saveAccount() {
     const name = document.getElementById('accName')?.value?.trim();
     if (!name) { showNotification('Введи назву', 'error'); return; }
     try {
+        const isPersonal = document.getElementById('accIsPersonal')?.checked === true;
         await apiRequest('POST', '/api/finance/accounts', {
             name,
             emoji: document.getElementById('accEmoji')?.value || '💳',
             type: document.getElementById('accType')?.value,
-            description: document.getElementById('accDescription')?.value?.trim() || null
+            description: document.getElementById('accDescription')?.value?.trim() || null,
+            isPersonal
         });
         const modal = document.getElementById('addAccountModal');
         if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.markClean(modal);

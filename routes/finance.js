@@ -1448,16 +1448,19 @@ router.get('/accounts', async (req, res) => {
 
 router.post('/accounts', requireRole('admin', 'senior_manager'), async (req, res) => {
     try {
-        const { name, emoji, description, type, sortOrder } = req.body;
+        const { name, emoji, description, type, sortOrder, isPersonal } = req.body;
         if (!name?.trim()) return res.status(400).json({ error: 'name required' });
         if (type && !ACCOUNT_TYPES.includes(type)) {
             return res.status(400).json({ error: 'Invalid type (cash|card|bank)' });
         }
+        const personalFlag = isPersonal === true || isPersonal === 'true';
         const r = await pool.query(
-            `INSERT INTO finance_accounts (name, emoji, description, type, sort_order, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            `INSERT INTO finance_accounts
+                (name, emoji, description, type, sort_order, is_personal, owner_username, crm_created_by, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
             [name.trim(), emoji || '💳', description?.trim() || null,
-             type || 'cash', sortOrder || 99, req.user.username]
+             type || 'cash', sortOrder || 99, personalFlag,
+             personalFlag ? req.user.username : null, req.user.username, req.user.username]
         );
         res.json({ success: true, account: r.rows[0] });
     } catch (err) {
@@ -1470,13 +1473,14 @@ router.patch('/accounts/:id', requireRole('admin', 'senior_manager'), async (req
     try {
         const id = parseInt(req.params.id, 10);
         if (isNaN(id)) return res.status(400).json({ error: 'Invalid account ID' });
-        const { name, emoji, description, isActive, sortOrder } = req.body;
+        const { name, emoji, description, isActive, sortOrder, isPersonal } = req.body;
         const sets = [], vals = [];
         let idx = 1;
         if (name !== undefined)        { sets.push(`name = $${idx++}`);        vals.push(String(name).trim()); }
         if (emoji !== undefined)       { sets.push(`emoji = $${idx++}`);       vals.push(String(emoji).slice(0, 10)); }
         if (description !== undefined) { sets.push(`description = $${idx++}`); vals.push(description?.trim() || null); }
         if (isActive !== undefined)    { sets.push(`is_active = $${idx++}`);   vals.push(isActive === true || isActive === 'true'); }
+        if (isPersonal !== undefined)  { sets.push(`is_personal = $${idx++}`); vals.push(isPersonal === true || isPersonal === 'true'); }
         if (sortOrder !== undefined)   { sets.push(`sort_order = $${idx++}`);  vals.push(parseInt(sortOrder, 10) || 0); }
         if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
         vals.push(id);

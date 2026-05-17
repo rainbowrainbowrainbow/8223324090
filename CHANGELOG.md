@@ -4,6 +4,15 @@
 
 ---
 
+## v0.55.8 - Рахунки: системна галочка у формі
+
+### Finance UI / Forms [codex]
+- **Finance UI** - checkbox у модалці створення рахунку приведено до системного стилю CRM замість нативної browser-галочки.
+- **Form Controls** - додано reusable `fin-check` / `form-check` contract для unchecked, checked, hover, focus, disabled і dark-mode станів.
+- **Accounts API** - toggle `Особистий рахунок` тепер передає `isPersonal` і зберігає `finance_accounts.is_personal`, щоб control був не декоративним, а частиною data contract.
+
+---
+
 ## v0.55.7 - Аналітика: темна тема без білих фонів
 
 ### Analytics / Release [codex]

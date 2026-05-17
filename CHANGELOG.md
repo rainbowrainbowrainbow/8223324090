@@ -4,6 +4,16 @@
 
 ---
 
+## v0.55.23 - Навігація: стабільне меню на сторінках
+
+### Sidebar / Cross-page Geometry [codex]
+- **Page-container shell** - сторінки з `main.page-container`, включно з `/graduation`, тепер отримують той самий sidebar offset і ширину, що й `main-content`.
+- **Brand layout** - `Event Genix` у sidebar більше не переноситься у дві криві колонки й не стискає шестерню.
+- **Identity card** - ім'я, роль і статус користувача отримали bounded overflow contract, щоб картка не ламала меню на вузьких сторінках.
+- **Guardrail** - додано UI-smoke перевірку для page-container geometry і nowrap-контракту бренду.
+
+---
+
 ## v0.55.22 - Навігація: повернено шестерню
 
 ### Sidebar / Brand Mark [codex]

@@ -3395,3 +3395,99 @@ body.dark-mode .sidebar-nav::after,
   filter: none !important;
   animation: none !important;
 }
+
+/* v0.55.23: keep the Claude-style shell geometry stable on page-container pages. */
+@media (min-width: 1024px) {
+  body.shell-ready .sidebar-nav:not(.collapsed) {
+    width: var(--eg-claude-sidebar-w) !important;
+    min-width: var(--eg-claude-sidebar-w) !important;
+    max-width: var(--eg-claude-sidebar-w) !important;
+  }
+
+  body.shell-ready .header,
+  body.shell-ready .page-container,
+  body.shell-ready .main-content {
+    margin-left: var(--eg-claude-sidebar-w) !important;
+  }
+
+  body.shell-ready .page-container,
+  body.shell-ready .main-content {
+    width: calc(100% - var(--eg-claude-sidebar-w)) !important;
+    max-width: none;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  body.shell-ready .sidebar-nav.collapsed ~ .header,
+  body.shell-ready .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header {
+    margin-left: 64px !important;
+  }
+
+  body.shell-ready .sidebar-nav.collapsed ~ .header ~ .page-container,
+  body.shell-ready .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .page-container,
+  body.shell-ready .sidebar-nav.collapsed ~ .header ~ .main-content,
+  body.shell-ready .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .main-content {
+    margin-left: 64px !important;
+    width: calc(100% - 64px) !important;
+  }
+}
+
+.sidebar-brand {
+  display: flex !important;
+  align-items: center !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.sidebar-brand .em-logo {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  overflow: hidden !important;
+}
+
+.sidebar-brand .em-logo-title {
+  display: block !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: 22px !important;
+  line-height: 1.05 !important;
+  letter-spacing: 0 !important;
+}
+
+.sidebar-brand .em-logo-sub {
+  display: block !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  letter-spacing: 0.14em !important;
+}
+
+.sidebar-identity-card,
+.sidebar-identity-main,
+.sidebar-identity-title-row,
+.sidebar-identity-title-line,
+.sidebar-identity-summary {
+  min-width: 0 !important;
+}
+
+.sidebar-identity-title-line {
+  width: 100% !important;
+}
+
+.sidebar-identity-name {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  letter-spacing: 0 !important;
+}
+
+.sidebar-identity-health {
+  flex: 0 0 auto !important;
+  min-width: 0 !important;
+  letter-spacing: 0.12em !important;
+}

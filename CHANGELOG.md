@@ -4,6 +4,16 @@
 
 ---
 
+## v0.55.21 - Навігація: повний sidebar shell
+
+### Shared Shell / Cross-page Guardrail [codex]
+- **Content page** - сторінку `/content` підключено до стандартного CRM shell: sidebar, header, `mainApp`, `main-content`, login overlay і mobile overlay тепер є в DOM так само, як на решті сторінок.
+- **Sidebar contract** - прибрано розрив, коли сторінка завантажувала `sidebar-aurora.css` / `sidebar.js` і викликала `Sidebar.init("#sidebarLinks")`, але не мала `#sidebarNav` та `#sidebarLinks`.
+- **Cross-page audit** - перевірено сторінки зі спільним sidebar: `Меню дня` рендериться як 3 кнопки, `+ Додатково` як 4 CRM-пункти без зовнішніх лінків, дублікати shell-елементів не створюються.
+- **Release safety** - додано UI guard, який ловить сторінки з підключеним sidebar script без реального sidebar shell.
+
+---
+
 ## v0.55.20 - Навігація: CRM extras і меню дня
 
 ### Sidebar / IA Cleanup [codex]

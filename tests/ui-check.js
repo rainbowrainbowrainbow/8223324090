@@ -354,12 +354,24 @@ const missingHiddenMainAppPages = mainAppShellPages.filter(page => {
     const main = page.doc.getElementById('mainApp');
     return !main.classList.contains('main-app') || !main.classList.contains('hidden');
 });
+const sidebarLinkedPages = htmlFiles
+    .map(file => {
+        const html = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        const dom = new JSDOM(html);
+        return { file, dom, doc: dom.window.document, html };
+    })
+    .filter(page => page.html.includes('components/sidebar.js') || page.html.includes('sidebar-aurora.css') || page.html.includes('Sidebar.init'));
+const sidebarLinkedPagesWithoutShell = sidebarLinkedPages.filter(page => (
+    !page.doc.getElementById('sidebarNav') || !page.doc.getElementById('sidebarLinks')
+));
 
 check('No standard page nests main-content inside page-container', nestedShellPages.length === 0);
 check('No shell containers use inline left offsets', inlineOffsetPages.length === 0);
 check('Only documented full-app pages use main-content shell', unexpectedMainShellPages.length === 0);
 check('All mainApp shells start from hidden main-app baseline', missingHiddenMainAppPages.length === 0);
+check('Every page that loads shared sidebar assets has sidebarNav/sidebarLinks shell', sidebarLinkedPagesWithoutShell.length === 0);
 shellPages.forEach(page => page.dom.window.close());
+sidebarLinkedPages.forEach(page => page.dom.window.close());
 
 // Check sidebar nav items
 const sidebarCode = fs.readFileSync(path.join(ROOT, 'js/components/sidebar.js'), 'utf8');

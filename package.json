@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.55.8",
+  "version": "0.55.9",
   "eventGenix": {
-    "releaseLabel": "Рахунки: системна галочка у формі"
+    "releaseLabel": "Рахунки: системний checkbox у модалці"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

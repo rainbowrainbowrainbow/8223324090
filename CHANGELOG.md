@@ -4,6 +4,15 @@
 
 ---
 
+## v0.55.9 - Рахунки: системний checkbox у модалці
+
+### Finance UI / Release [codex]
+- **Опис релізу** - видиму назву і release notes переписано конкретніше: тепер одразу зрозуміло, що зміна стосується checkbox у модалці створення рахунку.
+- **Finance UI** - опис фіксує CRM-style checkbox contract для модалки рахунку без нативного browser-control вигляду.
+- **Deploy** - версійні маркери, cache-bust теги, changelog і `/api/version` піднято на `v0.55.9` для чистого production smoke.
+
+---
+
 ## v0.55.8 - Рахунки: системна галочка у формі
 
 ### Finance UI / Forms [codex]

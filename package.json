@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.54.6",
+  "version": "0.54.7",
   "eventGenix": {
-    "releaseLabel": "Tasks Taxonomy Polish"
+    "releaseLabel": "Sidebar AI Cockpit Hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

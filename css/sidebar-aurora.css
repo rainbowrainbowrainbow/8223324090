@@ -1434,8 +1434,22 @@ body.dark-mode .sidebar-nav {
   opacity: 0.62;
 }
 
+.sidebar-command-kicker {
+  position: relative;
+  z-index: 1;
+  display: block;
+  padding: 2px 6px 0;
+  color: color-mix(in srgb, var(--sb-primary) 58%, var(--sb-text-faint));
+  font-size: 8.5px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
 .sidebar-identity-card {
   position: relative;
+  z-index: 1;
   width: 100%;
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
@@ -1532,10 +1546,15 @@ body.dark-mode .sidebar-nav {
 
 .sidebar-focus-deck {
   position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-top: 8px;
+}
+
+.sidebar-focus-deck:not(.has-funnel) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .focus-chip {
@@ -1558,10 +1577,14 @@ body.dark-mode .sidebar-nav {
   transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
 }
 
+.focus-chip[hidden] {
+  display: none !important;
+}
+
 .focus-chip:hover,
 .focus-chip:focus-visible {
   outline: none;
-  transform: translateY(-1px);
+  transform: none;
   border-color: color-mix(in srgb, currentColor 24%, var(--sb-border));
   background: color-mix(in srgb, var(--sb-surface-hi) 86%, transparent);
 }
@@ -1630,6 +1653,7 @@ body.dark-mode .sidebar-nav {
 
 .sidebar-primary-action {
   position: relative;
+  z-index: 1;
   width: 100%;
   display: grid;
   gap: 2px;
@@ -1848,6 +1872,7 @@ body.dark-mode .sidebar-nav {
 
   .sidebar-nav.collapsed .sidebar-identity-main,
   .sidebar-nav.collapsed .sidebar-identity-chevron,
+  .sidebar-nav.collapsed .sidebar-command-kicker,
   .sidebar-nav.collapsed .sidebar-primary-action,
   .sidebar-nav.collapsed .focus-chip-label,
   .sidebar-nav.collapsed .focus-chip-icon,
@@ -1873,6 +1898,16 @@ body.dark-mode .sidebar-nav {
 
   .sidebar-nav.collapsed .focus-chip-value {
     font-size: 12px;
+  }
+
+  .sidebar-nav.collapsed .sidebar-group-header.has-active {
+    background: color-mix(in srgb, var(--sb-primary) 11%, transparent) !important;
+    box-shadow: inset 3px 0 0 color-mix(in srgb, var(--sb-primary) 76%, transparent) !important;
+  }
+
+  .sidebar-nav.collapsed .sidebar-group-header.has-active .nav-icon {
+    color: var(--sb-primary) !important;
+    background: color-mix(in srgb, var(--sb-primary) 10%, transparent) !important;
   }
 
   .sidebar-nav.collapsed:hover .sidebar-command-deck {
@@ -1902,6 +1937,10 @@ body.dark-mode .sidebar-nav {
     display: grid !important;
   }
 
+  .sidebar-nav.collapsed:hover .sidebar-command-kicker {
+    display: block !important;
+  }
+
   .sidebar-nav.collapsed:hover .sidebar-identity-chevron {
     display: inline-flex !important;
   }
@@ -1909,6 +1948,10 @@ body.dark-mode .sidebar-nav {
   .sidebar-nav.collapsed:hover .sidebar-focus-deck {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
+  }
+
+  .sidebar-nav.collapsed:hover .sidebar-focus-deck:not(.has-funnel) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .sidebar-nav.collapsed:hover .focus-chip {
@@ -1928,6 +1971,10 @@ body.dark-mode .sidebar-nav {
   .sidebar-focus-deck {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
+  }
+
+  .sidebar-focus-deck:not(.has-funnel) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .focus-chip {

@@ -12,7 +12,7 @@ const Sidebar = (() => {
         funnelWidgetTimer: null,
         roleRenderApplied: false
     };
-    const GROUP_STATE_VERSION = 'ai-cockpit-v1';
+    const GROUP_STATE_VERSION = 'ai-cockpit-v2';
     const COMMAND_DEFAULT_STATE = {
         tasksActive: 0,
         tasksOverdue: 0,
@@ -304,7 +304,7 @@ const Sidebar = (() => {
         if (!container) return;
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
         const savedUser = _getCurrentSidebarUser();
-        const role = (typeof getUserRole === 'function' ? getUserRole() : null) || savedUser?.role || null;
+        const role = _getSidebarPrimaryRole(savedUser) || (typeof getUserRole === 'function' ? getUserRole() : null) || null;
 
         let currentGroupKey = null;
         let html = '';
@@ -663,6 +663,7 @@ const Sidebar = (() => {
             deck.id = 'sidebarCommandDeck';
             deck.className = 'sidebar-command-deck';
             deck.innerHTML = `
+                <span class="sidebar-command-kicker">Клешня · операційний стан</span>
                 <button class="sidebar-identity-card" id="sidebarIdentityCard" type="button" aria-label="Відкрити профіль">
                     <span class="sidebar-identity-avatar" id="sidebarIdentityAvatar">?</span>
                     <span class="sidebar-identity-main">
@@ -712,6 +713,7 @@ const Sidebar = (() => {
         }
 
         _hydrateCommandDeckUser();
+        _syncFocusDeckAccess();
         _updateSidebarCommandDeck();
     }
 
@@ -784,7 +786,7 @@ const Sidebar = (() => {
         const actionEl = document.getElementById('sidebarPrimaryAction');
         if (!actionEl) return;
         const user = _getCurrentSidebarUser();
-        const role = user?.role || (typeof getUserRole === 'function' ? getUserRole() : '');
+        const role = _getSidebarPrimaryRole(user) || (typeof getUserRole === 'function' ? getUserRole() : '');
         const action = _getSidebarPrimaryAction(role, _commandState);
         actionEl.querySelector('.sidebar-primary-action-kicker')?.replaceChildren(document.createTextNode(action.kicker));
         actionEl.querySelector('.sidebar-primary-action-label')?.replaceChildren(document.createTextNode(action.label));
@@ -834,40 +836,11 @@ const Sidebar = (() => {
     }
 
     function _initRipple() {
-        const sidebar = document.getElementById('sidebarNav');
-        if (!sidebar || sidebar.dataset.rippleBound === 'true' || _motionReduced()) return;
-        sidebar.dataset.rippleBound = 'true';
-        sidebar.addEventListener('click', (event) => {
-            const link = event.target.closest('.nav-link');
-            if (!link) return;
-            const rect = link.getBoundingClientRect();
-            const ripple = document.createElement('span');
-            ripple.className = 'sidebar-ripple';
-            ripple.style.left = `${event.clientX - rect.left}px`;
-            ripple.style.top = `${event.clientY - rect.top}px`;
-            link.appendChild(ripple);
-            setTimeout(() => ripple.remove(), 700);
-        });
+        return;
     }
 
     function _initMagnetic() {
-        const sidebar = document.getElementById('sidebarNav');
-        if (!sidebar || _motionReduced()) return;
-        sidebar.querySelectorAll('.nav-link').forEach((link) => {
-            if (link.dataset.magBound === 'true') return;
-            const inner = link.querySelector('.nav-icon-magnet');
-            if (!inner) return;
-            link.dataset.magBound = 'true';
-            link.addEventListener('mousemove', (event) => {
-                const rect = inner.getBoundingClientRect();
-                const dx = (event.clientX - (rect.left + rect.width / 2)) / Math.max(rect.width, 1);
-                const dy = (event.clientY - (rect.top + rect.height / 2)) / Math.max(rect.height, 1);
-                inner.style.transform = `translate(${dx * 3}px, ${dy * 3}px) rotate(${dx * 6}deg)`;
-            });
-            link.addEventListener('mouseleave', () => {
-                inner.style.transform = '';
-            });
-        });
+        return;
     }
 
     function _alertSetFromStorage(key) {
@@ -986,9 +959,10 @@ const Sidebar = (() => {
         const widget = document.getElementById('focusChipFunnel');
         if (!widget) return;
         const user = _getCurrentSidebarUser();
-        const role = user?.role || (typeof getUserRole === 'function' ? getUserRole() : null);
+        const role = _getSidebarPrimaryRole(user) || (typeof getUserRole === 'function' ? getUserRole() : null);
         const canSeeFunnel = role ? hasAccess({ access: 'leads' }, role) : true;
         widget.hidden = !canSeeFunnel;
+        _syncFocusDeckAccess(canSeeFunnel);
         if (!canSeeFunnel) return;
 
         const token = localStorage.getItem('pzp_token');
@@ -1043,6 +1017,25 @@ const Sidebar = (() => {
         }
     }
 
+    function _getSidebarPrimaryRole(user) {
+        const roles = Array.isArray(user?.roles) ? user.roles : [];
+        return String(user?.role || user?.account_role || user?.accountRole || roles[0] || '').trim();
+    }
+
+    function _syncFocusDeckAccess(forceFunnelAccess = null) {
+        const deck = document.getElementById('sidebarFocusDeck');
+        const funnel = document.getElementById('focusChipFunnel');
+        if (!deck || !funnel) return;
+        const user = _getCurrentSidebarUser();
+        const role = _getSidebarPrimaryRole(user) || (typeof getUserRole === 'function' ? getUserRole() : null);
+        const canSeeFunnel = forceFunnelAccess === null
+            ? (role ? hasAccess({ access: 'leads' }, role) : true)
+            : !!forceFunnelAccess;
+        funnel.hidden = !canSeeFunnel;
+        deck.classList.toggle('has-funnel', canSeeFunnel);
+        deck.dataset.visibleCount = canSeeFunnel ? '3' : '2';
+    }
+
     function initUserCard() {
         let user = _getCurrentSidebarUser();
         if (!user) return;
@@ -1058,6 +1051,7 @@ const Sidebar = (() => {
         _bindProfileEntry(cardEl);
         _bindProfileEntry(nameEl);
         _hydrateCommandDeckUser();
+        _syncFocusDeckAccess();
         _updateSidebarCommandDeck();
         if (!_state.roleRenderApplied && Object.keys(_getGroupState()).length === 0) {
             _state.roleRenderApplied = true;

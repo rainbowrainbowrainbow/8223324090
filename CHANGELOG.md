@@ -4,6 +4,16 @@
 
 ---
 
+## v0.54.7 - Sidebar AI Cockpit Hardening
+
+### Sidebar / AI-first Navigation [codex]
+- **Command deck** - верхній блок sidebar отримав явний маркер `Клешня · операційний стан`, role-aware summary і clean empty state без повернення старих pills.
+- **Role focus** - стартовий стан груп переведено на `ai-cockpit-v2`, щоб користувачі отримували role-preferred секції замість успадкованого all-open меню.
+- **Focus deck** - ролі без доступу до воронки більше не бачать порожню третю колонку: deck перебудовується у дві корисні дії.
+- **Visual control** - вимкнено magnetic/ripple ефекти в навігації, щоб sidebar читався як спокійний AI-first cockpit, а не декоративний rail.
+
+---
+
 ## v0.54.6 - Tasks Taxonomy Polish
 
 ### Tasks / Operations [codex]

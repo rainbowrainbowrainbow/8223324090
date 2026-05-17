@@ -4,13 +4,13 @@
 
 ---
 
-## v0.55.27 - Навігація: інтегрований AI topbar
+## v0.55.28 - Навігація: системний shell offset
 
-### Shared Shell / Assistant Rail [codex]
-- **AI topbar** - верхній header і Клешня тепер зібрані в один компактний темний surface без великого розриву між панелями.
-- **Claude-style geometry** - AI-блок став нижчим і ближчим до референсу: аватар зліва, короткий текст по центру, пошук і дії справа.
-- **Responsive offsets** - додано окрему геометрію для згорнутого sidebar і вузьких екранів, щоб topbar не наїжджав на сторінки.
-- **Guardrail** - додано UI-smoke перевірку для integrated compact AI topbar contract.
+### Shared Shell / Sidebar Geometry [codex]
+- **Shell offset** - sidebar, header, `main-content` і `page-container` тепер використовують один width token замість старого `220px`.
+- **No overlay** - контент резервує реальну ширину нового меню ще до `shell-ready`, тому sidebar більше не накриває dashboard/widgets під час завантаження або на сторінках зі своїм handoff.
+- **Collapsed state** - згорнуте меню так само має окремий token `--eg-sidebar-collapsed-w`, і сторінки отримують правильний offset без hover-overlay.
+- **Guardrail** - додано UI-smoke перевірку, яка ловить повернення legacy offset і конфліктів між sidebar та page shell.
 
 ---
 

@@ -3896,3 +3896,57 @@ body.dark-mode .sidebar-nav,
   filter: brightness(1.08) !important;
   outline: none !important;
 }
+
+/* v0.55.28: system shell geometry source of truth.
+   The sidebar is wider than the legacy 220px shell, so every shared surface
+   must reserve the same width even before page-specific shell-ready handoff. */
+@media (min-width: 1024px) {
+  :root {
+    --eg-shell-sidebar-offset: var(--eg-claude-sidebar-w);
+  }
+
+  body[data-page-group] .sidebar-nav:not(.collapsed) {
+    width: var(--eg-shell-sidebar-offset) !important;
+    min-width: var(--eg-shell-sidebar-offset) !important;
+    max-width: var(--eg-shell-sidebar-offset) !important;
+  }
+
+  body[data-page-group] .header,
+  body[data-page-group] .page-container,
+  body[data-page-group] .main-content {
+    margin-left: var(--eg-shell-sidebar-offset) !important;
+    width: calc(100vw - var(--eg-shell-sidebar-offset)) !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  body[data-page-group] .main-content.panel-open {
+    width: calc(100vw - var(--eg-shell-sidebar-offset) - 340px) !important;
+  }
+
+  body[data-page-group] .sidebar-nav.collapsed ~ .header,
+  body[data-page-group] .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header,
+  body[data-page-group] .sidebar-nav.collapsed ~ .header ~ .page-container,
+  body[data-page-group] .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .page-container,
+  body[data-page-group] .sidebar-nav.collapsed ~ .header ~ .main-content,
+  body[data-page-group] .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .main-content {
+    margin-left: var(--eg-sidebar-collapsed-w) !important;
+    width: calc(100vw - var(--eg-sidebar-collapsed-w)) !important;
+  }
+
+  body[data-page-group] .sidebar-nav.collapsed ~ .header ~ .main-content.panel-open,
+  body[data-page-group] .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header ~ .main-content.panel-open {
+    width: calc(100vw - var(--eg-sidebar-collapsed-w) - 340px) !important;
+  }
+
+  body[data-page-group] .sidebar-nav:not(.collapsed) ~ .header + .crm-assistant-rail-host,
+  body[data-page-group] .sidebar-nav:not(.collapsed) ~ .sidebar-overlay ~ .header + .crm-assistant-rail-host {
+    margin-left: var(--eg-shell-sidebar-offset) !important;
+  }
+
+  body[data-page-group] .sidebar-nav.collapsed ~ .header + .crm-assistant-rail-host,
+  body[data-page-group] .sidebar-nav.collapsed ~ .sidebar-overlay ~ .header + .crm-assistant-rail-host {
+    margin-left: var(--eg-sidebar-collapsed-w) !important;
+  }
+}

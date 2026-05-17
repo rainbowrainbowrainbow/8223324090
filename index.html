@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.55.29">
-    <link rel="stylesheet" href="css/auth.css?v=0.55.29">
-    <link rel="stylesheet" href="css/layout.css?v=0.55.29">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.29">
-    <link rel="stylesheet" href="css/timeline.css?v=0.55.29">
-    <link rel="stylesheet" href="css/panel.css?v=0.55.29">
-    <link rel="stylesheet" href="css/modals.css?v=0.55.29">
-    <link rel="stylesheet" href="css/controls.css?v=0.55.29">
-    <link rel="stylesheet" href="css/features.css?v=0.55.29">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.29">
-    <link rel="stylesheet" href="css/responsive.css?v=0.55.29">
-    <link rel="stylesheet" href="css/pages.css?v=0.55.29">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.55.29">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.29">
+    <link rel="stylesheet" href="css/base.css?v=0.55.30">
+    <link rel="stylesheet" href="css/auth.css?v=0.55.30">
+    <link rel="stylesheet" href="css/layout.css?v=0.55.30">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.30">
+    <link rel="stylesheet" href="css/timeline.css?v=0.55.30">
+    <link rel="stylesheet" href="css/panel.css?v=0.55.30">
+    <link rel="stylesheet" href="css/modals.css?v=0.55.30">
+    <link rel="stylesheet" href="css/controls.css?v=0.55.30">
+    <link rel="stylesheet" href="css/features.css?v=0.55.30">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.30">
+    <link rel="stylesheet" href="css/responsive.css?v=0.55.30">
+    <link rel="stylesheet" href="css/pages.css?v=0.55.30">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.55.30">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.30">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.55.29 AI-провідник: інтерактивна картка">✨ 0.55.29 AI-провідник: інтерактивна картка</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.55.30 Навігація: компактне меню">✨ 0.55.30 Навігація: компактне меню</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.55.29 — AI-провідник: інтерактивна картка</p>
+                <p class="tagline">AI First CRM v0.55.30 — Навігація: компактне меню</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.55.29: AI-провідник: інтерактивна картка</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.55.30: Навігація: компактне меню</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1275,13 +1275,13 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.55.29 — AI-провідник: інтерактивна картка</h4>
+                    <h4>v0.55.30 — Навігація: компактне меню</h4>
                     <ul>
-                        <li><b>AI Avatar</b> — декоративну точку замінено на клікабельну AI-картку з лічильником сигналів і входом у повну панель Клешні.</li>
-                        <li><b>Context</b> — topbar тепер показує поточний екран, роль/режим і робочий фокус, щоб AI-вікно давало корисну інформацію одразу.</li>
-                        <li><b>Panel</b> — розгорнуте вікно має snapshot-картки: екран, роль, голос, сигнали, видимі попередження і кількість робочих елементів.</li>
-                        <li><b>Modes</b> — додано швидкі режими <code>Брифінг</code>, <code>Ризики</code>, <code>Наступна дія</code> з готовими prompt-сценаріями.</li>
-                        <li><b>Guardrail</b> — UI-smoke перевіряє, що shared assistant rail має context snapshot, signal meter і mode cards.</li>
+                        <li><b>Sidebar</b> — ліве меню стало компактнішим по ширині й висоті без повернення накладання на сторінки.</li>
+                        <li><b>Profile</b> — профільна картка, статус, роль і summary ущільнені, але повні імена та довгі посади не обрізаються жорстко.</li>
+                        <li><b>Alerts</b> — критичний блок став нижчим: менші badge, заголовок, опис і кнопка дії.</li>
+                        <li><b>Menu</b> — <code>Меню дня</code>, <code>Додатково</code> і основні nav rows отримали компактніші відступи, іконки та висоти.</li>
+                        <li><b>Guardrail</b> — UI-smoke перевіряє compact density contract, щоб меню знову не роздувалося.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -7074,25 +7074,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.55.29"></script>
-    <script src="js/api.js?v=0.55.29"></script>
-    <script src="js/ui.js?v=0.55.29"></script>
-    <script src="js/auth.js?v=0.55.29"></script>
-    <script src="js/timeline.js?v=0.55.29"></script>
-    <script src="js/booking.js?v=0.55.29"></script>
-    <script src="js/settings.js?v=0.55.29"></script>
-    <script src="js/booking-form.js?v=0.55.29"></script>
-    <script src="js/booking-linked.js?v=0.55.29"></script>
-    <script src="js/settings-dashboard.js?v=0.55.29"></script>
-    <script src="js/settings-history.js?v=0.55.29"></script>
-    <script src="js/settings-afisha.js?v=0.55.29"></script>
-    <script src="js/settings-certificates.js?v=0.55.29"></script>
-    <script src="js/offline.js?v=0.55.29"></script>
-    <script src="js/search.js?v=0.55.29"></script>
-    <script src="js/ws.js?v=0.55.29"></script>
-    <script src="js/app.js?v=0.55.29"></script>
-    <script src="js/kleshnya-widget.js?v=0.55.29"></script>
-    <script src="js/components/sidebar.js?v=0.55.29"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.55.29"></script>
+    <script src="js/config.js?v=0.55.30"></script>
+    <script src="js/api.js?v=0.55.30"></script>
+    <script src="js/ui.js?v=0.55.30"></script>
+    <script src="js/auth.js?v=0.55.30"></script>
+    <script src="js/timeline.js?v=0.55.30"></script>
+    <script src="js/booking.js?v=0.55.30"></script>
+    <script src="js/settings.js?v=0.55.30"></script>
+    <script src="js/booking-form.js?v=0.55.30"></script>
+    <script src="js/booking-linked.js?v=0.55.30"></script>
+    <script src="js/settings-dashboard.js?v=0.55.30"></script>
+    <script src="js/settings-history.js?v=0.55.30"></script>
+    <script src="js/settings-afisha.js?v=0.55.30"></script>
+    <script src="js/settings-certificates.js?v=0.55.30"></script>
+    <script src="js/offline.js?v=0.55.30"></script>
+    <script src="js/search.js?v=0.55.30"></script>
+    <script src="js/ws.js?v=0.55.30"></script>
+    <script src="js/app.js?v=0.55.30"></script>
+    <script src="js/kleshnya-widget.js?v=0.55.30"></script>
+    <script src="js/components/sidebar.js?v=0.55.30"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.55.30"></script>
 </body>
 </html>

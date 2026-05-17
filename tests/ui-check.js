@@ -210,6 +210,8 @@ checkPage('tasks.html', (doc) => {
     check('Tasks explainability region exists', !!doc.getElementById('taskExplainability'));
     check('Tasks category filters exist', !!doc.getElementById('catFilters'));
     check('Tasks board content exists', !!doc.getElementById('boardContent'));
+    check('Tasks top area does not render points strip', !doc.getElementById('pointsBar') && !doc.getElementById('pointsPermanent') && !doc.getElementById('pointsMonthly'));
+    check('Tasks page has no Focus tab button', !doc.querySelector('[data-view="focus"]'));
 });
 
 // ═══════════════════════════════════════════════════
@@ -423,6 +425,9 @@ check('Customer communication hub has exact/suggested/unavailable styling', html
 check('Tasks page opens task deep links', tasksCode.includes('getTaskDeepLinkId') && tasksCode.includes('openTaskDetail(taskId)'));
 check('Task detail overlay uses guarded close instead of direct backdrop removal', tasksCode.includes('function isTaskDetailDirty') && tasksCode.includes('closeTaskDetailOverlay(false)') && !tasksCode.includes("taskDetailOverlay')?.remove()"));
 check('Task detail save sends stale-write version from selected task', tasksCode.includes('dataset.taskVersion') && tasksCode.includes('version: document.getElementById'));
+check('Tasks stale focus view falls back safely', tasksCode.includes("requestedView === 'focus'") && tasksCode.includes("currentView = 'today'"));
+check('Tasks page does not fetch points for removed top strip', !tasksCode.includes('apiGetMyPoints') && !tasksCode.includes('loadMyPoints') && !tasksCode.includes('/points/'));
+check('Task detail dirty state has no orphan focus rank field', !tasksCode.includes('_tdFocusRank'));
 check('Dashboard team online renders last-seen presence states', dashboardPageCode.includes('formatTeamLastSeen') && dashboardPageCode.includes('онлайн зараз') && dashboardPageCode.includes('був ${minutes} хв тому') && dashboardPageCode.includes('team-presence-last-seen'));
 check('Dashboard board notes use a stable textarea editor', dashboardPageCode.includes('<textarea class="board-note-text board-note-editor"') && !dashboardPageCode.includes('contenteditable="${_boardInteractionMode'));
 check('Dashboard board note focus does not force a rerender', dashboardPageCode.includes("selectBoardItem(textEl.dataset.boardText, { render: false })") && dashboardPageCode.includes('handleBoardTextInput(textEl)'));

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.53.1 - Tasks Cleanup
+
+### Tasks / UI Cleanup [codex]
+- **Без рядка балів** - сторінка задач більше не рендерить верхній рядок `Бали` і не робить окремий `/api/points/:username` запит для нього.
+- **Без user-facing Focus** - верхній Tasks UI не має Focus-вкладки, CTA або лічильників, а старі `view=focus` переходи безпечно відкривають звичайний зріз `today`.
+- **Чисті залишки** - прибрано dead CSS для рядка балів і orphan `_tdFocusRank` зі стану detail-модалки, без змін до внутрішньої моделі `focus_rank`.
+
+---
+
 ## v0.53.0 - Connection Center Control
 
 ### Omni / Connections / Provider Truth [codex]

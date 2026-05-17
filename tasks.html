@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.53.0">
-    <link rel="stylesheet" href="css/layout.css?v=0.53.0">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.53.0">
-    <link rel="stylesheet" href="css/pages.css?v=0.53.0">
-    <link rel="stylesheet" href="css/modals.css?v=0.53.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.53.0">
-    <link rel="stylesheet" href="css/responsive.css?v=0.53.0">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.53.0">
+    <link rel="stylesheet" href="css/base.css?v=0.53.1">
+    <link rel="stylesheet" href="css/layout.css?v=0.53.1">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.53.1">
+    <link rel="stylesheet" href="css/pages.css?v=0.53.1">
+    <link rel="stylesheet" href="css/modals.css?v=0.53.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.53.1">
+    <link rel="stylesheet" href="css/responsive.css?v=0.53.1">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.53.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -190,21 +190,6 @@
         .deadline-overdue { background: #FFEBEE; color: #C62828; }
         .task-card-owner { font-size: 10px; color: var(--gray-400); }
 
-        /* v10.0: Points bar */
-        .points-bar {
-            display: flex; gap: 12px; align-items: center; margin-bottom: 16px;
-            background: rgba(255,255,255,0.3); backdrop-filter: blur(10px);
-            padding: 8px 14px; border-radius: 12px; font-size: 13px;
-        }
-        .points-bar .points-label { font-weight: 800; color: var(--gray-600); }
-        .points-bar .points-value {
-            font-weight: 900; font-size: 16px; padding: 2px 10px;
-            border-radius: 8px; min-width: 32px; text-align: center;
-        }
-        .points-permanent { background: #FFF8E1; color: #F57F17; }
-        .points-monthly { background: #E8F5E9; color: #2E7D32; }
-        .points-bar .points-sep { color: var(--gray-300); }
-
         /* Escalation indicator */
         .escalation-dot {
             display: inline-block; width: 8px; height: 8px; border-radius: 50%;
@@ -271,14 +256,6 @@
         <div class="alerts-panel-v4" id="alertsPanel"></div>
 
         <main id="main-content" class="page-container">
-            <!-- v10.0: Points bar -->
-            <div class="points-bar" id="pointsBar" style="display:none">
-                <span class="points-label">Бали:</span>
-                <span class="points-value points-permanent" id="pointsPermanent" title="Постійні (накопичувальні)">0</span>
-                <span class="points-sep">/</span>
-                <span class="points-value points-monthly" id="pointsMonthly" title="Місячні (обнуляються 1-го)">0</span>
-            </div>
-
             <!-- Board view tabs -->
             <div class="board-tabs" id="boardTabs">
                 <button type="button" class="board-tab active" data-view="inbox">Інбокс <span class="tab-count" id="countInbox">0</span></button>
@@ -417,13 +394,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.53.0"></script>
-    <script src="js/notification.js?v=0.53.0"></script>
-    <script src="js/api.js?v=0.53.0"></script>
-    <script src="js/auth.js?v=0.53.0"></script>
-    <script src="js/components/sidebar.js?v=0.53.0"></script>
+    <script src="js/config.js?v=0.53.1"></script>
+    <script src="js/notification.js?v=0.53.1"></script>
+    <script src="js/api.js?v=0.53.1"></script>
+    <script src="js/auth.js?v=0.53.1"></script>
+    <script src="js/components/sidebar.js?v=0.53.1"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/tasks-page.js?v=0.53.0"></script>
-    <script src="js/alerts.js?v=0.53.0"></script><script src="js/ui.js?v=0.53.0"></script>
+    <script src="js/tasks-page.js?v=0.53.1"></script>
+    <script src="js/alerts.js?v=0.53.1"></script><script src="js/ui.js?v=0.53.1"></script>
 </body>
 </html>

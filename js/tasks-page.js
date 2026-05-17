@@ -1,7 +1,7 @@
 /**
  * tasks-page.js — Task Board v10.0 (Tasker + Kleshnya)
  * Views: Today, Week, My Tasks, Kanban, Templates
- * Features: task_type (human/bot), owner, deadline, points, escalation
+ * Features: task_type (human/bot), owner, deadline, escalation
  */
 
 // ==========================================
@@ -280,8 +280,6 @@ async function initPage() {
 
         await loadAllTasks({ fatal: true });
         bootStep('tasks:loaded', { count: Array.isArray(allTasks) ? allTasks.length : 0 });
-        await loadMyPoints();
-        bootStep('points:loaded');
         openTaskDeepLink();
         bootStep('render:done');
     } catch (err) {
@@ -404,16 +402,6 @@ async function apiCreateTemplate(data) {
     } catch (err) { console.error('API createTemplate error:', err); return null; }
 }
 
-// v10.0: Points API
-async function apiGetMyPoints(username) {
-    try {
-        const response = await fetch(`${API_BASE}/points/${encodeURIComponent(username)}`, { headers: getAuthHeaders(false) });
-        if (handleAuthError(response)) return null;
-        if (!response.ok) return null;
-        return await response.json();
-    } catch (err) { console.error('API getMyPoints error:', err); return null; }
-}
-
 async function apiDeleteTemplate(id) {
     try {
         const response = await fetch(`${API_BASE}/task-templates/${id}`, {
@@ -510,19 +498,6 @@ async function loadAllTasks(options = {}) {
         if (fatal) throw err;
         showNotification('Помилка завантаження задач', 'error');
         if (board) board.innerHTML = '';
-    }
-}
-
-// v10.0: Load user points
-async function loadMyPoints() {
-    const username = getTasksCurrentUser()?.username;
-    if (!username) return;
-    const points = await apiGetMyPoints(username);
-    const bar = document.getElementById('pointsBar');
-    if (points && bar) {
-        document.getElementById('pointsPermanent').textContent = points.permanent_points || 0;
-        document.getElementById('pointsMonthly').textContent = points.monthly_points || 0;
-        bar.style.display = '';
     }
 }
 
@@ -1086,8 +1061,6 @@ async function cycleStatus(taskId, newStatus) {
         : await apiPatchTaskStatus(taskId, newStatus);
     if (result && result.success) {
         await loadAllTasks();
-        // v10.0: Reload points if task completed (Kleshnya awards points)
-        if (newStatus === 'done') loadMyPoints();
     } else {
         showNotification('Помилка зміни статусу', 'error');
     }
@@ -1265,7 +1238,7 @@ window.clearBulkSelection = clearBulkSelection;
 let _taskDetailInitialState = null;
 
 function getTaskDetailFormState() {
-    const ids = ['_tdTitle', '_tdDesc', '_tdStatus', '_tdPriority', '_tdDeadline', '_tdAssigned', '_tdCategory', '_tdMode', '_tdKind', '_tdVisibility', '_tdWorkflow', '_tdRemindAt', '_tdFocusRank'];
+    const ids = ['_tdTitle', '_tdDesc', '_tdStatus', '_tdPriority', '_tdDeadline', '_tdAssigned', '_tdCategory', '_tdMode', '_tdKind', '_tdVisibility', '_tdWorkflow', '_tdRemindAt'];
     return ids.map(id => {
         const el = document.getElementById(id);
         return el ? String(el.value || '') : '';

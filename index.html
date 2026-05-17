@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.53.0">
-    <link rel="stylesheet" href="css/auth.css?v=0.53.0">
-    <link rel="stylesheet" href="css/layout.css?v=0.53.0">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.53.0">
-    <link rel="stylesheet" href="css/timeline.css?v=0.53.0">
-    <link rel="stylesheet" href="css/panel.css?v=0.53.0">
-    <link rel="stylesheet" href="css/modals.css?v=0.53.0">
-    <link rel="stylesheet" href="css/controls.css?v=0.53.0">
-    <link rel="stylesheet" href="css/features.css?v=0.53.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.53.0">
-    <link rel="stylesheet" href="css/responsive.css?v=0.53.0">
-    <link rel="stylesheet" href="css/pages.css?v=0.53.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.53.0">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.53.0">
+    <link rel="stylesheet" href="css/base.css?v=0.53.1">
+    <link rel="stylesheet" href="css/auth.css?v=0.53.1">
+    <link rel="stylesheet" href="css/layout.css?v=0.53.1">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.53.1">
+    <link rel="stylesheet" href="css/timeline.css?v=0.53.1">
+    <link rel="stylesheet" href="css/panel.css?v=0.53.1">
+    <link rel="stylesheet" href="css/modals.css?v=0.53.1">
+    <link rel="stylesheet" href="css/controls.css?v=0.53.1">
+    <link rel="stylesheet" href="css/features.css?v=0.53.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.53.1">
+    <link rel="stylesheet" href="css/responsive.css?v=0.53.1">
+    <link rel="stylesheet" href="css/pages.css?v=0.53.1">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.53.1">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.53.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.53.0 Connection Center Control">✨ 0.53.0 Connection Center Control</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.53.1 Tasks Cleanup">✨ 0.53.1 Tasks Cleanup</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.53.0 — Connection Center Control</p>
+                <p class="tagline">AI First CRM v0.53.1 — Tasks Cleanup</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.53.0: Connection Center Control</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.53.1: Tasks Cleanup</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1274,6 +1274,14 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.53.1 — Tasks Cleanup</h4>
+                    <ul>
+                        <li><b>Задачі без рядка балів</b> — верх сторінки задач більше не показує strip <code>Бали</code> і не лишає порожній відступ після нього.</li>
+                        <li><b>Без user-facing Focus</b> — у Tasks немає Focus-вкладки, CTA або лічильників, а старі <code>view=focus</code> переходи відкривають безпечний звичайний зріз.</li>
+                        <li><b>Чисті залишки</b> — прибрано frontend-запит points для Tasks і orphan <code>_tdFocusRank</code>, внутрішню модель <code>focus_rank</code> не чіпали.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.53.0 — Connection Center Control</h4>
                     <ul>
@@ -6886,25 +6894,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.53.0"></script>
-    <script src="js/api.js?v=0.53.0"></script>
-    <script src="js/ui.js?v=0.53.0"></script>
-    <script src="js/auth.js?v=0.53.0"></script>
-    <script src="js/timeline.js?v=0.53.0"></script>
-    <script src="js/booking.js?v=0.53.0"></script>
-    <script src="js/settings.js?v=0.53.0"></script>
-    <script src="js/booking-form.js?v=0.53.0"></script>
-    <script src="js/booking-linked.js?v=0.53.0"></script>
-    <script src="js/settings-dashboard.js?v=0.53.0"></script>
-    <script src="js/settings-history.js?v=0.53.0"></script>
-    <script src="js/settings-afisha.js?v=0.53.0"></script>
-    <script src="js/settings-certificates.js?v=0.53.0"></script>
-    <script src="js/offline.js?v=0.53.0"></script>
-    <script src="js/search.js?v=0.53.0"></script>
-    <script src="js/ws.js?v=0.53.0"></script>
-    <script src="js/app.js?v=0.53.0"></script>
-    <script src="js/kleshnya-widget.js?v=0.53.0"></script>
-    <script src="js/components/sidebar.js?v=0.53.0"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.53.0"></script>
+    <script src="js/config.js?v=0.53.1"></script>
+    <script src="js/api.js?v=0.53.1"></script>
+    <script src="js/ui.js?v=0.53.1"></script>
+    <script src="js/auth.js?v=0.53.1"></script>
+    <script src="js/timeline.js?v=0.53.1"></script>
+    <script src="js/booking.js?v=0.53.1"></script>
+    <script src="js/settings.js?v=0.53.1"></script>
+    <script src="js/booking-form.js?v=0.53.1"></script>
+    <script src="js/booking-linked.js?v=0.53.1"></script>
+    <script src="js/settings-dashboard.js?v=0.53.1"></script>
+    <script src="js/settings-history.js?v=0.53.1"></script>
+    <script src="js/settings-afisha.js?v=0.53.1"></script>
+    <script src="js/settings-certificates.js?v=0.53.1"></script>
+    <script src="js/offline.js?v=0.53.1"></script>
+    <script src="js/search.js?v=0.53.1"></script>
+    <script src="js/ws.js?v=0.53.1"></script>
+    <script src="js/app.js?v=0.53.1"></script>
+    <script src="js/kleshnya-widget.js?v=0.53.1"></script>
+    <script src="js/components/sidebar.js?v=0.53.1"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.53.1"></script>
 </body>
 </html>

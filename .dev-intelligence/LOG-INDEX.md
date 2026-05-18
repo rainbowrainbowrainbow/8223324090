@@ -40,3 +40,4 @@
 | 2026-05-18 | S33 | Sidebar Compact Command Deck | #sidebar #navigation #density #ux #deploy | none | QUICK |
 | 2026-05-18 | S34 | Kleshnya Expanded Window Polish | #assistant #kleshnya #ui #modal #deploy | none | QUICK |
 | 2026-05-18 | S35 | Sidebar Alert Carousel | #sidebar #alerts #ux #navigation #deploy | none | QUICK |
+| 2026-05-18 | S36 | Customer Create 500 Fix | #customers #api #schema #deploy | none | QUICK |

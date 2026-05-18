@@ -945,14 +945,47 @@ function initNightSettings() {
 // ==========================================
 
 function _timelineBaseCellWidth(level, compact) {
-    if (compact) return level === 15 ? 35 : level === 30 ? 56 : 84;
+    if (compact) return level === 15 ? 32 : level === 30 ? 52 : 76;
     return level === 15 ? 50 : level === 30 ? 80 : 120;
 }
 
-function _timelineResponsiveCellWidth(level, compact) {
+function _timelineActiveTimeRange() {
+    if (typeof getTimeRange === 'function') {
+        try {
+            return getTimeRange(AppState.selectedDate || new Date());
+        } catch (_) {}
+    }
+
+    const d = AppState.selectedDate || new Date();
+    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+    return {
+        start: isWeekend ? CONFIG.TIMELINE.WEEKEND_START : CONFIG.TIMELINE.WEEKDAY_START,
+        end: isWeekend ? CONFIG.TIMELINE.WEEKEND_END : CONFIG.TIMELINE.WEEKDAY_END
+    };
+}
+
+function _timelineFitCellWidth(level, headerWidth, scrollPadding) {
+    const scroll = document.getElementById('timelineScroll') || document.querySelector('.timeline-scroll');
+    const container = scroll?.closest?.('.timeline-container') || document.querySelector('.timeline-container');
+    const availableWidth = Math.max(
+        0,
+        (scroll?.clientWidth || container?.clientWidth || document.querySelector('.main-content')?.clientWidth || window.innerWidth || 1440) -
+            headerWidth -
+            (scrollPadding * 2) -
+            16
+    );
+    const range = _timelineActiveTimeRange();
+    const cells = Math.max(1, Math.ceil(((range.end - range.start) * 60) / level) + 1);
+    return Math.floor(availableWidth / cells);
+}
+
+function _timelineResponsiveCellWidth(level, compact, headerWidth, scrollPadding) {
     const base = _timelineBaseCellWidth(level, compact);
     const viewportWidth = window.innerWidth || 1440;
-    if (compact || viewportWidth <= 768) return _timelineBaseCellWidth(level, true);
+    if (compact || viewportWidth <= 768) {
+        const fitted = _timelineFitCellWidth(level, headerWidth, scrollPadding);
+        return Math.max(18, Math.min(base, fitted || base));
+    }
     if (viewportWidth <= 1180) return Math.max(34, Math.round(base * 0.72));
     if (viewportWidth <= 1366) return Math.max(36, Math.round(base * 0.8));
     if (viewportWidth <= 1536) return Math.max(40, Math.round(base * 0.9));
@@ -974,20 +1007,25 @@ function applyTimelineResponsiveDensity() {
     if (!window.CONFIG || !CONFIG.TIMELINE) return false;
     const level = AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES || 15;
     const compact = !!AppState.compactMode;
-    const nextCellWidth = _timelineResponsiveCellWidth(level, compact);
     const nextHeaderWidth = _timelineResponsiveHeaderWidth();
+    const nextScrollPadding = compact ? ((window.innerWidth || 1440) <= 768 ? 8 : 10) : ((window.innerWidth || 1440) <= 1536 ? 14 : 20);
+    const nextCellWidth = _timelineResponsiveCellWidth(level, compact, nextHeaderWidth, nextScrollPadding);
+    const nextLineHeight = compact ? (level === 15 ? 42 : level === 30 ? 48 : 54) : (level === 15 ? 64 : level === 30 ? 72 : 80);
     const changed = CONFIG.TIMELINE.CELL_WIDTH !== nextCellWidth;
 
     CONFIG.TIMELINE.CELL_WIDTH = nextCellWidth;
     CONFIG.TIMELINE.CELL_MINUTES = level;
     document.documentElement.style.setProperty('--timeline-cell-w', `${nextCellWidth}px`);
     document.documentElement.style.setProperty('--timeline-line-header-w', `${nextHeaderWidth}px`);
+    document.documentElement.style.setProperty('--timeline-scroll-pad', `${nextScrollPadding}px`);
+    document.documentElement.style.setProperty('--timeline-line-min-h', `${nextLineHeight}px`);
 
     const container = document.querySelector('.timeline-container');
     if (container) {
         container.classList.toggle('compact', compact);
         container.dataset.zoom = level;
         container.dataset.timelineDensity = (window.innerWidth || 1440) <= 1536 ? 'tight' : 'regular';
+        container.dataset.fitScreen = compact ? 'true' : 'bounded';
     }
 
     return changed;
@@ -1007,11 +1045,15 @@ function initTimelineResponsiveResize() {
     });
 }
 
-function toggleCompactMode() {
-    AppState.compactMode = !AppState.compactMode;
+function toggleCompactMode(event) {
+    const toggle = document.getElementById('compactModeToggle');
+    AppState.compactMode = typeof event?.target?.checked === 'boolean'
+        ? event.target.checked
+        : toggle
+            ? toggle.checked
+            : !AppState.compactMode;
     localStorage.setItem('pzp_compact_mode', AppState.compactMode);
     applyTimelineResponsiveDensity();
-    const toggle = document.getElementById('compactModeToggle');
     if (toggle) toggle.checked = AppState.compactMode;
     renderTimeline();
 }

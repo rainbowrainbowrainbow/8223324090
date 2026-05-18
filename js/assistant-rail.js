@@ -1009,6 +1009,7 @@
                     </div>
                     <button type="button" class="crm-assistant-panel-close" aria-label="Закрити" id="crmAssistantPanelClose">×</button>
                 </div>
+                <div class="crm-assistant-panel-content" id="crmAssistantPanelContent">
                 <div class="crm-assistant-panel-snapshot" id="crmAssistantPanelSnapshot"></div>
                 <div class="crm-assistant-action-proposal" id="crmAssistantActionProposal"></div>
                 <div class="crm-assistant-teaching-runner" id="crmAssistantTeachingRunner"></div>
@@ -1029,6 +1030,7 @@
                     <button type="button" data-crm-assistant-prompt="Поясни цю сторінку моєю роллю">Поясни сторінку</button>
                     <button type="button" data-crm-assistant-prompt="Що зараз найважливіше зробити?">Наступний крок</button>
                     <button type="button" data-crm-assistant-prompt="Проведи мене по ключових блоках">По блоках</button>
+                </div>
                 </div>
                 <form class="crm-assistant-form" id="crmAssistantForm">
                     <textarea id="crmAssistantPromptInput" rows="3" maxlength="1200" placeholder="Запитай по цій сторінці CRM..."></textarea>

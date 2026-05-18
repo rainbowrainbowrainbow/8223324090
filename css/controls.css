@@ -165,21 +165,21 @@ body.dark-mode .night-settings-select {
 
 .timeline-container.compact .grid-cell,
 .timeline-container.compact .time-mark {
-    width: 35px;
-    min-width: 35px;
+    width: var(--timeline-cell-w, 32px);
+    min-width: var(--timeline-cell-w, 32px);
 }
 
 .timeline-container.compact .line-header {
-    width: 80px;
-    min-width: 80px;
+    width: var(--timeline-line-header-w, 80px);
+    min-width: var(--timeline-line-header-w, 80px);
 }
 
 .timeline-container.compact .time-scale {
-    margin-left: 80px;
+    margin-left: var(--timeline-line-header-w, 80px);
 }
 
 .timeline-container.compact .timeline-line {
-    min-height: 48px;
+    min-height: var(--timeline-line-min-h, 42px);
 }
 
 .timeline-container.compact .booking-block .title {
@@ -230,6 +230,24 @@ body.dark-mode .night-settings-select {
 
 .timeline-container[data-zoom="60"] .booking-block .subtitle {
     font-size: 12px;
+}
+
+/* v0.56.5: keep compact zoom modes genuinely compact after zoom readability rules. */
+.timeline-container.compact[data-zoom="30"] .timeline-line,
+.timeline-container.compact[data-zoom="60"] .timeline-line {
+    min-height: var(--timeline-line-min-h, 48px);
+}
+
+.timeline-container.compact[data-zoom="30"] .booking-block .title,
+.timeline-container.compact[data-zoom="60"] .booking-block .title {
+    font-size: 10px;
+    line-height: 1.05;
+}
+
+.timeline-container.compact[data-zoom="30"] .booking-block .subtitle,
+.timeline-container.compact[data-zoom="60"] .booking-block .subtitle {
+    font-size: 8px;
+    line-height: 1.05;
 }
 
 /* ==========================================

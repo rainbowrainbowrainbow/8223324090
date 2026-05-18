@@ -859,6 +859,105 @@ body.dragging-active {
     }
 }
 
+/* v0.56.5: timeline compact fit-screen density. */
+.timeline-container {
+    max-height: clamp(430px, calc(100vh - 246px), 72vh);
+    display: flex;
+    flex-direction: column;
+}
+
+.timeline-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: inherit;
+    padding: var(--timeline-scroll-pad, 20px);
+    overflow: auto;
+    scrollbar-gutter: stable both-edges;
+}
+
+.timeline-line {
+    min-height: var(--timeline-line-min-h, 64px);
+}
+
+.timeline-container.compact {
+    max-height: clamp(380px, calc(100vh - 214px), 68vh);
+}
+
+.timeline-container.compact .timeline-scroll {
+    padding: var(--timeline-scroll-pad, 10px);
+}
+
+.timeline-container.compact .timeline-lines {
+    gap: 4px;
+}
+
+.timeline-container.compact .time-scale {
+    margin-bottom: 6px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+.timeline-container.compact .timeline-line {
+    min-height: var(--timeline-line-min-h, 42px);
+}
+
+.timeline-container.compact .line-header {
+    padding: 6px 8px;
+    border-left-width: 3px;
+}
+
+.timeline-container.compact .line-name {
+    font-size: clamp(10px, 0.8vw, 12px);
+    line-height: 1.05;
+}
+
+.timeline-container.compact .line-sub {
+    font-size: 9px;
+    line-height: 1.05;
+    margin-top: 1px;
+}
+
+.timeline-container.compact .booking-block {
+    top: 3px;
+    bottom: 3px;
+    padding: 3px 6px;
+    border-radius: 6px;
+    border-left-width: 2px;
+}
+
+.timeline-container.compact .booking-block:hover {
+    transform: translateY(-1px);
+}
+
+.timeline-container.compact .booking-block .title {
+    font-size: 10px;
+    line-height: 1.05;
+}
+
+.timeline-container.compact .booking-block .subtitle,
+.timeline-container.compact .booking-block .note-text {
+    font-size: 8px;
+    line-height: 1.05;
+}
+
+.timeline-container.compact .booking-block .user-letter {
+    width: 14px;
+    height: 14px;
+    top: 2px;
+    right: 3px;
+    font-size: 8px;
+}
+
+@media (max-height: 760px) and (min-width: 769px) {
+    .timeline-container {
+        max-height: calc(100vh - 210px);
+    }
+
+    .timeline-container.compact {
+        max-height: calc(100vh - 188px);
+    }
+}
+
 /* ==========================================
    v30.3: PRINT STYLES FOR PDF EXPORT
    ========================================== */

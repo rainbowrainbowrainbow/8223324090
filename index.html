@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.56.3">
-    <link rel="stylesheet" href="css/auth.css?v=0.56.3">
-    <link rel="stylesheet" href="css/layout.css?v=0.56.3">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.56.3">
-    <link rel="stylesheet" href="css/timeline.css?v=0.56.3">
-    <link rel="stylesheet" href="css/panel.css?v=0.56.3">
-    <link rel="stylesheet" href="css/modals.css?v=0.56.3">
-    <link rel="stylesheet" href="css/controls.css?v=0.56.3">
-    <link rel="stylesheet" href="css/features.css?v=0.56.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.56.3">
-    <link rel="stylesheet" href="css/responsive.css?v=0.56.3">
-    <link rel="stylesheet" href="css/pages.css?v=0.56.3">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.56.3">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.56.3">
+    <link rel="stylesheet" href="css/base.css?v=0.56.5">
+    <link rel="stylesheet" href="css/auth.css?v=0.56.5">
+    <link rel="stylesheet" href="css/layout.css?v=0.56.5">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.56.5">
+    <link rel="stylesheet" href="css/timeline.css?v=0.56.5">
+    <link rel="stylesheet" href="css/panel.css?v=0.56.5">
+    <link rel="stylesheet" href="css/modals.css?v=0.56.5">
+    <link rel="stylesheet" href="css/controls.css?v=0.56.5">
+    <link rel="stylesheet" href="css/features.css?v=0.56.5">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.56.5">
+    <link rel="stylesheet" href="css/responsive.css?v=0.56.5">
+    <link rel="stylesheet" href="css/pages.css?v=0.56.5">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.56.5">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.56.5">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.56.3 Sidebar: меню і статус">✨ 0.56.3 Sidebar: меню і статус</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.56.5 Timeline: компактний екран">✨ 0.56.5 Timeline: компактний екран</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.56.3 — Sidebar: меню і статус</p>
+                <p class="tagline">AI First CRM v0.56.5 — Timeline: компактний екран</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.56.3: Sidebar: меню і статус</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.56.5: Timeline: компактний екран</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1269,6 +1269,25 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.56.5 — Timeline: компактний екран</h4>
+                    <ul>
+                        <li><b>Компактний режим</b> — перемикач тепер синхронізується зі збереженим станом і реально вмикає compact-density.</li>
+                        <li><b>Один екран</b> — ширина клітинок рахується від видимої ширини таймлайна, щоб день у compact-режимі не розтягувався зайво.</li>
+                        <li><b>Висота таймлайна</b> — сітка отримала обмеження по висоті та власний скрол всередині, щоб сторінка не роздувалась через багато ліній.</li>
+                        <li><b>Zoom + compact</b> — режими 15хв, 30хв і 60хв більше не перебивають compact-стилі завеликими рядками.</li>
+                        <li><b>Guardrail</b> — UI-smoke фіксує fit-screen контракт, синхронізацію toggle state і compact zoom overrides.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.56.4 — Клешня: зручне вікно</h4>
+                    <ul>
+                        <li><b>Нижня панель</b> — поле запиту і кнопка Запитати винесені в окремий стабільний ряд, тому більше не налазять на prompt-картки та історію.</li>
+                        <li><b>Робоча зона</b> — snapshot, action proposal, guided teaching, режими, quick prompts і історія тепер живуть у власній scroll-зоні всередині вікна.</li>
+                        <li><b>Кнопки дій</b> — довгі labels на action/teaching buttons переносяться нормально і не ламають картки.</li>
+                        <li><b>Guardrail</b> — UI-smoke фіксує окремий workspace/composer contract для expanded assistant window.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.56.3 — Sidebar: меню і статус</h4>
                     <ul>
@@ -7407,25 +7426,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.56.3"></script>
-    <script src="js/api.js?v=0.56.3"></script>
-    <script src="js/ui.js?v=0.56.3"></script>
-    <script src="js/auth.js?v=0.56.3"></script>
-    <script src="js/timeline.js?v=0.56.3"></script>
-    <script src="js/booking.js?v=0.56.3"></script>
-    <script src="js/settings.js?v=0.56.3"></script>
-    <script src="js/booking-form.js?v=0.56.3"></script>
-    <script src="js/booking-linked.js?v=0.56.3"></script>
-    <script src="js/settings-dashboard.js?v=0.56.3"></script>
-    <script src="js/settings-history.js?v=0.56.3"></script>
-    <script src="js/settings-afisha.js?v=0.56.3"></script>
-    <script src="js/settings-certificates.js?v=0.56.3"></script>
-    <script src="js/offline.js?v=0.56.3"></script>
-    <script src="js/search.js?v=0.56.3"></script>
-    <script src="js/ws.js?v=0.56.3"></script>
-    <script src="js/app.js?v=0.56.3"></script>
-    <script src="js/kleshnya-widget.js?v=0.56.3"></script>
-    <script src="js/components/sidebar.js?v=0.56.3"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.56.3"></script>
+    <script src="js/config.js?v=0.56.5"></script>
+    <script src="js/api.js?v=0.56.5"></script>
+    <script src="js/ui.js?v=0.56.5"></script>
+    <script src="js/auth.js?v=0.56.5"></script>
+    <script src="js/timeline.js?v=0.56.5"></script>
+    <script src="js/booking.js?v=0.56.5"></script>
+    <script src="js/settings.js?v=0.56.5"></script>
+    <script src="js/booking-form.js?v=0.56.5"></script>
+    <script src="js/booking-linked.js?v=0.56.5"></script>
+    <script src="js/settings-dashboard.js?v=0.56.5"></script>
+    <script src="js/settings-history.js?v=0.56.5"></script>
+    <script src="js/settings-afisha.js?v=0.56.5"></script>
+    <script src="js/settings-certificates.js?v=0.56.5"></script>
+    <script src="js/offline.js?v=0.56.5"></script>
+    <script src="js/search.js?v=0.56.5"></script>
+    <script src="js/ws.js?v=0.56.5"></script>
+    <script src="js/app.js?v=0.56.5"></script>
+    <script src="js/kleshnya-widget.js?v=0.56.5"></script>
+    <script src="js/components/sidebar.js?v=0.56.5"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.56.5"></script>
 </body>
 </html>

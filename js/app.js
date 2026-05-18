@@ -136,12 +136,15 @@ function loadPreferences() {
     AppState.zoomLevel = parseInt(localStorage.getItem('pzp_zoom_level')) || 15;
     AppState.statusFilter = localStorage.getItem('pzp_status_filter') || 'all';
     CONFIG.TIMELINE.CELL_MINUTES = AppState.zoomLevel;
+    const compactToggle = document.getElementById('compactModeToggle');
+    if (compactToggle) compactToggle.checked = AppState.compactMode;
     if (typeof applyTimelineResponsiveDensity === 'function') {
         applyTimelineResponsiveDensity();
     } else if (AppState.compactMode) {
         CONFIG.TIMELINE.CELL_WIDTH = 35;
         document.querySelector('.timeline-container')?.classList.add('compact');
     }
+    if (typeof updateZoomButtons === 'function') updateZoomButtons();
 }
 
 // v5.0: Only initialize local storage data that isn't user credentials

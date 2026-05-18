@@ -4,15 +4,15 @@
 
 ---
 
-## v0.56.0 - AI Assistant: адаптери інтелекту
+## v0.56.0 - AI Assistant: флагманський провідник
 
-### CRM Assistant Foundation + Intelligence [codex]
-- **Canonical rail** - Клешня працює через єдиний shared assistant rail і foundation store, без dashboard-only fork.
-- **API-backed intelligence** - dashboard/work queue, tasks, finance, leads і chat отримали adapter snapshots з реальних CRM API замість крихкого DOM guessing.
-- **Action proposals** - у розгорнутій AI-панелі з'явилась рекомендована безпечна дія з поясненням, secondary action і fallback, якщо registry не має надійної дії.
-- **Guided teaching** - додано assistant-safe highlights і короткі 2-3 крокові сценарії для dashboard queue, прострочених задач, боргів, follow-up лідів і unread chat.
-- **Reply schema** - backend/frontend нормалізують `summary`, `evidence`, `riskLevel`, `recommendation`, `actionProposal`, `teachingTarget` і `fallbackReason`, щоб AI не вигадував неіснуючі функції.
-- **Guardrail** - `npm test` фіксує assistant foundation contracts, API snapshot hooks, action proposal UI, teaching runner і role/session boundary.
+### CRM Assistant Flagship Layer [codex]
+- **Єдиний assistant layer** - Клешня працює через shared rail, foundation store, page adapters, action registry, teaching targets і нормалізовану reply schema без dashboard-only fork.
+- **Core-page intelligence** - dashboard/work queue, tasks, finance, leads і chat беруть сигнали з реальних CRM API snapshots і мають safe next actions там, де є стабільний handler.
+- **Strategic advisor** - відповіді тримають формат "що бачу -> чому важливо -> одна дія" з role-aware framing для director, manager, hr, art_director і creator.
+- **Voice UX** - озвучення має replay/interruption lifecycle, blocked-playback fallback у текстовий режим, читабельні subtitles і спокійні presence states.
+- **Guided teaching** - assistant-safe highlights і короткі 2-3 крокові сценарії для dashboard queue, прострочених задач, боргів, follow-up лідів і unread chat.
+- **Release guardrails** - `npm test` фіксує contracts, API snapshot hooks, action proposal UI, teaching runner, role/session boundary, voice lifecycle і core-page flagship coverage.
 
 ---
 

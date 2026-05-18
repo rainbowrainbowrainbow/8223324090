@@ -109,6 +109,8 @@ describe('dashboard assistant service contract', () => {
         assert.equal(context.scenePreset, 'director');
         assert.equal(context.voiceMode, true);
         assert.equal(context.recentState.previewRole, 'director');
+        assert.match(context.strategicFrame, /creator|цілісності|dashboard|bottlenecks/);
+        assert.match(context.pagePriority, /bottlenecks|пріоритети/);
     });
 
     it('normalizes assistant replies into the foundation schema', () => {
@@ -184,6 +186,7 @@ describe('dashboard assistant service contract', () => {
         const { normalizeAssistantReply } = require('../services/dashboardAssistant');
         const reply = normalizeAssistantReply({ summary: 'Є фінансовий ризик.' }, {
             role: 'director',
+            page: 'finance',
             signals: [{ signalId: 'finance.debt.overdue', label: 'Overdue debt', severity: 'danger', evidence: '3 борги на 12000 грн.' }],
             actionProposal: { actionId: 'finance.open-debts', page: 'finance', actionType: 'filter', label: 'Open debts tab' }
         });
@@ -191,6 +194,23 @@ describe('dashboard assistant service contract', () => {
         assert.equal(reply.riskLevel, 'high');
         assert.match(reply.recommendation, /P&L|ризику/);
         assert.match(reply.recommendation, /Open debts tab/);
+    });
+
+    it('frames the same business context differently for director and manager roles', () => {
+        clearAssistantModules();
+        const { normalizeAssistantReply } = require('../services/dashboardAssistant');
+        const context = {
+            page: 'dashboard',
+            signals: [{ signalId: 'dashboard.work_queue.overdue_tasks', label: 'Overdue task pressure', severity: 'danger', evidence: '4 прострочені задачі у work queue.' }],
+            actionProposal: { actionId: 'dashboard.focus-work-queue', page: 'dashboard', actionType: 'focus', label: 'Focus work queue' }
+        };
+
+        const director = normalizeAssistantReply({ summary: 'Є тиск у черзі.' }, { ...context, role: 'director' });
+        const manager = normalizeAssistantReply({ summary: 'Є тиск у черзі.' }, { ...context, role: 'manager' });
+
+        assert.notEqual(director.recommendation, manager.recommendation);
+        assert.match(director.recommendation, /P&L|відповідальності|ризику/);
+        assert.match(manager.recommendation, /лідах|задачах|командному/);
     });
 
     it('fails closed when OPENAI_API_KEY is not configured', async () => {

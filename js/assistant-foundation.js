@@ -844,16 +844,30 @@
         return 'Практичний висновок';
     }
 
+    function pageStrategicAngle(page = '') {
+        const key = String(page || '').toLowerCase();
+        if (key === 'dashboard') return 'операційний bottleneck і черга роботи';
+        if (key === 'tasks') return 'прострочка, власник і дедлайн';
+        if (key === 'finance') return 'борг, cashflow і P&L контроль';
+        if (key === 'chat' || key === 'omni') return 'очікувані відповіді й unresolved conversations';
+        if (key === 'leads' || key === 'sales-funnel') return 'гарячі ліди та follow-up';
+        if (key === 'staff' || key === 'hr') return 'люди, графік і конфлікти';
+        if (key === 'warehouse') return 'залишки, низький сток і рух';
+        return 'найсильніший видимий CRM-сигнал';
+    }
+
     function buildStrategicRecommendation(context = {}, summary = '') {
         const role = context.roleSnapshot?.permissionRole || context.roleSnapshot?.role || '';
+        const page = context.pageId || context.page || getPageId();
         const frame = roleStrategicFrame(role);
         const strongest = toList(context.signals || context.evidence || [], 8)
             .map(normalizeSignal)
             .sort((a, b) => severityRank(b) - severityRank(a))[0] || null;
         const action = context.actionProposal || toList(context.actions || [], 6)[0] || null;
         const signalText = strongest?.evidence || strongest?.label || compactText(summary, 160);
-        if (action?.label && signalText) return `${frame}: ${signalText}. Наступний крок — ${action.label}.`;
-        if (signalText) return `${frame}: ${signalText}. Обери один контрольний крок і не розпорошуй фокус.`;
+        const pageAngle = pageStrategicAngle(page);
+        if (action?.label && signalText) return `${frame}: ${signalText}. Фокус — ${pageAngle}. Наступний крок — ${action.label}.`;
+        if (signalText) return `${frame}: ${signalText}. Фокус — ${pageAngle}; обери один контрольний крок.`;
         return summary || 'Почни з найсильнішого видимого сигналу і однієї безпечної дії.';
     }
 

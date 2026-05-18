@@ -87,9 +87,37 @@ function compactRecordList(value, limit = 12) {
         .slice(0, limit);
 }
 
+function pageStrategicAngle(page = '') {
+    const key = String(page || '').toLowerCase();
+    if (key === 'dashboard') return 'bottlenecks, пріоритети і контроль операційної черги';
+    if (key === 'tasks') return 'прострочки, власник, дедлайн і одна наступна дія';
+    if (key === 'finance') return 'борги, cashflow, P&L і контроль оплат';
+    if (key === 'chat') return 'розмови, що чекають відповіді або рішення';
+    if (key === 'leads' || key === 'sales-funnel') return 'follow-up, гарячі ліди і наступна комунікація';
+    if (key === 'staff' || key === 'hr') return 'люди, графік, зміни і конфлікти';
+    if (key === 'warehouse') return 'залишки, низький сток і рух товарів';
+    return 'найсильніший видимий CRM-сигнал і безпечна дія';
+}
+
+function roleStrategicFrame(role = '') {
+    const key = String(role || '').toLowerCase();
+    if (key === 'director') return 'Для директора це контроль P&L, ризику і відповідальності';
+    if (key === 'manager') return 'Для менеджера це фокус на лідах, задачах і командному тиску';
+    if (key === 'hr') return 'Для HR це контроль людей, графіка і конфліктів';
+    if (key === 'art_director') return 'Для артдиректора це контроль контенту і production pipeline';
+    if (key === 'creator') return 'Для creator це перевірка цілісності CRM-сценарію';
+    return 'Операційний висновок';
+}
+
+function buildStrategicFrame(context = {}) {
+    const role = context.roleSnapshot?.permissionRole || context.role || '';
+    const page = context.page || 'dashboard';
+    return `${roleStrategicFrame(role)}; фокус сторінки — ${pageStrategicAngle(page)}.`;
+}
+
 function buildAssistantContext(input = {}) {
     const recentState = input.recentState && typeof input.recentState === 'object' ? input.recentState : {};
-    return {
+    const context = {
         role: compactString(input.role, 80) || 'unknown',
         displayRole: compactString(input.displayRole, 120),
         page: compactString(input.page, 80) || 'dashboard',
@@ -120,6 +148,9 @@ function buildAssistantContext(input = {}) {
         },
         userMessage: compactString(input.userMessage, 1800) || compactString(input.intent, 700) || 'Поясни, що зараз найважливіше на цій CRM-сторінці.'
     };
+    context.strategicFrame = buildStrategicFrame(context);
+    context.pagePriority = pageStrategicAngle(context.page);
+    return context;
 }
 
 function extractResponseText(response) {
@@ -155,22 +186,12 @@ function rankSignal(signal = {}) {
     return 1;
 }
 
-function roleStrategicFrame(role = '') {
-    const key = String(role || '').toLowerCase();
-    if (key === 'director') return 'Для директора це контроль P&L, ризику і відповідальності';
-    if (key === 'manager') return 'Для менеджера це фокус на лідах, задачах і командному тиску';
-    if (key === 'hr') return 'Для HR це контроль людей, графіка і конфліктів';
-    if (key === 'art_director') return 'Для артдиректора це контроль контенту і production pipeline';
-    if (key === 'creator') return 'Для creator це перевірка цілісності CRM-сценарію';
-    return 'Операційний висновок';
-}
-
 function buildStrategicRecommendation(context = {}, summary = '') {
     const signals = Array.isArray(context.signals) && context.signals.length ? context.signals : context.evidence || [];
     const strongest = signals.slice().sort((a, b) => rankSignal(b) - rankSignal(a))[0] || null;
     const action = context.actionProposal || (Array.isArray(context.actions) ? context.actions[0] : null);
     const role = context.roleSnapshot?.permissionRole || context.role || '';
-    const frame = roleStrategicFrame(role);
+    const frame = buildStrategicFrame({ ...context, role });
     const signalText = compactString(strongest?.evidence || strongest?.label || summary, 220);
     if (action?.label && signalText) return `${frame}: ${signalText}. Наступний крок — ${action.label}.`;
     if (signalText) return `${frame}: ${signalText}. Обери один контрольний крок і доведи його до результату.`;

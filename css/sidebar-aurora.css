@@ -3825,7 +3825,7 @@ body.dark-mode .sidebar-nav,
 
 .sidebar-extra-editor-tools {
   display: grid !important;
-  grid-template-columns: minmax(0, 1fr) auto !important;
+  grid-template-columns: minmax(0, 1fr) !important;
   gap: 8px !important;
   margin-bottom: 10px !important;
 }
@@ -4016,8 +4016,8 @@ body:not(.dark-mode) .sidebar-extra-check-copy b {
 }
 
 .sidebar-extra-form-actions {
-  display: flex !important;
-  flex-wrap: wrap !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
   gap: 8px !important;
   margin-top: 2px !important;
 }

@@ -576,14 +576,11 @@ const Sidebar = (() => {
             </div>
             <div class="sidebar-extra-editor-tools">
                 <input type="search" class="sidebar-extra-search" data-sidebar-extra-search placeholder="Знайти сторінку CRM..." aria-label="Знайти сторінку швидкого доступу">
-                <button type="button" class="sidebar-extra-secondary" data-sidebar-extra-select-all>Усі сторінки</button>
             </div>
             <div class="sidebar-extra-picker" data-sidebar-extra-picker>
                 ${pickerHtml}
             </div>
             <div class="sidebar-extra-form-actions">
-                <button type="button" class="sidebar-extra-secondary" data-sidebar-extra-reset>Стандартні</button>
-                <button type="button" class="sidebar-extra-cancel" data-sidebar-extra-clear>Очистити</button>
                 <button type="button" class="sidebar-extra-save" data-sidebar-extra-save>Зберегти</button>
             </div>
         </div>`;
@@ -638,19 +635,12 @@ const Sidebar = (() => {
         const savedUser = _getCurrentSidebarUser();
         const role = _getSidebarActiveRole(savedUser);
         const getCheckedHrefs = () => [...extras.querySelectorAll('[data-sidebar-extra-page]:checked')].map(input => input.value);
-        const setCheckedHrefs = (hrefs) => {
-            const selected = new Set((Array.isArray(hrefs) ? hrefs : []).map(_normalizeExtraHref));
-            extras.querySelectorAll('[data-sidebar-extra-page]').forEach(input => {
-                input.checked = selected.has(_normalizeExtraHref(input.value));
-            });
-            _updateExtraMenuEditorCount(extras);
-        };
         const saveCurrentCheckboxes = () => {
             const checkedHrefs = getCheckedHrefs();
             _saveExtraMenuSelection(checkedHrefs, role);
             _state.extraEditingId = '';
-            _setExtraMenuCollapsed(false);
             _setExtraMenuEditorOpen(false);
+            _setExtraMenuCollapsed(true);
             _ensureCommandDeck();
         };
 
@@ -665,30 +655,6 @@ const Sidebar = (() => {
             input.dataset.sidebarExtraPageBound = 'true';
             input.addEventListener('change', () => _updateExtraMenuEditorCount(extras));
         });
-
-        const selectAll = extras.querySelector('[data-sidebar-extra-select-all]');
-        if (selectAll && selectAll.dataset.sidebarExtraSelectAllBound !== 'true') {
-            selectAll.dataset.sidebarExtraSelectAllBound = 'true';
-            selectAll.addEventListener('click', () => {
-                setCheckedHrefs(_getSelectableExtraMenuItems(role).map(item => item.href));
-            });
-        }
-
-        const reset = extras.querySelector('[data-sidebar-extra-reset]');
-        if (reset && reset.dataset.sidebarExtraResetBound !== 'true') {
-            reset.dataset.sidebarExtraResetBound = 'true';
-            reset.addEventListener('click', () => {
-                setCheckedHrefs(EXTRA_MENU_HREFS);
-            });
-        }
-
-        const clear = extras.querySelector('[data-sidebar-extra-clear]');
-        if (clear && clear.dataset.sidebarExtraClearBound !== 'true') {
-            clear.dataset.sidebarExtraClearBound = 'true';
-            clear.addEventListener('click', () => {
-                setCheckedHrefs([]);
-            });
-        }
 
         const save = extras.querySelector('[data-sidebar-extra-save]');
         if (save && save.dataset.sidebarExtraSaveBound !== 'true') {

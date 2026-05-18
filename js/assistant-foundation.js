@@ -738,6 +738,553 @@
         return true;
     }
 
+    const ACTION_COMMAND_VERSION = 'assistant_action_commands_v1';
+    const PENDING_COMMAND_KEY = 'eg_crm_assistant_pending_command_v1';
+    const SAFE_COMMAND_TYPES = new Set(['navigation', 'filter', 'focus', 'highlight', 'theme', 'ui', 'voice']);
+    const CONFIRMATION_COMMAND_TYPES = new Set(['create_task']);
+    const FORBIDDEN_COMMAND_PATTERNS = [
+        /видал(и|ити|ення)|delete|destroy|drop/i,
+        /парол|password|token|токен|secret|ключ/i,
+        /права доступу|permission|role|роль/i,
+        /оплат(и|ити)|списати|переказ|refund|повернення коштів/i,
+        /відправ(и|ити).*(повідомлення|message|telegram|email)/i
+    ];
+    const PAGE_COMMANDS = [
+        { pageId: 'timeline', href: 'index.html', aliases: ['таймлайн', 'timeline', 'день'] },
+        { pageId: 'dashboard', href: 'dashboard.html', aliases: ['dashboard', 'дашборд', 'головна', 'головний екран'] },
+        { pageId: 'tasks', href: 'tasks.html', aliases: ['tasks', 'задачі', 'задач', 'таски'] },
+        { pageId: 'leads', href: 'leads.html', aliases: ['leads', 'ліди', 'лід', 'воронка'] },
+        { pageId: 'chat', href: 'chat.html', aliases: ['chat', 'чат', 'діалоги', 'комунікації'] },
+        { pageId: 'finance', href: 'finance.html', aliases: ['finance', 'фінанси', 'борги', 'p&l', 'pnl'] },
+        { pageId: 'reports', href: 'reports.html', aliases: ['reports', 'звіти', 'звіт'] },
+        { pageId: 'profile', href: 'profile.html', aliases: ['profile', 'профіль', 'кабінет'] }
+    ];
+
+    function normalizeCommandText(value = '') {
+        return String(value || '')
+            .toLowerCase()
+            .replace(/[«»“”]/g, '"')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function commandHasAny(text = '', terms = []) {
+        return terms.some(term => text.includes(String(term).toLowerCase()));
+    }
+
+    function routeResult(overrides = {}) {
+        return {
+            matched: true,
+            blocked: false,
+            requiresInput: false,
+            confirmationNeeded: false,
+            commandType: 'ui',
+            actionId: '',
+            label: '',
+            summary: '',
+            payload: {},
+            safe: true,
+            ...overrides
+        };
+    }
+
+    function forbiddenCommand(text = '') {
+        return FORBIDDEN_COMMAND_PATTERNS.find(pattern => pattern.test(text)) || null;
+    }
+
+    function currentPageHref(pageId = getPageId()) {
+        const page = PAGE_COMMANDS.find(item => item.pageId === pageId);
+        return page?.href || `${pageId}.html`;
+    }
+
+    function pageCommandForText(text = '') {
+        return PAGE_COMMANDS.find(item => commandHasAny(text, item.aliases)) || null;
+    }
+
+    function sidebarPageCommandForText(text = '') {
+        const items = Array.isArray(window.Sidebar?.NAV_ITEMS) ? window.Sidebar.NAV_ITEMS : [];
+        for (const item of items) {
+            const href = String(item?.href || '').trim();
+            if (!href || href.startsWith('#') || item.type === 'group') continue;
+            const label = normalizeCommandText(item.label || '');
+            const slug = normalizeCommandText(href.replace(/^\//, '').replace(/\.html$/, '').replace(/[?#].*$/, ''));
+            if ((label && text.includes(label)) || (slug && text.includes(slug))) {
+                return {
+                    pageId: slug || 'crm',
+                    href,
+                    aliases: [label, slug].filter(Boolean)
+                };
+            }
+        }
+        return null;
+    }
+
+    function taskViewForCommand(text = '') {
+        if (/waiting|чекаю|очіку/.test(text)) return 'waiting';
+        if (/канбан|kanban|дошк/.test(text)) return 'board';
+        if (/мої|my/.test(text)) return 'my';
+        if (/сьогодні|today/.test(text)) return 'today';
+        if (/наступн|next/.test(text)) return 'next';
+        if (/архів|archive/.test(text)) return 'archive';
+        return '';
+    }
+
+    function sectionActionForCommand(text = '', targetPage = getPageId()) {
+        if (/борг|debt/.test(text)) return { pageId: 'finance', actionId: 'finance.open-debts', targetId: 'finance-debts' };
+        if (/p&l|pnl|аналітик|analytics/.test(text)) return { pageId: 'finance', actionId: 'finance.open-advanced', targetId: 'finance-advanced' };
+        if (/гаряч|hot|follow|kanban|канбан/.test(text) && /лід|lead|ворон/.test(text)) return { pageId: 'leads', actionId: 'leads.open-kanban', targetId: 'leads-kanban' };
+        if (/unread|непроч|waiting|очіку/.test(text) && /чат|chat|діалог/.test(text)) return { pageId: 'chat', actionId: 'chat.filter-unread', targetId: 'chat-unread-filter' };
+        if (/work queue|черг|просроч|простроч|overdue/.test(text) && targetPage === 'dashboard') return { pageId: 'dashboard', actionId: 'dashboard.focus-work-queue', targetId: 'dashboard-work-queue' };
+        return null;
+    }
+
+    function savePendingCommand(command = {}) {
+        try {
+            sessionStorage.setItem(PENDING_COMMAND_KEY, JSON.stringify({
+                pageId: compactText(command.pageId || '', 80),
+                actionId: compactText(command.actionId || '', 100),
+                targetId: compactText(command.targetId || '', 100),
+                label: compactText(command.label || '', 140),
+                createdAt: Date.now(),
+                expiresAt: Date.now() + 18000
+            }));
+        } catch {}
+    }
+
+    function consumePendingCommand(pageId = getPageId()) {
+        try {
+            const raw = sessionStorage.getItem(PENDING_COMMAND_KEY);
+            if (!raw) return null;
+            const command = JSON.parse(raw);
+            if (!command || Date.now() > Number(command.expiresAt || 0)) {
+                sessionStorage.removeItem(PENDING_COMMAND_KEY);
+                return null;
+            }
+            if (command.pageId && command.pageId !== pageId) return null;
+            sessionStorage.removeItem(PENDING_COMMAND_KEY);
+            return command;
+        } catch {
+            try { sessionStorage.removeItem(PENDING_COMMAND_KEY); } catch {}
+            return null;
+        }
+    }
+
+    function assistantToday(offsetDays = 0) {
+        const date = new Date();
+        date.setDate(date.getDate() + offsetDays);
+        return date.toISOString().slice(0, 10);
+    }
+
+    function parseTaskDeadline(text = '') {
+        const timeMatch = text.match(/(?:о|на|в|at)\s*(\d{1,2})(?::|\.)(\d{2})/i);
+        const date = /завтра|tomorrow/i.test(text) ? assistantToday(1) : assistantToday(0);
+        if (!timeMatch) return { date, deadline: null };
+        const hh = String(Math.min(23, Math.max(0, Number(timeMatch[1])))).padStart(2, '0');
+        const mm = String(Math.min(59, Math.max(0, Number(timeMatch[2])))).padStart(2, '0');
+        return { date, deadline: `${date}T${hh}:${mm}:00` };
+    }
+
+    function parseTaskPriority(text = '') {
+        if (/критич|термінов|urgent|critical/i.test(text)) return 'urgent';
+        if (/висок|важлив|high/i.test(text)) return 'high';
+        if (/низьк|low/i.test(text)) return 'low';
+        return 'normal';
+    }
+
+    function extractQuotedText(raw = '') {
+        const quote = String(raw || '').match(/["«“](.+?)["»”]/);
+        return quote ? quote[1].trim() : '';
+    }
+
+    function extractTaskTitle(raw = '') {
+        const quoted = extractQuotedText(raw);
+        if (quoted) return compactText(quoted, 160);
+        let title = String(raw || '')
+            .replace(/^\s*(помічник[у]?,?\s*)?/i, '')
+            .replace(/\b(будь ласка|пліз|please)\b/ig, '')
+            .replace(/\b(створи|створити|додай|додати|постав|зроби|сформуй|create|add|make)\b/ig, '')
+            .replace(/\b(нову|новий|мені|нам)\b/ig, '')
+            .replace(/\b(задачу|задача|таску|task|чекліст|checklist)\b/ig, '')
+            .replace(/\b(на сьогодні|сьогодні|на завтра|завтра)\b/ig, '')
+            .replace(/\b(о|на|в|at)\s*\d{1,2}(?::|\.)\d{2}\b/ig, '')
+            .replace(/\b(з пріоритетом|пріоритет|priority)\s*(критичний|терміновий|високий|низький|normal|high|low|urgent)\b/ig, '')
+            .trim();
+        title = title.replace(/^[:\-–—]+/, '').trim();
+        return compactText(title, 160);
+    }
+
+    function parseTaskCommand(raw = '', text = normalizeCommandText(raw)) {
+        const isTaskCommand = /(створи|створити|додай|додати|постав|зроби|сформуй|create|add|make).{0,32}(задач|таск|task|чекліст|checklist)/i.test(text)
+            || /(задач|таск|task|чекліст|checklist).{0,24}(створи|додай|постав|create|add|make)/i.test(text);
+        if (!isTaskCommand) return null;
+        const title = extractTaskTitle(raw);
+        if (!title || title.length < 3) {
+            return routeResult({
+                commandType: 'create_task',
+                actionId: 'assistant.create-task',
+                label: 'Створити задачу',
+                requiresInput: true,
+                confirmationNeeded: true,
+                safe: false,
+                summary: 'Напиши назву задачі. Наприклад: “створи задачу Подзвонити клієнту завтра о 12:00”.'
+            });
+        }
+        const deadline = parseTaskDeadline(text);
+        const isChecklist = /чекліст|checklist/i.test(text);
+        const sourceId = (() => {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                if (getPageId() === 'leads') return params.get('lead') || params.get('leadId') || '';
+                if (getPageId() === 'tasks') return params.get('open') || '';
+                return '';
+            } catch {
+                return '';
+            }
+        })();
+        return routeResult({
+            commandType: 'create_task',
+            actionId: 'assistant.create-task',
+            label: isChecklist ? 'Створити чекліст' : 'Створити задачу',
+            confirmationNeeded: true,
+            safe: false,
+            summary: `${isChecklist ? 'Підготував чекліст' : 'Підготував задачу'} “${title}”. Потрібне підтвердження перед створенням.`,
+            payload: {
+                title,
+                date: deadline.date,
+                deadline: deadline.deadline,
+                priority: parseTaskPriority(text),
+                task_kind: isChecklist ? 'checklist' : (/чекаю|waiting/i.test(text) ? 'waiting' : 'action'),
+                category: isChecklist ? 'checklist' : 'admin',
+                source_module: getPageId(),
+                source_type: getPageId() === 'chat' ? 'chat_command' : (getPageId() === 'leads' ? 'lead_command' : 'assistant_command'),
+                source_id: sourceId || null
+            }
+        });
+    }
+
+    function routeCommand(rawInput = '', options = {}) {
+        const raw = String(rawInput || '').trim();
+        const text = normalizeCommandText(raw);
+        if (!text) return { matched: false };
+        const forbidden = forbiddenCommand(text);
+        if (forbidden) {
+            return routeResult({
+                blocked: true,
+                commandType: 'blocked',
+                actionId: 'assistant.blocked',
+                label: 'Небезпечна дія заблокована',
+                safe: false,
+                summary: 'Цю дію я не виконую напряму. Видалення, паролі, токени, права доступу, фінансові мутації та відправка повідомлень мають лишатися під ручним контролем.'
+            });
+        }
+        if (/що ти вмієш|список функц|команди помічника|що можеш зробити/i.test(text)) {
+            return routeResult({
+                commandType: 'capabilities',
+                actionId: 'assistant.capabilities',
+                label: 'Показати можливості',
+                summary: 'Я вже можу відкривати CRM-сторінки, секції, пошук, міняти тему, згортати меню, керувати голосом/вікном, вмикати compact timeline і створювати задачу або чекліст тільки після підтвердження.'
+            });
+        }
+        const taskCommand = parseTaskCommand(raw, text);
+        if (taskCommand) return taskCommand;
+        if (/назад|повернись назад|go back/i.test(text)) {
+            return routeResult({ commandType: 'navigation', actionId: 'assistant.back', label: 'Повернутись назад', summary: 'Повертаюсь на попередній екран.' });
+        }
+        if (/пошук|search|ctrl\+k|cmd\+k/i.test(text) && /(відкрий|відкрити|покажи|open|запусти)/i.test(text)) {
+            return routeResult({ commandType: 'ui', actionId: 'assistant.open-search', label: 'Відкрити пошук', summary: 'Відкриваю глобальний пошук CRM.' });
+        }
+        const taskOpenMatch = text.match(/(?:відкрий|відкрити|покажи|open).{0,18}(?:задач[ауи]?|task)\s*#?\s*(\d+)/i);
+        if (taskOpenMatch) {
+            return routeResult({
+                commandType: 'navigation',
+                actionId: 'assistant.navigate',
+                label: 'Відкрити задачу',
+                summary: `Відкриваю задачу #${taskOpenMatch[1]}.`,
+                payload: { href: `tasks.html?open=${encodeURIComponent(taskOpenMatch[1])}`, pageId: 'tasks' }
+            });
+        }
+        const leadOpenMatch = text.match(/(?:відкрий|відкрити|покажи|open).{0,18}(?:лід|lead)\s*#?\s*(\d+)/i);
+        if (leadOpenMatch) {
+            return routeResult({
+                commandType: 'navigation',
+                actionId: 'assistant.navigate',
+                label: 'Відкрити лід',
+                summary: `Відкриваю workspace ліда #${leadOpenMatch[1]}.`,
+                payload: { href: `leads.html?lead=${encodeURIComponent(leadOpenMatch[1])}`, pageId: 'leads' }
+            });
+        }
+        if (/(ручн|форма|додати|створи).{0,28}(звіт|report)|звіт.{0,28}(ручн|форма|додати)/i.test(text)) {
+            const currentPage = compactText(options.pageId || getPageId(), 80);
+            if (currentPage !== 'reports') {
+                return routeResult({
+                    commandType: 'navigation',
+                    actionId: 'assistant.navigate',
+                    label: 'Відкрити звіти',
+                    summary: 'Відкриваю сторінку звітів. Сам запис звіту створюється тільки вручну або після окремого підтвердження.',
+                    payload: { href: 'reports.html', pageId: 'reports' }
+                });
+            }
+            return routeResult({ commandType: 'ui', actionId: 'assistant.report-open-form', label: 'Відкрити форму ручного звіту', summary: 'Відкриваю форму ручного звіту. Збереження фінансового запису лишається тільки після твого підтвердження.' });
+        }
+        if (/велике вікно|вікно помічника|assistant window|панель помічника/i.test(text)) {
+            const close = /закрий|закрити|close/i.test(text);
+            return routeResult({ commandType: 'ui', actionId: close ? 'assistant.panel-close' : 'assistant.panel-open', label: close ? 'Закрити вікно Помічника' : 'Відкрити вікно Помічника', summary: close ? 'Закриваю велике вікно Помічника.' : 'Відкриваю велике вікно Помічника.' });
+        }
+        if (/голос|voice|озвуч|повтори остан/i.test(text)) {
+            if (/повтори|replay/i.test(text)) return routeResult({ commandType: 'voice', actionId: 'assistant.voice-replay', label: 'Повторити останню відповідь', summary: 'Повторюю останню відповідь.' });
+            const off = /вимк|off|mute|тиша/i.test(text);
+            const on = /увімк|включ|on/i.test(text);
+            if (off || on) return routeResult({ commandType: 'voice', actionId: off ? 'assistant.voice-off' : 'assistant.voice-on', label: off ? 'Вимкнути голос' : 'Увімкнути голос', summary: off ? 'Вимикаю голосові відповіді.' : 'Увімкнув голосові відповіді.' });
+        }
+        if (/тема|theme|день|ніч|night|day|auto|авто/i.test(text) && /(зміни|перемк|увімк|включ|постав|theme|тема)/i.test(text)) {
+            let mode = 'toggle';
+            if (/ніч|темн|dark|night/i.test(text)) mode = 'dark';
+            if (/день|світл|light|day/i.test(text)) mode = 'light';
+            if (/авто|auto|систем/i.test(text)) mode = 'auto';
+            return routeResult({ commandType: 'theme', actionId: 'assistant.theme', label: 'Змінити тему', summary: mode === 'auto' ? 'Перемикаю тему в авто-режим.' : mode === 'dark' ? 'Перемикаю CRM у нічну тему.' : mode === 'light' ? 'Перемикаю CRM у денну тему.' : 'Перемикаю тему CRM.', payload: { mode } });
+        }
+        if (/згорн|розгорн|меню|sidebar/i.test(text) && /(меню|sidebar)/i.test(text)) {
+            const collapse = /згорн|collapse/i.test(text);
+            const expand = /розгорн|expand/i.test(text);
+            return routeResult({ commandType: 'ui', actionId: collapse ? 'assistant.sidebar-collapse' : expand ? 'assistant.sidebar-expand' : 'assistant.sidebar-toggle', label: collapse ? 'Згорнути меню' : expand ? 'Розгорнути меню' : 'Перемкнути меню', summary: collapse ? 'Згортаю ліве меню.' : expand ? 'Розгортаю ліве меню.' : 'Перемикаю стан лівого меню.' });
+        }
+        if (/compact|компакт/i.test(text) && /таймлайн|timeline/i.test(text)) {
+            const off = /вимк|off|звичай/i.test(text);
+            return routeResult({ commandType: 'ui', actionId: off ? 'assistant.timeline-compact-off' : 'assistant.timeline-compact-on', label: off ? 'Вимкнути compact timeline' : 'Увімкнути compact timeline', summary: off ? 'Вимикаю compact mode для таймлайна.' : 'Увімкнув compact mode для таймлайна.' });
+        }
+        if (/(відкрий|відкрити|перейди|покажи|open|go to|на сторінку)/i.test(text)) {
+            const currentPage = compactText(options.pageId || getPageId(), 80);
+            const section = sectionActionForCommand(text, currentPage);
+            if (section) {
+                return routeResult({
+                    commandType: currentPage === section.pageId ? 'filter' : 'navigation',
+                    actionId: currentPage === section.pageId ? section.actionId : 'assistant.navigate',
+                    label: 'Відкрити секцію',
+                    summary: currentPage === section.pageId ? 'Відкриваю потрібну секцію на поточній сторінці.' : 'Переходжу на потрібну сторінку і відкрию секцію після завантаження.',
+                    payload: {
+                        href: currentPageHref(section.pageId),
+                        pageId: section.pageId,
+                        pendingActionId: currentPage === section.pageId ? '' : section.actionId,
+                        pendingTargetId: section.targetId,
+                        directActionId: currentPage === section.pageId ? section.actionId : ''
+                    }
+                });
+            }
+            const page = pageCommandForText(text) || sidebarPageCommandForText(text);
+            if (page) {
+                let href = page.href;
+                if (page.pageId === 'tasks') {
+                    const view = taskViewForCommand(text);
+                    if (view) href = `tasks.html?view=${encodeURIComponent(view)}`;
+                }
+                return routeResult({
+                    commandType: 'navigation',
+                    actionId: 'assistant.navigate',
+                    label: `Відкрити ${page.pageId}`,
+                    summary: `Відкриваю ${page.pageId}.`,
+                    payload: { href, pageId: page.pageId }
+                });
+            }
+        }
+        if (/проведи|по крок|2-4 крок|навчи|навчання|guided|tour|сценар/i.test(text)) {
+            return routeResult({
+                commandType: 'highlight',
+                actionId: 'assistant.teaching-start',
+                label: 'Провести по кроках',
+                summary: 'Запускаю короткий guided-сценарій тільки зі стабільними цілями на цій сторінці.',
+                payload: { flowId: defaultTeachingFlowForPage(getPageId()) }
+            });
+        }
+        if (/покажи де|де натиснути|підсвіт|highlight/i.test(text)) {
+            const context = buildContext({ silent: true });
+            const target = context.teachingTarget || toList(context.teachingTargets || [], 10).find(item => item.available);
+            if (!target) {
+                return routeResult({ commandType: 'highlight', actionId: 'assistant.highlight', label: 'Підсвітити ціль', summary: 'Зараз не бачу стабільної цілі для підсвітки, тому не буду блимати випадковим елементом.', payload: { targetId: '' } });
+            }
+            return routeResult({ commandType: 'highlight', actionId: 'assistant.highlight', label: `Підсвітити ${target.label}`, summary: `Підсвічую: ${target.label}.`, payload: { targetId: target.targetId } });
+        }
+        return { matched: false };
+    }
+
+    function setSidebarCollapsed(collapsed = null) {
+        const sidebar = document.getElementById('sidebarNav');
+        if (!sidebar) return { success: false, message: 'sidebar_unavailable' };
+        const next = collapsed === null ? !sidebar.classList.contains('collapsed') : !!collapsed;
+        sidebar.classList.toggle('collapsed', next);
+        document.body.classList.toggle('sidebar-is-collapsed', next);
+        try { localStorage.setItem('pzp_sidebar_collapsed', String(next)); } catch {}
+        const btn = document.getElementById('sidebarCollapseBtn');
+        if (btn) {
+            btn.setAttribute('aria-pressed', String(next));
+            btn.setAttribute('aria-label', next ? 'Розгорнути меню' : 'Згорнути меню');
+            btn.setAttribute('title', next ? 'Розгорнути меню' : 'Згорнути меню');
+        }
+        window.dispatchEvent(new Event('resize'));
+        return { success: true, collapsed: next };
+    }
+
+    function setTimelineCompact(enabled) {
+        const next = !!enabled;
+        try { localStorage.setItem('pzp_compact_mode', String(next)); } catch {}
+        if (window.AppState) window.AppState.compactMode = next;
+        const toggle = document.getElementById('compactModeToggle');
+        if (toggle) toggle.checked = next;
+        if (typeof window.applyTimelineResponsiveDensity === 'function') window.applyTimelineResponsiveDensity();
+        const container = document.querySelector('.timeline-container');
+        if (container) container.classList.toggle('compact', next);
+        if (typeof window.renderTimeline === 'function') window.renderTimeline();
+        return { success: true, compact: next, currentPage: getPageId() };
+    }
+
+    function applyThemeCommand(mode = 'toggle') {
+        const currentDark = document.body.classList.contains('dark-mode') || document.documentElement.getAttribute('data-theme') === 'dark';
+        let nextMode = mode;
+        if (nextMode === 'toggle') nextMode = currentDark ? 'light' : 'dark';
+        if (nextMode === 'auto') {
+            try { localStorage.removeItem('pzp_dark_mode'); } catch {}
+            const systemDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            if (typeof window.applyCrmThemeMode === 'function') window.applyCrmThemeMode(systemDark, false);
+            else {
+                document.body.classList.toggle('dark-mode', systemDark);
+                document.documentElement.setAttribute('data-theme', systemDark ? 'dark' : 'light');
+                document.documentElement.style.colorScheme = systemDark ? 'dark' : 'light';
+            }
+            return { success: true, mode: 'auto', dark: systemDark };
+        }
+        const dark = nextMode === 'dark';
+        if (typeof window.applyCrmThemeMode === 'function') window.applyCrmThemeMode(dark, true);
+        else {
+            document.body.classList.toggle('dark-mode', dark);
+            document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+            document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+            try { localStorage.setItem('pzp_dark_mode', String(dark)); } catch {}
+        }
+        return { success: true, mode: dark ? 'dark' : 'light', dark };
+    }
+
+    async function createTaskFromCommand(payload = {}) {
+        const token = readStorage('pzp_token', '');
+        if (!token) throw new Error('auth_required');
+        const body = {
+            title: compactText(payload.title, 180),
+            date: payload.date || assistantToday(0),
+            deadline: payload.deadline || null,
+            priority: payload.priority || 'normal',
+            category: payload.category || 'admin',
+            task_type: 'human',
+            task_mode: 'work',
+            task_kind: payload.task_kind || 'action',
+            visibility: 'team',
+            workflow_state: payload.task_kind === 'waiting' ? 'waiting' : 'inbox',
+            source_type: payload.source_type || 'assistant_command',
+            source_id: payload.source_id || null,
+            source_module: payload.source_module || getPageId()
+        };
+        const response = await fetch('/api/tasks', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(body)
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) {
+            const err = new Error(data.message || data.error || `task_create_http_${response.status}`);
+            err.status = response.status;
+            err.payload = data;
+            throw err;
+        }
+        return { success: true, task: data.task, summary: `Задачу створено: “${body.title}”.` };
+    }
+
+    async function executeCommand(route = {}, options = {}) {
+        if (!route?.matched) return { success: false, handled: false };
+        if (route.blocked || route.requiresInput) return { success: false, handled: true, summary: route.summary, blocked: route.blocked, requiresInput: route.requiresInput };
+        const type = route.commandType || 'ui';
+        if (!SAFE_COMMAND_TYPES.has(type) && !CONFIRMATION_COMMAND_TYPES.has(type)) {
+            throw new Error('assistant_command_type_not_allowed');
+        }
+        if (route.confirmationNeeded) {
+            const title = route.payload?.title ? `\n\n${route.payload.title}` : '';
+            const ok = typeof window.confirm === 'function'
+                ? window.confirm(`${route.label || 'Підтвердити дію'}?${title}`)
+                : false;
+            if (!ok) return { success: false, handled: true, cancelled: true, summary: 'Дію скасовано. Без підтвердження я не створюю або не змінюю дані.' };
+        }
+        if (route.payload?.directActionId) {
+            const result = await actionRegistry.run(route.payload.directActionId, route.payload);
+            return { success: true, handled: true, summary: route.summary, result };
+        }
+        switch (route.actionId) {
+            case 'assistant.navigate':
+                if (route.payload?.pendingActionId || route.payload?.pendingTargetId) {
+                    savePendingCommand({
+                        pageId: route.payload.pageId,
+                        actionId: route.payload.pendingActionId,
+                        targetId: route.payload.pendingTargetId,
+                        label: route.label
+                    });
+                }
+                window.setTimeout(() => window.location.assign(route.payload?.href || currentPageHref(route.payload?.pageId)), 80);
+                return { success: true, handled: true, navigating: true, summary: route.summary };
+            case 'assistant.back':
+                window.setTimeout(() => window.history.back(), 80);
+                return { success: true, handled: true, navigating: true, summary: route.summary };
+            case 'assistant.open-search':
+                if (typeof window.openGlobalHeaderSearch === 'function') window.openGlobalHeaderSearch();
+                else if (typeof window.openSearch === 'function') window.openSearch();
+                else clickSelector('#globalHeaderSearchBtn, .header-search-btn, .btn-search');
+                return { success: true, handled: true, summary: route.summary };
+            case 'assistant.report-open-form':
+                return { success: clickSelector('#addReportBtn'), handled: true, summary: route.summary };
+            case 'assistant.theme':
+                return { success: true, handled: true, summary: route.summary, result: applyThemeCommand(route.payload?.mode || 'toggle') };
+            case 'assistant.sidebar-collapse':
+                return { success: true, handled: true, summary: route.summary, result: setSidebarCollapsed(true) };
+            case 'assistant.sidebar-expand':
+                return { success: true, handled: true, summary: route.summary, result: setSidebarCollapsed(false) };
+            case 'assistant.sidebar-toggle':
+                return { success: true, handled: true, summary: route.summary, result: setSidebarCollapsed(null) };
+            case 'assistant.timeline-compact-on':
+                return { success: true, handled: true, summary: route.summary, result: setTimelineCompact(true) };
+            case 'assistant.timeline-compact-off':
+                return { success: true, handled: true, summary: route.summary, result: setTimelineCompact(false) };
+            case 'assistant.panel-open':
+                window.CrmAssistantRail?.expand?.();
+                return { success: true, handled: true, summary: route.summary };
+            case 'assistant.panel-close':
+                window.CrmAssistantRail?.closePanel?.();
+                return { success: true, handled: true, summary: route.summary };
+            case 'assistant.voice-on':
+                if (window.CrmAssistantRail?.toggleVoice && readStorage('eg_crm_assistant_voice', 'on') === 'off') window.CrmAssistantRail.toggleVoice();
+                return { success: true, handled: true, summary: route.summary };
+            case 'assistant.voice-off':
+                if (window.CrmAssistantRail?.toggleVoice && readStorage('eg_crm_assistant_voice', 'on') !== 'off') window.CrmAssistantRail.toggleVoice();
+                return { success: true, handled: true, summary: route.summary };
+            case 'assistant.voice-replay':
+                await window.CrmAssistantRail?.replayLastLine?.();
+                return { success: true, handled: true, summary: route.summary };
+            case 'assistant.highlight': {
+                const targetId = route.payload?.targetId || '';
+                const result = targetId ? highlightTarget(targetId, { durationMs: 3600 }) : { success: false, fallbackText: route.summary };
+                return { success: result.success, handled: true, summary: result.success ? route.summary : (result.fallbackText || route.summary), result };
+            }
+            case 'assistant.teaching-start': {
+                const result = startTeachingFlow(route.payload?.flowId || defaultTeachingFlowForPage(getPageId()));
+                return { success: result.success, handled: true, summary: result.success ? route.summary : (result.fallbackText || 'На цій сторінці немає стабільного guided-сценарію.'), result };
+            }
+            case 'assistant.create-task': {
+                const created = await createTaskFromCommand(route.payload || {});
+                return { success: true, handled: true, summary: created.summary, result: created };
+            }
+            case 'assistant.capabilities':
+                return { success: true, handled: true, summary: route.summary };
+            default:
+                throw new Error('assistant_command_unavailable');
+        }
+    }
+
     function pageMatches(adapter, pageId) {
         const ids = toList([adapter.pageId, ...(adapter.pageIds || [])], 12).filter(Boolean);
         return ids.includes(pageId);
@@ -1316,6 +1863,18 @@
         },
         telemetry: {
             emit: emitTelemetry
+        },
+        commands: {
+            version: ACTION_COMMAND_VERSION,
+            safeTypes: () => Array.from(SAFE_COMMAND_TYPES),
+            route: routeCommand,
+            execute: executeCommand,
+            consumePending: consumePendingCommand,
+            capabilities: () => ({
+                safeWithoutConfirmation: ['navigation', 'filter', 'focus', 'highlight', 'theme', 'ui', 'voice'],
+                confirmationRequired: ['create_task'],
+                blocked: ['delete', 'passwords', 'tokens', 'permissions', 'financial_mutations', 'send_messages']
+            })
         },
         adapters: {
             register: registerAdapter,

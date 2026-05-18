@@ -1300,6 +1300,71 @@
         renderTeachingRunner();
     }
 
+    async function tryRunAssistantCommand(prompt) {
+        const api = foundation();
+        if (!api?.commands?.route || !api?.commands?.execute) return false;
+        const route = api.commands.route(prompt, { pageId: getCurrentPageKey(), source: 'rail:prompt' });
+        if (!route?.matched) return false;
+        const actionLine = route.summary || route.label || 'Виконую дію по CRM.';
+        try {
+            setState({
+                mode: route.blocked || route.requiresInput ? 'idle' : 'action',
+                subtitle: actionLine,
+                tickerText: '',
+                playbackState: 'text'
+            });
+            const result = await api.commands.execute(route, { source: 'rail:prompt' });
+            const line = result?.summary || actionLine;
+            if (result?.navigating) {
+                appendHistory('assistant', line);
+                setState({ mode: 'success', subtitle: line, tickerText: line, lastSpokenLine: line, playbackState: 'text' });
+                renderHistory();
+                return true;
+            }
+            await playReply({ summary: line, subtitle: line, text: line }, {
+                addToHistory: true,
+                textOnly: !state.voiceEnabled || route.blocked || route.requiresInput
+            });
+            await refreshFoundationContext({ force: true });
+            renderPanelSnapshot();
+            return true;
+        } catch (err) {
+            emitTelemetry('action_unavailable', {
+                module: 'rail:commandRouter',
+                actionId: route.actionId || '',
+                failureReason: err.message || String(err),
+                fallbackShown: true
+            });
+            handleError(err, 'Не вдалося виконати команду. Я не вигадую дію, якої не маю в безпечному контракті.');
+            return true;
+        }
+    }
+
+    function runPendingAssistantCommandFromNavigation() {
+        const api = foundation();
+        const pending = api?.commands?.consumePending?.(getCurrentPageKey());
+        if (!pending) return;
+        window.setTimeout(async () => {
+            try {
+                setState({ mode: 'action', subtitle: pending.label || 'Відкриваю потрібну секцію.', tickerText: '' });
+                if (pending.actionId) await runRegisteredAction(pending.actionId);
+                else if (pending.targetId) highlightTeachingTarget(pending.targetId, { durationMs: 3600 });
+                const line = pending.label ? `${pending.label}: готово.` : 'Секцію відкрито.';
+                setState({ mode: 'success', subtitle: line, tickerText: '', playbackState: 'text' });
+                renderPanelSnapshot();
+            } catch (err) {
+                emitTelemetry('action_unavailable', {
+                    module: 'rail:pendingCommand',
+                    actionId: pending.actionId || '',
+                    targetId: pending.targetId || '',
+                    failureReason: err.message || String(err),
+                    fallbackShown: true
+                });
+                setState({ mode: 'idle', subtitle: 'Сторінку відкрито, але точну секцію зараз не знайшов.', tickerText: '' });
+            }
+        }, 420);
+    }
+
     async function runQuickPrompt(prompt) {
         await submitPromptText(prompt);
     }
@@ -1321,6 +1386,7 @@
         renderHistory();
         setState({ mode: 'thinking', subtitle: 'Думаю над відповіддю по цій сторінці...', tickerText: '', playbackState: 'idle' });
         try {
+            if (await tryRunAssistantCommand(prompt)) return;
             const reply = await requestGuideReply({ userMessage: prompt });
             await playReply(reply);
         } catch (err) {
@@ -1363,6 +1429,7 @@
         foundation()?.init?.({ pageId: getCurrentPageKey(), ...options });
         if (!ensureMounted()) return false;
         if (options.subtitle) announceFromPage(options.subtitle);
+        runPendingAssistantCommandFromNavigation();
         window.setTimeout(() => scheduleProactiveHelp(options), initCount === 1 ? 500 : 100);
         return true;
     }
@@ -1387,6 +1454,7 @@
         getFoundationContext,
         refreshFoundationContext,
         runRegisteredAction,
+        tryRunAssistantCommand,
         highlightTeachingTarget,
         buildPageGuideContext,
         getAssetVersion

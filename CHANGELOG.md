@@ -4,6 +4,18 @@
 
 ---
 
+## v0.57.0 - Assistant Action Commands
+
+### Assistant Action Commands [codex]
+- **Command router** - Помічник тепер спочатку розпізнає безпечні команди дій у rail, а вже потім віддає запит у generic AI reply.
+- **Навігація і shell actions** - можна просити відкрити CRM-сторінку, пошук, фінансові борги/аналітику, згорнути меню, змінити тему, відкрити велике вікно, перемкнути голос або compact timeline.
+- **Create-task flow** - створення задачі або чекліста працює тільки після явного підтвердження і йде через існуючий `/api/tasks` contract.
+- **Safety boundary** - видалення, паролі, токени, права доступу, фінансові мутації та відправка повідомлень заблоковані для прямого виконання Помічником.
+- **Ticker fix** - довгі відповіді Помічника в rail більше не застигають обрізаними: compact CSS не вимикає `assistantTicker`, duplicate text у `::after` і nowrap-режим.
+- **Guardrails** - `test:ui` фіксує command router, safe/confirmed command boundary, pending navigation actions і захист від повернення CSS override, який зупиняв ticker.
+
+---
+
 ## v0.56.8 - Header: пошук і Помічник
 
 ### Header Search + Assistant Naming [codex]

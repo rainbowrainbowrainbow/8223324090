@@ -1302,13 +1302,19 @@ body.dark-mode .crm-assistant-rail[data-mode="busy"] {
 }
 
 .crm-assistant-rail .assistant-rail-subtitles.is-ticker {
-    display: -webkit-box;
-    transform: none !important;
-    white-space: normal;
+    display: inline-block !important;
+    min-width: max-content;
+    max-width: none;
+    white-space: nowrap !important;
+    -webkit-line-clamp: unset;
+    overflow: visible;
+    text-overflow: clip;
+    animation: assistantTicker var(--assistant-ticker-duration, 18s) linear infinite;
 }
 
 .crm-assistant-rail .assistant-rail-subtitles.is-ticker::after {
-    content: none !important;
+    content: attr(data-ticker-text) !important;
+    padding-left: 56px;
 }
 
 .crm-assistant-rail .assistant-rail-btn,

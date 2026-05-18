@@ -1771,6 +1771,10 @@ function initGlobalHeaderSearch() {
     return true;
 }
 
+// v0.56.9: expose safe shell controls for the assistant command router.
+window.applyCrmThemeMode = applyCrmThemeMode;
+window.openGlobalHeaderSearch = openGlobalHeaderSearch;
+
 // v10.4: Auto-init profile handler on any page (sub-pages don't call showMainApp)
 function initProfileHandler() {
     const el = document.getElementById('currentUser');

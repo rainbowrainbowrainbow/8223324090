@@ -14,9 +14,6 @@ const Sidebar = (() => {
         extraEditingId: ''
     };
     const GROUP_STATE_VERSION = 'ai-cockpit-v2';
-    const TODAY_DOCK_STORAGE_KEY = 'eg_sidebar_today_dock_items_v1';
-    const TODAY_DOCK_DEFAULT_HREFS = ['/dashboard', '/', '/tasks', '/chat'];
-    const TODAY_MENU_HREFS = ['/dashboard', '/', '/tasks'];
     const EXTRA_MENU_HREFS = ['/dashboard', '/', '/tasks', '/chat'];
     const EXTRA_MENU_STORAGE_KEY = 'eg_sidebar_extra_menu_items_v1';
     const EXTRA_MENU_EDIT_STORAGE_KEY = 'eg_sidebar_extra_menu_edit_v1';
@@ -329,16 +326,6 @@ const Sidebar = (() => {
         return currentPath === item.href && !currentHash;
     }
 
-    function _getTodayDockItems(role) {
-        return NAV_ITEMS.filter(item => item.group === 'today' && item.type !== 'group' && (!role || hasAccess(item, role)));
-    }
-
-    function _getTodayMenuItems(role) {
-        const items = _getTodayDockItems(role);
-        const byHref = new Map(items.map(item => [item.href, item]));
-        return TODAY_MENU_HREFS.map(href => byHref.get(href)).filter(Boolean);
-    }
-
     function _normalizeExtraHref(value) {
         let href = String(value || '').trim();
         if (!href) return '';
@@ -448,24 +435,22 @@ const Sidebar = (() => {
         sidebar.insertBefore(section, anchor.nextSibling);
     }
 
+    function _removeSidebarTodayDock() {
+        document.getElementById('sidebarTodayDock')?.remove();
+    }
+
     function _syncSidebarSectionOrder(sidebar, links) {
         if (!sidebar || !links) return;
         const deck = document.getElementById('sidebarCommandDeck');
-        const todayDock = document.getElementById('sidebarTodayDock');
         const extras = document.getElementById('sidebarDesignExtras');
+        _removeSidebarTodayDock();
 
         if (deck && deck.parentElement !== sidebar) sidebar.insertBefore(deck, links);
-        if (todayDock && todayDock.parentElement !== sidebar) sidebar.insertBefore(todayDock, links);
         if (extras && extras.parentElement !== sidebar) sidebar.insertBefore(extras, links);
 
         if (deck) sidebar.insertBefore(deck, links);
-        if (todayDock) {
-            if (deck) _insertSidebarSectionAfter(sidebar, todayDock, deck);
-            else sidebar.insertBefore(todayDock, links);
-        }
         if (extras) {
-            if (todayDock) _insertSidebarSectionAfter(sidebar, extras, todayDock);
-            else if (deck) _insertSidebarSectionAfter(sidebar, extras, deck);
+            if (deck) _insertSidebarSectionAfter(sidebar, extras, deck);
             else sidebar.insertBefore(extras, links);
         }
     }
@@ -489,55 +474,6 @@ const Sidebar = (() => {
             ['system', 'Система'],
             ['ai', 'AI']
         ];
-    }
-
-    function _readTodayDockSelection(items) {
-        const available = items.map(item => item.href);
-        let selected = null;
-        try {
-            const parsed = JSON.parse(localStorage.getItem(TODAY_DOCK_STORAGE_KEY) || 'null');
-            if (Array.isArray(parsed)) selected = parsed.filter(href => available.includes(href));
-        } catch {}
-        if (!selected) selected = TODAY_DOCK_DEFAULT_HREFS.filter(href => available.includes(href));
-        if (!selected.length) selected = available.slice(0, Math.min(4, available.length));
-        return selected;
-    }
-
-    function _saveTodayDockSelection(selected) {
-        try {
-            localStorage.setItem(TODAY_DOCK_STORAGE_KEY, JSON.stringify(selected));
-        } catch {}
-    }
-
-    function _renderTodayDockLink(item, currentPath, currentHash) {
-        const isActive = _isSidebarItemActive(item, currentPath, currentHash);
-        const statusText = _navStatusFor(item);
-        const badgeType = _badgeTypeFor(item);
-        const badgeClass = badgeType === 'alerts' ? ' sidebar-today-badge alert' : ' sidebar-today-badge';
-        return `<a href="${_escAttr(item.href)}" class="sidebar-today-link${isActive ? ' active' : ''}">
-            ${_renderIcon(item.icon, 'sidebar-today-icon')}
-            <span class="sidebar-today-link-copy">
-                <span>${_escAttr(item.label)}</span>
-                ${item.statusKey ? `<small data-sidebar-status-key="${_escAttr(item.statusKey)}"${statusText ? '' : ' hidden'}>${_escAttr(statusText || '')}</small>` : '<small>швидкий доступ</small>'}
-            </span>
-            ${badgeType ? `<span class="${badgeClass.trim()}" data-badge-type="${badgeType}" style="display:none"></span>` : ''}
-        </a>`;
-    }
-
-    function _renderTodayMenuButton(item, currentPath, currentHash) {
-        const isActive = _isSidebarItemActive(item, currentPath, currentHash);
-        const badgeType = _badgeTypeFor(item);
-        const badgeClass = badgeType === 'alerts' ? ' sidebar-today-menu-badge alert' : ' sidebar-today-menu-badge';
-        const shortLabels = {
-            '/dashboard': 'Брифінг',
-            '/': 'Таймлайн',
-            '/tasks': 'Задачі'
-        };
-        return `<a href="${_escAttr(item.href)}" class="sidebar-today-menu-btn${isActive ? ' active' : ''}">
-            ${_renderIcon(item.icon, 'sidebar-today-menu-icon')}
-            <span>${_escAttr(shortLabels[item.href] || item.label)}</span>
-            ${badgeType ? `<span class="${badgeClass.trim()}" data-badge-type="${badgeType}" style="display:none"></span>` : ''}
-        </a>`;
     }
 
     function _renderExtraMenuLink(item, currentPath, currentHash, options = {}) {
@@ -706,41 +642,6 @@ const Sidebar = (() => {
         }
     }
 
-    function _ensureTodayDock(links) {
-        const sidebar = links?.closest?.('#sidebarNav') || document.getElementById('sidebarNav');
-        if (!sidebar || !links) return;
-        const savedUser = _getCurrentSidebarUser();
-        const role = _getSidebarActiveRole(savedUser);
-        const items = _getTodayMenuItems(role);
-        let dock = document.getElementById('sidebarTodayDock');
-        if (!items.length) {
-            dock?.remove();
-            return;
-        }
-
-        const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
-        const currentHash = location.hash.replace('#', '');
-
-        if (!dock) {
-            dock = document.createElement('div');
-            dock.id = 'sidebarTodayDock';
-            dock.className = 'sidebar-today-dock sidebar-today-menu';
-        }
-        dock.className = 'sidebar-today-dock sidebar-today-menu';
-        dock.innerHTML = `
-            <div class="sidebar-today-head sidebar-today-head--static">
-                <span class="sidebar-today-dot" aria-hidden="true"></span>
-                <span class="sidebar-today-title">Меню дня</span>
-                <span class="sidebar-today-count">${items.length}</span>
-            </div>
-            <div class="sidebar-today-menu-grid">
-                ${items.map(item => _renderTodayMenuButton(item, currentPath, currentHash)).join('')}
-            </div>`;
-
-        if (dock.parentElement !== sidebar) sidebar.insertBefore(dock, links);
-        _syncSidebarSectionOrder(sidebar, links);
-    }
-
     // ═══ RENDER ═══════════════════════════════════════════════════
     function render(containerSelector) {
         const container = document.querySelector(containerSelector || '#sidebarNav .sidebar-links');
@@ -834,7 +735,7 @@ const Sidebar = (() => {
 
         _ensureAuroraLayer();
         _ensureCommandDeck();
-        _ensureTodayDock(container);
+        _removeSidebarTodayDock();
         _syncGroupSignals();
         _ensureActiveIndicator();
         _initCollapsedTooltips(container);
@@ -1192,37 +1093,6 @@ const Sidebar = (() => {
         _hydrateCommandDeckUser();
         _syncFocusDeckAccess();
         _updateSidebarCommandDeck();
-    }
-
-    function toggleTodayDockConfig(btn) {
-        const dock = btn?.closest?.('#sidebarTodayDock') || document.getElementById('sidebarTodayDock');
-        if (!dock) return;
-        const open = !dock.classList.contains('is-configuring');
-        dock.classList.toggle('is-configuring', open);
-        const panel = dock.querySelector('.sidebar-today-config');
-        if (panel) panel.hidden = !open;
-        btn?.setAttribute?.('aria-expanded', open ? 'true' : 'false');
-    }
-
-    function toggleTodayDockItem(href, checked) {
-        const savedUser = _getCurrentSidebarUser();
-        const role = _getSidebarActiveRole(savedUser);
-        const items = _getTodayDockItems(role);
-        const available = items.map(item => item.href);
-        const key = String(href || '');
-        if (!available.includes(key)) return;
-
-        const selected = new Set(_readTodayDockSelection(items));
-        if (checked) {
-            selected.add(key);
-        } else if (selected.size > 1) {
-            selected.delete(key);
-        }
-
-        _saveTodayDockSelection(available.filter(itemHref => selected.has(itemHref)));
-        const links = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
-        if (links) _ensureTodayDock(links);
-        _syncNavStatusLabels();
     }
 
     function _hydrateCommandDeckUser() {
@@ -2047,8 +1917,6 @@ const Sidebar = (() => {
         initToggle,
         checkPageAccess,
         toggleGroup,
-        toggleTodayDockConfig,
-        toggleTodayDockItem,
         openAlerts,
         initUserCard,
         markShellReady: _markShellReady,

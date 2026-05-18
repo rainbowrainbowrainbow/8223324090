@@ -3579,7 +3579,6 @@ body.dark-mode .sidebar-nav,
   body.shell-ready .sidebar-nav.collapsed:hover .nav-copy,
   body.shell-ready .sidebar-nav.collapsed:hover .sidebar-group-chevron,
   body.shell-ready .sidebar-nav.collapsed:hover .sidebar-design-extras,
-  body.shell-ready .sidebar-nav.collapsed:hover .sidebar-today-dock,
   body.shell-ready .sidebar-nav.collapsed:hover .sidebar-alert-hero,
   body.shell-ready .sidebar-nav.collapsed:hover .sidebar-alert-hero-head,
   body.shell-ready .sidebar-nav.collapsed:hover .sidebar-alert-hero-meta,
@@ -4151,54 +4150,18 @@ body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-summary,
   font-size: 12px !important;
 }
 
-.sidebar-nav:not(.collapsed) .sidebar-today-dock,
 .sidebar-nav:not(.collapsed) .sidebar-design-extras {
   margin-left: 12px !important;
   margin-right: 12px !important;
   margin-bottom: 12px !important;
 }
 
-.sidebar-nav:not(.collapsed) .sidebar-today-dock {
-  padding-bottom: 9px !important;
-}
-
-.sidebar-nav:not(.collapsed) .sidebar-today-head,
 .sidebar-nav:not(.collapsed) .sidebar-design-extras-head {
   min-height: 24px !important;
   padding: 0 2px !important;
   gap: 7px !important;
   font-size: 8.5px !important;
   letter-spacing: 0.18em !important;
-}
-
-.sidebar-nav:not(.collapsed) .sidebar-today-menu-grid {
-  gap: 6px !important;
-  margin-top: 7px !important;
-}
-
-.sidebar-nav:not(.collapsed) .sidebar-today-menu-btn {
-  min-height: 56px !important;
-  padding: 7px 5px !important;
-  border-radius: 12px !important;
-  gap: 5px !important;
-}
-
-.sidebar-nav:not(.collapsed) .sidebar-today-menu-icon {
-  width: 26px !important;
-  height: 26px !important;
-  border-radius: 8px !important;
-  font-size: 13px !important;
-}
-
-.sidebar-nav:not(.collapsed) .sidebar-today-menu-btn > span:not(.sidebar-today-menu-icon):not(.sidebar-today-menu-badge) {
-  font-size: 11px !important;
-  line-height: 1.08 !important;
-}
-
-.sidebar-nav:not(.collapsed) .sidebar-today-menu-badge {
-  min-width: 20px !important;
-  height: 20px !important;
-  font-size: 10px !important;
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-design-extras-list,
@@ -4366,7 +4329,6 @@ body:not(.dark-mode) .sidebar-identity-health[data-tone="ready"] {
 }
 
 body:not(.dark-mode) .focus-chip,
-body:not(.dark-mode) .sidebar-today-menu-btn,
 body:not(.dark-mode) .sidebar-design-extra-link,
 body:not(.dark-mode) .sidebar-links .nav-link {
   background: rgba(255,255,255,0.76) !important;
@@ -4375,14 +4337,12 @@ body:not(.dark-mode) .sidebar-links .nav-link {
 }
 
 body:not(.dark-mode) .focus-chip:hover,
-body:not(.dark-mode) .sidebar-today-menu-btn:hover,
 body:not(.dark-mode) .sidebar-design-extra-link:hover,
 body:not(.dark-mode) .sidebar-links .nav-link:hover {
   background: rgba(236,253,245,0.86) !important;
   border-color: rgba(16,185,129,0.20) !important;
 }
 
-body:not(.dark-mode) .sidebar-today-menu-btn.active,
 body:not(.dark-mode) .sidebar-design-extra-link.active,
 body:not(.dark-mode) .sidebar-links .nav-link.active {
   background: rgba(16,185,129,0.13) !important;
@@ -4409,16 +4369,14 @@ body:not(.dark-mode) .nav-subtitle {
   color: rgba(71,85,105,0.76) !important;
 }
 
-body:not(.dark-mode) .sidebar-today-head,
 body:not(.dark-mode) .sidebar-design-extras-head,
 body:not(.dark-mode) .sidebar-group-label {
   color: rgba(71,85,105,0.72) !important;
 }
 
-/* v0.55.32: stable sidebar section order + collapsible Additional menu.
-   The day menu, extras block, and nav list must not reorder during partial rerenders. */
+/* v0.55.39: stable sidebar section order after removing duplicated day menu.
+   Additional is the single quick CRM section before the full nav list. */
 .sidebar-command-deck,
-.sidebar-today-dock,
 .sidebar-design-extras,
 .sidebar-links {
   position: relative !important;
@@ -4434,18 +4392,13 @@ body:not(.dark-mode) .sidebar-group-label {
   order: 10 !important;
 }
 
-.sidebar-today-dock {
+.sidebar-design-extras {
   order: 20 !important;
   z-index: 2 !important;
 }
 
-.sidebar-design-extras {
-  order: 30 !important;
-  z-index: 2 !important;
-}
-
 .sidebar-links {
-  order: 40 !important;
+  order: 30 !important;
 }
 
 .sidebar-design-extras-head {

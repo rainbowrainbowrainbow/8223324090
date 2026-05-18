@@ -4,6 +4,16 @@
 
 ---
 
+## v0.55.36 - Клешня: нормальне вікно
+
+### Assistant / Expanded Window [codex]
+- **AI Workspace** - відкрите вікно Клешні перероблено з вузького drawer у ширшу workspace-картку з нормальними зонами контексту, режимів, історії і форми.
+- **Layout** - snapshot, режими роботи, quick prompts, історія та поле запиту розкладені по двоколонковій сітці на desktop і переходять у одну колонку на mobile.
+- **Theme** - додано окремий dark/light surface contract для overlay, panel, history, prompt buttons і textarea.
+- **Guardrail** - `npm run test:ui` перевіряє, що expanded assistant window більше не є cramped drawer і має responsive fallback.
+
+---
+
 ## v0.55.35 - Sidebar: компактний верхній блок
 
 ### Sidebar / Compact Command Deck [codex]

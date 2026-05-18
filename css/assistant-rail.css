@@ -2083,3 +2083,407 @@ body:not(.dark-mode) .crm-assistant-rail .assistant-rail-btn:focus-visible {
     border-color: rgba(16,185,129,0.26) !important;
     color: #047857 !important;
 }
+
+/* v0.55.36: polished Kleshnya open window.
+   The expanded assistant must feel like a real workspace, not a narrow drawer
+   trying to hold dashboard cards, modes, history, and a form at once. */
+.crm-assistant-panel-overlay {
+    --ai-panel-bg: rgba(6, 13, 18, 0.72);
+    --ai-panel-surface: rgba(11, 18, 23, 0.98);
+    --ai-panel-surface-2: rgba(15, 29, 31, 0.92);
+    --ai-panel-card: rgba(15, 23, 42, 0.58);
+    --ai-panel-card-2: rgba(20, 184, 166, 0.12);
+    --ai-panel-border: rgba(94, 234, 212, 0.18);
+    --ai-panel-border-soft: rgba(148, 163, 184, 0.15);
+    --ai-panel-text: #f8fafc;
+    --ai-panel-text-2: #cbd5e1;
+    --ai-panel-muted: #94a3b8;
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 2500 !important;
+    display: grid !important;
+    place-items: center !important;
+    padding: clamp(14px, 3vh, 28px) !important;
+    background:
+        radial-gradient(620px 420px at 72% 10%, rgba(20, 184, 166, 0.16), transparent 66%),
+        rgba(2, 6, 23, 0.64) !important;
+    backdrop-filter: blur(16px) saturate(1.15);
+    -webkit-backdrop-filter: blur(16px) saturate(1.15);
+}
+
+.crm-assistant-panel {
+    width: min(980px, calc(100vw - 36px)) !important;
+    max-height: min(820px, calc(100vh - 36px)) !important;
+    min-height: min(680px, calc(100vh - 36px)) !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(330px, 0.86fr) !important;
+    grid-template-areas:
+        "header header"
+        "snapshot snapshot"
+        "modes history"
+        "quick history"
+        "form form"
+        "disclosure disclosure" !important;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto auto !important;
+    gap: 12px !important;
+    overflow: hidden !important;
+    padding: 16px !important;
+    border: 1px solid var(--ai-panel-border) !important;
+    border-radius: 24px !important;
+    background:
+        radial-gradient(520px 240px at 0% 0%, rgba(20, 184, 166, 0.17), transparent 70%),
+        linear-gradient(180deg, var(--ai-panel-surface-2), var(--ai-panel-surface)) !important;
+    box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255,255,255,0.055) !important;
+    color: var(--ai-panel-text) !important;
+}
+
+.crm-assistant-panel-header {
+    grid-area: header;
+    position: relative;
+    min-height: 72px;
+    display: grid !important;
+    grid-template-columns: 56px minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 14px !important;
+    padding: 14px 14px !important;
+    border: 1px solid var(--ai-panel-border-soft);
+    border-radius: 18px;
+    background:
+        radial-gradient(180px 90px at 5% 50%, rgba(45, 212, 191, 0.20), transparent 72%),
+        rgba(15, 23, 42, 0.36);
+}
+
+.crm-assistant-panel-header::before {
+    content: "";
+    width: 50px;
+    height: 50px;
+    border-radius: 16px;
+    background:
+        radial-gradient(circle at 50% 42%, #a7f3d0 0 14%, transparent 15%),
+        radial-gradient(circle at 50% 48%, rgba(20,184,166,0.26), transparent 58%),
+        linear-gradient(160deg, rgba(15,23,42,0.96), rgba(6,78,59,0.62));
+    border: 1px solid rgba(94,234,212,0.32);
+    box-shadow: 0 18px 42px rgba(20,184,166,0.12), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.crm-assistant-panel-header > div {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.crm-assistant-panel-header strong {
+    color: var(--ai-panel-text) !important;
+    font-size: 22px !important;
+    line-height: 1.08 !important;
+    letter-spacing: -0.02em;
+}
+
+.crm-assistant-panel-header span {
+    color: var(--ai-panel-text-2) !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    line-height: 1.35;
+}
+
+.crm-assistant-panel-close {
+    width: 42px !important;
+    height: 42px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border: 1px solid var(--ai-panel-border-soft) !important;
+    border-radius: 13px !important;
+    background: rgba(15, 23, 42, 0.54) !important;
+    color: var(--ai-panel-text-2) !important;
+    font-size: 22px !important;
+    line-height: 1 !important;
+    transition: border-color 0.14s ease, background 0.14s ease, color 0.14s ease;
+}
+
+.crm-assistant-panel-close:hover,
+.crm-assistant-panel-close:focus-visible {
+    outline: none;
+    border-color: rgba(94,234,212,0.36) !important;
+    background: rgba(20,184,166,0.15) !important;
+    color: var(--ai-panel-text) !important;
+}
+
+.crm-assistant-panel-snapshot {
+    grid-area: snapshot;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr) minmax(0, 0.8fr) !important;
+    gap: 10px !important;
+}
+
+.crm-assistant-snapshot-card,
+.crm-assistant-snapshot-wide {
+    border: 1px solid var(--ai-panel-border-soft) !important;
+    border-radius: 16px !important;
+    background: var(--ai-panel-card) !important;
+    padding: 12px !important;
+}
+
+.crm-assistant-snapshot-card--main {
+    border-color: rgba(94,234,212,0.28) !important;
+    background:
+        radial-gradient(180px 120px at 0% 0%, rgba(45,212,191,0.17), transparent 70%),
+        var(--ai-panel-card) !important;
+}
+
+.crm-assistant-snapshot-card span {
+    color: var(--ai-panel-muted) !important;
+    font-size: 9px !important;
+}
+
+.crm-assistant-snapshot-card strong {
+    color: var(--ai-panel-text) !important;
+    font-size: 17px !important;
+}
+
+.crm-assistant-snapshot-card small,
+.crm-assistant-mode-grid small,
+.crm-assistant-disclosure {
+    color: var(--ai-panel-muted) !important;
+}
+
+.crm-assistant-snapshot-wide {
+    grid-column: 1 / -1;
+    padding: 12px 14px !important;
+}
+
+.crm-assistant-snapshot-badges {
+    margin-bottom: 7px !important;
+}
+
+.crm-assistant-snapshot-badges span {
+    background: rgba(45,212,191,0.13) !important;
+    color: #99f6e4 !important;
+}
+
+.crm-assistant-snapshot-wide ul {
+    display: grid;
+    gap: 4px;
+    color: var(--ai-panel-text-2) !important;
+    font-size: 12px;
+}
+
+.crm-assistant-mode-grid {
+    grid-area: modes;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 9px !important;
+}
+
+.crm-assistant-mode-grid button {
+    min-height: 86px !important;
+    border-color: rgba(45,212,191,0.18) !important;
+    background: var(--ai-panel-card-2) !important;
+    color: var(--ai-panel-text) !important;
+}
+
+.crm-assistant-mode-grid button:hover,
+.crm-assistant-mode-grid button:focus-visible {
+    outline: none;
+    border-color: rgba(94,234,212,0.42) !important;
+    background: rgba(20,184,166,0.18) !important;
+}
+
+.crm-assistant-history {
+    grid-area: history;
+    min-height: 0 !important;
+    max-height: none !important;
+    height: 100% !important;
+    overflow: auto !important;
+    padding: 12px !important;
+    border: 1px solid var(--ai-panel-border-soft) !important;
+    border-radius: 16px !important;
+    background: rgba(2, 6, 23, 0.28) !important;
+}
+
+.crm-assistant-history-item span {
+    color: var(--ai-panel-muted) !important;
+}
+
+.crm-assistant-history-item p {
+    background: rgba(15, 23, 42, 0.74) !important;
+    color: var(--ai-panel-text) !important;
+    border: 1px solid rgba(148,163,184,0.10);
+}
+
+.crm-assistant-history-item.user p {
+    background: rgba(20,184,166,0.16) !important;
+    border-color: rgba(45,212,191,0.18);
+}
+
+.crm-assistant-quick-prompts {
+    grid-area: quick;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+}
+
+.crm-assistant-quick-prompts button {
+    min-height: 38px !important;
+    border-color: var(--ai-panel-border-soft) !important;
+    border-radius: 12px !important;
+    background: rgba(15, 23, 42, 0.48) !important;
+    color: var(--ai-panel-text-2) !important;
+    text-align: left;
+    padding: 0 12px;
+}
+
+.crm-assistant-quick-prompts button:hover,
+.crm-assistant-quick-prompts button:focus-visible {
+    outline: none;
+    border-color: rgba(94,234,212,0.34) !important;
+    background: rgba(20,184,166,0.14) !important;
+    color: var(--ai-panel-text) !important;
+}
+
+.crm-assistant-form {
+    grid-area: form;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 10px !important;
+    align-items: stretch;
+}
+
+.crm-assistant-form textarea {
+    min-height: 58px !important;
+    max-height: 150px !important;
+    resize: vertical !important;
+    border-color: var(--ai-panel-border-soft) !important;
+    border-radius: 14px !important;
+    background: rgba(2, 6, 23, 0.32) !important;
+    color: var(--ai-panel-text) !important;
+}
+
+.crm-assistant-form textarea::placeholder {
+    color: rgba(148,163,184,0.78);
+}
+
+.crm-assistant-form .dashboard-btn.primary {
+    min-width: 150px;
+    border-radius: 14px;
+    border: 0;
+    background: linear-gradient(135deg, #10b981, #0f766e);
+    color: #ffffff;
+    font-weight: 900;
+}
+
+.crm-assistant-disclosure {
+    grid-area: disclosure;
+    padding: 0 2px;
+    font-size: 11px !important;
+}
+
+body:not(.dark-mode) .crm-assistant-panel-overlay {
+    --ai-panel-bg: rgba(15, 23, 42, 0.30);
+    --ai-panel-surface: rgba(255, 255, 255, 0.98);
+    --ai-panel-surface-2: rgba(248, 250, 252, 0.96);
+    --ai-panel-card: rgba(248, 250, 252, 0.92);
+    --ai-panel-card-2: rgba(236, 253, 245, 0.78);
+    --ai-panel-border: rgba(16, 185, 129, 0.22);
+    --ai-panel-border-soft: rgba(15, 23, 42, 0.10);
+    --ai-panel-text: #0f172a;
+    --ai-panel-text-2: #334155;
+    --ai-panel-muted: #64748b;
+    background:
+        radial-gradient(620px 420px at 72% 10%, rgba(16, 185, 129, 0.14), transparent 66%),
+        rgba(15, 23, 42, 0.28) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-panel {
+    box-shadow: 0 28px 90px rgba(15, 23, 42, 0.22), inset 0 1px 0 rgba(255,255,255,0.9) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-panel-header,
+body:not(.dark-mode) .crm-assistant-history,
+body:not(.dark-mode) .crm-assistant-form textarea {
+    background: rgba(255, 255, 255, 0.78) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-history-item p {
+    background: #ffffff !important;
+    color: var(--ai-panel-text) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-history-item.user p {
+    background: rgba(16,185,129,0.12) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-quick-prompts button {
+    background: rgba(255,255,255,0.82) !important;
+    color: var(--ai-panel-text-2) !important;
+}
+
+@media (max-width: 940px) {
+    .crm-assistant-panel {
+        width: min(720px, calc(100vw - 24px)) !important;
+        min-height: 0 !important;
+        max-height: calc(100vh - 24px) !important;
+        grid-template-columns: 1fr !important;
+        grid-template-areas:
+            "header"
+            "snapshot"
+            "modes"
+            "history"
+            "quick"
+            "form"
+            "disclosure" !important;
+        overflow: auto !important;
+    }
+
+    .crm-assistant-panel-snapshot,
+    .crm-assistant-mode-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .crm-assistant-history {
+        min-height: 180px !important;
+        max-height: 260px !important;
+    }
+
+    .crm-assistant-form {
+        grid-template-columns: 1fr !important;
+    }
+
+    .crm-assistant-form .dashboard-btn.primary {
+        min-height: 44px;
+    }
+}
+
+@media (max-width: 560px) {
+    .crm-assistant-panel-overlay {
+        padding: 8px !important;
+        place-items: stretch !important;
+    }
+
+    .crm-assistant-panel {
+        width: 100% !important;
+        max-height: calc(100vh - 16px) !important;
+        border-radius: 18px !important;
+        padding: 12px !important;
+    }
+
+    .crm-assistant-panel-header {
+        grid-template-columns: 44px minmax(0, 1fr) auto !important;
+        min-height: 58px !important;
+        padding: 10px !important;
+    }
+
+    .crm-assistant-panel-header::before {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+    }
+
+    .crm-assistant-panel-header strong {
+        font-size: 18px !important;
+    }
+
+    .crm-assistant-quick-prompts {
+        grid-template-columns: 1fr !important;
+    }
+}

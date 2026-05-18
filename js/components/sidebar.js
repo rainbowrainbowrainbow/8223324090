@@ -1686,9 +1686,6 @@ const Sidebar = (() => {
                 if (window.innerWidth <= 768 && overlay) { sidebar.classList.remove('open'); overlay.classList.add('hidden'); }
             });
         }
-        // Theme toggle — inject at bottom of sidebar
-        _initThemeToggle(sidebar);
-
         // Desktop collapsed state remains owned by the shared shell controls.
     }
 
@@ -1720,36 +1717,6 @@ const Sidebar = (() => {
         link.title = 'Відкрити профіль';
         link.innerHTML = '<span class="sidebar-user-avatar" id="sidebarCompactAvatar">?</span>';
         brand.appendChild(link);
-    }
-
-    function _initThemeToggle(sidebar) {
-        if (!sidebar) return;
-        // Don't duplicate
-        if (sidebar.querySelector('.sidebar-theme-btn')) return;
-        const collapseBtn = sidebar.querySelector('#sidebarCollapseBtn');
-        if (!collapseBtn) return;
-
-        const isDark = document.body.classList.contains('dark-mode');
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'sidebar-theme-btn';
-        btn.title = 'Змінити тему';
-        btn.innerHTML = `${_renderIcon(isDark ? 'sun' : 'moon')}<span class="nav-text">${isDark ? 'Світла тема' : 'Темна тема'}</span>`;
-
-        btn.addEventListener('click', () => {
-            const nowDark = document.body.classList.toggle('dark-mode');
-            localStorage.setItem('pzp_dark_mode', String(nowDark));
-            document.documentElement.setAttribute('data-theme', nowDark ? 'dark' : 'light');
-            const iconEl = btn.querySelector('.nav-icon');
-            if (iconEl) iconEl.outerHTML = _renderIcon(nowDark ? 'sun' : 'moon');
-            btn.querySelector('.nav-text').textContent = nowDark ? 'Світла тема' : 'Темна тема';
-            // Sync hidden checkbox if exists (for app.js compatibility)
-            const cb = document.getElementById('darkModeToggle');
-            if (cb) cb.checked = nowDark;
-            if (typeof AppState !== 'undefined') AppState.darkMode = nowDark;
-        });
-
-        collapseBtn.parentNode.insertBefore(btn, collapseBtn);
     }
 
     function checkPageAccess() {

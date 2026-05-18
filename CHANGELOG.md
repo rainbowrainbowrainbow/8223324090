@@ -4,6 +4,16 @@
 
 ---
 
+## v0.55.40 - Header: перемикач теми
+
+### Header / Theme Toggle [codex]
+- **Header control** - перемикач світлої/темної теми перенесено з sidebar у правий header біля імені користувача.
+- **Sun / moon states** - тумблер показує сонце у світлій темі й луну у темній, з рухомим thumb, `aria-pressed` і focus-visible станом.
+- **Cleanup** - sidebar більше не інжектить `.sidebar-theme-btn`, а таймлайн не показує старий checkbox `Тема` в toolbar.
+- **Guardrail** - `npm run test:ui` перевіряє ownership перемикача в header/auth layer, щоб theme control не повернувся в sidebar або timeline controls.
+
+---
+
 ## v0.55.39 - Sidebar: без дубля меню дня
 
 ### Sidebar / Navigation Cleanup [codex]

@@ -1532,6 +1532,83 @@ function showDailyLoginPopup(data) {
     setTimeout(() => { if (popup.parentNode) popup.remove(); }, 10000);
 }
 
+// v0.55.40: shared theme switch lives in the top-right header near the user name.
+function isCrmDarkThemeActive() {
+    return document.body.classList.contains('dark-mode') ||
+        document.documentElement.getAttribute('data-theme') === 'dark';
+}
+
+function applyCrmThemeMode(isDark, persist = true) {
+    const dark = !!isDark;
+    document.body.classList.toggle('dark-mode', dark);
+    document.body.classList.remove('night-auto');
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+    if (persist) localStorage.setItem('pzp_dark_mode', String(dark));
+    if (typeof AppState !== 'undefined') AppState.darkMode = dark;
+
+    const legacyToggle = document.getElementById('darkModeToggle');
+    if (legacyToggle) legacyToggle.checked = dark;
+    const legacyIcon = document.getElementById('darkModeIcon');
+    if (legacyIcon) legacyIcon.textContent = dark ? '☀️' : '🌙';
+
+    syncHeaderThemeToggle();
+    window.dispatchEvent(new CustomEvent('crm:theme-changed', { detail: { dark } }));
+}
+
+function syncHeaderThemeToggle() {
+    const btn = document.getElementById('headerThemeToggle');
+    if (!btn) return;
+    const isDark = isCrmDarkThemeActive();
+    btn.classList.toggle('is-dark', isDark);
+    btn.setAttribute('aria-pressed', String(isDark));
+    btn.setAttribute('aria-label', isDark ? 'Перемкнути на світлу тему' : 'Перемкнути на темну тему');
+    btn.title = isDark ? 'Темна тема: натисніть для світлої' : 'Світла тема: натисніть для темної';
+}
+
+function initHeaderThemeToggle() {
+    const userPanel = document.querySelector('.user-panel');
+    if (!userPanel) return;
+
+    const oldSidebarTheme = document.querySelector('.sidebar-theme-btn');
+    if (oldSidebarTheme) oldSidebarTheme.remove();
+
+    let btn = document.getElementById('headerThemeToggle');
+    if (!btn) {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.id = 'headerThemeToggle';
+        btn.className = 'header-theme-toggle';
+        btn.innerHTML = `
+            <span class="header-theme-track" aria-hidden="true">
+                <span class="header-theme-glyph header-theme-glyph--sun">☀</span>
+                <span class="header-theme-glyph header-theme-glyph--moon">☾</span>
+                <span class="header-theme-thumb"></span>
+            </span>`;
+
+        const currentUser = document.getElementById('currentUser');
+        if (currentUser && currentUser.parentElement === userPanel) {
+            currentUser.insertAdjacentElement('afterend', btn);
+        } else {
+            const logoutBtn = document.getElementById('logoutBtn');
+            if (logoutBtn && logoutBtn.parentElement === userPanel) userPanel.insertBefore(btn, logoutBtn);
+            else userPanel.appendChild(btn);
+        }
+    }
+
+    if (btn.dataset.themeBound !== '1') {
+        btn.dataset.themeBound = '1';
+        btn.addEventListener('click', () => applyCrmThemeMode(!isCrmDarkThemeActive(), true));
+    }
+    if (document.documentElement.dataset.headerThemeObserverBound !== '1') {
+        document.documentElement.dataset.headerThemeObserverBound = '1';
+        const observer = new MutationObserver(syncHeaderThemeToggle);
+        observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    }
+    syncHeaderThemeToggle();
+}
+
 // v10.4: Auto-init profile handler on any page (sub-pages don't call showMainApp)
 function initProfileHandler() {
     const el = document.getElementById('currentUser');
@@ -1570,6 +1647,7 @@ function initProfileHandler() {
 document.addEventListener('DOMContentLoaded', () => {
     // Delay slightly to let page-specific JS set username first
     setTimeout(initProfileHandler, 100);
+    setTimeout(initHeaderThemeToggle, 120);
     setTimeout(() => {
         if (document.body.classList.contains('authenticated-shell')) initCrmAssistantRail();
     }, 350);

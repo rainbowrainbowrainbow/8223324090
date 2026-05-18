@@ -4,6 +4,18 @@
 
 ---
 
+## v0.57.12 - Search Navigation Hub
+
+### Search Navigation Hub [codex]
+- **Пошук сторінок CRM** - глобальний `Ctrl+K` тепер знаходить доступні користувачу сторінки й розділи CRM з реального `Sidebar.NAV_ITEMS`, включно з dashboard, timeline, tasks, leads, chat, finance, reports і profile.
+- **Секції теж у результатах** - пошук вміє знаходити вкладки/секції на кшталт каталогів, бібліотеки звуку, афіші, сертифікатів і налаштувань, а не тільки записи з API.
+- **Помічник у пошуку** - фрази типу "відкрий фінанси" або "перекинь у ліди" отримують AI-дію через існуючий command router Помічника з fallback на прямий перехід.
+- **AI Window Bridge** - велике вікно Помічника і CRM-вікна тепер мають короткий focus-link перехід з м'якими частинками, glow і reduced-motion fallback.
+- **Entity-пошук збережено** - бронювання, клієнти, задачі, програми й команда продовжують шукатися через `/api/search`, але навігаційні результати доступні навіть якщо API-пошук тимчасово недоступний.
+- **Guardrails** - `test:ui` фіксує navigation hub, assistant redirect commands і стилі нового пошукового результату.
+
+---
+
 ## v0.57.11 - Compact Shell Layout
 
 ### Compact Shell Layout [codex]

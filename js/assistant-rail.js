@@ -179,6 +179,8 @@
     let speakingIdleTimer = null;
     let playbackRunId = 0;
     let initCount = 0;
+    let windowBridgeObserver = null;
+    const windowBridgePulseMap = new WeakMap();
 
     function escapeHtml(value) {
         const div = document.createElement('div');
@@ -543,6 +545,107 @@
         window.addEventListener('pointerdown', mark, { passive: true });
         window.addEventListener('keydown', mark);
         window.addEventListener('input', mark, { capture: true });
+    }
+
+    function isVisibleBridgeWindow(el) {
+        if (!el || el.id === 'crmAssistantPanelOverlay' || el.closest?.('#crmAssistantPanelOverlay')) return false;
+        if (el.hidden || el.getAttribute('aria-hidden') === 'true') return false;
+        const style = window.getComputedStyle?.(el);
+        if (style && (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0)) return false;
+        const rect = el.getBoundingClientRect?.();
+        return !!rect && rect.width > 80 && rect.height > 60;
+    }
+
+    function activeBridgeWindows() {
+        const selectors = [
+            '.lead-workspace.active',
+            '.lead-modal-overlay.active',
+            '.modal:not(.hidden)',
+            '.confirm-overlay',
+            '.alerts-panel-v4.open',
+            '.achievement-overlay-visible',
+            '[role="dialog"]:not(.hidden)'
+        ];
+        const windows = [];
+        selectors.forEach(selector => {
+            document.querySelectorAll(selector).forEach(el => {
+                if (isVisibleBridgeWindow(el) && !windows.includes(el)) windows.push(el);
+            });
+        });
+        return windows;
+    }
+
+    function bridgePulseAllowed(target) {
+        const now = Date.now();
+        const prev = windowBridgePulseMap.get(target) || 0;
+        if (now - prev < 1800) return false;
+        windowBridgePulseMap.set(target, now);
+        return true;
+    }
+
+    function bridgeVisualTarget(target) {
+        if (!target?.querySelector) return target;
+        if (target.id === 'crmAssistantPanelOverlay') return target.querySelector('.crm-assistant-panel') || target;
+        return target.querySelector('.lead-modal, .modal-content, .confirm-modal, .achievement-modal, .alerts-panel-v4') || target;
+    }
+
+    function renderWindowBridgeBurst(target) {
+        if (!target || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+        const rect = target.getBoundingClientRect?.();
+        if (!rect || rect.width < 1 || rect.height < 1) return;
+        const burst = document.createElement('div');
+        burst.className = 'crm-assistant-magic-burst';
+        burst.setAttribute('aria-hidden', 'true');
+        burst.style.setProperty('--bridge-x', `${Math.max(0, rect.left)}px`);
+        burst.style.setProperty('--bridge-y', `${Math.max(0, rect.top)}px`);
+        burst.style.setProperty('--bridge-w', `${Math.max(1, rect.width)}px`);
+        burst.style.setProperty('--bridge-h', `${Math.max(1, rect.height)}px`);
+        burst.innerHTML = Array.from({ length: 12 }, (_, idx) => `<span class="crm-assistant-magic-dot crm-assistant-magic-dot--${idx + 1}"></span>`).join('');
+        document.body.appendChild(burst);
+        window.setTimeout(() => burst.remove(), 1200);
+    }
+
+    function pulseAssistantWindowBridge(target, options = {}) {
+        const rawTarget = target?.nodeType === 1 ? target : document.getElementById('crmAssistantPanelOverlay');
+        const bridgeTarget = bridgeVisualTarget(rawTarget);
+        if (!bridgeTarget || !bridgePulseAllowed(bridgeTarget)) return false;
+
+        const rail = document.getElementById('crmAssistantRail');
+        const panelOverlay = document.getElementById('crmAssistantPanelOverlay');
+        const panel = panelOverlay?.querySelector('.crm-assistant-panel');
+        [rail, panelOverlay, panel].forEach(el => el?.classList.add('is-window-bridge'));
+        if (!bridgeTarget.closest?.('#crmAssistantPanelOverlay')) {
+            bridgeTarget.classList.add('crm-assistant-linked-window', 'crm-assistant-window-entering');
+        }
+
+        renderWindowBridgeBurst(bridgeTarget.closest?.('#crmAssistantPanelOverlay') ? (panel || bridgeTarget) : bridgeTarget);
+
+        const holdMs = Number(options.holdMs) || 1200;
+        window.setTimeout(() => {
+            [rail, panelOverlay, panel].forEach(el => el?.classList.remove('is-window-bridge'));
+            bridgeTarget.classList.remove('crm-assistant-window-entering');
+        }, holdMs);
+        window.setTimeout(() => {
+            bridgeTarget.classList.remove('crm-assistant-linked-window');
+        }, holdMs + 650);
+        return true;
+    }
+
+    function scanAssistantWindowBridge() {
+        const target = activeBridgeWindows().pop();
+        if (target) pulseAssistantWindowBridge(target);
+    }
+
+    function initAssistantWindowBridge() {
+        if (windowBridgeObserver || !document.body || typeof MutationObserver === 'undefined') return;
+        windowBridgeObserver = new MutationObserver(() => scanAssistantWindowBridge());
+        windowBridgeObserver.observe(document.body, {
+            subtree: true,
+            childList: true,
+            attributes: true,
+            attributeFilter: ['class', 'hidden', 'style', 'aria-hidden']
+        });
+        window.setTimeout(scanAssistantWindowBridge, 80);
     }
 
     function scheduleProactiveHelp(context = {}) {
@@ -1265,6 +1368,7 @@
             if (event.target === overlay) closePanel();
         });
         document.body.appendChild(overlay);
+        pulseAssistantWindowBridge(overlay, { holdMs: 1400 });
         document.getElementById('crmAssistantPanelClose')?.addEventListener('click', closePanel);
         document.getElementById('crmAssistantOpenChatBtn')?.addEventListener('click', openCrmChatFromAssistant);
         document.getElementById('crmAssistantOpenChatInline')?.addEventListener('click', openCrmChatFromAssistant);
@@ -1653,6 +1757,7 @@
         initCount += 1;
         foundation()?.init?.({ pageId: getCurrentPageKey(), ...options });
         if (!ensureMounted()) return false;
+        initAssistantWindowBridge();
         if (options.subtitle) announceFromPage(options.subtitle);
         runPendingAssistantCommandFromNavigation();
         resumeAssistantPanelFromChatReturn();
@@ -1682,6 +1787,7 @@
         runRegisteredAction,
         tryRunAssistantCommand,
         highlightTeachingTarget,
+        pulseAssistantWindowBridge,
         buildPageGuideContext,
         getAssetVersion
     };

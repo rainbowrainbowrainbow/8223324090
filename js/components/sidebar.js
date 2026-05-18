@@ -10,6 +10,9 @@ const Sidebar = (() => {
         badgeTimer: null,
         taskWidgetTimer: null,
         funnelWidgetTimer: null,
+        identityMetaTimer: null,
+        identityMetaLoading: false,
+        identityMetaLoadedAt: 0,
         roleRenderApplied: false,
         extraEditingId: ''
     };
@@ -21,6 +24,10 @@ const Sidebar = (() => {
     const EXTRA_MENU_DEFAULT_DESCRIPTION = 'вкладка CRM';
     const EXTRA_MENU_CUSTOM_DESCRIPTION = 'користувацька сторінка';
     const EXTRA_MENU_ICON_FALLBACK = 'crm';
+    const SIDEBAR_IDENTITY_WIDGETS = {
+        weather: '/api/dashboard/widgets/weather',
+        currency: '/api/dashboard/widgets/currency'
+    };
     const COMMAND_DEFAULT_STATE = {
         tasksActive: 0,
         tasksOverdue: 0,
@@ -1004,6 +1011,20 @@ const Sidebar = (() => {
                             <span class="sidebar-identity-role" id="sidebarIdentityRole">CRM</span>
                         </span>
                         <span class="sidebar-identity-summary" id="sidebarIdentitySummary">Операційний стан завантажується...</span>
+                        <span class="sidebar-identity-meta" id="sidebarIdentityMeta" aria-label="Швидкий статус">
+                            <span class="sidebar-identity-meta-item" data-sidebar-meta="time">
+                                <span class="sidebar-identity-meta-k">Час</span>
+                                <span class="sidebar-identity-meta-v" id="sidebarIdentityTime">--:--</span>
+                            </span>
+                            <span class="sidebar-identity-meta-item" data-sidebar-meta="weather">
+                                <span class="sidebar-identity-meta-k">Погода</span>
+                                <span class="sidebar-identity-meta-v" id="sidebarIdentityWeather">--°</span>
+                            </span>
+                            <span class="sidebar-identity-meta-item" data-sidebar-meta="currency">
+                                <span class="sidebar-identity-meta-k">USD</span>
+                                <span class="sidebar-identity-meta-v" id="sidebarIdentityCurrency">--.--</span>
+                            </span>
+                        </span>
                     </span>
                     <span class="sidebar-identity-chevron" aria-hidden="true">›</span>
                 </button>
@@ -1095,6 +1116,7 @@ const Sidebar = (() => {
         }
 
         _hydrateCommandDeckUser();
+        _ensureSidebarIdentityMeta();
         _syncFocusDeckAccess();
         _updateSidebarCommandDeck();
     }
@@ -1110,6 +1132,99 @@ const Sidebar = (() => {
         if (nameEl) nameEl.textContent = user.name || user.username || 'Event Genix';
         if (roleEl) roleEl.textContent = _sidebarRoleLine(user);
         _bindProfileEntry(cardEl);
+    }
+
+    function _formatSidebarKyivTime(date = new Date()) {
+        try {
+            return new Intl.DateTimeFormat('uk-UA', {
+                timeZone: 'Europe/Kyiv',
+                hour: '2-digit',
+                minute: '2-digit'
+            }).format(date);
+        } catch (err) {
+            return date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+        }
+    }
+
+    function _sidebarWeatherIcon(code) {
+        const weatherCode = Number(code);
+        if ([0].includes(weatherCode)) return '☀';
+        if ([1, 2].includes(weatherCode)) return '🌤';
+        if ([3, 45, 48].includes(weatherCode)) return '☁';
+        if ([51, 53, 55, 61, 63, 65, 80, 81].includes(weatherCode)) return '🌧';
+        if ([71, 73, 75, 85, 86].includes(weatherCode)) return '❄';
+        if ([82, 95, 96, 99].includes(weatherCode)) return '⛈';
+        return '🌡';
+    }
+
+    function _setSidebarIdentityMetaValue(id, value, state = '') {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = value;
+        const item = el.closest('.sidebar-identity-meta-item');
+        if (item) item.dataset.state = state || '';
+    }
+
+    function _updateSidebarIdentityTime() {
+        _setSidebarIdentityMetaValue('sidebarIdentityTime', _formatSidebarKyivTime(), 'live');
+    }
+
+    function _formatSidebarMoney(value) {
+        const amount = Number(value);
+        if (!Number.isFinite(amount) || amount <= 0) return 'н/д';
+        return `${amount.toFixed(2)}₴`;
+    }
+
+    async function _fetchSidebarWidget(type) {
+        const url = SIDEBAR_IDENTITY_WIDGETS[type];
+        if (!url) throw new Error(`unknown sidebar widget ${type}`);
+        const token = localStorage.getItem('pzp_token');
+        const response = await fetch(url, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (!response.ok) throw new Error(`sidebar widget ${type} failed`);
+        return response.json();
+    }
+
+    async function _loadSidebarIdentityMeta(force = false) {
+        const now = Date.now();
+        if (_state.identityMetaLoading) return;
+        if (!force && _state.identityMetaLoadedAt && now - _state.identityMetaLoadedAt < 10 * 60 * 1000) return;
+        _state.identityMetaLoading = true;
+        try {
+            const [weatherResult, currencyResult] = await Promise.allSettled([
+                _fetchSidebarWidget('weather'),
+                _fetchSidebarWidget('currency')
+            ]);
+            if (weatherResult.status === 'fulfilled' && weatherResult.value && !weatherResult.value.error) {
+                const data = weatherResult.value;
+                const temp = Number(data.temperature);
+                const label = Number.isFinite(temp) ? `${_sidebarWeatherIcon(data.weatherCode)} ${Math.round(temp)}°` : 'н/д';
+                _setSidebarIdentityMetaValue('sidebarIdentityWeather', label, Number.isFinite(temp) ? 'live' : 'limited');
+            } else {
+                _setSidebarIdentityMetaValue('sidebarIdentityWeather', 'н/д', 'limited');
+            }
+
+            if (currencyResult.status === 'fulfilled' && currencyResult.value && !currencyResult.value.error) {
+                _setSidebarIdentityMetaValue('sidebarIdentityCurrency', _formatSidebarMoney(currencyResult.value.usd), 'live');
+            } else {
+                _setSidebarIdentityMetaValue('sidebarIdentityCurrency', 'н/д', 'limited');
+            }
+        } catch (err) {
+            _setSidebarIdentityMetaValue('sidebarIdentityWeather', 'н/д', 'limited');
+            _setSidebarIdentityMetaValue('sidebarIdentityCurrency', 'н/д', 'limited');
+        } finally {
+            _state.identityMetaLoadedAt = Date.now();
+            _state.identityMetaLoading = false;
+        }
+    }
+
+    function _ensureSidebarIdentityMeta() {
+        _updateSidebarIdentityTime();
+        if (!_state.identityMetaTimer) {
+            _state.identityMetaTimer = window.setInterval(_updateSidebarIdentityTime, 30 * 1000);
+        }
+        _loadSidebarIdentityMeta();
     }
 
     function _setCommandDescription(widget, text) {

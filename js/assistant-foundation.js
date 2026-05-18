@@ -768,6 +768,15 @@
             .trim();
     }
 
+    function isReadOnlyTimelineScheduleQuestion(text = '', options = {}) {
+        const pageId = compactText(options.pageId || getPageId(), 80);
+        if (pageId !== 'timeline') return false;
+        const asksSchedule = /(заход|захор|поді[яї]|брон|івент|event|booking|афіш)/i.test(text);
+        const asksDate = /(сьогодні|завтра|післязавтра|today|tomorrow|after tomorrow)/i.test(text);
+        const asksReadOnly = /(які|що|скажи|покажи|розкажи|список|є|скільки|what|show|tell|list)/i.test(text);
+        return asksSchedule && asksDate && asksReadOnly;
+    }
+
     function commandHasAny(text = '', terms = []) {
         return terms.some(term => text.includes(String(term).toLowerCase()));
     }
@@ -966,6 +975,9 @@
         const raw = String(rawInput || '').trim();
         const text = normalizeCommandText(raw);
         if (!text) return { matched: false };
+        if (isReadOnlyTimelineScheduleQuestion(text, options)) {
+            return { matched: false, reason: 'timeline_schedule_read_only_query' };
+        }
         const forbidden = forbiddenCommand(text);
         if (forbidden) {
             return routeResult({

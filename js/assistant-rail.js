@@ -311,7 +311,7 @@
                         <span class="assistant-rail-state assistant-state-idle" id="crmAssistantRailState">Готовий</span>
                         <span class="assistant-rail-engine">claude · помічник v3.2</span>
                     </div>
-                    <div class="assistant-rail-subtitles-wrap" id="crmAssistantRailSubtitlesWrap">
+                    <div class="assistant-rail-subtitles-wrap" id="crmAssistantRailSubtitlesWrap" role="button" tabindex="0" title="Відкрити відповідь у чаті" aria-label="Відкрити відповідь Помічника у чаті">
                         <div class="assistant-rail-subtitles" id="crmAssistantRailSubtitles">Я поруч, якщо треба допомога по сторінці.</div>
                     </div>
                     <div class="assistant-rail-context-strip" aria-label="Контекст AI-помічника">
@@ -361,6 +361,13 @@
         document.getElementById('crmAssistantVoiceToggle')?.addEventListener('click', toggleVoice);
         document.getElementById('crmAssistantReplayBtn')?.addEventListener('click', replayLastLine);
         document.getElementById('crmAssistantExpandBtn')?.addEventListener('click', expand);
+        const subtitlesWrap = document.getElementById('crmAssistantRailSubtitlesWrap');
+        subtitlesWrap?.addEventListener('click', openAssistantChatFromText);
+        subtitlesWrap?.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            openAssistantChatFromText();
+        });
         document.getElementById('crmAssistantInlineForm')?.addEventListener('submit', event => {
             event.preventDefault();
             const input = document.getElementById('crmAssistantInlineInput');
@@ -374,6 +381,20 @@
         rail.querySelectorAll('[data-crm-assistant-context-prompt]').forEach(btn => {
             btn.addEventListener('click', () => runQuickPrompt(btn.dataset.crmAssistantContextPrompt || btn.textContent || ''));
         });
+    }
+
+    function openAssistantChatFromText() {
+        const line = String(state.tickerText || state.subtitle || '').trim();
+        if (line && !history.some(item => item.role === 'assistant' && item.text === line)) {
+            appendHistory('assistant', line);
+        }
+        expand();
+        window.setTimeout(() => {
+            const historyPanel = document.getElementById('crmAssistantHistory');
+            const input = document.getElementById('crmAssistantPromptInput');
+            historyPanel?.scrollIntoView?.({ block: 'nearest' });
+            input?.focus();
+        }, 50);
     }
 
     function shouldSubtitleScroll(text = '', wrap = null, el = null, mode = state.mode) {
@@ -582,6 +603,132 @@
             .map(el => el.textContent?.replace(/\s+/g, ' ').trim())
             .filter(Boolean)
             .slice(0, limit);
+    }
+
+    function formatAssistantLocalDate(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    function getTimelineScheduleQueryDate(raw = '') {
+        const text = String(raw || '').toLowerCase();
+        const date = new Date();
+        if (/післязавтра|after tomorrow/i.test(text)) {
+            date.setDate(date.getDate() + 2);
+            return { date: formatAssistantLocalDate(date), label: 'післязавтра' };
+        }
+        if (/завтра|tomorrow/i.test(text)) {
+            date.setDate(date.getDate() + 1);
+            return { date: formatAssistantLocalDate(date), label: 'завтра' };
+        }
+        return { date: formatAssistantLocalDate(date), label: 'сьогодні' };
+    }
+
+    function isTimelineScheduleQuery(raw = '') {
+        if (getCurrentPageKey() !== 'timeline') return false;
+        const text = String(raw || '').toLowerCase();
+        const asksSchedule = /(заход|захор|поді[яї]|брон|івент|event|booking|афіш)/i.test(text);
+        const asksDate = /(сьогодні|завтра|післязавтра|today|tomorrow|after tomorrow)/i.test(text);
+        const asksReadOnly = /(які|що|скажи|покажи|розкажи|список|є|скільки|what|show|tell|list)/i.test(text);
+        return asksSchedule && asksDate && asksReadOnly;
+    }
+
+    function assistantReadonlyHeaders() {
+        if (typeof getAuthHeaders === 'function') return getAuthHeaders(false);
+        const token = localStorage.getItem('pzp_token') || '';
+        return token ? { Authorization: `Bearer ${token}` } : {};
+    }
+
+    async function fetchAssistantScheduleJson(url) {
+        const response = await fetch(url, { headers: assistantReadonlyHeaders() });
+        if (!response.ok) throw new Error(`timeline_schedule_http_${response.status}`);
+        const data = await response.json().catch(() => []);
+        return Array.isArray(data) ? data : [];
+    }
+
+    function scheduleItemTime(item = {}) {
+        return compactText(item.time || item.startTime || item.starts_at || item.start || '', '', 8);
+    }
+
+    function scheduleItemTitle(item = {}, fallback = 'Подія') {
+        return compactText(
+            item.label || item.title || item.name || item.programName || item.program || item.programCode || item.groupName || fallback,
+            fallback,
+            58
+        );
+    }
+
+    function formatTimelineScheduleItem(item = {}, type = 'booking') {
+        const time = scheduleItemTime(item);
+        const title = scheduleItemTitle(item, type === 'afisha' ? 'Подія афіші' : 'Бронювання');
+        const room = compactText(item.room || item.hall || item.location || '', '', 28);
+        const status = compactText(item.status || item.state || '', '', 24);
+        const kids = Number(item.kidsCount ?? item.childrenCount ?? item.children ?? 0);
+        const details = [room, kids > 0 ? `${kids} дітей` : '', status].filter(Boolean).join(', ');
+        return `${time ? `${time} — ` : ''}${title}${details ? ` (${details})` : ''}`;
+    }
+
+    function buildTimelineScheduleReply({ label, bookings = [], afisha = [] } = {}) {
+        const bookingCount = bookings.length;
+        const afishaCount = afisha.length;
+        const total = bookingCount + afishaCount;
+        if (!total) {
+            return `На ${label} у видимому таймлайні немає бронювань або подій афіші. Дій не виконую — це тільки перегляд розкладу.`;
+        }
+        const lines = [
+            ...bookings.map(item => formatTimelineScheduleItem(item, 'booking')),
+            ...afisha.map(item => formatTimelineScheduleItem(item, 'afisha'))
+        ].filter(Boolean).slice(0, 6);
+        const more = total > lines.length ? ` Ще ${total - lines.length} елемент(и) не показую, щоб не перевантажувати.` : '';
+        return `На ${label} у видимому таймлайні: ${bookingCount} бронювань і ${afishaCount} подій афіші. ${lines.join('; ')}.${more}`;
+    }
+
+    async function tryAnswerTimelineScheduleQuery(prompt) {
+        if (!isTimelineScheduleQuery(prompt)) return false;
+        const query = getTimelineScheduleQueryDate(prompt);
+        setState({
+            mode: 'thinking',
+            subtitle: `Читаю таймлайн на ${query.label}...`,
+            tickerText: '',
+            playbackState: 'idle'
+        });
+        try {
+            const [bookings, afisha] = await Promise.all([
+                fetchAssistantScheduleJson(`/api/bookings/${encodeURIComponent(query.date)}`),
+                fetchAssistantScheduleJson(`/api/afisha/${encodeURIComponent(query.date)}`)
+            ]);
+            const line = buildTimelineScheduleReply({ label: query.label, bookings, afisha });
+            await playReply({
+                mode: 'guide',
+                summary: line,
+                subtitle: line,
+                text: line,
+                evidence: [],
+                riskLevel: 'none',
+                confidence: 'exact',
+                recommendation: null,
+                actionProposal: null,
+                teachingTarget: null,
+                fallbackReason: ''
+            });
+        } catch (err) {
+            emitTelemetry('reply_failed', {
+                module: 'rail:timelineScheduleQuery',
+                failureReason: err.message || String(err),
+                fallbackShown: true
+            });
+            const line = `Не зміг прочитати таймлайн на ${query.label}: дані зараз недоступні. Дій не виконую — це був лише запит на перегляд розкладу.`;
+            await playReply({
+                mode: 'guide',
+                summary: line,
+                subtitle: line,
+                text: line,
+                fallbackReason: 'timeline_schedule_unavailable'
+            }, { textOnly: true });
+        }
+        return true;
     }
 
     function buildAssistantSnapshot(context = null) {
@@ -1413,6 +1560,7 @@
         renderHistory();
         setState({ mode: 'thinking', subtitle: 'Думаю над відповіддю по цій сторінці...', tickerText: '', playbackState: 'idle' });
         try {
+            if (await tryAnswerTimelineScheduleQuery(prompt)) return;
             if (await tryRunAssistantCommand(prompt)) return;
             const reply = await requestGuideReply({ userMessage: prompt });
             await playReply(reply);

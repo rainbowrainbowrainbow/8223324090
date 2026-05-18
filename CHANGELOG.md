@@ -4,6 +4,27 @@
 
 ---
 
+## v0.57.7 - Assistant Chat Text Launcher
+
+### Assistant Chat Text Launcher [codex]
+- **Клік по відповіді Помічника** - обрізаний текст у верхньому rail тепер відкриває повне чатове вікно з історією, а не лишається статичним рядком.
+- **Chat-format без нового дубля** - використовується вже існуючий expanded assistant chat, тому відповідь видно у нормальних повідомленнях і можна одразу продовжити діалог.
+- **Keyboard доступність** - той самий сценарій працює через `Enter` або `Space`, бо subtitle отримав роль інтерактивного елемента.
+- **Візуальний affordance** - hover/focus стан показує, що текст клікабельний, але не додає важкої нової кнопки.
+- **Guardrails** - `test:ui` фіксує відкриття chat panel з subtitle text і стилі клікабельного стану.
+
+---
+
+## v0.57.6 - Timeline Assistant Schedule Query
+
+### Timeline Assistant Schedule Query [codex]
+- **Запити по таймлайну без command-mode** - питання на кшталт “які заходи на завтра” тепер розпізнається як read-only перегляд розкладу, а не як дія для виконання.
+- **Реальні дані розкладу** - Помічник на таймлайні читає видимі `/api/bookings/:date` і `/api/afisha/:date` для сьогодні, завтра або післязавтра.
+- **Чесний fallback** - якщо розклад недоступний або подій немає, Помічник прямо каже це і не запускає випадкові команди.
+- **Guardrails** - `test:ui` фіксує, що timeline schedule query обробляється до command router, а foundation-router лишає такі питання read-only.
+
+---
+
 ## v0.57.5 - Profile Layout Polish
 
 ### Profile Layout Polish [codex]

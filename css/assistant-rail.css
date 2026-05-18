@@ -112,6 +112,44 @@
     min-height: 28px;
     overflow: hidden;
     position: relative;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: background 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.crm-assistant-rail .assistant-rail-subtitles-wrap::after {
+    content: "↗";
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    color: rgba(20, 184, 166, 0.86);
+    background: rgba(15, 118, 110, 0.10);
+    opacity: 0;
+    transform: translateY(-50%) scale(0.92);
+    transition: opacity 0.16s ease, transform 0.16s ease, background 0.16s ease;
+    pointer-events: none;
+}
+
+.crm-assistant-rail .assistant-rail-subtitles-wrap:hover,
+.crm-assistant-rail .assistant-rail-subtitles-wrap:focus-visible {
+    background: rgba(20, 184, 166, 0.08);
+    box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.16);
+}
+
+.crm-assistant-rail .assistant-rail-subtitles-wrap:hover::after,
+.crm-assistant-rail .assistant-rail-subtitles-wrap:focus-visible::after {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+}
+
+.crm-assistant-rail .assistant-rail-subtitles-wrap:focus-visible {
+    outline: 2px solid rgba(45, 212, 191, 0.42);
+    outline-offset: 3px;
 }
 
 .crm-assistant-rail .assistant-rail-subtitles-wrap.is-ticker-wrap {
@@ -131,6 +169,7 @@
     -webkit-line-clamp: 2;
     overflow: hidden;
     will-change: transform;
+    padding-right: 28px;
 }
 
 .crm-assistant-rail .assistant-rail-subtitles.is-live-line {

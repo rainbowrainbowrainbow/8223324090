@@ -395,10 +395,59 @@ const Sidebar = (() => {
             }));
     }
 
+    function _getExtraGroupLabel(groupKey) {
+        return NAV_ITEMS.find(item => item.type === 'group' && item.key === groupKey)?.label || EXTRA_MENU_DEFAULT_DESCRIPTION;
+    }
+
+    function _getSelectableExtraMenuItems(role) {
+        const seen = new Set();
+        return NAV_ITEMS
+            .filter(item => item.href && item.type !== 'group' && String(item.href).startsWith('/') && (!role || hasAccess(item, role)))
+            .filter(item => {
+                const href = _normalizeExtraHref(item.href);
+                if (!href || seen.has(href)) return false;
+                seen.add(href);
+                return true;
+            })
+            .map(item => ({
+                ...item,
+                id: `crm_${_normalizeExtraHref(item.href).replace(/[^a-z0-9]+/gi, '_')}`,
+                href: _normalizeExtraHref(item.href),
+                description: item.statusKey ? '' : _getExtraGroupLabel(item.group),
+                custom: true
+            }));
+    }
+
+    function _hasSavedExtraMenuSelection() {
+        try {
+            return localStorage.getItem(EXTRA_MENU_STORAGE_KEY) !== null;
+        } catch {
+            return false;
+        }
+    }
+
+    function _getSavedExtraMenuHrefs() {
+        return _readCustomExtraItems()
+            .filter(item => !item.hidden)
+            .map(item => _normalizeExtraHref(item.href))
+            .filter(Boolean);
+    }
+
+    function _saveExtraMenuSelection(hrefs, role) {
+        const selected = new Set((Array.isArray(hrefs) ? hrefs : []).map(_normalizeExtraHref).filter(Boolean));
+        const selectable = _getSelectableExtraMenuItems(role);
+        return _saveCustomExtraItems(selectable.filter(item => selected.has(item.href)));
+    }
+
+    function _getSelectedExtraMenuHrefs(role) {
+        const saved = _hasSavedExtraMenuSelection() ? _getSavedExtraMenuHrefs() : EXTRA_MENU_HREFS.map(_normalizeExtraHref);
+        const available = new Set(_getSelectableExtraMenuItems(role).map(item => item.href));
+        return saved.filter(href => available.has(href));
+    }
+
     function _getExtraMenuItems(role, includeHidden = false) {
-        const defaults = _getDefaultExtraMenuItems(role);
-        const custom = _readCustomExtraItems().filter(item => includeHidden || !item.hidden);
-        return defaults.concat(custom);
+        const selected = new Set(_getSelectedExtraMenuHrefs(role));
+        return _getSelectableExtraMenuItems(role).filter(item => selected.has(item.href) && (includeHidden || !item.hidden));
     }
 
     function _isExtraMenuEditorOpen() {
@@ -491,61 +540,39 @@ const Sidebar = (() => {
                 ${description}
             </span>
             ${badgeType ? `<span class="${badgeClass.trim()}" data-badge-type="${badgeType}" style="display:none"></span>` : '<span class="sidebar-design-extra-open" aria-hidden="true">›</span>'}`;
-        if (options.editMode && item.custom) {
-            return `<div class="sidebar-design-extra-link sidebar-design-extra-link--editable" data-sidebar-extra-id="${_escAttr(item.id)}">
-                ${body}
-                <span class="sidebar-design-extra-actions" data-sidebar-stop-profile="true">
-                    <button type="button" class="sidebar-design-extra-action" data-sidebar-extra-edit="${_escAttr(item.id)}" aria-label="Редагувати ${_escAttr(item.label)}">✎</button>
-                    <button type="button" class="sidebar-design-extra-action danger" data-sidebar-extra-delete="${_escAttr(item.id)}" aria-label="Видалити ${_escAttr(item.label)}">×</button>
-                </span>
-            </div>`;
-        }
         const targetAttrs = _isExternalExtraHref(item.href) ? ' target="_blank" rel="noopener noreferrer"' : '';
         return `<a class="sidebar-design-extra-link${isActive ? ' active' : ''}" href="${_escAttr(item.href)}"${targetAttrs}>
             ${body}
         </a>`;
     }
 
-    function _renderExtraMenuForm(item = null) {
-        const isEdit = !!item;
-        const selectedIcon = item?.icon || EXTRA_MENU_ICON_FALLBACK;
-        const iconOptions = _getExtraIconOptions().map(([value, label]) =>
-            `<option value="${_escAttr(value)}"${value === selectedIcon ? ' selected' : ''}>${_escAttr(label)}</option>`
-        ).join('');
-        return `<form class="sidebar-extra-form" data-sidebar-extra-form>
-            <input type="hidden" name="id" value="${_escAttr(item?.id || '')}">
-            <label class="sidebar-extra-field">
-                <span>Назва</span>
-                <input class="sidebar-extra-input" name="label" type="text" maxlength="42" value="${_escAttr(item?.label || '')}" placeholder="Наприклад: Випускний" required>
-            </label>
-            <label class="sidebar-extra-field">
-                <span>Сторінка або URL</span>
-                <input class="sidebar-extra-input" name="href" type="text" value="${_escAttr(item?.href || '')}" placeholder="/graduation або https://..." required>
-            </label>
-            <label class="sidebar-extra-field">
-                <span>Опис</span>
-                <input class="sidebar-extra-input" name="description" type="text" maxlength="52" value="${_escAttr(item?.description || '')}" placeholder="короткий підпис під назвою">
-            </label>
-            <label class="sidebar-extra-field">
-                <span>Іконка</span>
-                <select class="sidebar-extra-input" name="icon">${iconOptions}</select>
-            </label>
-            <div class="sidebar-extra-form-actions">
-                <button type="submit" class="sidebar-extra-save">${isEdit ? 'Зберегти' : '+ Додати сторінку'}</button>
-                ${isEdit ? '<button type="button" class="sidebar-extra-cancel" data-sidebar-extra-cancel>Скасувати</button>' : ''}
-            </div>
-        </form>`;
-    }
-
-    function _renderExtraMenuEditor(customItems) {
-        const editing = customItems.find(item => item.id === _state.extraEditingId) || null;
-        const customCount = customItems.length;
+    function _renderExtraMenuEditor(selectableItems, selectedHrefs) {
+        const selected = new Set(selectedHrefs);
+        const selectedCount = selectableItems.filter(item => selected.has(item.href)).length;
+        const pickerHtml = selectableItems.length ? selectableItems.map(item => {
+            const checked = selected.has(item.href);
+            const meta = item.description || item.href;
+            return `<label class="sidebar-extra-check">
+                <input type="checkbox" data-sidebar-extra-page value="${_escAttr(item.href)}"${checked ? ' checked' : ''}>
+                <span class="sidebar-extra-checkmark" aria-hidden="true"></span>
+                <span class="sidebar-extra-check-copy">
+                    <b>${_escAttr(item.label)}</b>
+                    <small>${_escAttr(meta)}</small>
+                </span>
+            </label>`;
+        }).join('') : '<div class="sidebar-extra-empty">Для цієї ролі немає доступних CRM-сторінок.</div>';
         return `<div class="sidebar-extra-editor" data-sidebar-extra-editor>
             <div class="sidebar-extra-editor-title">
-                <span>Свої сторінки</span>
-                <small>${customCount ? `${customCount} додано` : 'можна додати будь-який шлях або URL'}</small>
+                <span>Сторінки в «Додатково»</span>
+                <small>${selectedCount} вибрано</small>
             </div>
-            ${_renderExtraMenuForm(editing)}
+            <div class="sidebar-extra-picker" data-sidebar-extra-picker>
+                ${pickerHtml}
+            </div>
+            <div class="sidebar-extra-form-actions">
+                <button type="button" class="sidebar-extra-save" data-sidebar-extra-reset>Стандартні</button>
+                <button type="button" class="sidebar-extra-cancel" data-sidebar-extra-clear>Очистити</button>
+            </div>
         </div>`;
     }
 
@@ -577,64 +604,39 @@ const Sidebar = (() => {
             });
         }
 
-        extras.querySelectorAll('[data-sidebar-extra-edit]').forEach((btn) => {
-            if (btn.dataset.sidebarExtraEditBound === 'true') return;
-            btn.dataset.sidebarExtraEditBound = 'true';
-            btn.addEventListener('click', () => {
-                _state.extraEditingId = btn.dataset.sidebarExtraEdit || '';
+        const savedUser = _getCurrentSidebarUser();
+        const role = _getSidebarActiveRole(savedUser);
+        const saveCurrentCheckboxes = () => {
+            const checkedHrefs = [...extras.querySelectorAll('[data-sidebar-extra-page]:checked')].map(input => input.value);
+            _saveExtraMenuSelection(checkedHrefs, role);
+            _state.extraEditingId = '';
+            _setExtraMenuCollapsed(false);
+            _setExtraMenuEditorOpen(true);
+            _ensureCommandDeck();
+        };
+
+        extras.querySelectorAll('[data-sidebar-extra-page]').forEach((input) => {
+            if (input.dataset.sidebarExtraPageBound === 'true') return;
+            input.dataset.sidebarExtraPageBound = 'true';
+            input.addEventListener('change', saveCurrentCheckboxes);
+        });
+
+        const reset = extras.querySelector('[data-sidebar-extra-reset]');
+        if (reset && reset.dataset.sidebarExtraResetBound !== 'true') {
+            reset.dataset.sidebarExtraResetBound = 'true';
+            reset.addEventListener('click', () => {
+                _saveExtraMenuSelection(EXTRA_MENU_HREFS, role);
                 _setExtraMenuCollapsed(false);
                 _setExtraMenuEditorOpen(true);
                 _ensureCommandDeck();
             });
-        });
-
-        extras.querySelectorAll('[data-sidebar-extra-delete]').forEach((btn) => {
-            if (btn.dataset.sidebarExtraDeleteBound === 'true') return;
-            btn.dataset.sidebarExtraDeleteBound = 'true';
-            btn.addEventListener('click', () => {
-                const id = btn.dataset.sidebarExtraDelete || '';
-                if (!id) return;
-                if (!window.confirm('Видалити цю сторінку з блоку «Додатково»?')) return;
-                const items = _readCustomExtraItems().filter(item => item.id !== id);
-                _saveCustomExtraItems(items);
-                if (_state.extraEditingId === id) _state.extraEditingId = '';
-                _ensureCommandDeck();
-            });
-        });
-
-        const cancel = extras.querySelector('[data-sidebar-extra-cancel]');
-        if (cancel && cancel.dataset.sidebarExtraCancelBound !== 'true') {
-            cancel.dataset.sidebarExtraCancelBound = 'true';
-            cancel.addEventListener('click', () => {
-                _state.extraEditingId = '';
-                _ensureCommandDeck();
-            });
         }
 
-        const form = extras.querySelector('[data-sidebar-extra-form]');
-        if (form && form.dataset.sidebarExtraFormBound !== 'true') {
-            form.dataset.sidebarExtraFormBound = 'true';
-            form.addEventListener('submit', (event) => {
-                event.preventDefault();
-                const data = new FormData(form);
-                const id = String(data.get('id') || '').trim();
-                const nextItem = _normalizeCustomExtraItem({
-                    id: id || _makeExtraMenuId(),
-                    label: data.get('label'),
-                    href: data.get('href'),
-                    description: data.get('description') || EXTRA_MENU_CUSTOM_DESCRIPTION,
-                    icon: data.get('icon') || EXTRA_MENU_ICON_FALLBACK
-                });
-                if (!nextItem) return;
-                const items = _readCustomExtraItems();
-                const existingIndex = items.findIndex(item => item.id === nextItem.id);
-                if (existingIndex >= 0) {
-                    items[existingIndex] = nextItem;
-                } else {
-                    items.push(nextItem);
-                }
-                _saveCustomExtraItems(items);
-                _state.extraEditingId = '';
+        const clear = extras.querySelector('[data-sidebar-extra-clear]');
+        if (clear && clear.dataset.sidebarExtraClearBound !== 'true') {
+            clear.dataset.sidebarExtraClearBound = 'true';
+            clear.addEventListener('click', () => {
+                _saveExtraMenuSelection([], role);
                 _setExtraMenuCollapsed(false);
                 _setExtraMenuEditorOpen(true);
                 _ensureCommandDeck();
@@ -1056,7 +1058,8 @@ const Sidebar = (() => {
         const savedUser = _getCurrentSidebarUser();
         const role = _getSidebarActiveRole(savedUser);
         const extraItems = _getExtraMenuItems(role);
-        const customExtraItems = _readCustomExtraItems();
+        const selectableExtraItems = _getSelectableExtraMenuItems(role);
+        const selectedExtraHrefs = _getSelectedExtraMenuHrefs(role);
         const extraEditorOpen = _isExtraMenuEditorOpen();
         const extraCollapsed = _isExtraMenuCollapsed() && !extraEditorOpen;
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
@@ -1077,9 +1080,9 @@ const Sidebar = (() => {
                     <button type="button" class="sidebar-design-extras-manage" data-sidebar-extra-toggle-editor aria-expanded="${extraEditorOpen ? 'true' : 'false'}">${extraEditorOpen ? 'Готово' : 'Редагувати'}</button>
                 </div>
                 <div class="sidebar-design-extra-list"${extraCollapsed ? ' hidden' : ''}>
-                    ${extraItems.map(item => _renderExtraMenuLink(item, currentPath, currentHash, { editMode: extraEditorOpen })).join('')}
+                    ${extraItems.length ? extraItems.map(item => _renderExtraMenuLink(item, currentPath, currentHash, { editMode: extraEditorOpen })).join('') : '<div class="sidebar-design-extra-empty">Нічого не вибрано. Натисни «Редагувати» і постав галочки.</div>'}
                 </div>
-                ${extraEditorOpen ? _renderExtraMenuEditor(customExtraItems) : ''}`;
+                ${extraEditorOpen ? _renderExtraMenuEditor(selectableExtraItems, selectedExtraHrefs) : ''}`;
         if (extras.parentElement !== sidebar) sidebar.insertBefore(extras, links);
         _syncSidebarSectionOrder(sidebar, links);
         _bindExtraMenuEditor(extras);

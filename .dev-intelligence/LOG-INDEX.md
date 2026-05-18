@@ -38,3 +38,4 @@
 | 2026-05-18 | S31 | Changelog Version Sequence | #changelog #versioning #release-notes #deploy | none | QUICK |
 | 2026-05-18 | S32 | Customers Dark Theme | #customers #darkmode #ui #contrast #deploy | none | QUICK |
 | 2026-05-18 | S33 | Sidebar Compact Command Deck | #sidebar #navigation #density #ux #deploy | none | QUICK |
+| 2026-05-18 | S34 | Kleshnya Expanded Window Polish | #assistant #kleshnya #ui #modal #deploy | none | QUICK |

@@ -762,8 +762,18 @@ const DashboardPage = (() => {
         return ASSISTANT_RAIL_MODES.has(value) ? value : 'idle';
     }
 
+    function hasCanonicalAssistantRail() {
+        return Boolean(window.CrmAssistantRail) && !document.getElementById('dashboardAssistantRail');
+    }
+
+    function getCanonicalAssistantVoiceEnabled() {
+        const storeState = window.CrmAssistantFoundation?.store?.getState?.();
+        if (storeState && typeof storeState.voiceEnabled === 'boolean') return storeState.voiceEnabled;
+        return localStorage.getItem('eg_crm_assistant_voice') !== 'off';
+    }
+
     function setAssistantRailState(patch = {}) {
-        if (window.CrmAssistantRail?.setState && !document.getElementById('dashboardAssistantRail')) {
+        if (hasCanonicalAssistantRail() && window.CrmAssistantRail?.setState) {
             window.CrmAssistantRail.setState(patch);
             return;
         }
@@ -827,7 +837,7 @@ const DashboardPage = (() => {
     }
 
     function toggleAssistantVoice() {
-        if (window.CrmAssistantRail?.toggleVoice && !document.getElementById('dashboardAssistantRail')) {
+        if (hasCanonicalAssistantRail() && window.CrmAssistantRail?.toggleVoice) {
             window.CrmAssistantRail.toggleVoice();
             return;
         }
@@ -843,7 +853,7 @@ const DashboardPage = (() => {
     }
 
     async function replayAssistantLine() {
-        if (window.CrmAssistantRail?.replayLastLine && !document.getElementById('dashboardAssistantRail')) {
+        if (hasCanonicalAssistantRail() && window.CrmAssistantRail?.replayLastLine) {
             await window.CrmAssistantRail.replayLastLine();
             return;
         }
@@ -852,7 +862,7 @@ const DashboardPage = (() => {
     }
 
     function expandAssistantRail() {
-        if (window.CrmAssistantRail?.expand && !document.getElementById('dashboardAssistantRail')) {
+        if (hasCanonicalAssistantRail() && window.CrmAssistantRail?.expand) {
             window.CrmAssistantRail.expand();
             return;
         }
@@ -862,7 +872,7 @@ const DashboardPage = (() => {
     function demoAssistantSpeak(text) {
         const line = String(text || '').trim();
         if (!line) return;
-        if (window.CrmAssistantRail?.announceFromPage && !document.getElementById('dashboardAssistantRail')) {
+        if (hasCanonicalAssistantRail() && window.CrmAssistantRail?.announceFromPage) {
             window.CrmAssistantRail.announceFromPage(line);
             return;
         }
@@ -879,7 +889,7 @@ const DashboardPage = (() => {
         const label = roleName || roleDisplayName(role);
         const widgets = getDashboardAssistantWidgetsContext();
         const subtitle = `Я бачу dashboard для ролі ${label}. Можу коротко пояснити віджети, пріоритети і наступний крок.`;
-        if (window.CrmAssistantRail?.announceFromPage && !document.getElementById('dashboardAssistantRail')) {
+        if (hasCanonicalAssistantRail() && window.CrmAssistantRail?.announceFromPage) {
             window.CrmAssistantRail.announceFromPage(subtitle);
             return;
         }
@@ -929,7 +939,7 @@ const DashboardPage = (() => {
     }
 
     async function requestDashboardAssistantReply(userMessage, options = {}) {
-        if (window.CrmAssistantRail?.requestGuideReply && !document.getElementById('dashboardAssistantRail')) {
+        if (hasCanonicalAssistantRail() && window.CrmAssistantRail?.requestGuideReply) {
             return window.CrmAssistantRail.requestGuideReply({
                 ...getAssistantContext(),
                 userMessage: String(userMessage || '').trim(),
@@ -977,8 +987,8 @@ const DashboardPage = (() => {
     }
 
     async function playAssistantReply(reply, options = {}) {
-        if (window.CrmAssistantRail?.playReply && !document.getElementById('dashboardAssistantRail')) {
-            await window.CrmAssistantRail.playReply(reply, { textOnly: _assistantRailState.voiceEnabled === false });
+        if (hasCanonicalAssistantRail() && window.CrmAssistantRail?.playReply) {
+            await window.CrmAssistantRail.playReply(reply, { textOnly: getCanonicalAssistantVoiceEnabled() === false });
             return;
         }
         const text = String(reply?.subtitle || reply?.text || '').trim();
@@ -1043,7 +1053,7 @@ const DashboardPage = (() => {
     }
 
     async function toggleAssistantListening() {
-        if (window.CrmAssistantRail?.toggleListening && !document.getElementById('dashboardAssistantRail')) {
+        if (hasCanonicalAssistantRail() && window.CrmAssistantRail?.toggleListening) {
             await window.CrmAssistantRail.toggleListening();
             return;
         }
@@ -1148,7 +1158,7 @@ const DashboardPage = (() => {
     }
 
     function closeDashboardAssistantPanel() {
-        if (window.CrmAssistantRail?.closePanel && !document.getElementById('dashboardAssistantPanelOverlay')) {
+        if (hasCanonicalAssistantRail() && window.CrmAssistantRail?.closePanel && !document.getElementById('dashboardAssistantPanelOverlay')) {
             window.CrmAssistantRail.closePanel();
             return;
         }
@@ -1172,7 +1182,7 @@ const DashboardPage = (() => {
     }
 
     async function runAssistantQuickPrompt(prompt) {
-        if (window.CrmAssistantRail?.requestGuideReply && !document.getElementById('dashboardAssistantPanelOverlay')) {
+        if (hasCanonicalAssistantRail() && window.CrmAssistantRail?.requestGuideReply && !document.getElementById('dashboardAssistantPanelOverlay')) {
             window.CrmAssistantRail.expand();
             const reply = await window.CrmAssistantRail.requestGuideReply({
                 ...getAssistantContext(),

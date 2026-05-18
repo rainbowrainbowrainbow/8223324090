@@ -4,6 +4,18 @@
 
 ---
 
+## v0.56.0 - AI Assistant: адаптери інтелекту
+
+### CRM Assistant Foundation + Intelligence [codex]
+- **Canonical rail** - Клешня працює через єдиний shared assistant rail і foundation store, без dashboard-only fork.
+- **API-backed intelligence** - dashboard/work queue, tasks, finance, leads і chat отримали adapter snapshots з реальних CRM API замість крихкого DOM guessing.
+- **Action proposals** - у розгорнутій AI-панелі з'явилась рекомендована безпечна дія з поясненням, secondary action і fallback, якщо registry не має надійної дії.
+- **Guided teaching** - додано assistant-safe highlights і короткі 2-3 крокові сценарії для dashboard queue, прострочених задач, боргів, follow-up лідів і unread chat.
+- **Reply schema** - backend/frontend нормалізують `summary`, `evidence`, `riskLevel`, `recommendation`, `actionProposal`, `teachingTarget` і `fallbackReason`, щоб AI не вигадував неіснуючі функції.
+- **Guardrail** - `npm test` фіксує assistant foundation contracts, API snapshot hooks, action proposal UI, teaching runner і role/session boundary.
+
+---
+
 ## v0.55.45 - Timeline: drag ведучих
 
 ### Timeline / Linked Host Drag [codex]

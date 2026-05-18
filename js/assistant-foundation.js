@@ -1,0 +1,1207 @@
+/**
+ * js/assistant-foundation.js - compact CRM assistant contracts.
+ *
+ * This is intentionally small: one store, one optional page-adapter contract,
+ * one thin action registry, one teaching-target normalizer, and one reply
+ * schema normalizer for the shared rail.
+ */
+(function () {
+    const CONTRACT_VERSION = 'assistant_foundation_v1';
+    if (window.CrmAssistantFoundation?.CONTRACT_VERSION === CONTRACT_VERSION) return;
+
+    const MODES = new Set(['idle', 'thinking', 'busy', 'listening', 'speaking', 'muted', 'error', 'working', 'streaming', 'action', 'success']);
+    const RISK_LEVELS = new Set(['none', 'low', 'medium', 'high', 'critical']);
+    const CONFIDENCE_LEVELS = new Set(['low', 'medium', 'high', 'exact']);
+    const subscribers = new Set();
+    const adapters = new Map();
+    const actions = new Map();
+    const highlightTimers = new Map();
+    const snapshotCache = new Map();
+    const snapshotInflight = new Map();
+    const SNAPSHOT_TTL_MS = 45000;
+
+    function nowIso() {
+        return new Date().toISOString();
+    }
+
+    function readStorage(key, fallback = '') {
+        try {
+            return localStorage.getItem(key) ?? fallback;
+        } catch {
+            return fallback;
+        }
+    }
+
+    function compactText(value, limit = 180) {
+        const text = String(value || '').replace(/\s+/g, ' ').trim();
+        if (text.length <= limit) return text;
+        return `${text.slice(0, Math.max(0, limit - 1)).trim()}...`;
+    }
+
+    function toList(value, limit = 20) {
+        if (!Array.isArray(value)) return [];
+        return value.filter(Boolean).slice(0, limit);
+    }
+
+    function numberValue(value, fallback = 0) {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : fallback;
+    }
+
+    function formatMoney(value) {
+        const amount = numberValue(value, 0);
+        try {
+            return `${amount.toLocaleString('uk-UA')} грн`;
+        } catch {
+            return `${amount} грн`;
+        }
+    }
+
+    function authHeaders() {
+        const token = readStorage('pzp_token', '');
+        return token ? { Authorization: `Bearer ${token}` } : {};
+    }
+
+    async function apiGetJson(path) {
+        if (typeof fetch !== 'function') {
+            const err = new Error('fetch_unavailable');
+            err.status = 0;
+            throw err;
+        }
+        const response = await fetch(path, { headers: authHeaders() });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            const err = new Error(payload?.error || `assistant_snapshot_http_${response.status}`);
+            err.status = response.status;
+            err.payload = payload;
+            throw err;
+        }
+        return payload;
+    }
+
+    function snapshotKey(pageId, key) {
+        return `${compactText(pageId || getPageId(), 80)}:${compactText(key, 80)}`;
+    }
+
+    function setSnapshot(pageId, key, data, error = null) {
+        const entry = {
+            pageId: compactText(pageId || getPageId(), 80),
+            key: compactText(key, 80),
+            data: data || null,
+            error: error ? compactText(error.message || error, 180) : '',
+            status: error?.status || 200,
+            at: Date.now(),
+            updatedAt: nowIso()
+        };
+        snapshotCache.set(snapshotKey(pageId, key), entry);
+        return entry;
+    }
+
+    function getSnapshotEntry(pageId, key, maxAgeMs = SNAPSHOT_TTL_MS) {
+        const entry = snapshotCache.get(snapshotKey(pageId, key));
+        if (!entry) return null;
+        return {
+            ...entry,
+            stale: Date.now() - entry.at > maxAgeMs
+        };
+    }
+
+    function getSnapshotData(pageId, key) {
+        return getSnapshotEntry(pageId, key)?.data || null;
+    }
+
+    function snapshotError(pageId, key) {
+        const entry = getSnapshotEntry(pageId, key);
+        return entry?.error || '';
+    }
+
+    function snapshotRequestsForPage(pageId) {
+        if (pageId === 'dashboard') {
+            return [
+                { key: 'workQueue', path: '/api/work-queue?replyScope=all&replySla=all&replyOwner=all&replyEscalation=all&limit=12' }
+            ];
+        }
+        if (pageId === 'tasks') {
+            return [
+                { key: 'taskCabinet', path: '/api/tasks/my-cabinet' },
+                { key: 'tasks', path: '/api/tasks?status=todo,in_progress&limit=160' }
+            ];
+        }
+        if (pageId === 'finance') {
+            return [
+                { key: 'financeDebts', path: '/api/finance/debts' },
+                { key: 'financeAdvanced', path: '/api/finance/advanced-dashboard' }
+            ];
+        }
+        if (pageId === 'leads' || pageId === 'sales-funnel') {
+            return [
+                { key: 'hotLeads', path: '/api/leads/hot' },
+                { key: 'leadStats', path: '/api/leads/stats?period=week' },
+                { key: 'chatUnread', path: '/api/chat/unread' }
+            ];
+        }
+        if (pageId === 'chat' || pageId === 'omni') {
+            return [
+                { key: 'chatUnread', path: '/api/chat/unread' }
+            ];
+        }
+        return [];
+    }
+
+    async function refreshAdapterSnapshot(pageId = getPageId(), options = {}) {
+        const page = compactText(pageId || getPageId(), 80);
+        const requests = snapshotRequestsForPage(page);
+        if (!requests.length) return { pageId: page, skipped: true, reason: 'no_snapshot_requests' };
+        const refreshKey = `refresh:${page}`;
+        if (!options.force && snapshotInflight.has(refreshKey)) return snapshotInflight.get(refreshKey);
+        const promise = (async () => {
+            const result = { pageId: page, refreshedAt: nowIso(), keys: [] };
+            await Promise.all(requests.map(async request => {
+                const fresh = getSnapshotEntry(page, request.key);
+                if (!options.force && fresh && !fresh.stale) {
+                    result.keys.push({ key: request.key, cached: true, ok: !fresh.error });
+                    return;
+                }
+                try {
+                    const payload = await apiGetJson(request.path);
+                    setSnapshot(page, request.key, payload, null);
+                    result.keys.push({ key: request.key, ok: true });
+                } catch (err) {
+                    setSnapshot(page, request.key, null, err);
+                    result.keys.push({ key: request.key, ok: false, error: err.message || String(err), status: err.status || 0 });
+                }
+            }));
+            return result;
+        })();
+        snapshotInflight.set(refreshKey, promise);
+        try {
+            return await promise;
+        } finally {
+            snapshotInflight.delete(refreshKey);
+        }
+    }
+
+    function refreshContext(options = {}) {
+        return refreshAdapterSnapshot(options.pageId || options.page || getPageId(), options);
+    }
+
+    function queueBucket(queue, key) {
+        return (queue?.buckets || []).find(bucket => bucket?.key === key) || null;
+    }
+
+    function queueBucketCount(queue, key) {
+        const bucket = queueBucket(queue, key);
+        return numberValue(bucket?.count ?? bucket?.items?.length, 0);
+    }
+
+    function snapshotFallback(pageId, keys) {
+        const errors = toList(keys, 8)
+            .map(key => snapshotError(pageId, key))
+            .filter(Boolean);
+        return errors.length ? errors.join('; ') : '';
+    }
+
+    function getPageId() {
+        const raw = window.location.pathname.replace(/^\/+/, '').replace(/\.html$/, '').replace(/\/$/, '');
+        if (!raw || raw === 'index') return 'timeline';
+        return raw;
+    }
+
+    function getSessionUser() {
+        if (window.AppState?.currentUser) return window.AppState.currentUser;
+        try {
+            return JSON.parse(localStorage.getItem('pzp_current_user') || 'null');
+        } catch {
+            return null;
+        }
+    }
+
+    function roleLabel(role) {
+        if (!role) return '';
+        return window.ROLE_NAMES?.[role] || role;
+    }
+
+    function getRoleSnapshot() {
+        const user = getSessionUser();
+        const role = String(user?.role || '').trim();
+        const previewRole = role === 'creator' ? String(readStorage('pzp_test_role', '') || sessionStorage.getItem('testRole') || '').trim() : '';
+        return {
+            role,
+            displayRole: roleLabel(previewRole || role),
+            permissionRole: role,
+            previewRole,
+            isPreview: Boolean(previewRole),
+            userId: user?.id || user?.userId || null,
+            username: user?.username || '',
+            source: user ? 'session_user' : 'missing_session_user'
+        };
+    }
+
+    function normalizeMode(mode) {
+        return MODES.has(mode) ? mode : 'idle';
+    }
+
+    const state = {
+        mode: readStorage('eg_crm_assistant_voice', 'on') === 'off' ? 'muted' : 'idle',
+        pageId: getPageId(),
+        roleSnapshot: getRoleSnapshot(),
+        lastAssistantSummaryLine: '',
+        voiceEnabled: readStorage('eg_crm_assistant_voice', 'on') !== 'off',
+        muted: readStorage('eg_crm_assistant_voice', 'on') === 'off',
+        speaking: false,
+        playbackState: 'idle',
+        adapterId: '',
+        currentActionProposal: null,
+        currentTeachingTarget: null,
+        currentTeachingFlow: null,
+        currentContextSnapshot: null,
+        fallbackReason: '',
+        updatedAt: nowIso()
+    };
+
+    const store = {
+        getState() {
+            return {
+                ...state,
+                roleSnapshot: { ...(state.roleSnapshot || {}) },
+                currentActionProposal: state.currentActionProposal ? { ...state.currentActionProposal } : null,
+                currentTeachingTarget: state.currentTeachingTarget ? { ...state.currentTeachingTarget } : null,
+                currentTeachingFlow: state.currentTeachingFlow ? { ...state.currentTeachingFlow } : null
+            };
+        },
+        setState(patch = {}, meta = {}) {
+            if (!patch || typeof patch !== 'object') return store.getState();
+            if (Object.prototype.hasOwnProperty.call(patch, 'mode')) state.mode = normalizeMode(patch.mode);
+            if (Object.prototype.hasOwnProperty.call(patch, 'pageId')) state.pageId = compactText(patch.pageId, 80) || getPageId();
+            if (Object.prototype.hasOwnProperty.call(patch, 'roleSnapshot')) state.roleSnapshot = patch.roleSnapshot || getRoleSnapshot();
+            if (Object.prototype.hasOwnProperty.call(patch, 'lastAssistantSummaryLine')) state.lastAssistantSummaryLine = compactText(patch.lastAssistantSummaryLine, 700);
+            if (Object.prototype.hasOwnProperty.call(patch, 'voiceEnabled')) state.voiceEnabled = patch.voiceEnabled === true;
+            if (Object.prototype.hasOwnProperty.call(patch, 'muted')) state.muted = patch.muted === true;
+            if (Object.prototype.hasOwnProperty.call(patch, 'speaking')) state.speaking = patch.speaking === true;
+            if (Object.prototype.hasOwnProperty.call(patch, 'playbackState')) state.playbackState = compactText(patch.playbackState, 40);
+            if (Object.prototype.hasOwnProperty.call(patch, 'adapterId')) state.adapterId = compactText(patch.adapterId, 80);
+            if (Object.prototype.hasOwnProperty.call(patch, 'currentActionProposal')) state.currentActionProposal = patch.currentActionProposal || null;
+            if (Object.prototype.hasOwnProperty.call(patch, 'currentTeachingTarget')) state.currentTeachingTarget = patch.currentTeachingTarget || null;
+            if (Object.prototype.hasOwnProperty.call(patch, 'currentTeachingFlow')) state.currentTeachingFlow = patch.currentTeachingFlow || null;
+            if (Object.prototype.hasOwnProperty.call(patch, 'currentContextSnapshot')) state.currentContextSnapshot = patch.currentContextSnapshot || null;
+            if (Object.prototype.hasOwnProperty.call(patch, 'fallbackReason')) state.fallbackReason = compactText(patch.fallbackReason, 240);
+            state.updatedAt = nowIso();
+            const snapshot = store.getState();
+            subscribers.forEach(fn => {
+                try { fn(snapshot, meta); } catch (err) { console.warn('[crm-assistant-foundation] subscriber failed', err); }
+            });
+            return snapshot;
+        },
+        subscribe(fn) {
+            if (typeof fn !== 'function') return () => {};
+            subscribers.add(fn);
+            return () => subscribers.delete(fn);
+        }
+    };
+
+    function normalizeSignal(signal = {}, index = 0) {
+        if (typeof signal === 'string') {
+            return {
+                signalId: `signal-${index + 1}`,
+                page: getPageId(),
+                label: compactText(signal, 140),
+                value: '',
+                severity: 'info',
+                evidence: compactText(signal, 220),
+                source: 'adapter_text'
+            };
+        }
+        const severity = ['info', 'success', 'warning', 'danger', 'critical'].includes(signal.severity) ? signal.severity : 'info';
+        return {
+            signalId: compactText(signal.signalId || signal.id || `signal-${index + 1}`, 80),
+            page: compactText(signal.page || getPageId(), 80),
+            label: compactText(signal.label || signal.title || signal.type || 'Signal', 140),
+            value: compactText(signal.value ?? signal.count ?? '', 120),
+            severity,
+            evidence: compactText(signal.evidence || signal.reason || signal.text || signal.label || '', 260),
+            source: compactText(signal.source || 'adapter', 80)
+        };
+    }
+
+    function isStableSelector(selector) {
+        const value = String(selector || '').trim();
+        if (!value) return false;
+        if (value.startsWith('#')) return true;
+        if (value.includes('[data-assistant-target=')) return true;
+        if (value.includes('[data-view=') || value.includes('[data-tab=') || value.includes('[data-widget=') || value.includes('[data-task-id]') || value.includes('[data-lead-id]') || value.includes('[data-id]')) return true;
+        return false;
+    }
+
+    function normalizeTarget(target = {}, index = 0) {
+        const selectorOrRef = target.selectorOrRef || target.selector || target.ref || '';
+        const stable = typeof selectorOrRef !== 'string' || isStableSelector(selectorOrRef);
+        const normalized = {
+            targetId: compactText(target.targetId || target.id || `target-${index + 1}`, 90),
+            page: compactText(target.page || getPageId(), 80),
+            label: compactText(target.label || target.title || 'Assistant target', 140),
+            selectorOrRef,
+            kind: compactText(target.kind || 'section', 40),
+            priority: Number.isFinite(Number(target.priority)) ? Number(target.priority) : index + 1,
+            available: target.available !== false && stable,
+            reason: compactText(target.reason || (stable ? '' : 'selector_not_stable'), 180),
+            fallbackText: compactText(target.fallbackText || 'No stable target is available for this guidance.', 220)
+        };
+        if (typeof selectorOrRef === 'string' && stable) {
+            normalized.available = Boolean(document.querySelector(selectorOrRef));
+            if (!normalized.available && !normalized.reason) normalized.reason = 'target_not_found';
+        }
+        return normalized;
+    }
+
+    function serializeTarget(target) {
+        const normalized = normalizeTarget(target);
+        return {
+            targetId: normalized.targetId,
+            page: normalized.page,
+            label: normalized.label,
+            selectorOrRef: typeof normalized.selectorOrRef === 'string' ? normalized.selectorOrRef : '',
+            kind: normalized.kind,
+            priority: normalized.priority,
+            available: normalized.available,
+            reason: normalized.reason,
+            fallbackText: normalized.fallbackText
+        };
+    }
+
+    function normalizeAction(action = {}, index = 0) {
+        return {
+            actionId: compactText(action.actionId || action.id || `action-${index + 1}`, 100),
+            page: compactText(action.page || getPageId(), 80),
+            actionType: compactText(action.actionType || action.type || 'focus', 60),
+            label: compactText(action.label || action.title || 'Assistant action', 140),
+            run: typeof action.run === 'function' ? action.run : null,
+            confirmationNeeded: action.confirmationNeeded === true,
+            targetResolver: typeof action.targetResolver === 'function' ? action.targetResolver : null,
+            failureMessage: compactText(action.failureMessage || 'Action is unavailable right now.', 220)
+        };
+    }
+
+    function serializeAction(action) {
+        const normalized = normalizeAction(action);
+        return {
+            actionId: normalized.actionId,
+            page: normalized.page,
+            actionType: normalized.actionType,
+            label: normalized.label,
+            confirmationNeeded: normalized.confirmationNeeded,
+            failureMessage: normalized.failureMessage
+        };
+    }
+
+    const actionRegistry = {
+        register(action) {
+            const normalized = normalizeAction(action);
+            if (!normalized.actionId) return null;
+            actions.set(normalized.actionId, normalized);
+            return normalized;
+        },
+        unregister(actionId) {
+            actions.delete(String(actionId || ''));
+        },
+        list(page = getPageId()) {
+            return Array.from(actions.values()).filter(action => !page || action.page === page);
+        },
+        async run(actionId, payload = {}) {
+            const action = actions.get(String(actionId || ''));
+            if (!action || typeof action.run !== 'function') {
+                throw new Error(action?.failureMessage || 'assistant_action_unavailable');
+            }
+            if (action.confirmationNeeded && typeof window.confirm === 'function') {
+                const ok = window.confirm(action.label);
+                if (!ok) return { success: false, cancelled: true };
+            }
+            try {
+                store.setState({ mode: 'action', currentActionProposal: serializeAction(action) }, { source: 'action:start' });
+                const result = await action.run(payload);
+                store.setState({ mode: 'success', currentActionProposal: null }, { source: 'action:success' });
+                return result || { success: true };
+            } catch (err) {
+                store.setState({ mode: 'error', fallbackReason: action.failureMessage || err.message }, { source: 'action:error' });
+                throw err;
+            }
+        }
+    };
+
+    function elementForTarget(targetOrId) {
+        let target = targetOrId;
+        if (typeof targetOrId === 'string') {
+            const active = buildContext({ silent: true }).teachingTargets || [];
+            const safeId = window.CSS?.escape ? CSS.escape(targetOrId) : String(targetOrId).replace(/"/g, '\\"');
+            target = active.find(item => item.targetId === targetOrId) || { selectorOrRef: `[data-assistant-target="${safeId}"]` };
+        }
+        const normalized = normalizeTarget(target);
+        if (!normalized.available) return { target: normalized, element: null };
+        const ref = normalized.selectorOrRef;
+        if (ref && typeof ref !== 'string' && typeof Element !== 'undefined' && ref instanceof Element) return { target: normalized, element: ref };
+        return { target: normalized, element: typeof ref === 'string' ? document.querySelector(ref) : null };
+    }
+
+    function highlightTarget(targetOrId, options = {}) {
+        const { target, element } = elementForTarget(targetOrId);
+        if (!element) {
+            store.setState({
+                currentTeachingTarget: serializeTarget(target),
+                fallbackReason: target.reason || target.fallbackText || 'target_not_found'
+            }, { source: 'target:missing' });
+            return { success: false, target: serializeTarget(target), fallbackText: target.fallbackText };
+        }
+        element.scrollIntoView?.({ behavior: options.behavior || 'smooth', block: options.block || 'center' });
+        element.classList.add('crm-assistant-target-highlight');
+        const key = target.targetId;
+        if (highlightTimers.has(key)) window.clearTimeout(highlightTimers.get(key));
+        highlightTimers.set(key, window.setTimeout(() => {
+            element.classList.remove('crm-assistant-target-highlight');
+            highlightTimers.delete(key);
+        }, options.durationMs || 2600));
+        store.setState({ currentTeachingTarget: serializeTarget(target), fallbackReason: '' }, { source: 'target:highlight' });
+        return { success: true, target: serializeTarget(target) };
+    }
+
+    function markTarget(targetId, selector) {
+        const element = document.querySelector(selector);
+        if (!element) return false;
+        element.setAttribute('data-assistant-target', targetId);
+        return true;
+    }
+
+    function markFirstTarget(targetId, selector) {
+        const element = document.querySelector(selector);
+        if (!element) return false;
+        element.setAttribute('data-assistant-target', targetId);
+        return true;
+    }
+
+    function markKnownTargets(pageId = getPageId()) {
+        markTarget('assistant-rail', '#crmAssistantRail');
+        if (pageId === 'dashboard') {
+            markTarget('dashboard-grid', '#dashboardGrid');
+            markTarget('dashboard-work-queue', '#workQueuePanel');
+            markTarget('dashboard-greeting', '#dashboardGreeting');
+        }
+        if (pageId === 'tasks') {
+            markTarget('tasks-tabs', '#boardTabs');
+            markTarget('tasks-board', '#boardContent');
+            markTarget('tasks-operations-summary', '#operationsSummary');
+            markTarget('tasks-waiting-tab', '.board-tab[data-view="waiting"]');
+            markFirstTarget('tasks-first-overdue', '.task-card[data-task-id] .deadline-overdue');
+        }
+        if (pageId === 'finance') {
+            markTarget('finance-stats', '#finStats');
+            markTarget('finance-debts-tab', '.fin-tab[data-tab="debts"]');
+            markTarget('finance-debts', '#debtsContent');
+            markTarget('finance-advanced', '#advancedContent');
+        }
+        if (pageId === 'leads' || pageId === 'sales-funnel') {
+            markTarget('leads-stats', '#leadsStats');
+            markTarget('leads-kanban', '#kanbanView');
+            markTarget('leads-workspace', '#leadWorkspace');
+            markFirstTarget('leads-first-hot', '.kanban-card[data-id].idle-red, [data-lead-id]');
+            markFirstTarget('leads-waiting-reply', '.workspace-badge.waiting, .workspace-row-meta.waiting');
+        }
+        if (pageId === 'chat' || pageId === 'omni') {
+            markTarget('chat-messages', '#chatMessages');
+            markTarget('chat-unread-filter', '[data-omni-filter="unread"]');
+            markFirstTarget('chat-first-unread', '.chat-channel-item.has-unread');
+        }
+    }
+
+    const TEACHING_FLOWS = {
+        'dashboard.work-queue-review': {
+            flowId: 'dashboard.work-queue-review',
+            page: 'dashboard',
+            title: 'Work queue review',
+            steps: [
+                { stepId: 'dashboard.queue', targetId: 'dashboard-work-queue', label: 'Work queue', text: 'Тут видно bottlenecks: відповіді, прострочки, підтвердження і follow-up.' },
+                { stepId: 'dashboard.grid', targetId: 'dashboard-grid', label: 'Dashboard grid', text: 'Після черги звір KPI-віджети, щоб зрозуміти масштаб ризику.' }
+            ]
+        },
+        'tasks.overdue-review': {
+            flowId: 'tasks.overdue-review',
+            page: 'tasks',
+            title: 'Overdue task review',
+            steps: [
+                { stepId: 'tasks.filters', targetId: 'tasks-tabs', label: 'Task filters', text: 'Почни з фільтрів дошки: вони швидко відрізають inbox, waiting і твої задачі.' },
+                { stepId: 'tasks.board', targetId: 'tasks-board', label: 'Task board', text: 'Тут видно активні задачі та їхній поточний статус.' },
+                { stepId: 'tasks.overdue', targetId: 'tasks-first-overdue', label: 'Overdue task', text: 'Якщо прострочена задача є на екрані, її краще відкрити першою.' }
+            ]
+        },
+        'finance.debt-review': {
+            flowId: 'finance.debt-review',
+            page: 'finance',
+            title: 'Debt control review',
+            steps: [
+                { stepId: 'finance.stats', targetId: 'finance-stats', label: 'Finance KPIs', text: 'Почни з KPI, щоб оцінити загальну картину грошей.' },
+                { stepId: 'finance.debts-tab', targetId: 'finance-debts-tab', label: 'Debts tab', text: 'Відкрий борги, якщо потрібен контроль оплат.' },
+                { stepId: 'finance.debts', targetId: 'finance-debts', label: 'Debt table', text: 'Тут перевір суми, клієнтів і бронювання з недоплатою.' }
+            ]
+        },
+        'leads.follow-up-review': {
+            flowId: 'leads.follow-up-review',
+            page: 'leads',
+            title: 'Lead follow-up review',
+            steps: [
+                { stepId: 'leads.stats', targetId: 'leads-stats', label: 'Lead stats', text: 'Спершу подивись, де накопичився pipeline pressure.' },
+                { stepId: 'leads.kanban', targetId: 'leads-kanban', label: 'Lead kanban', text: 'На kanban зручно знайти гарячі ліди та наступну комунікацію.' },
+                { stepId: 'leads.waiting', targetId: 'leads-waiting-reply', label: 'Waiting reply', text: 'Якщо є точний waiting-reply сигнал, працюй з ним першим.' }
+            ]
+        },
+        'chat.unread-review': {
+            flowId: 'chat.unread-review',
+            page: 'chat',
+            title: 'Unread chat review',
+            steps: [
+                { stepId: 'chat.unread-filter', targetId: 'chat-unread-filter', label: 'Unread filter', text: 'Фільтр непрочитаних допомагає швидко прибрати шум.' },
+                { stepId: 'chat.first-unread', targetId: 'chat-first-unread', label: 'Unread channel', text: 'Почни з першого стабільно видимого каналу з unread.' }
+            ]
+        }
+    };
+
+    function defaultTeachingFlowForPage(pageId = getPageId()) {
+        if (pageId === 'dashboard') return 'dashboard.work-queue-review';
+        if (pageId === 'tasks') return 'tasks.overdue-review';
+        if (pageId === 'finance') return 'finance.debt-review';
+        if (pageId === 'leads' || pageId === 'sales-funnel') return 'leads.follow-up-review';
+        if (pageId === 'chat' || pageId === 'omni') return 'chat.unread-review';
+        return '';
+    }
+
+    function teachingTargetForStep(step = {}) {
+        const context = buildContext({ pageId: getPageId(), silent: true });
+        const target = toList(context.teachingTargets || [], 20).find(item => item.targetId === step.targetId);
+        return target || normalizeTarget({
+            targetId: step.targetId,
+            page: getPageId(),
+            label: step.label,
+            selectorOrRef: step.selectorOrRef || '',
+            fallbackText: step.fallbackText || 'This guided step has no stable target on the current screen.'
+        });
+    }
+
+    function serializeTeachingFlow(flow, index = 0, step = null) {
+        if (!flow) return null;
+        const steps = toList(flow.steps || [], 4);
+        return {
+            flowId: compactText(flow.flowId || flow.id || 'teaching-flow', 90),
+            page: compactText(flow.page || getPageId(), 80),
+            title: compactText(flow.title || 'Guided flow', 140),
+            index: Math.max(0, Math.min(index, Math.max(steps.length - 1, 0))),
+            total: steps.length,
+            active: steps.length > 0,
+            step: step ? {
+                stepId: compactText(step.stepId || step.targetId || 'step', 90),
+                targetId: compactText(step.targetId || '', 90),
+                label: compactText(step.label || '', 140),
+                text: compactText(step.text || '', 260)
+            } : null,
+            updatedAt: nowIso()
+        };
+    }
+
+    function runTeachingStep(flow, index = 0) {
+        const steps = toList(flow?.steps || [], 4);
+        const step = steps[index];
+        if (!step) {
+            store.setState({ currentTeachingFlow: null, currentTeachingTarget: null }, { source: 'teaching:done' });
+            return { success: false, done: true };
+        }
+        const target = teachingTargetForStep(step);
+        const flowState = serializeTeachingFlow(flow, index, step);
+        store.setState({ currentTeachingFlow: flowState }, { source: 'teaching:step' });
+        const highlight = highlightTarget(target, { durationMs: 3600 });
+        return {
+            ...highlight,
+            flow: store.getState().currentTeachingFlow,
+            step: flowState.step,
+            fallbackText: highlight.success ? '' : (target.fallbackText || step.fallbackText || 'target_unavailable')
+        };
+    }
+
+    function startTeachingFlow(flowIdOrSteps = '', options = {}) {
+        const pageId = compactText(options.pageId || options.page || getPageId(), 80);
+        const flowId = Array.isArray(flowIdOrSteps)
+            ? 'custom.teaching-flow'
+            : compactText(flowIdOrSteps || options.flowId || defaultTeachingFlowForPage(pageId), 90);
+        const flow = Array.isArray(flowIdOrSteps)
+            ? { flowId, page: pageId, title: options.title || 'Guided flow', steps: flowIdOrSteps }
+            : TEACHING_FLOWS[flowId];
+        if (!flow || !toList(flow.steps || [], 4).length) {
+            store.setState({ fallbackReason: 'teaching_flow_unavailable', currentTeachingFlow: null }, { source: 'teaching:missing' });
+            return { success: false, fallbackText: 'teaching_flow_unavailable' };
+        }
+        return runTeachingStep({ ...flow, page: pageId }, 0);
+    }
+
+    function nextTeachingStep() {
+        const current = store.getState().currentTeachingFlow;
+        if (!current?.active) return { success: false, fallbackText: 'teaching_flow_inactive' };
+        const flow = TEACHING_FLOWS[current.flowId];
+        const nextIndex = numberValue(current.index, 0) + 1;
+        if (!flow || nextIndex >= numberValue(current.total, 0)) {
+            store.setState({ currentTeachingFlow: null, currentTeachingTarget: null }, { source: 'teaching:done' });
+            return { success: true, done: true };
+        }
+        return runTeachingStep(flow, nextIndex);
+    }
+
+    function dismissTeachingFlow() {
+        store.setState({ currentTeachingFlow: null, currentTeachingTarget: null, fallbackReason: '' }, { source: 'teaching:dismiss' });
+        return { success: true };
+    }
+
+    function safeText(selector, limit = 140) {
+        return compactText(document.querySelector(selector)?.textContent || '', limit);
+    }
+
+    function readCount(selector) {
+        const text = safeText(selector, 40);
+        const match = text.match(/-?\d+/);
+        return match ? Number(match[0]) : 0;
+    }
+
+    function clickSelector(selector) {
+        const element = document.querySelector(selector);
+        if (!element) return false;
+        element.click();
+        return true;
+    }
+
+    function pageMatches(adapter, pageId) {
+        const ids = toList([adapter.pageId, ...(adapter.pageIds || [])], 12).filter(Boolean);
+        return ids.includes(pageId);
+    }
+
+    function registerAdapter(adapter = {}) {
+        const pageId = compactText(adapter.pageId || '', 80);
+        if (!pageId) return null;
+        const normalized = {
+            pageId,
+            pageIds: Array.isArray(adapter.pageIds) ? adapter.pageIds.map(item => compactText(item, 80)).filter(Boolean) : [],
+            isAvailable: typeof adapter.isAvailable === 'function' ? adapter.isAvailable : () => true,
+            getSignals: typeof adapter.getSignals === 'function' ? adapter.getSignals : () => [],
+            getActions: typeof adapter.getActions === 'function' ? adapter.getActions : () => [],
+            getTeachingTargets: typeof adapter.getTeachingTargets === 'function' ? adapter.getTeachingTargets : () => [],
+            getContextSummary: typeof adapter.getContextSummary === 'function' ? adapter.getContextSummary : () => ({}),
+            dispose: typeof adapter.dispose === 'function' ? adapter.dispose : () => {}
+        };
+        adapters.set(pageId, normalized);
+        return normalized;
+    }
+
+    function getActiveAdapter(pageId = getPageId()) {
+        const direct = adapters.get(pageId);
+        if (direct && direct.isAvailable()) return direct;
+        for (const adapter of adapters.values()) {
+            if (!pageMatches(adapter, pageId)) continue;
+            try {
+                if (adapter.isAvailable()) return adapter;
+            } catch {}
+        }
+        return null;
+    }
+
+    function callAdapter(adapter, method, fallback) {
+        try {
+            const value = adapter?.[method]?.();
+            return value ?? fallback;
+        } catch (err) {
+            console.warn(`[crm-assistant-foundation] adapter ${method} failed`, err);
+            return fallback;
+        }
+    }
+
+    function normalizeContextSummary(summary = {}) {
+        if (typeof summary === 'string') return { headline: compactText(summary, 220), details: [] };
+        return {
+            headline: compactText(summary.headline || summary.title || '', 220),
+            details: toList(summary.details || summary.items || [], 12).map(item => compactText(item, 180)),
+            source: compactText(summary.source || 'adapter', 80)
+        };
+    }
+
+    function severityRank(signal = {}) {
+        const map = { critical: 5, danger: 4, warning: 3, info: 2, success: 1 };
+        return map[signal.severity] || 0;
+    }
+
+    function firstMatchingAction(actionsList, needles = []) {
+        const terms = toList(needles, 8).map(item => String(item).toLowerCase());
+        return actionsList.find(action => {
+            const haystack = `${action.actionId} ${action.actionType} ${action.label}`.toLowerCase();
+            return terms.some(term => haystack.includes(term));
+        }) || null;
+    }
+
+    function firstMatchingTarget(targetsList, needles = []) {
+        const terms = toList(needles, 8).map(item => String(item).toLowerCase());
+        return targetsList.find(target => {
+            if (target.available === false) return false;
+            const haystack = `${target.targetId} ${target.kind} ${target.label}`.toLowerCase();
+            return terms.some(term => haystack.includes(term));
+        }) || null;
+    }
+
+    function chooseActionProposal(signals = [], actionsList = []) {
+        if (!actionsList.length) return null;
+        const strongest = [...signals].sort((a, b) => severityRank(b) - severityRank(a))[0] || null;
+        const id = `${strongest?.signalId || ''} ${strongest?.label || ''}`.toLowerCase();
+        let action = null;
+        if (/waiting|reply|unread|chat/.test(id)) action = firstMatchingAction(actionsList, ['waiting', 'reply', 'unread', 'chat']);
+        if (!action && /overdue|deadline|task/.test(id)) action = firstMatchingAction(actionsList, ['overdue', 'deadline', 'waiting', 'task']);
+        if (!action && /debt|finance|cash|payment/.test(id)) action = firstMatchingAction(actionsList, ['debt', 'finance', 'advanced']);
+        if (!action && /lead|hot|follow/.test(id)) action = firstMatchingAction(actionsList, ['hot', 'lead', 'kanban', 'follow']);
+        return serializeAction(action || actionsList[0]);
+    }
+
+    function chooseTeachingTarget(signals = [], targetsList = []) {
+        const available = targetsList.filter(target => target.available !== false);
+        if (!available.length) return null;
+        const strongest = [...signals].sort((a, b) => severityRank(b) - severityRank(a))[0] || null;
+        const id = `${strongest?.signalId || ''} ${strongest?.label || ''}`.toLowerCase();
+        let target = null;
+        if (/waiting|reply|unread|chat/.test(id)) target = firstMatchingTarget(available, ['waiting', 'reply', 'unread', 'chat']);
+        if (!target && /overdue|deadline|task/.test(id)) target = firstMatchingTarget(available, ['overdue', 'deadline', 'task', 'board']);
+        if (!target && /debt|finance|cash|payment/.test(id)) target = firstMatchingTarget(available, ['debt', 'finance', 'advanced']);
+        if (!target && /lead|hot|follow/.test(id)) target = firstMatchingTarget(available, ['hot', 'lead', 'kanban', 'follow']);
+        return serializeTarget(target || available[0]);
+    }
+
+    function buildContext(extra = {}) {
+        const pageId = compactText(extra.page || extra.pageId || getPageId(), 80);
+        markKnownTargets(pageId);
+        if (!extra.silent) refreshAdapterSnapshot(pageId).catch(err => console.warn('[crm-assistant-foundation] snapshot refresh failed', err));
+        const roleSnapshot = getRoleSnapshot();
+        const adapter = getActiveAdapter(pageId);
+        const rawSignals = adapter ? callAdapter(adapter, 'getSignals', []) : [];
+        const rawActions = adapter ? callAdapter(adapter, 'getActions', []) : [];
+        const rawTargets = adapter ? callAdapter(adapter, 'getTeachingTargets', []) : [];
+        const signals = toList(rawSignals, 20).map(normalizeSignal);
+        const pageActions = toList(rawActions, 20).map(normalizeAction);
+        pageActions.forEach(action => actionRegistry.register(action));
+        const teachingTargets = toList(rawTargets, 20).map(normalizeTarget).sort((a, b) => a.priority - b.priority);
+        const contextSummary = normalizeContextSummary(adapter ? callAdapter(adapter, 'getContextSummary', {}) : {});
+        const fallbackReason = adapter ? (signals.length ? '' : 'adapter_has_no_signals') : 'adapter_missing';
+        const actionProposal = chooseActionProposal(signals, pageActions);
+        const teachingTarget = chooseTeachingTarget(signals, teachingTargets);
+        const snapshot = {
+            pageId,
+            adapterId: adapter?.pageId || '',
+            roleSnapshot,
+            contextSummary,
+            signals,
+            actions: pageActions.map(serializeAction),
+            teachingTargets: teachingTargets.map(serializeTarget),
+            actionProposal,
+            teachingTarget,
+            fallbackReason
+        };
+        if (!extra.silent) {
+            store.setState({
+                pageId,
+                roleSnapshot,
+                adapterId: snapshot.adapterId,
+                currentContextSnapshot: snapshot,
+                currentActionProposal: actionProposal,
+                currentTeachingTarget: teachingTarget,
+                fallbackReason
+            }, { source: 'context' });
+        }
+        return snapshot;
+    }
+
+    function normalizeEvidence(value = []) {
+        return toList(value, 8).map((item, index) => {
+            if (typeof item === 'string') return { label: compactText(item, 160), source: 'assistant', signalId: `evidence-${index + 1}` };
+            return {
+                label: compactText(item.label || item.evidence || item.text || item.signalId || `Evidence ${index + 1}`, 180),
+                value: compactText(item.value || item.count || '', 80),
+                source: compactText(item.source || 'adapter', 80),
+                signalId: compactText(item.signalId || item.id || `evidence-${index + 1}`, 80)
+            };
+        });
+    }
+
+    function normalizeReply(reply = {}, context = {}) {
+        const source = typeof reply === 'string' ? { text: reply } : (reply || {});
+        const summary = compactText(source.summary || source.subtitle || source.text || source.recommendation || '', 700);
+        const evidenceSource = source.evidence || context.evidence || context.signals || [];
+        const actionProposal = source.actionProposal
+            ? serializeAction(source.actionProposal)
+            : (context.actionProposal ? serializeAction(context.actionProposal) : null);
+        const teachingTarget = source.teachingTarget
+            ? serializeTarget(source.teachingTarget)
+            : (context.teachingTarget ? serializeTarget(context.teachingTarget) : null);
+        const normalized = {
+            mode: normalizeMode(source.mode || (summary ? 'speaking' : 'idle')),
+            summary,
+            text: compactText(source.text || summary, 900),
+            subtitle: compactText(source.subtitle || summary, 700),
+            evidence: normalizeEvidence(evidenceSource),
+            riskLevel: RISK_LEVELS.has(source.riskLevel) ? source.riskLevel : 'none',
+            confidence: CONFIDENCE_LEVELS.has(source.confidence) ? source.confidence : (normalizeEvidence(evidenceSource).length ? 'medium' : 'low'),
+            recommendation: compactText(source.recommendation || summary, 700),
+            actionProposal,
+            teachingTarget,
+            fallbackReason: compactText(source.fallbackReason || context.fallbackReason || '', 240),
+            model: source.model || ''
+        };
+        store.setState({
+            mode: normalized.mode,
+            lastAssistantSummaryLine: normalized.summary,
+            currentActionProposal: normalized.actionProposal,
+            currentTeachingTarget: normalized.teachingTarget,
+            fallbackReason: normalized.fallbackReason,
+            speaking: normalized.mode === 'speaking',
+            playbackState: normalized.mode === 'speaking' ? 'speaking' : 'idle'
+        }, { source: 'reply' });
+        return normalized;
+    }
+
+    function todayDateString(offsetDays = 0) {
+        const date = new Date();
+        date.setDate(date.getDate() + offsetDays);
+        return date.toISOString().slice(0, 10);
+    }
+
+    function taskDateOnly(task = {}) {
+        const raw = task.deadline || task.remindAt || task.remind_at || task.date || '';
+        if (!raw) return '';
+        return String(raw).slice(0, 10);
+    }
+
+    function isActiveTask(task = {}) {
+        return !['done', 'archived', 'cancelled'].includes(String(task.status || '').toLowerCase());
+    }
+
+    function isMissingTaskOwner(task = {}) {
+        return isActiveTask(task) && !numberValue(task.ownerUserId || task.owner_user_id, 0) && !task.assignedTo && !task.assigned_to && !task.owner;
+    }
+
+    function dashboardSignals() {
+        const payload = getSnapshotData('dashboard', 'workQueue');
+        const queue = payload?.queue || null;
+        const signals = [];
+        if (queue) {
+            const waiting = queueBucketCount(queue, 'waiting_reply');
+            const overdue = queueBucketCount(queue, 'overdue');
+            const callback = queueBucketCount(queue, 'callback_due');
+            const confirmation = queueBucketCount(queue, 'needs_confirmation');
+            const bottleneck = toList(queue.meta?.intelligence?.bottlenecks || [], 1)[0];
+            signals.push({ signalId: 'dashboard.work_queue.items', label: 'Work queue items', value: numberValue(queue.items?.length, 0), source: 'api:/api/work-queue' });
+            if (waiting) signals.push({ signalId: 'dashboard.work_queue.waiting_reply', label: 'Waiting reply pressure', value: waiting, severity: 'warning', evidence: `${waiting} розмов очікують відповіді у work queue.`, source: 'api:/api/work-queue' });
+            if (overdue) signals.push({ signalId: 'dashboard.work_queue.overdue_tasks', label: 'Overdue task pressure', value: overdue, severity: 'danger', evidence: `${overdue} прострочених задач у видимій робочій черзі.`, source: 'api:/api/work-queue' });
+            if (callback) signals.push({ signalId: 'dashboard.work_queue.followups_due', label: 'Lead follow-ups due', value: callback, severity: 'warning', evidence: `${callback} follow-up пунктів у черзі.`, source: 'api:/api/work-queue' });
+            if (confirmation) signals.push({ signalId: 'dashboard.work_queue.confirmations', label: 'Booking confirmations', value: confirmation, severity: 'danger', evidence: `${confirmation} бронювань потребують підтвердження.`, source: 'api:/api/work-queue' });
+            if (bottleneck) signals.push({ signalId: `dashboard.work_queue.bottleneck.${bottleneck.type || 'main'}`, label: bottleneck.label || 'Work queue bottleneck', value: bottleneck.count || '', severity: bottleneck.count ? 'warning' : 'info', evidence: `${bottleneck.label || 'Bottleneck'}: ${bottleneck.count || 0}.`, source: 'api:/api/work-queue' });
+            return signals;
+        }
+        const error = snapshotFallback('dashboard', ['workQueue']);
+        return [
+            error ? { signalId: 'dashboard.work_queue.snapshot_unavailable', label: 'Work queue API snapshot unavailable', value: 'limited', severity: 'info', evidence: error, source: 'api_snapshot_error' } : null,
+            readCount('.bucket-waiting_reply .work-queue-count') ? { signalId: 'dashboard.waiting_reply_dom', label: 'Waiting reply queue', value: readCount('.bucket-waiting_reply .work-queue-count'), severity: 'warning', source: 'work_queue_dom_fallback' } : null,
+            readCount('.bucket-overdue .work-queue-count') ? { signalId: 'dashboard.overdue_tasks_dom', label: 'Overdue work queue', value: readCount('.bucket-overdue .work-queue-count'), severity: 'danger', source: 'work_queue_dom_fallback' } : null
+        ].filter(Boolean);
+    }
+
+    function dashboardSummary() {
+        const payload = getSnapshotData('dashboard', 'workQueue');
+        const queue = payload?.queue || null;
+        const ctx = window.DashboardPage?.getAssistantContext?.() || {};
+        if (!queue) return { headline: 'Dashboard operating context', details: toList(ctx.widgets || [], 8), source: snapshotError('dashboard', 'workQueue') ? 'dom_with_snapshot_error' : 'DashboardPage.getAssistantContext' };
+        const intelligence = queue.meta?.intelligence || {};
+        const details = [
+            `queueItems=${numberValue(queue.items?.length, 0)}`,
+            `waitingReplies=${queueBucketCount(queue, 'waiting_reply')}`,
+            `overdueTasks=${queueBucketCount(queue, 'overdue')}`,
+            `bottlenecks=${numberValue(intelligence.bottlenecks?.length, 0)}`
+        ];
+        return { headline: 'Dashboard work queue snapshot', details, source: 'api:/api/work-queue' };
+    }
+
+    function taskSignals() {
+        const cabinet = getSnapshotData('tasks', 'taskCabinet');
+        const visibleTasksPayload = getSnapshotData('tasks', 'tasks');
+        const visibleTasks = Array.isArray(visibleTasksPayload) ? visibleTasksPayload : toList(visibleTasksPayload?.tasks || visibleTasksPayload?.items || [], 200);
+        const stats = cabinet?.stats || {};
+        const overdue = numberValue(stats.overdueCount, cabinet?.overdue?.length || 0);
+        const waiting = numberValue(stats.waitingCount, cabinet?.waiting?.length || 0);
+        const inbox = numberValue(stats.inboxCount, cabinet?.inbox?.length || 0);
+        const next = numberValue(cabinet?.next?.length, 0);
+        const missingOwner = visibleTasks.filter(isMissingTaskOwner).length;
+        const today = todayDateString();
+        const inTwoDays = todayDateString(2);
+        const nearDeadline = visibleTasks.filter(task => {
+            const due = taskDateOnly(task);
+            return isActiveTask(task) && due && due >= today && due <= inTwoDays;
+        }).length;
+        const signals = [];
+        if (cabinet) {
+            signals.push({ signalId: 'tasks.cabinet.total_visible', label: 'Visible task projection', value: numberValue(cabinet.all?.length, 0), source: 'api:/api/tasks/my-cabinet' });
+            if (overdue) signals.push({ signalId: 'tasks.overdue', label: 'Overdue tasks', value: overdue, severity: 'danger', evidence: `${overdue} задач прострочено у персональній проекції.`, source: 'api:/api/tasks/my-cabinet' });
+            if (waiting) signals.push({ signalId: 'tasks.waiting', label: 'Waiting tasks', value: waiting, severity: 'warning', evidence: `${waiting} задач у waiting/workflow стані.`, source: 'api:/api/tasks/my-cabinet' });
+            if (inbox) signals.push({ signalId: 'tasks.inbox', label: 'Inbox tasks', value: inbox, severity: 'warning', evidence: `${inbox} задач у inbox потребують розбору.`, source: 'api:/api/tasks/my-cabinet' });
+            if (next || nearDeadline) signals.push({ signalId: 'tasks.near_deadline', label: 'Near deadline tasks', value: Math.max(next, nearDeadline), severity: 'warning', evidence: 'Є задачі з близьким дедлайном у найближчому вікні.', source: 'api:/api/tasks' });
+        }
+        if (missingOwner) signals.push({ signalId: 'tasks.missing_owner', label: 'Tasks without typed owner', value: missingOwner, severity: 'warning', evidence: `${missingOwner} активних задач без typed owner у видимому API списку.`, source: 'api:/api/tasks' });
+        if (signals.length) return signals;
+        const error = snapshotFallback('tasks', ['taskCabinet', 'tasks']);
+        return [
+            error ? { signalId: 'tasks.snapshot_unavailable', label: 'Tasks API snapshot unavailable', value: 'limited', severity: 'info', evidence: error, source: 'api_snapshot_error' } : null,
+            { signalId: 'tasks.today', label: 'Today tasks', value: readCount('#countToday'), source: 'tasks_tab_counts' },
+            { signalId: 'tasks.waiting_dom', label: 'Waiting tasks', value: readCount('#countWaiting'), severity: readCount('#countWaiting') ? 'warning' : 'info', source: 'tasks_tab_counts' },
+            { signalId: 'tasks.overdue_visible', label: 'Visible overdue deadlines', value: document.querySelectorAll('.deadline-overdue').length, severity: document.querySelectorAll('.deadline-overdue').length ? 'danger' : 'info', source: 'tasks_dom_fallback' }
+        ].filter(Boolean);
+    }
+
+    function taskSummary() {
+        const cabinet = getSnapshotData('tasks', 'taskCabinet');
+        if (cabinet) {
+            return {
+                headline: 'Tasks API snapshot',
+                details: [
+                    `today=${numberValue(cabinet.stats?.todayPlanned, 0)}`,
+                    `waiting=${numberValue(cabinet.stats?.waitingCount, 0)}`,
+                    `overdue=${numberValue(cabinet.stats?.overdueCount, 0)}`,
+                    `focus=${numberValue(cabinet.stats?.focusCount, 0)}`
+                ],
+                source: 'api:/api/tasks/my-cabinet'
+            };
+        }
+        return { headline: 'Tasks board context', details: [`today=${readCount('#countToday')}`, `waiting=${readCount('#countWaiting')}`, `my=${readCount('#countMy')}`], source: 'tasks_dom' };
+    }
+
+    function financeSignals() {
+        const debts = getSnapshotData('finance', 'financeDebts');
+        const advanced = getSnapshotData('finance', 'financeAdvanced');
+        const debtCount = numberValue(debts?.count ?? advanced?.debt?.count, 0);
+        const totalDebt = numberValue(debts?.totalDebt ?? advanced?.debt?.total_debt, 0);
+        const metrics = advanced?.metrics || {};
+        const lastCashFlow = toList(advanced?.cashFlow || [], 16).slice(-1)[0] || null;
+        const signals = [];
+        if (debts || advanced) {
+            signals.push({ signalId: 'finance.snapshot.loaded', label: 'Finance API snapshot', value: 'loaded', source: debts ? 'api:/api/finance/debts' : 'api:/api/finance/advanced-dashboard' });
+            if (debtCount || totalDebt) signals.push({ signalId: 'finance.debt.overdue', label: 'Overdue payment debt', value: formatMoney(totalDebt), severity: totalDebt > 0 ? 'danger' : 'info', evidence: `${debtCount} боргів на ${formatMoney(totalDebt)}.`, source: debts ? 'api:/api/finance/debts' : 'api:/api/finance/advanced-dashboard' });
+            if (numberValue(metrics.monthProfit, 0) < 0) signals.push({ signalId: 'finance.pnl.month_negative', label: 'Negative monthly profit', value: formatMoney(metrics.monthProfit), severity: 'warning', evidence: `P&L місяця нижче нуля: ${formatMoney(metrics.monthProfit)}.`, source: 'api:/api/finance/advanced-dashboard' });
+            if (lastCashFlow && numberValue(lastCashFlow.netFlow, 0) < 0) signals.push({ signalId: 'finance.cashflow.negative_week', label: 'Negative weekly cashflow', value: formatMoney(lastCashFlow.netFlow), severity: 'warning', evidence: `Останній тиждень cashflow: ${formatMoney(lastCashFlow.netFlow)}.`, source: 'api:/api/finance/advanced-dashboard' });
+            return signals;
+        }
+        const error = snapshotFallback('finance', ['financeDebts', 'financeAdvanced']);
+        return [
+            error ? { signalId: 'finance.snapshot_unavailable', label: 'Finance API snapshot unavailable', value: 'limited', severity: 'info', evidence: error, source: 'api_snapshot_error' } : null,
+            { signalId: 'finance.stats', label: 'Finance KPI cards', value: document.querySelectorAll('#finStats .fin-stat-card').length, source: 'finance_dom' },
+            { signalId: 'finance.debts_visible', label: 'Visible debt rows', value: document.querySelectorAll('#debtsContent tbody tr').length, severity: document.querySelectorAll('#debtsContent tbody tr').length ? 'danger' : 'info', source: 'finance_debts_dom_fallback' }
+        ].filter(Boolean);
+    }
+
+    function financeSummary() {
+        const debts = getSnapshotData('finance', 'financeDebts');
+        const advanced = getSnapshotData('finance', 'financeAdvanced');
+        if (debts || advanced) {
+            return {
+                headline: 'Finance risk/control snapshot',
+                details: [
+                    `debtCount=${numberValue(debts?.count ?? advanced?.debt?.count, 0)}`,
+                    `totalDebt=${numberValue(debts?.totalDebt ?? advanced?.debt?.total_debt, 0)}`,
+                    `monthProfit=${numberValue(advanced?.metrics?.monthProfit, 0)}`,
+                    `margin=${numberValue(advanced?.metrics?.margin, 0)}%`
+                ],
+                source: 'api:/api/finance'
+            };
+        }
+        return { headline: 'Finance control context', details: [safeText('.fin-tab.active') || 'dashboard', `debtRows=${document.querySelectorAll('#debtsContent tbody tr').length}`], source: 'finance_dom' };
+    }
+
+    function communicationSignals(pageId = getPageId()) {
+        const hot = getSnapshotData(pageId, 'hotLeads');
+        const stats = getSnapshotData(pageId, 'leadStats');
+        const unread = getSnapshotData(pageId, 'chatUnread');
+        const hotCount = numberValue(hot?.leads?.length, 0);
+        const newLeads = numberValue(stats?.stats?.new || stats?.stageStats?.new, 0);
+        const unreadTotal = numberValue(unread?.total, 0);
+        const unreadChannels = unread?.channels && typeof unread.channels === 'object'
+            ? Object.values(unread.channels).filter(count => numberValue(count, 0) > 0).length
+            : 0;
+        const signals = [];
+        if (hot || stats || unread) {
+            if (hotCount) signals.push({ signalId: 'leads.hot.follow_up', label: 'Hot leads waiting follow-up', value: hotCount, severity: 'warning', evidence: `${hotCount} нових лідів чекають понад 24 години.`, source: 'api:/api/leads/hot' });
+            if (newLeads) signals.push({ signalId: 'leads.new.week', label: 'New leads this period', value: newLeads, severity: newLeads ? 'info' : 'success', source: 'api:/api/leads/stats' });
+            if (unreadTotal) signals.push({ signalId: 'chat.unread.total', label: 'Unread chat messages', value: unreadTotal, severity: 'warning', evidence: `${unreadTotal} непрочитаних повідомлень у ${unreadChannels || 'кількох'} каналах.`, source: 'api:/api/chat/unread' });
+            if (!signals.length) signals.push({ signalId: 'communication.snapshot.clear', label: 'Communication snapshot loaded', value: 'no pressure', severity: 'success', source: 'api_snapshot' });
+            return signals;
+        }
+        const error = snapshotFallback(pageId, ['hotLeads', 'leadStats', 'chatUnread']);
+        return [
+            error ? { signalId: `${pageId}.communication_snapshot_unavailable`, label: 'Communication API snapshot unavailable', value: 'limited', severity: 'info', evidence: error, source: 'api_snapshot_error' } : null,
+            { signalId: 'leads.hot_visible', label: 'Visible hot/idle leads', value: document.querySelectorAll('.kanban-card.idle-red, .kanban-card.idle-yellow').length, severity: document.querySelectorAll('.kanban-card.idle-red').length ? 'danger' : 'warning', source: 'leads_kanban_dom_fallback' },
+            { signalId: 'leads.waiting_reply', label: 'Workspace waiting reply signals', value: document.querySelectorAll('.workspace-badge.waiting, .workspace-row-meta.waiting').length, severity: 'warning', source: 'lead_workspace_dom_fallback' }
+        ].filter(Boolean);
+    }
+
+    function communicationSummary(pageId = getPageId()) {
+        const hot = getSnapshotData(pageId, 'hotLeads');
+        const stats = getSnapshotData(pageId, 'leadStats');
+        const unread = getSnapshotData(pageId, 'chatUnread');
+        if (hot || stats || unread) {
+            return {
+                headline: pageId === 'chat' || pageId === 'omni' ? 'Chat response snapshot' : 'Lead/chat follow-up snapshot',
+                details: [
+                    `hotLeads=${numberValue(hot?.leads?.length, 0)}`,
+                    `newLeads=${numberValue(stats?.stats?.new || stats?.stageStats?.new, 0)}`,
+                    `unread=${numberValue(unread?.total, 0)}`
+                ],
+                source: 'api:/api/leads + /api/chat/unread'
+            };
+        }
+        if (pageId === 'chat' || pageId === 'omni') {
+            return { headline: 'Chat response context', details: [`unreadChannels=${document.querySelectorAll('.chat-channel-item.has-unread').length}`], source: 'chat_dom' };
+        }
+        return { headline: 'Lead pipeline context', details: [`cards=${document.querySelectorAll('.kanban-card[data-id], [data-lead-id]').length}`, `waiting=${document.querySelectorAll('.workspace-badge.waiting, .workspace-row-meta.waiting').length}`], source: 'leads_dom' };
+    }
+
+    function registerDefaultAdapters() {
+        registerAdapter({
+            pageId: 'dashboard',
+            isAvailable: () => Boolean(document.getElementById('dashboardGrid') || window.DashboardPage?.getAssistantContext),
+            getSignals: dashboardSignals,
+            getActions: () => [
+                { actionId: 'dashboard.focus-work-queue', page: 'dashboard', actionType: 'focus', label: 'Focus work queue', run: () => highlightTarget('dashboard-work-queue'), targetResolver: () => 'dashboard-work-queue', failureMessage: 'Work queue is not visible on this dashboard.' },
+                { actionId: 'dashboard.show-waiting-replies', page: 'dashboard', actionType: 'filter', label: 'Show reply backlog', run: () => { window.DashboardPage?.setReplyConsoleFilter?.('preset', 'team_overdue'); return highlightTarget('dashboard-work-queue'); }, targetResolver: () => 'dashboard-work-queue', failureMessage: 'Reply backlog controls are unavailable.' },
+                { actionId: 'dashboard.refresh-work-queue', page: 'dashboard', actionType: 'refresh', label: 'Refresh work queue', run: () => window.DashboardPage?.refreshWorkQueue?.(), confirmationNeeded: false, targetResolver: () => 'dashboard-work-queue', failureMessage: 'Dashboard work queue refresh is unavailable.' }
+            ],
+            getTeachingTargets: () => [
+                { targetId: 'dashboard-grid', page: 'dashboard', label: 'Dashboard widget grid', selectorOrRef: '[data-assistant-target="dashboard-grid"]', kind: 'section', priority: 1, fallbackText: 'Use the dashboard widget grid as the main operating surface.' },
+                { targetId: 'dashboard-work-queue', page: 'dashboard', label: 'Work queue', selectorOrRef: '[data-assistant-target="dashboard-work-queue"]', kind: 'queue', priority: 2, fallbackText: 'Work queue is hidden for this role or not loaded yet.' }
+            ],
+            getContextSummary: dashboardSummary
+        });
+
+        registerAdapter({
+            pageId: 'tasks',
+            isAvailable: () => Boolean(document.getElementById('boardContent')),
+            getSignals: taskSignals,
+            getActions: () => [
+                { actionId: 'tasks.focus-waiting', page: 'tasks', actionType: 'filter', label: 'Open waiting tasks', run: () => { clickSelector('.board-tab[data-view="waiting"]'); return highlightTarget('tasks-board'); }, targetResolver: () => 'tasks-waiting-tab', failureMessage: 'Waiting tasks tab is unavailable.' },
+                { actionId: 'tasks.focus-overdue', page: 'tasks', actionType: 'focus', label: 'Focus first overdue task', run: () => highlightTarget('tasks-first-overdue'), targetResolver: () => 'tasks-first-overdue', failureMessage: 'No stable overdue task card is visible.' }
+            ],
+            getTeachingTargets: () => [
+                { targetId: 'tasks-tabs', page: 'tasks', label: 'Task board filters', selectorOrRef: '[data-assistant-target="tasks-tabs"]', kind: 'filter', priority: 1 },
+                { targetId: 'tasks-board', page: 'tasks', label: 'Task board', selectorOrRef: '[data-assistant-target="tasks-board"]', kind: 'board', priority: 2 },
+                { targetId: 'tasks-first-overdue', page: 'tasks', label: 'First visible overdue task', selectorOrRef: '[data-assistant-target="tasks-first-overdue"]', kind: 'card', priority: 3, fallbackText: 'No visible overdue task has a stable card target right now.' }
+            ],
+            getContextSummary: taskSummary
+        });
+
+        registerAdapter({
+            pageId: 'finance',
+            isAvailable: () => Boolean(document.getElementById('finStats') || document.querySelector('.fin-tab')),
+            getSignals: financeSignals,
+            getActions: () => [
+                { actionId: 'finance.open-debts', page: 'finance', actionType: 'filter', label: 'Open debts tab', run: () => { if (typeof window.switchTab === 'function') window.switchTab('debts'); else clickSelector('.fin-tab[data-tab="debts"]'); return window.setTimeout(() => highlightTarget('finance-debts'), 120); }, targetResolver: () => 'finance-debts-tab', failureMessage: 'Finance debts tab is unavailable.' },
+                { actionId: 'finance.open-advanced', page: 'finance', actionType: 'filter', label: 'Open finance analytics', run: () => { if (typeof window.switchTab === 'function') window.switchTab('advanced'); else clickSelector('.fin-tab[data-tab="advanced"]'); return window.setTimeout(() => highlightTarget('finance-advanced'), 120); }, targetResolver: () => 'finance-advanced', failureMessage: 'Finance advanced analytics tab is unavailable.' }
+            ],
+            getTeachingTargets: () => [
+                { targetId: 'finance-stats', page: 'finance', label: 'Finance KPI cards', selectorOrRef: '[data-assistant-target="finance-stats"]', kind: 'kpi', priority: 1 },
+                { targetId: 'finance-debts', page: 'finance', label: 'Debt control', selectorOrRef: '[data-assistant-target="finance-debts"]', kind: 'table', priority: 2, fallbackText: 'Open the debts tab to inspect unpaid bookings.' },
+                { targetId: 'finance-advanced', page: 'finance', label: 'Finance analytics', selectorOrRef: '[data-assistant-target="finance-advanced"]', kind: 'section', priority: 3 }
+            ],
+            getContextSummary: financeSummary
+        });
+
+        const leadsAdapter = {
+            pageId: 'leads',
+            pageIds: ['sales-funnel'],
+            isAvailable: () => Boolean(document.getElementById('leadsStats') || document.getElementById('leadWorkspace')),
+            getSignals: () => communicationSignals(getPageId()),
+            getActions: () => [
+                { actionId: 'leads.open-kanban', page: getPageId(), actionType: 'filter', label: 'Open leads kanban', run: () => { clickSelector('.view-btn[data-view="kanban"]'); return highlightTarget('leads-kanban'); }, targetResolver: () => 'leads-kanban', failureMessage: 'Leads kanban is unavailable.' },
+                { actionId: 'leads.focus-hot', page: getPageId(), actionType: 'focus', label: 'Focus hot lead', run: () => highlightTarget('leads-first-hot'), targetResolver: () => 'leads-first-hot', failureMessage: 'No stable hot lead target is visible.' }
+            ],
+            getTeachingTargets: () => [
+                { targetId: 'leads-stats', page: getPageId(), label: 'Lead stats', selectorOrRef: '[data-assistant-target="leads-stats"]', kind: 'kpi', priority: 1 },
+                { targetId: 'leads-kanban', page: getPageId(), label: 'Lead pipeline kanban', selectorOrRef: '[data-assistant-target="leads-kanban"]', kind: 'pipeline', priority: 2 },
+                { targetId: 'leads-waiting-reply', page: getPageId(), label: 'Waiting reply signal', selectorOrRef: '[data-assistant-target="leads-waiting-reply"]', kind: 'signal', priority: 3, fallbackText: 'No exact waiting-reply workspace target is visible yet.' }
+            ],
+            getContextSummary: () => communicationSummary(getPageId())
+        };
+        registerAdapter(leadsAdapter);
+
+        const chatAdapter = {
+            pageId: 'chat',
+            pageIds: ['omni'],
+            isAvailable: () => Boolean(document.getElementById('chatMessages') || document.querySelector('.chat-channel-item')),
+            getSignals: () => communicationSignals(getPageId()),
+            getActions: () => [
+                { actionId: 'chat.filter-unread', page: getPageId(), actionType: 'filter', label: 'Filter unread chats', run: () => { clickSelector('[data-omni-filter="unread"]'); return highlightTarget('chat-unread-filter'); }, targetResolver: () => 'chat-unread-filter', failureMessage: 'Unread chat filter is unavailable.' },
+                { actionId: 'chat.focus-first-unread', page: getPageId(), actionType: 'focus', label: 'Focus first unread chat', run: () => highlightTarget('chat-first-unread'), targetResolver: () => 'chat-first-unread', failureMessage: 'No stable unread chat target is visible.' }
+            ],
+            getTeachingTargets: () => [
+                { targetId: 'chat-messages', page: getPageId(), label: 'Chat messages', selectorOrRef: '[data-assistant-target="chat-messages"]', kind: 'conversation', priority: 1 },
+                { targetId: 'chat-first-unread', page: getPageId(), label: 'First unread channel', selectorOrRef: '[data-assistant-target="chat-first-unread"]', kind: 'signal', priority: 2, fallbackText: 'No unread channel is visible right now.' }
+            ],
+            getContextSummary: () => communicationSummary(getPageId())
+        };
+        registerAdapter(chatAdapter);
+    }
+
+    function init(options = {}) {
+        const pageId = compactText(options.pageId || options.page || getPageId(), 80);
+        markKnownTargets(pageId);
+        store.setState({
+            pageId,
+            roleSnapshot: getRoleSnapshot(),
+            voiceEnabled: readStorage('eg_crm_assistant_voice', 'on') !== 'off',
+            muted: readStorage('eg_crm_assistant_voice', 'on') === 'off'
+        }, { source: 'init' });
+        return buildContext({ pageId });
+    }
+
+    registerDefaultAdapters();
+
+    window.CrmAssistantFoundation = {
+        CONTRACT_VERSION,
+        store,
+        init,
+        buildContext,
+        refreshContext,
+        refreshAdapterSnapshot,
+        registerAdapter,
+        getActiveAdapter,
+        normalizeSignal,
+        normalizeAction,
+        normalizeTarget,
+        normalizeReply,
+        serializeAction,
+        serializeTarget,
+        actions: actionRegistry,
+        targets: {
+            markKnownTargets,
+            highlight: highlightTarget,
+            normalize: normalizeTarget
+        },
+        teaching: {
+            flows: () => Object.keys(TEACHING_FLOWS),
+            defaultFlowForPage: defaultTeachingFlowForPage,
+            start: startTeachingFlow,
+            next: nextTeachingStep,
+            dismiss: dismissTeachingFlow,
+            getState: () => store.getState().currentTeachingFlow
+        },
+        snapshots: {
+            refresh: refreshAdapterSnapshot,
+            get: getSnapshotEntry
+        },
+        adapters: {
+            register: registerAdapter,
+            list: () => Array.from(adapters.values()).map(adapter => ({ pageId: adapter.pageId, pageIds: adapter.pageIds })),
+            getActive: getActiveAdapter
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        window.setTimeout(() => init(), 0);
+    });
+})();

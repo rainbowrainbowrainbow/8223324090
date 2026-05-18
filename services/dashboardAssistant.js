@@ -10,6 +10,7 @@ const { createLogger } = require('../utils/logger');
 const log = createLogger('DashboardAssistant');
 const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
 const SYSTEM_PROMPT_PATH = path.join(process.cwd(), 'prompts', 'crm-assistant-system.md');
+const ASSISTANT_PROVIDER_SCOPE = 'crm_assistant_rail_openai';
 
 function dashboardAssistantError(code, status = 500, message = code) {
     const err = new Error(message);
@@ -40,6 +41,17 @@ function loadDashboardAssistantInstructions() {
     }
 }
 
+function getAssistantProviderBoundary() {
+    return {
+        scope: ASSISTANT_PROVIDER_SCOPE,
+        provider: 'openai',
+        keyEnv: 'OPENAI_API_KEY',
+        apiBase: OPENAI_API_BASE,
+        replyModel: process.env.OPENAI_ASSISTANT_MODEL || 'gpt-4.1-mini',
+        note: 'Rail assistant provider path is intentionally separate from Kleshnya and Copilot surfaces.'
+    };
+}
+
 function compactString(value, limit = 1600) {
     return String(value || '').trim().slice(0, limit);
 }
@@ -48,6 +60,29 @@ function compactList(value, limit = 30) {
     if (!Array.isArray(value)) return [];
     return value
         .map(item => compactString(item, 80))
+        .filter(Boolean)
+        .slice(0, limit);
+}
+
+function compactRecord(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const out = {};
+    for (const [key, raw] of Object.entries(value)) {
+        if (raw === null || raw === undefined) continue;
+        if (['string', 'number', 'boolean'].includes(typeof raw)) {
+            out[key] = compactString(raw, 240);
+        }
+    }
+    return Object.keys(out).length ? out : null;
+}
+
+function compactRecordList(value, limit = 12) {
+    if (!Array.isArray(value)) return [];
+    return value
+        .map(item => {
+            if (typeof item === 'string') return { label: compactString(item, 180) };
+            return compactRecord(item);
+        })
         .filter(Boolean)
         .slice(0, limit);
 }
@@ -65,6 +100,16 @@ function buildAssistantContext(input = {}) {
         activeTab: compactString(input.activeTab, 120),
         badges: compactList(input.badges, 12),
         widgets: compactList(input.widgets),
+        adapterId: compactString(input.adapterId, 80),
+        contextSummary: compactRecord(input.contextSummary),
+        signals: compactRecordList(input.signals, 16),
+        evidence: compactRecordList(input.evidence, 12),
+        actions: compactRecordList(input.actions, 16),
+        teachingTargets: compactRecordList(input.teachingTargets, 16),
+        actionProposal: compactRecord(input.actionProposal),
+        teachingTarget: compactRecord(input.teachingTarget),
+        fallbackReason: compactString(input.fallbackReason, 240),
+        roleSnapshot: compactRecord(input.roleSnapshot),
         scenePreset: compactString(input.scenePreset, 120),
         sceneTitle: compactString(input.sceneTitle, 160),
         voiceMode: input.voiceMode === true,
@@ -90,6 +135,38 @@ function extractResponseText(response) {
         }
     }
     return chunks.join('\n').trim();
+}
+
+function inferRiskLevel(context = {}) {
+    const signals = Array.isArray(context.signals) && context.signals.length ? context.signals : context.evidence || [];
+    const severities = signals.map(item => String(item?.severity || '').toLowerCase());
+    if (severities.includes('critical')) return 'critical';
+    if (severities.includes('danger')) return 'high';
+    if (severities.includes('warning')) return 'medium';
+    return context.fallbackReason ? 'low' : 'none';
+}
+
+function normalizeAssistantReply(reply, context = {}, extra = {}) {
+    const source = reply && typeof reply === 'object' ? reply : { text: reply };
+    const summary = compactString(source.summary || source.subtitle || source.text || source.recommendation, 900)
+        || 'Поки що не можу сформулювати підказку. Спробуй переформулювати запит.';
+    const evidence = compactRecordList(source.evidence?.length ? source.evidence : (context.evidence?.length ? context.evidence : context.signals), 8);
+    const actionProposal = source.actionProposal || context.actionProposal || (Array.isArray(context.actions) ? context.actions[0] : null) || null;
+    const teachingTarget = source.teachingTarget || context.teachingTarget || (Array.isArray(context.teachingTargets) ? context.teachingTargets.find(target => target.available !== false) : null) || null;
+    return {
+        mode: extra.mode || source.mode || 'speaking',
+        summary,
+        text: summary,
+        subtitle: summary,
+        evidence,
+        riskLevel: extra.riskLevel || source.riskLevel || inferRiskLevel(context),
+        confidence: source.confidence || (evidence.length ? 'medium' : 'low'),
+        recommendation: compactString(source.recommendation || summary, 900),
+        actionProposal,
+        teachingTarget,
+        fallbackReason: source.fallbackReason || context.fallbackReason || '',
+        model: extra.model || source.model || ''
+    };
 }
 
 async function getDashboardAssistantReply(input = {}) {
@@ -131,17 +208,14 @@ async function getDashboardAssistantReply(input = {}) {
     }
 
     const text = extractResponseText(payload) || 'Поки що не можу сформулювати підказку. Спробуй переформулювати запит.';
-    return {
-        text,
-        subtitle: text,
-        mode: 'speaking',
-        model
-    };
+    return normalizeAssistantReply(text, context, { model, mode: 'speaking' });
 }
 
 module.exports = {
     getDashboardAssistantReply,
     loadDashboardAssistantInstructions,
     buildAssistantContext,
+    normalizeAssistantReply,
+    getAssistantProviderBoundary,
     dashboardAssistantError
 };

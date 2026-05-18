@@ -5,11 +5,13 @@ const express = require('express');
 const multer = require('multer');
 const { authenticateToken } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
-const { getDashboardAssistantReply } = require('../services/dashboardAssistant');
+const dashboardAssistant = require('../services/dashboardAssistant');
 const { transcribeDashboardAudio, synthesizeDashboardSpeech } = require('../services/dashboardAssistantAudio');
 
 const router = express.Router();
 const log = createLogger('CrmAssistantRoutes');
+const { getDashboardAssistantReply } = dashboardAssistant;
+const normalizeAssistantReply = dashboardAssistant.normalizeAssistantReply || ((reply) => reply);
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 12 * 1024 * 1024 }
@@ -31,7 +33,7 @@ router.post('/reply', async (req, res) => {
         const userRole = req.user?.role || body.role || '';
         const previewRole = userRole === 'creator' ? body.scenePreset || body.previewRole || body.recentState?.previewRole || '' : '';
         const scenePreset = previewRole || userRole || '';
-        const reply = await getDashboardAssistantReply({
+        const assistantInput = {
             ...body,
             role: userRole,
             displayRole: body.displayRole || '',
@@ -40,8 +42,9 @@ router.post('/reply', async (req, res) => {
                 ...(body.recentState || {}),
                 previewRole
             }
-        });
-        res.json({ success: true, reply });
+        };
+        const reply = await getDashboardAssistantReply(assistantInput);
+        res.json({ success: true, reply: normalizeAssistantReply(reply, assistantInput) });
     } catch (error) {
         sendAssistantError(res, error, 'assistant_reply_failed');
     }

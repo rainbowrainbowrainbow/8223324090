@@ -303,7 +303,7 @@ function getCurrentAssetVersion() {
 }
 
 function ensureCrmAssistantRailAssets() {
-    if (window.CrmAssistantRail && typeof window.CrmAssistantRail.init === 'function') {
+    if (window.CrmAssistantFoundation && window.CrmAssistantRail && typeof window.CrmAssistantRail.init === 'function') {
         return Promise.resolve(window.CrmAssistantRail);
     }
     if (_crmAssistantRailLoadPromise) return _crmAssistantRailLoadPromise;
@@ -311,6 +311,7 @@ function ensureCrmAssistantRailAssets() {
     const version = getCurrentAssetVersion();
     const suffix = version ? `?v=${encodeURIComponent(version)}` : '';
     const railCssPath = 'css/assistant-rail.css';
+    const foundationJsPath = 'js/assistant-foundation.js';
     const railJsPath = 'js/assistant-rail.js';
     if (!document.querySelector('link[data-crm-assistant-rail-css]')) {
         const link = document.createElement('link');
@@ -320,23 +321,38 @@ function ensureCrmAssistantRailAssets() {
         document.head.appendChild(link);
     }
 
-    _crmAssistantRailLoadPromise = new Promise((resolve, reject) => {
-        if (document.querySelector('script[data-crm-assistant-rail-js]')) {
-            const waitForGlobal = () => {
-                if (window.CrmAssistantRail) resolve(window.CrmAssistantRail);
-                else window.setTimeout(waitForGlobal, 25);
-            };
-            waitForGlobal();
-            return;
-        }
-        const script = document.createElement('script');
-        script.src = `${railJsPath}${suffix}`;
-        script.defer = true;
-        script.dataset.crmAssistantRailJs = 'true';
-        script.onload = () => resolve(window.CrmAssistantRail);
-        script.onerror = () => reject(new Error('crm_assistant_rail_load_failed'));
-        document.body.appendChild(script);
-    });
+    function loadAssistantScript(path, markerAttr, isReady, errorCode) {
+        if (isReady()) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+            if (document.querySelector(`script[${markerAttr}]`)) {
+                const waitForGlobal = () => {
+                    if (isReady()) resolve();
+                    else window.setTimeout(waitForGlobal, 25);
+                };
+                waitForGlobal();
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = `${path}${suffix}`;
+            script.defer = true;
+            script.setAttribute(markerAttr, 'true');
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error(errorCode));
+            document.body.appendChild(script);
+        });
+    }
+
+    _crmAssistantRailLoadPromise = loadAssistantScript(
+        foundationJsPath,
+        'data-crm-assistant-foundation-js',
+        () => Boolean(window.CrmAssistantFoundation),
+        'crm_assistant_foundation_load_failed'
+    ).then(() => loadAssistantScript(
+        railJsPath,
+        'data-crm-assistant-rail-js',
+        () => Boolean(window.CrmAssistantRail),
+        'crm_assistant_rail_load_failed'
+    )).then(() => window.CrmAssistantRail);
     return _crmAssistantRailLoadPromise;
 }
 

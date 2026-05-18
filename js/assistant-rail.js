@@ -64,6 +64,59 @@
         voiceEnabled: localStorage.getItem('eg_crm_assistant_voice') !== 'off',
         updatedAt: new Date().toISOString()
     };
+
+    function foundation() {
+        return window.CrmAssistantFoundation || null;
+    }
+
+    function syncFoundationState(patch = {}, source = 'rail') {
+        const api = foundation();
+        if (!api?.store?.setState) return;
+        const nextMode = normalizeMode(patch.mode ?? state.mode);
+        api.store.setState({
+            mode: nextMode,
+            pageId: getCurrentPageKey(),
+            roleSnapshot: api.store.getState?.().roleSnapshot,
+            lastAssistantSummaryLine: patch.lastSpokenLine || patch.subtitle || state.lastSpokenLine || state.subtitle || '',
+            voiceEnabled: Object.prototype.hasOwnProperty.call(patch, 'voiceEnabled') ? patch.voiceEnabled === true : state.voiceEnabled,
+            muted: nextMode === 'muted',
+            speaking: nextMode === 'speaking',
+            playbackState: nextMode === 'speaking' ? 'speaking' : 'idle'
+        }, { source });
+    }
+
+    function getFoundationContext(extra = {}) {
+        const api = foundation();
+        if (!api?.buildContext) return null;
+        try {
+            return api.buildContext({ page: getCurrentPageKey(), ...extra });
+        } catch (err) {
+            console.warn('[crm-assistant] foundation context failed:', err);
+            return null;
+        }
+    }
+
+    async function refreshFoundationContext(options = {}) {
+        const api = foundation();
+        if (!api?.refreshContext) return null;
+        try {
+            return await api.refreshContext({ page: getCurrentPageKey(), ...options });
+        } catch (err) {
+            console.warn('[crm-assistant] foundation snapshot refresh failed:', err);
+            return null;
+        }
+    }
+
+    function normalizeReply(reply, context = {}) {
+        const api = foundation();
+        if (!api?.normalizeReply) return reply;
+        try {
+            return api.normalizeReply(reply, context);
+        } catch (err) {
+            console.warn('[crm-assistant] reply normalization failed:', err);
+            return reply;
+        }
+    }
     let mediaRecorder = null;
     let audioChunks = [];
     let listeningStream = null;
@@ -363,6 +416,7 @@
             tickerText: Object.prototype.hasOwnProperty.call(patch, 'tickerText') ? String(patch.tickerText || '') : state.tickerText,
             updatedAt: new Date().toISOString()
         };
+        syncFoundationState(patch, 'rail:setState');
         render();
     }
 
@@ -445,11 +499,13 @@
 
     function buildAssistantSnapshot(context = null) {
         const ctx = context || buildPageGuideContext();
+        const foundationSignals = Array.isArray(ctx.signals) ? ctx.signals : [];
         const warningTexts = visibleText('.alert, .warning, .danger, .error, .is-overdue, .status-danger, .guardian-alert, .chat-alert', 8);
         const actionTexts = visibleText('.btn-page-primary, .dashboard-btn.primary, button.primary, .primary-action', 5);
         const rowCount = document.querySelectorAll('tbody tr, .task-card, .lead-card, .booking-card, .report-row, .chat-channel-item').length;
-        const signalCount = (ctx.badges || []).length + warningTexts.length;
-        const focus = ctx.activeTab || warningTexts[0] || actionTexts[0] || ctx.title || 'Готово';
+        const signalCount = foundationSignals.length + (ctx.badges || []).length + warningTexts.length;
+        const firstSignal = foundationSignals.find(item => item?.label)?.label || '';
+        const focus = ctx.contextSummary?.headline || firstSignal || ctx.activeTab || warningTexts[0] || actionTexts[0] || ctx.title || 'Готово';
         return {
             page: compactText(ctx.title || ctx.page || 'Сторінка', 'Сторінка', 34),
             pageFull: ctx.title || ctx.page || 'Сторінка',
@@ -460,7 +516,7 @@
             focusFull: focus,
             signalCount,
             badges: (ctx.badges || []).slice(0, 6),
-            warnings: warningTexts,
+            warnings: foundationSignals.map(item => item.evidence || item.label).filter(Boolean).slice(0, 4).concat(warningTexts).slice(0, 8),
             actions: actionTexts,
             rows: rowCount,
             updated: new Date(state.updatedAt || Date.now()).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' })
@@ -472,15 +528,26 @@
         const role = getRole();
         const title = document.querySelector('main h1, main h2, h1, h2')?.textContent?.trim() || document.title || page;
         const dashboardContext = page === 'dashboard' ? collectDashboardContext() : {};
+        const foundationContext = getFoundationContext({ ...extra, page });
+        const roleSnapshot = foundationContext?.roleSnapshot || {};
         return {
             page,
-            role,
-            displayRole: roleLabel(dashboardContext.scenePreset || role),
+            role: roleSnapshot.permissionRole || roleSnapshot.role || role,
+            displayRole: roleSnapshot.displayRole || roleLabel(dashboardContext.scenePreset || role),
+            roleSnapshot,
             title,
             view: document.body?.dataset?.view || '',
             intent: PAGE_HELP_INTENTS[page] || 'Допоможи коротко і контекстно по цій сторінці CRM.',
             ...collectPageHints(),
             ...dashboardContext,
+            adapterId: foundationContext?.adapterId || '',
+            contextSummary: foundationContext?.contextSummary || null,
+            signals: foundationContext?.signals || [],
+            actions: foundationContext?.actions || [],
+            teachingTargets: foundationContext?.teachingTargets || [],
+            actionProposal: foundationContext?.actionProposal || null,
+            teachingTarget: foundationContext?.teachingTarget || null,
+            fallbackReason: foundationContext?.fallbackReason || '',
             ...extra
         };
     }
@@ -501,6 +568,16 @@
             proactive: context.proactive === true,
             activeTab: context.activeTab || '',
             badges: context.badges || [],
+            adapterId: context.adapterId || '',
+            contextSummary: context.contextSummary || null,
+            signals: context.signals || [],
+            evidence: context.signals || [],
+            actions: context.actions || [],
+            teachingTargets: context.teachingTargets || [],
+            actionProposal: context.actionProposal || null,
+            teachingTarget: context.teachingTarget || null,
+            fallbackReason: context.fallbackReason || '',
+            roleSnapshot: context.roleSnapshot || null,
             voiceMode: context.voiceMode === true,
             recentState: {
                 mode: state.mode,
@@ -511,9 +588,16 @@
     }
 
     async function requestGuideReply(payloadOrText = {}) {
-        const payload = typeof payloadOrText === 'string'
+        await refreshFoundationContext({ force: true });
+        const freshInput = typeof payloadOrText === 'string' ? payloadOrText : { ...payloadOrText };
+        if (freshInput && typeof freshInput === 'object') {
+            ['adapterId', 'contextSummary', 'signals', 'evidence', 'actions', 'teachingTargets', 'actionProposal', 'teachingTarget', 'fallbackReason'].forEach(key => {
+                delete freshInput[key];
+            });
+        }
+        const payload = typeof freshInput === 'string'
             ? buildRequestPayload({ userMessage: payloadOrText })
-            : buildRequestPayload(payloadOrText);
+            : buildRequestPayload(freshInput);
         const resp = await fetch('/api/crm-assistant/reply', {
             method: 'POST',
             headers: {
@@ -524,7 +608,7 @@
         });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok || !data.success) throw new Error(data.error || `crm_assistant_reply_http_${resp.status}`);
-        return data.reply;
+        return normalizeReply(data.reply, payload);
     }
 
     function localPageHelpText(context = {}) {
@@ -565,7 +649,7 @@
             }
         }
 
-        await playReply(reply, { textOnly: options.textOnly === true });
+        await playReply(normalizeReply(reply, context), { textOnly: options.textOnly === true });
     }
 
     function stopAudioPlayback() {
@@ -613,7 +697,7 @@
     }
 
     async function playReply(reply, options = {}) {
-        const text = String(reply?.subtitle || reply?.text || '').trim();
+        const text = String(reply?.subtitle || reply?.summary || reply?.text || '').trim();
         if (!text) return;
         appendHistory('assistant', text);
         const shouldPlayAudio = state.voiceEnabled && !options.textOnly;
@@ -765,6 +849,8 @@
                     <button type="button" class="crm-assistant-panel-close" aria-label="Закрити" id="crmAssistantPanelClose">×</button>
                 </div>
                 <div class="crm-assistant-panel-snapshot" id="crmAssistantPanelSnapshot"></div>
+                <div class="crm-assistant-action-proposal" id="crmAssistantActionProposal"></div>
+                <div class="crm-assistant-teaching-runner" id="crmAssistantTeachingRunner"></div>
                 <div class="crm-assistant-mode-grid" aria-label="Режими роботи AI">
                     <button type="button" data-crm-assistant-prompt="Зроби короткий брифінг по цій сторінці і скажи що важливо зараз">
                         <span>01</span><strong>Брифінг</strong><small>коротко по екрану</small>
@@ -852,6 +938,166 @@
                 <ul>${warnings}</ul>
             </div>
         `;
+        renderActionProposal();
+        renderTeachingRunner();
+    }
+
+    function getFoundationState() {
+        try {
+            return foundation()?.store?.getState?.() || {};
+        } catch {
+            return {};
+        }
+    }
+
+    function strongestSignal(context = {}) {
+        const rank = { critical: 5, danger: 4, warning: 3, info: 2, success: 1 };
+        return (context.signals || []).slice().sort((a, b) => (rank[b?.severity] || 0) - (rank[a?.severity] || 0))[0] || null;
+    }
+
+    function actionById(context = {}, actionId = '') {
+        return (context.actions || []).find(action => action.actionId === actionId) || null;
+    }
+
+    function renderActionProposal() {
+        const container = document.getElementById('crmAssistantActionProposal');
+        if (!container) return;
+        const context = buildPageGuideContext({ silent: true });
+        const foundationState = getFoundationState();
+        const proposal = foundationState.currentActionProposal || context.actionProposal || context.actions?.[0] || null;
+        const secondary = (context.actions || []).find(action => action.actionId !== proposal?.actionId && action.confirmationNeeded !== true) || null;
+        const signal = strongestSignal(context);
+        if (!proposal?.actionId) {
+            container.innerHTML = `
+                <div class="crm-assistant-action-card is-muted">
+                    <div>
+                        <span>Наступна дія</span>
+                        <strong>Немає безпечної дії</strong>
+                        <p>${escapeHtml(context.fallbackReason || 'На цій сторінці асистент поки може тільки пояснити контекст.')}</p>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+        const confirmation = proposal.confirmationNeeded ? '<small>потрібне підтвердження</small>' : '<small>безпечна дія</small>';
+        const reason = signal?.evidence || signal?.label || 'Дія взята з assistant action registry для поточної сторінки.';
+        container.innerHTML = `
+            <div class="crm-assistant-action-card">
+                <div>
+                    <span>Рекомендована дія</span>
+                    <strong>${escapeHtml(proposal.label || 'Виконати дію')}</strong>
+                    <p>${escapeHtml(compactText(reason, '', 150))}</p>
+                    ${confirmation}
+                </div>
+                <div class="crm-assistant-action-buttons">
+                    <button type="button" class="crm-assistant-action-primary" data-crm-assistant-run-action="${escapeHtml(proposal.actionId)}">
+                        Виконати
+                    </button>
+                    ${secondary ? `<button type="button" class="crm-assistant-action-secondary" data-crm-assistant-run-action="${escapeHtml(secondary.actionId)}">${escapeHtml(secondary.label)}</button>` : ''}
+                </div>
+            </div>
+        `;
+        container.querySelectorAll('[data-crm-assistant-run-action]').forEach(button => {
+            button.addEventListener('click', () => handlePanelAction(button.dataset.crmAssistantRunAction));
+        });
+    }
+
+    function renderTeachingRunner() {
+        const container = document.getElementById('crmAssistantTeachingRunner');
+        if (!container) return;
+        const api = foundation();
+        const context = buildPageGuideContext({ silent: true });
+        const foundationState = getFoundationState();
+        const flow = api?.teaching?.getState?.() || foundationState.currentTeachingFlow || null;
+        const target = foundationState.currentTeachingTarget || context.teachingTarget || (context.teachingTargets || []).find(item => item.available) || null;
+        const defaultFlow = api?.teaching?.defaultFlowForPage?.(getCurrentPageKey()) || '';
+        if (flow?.active) {
+            const step = flow.step || {};
+            const canNext = Number(flow.index || 0) + 1 < Number(flow.total || 0);
+            container.innerHTML = `
+                <div class="crm-assistant-teaching-card is-active">
+                    <div>
+                        <span>Навчальний крок ${escapeHtml(String(Number(flow.index || 0) + 1))}/${escapeHtml(String(flow.total || 1))}</span>
+                        <strong>${escapeHtml(step.label || flow.title || 'Крок')}</strong>
+                        <p>${escapeHtml(step.text || 'Підсвічую стабільний елемент на сторінці.')}</p>
+                    </div>
+                    <div class="crm-assistant-teaching-buttons">
+                        <button type="button" data-crm-assistant-highlight-target="${escapeHtml(step.targetId || '')}">Показати</button>
+                        ${canNext ? '<button type="button" data-crm-assistant-teaching-next="1">Далі</button>' : ''}
+                        <button type="button" data-crm-assistant-teaching-dismiss="1">Закрити</button>
+                    </div>
+                </div>
+            `;
+        } else {
+            const targetText = target?.available === false
+                ? (target.fallbackText || target.reason || 'Точна ціль зараз недоступна.')
+                : (target?.label || 'Можу підсвітити найближчий стабільний елемент.');
+            container.innerHTML = `
+                <div class="crm-assistant-teaching-card">
+                    <div>
+                        <span>Навігація по екрану</span>
+                        <strong>${escapeHtml(target?.label || 'Показати де це')}</strong>
+                        <p>${escapeHtml(targetText)}</p>
+                    </div>
+                    <div class="crm-assistant-teaching-buttons">
+                        ${target?.targetId ? `<button type="button" data-crm-assistant-highlight-target="${escapeHtml(target.targetId)}">Підсвітити</button>` : ''}
+                        ${defaultFlow ? `<button type="button" data-crm-assistant-teaching-start="${escapeHtml(defaultFlow)}">Провести</button>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        container.querySelectorAll('[data-crm-assistant-highlight-target]').forEach(button => {
+            button.addEventListener('click', () => handlePanelHighlight(button.dataset.crmAssistantHighlightTarget));
+        });
+        container.querySelector('[data-crm-assistant-teaching-start]')?.addEventListener('click', event => {
+            handleTeachingStart(event.currentTarget.dataset.crmAssistantTeachingStart);
+        });
+        container.querySelector('[data-crm-assistant-teaching-next]')?.addEventListener('click', handleTeachingNext);
+        container.querySelector('[data-crm-assistant-teaching-dismiss]')?.addEventListener('click', handleTeachingDismiss);
+    }
+
+    async function handlePanelAction(actionId) {
+        const action = String(actionId || '').trim();
+        if (!action) return;
+        try {
+            const context = buildPageGuideContext({ silent: true });
+            const actionMeta = actionById(context, action);
+            setState({ mode: 'action', subtitle: `Виконую: ${actionMeta?.label || 'дія асистента'}`, tickerText: '' });
+            await runRegisteredAction(action);
+            await refreshFoundationContext({ force: true });
+            setState({ mode: 'success', subtitle: 'Дію виконано або відкрито потрібний фокус.', tickerText: '' });
+            renderPanelSnapshot();
+        } catch (err) {
+            handleError(err, 'Не вдалося виконати запропоновану дію.');
+        }
+    }
+
+    function handlePanelHighlight(targetId) {
+        const target = String(targetId || '').trim();
+        if (!target) return;
+        const result = highlightTeachingTarget(target, { durationMs: 3600 });
+        if (!result.success) {
+            setState({ mode: 'idle', subtitle: result.fallbackText || 'Точна ціль зараз недоступна.', tickerText: '' });
+        }
+        renderTeachingRunner();
+    }
+
+    function handleTeachingStart(flowId) {
+        const result = foundation()?.teaching?.start?.(flowId);
+        if (!result?.success) setState({ mode: 'idle', subtitle: result?.fallbackText || 'Цей навчальний сценарій зараз недоступний.', tickerText: '' });
+        renderTeachingRunner();
+    }
+
+    function handleTeachingNext() {
+        const result = foundation()?.teaching?.next?.();
+        if (result?.done) setState({ mode: 'idle', subtitle: 'Короткий навчальний маршрут завершено.', tickerText: '' });
+        if (result && result.success === false) setState({ mode: 'idle', subtitle: result.fallbackText || 'Наступний крок зараз недоступний.', tickerText: '' });
+        renderTeachingRunner();
+    }
+
+    function handleTeachingDismiss() {
+        foundation()?.teaching?.dismiss?.();
+        renderTeachingRunner();
     }
 
     async function runQuickPrompt(prompt) {
@@ -892,8 +1138,21 @@
         });
     }
 
+    async function runRegisteredAction(actionId, payload = {}) {
+        const api = foundation();
+        if (!api?.actions?.run) throw new Error('assistant_action_registry_unavailable');
+        return api.actions.run(actionId, payload);
+    }
+
+    function highlightTeachingTarget(targetOrId, options = {}) {
+        const api = foundation();
+        if (!api?.targets?.highlight) return { success: false, fallbackText: 'assistant_target_registry_unavailable' };
+        return api.targets.highlight(targetOrId, options);
+    }
+
     function init(options = {}) {
         initCount += 1;
+        foundation()?.init?.({ pageId: getCurrentPageKey(), ...options });
         if (!ensureMounted()) return false;
         if (options.subtitle) announceFromPage(options.subtitle);
         window.setTimeout(() => scheduleProactiveHelp(options), initCount === 1 ? 500 : 100);
@@ -916,6 +1175,11 @@
         speakText,
         playReply,
         toggleListening,
+        normalizeReply,
+        getFoundationContext,
+        refreshFoundationContext,
+        runRegisteredAction,
+        highlightTeachingTarget,
         buildPageGuideContext,
         getAssetVersion
     };

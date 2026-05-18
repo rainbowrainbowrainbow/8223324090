@@ -87,6 +87,10 @@ describe('dashboard assistant service contract', () => {
             intent: 'Поясни сторінку',
             proactive: true,
             widgets: ['tasks', 'alerts', '', 'director_pnl'],
+            signals: [{ signalId: 'tasks.overdue', label: 'Overdue tasks', severity: 'danger', value: 2 }],
+            actions: [{ actionId: 'tasks.focus-overdue', page: 'tasks', actionType: 'focus', label: 'Focus overdue' }],
+            teachingTargets: [{ targetId: 'tasks-board', page: 'tasks', label: 'Task board', selectorOrRef: '#boardContent' }],
+            fallbackReason: '',
             scenePreset: 'director',
             voiceMode: true,
             recentState: { mode: 'listening', voiceEnabled: true, previewRole: 'director' },
@@ -99,9 +103,47 @@ describe('dashboard assistant service contract', () => {
         assert.equal(context.intent, 'Поясни сторінку');
         assert.equal(context.proactive, true);
         assert.deepEqual(context.widgets, ['tasks', 'alerts', 'director_pnl']);
+        assert.equal(context.signals[0].signalId, 'tasks.overdue');
+        assert.equal(context.actions[0].actionId, 'tasks.focus-overdue');
+        assert.equal(context.teachingTargets[0].targetId, 'tasks-board');
         assert.equal(context.scenePreset, 'director');
         assert.equal(context.voiceMode, true);
         assert.equal(context.recentState.previewRole, 'director');
+    });
+
+    it('normalizes assistant replies into the foundation schema', () => {
+        clearAssistantModules();
+        const { normalizeAssistantReply } = require('../services/dashboardAssistant');
+        const reply = normalizeAssistantReply('Перевір прострочені задачі.', {
+            signals: [{ signalId: 'tasks.overdue', label: 'Overdue tasks', severity: 'danger', value: 2 }],
+            actionProposal: { actionId: 'tasks.focus-overdue', page: 'tasks', actionType: 'focus', label: 'Focus overdue' },
+            teachingTarget: { targetId: 'tasks-board', page: 'tasks', label: 'Task board' }
+        }, { model: 'test-model' });
+
+        assert.equal(reply.mode, 'speaking');
+        assert.equal(reply.summary, 'Перевір прострочені задачі.');
+        assert.equal(reply.text, reply.summary);
+        assert.equal(reply.subtitle, reply.summary);
+        assert.equal(reply.evidence[0].signalId, 'tasks.overdue');
+        assert.equal(reply.riskLevel, 'high');
+        assert.equal(reply.confidence, 'medium');
+        assert.equal(reply.actionProposal.actionId, 'tasks.focus-overdue');
+        assert.equal(reply.teachingTarget.targetId, 'tasks-board');
+        assert.equal(reply.model, 'test-model');
+    });
+
+    it('uses context actions and teaching targets as safe reply fallbacks', () => {
+        clearAssistantModules();
+        const { normalizeAssistantReply } = require('../services/dashboardAssistant');
+        const reply = normalizeAssistantReply({ summary: 'Є тиск по відповідях.' }, {
+            signals: [{ signalId: 'chat.unread.total', label: 'Unread chat', severity: 'warning', value: 5 }],
+            actions: [{ actionId: 'chat.filter-unread', page: 'chat', actionType: 'filter', label: 'Filter unread chats' }],
+            teachingTargets: [{ targetId: 'chat-first-unread', page: 'chat', label: 'First unread channel', available: true }]
+        });
+
+        assert.equal(reply.riskLevel, 'medium');
+        assert.equal(reply.actionProposal.actionId, 'chat.filter-unread');
+        assert.equal(reply.teachingTarget.targetId, 'chat-first-unread');
     });
 
     it('keeps OpenAI keys server-side and sends only CRM context to Responses API', async () => {
@@ -127,7 +169,9 @@ describe('dashboard assistant service contract', () => {
             userMessage: 'Що головне?'
         });
 
+        assert.equal(reply.summary, 'Коротка role-aware підказка.');
         assert.equal(reply.subtitle, 'Коротка role-aware підказка.');
+        assert.equal(reply.recommendation, 'Коротка role-aware підказка.');
         assert.equal(request.url, 'https://openai.test/v1/responses');
         assert.equal(request.options.headers.Authorization, 'Bearer test-openai-key');
         assert.doesNotMatch(request.options.body, /test-openai-key/);

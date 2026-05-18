@@ -20,6 +20,7 @@ const Sidebar = (() => {
     const EXTRA_MENU_HREFS = ['/dashboard', '/', '/tasks', '/chat'];
     const EXTRA_MENU_STORAGE_KEY = 'eg_sidebar_extra_menu_items_v1';
     const EXTRA_MENU_EDIT_STORAGE_KEY = 'eg_sidebar_extra_menu_edit_v1';
+    const EXTRA_MENU_COLLAPSED_STORAGE_KEY = 'eg_sidebar_extra_menu_collapsed_v1';
     const EXTRA_MENU_DEFAULT_DESCRIPTION = 'вкладка CRM';
     const EXTRA_MENU_CUSTOM_DESCRIPTION = 'користувацька сторінка';
     const EXTRA_MENU_ICON_FALLBACK = 'crm';
@@ -425,6 +426,48 @@ const Sidebar = (() => {
         } catch {}
     }
 
+    function _isExtraMenuCollapsed() {
+        try {
+            return localStorage.getItem(EXTRA_MENU_COLLAPSED_STORAGE_KEY) === 'true';
+        } catch {
+            return false;
+        }
+    }
+
+    function _setExtraMenuCollapsed(collapsed) {
+        try {
+            localStorage.setItem(EXTRA_MENU_COLLAPSED_STORAGE_KEY, collapsed ? 'true' : 'false');
+        } catch {}
+    }
+
+    function _insertSidebarSectionAfter(sidebar, section, anchor) {
+        if (!sidebar || !section || !anchor || anchor.parentElement !== sidebar) return;
+        if (section.previousElementSibling === anchor) return;
+        sidebar.insertBefore(section, anchor.nextSibling);
+    }
+
+    function _syncSidebarSectionOrder(sidebar, links) {
+        if (!sidebar || !links) return;
+        const deck = document.getElementById('sidebarCommandDeck');
+        const todayDock = document.getElementById('sidebarTodayDock');
+        const extras = document.getElementById('sidebarDesignExtras');
+
+        if (deck && deck.parentElement !== sidebar) sidebar.insertBefore(deck, links);
+        if (todayDock && todayDock.parentElement !== sidebar) sidebar.insertBefore(todayDock, links);
+        if (extras && extras.parentElement !== sidebar) sidebar.insertBefore(extras, links);
+
+        if (deck) sidebar.insertBefore(deck, links);
+        if (todayDock) {
+            if (deck) _insertSidebarSectionAfter(sidebar, todayDock, deck);
+            else sidebar.insertBefore(todayDock, links);
+        }
+        if (extras) {
+            if (todayDock) _insertSidebarSectionAfter(sidebar, extras, todayDock);
+            else if (deck) _insertSidebarSectionAfter(sidebar, extras, deck);
+            else sidebar.insertBefore(extras, links);
+        }
+    }
+
     function _getExtraIconOptions() {
         return [
             ['crm', 'CRM'],
@@ -570,11 +613,26 @@ const Sidebar = (() => {
 
     function _bindExtraMenuEditor(extras) {
         if (!extras) return;
+        const sectionToggle = extras.querySelector('[data-sidebar-extra-toggle-section]');
+        if (sectionToggle && sectionToggle.dataset.sidebarExtraSectionBound !== 'true') {
+            sectionToggle.dataset.sidebarExtraSectionBound = 'true';
+            sectionToggle.addEventListener('click', () => {
+                const nextCollapsed = !extras.classList.contains('is-collapsed');
+                _setExtraMenuCollapsed(nextCollapsed);
+                if (nextCollapsed) {
+                    _state.extraEditingId = '';
+                    _setExtraMenuEditorOpen(false);
+                }
+                _ensureCommandDeck();
+            });
+        }
+
         const toggle = extras.querySelector('[data-sidebar-extra-toggle-editor]');
         if (toggle && toggle.dataset.sidebarExtraToggleBound !== 'true') {
             toggle.dataset.sidebarExtraToggleBound = 'true';
             toggle.addEventListener('click', () => {
                 const nextOpen = !_isExtraMenuEditorOpen();
+                if (nextOpen) _setExtraMenuCollapsed(false);
                 _setExtraMenuEditorOpen(nextOpen);
                 if (!nextOpen) _state.extraEditingId = '';
                 _ensureCommandDeck();
@@ -586,6 +644,7 @@ const Sidebar = (() => {
             btn.dataset.sidebarExtraEditBound = 'true';
             btn.addEventListener('click', () => {
                 _state.extraEditingId = btn.dataset.sidebarExtraEdit || '';
+                _setExtraMenuCollapsed(false);
                 _setExtraMenuEditorOpen(true);
                 _ensureCommandDeck();
             });
@@ -638,6 +697,7 @@ const Sidebar = (() => {
                 }
                 _saveCustomExtraItems(items);
                 _state.extraEditingId = '';
+                _setExtraMenuCollapsed(false);
                 _setExtraMenuEditorOpen(true);
                 _ensureCommandDeck();
             });
@@ -675,9 +735,8 @@ const Sidebar = (() => {
                 ${items.map(item => _renderTodayMenuButton(item, currentPath, currentHash)).join('')}
             </div>`;
 
-        const extras = document.getElementById('sidebarDesignExtras');
-        const anchor = extras || links;
-        if (dock.nextElementSibling !== anchor) sidebar.insertBefore(dock, anchor);
+        if (dock.parentElement !== sidebar) sidebar.insertBefore(dock, links);
+        _syncSidebarSectionOrder(sidebar, links);
     }
 
     // ═══ RENDER ═══════════════════════════════════════════════════
@@ -1080,8 +1139,8 @@ const Sidebar = (() => {
                         <span>›</span>
                     </span>
                 </button>`;
-            sidebar.insertBefore(deck, links);
-        } else if (deck.nextElementSibling !== links) {
+        }
+        if (deck.parentElement !== sidebar) {
             sidebar.insertBefore(deck, links);
         }
 
@@ -1090,6 +1149,7 @@ const Sidebar = (() => {
         const extraItems = _getExtraMenuItems(role);
         const customExtraItems = _readCustomExtraItems();
         const extraEditorOpen = _isExtraMenuEditorOpen();
+        const extraCollapsed = _isExtraMenuCollapsed() && !extraEditorOpen;
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
         const currentHash = location.hash.replace('#', '');
         let extras = document.getElementById('sidebarDesignExtras');
@@ -1097,21 +1157,22 @@ const Sidebar = (() => {
             extras = document.createElement('div');
             extras.id = 'sidebarDesignExtras';
         }
-        extras.className = `sidebar-design-extras${extraEditorOpen ? ' is-editing' : ''}`;
+        extras.className = `sidebar-design-extras${extraEditorOpen ? ' is-editing' : ''}${extraCollapsed ? ' is-collapsed' : ''}`;
         extras.innerHTML = `
                 <div class="sidebar-design-extras-head-row">
-                <button type="button" class="sidebar-design-extras-head" aria-expanded="true">
+                <button type="button" class="sidebar-design-extras-head" data-sidebar-extra-toggle-section aria-expanded="${extraCollapsed ? 'false' : 'true'}">
                     <span class="sidebar-design-extras-dot" aria-hidden="true"></span>
                     <span><b>+</b> Додатково</span>
-                    <span class="sidebar-design-extras-chevron" aria-hidden="true">⌃</span>
+                    <span class="sidebar-design-extras-chevron" aria-hidden="true">${extraCollapsed ? '⌄' : '⌃'}</span>
                 </button>
                     <button type="button" class="sidebar-design-extras-manage" data-sidebar-extra-toggle-editor aria-expanded="${extraEditorOpen ? 'true' : 'false'}">${extraEditorOpen ? 'Готово' : 'Редагувати'}</button>
                 </div>
-                <div class="sidebar-design-extra-list">
+                <div class="sidebar-design-extra-list"${extraCollapsed ? ' hidden' : ''}>
                     ${extraItems.map(item => _renderExtraMenuLink(item, currentPath, currentHash, { editMode: extraEditorOpen })).join('')}
                 </div>
                 ${extraEditorOpen ? _renderExtraMenuEditor(customExtraItems) : ''}`;
-        if (extras.nextElementSibling !== links) sidebar.insertBefore(extras, links);
+        if (extras.parentElement !== sidebar) sidebar.insertBefore(extras, links);
+        _syncSidebarSectionOrder(sidebar, links);
         _bindExtraMenuEditor(extras);
 
         const alertsChip = document.getElementById('focusChipAlerts');

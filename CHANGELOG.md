@@ -4,6 +4,17 @@
 
 ---
 
+## v0.55.32 - Sidebar: стабільне меню дня
+
+### Sidebar / Day Menu Stability [codex]
+- **Меню дня** - закріплено явний порядок секцій sidebar: command deck, `Меню дня`, `Додатково`, основна навігація. Тепер часткові перерендери не можуть викидати меню дня нагору.
+- **Додатково** - блок отримав persist-згортання через localStorage і окрему дію редагування; редагування завжди розгортає секцію, а згортання закриває editor.
+- **Темна тема профілю** - профільний блок із іменем користувача має окремий dark override після світлого pass, без залишків light-theme surfaces.
+- **CSS contract** - додано order/position guard для sidebar-секцій, щоб layout не залежав від випадкового DOM-порядку після кліків.
+- **Guardrail** - UI-smoke перевіряє стабільні slots, collapsed-state для `Додатково` і dark cleanup профільної картки.
+
+---
+
 ## v0.55.31 - Світла тема: sidebar і AI shell
 
 ### Sidebar / Light Theme Fix [codex]

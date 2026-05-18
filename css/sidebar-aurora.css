@@ -4414,3 +4414,96 @@ body:not(.dark-mode) .sidebar-design-extras-head,
 body:not(.dark-mode) .sidebar-group-label {
   color: rgba(71,85,105,0.72) !important;
 }
+
+/* v0.55.32: stable sidebar section order + collapsible Additional menu.
+   The day menu, extras block, and nav list must not reorder during partial rerenders. */
+.sidebar-command-deck,
+.sidebar-today-dock,
+.sidebar-design-extras,
+.sidebar-links {
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: none !important;
+  flex: 0 0 auto !important;
+}
+
+.sidebar-command-deck {
+  order: 10 !important;
+}
+
+.sidebar-today-dock {
+  order: 20 !important;
+  z-index: 2 !important;
+}
+
+.sidebar-design-extras {
+  order: 30 !important;
+  z-index: 2 !important;
+}
+
+.sidebar-links {
+  order: 40 !important;
+}
+
+.sidebar-design-extras-head {
+  cursor: pointer !important;
+}
+
+.sidebar-design-extras.is-collapsed .sidebar-design-extra-list,
+.sidebar-design-extras.is-collapsed .sidebar-design-extras-list,
+.sidebar-design-extras.is-collapsed .sidebar-extra-editor {
+  display: none !important;
+}
+
+.sidebar-design-extras.is-collapsed .sidebar-design-extras-chevron {
+  transform: none !important;
+}
+
+.sidebar-design-extras.is-collapsed .sidebar-design-extras-manage {
+  opacity: 0.72 !important;
+}
+
+/* v0.55.32: dark profile card cleanup after the light-theme pass. */
+body.dark-mode .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+body.dark-mode.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-card {
+  background:
+    radial-gradient(180px 110px at 0% 0%, rgba(34,211,160,0.16), transparent 74%),
+    linear-gradient(135deg, rgba(22,39,47,0.96), rgba(12,25,31,0.92)) !important;
+  border-color: rgba(248,113,113,0.28) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 14px 28px rgba(0,0,0,0.24) !important;
+}
+
+body.dark-mode .sidebar-identity-name,
+body.dark-mode.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-name {
+  color: #f8fafc !important;
+  text-shadow: none !important;
+}
+
+body.dark-mode .sidebar-identity-role,
+body.dark-mode.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-role {
+  color: rgba(203,213,225,0.76) !important;
+}
+
+body.dark-mode .sidebar-identity-summary,
+body.dark-mode.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-summary {
+  color: rgba(226,232,240,0.86) !important;
+}
+
+body.dark-mode .sidebar-identity-health,
+body.dark-mode.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-health {
+  background: rgba(248,113,113,0.14) !important;
+  border-color: rgba(248,113,113,0.30) !important;
+  color: #fecaca !important;
+}
+
+body.dark-mode .sidebar-identity-health[data-tone="ok"],
+body.dark-mode .sidebar-identity-health[data-tone="ready"],
+body.dark-mode.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-health[data-tone="ok"],
+body.dark-mode.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-health[data-tone="ready"] {
+  background: rgba(34,211,160,0.16) !important;
+  border-color: rgba(34,211,160,0.32) !important;
+  color: #a7f3d0 !important;
+}

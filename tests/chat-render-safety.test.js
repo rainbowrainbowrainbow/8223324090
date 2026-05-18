@@ -7,6 +7,8 @@ const { JSDOM } = require('jsdom');
 
 const ROOT = path.join(__dirname, '..');
 const chatSource = fs.readFileSync(path.join(ROOT, 'js/chat-page.js'), 'utf8');
+const guardianSource = fs.readFileSync(path.join(ROOT, 'services/guardian.js'), 'utf8');
+const chatRouteSource = fs.readFileSync(path.join(ROOT, 'routes/chat.js'), 'utf8');
 
 function loadHooks() {
     const dom = new JSDOM(
@@ -69,6 +71,17 @@ function assertNoExecutableNodes(root) {
 }
 
 describe('chat render safety helpers', () => {
+    it('keeps Guardian blocked-word details private to owner role', () => {
+        assert.match(guardianSource, /function buildGuardianBlockedResponse/);
+        assert.match(guardianSource, /function canSeeBlockedWordDetails/);
+        assert.match(guardianSource, /GUARDIAN_PROFANITY_PUBLIC_REASON/);
+        assert.doesNotMatch(guardianSource, /Нецензурна лексика:\s*\$\{toxicWords/);
+        assert.match(chatRouteSource, /canSeeBlockedWordDetails\(req\.user\)/);
+        assert.match(chatRouteSource, /preCheck\.ownerMessage/);
+        assert.match(chatSource, /guardianErrMsg/);
+        assert.match(chatSource, /replace\(\^?\//);
+    });
+
     it('escapes plain text while preserving safe http links', () => {
         const { dom, hooks } = loadHooks();
         try {

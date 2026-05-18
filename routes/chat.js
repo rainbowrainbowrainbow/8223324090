@@ -501,7 +501,12 @@ router.post('/channels/:id/messages', async (req, res) => {
             content: content.trim()
         });
         if (preCheck.blocked) {
-            return res.status(403).json({ error: preCheck.message || '🛡️ Повідомлення заблоковано.' });
+            const canSeeGuardianDetails = typeof guardian.canSeeBlockedWordDetails === 'function' &&
+                guardian.canSeeBlockedWordDetails(req.user);
+            const guardianMessage = canSeeGuardianDetails && preCheck.ownerMessage
+                ? preCheck.ownerMessage
+                : preCheck.message;
+            return res.status(403).json({ error: guardianMessage || '🛡️ Повідомлення заблоковано.' });
         }
 
         const { message, mentionedUserIds } = await chat.sendMessage(channelId, userId, {

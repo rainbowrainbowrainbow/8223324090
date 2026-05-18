@@ -13,6 +13,7 @@ const Sidebar = (() => {
         identityMetaTimer: null,
         identityMetaLoading: false,
         identityMetaLoadedAt: 0,
+        identityMetaDetails: {},
         roleRenderApplied: false,
         extraEditingId: ''
     };
@@ -1019,7 +1020,7 @@ const Sidebar = (() => {
             deck.className = 'sidebar-command-deck';
             deck.innerHTML = `
                 <span class="sidebar-command-kicker">Помічник · операційний стан</span>
-                <button class="sidebar-identity-card" id="sidebarIdentityCard" type="button" aria-label="Відкрити профіль">
+                <div class="sidebar-identity-card" id="sidebarIdentityCard" aria-label="Відкрити профіль">
                     <span class="sidebar-identity-avatar" id="sidebarIdentityAvatar">?</span>
                     <span class="sidebar-identity-main">
                         <span class="sidebar-identity-title-row">
@@ -1034,22 +1035,22 @@ const Sidebar = (() => {
                         </span>
                         <span class="sidebar-identity-summary" id="sidebarIdentitySummary">Операційний стан завантажується...</span>
                         <span class="sidebar-identity-meta" id="sidebarIdentityMeta" aria-label="Швидкий статус">
-                            <span class="sidebar-identity-meta-item" data-sidebar-meta="time">
+                            <button type="button" class="sidebar-identity-meta-item" data-sidebar-meta="time" data-sidebar-stop-profile="true" aria-label="Деталі часу">
                                 <span class="sidebar-identity-meta-k">Час</span>
                                 <span class="sidebar-identity-meta-v" id="sidebarIdentityTime">--:--</span>
-                            </span>
-                            <span class="sidebar-identity-meta-item" data-sidebar-meta="weather">
+                            </button>
+                            <button type="button" class="sidebar-identity-meta-item" data-sidebar-meta="weather" data-sidebar-stop-profile="true" aria-label="Деталі погоди">
                                 <span class="sidebar-identity-meta-k">Погода</span>
                                 <span class="sidebar-identity-meta-v" id="sidebarIdentityWeather">--°</span>
-                            </span>
-                            <span class="sidebar-identity-meta-item" data-sidebar-meta="currency">
+                            </button>
+                            <button type="button" class="sidebar-identity-meta-item" data-sidebar-meta="currency" data-sidebar-stop-profile="true" aria-label="Курси валют">
                                 <span class="sidebar-identity-meta-k">USD</span>
                                 <span class="sidebar-identity-meta-v" id="sidebarIdentityCurrency">--.--</span>
-                            </span>
+                            </button>
                         </span>
                     </span>
                     <span class="sidebar-identity-chevron" aria-hidden="true">›</span>
-                </button>
+                </div>
 
                 <div class="sidebar-focus-deck" id="sidebarFocusDeck" aria-label="Операційний фокус">
                     <a href="/tasks?view=my" class="focus-chip focus-chip--tasks" id="focusChipTasks" aria-label="Мої задачі">
@@ -1191,6 +1192,17 @@ const Sidebar = (() => {
         return '🌡';
     }
 
+    function _sidebarWeatherText(code) {
+        const weatherCode = Number(code);
+        if ([0].includes(weatherCode)) return 'ясно';
+        if ([1, 2].includes(weatherCode)) return 'мінлива хмарність';
+        if ([3, 45, 48].includes(weatherCode)) return 'хмарно';
+        if ([51, 53, 55, 61, 63, 65, 80, 81].includes(weatherCode)) return 'дощ';
+        if ([71, 73, 75, 85, 86].includes(weatherCode)) return 'сніг';
+        if ([82, 95, 96, 99].includes(weatherCode)) return 'гроза';
+        return 'погода';
+    }
+
     function _setSidebarIdentityMetaValue(id, value, state = '') {
         const el = document.getElementById(id);
         if (!el) return;
@@ -1199,8 +1211,22 @@ const Sidebar = (() => {
         if (item) item.dataset.state = state || '';
     }
 
+    function _escHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     function _updateSidebarIdentityTime() {
         _setSidebarIdentityMetaValue('sidebarIdentityTime', _formatSidebarKyivTime(), 'live');
+        _state.identityMetaDetails.time = {
+            time: _formatSidebarKyivTime(),
+            label: 'Київський час',
+            timezone: 'Europe/Kyiv'
+        };
     }
 
     function _formatSidebarMoney(value) {
@@ -1229,39 +1255,96 @@ const Sidebar = (() => {
         return response.json();
     }
 
+    async function _fetchSidebarWeatherFallback() {
+        const response = await fetch('https://api.open-meteo.com/v1/forecast?latitude=50.45&longitude=30.52&current=temperature_2m,weather_code,wind_speed_10m&timezone=Europe/Kyiv');
+        if (!response.ok) throw new Error('sidebar weather fallback failed');
+        const data = await response.json();
+        const current = data.current || {};
+        return {
+            temperature: current.temperature_2m,
+            weatherCode: current.weather_code ?? current.weathercode,
+            windSpeed: current.wind_speed_10m ?? current.windspeed_10m,
+            city: 'Київ',
+            updatedAt: current.time || data.current_time || ''
+        };
+    }
+
+    function _normalizeSidebarCurrencyRates(source) {
+        const rates = source?.rates && typeof source.rates === 'object'
+            ? { ...source.rates }
+            : {};
+        ['usd', 'eur', 'gbp', 'pln', 'czk'].forEach((key) => {
+            const upper = key.toUpperCase();
+            if (Number.isFinite(Number(source?.[key])) && !Number.isFinite(Number(rates[upper]))) {
+                rates[upper] = Number(source[key]);
+            }
+        });
+        return {
+            base: source?.base || 'UAH',
+            date: source?.date || source?.updatedAt || '',
+            rates
+        };
+    }
+
+    function _mergeSidebarCurrencyRates(primary, fallback) {
+        const first = _normalizeSidebarCurrencyRates(primary || {});
+        const second = _normalizeSidebarCurrencyRates(fallback || {});
+        return {
+            base: first.base || second.base || 'UAH',
+            date: first.date || second.date || '',
+            rates: { ...second.rates, ...first.rates }
+        };
+    }
+
     async function _loadSidebarIdentityMeta(force = false) {
         const now = Date.now();
         if (_state.identityMetaLoading) return;
         if (!force && _state.identityMetaLoadedAt && now - _state.identityMetaLoadedAt < 10 * 60 * 1000) return;
         _state.identityMetaLoading = true;
         try {
-            const [weatherResult, currencyResult] = await Promise.allSettled([
+            const [weatherResult, currencyResult, currencyFallbackResult] = await Promise.allSettled([
                 _fetchSidebarWidget('weather'),
-                _fetchSidebarWidget('currency')
+                _fetchSidebarWidget('currency'),
+                _fetchSidebarCurrencyFallback()
             ]);
+            let weatherData = null;
             if (weatherResult.status === 'fulfilled' && weatherResult.value && !weatherResult.value.error) {
-                const data = weatherResult.value;
+                weatherData = weatherResult.value;
+            } else {
+                weatherData = await _fetchSidebarWeatherFallback().catch(() => null);
+            }
+            if (weatherData && !weatherData.error) {
+                const data = weatherData;
                 const temp = Number(data.temperature);
                 const label = Number.isFinite(temp) ? `${_sidebarWeatherIcon(data.weatherCode)} ${Math.round(temp)}°` : 'н/д';
+                _state.identityMetaDetails.weather = {
+                    city: data.city || 'Київ',
+                    temperature: temp,
+                    weatherCode: data.weatherCode,
+                    windSpeed: Number(data.windSpeed),
+                    updatedAt: data.updatedAt || data.time || ''
+                };
                 _setSidebarIdentityMetaValue('sidebarIdentityWeather', label, Number.isFinite(temp) ? 'live' : 'limited');
             } else {
+                _state.identityMetaDetails.weather = null;
                 _setSidebarIdentityMetaValue('sidebarIdentityWeather', 'н/д', 'limited');
             }
 
-            let usdRate = null;
-            if (currencyResult.status === 'fulfilled' && currencyResult.value && !currencyResult.value.error) {
-                usdRate = Number(currencyResult.value.usd);
-            }
-            if (!Number.isFinite(usdRate) || usdRate <= 0) {
-                const fallback = await _fetchSidebarCurrencyFallback().catch(() => null);
-                usdRate = Number(fallback?.rates?.USD || fallback?.USD || fallback?.usd || 0);
-            }
+            const dashboardCurrency = currencyResult.status === 'fulfilled' && currencyResult.value && !currencyResult.value.error
+                ? currencyResult.value
+                : null;
+            const fallbackCurrency = currencyFallbackResult.status === 'fulfilled' ? currencyFallbackResult.value : null;
+            const currencyDetails = _mergeSidebarCurrencyRates(dashboardCurrency, fallbackCurrency);
+            const usdRate = Number(currencyDetails.rates?.USD || currencyDetails.usd || 0);
+            _state.identityMetaDetails.currency = currencyDetails;
             _setSidebarIdentityMetaValue(
                 'sidebarIdentityCurrency',
                 _formatSidebarMoney(usdRate),
                 Number.isFinite(usdRate) && usdRate > 0 ? 'live' : 'limited'
             );
         } catch (err) {
+            _state.identityMetaDetails.weather = null;
+            _state.identityMetaDetails.currency = null;
             _setSidebarIdentityMetaValue('sidebarIdentityWeather', 'н/д', 'limited');
             _setSidebarIdentityMetaValue('sidebarIdentityCurrency', 'н/д', 'limited');
         } finally {
@@ -1272,10 +1355,98 @@ const Sidebar = (() => {
 
     function _ensureSidebarIdentityMeta() {
         _updateSidebarIdentityTime();
+        _bindSidebarIdentityMetaInteractions();
         if (!_state.identityMetaTimer) {
             _state.identityMetaTimer = window.setInterval(_updateSidebarIdentityTime, 30 * 1000);
         }
         _loadSidebarIdentityMeta();
+    }
+
+    function _sidebarCurrencyRows(details) {
+        const rates = details?.rates || {};
+        const order = ['USD', 'EUR', 'GBP', 'PLN', 'CZK'];
+        return order
+            .filter(code => Number.isFinite(Number(rates[code])) && Number(rates[code]) > 0)
+            .map(code => `<span class="sidebar-identity-detail-rate"><b>${_escHtml(code)}</b><span>${_escHtml(_formatSidebarMoney(rates[code]))}</span></span>`)
+            .join('');
+    }
+
+    function _renderSidebarIdentityDetail(type) {
+        if (type === 'currency') {
+            const details = _state.identityMetaDetails.currency || {};
+            const rows = _sidebarCurrencyRows(details);
+            return `
+                <div class="sidebar-identity-detail-head">
+                    <strong>Курси валют</strong>
+                    <button type="button" class="sidebar-identity-detail-close" data-sidebar-detail-close aria-label="Закрити">×</button>
+                </div>
+                <div class="sidebar-identity-detail-body">
+                    ${rows || '<span class="sidebar-identity-detail-muted">Курси тимчасово недоступні.</span>'}
+                    <span class="sidebar-identity-detail-muted">База: ${_escHtml(details.base || 'UAH')}${details.date ? ` · ${_escHtml(details.date)}` : ''}</span>
+                </div>
+                <a class="sidebar-identity-detail-link" href="/finance">Відкрити фінанси ›</a>`;
+        }
+        if (type === 'weather') {
+            const details = _state.identityMetaDetails.weather || {};
+            const temp = Number(details.temperature);
+            const wind = Number(details.windSpeed);
+            return `
+                <div class="sidebar-identity-detail-head">
+                    <strong>Погода</strong>
+                    <button type="button" class="sidebar-identity-detail-close" data-sidebar-detail-close aria-label="Закрити">×</button>
+                </div>
+                <div class="sidebar-identity-detail-body">
+                    <span class="sidebar-identity-detail-big">${Number.isFinite(temp) ? `${_sidebarWeatherIcon(details.weatherCode)} ${Math.round(temp)}°` : 'н/д'}</span>
+                    <span>${_escHtml(details.city || 'Київ')} · ${_escHtml(_sidebarWeatherText(details.weatherCode))}</span>
+                    <span class="sidebar-identity-detail-muted">Вітер: ${Number.isFinite(wind) ? `${Math.round(wind)} км/год` : 'н/д'}</span>
+                </div>
+                <button type="button" class="sidebar-identity-detail-link" data-sidebar-refresh-weather>Оновити погоду</button>`;
+        }
+        return `
+            <div class="sidebar-identity-detail-head">
+                <strong>Час</strong>
+                <button type="button" class="sidebar-identity-detail-close" data-sidebar-detail-close aria-label="Закрити">×</button>
+            </div>
+            <div class="sidebar-identity-detail-body">
+                <span class="sidebar-identity-detail-big">${_escHtml(_formatSidebarKyivTime())}</span>
+                <span>Київський час · Europe/Kyiv</span>
+            </div>`;
+    }
+
+    function _showSidebarIdentityDetail(type) {
+        const deck = document.getElementById('sidebarCommandDeck');
+        if (!deck) return;
+        let panel = document.getElementById('sidebarIdentityDetailPanel');
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.id = 'sidebarIdentityDetailPanel';
+            panel.className = 'sidebar-identity-detail-panel';
+            panel.setAttribute('data-sidebar-stop-profile', 'true');
+            deck.appendChild(panel);
+        }
+        panel.dataset.type = type;
+        panel.innerHTML = _renderSidebarIdentityDetail(type);
+        panel.hidden = false;
+        panel.querySelector('[data-sidebar-detail-close]')?.addEventListener('click', () => {
+            panel.hidden = true;
+        });
+        panel.querySelector('[data-sidebar-refresh-weather]')?.addEventListener('click', async () => {
+            _state.identityMetaLoadedAt = 0;
+            await _loadSidebarIdentityMeta(true);
+            _showSidebarIdentityDetail('weather');
+        });
+    }
+
+    function _bindSidebarIdentityMetaInteractions() {
+        document.querySelectorAll('.sidebar-identity-meta-item').forEach((item) => {
+            if (item.dataset.sidebarMetaBound === 'true') return;
+            item.dataset.sidebarMetaBound = 'true';
+            item.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                _showSidebarIdentityDetail(item.dataset.sidebarMeta || 'time');
+            });
+        });
     }
 
     function _setCommandDescription(widget, text) {

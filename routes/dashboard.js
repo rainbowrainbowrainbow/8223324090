@@ -1234,14 +1234,16 @@ async function getCachedData(key, ttlSeconds, fetchFn) {
 async function fetchWeather() {
     try {
         // Kyiv weather via Open-Meteo (free, no API key)
-        const resp = await fetch('https://api.open-meteo.com/v1/forecast?latitude=50.45&longitude=30.52&current=temperature_2m,weathercode,windspeed_10m&timezone=Europe/Kyiv');
+        const resp = await fetch('https://api.open-meteo.com/v1/forecast?latitude=50.45&longitude=30.52&current=temperature_2m,weather_code,wind_speed_10m&timezone=Europe/Kyiv');
         if (!resp.ok) return { error: 'Weather API unavailable' };
         const data = await resp.json();
+        const current = data.current || {};
         return {
-            temperature: data.current.temperature_2m,
-            weatherCode: data.current.weathercode,
-            windSpeed: data.current.windspeed_10m,
-            city: 'Київ'
+            temperature: current.temperature_2m,
+            weatherCode: current.weather_code ?? current.weathercode,
+            windSpeed: current.wind_speed_10m ?? current.windspeed_10m,
+            city: 'Київ',
+            updatedAt: current.time || null
         };
     } catch {
         return { error: 'Weather fetch failed' };
@@ -1254,12 +1256,19 @@ async function fetchCurrency() {
         const resp = await fetch('https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json');
         if (!resp.ok) return { error: 'Currency API unavailable' };
         const data = await resp.json();
-        const usd = data.find(c => c.cc === 'USD');
-        const eur = data.find(c => c.cc === 'EUR');
+        const rows = Array.isArray(data) ? data : [];
+        const wanted = ['USD', 'EUR', 'GBP', 'PLN', 'CZK'];
+        const rates = wanted.reduce((acc, code) => {
+            const row = rows.find(c => c.cc === code);
+            if (row && Number.isFinite(Number(row.rate))) acc[code] = Number(row.rate);
+            return acc;
+        }, {});
         return {
-            usd: usd ? usd.rate : null,
-            eur: eur ? eur.rate : null,
-            date: usd ? usd.exchangedate : null
+            usd: rates.USD || null,
+            eur: rates.EUR || null,
+            rates,
+            base: 'UAH',
+            date: rows.find(c => c.cc === 'USD')?.exchangedate || null
         };
     } catch {
         return { error: 'Currency fetch failed' };

@@ -30,6 +30,44 @@ const log = createLogger('Guardian');
 
 const GUARDIAN_USERNAME = 'guardian';
 const MUTE_DURATION_MS = 1 * 60 * 1000; // 1 minute
+const GUARDIAN_PROFANITY_PUBLIC_REASON = 'Нецензурна лексика. Повідомлення не відправлено.';
+const GUARDIAN_RUSSIAN_PUBLIC_REASON = '🇷🇺 Російська мова заборонена. Спілкуйтесь українською!';
+const GUARDIAN_SENSITIVE_PUBLIC_REASON = 'Не можна надсилати приватні контакти або платіжні дані в цьому чаті.';
+const GUARDIAN_OWNER_DETAIL_ROLES = new Set(['creator', 'owner']);
+
+function _uniqueGuardianBlockedTerms(words = []) {
+    return Array.from(new Set(
+        (Array.isArray(words) ? words : [])
+            .map(word => String(word || '').trim())
+            .filter(Boolean)
+    ));
+}
+
+function canSeeBlockedWordDetails(user = {}) {
+    const role = String(user?.role || '').trim().toLowerCase();
+    return GUARDIAN_OWNER_DETAIL_ROLES.has(role);
+}
+
+function _isSensitiveGuardianToken(word) {
+    const value = String(word || '').toLowerCase();
+    return value.includes('телефон') || value.includes('карт') || value.includes('card') || value.includes('phone');
+}
+
+function buildGuardianBlockedResponse({ publicReason, words = [], source = 'keyword', ownerReason = '' }) {
+    const safePublicReason = publicReason || GUARDIAN_PROFANITY_PUBLIC_REASON;
+    const terms = _uniqueGuardianBlockedTerms(words);
+    const visibleTerms = terms.slice(0, 2);
+    const ownerDetails = visibleTerms.length ? ` Деталі для власника: ${visibleTerms.join(', ')}` : '';
+    const safeOwnerReason = ownerReason || safePublicReason;
+
+    return {
+        blocked: true,
+        reason: safePublicReason,
+        message: '🛡️ ' + safePublicReason,
+        ownerMessage: '🛡️ ' + safeOwnerReason + ownerDetails,
+        privateDetails: { source, words: terms }
+    };
+}
 
 function buildGuardianActionMetadata(actions) {
     const groupId = crypto.randomUUID();
@@ -1767,29 +1805,52 @@ async function preCheckMessage({ channelId, userId, username, content }) {
     const toxicWords = quickToxicityCheck(content);
     if (toxicWords) {
         const isRussian = toxicWords.some(w => w.includes('російська'));
-        const reason = isRussian
-            ? '🇷🇺 Російська мова заборонена. Спілкуйтесь українською!'
-            : `Нецензурна лексика: ${toxicWords.slice(0, 2).join(', ')}`;
-        const muteClaim = await muteUser(channelId, userId, username, reason);
+        const isSensitive = toxicWords.some(_isSensitiveGuardianToken);
+        const publicReason = isRussian
+            ? GUARDIAN_RUSSIAN_PUBLIC_REASON
+            : (isSensitive ? GUARDIAN_SENSITIVE_PUBLIC_REASON : GUARDIAN_PROFANITY_PUBLIC_REASON);
+        const source = isRussian ? 'language' : (isSensitive ? 'sensitive' : 'keyword');
+        const blockedResponse = buildGuardianBlockedResponse({ publicReason, words: toxicWords, source });
+        const muteClaim = await muteUser(channelId, userId, username, publicReason);
         if (!muteClaim?.duplicate) {
-            _trackLLMFinding(channelId, username, 'keyword', reason, toxicWords);
-            await logAction('block_precheck', channelId, userId, null, { reason, words: toxicWords, username, source: 'keyword' });
+            _trackLLMFinding(channelId, username, source, publicReason, toxicWords);
+            await logAction('block_precheck', channelId, userId, null, {
+                reason: publicReason,
+                publicReason,
+                words: toxicWords,
+                username,
+                source
+            });
         }
-        return { blocked: true, reason, message: '🛡️ ' + reason };
+        return blockedResponse;
     }
 
     // 3. LLM profanity check — catches creative bypass (1-2s)
     if (AI_ENABLED && content.length >= 3) {
         const llmResult = await llmProfanityCheck(content);
         if (llmResult && llmResult.toxic) {
-            const reason = `AI: ${llmResult.reason || 'Нецензурна лексика (обхід фільтру)'}`;
-            const muteClaim = await muteUser(channelId, userId, username, reason);
+            const publicReason = GUARDIAN_PROFANITY_PUBLIC_REASON;
+            const ownerReason = llmResult.reason ? `${publicReason} AI: ${llmResult.reason}` : publicReason;
+            const blockedResponse = buildGuardianBlockedResponse({
+                publicReason,
+                ownerReason,
+                words: llmResult.words || [],
+                source: 'llm'
+            });
+            const muteClaim = await muteUser(channelId, userId, username, publicReason);
             if (!muteClaim?.duplicate) {
                 _learnWordsFromLLM(llmResult.words);
-                _trackLLMFinding(channelId, username, 'llm-realtime', reason, llmResult.words || []);
-                await logAction('block_precheck', channelId, userId, null, { reason, words: llmResult.words, username, source: 'llm' });
+                _trackLLMFinding(channelId, username, 'llm-realtime', publicReason, llmResult.words || []);
+                await logAction('block_precheck', channelId, userId, null, {
+                    reason: publicReason,
+                    publicReason,
+                    ownerReason,
+                    words: llmResult.words || [],
+                    username,
+                    source: 'llm'
+                });
             }
-            return { blocked: true, reason, message: '🛡️ ' + reason };
+            return blockedResponse;
         }
     }
 
@@ -3541,6 +3602,7 @@ module.exports = {
     alertDirectorTelegram,
     flushLearnBatch,
     preCheckMessage,
+    canSeeBlockedWordDetails,
     handleGuardianCommand,
     GUARDIAN_USERNAME,
     // Channel Health

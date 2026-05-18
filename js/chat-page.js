@@ -4324,9 +4324,10 @@
             _playSoundAlways('error');
             // Any 403 = Guardian block — show mute overlay with appeal
             var errMsg = err.message || '';
+            var guardianErrMsg = errMsg.replace(/^(\uD83D\uDEE1\uFE0F?\s*)+/, '').trim();
             if (errMsg.includes('🛡️') || errMsg.includes('заблоковані') || errMsg.includes('Нецензурна') ||
                 errMsg.includes('телефонний') || errMsg.includes('російська') || errMsg.includes('Доступ заборонено')) {
-                _appendSystemMessage('🛡️ ' + errMsg);
+                _appendSystemMessage('🛡️ ' + (guardianErrMsg || errMsg));
                 _checkAndShowMuteOverlay();
             } else {
                 input.value = content;

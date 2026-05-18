@@ -273,7 +273,34 @@
         rail.innerHTML = `
             <div class="assistant-rail-presence">
                 <button type="button" class="assistant-rail-avatar assistant-rail-avatar-btn" id="crmAssistantRailAvatar" title="Відкрити повну AI-картку" aria-label="Відкрити повну AI-картку">
-                    <span class="assistant-rail-orb-core"><span class="assistant-rail-orb-eye"></span></span>
+                    <span class="assistant-rail-orb-core" aria-hidden="true">
+                        <span class="assistant-rail-dot-cloud">
+                            <span class="assistant-rail-dot assistant-rail-dot--1"></span>
+                            <span class="assistant-rail-dot assistant-rail-dot--2"></span>
+                            <span class="assistant-rail-dot assistant-rail-dot--3"></span>
+                            <span class="assistant-rail-dot assistant-rail-dot--4"></span>
+                            <span class="assistant-rail-dot assistant-rail-dot--5"></span>
+                            <span class="assistant-rail-dot assistant-rail-dot--6"></span>
+                            <span class="assistant-rail-dot assistant-rail-dot--7"></span>
+                            <span class="assistant-rail-dot assistant-rail-dot--8"></span>
+                            <span class="assistant-rail-dot assistant-rail-dot--9"></span>
+                        </span>
+                        <span class="assistant-rail-face">
+                            <span class="assistant-rail-glasses"></span>
+                            <span class="assistant-rail-eye assistant-rail-eye--left"></span>
+                            <span class="assistant-rail-eye assistant-rail-eye--right"></span>
+                            <span class="assistant-rail-mouth"></span>
+                        </span>
+                        <span class="assistant-rail-orb-eye"></span>
+                    </span>
+                    <span class="assistant-rail-particle-field" aria-hidden="true">
+                        <span class="assistant-rail-particle assistant-rail-particle--1"></span>
+                        <span class="assistant-rail-particle assistant-rail-particle--2"></span>
+                        <span class="assistant-rail-particle assistant-rail-particle--3"></span>
+                        <span class="assistant-rail-particle assistant-rail-particle--4"></span>
+                        <span class="assistant-rail-particle assistant-rail-particle--5"></span>
+                        <span class="assistant-rail-particle assistant-rail-particle--6"></span>
+                    </span>
                     <span class="assistant-rail-orb-ripple assistant-rail-orb-ripple--one"></span>
                     <span class="assistant-rail-orb-ripple assistant-rail-orb-ripple--two"></span>
                     <span class="assistant-rail-avatar-meter" aria-hidden="true"><strong id="crmAssistantSignalCount">0</strong><small>сигн.</small></span>

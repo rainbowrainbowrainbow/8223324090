@@ -136,6 +136,56 @@ function parseSocialIdentitiesInput(value) {
         });
 }
 
+const CUSTOMER_IDENTITY_PRESETS = {
+    telegram: { label: 'Telegram', from: 'instagram' },
+    viber: { label: 'Viber', from: 'phone' },
+    instagram: { label: 'Instagram', from: 'instagram' },
+    phone: { label: 'Телефон', from: 'phone' },
+    facebook: { label: 'Facebook', from: '' }
+};
+
+function normalizeCustomerIdentityHandle(channel, handle) {
+    const value = String(handle || '').trim();
+    if (!value) return '';
+    if ((channel === 'telegram' || channel === 'instagram') && !value.startsWith('@')) return `@${value}`;
+    return value;
+}
+
+function inferCustomerIdentityHandle(channel) {
+    const preset = CUSTOMER_IDENTITY_PRESETS[channel];
+    if (!preset) return '';
+    if (preset.from === 'phone') return document.getElementById('editPhone')?.value.trim() || '';
+    if (preset.from === 'instagram') return document.getElementById('editInstagram')?.value.trim().replace(/^@+/, '') || '';
+    return '';
+}
+
+function addCustomerIdentityLine(channel) {
+    const preset = CUSTOMER_IDENTITY_PRESETS[channel];
+    const textarea = document.getElementById('editSocialIdentities');
+    if (!preset || !textarea) return;
+
+    const handle = normalizeCustomerIdentityHandle(channel, inferCustomerIdentityHandle(channel));
+    const existingLines = String(textarea.value || '')
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean);
+    const alreadyHasChannel = existingLines.some(line => line.toLowerCase().startsWith(`${channel}:`));
+    if (alreadyHasChannel) {
+        textarea.focus();
+        return;
+    }
+    existingLines.push(`${channel}: ${handle}`);
+    textarea.value = existingLines.join('\n');
+    textarea.focus();
+    textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+}
+
+function bindCustomerIdentityTools() {
+    document.querySelectorAll('[data-customer-identity-add]').forEach(btn => {
+        btn.addEventListener('click', () => addCustomerIdentityLine(btn.dataset.customerIdentityAdd));
+    });
+}
+
 function renderSocialIdentities(identities = [], instagram = '') {
     const normalized = parseJsonArray(identities);
     const items = normalized.length ? normalized : (instagram ? [{ channel: 'instagram', handle: instagram, source: 'legacy_primary' }] : []);
@@ -820,6 +870,13 @@ async function handleSave() {
         return;
     }
 
+    const saveBtn = document.getElementById('saveCustomerBtn');
+    const originalSaveText = saveBtn?.textContent;
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = CrmState.editingId ? 'Зберігаю...' : 'Створюю...';
+    }
+
     const data = {
         name,
         phone: document.getElementById('editPhone')?.value.trim() || null,
@@ -841,8 +898,16 @@ async function handleSave() {
         await closeEditModal(true);
         showNotification(wasEditing ? 'Клієнта оновлено' : 'Клієнта створено');
         await refreshData();
+        if (!wasEditing && result?.id) {
+            await showCustomerDetail(result.id);
+        }
     } catch (err) {
         showNotification(err.message || 'Помилка збереження', 'error');
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = originalSaveText || 'Зберегти';
+        }
     }
 }
 
@@ -1409,6 +1474,7 @@ async function initPage() {
     });
 
     // Save customer
+    bindCustomerIdentityTools();
     document.getElementById('saveCustomerBtn')?.addEventListener('click', handleSave);
     document.getElementById('cancelEditBtn')?.addEventListener('click', () => closeEditModal(false));
 

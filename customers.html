@@ -18,14 +18,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.57.1">
-    <link rel="stylesheet" href="css/layout.css?v=0.57.1">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.57.1">
-    <link rel="stylesheet" href="css/pages.css?v=0.57.1">
-    <link rel="stylesheet" href="css/modals.css?v=0.57.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.57.1">
-    <link rel="stylesheet" href="css/responsive.css?v=0.57.1">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.57.1">
+    <link rel="stylesheet" href="css/base.css?v=0.57.4">
+    <link rel="stylesheet" href="css/layout.css?v=0.57.4">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.57.4">
+    <link rel="stylesheet" href="css/pages.css?v=0.57.4">
+    <link rel="stylesheet" href="css/modals.css?v=0.57.4">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.57.4">
+    <link rel="stylesheet" href="css/responsive.css?v=0.57.4">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.57.4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -933,7 +933,154 @@
             margin-bottom: 12px;
         }
 
+        /* v0.57.3: customer create/edit modal polished source and linking tools */
+        .customer-edit-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .customer-edit-select-wrap {
+            position: relative;
+            width: 100%;
+        }
+        .customer-edit-select-wrap::after {
+            content: "";
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            width: 9px;
+            height: 9px;
+            border-right: 2px solid rgba(148, 163, 184, 0.95);
+            border-bottom: 2px solid rgba(148, 163, 184, 0.95);
+            transform: translateY(-66%) rotate(45deg);
+            pointer-events: none;
+            transition: border-color 0.16s ease, transform 0.16s ease;
+        }
+        .customer-edit-select-wrap:focus-within::after {
+            border-color: #34D399;
+            transform: translateY(-52%) rotate(45deg);
+        }
+        .customer-edit-select,
+        .customer-edit-textarea {
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            border-radius: 16px;
+            background: rgba(15, 23, 42, 0.08);
+            color: var(--gray-800);
+            font: inherit;
+            font-size: var(--font-sm);
+            transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+        }
+        .customer-edit-select {
+            min-height: 48px;
+            padding: 11px 44px 11px 14px;
+            appearance: none;
+            -webkit-appearance: none;
+        }
+        .customer-edit-textarea {
+            min-height: 78px;
+            padding: 12px 14px;
+            resize: vertical;
+        }
+        .customer-edit-select:focus,
+        .customer-edit-textarea:focus {
+            outline: none;
+            border-color: rgba(16, 185, 129, 0.9);
+            box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12);
+            background: rgba(16, 185, 129, 0.05);
+        }
+        .customer-edit-link-panel {
+            border: 1px solid rgba(16, 185, 129, 0.18);
+            border-radius: 18px;
+            padding: 12px;
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.07), rgba(99, 102, 241, 0.06));
+        }
+        .customer-edit-link-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            font-weight: 900;
+            color: var(--gray-700);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        .customer-edit-link-title span:last-child {
+            color: var(--gray-500);
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        .customer-edit-link-tools {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .customer-edit-link-btn {
+            min-height: 36px;
+            padding: 8px 12px;
+            border: 1px solid rgba(16, 185, 129, 0.22);
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.04);
+            color: var(--gray-700);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+            transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+        }
+        .customer-edit-link-btn:hover {
+            transform: translateY(-1px);
+            border-color: rgba(16, 185, 129, 0.65);
+            background: rgba(16, 185, 129, 0.13);
+            color: #047857;
+        }
+        .customer-edit-link-hint {
+            margin-top: 8px;
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
         /* v30.4: Dark mode for new components */
+        [data-theme="dark"] .customer-edit-select,
+        [data-theme="dark"] .customer-edit-textarea,
+        body.dark-mode .customer-edit-select,
+        body.dark-mode .customer-edit-textarea {
+            background: rgba(15, 23, 42, 0.72);
+            border-color: rgba(148, 163, 184, 0.28);
+            color: #F8FAFC;
+        }
+        [data-theme="dark"] .customer-edit-select option,
+        body.dark-mode .customer-edit-select option {
+            background: #15152A;
+            color: #F8FAFC;
+        }
+        [data-theme="dark"] .customer-edit-link-panel,
+        body.dark-mode .customer-edit-link-panel {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(99, 102, 241, 0.09));
+            border-color: rgba(45, 212, 191, 0.25);
+        }
+        [data-theme="dark"] .customer-edit-link-title,
+        body.dark-mode .customer-edit-link-title {
+            color: #E2E8F0;
+        }
+        [data-theme="dark"] .customer-edit-link-btn,
+        body.dark-mode .customer-edit-link-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(45, 212, 191, 0.22);
+            color: #DFFCF5;
+        }
+        [data-theme="dark"] .customer-edit-link-btn:hover,
+        body.dark-mode .customer-edit-link-btn:hover {
+            background: rgba(20, 184, 166, 0.2);
+            color: #FFFFFF;
+        }
         [data-theme="dark"] .crm-tag-dropdown {
             background: var(--gray-800);
             border-color: var(--gray-600);
@@ -1408,18 +1555,34 @@
                 </div>
                 <div>
                     <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Звідки дізналися</label>
-                    <select id="editSource" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:var(--font-sm);font-family:inherit;min-height:44px;box-sizing:border-box">
+                    <div class="customer-edit-select-wrap">
+                        <select id="editSource" class="customer-edit-select">
                         <option value="">Не вказано</option>
                         <option value="instagram">Instagram</option>
                         <option value="google">Google</option>
                         <option value="recommendation">Рекомендація</option>
                         <option value="repeat">Повторний</option>
                         <option value="other">Інше</option>
-                    </select>
+                        </select>
+                    </div>
                 </div>
                 <div>
-                    <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Соц. ідентичності</label>
-                    <textarea id="editSocialIdentities" rows="2" placeholder="telegram: @username&#10;viber: +380..." style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-size:var(--font-sm);font-family:inherit;box-sizing:border-box;resize:vertical"></textarea>
+                    <div class="customer-edit-link-panel">
+                        <div class="customer-edit-link-title">
+                            <span>Зв'язування</span>
+                            <span>швидкі канали клієнта</span>
+                        </div>
+                        <div class="customer-edit-link-tools" aria-label="Швидко додати канал клієнта">
+                            <button type="button" class="customer-edit-link-btn" data-customer-identity-add="telegram">+ Telegram</button>
+                            <button type="button" class="customer-edit-link-btn" data-customer-identity-add="viber">+ Viber</button>
+                            <button type="button" class="customer-edit-link-btn" data-customer-identity-add="instagram">+ Instagram</button>
+                            <button type="button" class="customer-edit-link-btn" data-customer-identity-add="phone">+ Телефон</button>
+                            <button type="button" class="customer-edit-link-btn" data-customer-identity-add="facebook">+ Facebook</button>
+                        </div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Соц. ідентичності</label>
+                        <textarea id="editSocialIdentities" class="customer-edit-textarea" rows="3" placeholder="telegram: @username&#10;viber: +380...&#10;instagram: @profile"></textarea>
+                        <div class="customer-edit-link-hint">Після створення відкриється картка клієнта з дзвінком, Telegram/Omni і зв'язками.</div>
+                    </div>
                 </div>
                 <div>
                     <label style="display:block;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Нотатки</label>
@@ -1448,13 +1611,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.57.1"></script>
-    <script src="js/notification.js?v=0.57.1"></script>
-    <script src="js/api.js?v=0.57.1"></script>
-    <script src="js/auth.js?v=0.57.1"></script>
-    <script src="js/ui.js?v=0.57.1"></script>
-    <script src="js/components/sidebar.js?v=0.57.1"></script>
+    <script src="js/config.js?v=0.57.4"></script>
+    <script src="js/notification.js?v=0.57.4"></script>
+    <script src="js/api.js?v=0.57.4"></script>
+    <script src="js/auth.js?v=0.57.4"></script>
+    <script src="js/ui.js?v=0.57.4"></script>
+    <script src="js/components/sidebar.js?v=0.57.4"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/customers-page.js?v=0.57.1"></script><script src="js/alerts.js?v=0.57.1"></script>
+    <script src="js/customers-page.js?v=0.57.4"></script><script src="js/alerts.js?v=0.57.4"></script>
 </body>
 </html>

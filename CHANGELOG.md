@@ -4,6 +4,43 @@
 
 ---
 
+## v0.57.4 - Quick Access Editor Fix
+
+### Quick Access Editor Fix [codex]
+- **Шестерня швидкого доступу** - gear-кнопка тепер стабільно відкриває редактор і не конфліктує з розгортанням секції.
+- **Явне збереження** - перемикання сторінок більше не губиться: вибір збирається у редакторі й застосовується кнопкою `Зберегти`.
+- **Будь-яка CRM-сторінка** - список для швидкого доступу тепер бере всі внутрішні сторінки системи з sidebar navigation, а не урізаний role-filtered набір.
+- **Пошук і масове додавання** - додано пошук по сторінках і кнопку `Усі сторінки`, щоб швидко зібрати потрібне меню.
+- **Стандартні / Очистити без сюрпризів** - ці кнопки змінюють поточний вибір у редакторі, а фінальне застосування робить тільки `Зберегти`.
+- **Guardrails** - `test:ui` фіксує explicit save, пошук, select-all і стилі нового quick-access editor.
+
+---
+
+## v0.57.3 - Customer Create Link Fix
+
+### Customer Create Link Fix [codex]
+- **Створення клієнта без 500 після save** - пошук і список клієнтів тепер умовно підключають `social_identities`, щоб стара або частково оновлена БД не падала на `Internal server error`.
+- **Source select у стилі CRM** - chevron і поле `Звідки дізналися` отримали власний темний/світлий стиль без нативного сірого select.
+- **Швидке зв'язування в модалці** - форма клієнта має кнопки `Telegram`, `Viber`, `Instagram`, `Телефон`, `Facebook`, які одразу додають правильний канал у соц. ідентичності.
+- **Після створення видно інструментарій** - новий клієнт одразу відкривається в detail hub з дзвінком, Telegram/Omni, workspace/бронюваннями і зв'язками.
+- **Захист від подвійного save** - кнопка збереження блокується на час запиту, щоб не створювати дублікати й не ловити кілька toast-помилок.
+- **Guardrails** - UI-smoke фіксує styled source select, linking tools і відкриття detail hub після створення.
+
+---
+
+## v0.57.2 - Assistant Presence Animations
+
+### Assistant Presence Animations [codex]
+- **Нове обличчя Помічника** - rail-avatar отримав окремі очі, окуляри й mouth layer замість одного статичного світлого ядра.
+- **Крапки збираються у фігури** - constellation dots перебудовуються під стани thinking, listening, speaking, action, success і error.
+- **Голосова міміка** - під час відповіді mouth layer рухається як спокійний voice equalizer, а частинки активніше обертаються навколо avatar.
+- **State-aware анімації** - listening розширює очі й пульсує точками, thinking збирає ромб/нейронну фігуру, action показує стрілку, success - check-like shape, error - X-pattern.
+- **Expanded panel polish** - у великому вікні Помічника додано малу constellation-анімацію в header, щоб presence виглядав цілісно.
+- **Доступність** - `prefers-reduced-motion` вимикає нові рухи без приховування самого avatar.
+- **Guardrail** - `test:ui` фіксує face/glasses/dot-cloud markup і state animation CSS, щоб не повернути статичну кульку.
+
+---
+
 ## v0.57.1 - Sidebar Identity Polish
 
 ### Sidebar Identity Polish [codex]

@@ -195,6 +195,10 @@ async function ensureCustomerSocialIdentitiesColumn() {
     }
 }
 
+async function canSearchCustomerSocialIdentities() {
+    return await ensureCustomerSocialIdentitiesColumn();
+}
+
 async function insertCustomerPg(input) {
     const params = [
         input.name,
@@ -298,6 +302,9 @@ router.get('/search', async (req, res) => {
         const pattern = `%${q}%`;
         const params = [pattern];
         const bookingAgg = scopedBookingAggregateSql(req.user, params, 'b');
+        const socialIdentitySearch = await canSearchCustomerSocialIdentities()
+            ? ' OR c.social_identities::text ILIKE $1'
+            : '';
         const result = await pool.query(
             `SELECT c.id, c.name, c.phone, c.instagram, c.child_name, c.total_bookings,
                     COALESCE(b_agg.booking_count, 0) AS real_total_bookings,
@@ -305,7 +312,7 @@ router.get('/search', async (req, res) => {
                     b_agg.real_last_visit
              FROM customers c
              LEFT JOIN (${bookingAgg.sql}) b_agg ON b_agg.customer_id = c.id
-             WHERE c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1 OR c.social_identities::text ILIKE $1
+             WHERE c.name ILIKE $1 OR c.phone ILIKE $1 OR c.instagram ILIKE $1${socialIdentitySearch}
              ORDER BY b_agg.real_last_visit DESC NULLS LAST
              LIMIT 20`,
             params
@@ -1162,7 +1169,10 @@ router.get('/', async (req, res) => {
 
         if (search) {
             params.push(`%${search}%`);
-            conditions.push(`(name ILIKE $${params.length} OR phone ILIKE $${params.length} OR instagram ILIKE $${params.length} OR child_name ILIKE $${params.length} OR social_identities::text ILIKE $${params.length})`);
+            const socialIdentitySearch = await canSearchCustomerSocialIdentities()
+                ? ` OR social_identities::text ILIKE $${params.length}`
+                : '';
+            conditions.push(`(name ILIKE $${params.length} OR phone ILIKE $${params.length} OR instagram ILIKE $${params.length} OR child_name ILIKE $${params.length}${socialIdentitySearch})`);
         }
         if (source) { params.push(source); conditions.push(`source = $${params.length}`); }
         if (minVisits > 0) { params.push(minVisits); conditions.push(`total_bookings >= $${params.length}`); }

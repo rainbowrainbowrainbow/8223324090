@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.57.1">
-    <link rel="stylesheet" href="css/auth.css?v=0.57.1">
-    <link rel="stylesheet" href="css/layout.css?v=0.57.1">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.57.1">
-    <link rel="stylesheet" href="css/timeline.css?v=0.57.1">
-    <link rel="stylesheet" href="css/panel.css?v=0.57.1">
-    <link rel="stylesheet" href="css/modals.css?v=0.57.1">
-    <link rel="stylesheet" href="css/controls.css?v=0.57.1">
-    <link rel="stylesheet" href="css/features.css?v=0.57.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.57.1">
-    <link rel="stylesheet" href="css/responsive.css?v=0.57.1">
-    <link rel="stylesheet" href="css/pages.css?v=0.57.1">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.57.1">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.57.1">
+    <link rel="stylesheet" href="css/base.css?v=0.57.4">
+    <link rel="stylesheet" href="css/auth.css?v=0.57.4">
+    <link rel="stylesheet" href="css/layout.css?v=0.57.4">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.57.4">
+    <link rel="stylesheet" href="css/timeline.css?v=0.57.4">
+    <link rel="stylesheet" href="css/panel.css?v=0.57.4">
+    <link rel="stylesheet" href="css/modals.css?v=0.57.4">
+    <link rel="stylesheet" href="css/controls.css?v=0.57.4">
+    <link rel="stylesheet" href="css/features.css?v=0.57.4">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.57.4">
+    <link rel="stylesheet" href="css/responsive.css?v=0.57.4">
+    <link rel="stylesheet" href="css/pages.css?v=0.57.4">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.57.4">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.57.4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.57.1 Sidebar Identity Polish">✨ 0.57.1 Sidebar Identity Polish</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.57.4 Quick Access Editor Fix">✨ 0.57.4 Quick Access Editor Fix</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.57.1 — Sidebar Identity Polish</p>
+                <p class="tagline">AI First CRM v0.57.4 — Quick Access Editor Fix</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.57.1: Sidebar Identity Polish</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.57.4: Quick Access Editor Fix</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1270,6 +1270,40 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.57.4 — Quick Access Editor Fix</h4>
+                    <ul>
+                        <li><b>Шестерня швидкого доступу</b> — gear-кнопка стабільно відкриває редактор і не конфліктує з розгортанням секції.</li>
+                        <li><b>Явне збереження</b> — вибір сторінок застосовується кнопкою <code>Зберегти</code>, тому перемикачі не губляться після перерендеру.</li>
+                        <li><b>Будь-яка CRM-сторінка</b> — у редакторі доступні всі внутрішні сторінки системи з sidebar navigation, а не урізаний набір.</li>
+                        <li><b>Пошук і Усі сторінки</b> — додано пошук по сторінках та кнопку масового додавання.</li>
+                        <li><b>Стандартні / Очистити</b> — кнопки змінюють поточний вибір у редакторі, а фінально застосовує тільки <code>Зберегти</code>.</li>
+                        <li><b>Guardrails</b> — UI-smoke фіксує explicit save, search, select-all і стилі quick-access editor.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.57.3 — Customer Create Link Fix</h4>
+                    <ul>
+                        <li><b>Створення клієнта</b> — список і пошук клієнтів більше не падають на <code>Internal server error</code>, якщо <code>social_identities</code> ще недоступна в БД.</li>
+                        <li><b>Source select</b> — поле <code>Звідки дізналися</code> отримало CRM-стиль і власний chevron без нативного сірого вигляду.</li>
+                        <li><b>Швидке зв'язування</b> — у формі клієнта додані кнопки Telegram, Viber, Instagram, Телефон і Facebook для соц. ідентичностей.</li>
+                        <li><b>Detail hub після save</b> — після створення одразу відкривається картка клієнта з дзвінком, Telegram/Omni, workspace/бронюваннями й зв'язками.</li>
+                        <li><b>Save guard</b> — кнопка збереження блокується на час запиту, щоб не створювати дублікати й подвійні toast-помилки.</li>
+                        <li><b>Guardrails</b> — UI-smoke фіксує styled select, linking tools і відкриття detail hub після створення.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.57.2 — Assistant Presence Animations</h4>
+                    <ul>
+                        <li><b>Нове обличчя Помічника</b> — avatar отримав очі, окуляри й mouth layer замість статичного світлого ядра.</li>
+                        <li><b>Крапки збираються у фігури</b> — constellation dots перебудовуються під thinking, listening, speaking, action, success і error.</li>
+                        <li><b>Голосова міміка</b> — під час відповіді mouth layer рухається як спокійний voice equalizer.</li>
+                        <li><b>State-aware рух</b> — action формує стрілку, success — check-like shape, error — X-pattern, а thinking збирає нейронну фігуру.</li>
+                        <li><b>Expanded panel polish</b> — у великому вікні Помічника додано малу constellation-анімацію в header.</li>
+                        <li><b>Доступність</b> — <code>prefers-reduced-motion</code> вимикає рухи без приховування самого avatar.</li>
+                        <li><b>Guardrails</b> — UI-smoke фіксує face/glasses/dot-cloud markup і state animation CSS.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.57.1 — Sidebar Identity Polish</h4>
                     <ul>
                         <li><b>Компактніша картка профілю</b> — верхній блок у sidebar став нижчим, акуратнішим і не забирає стільки місця.</li>
@@ -1278,8 +1312,6 @@
                         <li><b>Унікальні ролі</b> — для CRM-професій додані власні кольори й мікропатерни бейджа.</li>
                         <li><b>Швидкий доступ</b> — секція <code>Додатково</code> стала компактним <code>Швидким доступом</code>, а редагування сховано в gear-кнопку.</li>
                         <li><b>Підменю</b> — розгорнуті швидкі сторінки тепер виглядають як вкладена панель з лівим акцентом і компактнішими пунктами.</li>
-                        <li><b>Hover polish</b> — картка, аватар, role badge і quick signal chips отримали стримані анімації при наведенні.</li>
-                        <li><b>Guardrails</b> — UI-smoke фіксує USD-first layout, role badge patterns, quick-access gear editor і currency fallback.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -7460,25 +7492,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.57.1"></script>
-    <script src="js/api.js?v=0.57.1"></script>
-    <script src="js/ui.js?v=0.57.1"></script>
-    <script src="js/auth.js?v=0.57.1"></script>
-    <script src="js/timeline.js?v=0.57.1"></script>
-    <script src="js/booking.js?v=0.57.1"></script>
-    <script src="js/settings.js?v=0.57.1"></script>
-    <script src="js/booking-form.js?v=0.57.1"></script>
-    <script src="js/booking-linked.js?v=0.57.1"></script>
-    <script src="js/settings-dashboard.js?v=0.57.1"></script>
-    <script src="js/settings-history.js?v=0.57.1"></script>
-    <script src="js/settings-afisha.js?v=0.57.1"></script>
-    <script src="js/settings-certificates.js?v=0.57.1"></script>
-    <script src="js/offline.js?v=0.57.1"></script>
-    <script src="js/search.js?v=0.57.1"></script>
-    <script src="js/ws.js?v=0.57.1"></script>
-    <script src="js/app.js?v=0.57.1"></script>
-    <script src="js/kleshnya-widget.js?v=0.57.1"></script>
-    <script src="js/components/sidebar.js?v=0.57.1"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.57.1"></script>
+    <script src="js/config.js?v=0.57.4"></script>
+    <script src="js/api.js?v=0.57.4"></script>
+    <script src="js/ui.js?v=0.57.4"></script>
+    <script src="js/auth.js?v=0.57.4"></script>
+    <script src="js/timeline.js?v=0.57.4"></script>
+    <script src="js/booking.js?v=0.57.4"></script>
+    <script src="js/settings.js?v=0.57.4"></script>
+    <script src="js/booking-form.js?v=0.57.4"></script>
+    <script src="js/booking-linked.js?v=0.57.4"></script>
+    <script src="js/settings-dashboard.js?v=0.57.4"></script>
+    <script src="js/settings-history.js?v=0.57.4"></script>
+    <script src="js/settings-afisha.js?v=0.57.4"></script>
+    <script src="js/settings-certificates.js?v=0.57.4"></script>
+    <script src="js/offline.js?v=0.57.4"></script>
+    <script src="js/search.js?v=0.57.4"></script>
+    <script src="js/ws.js?v=0.57.4"></script>
+    <script src="js/app.js?v=0.57.4"></script>
+    <script src="js/kleshnya-widget.js?v=0.57.4"></script>
+    <script src="js/components/sidebar.js?v=0.57.4"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.57.4"></script>
 </body>
 </html>

@@ -409,7 +409,7 @@ const Sidebar = (() => {
     function _getSelectableExtraMenuItems(role) {
         const seen = new Set();
         return NAV_ITEMS
-            .filter(item => item.href && item.type !== 'group' && String(item.href).startsWith('/') && (!role || hasAccess(item, role)))
+            .filter(item => item.href && item.type !== 'group' && String(item.href).startsWith('/'))
             .filter(item => {
                 const href = _normalizeExtraHref(item.href);
                 if (!href || seen.has(href)) return false;
@@ -559,7 +559,8 @@ const Sidebar = (() => {
         const pickerHtml = selectableItems.length ? selectableItems.map(item => {
             const checked = selected.has(item.href);
             const meta = item.description || item.href;
-            return `<label class="sidebar-extra-check">
+            const searchText = `${item.label || ''} ${meta || ''} ${item.href || ''}`.toLowerCase();
+            return `<label class="sidebar-extra-check" data-sidebar-extra-row data-sidebar-extra-search-text="${_escAttr(searchText)}">
                 <input type="checkbox" data-sidebar-extra-page value="${_escAttr(item.href)}"${checked ? ' checked' : ''}>
                 <span class="sidebar-extra-checkmark" aria-hidden="true"></span>
                 <span class="sidebar-extra-check-copy">
@@ -571,16 +572,35 @@ const Sidebar = (() => {
         return `<div class="sidebar-extra-editor" data-sidebar-extra-editor>
             <div class="sidebar-extra-editor-title">
                 <span>Сторінки швидкого доступу</span>
-                <small>${selectedCount} вибрано</small>
+                <small data-sidebar-extra-count>${selectedCount} вибрано</small>
+            </div>
+            <div class="sidebar-extra-editor-tools">
+                <input type="search" class="sidebar-extra-search" data-sidebar-extra-search placeholder="Знайти сторінку CRM..." aria-label="Знайти сторінку швидкого доступу">
+                <button type="button" class="sidebar-extra-secondary" data-sidebar-extra-select-all>Усі сторінки</button>
             </div>
             <div class="sidebar-extra-picker" data-sidebar-extra-picker>
                 ${pickerHtml}
             </div>
             <div class="sidebar-extra-form-actions">
-                <button type="button" class="sidebar-extra-save" data-sidebar-extra-reset>Стандартні</button>
+                <button type="button" class="sidebar-extra-secondary" data-sidebar-extra-reset>Стандартні</button>
                 <button type="button" class="sidebar-extra-cancel" data-sidebar-extra-clear>Очистити</button>
+                <button type="button" class="sidebar-extra-save" data-sidebar-extra-save>Зберегти</button>
             </div>
         </div>`;
+    }
+
+    function _updateExtraMenuEditorCount(extras) {
+        const count = extras?.querySelectorAll('[data-sidebar-extra-page]:checked').length || 0;
+        const counter = extras?.querySelector('[data-sidebar-extra-count]');
+        if (counter) counter.textContent = `${count} вибрано`;
+    }
+
+    function _applyExtraMenuEditorFilter(extras) {
+        const query = String(extras?.querySelector('[data-sidebar-extra-search]')?.value || '').trim().toLowerCase();
+        extras?.querySelectorAll('[data-sidebar-extra-row]').forEach(row => {
+            const haystack = row.dataset.sidebarExtraSearchText || '';
+            row.hidden = Boolean(query && !haystack.includes(query));
+        });
     }
 
     function _bindExtraMenuEditor(extras) {
@@ -588,7 +608,9 @@ const Sidebar = (() => {
         const sectionToggle = extras.querySelector('[data-sidebar-extra-toggle-section]');
         if (sectionToggle && sectionToggle.dataset.sidebarExtraSectionBound !== 'true') {
             sectionToggle.dataset.sidebarExtraSectionBound = 'true';
-            sectionToggle.addEventListener('click', () => {
+            sectionToggle.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
                 const nextCollapsed = !extras.classList.contains('is-collapsed');
                 _setExtraMenuCollapsed(nextCollapsed);
                 if (nextCollapsed) {
@@ -602,7 +624,9 @@ const Sidebar = (() => {
         const toggle = extras.querySelector('[data-sidebar-extra-toggle-editor]');
         if (toggle && toggle.dataset.sidebarExtraToggleBound !== 'true') {
             toggle.dataset.sidebarExtraToggleBound = 'true';
-            toggle.addEventListener('click', () => {
+            toggle.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
                 const nextOpen = !_isExtraMenuEditorOpen();
                 if (nextOpen) _setExtraMenuCollapsed(false);
                 _setExtraMenuEditorOpen(nextOpen);
@@ -613,29 +637,48 @@ const Sidebar = (() => {
 
         const savedUser = _getCurrentSidebarUser();
         const role = _getSidebarActiveRole(savedUser);
+        const getCheckedHrefs = () => [...extras.querySelectorAll('[data-sidebar-extra-page]:checked')].map(input => input.value);
+        const setCheckedHrefs = (hrefs) => {
+            const selected = new Set((Array.isArray(hrefs) ? hrefs : []).map(_normalizeExtraHref));
+            extras.querySelectorAll('[data-sidebar-extra-page]').forEach(input => {
+                input.checked = selected.has(_normalizeExtraHref(input.value));
+            });
+            _updateExtraMenuEditorCount(extras);
+        };
         const saveCurrentCheckboxes = () => {
-            const checkedHrefs = [...extras.querySelectorAll('[data-sidebar-extra-page]:checked')].map(input => input.value);
+            const checkedHrefs = getCheckedHrefs();
             _saveExtraMenuSelection(checkedHrefs, role);
             _state.extraEditingId = '';
             _setExtraMenuCollapsed(false);
-            _setExtraMenuEditorOpen(true);
+            _setExtraMenuEditorOpen(false);
             _ensureCommandDeck();
         };
+
+        const search = extras.querySelector('[data-sidebar-extra-search]');
+        if (search && search.dataset.sidebarExtraSearchBound !== 'true') {
+            search.dataset.sidebarExtraSearchBound = 'true';
+            search.addEventListener('input', () => _applyExtraMenuEditorFilter(extras));
+        }
 
         extras.querySelectorAll('[data-sidebar-extra-page]').forEach((input) => {
             if (input.dataset.sidebarExtraPageBound === 'true') return;
             input.dataset.sidebarExtraPageBound = 'true';
-            input.addEventListener('change', saveCurrentCheckboxes);
+            input.addEventListener('change', () => _updateExtraMenuEditorCount(extras));
         });
+
+        const selectAll = extras.querySelector('[data-sidebar-extra-select-all]');
+        if (selectAll && selectAll.dataset.sidebarExtraSelectAllBound !== 'true') {
+            selectAll.dataset.sidebarExtraSelectAllBound = 'true';
+            selectAll.addEventListener('click', () => {
+                setCheckedHrefs(_getSelectableExtraMenuItems(role).map(item => item.href));
+            });
+        }
 
         const reset = extras.querySelector('[data-sidebar-extra-reset]');
         if (reset && reset.dataset.sidebarExtraResetBound !== 'true') {
             reset.dataset.sidebarExtraResetBound = 'true';
             reset.addEventListener('click', () => {
-                _saveExtraMenuSelection(EXTRA_MENU_HREFS, role);
-                _setExtraMenuCollapsed(false);
-                _setExtraMenuEditorOpen(true);
-                _ensureCommandDeck();
+                setCheckedHrefs(EXTRA_MENU_HREFS);
             });
         }
 
@@ -643,11 +686,14 @@ const Sidebar = (() => {
         if (clear && clear.dataset.sidebarExtraClearBound !== 'true') {
             clear.dataset.sidebarExtraClearBound = 'true';
             clear.addEventListener('click', () => {
-                _saveExtraMenuSelection([], role);
-                _setExtraMenuCollapsed(false);
-                _setExtraMenuEditorOpen(true);
-                _ensureCommandDeck();
+                setCheckedHrefs([]);
             });
+        }
+
+        const save = extras.querySelector('[data-sidebar-extra-save]');
+        if (save && save.dataset.sidebarExtraSaveBound !== 'true') {
+            save.dataset.sidebarExtraSaveBound = 'true';
+            save.addEventListener('click', saveCurrentCheckboxes);
         }
     }
 

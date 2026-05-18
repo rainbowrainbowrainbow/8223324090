@@ -3823,6 +3823,34 @@ body.dark-mode .sidebar-nav,
   text-align: right !important;
 }
 
+.sidebar-extra-editor-tools {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 8px !important;
+  margin-bottom: 10px !important;
+}
+
+.sidebar-extra-search {
+  width: 100% !important;
+  min-height: 38px !important;
+  padding: 0 12px !important;
+  border: 1px solid rgba(148,163,184,0.16) !important;
+  border-radius: 12px !important;
+  background: rgba(15,23,42,0.58) !important;
+  color: var(--sb-design-text) !important;
+  font: 800 12px/1.2 Inter, system-ui, sans-serif !important;
+  outline: none !important;
+}
+
+.sidebar-extra-search:focus {
+  border-color: rgba(34,211,160,0.45) !important;
+  box-shadow: 0 0 0 3px rgba(34,211,160,0.10) !important;
+}
+
+.sidebar-extra-search::placeholder {
+  color: rgba(148,163,184,0.78) !important;
+}
+
 /* v0.55.41: Additional editor is a simple CRM page checklist. */
 .sidebar-extra-picker {
   display: grid !important;
@@ -3989,12 +4017,14 @@ body:not(.dark-mode) .sidebar-extra-check-copy b {
 
 .sidebar-extra-form-actions {
   display: flex !important;
+  flex-wrap: wrap !important;
   gap: 8px !important;
   margin-top: 2px !important;
 }
 
 .sidebar-extra-save,
-.sidebar-extra-cancel {
+.sidebar-extra-cancel,
+.sidebar-extra-secondary {
   min-height: 38px !important;
   padding: 0 12px !important;
   border-radius: 10px !important;
@@ -4004,14 +4034,21 @@ body:not(.dark-mode) .sidebar-extra-check-copy b {
 }
 
 .sidebar-extra-save {
-  flex: 1 1 auto !important;
+  flex: 1 1 100% !important;
   border: 1px solid rgba(34,211,160,0.36) !important;
   background: rgba(34,211,160,0.18) !important;
   color: var(--sb-design-green) !important;
 }
 
+.sidebar-extra-secondary {
+  flex: 1 1 calc(50% - 4px) !important;
+  border: 1px solid rgba(45,212,191,0.20) !important;
+  background: rgba(20,184,166,0.08) !important;
+  color: rgba(204,251,241,0.92) !important;
+}
+
 .sidebar-extra-cancel {
-  flex: 0 0 auto !important;
+  flex: 1 1 calc(50% - 4px) !important;
   border: 1px solid rgba(255,255,255,0.12) !important;
   background: rgba(255,255,255,0.06) !important;
   color: var(--sb-design-text) !important;
@@ -4020,9 +4057,23 @@ body:not(.dark-mode) .sidebar-extra-check-copy b {
 .sidebar-extra-save:hover,
 .sidebar-extra-save:focus-visible,
 .sidebar-extra-cancel:hover,
-.sidebar-extra-cancel:focus-visible {
+.sidebar-extra-cancel:focus-visible,
+.sidebar-extra-secondary:hover,
+.sidebar-extra-secondary:focus-visible {
   filter: brightness(1.08) !important;
   outline: none !important;
+}
+
+body:not(.dark-mode) .sidebar-extra-search {
+  background: rgba(255,255,255,0.88) !important;
+  border-color: rgba(15,23,42,0.10) !important;
+  color: #0F172A !important;
+}
+
+body:not(.dark-mode) .sidebar-extra-secondary {
+  background: rgba(20,184,166,0.09) !important;
+  border-color: rgba(20,184,166,0.24) !important;
+  color: #0F766E !important;
 }
 
 /* v0.55.28: system shell geometry source of truth.

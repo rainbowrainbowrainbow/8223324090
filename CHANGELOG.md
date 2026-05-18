@@ -4,6 +4,16 @@
 
 ---
 
+## v0.55.34 - Клієнти: темна тема
+
+### Customers / Dark Theme [codex]
+- **Dark surfaces** - сторінку `Клієнти` переведено на темний surface contract для KPI-карток, вкладок, фільтрів, таблиці, empty-state, RFM/NPS/bulk блоків і customer detail modal.
+- **Text contrast** - виправлено ієрархію тексту в dark mode: primary заголовки й імена стали світлими, secondary-дані читаються через `#CBD5E1`, helper/muted текст через `#94A3B8`.
+- **Theme compatibility** - dark overrides тепер працюють і для `body.dark-mode`, і для `html[data-theme="dark"]`, щоб сторінка не залишалась напівсвітлою при різних шляхах перемикання теми.
+- **Guardrail** - `npm run test:ui` перевіряє наявність customers dark surface contract і readable empty-state text.
+
+---
+
 ## v0.55.33 - Changelog: послідовність релізів
 
 ### Release Notes / Version History [codex]

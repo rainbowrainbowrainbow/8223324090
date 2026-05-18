@@ -18,14 +18,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.55.33">
-    <link rel="stylesheet" href="css/layout.css?v=0.55.33">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.33">
-    <link rel="stylesheet" href="css/pages.css?v=0.55.33">
-    <link rel="stylesheet" href="css/modals.css?v=0.55.33">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.33">
-    <link rel="stylesheet" href="css/responsive.css?v=0.55.33">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.33">
+    <link rel="stylesheet" href="css/base.css?v=0.55.34">
+    <link rel="stylesheet" href="css/layout.css?v=0.55.34">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.34">
+    <link rel="stylesheet" href="css/pages.css?v=0.55.34">
+    <link rel="stylesheet" href="css/modals.css?v=0.55.34">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.34">
+    <link rel="stylesheet" href="css/responsive.css?v=0.55.34">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.34">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -959,6 +959,206 @@
             color: var(--gray-200);
         }
 
+        /* v0.55.34: Customers dark surface + readable text contract */
+        body.dark-mode .page-header h2,
+        html[data-theme="dark"] .page-header h2 {
+            color: #F8FAFC;
+        }
+
+        body.dark-mode .stat-card,
+        html[data-theme="dark"] .stat-card,
+        body.dark-mode .crm-tabs,
+        html[data-theme="dark"] .crm-tabs,
+        body.dark-mode .crm-table-wrap,
+        html[data-theme="dark"] .crm-table-wrap,
+        body.dark-mode .crm-table,
+        html[data-theme="dark"] .crm-table,
+        body.dark-mode .rfm-segment-card,
+        html[data-theme="dark"] .rfm-segment-card,
+        body.dark-mode .journey-funnel,
+        html[data-theme="dark"] .journey-funnel,
+        body.dark-mode .nps-score-card,
+        html[data-theme="dark"] .nps-score-card,
+        body.dark-mode .bulk-form,
+        html[data-theme="dark"] .bulk-form,
+        body.dark-mode .duplicate-pair,
+        html[data-theme="dark"] .duplicate-pair,
+        body.dark-mode .customer-detail,
+        html[data-theme="dark"] .customer-detail {
+            background: rgba(15, 23, 42, 0.88) !important;
+            border-color: rgba(148, 163, 184, 0.16) !important;
+            box-shadow: 0 16px 36px rgba(2, 6, 23, 0.28) !important;
+        }
+
+        body.dark-mode .stat-card .stat-value,
+        html[data-theme="dark"] .stat-card .stat-value,
+        body.dark-mode .customer-detail-header h3,
+        html[data-theme="dark"] .customer-detail-header h3,
+        body.dark-mode .crm-table .customer-name,
+        html[data-theme="dark"] .crm-table .customer-name,
+        body.dark-mode .detail-field .field-value,
+        html[data-theme="dark"] .detail-field .field-value,
+        body.dark-mode .customer-hub-channel,
+        html[data-theme="dark"] .customer-hub-channel,
+        body.dark-mode .customer-hub-row strong,
+        html[data-theme="dark"] .customer-hub-row strong,
+        body.dark-mode .rfm-segment-info .rfm-count,
+        html[data-theme="dark"] .rfm-segment-info .rfm-count {
+            color: #F8FAFC !important;
+        }
+
+        body.dark-mode .stat-card .stat-label,
+        html[data-theme="dark"] .stat-card .stat-label,
+        body.dark-mode .crm-table td,
+        html[data-theme="dark"] .crm-table td,
+        body.dark-mode .comm-text,
+        html[data-theme="dark"] .comm-text,
+        body.dark-mode .bulk-preview,
+        html[data-theme="dark"] .bulk-preview,
+        body.dark-mode .customer-hub-preview,
+        html[data-theme="dark"] .customer-hub-preview,
+        body.dark-mode .rfm-segment-info .rfm-label,
+        html[data-theme="dark"] .rfm-segment-info .rfm-label {
+            color: #CBD5E1 !important;
+        }
+
+        body.dark-mode .crm-table .customer-child,
+        html[data-theme="dark"] .crm-table .customer-child,
+        body.dark-mode .crm-empty,
+        html[data-theme="dark"] .crm-empty,
+        body.dark-mode .detail-section h4,
+        html[data-theme="dark"] .detail-section h4,
+        body.dark-mode .detail-field .field-label,
+        html[data-theme="dark"] .detail-field .field-label,
+        body.dark-mode .comm-date,
+        html[data-theme="dark"] .comm-date,
+        body.dark-mode .customer-hub-meta,
+        html[data-theme="dark"] .customer-hub-meta,
+        body.dark-mode .customer-hub-note,
+        body.dark-mode .customer-hub-policy,
+        html[data-theme="dark"] .customer-hub-note,
+        html[data-theme="dark"] .customer-hub-policy {
+            color: #94A3B8 !important;
+        }
+
+        body.dark-mode .crm-tabs,
+        html[data-theme="dark"] .crm-tabs {
+            background: rgba(30, 41, 59, 0.76) !important;
+            border: 1px solid rgba(148, 163, 184, 0.14);
+        }
+
+        body.dark-mode .crm-tab,
+        html[data-theme="dark"] .crm-tab {
+            color: #CBD5E1;
+        }
+
+        body.dark-mode .crm-tab:hover,
+        html[data-theme="dark"] .crm-tab:hover {
+            color: #F8FAFC;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        body.dark-mode .crm-tab.active,
+        html[data-theme="dark"] .crm-tab.active {
+            background: rgba(16, 185, 129, 0.16) !important;
+            color: #A7F3D0 !important;
+            box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.24), 0 10px 24px rgba(2, 6, 23, 0.18);
+        }
+
+        body.dark-mode .crm-filters input,
+        body.dark-mode .crm-filters select,
+        html[data-theme="dark"] .crm-filters input,
+        html[data-theme="dark"] .crm-filters select,
+        body.dark-mode .bulk-form select,
+        body.dark-mode .bulk-form input,
+        body.dark-mode .bulk-form textarea,
+        html[data-theme="dark"] .bulk-form select,
+        html[data-theme="dark"] .bulk-form input,
+        html[data-theme="dark"] .bulk-form textarea {
+            background: rgba(15, 23, 42, 0.92) !important;
+            border-color: rgba(148, 163, 184, 0.22) !important;
+            color: #F8FAFC !important;
+            color-scheme: dark;
+        }
+
+        body.dark-mode .crm-filters input::placeholder,
+        html[data-theme="dark"] .crm-filters input::placeholder,
+        body.dark-mode .bulk-form input::placeholder,
+        body.dark-mode .bulk-form textarea::placeholder,
+        html[data-theme="dark"] .bulk-form input::placeholder,
+        html[data-theme="dark"] .bulk-form textarea::placeholder {
+            color: #94A3B8;
+        }
+
+        body.dark-mode .crm-table thead th,
+        html[data-theme="dark"] .crm-table thead th {
+            background: rgba(30, 41, 59, 0.98) !important;
+            border-bottom-color: rgba(148, 163, 184, 0.18) !important;
+            color: #A7B2C3 !important;
+        }
+
+        body.dark-mode .crm-table td,
+        html[data-theme="dark"] .crm-table td,
+        body.dark-mode .detail-booking-row,
+        html[data-theme="dark"] .detail-booking-row,
+        body.dark-mode .comm-entry,
+        html[data-theme="dark"] .comm-entry,
+        body.dark-mode .customer-hub-row,
+        html[data-theme="dark"] .customer-hub-row {
+            border-bottom-color: rgba(148, 163, 184, 0.14) !important;
+        }
+
+        body.dark-mode .crm-table tbody tr:hover,
+        html[data-theme="dark"] .crm-table tbody tr:hover {
+            background: rgba(16, 185, 129, 0.08) !important;
+        }
+
+        body.dark-mode .crm-table td[colspan],
+        html[data-theme="dark"] .crm-table td[colspan] {
+            background: rgba(15, 23, 42, 0.88) !important;
+        }
+
+        body.dark-mode .explain-empty,
+        html[data-theme="dark"] .explain-empty {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(59, 130, 246, 0.08)) !important;
+            border: 1px solid rgba(52, 211, 153, 0.18) !important;
+            border-radius: 18px;
+            color: #CBD5E1;
+        }
+
+        body.dark-mode .explain-empty-title,
+        html[data-theme="dark"] .explain-empty-title {
+            color: #F8FAFC !important;
+        }
+
+        body.dark-mode .explain-empty-message,
+        html[data-theme="dark"] .explain-empty-message {
+            color: #CBD5E1 !important;
+        }
+
+        body.dark-mode .crm-tag-dropdown,
+        body.dark-mode .customer-hub-card,
+        body.dark-mode .customer-hub-action,
+        body.dark-mode .customer-comm-hub-loading,
+        body.dark-mode .customer-hub-empty,
+        html[data-theme="dark"] .crm-tag-dropdown,
+        html[data-theme="dark"] .customer-hub-card,
+        html[data-theme="dark"] .customer-hub-action,
+        html[data-theme="dark"] .customer-comm-hub-loading,
+        html[data-theme="dark"] .customer-hub-empty {
+            background: rgba(30, 41, 59, 0.82) !important;
+            border-color: rgba(148, 163, 184, 0.16) !important;
+            color: #CBD5E1 !important;
+        }
+
+        body.dark-mode .badge-source-tiktok,
+        html[data-theme="dark"] .badge-source-tiktok,
+        body.dark-mode .badge-source-manual,
+        html[data-theme="dark"] .badge-source-manual {
+            background: rgba(148, 163, 184, 0.18);
+            color: #E2E8F0;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .crm-stats {
@@ -1248,13 +1448,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.55.33"></script>
-    <script src="js/notification.js?v=0.55.33"></script>
-    <script src="js/api.js?v=0.55.33"></script>
-    <script src="js/auth.js?v=0.55.33"></script>
-    <script src="js/ui.js?v=0.55.33"></script>
-    <script src="js/components/sidebar.js?v=0.55.33"></script>
+    <script src="js/config.js?v=0.55.34"></script>
+    <script src="js/notification.js?v=0.55.34"></script>
+    <script src="js/api.js?v=0.55.34"></script>
+    <script src="js/auth.js?v=0.55.34"></script>
+    <script src="js/ui.js?v=0.55.34"></script>
+    <script src="js/components/sidebar.js?v=0.55.34"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/customers-page.js?v=0.55.33"></script><script src="js/alerts.js?v=0.55.33"></script>
+    <script src="js/customers-page.js?v=0.55.34"></script><script src="js/alerts.js?v=0.55.34"></script>
 </body>
 </html>

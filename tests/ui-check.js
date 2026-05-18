@@ -105,7 +105,7 @@ checkPage('index.html', (doc, html) => {
     check('login release badge matches package release label', doc.querySelector('.login-release-badge')?.textContent.includes(pkg.eventGenix.releaseLabel));
     check('login tagline matches package release contract', doc.querySelector('.tagline')?.textContent === `AI First CRM v${pkg.version} — ${pkg.eventGenix.releaseLabel}`);
     check('login changelog button matches package release contract', doc.getElementById('changelogBtn')?.textContent.includes(`v${pkg.version}: ${pkg.eventGenix.releaseLabel}`));
-    const recentChangelogOrder = ['v0.55.33','v0.55.32','v0.55.31','v0.55.30','v0.55.29','v0.55.28','v0.55.27','v0.55.26','v0.55.25','v0.55.24','v0.55.23','v0.55.22','v0.55.21','v0.55.20','v0.55.19','v0.55.18','v0.55.17','v0.55.16','v0.55.15','v0.55.14','v0.55.13','v0.55.12','v0.55.11','v0.55.10','v0.55.9','v0.55.8'];
+    const recentChangelogOrder = ['v0.55.34','v0.55.33','v0.55.32','v0.55.31','v0.55.30','v0.55.29','v0.55.28','v0.55.27','v0.55.26','v0.55.25','v0.55.24','v0.55.23','v0.55.22','v0.55.21','v0.55.20','v0.55.19','v0.55.18','v0.55.17','v0.55.16','v0.55.15','v0.55.14','v0.55.13','v0.55.12','v0.55.11','v0.55.10','v0.55.9','v0.55.8'];
     const recentChangelogPositions = recentChangelogOrder.map(version => html.indexOf(`<h4>${version}`));
     check('changelog modal does not jump from latest v0.55 release straight to v0.55.8', recentChangelogPositions.every(pos => pos >= 0) && recentChangelogPositions.every((pos, index, list) => index === 0 || pos > list[index - 1]));
 });
@@ -172,6 +172,9 @@ checkPage('customers.html', (doc, html) => {
     check('Customer explainability region exists', !!doc.getElementById('customerExplainability'));
     check('Customer edit modal uses shrink-safe grid', html.includes('grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px'));
     check('Customer edit date input is bounded', html.includes('id="editChildBirthday" style="width:100%;min-width:0;max-width:100%;'));
+    check('Customer dark mode covers body.dark-mode surfaces', html.includes('body.dark-mode .stat-card') && html.includes('body.dark-mode .crm-table-wrap'));
+    check('Customer dark mode covers html data-theme surfaces', html.includes('html[data-theme="dark"] .stat-card') && html.includes('html[data-theme="dark"] .crm-table-wrap'));
+    check('Customer dark empty state text is readable', html.includes('body.dark-mode .explain-empty-title') && html.includes('color: #F8FAFC !important'));
 });
 
 checkPage('finance.html', (doc, html) => {

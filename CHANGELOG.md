@@ -4,6 +4,16 @@
 
 ---
 
+## v0.55.42 - Timeline: адаптивний малий екран
+
+### Timeline / Responsive Layout [codex]
+- **Панель керування** - toolbar таймлайна на laptop/small viewport тепер стискається рівномірно й переносить дії по рядках без розпору сторінки.
+- **Сітка таймлайна** - ширина клітинок і лівих підписів ліній адаптується до viewport через єдиний JS/CSS contract, тому бронювання, now-line і grid залишаються синхронними.
+- **Sidebar** - ширина лівого меню на вузьких desktop-екранах зменшена, щоб робоча зона таймлайна не ховалась за shell offset.
+- **Guardrail** - `npm run test:ui` тепер фіксує responsive density contract для timeline/sidebar і не дає повернути стару розпираючу геометрію.
+
+---
+
 ## v0.55.41 - Sidebar: простий вибір додаткових сторінок
 
 ### Sidebar / Additional Pages [codex]

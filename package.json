@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.55.41",
+  "version": "0.55.42",
   "eventGenix": {
-    "releaseLabel": "Sidebar: простий вибір додаткових сторінок"
+    "releaseLabel": "Timeline: адаптивний малий екран"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

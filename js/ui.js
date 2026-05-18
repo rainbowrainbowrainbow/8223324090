@@ -944,18 +944,73 @@ function initNightSettings() {
 // COMPACT MODE
 // ==========================================
 
+function _timelineBaseCellWidth(level, compact) {
+    if (compact) return level === 15 ? 35 : level === 30 ? 56 : 84;
+    return level === 15 ? 50 : level === 30 ? 80 : 120;
+}
+
+function _timelineResponsiveCellWidth(level, compact) {
+    const base = _timelineBaseCellWidth(level, compact);
+    const viewportWidth = window.innerWidth || 1440;
+    if (compact || viewportWidth <= 768) return _timelineBaseCellWidth(level, true);
+    if (viewportWidth <= 1180) return Math.max(34, Math.round(base * 0.72));
+    if (viewportWidth <= 1366) return Math.max(36, Math.round(base * 0.8));
+    if (viewportWidth <= 1536) return Math.max(40, Math.round(base * 0.9));
+    return base;
+}
+
+function _timelineResponsiveHeaderWidth() {
+    const viewportWidth = window.innerWidth || 1440;
+    if (viewportWidth <= 375) return 45;
+    if (viewportWidth <= 480) return 70;
+    if (viewportWidth <= 768) return 90;
+    if (viewportWidth <= 1180) return 88;
+    if (viewportWidth <= 1366) return 96;
+    if (viewportWidth <= 1536) return 108;
+    return 130;
+}
+
+function applyTimelineResponsiveDensity() {
+    if (!window.CONFIG || !CONFIG.TIMELINE) return false;
+    const level = AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES || 15;
+    const compact = !!AppState.compactMode;
+    const nextCellWidth = _timelineResponsiveCellWidth(level, compact);
+    const nextHeaderWidth = _timelineResponsiveHeaderWidth();
+    const changed = CONFIG.TIMELINE.CELL_WIDTH !== nextCellWidth;
+
+    CONFIG.TIMELINE.CELL_WIDTH = nextCellWidth;
+    CONFIG.TIMELINE.CELL_MINUTES = level;
+    document.documentElement.style.setProperty('--timeline-cell-w', `${nextCellWidth}px`);
+    document.documentElement.style.setProperty('--timeline-line-header-w', `${nextHeaderWidth}px`);
+
+    const container = document.querySelector('.timeline-container');
+    if (container) {
+        container.classList.toggle('compact', compact);
+        container.dataset.zoom = level;
+        container.dataset.timelineDensity = (window.innerWidth || 1440) <= 1536 ? 'tight' : 'regular';
+    }
+
+    return changed;
+}
+
+function initTimelineResponsiveResize() {
+    if (window.__timelineResponsiveResizeBound) return;
+    window.__timelineResponsiveResizeBound = true;
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            const changed = applyTimelineResponsiveDensity();
+            if (changed && typeof renderTimeline === 'function') renderTimeline();
+            if (typeof renderNowLine === 'function') renderNowLine();
+        }, 120);
+    });
+}
+
 function toggleCompactMode() {
     AppState.compactMode = !AppState.compactMode;
-    // D4: Adjust cell width for current zoom level
-    const level = AppState.zoomLevel || 15;
-    if (AppState.compactMode) {
-        CONFIG.TIMELINE.CELL_WIDTH = level === 15 ? 35 : level === 30 ? 56 : 84;
-    } else {
-        CONFIG.TIMELINE.CELL_WIDTH = level === 15 ? 50 : level === 30 ? 80 : 120;
-    }
     localStorage.setItem('pzp_compact_mode', AppState.compactMode);
-    const container = document.querySelector('.timeline-container');
-    if (container) container.classList.toggle('compact', AppState.compactMode);
+    applyTimelineResponsiveDensity();
     const toggle = document.getElementById('compactModeToggle');
     if (toggle) toggle.checked = AppState.compactMode;
     renderTimeline();
@@ -968,16 +1023,8 @@ function toggleCompactMode() {
 function changeZoom(level) {
     AppState.zoomLevel = level;
     CONFIG.TIMELINE.CELL_MINUTES = level;
-    // D2/D3: Scale cell width for larger zoom levels
-    if (AppState.compactMode) {
-        CONFIG.TIMELINE.CELL_WIDTH = level === 15 ? 35 : level === 30 ? 56 : 84;
-    } else {
-        CONFIG.TIMELINE.CELL_WIDTH = level === 15 ? 50 : level === 30 ? 80 : 120;
-    }
     localStorage.setItem('pzp_zoom_level', level);
-    // D2/D3: Set data-zoom attribute for CSS targeting
-    const container = document.querySelector('.timeline-container');
-    if (container) container.dataset.zoom = level;
+    applyTimelineResponsiveDensity();
     updateZoomButtons();
     renderTimeline();
 }

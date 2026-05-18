@@ -4083,7 +4083,7 @@ body:not(.dark-mode) .sidebar-extra-check-copy b {
    The shared menu should reserve less horizontal and vertical space while
    still driving the global shell offset from the same width token. */
 :root {
-  --eg-claude-sidebar-w: clamp(260px, 15.5vw, 320px);
+  --eg-claude-sidebar-w: clamp(248px, 14vw, 300px);
 }
 
 body.shell-ready .sidebar-nav:not(.collapsed),
@@ -4091,6 +4091,48 @@ body[data-page-group] .sidebar-nav:not(.collapsed) {
   width: var(--eg-claude-sidebar-w) !important;
   min-width: var(--eg-claude-sidebar-w) !important;
   max-width: var(--eg-claude-sidebar-w) !important;
+}
+
+/* v0.55.42: smaller sidebar shell on laptop widths so the timeline remains visible. */
+@media (min-width: 1024px) and (max-width: 1366px) {
+  :root {
+    --eg-claude-sidebar-w: clamp(224px, 18vw, 260px);
+  }
+
+  body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-command-deck,
+  body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-command-deck {
+    margin: 8px 8px 10px !important;
+    padding: 8px !important;
+  }
+
+  body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+  body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-card {
+    grid-template-columns: 34px minmax(0, 1fr) !important;
+    gap: 8px !important;
+    padding: 8px !important;
+  }
+
+  body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-avatar,
+  body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-avatar {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  body.shell-ready .sidebar-nav:not(.collapsed) .focus-chip,
+  body[data-page-group] .sidebar-nav:not(.collapsed) .focus-chip {
+    min-height: 30px !important;
+    padding: 4px 5px !important;
+  }
+
+  body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero,
+  body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero {
+    padding: 8px !important;
+  }
+
+  body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-links .nav-link,
+  body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-links .nav-link {
+    min-height: 38px !important;
+  }
 }
 
 .sidebar-nav:not(.collapsed) .sidebar-brand {

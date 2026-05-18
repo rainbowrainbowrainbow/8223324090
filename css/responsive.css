@@ -20,6 +20,168 @@
     .action-buttons { grid-column: 3; grid-row: 2; justify-self: end; }
 }
 
+/* v0.55.42: responsive timeline and sidebar fit on laptop/small screens. */
+:root {
+    --timeline-cell-w: 50px;
+    --timeline-line-header-w: 130px;
+}
+
+.time-mark,
+.grid-cell {
+    width: var(--timeline-cell-w, 50px) !important;
+    min-width: var(--timeline-cell-w, 50px) !important;
+}
+
+.line-header {
+    width: var(--timeline-line-header-w, 130px) !important;
+    min-width: var(--timeline-line-header-w, 130px) !important;
+}
+
+.time-scale {
+    margin-left: var(--timeline-line-header-w, 130px) !important;
+}
+
+@media (min-width: 769px) and (max-width: 1536px) {
+    .main-content {
+        min-width: 0 !important;
+        overflow-x: hidden !important;
+    }
+
+    .control-panel {
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr) !important;
+        grid-template-rows: auto auto auto !important;
+        gap: 8px 10px !important;
+        padding: 12px !important;
+        overflow: hidden !important;
+    }
+
+    .control-panel > * {
+        min-width: 0 !important;
+    }
+
+    .date-controls {
+        grid-column: 1 !important;
+        grid-row: 1 !important;
+        justify-content: flex-start !important;
+        gap: 6px !important;
+        min-width: 0 !important;
+    }
+
+    .date-controls input[type="date"] {
+        width: clamp(142px, 14vw, 190px) !important;
+        flex: 0 1 auto !important;
+        min-width: 0 !important;
+        padding: 9px 10px !important;
+        font-size: 15px !important;
+    }
+
+    .date-controls .btn-nav {
+        width: 40px !important;
+        height: 40px !important;
+        min-width: 40px !important;
+    }
+
+    .day-label {
+        padding: 6px 12px !important;
+        font-size: 13px !important;
+    }
+
+    .btn-today {
+        min-height: 40px !important;
+        padding: 8px 12px !important;
+        font-size: 12px !important;
+    }
+
+    .status-filter-controls {
+        grid-column: 2 !important;
+        grid-row: 1 !important;
+        justify-self: stretch !important;
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .view-mode-controls {
+        grid-column: 2 !important;
+        grid-row: 2 !important;
+        justify-self: stretch !important;
+    }
+
+    .period-selector,
+    .status-filter-controls {
+        width: 100% !important;
+    }
+
+    .status-filter-btn,
+    .period-btn {
+        min-height: 40px !important;
+        min-width: 0 !important;
+        padding: 8px 10px !important;
+        font-size: 12px !important;
+    }
+
+    .v32-controls {
+        grid-column: 1 !important;
+        grid-row: 2 !important;
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+        min-width: 0 !important;
+    }
+
+    .zoom-controls .zoom-btn,
+    .toggle-mini,
+    .btn-export,
+    .btn-menu-toggle,
+    .btn-product-sales {
+        min-height: 40px !important;
+        padding: 8px 10px !important;
+        font-size: 12px !important;
+    }
+
+    .action-buttons {
+        grid-column: 1 / -1 !important;
+        grid-row: 3 !important;
+        justify-self: end !important;
+        flex-wrap: wrap !important;
+        max-width: 100% !important;
+    }
+
+    .timeline-container {
+        max-width: 100% !important;
+        overflow: hidden !important;
+    }
+
+    .timeline-scroll {
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        padding: 14px !important;
+    }
+
+    .line-header {
+        padding: 8px 9px !important;
+    }
+
+    .line-name {
+        font-size: clamp(11px, 0.95vw, 14px) !important;
+        line-height: 1.1 !important;
+    }
+}
+
+@media (min-width: 1024px) and (max-width: 1366px) {
+    .control-panel {
+        grid-template-columns: minmax(0, 1fr) minmax(240px, 0.82fr) !important;
+    }
+
+    .toggle-mini-label {
+        display: none !important;
+    }
+
+    .btn-product-sales {
+        max-width: 130px !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+}
+
 /* v5.35: Backdrop fade-in animation */
 @keyframes backdropFadeIn {
     from { opacity: 0; }
@@ -141,6 +303,11 @@
     }
 
 @media (max-width: 768px) {
+    :root {
+        --timeline-cell-w: 35px;
+        --timeline-line-header-w: 90px;
+    }
+
     /* v7.8.6: Prevent horizontal scroll on mobile */
     html, body {
         overflow-x: hidden;
@@ -1105,6 +1272,10 @@
 }
 
 @media (max-width: 375px) {
+    :root {
+        --timeline-line-header-w: 45px;
+    }
+
     /* iPhone SE / small phones */
     .booking-block {
         padding: 3px 4px;

@@ -81,6 +81,7 @@ function initializeApp() {
     initializeLocalData();
     initializeCostumes();
     loadPreferences();
+    if (typeof initTimelineResponsiveResize === 'function') initTimelineResponsiveResize();
     checkSession();
     initializeEventListeners();
     // v15.1: CRM customer toggle + autocomplete
@@ -134,11 +135,13 @@ function loadPreferences() {
     AppState.compactMode = localStorage.getItem('pzp_compact_mode') === 'true';
     AppState.zoomLevel = parseInt(localStorage.getItem('pzp_zoom_level')) || 15;
     AppState.statusFilter = localStorage.getItem('pzp_status_filter') || 'all';
-    if (AppState.compactMode) {
+    CONFIG.TIMELINE.CELL_MINUTES = AppState.zoomLevel;
+    if (typeof applyTimelineResponsiveDensity === 'function') {
+        applyTimelineResponsiveDensity();
+    } else if (AppState.compactMode) {
         CONFIG.TIMELINE.CELL_WIDTH = 35;
         document.querySelector('.timeline-container')?.classList.add('compact');
     }
-    CONFIG.TIMELINE.CELL_MINUTES = AppState.zoomLevel;
 }
 
 // v5.0: Only initialize local storage data that isn't user credentials

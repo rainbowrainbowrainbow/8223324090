@@ -1055,11 +1055,11 @@ function renderKanban() {
                     <span class="lead-type-badge ${lt.cls}">${lt.emoji} ${escapeHtml(lt.label)}</span>
                 </div>
                 ${l.event_date ? '<div class="kanban-card-date">📅 ' + new Date(l.event_date).toLocaleDateString('uk-UA') + '</div>' : ''}
-                ${phoneTel ? `<div class="kanban-card-actions" onclick="event.stopPropagation()">
-                    <a class="kanban-action-btn" href="tel:${escapeHtml(phoneTel)}" title="Зателефонувати">📞</a>
-                    <a class="kanban-action-btn" href="https://t.me/${escapeHtml(phoneTel)}" target="_blank" title="Telegram">💬</a>
-                    <button class="kanban-action-btn" type="button" onclick="editLead(${l.id})" title="Редагувати">✎</button>
-                </div>` : ''}
+                <div class="kanban-card-actions" data-kanban-actions onclick="event.stopPropagation()" onpointerdown="event.stopPropagation()">
+                    ${phoneTel ? `<a class="kanban-action-btn" href="tel:${escapeHtml(phoneTel)}" title="Зателефонувати">📞</a>
+                    <a class="kanban-action-btn" href="https://t.me/${escapeHtml(phoneTel)}" target="_blank" title="Telegram">💬</a>` : ''}
+                    <button class="kanban-action-btn" type="button" onclick="event.stopPropagation(); editLead(${l.id})" title="Редагувати">✎</button>
+                </div>
             </div>`;
         }).join('');
 
@@ -1083,6 +1083,13 @@ function renderKanban() {
 function setupKanbanDragDrop() {
     const cards = document.querySelectorAll('.kanban-card[draggable]');
     const columns = document.querySelectorAll('.kanban-cards');
+
+    cards.forEach(card => {
+        card.querySelectorAll('a, button, [data-kanban-actions]').forEach(control => {
+            control.addEventListener('click', event => event.stopPropagation());
+            control.addEventListener('pointerdown', event => event.stopPropagation());
+        });
+    });
 
     cards.forEach(card => {
         card.addEventListener('dragstart', e => {

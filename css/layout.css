@@ -1824,17 +1824,26 @@ body.dark-mode .sidebar-quick-nav-icon {
 .header-nav { display: none; }
 
 /* User panel */
-.user-panel { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.user-panel {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+}
 .user-name { font-weight: 700; font-size: var(--font-sm); color: var(--gray-700); }
+.header .user-panel > .user-name {
+    display: none !important;
+}
 
 /* v0.55.40: top-right theme switch near the user name. */
 .header-theme-toggle {
-    width: 58px;
-    height: 34px;
-    padding: 3px;
+    width: 64px;
+    height: 42px;
+    padding: 4px;
     border: 1px solid rgba(148,163,184,0.24);
-    border-radius: 999px;
-    background: rgba(255,255,255,0.72);
+    border-radius: 12px;
+    background: rgba(255,255,255,0.78);
     color: #F59E0B;
     cursor: pointer;
     flex: 0 0 auto;
@@ -1859,9 +1868,9 @@ body.dark-mode .sidebar-quick-nav-icon {
     position: absolute;
     top: 50%;
     left: 2px;
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
     transform: translateY(-50%);
     background: linear-gradient(135deg, #FDE68A, #F59E0B);
     box-shadow: 0 5px 12px rgba(245,158,11,0.28);
@@ -1880,13 +1889,13 @@ body.dark-mode .sidebar-quick-nav-icon {
 }
 
 .header-theme-glyph--sun {
-    left: 8px;
+    left: 10px;
     color: #78350F;
     opacity: 1;
 }
 
 .header-theme-glyph--moon {
-    right: 9px;
+    right: 11px;
     color: #94A3B8;
     opacity: 0.58;
 }
@@ -1909,7 +1918,7 @@ body.dark-mode .sidebar-quick-nav-icon {
 }
 
 .header-theme-toggle.is-dark .header-theme-thumb {
-    transform: translate(24px, -50%);
+    transform: translate(22px, -50%);
     background: linear-gradient(135deg, #8B5CF6, #312E81);
     box-shadow: 0 5px 14px rgba(139,92,246,0.36);
 }
@@ -1925,15 +1934,17 @@ body.dark-mode .sidebar-quick-nav-icon {
 }
 
 .btn-logout {
-    padding: 8px 14px;
-    background: var(--gray-50);
+    min-height: 42px;
+    padding: 0 16px;
+    background: rgba(255,255,255,0.78);
     color: var(--gray-600);
-    border: 1px solid var(--gray-200);
-    border-radius: 8px;
-    font-weight: 700;
-    font-size: 12px;
+    border: 1px solid rgba(148,163,184,0.24);
+    border-radius: 12px;
+    font-weight: 800;
+    font-size: 14px;
     cursor: pointer;
     font-family: inherit;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.72), 0 8px 20px rgba(15,23,42,0.08);
     transition: all var(--speed-fast) var(--ease-smooth);
 }
 

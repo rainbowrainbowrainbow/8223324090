@@ -11,14 +11,14 @@
     <title>Event Genix | Воронка продажів</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.56.1">
-    <link rel="stylesheet" href="css/layout.css?v=0.56.1">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.56.1">
-    <link rel="stylesheet" href="css/pages.css?v=0.56.1">
-    <link rel="stylesheet" href="css/modals.css?v=0.56.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.56.1">
-    <link rel="stylesheet" href="css/responsive.css?v=0.56.1">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.56.1">
+    <link rel="stylesheet" href="css/base.css?v=0.56.2">
+    <link rel="stylesheet" href="css/layout.css?v=0.56.2">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.56.2">
+    <link rel="stylesheet" href="css/pages.css?v=0.56.2">
+    <link rel="stylesheet" href="css/modals.css?v=0.56.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.56.2">
+    <link rel="stylesheet" href="css/responsive.css?v=0.56.2">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.56.2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -191,6 +191,8 @@
             bottom: 0;
             z-index: 1500;
             width: min(780px, calc(100vw - 72px));
+            max-width: 100vw;
+            box-sizing: border-box;
             background: #F8FAFC;
             border-left: 1px solid #CBD5E1;
             box-shadow: -18px 0 50px rgba(15, 23, 42, 0.24);
@@ -236,6 +238,7 @@
         .lead-workspace-close:hover,
         .lead-workspace-close:focus-visible { border-color: #2563EB; outline: none; }
         .lead-workspace-body {
+            min-height: 0;
             overflow-y: auto;
             padding: 16px;
             display: flex;
@@ -251,10 +254,13 @@
         }
         .workspace-hero { padding: 16px; }
         .workspace-hero-main {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
+            display: flex;
+            flex-direction: column;
             gap: 14px;
-            align-items: start;
+            align-items: stretch;
+        }
+        .workspace-hero-main > div {
+            min-width: 0;
         }
         .workspace-name {
             margin: 0 0 6px;
@@ -296,7 +302,18 @@
         .workspace-badge.urgent { color: #991B1B; background: #FEE2E2; border-color: #FCA5A5; }
         .workspace-badge.warning { color: #92400E; background: #FEF3C7; border-color: #FCD34D; }
         .workspace-badge.waiting { color: #1D4ED8; background: #DBEAFE; border-color: #93C5FD; }
-        .workspace-actions { justify-content: flex-end; }
+        .workspace-actions {
+            justify-content: flex-start;
+            max-width: 100%;
+        }
+        .workspace-actions .workspace-btn {
+            flex: 0 1 auto;
+            min-width: 0;
+            max-width: 100%;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            text-align: center;
+        }
         .workspace-btn {
             display: inline-flex;
             align-items: center;
@@ -547,7 +564,7 @@
 
         /* Quick action buttons */
         .kanban-card-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-        .kanban-action-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; border: 0; background: #F1F5F9; color: #334155; text-decoration: none; font-size: 13px; transition: all .15s; cursor: pointer; }
+        .kanban-action-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; border: 0; background: #F1F5F9; color: #334155; text-decoration: none; font-size: 13px; transition: all .15s; cursor: pointer; touch-action: manipulation; }
         .kanban-action-btn:hover { background: #DBEAFE; transform: scale(1.1); }
 
         /* WIP warning */
@@ -563,7 +580,7 @@
         .kanban-column-empty .kanban-column-header span:first-child { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
         /* Modal shared */
-        .lead-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); backdrop-filter: blur(4px); z-index: 1000; justify-content: center; align-items: center; }
+        .lead-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); backdrop-filter: blur(4px); z-index: 1700; justify-content: center; align-items: center; }
         .lead-modal-overlay.active { display: flex; }
         .lead-modal { background: var(--white); border-radius: var(--radius); padding: 24px; width: min(92vw, 520px); max-height: 88vh; overflow-y: auto; box-shadow: var(--shadow-xl); }
         .lead-modal h2 { font-family: var(--font-heading); font-size: 20px; font-weight: 800; margin: 0 0 18px; }
@@ -1174,13 +1191,13 @@
         });
     }
     </script>
-    <script src="js/config.js?v=0.56.1"></script>
-    <script src="js/notification.js?v=0.56.1"></script>
-    <script src="js/api.js?v=0.56.1"></script>
-    <script src="js/auth.js?v=0.56.1"></script>
-    <script src="js/components/sidebar.js?v=0.56.1"></script>
+    <script src="js/config.js?v=0.56.2"></script>
+    <script src="js/notification.js?v=0.56.2"></script>
+    <script src="js/api.js?v=0.56.2"></script>
+    <script src="js/auth.js?v=0.56.2"></script>
+    <script src="js/components/sidebar.js?v=0.56.2"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/leads-page.js?v=0.56.1"></script>
-    <script src="js/ui.js?v=0.56.1"></script>
-    <script src="js/alerts.js?v=0.56.1"></script></body>
+    <script src="js/leads-page.js?v=0.56.2"></script>
+    <script src="js/ui.js?v=0.56.2"></script>
+    <script src="js/alerts.js?v=0.56.2"></script></body>
 </html>

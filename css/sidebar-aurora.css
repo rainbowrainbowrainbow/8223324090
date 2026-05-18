@@ -4709,3 +4709,109 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero-stack,
   bottom: -5px !important;
   height: 7px !important;
 }
+
+/* v0.55.37: alert hero carousel.
+   The `1 / N` counter is now an actual pager, not a static label. */
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero {
+  cursor: default !important;
+}
+
+.sidebar-alert-hero-nav {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.sidebar-alert-nav-btn {
+  width: 23px;
+  height: 23px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 23px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: currentColor;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.14s ease;
+}
+
+.sidebar-alert-nav-btn:hover,
+.sidebar-alert-nav-btn:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, currentColor 42%, transparent);
+  background: color-mix(in srgb, currentColor 15%, transparent);
+  transform: translateY(-1px);
+}
+
+.sidebar-alert-nav-btn:disabled,
+.sidebar-alert-hero:not(.has-alert-carousel) .sidebar-alert-nav-btn {
+  display: none !important;
+}
+
+.sidebar-alert-hero-open {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sidebar-alert-hero-open:focus-visible {
+  outline: 2px solid color-mix(in srgb, currentColor 34%, transparent);
+  outline-offset: 4px;
+  border-radius: 10px;
+}
+
+.sidebar-alert-hero.has-alert-carousel .sidebar-alert-hero-index {
+  min-width: 40px;
+  text-align: center;
+}
+
+.sidebar-alert-hero.has-alert-carousel .sidebar-alert-hero-head {
+  align-items: center !important;
+}
+
+.sidebar-alert-hero.has-alert-carousel .sidebar-alert-hero-actions {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, currentColor 12%, transparent), color-mix(in srgb, #ffffff 4%, transparent));
+}
+
+@media (max-width: 768px) {
+  .sidebar-alert-nav-btn {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+  }
+}
+
+@media (min-width: 769px) {
+  .sidebar-nav.collapsed .sidebar-alert-hero-nav,
+  .sidebar-nav.collapsed .sidebar-alert-hero-open {
+    display: none !important;
+  }
+
+  .sidebar-nav.collapsed:hover .sidebar-alert-hero-nav,
+  .sidebar-nav.collapsed:hover .sidebar-alert-hero-open {
+    display: grid !important;
+  }
+
+  .sidebar-nav.collapsed:hover .sidebar-alert-hero-nav {
+    display: inline-flex !important;
+  }
+}

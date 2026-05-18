@@ -30,6 +30,8 @@ const Sidebar = (() => {
         alertsActive: 0,
         alertsUnread: 0,
         alertsCritical: 0,
+        alertItems: [],
+        alertCursor: 0,
         alertHeadline: '',
         alertMeta: '',
         alertLevel: '',
@@ -1123,22 +1125,28 @@ const Sidebar = (() => {
                     </a>
                 </div>
 
-                <button type="button" class="sidebar-primary-action sidebar-alert-hero" id="sidebarPrimaryAction">
+                <div class="sidebar-primary-action sidebar-alert-hero" id="sidebarPrimaryAction" role="group" aria-live="polite" aria-label="Операційний фокус">
                     <span class="sidebar-alert-hero-stack" aria-hidden="true"></span>
                     <span class="sidebar-alert-hero-head">
                         <span class="sidebar-alert-hero-kicker">
                             <span class="sidebar-alert-hero-dot" aria-hidden="true"></span>
                             <span class="sidebar-primary-action-kicker">AI фокус</span>
                         </span>
-                        <span class="sidebar-alert-hero-index" id="sidebarAlertHeroIndex">готово</span>
+                        <span class="sidebar-alert-hero-nav" id="sidebarAlertHeroNav" aria-label="Листання алертів">
+                            <button type="button" class="sidebar-alert-nav-btn" data-sidebar-alert-nav="prev" aria-label="Попередній алерт">‹</button>
+                            <span class="sidebar-alert-hero-index" id="sidebarAlertHeroIndex">готово</span>
+                            <button type="button" class="sidebar-alert-nav-btn" data-sidebar-alert-nav="next" aria-label="Наступний алерт">›</button>
+                        </span>
                     </span>
-                    <span class="sidebar-primary-action-label">Відкрити центр керування</span>
-                    <span class="sidebar-alert-hero-meta" id="sidebarAlertHeroMeta">Короткий маршрут до наступної дії</span>
-                    <span class="sidebar-alert-hero-actions" aria-hidden="true">
-                        <span>Відкрити</span>
-                        <span>›</span>
-                    </span>
-                </button>`;
+                    <button type="button" class="sidebar-alert-hero-open" id="sidebarAlertHeroOpen">
+                        <span class="sidebar-primary-action-label">Відкрити центр керування</span>
+                        <span class="sidebar-alert-hero-meta" id="sidebarAlertHeroMeta">Короткий маршрут до наступної дії</span>
+                        <span class="sidebar-alert-hero-actions" aria-hidden="true">
+                            <span>Відкрити</span>
+                            <span>›</span>
+                        </span>
+                    </button>
+                </div>`;
         }
         if (deck.parentElement !== sidebar) {
             sidebar.insertBefore(deck, links);
@@ -1296,6 +1304,11 @@ const Sidebar = (() => {
     }
 
     function _getSidebarHeroIndex(state = _commandState, tone = _getSidebarHeroTone(state)) {
+        const alertTotal = Array.isArray(state.alertItems) ? state.alertItems.length : 0;
+        if (alertTotal > 0) {
+            const cursor = Math.min(Math.max(Number(state.alertCursor || 0), 0), alertTotal - 1);
+            return `${cursor + 1} / ${alertTotal}`;
+        }
         if (tone === 'critical' || tone === 'warning') {
             const active = Number(state.alertsActive || state.alertsUnread || 0);
             if (active > 0) return `1 / ${active}`;
@@ -1303,6 +1316,72 @@ const Sidebar = (() => {
         if (state.tasksOverdue > 0) return `${_formatSignalCount(state.tasksOverdue)} простр.`;
         if (state.hotLeads > 0) return `${_formatSignalCount(state.hotLeads)} лідів`;
         return 'готово';
+    }
+
+    function _sidebarAlertText(alert, fallback = '') {
+        return String(alert?.title || alert?.message || alert?.description || fallback || '').trim();
+    }
+
+    function _sidebarAlertMeta(alert) {
+        return String(alert?.subtitle || alert?.meta || alert?.context || alert?.type || '').trim();
+    }
+
+    function _sidebarAlertIdentity(alert, index = 0) {
+        return String(alert?.id || alert?.key || `${alert?.level || 'alert'}:${_sidebarAlertText(alert, index)}:${index}`);
+    }
+
+    function _buildSidebarAlertItems(active, unread) {
+        const seen = new Set();
+        return [...(unread || []), ...(active || [])].filter((alert, index) => {
+            const id = _sidebarAlertIdentity(alert, index);
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+        });
+    }
+
+    function _syncSidebarCurrentAlert() {
+        const items = Array.isArray(_commandState.alertItems) ? _commandState.alertItems : [];
+        if (!items.length) {
+            _commandState.alertCursor = 0;
+            _commandState.alertLevel = '';
+            _commandState.alertHeadline = '';
+            _commandState.alertMeta = '';
+            return;
+        }
+        _commandState.alertCursor = Math.min(Math.max(Number(_commandState.alertCursor || 0), 0), items.length - 1);
+        const current = items[_commandState.alertCursor] || items[0];
+        _commandState.alertLevel = current?.level || '';
+        _commandState.alertHeadline = _sidebarAlertText(current);
+        _commandState.alertMeta = _sidebarAlertMeta(current);
+    }
+
+    function _shiftSidebarAlertCursor(delta) {
+        const items = Array.isArray(_commandState.alertItems) ? _commandState.alertItems : [];
+        if (items.length <= 1) return;
+        const step = Number(delta || 0);
+        const total = items.length;
+        _commandState.alertCursor = (_commandState.alertCursor + step + total) % total;
+        _syncSidebarCurrentAlert();
+        _updateSidebarCommandDeck();
+    }
+
+    function _bindSidebarAlertHeroControls(actionEl) {
+        if (!actionEl || actionEl.dataset.alertHeroControlsBound === 'true') return;
+        actionEl.dataset.alertHeroControlsBound = 'true';
+        actionEl.querySelectorAll('[data-sidebar-alert-nav]').forEach((btn) => {
+            btn.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                _shiftSidebarAlertCursor(btn.dataset.sidebarAlertNav === 'prev' ? -1 : 1);
+            });
+        });
+        actionEl.addEventListener('keydown', (event) => {
+            if (!Array.isArray(_commandState.alertItems) || _commandState.alertItems.length <= 1) return;
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+            event.preventDefault();
+            _shiftSidebarAlertCursor(event.key === 'ArrowLeft' ? -1 : 1);
+        });
     }
 
     function _getSidebarHeroMeta(state = _commandState, tone = _getSidebarHeroTone(state)) {
@@ -1337,15 +1416,24 @@ const Sidebar = (() => {
         actionEl.dataset.tone = tone;
         actionEl.querySelector('.sidebar-primary-action-kicker')?.replaceChildren(document.createTextNode(action.kicker));
         actionEl.querySelector('.sidebar-primary-action-label')?.replaceChildren(document.createTextNode(_commandState.alertHeadline || action.label));
+        _bindSidebarAlertHeroControls(actionEl);
         const indexEl = document.getElementById('sidebarAlertHeroIndex');
         if (indexEl) indexEl.textContent = _getSidebarHeroIndex(_commandState, tone);
+        const alertItemsCount = Array.isArray(_commandState.alertItems) ? _commandState.alertItems.length : 0;
+        actionEl.classList.toggle('has-alert-carousel', alertItemsCount > 1);
+        actionEl.querySelectorAll('[data-sidebar-alert-nav]').forEach((btn) => {
+            btn.disabled = alertItemsCount <= 1;
+            btn.setAttribute('aria-hidden', alertItemsCount > 1 ? 'false' : 'true');
+        });
         const metaEl = document.getElementById('sidebarAlertHeroMeta');
         if (metaEl) metaEl.textContent = _getSidebarHeroMeta(_commandState, tone);
         actionEl.dataset.action = action.action || '';
         actionEl.dataset.href = action.href || '';
-        if (actionEl.dataset.primaryBound !== 'true') {
-            actionEl.dataset.primaryBound = 'true';
-            actionEl.addEventListener('click', (event) => {
+        const openEl = document.getElementById('sidebarAlertHeroOpen') || actionEl;
+        openEl.setAttribute('aria-label', `${_getSidebarHeroIndex(_commandState, tone)} · ${_commandState.alertHeadline || action.label}`);
+        if (openEl.dataset.primaryBound !== 'true') {
+            openEl.dataset.primaryBound = 'true';
+            openEl.addEventListener('click', (event) => {
                 const actionName = actionEl.dataset.action;
                 const href = actionEl.dataset.href;
                 if (actionName === 'alerts') {
@@ -1408,7 +1496,12 @@ const Sidebar = (() => {
         const active = alerts.filter(alert => !dismissed.has(alert.id));
         const unread = active.filter(alert => !read.has(alert.id));
         const count = unread.length;
-        const first = unread[0] || active[0] || null;
+        const previousCurrent = _commandState.alertItems?.[_commandState.alertCursor] || null;
+        const previousCurrentId = previousCurrent ? _sidebarAlertIdentity(previousCurrent, _commandState.alertCursor) : '';
+        const alertItems = _buildSidebarAlertItems(active, unread);
+        const nextCursor = previousCurrentId
+            ? alertItems.findIndex((alert, index) => _sidebarAlertIdentity(alert, index) === previousCurrentId)
+            : -1;
         const countEl = document.getElementById('focusChipAlertsValue');
         const metaEl = document.getElementById('focusChipAlertsMeta');
         if (countEl) {
@@ -1425,9 +1518,9 @@ const Sidebar = (() => {
         _commandState.alertsActive = active.length;
         _commandState.alertsUnread = count;
         _commandState.alertsCritical = unread.filter(alert => alert.level === 'critical').length;
-        _commandState.alertLevel = first?.level || '';
-        _commandState.alertHeadline = String(first?.title || first?.message || first?.description || '').trim();
-        _commandState.alertMeta = String(first?.subtitle || first?.meta || first?.context || first?.type || '').trim();
+        _commandState.alertItems = alertItems;
+        _commandState.alertCursor = nextCursor >= 0 ? nextCursor : Math.min(_commandState.alertCursor || 0, Math.max(alertItems.length - 1, 0));
+        _syncSidebarCurrentAlert();
         _setCommandDescription(widget, alertTitle);
         widget.classList.toggle('has-alerts', active.length > 0);
         widget.classList.toggle('has-critical', unread.some(alert => alert.level === 'critical'));

@@ -105,7 +105,7 @@ checkPage('index.html', (doc, html) => {
     check('login release badge matches package release label', doc.querySelector('.login-release-badge')?.textContent.includes(pkg.eventGenix.releaseLabel));
     check('login tagline matches package release contract', doc.querySelector('.tagline')?.textContent === `AI First CRM v${pkg.version} — ${pkg.eventGenix.releaseLabel}`);
     check('login changelog button matches package release contract', doc.getElementById('changelogBtn')?.textContent.includes(`v${pkg.version}: ${pkg.eventGenix.releaseLabel}`));
-    const recentChangelogOrder = ['v0.55.44','v0.55.43','v0.55.42','v0.55.41','v0.55.40','v0.55.39','v0.55.38','v0.55.37','v0.55.36','v0.55.35','v0.55.34','v0.55.33','v0.55.32','v0.55.31','v0.55.30','v0.55.29','v0.55.28','v0.55.27','v0.55.26','v0.55.25','v0.55.24','v0.55.23','v0.55.22','v0.55.21','v0.55.20','v0.55.19','v0.55.18','v0.55.17','v0.55.16','v0.55.15','v0.55.14','v0.55.13','v0.55.12','v0.55.11','v0.55.10','v0.55.9','v0.55.8'];
+    const recentChangelogOrder = ['v0.55.45','v0.55.44','v0.55.43','v0.55.42','v0.55.41','v0.55.40','v0.55.39','v0.55.38','v0.55.37','v0.55.36','v0.55.35','v0.55.34','v0.55.33','v0.55.32','v0.55.31','v0.55.30','v0.55.29','v0.55.28','v0.55.27','v0.55.26','v0.55.25','v0.55.24','v0.55.23','v0.55.22','v0.55.21','v0.55.20','v0.55.19','v0.55.18','v0.55.17','v0.55.16','v0.55.15','v0.55.14','v0.55.13','v0.55.12','v0.55.11','v0.55.10','v0.55.9','v0.55.8'];
     const recentChangelogPositions = recentChangelogOrder.map(version => html.indexOf(`<h4>${version}`));
     check('changelog modal does not jump from latest v0.55 release straight to v0.55.8', recentChangelogPositions.every(pos => pos >= 0) && recentChangelogPositions.every((pos, index, list) => index === 0 || pos > list[index - 1]));
 });
@@ -561,6 +561,7 @@ check('Dashboard renders compact funnel widget from work queue insights', dashbo
 console.log('\nunsafe dismiss guardrails');
 const bookingCode = fs.readFileSync(path.join(ROOT, 'js/booking.js'), 'utf8');
 const timelineCode = fs.readFileSync(path.join(ROOT, 'js/timeline.js'), 'utf8');
+const timelineCss = fs.readFileSync(path.join(ROOT, 'css/timeline.css'), 'utf8');
 const appCodeForDismiss = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
 const financeCode = fs.readFileSync(path.join(ROOT, 'js/finance-page.js'), 'utf8');
 const designsPageCode = fs.readFileSync(path.join(ROOT, 'js/designs-page.js'), 'utf8');
@@ -578,6 +579,7 @@ check('Shared closeAllModals respects editable dirty surfaces', uiCode.includes(
 check('Shared formModal cancel/backdrop path asks dirty guard', uiCode.includes('const requestCancel = async') && uiCode.includes('confirmDiscardIfDirty(overlay') && uiCode.includes("overlay.addEventListener('click', (e) => { if (e.target === overlay) requestCancel(); });"));
 check('Lead edit backdrop and Escape route through guarded close', leadsCode.includes("overlay.id === 'leadModal'") && leadsCode.includes('closeLeadModal(false)') && leadsCode.includes('attemptCloseEditableSurface(modal'));
 check('Booking panel guards date changes and panel close', bookingCode.includes('async function closeBookingPanel') && bookingCode.includes('attemptCloseEditableSurface(panel') && appCodeForDismiss.includes('if (!await closeBookingPanel(false))') && timelineCode.includes('async function selectCell'));
+check('Timeline linked host blocks can initiate group drag', timelineCode.includes('function getBookingDragGroup') && timelineCode.includes('s.draggedBooking = booking') && timelineCode.includes('s.mainBooking = dragGroup.mainBooking') && timelineCode.includes('apiUpdateLinkedBookingsAtomic(mainBooking.id') && timelineCode.includes('if (!isViewer()) {') && timelineCode.includes('if (!isLinked) {') && timelineCss.includes('.booking-block.linked-ghost') && timelineCss.includes('cursor: grab'));
 check('Task/customer/finance edit surfaces use shared dirty guard', tasksCode.includes('attemptCloseEditableSurface(overlay') && customersCode.includes('attemptCloseEditableSurface(modal') && financeCode.includes('attemptCloseEditableSurface(modal'));
 check('Design/catalog overlays guard dirty dismiss paths', designsPageCode.includes('attemptCloseEditableSurface(overlay') && designsHtml.includes('guardedEditableOverlayClose') && designsHtml.includes('closeAutomationModal(false)'));
 check('Staff and HR edit modals use guarded close paths', staffCode.includes('attemptCloseEditableSurface(overlay') && hrCode.includes('closeHrEditableModal') && hrCode.includes('showHrEditableModal'));

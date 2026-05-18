@@ -367,7 +367,8 @@
     opacity: 0.55;
     border-left: 3px dashed rgba(255,255,255,0.4);
     pointer-events: auto;
-    cursor: pointer;
+    cursor: grab;
+    touch-action: none;
 }
 
 .booking-block.linked-ghost:hover {
@@ -663,12 +664,12 @@ body.dragging-active {
 }
 
 /* Grab cursor for draggable booking blocks */
-.booking-block:not(.linked-ghost) {
+.booking-block {
     cursor: grab;
     touch-action: none;
 }
 
-.booking-block:not(.linked-ghost):active {
+.booking-block:active {
     cursor: grabbing;
 }
 

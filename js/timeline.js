@@ -608,13 +608,15 @@ function createBookingBlock(booking, startHour) {
     block.addEventListener('touchend', hideTooltip, { passive: true });
 
     // Feature #14: Initialize drag-and-drop + resize handle
-    if (!isViewer() && !isLinked) {
+    if (!isViewer()) {
         initBookingDrag(block, booking, startHour);
 
-        const resizeHandle = document.createElement('div');
-        resizeHandle.className = 'resize-handle';
-        block.appendChild(resizeHandle);
-        initBookingResize(resizeHandle, block, booking, startHour);
+        if (!isLinked) {
+            const resizeHandle = document.createElement('div');
+            resizeHandle.className = 'resize-handle';
+            block.appendChild(resizeHandle);
+            initBookingResize(resizeHandle, block, booking, startHour);
+        }
     }
 
     return block;
@@ -887,6 +889,11 @@ function _beginBookingDrag(block, booking, startHour, e) {
     const s = _bookingDragState;
     if (!s) return;
     s.moved = true;
+    const dragGroup = getBookingDragGroup(booking);
+    s.draggedBooking = booking;
+    s.mainBooking = dragGroup.mainBooking;
+    s.groupBookings = dragGroup.groupBookings;
+    s.groupBookingIds = new Set(s.groupBookings.map(b => String(b.id)));
 
     // Hide tooltip immediately
     hideTooltip();
@@ -949,45 +956,52 @@ function _beginBookingDrag(block, booking, startHour, e) {
     s.originalGridRect = s.grid ? s.grid.getBoundingClientRect() : null;
 }
 
-// --- Collect related bookings for the dragged main booking ---
-function _collectRelatedBookings(mainBooking) {
+function _getTimelineCachedBookings() {
     const dateStr = formatDate(AppState.selectedDate);
     const cached = AppState.cachedBookings[dateStr];
-    if (!cached) return [];
-    const allBookings = cached.data;
+    return (cached && cached.data) || [];
+}
 
-    const related = [];
+function getBookingDragGroup(draggedBooking) {
+    const allBookings = _getTimelineCachedBookings();
+    const mainId = draggedBooking.linkedTo || draggedBooking.id;
+    const mainBooking = allBookings.find(b => String(b.id) === String(mainId)) || draggedBooking;
+    const groupBookings = allBookings.filter(b =>
+        String(b.id) === String(mainId) || String(b.linkedTo || '') === String(mainId)
+    );
 
-    // Linked bookings: where linkedTo === mainBooking.id
-    const linked = allBookings.filter(b => b.linkedTo === mainBooking.id);
-    linked.forEach(lb => {
-        related.push({
-            booking: lb,
+    if (!groupBookings.some(b => String(b.id) === String(draggedBooking.id))) {
+        groupBookings.push(draggedBooking);
+    }
+    if (!groupBookings.some(b => String(b.id) === String(mainBooking.id))) {
+        groupBookings.push(mainBooking);
+    }
+
+    return { mainBooking, groupBookings, mainId };
+}
+
+// --- Collect related bookings for the dragged booking group ---
+function _collectRelatedBookings(draggedBooking) {
+    const dragGroup = getBookingDragGroup(draggedBooking);
+    return dragGroup.groupBookings
+        .filter(b => String(b.id) !== String(draggedBooking.id))
+        .map(b => ({
+            booking: b,
             type: 'linked',
             moveWith: true,
             checkConflict: true
-        });
-    });
-
-    return related;
+        }));
 }
 
 // --- Find DOM elements for related bookings ---
 function _findRelatedBlocks(relatedBookings) {
     const results = [];
     for (const rb of relatedBookings) {
-        // Find the block in the DOM by matching booking data
         const lineGrid = document.querySelector(`.line-grid[data-line-id="${rb.booking.lineId}"]`);
-        if (!lineGrid) continue;
-        const blocks = lineGrid.querySelectorAll('.booking-block');
-        for (const bl of blocks) {
-            // Match by left position and content (closest approach without data-id)
-            const bookingTime = rb.booking.time;
-            const subtitle = bl.querySelector('.subtitle');
-            if (subtitle && subtitle.textContent.startsWith(bookingTime)) {
-                results.push({ el: bl, booking: rb.booking });
-                break;
-            }
+        const block = lineGrid?.querySelector(`.booking-block[data-booking-id="${rb.booking.id}"]`) ||
+            document.querySelector(`.booking-block[data-booking-id="${rb.booking.id}"]`);
+        if (block) {
+            results.push({ el: block, booking: rb.booking });
         }
     }
     return results;
@@ -1183,12 +1197,12 @@ function _updateConflictPreview(newMin, lineId, timeDelta) {
     const dateStr = formatDate(AppState.selectedDate);
     const allBookings = (AppState.cachedBookings[dateStr] && AppState.cachedBookings[dateStr].data) || [];
     const newEnd = newMin + s.duration;
+    const excludeIds = s.groupBookingIds || new Set([String(s.booking.id), ...s.relatedBookings.map(rb => String(rb.booking.id))]);
 
     // Check main booking conflicts on target line
     const lineBookings = allBookings.filter(b =>
         b.lineId === lineId &&
-        b.id !== s.booking.id &&
-        !s.relatedBookings.some(rb => rb.booking.id === b.id)
+        !excludeIds.has(String(b.id))
     );
 
     let hasConflict = false;
@@ -1323,9 +1337,9 @@ function _validateDragDrop(state, timeDelta) {
     }
 
     // 2. Conflict check for main booking on target line
-    const excludeIds = [s.booking.id, ...s.relatedBookings.map(rb => rb.booking.id)];
+    const excludeIds = s.groupBookingIds || new Set([String(s.booking.id), ...s.relatedBookings.map(rb => String(rb.booking.id))]);
     const lineBookings = allBookings.filter(b =>
-        b.lineId === s.newLineId && !excludeIds.includes(b.id)
+        b.lineId === s.newLineId && !excludeIds.has(String(b.id))
     );
 
     for (const other of lineBookings) {
@@ -1352,7 +1366,7 @@ function _validateDragDrop(state, timeDelta) {
 
         // Conflict check on related booking's line
         const rbLineBookings = allBookings.filter(b =>
-            b.lineId === rb.booking.lineId && !excludeIds.includes(b.id)
+            b.lineId === rb.booking.lineId && !excludeIds.has(String(b.id))
         );
 
         for (const other of rbLineBookings) {
@@ -1388,22 +1402,50 @@ async function _saveDragResult(state, timeDelta, lineChanged) {
     const newTime = minutesToTime(s.currentMin);
 
     try {
-        const mainUpdate = { ...s.booking, time: newTime, lineId: s.newLineId };
+        const draggedId = String(s.draggedBooking?.id || s.booking.id);
+        const mainBooking = s.mainBooking || s.booking;
+        const mainId = String(mainBooking.id);
+        const draggedIsMain = draggedId === mainId;
+        const groupBookings = s.groupBookings || [s.booking, ...s.relatedBookings.map(rb => rb.booking)];
+        const mainPatch = {};
+        const linked = [];
+
+        if (draggedIsMain) {
+            mainPatch.time = newTime;
+            mainPatch.lineId = s.newLineId;
+        } else if (timeDelta !== 0) {
+            mainPatch.time = minutesToTime(timeToMinutes(mainBooking.time) + timeDelta);
+        }
+
+        groupBookings
+            .filter(b => String(b.id) !== mainId)
+            .forEach(b => {
+                const isDragged = String(b.id) === draggedId;
+                const patch = {
+                    id: b.id,
+                    time: isDragged ? newTime : minutesToTime(timeToMinutes(b.time) + timeDelta)
+                };
+                if (isDragged && lineChanged) {
+                    patch.lineId = s.newLineId;
+                }
+                linked.push(patch);
+            });
+
+        const mainUpdate = {
+            ...mainBooking,
+            ...mainPatch
+        };
         const historyData = {
             ...mainUpdate,
+            draggedBookingId: s.draggedBooking?.id || s.booking.id,
+            mainBookingId: mainBooking.id,
             shiftMinutes: timeDelta,
             lineSwitched: lineChanged,
             oldLineId: s.startLineId,
             oldTime: minutesToTime(s.startMin)
         };
-        const linked = s.relatedBookings
-            .filter(rb => rb.moveWith)
-            .map(rb => ({
-                id: rb.booking.id,
-                time: minutesToTime(timeToMinutes(rb.booking.time) + timeDelta)
-            }));
-        const atomicResult = await apiUpdateLinkedBookingsAtomic(s.booking.id, {
-            main: { time: newTime, lineId: s.newLineId },
+        const atomicResult = await apiUpdateLinkedBookingsAtomic(mainBooking.id, {
+            main: mainPatch,
             linked,
             historyAction: 'drag',
             historyData
@@ -1417,23 +1459,31 @@ async function _saveDragResult(state, timeDelta, lineChanged) {
         }
 
         pushUndo('drag', {
-            bookingId: s.booking.id,
-            oldTime: minutesToTime(s.startMin),
-            oldLineId: s.startLineId,
-            newTime: newTime,
-            newLineId: s.newLineId,
+            bookingId: mainBooking.id,
+            draggedBookingId: s.draggedBooking?.id || s.booking.id,
+            oldTime: mainBooking.time,
+            oldLineId: mainBooking.lineId,
+            newTime: mainPatch.time || mainBooking.time,
+            newLineId: mainPatch.lineId || mainBooking.lineId,
             timeDelta: -timeDelta,
-            linked: s.relatedBookings.map(rb => ({
-                id: rb.booking.id,
-                oldTime: rb.booking.time,
-                newTime: minutesToTime(timeToMinutes(rb.booking.time) + timeDelta)
-            }))
+            linked: groupBookings
+                .filter(b => String(b.id) !== mainId)
+                .map(b => {
+                    const patch = linked.find(lb => String(lb.id) === String(b.id)) || {};
+                    return {
+                        id: b.id,
+                        oldTime: b.time,
+                        oldLineId: b.lineId,
+                        newTime: patch.time || b.time,
+                        newLineId: patch.lineId || b.lineId
+                    };
+                })
         });
 
         delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
         await renderTimeline();
 
-        _showDragUndoToast(s.booking, timeDelta, lineChanged);
+        _showDragUndoToast(s.draggedBooking || s.booking, timeDelta, lineChanged);
 
         return true;
     } catch (error) {
@@ -1737,7 +1787,11 @@ handleUndo = async function() {
                 main: { time: oldTime, lineId: oldLineId },
                 linked: linked
                     .filter(lb => bookings.some(b => b.id === lb.id))
-                    .map(lb => ({ id: lb.id, time: lb.oldTime })),
+                    .map(lb => ({
+                        id: lb.id,
+                        time: lb.oldTime,
+                        lineId: lb.oldLineId
+                    })),
                 historyAction: 'undo_drag',
                 historyData: { ...booking, time: oldTime, lineId: oldLineId }
             });

@@ -8538,6 +8538,74 @@ body.dark-mode .guardian-digest-generate-btn {
     z-index: 5;
 }
 
+.chat-layout.omni-workspace-shell.has-assistant-return-bridge {
+    grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.chat-assistant-return-bridge {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin: 10px 16px 0;
+    padding: 12px 14px;
+    border: 1px solid rgba(20,184,166,0.22);
+    border-radius: 18px;
+    background:
+        radial-gradient(circle at 4% 20%, rgba(20,184,166,0.18), transparent 30%),
+        linear-gradient(135deg, rgba(255,255,255,0.94), rgba(240,253,250,0.84));
+    box-shadow: 0 16px 34px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.72);
+    z-index: 4;
+}
+
+.chat-assistant-return-copy {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+
+.chat-assistant-return-copy span {
+    color: #0F766E;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.chat-assistant-return-copy strong {
+    color: #0F172A;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    line-height: 1.1;
+}
+
+.chat-assistant-return-copy small {
+    color: #64748B;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.chat-assistant-return-bridge button {
+    min-height: 42px;
+    padding: 0 16px;
+    border: 1px solid rgba(20,184,166,0.26);
+    border-radius: 14px;
+    background: linear-gradient(135deg, #10B981, #0F766E);
+    color: #ECFEFF;
+    font-weight: 900;
+    cursor: pointer;
+    box-shadow: 0 14px 28px rgba(13,148,136,0.22);
+    transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+}
+
+.chat-assistant-return-bridge button:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.04);
+    box-shadow: 0 18px 34px rgba(13,148,136,0.30);
+}
+
 .omni-workspace-brand {
     min-width: 0;
 }
@@ -8637,6 +8705,12 @@ body.dark-mode .guardian-digest-generate-btn {
 .chat-layout.omni-workspace-shell .chat-info-panel {
     grid-row: 2;
     min-height: 0;
+}
+
+.chat-layout.omni-workspace-shell.has-assistant-return-bridge .chat-sidebar,
+.chat-layout.omni-workspace-shell.has-assistant-return-bridge .chat-main,
+.chat-layout.omni-workspace-shell.has-assistant-return-bridge .chat-info-panel {
+    grid-row: 3;
 }
 
 .chat-layout.omni-workspace-shell .chat-sidebar {
@@ -9054,6 +9128,25 @@ body.dark-mode .omni-workspace-topbar,
     box-shadow: 0 16px 34px rgba(2,6,23,0.34);
 }
 
+body.dark-mode .chat-assistant-return-bridge,
+[data-theme="dark"] .chat-assistant-return-bridge {
+    background:
+        radial-gradient(circle at 4% 20%, rgba(20,184,166,0.16), transparent 30%),
+        linear-gradient(135deg, rgba(15,23,42,0.94), rgba(8,47,73,0.54));
+    border-color: rgba(45,212,191,0.18);
+    box-shadow: 0 16px 34px rgba(2,6,23,0.34), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+body.dark-mode .chat-assistant-return-copy strong,
+[data-theme="dark"] .chat-assistant-return-copy strong {
+    color: #F8FAFC;
+}
+
+body.dark-mode .chat-assistant-return-copy small,
+[data-theme="dark"] .chat-assistant-return-copy small {
+    color: #94A3B8;
+}
+
 body.dark-mode .omni-workspace-title,
 body.dark-mode .omni-mode-header h2,
 body.dark-mode .omni-channel-card h3,
@@ -9202,6 +9295,16 @@ body.dark-mode .omni-more-menu button,
     .omni-workspace-topbar {
         gap: 10px;
         padding: 10px;
+    }
+
+    .chat-assistant-return-bridge {
+        align-items: stretch;
+        flex-direction: column;
+        margin: 8px 10px 0;
+    }
+
+    .chat-assistant-return-bridge button {
+        width: 100%;
     }
 
     .omni-workspace-modes {

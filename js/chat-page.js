@@ -10,6 +10,9 @@
     var _currentChannel = null;
     var _channels = [];
     var _chatUsers = [];
+    var ASSISTANT_CHAT_RETURN_URL_KEY = 'eg_assistant_chat_return_url';
+    var ASSISTANT_CHAT_RETURN_LABEL_KEY = 'eg_assistant_chat_return_label';
+    var ASSISTANT_CHAT_REOPEN_KEY = 'eg_assistant_chat_reopen_panel';
     var _replyTo = null;
     var _editingMsg = null;
     var _contextMsg = null;
@@ -775,6 +778,56 @@
         _setOmniMode('inbox', { skipRender: true });
     }
 
+    function _hasAssistantReturnBridge() {
+        try {
+            var params = new URLSearchParams(window.location.search || '');
+            return params.get('assistantReturn') === '1' || !!sessionStorage.getItem(ASSISTANT_CHAT_RETURN_URL_KEY);
+        } catch {
+            return false;
+        }
+    }
+
+    function _assistantReturnUrl() {
+        var fallback = '/dashboard';
+        try {
+            var stored = sessionStorage.getItem(ASSISTANT_CHAT_RETURN_URL_KEY) || fallback;
+            var url = new URL(stored, window.location.origin);
+            if (url.origin !== window.location.origin) return fallback;
+            return `${url.pathname || fallback}${url.search || ''}${url.hash || ''}`;
+        } catch {
+            return fallback;
+        }
+    }
+
+    function _initAssistantReturnBridge() {
+        if (!_hasAssistantReturnBridge() || document.getElementById('chatAssistantReturnBridge')) return;
+        var topbar = document.querySelector('.omni-workspace-topbar');
+        if (!topbar) return;
+        document.querySelector('.chat-layout.omni-workspace-shell')?.classList.add('has-assistant-return-bridge');
+        var label = 'CRM';
+        try {
+            label = sessionStorage.getItem(ASSISTANT_CHAT_RETURN_LABEL_KEY) || label;
+        } catch {}
+        var bridge = document.createElement('section');
+        bridge.id = 'chatAssistantReturnBridge';
+        bridge.className = 'chat-assistant-return-bridge';
+        bridge.innerHTML = `
+            <div class="chat-assistant-return-copy">
+                <span>Відкрито з Помічника</span>
+                <strong>Мої чати</strong>
+                <small>Повернення: ${_esc(label)}</small>
+            </div>
+            <button type="button" id="chatAssistantReturnBtn">Назад до Помічника</button>
+        `;
+        topbar.insertAdjacentElement('afterend', bridge);
+        document.getElementById('chatAssistantReturnBtn')?.addEventListener('click', function () {
+            try {
+                sessionStorage.setItem(ASSISTANT_CHAT_REOPEN_KEY, '1');
+            } catch {}
+            window.location.href = _assistantReturnUrl();
+        });
+    }
+
     function _checkAuthAndInit() {
         _chatBootStep('auth:start');
         _preloadSounds();
@@ -809,6 +862,7 @@
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
         else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
         _chatBootStep('shell:ready');
+        _initAssistantReturnBridge();
 
         // Connect WebSocket
         if (typeof ParkWS !== 'undefined') ParkWS.connect();

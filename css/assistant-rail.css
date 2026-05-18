@@ -3015,6 +3015,217 @@ body:not(.dark-mode) .crm-assistant-form {
     }
 }
 
+/* v0.57.10: assistant chat bridge workspace */
+.crm-assistant-panel-header-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-left: auto;
+}
+
+.crm-assistant-panel-chat-link,
+.crm-assistant-chat-open {
+    border: 1px solid rgba(94, 234, 212, 0.26);
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.18), rgba(15, 23, 42, 0.72));
+    color: #DDFCF5;
+    font-weight: 900;
+    letter-spacing: 0;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 26px rgba(13, 148, 136, 0.14);
+    cursor: pointer;
+    transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.crm-assistant-panel-chat-link {
+    min-height: 42px;
+    padding: 0 16px;
+}
+
+.crm-assistant-chat-open {
+    min-height: 38px;
+    padding: 0 13px;
+    justify-self: end;
+}
+
+.crm-assistant-panel-chat-link:hover,
+.crm-assistant-chat-open:hover {
+    transform: translateY(-1px);
+    border-color: rgba(94, 234, 212, 0.48);
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(15, 23, 42, 0.82));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 16px 34px rgba(13, 148, 136, 0.22);
+}
+
+.crm-assistant-panel-content {
+    grid-template-columns: minmax(0, 0.9fr) minmax(380px, 1.1fr) !important;
+    grid-template-areas:
+        "snapshot snapshot"
+        "action chat"
+        "teaching chat"
+        "modes chat"
+        "quick chat" !important;
+    grid-template-rows: auto auto auto auto minmax(92px, 1fr) !important;
+}
+
+.crm-assistant-chat-workspace {
+    grid-area: chat;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid rgba(94, 234, 212, 0.18);
+    border-radius: 22px;
+    background:
+        radial-gradient(circle at 12% 0%, rgba(20, 184, 166, 0.14), transparent 34%),
+        linear-gradient(180deg, rgba(15, 23, 42, 0.86), rgba(15, 23, 42, 0.64));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 18px 40px rgba(2, 6, 23, 0.18);
+}
+
+.crm-assistant-chat-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+}
+
+.crm-assistant-chat-head > div {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+}
+
+.crm-assistant-chat-head span {
+    color: rgba(148, 163, 184, 0.86);
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.crm-assistant-chat-head strong {
+    color: #F8FAFC;
+    font-size: 18px;
+    line-height: 1.1;
+}
+
+.crm-assistant-chat-workspace .crm-assistant-history {
+    min-height: 0 !important;
+    height: 100% !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    display: grid !important;
+    align-content: end;
+    gap: 12px !important;
+    padding: 4px 2px 4px 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+}
+
+.crm-assistant-chat-workspace .crm-assistant-history-item {
+    width: min(86%, 620px);
+    display: grid;
+    gap: 5px;
+}
+
+.crm-assistant-chat-workspace .crm-assistant-history-item.user {
+    justify-self: end;
+}
+
+.crm-assistant-chat-workspace .crm-assistant-history-item.assistant {
+    justify-self: start;
+}
+
+.crm-assistant-chat-workspace .crm-assistant-history-item span {
+    padding: 0 4px;
+}
+
+.crm-assistant-chat-workspace .crm-assistant-history-item.user span {
+    text-align: right;
+}
+
+.crm-assistant-chat-workspace .crm-assistant-history-item p {
+    padding: 13px 15px !important;
+    border-radius: 18px !important;
+    line-height: 1.45;
+    box-shadow: 0 12px 26px rgba(2, 6, 23, 0.18);
+}
+
+.crm-assistant-chat-workspace .crm-assistant-history-item.assistant p {
+    background: rgba(15, 23, 42, 0.78) !important;
+    border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+.crm-assistant-chat-workspace .crm-assistant-history-item.user p {
+    background: linear-gradient(135deg, rgba(13, 148, 136, 0.86), rgba(16, 185, 129, 0.72)) !important;
+    color: #ECFEFF !important;
+    border-color: rgba(94, 234, 212, 0.30) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-chat-workspace {
+    background:
+        radial-gradient(circle at 12% 0%, rgba(13, 148, 136, 0.12), transparent 34%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.90), rgba(240, 253, 250, 0.76));
+    border-color: rgba(15, 118, 110, 0.18);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.90), 0 18px 40px rgba(15, 23, 42, 0.08);
+}
+
+body:not(.dark-mode) .crm-assistant-chat-head strong {
+    color: #0F172A;
+}
+
+body:not(.dark-mode) .crm-assistant-panel-chat-link,
+body:not(.dark-mode) .crm-assistant-chat-open {
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.16), rgba(255, 255, 255, 0.88));
+    color: #0F766E;
+    border-color: rgba(15, 118, 110, 0.22);
+}
+
+@media (max-width: 940px) {
+    .crm-assistant-panel-content {
+        grid-template-columns: 1fr !important;
+        grid-template-areas:
+            "snapshot"
+            "action"
+            "teaching"
+            "modes"
+            "chat"
+            "quick" !important;
+        grid-template-rows: auto auto auto auto minmax(260px, 1fr) auto !important;
+    }
+
+    .crm-assistant-chat-workspace {
+        min-height: 280px;
+    }
+}
+
+@media (max-width: 560px) {
+    .crm-assistant-panel-header-actions {
+        gap: 8px;
+    }
+
+    .crm-assistant-panel-chat-link {
+        min-height: 38px;
+        padding: 0 11px;
+        font-size: 13px;
+    }
+
+    .crm-assistant-chat-head {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .crm-assistant-chat-open {
+        width: 100%;
+    }
+
+    .crm-assistant-chat-workspace .crm-assistant-history-item {
+        width: 94%;
+    }
+}
+
 /* v0.57.2: assistant presence constellation, face, and state animation system */
 .crm-assistant-rail {
     --assistant-face-bg-a: rgba(2, 6, 23, 0.92);

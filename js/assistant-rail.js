@@ -56,6 +56,10 @@
         timeline: 'Поясни як допомогти з таймлайном бронювань і поточним днем.'
     };
 
+    const ASSISTANT_CHAT_RETURN_URL_KEY = 'eg_assistant_chat_return_url';
+    const ASSISTANT_CHAT_RETURN_LABEL_KEY = 'eg_assistant_chat_return_label';
+    const ASSISTANT_CHAT_REOPEN_KEY = 'eg_assistant_chat_reopen_panel';
+
     let state = {
         mode: localStorage.getItem('eg_crm_assistant_voice') === 'off' ? 'muted' : 'idle',
         subtitle: 'Я поруч, якщо треба допомога по сторінці.',
@@ -1165,6 +1169,38 @@
         if (history.length > 16) history = history.slice(-16);
     }
 
+    function currentAssistantReturnUrl() {
+        const path = `${window.location.pathname || '/dashboard'}${window.location.search || ''}${window.location.hash || ''}`;
+        return path || '/dashboard';
+    }
+
+    function openCrmChatFromAssistant() {
+        try {
+            const snapshot = buildAssistantSnapshot();
+            sessionStorage.setItem(ASSISTANT_CHAT_RETURN_URL_KEY, currentAssistantReturnUrl());
+            sessionStorage.setItem(ASSISTANT_CHAT_RETURN_LABEL_KEY, snapshot.pageFull || document.title || 'CRM');
+        } catch (error) {
+            console.warn('[CrmAssistantRail] Unable to store assistant chat return context:', error);
+        }
+        window.location.href = '/chat?assistantReturn=1';
+    }
+
+    function resumeAssistantPanelFromChatReturn() {
+        let shouldReopen = false;
+        try {
+            shouldReopen = sessionStorage.getItem(ASSISTANT_CHAT_REOPEN_KEY) === '1';
+            sessionStorage.removeItem(ASSISTANT_CHAT_REOPEN_KEY);
+        } catch {
+            shouldReopen = false;
+        }
+        if (!shouldReopen) return;
+        window.setTimeout(() => {
+            expand();
+            appendHistory('assistant', 'Повернувся з CRM Chat. Можемо продовжити діалог по цій сторінці.');
+            renderHistory();
+        }, 220);
+    }
+
     function expand() {
         const prev = document.getElementById('crmAssistantPanelOverlay');
         if (prev) {
@@ -1181,7 +1217,10 @@
                         <strong>Помічник</strong>
                         <span>AI-провідник CRM</span>
                     </div>
-                    <button type="button" class="crm-assistant-panel-close" aria-label="Закрити" id="crmAssistantPanelClose">×</button>
+                    <div class="crm-assistant-panel-header-actions">
+                        <button type="button" class="crm-assistant-panel-chat-link" id="crmAssistantOpenChatBtn">Мої чати</button>
+                        <button type="button" class="crm-assistant-panel-close" aria-label="Закрити" id="crmAssistantPanelClose">×</button>
+                    </div>
                 </div>
                 <div class="crm-assistant-panel-content" id="crmAssistantPanelContent">
                 <div class="crm-assistant-panel-snapshot" id="crmAssistantPanelSnapshot"></div>
@@ -1198,7 +1237,16 @@
                         <span>03</span><strong>Наступна дія</strong><small>що зробити</small>
                     </button>
                 </div>
-                <div class="crm-assistant-history" id="crmAssistantHistory"></div>
+                <section class="crm-assistant-chat-workspace" id="crmAssistantChatWorkspace" aria-label="Чат з Помічником">
+                    <div class="crm-assistant-chat-head">
+                        <div>
+                            <span>Чат з Помічником</span>
+                            <strong>Поточний діалог</strong>
+                        </div>
+                        <button type="button" class="crm-assistant-chat-open" id="crmAssistantOpenChatInline">Мої чати</button>
+                    </div>
+                    <div class="crm-assistant-history" id="crmAssistantHistory"></div>
+                </section>
                 <div class="crm-assistant-quick-prompts">
                     <button type="button" data-crm-assistant-prompt="Що для мене зараз головне на цій сторінці?">Головне зараз</button>
                     <button type="button" data-crm-assistant-prompt="Поясни цю сторінку моєю роллю">Поясни сторінку</button>
@@ -1218,6 +1266,8 @@
         });
         document.body.appendChild(overlay);
         document.getElementById('crmAssistantPanelClose')?.addEventListener('click', closePanel);
+        document.getElementById('crmAssistantOpenChatBtn')?.addEventListener('click', openCrmChatFromAssistant);
+        document.getElementById('crmAssistantOpenChatInline')?.addEventListener('click', openCrmChatFromAssistant);
         document.getElementById('crmAssistantForm')?.addEventListener('submit', submitPrompt);
         overlay.querySelectorAll('[data-crm-assistant-prompt]').forEach(btn => {
             btn.addEventListener('click', () => runQuickPrompt(btn.dataset.crmAssistantPrompt));
@@ -1605,6 +1655,7 @@
         if (!ensureMounted()) return false;
         if (options.subtitle) announceFromPage(options.subtitle);
         runPendingAssistantCommandFromNavigation();
+        resumeAssistantPanelFromChatReturn();
         window.setTimeout(() => scheduleProactiveHelp(options), initCount === 1 ? 500 : 100);
         return true;
     }

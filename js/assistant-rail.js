@@ -62,6 +62,9 @@
         tickerText: '',
         lastSpokenLine: '',
         voiceEnabled: localStorage.getItem('eg_crm_assistant_voice') !== 'off',
+        playbackState: 'idle',
+        voiceBlocked: false,
+        subtitleMode: 'static',
         updatedAt: new Date().toISOString()
     };
 
@@ -73,6 +76,7 @@
         const api = foundation();
         if (!api?.store?.setState) return;
         const nextMode = normalizeMode(patch.mode ?? state.mode);
+        const playbackState = patch.playbackState || state.playbackState || (nextMode === 'speaking' ? 'speaking' : 'idle');
         api.store.setState({
             mode: nextMode,
             pageId: getCurrentPageKey(),
@@ -80,8 +84,8 @@
             lastAssistantSummaryLine: patch.lastSpokenLine || patch.subtitle || state.lastSpokenLine || state.subtitle || '',
             voiceEnabled: Object.prototype.hasOwnProperty.call(patch, 'voiceEnabled') ? patch.voiceEnabled === true : state.voiceEnabled,
             muted: nextMode === 'muted',
-            speaking: nextMode === 'speaking',
-            playbackState: nextMode === 'speaking' ? 'speaking' : 'idle'
+            speaking: nextMode === 'speaking' || playbackState === 'playing',
+            playbackState
         }, { source });
     }
 
@@ -128,6 +132,7 @@
     let pageInteractionDetected = false;
     let interactionWatchersBound = false;
     let speakingIdleTimer = null;
+    let playbackRunId = 0;
     let initCount = 0;
 
     function escapeHtml(value) {
@@ -305,14 +310,14 @@
 
     function shouldSubtitleScroll(text = '', wrap = null, el = null, mode = state.mode) {
         const normalized = String(text).trim();
-        if (mode === 'error' || mode === 'listening') return false;
+        if (mode === 'error' || mode === 'listening' || mode === 'muted') return false;
         const overflows = !!(wrap && el && (
             el.scrollWidth > wrap.clientWidth + 32 ||
             el.scrollHeight > wrap.clientHeight + 8
         ));
-        if (mode === 'speaking') return normalized.length > 72 || overflows;
-        if (mode === 'thinking') return normalized.length > 120 || overflows;
-        if (normalized.length > 150) return true;
+        if (mode === 'speaking') return normalized.length > 112 || overflows;
+        if (mode === 'thinking') return normalized.length > 160 || overflows;
+        if (normalized.length > 190) return true;
         return overflows;
     }
 
@@ -328,7 +333,9 @@
         speakingIdleTimer = window.setTimeout(() => {
             speakingIdleTimer = null;
             if (state.mode === 'speaking' && state.lastSpokenLine === text) {
-                setState({ mode: 'idle', tickerText: '' });
+                playbackRunId += 1;
+                releaseAudioPlayer();
+                setState({ mode: 'idle', playbackState: 'timeout', tickerText: '' });
             }
         }, holdMs);
     }
@@ -352,6 +359,8 @@
         rail.dataset.mode = state.mode;
         rail.dataset.aiState = UI_STATES[state.mode] || 'ready';
         rail.dataset.live = isLiveMode(state.mode) ? 'true' : 'false';
+        rail.dataset.playbackState = state.playbackState || 'idle';
+        rail.dataset.subtitleMode = state.subtitleMode || 'static';
         stateEl.textContent = LABELS[state.mode] || LABELS.idle;
         stateEl.className = `assistant-rail-state assistant-state-${state.mode}`;
         const signalCount = document.getElementById('crmAssistantSignalCount');
@@ -382,22 +391,32 @@
         subtitlesEl.style.removeProperty('--assistant-ticker-duration');
         voiceBtn.textContent = state.voiceEnabled ? '🔊' : '🔇';
         voiceBtn.setAttribute('aria-pressed', state.voiceEnabled ? 'true' : 'false');
+        voiceBtn.title = state.voiceBlocked
+            ? 'Озвучення заблоковано браузером. Натисни після взаємодії, щоб спробувати знову.'
+            : 'Увімкнути або вимкнути голос';
         if (micBtn) {
             const listening = mediaRecorder?.state === 'recording' || state.mode === 'listening';
             micBtn.classList.toggle('active', listening);
             micBtn.setAttribute('aria-pressed', listening ? 'true' : 'false');
             micBtn.title = listening ? 'Зупинити запис голосу' : 'Голосовий ввід';
         }
-        if (replayBtn) replayBtn.disabled = !(state.lastSpokenLine || state.subtitle);
+        if (replayBtn) {
+            replayBtn.disabled = !(state.lastSpokenLine || state.subtitle);
+            replayBtn.title = state.voiceEnabled ? 'Повторити останню репліку голосом' : 'Показати останню репліку ще раз';
+        }
 
         requestAnimationFrame(() => {
             const liveLine = isLiveMode(state.mode);
             const ticker = shouldSubtitleScroll(text, subtitlesWrap, subtitlesEl, state.mode);
+            const subtitleMode = ticker ? 'ticker' : liveLine ? 'live' : 'static';
             subtitlesEl.classList.toggle('is-live-line', liveLine);
             subtitlesEl.classList.toggle('is-ticker', ticker);
+            subtitlesWrap?.classList.toggle('is-ticker-wrap', ticker);
+            rail.dataset.subtitleMode = subtitleMode;
+            state.subtitleMode = subtitleMode;
             if (ticker) {
                 subtitlesEl.setAttribute('data-ticker-text', text);
-                const duration = Math.min(28, Math.max(14, Math.ceil(String(text).length / 8)));
+                const duration = Math.min(34, Math.max(18, Math.ceil(String(text).length / 7)));
                 subtitlesEl.style.setProperty('--assistant-ticker-duration', `${duration}s`);
             } else {
                 subtitlesEl.removeAttribute('data-ticker-text');
@@ -652,7 +671,7 @@
         await playReply(normalizeReply(reply, context), { textOnly: options.textOnly === true });
     }
 
-    function stopAudioPlayback() {
+    function releaseAudioPlayer() {
         if (audioPlayer) {
             try {
                 audioPlayer.pause();
@@ -666,67 +685,129 @@
         }
     }
 
+    function stopAudioPlayback(options = {}) {
+        const { setIdle = false, reason = 'interrupted' } = options;
+        playbackRunId += 1;
+        releaseAudioPlayer();
+        clearSpeakingIdleTimer();
+        if (setIdle && state.mode === 'speaking') {
+            setState({
+                mode: state.voiceEnabled ? 'idle' : 'muted',
+                playbackState: reason,
+                tickerText: ''
+            });
+        }
+    }
+
+    function isPlaybackBlocked(error) {
+        const name = String(error?.name || '').toLowerCase();
+        const message = String(error?.message || '').toLowerCase();
+        return name.includes('notallowed') || name.includes('security') || /autoplay|gesture|user activation|not allowed/.test(message);
+    }
+
+    function handlePlaybackFailure(error, line) {
+        if (isPlaybackBlocked(error)) {
+            localStorage.setItem('eg_crm_assistant_voice', 'off');
+            localStorage.setItem('eg_dashboard_assistant_voice', 'off');
+            setState({
+                voiceEnabled: false,
+                voiceBlocked: true,
+                mode: 'muted',
+                playbackState: 'blocked',
+                subtitle: line,
+                tickerText: ''
+            });
+            return;
+        }
+        setState({
+            mode: state.voiceEnabled ? 'idle' : 'muted',
+            playbackState: 'error',
+            subtitle: line,
+            tickerText: ''
+        });
+    }
+
     async function speakText(text) {
         const line = String(text || '').trim();
         if (!line) return;
-        stopAudioPlayback();
-        const resp = await fetch('/api/crm-assistant/speak', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + localStorage.getItem('pzp_token')
-            },
-            body: JSON.stringify({ text: line })
-        });
+        playbackRunId += 1;
+        const runId = playbackRunId;
+        releaseAudioPlayer();
+        let resp;
+        try {
+            resp = await fetch('/api/crm-assistant/speak', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + localStorage.getItem('pzp_token')
+                },
+                body: JSON.stringify({ text: line })
+            });
+        } catch (err) {
+            if (runId !== playbackRunId) return { interrupted: true };
+            throw err;
+        }
+        if (runId !== playbackRunId) return { interrupted: true };
         if (!resp.ok) {
             const data = await resp.json().catch(() => ({}));
             throw new Error(data.error || `crm_assistant_speak_http_${resp.status}`);
         }
         const blob = await resp.blob();
+        if (runId !== playbackRunId) return { interrupted: true };
         audioUrl = URL.createObjectURL(blob);
         audioPlayer = new Audio(audioUrl);
         audioPlayer.onended = () => {
-            stopAudioPlayback();
-            if (state.mode === 'speaking') setState({ mode: 'idle', tickerText: '' });
+            if (runId !== playbackRunId) return;
+            releaseAudioPlayer();
+            clearSpeakingIdleTimer();
+            if (state.mode === 'speaking') setState({ mode: 'idle', playbackState: 'ended', tickerText: '' });
         };
         audioPlayer.onerror = () => {
-            stopAudioPlayback();
-            if (state.mode === 'speaking') setState({ mode: 'idle', tickerText: '' });
+            if (runId !== playbackRunId) return;
+            releaseAudioPlayer();
+            if (state.mode === 'speaking') setState({ mode: 'idle', playbackState: 'error', tickerText: '' });
         };
         await audioPlayer.play();
+        if (runId === playbackRunId) {
+            setState({ mode: 'speaking', playbackState: 'playing', subtitle: line, tickerText: line });
+            scheduleSpeakingIdleFallback(line);
+        }
+        return { success: true };
     }
 
     async function playReply(reply, options = {}) {
         const text = String(reply?.subtitle || reply?.summary || reply?.text || '').trim();
         if (!text) return;
-        appendHistory('assistant', text);
+        if (options.addToHistory !== false) appendHistory('assistant', text);
         const shouldPlayAudio = state.voiceEnabled && !options.textOnly;
         clearSpeakingIdleTimer();
+        stopAudioPlayback();
         setState({
-            mode: 'speaking',
+            mode: shouldPlayAudio ? 'speaking' : state.voiceEnabled ? 'idle' : 'muted',
             subtitle: text,
-            tickerText: text,
-            lastSpokenLine: text
+            tickerText: shouldPlayAudio ? text : '',
+            lastSpokenLine: text,
+            playbackState: shouldPlayAudio ? 'loading' : state.voiceEnabled ? 'text' : 'muted'
         });
         renderHistory();
         if (!shouldPlayAudio) {
-            scheduleSpeakingIdleFallback(text);
             return;
         }
         try {
             await speakText(text);
         } catch (err) {
             console.warn('[crm-assistant] speech playback failed:', err);
-            if (state.mode === 'speaking') setState({ mode: 'idle', tickerText: '' });
+            handlePlaybackFailure(err, text);
         }
     }
 
     function handleError(error, fallback = 'Не вдалося отримати відповідь асистента.') {
+        stopAudioPlayback({ setIdle: false, reason: 'error' });
         const code = String(error?.message || '');
         const subtitle = code.includes('openai_not_configured')
             ? 'OpenAI ще не налаштовано на сервері. Потрібен OPENAI_API_KEY у backend env.'
             : fallback;
-        setState({ mode: 'error', subtitle, tickerText: subtitle });
+        setState({ mode: 'error', subtitle, tickerText: subtitle, playbackState: 'error' });
         appendHistory('assistant', subtitle);
         renderHistory();
     }
@@ -752,7 +833,11 @@
 
     async function toggleListening() {
         cancelProactiveHelp();
+        if (state.mode === 'speaking' || audioPlayer) {
+            stopAudioPlayback({ setIdle: true, reason: 'interrupted' });
+        }
         if (mediaRecorder && mediaRecorder.state === 'recording') {
+            setState({ mode: 'thinking', subtitle: 'Завершую запис і готую відповідь...', tickerText: '', playbackState: 'idle' });
             mediaRecorder.stop();
             return;
         }
@@ -797,7 +882,7 @@
                 }
             };
 
-            setState({ mode: 'listening', subtitle: 'Слухаю тебе. Говори природно.', tickerText: '' });
+            setState({ mode: 'listening', subtitle: 'Слухаю. Скажи коротко, що треба зробити.', tickerText: '', playbackState: 'listening' });
             recorder.start();
         } catch (err) {
             handleError(err, 'Не вдалося увімкнути мікрофон.');
@@ -806,21 +891,24 @@
 
     function toggleVoice() {
         const next = !state.voiceEnabled;
+        if (!next) stopAudioPlayback({ setIdle: false, reason: 'muted' });
         localStorage.setItem('eg_crm_assistant_voice', next ? 'on' : 'off');
         localStorage.setItem('eg_dashboard_assistant_voice', next ? 'on' : 'off');
         setState({
             voiceEnabled: next,
+            voiceBlocked: false,
             mode: next ? 'idle' : 'muted',
+            playbackState: next ? 'idle' : 'muted',
             subtitle: next
-                ? 'Голос увімкнено. Підказки показуються текстом і можуть озвучуватись.'
-                : 'Голос вимкнено. Підказки залишаються текстом і субтитрами.',
+                ? 'Голос увімкнено. Наступні підказки можна озвучувати.'
+                : 'Голос вимкнено. Відповіді залишаються в тексті та субтитрах.',
             tickerText: ''
         });
     }
 
     async function replayLastLine() {
         const line = state.lastSpokenLine || state.subtitle || 'Немає останньої репліки для повтору.';
-        await playReply({ text: line, subtitle: line }, { textOnly: !state.voiceEnabled });
+        await playReply({ text: line, subtitle: line }, { textOnly: !state.voiceEnabled, addToHistory: false });
     }
 
     function appendHistory(role, text) {
@@ -959,6 +1047,20 @@
         return (context.actions || []).find(action => action.actionId === actionId) || null;
     }
 
+    function actionReasonText(signal = null, proposal = null, context = {}) {
+        if (signal?.evidence) return `Бо зараз видно: ${signal.evidence}`;
+        if (signal?.label) return `Бо головний сигнал зараз — ${signal.label}.`;
+        if (context.contextSummary?.headline) return `Опираюсь на ${context.contextSummary.headline}.`;
+        return proposal?.failureMessage || 'Дія взята з безпечного assistant action registry для цього екрана.';
+    }
+
+    function teachingStepLine(result = {}) {
+        const step = result.flow?.step || result.step || {};
+        if (result.done) return 'Маршрут завершено. Ти вже в правильній зоні екрана.';
+        if (result.success === false) return result.fallbackText || 'Цей крок зараз недоступний, тому не підсвічую неточну ціль.';
+        return step.text || result.target?.label || 'Показую стабільний елемент на екрані.';
+    }
+
     function renderActionProposal() {
         const container = document.getElementById('crmAssistantActionProposal');
         if (!container) return;
@@ -980,18 +1082,19 @@
             return;
         }
         const confirmation = proposal.confirmationNeeded ? '<small>потрібне підтвердження</small>' : '<small>безпечна дія</small>';
-        const reason = signal?.evidence || signal?.label || 'Дія взята з assistant action registry для поточної сторінки.';
+        const reason = actionReasonText(signal, proposal, context);
+        const actionType = proposal.actionType ? `<em>${escapeHtml(proposal.actionType)}</em>` : '';
         container.innerHTML = `
-            <div class="crm-assistant-action-card">
+            <div class="crm-assistant-action-card" data-action-type="${escapeHtml(proposal.actionType || 'focus')}">
                 <div>
-                    <span>Рекомендована дія</span>
+                    <span>Рекомендована дія ${actionType}</span>
                     <strong>${escapeHtml(proposal.label || 'Виконати дію')}</strong>
-                    <p>${escapeHtml(compactText(reason, '', 150))}</p>
+                    <p>${escapeHtml(compactText(reason, '', 170))}</p>
                     ${confirmation}
                 </div>
                 <div class="crm-assistant-action-buttons">
                     <button type="button" class="crm-assistant-action-primary" data-crm-assistant-run-action="${escapeHtml(proposal.actionId)}">
-                        Виконати
+                        ${proposal.confirmationNeeded ? 'Підтвердити' : 'Виконати'}
                     </button>
                     ${secondary ? `<button type="button" class="crm-assistant-action-secondary" data-crm-assistant-run-action="${escapeHtml(secondary.actionId)}">${escapeHtml(secondary.label)}</button>` : ''}
                 </div>
@@ -1023,7 +1126,7 @@
                     </div>
                     <div class="crm-assistant-teaching-buttons">
                         <button type="button" data-crm-assistant-highlight-target="${escapeHtml(step.targetId || '')}">Показати</button>
-                        ${canNext ? '<button type="button" data-crm-assistant-teaching-next="1">Далі</button>' : ''}
+                        ${canNext ? '<button type="button" data-crm-assistant-teaching-next="1">Далі</button>' : '<button type="button" data-crm-assistant-teaching-next="1">Готово</button>'}
                         <button type="button" data-crm-assistant-teaching-dismiss="1">Закрити</button>
                     </div>
                 </div>
@@ -1078,25 +1181,35 @@
         const result = highlightTeachingTarget(target, { durationMs: 3600 });
         if (!result.success) {
             setState({ mode: 'idle', subtitle: result.fallbackText || 'Точна ціль зараз недоступна.', tickerText: '' });
+        } else {
+            setState({ mode: 'success', subtitle: `${result.target?.label || 'Елемент'} підсвічено на екрані.`, tickerText: '' });
         }
         renderTeachingRunner();
     }
 
     function handleTeachingStart(flowId) {
         const result = foundation()?.teaching?.start?.(flowId);
-        if (!result?.success) setState({ mode: 'idle', subtitle: result?.fallbackText || 'Цей навчальний сценарій зараз недоступний.', tickerText: '' });
+        setState({
+            mode: result?.success ? 'success' : 'idle',
+            subtitle: teachingStepLine(result || { success: false, fallbackText: 'Цей навчальний сценарій зараз недоступний.' }),
+            tickerText: ''
+        });
         renderTeachingRunner();
     }
 
     function handleTeachingNext() {
         const result = foundation()?.teaching?.next?.();
-        if (result?.done) setState({ mode: 'idle', subtitle: 'Короткий навчальний маршрут завершено.', tickerText: '' });
-        if (result && result.success === false) setState({ mode: 'idle', subtitle: result.fallbackText || 'Наступний крок зараз недоступний.', tickerText: '' });
+        setState({
+            mode: result?.success && !result?.done ? 'success' : 'idle',
+            subtitle: teachingStepLine(result || { success: false, fallbackText: 'Навчальний маршрут зараз недоступний.' }),
+            tickerText: ''
+        });
         renderTeachingRunner();
     }
 
     function handleTeachingDismiss() {
         foundation()?.teaching?.dismiss?.();
+        setState({ mode: state.voiceEnabled ? 'idle' : 'muted', subtitle: 'Навчання закрито. Можу повернутись до маршруту, коли буде потрібно.', tickerText: '' });
         renderTeachingRunner();
     }
 
@@ -1116,9 +1229,10 @@
         const prompt = String(text || '').trim();
         if (!prompt) return;
         cancelProactiveHelp();
+        stopAudioPlayback({ setIdle: false, reason: 'interrupted' });
         appendHistory('user', prompt);
         renderHistory();
-        setState({ mode: 'thinking', subtitle: 'Думаю над відповіддю по цій сторінці...', tickerText: '' });
+        setState({ mode: 'thinking', subtitle: 'Думаю над відповіддю по цій сторінці...', tickerText: '', playbackState: 'idle' });
         try {
             const reply = await requestGuideReply({ userMessage: prompt });
             await playReply(reply);
@@ -1130,11 +1244,13 @@
     function announceFromPage(text) {
         const line = String(text || '').trim();
         if (!line) return;
+        stopAudioPlayback({ setIdle: false, reason: 'interrupted' });
         setState({
             mode: state.voiceEnabled ? 'idle' : 'muted',
             subtitle: line,
             tickerText: '',
-            lastSpokenLine: line
+            lastSpokenLine: line,
+            playbackState: 'text'
         });
     }
 

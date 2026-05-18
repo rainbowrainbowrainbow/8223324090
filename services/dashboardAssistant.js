@@ -146,6 +146,37 @@ function inferRiskLevel(context = {}) {
     return context.fallbackReason ? 'low' : 'none';
 }
 
+function rankSignal(signal = {}) {
+    const severity = String(signal.severity || '').toLowerCase();
+    if (severity === 'critical') return 5;
+    if (severity === 'danger') return 4;
+    if (severity === 'warning') return 3;
+    if (severity === 'info') return 2;
+    return 1;
+}
+
+function roleStrategicFrame(role = '') {
+    const key = String(role || '').toLowerCase();
+    if (key === 'director') return 'Для директора це контроль P&L, ризику і відповідальності';
+    if (key === 'manager') return 'Для менеджера це фокус на лідах, задачах і командному тиску';
+    if (key === 'hr') return 'Для HR це контроль людей, графіка і конфліктів';
+    if (key === 'art_director') return 'Для артдиректора це контроль контенту і production pipeline';
+    if (key === 'creator') return 'Для creator це перевірка цілісності CRM-сценарію';
+    return 'Операційний висновок';
+}
+
+function buildStrategicRecommendation(context = {}, summary = '') {
+    const signals = Array.isArray(context.signals) && context.signals.length ? context.signals : context.evidence || [];
+    const strongest = signals.slice().sort((a, b) => rankSignal(b) - rankSignal(a))[0] || null;
+    const action = context.actionProposal || (Array.isArray(context.actions) ? context.actions[0] : null);
+    const role = context.roleSnapshot?.permissionRole || context.role || '';
+    const frame = roleStrategicFrame(role);
+    const signalText = compactString(strongest?.evidence || strongest?.label || summary, 220);
+    if (action?.label && signalText) return `${frame}: ${signalText}. Наступний крок — ${action.label}.`;
+    if (signalText) return `${frame}: ${signalText}. Обери один контрольний крок і доведи його до результату.`;
+    return summary || 'Почни з найсильнішого видимого CRM-сигналу і однієї безпечної дії.';
+}
+
 function normalizeAssistantReply(reply, context = {}, extra = {}) {
     const source = reply && typeof reply === 'object' ? reply : { text: reply };
     const summary = compactString(source.summary || source.subtitle || source.text || source.recommendation, 900)
@@ -161,7 +192,7 @@ function normalizeAssistantReply(reply, context = {}, extra = {}) {
         evidence,
         riskLevel: extra.riskLevel || source.riskLevel || inferRiskLevel(context),
         confidence: source.confidence || (evidence.length ? 'medium' : 'low'),
-        recommendation: compactString(source.recommendation || summary, 900),
+        recommendation: compactString(source.recommendation || buildStrategicRecommendation(context, summary), 900),
         actionProposal,
         teachingTarget,
         fallbackReason: source.fallbackReason || context.fallbackReason || '',
@@ -189,6 +220,7 @@ async function getDashboardAssistantReply(input = {}) {
                     role: 'user',
                     content: [
                         'Контекст CRM assistant rail. Дай коротку in-product підказку українською.',
+                        'Формат думки: що бачу → чому це важливо → одна найкраща наступна дія. Не розширюй відповідь, якщо даних мало.',
                         JSON.stringify(context, null, 2)
                     ].join('\n\n')
                 }

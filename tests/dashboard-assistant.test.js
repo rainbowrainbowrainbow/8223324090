@@ -171,12 +171,26 @@ describe('dashboard assistant service contract', () => {
 
         assert.equal(reply.summary, 'Коротка role-aware підказка.');
         assert.equal(reply.subtitle, 'Коротка role-aware підказка.');
-        assert.equal(reply.recommendation, 'Коротка role-aware підказка.');
+        assert.match(reply.recommendation, /Для менеджера|Коротка role-aware підказка/);
         assert.equal(request.url, 'https://openai.test/v1/responses');
         assert.equal(request.options.headers.Authorization, 'Bearer test-openai-key');
         assert.doesNotMatch(request.options.body, /test-openai-key/);
         assert.match(request.options.body, /funnel/);
         assert.match(request.options.body, /Що головне\?/);
+    });
+
+    it('builds sharper strategic recommendations from signals and actions', () => {
+        clearAssistantModules();
+        const { normalizeAssistantReply } = require('../services/dashboardAssistant');
+        const reply = normalizeAssistantReply({ summary: 'Є фінансовий ризик.' }, {
+            role: 'director',
+            signals: [{ signalId: 'finance.debt.overdue', label: 'Overdue debt', severity: 'danger', evidence: '3 борги на 12000 грн.' }],
+            actionProposal: { actionId: 'finance.open-debts', page: 'finance', actionType: 'filter', label: 'Open debts tab' }
+        });
+
+        assert.equal(reply.riskLevel, 'high');
+        assert.match(reply.recommendation, /P&L|ризику/);
+        assert.match(reply.recommendation, /Open debts tab/);
     });
 
     it('fails closed when OPENAI_API_KEY is not configured', async () => {

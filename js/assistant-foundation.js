@@ -820,9 +820,41 @@
                 label: compactText(item.label || item.evidence || item.text || item.signalId || `Evidence ${index + 1}`, 180),
                 value: compactText(item.value || item.count || '', 80),
                 source: compactText(item.source || 'adapter', 80),
-                signalId: compactText(item.signalId || item.id || `evidence-${index + 1}`, 80)
+                signalId: compactText(item.signalId || item.id || `evidence-${index + 1}`, 80),
+                severity: compactText(item.severity || '', 40)
             };
         });
+    }
+
+    function inferReplyRiskLevel(evidence = [], fallbackReason = '') {
+        const levels = normalizeEvidence(evidence).map(item => String(item.severity || item.label || '').toLowerCase());
+        if (levels.some(item => /critical|критич/.test(item))) return 'critical';
+        if (levels.some(item => /danger|overdue|debt|борг|простроч/.test(item))) return 'high';
+        if (levels.some(item => /warning|waiting|unread|ризик|очіку/.test(item))) return 'medium';
+        return fallbackReason ? 'low' : 'none';
+    }
+
+    function roleStrategicFrame(role = '') {
+        const key = String(role || '').toLowerCase();
+        if (key === 'director') return 'Для директора це контроль ризику і грошей';
+        if (key === 'manager') return 'Для менеджера це наступна операційна дія';
+        if (key === 'hr') return 'Для HR це стабільність людей і графіка';
+        if (key === 'art_director') return 'Для артдиректора це контроль production pipeline';
+        if (key === 'creator') return 'Для creator це перевірка цілісності сценарію';
+        return 'Практичний висновок';
+    }
+
+    function buildStrategicRecommendation(context = {}, summary = '') {
+        const role = context.roleSnapshot?.permissionRole || context.roleSnapshot?.role || '';
+        const frame = roleStrategicFrame(role);
+        const strongest = toList(context.signals || context.evidence || [], 8)
+            .map(normalizeSignal)
+            .sort((a, b) => severityRank(b) - severityRank(a))[0] || null;
+        const action = context.actionProposal || toList(context.actions || [], 6)[0] || null;
+        const signalText = strongest?.evidence || strongest?.label || compactText(summary, 160);
+        if (action?.label && signalText) return `${frame}: ${signalText}. Наступний крок — ${action.label}.`;
+        if (signalText) return `${frame}: ${signalText}. Обери один контрольний крок і не розпорошуй фокус.`;
+        return summary || 'Почни з найсильнішого видимого сигналу і однієї безпечної дії.';
     }
 
     function normalizeReply(reply = {}, context = {}) {
@@ -841,9 +873,9 @@
             text: compactText(source.text || summary, 900),
             subtitle: compactText(source.subtitle || summary, 700),
             evidence: normalizeEvidence(evidenceSource),
-            riskLevel: RISK_LEVELS.has(source.riskLevel) ? source.riskLevel : 'none',
+            riskLevel: RISK_LEVELS.has(source.riskLevel) ? source.riskLevel : inferReplyRiskLevel(evidenceSource, source.fallbackReason || context.fallbackReason),
             confidence: CONFIDENCE_LEVELS.has(source.confidence) ? source.confidence : (normalizeEvidence(evidenceSource).length ? 'medium' : 'low'),
-            recommendation: compactText(source.recommendation || summary, 700),
+            recommendation: compactText(source.recommendation || buildStrategicRecommendation(context, summary), 700),
             actionProposal,
             teachingTarget,
             fallbackReason: compactText(source.fallbackReason || context.fallbackReason || '', 240),

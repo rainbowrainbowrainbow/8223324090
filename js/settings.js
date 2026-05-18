@@ -422,7 +422,7 @@ async function editLineModal(lineId) {
     document.getElementById('editLineName').value = line.name;
     document.getElementById('editLineColor').value = line.color;
 
-    populateAnimatorsSelect();
+    await populateAnimatorsSelect(line.name);
 
     document.getElementById('editLineModal')?.classList.remove('hidden');
 }
@@ -433,6 +433,53 @@ function getSavedAnimators() {
         return JSON.parse(saved);
     }
     return ['Женя', 'Анлі', 'Маша', 'Діма', 'Оля', 'Катя', 'Настя', 'Саша'];
+}
+
+let _timelineAnimatorStaffCache = { ts: 0, items: [] };
+
+function isTimelineAnimatorStaff(staff) {
+    if (!staff || staff.is_active === false || staff.isActive === false) return false;
+    const role = String(staff.role_type || staff.roleType || '').trim().toLowerCase();
+    const position = String(staff.position || '').trim().toLowerCase();
+    const department = String(staff.department || '').trim().toLowerCase();
+    const isFreelance = staff.is_freelance === true || staff.isFreelance === true;
+
+    const isAnimatorRole = role === 'animator';
+    const isAnimatorPosition = position.includes('аніматор') || position.includes('animator');
+    const isAnimatorFreelance = isFreelance && (department === 'animators' || isAnimatorRole || isAnimatorPosition);
+
+    return isAnimatorRole || isAnimatorPosition || isAnimatorFreelance;
+}
+
+async function getTimelineAnimatorStaffOptions() {
+    const now = Date.now();
+    if (_timelineAnimatorStaffCache.items.length && now - _timelineAnimatorStaffCache.ts < 5 * 60 * 1000) {
+        return _timelineAnimatorStaffCache.items;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/staff?active=true`, { headers: getAuthHeaders(false) });
+        if (typeof handleAuthError === 'function' && handleAuthError(response)) return [];
+        if (!response.ok) throw new Error(`Staff API ${response.status}`);
+        const data = await response.json();
+        const rows = Array.isArray(data?.data) ? data.data : [];
+        const items = rows
+            .filter(isTimelineAnimatorStaff)
+            .map(staff => ({
+                id: staff.id,
+                name: String(staff.name || '').trim(),
+                position: String(staff.position || '').trim(),
+                isFreelance: staff.is_freelance === true || staff.isFreelance === true
+            }))
+            .filter(staff => staff.name)
+            .sort((a, b) => Number(a.isFreelance) - Number(b.isFreelance) || a.name.localeCompare(b.name, 'uk'));
+
+        _timelineAnimatorStaffCache = { ts: now, items };
+        return items;
+    } catch (err) {
+        console.warn('[Timeline] Animator staff list fallback:', err);
+        return [];
+    }
 }
 
 function saveAnimatorsList() {
@@ -455,19 +502,31 @@ function showAnimatorsModal() {
     document.getElementById('animatorsModal')?.classList.remove('hidden');
 }
 
-function populateAnimatorsSelect() {
+async function populateAnimatorsSelect(selectedName = '') {
     const select = document.getElementById('editLineNameSelect');
     if (!select) return;
 
-    const animators = getSavedAnimators();
+    select.disabled = true;
+    select.innerHTML = '<option value="">Завантаження аніматорів...</option>';
+
+    const animators = await getTimelineAnimatorStaffOptions();
 
     select.innerHTML = '<option value="">Оберіть аніматора</option>';
-    animators.forEach(name => {
+    if (!animators.length) {
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = 'У Staff немає активних аніматорів';
+        empty.disabled = true;
+        select.appendChild(empty);
+    }
+    animators.forEach(animator => {
         const option = document.createElement('option');
-        option.value = name;
-        option.textContent = name;
+        option.value = animator.name;
+        option.textContent = animator.name + (animator.isFreelance ? ' · фріланс' : '');
         select.appendChild(option);
     });
+    select.value = animators.some(animator => animator.name === selectedName) ? selectedName : '';
+    select.disabled = false;
 }
 
 async function handleEditLine(e) {

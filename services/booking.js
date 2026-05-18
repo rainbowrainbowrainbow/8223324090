@@ -209,10 +209,10 @@ async function getScheduledAnimatorLines(date, db = pool) {
            AND s.is_active = true
            AND ss.status IN ('working', 'remote')
            AND (
-                s.department = 'animators'
-                OR s.role_type = 'animator'
+                s.role_type = 'animator'
                 OR LOWER(COALESCE(s.position, '')) LIKE '%animator%'
                 OR LOWER(COALESCE(s.position, '')) LIKE '%аніматор%'
+                OR (s.department = 'animators' AND COALESCE(s.is_freelance, false) = true)
            )
          ORDER BY COALESCE(ss.shift_start, '99:99'), s.name`,
         [date]

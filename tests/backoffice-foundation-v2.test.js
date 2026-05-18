@@ -21,6 +21,7 @@ describe('backoffice foundation v2 contracts', () => {
     const linesRoute = readRepoFile('routes', 'lines.js');
     const bookingService = readRepoFile('services', 'booking.js');
     const timelinePage = readRepoFile('js', 'timeline.js');
+    const settingsPage = readRepoFile('js', 'settings.js');
     const sidebar = readRepoFile('js', 'components', 'sidebar.js');
     const sidebarAurora = readRepoFile('css', 'sidebar-aurora.css');
     const ui = readRepoFile('js', 'ui.js');
@@ -111,11 +112,26 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(bookingService, /FROM staff_schedule ss[\s\S]*JOIN staff s ON s\.id = ss\.staff_id/);
         assert.match(bookingService, /ss\.status IN \('working', 'remote'\)/);
         assert.match(bookingService, /s\.department = 'animators'/);
+        assert.match(bookingService, /s\.role_type = 'animator'/);
+        assert.match(bookingService, /COALESCE\(s\.is_freelance, false\) = true/);
+        assert.doesNotMatch(bookingService, /s\.department = 'animators'\s+OR\s+s\.role_type = 'animator'/);
         assert.match(bookingService, /INSERT INTO lines_by_date[\s\S]*ON CONFLICT \(date, line_id\)/);
         assert.match(linesRoute, /syncScheduledAnimatorLines\(date\)/);
         assert.match(linesRoute, /X-Timeline-Lines-Source/);
         assert.match(timelinePage, /function getLineSubtitle/);
         assert.match(timelinePage, /зі зміни/);
+    });
+
+    it('filters the timeline edit-line picker to active regular or freelance animators', () => {
+        const populateSelect = settingsPage.match(/async function populateAnimatorsSelect[\s\S]*?\n\}/)?.[0] || '';
+        assert.match(settingsPage, /function isTimelineAnimatorStaff/);
+        assert.match(settingsPage, /fetch\(`\$\{API_BASE\}\/staff\?active=true`/);
+        assert.match(settingsPage, /role === 'animator'/);
+        assert.match(settingsPage, /position\.includes\('аніматор'\)/);
+        assert.match(settingsPage, /isAnimatorFreelance/);
+        assert.match(settingsPage, /await getTimelineAnimatorStaffOptions\(\)/);
+        assert.doesNotMatch(populateSelect, /getSavedAnimators\(\)/);
+        assert.doesNotMatch(populateSelect, /поточна лінія/);
     });
 
     it('keeps sidebar menu clicks from drawing the floating active frame', () => {

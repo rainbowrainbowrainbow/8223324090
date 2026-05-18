@@ -570,7 +570,7 @@ const Sidebar = (() => {
         }).join('') : '<div class="sidebar-extra-empty">Для цієї ролі немає доступних CRM-сторінок.</div>';
         return `<div class="sidebar-extra-editor" data-sidebar-extra-editor>
             <div class="sidebar-extra-editor-title">
-                <span>Сторінки в «Додатково»</span>
+                <span>Сторінки швидкого доступу</span>
                 <small>${selectedCount} вибрано</small>
             </div>
             <div class="sidebar-extra-picker" data-sidebar-extra-picker>
@@ -981,6 +981,16 @@ const Sidebar = (() => {
         return roles.length ? roles.slice(0, 3).join(' · ') : 'Користувач CRM';
     }
 
+    function _sidebarRoleBadgeKey(user) {
+        const raw = _getSidebarActiveRole(user) || _getSidebarPrimaryRole(user) || 'crm';
+        const key = String(raw || 'crm').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+        return key || 'crm';
+    }
+
+    function _sidebarRoleBadgeText(user) {
+        return _sidebarRoleBadgeKey(user).replace(/_/g, ' ');
+    }
+
     function _ensureCommandDeck() {
         const sidebar = document.getElementById('sidebarNav');
         if (!sidebar) return;
@@ -1096,13 +1106,19 @@ const Sidebar = (() => {
                 <div class="sidebar-design-extras-head-row">
                 <button type="button" class="sidebar-design-extras-head" data-sidebar-extra-toggle-section aria-expanded="${extraCollapsed ? 'false' : 'true'}">
                     <span class="sidebar-design-extras-dot" aria-hidden="true"></span>
-                    <span><b>+</b> Додатково</span>
+                    <span class="sidebar-design-extras-copy">
+                        <span class="sidebar-design-extras-title">Швидкий доступ</span>
+                        <span class="sidebar-design-extras-subtitle">обране меню</span>
+                    </span>
                     <span class="sidebar-design-extras-chevron" aria-hidden="true">${extraCollapsed ? '⌄' : '⌃'}</span>
                 </button>
-                    <button type="button" class="sidebar-design-extras-manage" data-sidebar-extra-toggle-editor aria-expanded="${extraEditorOpen ? 'true' : 'false'}">${extraEditorOpen ? 'Готово' : 'Редагувати'}</button>
+                    <button type="button" class="sidebar-design-extras-manage" data-sidebar-extra-toggle-editor aria-expanded="${extraEditorOpen ? 'true' : 'false'}" aria-label="${extraEditorOpen ? 'Завершити редагування швидкого доступу' : 'Редагувати швидкий доступ'}" title="${extraEditorOpen ? 'Готово' : 'Редагувати швидкий доступ'}">
+                        <span class="sidebar-design-extras-gear" aria-hidden="true">⚙</span>
+                        <span class="sidebar-design-extras-manage-text">${extraEditorOpen ? 'Готово' : 'Редагувати'}</span>
+                    </button>
                 </div>
                 <div class="sidebar-design-extra-list"${extraCollapsed ? ' hidden' : ''}>
-                    ${extraItems.length ? extraItems.map(item => _renderExtraMenuLink(item, currentPath, currentHash, { editMode: extraEditorOpen })).join('') : '<div class="sidebar-design-extra-empty">Нічого не вибрано. Натисни «Редагувати» і постав галочки.</div>'}
+                    ${extraItems.length ? extraItems.map(item => _renderExtraMenuLink(item, currentPath, currentHash, { editMode: extraEditorOpen })).join('') : '<div class="sidebar-design-extra-empty">Нічого не вибрано. Натисни шестерню і постав галочки.</div>'}
                 </div>
                 ${extraEditorOpen ? _renderExtraMenuEditor(selectableExtraItems, selectedExtraHrefs) : ''}`;
         if (extras.parentElement !== sidebar) sidebar.insertBefore(extras, links);
@@ -1128,9 +1144,15 @@ const Sidebar = (() => {
         const nameEl = document.getElementById('sidebarIdentityName');
         const roleEl = document.getElementById('sidebarIdentityRole');
         const cardEl = document.getElementById('sidebarIdentityCard');
+        const roleKey = _sidebarRoleBadgeKey(user);
         _paintUserAvatar(avatarEl, user);
         if (nameEl) nameEl.textContent = user.name || user.username || 'Event Genix';
-        if (roleEl) roleEl.textContent = _sidebarRoleLine(user);
+        if (roleEl) {
+            roleEl.textContent = _sidebarRoleBadgeText(user);
+            roleEl.dataset.role = roleKey;
+            roleEl.setAttribute('aria-label', _sidebarRoleLine(user));
+        }
+        if (cardEl) cardEl.dataset.role = roleKey;
         _bindProfileEntry(cardEl);
     }
 
@@ -1172,7 +1194,7 @@ const Sidebar = (() => {
     function _formatSidebarMoney(value) {
         const amount = Number(value);
         if (!Number.isFinite(amount) || amount <= 0) return 'н/д';
-        return `${amount.toFixed(2)}₴`;
+        return `₴${amount.toFixed(2)}`;
     }
 
     async function _fetchSidebarWidget(type) {
@@ -1183,6 +1205,15 @@ const Sidebar = (() => {
             headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
         if (!response.ok) throw new Error(`sidebar widget ${type} failed`);
+        return response.json();
+    }
+
+    async function _fetchSidebarCurrencyFallback() {
+        const token = localStorage.getItem('pzp_token');
+        const response = await fetch('/api/finance/currency/rates', {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (!response.ok) throw new Error('sidebar currency fallback failed');
         return response.json();
     }
 
@@ -1205,11 +1236,19 @@ const Sidebar = (() => {
                 _setSidebarIdentityMetaValue('sidebarIdentityWeather', 'н/д', 'limited');
             }
 
+            let usdRate = null;
             if (currencyResult.status === 'fulfilled' && currencyResult.value && !currencyResult.value.error) {
-                _setSidebarIdentityMetaValue('sidebarIdentityCurrency', _formatSidebarMoney(currencyResult.value.usd), 'live');
-            } else {
-                _setSidebarIdentityMetaValue('sidebarIdentityCurrency', 'н/д', 'limited');
+                usdRate = Number(currencyResult.value.usd);
             }
+            if (!Number.isFinite(usdRate) || usdRate <= 0) {
+                const fallback = await _fetchSidebarCurrencyFallback().catch(() => null);
+                usdRate = Number(fallback?.rates?.USD || fallback?.USD || fallback?.usd || 0);
+            }
+            _setSidebarIdentityMetaValue(
+                'sidebarIdentityCurrency',
+                _formatSidebarMoney(usdRate),
+                Number.isFinite(usdRate) && usdRate > 0 ? 'live' : 'limited'
+            );
         } catch (err) {
             _setSidebarIdentityMetaValue('sidebarIdentityWeather', 'н/д', 'limited');
             _setSidebarIdentityMetaValue('sidebarIdentityCurrency', 'н/д', 'limited');

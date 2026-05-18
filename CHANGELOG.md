@@ -4,6 +4,20 @@
 
 ---
 
+## v0.57.1 - Sidebar Identity Polish
+
+### Sidebar Identity Polish [codex]
+- **Компактніша профільна картка** - верхній блок у лівому меню став нижчим і акуратнішим, щоб не з'їдати стільки місця в sidebar.
+- **USD зліва і реальний fallback** - курс USD тепер стоїть першим у швидких сигналах і, якщо dashboard currency widget недоступний, добирається через `/api/finance/currency/rates`.
+- **Роль як бейдж біля імені** - професія/роль показується малим lowercase-бейджем поруч з іменем, а не окремим великим рядком.
+- **Унікальні патерни ролей** - для основних CRM-професій додані власні кольори й мікропатерни бейджа: creator, director, manager, hr, art_director, accountant, animator, security, kitchen, service та інші.
+- **Швидкий доступ** - секцію `Додатково` перейменовано на компактний `Швидкий доступ`, а текстову кнопку редагування замінено на gear-кнопку з мікроанімацією.
+- **Підменю стало очевидним** - розгорнутий швидкий доступ тепер виглядає як вкладена панель з лівим акцентом, м'якшим фоном і компактнішими пунктами.
+- **Hover polish** - картка, аватар, role badge і quick signal chips отримали стримані hover-анімації без зайвого шуму.
+- **Guardrail** - `test:ui` фіксує USD-first layout, role badge dataset/patterns, quick-access gear editor і currency fallback.
+
+---
+
 ## v0.57.0 - Assistant Action Commands
 
 ### Assistant Action Commands [codex]

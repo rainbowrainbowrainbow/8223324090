@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.57.0">
-    <link rel="stylesheet" href="css/auth.css?v=0.57.0">
-    <link rel="stylesheet" href="css/layout.css?v=0.57.0">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.57.0">
-    <link rel="stylesheet" href="css/timeline.css?v=0.57.0">
-    <link rel="stylesheet" href="css/panel.css?v=0.57.0">
-    <link rel="stylesheet" href="css/modals.css?v=0.57.0">
-    <link rel="stylesheet" href="css/controls.css?v=0.57.0">
-    <link rel="stylesheet" href="css/features.css?v=0.57.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.57.0">
-    <link rel="stylesheet" href="css/responsive.css?v=0.57.0">
-    <link rel="stylesheet" href="css/pages.css?v=0.57.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.57.0">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.57.0">
+    <link rel="stylesheet" href="css/base.css?v=0.57.1">
+    <link rel="stylesheet" href="css/auth.css?v=0.57.1">
+    <link rel="stylesheet" href="css/layout.css?v=0.57.1">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.57.1">
+    <link rel="stylesheet" href="css/timeline.css?v=0.57.1">
+    <link rel="stylesheet" href="css/panel.css?v=0.57.1">
+    <link rel="stylesheet" href="css/modals.css?v=0.57.1">
+    <link rel="stylesheet" href="css/controls.css?v=0.57.1">
+    <link rel="stylesheet" href="css/features.css?v=0.57.1">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.57.1">
+    <link rel="stylesheet" href="css/responsive.css?v=0.57.1">
+    <link rel="stylesheet" href="css/pages.css?v=0.57.1">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.57.1">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.57.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.57.0 Assistant Action Commands">✨ 0.57.0 Assistant Action Commands</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.57.1 Sidebar Identity Polish">✨ 0.57.1 Sidebar Identity Polish</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.57.0 — Assistant Action Commands</p>
+                <p class="tagline">AI First CRM v0.57.1 — Sidebar Identity Polish</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.57.0: Assistant Action Commands</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.57.1: Sidebar Identity Polish</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1270,14 +1270,16 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.57.0 — Assistant Action Commands</h4>
+                    <h4>v0.57.1 — Sidebar Identity Polish</h4>
                     <ul>
-                        <li><b>Command router</b> — Помічник тепер розпізнає безпечні команди дій у rail до generic AI-відповіді.</li>
-                        <li><b>Навігація</b> — можна відкрити CRM-сторінку, пошук, фінансові борги/аналітику, згорнути меню, змінити тему, відкрити велике вікно, перемкнути голос або compact timeline.</li>
-                        <li><b>Задачі</b> — створення задачі або чекліста працює через існуючий <code>/api/tasks</code> тільки після підтвердження.</li>
-                        <li><b>Безпека</b> — видалення, паролі, токени, права доступу, фінансові мутації та відправка повідомлень не виконуються напряму.</li>
-                        <li><b>Ticker</b> — довгі відповіді Помічника в rail більше не стоять обрізаними: ticker знову рухається.</li>
-                        <li><b>Guardrails</b> — UI-smoke фіксує command router, safe/confirmed boundary, pending navigation actions і ticker CSS.</li>
+                        <li><b>Компактніша картка профілю</b> — верхній блок у sidebar став нижчим, акуратнішим і не забирає стільки місця.</li>
+                        <li><b>USD зліва</b> — курс валюти тепер перший у швидких сигналах і має fallback через <code>/api/finance/currency/rates</code>, якщо dashboard widget недоступний.</li>
+                        <li><b>Роль як бейдж</b> — професія показується поруч з іменем малим lowercase-бейджем замість великого окремого рядка.</li>
+                        <li><b>Унікальні ролі</b> — для CRM-професій додані власні кольори й мікропатерни бейджа.</li>
+                        <li><b>Швидкий доступ</b> — секція <code>Додатково</code> стала компактним <code>Швидким доступом</code>, а редагування сховано в gear-кнопку.</li>
+                        <li><b>Підменю</b> — розгорнуті швидкі сторінки тепер виглядають як вкладена панель з лівим акцентом і компактнішими пунктами.</li>
+                        <li><b>Hover polish</b> — картка, аватар, role badge і quick signal chips отримали стримані анімації при наведенні.</li>
+                        <li><b>Guardrails</b> — UI-smoke фіксує USD-first layout, role badge patterns, quick-access gear editor і currency fallback.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -7458,25 +7460,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.57.0"></script>
-    <script src="js/api.js?v=0.57.0"></script>
-    <script src="js/ui.js?v=0.57.0"></script>
-    <script src="js/auth.js?v=0.57.0"></script>
-    <script src="js/timeline.js?v=0.57.0"></script>
-    <script src="js/booking.js?v=0.57.0"></script>
-    <script src="js/settings.js?v=0.57.0"></script>
-    <script src="js/booking-form.js?v=0.57.0"></script>
-    <script src="js/booking-linked.js?v=0.57.0"></script>
-    <script src="js/settings-dashboard.js?v=0.57.0"></script>
-    <script src="js/settings-history.js?v=0.57.0"></script>
-    <script src="js/settings-afisha.js?v=0.57.0"></script>
-    <script src="js/settings-certificates.js?v=0.57.0"></script>
-    <script src="js/offline.js?v=0.57.0"></script>
-    <script src="js/search.js?v=0.57.0"></script>
-    <script src="js/ws.js?v=0.57.0"></script>
-    <script src="js/app.js?v=0.57.0"></script>
-    <script src="js/kleshnya-widget.js?v=0.57.0"></script>
-    <script src="js/components/sidebar.js?v=0.57.0"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.57.0"></script>
+    <script src="js/config.js?v=0.57.1"></script>
+    <script src="js/api.js?v=0.57.1"></script>
+    <script src="js/ui.js?v=0.57.1"></script>
+    <script src="js/auth.js?v=0.57.1"></script>
+    <script src="js/timeline.js?v=0.57.1"></script>
+    <script src="js/booking.js?v=0.57.1"></script>
+    <script src="js/settings.js?v=0.57.1"></script>
+    <script src="js/booking-form.js?v=0.57.1"></script>
+    <script src="js/booking-linked.js?v=0.57.1"></script>
+    <script src="js/settings-dashboard.js?v=0.57.1"></script>
+    <script src="js/settings-history.js?v=0.57.1"></script>
+    <script src="js/settings-afisha.js?v=0.57.1"></script>
+    <script src="js/settings-certificates.js?v=0.57.1"></script>
+    <script src="js/offline.js?v=0.57.1"></script>
+    <script src="js/search.js?v=0.57.1"></script>
+    <script src="js/ws.js?v=0.57.1"></script>
+    <script src="js/app.js?v=0.57.1"></script>
+    <script src="js/kleshnya-widget.js?v=0.57.1"></script>
+    <script src="js/components/sidebar.js?v=0.57.1"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.57.1"></script>
 </body>
 </html>

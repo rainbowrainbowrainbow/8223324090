@@ -4,6 +4,17 @@
 
 ---
 
+## v0.55.38 - Клієнти: створення без 500
+
+### Customers / Create Flow [codex]
+- **Create customer** - виправлено створення нового клієнта з модалки `Клієнти`, яке могло завершуватись `Internal server error`.
+- **Schema resilience** - backend тепер безпечно працює з `customers.social_identities`: додає колонку additive шляхом або повторює legacy-write без цього поля, якщо live-схема ще не оновлена.
+- **Supabase parity** - Supabase write path отримав `social_identities` і fallback для старого schema cache, щоб create/update не блокували операторів.
+- **UX** - frontend save-flow читає error JSON з API та показує зрозуміліший текст помилки при невдалому збереженні.
+- **Guardrail** - `operations-flow-v2` тест перевіряє fallback path для customer social identities, щоб create/update не повернувся до 500 через schema drift.
+
+---
+
 ## v0.55.37 - Sidebar: листання алертів
 
 ### Sidebar / Alert Carousel [codex]

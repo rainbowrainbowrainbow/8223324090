@@ -395,7 +395,11 @@ async function fetchCustomerDetail(id) {
     const res = await fetch(`/api/customers/${id}`, {
         headers: { 'Authorization': `Bearer ${token}` }
     });
-    return await res.json();
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        throw new Error(payload.error || 'Помилка завантаження клієнта');
+    }
+    return payload;
 }
 
 async function fetchCustomerCommunicationContext(id) {
@@ -423,7 +427,11 @@ async function saveCustomer(data) {
         },
         body: JSON.stringify(data)
     });
-    return await res.json();
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        throw new Error(payload.error || 'Помилка збереження клієнта');
+    }
+    return payload;
 }
 
 async function deleteCustomer(id) {
@@ -824,16 +832,17 @@ async function handleSave() {
     };
 
     try {
+        const wasEditing = Boolean(CrmState.editingId);
         const result = await saveCustomer(data);
         if (result.error) {
             showNotification(result.error, 'error');
             return;
         }
         await closeEditModal(true);
-        showNotification(CrmState.editingId ? 'Клієнта оновлено' : 'Клієнта створено');
+        showNotification(wasEditing ? 'Клієнта оновлено' : 'Клієнта створено');
         await refreshData();
     } catch (err) {
-        showNotification('Помилка збереження', 'error');
+        showNotification(err.message || 'Помилка збереження', 'error');
     }
 }
 

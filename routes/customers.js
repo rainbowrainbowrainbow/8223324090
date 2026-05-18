@@ -132,6 +132,132 @@ function normalizeCustomerPayload(body = {}) {
     };
 }
 
+let customerSocialIdentitiesColumnReady = false;
+
+function isMissingCustomerSocialIdentitiesColumnError(err) {
+    const message = [
+        err?.message,
+        err?.details,
+        err?.hint,
+        err?.code
+    ].filter(Boolean).join(' ');
+    return err?.code === '42703'
+        || err?.code === 'PGRST204'
+        || (/social_identities/i.test(message) && /(column|schema cache|does not exist|could not find)/i.test(message));
+}
+
+function customerWritePayload(input, options = {}) {
+    const payload = {
+        name: input.name,
+        phone: input.phone,
+        instagram: input.instagram,
+        child_name: input.childName,
+        child_birthday: input.childBirthday,
+        source: input.source,
+        notes: input.notes,
+        social_identities: input.socialIdentities
+    };
+    if (options.updatedAt) payload.updated_at = new Date().toISOString();
+    return payload;
+}
+
+function omitCustomerSocialIdentities(payload) {
+    const legacyPayload = { ...payload };
+    delete legacyPayload.social_identities;
+    return legacyPayload;
+}
+
+async function ensureCustomerSocialIdentitiesColumn() {
+    if (customerSocialIdentitiesColumnReady) return true;
+    try {
+        await pool.query(`
+            ALTER TABLE customers
+            ADD COLUMN IF NOT EXISTS social_identities JSONB NOT NULL DEFAULT '[]'::jsonb
+        `);
+        await pool.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'customers_social_identities_array_check'
+                ) THEN
+                    ALTER TABLE customers
+                    ADD CONSTRAINT customers_social_identities_array_check
+                    CHECK (jsonb_typeof(social_identities) = 'array');
+                END IF;
+            END $$;
+        `);
+        customerSocialIdentitiesColumnReady = true;
+        return true;
+    } catch (err) {
+        log.warn('Unable to ensure customers.social_identities column before write', { error: err.message });
+        return false;
+    }
+}
+
+async function insertCustomerPg(input) {
+    const params = [
+        input.name,
+        input.phone,
+        input.instagram,
+        input.childName,
+        input.childBirthday,
+        input.source,
+        input.notes,
+        JSON.stringify(input.socialIdentities)
+    ];
+
+    try {
+        await ensureCustomerSocialIdentitiesColumn();
+        return await pool.query(
+            `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source, notes, social_identities)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb) RETURNING *`,
+            params
+        );
+    } catch (err) {
+        if (!isMissingCustomerSocialIdentitiesColumnError(err)) throw err;
+        log.warn('customers.social_identities missing during create; retrying legacy customer insert', { error: err.message });
+        return pool.query(
+            `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source, notes)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            params.slice(0, 7)
+        );
+    }
+}
+
+async function updateCustomerPg(id, input) {
+    const params = [
+        input.name,
+        input.phone,
+        input.instagram,
+        input.childName,
+        input.childBirthday,
+        input.source,
+        input.notes,
+        JSON.stringify(input.socialIdentities),
+        parseInt(id)
+    ];
+
+    try {
+        await ensureCustomerSocialIdentitiesColumn();
+        return await pool.query(
+            `UPDATE customers SET name=$1, phone=$2, instagram=$3, child_name=$4,
+             child_birthday=$5, source=$6, notes=$7, social_identities=$8::jsonb, updated_at=NOW()
+             WHERE id=$9 RETURNING *`,
+            params
+        );
+    } catch (err) {
+        if (!isMissingCustomerSocialIdentitiesColumnError(err)) throw err;
+        log.warn('customers.social_identities missing during update; retrying legacy customer update', { error: err.message });
+        return pool.query(
+            `UPDATE customers SET name=$1, phone=$2, instagram=$3, child_name=$4,
+             child_birthday=$5, source=$6, notes=$7, updated_at=NOW()
+             WHERE id=$8 RETURNING *`,
+            [...params.slice(0, 7), parseInt(id)]
+        );
+    }
+}
+
 function scopedBookingAggregateSql(user, params, alias = 'b') {
     const visibility = getVisibleBookingScope(user, params, alias);
     return {
@@ -1202,27 +1328,24 @@ router.post('/', async (req, res) => {
     try {
         const input = normalizeCustomerPayload(req.body);
         if (input.error) return res.status(400).json({ error: input.error });
-        const { name, phone, instagram, childName, childBirthday, source, notes, socialIdentities } = input;
+        const { name } = input;
         if (!name) {
             return res.status(400).json({ error: "Ім'я клієнта обов'язкове" });
         }
 
         const sb = getSupabase();
         if (sb) {
-            const { data, error } = await sb.from('customers').insert({
-                name, phone, instagram,
-                child_name: childName, child_birthday: childBirthday,
-                source, notes
-            }).select().single();
+            const payload = customerWritePayload(input);
+            let { data, error } = await sb.from('customers').insert(payload).select().single();
+            if (error && isMissingCustomerSocialIdentitiesColumnError(error)) {
+                log.warn('Supabase customers.social_identities unavailable during create; retrying legacy payload', { error: error.message });
+                ({ data, error } = await sb.from('customers').insert(omitCustomerSocialIdentities(payload)).select().single());
+            }
             if (error) throw error;
             return res.json(mapCustomerRow(data));
         }
 
-        const result = await pool.query(
-            `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source, notes, social_identities)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb) RETURNING *`,
-            [name, phone, instagram, childName, childBirthday, source, notes, JSON.stringify(socialIdentities)]
-        );
+        const result = await insertCustomerPg(input);
         res.json(mapCustomerRow(result.rows[0]));
     } catch (err) {
         log.error('Customer create error', err);
@@ -1236,29 +1359,25 @@ router.put('/:id', async (req, res) => {
         const { id } = req.params;
         const input = normalizeCustomerPayload(req.body);
         if (input.error) return res.status(400).json({ error: input.error });
-        const { name, phone, instagram, childName, childBirthday, source, notes, socialIdentities } = input;
+        const { name } = input;
         if (!name) {
             return res.status(400).json({ error: "Ім'я клієнта обов'язкове" });
         }
 
         const sb = getSupabase();
         if (sb) {
-            const { data, error } = await sb.from('customers').update({
-                name, phone, instagram,
-                child_name: childName, child_birthday: childBirthday,
-                source, notes, updated_at: new Date().toISOString()
-            }).eq('id', parseInt(id)).select().single();
+            const payload = customerWritePayload(input, { updatedAt: true });
+            let { data, error } = await sb.from('customers').update(payload).eq('id', parseInt(id)).select().single();
+            if (error && isMissingCustomerSocialIdentitiesColumnError(error)) {
+                log.warn('Supabase customers.social_identities unavailable during update; retrying legacy payload', { error: error.message });
+                ({ data, error } = await sb.from('customers').update(omitCustomerSocialIdentities(payload)).eq('id', parseInt(id)).select().single());
+            }
             if (error) throw error;
             if (!data) return res.status(404).json({ error: 'Клієнта не знайдено' });
             return res.json(mapCustomerRow(data));
         }
 
-        const result = await pool.query(
-            `UPDATE customers SET name=$1, phone=$2, instagram=$3, child_name=$4,
-             child_birthday=$5, source=$6, notes=$7, social_identities=$8::jsonb, updated_at=NOW()
-             WHERE id=$9 RETURNING *`,
-            [name, phone, instagram, childName, childBirthday, source, notes, JSON.stringify(socialIdentities), parseInt(id)]
-        );
+        const result = await updateCustomerPg(id, input);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Клієнта не знайдено' });
         res.json(mapCustomerRow(result.rows[0]));
     } catch (err) {

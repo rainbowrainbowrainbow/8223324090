@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.55.37">
-    <link rel="stylesheet" href="css/auth.css?v=0.55.37">
-    <link rel="stylesheet" href="css/layout.css?v=0.55.37">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.37">
-    <link rel="stylesheet" href="css/timeline.css?v=0.55.37">
-    <link rel="stylesheet" href="css/panel.css?v=0.55.37">
-    <link rel="stylesheet" href="css/modals.css?v=0.55.37">
-    <link rel="stylesheet" href="css/controls.css?v=0.55.37">
-    <link rel="stylesheet" href="css/features.css?v=0.55.37">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.37">
-    <link rel="stylesheet" href="css/responsive.css?v=0.55.37">
-    <link rel="stylesheet" href="css/pages.css?v=0.55.37">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.55.37">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.37">
+    <link rel="stylesheet" href="css/base.css?v=0.55.38">
+    <link rel="stylesheet" href="css/auth.css?v=0.55.38">
+    <link rel="stylesheet" href="css/layout.css?v=0.55.38">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.55.38">
+    <link rel="stylesheet" href="css/timeline.css?v=0.55.38">
+    <link rel="stylesheet" href="css/panel.css?v=0.55.38">
+    <link rel="stylesheet" href="css/modals.css?v=0.55.38">
+    <link rel="stylesheet" href="css/controls.css?v=0.55.38">
+    <link rel="stylesheet" href="css/features.css?v=0.55.38">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.55.38">
+    <link rel="stylesheet" href="css/responsive.css?v=0.55.38">
+    <link rel="stylesheet" href="css/pages.css?v=0.55.38">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.55.38">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.55.38">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.55.37 Sidebar: листання алертів">✨ 0.55.37 Sidebar: листання алертів</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.55.38 Клієнти: створення без 500">✨ 0.55.38 Клієнти: створення без 500</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.55.37 — Sidebar: листання алертів</p>
+                <p class="tagline">AI First CRM v0.55.38 — Клієнти: створення без 500</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.55.37: Sidebar: листання алертів</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.55.38: Клієнти: створення без 500</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1274,6 +1274,15 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.55.38 — Клієнти: створення без 500</h4>
+                    <ul>
+                        <li><b>Customers</b> — виправлено створення нового клієнта з форми <code>Клієнти</code>, яке могло падати з toast <code>Internal server error</code>.</li>
+                        <li><b>Backend</b> — запис клієнта тепер не валиться, якщо live-схема ще не має <code>customers.social_identities</code>: API додає поле або безпечно повторює legacy-write.</li>
+                        <li><b>Supabase</b> — write-path отримав <code>social_identities</code> і fallback для старого schema cache, щоб create/update не блокувались під час rollout.</li>
+                        <li><b>UX</b> — frontend save-flow тепер читає error JSON з API й показує нормальний текст помилки замість глухого 500.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.55.37 — Sidebar: листання алертів</h4>
                     <ul>
@@ -7299,25 +7308,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.55.37"></script>
-    <script src="js/api.js?v=0.55.37"></script>
-    <script src="js/ui.js?v=0.55.37"></script>
-    <script src="js/auth.js?v=0.55.37"></script>
-    <script src="js/timeline.js?v=0.55.37"></script>
-    <script src="js/booking.js?v=0.55.37"></script>
-    <script src="js/settings.js?v=0.55.37"></script>
-    <script src="js/booking-form.js?v=0.55.37"></script>
-    <script src="js/booking-linked.js?v=0.55.37"></script>
-    <script src="js/settings-dashboard.js?v=0.55.37"></script>
-    <script src="js/settings-history.js?v=0.55.37"></script>
-    <script src="js/settings-afisha.js?v=0.55.37"></script>
-    <script src="js/settings-certificates.js?v=0.55.37"></script>
-    <script src="js/offline.js?v=0.55.37"></script>
-    <script src="js/search.js?v=0.55.37"></script>
-    <script src="js/ws.js?v=0.55.37"></script>
-    <script src="js/app.js?v=0.55.37"></script>
-    <script src="js/kleshnya-widget.js?v=0.55.37"></script>
-    <script src="js/components/sidebar.js?v=0.55.37"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.55.37"></script>
+    <script src="js/config.js?v=0.55.38"></script>
+    <script src="js/api.js?v=0.55.38"></script>
+    <script src="js/ui.js?v=0.55.38"></script>
+    <script src="js/auth.js?v=0.55.38"></script>
+    <script src="js/timeline.js?v=0.55.38"></script>
+    <script src="js/booking.js?v=0.55.38"></script>
+    <script src="js/settings.js?v=0.55.38"></script>
+    <script src="js/booking-form.js?v=0.55.38"></script>
+    <script src="js/booking-linked.js?v=0.55.38"></script>
+    <script src="js/settings-dashboard.js?v=0.55.38"></script>
+    <script src="js/settings-history.js?v=0.55.38"></script>
+    <script src="js/settings-afisha.js?v=0.55.38"></script>
+    <script src="js/settings-certificates.js?v=0.55.38"></script>
+    <script src="js/offline.js?v=0.55.38"></script>
+    <script src="js/search.js?v=0.55.38"></script>
+    <script src="js/ws.js?v=0.55.38"></script>
+    <script src="js/app.js?v=0.55.38"></script>
+    <script src="js/kleshnya-widget.js?v=0.55.38"></script>
+    <script src="js/components/sidebar.js?v=0.55.38"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.55.38"></script>
 </body>
 </html>

@@ -67,6 +67,11 @@ describe('operations flow v2 comprehensive contracts', () => {
         assert.match(customersRoute, /INSERT INTO customers[\s\S]*social_identities/);
         assert.match(customersRoute, /UPDATE customers SET[\s\S]*social_identities=\$8::jsonb/);
         assert.match(customersRoute, /social_identities::text ILIKE/);
+        assert.match(customersRoute, /function isMissingCustomerSocialIdentitiesColumnError/);
+        assert.match(customersRoute, /function ensureCustomerSocialIdentitiesColumn/);
+        assert.match(customersRoute, /function omitCustomerSocialIdentities/);
+        assert.match(customersRoute, /retrying legacy customer insert/);
+        assert.match(customersRoute, /retrying legacy payload/);
         assert.match(customersRoute, /Соц\. ідентичності/);
         assert.match(customersPage, /function parseSocialIdentitiesInput/);
         assert.match(customersPage, /renderSocialIdentities/);

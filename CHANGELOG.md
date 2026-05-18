@@ -4,6 +4,16 @@
 
 ---
 
+## v0.55.35 - Sidebar: компактний верхній блок
+
+### Sidebar / Compact Command Deck [codex]
+- **Compact profile block** - верхню командну картку sidebar ущільнено: менші внутрішні відступи, компактніший avatar, коротший health badge і нижча profile card без обрізання імені.
+- **Focus chips** - лічильники задач, алертів і лідів стали нижчими, щоб блок не забирав перший екран меню.
+- **Alert card** - primary alert hero зменшено по висоті: компактніший kicker, title, meta і кнопка `Відкрити`, але сценарій швидкої дії лишився видимим.
+- **Guardrail** - `npm run test:ui` перевіряє фінальний `v0.55.35` CSS override, щоб старі sidebar-стилі не перебивали компактність.
+
+---
+
 ## v0.55.34 - Клієнти: темна тема
 
 ### Customers / Dark Theme [codex]

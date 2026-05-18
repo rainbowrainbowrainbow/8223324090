@@ -4507,3 +4507,205 @@ body.dark-mode.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-health
   border-color: rgba(34,211,160,0.32) !important;
   color: #a7f3d0 !important;
 }
+
+/* v0.55.35: compact sidebar command deck.
+   This final density pass keeps the profile readable but stops the upper
+   command block from consuming the whole first screen of the sidebar. */
+:root {
+  --sb-command-compact-avatar: 38px;
+  --sb-command-compact-alert-min: 126px;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-command-deck,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-command-deck,
+.sidebar-nav:not(.collapsed) .sidebar-command-deck {
+  margin: 8px 10px 10px !important;
+  padding: 8px !important;
+  border-radius: 15px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+.sidebar-nav:not(.collapsed) .sidebar-identity-card {
+  grid-template-columns: var(--sb-command-compact-avatar) minmax(0, 1fr) !important;
+  gap: 9px !important;
+  padding: 8px 9px !important;
+  margin-bottom: 8px !important;
+  border-radius: 13px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-avatar,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-avatar,
+.sidebar-nav:not(.collapsed) .sidebar-identity-avatar {
+  width: var(--sb-command-compact-avatar) !important;
+  height: var(--sb-command-compact-avatar) !important;
+  min-width: var(--sb-command-compact-avatar) !important;
+  border-radius: 11px !important;
+  margin-top: 1px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-main,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-main,
+.sidebar-nav:not(.collapsed) .sidebar-identity-main {
+  gap: 4px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-title-line,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-title-line,
+.sidebar-nav:not(.collapsed) .sidebar-identity-title-line {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  flex-wrap: wrap !important;
+  column-gap: 6px !important;
+  row-gap: 3px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-name,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-name,
+.sidebar-nav:not(.collapsed) .sidebar-identity-name {
+  max-width: 100% !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+  font-size: clamp(18px, 1.05vw, 20px) !important;
+  line-height: 1.02 !important;
+  letter-spacing: -0.02em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-health,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-health,
+.sidebar-nav:not(.collapsed) .sidebar-identity-health {
+  max-width: min(100%, 112px) !important;
+  min-height: 19px !important;
+  padding: 3px 7px !important;
+  border-radius: 999px !important;
+  gap: 5px !important;
+  font-size: 8px !important;
+  line-height: 1 !important;
+  letter-spacing: 0.10em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-health-dot,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-health-dot,
+.sidebar-nav:not(.collapsed) .sidebar-identity-health-dot {
+  width: 7px !important;
+  height: 7px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-role,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
+.sidebar-nav:not(.collapsed) .sidebar-identity-role {
+  margin-top: 1px !important;
+  font-size: 9px !important;
+  line-height: 1.05 !important;
+  letter-spacing: 0.13em !important;
+  overflow-wrap: anywhere !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-summary,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-summary,
+.sidebar-nav:not(.collapsed) .sidebar-identity-summary {
+  font-size: 12px !important;
+  line-height: 1.15 !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-focus-deck,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-focus-deck,
+.sidebar-nav:not(.collapsed) .sidebar-focus-deck {
+  gap: 6px !important;
+  margin-top: 6px !important;
+  margin-bottom: 8px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .focus-chip,
+body[data-page-group] .sidebar-nav:not(.collapsed) .focus-chip,
+.sidebar-nav:not(.collapsed) .focus-chip {
+  min-height: 34px !important;
+  padding: 5px 6px !important;
+  border-radius: 10px !important;
+  gap: 2px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .focus-chip-value,
+body[data-page-group] .sidebar-nav:not(.collapsed) .focus-chip-value,
+.sidebar-nav:not(.collapsed) .focus-chip-value {
+  font-size: 16px !important;
+  line-height: 0.95 !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .focus-chip-label,
+body[data-page-group] .sidebar-nav:not(.collapsed) .focus-chip-label,
+.sidebar-nav:not(.collapsed) .focus-chip-label {
+  font-size: 8px !important;
+  line-height: 1 !important;
+  letter-spacing: 0.10em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero {
+  min-height: var(--sb-command-compact-alert-min) !important;
+  padding: 11px 12px !important;
+  border-radius: 14px !important;
+  gap: 5px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero-head,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero-head,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero-head {
+  gap: 8px !important;
+  margin-bottom: 3px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero-kicker,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero-kicker,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero-kicker {
+  min-height: 22px !important;
+  padding: 0 9px !important;
+  border-radius: 8px !important;
+  font-size: 8px !important;
+  letter-spacing: 0.08em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero-index,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero-index,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero-index {
+  font-size: 10px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero .sidebar-primary-action-label,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero .sidebar-primary-action-label,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero .sidebar-primary-action-label {
+  font-size: clamp(18px, 1.08vw, 21px) !important;
+  line-height: 1.08 !important;
+  letter-spacing: -0.025em !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero-meta,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero-meta,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero-meta {
+  font-size: 13px !important;
+  line-height: 1.18 !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero-actions,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero-actions,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero-actions {
+  min-height: 38px !important;
+  margin-top: 5px !important;
+  padding: 0 12px !important;
+  border-radius: 11px !important;
+  font-size: 14px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-alert-hero-stack,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-alert-hero-stack,
+.sidebar-nav:not(.collapsed) .sidebar-alert-hero-stack {
+  left: 16px !important;
+  right: 16px !important;
+  bottom: -5px !important;
+  height: 7px !important;
+}

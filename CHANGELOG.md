@@ -4,6 +4,17 @@
 
 ---
 
+## v0.57.8 - Sidebar Profile Signals Rail
+
+### Sidebar Profile Signals Rail [codex]
+- **USD / час / погода справа** - швидкі сигнали профілю перенесені у праву вертикальну рейку, щоб вони не висіли окремим нижнім рядом.
+- **Акуратніший профільний блок** - ім'я, статус, роль і алерти тепер мають власну ліву колонку, а live-сигнали не забирають простір під основним текстом.
+- **Компактний role badge** - роль лишається поруч з іменем як малий бейдж з унікальним патерном, але більше не конкурує з правими сигналами.
+- **Легший visual rhythm** - додано тонкий розділювач, м'який glow і щільніші signal chips, щоб картка виглядала як один premium cockpit-блок.
+- **Guardrails** - `test:ui` фіксує right-side signal rail layout для sidebar identity card.
+
+---
+
 ## v0.57.7 - Assistant Chat Text Launcher
 
 ### Assistant Chat Text Launcher [codex]

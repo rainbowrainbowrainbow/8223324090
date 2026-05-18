@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.57.7",
+  "version": "0.57.8",
   "eventGenix": {
-    "releaseLabel": "Assistant Chat Text Launcher"
+    "releaseLabel": "Sidebar Profile Signals Rail"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

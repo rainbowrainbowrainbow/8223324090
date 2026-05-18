@@ -6050,6 +6050,111 @@ body:not(.dark-mode) .sidebar-nav:not(.collapsed) .sidebar-identity-role {
   --role-badge-pattern: linear-gradient(135deg, rgba(255,255,255,0.18), transparent 24%, rgba(255,255,255,0.12) 52%, transparent 78%);
 }
 
+/* v0.57.8: sidebar identity card right-side signal rail.
+   USD, time and weather now live as a compact right column instead of a bottom row. */
+.sidebar-nav:not(.collapsed) .sidebar-identity-card {
+  grid-template-columns: 38px minmax(0, 1fr) !important;
+  align-items: stretch !important;
+  gap: 9px !important;
+  padding: 9px 10px !important;
+  min-height: 88px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-main {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) clamp(74px, 34%, 90px) !important;
+  grid-template-areas:
+    "identity signals"
+    "summary signals" !important;
+  align-items: center !important;
+  column-gap: 8px !important;
+  row-gap: 4px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-title-row {
+  grid-area: identity !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: start !important;
+  gap: 6px !important;
+  min-height: 0 !important;
+  padding-right: 0 !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-title-line {
+  min-width: 0 !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 4px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-role,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
+.sidebar-nav:not(.collapsed) .sidebar-identity-role {
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  align-self: start !important;
+  max-width: 72px !important;
+  min-height: 20px !important;
+  padding: 4px 7px 3px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-summary {
+  grid-area: summary !important;
+  max-width: 100% !important;
+  padding-right: 0 !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta {
+  grid-area: signals !important;
+  align-self: stretch !important;
+  position: relative !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-auto-rows: minmax(22px, 1fr) !important;
+  gap: 4px !important;
+  margin-top: 0 !important;
+  padding-left: 7px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta::before {
+  content: "" !important;
+  position: absolute !important;
+  left: 1px !important;
+  top: 5px !important;
+  bottom: 5px !important;
+  width: 1px !important;
+  border-radius: 999px !important;
+  background: linear-gradient(to bottom, transparent, var(--role-line), transparent) !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item {
+  min-height: 0 !important;
+  padding: 3px 6px !important;
+  border-radius: 10px !important;
+  align-content: center !important;
+  background:
+    radial-gradient(32px 18px at 100% 0%, color-mix(in srgb, var(--role-accent) 18%, transparent), transparent 70%),
+    rgba(15,23,42,0.44) !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-k {
+  font-size: 7.5px !important;
+  letter-spacing: 0.09em !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-v {
+  font-size: 10.5px !important;
+  line-height: 1.02 !important;
+}
+
+body:not(.dark-mode) .sidebar-nav:not(.collapsed) .sidebar-identity-meta-item {
+  background:
+    radial-gradient(32px 18px at 100% 0%, color-mix(in srgb, var(--role-accent) 14%, transparent), transparent 70%),
+    rgba(255,255,255,0.72) !important;
+}
+
 /* v0.57.1: Quick Access submenu polish.
    Replace the bulky Additional row with a compact quick-access header and gear editor. */
 .sidebar-nav:not(.collapsed) .sidebar-design-extras {

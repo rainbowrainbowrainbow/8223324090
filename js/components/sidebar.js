@@ -737,6 +737,7 @@ const Sidebar = (() => {
 
         _ensureAuroraLayer();
         _ensureCommandDeck();
+        _ensureSidebarMiniRail(role, currentPath, location.hash.replace('#', ''));
         _removeSidebarTodayDock();
         _syncGroupSignals();
         _ensureActiveIndicator();
@@ -1649,22 +1650,102 @@ const Sidebar = (() => {
         return String(value || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     }
 
+    function _ensureSidebarCollapseButton(sidebar) {
+        if (!sidebar) return null;
+        const brand = sidebar.querySelector('.sidebar-brand');
+        let btn = document.getElementById('sidebarCollapseBtn');
+        if (!btn) {
+            btn = document.createElement('button');
+            btn.type = 'button';
+            btn.id = 'sidebarCollapseBtn';
+            btn.className = 'sidebar-collapse-btn';
+        }
+        btn.innerHTML = '<span class="collapse-icon" aria-hidden="true">‹</span><span class="collapse-text">Згорнути</span>';
+        if (brand && btn.parentElement !== brand) brand.appendChild(btn);
+        return btn;
+    }
+
+    function _syncSidebarCollapseButton(sidebar) {
+        const root = sidebar || document.getElementById('sidebarNav');
+        const btn = document.getElementById('sidebarCollapseBtn');
+        if (!root || !btn) return;
+        const collapsed = root.classList.contains('collapsed');
+        const icon = btn.querySelector('.collapse-icon');
+        const text = btn.querySelector('.collapse-text');
+        if (icon) icon.textContent = collapsed ? '›' : '‹';
+        if (text) text.textContent = collapsed ? 'Розгорнути' : 'Згорнути';
+        btn.setAttribute('aria-label', collapsed ? 'Розгорнути меню' : 'Згорнути меню');
+        btn.setAttribute('title', collapsed ? 'Розгорнути меню' : 'Згорнути меню');
+        btn.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+        document.body.classList.toggle('sidebar-is-collapsed', collapsed);
+    }
+
+    function _setSidebarCollapsed(nextCollapsed, persist = true) {
+        const sidebar = document.getElementById('sidebarNav');
+        if (!sidebar) return;
+        sidebar.classList.toggle('collapsed', !!nextCollapsed);
+        if (persist) localStorage.setItem('pzp_sidebar_collapsed', String(!!nextCollapsed));
+        _syncSidebarCollapseButton(sidebar);
+        _queueActiveIndicatorUpdate();
+    }
+
+    function _miniRailItems(role) {
+        const seen = new Set();
+        return NAV_ITEMS.filter(item => {
+            if (!item.href || item.type === 'group') return false;
+            if (role && !hasAccess(item, role)) return false;
+            const key = `${item.href}|${item.action || ''}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    }
+
+    function _renderSidebarMiniLink(item, currentPath, currentHash) {
+        const isActive = _isSidebarItemActive(item, currentPath, currentHash);
+        const onclickAttr = item.action
+            ? ` onclick="event.preventDefault();if(typeof ${item.action}==='function')${item.action}();"`
+            : '';
+        const badgeType = _badgeTypeFor(item);
+        return `<a href="${_escAttr(item.href)}" class="sidebar-mini-link${isActive ? ' active' : ''}" title="${_escAttr(item.label)}" aria-label="${_escAttr(item.label)}"${onclickAttr}>
+            ${_renderIcon(item.icon, 'sidebar-mini-icon')}
+            ${badgeType ? `<span class="sidebar-mini-badge" data-badge-type="${badgeType}" style="display:none"></span>` : ''}
+        </a>`;
+    }
+
+    function _ensureSidebarMiniRail(role, currentPath, currentHash) {
+        const sidebar = document.getElementById('sidebarNav');
+        if (!sidebar) return;
+        let rail = document.getElementById('sidebarMiniRail');
+        if (!rail) {
+            rail = document.createElement('nav');
+            rail.id = 'sidebarMiniRail';
+            rail.className = 'sidebar-mini-rail';
+            rail.setAttribute('aria-label', 'Згорнуте меню сторінок');
+        }
+        rail.innerHTML = _miniRailItems(role)
+            .map(item => _renderSidebarMiniLink(item, currentPath, currentHash))
+            .join('');
+        const anchor = document.getElementById('sidebarCommandDeck') || sidebar.querySelector('.sidebar-links');
+        if (anchor && rail.parentElement !== sidebar) sidebar.insertBefore(rail, anchor);
+        else if (!rail.parentElement) sidebar.appendChild(rail);
+    }
+
     // ═══ TOGGLE SIDEBAR (mobile/desktop) ══════════════════════════
     function initToggle() {
         const toggle = document.getElementById('sidebarToggle');
         const sidebar = document.getElementById('sidebarNav');
         const overlay = document.getElementById('sidebarOverlay');
-        const collapseBtn = document.getElementById('sidebarCollapseBtn');
+        const collapseBtn = _ensureSidebarCollapseButton(sidebar);
         _removeLegacySidebarActions(sidebar);
         _ensureCompactProfileAvatar(sidebar);
+        if (sidebar) {
+            _setSidebarCollapsed(localStorage.getItem('pzp_sidebar_collapsed') === 'true', false);
+        }
         if (collapseBtn && sidebar && collapseBtn.dataset.sidebarCollapseBound !== 'true') {
             collapseBtn.dataset.sidebarCollapseBound = 'true';
-            if (localStorage.getItem('pzp_sidebar_collapsed') === 'true') {
-                sidebar.classList.add('collapsed');
-            }
             collapseBtn.addEventListener('click', () => {
-                const isCollapsed = sidebar.classList.toggle('collapsed');
-                localStorage.setItem('pzp_sidebar_collapsed', String(isCollapsed));
+                _setSidebarCollapsed(!sidebar.classList.contains('collapsed'));
             });
         }
         if (toggle && sidebar && toggle.dataset.sidebarToggleBound !== 'true') {

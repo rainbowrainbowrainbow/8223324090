@@ -4,6 +4,16 @@
 
 ---
 
+## v0.55.43 - Sidebar: згортання з іконками
+
+### Sidebar / Collapse Rail [codex]
+- **Кнопка меню** - кнопка згортання/розгортання повернена у верхній brand-блок sidebar і працює для обох станів.
+- **Mini rail** - у згорнутому меню з'явився вертикальний icon rail зі сторінками CRM, активним станом, бейджами й title-підказками.
+- **Shell geometry** - collapsed-стан більше не розгортається сам на hover і не перекриває сторінку, ширина лишається `--eg-sidebar-collapsed-w`.
+- **Guardrail** - `npm run test:ui` фіксує shared collapse contract, щоб кнопку або icon rail не прибрали наступними правками.
+
+---
+
 ## v0.55.42 - Timeline: адаптивний малий екран
 
 ### Timeline / Responsive Layout [codex]

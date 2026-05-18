@@ -3652,3 +3652,128 @@ body:not(.dark-mode) .crm-assistant-chat-open {
         transition: none !important;
     }
 }
+
+/* v0.57.11: compact top assistant.
+   The header rail keeps only the useful line, search, and controls. */
+.crm-assistant-rail-host {
+    padding: 6px 10px 7px !important;
+}
+
+.crm-assistant-rail-host .crm-assistant-rail,
+.crm-assistant-rail {
+    min-height: 58px !important;
+    padding: 8px 12px !important;
+    gap: 12px !important;
+    border-radius: 15px !important;
+}
+
+.crm-assistant-rail .assistant-rail-presence {
+    grid-template-columns: 38px minmax(0, 1fr) !important;
+    gap: 10px !important;
+}
+
+.crm-assistant-rail .assistant-rail-avatar {
+    width: 38px !important;
+    height: 38px !important;
+    padding: 4px !important;
+}
+
+.assistant-rail-orb-core {
+    width: 30px !important;
+    height: 30px !important;
+}
+
+.assistant-rail-orb-core::before {
+    width: 7px !important;
+    height: 7px !important;
+}
+
+.assistant-rail-avatar-meter,
+.crm-assistant-rail .assistant-rail-state,
+.assistant-rail-engine,
+.assistant-rail-context-strip,
+.assistant-rail-prompts {
+    display: none !important;
+}
+
+.crm-assistant-top-status {
+    min-width: 0 !important;
+    width: 18px !important;
+    gap: 0 !important;
+    margin-right: auto !important;
+    overflow: hidden !important;
+}
+
+.crm-assistant-top-status span:not(.crm-assistant-top-status-dot),
+.crm-assistant-top-status strong {
+    display: none !important;
+}
+
+.crm-assistant-top-status-dot {
+    width: 12px !important;
+    height: 12px !important;
+}
+
+.crm-assistant-rail .assistant-rail-status-stack {
+    gap: 2px !important;
+}
+
+.crm-assistant-rail .assistant-rail-topline {
+    gap: 0 !important;
+}
+
+.crm-assistant-rail .assistant-rail-name {
+    font-size: 15px !important;
+    line-height: 1 !important;
+}
+
+.crm-assistant-rail .assistant-rail-subtitles-wrap {
+    min-height: 20px !important;
+    margin-top: 2px !important;
+}
+
+.crm-assistant-rail .assistant-rail-subtitles,
+body.dark-mode .crm-assistant-rail .assistant-rail-subtitles {
+    font-size: 15px !important;
+    line-height: 1.14 !important;
+    font-weight: 800 !important;
+}
+
+.crm-assistant-rail .assistant-rail-actions {
+    gap: 8px !important;
+}
+
+.assistant-rail-inline-form {
+    width: clamp(300px, 34vw, 620px) !important;
+    min-height: 40px !important;
+}
+
+.assistant-rail-inline-form input {
+    padding: 9px 38px !important;
+    font-size: 16px !important;
+}
+
+.assistant-rail-inline-search,
+.assistant-rail-inline-hint {
+    width: 26px !important;
+    height: 26px !important;
+}
+
+.crm-assistant-rail .assistant-rail-btn,
+body.dark-mode .crm-assistant-rail .assistant-rail-btn {
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 11px !important;
+    font-size: 14px !important;
+}
+
+@media (max-width: 1180px) {
+    .crm-assistant-rail-host .crm-assistant-rail,
+    .crm-assistant-rail {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    .assistant-rail-inline-form {
+        width: min(100%, 520px) !important;
+    }
+}

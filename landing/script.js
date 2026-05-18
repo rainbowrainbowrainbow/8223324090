@@ -275,7 +275,7 @@
         art:      { label: '+ Art Director',           price: 8000,  base: false },
         designer: { label: '+ Дизайнер',               price: 4000,  base: false },
         sound:    { label: '+ Звуковий брендинг',      price: 2000,  base: false },
-        kleshnya: { label: '+ Клешня Агент',           price: 2000,  base: false },
+        kleshnya: { label: '+ Помічник Агент',           price: 2000,  base: false },
         full:     { label: 'Повний пакет (все)',       price: 22000, base: true  }
     };
 
@@ -628,7 +628,7 @@
         'Бронювання підтверджуються автоматично.',
         'Команда знає задачі без нарад.',
         'P&L за тиждень — 10 секунд.',
-        'Клешня відповідає навіть о 3 ночі.',
+        'Помічник відповідає навіть о 3 ночі.',
         'Склад контролюється без Excel.',
         '90+ хвилин на день повертаються вам.',
         'Один AI замість трьох адміністраторів.',
@@ -1255,7 +1255,7 @@
 
 
     /* =====================================================
-       3. KONAMI CODE → Клешня easter egg 🦞
+       3. KONAMI CODE → Помічник easter egg 🤖
        ===================================================== */
     var konamiSeq = [38,38,40,40,37,39,37,39,66,65];
     var konamiPos = 0;
@@ -1285,7 +1285,7 @@
 
     function showEasterEgg() {
         var egg = document.createElement('div');
-        egg.innerHTML = '<div style="text-align:center;padding:32px;"><div style="font-size:80px;animation:eggBounce 0.5s ease infinite alternate;">🦞</div><div style="font-family:Space Grotesk,sans-serif;font-size:22px;font-weight:800;color:#D4A843;margin-top:16px;">Привіт, це я — Клешня!</div><div style="color:#aaa;margin-top:8px;font-size:15px;">Розробив цей сайт за 3 дні 😎<br>Ти знайшов секрет!</div><button onclick="this.closest(\'.egg-overlay\').remove()" style="margin-top:20px;background:#D4A843;color:#0a0a18;border:none;border-radius:999px;padding:10px 28px;font-size:16px;font-weight:700;cursor:pointer;font-family:Space Grotesk,sans-serif;">🦞 Поняв!</button></div>';
+        egg.innerHTML = '<div style="text-align:center;padding:32px;"><div style="font-size:80px;animation:eggBounce 0.5s ease infinite alternate;">🤖</div><div style="font-family:Space Grotesk,sans-serif;font-size:22px;font-weight:800;color:#D4A843;margin-top:16px;">Привіт, це я — Помічник!</div><div style="color:#aaa;margin-top:8px;font-size:15px;">Розробив цей сайт за 3 дні 😎<br>Ти знайшов секрет!</div><button onclick="this.closest(\'.egg-overlay\').remove()" style="margin-top:20px;background:#D4A843;color:#0a0a18;border:none;border-radius:999px;padding:10px 28px;font-size:16px;font-weight:700;cursor:pointer;font-family:Space Grotesk,sans-serif;">🤖 Поняв!</button></div>';
         egg.className = 'egg-overlay';
         egg.style.cssText = 'position:fixed;inset:0;background:rgba(7,7,15,0.92);z-index:999999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);animation:eggFadeIn 0.3s ease;';
         document.body.appendChild(egg);

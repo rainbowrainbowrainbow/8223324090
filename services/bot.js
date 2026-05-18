@@ -107,7 +107,7 @@ async function handleMenu(chatId, threadId) {
         + `/programs — каталог програм\n`
         + `/find <запит> — пошук програми\n`
         + `/price <код> <ціна> — змінити ціну\n\n`
-        + `🦀 <b>Tasker (Клешня)</b>\n`
+        + `🤖 <b>Tasker (Помічник)</b>\n`
         + `/tasks — мої задачі на сьогодні\n`
         + `/done <id> — завершити задачу\n`
         + `/alltasks — всі задачі команди\n`
@@ -447,10 +447,10 @@ async function handleTasks(chatId, threadId, fromUsername) {
         }
 
         if (tasks.rows.length === 0) {
-            return sendBotMessage(chatId, threadId, `🦀 <b>Задачі на сьогодні</b>\n\n✅ Немає відкритих задач. Все чисто!`);
+            return sendBotMessage(chatId, threadId, `🤖 <b>Задачі на сьогодні</b>\n\n✅ Немає відкритих задач. Все чисто!`);
         }
 
-        let text = `🦀 <b>Задачі на сьогодні (${today})</b>\n`;
+        let text = `🤖 <b>Задачі на сьогодні (${today})</b>\n`;
         text += `📋 Відкритих: ${tasks.rows.length}\n\n`;
 
         const priorityIcon = { high: '🔴', normal: '', low: '🔵' };
@@ -498,7 +498,7 @@ async function handleDone(chatId, threadId, args, fromUsername) {
         const text = `✅ <b>Задачу завершено</b>\n\n`
             + `📋 #${task.id} ${escapeHtml(task.title)}\n`
             + `👤 Виконав: ${actor}\n`
-            + `\n🦀 Клешня зафіксувала`;
+            + `\n🤖 Помічник зафіксував`;
 
         return sendBotMessage(chatId, threadId, text);
     } catch (err) {
@@ -523,10 +523,10 @@ async function handleAllTasks(chatId, threadId) {
         );
 
         if (tasks.rows.length === 0) {
-            return sendBotMessage(chatId, threadId, `🦀 <b>Задачі команди (${today})</b>\n\n✅ Усі задачі виконані!`);
+            return sendBotMessage(chatId, threadId, `🤖 <b>Задачі команди (${today})</b>\n\n✅ Усі задачі виконані!`);
         }
 
-        let text = `🦀 <b>Задачі команди (${today})</b>\n`;
+        let text = `🤖 <b>Задачі команди (${today})</b>\n`;
         text += `📋 Відкритих: ${tasks.rows.length}\n\n`;
 
         const priorityIcon = { high: '🔴', normal: '', low: '🔵' };
@@ -604,7 +604,7 @@ async function handlePoints(chatId, threadId, fromUsername) {
             text += `💎 Загальних: <b>${my.permanent_points}</b>\n`;
         }
 
-        text += `\n🦀 Клешня рахує все`;
+        text += `\n🤖 Помічник рахує все`;
         return sendBotMessage(chatId, threadId, text);
     } catch (err) {
         log.error('handlePoints error', err);
@@ -637,7 +637,7 @@ async function handleStreak(chatId, threadId, fromUsername) {
 
         if (streakResult.rows.length === 0 || !streakResult.rows[0].current_streak) {
             return sendBotMessage(chatId, threadId,
-                `🔥 <b>Стрік: ${myUsername}</b>\n\nПоки 0 днів. Заходь щодня — Клешня рахує!`);
+                `🔥 <b>Стрік: ${myUsername}</b>\n\nПоки 0 днів. Заходь щодня — Помічник рахує!`);
         }
 
         const s = streakResult.rows[0];
@@ -651,7 +651,7 @@ async function handleStreak(chatId, threadId, fromUsername) {
         else if (s.current_streak >= 7) text += `\n🔥 Тижневий стрік — тримай так!`;
         else if (s.current_streak >= 3) text += `\n👍 Добрий початок, не зупиняйся!`;
 
-        text += `\n\n🦀 Клешня рахує все`;
+        text += `\n\n🤖 Помічник рахує все`;
         return sendBotMessage(chatId, threadId, text);
     } catch (err) {
         log.error('handleStreak error', err);
@@ -672,8 +672,8 @@ async function handleStart(chatId, threadId, fromUsername) {
     }
 
     const name = fromUsername ? `@${fromUsername}` : 'друже';
-    const text = `🦀 <b>Привіт, ${escapeHtml(name)}!</b>\n\n`
-        + `Я Клешня — бот Парку Закревського Періоду.\n`
+    const text = `🤖 <b>Привіт, ${escapeHtml(name)}!</b>\n\n`
+        + `Я Помічник — бот Парку Закревського Періоду.\n`
         + `Тепер ти будеш отримувати персональні сповіщення прямо сюди.\n\n`
         + `✅ Акаунт з'єднано\n\n`
         + `Напиши /menu щоб побачити всі команди.`;

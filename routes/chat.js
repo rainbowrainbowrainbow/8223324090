@@ -2113,7 +2113,7 @@ router.get('/polls/:pollId/results', async (req, res) => {
     }
 });
 
-// v32.1: Kleshnya bridge — proxy to OpenClaw (HostHatch)
+// v32.1: Помічник bridge — proxy to OpenClaw (HostHatch)
 router.post('/kleshnya', async (req, res) => {
     const { message, context } = req.body;
     const user = req.user;
@@ -2125,7 +2125,7 @@ router.post('/kleshnya', async (req, res) => {
         if (!KLESHNYA_BRIDGE_URL) {
             return res.json({
                 success: true,
-                reply: '🦞 Клешня тимчасово недоступна. Пиши в Telegram @EventHelper_One_Bot'
+                reply: '🤖 Помічник тимчасово недоступний. Пиши в Telegram @EventHelper_One_Bot'
             });
         }
 
@@ -2152,7 +2152,7 @@ router.post('/kleshnya', async (req, res) => {
         log.error('[Kleshnya Bridge Error]', err.message);
         return res.json({
             success: true,
-            reply: '🦞 Клешня зараз зайнята. Спробуй ще раз або пиши в Telegram.'
+            reply: '🤖 Помічник зараз зайнятий. Спробуй ще раз або пиши в Telegram.'
         });
     }
 });

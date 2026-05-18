@@ -132,7 +132,7 @@ async function gatherAIContext(username, dateStr, actor = null) {
 function buildSystemPrompt(ctx, username, dateStr) {
     const dayName = new Date(dateStr + 'T12:00:00').toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', weekday: 'long' });
 
-    return `Ти — Клешня 🦀, розумний помічник дитячого розважального парку "Парк Закревського Періоду" (Київ).
+    return `Ти — Помічник, розумний помічник дитячого розважального парку "Парк Закревського Періоду" (Київ).
 Ти відповідаєш ТІЛЬКИ українською мовою. Ти дружній, лаконічний, з легким гумором.
 Використовуй емодзі помірно. Відповідай коротко (2-5 речень), якщо не просять деталей.
 
@@ -436,7 +436,7 @@ const SKILLS = [
         name: 'Агенти',
         icon: '🤖',
         description: 'Статус LLM-агентів, активність, саммарі',
-        keywords: ['агент', 'agent', 'клод', 'claude', 'клешня бот', 'anthropic', 'хто робив', 'що зробив', 'що зробила', 'коміти', 'commit'],
+        keywords: ['агент', 'agent', 'клод', 'claude', 'помічник бот', 'anthropic', 'хто робив', 'що зробив', 'що зробила', 'коміти', 'commit'],
         handler: handleAgents,
         examples: ['Статус агентів', 'Що зробив Клод?', 'Коміти за сьогодні']
     },
@@ -572,7 +572,7 @@ async function generateChatResponse(userMessage, username, chatHistory, actor = 
         // 1. Check for greetings (fast path, no AI needed)
         if (HELLO_KEYWORDS.some(k => lower.includes(k)) && lower.length < 30) {
             return {
-                message: `🦀 Привіт! Я Клешня — твій помічник у парку. Питай що хочеш — бронювання, задачі, фінанси, команду. Або скажи "що ти вмієш?" для повного списку!`,
+                message: `🤖 Привіт! Я Помічник — твій AI-помічник у парку. Питай що хочеш — бронювання, задачі, фінанси, команду. Або скажи "що ти вмієш?" для повного списку!`,
                 suggestions: ['Що ти вмієш?', 'Бронювання сьогодні', 'Мої задачі', 'Хто працює?']
             };
         }
@@ -580,7 +580,7 @@ async function generateChatResponse(userMessage, username, chatHistory, actor = 
         // 2. Check for thanks (fast path)
         if (['дякую', 'спасибі', 'thanks', 'дяк', 'thank'].some(k => lower.includes(k))) {
             return {
-                message: '🦀 Завжди радий допомогти! Що ще цікавить?',
+                message: '🤖 Завжди радий допомогти! Що ще цікавить?',
                 suggestions: ['Бронювання', 'Задачі', 'Виручка', 'Команда']
             };
         }
@@ -610,13 +610,13 @@ async function generateChatResponse(userMessage, username, chatHistory, actor = 
 
         // 5. Default
         return {
-            message: '🦀 Цікаве питання! Ось що я вмію — обирай тему:',
+            message: '🤖 Цікаве питання! Ось що я вмію — обирай тему:',
             suggestions: ['Що ти вмієш?', 'Бронювання', 'Задачі', 'Виручка']
         };
     } catch (err) {
         log.error('Chat response error', err);
         return {
-            message: '🦀 Ой, щось пішло не так. Спробуй ще раз!',
+            message: '🤖 Ой, щось пішло не так. Спробуй ще раз!',
             suggestions: ['Бронювання', 'Задачі', 'Команда', 'Допомога']
         };
     }
@@ -625,7 +625,7 @@ async function generateChatResponse(userMessage, username, chatHistory, actor = 
 // --- Skill Handlers ---
 
 async function handleHelp() {
-    const lines = ['🦀 <b>Мої навички:</b>\n'];
+    const lines = ['🤖 <b>Мої навички:</b>\n'];
     for (const s of SKILLS) {
         if (s.id === 'help') continue;
         lines.push(`${s.icon} <b>${s.name}</b> — ${s.description}`);
@@ -633,7 +633,7 @@ async function handleHelp() {
     }
     lines.push(`\n🎯 <b>Фільтр по категоріях</b> — статистика по типу послуги`);
     lines.push(`   💬 <i>Скільки піньят за тиждень?, Квести за місяць</i>`);
-    lines.push('\n🦀 Просто пиши — я зрозумію!');
+    lines.push('\n🤖 Просто пиши — я зрозумію!');
     return {
         message: lines.join('\n'),
         suggestions: ['Бронювання сьогодні', 'Піньяти за тиждень', 'Квести за місяць', 'Хто працює?']
@@ -877,7 +877,7 @@ async function handleStreak(lower, username) {
     else if (streak >= 7) msg += '\n🏆 Тиждень поспіль — красунчик!';
     else if (streak >= 3) msg += '\n💪 Хороший темп, не зупиняйся!';
     else if (streak > 0) msg += '\n🌱 Початок покладено, продовжуй!';
-    else msg += '\n🦀 Виконуй задачі щодня — стрік почне рости!';
+    else msg += '\n🤖 Виконуй задачі щодня — стрік почне рости!';
 
     return {
         message: msg,
@@ -1352,7 +1352,7 @@ async function handleAgents(lower) {
             let msg = '🤖 <b>Остання активність:</b>\n\n';
             for (const a of feed) {
                 const time = new Date(a.createdAt).toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' });
-                const tag = a.agentTag === 'claude-code' ? '🤖' : a.agentTag === 'kleshnya' ? '🦀' : a.agentTag === 'anthropic' ? '🧠' : '👤';
+                const tag = a.agentTag === 'claude-code' ? '🤖' : a.agentTag === 'kleshnya' ? '🤖' : a.agentTag === 'anthropic' ? '🧠' : '👤';
                 msg += `${time} ${tag} [${a.agentTag}] ${a.summary}\n`;
                 if (a.details?.diff_stat) msg += `   ↳ ${a.details.diff_stat}\n`;
             }
@@ -1365,7 +1365,7 @@ async function handleAgents(lower) {
         }
         let msg = '🤖 <b>Статус агентів:</b>\n\n';
         for (const s of status) {
-            const tag = s.agentTag === 'claude-code' ? '🤖' : s.agentTag === 'kleshnya' ? '🦀' : s.agentTag === 'anthropic' ? '🧠' : '👤';
+            const tag = s.agentTag === 'claude-code' ? '🤖' : s.agentTag === 'kleshnya' ? '🤖' : s.agentTag === 'anthropic' ? '🧠' : '👤';
             const state = s.isOnline ? '🟢 працює' : '⚪ offline';
             const time = new Date(s.lastActive).toLocaleString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
             msg += `${tag} <b>${s.agentTag}</b> — ${state}\n`;

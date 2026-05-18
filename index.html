@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.56.5">
-    <link rel="stylesheet" href="css/auth.css?v=0.56.5">
-    <link rel="stylesheet" href="css/layout.css?v=0.56.5">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.56.5">
-    <link rel="stylesheet" href="css/timeline.css?v=0.56.5">
-    <link rel="stylesheet" href="css/panel.css?v=0.56.5">
-    <link rel="stylesheet" href="css/modals.css?v=0.56.5">
-    <link rel="stylesheet" href="css/controls.css?v=0.56.5">
-    <link rel="stylesheet" href="css/features.css?v=0.56.5">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.56.5">
-    <link rel="stylesheet" href="css/responsive.css?v=0.56.5">
-    <link rel="stylesheet" href="css/pages.css?v=0.56.5">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.56.5">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.56.5">
+    <link rel="stylesheet" href="css/base.css?v=0.56.8">
+    <link rel="stylesheet" href="css/auth.css?v=0.56.8">
+    <link rel="stylesheet" href="css/layout.css?v=0.56.8">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.56.8">
+    <link rel="stylesheet" href="css/timeline.css?v=0.56.8">
+    <link rel="stylesheet" href="css/panel.css?v=0.56.8">
+    <link rel="stylesheet" href="css/modals.css?v=0.56.8">
+    <link rel="stylesheet" href="css/controls.css?v=0.56.8">
+    <link rel="stylesheet" href="css/features.css?v=0.56.8">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.56.8">
+    <link rel="stylesheet" href="css/responsive.css?v=0.56.8">
+    <link rel="stylesheet" href="css/pages.css?v=0.56.8">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.56.8">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.56.8">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.56.5 Timeline: компактний екран">✨ 0.56.5 Timeline: компактний екран</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.56.8 Header: пошук і Помічник">✨ 0.56.8 Header: пошук і Помічник</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.56.5 — Timeline: компактний екран</p>
+                <p class="tagline">AI First CRM v0.56.8 — Header: пошук і Помічник</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.56.5: Timeline: компактний екран</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.56.8: Header: пошук і Помічник</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -184,16 +184,16 @@
 
             <!-- Kleshnya Floating Widget — Futuristic Terminal v11.0.3 -->
             <div id="kleshnyaWidget" class="kleshnya-widget hidden">
-                <button type="button" id="kleshnyaFab" class="kleshnya-fab" title="Клешня — командний центр" aria-label="Відкрити Клешню">
-                    <span class="kleshnya-fab-icon">🦀</span>
+                <button type="button" id="kleshnyaFab" class="kleshnya-fab" title="Помічник — командний центр" aria-label="Відкрити Помічника">
+                    <span class="kleshnya-fab-icon">🤖</span>
                     <span class="kleshnya-fab-sonar"></span>
                 </button>
-                <div id="kleshnyaPopup" class="kleshnya-popup hidden" role="dialog" aria-label="Клешня — Командний Центр">
+                <div id="kleshnyaPopup" class="kleshnya-popup hidden" role="dialog" aria-label="Помічник — Командний Центр">
                     <div class="kleshnya-scanline"></div>
                     <div class="kleshnya-popup-header">
                         <div class="kleshnya-header-left">
                             <span class="kleshnya-status-dot"></span>
-                            <span class="kleshnya-popup-title">KLESHNYA <span class="kleshnya-version">v3.0</span></span>
+                            <span class="kleshnya-popup-title">ПОМІЧНИК <span class="kleshnya-version">v3.0</span></span>
                         </div>
                         <div class="kleshnya-header-right">
                             <span class="kleshnya-status-text">ONLINE</span>
@@ -1270,6 +1270,27 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.56.8 — Header: пошук і Помічник</h4>
+                    <ul>
+                        <li><b>Пошук на всіх вкладках</b> — global search тепер монтується через shared header, тому кнопка <code>Пошук</code> є на всіх CRM-сторінках.</li>
+                        <li><b>Єдина search-модалка</b> — сторінки без старого <code>#searchModal</code> отримують спільну модалку автоматично.</li>
+                        <li><b>Header controls</b> — пошук візуально з'єднаний з theme toggle і <code>Вийти</code>: одна висота, радіус, фон, тінь і dark-mode contract.</li>
+                        <li><b>Помічник</b> — user-facing assistant у rail, expanded window, sidebar, chat, landing і bot-відповідях перейменований без старого crab branding.</li>
+                        <li><b>Безпечні контракти</b> — внутрішні <code>/api/kleshnya</code>, DB tables, file names і service ids не перейменовувались, щоб не ламати інтеграції.</li>
+                        <li><b>Guardrails</b> — UI-smoke фіксує і shared header search, і неймінг <code>Помічник</code> у visible assistant surfaces.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.56.6 — Header: пошук всюди</h4>
+                    <ul>
+                        <li><b>Пошук на всіх сторінках</b> — global search тепер створюється через спільний header, тому кнопка з'являється на всіх authenticated CRM-вкладках.</li>
+                        <li><b>Спільна модалка</b> — search modal автоматично додається на сторінки, де її не було, і підвантажує актуальний <code>js/search.js</code>.</li>
+                        <li><b>Візуальна єдність</b> — кнопка пошуку отримала той самий розмір, радіус, фон і тінь, що перемикач теми та <code>Вийти</code>.</li>
+                        <li><b>Темна тема</b> — search button і search modal мають окремий dark-mode contract без сірих системних контролів.</li>
+                        <li><b>Guardrail</b> — UI-smoke фіксує, що shared authenticated header інжектить global search і має стилі в <code>layout.css</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.56.5 — Timeline: компактний екран</h4>
                     <ul>
                         <li><b>Компактний режим</b> — перемикач тепер синхронізується зі збереженим станом і реально вмикає compact-density.</li>
@@ -1280,7 +1301,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.56.4 — Клешня: зручне вікно</h4>
+                    <h4>v0.56.4 — Помічник: зручне вікно</h4>
                     <ul>
                         <li><b>Нижня панель</b> — поле запиту і кнопка Запитати винесені в окремий стабільний ряд, тому більше не налазять на prompt-картки та історію.</li>
                         <li><b>Робоча зона</b> — snapshot, action proposal, guided teaching, режими, quick prompts і історія тепер живуть у власній scroll-зоні всередині вікна.</li>
@@ -1321,7 +1342,7 @@
                 <div class="changelog-section">
                     <h4>v0.56.0 — AI Assistant: флагманський провідник</h4>
                     <ul>
-                        <li><b>Єдиний AI-шар</b> — Клешня працює через shared rail, foundation store, adapters, action registry і teaching targets без dashboard-only fork.</li>
+                        <li><b>Єдиний AI-шар</b> — Помічник працює через shared rail, foundation store, adapters, action registry і teaching targets без dashboard-only fork.</li>
                         <li><b>Core-page intelligence</b> — dashboard/work queue, tasks, finance, leads і chat беруть сигнали з реальних CRM API snapshots.</li>
                         <li><b>Strategic advisor</b> — відповіді коротко пояснюють що видно, чому це важливо і яку одну дію зробити наступною для ролі.</li>
                         <li><b>Voice UX</b> — replay, interruption, blocked-playback fallback, subtitles і presence states стали спокійнішими та надійнішими.</li>
@@ -1411,9 +1432,9 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.55.36 — Клешня: нормальне вікно</h4>
+                    <h4>v0.55.36 — Помічник: нормальне вікно</h4>
                     <ul>
-                        <li><b>Клешня</b> — відкрите AI-вікно перероблено з вузького drawer у повноцінну workspace-картку.</li>
+                        <li><b>Помічник</b> — відкрите AI-вікно перероблено з вузького drawer у повноцінну workspace-картку.</li>
                         <li><b>Layout</b> — контекст, режими роботи, історія, швидкі дії та поле запиту мають окремі стабільні зони.</li>
                         <li><b>Theme</b> — додано нормальний dark/light surface contract для overlay, panel, history і форми.</li>
                         <li><b>Responsive</b> — на планшетах і мобільних вікно переходить в одну колонку без кривого стискання.</li>
@@ -1487,7 +1508,7 @@
                 <div class="changelog-section">
                     <h4>v0.55.27 — AI topbar integration</h4>
                     <ul>
-                        <li><b>AI Rail</b> — Клешню інтегровано в спільний topbar замість окремого floating-overlay.</li>
+                        <li><b>AI Rail</b> — Помічника інтегровано в спільний topbar замість окремого floating-overlay.</li>
                         <li><b>Header</b> — сторінки отримали однаковий верхній AI/status contract.</li>
                         <li><b>Navigation</b> — меню й AI shell працюють як один shared layout.</li>
                     </ul>
@@ -1568,7 +1589,7 @@
                     <h4>v0.55.17 — Навігація: closer Claude Design shell</h4>
                     <ul>
                         <li><b>Sidebar</b> — меню наближено до Claude Design: ширший matte shell, operator card і alert hero.</li>
-                        <li><b>AI Topbar</b> — Клешню винесено в широку AI-панель під topbar.</li>
+                        <li><b>AI Topbar</b> — Помічника винесено в широку AI-панель під topbar.</li>
                         <li><b>Responsive</b> — sidebar і AI panel адаптуються через clamp-ширини.</li>
                     </ul>
                 </div>
@@ -1741,7 +1762,7 @@
                 <div class="changelog-section">
                     <h4>v0.54.7 — Sidebar AI Cockpit Hardening</h4>
                     <ul>
-                        <li><b>Command deck</b> — верхній блок sidebar отримав явний маркер <code>Клешня · операційний стан</code>, role-aware summary і clean empty state без повернення старих pills.</li>
+                        <li><b>Command deck</b> — верхній блок sidebar отримав явний маркер <code>Помічник · операційний стан</code>, role-aware summary і clean empty state без повернення старих pills.</li>
                         <li><b>Role focus</b> — стартовий стан груп переведено на <code>ai-cockpit-v2</code>, щоб користувачі отримували role-preferred секції замість успадкованого all-open меню.</li>
                         <li><b>Focus deck</b> — ролі без доступу до воронки більше не бачать порожню третю колонку: deck перебудовується у дві корисні дії.</li>
                         <li><b>Visual control</b> — вимкнено magnetic/ripple ефекти в навігації, щоб sidebar читався як спокійний AI-first cockpit, а не декоративний rail.</li>
@@ -1912,7 +1933,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.41 — Profile Cabinet Notes Panel Cleanup (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.41 — Profile Cabinet Notes Panel Cleanup (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>Profile</b> — блок <code>Нотатки</code> прибрано з власного кабінету, щоб нижня частина сторінки не показувала зайву порожню панель.</li>
                         <li><b>Right Panel</b> — глобальний <code>role-panel</code> більше не підключається на <code>profile.html</code>, тому права floating-панель не перекриває кабінет.</li>
@@ -1920,7 +1941,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.40 — Price List Categories Print Redesign (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.40 — Price List Categories Print Redesign (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>Price List</b> — прайс перебудовано у фіксований порядок категорій: Меню, Торти, Розважальні програми, Піньяти, Костюми.</li>
                         <li><b>Visual Hierarchy</b> — вкладка отримала sales-flow з hero, category/subcategory блоками, item cards, цінами та fallback-сигналами для неповних даних.</li>
@@ -1929,7 +1950,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.39 — Dashboard Remove My Focus Widget (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.39 — Dashboard Remove My Focus Widget (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>Dashboard</b> — віджет <code>Мій фокус</code> прибрано зі scene/grid/settings surfaces, щоб він більше не займав місце на головній.</li>
                         <li><b>Saved Config Safety</b> — старі dashboard-конфіги з <code>my_focus</code> фільтруються normalization layer і не ламають сцену.</li>
@@ -1937,7 +1958,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.38 — Sidebar Stack Overlap Fix (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.38 — Sidebar Stack Overlap Fix (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>Sidebar Layout</b> — dashboard jump, quick status block і accordion groups отримали окремі вертикальні слоти без накладання карток.</li>
                         <li><b>Accordion Spacing</b> — links і category rows використовують стабільний flex-column rhythm без negative/animated overlap.</li>
@@ -1945,7 +1966,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.37 — Dashboard Board Creative Workspace &amp; AI Upgrade (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.37 — Dashboard Board Creative Workspace &amp; AI Upgrade (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>Workspace Logic</b> — board отримав явний interaction contract для view, edit, draw, connect, text-edit і widget-inspect режимів.</li>
                         <li><b>Creative Palette</b> — toolbar зібрано у grouped navigation, insert, draw, connect, AI і action flows.</li>
@@ -1955,7 +1976,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.36 — My Cabinet Cluster Visual Polish (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.36 — My Cabinet Cluster Visual Polish (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>Cluster</b> — у верхньому My Cabinet cluster прибрано усічені підписи та зафіксовано clean icon-only face.</li>
                         <li><b>Counts</b> — цифри піднято вище і зроблено візуально сильнішими, щоб блок читався як quick indicator surface.</li>
@@ -1963,7 +1984,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.35 — Catalog Viewer Wide-Screen Stability Fix (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.35 — Catalog Viewer Wide-Screen Stability Fix (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>Catalogs</b> — виправлено wide-screen конфлікт, через який сторонній surface міг перекривати значну частину каталогу.</li>
                         <li><b>Viewer Isolation</b> — fullscreen catalog viewer отримав окремий UI mode та жорсткий isolation contract проти fixed/floating CRM елементів.</li>
@@ -1971,7 +1992,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.34 — Sidebar Category Density &amp; Chevron Polish (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.34 — Sidebar Category Density &amp; Chevron Polish (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>Sidebar</b> — category headers у navigation rail стали компактнішими, спокійнішими і більш зібраними по вертикальному ритму.</li>
                         <li><b>Chevron</b> — старі border-стрілки замінено на SVG control chevron з акуратним open/closed станом.</li>
@@ -1979,7 +2000,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.33 — Version System Hardening (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.33 — Version System Hardening (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>Version Truth</b> — версію CRM закріплено за <code>package.json</code> разом із canonical release label.</li>
                         <li><b>Hard Gate</b> — <code>check:version</code> тепер ловить drift у badge, tagline, CTA, changelog, cache-bust і API version contract.</li>
@@ -1987,7 +2008,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.32 — HR Interactive Company Structure (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.32 — HR Interactive Company Structure (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>HR Структура</b> — додано інтерактивну структуру компанії за схемою з фото, без вставки єдиного зображення.</li>
                         <li><b>Ролі</b> — вузли Director / Deputy / HR / Art / кухня / технічний персонал / аніматори та інші стали клікабельними.</li>
@@ -1995,7 +2016,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.31 — HR Schedule Dark Theme Polish (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.31 — HR Schedule Dark Theme Polish (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>HR Розклад</b> — прибрано білу заливку поточного дня у темному режимі.</li>
                         <li><b>Контраст</b> — кнопки, select шаблону, стрілки й символи тепер читаються світлим кольором на темному фоні.</li>
@@ -2003,7 +2024,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.30 — Dashboard New Leads Widget Links (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.30 — Dashboard New Leads Widget Links (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>Нові ліди</b> — кожен рядок у dashboard-віджеті тепер відкриває конкретний lead у воронці.</li>
                         <li><b>Навігація</b> — клік веде на <code>/sales-funnel?lead=&lt;id&gt;</code>, щоб одразу потрапити в workspace ліда.</li>
@@ -2011,7 +2032,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.29 — My Cabinet Icon Cluster Redesign (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.29 — My Cabinet Icon Cluster Redesign (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>My Cabinet</b> — верхній control cluster перезібрано у три великі icon-only плитки без текстових підписів.</li>
                         <li><b>Notifications</b> — центральна плитка стала canonical bell shortcut для сповіщень CRM.</li>
@@ -2019,7 +2040,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.28 — Sound Log Dark Theme Contrast Fix (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.28 — Sound Log Dark Theme Contrast Fix (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>Лог подій</b> — виправлено невидимі написи у чорній темі на сторінці звуку.</li>
                         <li><b>Контраст</b> — дати, статистика, записи, теги та деталі подій отримали явні світлі dark-mode кольори.</li>
@@ -2027,7 +2048,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.27 — Sidebar Group Animation Polish (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.27 — Sidebar Group Animation Polish (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>Sidebar</b> — виправлено active/open анімацію груп меню, щоб підсвітка не вилітала за межі картки.</li>
                         <li><b>Arrow</b> — прибрано подвійне малювання chevron-стрілки, яке давало кривий і несинхронний вигляд.</li>
@@ -2035,7 +2056,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.26 — Timeline Animator Visibility Fix (Клешня, 16.05.2026)</h4>
+                    <h4>v0.50.26 — Timeline Animator Visibility Fix (Помічник, 16.05.2026)</h4>
                     <ul>
                         <li><b>Timeline</b> — виправлено видимість івентів для акаунтів аніматорів: сервер тепер враховує реальну лінію бронювання <code>line_id</code>.</li>
                         <li><b>Staff Scope</b> — staff-акаунти більше не залежать від помилкового порівняння з <code>hosts</code>, яке є кількістю аніматорів.</li>
@@ -2043,7 +2064,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.25 — Omni Account Connections & Alerts (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.25 — Omni Account Connections & Alerts (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Omni Accounts</b> — в Omni додано керування підключенням каналів і явний статус кожного акаунта.</li>
                         <li><b>Alerts</b> — якщо канал не підключений або працює в обмеженому режимі, CRM показує visible alarm і піднімає alert.</li>
@@ -2051,7 +2072,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.24 — Chat Runtime Audit & Theme Stabilization (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.24 — Chat Runtime Audit & Theme Stabilization (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Chat Audit</b> — виконано системний аудит bootstrap, theme, overlays і ключових interaction-зон чату.</li>
                         <li><b>Theme</b> — виправлено синхронізацію manual/auto теми у chat surface.</li>
@@ -2059,7 +2080,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.23 — Tasks Top Cleanup (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.23 — Tasks Top Cleanup (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Tasks UI</b> — прибрано окрему вкладку <b>Фокус</b> з верхньої навігації задач.</li>
                         <li><b>Top Summary</b> — прибрано верхні картки <b>Прострочено</b>, <b>Чекаю</b> та <b>Швидкі перемоги</b> для чистішого інтерфейсу.</li>
@@ -2067,7 +2088,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.22 — Global CRM Assistant Rail (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.22 — Global CRM Assistant Rail (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>All Pages</b> — верхня AI-строка тепер працює на всіх сторінках CRM, а не лише на dashboard.</li>
                         <li><b>Proactive Help</b> — якщо користувач перебуває на сторінці 5 секунд і не починає дію, асистент сам коротко пропонує допомогу.</li>
@@ -2075,7 +2096,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.21 — Dashboard AI Guide Voice Mode (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.21 — Dashboard AI Guide Voice Mode (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Assistant Rail</b> — верхня AI-панель дашборду підключена до OpenAI і може супроводжувати користувача по CRM.</li>
                         <li><b>Voice Mode</b> — додано голосовий цикл: мікрофон → transcription → AI-відповідь → TTS-озвучення + субтитри.</li>
@@ -2083,7 +2104,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.20 — Dashboard Mixed Scene by Role (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.20 — Dashboard Mixed Scene by Role (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Dashboard Scene</b> — дашборд став єдиною змішаною сценою з логічно розкладеними widgets і зонами для нотаток.</li>
                         <li><b>Role Logic</b> — у кожної ключової ролі тепер своя композиція dashboard, а creator може preview-ити як scene виглядає для інших.</li>
@@ -2091,7 +2112,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.19 — Assistant Rail Expansion &amp; Sidebar Status Polish (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.19 — Assistant Rail Expansion &amp; Sidebar Status Polish (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Dashboard Header</b> — assistant rail у центрі header розтягнуто в повноцінний широкий блок із сильнішою візуальною присутністю.</li>
                         <li><b>Subtitles</b> — текст отримав більше простору, працює у дві строки й переходить у ticker тільки коли репліка справді зависока для блока.</li>
@@ -2099,14 +2120,14 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.18 — Sidebar Dashboard Badge Cleanup (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.18 — Sidebar Dashboard Badge Cleanup (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Sidebar</b> — з кнопки <code>Дашборд</code> прибрано завислий лічильник сповіщень, який не мав бути прив’язаний до цього переходу.</li>
                         <li><b>Badge truth</b> — alert-лічильники лишилися тільки на своїх реальних surfaces, без дублювання на dashboard jump.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.17 — Sidebar Dashboard Jump (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.17 — Sidebar Dashboard Jump (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Sidebar</b> — над списком меню повернуто окрему кнопку швидкого переходу на Dashboard.</li>
                         <li><b>Навігація</b> — Dashboard тепер доступний без розкриття CRM-групи, але не змішується зі статусними комірками задач, алертів і воронки.</li>
@@ -2114,7 +2135,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.16 — Dashboard Assistant Voice Rail (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.16 — Dashboard Assistant Voice Rail (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Dashboard Header</b> — у верхній панелі з’явився центральний assistant rail для статусу, голосу й субтитрів.</li>
                         <li><b>Assistant UX</b> — додано стани “думаю / зайнятий / слухаю / говорю”, керування голосом і повтор останньої репліки.</li>
@@ -2122,7 +2143,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.15 — Profile Photo Upload (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.15 — Profile Photo Upload (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Профіль</b> — у налаштуваннях аватарки додано завантаження фото з комп'ютера або телефона.</li>
                         <li><b>Storage</b> — фото зберігаються через Supabase Storage <code>profile-avatars</code> з локальним fallback <code>/uploads/profile-avatars</code>.</li>
@@ -2131,7 +2152,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.14 — Dashboard Board Tools & Notes Repair (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.14 — Dashboard Board Tools & Notes Repair (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Board Tools</b> — у dashboard board mode додано text, frame, brush, highlighter, eraser і кілька типів фігур.</li>
                         <li><b>Legacy Notes</b> — старі нотатки тепер мігруються у новий board contract і знову нормально редагуються.</li>
@@ -2139,7 +2160,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.13 — Sidebar Status Cell Clarity (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.13 — Sidebar Status Cell Clarity (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Sidebar</b> — статусні комірки задач, сповіщень і воронки отримали великі кастомні іконки.</li>
                         <li><b>UX</b> — лічильники й короткі підписи стали зрозумілішими без обрізаного шуму.</li>
@@ -2147,7 +2168,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.12 — Profile Dark Contrast (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.12 — Profile Dark Contrast (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Profile</b> — виправлено контраст у темній темі: ім'я, заголовки, задачі, метрики й активність тепер читаються.</li>
                         <li><b>Dark mode</b> — профіль отримав окремі text/surface tokens для темних карток, табів і My Cabinet.</li>
@@ -2155,7 +2176,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.11 — Dashboard Widget Cleanup (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.11 — Dashboard Widget Cleanup (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Dashboard</b> — прибрано великі службові віджети <code>Фінанси сьогодні</code>, <code>Звіти сьогодні</code>, <code>Акаунти CRM</code> і <code>Бронювання на тиждень</code> з головної поверхні.</li>
                         <li><b>Widgets</b> — погода й курси валют стали компактнішими і більше не розтягують ряд dashboard-карток.</li>
@@ -2163,7 +2184,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.10 — Sidebar Profile Cleanup (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.10 — Sidebar Profile Cleanup (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Sidebar</b> — прибрано зайву окрему профільну картку, яка дублювала інформацію про користувача.</li>
                         <li><b>Dashboard</b> — меню стало нижчим і чистішим: лишається один основний профільний блок.</li>
@@ -2171,7 +2192,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.9 — Sidebar Status Rail (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.9 — Sidebar Status Rail (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Sidebar</b> — задачі, алерти й воронку зібрано в один горизонтальний status rail.</li>
                         <li><b>UX</b> — кожен сегмент окремо показує лічильник і короткий стан, не займаючи три рядки меню.</li>
@@ -2179,7 +2200,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.8 — Sidebar Role Line (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.8 — Sidebar Role Line (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Sidebar</b> — прибрано обрізаний time-based greeting біля імені користувача.</li>
                         <li><b>Профіль</b> — під іменем тепер стабільно показується роль або ролі акаунта.</li>
@@ -2187,7 +2208,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.7 — Sidebar AI Placeholder Cleanup (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.7 — Sidebar AI Placeholder Cleanup (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Sidebar</b> — прибрано зайвий demo/AI placeholder-блок з верхньої частини меню.</li>
                         <li><b>Dashboard</b> — ліве меню стало компактнішим: без блоку <code>Імітація / Почати</code>, який займав місце.</li>
@@ -2195,7 +2216,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.6 — Sidebar Status Stack (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.6 — Sidebar Status Stack (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Sidebar</b> — задачі, алерти й воронку згруповано в один компактний status-блок замість трьох великих карток.</li>
                         <li><b>UX</b> — блок займає менше висоти меню, але зберігає швидкий доступ і лічильники справа.</li>
@@ -2203,7 +2224,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.5 — Dashboard Board Notes Fix (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.5 — Dashboard Board Notes Fix (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Dashboard Board</b> — нотатки стали реальними textarea-редакторами, а не крихким contenteditable-блоком.</li>
                         <li><b>Редагування</b> — клік у текст більше не перерендерює board і не скидає фокус під час набору.</li>
@@ -2211,7 +2232,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.4 — Sidebar Dashboard Jump (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.4 — Sidebar Dashboard Jump (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Sidebar</b> — пасивний напис <code>Зараз</code> у верхній панелі замінено на інтерактивну кнопку переходу на Dashboard.</li>
                         <li><b>UX</b> — кнопка має компактний pill-стиль, hover/focus-стани і не конфліктує з кліком по профілю.</li>
@@ -2219,7 +2240,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.3 — Sidebar AI Companion Placeholder (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.3 — Sidebar AI Companion Placeholder (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Sidebar</b> — у верхній картці профілю додано компактне вікно AI-помічника з кнопкою старту розмови.</li>
                         <li><b>AI mode</b> — помаранчевий індикатор означає демо/імітацію, зелений зарезервований для реального LLM-підключення.</li>
@@ -2227,7 +2248,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.2 — Sidebar Metrics Rail Polish (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.2 — Sidebar Metrics Rail Polish (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Меню</b> — метрики задач, сповіщень і воронки більше не сидять у трьох тісних картках.</li>
                         <li><b>Sidebar</b> — блок перероблено у компактний вертикальний rail з іконкою, назвою, числом і коротким meta.</li>
@@ -2235,7 +2256,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.1 — Dashboard Board Foundation Engine (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.1 — Dashboard Board Foundation Engine (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Dashboard</b> — додано безпечний board mode поверх існуючого dashboard, без заміни старої сітки віджетів.</li>
                         <li><b>Engine</b> — закладено view/edit режими, board state contract, selection model, undo/redo foundation і lifecycle базових object actions.</li>
@@ -2244,7 +2265,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.50.0 — Sidebar Aurora — живий редизайн меню (Клешня, 15.05.2026)</h4>
+                    <h4>v0.50.0 — Sidebar Aurora — живий редизайн меню (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Aurora</b> — додано живе світіння, spotlight за курсором, ripple-кліки та плавний активний індикатор.</li>
                         <li><b>Зараз</b> — user-картка стала контекстною: аватар, живий час і поточна або наступна подія.</li>
@@ -2253,7 +2274,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.24 — Lead Customer Linking Dropdown (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.24 — Lead Customer Linking Dropdown (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Воронка</b> — привʼязка клієнта до ліда більше не просить вручну вводити ID.</li>
                         <li><b>Клієнти</b> — додано пошук і випадаючий список існуючих клієнтів з іменем, телефоном, Instagram і кількістю візитів.</li>
@@ -2261,7 +2282,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.23 — Team Presence Clarity (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.23 — Team Presence Clarity (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Dashboard</b> — у віджеті <code>Команда онлайн</code> зеленим тепер показуються тільки ті, хто реально на зв’язку.</li>
                         <li><b>Присутність</b> — користувачі без активного підключення стали сірими: аватарка, статус-крапка і CRM-бейдж більше не виглядають як online.</li>
@@ -2269,7 +2290,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.22 — Sidebar Professional Polish (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.22 — Sidebar Professional Polish (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Меню</b> — sidebar приведено до єдиної професійної системи карток: профіль, задачі, сповіщення, воронка і quick-переходи виглядають як один робочий інструмент.</li>
                         <li><b>Компактність</b> — верхній блок став щільнішим: менше зайвого тексту в віджетах, нижчі quick-кнопки та спокійніші акценти.</li>
@@ -2277,7 +2298,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.21 — Work Queue Funnel Summary (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.21 — Work Queue Funnel Summary (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Робоча черга</b> — <code>Лід без руху</code> більше не показується як окремий пункт черги з дією <code>Відкрити кейс</code>.</li>
                         <li><b>Воронка</b> — додано компактний summary-блок: активні ліди, скільки чекає дії та етапи з найбільшим навантаженням.</li>
@@ -2285,7 +2306,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.20 — Staff Schedule Dark Theme (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.20 — Staff Schedule Dark Theme (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Графік</b> — темну тему вкладки <code>Графік роботи</code> перероблено для всієї schedule-сітки.</li>
                         <li><b>Таблиця</b> — темні стилі тепер покривають sticky-колонки, заголовки, групи відділів, статуси змін і hover-стани.</li>
@@ -2293,7 +2314,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.19 — Custom Sidebar Icons (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.19 — Custom Sidebar Icons (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Меню</b> — системні emoji замінено на власний SVG-набір іконок для sidebar.</li>
                         <li><b>Теми</b> — іконки отримали контрольовані кольори для світлої й темної теми без залежності від emoji-шрифту ОС.</li>
@@ -2301,7 +2322,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.18 — Sidebar Top Block Density (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.18 — Sidebar Top Block Density (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Меню</b> — верхній блок із профілем, задачами, сповіщеннями та воронкою зроблено компактнішим.</li>
                         <li><b>Щільність</b> — зменшено висоту профільної картки, іконки, лічильники, padding і вертикальні проміжки віджетів.</li>
@@ -2309,7 +2330,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.17 — Sidebar Quick Buttons Density (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.17 — Sidebar Quick Buttons Density (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Меню</b> — кнопки <code>Графік</code>, <code>Таймлайн</code> і <code>Чат</code> зроблено трохи нижчими та компактнішими.</li>
                         <li><b>UX</b> — зменшено іконку, padding і проміжки, щоб quick-блок не займав забагато місця під віджетами.</li>
@@ -2317,7 +2338,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.16 — Sidebar Accordion State Fix (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.16 — Sidebar Accordion State Fix (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Меню</b> — кілька відкритих розділів sidebar тепер зберігаються одночасно, а не перетираються останнім кліком.</li>
                         <li><b>Стабільність</b> — стан accordion нормалізується, навіть якщо в <code>localStorage</code> лишився старий або битий формат.</li>
@@ -2325,7 +2346,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.15 — Sidebar Action Trap Hardening (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.15 — Sidebar Action Trap Hardening (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Меню</b> — старий блок <code>Дії</code> більше не може лишати користувача внизу sidebar без нормального виходу.</li>
                         <li><b>Стабільність</b> — додано JS-guard, який видаляє legacy action-кнопки навіть зі старого DOM або кешованої розмітки.</li>
@@ -2333,7 +2354,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.13 — Notification Center Redesign (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.13 — Notification Center Redesign (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Сповіщення</b> — кнопка в лівому меню більше не відкриває маленький popover справа від header.</li>
                         <li><b>Меню</b> — верхній дзвіночок прибрано з shared header-flow, а sidebar відкриває окремий центр подій.</li>
@@ -2341,7 +2362,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.12 — Sidebar Quick Navigation (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.12 — Sidebar Quick Navigation (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Меню</b> — над основними accordion-групами додано окремий блок швидких переходів.</li>
                         <li><b>Швидкий доступ</b> — кнопки <code>Графік</code>, <code>Таймлайн</code> і <code>Чат</code> винесені в компактний список для всіх користувачів.</li>
@@ -2349,7 +2370,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.11 — Sidebar Funnel Widget (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.11 — Sidebar Funnel Widget (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Меню</b> — у pinned-зоні sidebar додано віджет <code>Воронка</code> для швидкого контролю лідів.</li>
                         <li><b>Алерти</b> — якщо є лід, що чекає дії, віджет підсвічується і показує червоний лічильник.</li>
@@ -2357,7 +2378,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.10 — Profile Avatar Settings (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.10 — Profile Avatar Settings (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Профіль</b> — у вкладці <code>Налаштування</code> додано робочий редактор аватарки.</li>
                         <li><b>Avatar</b> — можна обрати emoji, колір фону, повернути літеру з імені або зберегти фото через URL.</li>
@@ -2365,7 +2386,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.9 — Light Sidebar Readability Fix (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.9 — Light Sidebar Readability Fix (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Меню</b> — у світлій темі підсилено контраст стрілок accordion-груп.</li>
                         <li><b>Рамки</b> — межі між групами меню та active group border стали помітнішими.</li>
@@ -2373,7 +2394,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.8 — Tasks OS Foundation + Sidebar/Профіль Polish (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.8 — Tasks OS Foundation + Sidebar/Профіль Polish (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Tasks OS</b> — додано foundation для personal/private/team задач, workflow state, focus, snooze, reminders metadata, subtasks і My Cabinet projection.</li>
                         <li><b>My Cabinet</b> — у профілі зʼявились вкладки <code>Мій день</code> і <code>Мої задачі</code> як персональний робочий cockpit.</li>
@@ -2383,7 +2404,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.7 — Sidebar Alerts Duplicate (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.7 — Sidebar Alerts Duplicate (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Меню</b> — прибрано pinned-пункт <code>Фокус дня</code> з sidebar.</li>
                         <li><b>Сповіщення</b> — на його місці додано компактний дубль alerts з кількістю нових і коротким preview.</li>
@@ -2391,7 +2412,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.6 — Professional Profile Workspace (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.6 — Professional Profile Workspace (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Профіль</b> — особистий кабінет впорядковано як робочий профіль працівника з чистим overview, KPI, задачами й активністю.</li>
                         <li><b>Navigation</b> — клік по імені користувача в правому хедері більше не відкриває стару profile-модалку, а веде на нову сторінку профілю.</li>
@@ -2399,7 +2420,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.5 — Sidebar Task Widget + Profile Link (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.5 — Sidebar Task Widget + Profile Link (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Меню</b> — групи навігації стартують згорнутими за замовчуванням і зберігають вибір користувача після відкриття.</li>
                         <li><b>Профіль</b> — імʼя та картка користувача в sidebar стали клікабельними й відкривають особистий профіль.</li>
@@ -2408,7 +2429,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.3 — Dashboard + Tasks Bootstrap Hardening (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.3 — Dashboard + Tasks Bootstrap Hardening (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>UI</b> — робочу чергу на dashboard ущільнено як справжній віджет, а не широку сторінкову секцію.</li>
                         <li><b>UX</b> — bucket-и отримали внутрішній скрол, компактніші рядки й коротку праву зону вирішення.</li>
@@ -2419,7 +2440,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.2 — Dashboard Work Queue + Navigation First Paint Fix (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.2 — Dashboard Work Queue + Navigation First Paint Fix (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>UI</b> — повністю українізовано Work Queue, аналітику черги, робочу зону вирішення та дії виконання.</li>
                         <li><b>UX</b> — робочу чергу перебудовано в щільніший master/detail layout з bucket-и ліворуч і sticky-панеллю вирішення праворуч.</li>
@@ -2428,7 +2449,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.1 — Navigation Page Switch Flicker Fix (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.1 — Navigation Page Switch Flicker Fix (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Navigation</b> — прибрано visible flash попереднього shell при переходах між сторінками CRM.</li>
                         <li><b>Shell</b> — введено єдиний pre-paint/shell-ready контракт для sidebar і main layout.</li>
@@ -2436,7 +2457,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.49.0 — Release 49 Rollout (Клешня, 15.05.2026)</h4>
+                    <h4>v0.49.0 — Release 49 Rollout (Помічник, 15.05.2026)</h4>
                     <ul>
                         <li><b>Visibility</b> — великий scoped visibility contour зібрано на canonical booking visibility без дублювання системи.</li>
                         <li><b>Operations</b> — task, chat, lead/customer, queue і analytics rollout зафіксовано як release 49 branch state.</li>
@@ -2445,7 +2466,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.48.15 — Org / HR / Inventory / Pricing Foundation v2 Comprehensive (Клешня, 14.05.2026)</h4>
+                    <h4>v0.48.15 — Org / HR / Inventory / Pricing Foundation v2 Comprehensive (Помічник, 14.05.2026)</h4>
                     <ul>
                         <li><b>Departments</b> — add-employee form тепер бере відділи з наявного staff source і показує department-aware role options як UI guidance без role-system redesign.</li>
                         <li><b>HR</b> — v1 HR/schedule truth збережено: company structure, profile fields, reserve/blacklist, manual attendance і task KPI лишаються на чинних канонічних джерелах.</li>
@@ -2454,7 +2475,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.48.14 — Operations Flow Cluster v2 Comprehensive (Клешня, 14.05.2026)</h4>
+                    <h4>v0.48.14 — Operations Flow Cluster v2 Comprehensive (Помічник, 14.05.2026)</h4>
                     <ul>
                         <li><b>Tasks</b> — canonical <code>tasks.owner_user_id</code> лишається truth; bulk assignment більше не дублює no-op notifications.</li>
                         <li><b>Leads</b> — додано legacy-safe multi-celebrant block без міграції старих freeform нотаток.</li>
@@ -2464,7 +2485,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.48.13 — Org / HR / Inventory / Pricing Foundation v1 (Клешня, 14.05.2026)</h4>
+                    <h4>v0.48.13 — Org / HR / Inventory / Pricing Foundation v1 (Помічник, 14.05.2026)</h4>
                     <ul>
                         <li><b>Departments</b> — org/dept image-source не знайдено, тому фінальну taxonomy не вигадано; reuse points зафіксовані як legacy/UI/auth-sensitive.</li>
                         <li><b>HR</b> — команда відкривається через <code>/hr#team</code>, profile deep-link веде в картку співробітника, додано адресу, резерв і чорний список.</li>
@@ -2474,7 +2495,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.48.12 — Operations Flow Cluster v1 (Клешня, 14.05.2026)</h4>
+                    <h4>v0.48.12 — Operations Flow Cluster v1 (Помічник, 14.05.2026)</h4>
                     <ul>
                         <li><b>Задачі</b> — chat-to-task переведено на canonical задачі з ручним вибором виконавця, без blind auto-routing і legacy double-create.</li>
                         <li><b>Notifications</b> — assignment/reassignment notifications стали typed-owner aware і більше не дублюються при no-op оновленнях виконавця.</li>
@@ -2483,7 +2504,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.48.11 — Scoped Visibility & Operations Mega Completion v1 (Клешня, 14.05.2026)</h4>
+                    <h4>v0.48.11 — Scoped Visibility & Operations Mega Completion v1 (Помічник, 14.05.2026)</h4>
                     <ul>
                         <li><b>Reporting</b> — booking-derived reporting, stats, center, board, settings fallback і helper/chat summaries завершено на canonical visibility rails.</li>
                         <li><b>Parity</b> — search, customer, lead і helper shortcuts більше не розширюють видимість поза safe booking/task/page scope.</li>
@@ -2492,7 +2513,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.48.8 — Booking Visibility & Event Risk Scope Hardening v1 (Клешня, 14.05.2026)</h4>
+                    <h4>v0.48.8 — Booking Visibility & Event Risk Scope Hardening v1 (Помічник, 14.05.2026)</h4>
                     <ul>
                         <li><b>Bookings</b> — введено канонічну object-level visibility policy для бронювань і booking-derived routes.</li>
                         <li><b>Event Risk</b> — queue, dashboard alerts/summaries і timeline тепер рахують та показують тільки visible booking scope.</li>
@@ -2501,7 +2522,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.48.7 — Unsafe Dismiss Hardening v2: Full Legacy & Dynamic Cluster (Клешня, 14.05.2026)</h4>
+                    <h4>v0.48.7 — Unsafe Dismiss Hardening v2: Full Legacy & Dynamic Cluster (Помічник, 14.05.2026)</h4>
                     <ul>
                         <li><b>Lead Cluster</b> — secondary lead modals і workspace context switches тепер поважають dirty-close policy перед backdrop, Escape, cancel або selection switch.</li>
                         <li><b>Profile Safety</b> — profile password/settings modal більше не закривається напряму через backdrop, Escape або tab switch із незбереженими полями.</li>
@@ -2509,7 +2530,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.48.6 — Unsafe Dismiss Hardening v2: Legacy / Dynamic Surface Completion (Клешня, 14.05.2026)</h4>
+                    <h4>v0.48.6 — Unsafe Dismiss Hardening v2: Legacy / Dynamic Surface Completion (Помічник, 14.05.2026)</h4>
                     <ul>
                         <li><b>Guard Adoption</b> — shared unsafe-dismiss protection поширено на legacy/dynamic editing surfaces: lead customer card, art-director editors, finance account, warehouse quantity, sound project/announcement, dashboard pickers/settings і certificate flows.</li>
                         <li><b>Bypass Removal</b> — settings/certificates більше не ховають dirty booking panel напряму, а generic <code>closeModal()</code> більше не обходить dirty-close policy для editable surfaces.</li>
@@ -2517,7 +2538,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.48.5 — Client Pinata Operational Numbers (Клешня, 14.05.2026)</h4>
+                    <h4>v0.48.5 — Client Pinata Operational Numbers (Помічник, 14.05.2026)</h4>
                     <ul>
                         <li><b>Operations</b> — додано окремі поля <code>pinata_number</code> і <code>pinata_filler_number</code> для номера піньяти та номера наповнювача.</li>
                         <li><b>Booking UI</b> — режими <code>Піньята парку</code> і <code>Клієнтська піньята (послуга)</code> тепер мають спільні операційні поля номерів.</li>
@@ -2525,7 +2546,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.48.4 — Client Pinata as Service Separation v1 (Клешня, 14.05.2026)</h4>
+                    <h4>v0.48.4 — Client Pinata as Service Separation v1 (Помічник, 14.05.2026)</h4>
                     <ul>
                         <li><b>Booking Logic</b> — піньята парку, клієнтська піньята як послуга і відсутність піньяти тепер мають окремий <code>pinata_mode</code>.</li>
                         <li><b>Services</b> — клієнтська піньята зберігає ціну/нотатку як сервіс, а park filler очищається серверною нормалізацією.</li>
@@ -2533,7 +2554,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v0.48.3 — Confirmation & Event Risk Operations Cluster v1 (Клешня, 14.05.2026)</h4>
+                    <h4>v0.48.3 — Confirmation & Event Risk Operations Cluster v1 (Помічник, 14.05.2026)</h4>
                     <ul>
                         <li><b>Confirmation</b> — додано вузьку операцію підтвердження бронювання з accountable confirmation truth і audit trail.</li>
                         <li><b>Queue Rails</b> — посилено manager-facing confirmation/event-risk cues без фейкового universal risk score.</li>
@@ -2823,7 +2844,7 @@
                     <ul>
                         <li><b>Ліди</b> - прибрано подвійний shell offset, який створював великий пустий простір між sidebar і контентом</li>
                         <li><b>Designs</b> - прибрано крихкий inline layout offset на <code>main.page-container</code></li>
-                        <li><b>Timeline/Kleshnya</b> - collapse-логіка більше не пише inline <code>marginLeft</code>/<code>width</code> для shell geometry</li>
+                        <li><b>Timeline/Помічник</b> - collapse-логіка більше не пише inline <code>marginLeft</code>/<code>width</code> для shell geometry</li>
                         <li><b>UI Guard</b> - додано smoke-захист від nested shell та inline offset anti-patterns</li>
                     </ul>
                 </div>
@@ -3100,7 +3121,7 @@
                         <li><b>Access check</b> — додано <code>npm run check:access</code> для backend/frontend/sidebar role drift</li>
                         <li><b>Unknown pages</b> — <code>canAccessPage()</code> більше не дозволяє невідомі маршрути за замовчуванням</li>
                         <li><b>Leads alias</b> — <code>/sales-funnel</code> і <code>/leads</code> тепер мають однакову access matrix</li>
-                        <li><b>Waiter visibility</b> — tasks/chat/Kleshnya/Afisha/Certificates більше не йдуть через broad sidebar <code>all</code></li>
+                        <li><b>Waiter visibility</b> — tasks/chat/Помічник/Afisha/Certificates більше не йдуть через broad sidebar <code>all</code></li>
                         <li><b>Security role</b> — роль <code>security</code> додана у permissions, departments, default widgets і shared role UI metadata</li>
                     </ul>
                 </div>
@@ -3812,7 +3833,7 @@
                         <li><b>БД</b> — migration 115: таблиця decisions з пріоритетами та джерелами</li>
                         <li><b>Mobile</b> — PWA bottom sheet, safe-area-inset, landscape</li>
                         <li><b>Dark Mode</b> — повна підтримка (#1e1e32)</li>
-                        <li><b>Інтеграція</b> — Клешня та боти можуть POST /api/decisions</li>
+                        <li><b>Інтеграція</b> — Помічник та боти можуть POST /api/decisions</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -3872,7 +3893,7 @@
                 <div class="changelog-section">
                     <h4>v35.4.0 — Cleanup (Claude Code, 22.03.2026)</h4>
                     <ul>
-                        <li><b>Видалено</b> — FAB кнопка "Пропозиція покращення" 💡 що накладалась на Клешню</li>
+                        <li><b>Видалено</b> — FAB кнопка "Пропозиція покращення" 💡 що накладалась на Помічника</li>
                         <li><b>Видалено</b> — модалка improvementModal + JS обробники + CSS стилі</li>
                     </ul>
                 </div>
@@ -3979,7 +4000,7 @@
                         <li><b>Sidebar</b> — секція «Щоденне» → «CRM», прибрано кнопку «Статус»</li>
                         <li><b>Alerts</b> — кнопка «Запропонувати рішення» на кожному алерті + inline задача</li>
                         <li><b>Quick Stats</b> — блок «Потребує уваги» (прострочені, непідтверджені, склад, ліди)</li>
-                        <li><b>AI Task</b> — 📋 замість 🌐 в hover, inline форма задачі через Клешню</li>
+                        <li><b>AI Task</b> — 📋 замість 🌐 в hover, inline форма задачі через Помічника</li>
                         <li><b>Info Panel</b> — 3 вкладки: Учасники / Закріплені / Нотатки</li>
                         <li><b>Notes</b> — нотатки в чаті з видимістю (приватні / спільні / по відділах)</li>
                     </ul>
@@ -4159,7 +4180,7 @@
                     <ul>
                         <li><b>Менеджер</b> — додано маршрут /copilot, кнопка в sidebar тепер працює</li>
                         <li><b>Налаштування</b> — кнопка ⚙️ працює з будь-якої сторінки (redirect на /?settings=open)</li>
-                        <li><b>Sidebar</b> — прибрано дублюючий пункт "Клешня" (redirect на /chat)</li>
+                        <li><b>Sidebar</b> — прибрано дублюючий пункт "Помічник" (redirect на /chat)</li>
                         <li><b>Звіти</b> — виправлено SQL-запити summary: вимкнені хештеги не потрапляють в графіки</li>
                         <li><b>Тести</b> — 18 нових тестів для hashtag CRUD, фільтрації, toggle, stats</li>
                     </ul>
@@ -4224,7 +4245,7 @@
                         <li><b>CSV/XLSX</b> — кнопки завжди видимі у фінансах</li>
                         <li><b>Нова фіча</b> — вкладка "Найближчі ДН" на дашборді (30 днів)</li>
                         <li><b>Нова фіча</b> — нагадування про підписку для директора/замдиректора/creator</li>
-                        <li><b>Нова фіча</b> — міст Клешня (POST /api/chat/kleshnya)</li>
+                        <li><b>Нова фіча</b> — міст Помічник (POST /api/chat/kleshnya)</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -4435,7 +4456,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v29.1.0 — Воронка продажів (Клешня, 13.03.2026)</h4>
+                    <h4>v29.1.0 — Воронка продажів (Помічник, 13.03.2026)</h4>
                     <ul>
                         <li><b>Ліди</b> — типи: якісний/спам/співпраця/інформаційний/неякісний</li>
                         <li><b>Карта клієнта</b> — поля при якісному ліді (опційно)</li>
@@ -4450,7 +4471,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v28.2.0 — Guardian Етап 1: Whitelist + Edit + Toggle + Stop (Клешня, 13.03.2026)</h4>
+                    <h4>v28.2.0 — Guardian Етап 1: Whitelist + Edit + Toggle + Stop (Помічник, 13.03.2026)</h4>
                     <ul>
                         <li><b>Whitelist</b> — слова-виключення для зменшення false positives (статичний + динамічний через БД)</li>
                         <li><b>Edit замість Delete</b> — матюки цензуруються (****), не видаляються; видалення лише для CRITICAL</li>
@@ -4459,7 +4480,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v28.1.0 — Manager AI Copilot: 11 модулів (Клешня, 13.03.2026)</h4>
+                    <h4>v28.1.0 — Manager AI Copilot: 11 модулів (Помічник, 13.03.2026)</h4>
                     <ul>
                         <li><b>Manager Tab</b> — прихована вкладка для менеджерів і директорів (/copilot)</li>
                         <li><b>AI Live Coach</b> — live підказки під час розмови з клієнтом (debounce 800ms, 3 варіанти)</li>
@@ -4477,7 +4498,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v28.0.0 — Рок-звуки + Chat UX + Контур-2 (Клешня, 13.03.2026)</h4>
+                    <h4>v28.0.0 — Рок-звуки + Chat UX + Контур-2 (Помічник, 13.03.2026)</h4>
                     <ul>
                         <li><b>Sound Engine</b> — Web Audio API синтезатор, рок-тема, 3 теми вибору (Rock/Classic/Subtle)</li>
                         <li><b>Chat звуки</b> — грають навіть коли таб активний, якщо повідомлення не в поточному каналі</li>
@@ -4614,7 +4635,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v23.5.0 — Version Recovery & Merge (Клешня, 12.03.2026)</h4>
+                    <h4>v23.5.0 — Version Recovery & Merge (Помічник, 12.03.2026)</h4>
                     <ul>
                         <li><b>Відновлення</b> — змержено гілку claude/update-snapshot-version-OJyXi в main</li>
                         <li><b>OmniClaw</b> — омніканальна комунікація (Telegram + Viber + FB + IG + Universal)</li>
@@ -4650,7 +4671,7 @@
                     <ul>
                         <li><b>OmniClaw Hub</b> — єдиний inbox для всіх каналів: Telegram, Viber, SMS, Facebook, Instagram, Binotel</li>
                         <li><b>Нормалайзер</b> — уніфікований формат повідомлень з 6 каналів</li>
-                        <li><b>AI авто-відповіді</b> — Клешня відповідає клієнтам автоматично (toggle per conversation)</li>
+                        <li><b>AI авто-відповіді</b> — Помічник відповідає клієнтам автоматично (toggle per conversation)</li>
                         <li><b>Швидкі відповіді</b> — шаблони відповідей для операторів</li>
                         <li><b>Webhooks</b> — публічні ендпоінти для всіх каналів</li>
                         <li><b>omni.html</b> — повноцінний UI inbox з real-time WebSocket оновленнями</li>
@@ -4658,7 +4679,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v23.1.0 — Landing Page Event Genix v1.0 (Клешня, 11.03.2026)</h4>
+                    <h4>v23.1.0 — Landing Page Event Genix v1.0 (Помічник, 11.03.2026)</h4>
                     <ul>
                         <li><b>landing/</b> — публічний лендінг продукту (повний редизайн)</li>
                         <li><b>9 секцій</b> — Nav, Hero з мокапом, 12 модулів, Story таймлайн, Команда, Ціни, Соціальний доказ, Demo форма, Footer</li>
@@ -4723,7 +4744,7 @@
                     </ul>
                 </div>
                                 <div class="changelog-section">
-                    <h4>v22.17.0 — Match-3 UI Polish (Клешня, 10.03.2026)</h4>
+                    <h4>v22.17.0 — Match-3 UI Polish (Помічник, 10.03.2026)</h4>
                     <ul>
                         <li><b>Контраст</b> — покращений контраст та читабельність Match-3 інтерфейсу</li>
                         <li><b>Стиль</b> — оновлений mystical vibe дизайн ігрового поля</li>
@@ -4731,7 +4752,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v22.16.0 — Candy Crush іконки + анімації (Клешня, 10.03.2026)</h4>
+                    <h4>v22.16.0 — Candy Crush іконки + анімації (Помічник, 10.03.2026)</h4>
                     <ul>
                         <li><b>Нові іконки</b> — 13 Candy Crush стиль іконок (sticker, no border) для Match-3</li>
                         <li><b>Idle анімації</b> — кожна фігурка має унікальну idle анімацію (wobble, float, shimmer, bounce, tilt, sparkle)</li>
@@ -4753,7 +4774,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v22.13.0 — Bugfix Release (Клешня, 02.03.2026)</h4>
+                    <h4>v22.13.0 — Bugfix Release (Помічник, 02.03.2026)</h4>
                     <ul>
                         <li><b>Фікс</b> — інтерполяція змінних в повідомленнях скасування бронювань ({booking_number}, {label}, {time})</li>
                         <li><b>Фікс</b> — захист від NaN в timeToMinutes/minutesToTime (усуває дублювання в 00:00)</li>
@@ -4761,7 +4782,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v22.12.0 — Match-3 Custom Art Assets (Клешня, 10.03.2026)</h4>
+                    <h4>v22.12.0 — Match-3 Custom Art Assets (Помічник, 10.03.2026)</h4>
                     <ul>
                         <li><b>Custom art</b> — унікальні арт-ассети для Match-3 гри</li>
                     </ul>
@@ -4815,7 +4836,7 @@
                         <li><b>Покупка</b> — стилізоване підтвердження + конфетті + toast замість ugly alert</li>
                         <li><b>Chat</b> — всі alert() замінені на toast-нотифікації (файли, мікрофон, помилки)</li>
                         <li><b>Cooldown reset</b> — скидання кулдаунів міні-гри для адмінів</li>
-                        <li><b>Kleshnya bridge fix</b> — LLM чат працює коли є ANTHROPIC_API_KEY, bridge тільки для медіа</li>
+                        <li><b>Помічник bridge fix</b> — LLM чат працює коли є ANTHROPIC_API_KEY, bridge тільки для медіа</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -4934,13 +4955,13 @@
                         <li><b>Accessibility</b> — 111 aria-label додано, контраст --gray-400 підвищено до WCAG AA (4.5:1)</li>
                         <li><b>Offline UI</b> — toast "Ви офлайн" при втраті зв'язку, "Синхронізовано" при відновленні</li>
                         <li><b>WebSocket</b> — toast "Перепідключення..." при розриві, "Синхронізовано" при реконнекті</li>
-                        <li><b>Kleshnya CSS</b> — видалено orphaned responsive стилі для kleshnya widget</li>
+                        <li><b>Помічник CSS</b> — видалено orphaned responsive стилі для kleshnya widget</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v21.13.0 — Role Dashboard + Hierarchy (Claude Code, 08.03.2026)</h4>
                     <ul>
-                        <li><b>Клешня</b> — видалено кнопку "Клешня" з навігації всіх 13 сторінок</li>
+                        <li><b>Помічник</b> — видалено кнопку "Помічник" з навігації всіх 13 сторінок</li>
                         <li><b>Ієрархія ролей</b> — візуалізація 10 ролей по 4 рівнях (Керівництво → Управління → Операційний → Польовий)</li>
                         <li><b>Role-based інтерфейс</b> — різні інформаційні панелі залежно від ролі (KPI/Команда/Фінанси vs Задачі/Стрік/Поради)</li>
                         <li><b>Дашборд задач</b> — завжди відкритий блок внизу з активними задачами, статусами, пріоритетами</li>
@@ -5047,12 +5068,12 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v21.6.0 — Kleshnya Bot + Guardian (Claude Code, 08.03.2026)</h4>
+                    <h4>v21.6.0 — Помічник Bot + Guardian (Claude Code, 08.03.2026)</h4>
                     <ul>
                         <li><b>Kleshnya в чаті</b> — бот OpenClaw відповідає на повідомлення в командному месенджері</li>
                         <li><b>DM з ботом</b> — пиши напряму OpenClaw без @mention, він відповість на все</li>
                         <li><b>@openclaw в каналах</b> — згадай бота в будь-якому каналі і отримай відповідь</li>
-                        <li><b>BOT badge</b> — повідомлення бота з зеленим градієнтом, аватаром 🦀 і бейджем BOT</li>
+                        <li><b>BOT badge</b> — повідомлення бота з зеленим градієнтом, аватаром 🤖 і бейджем BOT</li>
                         <li><b>Guardian 🛡️</b> — AI-охоронець чату: модерація, маскування даних, щоденні звіти</li>
                         <li><b>Маскування</b> — телефони, картки, IBAN, email, паспорти автоматично маскуються зірочками</li>
                         <li><b>Антисварка</b> — Guardian блокує на 15 хв за нецензурну лексику та агресію</li>
@@ -5094,7 +5115,7 @@
                         <li><b>Задачі в чаті</b> — створення задач прямо з чату командою /task або /задача</li>
                         <li><b>Кнопки</b> — виразні стани active/inactive з заливкою кольором</li>
                         <li><b>Mute стан</b> — кнопка mute зберігає стан при перемиканні каналів</li>
-                        <li><b>Kleshnya</b> — навігація до Клешні інтегрована в профілі та задачах</li>
+                        <li><b>Kleshnya</b> — навігація до Помічника інтегрована в профілі та задачах</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -5315,21 +5336,21 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v20.9.11 — Timeline: клік на афішу більше не відкриває модал (Клешня, 03.03.2026)</h4>
+                    <h4>v20.9.11 — Timeline: клік на афішу більше не відкриває модал (Помічник, 03.03.2026)</h4>
                     <ul>
                         <li><b>UX</b> — клік на рядок/клітинку афіші в таймлайні більше не відкриває попап (переноситься в Налаштування)</li>
                         <li><b>Фікс</b> — чекбокс "ДАНІ КЛІЄНТА" не відображався на Mac Safari/Chrome</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v20.9.10 — Mac Safari чекбокс fix (Клешня, 03.03.2026)</h4>
+                    <h4>v20.9.10 — Mac Safari чекбокс fix (Помічник, 03.03.2026)</h4>
                     <ul>
                         <li><b>Фікс</b> — чекбокс "ДАНІ КЛІЄНТА" не відображався на Mac Safari/Chrome (cross-platform fix)</li>
                         <li><b>UX</b> — явний розмір, accent-color, uppercase стиль — однаково на всіх платформах</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v20.9.9 — Stability & Security (Клешня, 02.03.2026)</h4>
+                    <h4>v20.9.9 — Stability & Security (Помічник, 02.03.2026)</h4>
                     <ul>
                         <li><b>Стабільність</b> — null guard для getElementById в таймлайні (5 місць), усуває рідкісні крашi</li>
                         <li><b>Безпека</b> — прибрано X-Powered-By заголовок (не розкриває стек)</li>
@@ -5337,14 +5358,14 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v20.9.8 — Dark Mode Fix (Клешня, 02.03.2026)</h4>
+                    <h4>v20.9.8 — Dark Mode Fix (Помічник, 02.03.2026)</h4>
                     <ul>
                         <li><b>Фікс</b> — в темній темі кнопка "Тема" мала чорний текст — тепер білий</li>
                         <li><b>Фікс</b> — активний стан toggle-mini в dark mode: текст/емодзі білі (!important)</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v20.9.7 — Room 100% + iOS Touch (Клешня, 02.03.2026)</h4>
+                    <h4>v20.9.7 — Room 100% + iOS Touch (Помічник, 02.03.2026)</h4>
                     <ul>
                         <li><b>Фікс</b> — будь-яке бронювання в кімнаті = 100% заповненість на весь день</li>
                         <li><b>Фікс</b> — iOS/Chrome: touch-action manipulation на кнопках сертифіката</li>
@@ -5352,21 +5373,21 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v20.9.6 — Room Style Fix (Клешня, 02.03.2026)</h4>
+                    <h4>v20.9.6 — Room Style Fix (Помічник, 02.03.2026)</h4>
                     <ul>
                         <li><b>Фікс</b> — snake_case/camelCase для program_code при визначенні оренди кімнати</li>
                         <li><b>Фікс</b> — стиль кнопки кімнати (сірий фон, не зелений при активному стані)</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v20.9.5 — UI Bugfix (Клешня, 02.03.2026)</h4>
+                    <h4>v20.9.5 — UI Bugfix (Помічник, 02.03.2026)</h4>
                     <ul>
                         <li><b>Фікс</b> — кнопка "Кімнати": стиль активного стану виправлено (без зеленого заповнення)</li>
                         <li><b>Фікс</b> — оренда кімнати = 100% заповненість на весь день</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v20.9.4 — Bugfix Release (Клешня, 02.03.2026)</h4>
+                    <h4>v20.9.4 — Bugfix Release (Помічник, 02.03.2026)</h4>
                     <ul>
                         <li><b>Фікс</b> — повідомлення скасування бронювань: змінні {booking_number}, {label}, {time} тепер коректно заповнюються</li>
                         <li><b>Фікс</b> — дублювання бронювань в 00:00 при drag-and-drop (NaN guard)</li>
@@ -5418,7 +5439,7 @@
                         <li><b>🖼️ Дизайни</b> — виправлено відображення зображень (onerror fallback) + завантаження через API endpoint</li>
                         <li><b>🎭 Афіша</b> — переміщення між лінійками через контекстне меню (PATCH /api/afisha/:id/line)</li>
                         <li><b>🧭 Навігація</b> — прибрано дублікати Event Genix логотипу з хедерів усіх сторінок</li>
-                        <li><b>📊 Центр</b> — видалено посилання на Клешню, Analytics/Finance/Status вже як iframe-вкладки</li>
+                        <li><b>📊 Центр</b> — видалено посилання на Помічника, Analytics/Finance/Status вже як iframe-вкладки</li>
                         <li><b>🔧 Sidebar</b> — фінальний набір: Таймлайн, Центр, Задачі, Арт, Клієнти, Персонал, Склад, Навчання, Event Genix, Налаштування</li>
                         <li><b>🚪 Status</b> — додано кнопку "Назад до Центру" + лого як посилання на головну</li>
                     </ul>
@@ -5468,7 +5489,7 @@
                 <div class="changelog-section">
                     <h4>v20.4.0 — Staff Trainer (Claude Code, 26.02.2026)</h4>
                     <ul>
-                        <li><b>Навчання через Telegram</b> — щопонеділка Клешня просить персонал поділитись лайфхаком</li>
+                        <li><b>Навчання через Telegram</b> — щопонеділка Помічник просить персонал поділитись лайфхаком</li>
                         <li><b>Зведення щоп'ятниці</b> — Сергій отримує відповіді з кнопками Approve/Reject</li>
                         <li><b>training.html</b> — сторінка з матеріалами, фільтрами по категоріях, топ-внеском</li>
                         <li><b>Авто-категоризація</b> — відповіді розподіляються по темах за ключовими словами</li>
@@ -5654,7 +5675,7 @@
                         <li><b>Error Handling</b> — fetch помилки показуються через нотифікації на всіх standalone сторінках</li>
                         <li><b>Dark Mode Fixes</b> — quick-stats, dropdown, btn-logout, sidebar-toggle тепер видимі в dark mode</li>
                         <li><b>Responsive</b> — 1 колонка quick-stats на ≤360px, touch targets 44px на ≤480px</li>
-                        <li><b>Kleshnya Polish</b> — видалено ring spin та scanline з FAB, sidebar Клешні тепер в темі Event Maestro</li>
+                        <li><b>Помічник Polish</b> — видалено ring spin та scanline з FAB, sidebar Помічника тепер в темі Event Maestro</li>
                         <li><b>Print Styles</b> — базові @media print: приховано sidebar, header, FAB при друці</li>
                     </ul>
                 </div>
@@ -5730,11 +5751,11 @@
                     <h4>v18.1.0 — Центр керування бізнесом (Claude Code, 25.02.2026)</h4>
                     <ul>
                         <li><b>Нова сторінка /center</b> — центр керування бізнесом: Digital Workers, KPI, ціни, задачі, звіт</li>
-                        <li><b>Digital Workers</b> — картки з живим статусом (активний/простоює/офлайн) для Клешні, Світлани, Складу</li>
+                        <li><b>Digital Workers</b> — картки з живим статусом (активний/простоює/офлайн) для Помічника, Світлани, Складу</li>
                         <li><b>KPI дашборд</b> — виручка, бронювання, середній чек, топ програма за сьогодні/тиждень/місяць</li>
                         <li><b>Price Matrix</b> — централізовані ціни з inline-редагуванням, CRUD, нова таблиця price_rules</li>
                         <li><b>Задачі</b> — агреговані задачі по всій системі з фільтрацією</li>
-                        <li><b>Щоденний звіт</b> — секція останнього звіту від Клешні</li>
+                        <li><b>Щоденний звіт</b> — секція останнього звіту від Помічника</li>
                         <li><b>Навігація</b> — посилання "Центр" додано в sidebar на всіх 12 сторінках</li>
                     </ul>
                 </div>
@@ -5747,7 +5768,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v18.0.1 — Українські назви кімнат (Клешня, 25.02.2026)</h4>
+                    <h4>v18.0.1 — Українські назви кімнат (Помічник, 25.02.2026)</h4>
                     <ul>
                         <li><b>Всі кімнати українською</b> — Marvel→Марвел, Ninja→Ніндзя, Minecraft→Майнкрафт, Monster High→Монстер Хай, Elsa→Ельза, Rock→Рок, Minion→Міньйон, Pony→Поні, Food Court→Фудкорт</li>
                     </ul>
@@ -5770,7 +5791,7 @@
                 <div class="changelog-section">
                     <h4>v17.10.0 — Digital Worker Forge (Claude Code, 24.02.2026)</h4>
                     <ul>
-                        <li><b>Worker Roles</b> — таблиця ролей цифрових воркерів: Kleshnya, Світлана, Warehouse Bot</li>
+                        <li><b>Worker Roles</b> — таблиця ролей цифрових воркерів: Помічник, Світлана, Warehouse Bot</li>
                         <li><b>API /api/workers</b> — CRUD для створення/редагування/видалення ролей</li>
                         <li><b>Telegram Alert</b> — автоповідомлення якщо щоденний бекап не вдався</li>
                         <li><b>Бекап 51 таблиця</b> — додано worker_roles</li>
@@ -5785,7 +5806,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v17.8.1 — Кімнатка Pony (Клешня, 24.02.2026)</h4>
+                    <h4>v17.8.1 — Кімнатка Pony (Помічник, 24.02.2026)</h4>
                     <ul>
                         <li><b>Pony 🦄</b> — додана нова кімнатка в список приміщень для бронювання</li>
                     </ul>
@@ -5800,7 +5821,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v17.4.0 — Світлана: Task Bot Live (Клешня, 24.02.2026)</h4>
+                    <h4>v17.4.0 — Світлана: Task Bot Live (Помічник, 24.02.2026)</h4>
                     <ul>
                         <li><b>Світлана 📋 тепер active</b> — ранкові задачі в аніматорську групу</li>
                         <li><b>Inline-кнопки виконання</b> — аніматор натискає "✅ Виконав" → CRM оновлюється</li>
@@ -5810,7 +5831,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v17.3.0 — Склад: Vision AI Worker (Клешня, 24.02.2026)</h4>
+                    <h4>v17.3.0 — Склад: Vision AI Worker (Помічник, 24.02.2026)</h4>
                     <ul>
                         <li><b>Новий AI Worker "Склад 🏪"</b> — 4-й цифровий співробітник, статус "active"</li>
                         <li><b>Gemini Vision AI</b> — розпізнавання товарів на фото (gemini-2.5-flash)</li>
@@ -5819,7 +5840,7 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v17.2.0 — Лєо: Photo Review & Leaderboard (Клешня, 24.02.2026)</h4>
+                    <h4>v17.2.0 — Лєо: Photo Review & Leaderboard (Помічник, 24.02.2026)</h4>
                     <ul>
                         <li><b>Photo Review</b> — Лєо пересилає фото від підрядника з кнопками ✅ Підтвердити / 🔄 Переробити</li>
                         <li><b>Рейтинг підрядників</b> — нова вкладка "🏆 Рейтинг" в картці Лєо в CRM</li>
@@ -5963,29 +5984,29 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v13.1.0 — Kleshnya Chat Fix</h4>
+                    <h4>v13.1.0 — Помічник Chat Fix</h4>
                     <ul>
-                        <li>🐛 <b>Fix білого вікна</b> — виправлено ReferenceError що блокував запуск чату Клешні</li>
-                        <li>🎨 <b>Full-bleed layout</b> — чат Клешні тепер займає весь простір без зайвих відступів</li>
+                        <li>🐛 <b>Fix білого вікна</b> — виправлено ReferenceError що блокував запуск чату Помічника</li>
+                        <li>🎨 <b>Full-bleed layout</b> — чат Помічника тепер займає весь простір без зайвих відступів</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v13.0.0 — Kleshnya Chat v2</h4>
+                    <h4>v13.0.0 — Помічник Chat v2</h4>
                     <ul>
                         <li>💬 <b>Multi-session чат</b> — ChatGPT-style sidebar з сесіями, створення/перемикання/видалення чатів</li>
                         <li>📌 <b>Pin, emoji, rename</b> — закріплення, емодзі-іконки, перейменування через контекстне меню</li>
                         <li>🖼 <b>Media bubbles</b> — зображення, аудіо, відео прямо в чаті з captions</li>
-                        <li>👍 <b>Reactions</b> — лайк/дизлайк на повідомленнях Клешні</li>
+                        <li>👍 <b>Reactions</b> — лайк/дизлайк на повідомленнях Помічника</li>
                         <li>⚡ <b>WebSocket real-time</b> — миттєві відповіді від OpenClaw Bridge</li>
                         <li>📱 <b>Mobile-first</b> — sidebar-overlay, FAB кнопка, touch long-press</li>
-                        <li>🦀 <b>12 навичок чату</b> — бронювання, задачі, фінанси, команда, програми, сертифікати</li>
+                        <li>🤖 <b>12 навичок чату</b> — бронювання, задачі, фінанси, команда, програми, сертифікати</li>
                         <li>🎯 <b>Telegram Bridge</b> — інтеграція з OpenClaw через Telegram</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v12.8.0 — Клешня Smart Chat</h4>
+                    <h4>v12.8.0 — Помічник Smart Chat</h4>
                     <ul>
-                        <li>🦀 <b>12 навичок чату</b> — бронювання, задачі, фінанси, команда, програми, сертифікати, кімнати, афіша, аналітика, стрік/бали, лідерборд</li>
+                        <li>🤖 <b>12 навичок чату</b> — бронювання, задачі, фінанси, команда, програми, сертифікати, кімнати, афіша, аналітика, стрік/бали, лідерборд</li>
                         <li>✏️ <b>Створення задач з чату</b> — "Створи задачу купити серветки"</li>
                         <li>🎯 <b>Фільтр по категоріях</b> — "Скільки піньят за тиждень?", "Квести за місяць"</li>
                         <li>💡 <b>Suggestion chips</b> — кнопки підказок після кожної відповіді</li>
@@ -6071,7 +6092,7 @@
                         <li>🖼️ Лайтбокс для перегляду зображень</li>
                     </ul>
 
-                    <h4>v11.1.0 — Клешня тепер з менюхою</h4>
+                    <h4>v11.1.0 — Помічник тепер з менюхою</h4>
                     <ul>
                         <li>📋 Telegram Menu Button — 12 команд в автокомпліті при натисканні "/"</li>
                         <li>🏆 /points — рейтинг команди з медалями + особисті бали</li>
@@ -6082,18 +6103,18 @@
                         <li>👋 /start — персональне привітання + автоз'єднання акаунту</li>
                     </ul>
 
-                    <h4>v11.0.6 — Клешня знає твоє ім'я</h4>
+                    <h4>v11.0.6 — Помічник знає твоє ім'я</h4>
                     <ul>
-                        <li>👤 Привітання тепер персональні — Клешня звертається по імені з акаунту</li>
+                        <li>👤 Привітання тепер персональні — Помічник звертається по імені з акаунту</li>
                         <li>🔧 Виправлено "Денний" — більше ніяких дефолтних звернень</li>
                         <li>🗑️ Кеш привітань очищується при кожному деплої</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v11.0.4 — Клешня без пафосу</h4>
+                    <h4>v11.0.4 — Помічник без пафосу</h4>
                     <ul>
                         <li>💬 Привітання переписані — жива українська замість "сканування завершено"</li>
-                        <li>🦀 Відповіді на питання — просто та корисно, без "місій" та "оперативників"</li>
+                        <li>🤖 Відповіді на питання — просто та корисно, без "місій" та "оперативників"</li>
                         <li>🏷️ Кнопки: Задачі (замість Місії), Аніматори (замість Оперативники)</li>
                         <li>📌 Футуристичний візуал залишився, але тексти тепер дружні</li>
                     </ul>
@@ -6101,7 +6122,7 @@
                 <div class="changelog-section">
                     <h4>v11.0.3 — Голографічний Термінал</h4>
                     <ul>
-                        <li>🖥️ Повний редизайн Клешні — темний термінал з голографічним ефектом</li>
+                        <li>🖥️ Повний редизайн Помічника — темний термінал з голографічним ефектом</li>
                         <li>🔮 FAB з обертовим кільцем, сонарним імпульсом та neon-glow</li>
                         <li>📡 Сканлайн-оверлей, блимаючий статус-дот, monospace шрифт</li>
                         <li>⌨️ Typing-анімація — текст друкується як в терміналі</li>
@@ -6110,9 +6131,9 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v11.0.2 — Футуристична Клешня</h4>
+                    <h4>v11.0.2 — Футуристична Помічник</h4>
                     <ul>
-                        <li>🦀 Floating widget — інтерактивна кнопка Клешні (FAB) замість статичного банера</li>
+                        <li>🤖 Floating widget — інтерактивна кнопка Помічника (FAB) замість статичного банера</li>
                         <li>💬 Popup з привітанням + кнопки швидких питань (бронювання, задачі, стрік, аніматори)</li>
                         <li>🛸 Футуристичний стиль — привітання та відповіді в стилі командного центру</li>
                         <li>📡 Оперативна лексика: місії, оперативники, сканування, модулі аналізу</li>
@@ -6170,9 +6191,9 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
-                    <h4>v10.0.0 — Tasker & Клешня</h4>
+                    <h4>v10.0.0 — Tasker & Помічник</h4>
                     <ul>
-                        <li>🦀 Клешня — центральний інтелект системи: створення задач, ескалація, бали, нотифікації</li>
+                        <li>🤖 Помічник — центральний інтелект системи: створення задач, ескалація, бали, нотифікації</li>
                         <li>📋 Два типи задач: HUMAN (людина) / BOT (система), з owner та assigned_to</li>
                         <li>⏰ 4-рівнева ескалація: нагадування → увага → прострочена → директор</li>
                         <li>⭐ Система балів: постійні + місячні, автонарахування за виконання задач</li>
@@ -7426,25 +7447,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.56.5"></script>
-    <script src="js/api.js?v=0.56.5"></script>
-    <script src="js/ui.js?v=0.56.5"></script>
-    <script src="js/auth.js?v=0.56.5"></script>
-    <script src="js/timeline.js?v=0.56.5"></script>
-    <script src="js/booking.js?v=0.56.5"></script>
-    <script src="js/settings.js?v=0.56.5"></script>
-    <script src="js/booking-form.js?v=0.56.5"></script>
-    <script src="js/booking-linked.js?v=0.56.5"></script>
-    <script src="js/settings-dashboard.js?v=0.56.5"></script>
-    <script src="js/settings-history.js?v=0.56.5"></script>
-    <script src="js/settings-afisha.js?v=0.56.5"></script>
-    <script src="js/settings-certificates.js?v=0.56.5"></script>
-    <script src="js/offline.js?v=0.56.5"></script>
-    <script src="js/search.js?v=0.56.5"></script>
-    <script src="js/ws.js?v=0.56.5"></script>
-    <script src="js/app.js?v=0.56.5"></script>
-    <script src="js/kleshnya-widget.js?v=0.56.5"></script>
-    <script src="js/components/sidebar.js?v=0.56.5"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.56.5"></script>
+    <script src="js/config.js?v=0.56.8"></script>
+    <script src="js/api.js?v=0.56.8"></script>
+    <script src="js/ui.js?v=0.56.8"></script>
+    <script src="js/auth.js?v=0.56.8"></script>
+    <script src="js/timeline.js?v=0.56.8"></script>
+    <script src="js/booking.js?v=0.56.8"></script>
+    <script src="js/settings.js?v=0.56.8"></script>
+    <script src="js/booking-form.js?v=0.56.8"></script>
+    <script src="js/booking-linked.js?v=0.56.8"></script>
+    <script src="js/settings-dashboard.js?v=0.56.8"></script>
+    <script src="js/settings-history.js?v=0.56.8"></script>
+    <script src="js/settings-afisha.js?v=0.56.8"></script>
+    <script src="js/settings-certificates.js?v=0.56.8"></script>
+    <script src="js/offline.js?v=0.56.8"></script>
+    <script src="js/search.js?v=0.56.8"></script>
+    <script src="js/ws.js?v=0.56.8"></script>
+    <script src="js/app.js?v=0.56.8"></script>
+    <script src="js/kleshnya-widget.js?v=0.56.8"></script>
+    <script src="js/components/sidebar.js?v=0.56.8"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.56.8"></script>
 </body>
 </html>

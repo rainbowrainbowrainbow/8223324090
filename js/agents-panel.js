@@ -7,7 +7,7 @@
 
     const AGENT_ICONS = {
         'claude-code': '🤖',
-        'kleshnya': '🦀',
+        'kleshnya': '🤖',
         'anthropic': '🧠',
         'human': '👤',
         'github': '🔗',

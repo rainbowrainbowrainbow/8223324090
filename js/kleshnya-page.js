@@ -1,5 +1,5 @@
 /**
- * js/kleshnya-page.js — Kleshnya Chat v2 (multi-session)
+ * js/kleshnya-page.js — Помічник Chat v2 (multi-session)
  * Sidebar sessions, media bubbles, reactions, WebSocket real-time, voice input
  */
 (function () {
@@ -15,7 +15,7 @@
     var renameSessionId = null;
     var renameEmoji = null;
 
-    var EMOJIS = ['💬', '🦀', '🎨', '🎵', '📊', '🔥', '💡', '🎯', '🚀', '⭐', '🌈', '🎭'];
+    var EMOJIS = ['💬', '🤖', '🎨', '🎵', '📊', '🔥', '💡', '🎯', '🚀', '⭐', '🌈', '🎭'];
 
     // ==========================================
     // DOM REFS
@@ -228,7 +228,7 @@
 
         // Update header
         var session = sessions.find(function (s) { return s.id === sessionId; });
-        $chatTitle.textContent = session ? (session.emoji || '') + ' ' + (session.title || 'Клешня') : 'Клешня';
+        $chatTitle.textContent = session ? (session.emoji || '') + ' ' + (session.title || 'Помічник') : 'Помічник';
 
         // Load messages
         $messages.innerHTML = '';
@@ -244,7 +244,7 @@
             if (greeting && greeting.message) {
                 addMessage('assistant', greeting.message, new Date().toISOString(), null);
             } else {
-                addMessage('assistant', '🦀 Привіт! Я Клешня — центральний інтелект парку. Питай що завгодно!', new Date().toISOString(), null);
+                addMessage('assistant', '🤖 Привіт! Я Помічник — центральний інтелект парку. Питай що завгодно!', new Date().toISOString(), null);
             }
             renderSuggestions(['Що ти вмієш?', 'Бронювання сьогодні', 'Мої задачі', 'Хто працює?']);
         } else {
@@ -310,7 +310,7 @@
                 if (s) { s.last_message = null; s.message_count = 0; }
                 if (sid === activeSessionId) {
                     $messages.innerHTML = '';
-                    addMessage('assistant', '🦀 Чат очищено. Починаємо заново!', new Date().toISOString(), null);
+                    addMessage('assistant', '🤖 Чат очищено. Починаємо заново!', new Date().toISOString(), null);
                 }
                 renderSessions();
             }
@@ -427,7 +427,7 @@
 
         var avatar = document.createElement('div');
         avatar.className = 'kl-msg-avatar';
-        avatar.textContent = role === 'assistant' ? '🦀' : '👤';
+        avatar.textContent = role === 'assistant' ? '🤖' : '👤';
 
         var wrapper = document.createElement('div');
         wrapper.className = 'kl-msg-content';
@@ -567,7 +567,7 @@
         var typing = document.createElement('div');
         typing.className = 'kl-typing';
         typing.id = 'klTypingIndicator';
-        typing.innerHTML = '<span>🦀 Клешня думає</span><div class="kl-typing-dots"><span></span><span></span><span></span></div>';
+        typing.innerHTML = '<span>🤖 Помічник думає</span><div class="kl-typing-dots"><span></span><span></span><span></span></div>';
         $messages.appendChild(typing);
         $messages.scrollTop = $messages.scrollHeight;
     }
@@ -577,7 +577,7 @@
         var gen = document.createElement('div');
         gen.className = 'kl-generating';
         gen.id = 'klGeneratingIndicator';
-        gen.innerHTML = '<div class="kl-generating-text">' + escapeHtml(text || '🦀 Генерую...') + '</div>' +
+        gen.innerHTML = '<div class="kl-generating-text">' + escapeHtml(text || '🤖 Генерую...') + '</div>' +
             '<div class="kl-generating-bar"><div class="kl-generating-bar-fill"></div></div>';
         $messages.appendChild(gen);
         $messages.scrollTop = $messages.scrollHeight;
@@ -609,7 +609,7 @@
 
             if (!response) {
                 removeIndicators();
-                addMessage('assistant', '🦀 Упс, щось пішло не так. Спробуй ще раз!', new Date().toISOString(), null);
+                addMessage('assistant', '🤖 Упс, щось пішло не так. Спробуй ще раз!', new Date().toISOString(), null);
                 renderSuggestions(['Бронювання', 'Задачі', 'Допомога']);
             } else if (response.status === 'pending') {
                 // Bridge mode — waiting for WebSocket reply
@@ -632,7 +632,7 @@
             }
         } catch (err) {
             removeIndicators();
-            addMessage('assistant', '🦀 Помилка з\'єднання. Перевір інтернет!', new Date().toISOString(), null);
+            addMessage('assistant', '🤖 Помилка з\'єднання. Перевір інтернет!', new Date().toISOString(), null);
             renderSuggestions(['Бронювання', 'Задачі', 'Допомога']);
         }
 
@@ -838,10 +838,10 @@
             reportOverlay.classList.remove('visible');
             var prioLabel = reportPriority.value === 'high' ? 'Високий' : reportPriority.value === 'low' ? 'Низький' : 'Звичайний';
             addMessage('assistant',
-                '🦀 ' + emoji + ' ' + label + ' прийнято!\n\n📋 "' + title + '"\n👤 Призначено: Сергій\n⚡ Пріоритет: ' + prioLabel + '\n\nДякую за фідбек!',
+                '🤖 ' + emoji + ' ' + label + ' прийнято!\n\n📋 "' + title + '"\n👤 Призначено: Сергій\n⚡ Пріоритет: ' + prioLabel + '\n\nДякую за фідбек!',
                 new Date().toISOString(), null);
         } catch (err) {
-            addMessage('assistant', '🦀 Упс, не вдалося створити задачу. Спробуй ще раз!', new Date().toISOString(), null);
+            addMessage('assistant', '🤖 Упс, не вдалося створити задачу. Спробуй ще раз!', new Date().toISOString(), null);
             reportOverlay.classList.remove('visible');
         }
 

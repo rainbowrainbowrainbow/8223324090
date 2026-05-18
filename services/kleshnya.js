@@ -1,7 +1,7 @@
 /**
- * services/kleshnya.js — Клешня: центральний процесор Tasker (v10.0)
+ * services/kleshnya.js — Помічник: центральний процесор Tasker (v10.0)
  *
- * Клешня:
+ * Помічник:
  *  - створює задачі (від подій, тригерів, вручну)
  *  - контролює виконання (дедлайни, залежності)
  *  - ескалює прострочені задачі (4 рівні)
@@ -480,7 +480,7 @@ async function notifyTaskAssigned(task) {
     if (task.deadline) text += `⏰ Дедлайн: ${formatDeadline(task.deadline)}\n`;
     text += `👤 Виконавець: ${task.assigned_to}\n`;
     if (task.owner && task.owner !== task.assigned_to) text += `👔 Відповідальний: ${task.owner}\n`;
-    text += `\n🦀 Клешня`;
+    text += `\n🤖 Помічник`;
 
     await sendTaskNotification(text, task);
 }
@@ -496,7 +496,7 @@ async function notifyTaskStatusChanged(task, oldStatus, newStatus, actor) {
     text += `📋 ${esc(task.title)}\n`;
     text += `${statusIcons[oldStatus] || '?'} ${statusNames[oldStatus] || oldStatus} → ${statusIcons[newStatus] || '?'} ${statusNames[newStatus] || newStatus}\n`;
     text += `👤 Змінив: ${actor}\n`;
-    text += `\n🦀 Клешня`;
+    text += `\n🤖 Помічник`;
 
     // Only send to group (not personal for status changes)
     const chatId = await getConfiguredChatId();

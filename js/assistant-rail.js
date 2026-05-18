@@ -222,7 +222,7 @@
             status.className = 'crm-assistant-top-status';
             status.innerHTML = `
                 <span class="crm-assistant-top-status-dot" aria-hidden="true"></span>
-                <span>Клешня</span>
+                <span>Помічник</span>
                 <span aria-hidden="true">·</span>
                 <strong id="crmAssistantTopStatusLabel">готова</strong>
             `;
@@ -280,9 +280,9 @@
                 </button>
                 <div class="assistant-rail-status-stack">
                     <div class="assistant-rail-topline">
-                        <span class="assistant-rail-name">Клешня</span>
+                        <span class="assistant-rail-name">Помічник</span>
                         <span class="assistant-rail-state assistant-state-idle" id="crmAssistantRailState">Готовий</span>
-                        <span class="assistant-rail-engine">claude · клешня v3.2</span>
+                        <span class="assistant-rail-engine">claude · помічник v3.2</span>
                     </div>
                     <div class="assistant-rail-subtitles-wrap" id="crmAssistantRailSubtitlesWrap">
                         <div class="assistant-rail-subtitles" id="crmAssistantRailSubtitles">Я поруч, якщо треба допомога по сторінці.</div>
@@ -298,7 +298,7 @@
                             <span>Фокус</span><strong id="crmAssistantFocusChip">Готово</strong>
                         </button>
                     </div>
-                    <div class="assistant-rail-prompts" aria-label="Швидкі запити до Клешні">
+                    <div class="assistant-rail-prompts" aria-label="Швидкі запити до Помічника">
                         <button type="button" data-crm-assistant-inline-prompt="Брифінг на сьогодні">› Брифінг</button>
                         <button type="button" data-crm-assistant-inline-prompt="Хто гарячі ліди?">› Гарячі ліди</button>
                         <button type="button" data-crm-assistant-inline-prompt="Скласти зміну">› Зміна</button>
@@ -1004,7 +1004,7 @@
             <div class="crm-assistant-panel" role="dialog" aria-modal="true" aria-label="AI-провідник CRM">
                 <div class="crm-assistant-panel-header">
                     <div>
-                        <strong>Клешня</strong>
+                        <strong>Помічник</strong>
                         <span>AI-провідник CRM</span>
                     </div>
                     <button type="button" class="crm-assistant-panel-close" aria-label="Закрити" id="crmAssistantPanelClose">×</button>
@@ -1063,7 +1063,7 @@
         const items = history.length ? history : [{ role: 'assistant', text: state.subtitle || 'Я готовий допомогти по цій сторінці.' }];
         container.innerHTML = items.map(item => `
             <div class="crm-assistant-history-item ${escapeHtml(item.role)}">
-                <span>${item.role === 'user' ? 'Ти' : 'Клешня'}</span>
+                <span>${item.role === 'user' ? 'Ти' : 'Помічник'}</span>
                 <p>${escapeHtml(item.text)}</p>
             </div>
         `).join('');

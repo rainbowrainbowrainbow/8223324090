@@ -1575,7 +1575,7 @@
             var body = document.getElementById('chatInfoPanelBody');
             var isProfileBot = profile.username === 'openclaw';
             var isProfileGuardian = profile.username === 'guardian';
-            var initial = isProfileGuardian ? '🛡️' : isProfileBot ? '🦀' : (profile.avatarEmoji || (profile.displayName || profile.username || '?').charAt(0).toUpperCase());
+            var initial = isProfileGuardian ? '🛡️' : isProfileBot ? '🤖' : (profile.avatarEmoji || (profile.displayName || profile.username || '?').charAt(0).toUpperCase());
             var colorClass = isProfileGuardian ? 'chat-avatar-guardian' : isProfileBot ? 'chat-avatar-bot' : (profile.avatarColor ? '' : 'chat-avatar-color-' + _colorIdx(profile.id));
             var avatarStyle = profile.avatarColor ? 'background:' + profile.avatarColor : '';
             var roleLabel = isProfileGuardian ? 'AI Охоронець' : isProfileBot ? 'AI Бот' : _roleLabel(profile.role);
@@ -2696,7 +2696,7 @@
         _channelMembers.forEach(function (u) {
             var isGuardianUser = u.username === 'guardian';
             var isOpenclawUser = u.username === 'openclaw';
-            var initial = isGuardianUser ? '🛡️' : isOpenclawUser ? '🦀' : (u.displayName || u.username || '?').charAt(0).toUpperCase();
+            var initial = isGuardianUser ? '🛡️' : isOpenclawUser ? '🤖' : (u.displayName || u.username || '?').charAt(0).toUpperCase();
             var colorClass = isGuardianUser ? '' : 'chat-avatar-color-' + _colorIdx(u.id || 0);
             var avatarStyle = isGuardianUser ? 'background:linear-gradient(135deg,#6366F1,#8B5CF6);color:white;' : isOpenclawUser ? 'background:linear-gradient(135deg,#10B981,#059669);color:white;' : '';
             var badgeHtml = isGuardianUser ? '<span class="chat-bot-badge guardian-badge" style="margin-left:6px;font-size:8px">GUARD</span>' : isOpenclawUser ? '<span class="chat-bot-badge" style="margin-left:6px;font-size:8px">BOT</span>' : '';
@@ -3661,7 +3661,7 @@
         // Feature 17: Emoji avatars (park mascots)
         var EMOJI_AVATARS = ['🦕', '🦖', '🦎', '🐊', '🦴', '🌴', '🌋', '🥚'];
         var userEmojiAvatar = !isBot && !isGuardian ? EMOJI_AVATARS[_colorIdx(msg.userId)] : null;
-        var initial = isGuardian ? '🛡️' : isBot ? '🦀' : userEmojiAvatar || (msg.displayName || msg.username || '?').charAt(0).toUpperCase();
+        var initial = isGuardian ? '🛡️' : isBot ? '🤖' : userEmojiAvatar || (msg.displayName || msg.username || '?').charAt(0).toUpperCase();
         var time = new Date(msg.createdAt).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
         var content = msg.deletedAt ? '<em style="color:var(--gray-400)">Повідомлення видалено</em>' : (isBot ? _formatBotContent(msg.content) : _formatContent(msg.content));
         var editedHtml = msg.editedAt && !msg.deletedAt ? '<span class="chat-bubble-edited">(ред.)</span>' : '';
@@ -3746,7 +3746,7 @@
                 '<div class="chat-msg-actions">' +
                     '<button class="chat-msg-action-btn" data-action="reply" title="Відповісти">↩</button>' +
                     '<button class="chat-msg-action-btn" data-action="react" title="Реакція">😊</button>' +
-                    '<button class="chat-msg-action-btn" data-action="ai-task" title="Задача через Клешню">📋</button>' +
+                    '<button class="chat-msg-action-btn" data-action="ai-task" title="Задача через Помічника">📋</button>' +
                 '</div>' +
             '</div>' +
             '<span class="chat-swipe-reply-icon">↩</span>';
@@ -5519,7 +5519,7 @@
         var avatarHtml = '';
         var displayNames = names.map(function (n) {
             if (n === 'guardian') return '🛡️ Guardian';
-            if (n === 'openclaw') return '🦀 OpenClaw';
+            if (n === 'openclaw') return '🤖 OpenClaw';
             // Find user to get avatar
             var user = _chatUsers.find(function (u) { return u.username === n; });
             if (user) {

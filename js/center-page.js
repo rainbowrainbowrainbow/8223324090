@@ -320,7 +320,7 @@ function renderWorkers(workers) {
     }
 
     grid.innerHTML = workers.map(w => {
-        const workerEmoji = w.name === 'kleshnya' ? '🦀' :
+        const workerEmoji = w.name === 'kleshnya' ? '🤖' :
                            w.name === 'svitlana' ? '📋' :
                            w.name === 'warehouse_bot' ? '📦' : '🤖';
         return `

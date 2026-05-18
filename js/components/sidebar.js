@@ -85,7 +85,7 @@ const Sidebar = (() => {
           action: 'sidebarOpenCertificates', isHashLink: true },
 
         { type: 'group', key: 'system', label: 'Система', icon: '⚙️', priority: 5, defaultOpen: false },
-        { href: '/kleshnya',     icon: '🤖', label: 'Клешня',        access: 'chat',           group: 'system' },
+        { href: '/kleshnya',     icon: '🤖', label: 'Помічник',        access: 'chat',           group: 'system' },
         { href: '/guardian-ops', icon: '🛡️', label: 'Guardian Ops',  access: 'guardian_ops',   group: 'system' },
         { href: '/center',       icon: '🎛️', label: 'Центр керування', access: 'center',       group: 'system' },
         { href: '/warehouse',    icon: '📦', label: 'Склад',         access: 'warehouse',      group: 'system' },
@@ -167,7 +167,7 @@ const Sidebar = (() => {
         '📢': 'megaphone',
         '🎬': 'project',
         '⚙️': 'system',
-        '🦞': 'ai',
+        '🤖': 'ai',
         '🛡️': 'guardian',
         '🎮': 'game',
         '⚠️': 'alert',
@@ -996,7 +996,7 @@ const Sidebar = (() => {
             deck.id = 'sidebarCommandDeck';
             deck.className = 'sidebar-command-deck';
             deck.innerHTML = `
-                <span class="sidebar-command-kicker">Клешня · операційний стан</span>
+                <span class="sidebar-command-kicker">Помічник · операційний стан</span>
                 <button class="sidebar-identity-card" id="sidebarIdentityCard" type="button" aria-label="Відкрити профіль">
                     <span class="sidebar-identity-avatar" id="sidebarIdentityAvatar">?</span>
                     <span class="sidebar-identity-main">

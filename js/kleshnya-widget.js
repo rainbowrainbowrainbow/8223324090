@@ -1,5 +1,5 @@
 /**
- * js/kleshnya-widget.js — Floating Kleshnya Chat Widget (v12.8)
+ * js/kleshnya-widget.js — Floating Помічник Chat Widget (v12.8)
  *
  * FAB button + slide-up chat panel on the main timeline page.
  * Uses same API as kleshnya.html: /api/kleshnya/chat
@@ -21,9 +21,9 @@
         const fab = document.createElement('button');
         fab.id = 'kleshnyaFab';
         fab.className = 'kleshnya-fab';
-        fab.innerHTML = '🦀';
-        fab.title = 'Клешня — чат';
-        fab.setAttribute('aria-label', 'Відкрити чат з Клешнею');
+        fab.innerHTML = '🤖';
+        fab.title = 'Помічник — чат';
+        fab.setAttribute('aria-label', 'Відкрити чат з Помічником');
 
         // Chat Panel
         const panel = document.createElement('div');
@@ -32,9 +32,9 @@
         panel.innerHTML = `
             <div class="kw-header">
                 <div class="kw-header-info">
-                    <span class="kw-avatar">🦀</span>
+                    <span class="kw-avatar">🤖</span>
                     <div>
-                        <div class="kw-title">Клешня</div>
+                        <div class="kw-title">Помічник</div>
                         <div class="kw-subtitle">Центральний інтелект парку</div>
                     </div>
                 </div>
@@ -46,7 +46,7 @@
             <div class="kw-messages" id="kwMessages"></div>
             <div class="kw-suggestions" id="kwSuggestions"></div>
             <div class="kw-input-area">
-                <input type="text" class="kw-input" id="kwInput" placeholder="Написати Клешні..." maxlength="500" autocomplete="off">
+                <input type="text" class="kw-input" id="kwInput" placeholder="Написати Помічнику..." maxlength="500" autocomplete="off">
                 <button class="kw-voice-btn" id="kwVoiceBtn" title="Голосове повідомлення">🎤</button>
                 <button class="kw-send-btn" id="kwSendBtn" title="Надіслати">➤</button>
             </div>
@@ -155,7 +155,7 @@
         const typing = document.createElement('div');
         typing.className = 'kw-typing';
         typing.id = 'kwTyping';
-        typing.innerHTML = '🦀 <span class="kw-typing-dots"><span></span><span></span><span></span></span>';
+        typing.innerHTML = '🤖 <span class="kw-typing-dots"><span></span><span></span><span></span></span>';
         messages.appendChild(typing);
         messages.scrollTop = messages.scrollHeight;
     }
@@ -192,12 +192,12 @@
             if (greeting && greeting.message) {
                 addMessage('assistant', greeting.message, new Date().toISOString());
             } else {
-                addMessage('assistant', '🦀 Привіт! Я Клешня. Питай що завгодно!', new Date().toISOString());
+                addMessage('assistant', '🤖 Привіт! Я Помічник. Питай що завгодно!', new Date().toISOString());
             }
             renderSuggestions(['Бронювання', 'Задачі', 'Хто працює?', 'Що ти вмієш?']);
         } catch (err) {
             console.error('Widget load error:', err);
-            addMessage('assistant', '🦀 Привіт! Я на зв\'язку!', new Date().toISOString());
+            addMessage('assistant', '🤖 Привіт! Я на зв\'язку!', new Date().toISOString());
             renderSuggestions(['Бронювання', 'Задачі', 'Допомога']);
         }
     }
@@ -223,11 +223,11 @@
                     renderSuggestions(response.suggestions);
                 }
             } else {
-                addMessage('assistant', '🦀 Упс, щось пішло не так!', new Date().toISOString());
+                addMessage('assistant', '🤖 Упс, щось пішло не так!', new Date().toISOString());
             }
         } catch (err) {
             hideTyping();
-            addMessage('assistant', '🦀 Помилка з\'єднання!', new Date().toISOString());
+            addMessage('assistant', '🤖 Помилка з\'єднання!', new Date().toISOString());
         }
 
         document.getElementById('kwSendBtn').disabled = false;

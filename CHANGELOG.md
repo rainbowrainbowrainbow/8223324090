@@ -4,6 +4,40 @@
 
 ---
 
+## v0.56.8 - Header: пошук і Помічник
+
+### Header Search + Assistant Naming [codex]
+- **Пошук на всіх вкладках** - global search тепер монтується через shared authenticated header, тому кнопка `Пошук` є на всіх CRM-сторінках, а не тільки на timeline/index.
+- **Єдина search-модалка** - сторінки без старого `#searchModal` отримують спільну модалку автоматично, а `js/search.js` підвантажується з актуальним cache-bust.
+- **Стиль header controls** - пошук візуально з'єднаний з theme toggle і `Вийти`: одна висота, радіус, фон, тінь, focus/hover і dark-mode contract.
+- **Assistant naming** - user-facing assistant у rail, expanded window, sidebar, chat, landing і bot-відповідях перейменований на `Помічник` без старого crab branding.
+- **Безпечні контракти** - внутрішні `/api/kleshnya`, DB tables, file names і service ids лишились без перейменування, щоб не ламати інтеграції.
+- **Guardrails** - `test:ui` фіксує і shared header search, і те, що основні visible assistant surfaces використовують `Помічник`.
+
+---
+
+## v0.56.7 - Assistant: неймінг Помічник
+
+### Assistant Rename [codex]
+- **Єдиний неймінг** - видимий AI-assistant у rail, expanded window, sidebar, chat surfaces, landing і bot-відповідях тепер називається `Помічник`.
+- **Без старого бренду у UI** - legacy `Клешня` прибрано з user-facing assistant текстів, aria-labels, підказок, заголовків, placeholder-ів і промптів.
+- **Нейтральний образ** - crab-іконки у видимих assistant-поверхнях замінені на нейтральний helper/robot образ, щоб назва і візуальний сигнал не конфліктували.
+- **Технічні контракти збережені** - внутрішні `/api/kleshnya`, DB tables, file names і service identifiers не перейменовувались, щоб не ламати існуючі інтеграції.
+- **Guardrail** - `test:ui` фіксує, що основні visible assistant surfaces використовують `Помічник` і не повертають legacy crab branding.
+
+---
+
+## v0.56.6 - Header: пошук всюди
+
+### Shared Header Search [codex]
+- **Пошук на всіх сторінках** - global search тепер створюється через спільний `auth.js`, тому кнопка з'являється в header на всіх authenticated CRM-вкладках, а не тільки на таймлайні.
+- **Спільна модалка** - search modal автоматично додається на сторінки, де її не було, і підвантажує `js/search.js` з актуальним cache-bust.
+- **Візуальна єдність** - кнопка пошуку отримала той самий розмір, радіус, фон і тінь, що theme toggle та `Вийти`, щоб правий header виглядав одним блоком.
+- **Темна тема** - search button і search modal мають окремий dark-mode contract без сірих системних контролів.
+- **Guardrail** - `test:ui` фіксує, що shared authenticated header інжектить global search і має стилі в `layout.css`.
+
+---
+
 ## v0.56.5 - Timeline: компактний екран
 
 ### Timeline Compact Fit [codex]
@@ -15,7 +49,7 @@
 
 ---
 
-## v0.56.4 - Клешня: зручне вікно
+## v0.56.4 - Помічник: зручне вікно
 
 ### Assistant Panel Layout Fix [codex]
 - **Нижня панель** - поле запиту і кнопка `Запитати` винесені в окремий стабільний ряд, тому більше не налазять на prompt-картки та історію.
@@ -61,7 +95,7 @@
 ## v0.56.0 - AI Assistant: флагманський провідник
 
 ### CRM Assistant Flagship Layer [codex]
-- **Єдиний assistant layer** - Клешня працює через shared rail, foundation store, page adapters, action registry, teaching targets і нормалізовану reply schema без dashboard-only fork.
+- **Єдиний assistant layer** - Помічник працює через shared rail, foundation store, page adapters, action registry, teaching targets і нормалізовану reply schema без dashboard-only fork.
 - **Core-page intelligence** - dashboard/work queue, tasks, finance, leads і chat беруть сигнали з реальних CRM API snapshots і мають safe next actions там, де є стабільний handler.
 - **Strategic advisor** - відповіді тримають формат "що бачу -> чому важливо -> одна дія" з role-aware framing для director, manager, hr, art_director і creator.
 - **Voice UX** - озвучення має replay/interruption lifecycle, blocked-playback fallback у текстовий режим, читабельні subtitles і спокійні presence states.
@@ -161,10 +195,10 @@
 
 ---
 
-## v0.55.36 - Клешня: нормальне вікно
+## v0.55.36 - Помічник: нормальне вікно
 
 ### Assistant / Expanded Window [codex]
-- **AI Workspace** - відкрите вікно Клешні перероблено з вузького drawer у ширшу workspace-картку з нормальними зонами контексту, режимів, історії і форми.
+- **AI Workspace** - відкрите вікно Помічника перероблено з вузького drawer у ширшу workspace-картку з нормальними зонами контексту, режимів, історії і форми.
 - **Layout** - snapshot, режими роботи, quick prompts, історія та поле запиту розкладені по двоколонковій сітці на desktop і переходять у одну колонку на mobile.
 - **Theme** - додано окремий dark/light surface contract для overlay, panel, history, prompt buttons і textarea.
 - **Guardrail** - `npm run test:ui` перевіряє, що expanded assistant window більше не є cramped drawer і має responsive fallback.
@@ -306,8 +340,8 @@
 
 ### Shared Shell / Claude Design Parity [codex]
 - **Sidebar** - sidebar наближено до Claude Design: ширший matte shell, shield-style brand, operator card, alert hero і блок `+ Додатково`.
-- **AI topbar** - Клешню винесено з floating overlay у широку AI-панель під topbar, як у дизайн-макеті.
-- **Header** - topbar отримав компактний status `Клешня · готова`, темні controls, search і user block у стилі макету.
+- **AI topbar** - Помічника винесено з floating overlay у широку AI-панель під topbar, як у дизайн-макеті.
+- **Header** - topbar отримав компактний status `Помічник · готовий`, темні controls, search і user block у стилі макету.
 - **Responsive** - ширина sidebar і AI panel адаптуються через clamp; prompts/inline controls стискаються на середніх екранах.
 
 ---
@@ -491,7 +525,7 @@
 ## v0.54.7 - Sidebar AI Cockpit Hardening
 
 ### Sidebar / AI-first Navigation [codex]
-- **Command deck** - верхній блок sidebar отримав явний маркер `Клешня · операційний стан`, role-aware summary і clean empty state без повернення старих pills.
+- **Command deck** - верхній блок sidebar отримав явний маркер `Помічник · операційний стан`, role-aware summary і clean empty state без повернення старих pills.
 - **Role focus** - стартовий стан груп переведено на `ai-cockpit-v2`, щоб користувачі отримували role-preferred секції замість успадкованого all-open меню.
 - **Focus deck** - ролі без доступу до воронки більше не бачать порожню третю колонку: deck перебудовується у дві корисні дії.
 - **Visual control** - вимкнено magnetic/ripple ефекти в навігації, щоб sidebar читався як спокійний AI-first cockpit, а не декоративний rail.
@@ -545,7 +579,7 @@
 
 ---
 
-## v0.54.1 - Leads Funnel Below Kanban (Клешня, 2026-05-17)
+## v0.54.1 - Leads Funnel Below Kanban (Помічник, 2026-05-17)
 
 ### Ліди / Kanban Layout [codex]
 - **Ліди** - різнокольоровий funnel summary перенесено під kanban-дошку, щоб primary focus лишався на роботі з картками.
@@ -1892,7 +1926,7 @@
 ### Layout gap cluster fix [codex]
 - **Ліди** - прибрано structural duplicated shell offset: сторінка більше не вкладає `.main-content` всередину `.page-container`, тому контент стартує біля sidebar з нормальним відступом.
 - **Designs** - прибрано крихкий inline `margin-left: 220px` на `main.page-container`; сторінка тепер покладається на shared layout rules.
-- **Timeline/Kleshnya** - старий collapse path у `js/app.js` більше не пише inline `marginLeft/width`, а лишає геометрію shared CSS-класам.
+- **Timeline/Помічник** - старий collapse path у `js/app.js` більше не пише inline `marginLeft/width`, а лишає геометрію shared CSS-класам.
 - **UI Guard** - UI smoke тепер ловить nested shell anti-pattern, inline shell offsets і недокументовані `.main-content` shell pages.
 - **Перевірка layout** - Chromium-заміри підтвердили, що Leads повернувся до нормального gap на 1440/1024/1000/768px і не зачепив standard shell pages.
 
@@ -2260,7 +2294,7 @@
 ### Access/Auth [codex]
 - **Access drift check** - added `npm run check:access` and wired it into `npm test` to compare backend `PAGE_ACCESS`, frontend `PAGE_ACCESS`, sidebar access keys, and role metadata.
 - **Unknown page deny** - frontend `canAccessPage()` now rejects unknown routes instead of allowing them by default, while normalizing hash/page aliases safely.
-- **Sidebar reconciliation** - `/sales-funnel` and `/leads` share the same lead access; tasks/chat/Kleshnya/Afisha/Certificates no longer use broad sidebar `all` access where waiter should not see them.
+- **Sidebar reconciliation** - `/sales-funnel` and `/leads` share the same lead access; tasks/chat/Помічник/Afisha/Certificates no longer use broad sidebar `all` access where waiter should not see them.
 - **Security role metadata** - added `security` to role permissions/departments/default widgets and shared role UI metadata.
 - **Focused coverage** - route smoke checks security role exposure, `/sales-funnel` alias parity, and waiter exclusion from task page access.
 
@@ -2862,7 +2896,7 @@
 - **v35.1.0** — чисті emoji іконки (прибрано gray badge box), додано /reports до Управління
 - **v35.2.0** — compact nav-links (padding 10→7px, font 14→13px), smart defaultOpen (тільки активна група)
 - **v35.3.0** — додано Каталоги до Творче групи, фікс user card onclick
-- **v35.4.0** — видалено improvementFab (перекривав Клешню)
+- **v35.4.0** — видалено improvementFab (перекривав Помічника)
 - **v35.5.0** — 🌙/☀️ theme toggle кнопка в sidebar
 
 ### API & Page Fixes [claude-code]
@@ -3337,9 +3371,9 @@
 
 ---
 
-## v13.0.0 — Kleshnya Chat v2 (2026-02-18)
+## v13.0.0 — Помічник Chat v2 (2026-02-18)
 
-**Kleshnya Chat v2 — ChatGPT-style multi-session redesign:**
+**Помічник Chat v2 — ChatGPT-style multi-session redesign:**
 - Sidebar сесій (desktop 280px, mobile overlay по свайпу/кнопці)
 - Multi-session: створення, перемикання, перейменування, pin, emoji, видалення
 - Context menu (right-click / long press): rename, pin, clear, delete
@@ -3393,7 +3427,7 @@
 **Авто Dark Mode:**
 - Темна тема автоматично з 20:00 до 07:00, світла вдень
 - Спільна функція `initDarkMode()` в config.js — єдине джерело правди
-- Працює на всіх 6 сторінках (таймлайн, задачі, програми, графік, дизайни, клешня)
+- Працює на всіх 6 сторінках (таймлайн, задачі, програми, графік, дизайни, помічник)
 - Ручний вибір через toggle зберігається в localStorage і перезаписує авто
 
 **Dark mode на /designs:**
@@ -3419,7 +3453,7 @@
 
 ---
 
-## v11.0.6 — Клешня знає твоє ім'я (2026-02-15)
+## v11.0.6 — Помічник знає твоє ім'я (2026-02-15)
 
 - **Персоналізація:** привітання тепер звертаються по імені з акаунту користувача
 - **Фікс:** "Денний" більше не з'являється — displayName передається з JWT токена
@@ -3428,7 +3462,7 @@
 
 ---
 
-## v11.0.4 — Клешня без пафосу (2026-02-15)
+## v11.0.4 — Помічник без пафосу (2026-02-15)
 
 - **Привітання:** жива українська замість "сканування завершено" / "системи активовано"
 - **Відповіді:** просто та корисно без "місій", "оперативників", "сенсорів"
@@ -3453,7 +3487,7 @@
 
 ---
 
-## v11.0.2 — Футуристична Клешня (2026-02-15)
+## v11.0.2 — Футуристична Помічник (2026-02-15)
 
 - **Floating widget:** інтерактивна кнопка 🦀 (FAB) замість статичного банера в stats bar
 - **Popup:** привітання + 4 кнопки швидких питань (бронювання, задачі, стрік, аніматори) + посилання на повний чат
@@ -3588,7 +3622,7 @@
 - `control_policy` (JSONB) — правила нагадувань та ескалації на рівні задачі
 - `source_type` — відстеження джерела задачі (booking, trigger, recurring, kleshnya)
 
-**Клешня (services/kleshnya.js) — центральний інтелект:**
+**Помічник (services/kleshnya.js) — центральний інтелект:**
 - Створення задач з логуванням + нотифікацією
 - 4-рівнева ескалація: м'яке → жорсткіше → увага → директор
 - Автоматичне нарахування балів при завершенні задач
@@ -3622,7 +3656,7 @@
 - `routes/points.js` — новий (API балів)
 - `services/bot.js` — +3 команди (/tasks, /done, /alltasks)
 - `services/scheduler.js` — +3 scheduler функції
-- `routes/tasks.js` — інтеграція з Клешнею (logs, owner, task_type)
+- `routes/tasks.js` — інтеграція з Помічником (logs, owner, task_type)
 - `routes/telegram.js` — +task_confirm/reject callbacks, auto-register chat_id
 - `server.js` — +points route, +3 schedulers
 - `db/index.js` — +4 таблиці, +15 колонок, +12 індексів

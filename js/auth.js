@@ -699,6 +699,7 @@ function showMainApp() {
         history.replaceState(null, '', '/');
     }
 
+    initGlobalHeaderSearch();
     showAuthenticatedPageShell();
 }
 
@@ -1625,6 +1626,151 @@ function initHeaderThemeToggle() {
     syncHeaderThemeToggle();
 }
 
+// v0.56.6: global search belongs to the shared authenticated header on every CRM page.
+let _globalHeaderSearchScriptPromise = null;
+
+function _sharedAssetSuffixFromAuth() {
+    const script = Array.from(document.scripts || []).find(item => /(^|\/)js\/auth\.js/.test(item.getAttribute('src') || ''))
+        || Array.from(document.scripts || []).find(item => /[?&]v=/.test(item.getAttribute('src') || ''));
+    if (!script) return '';
+    try {
+        const version = new URL(script.src, window.location.href).searchParams.get('v') || '';
+        return version ? `?v=${encodeURIComponent(version)}` : '';
+    } catch {
+        return '';
+    }
+}
+
+function ensureGlobalSearchModal() {
+    const existing = document.getElementById('searchModal');
+    if (existing) {
+        existing.setAttribute('role', 'dialog');
+        existing.setAttribute('aria-modal', 'true');
+        existing.setAttribute('aria-label', 'Глобальний пошук CRM');
+        const header = existing.querySelector('.search-header');
+        if (header && !header.querySelector('.search-header-icon')) {
+            const icon = document.createElement('span');
+            icon.className = 'search-header-icon';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = '⌕';
+            header.prepend(icon);
+        }
+        if (existing.dataset.globalSearchBackdropBound !== '1') {
+            existing.dataset.globalSearchBackdropBound = '1';
+            existing.addEventListener('click', event => {
+                if (event.target === existing && typeof window.closeSearch === 'function') window.closeSearch();
+            });
+        }
+        return;
+    }
+    const modal = document.createElement('div');
+    modal.id = 'searchModal';
+    modal.className = 'search-overlay hidden';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Глобальний пошук CRM');
+    modal.innerHTML = `
+        <div class="search-container">
+            <div class="search-header">
+                <span class="search-header-icon" aria-hidden="true">⌕</span>
+                <input type="text" id="searchInput" class="search-input" placeholder="Пошук бронювань, клієнтів, задач..." autocomplete="off" oninput="onSearchInput(this.value)">
+                <kbd class="search-kbd">Esc</kbd>
+            </div>
+            <div id="searchResults" class="search-results">
+                <div class="search-hint">Почніть вводити для пошуку по бронюванням, клієнтам, задачам, програмам</div>
+            </div>
+            <div class="search-footer">
+                <span><kbd>↑↓</kbd> навігація</span>
+                <span><kbd>Enter</kbd> перейти</span>
+                <span><kbd>Esc</kbd> закрити</span>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', event => {
+        if (event.target === modal && typeof window.closeSearch === 'function') window.closeSearch();
+    });
+}
+
+function ensureGlobalSearchScript() {
+    if (typeof window.openSearch === 'function') return Promise.resolve(true);
+    if (_globalHeaderSearchScriptPromise) return _globalHeaderSearchScriptPromise;
+
+    const existing = Array.from(document.scripts || []).find(item => /(^|\/)js\/search\.js/.test(item.getAttribute('src') || ''));
+    if (existing) {
+        _globalHeaderSearchScriptPromise = new Promise(resolve => {
+            if (typeof window.openSearch === 'function') {
+                resolve(true);
+                return;
+            }
+            existing.addEventListener('load', () => resolve(typeof window.openSearch === 'function'), { once: true });
+            existing.addEventListener('error', () => resolve(false), { once: true });
+            setTimeout(() => resolve(typeof window.openSearch === 'function'), 600);
+        });
+        return _globalHeaderSearchScriptPromise;
+    }
+
+    _globalHeaderSearchScriptPromise = new Promise(resolve => {
+        const script = document.createElement('script');
+        script.src = `js/search.js${_sharedAssetSuffixFromAuth()}`;
+        script.dataset.globalHeaderSearch = 'true';
+        script.onload = () => resolve(typeof window.openSearch === 'function');
+        script.onerror = () => resolve(false);
+        document.body.appendChild(script);
+    });
+    return _globalHeaderSearchScriptPromise;
+}
+
+function openGlobalHeaderSearch() {
+    ensureGlobalSearchModal();
+    ensureGlobalSearchScript().then(ready => {
+        if (ready && typeof window.openSearch === 'function') {
+            window.openSearch();
+            return;
+        }
+        const input = document.getElementById('searchInput');
+        const modal = document.getElementById('searchModal');
+        if (modal) modal.classList.remove('hidden');
+        if (input) input.focus();
+    });
+}
+
+function initGlobalHeaderSearch() {
+    const headerContent = document.querySelector('.header .header-content');
+    if (!headerContent) return false;
+
+    ensureGlobalSearchModal();
+
+    let btn = document.getElementById('globalHeaderSearchBtn') || headerContent.querySelector('.btn-search');
+    if (!btn) {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        const userPanel = headerContent.querySelector('.user-panel');
+        if (userPanel) headerContent.insertBefore(btn, userPanel);
+        else headerContent.appendChild(btn);
+    }
+
+    btn.id = 'globalHeaderSearchBtn';
+    btn.type = 'button';
+    btn.classList.add('btn-search', 'header-search-btn');
+    btn.removeAttribute('onclick');
+    btn.title = 'Пошук по CRM (Ctrl+K)';
+    btn.setAttribute('aria-label', 'Відкрити пошук по CRM');
+    btn.innerHTML = `
+        <span class="header-search-icon" aria-hidden="true">⌕</span>
+        <span class="header-search-label">Пошук</span>
+        <kbd>⌘K</kbd>
+    `;
+
+    if (btn.dataset.globalSearchBound !== '1') {
+        btn.dataset.globalSearchBound = '1';
+        btn.addEventListener('click', openGlobalHeaderSearch);
+    }
+
+    ensureGlobalSearchScript();
+    return true;
+}
+
 // v10.4: Auto-init profile handler on any page (sub-pages don't call showMainApp)
 function initProfileHandler() {
     const el = document.getElementById('currentUser');
@@ -1663,6 +1809,7 @@ function initProfileHandler() {
 document.addEventListener('DOMContentLoaded', () => {
     // Delay slightly to let page-specific JS set username first
     setTimeout(initProfileHandler, 100);
+    setTimeout(initGlobalHeaderSearch, 110);
     setTimeout(initHeaderThemeToggle, 120);
     setTimeout(() => {
         if (document.body.classList.contains('authenticated-shell')) initCrmAssistantRail();

@@ -14,7 +14,7 @@ const { broadcastToChannel } = require('./websocket');
 const { pool } = require('../db');
 
 // Bot trigger patterns
-const BOT_MENTIONS = ['@openclaw', '@kleshnya', '@клешня', '@бот'];
+const BOT_MENTIONS = ['@openclaw', '@kleshnya', '@помічник', '@бот'];
 const BOT_USERNAME = 'openclaw';
 
 // Rate limit: max 1 response per channel per 3 seconds
@@ -122,7 +122,7 @@ async function processMessage(message) {
     const question = isDm ? message.content.trim() : extractQuestion(message.content);
     if (!question) {
         await respondToChannel(message.channelId, message.id,
-            '🦀 Привіт! Я Клешня — питай що хочеш! Бронювання, задачі, команду, виручку...');
+            '🤖 Привіт! Я Помічник — питай що хочеш! Бронювання, задачі, команду, виручку...');
         return;
     }
 
@@ -139,7 +139,7 @@ async function processMessage(message) {
         const history = _channelHistory[message.channelId] || [];
         const result = await generateChatResponse(question, message.username, history);
 
-        let responseText = result.message || '🦀 Не зрозумів, спробуй інакше.';
+        let responseText = result.message || '🤖 Не зрозумів, спробуй інакше.';
 
         if (result.suggestions && result.suggestions.length > 0) {
             responseText += '\n\n💡 ' + result.suggestions.join(' · ');
@@ -151,7 +151,7 @@ async function processMessage(message) {
     } catch (err) {
         log.error('Bot response error:', err);
         await respondToChannel(message.channelId, message.id,
-            '🦀 Ой, щось пішло не так. Спробуй ще раз!');
+            '🤖 Ой, щось пішло не так. Спробуй ще раз!');
     }
 }
 

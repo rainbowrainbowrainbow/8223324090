@@ -45,7 +45,7 @@ function isWeekend() {
 const GREETINGS = {
     morning: [
         (name) => `Доброго ранку, ${name}! Ось що маємо:`,
-        (name) => `Ранок, ${name}! Клешня зібрала інфу — тримай:`,
+        (name) => `Ранок, ${name}! Помічник зібрав інфу — тримай:`,
         (name) => `Привіт, ${name}! Новий день — нові бронювання:`,
     ],
     afternoon: [
@@ -56,7 +56,7 @@ const GREETINGS = {
     evening: [
         (name) => `Добрий вечір, ${name}! Підсумки дня:`,
         (name) => `Вечір, ${name}! Ось як пройшов день:`,
-        (name) => `${name}, Клешня на зв'язку. Що маємо по підсумках:`,
+        (name) => `${name}, Помічник на зв'язку. Що маємо по підсумках:`,
     ],
     night: [
         (name) => `Нічна зміна, ${name}? Ось що відбувається:`,
@@ -253,7 +253,7 @@ async function getGreeting(username, dateStr, displayName, actor = null) {
     } catch (err) {
         log.error('Error getting greeting', err);
         return {
-            message: `🦀 Привіт${displayName ? ', ' + displayName : ''}! Клешня на зв'язку — готова допомогти!`,
+            message: `🤖 Привіт${displayName ? ', ' + displayName : ''}! Помічник на зв'язку — готовий допомогти!`,
             context: {},
             source: 'fallback',
             cached: false

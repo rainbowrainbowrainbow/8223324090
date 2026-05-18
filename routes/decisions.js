@@ -31,7 +31,7 @@ router.get('/pending', async (req, res) => {
     }
 });
 
-// POST /api/decisions — створити рішення (будь-хто авторизований, або Клешня/бот)
+// POST /api/decisions — створити рішення (будь-хто авторизований, або Помічник/бот)
 router.post('/', async (req, res) => {
     const {
         title, description,

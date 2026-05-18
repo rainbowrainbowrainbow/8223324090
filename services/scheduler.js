@@ -801,7 +801,7 @@ async function checkWorkDayTriggers() {
         if (todayTasks.rows.length > 0) {
             const chatId = await getConfiguredChatId();
             if (chatId) {
-                let text = `🦀 <b>Клешня — Задачі на сьогодні</b>\n`;
+                let text = `🤖 <b>Помічник — Задачі на сьогодні</b>\n`;
                 text += `📅 ${todayStr} | Задач: <b>${todayTasks.rows.length}</b>\n\n`;
 
                 const priorityIcon = { high: '🔴', normal: '⚪', low: '🔵' };
@@ -818,7 +818,7 @@ async function checkWorkDayTriggers() {
                     text += '\n';
                 }
 
-                text += `\n🦀 Клешня тримає все під контролем`;
+                text += `\n🤖 Помічник тримає все під контролем`;
                 await sendTelegramMessage(chatId, text, { silent: false });
             }
         }

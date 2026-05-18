@@ -1129,7 +1129,7 @@ const DashboardPage = (() => {
             <div class="dashboard-assistant-panel" role="dialog" aria-modal="true" aria-label="AI-провідник dashboard">
                 <div class="dashboard-assistant-panel-header">
                     <div>
-                        <strong>Клешня</strong>
+                        <strong>Помічник</strong>
                         <span>AI-провідник dashboard</span>
                     </div>
                     <button type="button" class="assistant-panel-close" aria-label="Закрити" onclick="DashboardPage.closeDashboardAssistantPanel()">×</button>
@@ -1174,7 +1174,7 @@ const DashboardPage = (() => {
             : [{ role: 'assistant', text: _assistantRailState.subtitle || 'Я готовий допомогти з dashboard.' }];
         container.innerHTML = items.map(item => `
             <div class="dashboard-assistant-history-item ${escapeHtml(item.role)}">
-                <span>${item.role === 'user' ? 'Ти' : 'Клешня'}</span>
+                <span>${item.role === 'user' ? 'Ти' : 'Помічник'}</span>
                 <p>${escapeHtml(item.text)}</p>
             </div>
         `).join('');

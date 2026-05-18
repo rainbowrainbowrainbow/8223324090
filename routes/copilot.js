@@ -1,6 +1,6 @@
 /**
  * routes/copilot.js — Manager AI Copilot API
- * v27.0.0 | 2026-03-13 | Клешня 🦞
+ * v27.0.0 | 2026-03-13 | Помічник 🤖
  *
  * Endpoints:
  *   POST /api/copilot/coach          — AI Live Coach підказки

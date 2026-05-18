@@ -17,7 +17,7 @@ const AGENT_TAG_PATTERNS = [
     { regex: /\[kleshnya\]/i, tag: 'kleshnya' },
     { regex: /\[anthropic\]/i, tag: 'anthropic' },
     { regex: /\[human\]/i, tag: 'human' },
-    { regex: /Клешня/i, tag: 'kleshnya' },
+    { regex: /Помічник/i, tag: 'kleshnya' },
     { regex: /Merge pull request/i, tag: 'github' }
 ];
 

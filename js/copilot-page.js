@@ -1,6 +1,6 @@
 /**
  * js/copilot-page.js — Manager AI Copilot (всі 11 модулів)
- * v27.0.0 | 2026-03-13 | Клешня 🦞
+ * v27.0.0 | 2026-03-13 | Помічник 🤖
  */
 
 const CopilotPage = (() => {
@@ -1433,7 +1433,7 @@ const CopilotPage = (() => {
                 </div>
                 <div class="form-group">
                     <label class="copilot-label">Що зацікавило найбільше</label>
-                    <input type="text" id="writerInterest" class="copilot-input" placeholder="AI-дворецький Клешня">
+                    <input type="text" id="writerInterest" class="copilot-input" placeholder="AI-дворецький Помічник">
                 </div>
             </div>
 

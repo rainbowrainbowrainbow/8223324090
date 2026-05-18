@@ -96,6 +96,11 @@
             return api.buildContext({ page: getCurrentPageKey(), ...extra });
         } catch (err) {
             console.warn('[crm-assistant] foundation context failed:', err);
+            emitTelemetry('foundation_context_failed', {
+                module: 'rail:getFoundationContext',
+                failureReason: err.message || String(err),
+                fallbackShown: true
+            });
             return null;
         }
     }
@@ -107,6 +112,11 @@
             return await api.refreshContext({ page: getCurrentPageKey(), ...options });
         } catch (err) {
             console.warn('[crm-assistant] foundation snapshot refresh failed:', err);
+            emitTelemetry('snapshot_failed', {
+                module: 'rail:refreshFoundationContext',
+                failureReason: err.message || String(err),
+                fallbackShown: true
+            });
             return null;
         }
     }
@@ -120,6 +130,37 @@
             console.warn('[crm-assistant] reply normalization failed:', err);
             return reply;
         }
+    }
+
+    function emitTelemetry(eventType, details = {}) {
+        const api = foundation();
+        if (api?.telemetry?.emit) {
+            return api.telemetry.emit(eventType, { module: 'rail', page: getCurrentPageKey(), ...details });
+        }
+        const token = localStorage.getItem('pzp_token');
+        if (!token || typeof fetch !== 'function') return false;
+        fetch('/api/crm-assistant/telemetry', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({
+                eventType,
+                page: getCurrentPageKey(),
+                module: details.module || 'rail',
+                assistantState: details.assistantState || state.mode,
+                playbackState: details.playbackState || state.playbackState,
+                failureReason: details.failureReason || details.reason || '',
+                fallbackShown: details.fallbackShown === true,
+                actionId: details.actionId || '',
+                targetId: details.targetId || '',
+                snapshotKey: details.snapshotKey || '',
+                source: 'assistant-rail'
+            }),
+            keepalive: true
+        }).catch(() => {});
+        return true;
     }
     let mediaRecorder = null;
     let audioChunks = [];
@@ -663,6 +704,11 @@
             if (String(err?.message || '').includes('openai_not_configured')) {
                 reply = { text: localPageHelpText(context), subtitle: localPageHelpText(context) };
             } else {
+                emitTelemetry('reply_failed', {
+                    module: 'rail:announcePageContext',
+                    failureReason: err.message || String(err),
+                    fallbackShown: true
+                });
                 handleError(err, 'Не вдалося підготувати підказку по сторінці.');
                 return;
             }
@@ -707,6 +753,12 @@
 
     function handlePlaybackFailure(error, line) {
         if (isPlaybackBlocked(error)) {
+            emitTelemetry('playback_blocked', {
+                module: 'rail:playback',
+                playbackState: 'blocked',
+                failureReason: error?.message || error?.name || 'playback_blocked',
+                fallbackShown: true
+            });
             localStorage.setItem('eg_crm_assistant_voice', 'off');
             localStorage.setItem('eg_dashboard_assistant_voice', 'off');
             setState({
@@ -719,6 +771,12 @@
             });
             return;
         }
+        emitTelemetry('playback_failed', {
+            module: 'rail:playback',
+            playbackState: 'error',
+            failureReason: error?.message || error?.name || 'playback_failed',
+            fallbackShown: true
+        });
         setState({
             mode: state.voiceEnabled ? 'idle' : 'muted',
             playbackState: 'error',
@@ -842,6 +900,11 @@
             return;
         }
         if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+            emitTelemetry('voice_transcription_failed', {
+                module: 'rail:voice',
+                failureReason: 'media_recorder_unavailable',
+                fallbackShown: true
+            });
             handleError(new Error('media_recorder_unavailable'), 'Голосовий ввід недоступний у цьому браузері.');
             return;
         }
@@ -878,6 +941,11 @@
                     const reply = await requestGuideReply({ userMessage: transcript, voiceMode: true });
                     await playReply(reply);
                 } catch (err) {
+                    emitTelemetry('voice_transcription_failed', {
+                        module: 'rail:voice',
+                        failureReason: err.message || String(err),
+                        fallbackShown: true
+                    });
                     handleError(err, 'Не вдалося розпізнати голос або підготувати відповідь.');
                 }
             };
@@ -885,6 +953,11 @@
             setState({ mode: 'listening', subtitle: 'Слухаю. Скажи коротко, що треба зробити.', tickerText: '', playbackState: 'listening' });
             recorder.start();
         } catch (err) {
+            emitTelemetry('voice_transcription_failed', {
+                module: 'rail:voice',
+                failureReason: err.message || String(err),
+                fallbackShown: true
+            });
             handleError(err, 'Не вдалося увімкнути мікрофон.');
         }
     }
@@ -1171,6 +1244,12 @@
             setState({ mode: 'success', subtitle: 'Дію виконано або відкрито потрібний фокус.', tickerText: '' });
             renderPanelSnapshot();
         } catch (err) {
+            emitTelemetry('action_unavailable', {
+                module: 'rail:panelAction',
+                actionId: action,
+                failureReason: err.message || String(err),
+                fallbackShown: true
+            });
             handleError(err, 'Не вдалося виконати запропоновану дію.');
         }
     }
@@ -1180,6 +1259,12 @@
         if (!target) return;
         const result = highlightTeachingTarget(target, { durationMs: 3600 });
         if (!result.success) {
+            emitTelemetry('teaching_target_missing', {
+                module: 'rail:highlight',
+                targetId: target,
+                failureReason: result.fallbackText || 'target_not_found',
+                fallbackShown: true
+            });
             setState({ mode: 'idle', subtitle: result.fallbackText || 'Точна ціль зараз недоступна.', tickerText: '' });
         } else {
             setState({ mode: 'success', subtitle: `${result.target?.label || 'Елемент'} підсвічено на екрані.`, tickerText: '' });
@@ -1237,6 +1322,11 @@
             const reply = await requestGuideReply({ userMessage: prompt });
             await playReply(reply);
         } catch (err) {
+            emitTelemetry('reply_failed', {
+                module: 'rail:submitPrompt',
+                failureReason: err.message || String(err),
+                fallbackShown: true
+            });
             handleError(err);
         }
     }

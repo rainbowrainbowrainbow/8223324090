@@ -4,6 +4,16 @@
 
 ---
 
+## v0.56.1 - AI Assistant: пострелізне зміцнення
+
+### Assistant Post-Release Hardening [codex]
+- **Telemetry diagnostics** - додано low-noise `/api/crm-assistant/telemetry` для blocked playback, snapshot failures, missing teaching targets, voice/transcription failures і unavailable actions.
+- **Безпечні логи** - telemetry payload санітизується на backend, не пише токени/секрети і зберігає тільки page, module, assistant state, reason та fallback fact.
+- **Frontend observability** - shared rail і foundation контракти тепер репортують реальні fallback/failure paths без нового assistant framework.
+- **Guardrail** - `dashboard-assistant` route test і `test:ui` фіксують telemetry route, redaction і frontend emitters.
+
+---
+
 ## v0.56.0 - AI Assistant: флагманський провідник
 
 ### CRM Assistant Flagship Layer [codex]

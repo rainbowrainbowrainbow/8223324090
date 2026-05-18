@@ -283,4 +283,45 @@ describe('dashboard assistant route context', () => {
             await close(server);
         }
     });
+
+    it('accepts sanitized assistant telemetry without exposing raw failure payloads', async () => {
+        process.env.JWT_SECRET = TEST_JWT_SECRET;
+        clearAssistantModules();
+
+        installMock('../db', {
+            pool: { query: async () => ({ rows: [] }) },
+            query: async () => ({ rows: [] })
+        });
+        installMock('../services/dashboardAssistant', {
+            getDashboardAssistantReply: async () => ({ text: 'ok' }),
+            normalizeAssistantReply: reply => reply
+        });
+        installMock('../services/dashboardAssistantAudio', {
+            transcribeDashboardAudio: async () => 'voice text',
+            synthesizeDashboardSpeech: async () => Buffer.from('mp3')
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/api/crm-assistant', require('../routes/crm-assistant'));
+        const { server, baseUrl } = await listen(app);
+
+        try {
+            const res = await postJson(baseUrl, '/api/crm-assistant/telemetry', {
+                eventType: 'playback_blocked',
+                page: 'dashboard',
+                module: 'rail',
+                assistantState: 'speaking',
+                playbackState: 'blocked',
+                failureReason: 'NotAllowedError: autoplay blocked Bearer secret-token-value',
+                fallbackShown: true
+            }, 'manager');
+
+            assert.equal(res.status, 200);
+            assert.equal(res.data.success, true);
+            assert.equal(res.data.eventType, 'playback_blocked');
+        } finally {
+            await close(server);
+        }
+    });
 });

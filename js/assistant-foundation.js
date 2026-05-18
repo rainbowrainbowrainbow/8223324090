@@ -19,6 +19,8 @@
     const snapshotCache = new Map();
     const snapshotInflight = new Map();
     const SNAPSHOT_TTL_MS = 45000;
+    const TELEMETRY_THROTTLE_MS = 60000;
+    const telemetryLastSent = new Map();
 
     function nowIso() {
         return new Date().toISOString();
@@ -60,6 +62,49 @@
     function authHeaders() {
         const token = readStorage('pzp_token', '');
         return token ? { Authorization: `Bearer ${token}` } : {};
+    }
+
+    function emitTelemetry(eventType, details = {}) {
+        const token = readStorage('pzp_token', '');
+        if (!token || typeof fetch !== 'function') return false;
+        const page = compactText(details.page || details.pageId || getPageId(), 80);
+        const reason = compactText(details.failureReason || details.reason || '', 120);
+        const dedupeKey = [
+            eventType,
+            page,
+            compactText(details.module || 'foundation', 60),
+            compactText(details.actionId || details.targetId || details.snapshotKey || '', 80),
+            reason
+        ].join(':');
+        const now = Date.now();
+        if (telemetryLastSent.has(dedupeKey) && now - telemetryLastSent.get(dedupeKey) < TELEMETRY_THROTTLE_MS) {
+            return false;
+        }
+        telemetryLastSent.set(dedupeKey, now);
+        const currentState = typeof state === 'object' && state ? state : {};
+        const payload = {
+            eventType: compactText(eventType, 80),
+            page,
+            module: compactText(details.module || 'foundation', 80),
+            assistantState: compactText(details.assistantState || currentState.mode || '', 80),
+            playbackState: compactText(details.playbackState || currentState.playbackState || '', 80),
+            failureReason: reason,
+            fallbackShown: details.fallbackShown === true || Boolean(currentState.fallbackReason),
+            actionId: compactText(details.actionId || '', 100),
+            targetId: compactText(details.targetId || '', 100),
+            snapshotKey: compactText(details.snapshotKey || '', 100),
+            source: compactText(details.source || 'assistant-foundation', 80)
+        };
+        fetch('/api/crm-assistant/telemetry', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload),
+            keepalive: true
+        }).catch(() => {});
+        return true;
     }
 
     async function apiGetJson(path) {
@@ -169,6 +214,12 @@
                 } catch (err) {
                     setSnapshot(page, request.key, null, err);
                     result.keys.push({ key: request.key, ok: false, error: err.message || String(err), status: err.status || 0 });
+                    emitTelemetry('snapshot_failed', {
+                        page,
+                        snapshotKey: request.key,
+                        failureReason: err.message || String(err),
+                        fallbackShown: true
+                    });
                 }
             }));
             return result;
@@ -409,6 +460,11 @@
         async run(actionId, payload = {}) {
             const action = actions.get(String(actionId || ''));
             if (!action || typeof action.run !== 'function') {
+                emitTelemetry('action_unavailable', {
+                    actionId,
+                    failureReason: action?.failureMessage || 'assistant_action_unavailable',
+                    fallbackShown: true
+                });
                 throw new Error(action?.failureMessage || 'assistant_action_unavailable');
             }
             if (action.confirmationNeeded && typeof window.confirm === 'function') {
@@ -422,6 +478,12 @@
                 return result || { success: true };
             } catch (err) {
                 store.setState({ mode: 'error', fallbackReason: action.failureMessage || err.message }, { source: 'action:error' });
+                emitTelemetry('action_unavailable', {
+                    page: action.page,
+                    actionId: action.actionId,
+                    failureReason: action.failureMessage || err.message,
+                    fallbackShown: true
+                });
                 throw err;
             }
         }
@@ -448,6 +510,12 @@
                 currentTeachingTarget: serializeTarget(target),
                 fallbackReason: target.reason || target.fallbackText || 'target_not_found'
             }, { source: 'target:missing' });
+            emitTelemetry('teaching_target_missing', {
+                page: target.page,
+                targetId: target.targetId,
+                failureReason: target.reason || target.fallbackText || 'target_not_found',
+                fallbackShown: true
+            });
             return { success: false, target: serializeTarget(target), fallbackText: target.fallbackText };
         }
         element.scrollIntoView?.({ behavior: options.behavior || 'smooth', block: options.block || 'center' });
@@ -710,6 +778,11 @@
             return value ?? fallback;
         } catch (err) {
             console.warn(`[crm-assistant-foundation] adapter ${method} failed`, err);
+            emitTelemetry('foundation_context_failed', {
+                module: `adapter:${method}`,
+                failureReason: err.message || String(err),
+                fallbackShown: true
+            });
             return fallback;
         }
     }
@@ -1220,6 +1293,7 @@
         normalizeAction,
         normalizeTarget,
         normalizeReply,
+        emitTelemetry,
         serializeAction,
         serializeTarget,
         actions: actionRegistry,
@@ -1239,6 +1313,9 @@
         snapshots: {
             refresh: refreshAdapterSnapshot,
             get: getSnapshotEntry
+        },
+        telemetry: {
+            emit: emitTelemetry
         },
         adapters: {
             register: registerAdapter,

@@ -930,6 +930,7 @@
             </div>`;
 
         viewer.style.display = 'block';
+        document.body.classList.add('catalog-viewer-open');
         document.body.style.overflow = 'hidden';
 
         // Touch swipe
@@ -973,6 +974,7 @@
             }
             viewer.remove();
         }
+        document.body.classList.remove('catalog-viewer-open');
         document.body.style.overflow = '';
     }
 

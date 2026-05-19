@@ -4,6 +4,18 @@
 
 ---
 
+## v0.58.3 - Unified Assistant Surface
+
+### Unified Assistant Surface [codex]
+- **Єдиний Помічник на сторінці** - старий floating widget більше не створює окрему кнопку, чат і панель поверх канонічного верхнього `CrmAssistantRail`.
+- **Legacy bridge** - старі виклики `KleshnyaWidget.open()` або кліки по legacy-тригерах тепер відкривають той самий shared rail, а не другий assistant.
+- **Timeline safety** - старий `initKleshnyaWidget()` на таймлайні не може повторно показати прихований legacy FAB, якщо вже працює канонічний Помічник.
+- **Каталоги без декоративного AI topbar** - у fullscreen/print режимах каталогів `CrmAssistantRail` ховається разом із shell-навігацією, щоб не висіти зверху як нефункціональний елемент.
+- **Компактні сторінки каталогів** - hero, статистика, блок послуг, footer і кнопки стали нижчими та щільнішими, щоб сторінка каталогу вміщалась у viewport без довгого прокручування.
+- **Guardrail** - `test:ui` перевіряє, що legacy widget делегує у shared rail і не малює другий assistant через `document.body.appendChild(fab)` або старий `/api/kleshnya/chat` flow.
+
+---
+
 ## v0.58.2 - Mobile Certificate and Sidebar Stability
 
 ### Mobile Certificate and Sidebar Stability [codex]

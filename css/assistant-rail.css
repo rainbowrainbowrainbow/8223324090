@@ -4329,3 +4329,16 @@ html[data-theme="light"] .crm-assistant-chat-open {
         inset 0 1px 0 rgba(255,255,255,0.86),
         0 8px 18px rgba(15,23,42,0.08) !important;
 }
+
+/* v0.58.3: catalog viewer owns the screen, so the assistant must not become a decorative overlay */
+body.catalog-viewer-open .crm-assistant-rail-host,
+body.catalog-viewer-open .crm-assistant-rail,
+body.catalog-viewer-open .crm-assistant-panel-overlay,
+body.printing-catalog .crm-assistant-rail-host,
+body.printing-catalog .crm-assistant-rail,
+body.printing-catalog .crm-assistant-panel-overlay {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}

@@ -394,6 +394,8 @@ const responsiveCss = fs.readFileSync(path.join(ROOT, 'css/responsive.css'), 'ut
 const settingsCode = fs.readFileSync(path.join(ROOT, 'js/settings.js'), 'utf8');
 const appCode = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
 const uiCode = fs.readFileSync(path.join(ROOT, 'js/ui.js'), 'utf8');
+const graduationCode = fs.readFileSync(path.join(ROOT, 'js/graduation.js'), 'utf8');
+const designsPageCode = fs.readFileSync(path.join(ROOT, 'js/designs-page.js'), 'utf8');
 const globalModalsCss = fs.readFileSync(path.join(ROOT, 'css/modals.css'), 'utf8');
 check('Sidebar has /designs', sidebarCode.includes("href: '/designs'"));
 check('Sidebar has /designs#catalogs', sidebarCode.includes("href: '/designs#catalogs'"));
@@ -481,6 +483,7 @@ const dashboardPageCode = fs.readFileSync(path.join(ROOT, 'js/dashboard-page.js'
 const dashboardCss = fs.readFileSync(path.join(ROOT, 'css/dashboard.css'), 'utf8');
 const assistantRailCode = fs.readFileSync(path.join(ROOT, 'js/assistant-rail.js'), 'utf8');
 const assistantFoundationCode = fs.readFileSync(path.join(ROOT, 'js/assistant-foundation.js'), 'utf8');
+const kleshnyaWidgetCode = fs.readFileSync(path.join(ROOT, 'js/kleshnya-widget.js'), 'utf8');
 const assistantRailCss = fs.readFileSync(path.join(ROOT, 'css/assistant-rail.css'), 'utf8');
 const dashboardAssistantServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'dashboardAssistant.js'), 'utf8');
 const dashboardRouteCode = fs.readFileSync(path.join(ROOT, 'routes/dashboard.js'), 'utf8');
@@ -544,6 +547,9 @@ check('Shared assistant expanded window keeps bottom composer separate from work
 check('Shared assistant rail has a real light-theme surface contract', assistantRailCss.includes('v0.55.31: light theme completion') && assistantRailCss.includes('body:not(.dark-mode) .header') && assistantRailCss.includes('body:not(.dark-mode) .crm-assistant-rail-host') && assistantRailCss.includes('body:not(.dark-mode) .crm-assistant-rail .assistant-rail-name') && assistantRailCss.includes('body:not(.dark-mode) .assistant-rail-inline-form'));
 check('Shared header search and theme toggle stay readable on light theme', assistantRailCss.includes('v0.57.15: light header controls contrast') && assistantRailCss.includes('html[data-theme="light"] .header .header-search-btn') && assistantRailCss.includes('color: #1e293b !important') && assistantRailCss.includes('html[data-theme="light"] .header .header-theme-toggle') && assistantRailCss.includes('html[data-theme="light"] .header .header-theme-glyph--moon') && assistantRailCss.includes('color: #475569 !important'));
 check('Shared assistant expanded window has crisp light-theme borders', assistantRailCss.includes('v0.57.15: light assistant window borders') && assistantRailCss.includes('html[data-theme="light"] .crm-assistant-panel') && assistantRailCss.includes('border: 2px solid rgba(13, 148, 136, 0.30)') && assistantRailCss.includes('html[data-theme="light"] .crm-assistant-chat-workspace') && assistantRailCss.includes('html[data-theme="light"] .crm-assistant-form textarea') && assistantRailCss.includes('rgba(13, 148, 136, 0.36)'));
+check('Legacy floating assistant widget delegates to the shared rail instead of drawing a second assistant', kleshnyaWidgetCode.includes('legacy assistant widget bridge') && kleshnyaWidgetCode.includes('window.CrmAssistantRail?.expand') && kleshnyaWidgetCode.includes('isLegacyBridge') && !kleshnyaWidgetCode.includes('document.body.appendChild(fab)') && !kleshnyaWidgetCode.includes('apiSendKleshnyaMessage'));
+check('Catalog viewers suppress the assistant rail instead of showing a non-functional topbar', assistantRailCss.includes('body.catalog-viewer-open .crm-assistant-rail-host') && assistantRailCss.includes('body.printing-catalog .crm-assistant-rail-host') && catalogCss.includes('body.catalog-viewer-open .crm-assistant-rail-host') && designsPageCode.includes("document.body.classList.toggle('catalog-viewer-open'") && graduationCode.includes("document.body.classList.add('catalog-viewer-open')") && graduationCode.includes("document.body.classList.remove('catalog-viewer-open')"));
+check('Catalog viewer uses compact fit-screen cards instead of forcing long page scrolling', catalogCss.includes('v0.58.3: compact fit-screen catalog viewer') && catalogCss.includes('max-height: calc(100dvh - 72px)') && catalogCss.includes('height: clamp(160px, 28dvh, 260px)') && catalogCss.includes('grid-template-rows: auto auto minmax(0, 1fr) auto auto') && catalogCss.includes('display: grid; grid-template-columns: 22px minmax(0, 1fr)') && catalogCss.includes('body.catalog-viewer-open .cat-hero') && catalogCss.includes('body.catalog-viewer-open .sidebar-nav') && catalogCss.includes('visibility: hidden !important'));
 const shellReadyExemptPages = new Set(['index.html']);
 const noExplicitShellReadyPages = mainAppShellPages.filter(page => {
     if (shellReadyExemptPages.has(page.file)) return false;
@@ -641,7 +647,6 @@ const timelineCode = fs.readFileSync(path.join(ROOT, 'js/timeline.js'), 'utf8');
 const timelineCss = fs.readFileSync(path.join(ROOT, 'css/timeline.css'), 'utf8');
 const appCodeForDismiss = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
 const financeCode = fs.readFileSync(path.join(ROOT, 'js/finance-page.js'), 'utf8');
-const designsPageCode = fs.readFileSync(path.join(ROOT, 'js/designs-page.js'), 'utf8');
 const designsHtml = fs.readFileSync(path.join(ROOT, 'designs.html'), 'utf8');
 const staffCode = fs.readFileSync(path.join(ROOT, 'js/staff-page.js'), 'utf8');
 const hrCode = fs.readFileSync(path.join(ROOT, 'js/hr-page.js'), 'utf8');

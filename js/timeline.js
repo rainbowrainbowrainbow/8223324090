@@ -59,6 +59,14 @@ let _kleshnyaContext = null;
 let _kleshnyaTypingTimer = null;
 
 function initKleshnyaWidget() {
+    // The shared CrmAssistantRail is the only assistant surface on CRM pages.
+    // Keep this legacy entrypoint inert so old calls cannot resurrect the old FAB.
+    if (window.CrmAssistantRail || window.KleshnyaWidget?.isLegacyBridge) {
+        document.getElementById('kleshnyaWidget')?.classList.add('hidden');
+        document.getElementById('kleshnyaPopup')?.classList.add('hidden');
+        return;
+    }
+
     if (_kleshnyaWidgetReady) return;
     _kleshnyaWidgetReady = true;
 

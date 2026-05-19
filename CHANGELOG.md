@@ -4,6 +4,17 @@
 
 ---
 
+## v0.58.16 - Calm Modal Windows
+
+### Calm Modal Windows [codex]
+- **Прибрано переливи з CRM-вікон** - модалки бронювань, лідів і системні діалоги більше не отримують діагональний shine/sweep поверх контенту.
+- **Вимкнено assistant window bridge-анімацію** - JS-спостерігач більше не запускає магічні burst/перелив-ефекти на відкритих вікнах після refresh або перемикання.
+- **CSS guardrail для старих класів** - якщо `crm-assistant-linked-window` або `is-window-bridge` лишаться на DOM-елементі, псевдо-overlay примусово не малюється.
+- **Збережено самі вікна й дії** - прибрано тільки дратівливий візуальний ефект; кнопки, модалки, бронювання і Помічник лишаються на своїх робочих flow.
+- **Guardrail** - `test:ui` перевіряє, що window bridge shimmer вимкнений і старі sweep keyframes не повернулися.
+
+---
+
 ## v0.58.15 - Finance Currency Rates Panel
 
 ### Finance Currency Rates Panel [codex]

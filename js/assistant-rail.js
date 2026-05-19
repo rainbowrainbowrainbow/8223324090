@@ -190,6 +190,7 @@
     let initCount = 0;
     let windowBridgeObserver = null;
     const windowBridgePulseMap = new WeakMap();
+    const WINDOW_BRIDGE_EFFECTS_ENABLED = false;
 
     function escapeHtml(value) {
         const div = document.createElement('div');
@@ -632,6 +633,7 @@
     }
 
     function renderWindowBridgeBurst(target) {
+        if (!WINDOW_BRIDGE_EFFECTS_ENABLED) return;
         if (!target || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
         const rect = target.getBoundingClientRect?.();
         if (!rect || rect.width < 1 || rect.height < 1) return;
@@ -648,6 +650,7 @@
     }
 
     function pulseAssistantWindowBridge(target, options = {}) {
+        if (!WINDOW_BRIDGE_EFFECTS_ENABLED) return false;
         const rawTarget = target?.nodeType === 1 ? target : document.getElementById('crmAssistantPanelOverlay');
         const bridgeTarget = bridgeVisualTarget(rawTarget);
         if (!bridgeTarget || !bridgePulseAllowed(bridgeTarget)) return false;
@@ -674,11 +677,13 @@
     }
 
     function scanAssistantWindowBridge() {
+        if (!WINDOW_BRIDGE_EFFECTS_ENABLED) return;
         const target = activeBridgeWindows().pop();
         if (target) pulseAssistantWindowBridge(target);
     }
 
     function initAssistantWindowBridge() {
+        if (!WINDOW_BRIDGE_EFFECTS_ENABLED) return;
         if (windowBridgeObserver || !document.body || typeof MutationObserver === 'undefined') return;
         windowBridgeObserver = new MutationObserver(() => scanAssistantWindowBridge());
         windowBridgeObserver.observe(document.body, {

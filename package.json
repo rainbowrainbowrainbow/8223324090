@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.58.15",
+  "version": "0.58.16",
   "eventGenix": {
-    "releaseLabel": "Finance Currency Rates Panel"
+    "releaseLabel": "Calm Modal Windows"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

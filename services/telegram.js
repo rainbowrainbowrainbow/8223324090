@@ -167,21 +167,36 @@ async function getConfiguredChatId() {
     } catch (e) {
         log.warn(`DB error getting telegram_chat_id: ${e.message}, using default`);
     }
+    try {
+        const runtime = await resolveOmniRuntimeConfig('telegram');
+        if (runtime.defaultChatId) return String(runtime.defaultChatId);
+    } catch (e) {
+        log.warn(`Omni Telegram default chat lookup failed: ${e.message}`);
+    }
     return TELEGRAM_DEFAULT_CHAT_ID;
 }
 
-async function getConfiguredThreadId() {
+async function getConfiguredThreadId(settingKeys = ['telegram_thread_id']) {
+    const keys = (Array.isArray(settingKeys) ? settingKeys : [settingKeys])
+        .map(key => String(key || '').trim())
+        .filter(key => /^[a-z0-9_]+$/i.test(key));
     try {
-        const result = await pool.query("SELECT value FROM settings WHERE key = 'telegram_thread_id'");
-        if (result.rows.length > 0 && result.rows[0].value) {
-            return parseInt(result.rows[0].value) || null;
+        for (const key of keys.length ? keys : ['telegram_thread_id']) {
+            const result = await pool.query('SELECT value FROM settings WHERE key = $1', [key]);
+            if (result.rows.length > 0 && result.rows[0].value) {
+                return parseInt(result.rows[0].value) || null;
+            }
         }
     } catch (e) {
         log.warn(`DB error getting telegram_thread_id: ${e.message}`);
     }
-    // Fallback to env variable
-    if (process.env.TELEGRAM_THREAD_ID) {
-        return parseInt(process.env.TELEGRAM_THREAD_ID) || null;
+    const envKeys = ['TELEGRAM_THREAD_ID'];
+    if (keys.includes('telegram_animator_thread_id')) envKeys.unshift('TELEGRAM_ANIMATOR_THREAD_ID');
+    if (keys.includes('telegram_notifications_thread_id')) envKeys.unshift('TELEGRAM_NOTIFICATIONS_THREAD_ID');
+    for (const envKey of envKeys) {
+        if (process.env[envKey]) {
+            return parseInt(process.env[envKey]) || null;
+        }
     }
     return null;
 }

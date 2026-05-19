@@ -28,6 +28,89 @@ function classifyTelegramAskFailure(result, err) {
     return 'telegram_send_failed';
 }
 
+async function getSettingValue(key) {
+    try {
+        const result = await pool.query('SELECT value FROM settings WHERE key = $1', [key]);
+        return result.rows[0]?.value || null;
+    } catch (err) {
+        log.warn(`Telegram setting lookup failed for ${key}`, { message: err.message });
+        return null;
+    }
+}
+
+async function findKnownTelegramChatId() {
+    try {
+        const result = await pool.query(
+            `SELECT chat_id, title, type
+               FROM telegram_known_chats
+              WHERE type IN ('group', 'supergroup', 'channel')
+              ORDER BY
+                CASE
+                    WHEN LOWER(COALESCE(title, '')) LIKE '%anim%' THEN 0
+                    WHEN LOWER(COALESCE(title, '')) LIKE '%анім%' THEN 0
+                    WHEN LOWER(COALESCE(title, '')) LIKE '%аним%' THEN 0
+                    WHEN LOWER(COALESCE(title, '')) LIKE '%сповіщ%' THEN 1
+                    WHEN LOWER(COALESCE(title, '')) LIKE '%event%' THEN 2
+                    ELSE 3
+                END,
+                updated_at DESC
+              LIMIT 1`
+        );
+        return result.rows[0]?.chat_id ? String(result.rows[0].chat_id) : null;
+    } catch (err) {
+        log.warn('Known Telegram chat lookup failed', { message: err.message });
+        return null;
+    }
+}
+
+async function findKnownTelegramThreadId(chatId) {
+    if (!chatId) return null;
+    try {
+        const result = await pool.query(
+            `SELECT thread_id, title
+               FROM telegram_known_threads
+              WHERE chat_id = $1
+              ORDER BY
+                CASE
+                    WHEN LOWER(COALESCE(title, '')) LIKE '%anim%' THEN 0
+                    WHEN LOWER(COALESCE(title, '')) LIKE '%анім%' THEN 0
+                    WHEN LOWER(COALESCE(title, '')) LIKE '%аним%' THEN 0
+                    WHEN LOWER(COALESCE(title, '')) LIKE '%сповіщ%' THEN 1
+                    WHEN LOWER(COALESCE(title, '')) LIKE '%notification%' THEN 1
+                    WHEN LOWER(COALESCE(title, '')) LIKE '%alert%' THEN 1
+                    ELSE 3
+                END,
+                updated_at DESC
+              LIMIT 1`,
+            [chatId]
+        );
+        return result.rows[0]?.thread_id ? parseInt(result.rows[0].thread_id) || null : null;
+    } catch (err) {
+        log.warn('Known Telegram thread lookup failed', { message: err.message });
+        return null;
+    }
+}
+
+async function resolveAnimatorAskTelegramTarget() {
+    const explicitChatId =
+        await getSettingValue('telegram_animator_chat_id')
+        || process.env.TELEGRAM_ANIMATOR_CHAT_ID
+        || await getSettingValue('telegram_notifications_chat_id')
+        || process.env.TELEGRAM_NOTIFICATIONS_CHAT_ID;
+    const chatId = explicitChatId || await getConfiguredChatId() || await findKnownTelegramChatId();
+    if (!chatId) return { chatId: null, threadId: null, source: 'missing' };
+
+    const threadId =
+        await getConfiguredThreadId(['telegram_animator_thread_id', 'telegram_notifications_thread_id', 'telegram_thread_id'])
+        || await findKnownTelegramThreadId(chatId);
+
+    return {
+        chatId,
+        threadId: threadId || null,
+        source: explicitChatId ? 'animator_config' : 'telegram_config'
+    };
+}
+
 // v10.0.1: Safe parseInt for callback data — returns null if invalid
 function safeParseInt(str) {
     const n = parseInt(str);
@@ -193,7 +276,8 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
             return res.status(400).json({ success: false, reason: 'invalid_date', error: 'Invalid date format' });
         }
 
-        const chatId = await getConfiguredChatId();
+        const target = await resolveAnimatorAskTelegramTarget();
+        const chatId = target.chatId;
         if (!chatId) {
             return res.json({ success: false, reason: 'no_chat_id', fallback: 'manual_line' });
         }
@@ -231,7 +315,7 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
         }
         text += `\nДодати ще одного аніматора?`;
 
-        const threadId = await getConfiguredThreadId();
+        const threadId = target.threadId;
         const askPayload = {
             chat_id: chatId,
             text: text,
@@ -269,7 +353,7 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
             });
         }
 
-        res.json({ success: true, requestId });
+        res.json({ success: true, requestId, target: { threadId: threadId || null, source: target.source } });
     } catch (err) {
         log.error('Ask animator error', err);
         res.status(500).json({ success: false, reason: 'server_error', error: 'Internal server error' });

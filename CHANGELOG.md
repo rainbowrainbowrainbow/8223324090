@@ -4,6 +4,17 @@
 
 ---
 
+## v0.58.14 - Animator Telegram Target Restore
+
+### Animator Telegram Target Restore [codex]
+- **Повернуто робочий Telegram target для `+ Додати аніматора`** - `/api/telegram/ask-animator` тепер шукає окремі `telegram_animator_*` / `telegram_notifications_*` налаштування перед загальним каналом.
+- **Omni config став частиною Telegram truth** - якщо Telegram підключений через центр каналів, `getConfiguredChatId()` підхоплює `defaultChatId` з Omni runtime, а не падає на старому порожньому `telegram_chat_id`.
+- **Автопідбір topic `Сповіщення` / animator** - коли webhook уже бачив group topic, backend може відправити запит у відому гілку без ручного дублювання thread id.
+- **Старий Telegram flow з inline-кнопками збережено** - якщо Telegram реально доступний, натискання `Так` у Telegram знову переводить pending request в approved і додає нову лінію аніматора.
+- **Fallback лишився тільки страховкою** - якщо Telegram недоступний, CRM все ще додає лінію локально, але не ховає проблему під фейковим успіхом.
+
+---
+
 ## v0.58.13 - Timeline Animator Telegram Fallback
 
 ### Timeline Animator Telegram Fallback [codex]

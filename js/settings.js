@@ -356,6 +356,57 @@ function cleanupPendingPoll() {
     }
 }
 
+function getNextTimelineAnimatorLine(lines, dateStr) {
+    const existingNumbers = (Array.isArray(lines) ? lines : [])
+        .map(line => {
+            const match = String(line?.name || '').match(/^Аніматор\s+(\d+)$/i);
+            return match ? Number(match[1]) : 0;
+        })
+        .filter(Boolean);
+
+    let nextNum = 1;
+    while (existingNumbers.includes(nextNum)) nextNum++;
+
+    const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'];
+    return {
+        id: `line${Date.now()}_${dateStr}`,
+        name: `Аніматор ${nextNum}`,
+        color: colors[(Array.isArray(lines) ? lines.length : 0) % colors.length],
+        fromSheet: false,
+        source: 'manual'
+    };
+}
+
+function getAnimatorTelegramFallbackMessage(result) {
+    const reason = result?.reason || result?.error || 'telegram_send_failed';
+    if (reason === 'no_chat_id') return 'Telegram Chat ID не налаштовано — аніматора додано в CRM вручну.';
+    if (reason === 'no_bot_token') return 'Telegram-бот не налаштований — аніматора додано в CRM вручну.';
+    if (reason === 'telegram_circuit_open') return 'Telegram тимчасово заблокував відправку — аніматора додано в CRM вручну.';
+    if (reason === 'auth_error') return 'Сесія CRM завершилась. Увійдіть ще раз і повторіть додавання.';
+    return 'Telegram зараз недоступний — аніматора додано в CRM вручну.';
+}
+
+async function addAnimatorLineLocallyAfterTelegramFallback(dateStr, note, result) {
+    if (result?.reason === 'auth_error') {
+        showNotification(getAnimatorTelegramFallbackMessage(result), 'error');
+        return false;
+    }
+
+    const lines = await getLinesForDate(AppState.selectedDate);
+    const nextLine = getNextTimelineAnimatorLine(lines, dateStr);
+    if (note) nextLine.note = note;
+
+    const saved = await saveLinesForDate(AppState.selectedDate, [...lines, nextLine]);
+    if (!saved) {
+        showNotification('Telegram недоступний, і локально аніматора теж не вдалося додати.', 'error');
+        return false;
+    }
+
+    await renderTimeline();
+    showNotification(getAnimatorTelegramFallbackMessage(result), 'warning');
+    return true;
+}
+
 async function addNewLine() {
     const dateStr = formatDate(AppState.selectedDate);
 
@@ -366,17 +417,19 @@ async function addNewLine() {
     // v3.9: Cleanup any existing poll
     cleanupPendingPoll();
 
-    // Показати заглушку "Очікування..."
-    renderPendingLine();
-    showNotification('Запит надіслано в Telegram...', 'success');
+    showNotification('Надсилаю запит у Telegram...', 'info');
 
     // Надіслати запит в Telegram
     const result = await apiTelegramAskAnimator(dateStr, note.trim());
     if (!result || !result.success || !result.requestId) {
         removePendingLine();
-        showNotification('Помилка надсилання в Telegram', 'error');
+        await addAnimatorLineLocallyAfterTelegramFallback(dateStr, note.trim(), result || { reason: 'telegram_send_failed' });
         return;
     }
+
+    // Показати заглушку "Очікування..."
+    renderPendingLine();
+    showNotification('Запит надіслано в Telegram...', 'success');
 
     // Поллінг статусу кожні 3 секунди (макс 5 хвилин)
     const requestId = result.requestId;

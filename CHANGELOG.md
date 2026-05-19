@@ -4,6 +4,17 @@
 
 ---
 
+## v0.58.13 - Timeline Animator Telegram Fallback
+
+### Timeline Animator Telegram Fallback [codex]
+- **Додавання аніматора більше не залежить від Telegram** - якщо Telegram не налаштований, недоступний або повертає помилку, CRM додає нову лінію аніматора локально.
+- **Прибрано суперечливі toast-и** - UI більше не показує `Запит надіслано в Telegram...` до фактичного успішного відправлення.
+- **Чесний fallback reason** - `/api/telegram/ask-animator` повертає `no_chat_id`, `no_bot_token`, `telegram_circuit_open` або інший зрозумілий reason замість безкорисного 500 для Telegram-збоїв.
+- **Pending-запит не зависає** - якщо Telegram-відправка впала після створення pending request, backend позначає його як `failed`.
+- **Guardrail** - `test:ui` перевіряє, що timeline add animator flow має локальний fallback і не малює pending-line до підтвердження Telegram.
+
+---
+
 ## v0.58.12 - Changelog History Restore
 
 ### Changelog History Restore [codex]

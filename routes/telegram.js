@@ -9,7 +9,7 @@ const {
     getConfiguredChatId, getConfiguredThreadId,
     getTelegramChatId, ensureWebhook
 } = require('../services/telegram');
-const { ensureDefaultLines } = require('../services/booking');
+const { ensureDefaultLines, validateDate } = require('../services/booking');
 const { buildAndSendDigest, sendTomorrowReminder } = require('../services/scheduler');
 const { handleBotCommand, handleCertUse, resolveActorName } = require('../services/bot');
 const { handleContractorCallback } = require('../services/bookingAutomation');
@@ -18,6 +18,15 @@ const { notifyNewLead } = require('../services/leadNotifier');
 const { authenticateToken } = require('../middleware/auth');
 
 const log = createLogger('TelegramRoute');
+
+function classifyTelegramAskFailure(result, err) {
+    const description = String(result?.description || err?.message || result?.error || '').toLowerCase();
+    if (description.includes('no bot token') || description.includes('token')) return 'no_bot_token';
+    if (description.includes('chat not found') || description.includes('chat_id') || description.includes('chat id')) return 'no_chat_id';
+    if (description.includes('circuit breaker')) return 'telegram_circuit_open';
+    if (description.includes('timeout') || description.includes('econn') || description.includes('network')) return 'telegram_unavailable';
+    return 'telegram_send_failed';
+}
 
 // v10.0.1: Safe parseInt for callback data — returns null if invalid
 function safeParseInt(str) {
@@ -180,7 +189,14 @@ router.get('/reminder/:date', authenticateToken, async (req, res) => {
 router.post('/ask-animator', authenticateToken, async (req, res) => {
     try {
         const { date, note } = req.body;
+        if (!validateDate(date)) {
+            return res.status(400).json({ success: false, reason: 'invalid_date', error: 'Invalid date format' });
+        }
+
         const chatId = await getConfiguredChatId();
+        if (!chatId) {
+            return res.json({ success: false, reason: 'no_chat_id', fallback: 'manual_line' });
+        }
 
         const isHttps = req.get('x-forwarded-proto') === 'https' || req.protocol === 'https';
         const appUrl = `${isHttps ? 'https' : 'http'}://${req.get('host')}`;
@@ -228,12 +244,35 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
             }
         };
         if (threadId) askPayload.message_thread_id = threadId;
-        const result = await telegramRequest('sendMessage', askPayload);
+        let result;
+        try {
+            result = await telegramRequest('sendMessage', askPayload);
+        } catch (sendErr) {
+            log.warn('Ask animator Telegram send failed', { requestId, message: sendErr.message });
+            await pool.query('UPDATE pending_animators SET status = $1 WHERE id = $2', ['failed', requestId]).catch(() => {});
+            return res.json({
+                success: false,
+                requestId,
+                reason: classifyTelegramAskFailure(null, sendErr),
+                fallback: 'manual_line'
+            });
+        }
 
-        res.json({ success: result?.ok || false, requestId });
+        if (!result?.ok) {
+            await pool.query('UPDATE pending_animators SET status = $1 WHERE id = $2', ['failed', requestId]).catch(() => {});
+            return res.json({
+                success: false,
+                requestId,
+                reason: classifyTelegramAskFailure(result),
+                description: result?.description || null,
+                fallback: 'manual_line'
+            });
+        }
+
+        res.json({ success: true, requestId });
     } catch (err) {
         log.error('Ask animator error', err);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ success: false, reason: 'server_error', error: 'Internal server error' });
     }
 });
 

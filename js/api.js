@@ -406,9 +406,25 @@ async function apiTelegramAskAnimator(date, note) {
             headers: getAuthHeaders(),
             body: JSON.stringify({ date, note })
         });
-        return await response.json();
+        if (handleAuthError(response)) return { success: false, reason: 'auth_error' };
+        let payload = null;
+        try {
+            payload = await response.json();
+        } catch (_) {
+            payload = null;
+        }
+        if (!response.ok) {
+            return {
+                ...(payload || {}),
+                success: false,
+                reason: payload?.reason || payload?.error || 'server_error',
+                status: response.status
+            };
+        }
+        return payload || { success: false, reason: 'empty_response' };
     } catch (err) {
         console.error('Telegram ask-animator error:', err);
+        return { success: false, reason: 'network_error' };
     }
 }
 

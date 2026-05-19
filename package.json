@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.58.12",
+  "version": "0.58.13",
   "eventGenix": {
-    "releaseLabel": "Changelog History Restore"
+    "releaseLabel": "Timeline Animator Telegram Fallback"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

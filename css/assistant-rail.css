@@ -3923,3 +3923,194 @@ body.dark-mode .crm-assistant-rail .assistant-rail-btn {
         display: none !important;
     }
 }
+
+/* v0.57.15: light header controls contrast.
+   Late assistant-rail header overrides must not leave search or theme controls pale on the light shell. */
+body:not(.dark-mode) .header .btn-search,
+body:not(.dark-mode) .header .header-search-btn,
+html[data-theme="light"] .header .btn-search,
+html[data-theme="light"] .header .header-search-btn {
+    border-color: rgba(15, 23, 42, 0.13) !important;
+    background:
+        radial-gradient(92px 44px at 0% 50%, rgba(20,184,166,0.12), transparent 70%),
+        linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,245,249,0.92)) !important;
+    color: #1e293b !important;
+    text-shadow: none !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.92),
+        0 10px 24px rgba(15,23,42,0.09) !important;
+}
+
+body:not(.dark-mode) .header .btn-search:hover,
+body:not(.dark-mode) .header .header-search-btn:hover,
+body:not(.dark-mode) .header .btn-search:focus-visible,
+body:not(.dark-mode) .header .header-search-btn:focus-visible,
+html[data-theme="light"] .header .btn-search:hover,
+html[data-theme="light"] .header .header-search-btn:hover,
+html[data-theme="light"] .header .btn-search:focus-visible,
+html[data-theme="light"] .header .header-search-btn:focus-visible {
+    border-color: rgba(13, 148, 136, 0.34) !important;
+    color: #0f172a !important;
+    background:
+        radial-gradient(104px 48px at 0% 50%, rgba(20,184,166,0.18), transparent 72%),
+        linear-gradient(180deg, #ffffff, #f8fafc) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.96),
+        0 12px 28px rgba(15,23,42,0.12) !important;
+}
+
+body:not(.dark-mode) .header .header-search-icon,
+html[data-theme="light"] .header .header-search-icon {
+    background: rgba(20,184,166,0.15) !important;
+    color: #047857 !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.72) !important;
+}
+
+body:not(.dark-mode) .header .btn-search kbd,
+body:not(.dark-mode) .header .header-search-btn kbd,
+html[data-theme="light"] .header .btn-search kbd,
+html[data-theme="light"] .header .header-search-btn kbd {
+    border-color: rgba(100,116,139,0.18) !important;
+    background: rgba(226,232,240,0.78) !important;
+    color: #475569 !important;
+    text-shadow: none !important;
+}
+
+body:not(.dark-mode) .header .header-theme-toggle,
+html[data-theme="light"] .header .header-theme-toggle {
+    border-color: rgba(15,23,42,0.13) !important;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.98), rgba(241,245,249,0.92)) !important;
+    color: #92400e !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.92),
+        0 10px 24px rgba(15,23,42,0.09) !important;
+}
+
+body:not(.dark-mode) .header .header-theme-toggle:hover,
+body:not(.dark-mode) .header .header-theme-toggle:focus-visible,
+html[data-theme="light"] .header .header-theme-toggle:hover,
+html[data-theme="light"] .header .header-theme-toggle:focus-visible {
+    border-color: rgba(245,158,11,0.38) !important;
+    background: linear-gradient(180deg, #ffffff, #fff7ed) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.98),
+        0 12px 28px rgba(245,158,11,0.13) !important;
+}
+
+body:not(.dark-mode) .header .header-theme-glyph--sun,
+html[data-theme="light"] .header .header-theme-glyph--sun {
+    color: #7c2d12 !important;
+    opacity: 1 !important;
+}
+
+body:not(.dark-mode) .header .header-theme-glyph--moon,
+html[data-theme="light"] .header .header-theme-glyph--moon {
+    color: #475569 !important;
+    opacity: 0.95 !important;
+}
+
+body:not(.dark-mode) .header .header-theme-thumb,
+html[data-theme="light"] .header .header-theme-thumb {
+    background: linear-gradient(135deg, #fde68a, #f59e0b) !important;
+    box-shadow:
+        0 5px 14px rgba(245,158,11,0.30),
+        inset 0 1px 0 rgba(255,255,255,0.54) !important;
+}
+
+/* v0.57.15: light assistant window borders.
+   The expanded guide workspace needs visible boundaries on the white shell. */
+body:not(.dark-mode) .crm-assistant-panel-overlay,
+html[data-theme="light"] .crm-assistant-panel-overlay {
+    --ai-panel-border: rgba(13, 148, 136, 0.40);
+    --ai-panel-border-soft: rgba(15, 23, 42, 0.18);
+    --ai-panel-card: rgba(255, 255, 255, 0.94);
+    --ai-panel-card-2: rgba(240, 253, 250, 0.88);
+    background:
+        radial-gradient(620px 420px at 72% 10%, rgba(13, 148, 136, 0.18), transparent 66%),
+        rgba(15, 23, 42, 0.34) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-panel,
+html[data-theme="light"] .crm-assistant-panel {
+    border: 2px solid rgba(13, 148, 136, 0.30) !important;
+    background:
+        radial-gradient(560px 260px at 0% 0%, rgba(20, 184, 166, 0.15), transparent 70%),
+        linear-gradient(180deg, rgba(255,255,255,0.99), rgba(248,250,252,0.97)) !important;
+    box-shadow:
+        0 30px 92px rgba(15, 23, 42, 0.24),
+        inset 0 0 0 1px rgba(255,255,255,0.95),
+        inset 0 0 0 2px rgba(20,184,166,0.045) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-panel-header,
+body:not(.dark-mode) .crm-assistant-snapshot-card,
+body:not(.dark-mode) .crm-assistant-snapshot-wide,
+body:not(.dark-mode) .crm-assistant-action-card,
+body:not(.dark-mode) .crm-assistant-teaching-card,
+body:not(.dark-mode) .crm-assistant-history,
+body:not(.dark-mode) .crm-assistant-mode-grid button,
+body:not(.dark-mode) .crm-assistant-quick-prompts button,
+body:not(.dark-mode) .crm-assistant-form,
+body:not(.dark-mode) .crm-assistant-chat-workspace,
+html[data-theme="light"] .crm-assistant-panel-header,
+html[data-theme="light"] .crm-assistant-snapshot-card,
+html[data-theme="light"] .crm-assistant-snapshot-wide,
+html[data-theme="light"] .crm-assistant-action-card,
+html[data-theme="light"] .crm-assistant-teaching-card,
+html[data-theme="light"] .crm-assistant-history,
+html[data-theme="light"] .crm-assistant-mode-grid button,
+html[data-theme="light"] .crm-assistant-quick-prompts button,
+html[data-theme="light"] .crm-assistant-form,
+html[data-theme="light"] .crm-assistant-chat-workspace {
+    border-color: rgba(13, 148, 136, 0.30) !important;
+    box-shadow:
+        inset 0 0 0 1px rgba(255,255,255,0.92),
+        0 10px 24px rgba(15,23,42,0.065) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-panel-header,
+html[data-theme="light"] .crm-assistant-panel-header {
+    border-color: rgba(15, 118, 110, 0.26) !important;
+    background:
+        radial-gradient(190px 100px at 5% 50%, rgba(20,184,166,0.18), transparent 72%),
+        linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.90)) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-action-card,
+body:not(.dark-mode) .crm-assistant-teaching-card,
+html[data-theme="light"] .crm-assistant-action-card,
+html[data-theme="light"] .crm-assistant-teaching-card {
+    border-color: rgba(13, 148, 136, 0.36) !important;
+    background:
+        radial-gradient(220px 120px at 0% 0%, rgba(20,184,166,0.13), transparent 72%),
+        rgba(255,255,255,0.92) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-history,
+body:not(.dark-mode) .crm-assistant-chat-workspace,
+html[data-theme="light"] .crm-assistant-history,
+html[data-theme="light"] .crm-assistant-chat-workspace {
+    border-color: rgba(13, 148, 136, 0.34) !important;
+    background:
+        radial-gradient(circle at 12% 0%, rgba(13, 148, 136, 0.10), transparent 34%),
+        rgba(240,253,250,0.74) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-form textarea,
+html[data-theme="light"] .crm-assistant-form textarea {
+    border-color: rgba(15, 118, 110, 0.24) !important;
+    box-shadow: inset 0 0 0 1px rgba(13,148,136,0.08) !important;
+}
+
+body:not(.dark-mode) .crm-assistant-panel-close,
+body:not(.dark-mode) .crm-assistant-panel-chat-link,
+body:not(.dark-mode) .crm-assistant-chat-open,
+html[data-theme="light"] .crm-assistant-panel-close,
+html[data-theme="light"] .crm-assistant-panel-chat-link,
+html[data-theme="light"] .crm-assistant-chat-open {
+    border-color: rgba(15, 118, 110, 0.30) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.86),
+        0 8px 18px rgba(15,23,42,0.08) !important;
+}

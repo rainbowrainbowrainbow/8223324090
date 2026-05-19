@@ -4342,3 +4342,271 @@ body.printing-catalog .crm-assistant-panel-overlay {
     visibility: hidden !important;
     pointer-events: none !important;
 }
+
+/* v0.58.4: assistant avatar collision guard.
+   Keep one visible avatar core in the compact top rail; late animation layers must not
+   spill into the title/subtitle column or draw stacked avatar copies. */
+.crm-assistant-rail .assistant-rail-presence {
+    display: grid !important;
+    grid-template-columns: 54px minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+}
+
+.crm-assistant-rail .assistant-rail-avatar,
+body.dark-mode .crm-assistant-rail .assistant-rail-avatar {
+    width: 44px !important;
+    height: 44px !important;
+    justify-self: center !important;
+    padding: 5px !important;
+    overflow: hidden !important;
+    isolation: isolate !important;
+    z-index: 1 !important;
+}
+
+.crm-assistant-rail .assistant-rail-avatar::before,
+.crm-assistant-rail .assistant-rail-avatar::after,
+.crm-assistant-rail .assistant-rail-orb-ripple,
+.crm-assistant-rail .assistant-rail-particle-field {
+    display: none !important;
+}
+
+.crm-assistant-rail .assistant-rail-orb-core,
+body.dark-mode .crm-assistant-rail .assistant-rail-orb-core {
+    width: 34px !important;
+    height: 34px !important;
+    border-radius: 13px !important;
+}
+
+.crm-assistant-rail .assistant-rail-status-stack {
+    position: relative !important;
+    z-index: 2 !important;
+    min-width: 0 !important;
+}
+
+.crm-assistant-rail .assistant-rail-name,
+.crm-assistant-rail .assistant-rail-subtitles {
+    position: relative !important;
+    z-index: 2 !important;
+}
+
+/* v0.58.4: assistant lives inside the top menu.
+   The rail is no longer a second row under the header; it becomes the left
+   operational cluster of the existing top menu and animates with lift-out motion. */
+.header .header-content.assistant-rail-mounted {
+    min-height: 62px !important;
+    padding: 7px 14px !important;
+    align-items: center !important;
+    gap: 10px !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-top-status {
+    display: none !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
+    position: static !important;
+    inset: auto !important;
+    z-index: 4 !important;
+    flex: 1 1 720px !important;
+    width: auto !important;
+    min-width: 280px !important;
+    max-width: min(900px, calc(100vw - 450px)) !important;
+    margin: 0 auto 0 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    justify-content: flex-start !important;
+    transform: none !important;
+    pointer-events: auto !important;
+    background: transparent !important;
+    border: 0 !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 50px !important;
+    margin: 0 !important;
+    padding: 5px 7px !important;
+    grid-template-columns: minmax(210px, 0.85fr) minmax(320px, 1.15fr) !important;
+    gap: 10px !important;
+    border-radius: 14px !important;
+    background:
+        radial-gradient(160px 70px at 4% 50%, rgba(34, 211, 160, 0.18), transparent 74%),
+        linear-gradient(180deg, rgba(11, 25, 25, 0.92), rgba(7, 17, 19, 0.96)) !important;
+    border-color: rgba(45, 212, 191, 0.18) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        0 8px 22px rgba(0,0,0,0.14) !important;
+    transition:
+        transform 180ms cubic-bezier(.2,.8,.2,1),
+        box-shadow 180ms cubic-bezier(.2,.8,.2,1),
+        border-color 180ms ease,
+        background 180ms ease !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail:hover,
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail:focus-within {
+    transform: translateY(-2px) !important;
+    border-color: rgba(94, 234, 212, 0.36) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.08),
+        0 14px 34px rgba(20,184,166,0.13),
+        0 8px 22px rgba(0,0,0,0.22) !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-presence {
+    grid-template-columns: 46px minmax(0, 1fr) !important;
+    gap: 9px !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-avatar,
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-avatar {
+    width: 40px !important;
+    height: 40px !important;
+    padding: 5px !important;
+    border-radius: 14px !important;
+    transition:
+        transform 190ms cubic-bezier(.2,.8,.2,1),
+        box-shadow 190ms ease,
+        filter 190ms ease !important;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail:hover .assistant-rail-avatar,
+.header .header-content.assistant-rail-mounted .crm-assistant-rail:focus-within .assistant-rail-avatar {
+    transform: translateY(-3px) scale(1.08) !important;
+    filter: saturate(1.18) !important;
+    box-shadow:
+        0 0 0 1px rgba(94, 234, 212, 0.34),
+        0 12px 28px rgba(20,184,166,0.24) !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-orb-core,
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-orb-core {
+    width: 30px !important;
+    height: 30px !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-status-stack {
+    gap: 1px !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-name {
+    font-size: 14px !important;
+    line-height: 1 !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-subtitles-wrap {
+    min-height: 18px !important;
+    margin-top: 1px !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-subtitles,
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-subtitles {
+    font-size: 13px !important;
+    line-height: 1.08 !important;
+    white-space: nowrap !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-actions {
+    gap: 6px !important;
+    min-width: 0 !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-inline-form {
+    flex: 1 1 240px !important;
+    width: auto !important;
+    min-width: 180px !important;
+    max-width: none !important;
+    min-height: 38px !important;
+    transition:
+        transform 180ms cubic-bezier(.2,.8,.2,1),
+        box-shadow 180ms ease,
+        border-color 180ms ease !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-inline-form:focus-within {
+    transform: translateY(-2px) scale(1.015) !important;
+    border-color: rgba(94, 234, 212, 0.36) !important;
+    box-shadow: 0 12px 26px rgba(20,184,166,0.12) !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-inline-form input {
+    padding: 8px 36px !important;
+    font-size: 14px !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-btn,
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-btn {
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 11px !important;
+    font-size: 13px !important;
+    transition:
+        transform 170ms cubic-bezier(.2,.8,.2,1),
+        box-shadow 170ms ease,
+        border-color 170ms ease,
+        background 170ms ease !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-btn:hover,
+.header .header-content.assistant-rail-mounted .assistant-rail-btn:focus-visible {
+    transform: translateY(-4px) scale(1.07) !important;
+    border-color: rgba(94, 234, 212, 0.38) !important;
+    box-shadow:
+        0 14px 26px rgba(20,184,166,0.15),
+        inset 0 1px 0 rgba(255,255,255,0.10) !important;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="thinking"] .assistant-rail-inline-form,
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="working"] .assistant-rail-inline-form,
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="streaming"] .assistant-rail-inline-form {
+    animation: assistantTopMenuWorkLift 1.4s ease-in-out infinite;
+}
+
+@keyframes assistantTopMenuWorkLift {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-2px); }
+}
+
+@media (max-width: 1380px) {
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
+        max-width: min(760px, calc(100vw - 360px)) !important;
+    }
+
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail {
+        grid-template-columns: minmax(180px, 0.8fr) minmax(260px, 1.2fr) !important;
+    }
+
+    .header .header-content.assistant-rail-mounted .assistant-rail-subtitles,
+    body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-subtitles {
+        font-size: 12px !important;
+    }
+}
+
+@media (max-width: 1120px) {
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
+        max-width: none !important;
+        min-width: 0 !important;
+    }
+
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    .header .header-content.assistant-rail-mounted .assistant-rail-actions {
+        display: none !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail,
+    .header .header-content.assistant-rail-mounted .assistant-rail-avatar,
+    .header .header-content.assistant-rail-mounted .assistant-rail-inline-form,
+    .header .header-content.assistant-rail-mounted .assistant-rail-btn {
+        transition: none !important;
+        animation: none !important;
+        transform: none !important;
+    }
+}

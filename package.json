@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.58.4",
+  "version": "0.58.5",
   "eventGenix": {
-    "releaseLabel": "Chat Task Assignment Signals"
+    "releaseLabel": "Top Menu Assistant Rail"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

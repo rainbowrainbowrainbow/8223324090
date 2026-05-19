@@ -224,7 +224,6 @@
     }
 
     function ensureAssistantRailHost(headerContent) {
-        const header = headerContent.closest('.header');
         let status = headerContent.querySelector('#crmAssistantTopStatus');
         if (!status) {
             status = document.createElement('div');
@@ -248,10 +247,13 @@
             host.className = 'crm-assistant-rail-host';
             host.setAttribute('aria-hidden', 'false');
         }
-        if (header) {
-            if (host.previousElementSibling !== header) header.insertAdjacentElement('afterend', host);
-        } else if (host.parentElement !== headerContent) {
-            headerContent.appendChild(host);
+        host.dataset.mount = 'top-menu';
+        const firstHeaderControl = headerContent.querySelector('#globalHeaderSearchBtn, .btn-search, .user-panel');
+        if (host.parentElement !== headerContent) {
+            if (firstHeaderControl) headerContent.insertBefore(host, firstHeaderControl);
+            else headerContent.appendChild(host);
+        } else if (firstHeaderControl && firstHeaderControl.previousElementSibling !== host) {
+            headerContent.insertBefore(host, firstHeaderControl);
         }
         headerContent.classList.add('assistant-rail-mounted');
         return host;

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.58.5 - Top Menu Assistant Rail
+
+### Top Menu Assistant Rail [codex]
+- **Помічник у верхньому меню** - shared `CrmAssistantRail` тепер монтується прямо всередину `.header-content`, перед пошуком і user controls, а не окремою смугою під шапкою.
+- **Без накладання аватарів** - фінальний CSS guardrail обрізає дубльовані decorative layers, ripple і particles, щоб залишався один чистий avatar core без наїзду на текст.
+- **Lift-out motion** - при hover/focus/робочому стані rail, avatar, input і кнопки м'яко “виходять” зі свого місця через translate/scale-анімації без зсуву layout.
+- **Responsive topbar** - на вужчих екранах Помічник стискається у верхньому меню, а зайві action-controls ховаються замість створення другого рядка.
+- **Guardrails** - `test:ui` перевіряє, що rail більше не вставляється після header, має top-menu mount і не повертає дубльований avatar overlay.
+
+---
+
 ## v0.58.4 - Chat Task Assignment Signals
 
 ### Chat Task Assignment Signals [codex]

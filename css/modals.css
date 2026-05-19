@@ -9,7 +9,7 @@
 .confirm-overlay {
     position: fixed;
     inset: 0;
-    z-index: 10000;
+    z-index: var(--z-modal-confirm, 30100);
     background: rgba(15, 15, 35, 0.6);
     display: flex;
     align-items: center;
@@ -224,7 +224,7 @@ body.dark-mode .confirm-cancel:hover {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: var(--z-modal);
+    z-index: var(--z-modal, 30000);
     padding: 20px;
     animation: modalOverlayIn 0.25s var(--ease-smooth);
 }

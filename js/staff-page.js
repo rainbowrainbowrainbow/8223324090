@@ -535,6 +535,7 @@ function openEditModal(staffId, date) {
     const overlay = document.getElementById('schModalOverlay');
     _staffScheduleInitialState = getStaffScheduleState();
     overlay?.classList.add('visible');
+    if (window.ModalLayer) window.ModalLayer.ensureTopLayer(overlay);
     if (window.UnsafeDismissGuard && overlay) window.UnsafeDismissGuard.remember(overlay);
 }
 
@@ -634,6 +635,7 @@ function openFillWeekModal() {
     const overlay = document.getElementById('fillWeekOverlay');
     _staffFillInitialState = getStaffFillState();
     overlay?.classList.add('visible');
+    if (window.ModalLayer) window.ModalLayer.ensureTopLayer(overlay);
     if (window.UnsafeDismissGuard && overlay) window.UnsafeDismissGuard.remember(overlay);
 }
 

@@ -13,6 +13,90 @@ if (typeof escapeHtml !== 'function') {
 }
 
 // ==========================================
+// MODAL LAYER GUARD
+// Keeps page-local dialogs above assistant/drawer surfaces without one-off z-index fixes.
+// ==========================================
+if (!window.ModalLayer) {
+    window.ModalLayer = (() => {
+        const BASE = 30000;
+        const CONFIRM = 30100;
+        const SELECTOR = [
+            '.modal:not(.hidden)',
+            '.sch-modal-overlay.visible',
+            '.lead-modal-overlay.active',
+            '.chat-modal-overlay',
+            '.content-modal-overlay.open',
+            '.smart-menu-modal-overlay',
+            '.price-confirm-overlay',
+            '.grad-modal',
+            '.achievement-overlay-visible',
+            '.confirm-overlay'
+        ].join(',');
+        let scheduled = false;
+        let observer = null;
+
+        function isVisible(el) {
+            if (!el || !el.isConnected) return false;
+            if (el.classList.contains('hidden')) return false;
+            const cs = window.getComputedStyle ? window.getComputedStyle(el) : null;
+            if (!cs) return true;
+            return cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity || 1) !== 0;
+        }
+
+        function isConfirmLayer(el) {
+            return el.classList.contains('confirm-overlay') || el.id === 'confirmModal' || el.id === 'noteModal';
+        }
+
+        function elevate(root = document) {
+            const scope = root.querySelectorAll ? root : document;
+            const active = Array.from(scope.querySelectorAll(SELECTOR)).filter(isVisible);
+            active.forEach((el, index) => {
+                const next = String((isConfirmLayer(el) ? CONFIRM : BASE) + index);
+                if (el.style.zIndex !== next) el.style.zIndex = next;
+            });
+            return active.length;
+        }
+
+        function schedule() {
+            if (scheduled) return;
+            scheduled = true;
+            requestAnimationFrame(() => {
+                scheduled = false;
+                elevate();
+            });
+        }
+
+        function ensureTopLayer(el, options = {}) {
+            if (!el) return null;
+            const next = String(options.confirm ? CONFIRM : BASE);
+            if (el.style.zIndex !== next) el.style.zIndex = next;
+            schedule();
+            return el;
+        }
+
+        function install() {
+            if (observer || !document.body || !window.MutationObserver) return;
+            observer = new MutationObserver(schedule);
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['class', 'style', 'open', 'hidden', 'aria-hidden']
+            });
+            schedule();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', install, { once: true });
+        } else {
+            install();
+        }
+
+        return { elevate, ensureTopLayer, install };
+    })();
+}
+
+// ==========================================
 // EXPLAINABILITY KIT v1
 // ==========================================
 if (!window.Explainability) {

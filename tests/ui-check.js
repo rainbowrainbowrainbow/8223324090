@@ -185,6 +185,20 @@ checkPage('finance.html', (doc, html) => {
     check('Finance transaction date input is bounded', html.includes('id="editDate" style="width:100%;min-width:0;max-width:100%;'));
 });
 
+checkPage('staff.html', (doc, html) => {
+    const baseCss = fs.readFileSync(path.join(ROOT, 'css', 'base.css'), 'utf8');
+    const modalCss = fs.readFileSync(path.join(ROOT, 'css', 'modals.css'), 'utf8');
+    const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
+    const staffCode = fs.readFileSync(path.join(ROOT, 'js', 'staff-page.js'), 'utf8');
+    check('Staff schedule edit modal exists', !!doc.getElementById('schModalOverlay'));
+    check('Staff fill-week modal exists', !!doc.getElementById('fillWeekOverlay'));
+    check('Staff schedule modal uses shared top modal layer', html.includes('z-index: var(--z-modal, 30000)'));
+    check('Base modal layer is above assistant and drawer surfaces', baseCss.includes('--z-modal: 30000') && baseCss.includes('--z-modal-confirm: 30100'));
+    check('Confirm overlay uses modal confirm token', modalCss.includes('z-index: var(--z-modal-confirm, 30100)'));
+    check('Shared ModalLayer guard exists', uiCode.includes('window.ModalLayer') && uiCode.includes('ensureTopLayer') && uiCode.includes('.sch-modal-overlay.visible'));
+    check('Staff schedule opens through ModalLayer', staffCode.includes('ModalLayer.ensureTopLayer(overlay)'));
+});
+
 checkPage('leads.html', (doc, html) => {
     const leadDate = doc.getElementById('leadEventDate');
     const leadChildren = doc.getElementById('leadChildrenCount');

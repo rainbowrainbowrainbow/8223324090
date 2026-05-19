@@ -4,6 +4,17 @@
 
 ---
 
+## v0.58.8 - Schedule Modal Layer Fix
+
+### Schedule Modal Layer Fix [codex]
+- **Вікно зміни у графіку роботи завжди зверху** - `schModalOverlay` і `fillWeekOverlay` більше не залишаються під Помічником, smart-menu, каталогами або іншими overlay-шарами.
+- **Shared ModalLayer** - у `js/ui.js` додано єдиний guard, який відстежує активні модалки та піднімає їх у системний верхній шар без локальних випадкових `z-index`.
+- **Стабільна z-index шкала** - `--z-modal`, `--z-modal-confirm`, notification і tooltip tokens піднято вище assistant/drawer surfaces, щоб ця проблема не повторювалась на інших діалогах.
+- **Confirm не губиться** - `confirm-overlay` тепер використовує `--z-modal-confirm`, тому попередження про незбережені зміни відкривається поверх форми.
+- **Guardrails** - `test:ui` перевіряє staff schedule modal, fill-week modal, shared modal tokens і прямий виклик `ModalLayer.ensureTopLayer()`.
+
+---
+
 ## v0.58.7 - Assistant Dialog Continuity
 
 ### Assistant Dialog Continuity [codex]

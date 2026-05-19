@@ -151,10 +151,10 @@
     --z-sticky: 100;
     --z-sidebar: 900;
     --z-sidebar-overlay: 950;
-    --z-modal: 1000;
-    --z-modal-confirm: 1050;
-    --z-notification: 1100;
-    --z-tooltip: 2000;
+    --z-modal: 30000;
+    --z-modal-confirm: 30100;
+    --z-notification: 50000;
+    --z-tooltip: 51000;
 }
 
 /* ==========================================

@@ -224,6 +224,9 @@ describe('operations flow static contracts', () => {
 
         assert.match(chatPage, /\/api\/tasks\/owners/);
         assert.match(chatPage, /ownerUserId: payload\.ownerUserId/);
+        assert.match(chatPage, /function _findTaskOwnerForMessageAuthor/);
+        assert.match(chatPage, /var authorOwner = _findTaskOwnerForMessageAuthor\(owners, msg, author\)/);
+        assert.match(chatPage, /var defaultOwner = authorOwner \|\| currentOwner/);
         assert.match(chatPage, /sourceType: msg && msg\.id \? 'chat_message' : 'chat_channel'/);
         assert.match(chatPage, /Для \/task вкажіть виконавця/);
         assert.doesNotMatch(chatPage, /_api\('POST', '\/tasks'/);
@@ -232,10 +235,16 @@ describe('operations flow static contracts', () => {
     it('keeps task assignment notifications change-aware and typed-owner aware', () => {
         const tasksRoute = fs.readFileSync(path.join(repoRoot, 'routes/tasks.js'), 'utf8');
         const kleshnya = fs.readFileSync(path.join(repoRoot, 'services/kleshnya.js'), 'utf8');
+        const wsClient = fs.readFileSync(path.join(repoRoot, 'js/ws.js'), 'utf8');
 
         assert.match(tasksRoute, /function taskAssigneeChanged/);
+        assert.match(tasksRoute, /function emitTaskAssignedToOwner/);
+        assert.match(tasksRoute, /sendToUser\(String\(ownerUserId\), 'task:assigned'/);
         assert.match(tasksRoute, /router\.post\('\/:id\/reassign'[\s\S]*notifyTaskAssignment\(result\.task/);
+        assert.match(tasksRoute, /router\.post\('\/:id\/reassign'[\s\S]*emitTaskAssignedToOwner\(result\.task/);
         assert.match(tasksRoute, /taskAssigneeChanged\(old, updatedTask\)/);
+        assert.match(wsClient, /case 'task:assigned'/);
+        assert.match(wsClient, /SoundEngine\.play\('task-new'\)/);
         assert.match(kleshnya, /WHERE id = \$1 AND telegram_chat_id IS NOT NULL/);
     });
 

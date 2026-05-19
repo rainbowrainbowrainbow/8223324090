@@ -205,6 +205,32 @@ var ParkWS = (function () {
     // MESSAGE HANDLING
     // ==========================================
 
+    function _playTaskAssignedSound() {
+        try {
+            if (typeof SoundEngine !== 'undefined' && SoundEngine.play) {
+                SoundEngine.play('task-new');
+                return;
+            }
+            var AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextCtor) return;
+            var ctx = new AudioContextCtor();
+            var osc = ctx.createOscillator();
+            var gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(760, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(980, ctx.currentTime + 0.10);
+            gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.24);
+        } catch (err) {
+            _debug('[WS] task assigned sound blocked:', err && err.message ? err.message : err);
+        }
+    }
+
     /**
      * Handle incoming WebSocket message.
      */
@@ -317,6 +343,17 @@ var ParkWS = (function () {
                 window.dispatchEvent(new CustomEvent('ws:alert', {
                     detail: { eventType: message.type, payload: message.payload }
                 }));
+                break;
+
+            case 'task:assigned':
+                window.dispatchEvent(new CustomEvent('ws:task', {
+                    detail: { eventType: message.type, payload: message.payload }
+                }));
+                _playTaskAssignedSound();
+                if (typeof showNotification === 'function') {
+                    var task = message.payload && message.payload.task;
+                    showNotification('📋 Нова задача' + (task && task.title ? ': ' + String(task.title).slice(0, 80) : ''), 'success');
+                }
                 break;
 
             default:

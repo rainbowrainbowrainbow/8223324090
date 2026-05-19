@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.58.3">
-    <link rel="stylesheet" href="css/auth.css?v=0.58.3">
-    <link rel="stylesheet" href="css/layout.css?v=0.58.3">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.58.3">
-    <link rel="stylesheet" href="css/timeline.css?v=0.58.3">
-    <link rel="stylesheet" href="css/panel.css?v=0.58.3">
-    <link rel="stylesheet" href="css/modals.css?v=0.58.3">
-    <link rel="stylesheet" href="css/controls.css?v=0.58.3">
-    <link rel="stylesheet" href="css/features.css?v=0.58.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.58.3">
-    <link rel="stylesheet" href="css/responsive.css?v=0.58.3">
-    <link rel="stylesheet" href="css/pages.css?v=0.58.3">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.58.3">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.58.3">
+    <link rel="stylesheet" href="css/base.css?v=0.58.4">
+    <link rel="stylesheet" href="css/auth.css?v=0.58.4">
+    <link rel="stylesheet" href="css/layout.css?v=0.58.4">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.58.4">
+    <link rel="stylesheet" href="css/timeline.css?v=0.58.4">
+    <link rel="stylesheet" href="css/panel.css?v=0.58.4">
+    <link rel="stylesheet" href="css/modals.css?v=0.58.4">
+    <link rel="stylesheet" href="css/controls.css?v=0.58.4">
+    <link rel="stylesheet" href="css/features.css?v=0.58.4">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.58.4">
+    <link rel="stylesheet" href="css/responsive.css?v=0.58.4">
+    <link rel="stylesheet" href="css/pages.css?v=0.58.4">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.58.4">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.58.4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.58.3 Unified Assistant Surface">✨ 0.58.3 Unified Assistant Surface</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.58.4 Chat Task Assignment Signals">✨ 0.58.4 Chat Task Assignment Signals</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.58.3 — Unified Assistant Surface</p>
+                <p class="tagline">AI First CRM v0.58.4 — Chat Task Assignment Signals</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.58.3: Unified Assistant Surface</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.58.4: Chat Task Assignment Signals</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1270,14 +1270,13 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.58.3 — Unified Assistant Surface</h4>
+                    <h4>v0.58.4 — Chat Task Assignment Signals</h4>
                     <ul>
-                        <li><b>Один Помічник</b> — старий floating chat більше не дублює верхній AI rail і не створює другу кнопку поверх сторінки.</li>
-                        <li><b>Єдиний сценарій</b> — legacy-виклики Помічника тепер відкривають канонічний shared rail, щоб усі дії, чат і голос жили в одному місці.</li>
-                        <li><b>Таймлайн без дубля</b> — старий timeline-віджет не може повторно показати прихований assistant FAB, якщо вже працює новий Помічник.</li>
-                        <li><b>Каталоги</b> — у fullscreen/print перегляді каталогів AI topbar більше не висить зверху як нефункціональний декоративний блок.</li>
-                        <li><b>Компактний viewer</b> — сторінки каталогів стали нижчими: менший hero, щільніші послуги, компактні stats/footer і менше потреби гортати.</li>
-                        <li><b>Guardrail</b> — UI-smoke перевіряє, що legacy widget делегує в shared rail і не малює другий assistant.</li>
+                        <li><b>Задача автору</b> — у чаті кнопка <code>Поставити задачу</code> тепер за замовчуванням вибирає автора повідомлення, а не поточного користувача.</li>
+                        <li><b>Собі лишилось вручну</b> — кнопка <code>Собі</code> працює як явний вибір, коли задачу справді треба поставити собі.</li>
+                        <li><b>Звук для виконавця</b> — коли людині призначили задачу, CRM надсилає <code>task:assigned</code> через WebSocket і програє сигнал <code>task-new</code>.</li>
+                        <li><b>Без дубля</b> — якщо задача створена самому собі, зайвий WebSocket-сигнал і звук не дублюються.</li>
+                        <li><b>Guardrail</b> — тести перевіряють default owner з автора повідомлення, typed-owner route і звуковий assignment flow.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -7607,25 +7606,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.58.3"></script>
-    <script src="js/api.js?v=0.58.3"></script>
-    <script src="js/ui.js?v=0.58.3"></script>
-    <script src="js/auth.js?v=0.58.3"></script>
-    <script src="js/timeline.js?v=0.58.3"></script>
-    <script src="js/booking.js?v=0.58.3"></script>
-    <script src="js/settings.js?v=0.58.3"></script>
-    <script src="js/booking-form.js?v=0.58.3"></script>
-    <script src="js/booking-linked.js?v=0.58.3"></script>
-    <script src="js/settings-dashboard.js?v=0.58.3"></script>
-    <script src="js/settings-history.js?v=0.58.3"></script>
-    <script src="js/settings-afisha.js?v=0.58.3"></script>
-    <script src="js/settings-certificates.js?v=0.58.3"></script>
-    <script src="js/offline.js?v=0.58.3"></script>
-    <script src="js/search.js?v=0.58.3"></script>
-    <script src="js/ws.js?v=0.58.3"></script>
-    <script src="js/app.js?v=0.58.3"></script>
-    <script src="js/kleshnya-widget.js?v=0.58.3"></script>
-    <script src="js/components/sidebar.js?v=0.58.3"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.58.3"></script>
+    <script src="js/config.js?v=0.58.4"></script>
+    <script src="js/api.js?v=0.58.4"></script>
+    <script src="js/ui.js?v=0.58.4"></script>
+    <script src="js/auth.js?v=0.58.4"></script>
+    <script src="js/timeline.js?v=0.58.4"></script>
+    <script src="js/booking.js?v=0.58.4"></script>
+    <script src="js/settings.js?v=0.58.4"></script>
+    <script src="js/booking-form.js?v=0.58.4"></script>
+    <script src="js/booking-linked.js?v=0.58.4"></script>
+    <script src="js/settings-dashboard.js?v=0.58.4"></script>
+    <script src="js/settings-history.js?v=0.58.4"></script>
+    <script src="js/settings-afisha.js?v=0.58.4"></script>
+    <script src="js/settings-certificates.js?v=0.58.4"></script>
+    <script src="js/offline.js?v=0.58.4"></script>
+    <script src="js/search.js?v=0.58.4"></script>
+    <script src="js/ws.js?v=0.58.4"></script>
+    <script src="js/app.js?v=0.58.4"></script>
+    <script src="js/kleshnya-widget.js?v=0.58.4"></script>
+    <script src="js/components/sidebar.js?v=0.58.4"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.58.4"></script>
 </body>
 </html>

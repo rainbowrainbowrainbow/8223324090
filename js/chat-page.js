@@ -785,13 +785,55 @@
         _setOmniMode('inbox', { skipRender: true });
     }
 
-    function _hasAssistantReturnBridge() {
+    function _isAssistantReturnRequest() {
         try {
             var params = new URLSearchParams(window.location.search || '');
-            return params.get('assistantReturn') === '1' || !!sessionStorage.getItem(ASSISTANT_CHAT_RETURN_URL_KEY);
+            return params.get('assistantReturn') === '1';
         } catch {
             return false;
         }
+    }
+
+    function _hasStoredAssistantReturnContext() {
+        try {
+            var stored = sessionStorage.getItem(ASSISTANT_CHAT_RETURN_URL_KEY) || '';
+            if (!stored) return false;
+            var url = new URL(stored, window.location.origin);
+            return url.origin === window.location.origin;
+        } catch {
+            return false;
+        }
+    }
+
+    function _clearAssistantReturnBridgeContext() {
+        try {
+            sessionStorage.removeItem(ASSISTANT_CHAT_RETURN_URL_KEY);
+            sessionStorage.removeItem(ASSISTANT_CHAT_RETURN_LABEL_KEY);
+            sessionStorage.removeItem(ASSISTANT_CHAT_SYNC_CHANNEL_KEY);
+        } catch {}
+    }
+
+    function _stripAssistantReturnParam() {
+        try {
+            var url = new URL(window.location.href);
+            if (!url.searchParams.has('assistantReturn')) return;
+            url.searchParams.delete('assistantReturn');
+            window.history.replaceState(null, '', `${url.pathname || '/chat'}${url.search || ''}${url.hash || ''}`);
+        } catch {}
+    }
+
+    function _hasAssistantReturnBridge() {
+        var fromAssistant = _isAssistantReturnRequest();
+        if (!fromAssistant) {
+            _clearAssistantReturnBridgeContext();
+            return false;
+        }
+        if (!_hasStoredAssistantReturnContext()) {
+            _clearAssistantReturnBridgeContext();
+            _stripAssistantReturnParam();
+            return false;
+        }
+        return true;
     }
 
     function _assistantReturnUrl() {
@@ -2389,6 +2431,27 @@
         }) || null;
     }
 
+    function _normalizeTaskOwnerLookup(value) {
+        return String(value || '').replace(/^@+/, '').trim().toLowerCase();
+    }
+
+    function _findTaskOwnerForMessageAuthor(owners, msg, fallbackAuthor) {
+        if (!Array.isArray(owners) || !owners.length || !msg) return null;
+        var messageUserId = Number(msg.userId || msg.user_id || 0);
+        var username = _normalizeTaskOwnerLookup(msg.username || msg.senderUsername || '');
+        var displayName = _normalizeTaskOwnerLookup(msg.displayName || msg.display_name || fallbackAuthor || '');
+
+        return owners.find(function (owner) {
+            var ownerId = Number(owner.id || owner.user_id || owner.userId || owner.ownerUserId || 0);
+            var ownerUsername = _normalizeTaskOwnerLookup(owner.username || '');
+            var ownerName = _normalizeTaskOwnerLookup(owner.name || owner.label || '');
+            if (messageUserId && ownerId && messageUserId === ownerId) return true;
+            if (username && ownerUsername && username === ownerUsername) return true;
+            if (displayName && ownerName && displayName === ownerName) return true;
+            return false;
+        }) || null;
+    }
+
     async function _createCanonicalChatTask(payload) {
         var body = {
             title: String(payload.title || '').slice(0, 100),
@@ -2435,6 +2498,8 @@
             return;
         }
         var currentOwner = _getCurrentTaskOwner(owners);
+        var authorOwner = _findTaskOwnerForMessageAuthor(owners, msg, author);
+        var defaultOwner = authorOwner || currentOwner;
         var form = document.createElement('div');
         form.className = 'msg-ai-task-form';
         form.innerHTML =
@@ -2455,7 +2520,8 @@
         var ownerSelect = form.querySelector('.ai-task-owner');
         var selfBtn = form.querySelector('.ai-task-self');
         var currentOwnerId = _taskOwnerId(currentOwner);
-        if (currentOwnerId && ownerSelect) ownerSelect.value = String(currentOwnerId);
+        var defaultOwnerId = _taskOwnerId(defaultOwner);
+        if (defaultOwnerId && ownerSelect) ownerSelect.value = String(defaultOwnerId);
         if (selfBtn) {
             selfBtn.addEventListener('click', function () {
                 if (!currentOwnerId) {

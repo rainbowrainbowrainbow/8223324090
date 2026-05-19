@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.58.9",
+  "version": "0.58.10",
   "eventGenix": {
-    "releaseLabel": "Staff HR Profile Links"
+    "releaseLabel": "Task Composer UX"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

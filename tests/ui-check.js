@@ -262,6 +262,7 @@ checkPage('tasks.html', (doc) => {
     check('Tasks board content exists', !!doc.getElementById('boardContent'));
     check('Tasks top area does not render points strip', !doc.getElementById('pointsBar') && !doc.getElementById('pointsPermanent') && !doc.getElementById('pointsMonthly'));
     check('Tasks page has no Focus tab button', !doc.querySelector('[data-view="focus"]'));
+    check('Tasks quick add is a compact self-first composer', doc.getElementById('quickAdd')?.classList.contains('task-composer') && !!doc.querySelector('[data-task-assignee-mode="self"].active') && !!doc.getElementById('taskDetailsToggle') && !!doc.getElementById('taskComposerDetails') && doc.getElementById('taskAssignedTo')?.hasAttribute('hidden'));
 });
 
 checkPage('reports.html', (doc, html) => {
@@ -639,6 +640,7 @@ check('Customer create modal has styled source select and linking tools', htmlCo
 check('New customer flow opens detail hub after create', customersCode.includes('showCustomerDetail(result.id)') && customersCode.includes('saveBtn.disabled = true'));
 check('Tasks page opens task deep links', tasksCode.includes('getTaskDeepLinkId') && tasksCode.includes('openTaskDetail(taskId)'));
 check('Tasks page supports assistant overdue filter deep links', tasksCode.includes('assistantTaskFilter') && tasksCode.includes('assistantFilter') && tasksCode.includes('function applyAssistantTaskFilter') && tasksCode.includes('function isOverdueTask'));
+check('Tasks quick composer defaults to current user and keeps new task first', tasksCode.includes('function resolveQuickAddOwnerUserId') && tasksCode.includes('setTaskAssigneeMode(\'self\')') && tasksCode.includes('lastCreatedTaskId') && tasksCode.includes('sortTasksForDisplay') && tasksCode.includes('keepNewTaskVisible(result.task, data)') && tasksCode.includes('result.task?.id'));
 check('Task detail overlay uses guarded close instead of direct backdrop removal', tasksCode.includes('function isTaskDetailDirty') && tasksCode.includes('closeTaskDetailOverlay(false)') && !tasksCode.includes("taskDetailOverlay')?.remove()"));
 check('Task detail save sends stale-write version from selected task', tasksCode.includes('dataset.taskVersion') && tasksCode.includes('version: document.getElementById'));
 check('Tasks stale focus view falls back safely', tasksCode.includes("requestedView === 'focus'") && tasksCode.includes("currentView = 'today'"));

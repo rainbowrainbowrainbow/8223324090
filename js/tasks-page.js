@@ -102,6 +102,8 @@ let allTasks = [];
 let userPermissions = null; // v20.9.16: loaded from /api/tasks/permissions
 let pageCurrentUser = null;
 let captureIntent = {};
+let taskAssigneeMode = 'self';
+let lastCreatedTaskId = null;
 
 // ==========================================
 // UTILITIES
@@ -233,6 +235,19 @@ function currentUserId() {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function currentUserTaskOwnerOption() {
+    const id = currentUserId();
+    const user = getTasksCurrentUser();
+    if (!id) return null;
+    return {
+        id,
+        username: user?.username || null,
+        name: user?.name || null,
+        role: user?.role || null,
+        label: user?.name || user?.username || `User #${id}`
+    };
+}
+
 function taskOwnerUserId(task = {}) {
     const parsed = Number(task.ownerUserId || task.owner_user_id || 0);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -273,6 +288,57 @@ function formatDateTimeInput(value) {
     if (Number.isNaN(d.getTime())) return '';
     const pad = n => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function taskCreatedTime(task = {}) {
+    const raw = task.created_at || task.createdAt || task.created || '';
+    const parsed = raw ? Date.parse(raw) : NaN;
+    if (!Number.isNaN(parsed)) return parsed;
+    const id = Number(task.id || 0);
+    return Number.isFinite(id) ? id : 0;
+}
+
+function compareTasksForDisplay(a = {}, b = {}) {
+    const aIsNew = lastCreatedTaskId && String(a.id) === String(lastCreatedTaskId);
+    const bIsNew = lastCreatedTaskId && String(b.id) === String(lastCreatedTaskId);
+    if (aIsNew !== bIsNew) return aIsNew ? -1 : 1;
+    const createdDiff = taskCreatedTime(b) - taskCreatedTime(a);
+    if (createdDiff) return createdDiff;
+    return String(a.title || '').localeCompare(String(b.title || ''), 'uk');
+}
+
+function sortTasksForDisplay(tasks = []) {
+    return [...tasks].sort(compareTasksForDisplay);
+}
+
+function setBoardView(view = 'inbox') {
+    currentView = view;
+    document.querySelectorAll('.board-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === view));
+}
+
+function keepNewTaskVisible(task = {}, fallback = {}) {
+    const category = task.category || fallback.category || 'admin';
+    const subcategory = task.subcategory || fallback.subcategory || null;
+    const workflow = task.workflowState || task.workflow_state || fallback.workflow_state || 'inbox';
+    const kind = task.taskKind || task.task_kind || fallback.task_kind || 'action';
+    const due = (task.deadline || task.remindAt || task.remind_at || task.date || fallback.deadline || fallback.date || '').slice(0, 10);
+    const week = getWeekRange();
+    const isWaiting = workflow === 'waiting' || kind === 'waiting';
+    const isNext = due && due > getTodayStr() && due <= week.to;
+    let filtersChanged = false;
+    if (currentCategory !== 'all' && currentCategory !== category) {
+        currentCategory = 'all';
+        currentSubcategory = 'all';
+        filtersChanged = true;
+    } else if (currentSubcategory !== 'all' && currentSubcategory !== (subcategory || '')) {
+        currentSubcategory = 'all';
+        filtersChanged = true;
+    }
+    if ((currentView === 'waiting' && !isWaiting) || (currentView === 'next' && !isNext) || ['routines', 'archive'].includes(currentView)) setBoardView('inbox');
+    if (filtersChanged) {
+        renderCategoryFilters();
+        renderSubcategoryFilters();
+    }
 }
 
 function openTaskDeepLink() {
@@ -353,6 +419,7 @@ async function initPage() {
 
         await _loadAssigneeDropdown();
         bootStep('owners:loaded', { count: _assigneeList.length });
+        setupTaskComposer();
 
         if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
@@ -996,9 +1063,7 @@ function renderBoard() {
 
 function renderSimpleTaskView(container, view, predicate, emptyText) {
     const baseTasks = allTasks.filter(predicate);
-    const tasks = applyAssistantTaskFilter(filterByCategory(baseTasks)).sort((a, b) => {
-        return String(a.deadline || a.remindAt || a.date || a.created_at || '').localeCompare(String(b.deadline || b.remindAt || b.date || b.created_at || ''));
-    });
+    const tasks = sortTasksForDisplay(applyAssistantTaskFilter(filterByCategory(baseTasks)));
     if (!tasks.length) {
         container.innerHTML = taskEmptyState(view, baseTasks.length) || `<div class="empty-state">${escapeHtml(emptyText)}</div>`;
         return;
@@ -1036,7 +1101,7 @@ function renderTodayView(container) {
         if (!groups[cat]) continue;
         const info = getCategoryConfig(cat);
         html += `<div class="group-header">${info.icon} ${info.label} <span style="font-size:12px;color:var(--gray-400)">(${groups[cat].length})</span></div>`;
-        html += groups[cat].map(t => renderTaskCard(t)).join('');
+        html += sortTasksForDisplay(groups[cat]).map(t => renderTaskCard(t)).join('');
     }
     container.innerHTML = html;
 }
@@ -1071,7 +1136,7 @@ function renderWeekView(container) {
         const label = date === 'no-date' ? 'Без дати' : formatDateShort(date);
         const isToday = date === getTodayStr();
         html += `<div class="group-header">${isToday ? '<strong>' : ''}${label}${isToday ? '</strong>' : ''} <span style="font-size:12px;color:var(--gray-400)">(${groups[date].length})</span></div>`;
-        html += groups[date].map(t => renderTaskCard(t)).join('');
+        html += sortTasksForDisplay(groups[date]).map(t => renderTaskCard(t)).join('');
     }
     container.innerHTML = html;
 }
@@ -1091,7 +1156,7 @@ function renderMyView(container) {
         return;
     }
 
-    container.innerHTML = tasks.map(t => renderTaskCard(t)).join('');
+    container.innerHTML = sortTasksForDisplay(tasks).map(t => renderTaskCard(t)).join('');
 }
 
 // ==========================================
@@ -1102,9 +1167,9 @@ function renderKanbanView(container) {
     const baseTasks = allTasks;
     let tasks = applyAssistantTaskFilter(filterByCategory(baseTasks));
 
-    const todo = tasks.filter(t => t.status === 'todo');
-    const inProgress = tasks.filter(t => t.status === 'in_progress');
-    const done = tasks.filter(t => t.status === 'done');
+    const todo = sortTasksForDisplay(tasks.filter(t => t.status === 'todo'));
+    const inProgress = sortTasksForDisplay(tasks.filter(t => t.status === 'in_progress'));
+    const done = sortTasksForDisplay(tasks.filter(t => t.status === 'done'));
 
     container.innerHTML = `
         <div class="kanban">
@@ -1281,14 +1346,72 @@ function renderTaskCard(t) {
 // ==========================================
 
 let _assigneeList = [];
+function _ensureCurrentUserInAssignees() {
+    const self = currentUserTaskOwnerOption();
+    if (!self) return null;
+    const exists = _assigneeList.some(user => String(user.id) === String(self.id));
+    if (!exists) _assigneeList.unshift(self);
+    return self;
+}
+
+function _renderAssigneeSelect() {
+    const sel = document.getElementById('taskAssignedTo');
+    if (!sel) return;
+    _ensureCurrentUserInAssignees();
+    sel.innerHTML = '<option value="">Оберіть людину</option>' +
+        _assigneeList.map(s => `<option value="${s.id}">${escapeHtml(s.label || s.name || s.username || ('User #' + s.id))}${s.role ? ' (' + escapeHtml(s.role) + ')' : ''}</option>`).join('');
+}
+
+function setTaskAssigneeMode(mode = 'self') {
+    taskAssigneeMode = mode === 'team' ? 'team' : 'self';
+    const quickAdd = document.getElementById('quickAdd');
+    const select = document.getElementById('taskAssignedTo');
+    if (quickAdd) quickAdd.dataset.assigneeMode = taskAssigneeMode;
+    document.querySelectorAll('[data-task-assignee-mode]').forEach(btn => {
+        const active = btn.dataset.taskAssigneeMode === taskAssigneeMode;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    if (!select) return;
+    if (taskAssigneeMode === 'self') {
+        const self = _ensureCurrentUserInAssignees();
+        if (self) select.value = String(self.id);
+        select.hidden = true;
+    } else {
+        select.hidden = false;
+        if (select.value && String(select.value) === String(currentUserId() || '')) select.value = '';
+    }
+}
+
+function toggleTaskComposerDetails(force) {
+    const details = document.getElementById('taskComposerDetails');
+    const toggle = document.getElementById('taskDetailsToggle');
+    if (!details || !toggle) return;
+    const open = typeof force === 'boolean' ? force : details.hidden;
+    details.hidden = !open;
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.textContent = open ? 'Сховати' : 'Деталі';
+}
+
+function setupTaskComposer() {
+    _renderAssigneeSelect();
+    setTaskAssigneeMode('self');
+    document.querySelectorAll('[data-task-assignee-mode]').forEach(btn => {
+        btn.addEventListener('click', () => setTaskAssigneeMode(btn.dataset.taskAssigneeMode));
+    });
+    document.getElementById('taskDetailsToggle')?.addEventListener('click', () => toggleTaskComposerDetails());
+}
+
+function resolveQuickAddOwnerUserId() {
+    if (taskAssigneeMode === 'self') return currentUserId();
+    const selected = document.getElementById('taskAssignedTo')?.value || '';
+    return selected || null;
+}
+
 async function _loadAssigneeDropdown() {
     try {
         _assigneeList = (await apiGetTaskOwners()).sort((a, b) => String(a.label || '').localeCompare(String(b.label || ''), 'uk'));
-        const sel = document.getElementById('taskAssignedTo');
-        if (sel) {
-            sel.innerHTML = '<option value="">— нікому —</option>' +
-                _assigneeList.map(s => `<option value="${s.id}">${escapeHtml(s.label || s.name || s.username || ('User #' + s.id))}${s.role ? ' (' + escapeHtml(s.role) + ')' : ''}</option>`).join('');
-        }
+        _renderAssigneeSelect();
     } catch {}
 }
 
@@ -1339,7 +1462,7 @@ async function addTask() {
     const priority = document.getElementById('taskPriority')?.value;
     const taskType = document.getElementById('taskType')?.value || 'human';
     const deadlineTime = document.getElementById('taskDeadlineTime')?.value || '';
-    const ownerUserId = document.getElementById('taskAssignedTo')?.value || null;
+    const ownerUserId = resolveQuickAddOwnerUserId();
     const mode = document.getElementById('taskMode')?.value || (captureIntent.private ? 'private' : (captureIntent.personal ? 'personal' : 'work'));
     const kind = document.getElementById('taskKind')?.value || (captureIntent.waiting ? 'waiting' : 'action');
     const visibility = defaultVisibilityForTaskMode(mode, document.getElementById('taskVisibility')?.value || 'team');
@@ -1370,11 +1493,15 @@ async function addTask() {
 
     const result = await apiCreateTask(data);
     if (result && result.success) {
+        lastCreatedTaskId = result.task?.id || null;
+        keepNewTaskVisible(result.task, data);
         document.getElementById('taskTitle').value = '';
         if (document.getElementById('taskDeadlineTime')) document.getElementById('taskDeadlineTime').value = '';
         captureIntent = {};
         document.querySelectorAll('[data-capture-chip]').forEach(btn => btn.classList.remove('active'));
-        showNotification('Задачу додано', 'success');
+        setTaskAssigneeMode('self');
+        toggleTaskComposerDetails(false);
+        showNotification(ownerUserId ? 'Задачу додано і призначено' : 'Задачу додано', 'success');
         await loadAllTasks();
     } else {
         showNotification('Помилка додавання', 'error');

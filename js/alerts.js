@@ -39,6 +39,20 @@ function _saveRead(s) { localStorage.setItem(_ALERTS_KEY, JSON.stringify([...s])
 function _getDismissed() { try { return new Set(JSON.parse(localStorage.getItem(_ALERTS_DISMISSED_KEY) || '[]')); } catch { return new Set(); } }
 function _saveDismissed(s) { localStorage.setItem(_ALERTS_DISMISSED_KEY, JSON.stringify([...s])); }
 
+function _alertsFingerprint(alerts) {
+    return (alerts || [])
+        .map(a => [a.id || '', a.level || '', a.link || '', a.title || '', a.message || ''].join('::'))
+        .sort()
+        .join('|');
+}
+
+function _replaceAlertsData(alerts) {
+    const nextAlerts = Array.isArray(alerts) ? alerts : [];
+    const changed = _alertsFingerprint(nextAlerts) !== _alertsFingerprint(_alertsData);
+    _alertsData = nextAlerts;
+    return changed;
+}
+
 // ─── Badge update ───────────────────────────────
 async function loadAlertBell() {
     const badge = document.getElementById('alertBadge');
@@ -50,7 +64,7 @@ async function loadAlertBell() {
         const data = await res.json();
         const alerts = data.alerts || [];
         const dismissed = _getDismissed();
-        _alertsData = alerts.filter(a => !dismissed.has(a.id));
+        _replaceAlertsData(alerts.filter(a => !dismissed.has(a.id)));
         const read = _getRead();
         const unread = _alertsData.filter(a => !read.has(a.id));
         if (badge) _updateBadge(badge, unread);
@@ -113,7 +127,7 @@ async function _renderPanel() {
         const data = await res.json();
         const alerts = data.alerts || [];
         const dismissed = _getDismissed();
-        _alertsData = alerts.filter(a => !dismissed.has(a.id));
+        _replaceAlertsData(alerts.filter(a => !dismissed.has(a.id)));
         _emitAlertsUpdated();
 
         if (!_alertsData.length) {
@@ -203,6 +217,13 @@ function _renderAlertItem(a, isRead) {
         actionsHtml = `<div class="ap-actions">
             <button class="ap-act ap-act-primary" onclick="event.stopPropagation();_goAlert('${link}','${id}')">💰 Відкрити касу</button>
         </div>`;
+    } else if (_isOmniAccountAlert(a)) {
+        const primaryLabel = _esc(a.action?.label || 'Підключити канал');
+        actionsHtml = `<div class="ap-actions">
+            <button class="ap-act ap-act-primary" onclick="event.stopPropagation();_goAlert('${link}','${id}')">${primaryLabel}</button>
+            <button class="ap-act ap-act-secondary" onclick="event.stopPropagation();_goAlert('${link}','${id}')">Відкрити вкладку</button>
+            <button class="ap-act ap-act-ghost" onclick="event.stopPropagation();_dismissAlert('${id}')">Сховати</button>
+        </div>`;
     } else if (a.action) {
         actionsHtml = `<div class="ap-actions">
             <button class="ap-act ap-act-primary" onclick="event.stopPropagation();_alertCreateTask('${id}')">${a.action.label}</button>
@@ -225,6 +246,15 @@ function _renderAlertItem(a, isRead) {
 }
 
 function _esc(s) { return String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+function _isOmniAccountAlert(a) {
+    const id = String(a?.id || '').toLowerCase();
+    const source = String(a?.source || '').toLowerCase();
+    const link = String(a?.link || '').toLowerCase();
+    return source === 'omni_accounts'
+        || id.startsWith('omni_')
+        || link.startsWith('/omni?panel=accounts');
+}
 
 // ─── Quick actions ──────────────────────────────
 async function _quickAction(alertId, action) {
@@ -312,22 +342,39 @@ function _goAlert(link, id) {
     _closeAlertsPanel();
     loadAlertBell();
     if (!link) return;
-    const currentPath = window.location.pathname;
-    const [linkPath, linkQuery] = link.split('?');
-    const linkBase = linkPath.split('#')[0];
-    const linkHash = linkPath.includes('#') ? linkPath.split('#')[1] : '';
-    if (linkBase === currentPath) {
-        if (linkHash) window.location.hash = '#' + linkHash;
-        if (linkQuery) {
-            const params = new URLSearchParams(linkQuery);
-            const openTask = params.get('open');
-            if (openTask && typeof window.openTaskDetail === 'function') { window.openTaskDetail(parseInt(openTask)); return; }
-            const highlight = params.get('highlight');
-            if (highlight) { const el = document.querySelector(`[data-booking-id="${highlight}"]`); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('highlight-pulse'); } }
-        }
+    let targetUrl;
+    try {
+        targetUrl = new URL(link, window.location.origin);
+    } catch {
+        window.location.href = link;
         return;
     }
-    window.location.href = link;
+    if (targetUrl.origin !== window.location.origin) {
+        window.location.href = targetUrl.href;
+        return;
+    }
+    const currentPath = window.location.pathname;
+    const linkBase = targetUrl.pathname;
+    if (linkBase === currentPath) {
+        const nextPath = `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
+        const currentFullPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        if (nextPath !== currentFullPath) window.history.pushState(null, '', nextPath);
+        const openTask = targetUrl.searchParams.get('open');
+        if (openTask && typeof window.openTaskDetail === 'function') { window.openTaskDetail(parseInt(openTask)); return; }
+        const highlight = targetUrl.searchParams.get('highlight');
+        if (highlight) {
+            const el = document.querySelector(`[data-booking-id="${highlight}"]`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.classList.add('highlight-pulse');
+            }
+        }
+        try {
+            window.dispatchEvent(new CustomEvent('crm:alert-navigate', { detail: { url: targetUrl, alertId: id } }));
+        } catch {}
+        return;
+    }
+    window.location.href = `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
 }
 
 // ─── Task creation (expanded inline) ────────────
@@ -403,12 +450,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const { payload } = e.detail || {};
         if (payload?.alerts) {
             const dismissed = _getDismissed();
-            _alertsData = payload.alerts.filter(a => !dismissed.has(a.id));
+            const changed = _replaceAlertsData(payload.alerts.filter(a => !dismissed.has(a.id)));
             const badge = document.getElementById('alertBadge');
             if (badge) { const read = _getRead(); _updateBadge(badge, _alertsData.filter(a => !read.has(a.id))); }
             _emitAlertsUpdated();
             const p = document.getElementById('alertsPanel');
-            if (p?.classList.contains('open')) _renderPanel();
+            if (p?.classList.contains('open') && changed) _renderPanel();
         } else { loadAlertBell(); }
     });
     // Clear old dismissed (>24h)

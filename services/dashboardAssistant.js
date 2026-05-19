@@ -87,6 +87,23 @@ function compactRecordList(value, limit = 12) {
         .slice(0, limit);
 }
 
+function compactChatHistory(value, limit = 14) {
+    if (!Array.isArray(value)) return [];
+    return value
+        .map(item => {
+            const role = String(item?.role || '').toLowerCase() === 'assistant' ? 'assistant' : 'user';
+            const text = compactString(item?.text || item?.content, 500);
+            if (!text) return null;
+            return {
+                role,
+                text,
+                at: compactString(item?.at || item?.createdAt, 80)
+            };
+        })
+        .filter(Boolean)
+        .slice(-limit);
+}
+
 function pageStrategicAngle(page = '') {
     const key = String(page || '').toLowerCase();
     if (key === 'dashboard') return 'bottlenecks, пріоритети і контроль операційної черги';
@@ -141,6 +158,9 @@ function buildAssistantContext(input = {}) {
         scenePreset: compactString(input.scenePreset, 120),
         sceneTitle: compactString(input.sceneTitle, 160),
         voiceMode: input.voiceMode === true,
+        sourceSurface: compactString(input.sourceSurface, 80),
+        assistantConversationId: compactString(input.conversationId || input.assistantConversationId, 120),
+        chatHistory: compactChatHistory(input.chatHistory || recentState.chatHistory || recentState.assistantChatHistory),
         recentState: {
             mode: compactString(recentState.mode, 40),
             voiceEnabled: recentState.voiceEnabled === true,

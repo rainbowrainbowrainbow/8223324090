@@ -4610,3 +4610,120 @@ body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-bt
         transform: none !important;
     }
 }
+
+/* v0.58.6: top menu assistant alignment.
+   The command line gets real breathing room and the assistant identity block
+   aligns as one composed header control instead of a cramped mini banner. */
+.header .header-content.assistant-rail-mounted {
+    min-height: 70px !important;
+    gap: 14px !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
+    flex: 1 1 auto !important;
+    max-width: min(1280px, calc(100vw - 360px)) !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail {
+    min-height: 58px !important;
+    padding: 7px 9px !important;
+    grid-template-columns: minmax(300px, 0.72fr) minmax(560px, 1.28fr) !important;
+    align-items: center !important;
+    gap: 14px !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-presence {
+    grid-template-columns: 50px minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 11px !important;
+    min-width: 0 !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-avatar,
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-avatar {
+    width: 44px !important;
+    height: 44px !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-status-stack {
+    justify-content: center !important;
+    gap: 3px !important;
+    min-width: 0 !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-name {
+    font-size: 15px !important;
+    line-height: 1.08 !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-subtitles-wrap {
+    min-height: 34px !important;
+    margin-top: 2px !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-subtitles,
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-subtitles {
+    font-size: 14px !important;
+    line-height: 1.18 !important;
+    white-space: normal !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-subtitles.is-ticker,
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-subtitles.is-ticker {
+    display: block !important;
+    white-space: nowrap !important;
+    -webkit-line-clamp: unset !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-actions {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-inline-form {
+    flex: 1 1 620px !important;
+    min-width: 420px !important;
+    min-height: 44px !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-inline-form input {
+    min-height: 42px !important;
+    padding: 10px 42px !important;
+    font-size: 15px !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-inline-search,
+.header .header-content.assistant-rail-mounted .assistant-rail-inline-hint {
+    min-height: 28px !important;
+}
+
+@media (max-width: 1380px) {
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
+        max-width: min(980px, calc(100vw - 320px)) !important;
+    }
+
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail {
+        grid-template-columns: minmax(250px, 0.72fr) minmax(430px, 1.28fr) !important;
+    }
+
+    .header .header-content.assistant-rail-mounted .assistant-rail-inline-form {
+        min-width: 340px !important;
+    }
+}
+
+@media (max-width: 1120px) {
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    .header .header-content.assistant-rail-mounted .assistant-rail-inline-form {
+        min-width: 0 !important;
+    }
+}

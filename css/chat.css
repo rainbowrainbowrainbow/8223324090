@@ -8907,6 +8907,21 @@ body.dark-mode .guardian-digest-generate-btn {
     padding: 16px;
 }
 
+.omni-channel-card.is-alert-target {
+    border-color: rgba(20,184,166,0.72);
+    box-shadow: 0 0 0 1px rgba(20,184,166,0.36), 0 18px 44px rgba(20,184,166,0.18);
+    animation: omniAlertTargetPulse 1.35s ease-in-out 0s 3;
+}
+
+@keyframes omniAlertTargetPulse {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    45% {
+        transform: translateY(-3px);
+    }
+}
+
 .omni-channel-card-head {
     display: flex;
     align-items: flex-start;
@@ -9238,6 +9253,12 @@ body.dark-mode .omni-health-services article,
     background: rgba(15,23,42,0.86);
     border-color: rgba(148,163,184,0.14);
     box-shadow: 0 16px 36px rgba(2,6,23,0.30);
+}
+
+body.dark-mode .omni-channel-card.is-alert-target,
+[data-theme="dark"] .omni-channel-card.is-alert-target {
+    border-color: rgba(45,212,191,0.70);
+    box-shadow: 0 0 0 1px rgba(45,212,191,0.34), 0 20px 46px rgba(20,184,166,0.20);
 }
 
 body.dark-mode .omni-channel-meta div,

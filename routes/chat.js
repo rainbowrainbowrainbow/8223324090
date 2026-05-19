@@ -15,6 +15,7 @@ const guardian = require('../services/guardian');
 const linkPreview = require('../services/linkPreview');
 const { createLogger } = require('../utils/logger');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
+const dashboardAssistant = require('../services/dashboardAssistant');
 
 const { authenticateToken, requireRole, ROLE_HIERARCHY } = require('../middleware/auth');
 
@@ -829,6 +830,87 @@ router.post('/assistant/transcript', async (req, res) => {
     } catch (err) {
         log.error('Error importing assistant transcript', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/chat/assistant/reply - continue the canonical CRM assistant dialog inside Chat
+router.post('/assistant/reply', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const body = req.body || {};
+        const channelId = parseInt(body.channelId, 10);
+        const content = String(body.content || body.message || '').trim().slice(0, 1800);
+        if (!Number.isFinite(channelId) || channelId <= 0 || !content) {
+            return res.status(400).json({ error: 'Assistant channel and message are required' });
+        }
+
+        const assistantChannel = await chat.getOrCreateAssistantChannel(userId);
+        if (Number(assistantChannel.id) !== channelId || !await chat.isMember(channelId, userId)) {
+            return res.status(403).json({ error: 'This channel is not your assistant dialog' });
+        }
+
+        const recentMessages = await chat.getChannelMessages(channelId, userId, { limit: 18 });
+        const chatHistory = recentMessages
+            .filter(message => message && !message.deletedAt && String(message.content || '').trim())
+            .map(message => ({
+                role: message.isBot || message.username === 'openclaw' ? 'assistant' : 'user',
+                text: String(message.content || '').slice(0, 700),
+                at: message.createdAt || null
+            }))
+            .slice(-16);
+
+        const conversationId = String(body.conversationId || `assistant-chat-${userId}`).slice(0, 120);
+        const pageTitle = String(body.pageTitle || 'CRM Chat: Помічник').slice(0, 160);
+        const page = String(body.page || 'chat').slice(0, 80);
+        const returnUrl = String(body.returnUrl || '/chat').slice(0, 240);
+        const reply = await dashboardAssistant.getDashboardAssistantReply({
+            userMessage: content,
+            intent: content,
+            role: req.user.role || '',
+            displayRole: req.user.displayRole || '',
+            page,
+            title: pageTitle,
+            view: 'assistant_chat',
+            sourceSurface: 'crm_chat_assistant_channel',
+            conversationId,
+            chatHistory,
+            contextSummary: {
+                source: 'CRM Chat #Помічник',
+                pageTitle,
+                returnUrl,
+                instruction: 'Продовжуй той самий діалог Помічника у чаті. Відповідай коротко і по суті.'
+            },
+            fallbackReason: chatHistory.length ? '' : 'assistant_chat_history_limited'
+        });
+
+        const replyText = String(reply.summary || reply.text || reply.subtitle || '').trim();
+        if (!replyText) {
+            return res.status(502).json({ error: 'assistant_empty_reply' });
+        }
+
+        const imported = await chat.importAssistantTranscript(userId, {
+            conversationId,
+            pageTitle,
+            page,
+            returnUrl,
+            messages: [{
+                id: `chat-reply-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
+                role: 'assistant',
+                text: replyText,
+                at: new Date().toISOString()
+            }]
+        });
+
+        res.json({
+            success: true,
+            channel: imported.channel,
+            reply,
+            message: imported.messages[imported.messages.length - 1] || null
+        });
+    } catch (err) {
+        log.error('Error continuing assistant chat dialog', err);
+        const status = err.status && err.status < 500 ? err.status : 500;
+        res.status(status).json({ error: err.code || 'assistant_chat_reply_failed' });
     }
 });
 

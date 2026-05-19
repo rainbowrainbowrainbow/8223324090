@@ -13,7 +13,9 @@
     var ASSISTANT_CHAT_RETURN_URL_KEY = 'eg_assistant_chat_return_url';
     var ASSISTANT_CHAT_RETURN_LABEL_KEY = 'eg_assistant_chat_return_label';
     var ASSISTANT_CHAT_REOPEN_KEY = 'eg_assistant_chat_reopen_panel';
+    var ASSISTANT_CHAT_TRANSCRIPT_KEY = 'eg_assistant_chat_transcript_v1';
     var ASSISTANT_CHAT_SYNC_CHANNEL_KEY = 'eg_assistant_chat_synced_channel_id';
+    var _assistantReplyQueue = Promise.resolve();
     var _replyTo = null;
     var _editingMsg = null;
     var _contextMsg = null;
@@ -410,6 +412,52 @@
         if (!options.skipRender) _renderOmniWorkspace(options);
     }
 
+    function _getOmniLaunchParams() {
+        try {
+            var params = new URLSearchParams(window.location.search || '');
+            return {
+                panel: String(params.get('panel') || '').toLowerCase(),
+                channel: String(params.get('channel') || '').toLowerCase().trim()
+            };
+        } catch {
+            return { panel: '', channel: '' };
+        }
+    }
+
+    function _escapeOmniChannelSelector(value) {
+        var raw = String(value || '').toLowerCase().trim();
+        if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(raw);
+        return raw.replace(/["\\]/g, '\\$&');
+    }
+
+    function _focusOmniChannelCard(channel) {
+        var normalized = String(channel || '').toLowerCase().trim();
+        if (!normalized) return false;
+        var card = document.querySelector('[data-omni-account-channel="' + _escapeOmniChannelSelector(normalized) + '"]');
+        if (!card) return false;
+        card.classList.add('is-alert-target');
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        var primary = card.querySelector('[data-omni-action="open-settings"]');
+        if (primary && typeof primary.focus === 'function') {
+            try { primary.focus({ preventScroll: true }); } catch { primary.focus(); }
+        }
+        setTimeout(function () { card.classList.remove('is-alert-target'); }, 5200);
+        return true;
+    }
+
+    function _applyOmniLaunchParams(options) {
+        options = options || {};
+        var launch = _getOmniLaunchParams();
+        if (!launch.panel) return false;
+        if (launch.panel !== 'accounts' && launch.panel !== 'channels' && launch.panel !== 'health') return false;
+        var mode = launch.panel === 'health' ? 'health' : 'channels';
+        _setOmniMode(mode, {
+            force: options.force === true,
+            focusChannel: launch.channel
+        });
+        return true;
+    }
+
     function _renderOmniWorkspace(options) {
         options = options || {};
         if (_omniWorkspace.mode === 'channels') {
@@ -561,7 +609,9 @@
                     accounts.map(function (account) {
                         var state = _mapChannelHealthState(account);
                         var rawDetails = account.warning || account.lastTestMessage || account.last_test_message || account.nextActionHint || '';
-                        return '<article class="omni-channel-card omni-channel-card--' + _esc(state.tone) + '">' +
+                        var channelKey = String(account.channel || '').toLowerCase();
+                        var isTarget = options.focusChannel && channelKey === String(options.focusChannel).toLowerCase();
+                        return '<article class="omni-channel-card omni-channel-card--' + _esc(state.tone) + (isTarget ? ' is-alert-target' : '') + '" data-omni-account-channel="' + _esc(channelKey) + '">' +
                             '<div class="omni-channel-card-head">' +
                                 '<div>' +
                                     '<h3>' + _esc(account.label || account.channel || 'Канал') + '</h3>' +
@@ -582,6 +632,9 @@
                         '</article>';
                     }).join('') +
                 '</div>';
+            if (options.focusChannel) {
+                setTimeout(function () { _focusOmniChannelCard(options.focusChannel); }, 80);
+            }
         } catch (err) {
             root.innerHTML = _renderOmniStateCard({
                 tone: err && err.code === 'forbidden' ? 'warning' : 'danger',
@@ -783,6 +836,15 @@
             });
         }
         _setOmniMode('inbox', { skipRender: true });
+        if (!_applyOmniLaunchParams({ force: true })) {
+            _setOmniMode('inbox', { skipRender: true });
+        }
+        window.addEventListener('crm:alert-navigate', function () {
+            _applyOmniLaunchParams({ force: false });
+        });
+        window.addEventListener('popstate', function () {
+            _applyOmniLaunchParams({ force: false });
+        });
     }
 
     function _isAssistantReturnRequest() {
@@ -846,6 +908,113 @@
         } catch {
             return fallback;
         }
+    }
+
+    function _safeAssistantBridgePayload() {
+        try {
+            var raw = sessionStorage.getItem(ASSISTANT_CHAT_TRANSCRIPT_KEY);
+            if (!raw) return {};
+            var parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch {
+            return {};
+        }
+    }
+
+    function _isAssistantDialogChannel(channel) {
+        if (!channel) return false;
+        try {
+            var synced = _toPositiveId(sessionStorage.getItem(ASSISTANT_CHAT_SYNC_CHANNEL_KEY) || '');
+            if (synced && Number(channel.id) === synced) return true;
+        } catch {}
+        var type = String(channel.type || '').toLowerCase();
+        var entityType = String(channel.linkedEntityType || '').toLowerCase();
+        var slug = String(channel.slug || '').toLowerCase();
+        var name = String(channel.name || '').toLowerCase();
+        return type === 'assistant'
+            || entityType === 'assistant_dialog'
+            || slug.indexOf('assistant-dialog-') === 0
+            || name.indexOf('помічник') !== -1
+            || name.indexOf('openclaw') !== -1;
+    }
+
+    function _setAssistantDialogThinking(channel, active) {
+        if (!_isAssistantDialogChannel(channel)) return;
+        if (active) _typingUsers.openclaw = true;
+        else delete _typingUsers.openclaw;
+        _renderTyping();
+        var desc = document.getElementById('chatHeaderDesc');
+        if (!desc || !_currentChannel || Number(_currentChannel.id) !== Number(channel.id)) return;
+        desc.textContent = active
+            ? 'Помічник готує відповідь у цьому ж діалозі...'
+            : (channel.description || 'Особистий діалог з AI-провідником CRM');
+    }
+
+    function _syncAssistantTranscriptStorageFromChat(channel, userText, assistantText, bridge) {
+        if (!_isAssistantDialogChannel(channel)) return;
+        var payload = bridge && typeof bridge === 'object' ? { ...bridge } : {};
+        var now = new Date().toISOString();
+        payload.conversationId = String(payload.conversationId || 'assistant-chat-' + (_currentUserId || channel.id));
+        payload.pageTitle = payload.pageTitle || 'CRM Chat: Помічник';
+        payload.page = payload.page || 'chat';
+        payload.returnUrl = payload.returnUrl || '/chat?assistantReturn=1&channelId=' + encodeURIComponent(channel.id);
+        payload.messages = Array.isArray(payload.messages) ? payload.messages.slice(-78) : [];
+        payload.messages.push({
+            id: 'chat-user-' + Date.now(),
+            role: 'user',
+            text: String(userText || '').trim(),
+            at: now
+        });
+        payload.messages.push({
+            id: 'chat-assistant-' + Date.now(),
+            role: 'assistant',
+            text: String(assistantText || '').trim(),
+            at: now
+        });
+        payload.messages = payload.messages.filter(function (item) { return item && String(item.text || '').trim(); }).slice(-80);
+        try {
+            sessionStorage.setItem(ASSISTANT_CHAT_TRANSCRIPT_KEY, JSON.stringify(payload));
+            sessionStorage.setItem(ASSISTANT_CHAT_SYNC_CHANNEL_KEY, String(channel.id));
+        } catch {}
+    }
+
+    async function _continueAssistantDialogFromChat(userText, clientMessageId, channel) {
+        if (!_isAssistantDialogChannel(channel)) return;
+        var bridge = _safeAssistantBridgePayload();
+        _setAssistantDialogThinking(channel, true);
+        try {
+            var data = await _api('POST', '/assistant/reply', {
+                channelId: channel.id,
+                content: userText,
+                clientMessageId: clientMessageId || '',
+                conversationId: bridge.conversationId || 'assistant-chat-' + (_currentUserId || channel.id),
+                pageTitle: bridge.pageTitle || document.title || 'CRM Chat: Помічник',
+                page: bridge.page || 'chat',
+                returnUrl: bridge.returnUrl || _assistantReturnUrl()
+            });
+            var assistantText = data?.reply?.summary || data?.reply?.text || data?.message?.content || '';
+            if (_currentChannel && Number(_currentChannel.id) === Number(channel.id) && data?.message) {
+                _appendMessage(data.message);
+                _playSound('message-new', channel.id);
+            }
+            if (assistantText) _syncAssistantTranscriptStorageFromChat(channel, userText, assistantText, bridge);
+        } catch (err) {
+            console.error('[Chat] Assistant dialog reply failed:', err);
+            if (_currentChannel && Number(_currentChannel.id) === Number(channel.id)) {
+                _appendSystemMessage('Помічник не зміг відповісти в цьому чаті. Спробуй ще раз або повернись у вікно Помічника.');
+            }
+        } finally {
+            _setAssistantDialogThinking(channel, false);
+        }
+    }
+
+    function _queueAssistantDialogReply(userText, clientMessageId, channel) {
+        if (!_isAssistantDialogChannel(channel)) return;
+        _assistantReplyQueue = _assistantReplyQueue
+            .catch(function () {})
+            .then(function () {
+                return _continueAssistantDialogFromChat(userText, clientMessageId, channel);
+            });
     }
 
     function _initAssistantReturnBridge() {
@@ -4391,10 +4560,12 @@
         }
 
         try {
+            var sentChannel = _currentChannel;
             var msg = await _api('POST', '/channels/' + _currentChannel.id + '/messages', msgData);
             if (msg) {
                 _appendMessage(msg);
                 _playSoundAlways('message-sent');
+                _queueAssistantDialogReply(content, msgData.clientMessageId, sentChannel);
             }
         } catch (err) {
             console.error('[Chat] Send error:', err);

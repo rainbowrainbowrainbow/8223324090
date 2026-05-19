@@ -7559,3 +7559,108 @@ body:not(.dark-mode) .sidebar-extra-search {
     transform: none !important;
   }
 }
+
+/* Sidebar regression hotfix: keep the identity card and Quick Access state deterministic.
+   Older right-rail rules left grid-area names on children, which caused the name,
+   summary and chips to stack on top of each other in the compact dashboard sidebar. */
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+.sidebar-nav:not(.collapsed) .sidebar-identity-card {
+  grid-template-columns: 48px minmax(0, 1fr) !important;
+  align-items: start !important;
+  gap: 12px !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-main {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-areas:
+    "identity-title"
+    "identity-summary"
+    "identity-meta" !important;
+  gap: 7px !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-title-row {
+  grid-area: identity-title !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-title-line {
+  min-width: 0 !important;
+  overflow: hidden !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-name,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-name,
+.sidebar-nav:not(.collapsed) .sidebar-identity-name {
+  display: block !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-role,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
+.sidebar-nav:not(.collapsed) .sidebar-identity-role {
+  grid-area: auto !important;
+  justify-self: end !important;
+  max-width: 76px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-summary {
+  grid-area: identity-summary !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta {
+  grid-area: identity-meta !important;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 7px !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.sidebar-nav:not(.collapsed) button.sidebar-identity-meta-item,
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item {
+  min-width: 0 !important;
+  min-height: 34px !important;
+  padding: 6px 8px !important;
+  overflow: hidden !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-v,
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-k {
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-extras.is-collapsed .sidebar-design-extra-list,
+.sidebar-nav:not(.collapsed) .sidebar-design-extras.is-collapsed .sidebar-extra-editor {
+  display: none !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-design-extras:not(.is-collapsed) .sidebar-design-extra-list {
+  display: grid !important;
+}

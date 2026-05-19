@@ -4,6 +4,17 @@
 
 ---
 
+## v0.58.1 - Assistant Chat and Sidebar Hotfix
+
+### Assistant Chat and Sidebar Hotfix [codex]
+- **Помічник у чатах** - діалог із AI тепер можна переносити в CRM-інструмент `Чати`: історія користувача й відповіді Помічника синхронізуються в окремий канал без втрати контексту.
+- **Рекомендовані дії** - dashboard/task фільтри від Помічника більше не лишаються декоративними: backlog/overdue сценарії ведуть у реальні поверхні й передають `assistantFilter=overdue` у задачі.
+- **Sidebar hotfix** - профільна картка у лівому меню більше не накладає ім'я, алерт, USD і час; `Швидкий доступ` знову реально розгортає/ховає список, а не лише міняє колір.
+- **Живий avatar Помічника** - верхній AI presence отримав нові м'які анімації: орбіти, точки, очі, екран-обличчя і speaking/thinking стани без шуму для всієї сторінки.
+- **Guardrail** - `test:ui` доповнено перевірками для assistant filter route і chat transcript bridge, щоб ці сценарії не відвалились непомітно.
+
+---
+
 ## v0.58.0 - Enterprise Sidebar Navigation
 
 ### Enterprise Sidebar Navigation [codex]

@@ -2,6 +2,7 @@
  * services/chatService.js — Team messenger business logic (Phase 1 MVP)
  */
 const { pool } = require('../db');
+const crypto = require('crypto');
 const { createLogger } = require('../utils/logger');
 const {
     removeChatUploadObject,
@@ -480,6 +481,142 @@ async function createChannel(slug, name, description, createdBy) {
         [ch.id, createdBy]
     );
     return mapChannelRow({ ...ch, unread_count: '0' });
+}
+
+async function getOrCreateAssistantChannel(userId) {
+    const slug = `assistant-dialog-${userId}`;
+    const result = await pool.query(`
+        INSERT INTO chat_channels (slug, name, description, is_default, type, linked_entity_type, linked_entity_id, created_by)
+        VALUES ($1, $2, $3, false, 'assistant', 'assistant_dialog', $4, $4)
+        ON CONFLICT (slug) DO UPDATE SET
+            name = EXCLUDED.name,
+            description = EXCLUDED.description,
+            type = 'assistant',
+            linked_entity_type = COALESCE(chat_channels.linked_entity_type, EXCLUDED.linked_entity_type),
+            linked_entity_id = COALESCE(chat_channels.linked_entity_id, EXCLUDED.linked_entity_id),
+            updated_at = NOW()
+        RETURNING *
+    `, [slug, '# Помічник', 'Особистий діалог з AI-провідником CRM', userId]);
+    const channel = result.rows[0];
+    await pool.query(
+        'INSERT INTO chat_channel_members (channel_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [channel.id, userId]
+    );
+    invalidateChannelsCache(userId);
+    return mapChannelRow({ ...channel, unread_count: '0' });
+}
+
+function normalizeAssistantTranscriptMessage(item = {}, index = 0) {
+    const role = String(item.role || '').toLowerCase() === 'user' ? 'user' : 'assistant';
+    const text = String(item.text || item.content || '').trim().slice(0, 3800);
+    if (!text) return null;
+    return {
+        role,
+        text,
+        at: item.at || null,
+        sourceId: String(item.id || item.messageId || index)
+    };
+}
+
+function assistantTranscriptClientId(conversationId, item, index) {
+    const digest = crypto
+        .createHash('sha1')
+        .update(`${conversationId}:${item.sourceId}:${item.role}:${item.text}`)
+        .digest('hex')
+        .slice(0, 40);
+    return `asst:${digest}`;
+}
+
+async function importAssistantTranscript(userId, payload = {}) {
+    const conversationId = String(payload.conversationId || `assistant-${userId}`).slice(0, 80);
+    const messages = Array.isArray(payload.messages)
+        ? payload.messages.slice(-80).map(normalizeAssistantTranscriptMessage).filter(Boolean)
+        : [];
+    const channel = await getOrCreateAssistantChannel(userId);
+    if (!messages.length) {
+        return { channel, imported: 0, skipped: 0, messages: [] };
+    }
+
+    const client = await pool.connect();
+    const imported = [];
+    let skipped = 0;
+    try {
+        await client.query('BEGIN');
+        const botUser = await client.query("SELECT id FROM users WHERE username = 'openclaw' OR role = 'admin' ORDER BY (username = 'openclaw') DESC, id LIMIT 1");
+        const botUserId = botUser.rows[0]?.id || userId;
+        let lastSeq = null;
+
+        for (let i = 0; i < messages.length; i++) {
+            const item = messages[i];
+            const clientMessageId = assistantTranscriptClientId(conversationId, item, i);
+            const duplicate = await client.query(
+                'SELECT id FROM chat_messages WHERE channel_id = $1 AND client_message_id = $2',
+                [channel.id, clientMessageId]
+            );
+            if (duplicate.rows.length) {
+                skipped++;
+                continue;
+            }
+
+            const seqResult = await client.query('SELECT next_chat_seq($1) AS seq', [channel.id]);
+            const seq = seqResult.rows[0].seq;
+            lastSeq = seq;
+            const isAssistant = item.role !== 'user';
+            const metadata = {
+                source: 'crm_assistant_transcript',
+                conversationId,
+                role: item.role,
+                originalAt: item.at || null,
+                pageTitle: payload.pageTitle || '',
+                page: payload.page || '',
+                returnUrl: payload.returnUrl || ''
+            };
+            const inserted = await client.query(`
+                INSERT INTO chat_messages (channel_id, user_id, seq, content, is_bot, content_type, client_message_id, metadata)
+                VALUES ($1, $2, $3, $4, $5, 'text', $6, $7)
+                RETURNING *
+            `, [
+                channel.id,
+                isAssistant ? botUserId : userId,
+                seq,
+                item.text,
+                isAssistant,
+                clientMessageId,
+                JSON.stringify(metadata)
+            ]);
+            imported.push(inserted.rows[0]);
+        }
+
+        if (lastSeq !== null) {
+            await client.query(
+                'UPDATE chat_channel_members SET last_read_seq = GREATEST(COALESCE(last_read_seq, 0), $1) WHERE channel_id = $2 AND user_id = $3',
+                [lastSeq, channel.id, userId]
+            );
+        }
+        await client.query('COMMIT');
+        invalidateChannelsCache(userId);
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+
+    const fullMessages = imported.length
+        ? await pool.query(`
+            SELECT cm.*, u.username, u.name AS display_name
+            FROM chat_messages cm
+            JOIN users u ON u.id = cm.user_id
+            WHERE cm.id = ANY($1::int[])
+            ORDER BY cm.seq ASC
+        `, [imported.map(row => row.id)])
+        : { rows: [] };
+    return {
+        channel,
+        imported: imported.length,
+        skipped,
+        messages: fullMessages.rows.map(mapMessageRow)
+    };
 }
 
 /**
@@ -1000,6 +1137,8 @@ module.exports = {
     getMessageById,
     mapMessageRow,
     createChannel,
+    getOrCreateAssistantChannel,
+    importAssistantTranscript,
     editMessage,
     deleteMessage,
     pinMessage,

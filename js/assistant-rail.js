@@ -59,6 +59,9 @@
     const ASSISTANT_CHAT_RETURN_URL_KEY = 'eg_assistant_chat_return_url';
     const ASSISTANT_CHAT_RETURN_LABEL_KEY = 'eg_assistant_chat_return_label';
     const ASSISTANT_CHAT_REOPEN_KEY = 'eg_assistant_chat_reopen_panel';
+    const ASSISTANT_CHAT_TRANSCRIPT_KEY = 'eg_assistant_chat_transcript_v1';
+    const ASSISTANT_CHAT_SYNC_CHANNEL_KEY = 'eg_assistant_chat_synced_channel_id';
+    const ASSISTANT_CHAT_HISTORY_LIMIT = 80;
 
     let state = {
         mode: localStorage.getItem('eg_crm_assistant_voice') === 'off' ? 'muted' : 'idle',
@@ -172,6 +175,7 @@
     let audioPlayer = null;
     let audioUrl = null;
     let history = [];
+    let assistantConversationId = sessionStorage.getItem('eg_crm_assistant_conversation_id') || '';
     let proactiveTimer = null;
     let proactiveShownForPage = null;
     let pageInteractionDetected = false;
@@ -1265,11 +1269,51 @@
         await playReply({ text: line, subtitle: line }, { textOnly: !state.voiceEnabled, addToHistory: false });
     }
 
+    function getAssistantConversationId() {
+        if (!assistantConversationId) {
+            assistantConversationId = `crm-assistant-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+            try {
+                sessionStorage.setItem('eg_crm_assistant_conversation_id', assistantConversationId);
+            } catch {}
+        }
+        return assistantConversationId;
+    }
+
+    function assistantHistoryItemId(role) {
+        return `${getAssistantConversationId()}-${Date.now().toString(36)}-${role}-${history.length}`;
+    }
+
+    function storeAssistantTranscriptPayload(payload) {
+        try {
+            sessionStorage.setItem(ASSISTANT_CHAT_TRANSCRIPT_KEY, JSON.stringify(payload));
+        } catch (err) {
+            console.warn('[CrmAssistantRail] Unable to store assistant transcript payload:', err);
+        }
+    }
+
+    function buildAssistantChatTransferPayload() {
+        const snapshot = buildAssistantSnapshot();
+        return {
+            conversationId: getAssistantConversationId(),
+            pageTitle: snapshot.pageFull || document.title || 'CRM',
+            page: getCurrentPageKey(),
+            returnUrl: currentAssistantReturnUrl(),
+            messages: history.map((item, index) => ({
+                id: item.id || `${getAssistantConversationId()}-${index}`,
+                role: item.role === 'user' ? 'user' : 'assistant',
+                text: item.text,
+                at: item.at
+            }))
+        };
+    }
+
     function appendHistory(role, text) {
         const line = String(text || '').trim();
         if (!line) return;
-        history.push({ role, text: line, at: new Date().toISOString() });
-        if (history.length > 16) history = history.slice(-16);
+        const safeRole = role === 'user' ? 'user' : 'assistant';
+        history.push({ id: assistantHistoryItemId(safeRole), role: safeRole, text: line, at: new Date().toISOString() });
+        if (history.length > ASSISTANT_CHAT_HISTORY_LIMIT) history = history.slice(-ASSISTANT_CHAT_HISTORY_LIMIT);
+        storeAssistantTranscriptPayload(buildAssistantChatTransferPayload());
     }
 
     function currentAssistantReturnUrl() {
@@ -1277,15 +1321,49 @@
         return path || '/dashboard';
     }
 
-    function openCrmChatFromAssistant() {
+    async function syncAssistantDialogToCrmChat() {
+        const payload = buildAssistantChatTransferPayload();
+        storeAssistantTranscriptPayload(payload);
+        if (!payload.messages.length) return null;
+        const resp = await fetch('/api/chat/assistant/transcript', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + localStorage.getItem('pzp_token')
+            },
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || data.success === false) {
+            throw new Error(data.error || `assistant_transcript_import_http_${resp.status}`);
+        }
+        try {
+            if (data.channel?.id) sessionStorage.setItem(ASSISTANT_CHAT_SYNC_CHANNEL_KEY, String(data.channel.id));
+        } catch {}
+        return data;
+    }
+
+    async function openCrmChatFromAssistant() {
+        let channelId = '';
         try {
             const snapshot = buildAssistantSnapshot();
             sessionStorage.setItem(ASSISTANT_CHAT_RETURN_URL_KEY, currentAssistantReturnUrl());
             sessionStorage.setItem(ASSISTANT_CHAT_RETURN_LABEL_KEY, snapshot.pageFull || document.title || 'CRM');
+            setState({ mode: 'action', subtitle: 'Синхронізую діалог з CRM Chat...', tickerText: '', playbackState: 'text' });
+            const sync = await syncAssistantDialogToCrmChat();
+            channelId = sync?.channel?.id ? String(sync.channel.id) : '';
         } catch (error) {
-            console.warn('[CrmAssistantRail] Unable to store assistant chat return context:', error);
+            console.warn('[CrmAssistantRail] Unable to sync assistant chat context:', error);
+            emitTelemetry('action_unavailable', {
+                module: 'rail:assistantChatSync',
+                failureReason: error.message || String(error),
+                fallbackShown: true
+            });
         }
-        window.location.href = '/chat?assistantReturn=1';
+        const target = channelId
+            ? `/chat?assistantReturn=1&channelId=${encodeURIComponent(channelId)}`
+            : '/chat?assistantReturn=1';
+        window.location.href = target;
     }
 
     function resumeAssistantPanelFromChatReturn() {

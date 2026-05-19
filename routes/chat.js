@@ -801,6 +801,37 @@ router.post('/channels', async (req, res) => {
     }
 });
 
+// POST /api/chat/assistant/transcript - import current CRM assistant dialog into Chat
+router.post('/assistant/transcript', async (req, res) => {
+    try {
+        const userId = req.user.id || req.user.userId;
+        const { conversationId, pageTitle, page, returnUrl, messages } = req.body || {};
+        if (!Array.isArray(messages)) {
+            return res.status(400).json({ error: 'Assistant transcript messages are required' });
+        }
+        if (messages.length > 120) {
+            return res.status(400).json({ error: 'Assistant transcript is too long' });
+        }
+        const result = await chat.importAssistantTranscript(userId, {
+            conversationId,
+            pageTitle,
+            page,
+            returnUrl,
+            messages
+        });
+        res.json({
+            success: true,
+            channel: result.channel,
+            imported: result.imported,
+            skipped: result.skipped,
+            messages: result.messages
+        });
+    } catch (err) {
+        log.error('Error importing assistant transcript', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // PUT /api/chat/messages/:id — edit message
 router.put('/messages/:id', async (req, res) => {
     try {

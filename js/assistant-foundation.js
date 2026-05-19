@@ -548,7 +548,7 @@
         markTarget('assistant-rail', '#crmAssistantRail');
         if (pageId === 'dashboard') {
             markTarget('dashboard-grid', '#dashboardGrid');
-            markTarget('dashboard-work-queue', '#workQueuePanel');
+            markTarget('dashboard-work-queue', '#workQueuePanel, #widget-funnel, [data-widget="funnel"]');
             markTarget('dashboard-greeting', '#dashboardGreeting');
         }
         if (pageId === 'tasks') {
@@ -736,6 +736,62 @@
         if (!element) return false;
         element.click();
         return true;
+    }
+
+    function navigateForAction(href) {
+        const safeHref = String(href || '').trim();
+        if (!safeHref) return { success: false, failureReason: 'missing_navigation_target' };
+        window.setTimeout(() => {
+            window.location.assign(safeHref);
+        }, 80);
+        return { success: true, navigating: true, href: safeHref };
+    }
+
+    function delayedHighlightTarget(targetId, delayMs = 120) {
+        return new Promise(resolve => {
+            window.setTimeout(() => resolve(highlightTarget(targetId)), delayMs);
+        });
+    }
+
+    function persistReplyBacklogPreset(preset = 'team_overdue') {
+        const map = {
+            all: { scope: 'all', sla: 'all', owner: 'all', escalation: 'all', preset: 'all' },
+            mine_overdue: { scope: 'mine', sla: 'overdue', owner: 'all', escalation: 'all', preset: 'mine_overdue' },
+            team_overdue: { scope: 'team', sla: 'overdue', owner: 'all', escalation: 'all', preset: 'team_overdue' },
+            unassigned: { scope: 'all', sla: 'all', owner: 'without_owner', escalation: 'all', preset: 'unassigned' },
+            escalated: { scope: 'all', sla: 'all', owner: 'all', escalation: 'escalated', preset: 'escalated' }
+        };
+        const next = map[preset] || map.team_overdue;
+        try {
+            localStorage.setItem('eg_reply_backlog_scope', next.scope);
+            localStorage.setItem('eg_reply_console_filters', JSON.stringify(next));
+        } catch (err) {
+            console.warn('[crm-assistant-foundation] reply backlog preset persistence failed', err);
+        }
+        return next;
+    }
+
+    function focusDashboardQueueSurface() {
+        const result = highlightTarget('dashboard-work-queue');
+        if (result?.success) return result;
+        return highlightTarget('dashboard-grid');
+    }
+
+    function openDashboardReplyBacklog() {
+        persistReplyBacklogPreset('team_overdue');
+        if (document.getElementById('workQueuePanel') && window.DashboardPage?.setReplyConsoleFilter) {
+            window.DashboardPage.setReplyConsoleFilter('preset', 'team_overdue');
+            return delayedHighlightTarget('dashboard-work-queue', 180);
+        }
+        return navigateForAction('omni.html?filter=waiting&replySla=overdue');
+    }
+
+    function openDashboardOverdueTasks() {
+        if (document.getElementById('workQueuePanel') && window.DashboardPage?.setReplyConsoleFilter) {
+            window.DashboardPage.setReplyConsoleFilter('sla', 'overdue');
+            return delayedHighlightTarget('dashboard-work-queue', 180);
+        }
+        return navigateForAction('tasks.html?view=team&assistantFilter=overdue');
     }
 
     const ACTION_COMMAND_VERSION = 'assistant_action_commands_v1';
@@ -1383,7 +1439,7 @@
         const id = `${strongest?.signalId || ''} ${strongest?.label || ''}`.toLowerCase();
         let action = null;
         if (/waiting|reply|unread|chat/.test(id)) action = firstMatchingAction(actionsList, ['waiting', 'reply', 'unread', 'chat']);
-        if (!action && /overdue|deadline|task/.test(id)) action = firstMatchingAction(actionsList, ['overdue', 'deadline', 'waiting', 'task']);
+        if (!action && /overdue|deadline|task/.test(id)) action = firstMatchingAction(actionsList, ['overdue', 'deadline', 'task']);
         if (!action && /debt|finance|cash|payment/.test(id)) action = firstMatchingAction(actionsList, ['debt', 'finance', 'advanced']);
         if (!action && /lead|hot|follow/.test(id)) action = firstMatchingAction(actionsList, ['hot', 'lead', 'kanban', 'follow']);
         return serializeAction(action || actionsList[0]);
@@ -1746,8 +1802,9 @@
             isAvailable: () => Boolean(document.getElementById('dashboardGrid') || window.DashboardPage?.getAssistantContext),
             getSignals: dashboardSignals,
             getActions: () => [
-                { actionId: 'dashboard.focus-work-queue', page: 'dashboard', actionType: 'focus', label: 'Focus work queue', run: () => highlightTarget('dashboard-work-queue'), targetResolver: () => 'dashboard-work-queue', failureMessage: 'Work queue is not visible on this dashboard.' },
-                { actionId: 'dashboard.show-waiting-replies', page: 'dashboard', actionType: 'filter', label: 'Show reply backlog', run: () => { window.DashboardPage?.setReplyConsoleFilter?.('preset', 'team_overdue'); return highlightTarget('dashboard-work-queue'); }, targetResolver: () => 'dashboard-work-queue', failureMessage: 'Reply backlog controls are unavailable.' },
+                { actionId: 'dashboard.focus-work-queue', page: 'dashboard', actionType: 'focus', label: 'Focus work queue', run: focusDashboardQueueSurface, targetResolver: () => 'dashboard-work-queue', failureMessage: 'Work queue is not visible on this dashboard.' },
+                { actionId: 'dashboard.show-overdue-tasks', page: 'dashboard', actionType: 'filter', label: 'Show overdue tasks', run: openDashboardOverdueTasks, targetResolver: () => 'dashboard-work-queue', failureMessage: 'Overdue task filter is unavailable.' },
+                { actionId: 'dashboard.show-waiting-replies', page: 'dashboard', actionType: 'filter', label: 'Show reply backlog', run: openDashboardReplyBacklog, targetResolver: () => 'dashboard-work-queue', failureMessage: 'Reply backlog controls are unavailable.' },
                 { actionId: 'dashboard.refresh-work-queue', page: 'dashboard', actionType: 'refresh', label: 'Refresh work queue', run: () => window.DashboardPage?.refreshWorkQueue?.(), confirmationNeeded: false, targetResolver: () => 'dashboard-work-queue', failureMessage: 'Dashboard work queue refresh is unavailable.' }
             ],
             getTeachingTargets: () => [

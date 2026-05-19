@@ -13,6 +13,7 @@
     var ASSISTANT_CHAT_RETURN_URL_KEY = 'eg_assistant_chat_return_url';
     var ASSISTANT_CHAT_RETURN_LABEL_KEY = 'eg_assistant_chat_return_label';
     var ASSISTANT_CHAT_REOPEN_KEY = 'eg_assistant_chat_reopen_panel';
+    var ASSISTANT_CHAT_SYNC_CHANNEL_KEY = 'eg_assistant_chat_synced_channel_id';
     var _replyTo = null;
     var _editingMsg = null;
     var _contextMsg = null;
@@ -240,7 +241,13 @@
 
     function _getUrlChannelId() {
         try {
-            return _toPositiveId(new URLSearchParams(window.location.search).get('channelId') || '');
+            var params = new URLSearchParams(window.location.search);
+            var fromUrl = _toPositiveId(params.get('channelId') || '');
+            if (fromUrl) return fromUrl;
+            if (params.get('assistantReturn') === '1') {
+                return _toPositiveId(sessionStorage.getItem(ASSISTANT_CHAT_SYNC_CHANNEL_KEY) || '');
+            }
+            return null;
         } catch (e) {
             return null;
         }
@@ -808,14 +815,18 @@
         try {
             label = sessionStorage.getItem(ASSISTANT_CHAT_RETURN_LABEL_KEY) || label;
         } catch {}
+        var syncedChannelId = null;
+        try {
+            syncedChannelId = _toPositiveId(sessionStorage.getItem(ASSISTANT_CHAT_SYNC_CHANNEL_KEY) || '');
+        } catch {}
         var bridge = document.createElement('section');
         bridge.id = 'chatAssistantReturnBridge';
         bridge.className = 'chat-assistant-return-bridge';
         bridge.innerHTML = `
             <div class="chat-assistant-return-copy">
                 <span>Відкрито з Помічника</span>
-                <strong>Мої чати</strong>
-                <small>Повернення: ${_esc(label)}</small>
+                <strong>${syncedChannelId ? 'Діалог Помічника синхронізовано' : 'Мої чати'}</strong>
+                <small>${syncedChannelId ? 'Поточна розмова вже в чаті. ' : ''}Повернення: ${_esc(label)}</small>
             </div>
             <button type="button" id="chatAssistantReturnBtn">Назад до Помічника</button>
         `;

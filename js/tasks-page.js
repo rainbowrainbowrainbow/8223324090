@@ -97,6 +97,7 @@ const PATTERN_LABELS = { daily: 'Щоденно', weekdays: 'Будні', weekly
 let currentView = 'inbox';
 let currentCategory = 'all';
 let currentSubcategory = 'all';
+let assistantTaskFilter = '';
 let allTasks = [];
 let userPermissions = null; // v20.9.16: loaded from /api/tasks/permissions
 let pageCurrentUser = null;
@@ -342,9 +343,12 @@ async function initPage() {
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
         else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
         bootStep('shell:ready');
-        const requestedView = new URLSearchParams(window.location.search).get('view');
+        const params = new URLSearchParams(window.location.search);
+        const requestedView = params.get('view');
+        assistantTaskFilter = normalizeAssistantTaskFilter(params.get('assistantFilter'));
         const allowedViews = ['inbox', 'today', 'next', 'waiting', 'team', 'my', 'week', 'board', 'routines', 'archive', 'templates'];
         if (requestedView && allowedViews.includes(requestedView)) currentView = requestedView;
+        if (assistantTaskFilter === 'overdue' && !requestedView) currentView = 'team';
         if (requestedView === 'focus' || currentView === 'focus') currentView = 'today';
 
         await _loadAssigneeDropdown();
@@ -358,6 +362,7 @@ async function initPage() {
                 document.querySelectorAll('.board-tab').forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
                 currentView = tab.dataset.view;
+                assistantTaskFilter = '';
 
                 const isTemplates = currentView === 'templates';
                 const catFilters = document.getElementById('catFilters');
@@ -727,6 +732,27 @@ function filterByCategory(tasks) {
     return filterByTaxonomy(tasks);
 }
 
+function normalizeAssistantTaskFilter(value) {
+    return String(value || '').trim().toLowerCase() === 'overdue' ? 'overdue' : '';
+}
+
+function isOverdueTask(task = {}) {
+    if (!isActiveTask(task)) return false;
+    const raw = task.deadline || task.remindAt || task.remind_at || task.date || '';
+    if (!raw) return false;
+    const dueDate = taskDueDate(task);
+    const today = getTodayStr();
+    if (dueDate && dueDate < today) return true;
+    if (dueDate && dueDate > today) return false;
+    const parsed = new Date(raw);
+    return !Number.isNaN(parsed.getTime()) && parsed.getTime() < Date.now();
+}
+
+function applyAssistantTaskFilter(tasks = []) {
+    if (assistantTaskFilter === 'overdue') return tasks.filter(isOverdueTask);
+    return tasks;
+}
+
 function getCategoryLabel(cat = currentCategory) {
     if (cat === 'all') return 'Всі категорії';
     return getCategoryConfig(cat)?.label || cat;
@@ -970,7 +996,7 @@ function renderBoard() {
 
 function renderSimpleTaskView(container, view, predicate, emptyText) {
     const baseTasks = allTasks.filter(predicate);
-    const tasks = filterByCategory(baseTasks).sort((a, b) => {
+    const tasks = applyAssistantTaskFilter(filterByCategory(baseTasks)).sort((a, b) => {
         return String(a.deadline || a.remindAt || a.date || a.created_at || '').localeCompare(String(b.deadline || b.remindAt || b.date || b.created_at || ''));
     });
     if (!tasks.length) {
@@ -989,6 +1015,7 @@ function renderTodayView(container) {
     const baseTasks = allTasks.filter(t => t.date === today || (!t.date && t.status !== 'done'));
     let tasks = baseTasks;
     tasks = filterByCategory(tasks);
+    tasks = applyAssistantTaskFilter(tasks);
 
     if (tasks.length === 0) {
         container.innerHTML = taskEmptyState('today', baseTasks.length);
@@ -1023,6 +1050,7 @@ function renderWeekView(container) {
     const baseTasks = allTasks.filter(t => t.date >= week.from && t.date <= week.to && t.status !== 'done');
     let tasks = baseTasks;
     tasks = filterByCategory(tasks);
+    tasks = applyAssistantTaskFilter(tasks);
 
     if (tasks.length === 0) {
         container.innerHTML = taskEmptyState('week', baseTasks.length);
@@ -1056,6 +1084,7 @@ function renderMyView(container) {
     const baseTasks = allTasks.filter(t => isTaskOwnedByCurrentUser(t) && t.status !== 'done');
     let tasks = baseTasks;
     tasks = filterByCategory(tasks);
+    tasks = applyAssistantTaskFilter(tasks);
 
     if (tasks.length === 0) {
         container.innerHTML = taskEmptyState('my', baseTasks.length);
@@ -1071,7 +1100,7 @@ function renderMyView(container) {
 
 function renderKanbanView(container) {
     const baseTasks = allTasks;
-    let tasks = filterByCategory(baseTasks);
+    let tasks = applyAssistantTaskFilter(filterByCategory(baseTasks));
 
     const todo = tasks.filter(t => t.status === 'todo');
     const inProgress = tasks.filter(t => t.status === 'in_progress');

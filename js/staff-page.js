@@ -355,7 +355,9 @@ function renderEmpRow(emp, dates, today) {
     const avatarColor = emp.color || (isFreelance ? '#94A3B8' : '#6366F1');
     let html = `<tr class="${isFreelance ? 'emp-freelance' : ''}">`;
     html += `<td>
-        <div class="emp-cell">
+        <div class="emp-cell" data-hr-profile="${emp.id}" role="link" tabindex="0"
+             title="Відкрити HR профіль: ${escapeHtml(emp.name)}"
+             aria-label="Відкрити HR профіль: ${escapeHtml(emp.name)}">
             <div class="emp-avatar" style="background:${escapeHtml(avatarColor)}">${isFreelance ? '~' : escapeHtml(initials)}</div>
             <div class="emp-info">
                 <span class="emp-name">${escapeHtml(emp.name)}${hrLink}</span>
@@ -492,6 +494,21 @@ function renderSchedule() {
         badge.addEventListener('click', (e) => {
             e.stopPropagation();
             openLinkModal(parseInt(badge.dataset.linkStaff));
+        });
+    });
+
+    // Employee profile click handlers: the name/avatar area opens the HR profile,
+    // while date cells keep opening shift editing and account badges keep linking accounts.
+    tbody.querySelectorAll('[data-hr-profile]').forEach(cell => {
+        const open = () => openHrProfile(parseInt(cell.dataset.hrProfile, 10));
+        cell.addEventListener('click', (e) => {
+            if (e.target.closest('a, button, input, select, textarea, [data-link-staff]')) return;
+            open();
+        });
+        cell.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            open();
         });
     });
 }
@@ -1007,6 +1024,11 @@ function renderLinkBadge(emp) {
 
 function renderHrCrosslink(emp) {
     return `<a href="/hr?employee=${emp.id}" class="hr-crosslink" title="HR профіль">👤</a>`;
+}
+
+function openHrProfile(staffId) {
+    if (!Number.isFinite(staffId)) return;
+    window.location.href = `/hr?employee=${encodeURIComponent(staffId)}`;
 }
 
 // Open link modal for a specific staff member

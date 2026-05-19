@@ -197,6 +197,10 @@ checkPage('staff.html', (doc, html) => {
     check('Confirm overlay uses modal confirm token', modalCss.includes('z-index: var(--z-modal-confirm, 30100)'));
     check('Shared ModalLayer guard exists', uiCode.includes('window.ModalLayer') && uiCode.includes('ensureTopLayer') && uiCode.includes('.sch-modal-overlay.visible'));
     check('Staff schedule opens through ModalLayer', staffCode.includes('ModalLayer.ensureTopLayer(overlay)'));
+    check('Staff employee cells open HR profiles', staffCode.includes('data-hr-profile') && staffCode.includes('openHrProfile') && staffCode.includes('/hr?employee='));
+    check('Staff employee cells keep account linking separate', staffCode.includes('[data-link-staff]') && staffCode.includes('e.target.closest'));
+    check('Staff employee cells are keyboard accessible links', staffCode.includes('role="link"') && staffCode.includes("e.key !== 'Enter'") && staffCode.includes("e.key !== ' '"));
+    check('Staff employee cells have profile affordance styling', html.includes('.emp-cell:hover') && html.includes('.emp-cell:focus-visible'));
 });
 
 checkPage('leads.html', (doc, html) => {

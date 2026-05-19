@@ -708,6 +708,10 @@ button:focus-visible, .btn:focus-visible, a:focus-visible {
 .ap-item.read { opacity: 0.6; }
 .ap-item:hover { border-color: var(--primary, #6366f1); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
 .ap-item:hover .ap-actions { opacity: 1; }
+.ap-item.sidebar-alert-target {
+    border-color: rgba(20, 184, 166, 0.8);
+    box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.2), 0 10px 28px rgba(20, 184, 166, 0.18);
+}
 
 .ap-item-main {
     display: flex; align-items: flex-start; gap: 10px;

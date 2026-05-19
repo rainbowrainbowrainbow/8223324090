@@ -37,6 +37,8 @@ const Sidebar = (() => {
         alertsCritical: 0,
         alertItems: [],
         alertCursor: 0,
+        alertCurrentId: '',
+        alertTargetHref: '',
         alertHeadline: '',
         alertMeta: '',
         alertLevel: '',
@@ -1559,6 +1561,21 @@ const Sidebar = (() => {
         return String(alert?.id || alert?.key || `${alert?.level || 'alert'}:${_sidebarAlertText(alert, index)}:${index}`);
     }
 
+    function _sidebarAlertTargetUrl(alert) {
+        if (!alert) return '';
+        if (alert.link) return String(alert.link);
+        if (alert.taskId) return `/tasks?open=${encodeURIComponent(alert.taskId)}`;
+        if (alert.bookingId) {
+            const date = alert.date || alert.bookingDate || alert.booking_date || '';
+            const dateParam = date ? `date=${encodeURIComponent(date)}&` : '';
+            return `/?${dateParam}highlight=${encodeURIComponent(alert.bookingId)}`;
+        }
+        if (alert.stockItem || String(alert.id || '').startsWith('stock_')) return '/warehouse#procurement';
+        if (alert.id === 'cold_leads') return '/sales-funnel';
+        if (alert.id === 'no_shift') return '/finance';
+        return '';
+    }
+
     function _buildSidebarAlertItems(active, unread) {
         const seen = new Set();
         return [...(unread || []), ...(active || [])].filter((alert, index) => {
@@ -1576,6 +1593,8 @@ const Sidebar = (() => {
             _commandState.alertLevel = '';
             _commandState.alertHeadline = '';
             _commandState.alertMeta = '';
+            _commandState.alertCurrentId = '';
+            _commandState.alertTargetHref = '';
             return;
         }
         _commandState.alertCursor = Math.min(Math.max(Number(_commandState.alertCursor || 0), 0), items.length - 1);
@@ -1583,6 +1602,8 @@ const Sidebar = (() => {
         _commandState.alertLevel = current?.level || '';
         _commandState.alertHeadline = _sidebarAlertText(current);
         _commandState.alertMeta = _sidebarAlertMeta(current);
+        _commandState.alertCurrentId = _sidebarAlertIdentity(current, _commandState.alertCursor);
+        _commandState.alertTargetHref = _sidebarAlertTargetUrl(current);
     }
 
     function _shiftSidebarAlertCursor(delta) {
@@ -1611,6 +1632,106 @@ const Sidebar = (() => {
             event.preventDefault();
             _shiftSidebarAlertCursor(event.key === 'ArrowLeft' ? -1 : 1);
         });
+    }
+
+    function _cssEscape(value) {
+        if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(String(value));
+        return String(value).replace(/["\\]/g, '\\$&');
+    }
+
+    function _markSidebarAlertRead(alertId) {
+        if (!alertId) return;
+        const read = _alertSetFromStorage('crm_alerts_read_v2');
+        read.add(alertId);
+        localStorage.setItem('crm_alerts_read_v2', JSON.stringify(Array.from(read)));
+    }
+
+    function _focusAlertPanelItem(alertId) {
+        if (!alertId) return;
+        const item = document.querySelector(`[data-alert-id="${_cssEscape(alertId)}"]`);
+        if (!item) return;
+        item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        item.classList.add('sidebar-alert-target');
+        setTimeout(() => item.classList.remove('sidebar-alert-target'), 2600);
+    }
+
+    function _openAlertsPanelAtAlert(alertId, event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        if (typeof _ensureAlertElements === 'function') _ensureAlertElements();
+        const panel = document.getElementById('alertsPanel');
+        if (typeof _openAlertsPanel === 'function') {
+            _openAlertsPanel();
+        } else if (typeof toggleAlertsPanel === 'function' && !panel?.classList.contains('open')) {
+            toggleAlertsPanel(event);
+        } else if (!panel?.classList.contains('open')) {
+            openAlerts(event);
+        }
+        setTimeout(() => _focusAlertPanelItem(alertId), 180);
+    }
+
+    function _navigateSidebarAlertTarget(link, alertId) {
+        if (!link) {
+            _openAlertsPanelAtAlert(alertId);
+            return;
+        }
+        if (typeof _goAlert === 'function') {
+            _goAlert(link, alertId);
+            return;
+        }
+        let targetUrl;
+        try {
+            targetUrl = new URL(link, window.location.origin);
+        } catch {
+            window.location.href = link;
+            return;
+        }
+        if (targetUrl.origin !== window.location.origin) {
+            window.location.href = targetUrl.href;
+            return;
+        }
+        if (targetUrl.pathname === window.location.pathname) {
+            const nextPath = `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
+            const currentFullPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+            if (nextPath !== currentFullPath) window.history.pushState(null, '', nextPath);
+            const openTask = targetUrl.searchParams.get('open');
+            if (openTask && typeof window.openTaskDetail === 'function') {
+                window.openTaskDetail(parseInt(openTask, 10));
+                return;
+            }
+            const highlight = targetUrl.searchParams.get('highlight');
+            if (highlight) {
+                const target = document.querySelector(`[data-booking-id="${_cssEscape(highlight)}"]`);
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    target.classList.add('highlight-pulse');
+                }
+            }
+            try {
+                window.dispatchEvent(new CustomEvent('crm:alert-navigate', { detail: { url: targetUrl, alertId } }));
+            } catch {}
+            return;
+        }
+        window.location.href = `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
+    }
+
+    function _openSidebarCurrentAlert(event) {
+        const items = Array.isArray(_commandState.alertItems) ? _commandState.alertItems : [];
+        const current = items[_commandState.alertCursor] || items[0];
+        if (!current) {
+            openAlerts(event);
+            return;
+        }
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        const alertId = _commandState.alertCurrentId || _sidebarAlertIdentity(current, _commandState.alertCursor);
+        const link = _commandState.alertTargetHref || _sidebarAlertTargetUrl(current);
+        _markSidebarAlertRead(alertId);
+        _navigateSidebarAlertTarget(link, alertId);
     }
 
     function _getSidebarHeroMeta(state = _commandState, tone = _getSidebarHeroTone(state)) {
@@ -1658,15 +1779,19 @@ const Sidebar = (() => {
         if (metaEl) metaEl.textContent = _getSidebarHeroMeta(_commandState, tone);
         actionEl.dataset.action = action.action || '';
         actionEl.dataset.href = action.href || '';
+        actionEl.dataset.alertId = _commandState.alertCurrentId || '';
+        actionEl.dataset.alertHref = _commandState.alertTargetHref || '';
         const openEl = document.getElementById('sidebarAlertHeroOpen') || actionEl;
         openEl.setAttribute('aria-label', `${_getSidebarHeroIndex(_commandState, tone)} · ${_commandState.alertHeadline || action.label}`);
+        openEl.dataset.alertId = _commandState.alertCurrentId || '';
+        openEl.dataset.alertHref = _commandState.alertTargetHref || '';
         if (openEl.dataset.primaryBound !== 'true') {
             openEl.dataset.primaryBound = 'true';
             openEl.addEventListener('click', (event) => {
                 const actionName = actionEl.dataset.action;
                 const href = actionEl.dataset.href;
                 if (actionName === 'alerts') {
-                    openAlerts(event);
+                    _openSidebarCurrentAlert(event);
                     return;
                 }
                 if (href) window.location.href = href;

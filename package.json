@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.59.2",
+  "version": "0.59.3",
   "eventGenix": {
-    "releaseLabel": "Training Shell Recovery"
+    "releaseLabel": "Sidebar Alert Exact Open"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

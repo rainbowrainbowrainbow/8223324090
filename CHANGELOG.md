@@ -4,6 +4,17 @@
 
 ---
 
+## v0.59.3 - Sidebar Alert Exact Open
+
+### Sidebar Alert Exact Open [codex]
+- **Конкретний alert відкриває свою ціль** - кнопка `Відкрити` у sidebar carousel тепер веде на поточний alert: задачу, бронювання, склад, ліди, фінанси або Omni-налаштування.
+- **Carousel більше не губить контекст** - при гортанні `1 / 12`, `2 / 12` і далі CRM зберігає `alertId` та `targetHref` саме активного слайда.
+- **Fallback без хаосу** - якщо alert не має прямого маршруту, відкривається центр сповіщень і CRM скролить до конкретного alert-а.
+- **Прочитання синхронізується** - alert, відкритий із sidebar, позначається прочитаним у `crm_alerts_read_v2`.
+- **Guardrail** - `test:ui` перевіряє current-alert routing, target href і підсвітку fallback-елемента.
+
+---
+
 ## v0.59.2 - Training Shell Recovery
 
 ### Training Shell Recovery [codex]

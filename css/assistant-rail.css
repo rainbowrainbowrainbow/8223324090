@@ -4636,3 +4636,269 @@ body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-su
         min-width: 0 !important;
     }
 }
+
+/* v0.59.4: readable animated assistant output.
+   Compact topbar overrides must not freeze the response ticker or flatten all
+   status motion. The rail keeps calm, state-specific motion while long replies
+   scroll through the available line instead of ending as unreadable ellipsis. */
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail {
+    position: relative !important;
+    isolation: isolate !important;
+    --assistant-rail-flow-opacity: 0.44;
+    --assistant-rail-flow-bg:
+        radial-gradient(120px 44px at 14% 50%, rgba(94, 234, 212, 0.18), transparent 70%),
+        linear-gradient(90deg, transparent, rgba(94, 234, 212, 0.08), transparent);
+    --assistant-rail-flow-animation: assistantRailIdleFlow 6.6s ease-in-out infinite;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail::before,
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail::after {
+    content: "" !important;
+    position: absolute !important;
+    pointer-events: none !important;
+    z-index: 0 !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail::before {
+    inset: 0 !important;
+    background: var(--assistant-rail-flow-bg) !important;
+    opacity: var(--assistant-rail-flow-opacity) !important;
+    animation: var(--assistant-rail-flow-animation) !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail::after {
+    left: 12px !important;
+    right: 12px !important;
+    bottom: 0 !important;
+    height: 2px !important;
+    border-radius: 999px !important;
+    background: linear-gradient(90deg, transparent, var(--ai-accent, #22d3a0), transparent) !important;
+    opacity: 0.64 !important;
+    animation: assistantRailStatusLine 3.8s linear infinite !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail > * {
+    position: relative !important;
+    z-index: 1 !important;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="thinking"] {
+    --assistant-rail-flow-opacity: 0.62;
+    --assistant-rail-flow-bg:
+        linear-gradient(110deg, transparent 0%, rgba(167, 139, 250, 0.18) 34%, transparent 68%),
+        radial-gradient(140px 48px at 18% 48%, rgba(167, 139, 250, 0.20), transparent 72%);
+    --assistant-rail-flow-animation: assistantRailThinkingSweep 2.2s ease-in-out infinite;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="working"] {
+    --assistant-rail-flow-opacity: 0.58;
+    --assistant-rail-flow-bg:
+        repeating-linear-gradient(90deg, rgba(34, 211, 238, 0.00) 0 18px, rgba(34, 211, 238, 0.10) 18px 20px),
+        radial-gradient(150px 50px at 14% 52%, rgba(34, 211, 238, 0.18), transparent 72%);
+    --assistant-rail-flow-animation: assistantRailWorkingScan 2.6s linear infinite;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="listening"] {
+    --assistant-rail-flow-opacity: 0.55;
+    --assistant-rail-flow-bg:
+        radial-gradient(80px 34px at 16% 52%, rgba(90, 169, 255, 0.26), transparent 76%),
+        radial-gradient(180px 48px at 22% 52%, rgba(90, 169, 255, 0.13), transparent 72%);
+    --assistant-rail-flow-animation: assistantRailListeningPulse 1.55s ease-in-out infinite;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="streaming"] {
+    --assistant-rail-flow-opacity: 0.58;
+    --assistant-rail-flow-bg:
+        linear-gradient(90deg, transparent, rgba(34, 211, 160, 0.16), transparent),
+        radial-gradient(160px 52px at 16% 50%, rgba(34, 211, 160, 0.20), transparent 74%);
+    --assistant-rail-flow-animation: assistantRailSpeakingWave 1.85s ease-in-out infinite;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="action"] {
+    --assistant-rail-flow-opacity: 0.58;
+    --assistant-rail-flow-bg:
+        radial-gradient(115px 44px at 15% 50%, rgba(245, 166, 35, 0.25), transparent 72%),
+        linear-gradient(90deg, rgba(245, 166, 35, 0.00), rgba(245, 166, 35, 0.12), rgba(245, 166, 35, 0.00));
+    --assistant-rail-flow-animation: assistantRailActionGlow 2.4s ease-in-out infinite;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="success"] {
+    --assistant-rail-flow-opacity: 0.54;
+    --assistant-rail-flow-bg:
+        radial-gradient(140px 48px at 16% 50%, rgba(34, 211, 160, 0.25), transparent 72%),
+        linear-gradient(90deg, transparent, rgba(34, 211, 160, 0.12), transparent);
+    --assistant-rail-flow-animation: assistantRailSuccessBloom 3.4s ease-in-out infinite;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="error"] {
+    --assistant-rail-flow-opacity: 0.60;
+    --assistant-rail-flow-bg:
+        radial-gradient(120px 42px at 16% 50%, rgba(239, 77, 82, 0.26), transparent 72%),
+        linear-gradient(90deg, transparent, rgba(239, 77, 82, 0.14), transparent);
+    --assistant-rail-flow-animation: assistantRailErrorSignal 1.9s steps(2, end) infinite;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-subtitles-wrap.is-ticker-wrap {
+    overflow: hidden !important;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 22px, #000 calc(100% - 44px), transparent 100%) !important;
+    mask-image: linear-gradient(to right, transparent 0, #000 22px, #000 calc(100% - 44px), transparent 100%) !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-subtitles.is-ticker,
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-subtitles.is-ticker {
+    display: inline-block !important;
+    min-width: max-content !important;
+    max-width: none !important;
+    white-space: nowrap !important;
+    -webkit-line-clamp: unset !important;
+    -webkit-box-orient: initial !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    padding-right: 72px !important;
+    will-change: transform !important;
+    animation: assistantTicker var(--assistant-ticker-duration, 18s) linear infinite !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-subtitles.is-ticker::after,
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-subtitles.is-ticker::after {
+    content: attr(data-ticker-text) !important;
+    padding-left: 72px !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-subtitles-wrap:hover .assistant-rail-subtitles.is-ticker,
+.header .header-content.assistant-rail-mounted .assistant-rail-subtitles-wrap:focus-visible .assistant-rail-subtitles.is-ticker,
+.header .header-content.assistant-rail-mounted .crm-assistant-rail:focus-within .assistant-rail-subtitles.is-ticker {
+    animation-play-state: paused !important;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="thinking"] .assistant-rail-avatar {
+    animation: assistantAvatarBreath 3.2s ease-in-out infinite, assistantThinkingTilt 1.7s ease-in-out infinite !important;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="listening"] .assistant-rail-avatar {
+    animation: assistantAvatarBreath 2.2s ease-in-out infinite, assistantRailListenNod 1.35s ease-in-out infinite !important;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="streaming"] .assistant-rail-avatar,
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-mode="speaking"] .assistant-rail-avatar {
+    animation: assistantAvatarBreath 2.4s ease-in-out infinite, assistantRailSpeakBounce 0.95s ease-in-out infinite !important;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="action"] .assistant-rail-avatar {
+    animation: assistantAvatarBreath 2.6s ease-in-out infinite, assistantRailActionPop 1.4s ease-in-out infinite !important;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="success"] .assistant-rail-avatar {
+    animation: assistantAvatarBreath 3.8s ease-in-out infinite, assistantRailSuccessTick 1.8s ease-in-out infinite !important;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="error"] .assistant-rail-avatar {
+    animation: assistantAvatarBreath 2.4s ease-in-out infinite, assistantRailErrorShake 1.1s ease-in-out infinite !important;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="thinking"] .assistant-rail-subtitles:not(.is-ticker),
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="working"] .assistant-rail-subtitles:not(.is-ticker) {
+    animation: assistantRailTextThinking 1.4s ease-in-out infinite !important;
+}
+
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-ai-state="streaming"] .assistant-rail-subtitles:not(.is-ticker),
+.header .header-content.assistant-rail-mounted .crm-assistant-rail[data-mode="speaking"] .assistant-rail-subtitles:not(.is-ticker) {
+    animation: assistantRailTextSpeaking 1.2s ease-in-out infinite !important;
+}
+
+@keyframes assistantRailIdleFlow {
+    0%, 100% { transform: translateX(-1%) scale(1); opacity: 0.32; }
+    50% { transform: translateX(1%) scale(1.02); opacity: 0.50; }
+}
+
+@keyframes assistantRailThinkingSweep {
+    0% { transform: translateX(-14%); opacity: 0.32; }
+    50% { transform: translateX(10%); opacity: 0.70; }
+    100% { transform: translateX(18%); opacity: 0.36; }
+}
+
+@keyframes assistantRailWorkingScan {
+    from { background-position: 0 0, 0 0; }
+    to { background-position: 64px 0, 0 0; }
+}
+
+@keyframes assistantRailListeningPulse {
+    0%, 100% { transform: scaleX(0.98); opacity: 0.38; }
+    50% { transform: scaleX(1.03); opacity: 0.70; }
+}
+
+@keyframes assistantRailSpeakingWave {
+    0%, 100% { transform: translateX(-3%) scaleY(1); opacity: 0.42; }
+    50% { transform: translateX(4%) scaleY(1.05); opacity: 0.72; }
+}
+
+@keyframes assistantRailActionGlow {
+    0%, 100% { transform: scale(1); opacity: 0.40; }
+    50% { transform: scale(1.04); opacity: 0.72; }
+}
+
+@keyframes assistantRailSuccessBloom {
+    0%, 100% { transform: scale(1); opacity: 0.34; }
+    35% { transform: scale(1.04); opacity: 0.74; }
+    70% { transform: scale(1.01); opacity: 0.46; }
+}
+
+@keyframes assistantRailErrorSignal {
+    0%, 100% { transform: translateX(0); opacity: 0.42; }
+    50% { transform: translateX(3px); opacity: 0.74; }
+}
+
+@keyframes assistantRailStatusLine {
+    from { background-position: -160px 0; }
+    to { background-position: 160px 0; }
+}
+
+@keyframes assistantRailListenNod {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-2px) scale(1.03); }
+}
+
+@keyframes assistantRailSpeakBounce {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-1px) scale(1.04); }
+}
+
+@keyframes assistantRailActionPop {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.06); }
+}
+
+@keyframes assistantRailSuccessTick {
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    42% { transform: rotate(-3deg) scale(1.05); }
+    64% { transform: rotate(2deg) scale(1.02); }
+}
+
+@keyframes assistantRailErrorShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-1px); }
+    40% { transform: translateX(1px); }
+    60% { transform: translateX(-1px); }
+    80% { transform: translateX(1px); }
+}
+
+@keyframes assistantRailTextThinking {
+    0%, 100% { opacity: 0.82; }
+    50% { opacity: 1; }
+}
+
+@keyframes assistantRailTextSpeaking {
+    0%, 100% { text-shadow: 0 0 0 rgba(94, 234, 212, 0); }
+    50% { text-shadow: 0 0 10px rgba(94, 234, 212, 0.22); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail::before,
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail::after,
+    .header .header-content.assistant-rail-mounted .assistant-rail-subtitles.is-ticker,
+    .header .header-content.assistant-rail-mounted .assistant-rail-avatar,
+    .header .header-content.assistant-rail-mounted .assistant-rail-subtitles {
+        animation: none !important;
+        transform: none !important;
+    }
+}

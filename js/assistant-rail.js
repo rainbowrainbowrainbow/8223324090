@@ -446,16 +446,21 @@
         }, 50);
     }
 
+    function assistantTickerThreshold(mode = state.mode) {
+        if (mode === 'speaking' || mode === 'streaming') return 70;
+        if (mode === 'action' || mode === 'success' || mode === 'error') return 76;
+        if (mode === 'thinking' || mode === 'busy' || mode === 'working') return 84;
+        return 92;
+    }
+
     function shouldSubtitleScroll(text = '', wrap = null, el = null, mode = state.mode) {
         const normalized = String(text).trim();
-        if (mode === 'error' || mode === 'listening' || mode === 'muted') return false;
+        if (!normalized || mode === 'listening' || mode === 'muted') return false;
+        if (normalized.length >= assistantTickerThreshold(mode)) return true;
         const overflows = !!(wrap && el && (
             el.scrollWidth > wrap.clientWidth + 32 ||
             el.scrollHeight > wrap.clientHeight + 8
         ));
-        if (mode === 'speaking') return normalized.length > 112 || overflows;
-        if (mode === 'thinking') return normalized.length > 160 || overflows;
-        if (normalized.length > 190) return true;
         return overflows;
     }
 
@@ -523,7 +528,12 @@
         const topStatusLabel = document.getElementById('crmAssistantTopStatusLabel');
         if (topStatus) topStatus.dataset.aiState = UI_STATES[state.mode] || 'ready';
         if (topStatusLabel) topStatusLabel.textContent = (LABELS[state.mode] || LABELS.idle).toLowerCase();
+        if (subtitlesWrap) {
+            subtitlesWrap.title = text;
+            subtitlesWrap.setAttribute('aria-label', `Відкрити відповідь Помічника у чаті: ${text}`);
+        }
         subtitlesEl.textContent = text;
+        subtitlesEl.setAttribute('aria-label', text);
         subtitlesEl.classList.remove('is-ticker', 'is-live-line');
         subtitlesEl.removeAttribute('data-ticker-text');
         subtitlesEl.style.removeProperty('--assistant-ticker-duration');

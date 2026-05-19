@@ -4,6 +4,17 @@
 
 ---
 
+## v0.59.4 - Assistant Rail Animated Output
+
+### Assistant Rail Animated Output [codex]
+- **Відповідь у верхній AI-панелі стала читабельною** - довгі репліки Помічника тепер переходять у рухомий ticker раніше, а не обрізаються трьома крапками.
+- **Різні animation states для дій** - idle, thinking, working, listening, speaking/streaming, action, success і error отримали окремі спокійні motion-патерни.
+- **Ticker не блокується compact-override правилами** - фінальний CSS contract повертає `assistantTicker` навіть після пізніх topbar overrides.
+- **Повний текст доступний без вгадування** - subtitle має `title` і `aria-label`, а клік по рядку й далі відкриває діалог Помічника.
+- **Guardrail** - `test:ui` перевіряє ticker threshold, animated state keyframes і те, що ticker запускається з `!important`.
+
+---
+
 ## v0.59.3 - Sidebar Alert Exact Open
 
 ### Sidebar Alert Exact Open [codex]

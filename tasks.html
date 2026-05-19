@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.58.14">
-    <link rel="stylesheet" href="css/layout.css?v=0.58.14">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.58.14">
-    <link rel="stylesheet" href="css/pages.css?v=0.58.14">
-    <link rel="stylesheet" href="css/modals.css?v=0.58.14">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.58.14">
-    <link rel="stylesheet" href="css/responsive.css?v=0.58.14">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.58.14">
+    <link rel="stylesheet" href="css/base.css?v=0.58.15">
+    <link rel="stylesheet" href="css/layout.css?v=0.58.15">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.58.15">
+    <link rel="stylesheet" href="css/pages.css?v=0.58.15">
+    <link rel="stylesheet" href="css/modals.css?v=0.58.15">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.58.15">
+    <link rel="stylesheet" href="css/responsive.css?v=0.58.15">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.58.15">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -213,13 +213,14 @@
         }
         .task-composer-primary {
             display: grid;
-            grid-template-columns: minmax(260px, 1fr) auto minmax(170px, 220px) auto auto;
+            grid-template-columns: minmax(260px, 1fr) minmax(160px, 210px) minmax(170px, 220px) auto auto;
             gap: 8px;
             align-items: stretch;
         }
         .task-composer-title-wrap {
             position: relative;
             min-width: 0;
+            grid-column: 1;
         }
         .task-composer-kicker {
             position: absolute;
@@ -268,6 +269,7 @@
             border: 1px solid rgba(20,184,166,0.2);
             border-radius: 14px;
             background: rgba(15,23,42,0.04);
+            grid-column: 2;
         }
         .task-owner-toggle button,
         .task-composer-secondary,
@@ -292,9 +294,17 @@
             color: #fff;
             box-shadow: 0 10px 20px rgba(20,184,166,0.22);
         }
-        .task-assignee-select[hidden],
         .task-composer-details[hidden] { display: none !important; }
+        .task-assignee-select {
+            grid-column: 3;
+        }
+        .task-assignee-select[hidden] {
+            display: block !important;
+            visibility: hidden;
+            pointer-events: none;
+        }
         .task-composer-secondary {
+            grid-column: 4;
             padding: 0 14px;
             color: #0f766e;
             border: 1px solid rgba(20,184,166,0.24);
@@ -305,6 +315,7 @@
             color: #115e59;
         }
         .task-add-submit {
+            grid-column: 5;
             padding: 0 18px;
             background: linear-gradient(135deg, #10b981, #0d9488);
             color: #fff;
@@ -423,6 +434,12 @@
             .quick-add:not(.task-composer) input { flex: 1 1 100%; }
             .task-composer-primary,
             .task-composer-details { grid-template-columns: 1fr; }
+            .task-composer-title-wrap,
+            .task-owner-toggle,
+            .task-assignee-select,
+            .task-composer-secondary,
+            .task-add-submit { grid-column: 1; }
+            .task-assignee-select[hidden] { display: none !important; }
             .task-owner-toggle { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .board-tab { padding: 6px 10px; font-size: 12px; }
             .cat-chip { padding: 5px 10px; font-size: 11px; }
@@ -555,7 +572,7 @@
                         <button type="button" class="active" data-task-assignee-mode="self" aria-pressed="true">Собі</button>
                         <button type="button" data-task-assignee-mode="team" aria-pressed="false">Команді</button>
                     </div>
-                    <select id="taskAssignedTo" class="task-assignee-select" title="Відповідальний" aria-label="Відповідальний" hidden>
+                    <select id="taskAssignedTo" class="task-assignee-select" title="Відповідальний" aria-label="Відповідальний" hidden disabled aria-hidden="true" tabindex="-1">
                         <option value="">Оберіть людину</option>
                     </select>
                     <button type="button" id="taskDetailsToggle" class="task-composer-secondary" aria-expanded="false" aria-controls="taskComposerDetails">Деталі</button>
@@ -699,13 +716,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.58.14"></script>
-    <script src="js/notification.js?v=0.58.14"></script>
-    <script src="js/api.js?v=0.58.14"></script>
-    <script src="js/auth.js?v=0.58.14"></script>
-    <script src="js/components/sidebar.js?v=0.58.14"></script>
+    <script src="js/config.js?v=0.58.15"></script>
+    <script src="js/notification.js?v=0.58.15"></script>
+    <script src="js/api.js?v=0.58.15"></script>
+    <script src="js/auth.js?v=0.58.15"></script>
+    <script src="js/components/sidebar.js?v=0.58.15"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/tasks-page.js?v=0.58.14"></script>
-    <script src="js/alerts.js?v=0.58.14"></script><script src="js/ui.js?v=0.58.14"></script>
+    <script src="js/tasks-page.js?v=0.58.15"></script>
+    <script src="js/alerts.js?v=0.58.15"></script><script src="js/ui.js?v=0.58.15"></script>
 </body>
 </html>

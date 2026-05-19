@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.58.14">
-    <link rel="stylesheet" href="css/layout.css?v=0.58.14">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.58.14">
-    <link rel="stylesheet" href="css/pages.css?v=0.58.14">
-    <link rel="stylesheet" href="css/modals.css?v=0.58.14">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.58.14">
-    <link rel="stylesheet" href="css/responsive.css?v=0.58.14">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.58.14">
+    <link rel="stylesheet" href="css/base.css?v=0.58.15">
+    <link rel="stylesheet" href="css/layout.css?v=0.58.15">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.58.15">
+    <link rel="stylesheet" href="css/pages.css?v=0.58.15">
+    <link rel="stylesheet" href="css/modals.css?v=0.58.15">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.58.15">
+    <link rel="stylesheet" href="css/responsive.css?v=0.58.15">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.58.15">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -132,6 +132,180 @@
 
         .fin-filter-date {
             width: 140px;
+        }
+
+        /* v0.58.15: dedicated currency rates window in Finance. */
+        #currencyRatesModal .modal-content {
+            max-width: 620px;
+            padding: 0;
+            overflow: hidden;
+            border-radius: 22px;
+            border: 1px solid rgba(16,185,129,0.22);
+        }
+
+        .currency-rates-window {
+            display: grid;
+            gap: 16px;
+            padding: 22px;
+            background:
+                radial-gradient(circle at 0% 0%, rgba(16,185,129,0.16), transparent 34%),
+                linear-gradient(135deg, rgba(255,255,255,0.98), rgba(240,253,250,0.94));
+        }
+
+        .currency-rates-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 14px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid rgba(15,23,42,0.08);
+        }
+
+        .currency-rates-kicker {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 6px;
+            color: #0F766E;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .currency-rates-head h3 {
+            position: static;
+            margin: 0;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: var(--gray-900);
+            font-size: 26px;
+            font-weight: 900;
+            line-height: 1.05;
+        }
+
+        .currency-rates-meta {
+            margin-top: 6px;
+            color: var(--gray-500);
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .currency-rates-refresh {
+            min-height: 40px;
+            padding: 0 14px;
+            border: 1px solid rgba(16,185,129,0.24);
+            border-radius: 14px;
+            background: rgba(16,185,129,0.10);
+            color: #047857;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .currency-rates-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .currency-rate-card {
+            min-width: 0;
+            padding: 14px 12px;
+            border: 1px solid rgba(15,23,42,0.08);
+            border-radius: 16px;
+            background: rgba(255,255,255,0.76);
+            box-shadow: 0 12px 28px rgba(15,23,42,0.06);
+        }
+
+        .currency-rate-code {
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+        }
+
+        .currency-rate-value {
+            margin-top: 7px;
+            color: var(--gray-900);
+            font-size: 22px;
+            font-weight: 950;
+            line-height: 1;
+        }
+
+        .currency-rate-caption {
+            margin-top: 5px;
+            color: var(--gray-500);
+            font-size: 11px;
+            font-weight: 750;
+        }
+
+        .currency-rates-note {
+            padding: 12px 14px;
+            border: 1px solid rgba(16,185,129,0.18);
+            border-radius: 16px;
+            background: rgba(16,185,129,0.08);
+            color: var(--gray-600);
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .currency-rates-error {
+            padding: 14px;
+            border-radius: 14px;
+            background: rgba(239,68,68,0.10);
+            color: #B91C1C;
+            font-weight: 800;
+        }
+
+        .dark-mode #currencyRatesModal .modal-content,
+        [data-theme="dark"] #currencyRatesModal .modal-content {
+            background: #111827;
+            border-color: rgba(45,212,191,0.24);
+        }
+
+        .dark-mode .currency-rates-window,
+        [data-theme="dark"] .currency-rates-window {
+            background:
+                radial-gradient(circle at 0% 0%, rgba(45,212,191,0.12), transparent 36%),
+                linear-gradient(135deg, rgba(15,23,42,0.98), rgba(17,24,39,0.96));
+        }
+
+        .dark-mode .currency-rates-head,
+        [data-theme="dark"] .currency-rates-head {
+            border-bottom-color: rgba(148,163,184,0.14);
+        }
+
+        .dark-mode .currency-rates-head h3,
+        .dark-mode .currency-rate-value,
+        [data-theme="dark"] .currency-rates-head h3,
+        [data-theme="dark"] .currency-rate-value {
+            color: #F8FAFC;
+        }
+
+        .dark-mode .currency-rate-card,
+        [data-theme="dark"] .currency-rate-card {
+            background: rgba(15,23,42,0.72);
+            border-color: rgba(148,163,184,0.16);
+            box-shadow: 0 16px 34px rgba(0,0,0,0.18);
+        }
+
+        .dark-mode .currency-rates-note,
+        [data-theme="dark"] .currency-rates-note {
+            color: #CBD5E1;
+            background: rgba(20,184,166,0.08);
+            border-color: rgba(45,212,191,0.18);
+        }
+
+        @media (max-width: 720px) {
+            .currency-rates-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .currency-rates-head {
+                align-items: stretch;
+                flex-direction: column;
+            }
         }
 
         /* Table */
@@ -918,6 +1092,7 @@
                 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
                     <a href="/reports" class="btn-page-secondary" style="text-decoration:none">📋 Звіти</a>
                     <a href="/center" class="btn-page-secondary" style="text-decoration:none">💲 Центр цін</a>
+                    <button type="button" id="openCurrencyRatesBtn" class="btn-page-secondary">Курси валют</button>
                     <button type="button" id="exportXlsxBtn" class="btn-page-secondary" title="Excel">Excel</button>
                     <button type="button" id="exportCsvBtn" class="btn-page-secondary">CSV</button>
                     <button type="button" id="addTransactionBtn" class="btn-page-primary" style="display:none">+ Дохід</button>
@@ -1304,6 +1479,25 @@
         </div>
     </div>
 
+    <!-- v0.58.15: Currency rates moved from sidebar into Finance modal -->
+    <div id="currencyRatesModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="currencyRatesTitle">
+        <div class="modal-content" role="document">
+            <span class="modal-close" aria-label="Закрити">&times;</span>
+            <section class="currency-rates-window">
+                <div class="currency-rates-head">
+                    <div>
+                        <span class="currency-rates-kicker">UAH base</span>
+                        <h3 id="currencyRatesTitle">Курси валют</h3>
+                        <div id="currencyRatesMeta" class="currency-rates-meta">Оновлюю курси...</div>
+                    </div>
+                    <button type="button" id="refreshCurrencyRatesBtn" class="currency-rates-refresh">Оновити</button>
+                </div>
+                <div id="currencyRatesGrid" class="currency-rates-grid" aria-live="polite"></div>
+                <div class="currency-rates-note">Це окреме фінансове вікно: sidebar показує тільки короткий USD-сигнал, якщо він увімкнений у швидких налаштуваннях.</div>
+            </section>
+        </div>
+    </div>
+
     <div id="notification" class="notification hidden">
         <span id="notificationText"></span>
     </div>
@@ -1313,13 +1507,13 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/ui.js?v=0.58.14"></script>
-    <script src="js/config.js?v=0.58.14"></script>
-    <script src="js/notification.js?v=0.58.14"></script>
-    <script src="js/api.js?v=0.58.14"></script>
-    <script src="js/auth.js?v=0.58.14"></script>
-    <script src="js/components/sidebar.js?v=0.58.14"></script>
+    <script src="js/ui.js?v=0.58.15"></script>
+    <script src="js/config.js?v=0.58.15"></script>
+    <script src="js/notification.js?v=0.58.15"></script>
+    <script src="js/api.js?v=0.58.15"></script>
+    <script src="js/auth.js?v=0.58.15"></script>
+    <script src="js/components/sidebar.js?v=0.58.15"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/finance-page.js?v=0.58.14"></script><script src="js/alerts.js?v=0.58.14"></script>
+    <script src="js/finance-page.js?v=0.58.15"></script><script src="js/alerts.js?v=0.58.15"></script>
 </body>
 </html>

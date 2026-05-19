@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.58.14",
+  "version": "0.58.15",
   "eventGenix": {
-    "releaseLabel": "Animator Telegram Target Restore"
+    "releaseLabel": "Finance Currency Rates Panel"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

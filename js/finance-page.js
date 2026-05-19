@@ -1625,6 +1625,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // v30.6: Currency converter
     document.getElementById('convertCurrencyBtn')?.addEventListener('click', convertCurrency);
+    document.getElementById('openCurrencyRatesBtn')?.addEventListener('click', () => openCurrencyRatesModal({ updateUrl: true }));
+    document.getElementById('refreshCurrencyRatesBtn')?.addEventListener('click', () => loadCurrencyRatesModal({ force: true }));
+    window.addEventListener('finance:open-currency-rates', () => openCurrencyRatesModal({ updateUrl: true }));
+    if (new URLSearchParams(window.location.search).get('currency') === 'rates' || window.location.hash === '#currency-rates') {
+        setTimeout(() => openCurrencyRatesModal({ updateUrl: false }), 0);
+    }
 });
 
 // ==========================================
@@ -2026,6 +2032,68 @@ async function loadAdvancedDashboard() {
 // ==========================================
 // v30.6: CURRENCY CONVERTER
 // ==========================================
+
+const FINANCE_CURRENCY_ORDER = ['USD', 'EUR', 'GBP', 'PLN', 'CZK'];
+
+function formatCurrencyRate(value) {
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount <= 0) return 'н/д';
+    return amount.toLocaleString('uk-UA', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
+function formatCurrencyUpdatedAt(value) {
+    if (!value) return 'оновлення не вказано';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value);
+    return parsed.toLocaleString('uk-UA', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+async function loadCurrencyRatesModal() {
+    const grid = document.getElementById('currencyRatesGrid');
+    const meta = document.getElementById('currencyRatesMeta');
+    if (grid) grid.innerHTML = '<div class="currency-rates-note" style="grid-column:1/-1">Завантажую курси...</div>';
+    if (meta) meta.textContent = 'Оновлюю курси...';
+    try {
+        const data = await apiRequest('GET', '/api/finance/currency/rates');
+        const rates = data?.rates || {};
+        const cards = FINANCE_CURRENCY_ORDER.map(code => {
+            const value = rates[code];
+            return `<article class="currency-rate-card">
+                <div class="currency-rate-code">${escapeHtml(code)}</div>
+                <div class="currency-rate-value">₴${escapeHtml(formatCurrencyRate(value))}</div>
+                <div class="currency-rate-caption">за 1 ${escapeHtml(code)}</div>
+            </article>`;
+        }).join('');
+        if (grid) grid.innerHTML = cards || '<div class="currency-rates-error" style="grid-column:1/-1">Курси тимчасово недоступні.</div>';
+        if (meta) meta.textContent = `База: ${escapeHtml(data?.base || 'UAH')} · ${formatCurrencyUpdatedAt(data?.updatedAt || data?.date)}`;
+    } catch (err) {
+        if (grid) grid.innerHTML = `<div class="currency-rates-error" style="grid-column:1/-1">${escapeHtml(err.message || 'Не вдалося завантажити курси валют')}</div>`;
+        if (meta) meta.textContent = 'Курси тимчасово недоступні';
+    }
+}
+
+function openCurrencyRatesModal(options = {}) {
+    const modal = document.getElementById('currencyRatesModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    if (options.updateUrl) {
+        try {
+            const url = new URL(window.location.href);
+            url.searchParams.set('currency', 'rates');
+            window.history.replaceState({}, '', url.toString());
+        } catch {}
+    }
+    loadCurrencyRatesModal();
+}
 
 async function convertCurrency() {
     const amount = parseFloat(document.getElementById('currencyAmount')?.value);

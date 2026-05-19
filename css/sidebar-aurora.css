@@ -3851,6 +3851,83 @@ body.dark-mode .sidebar-nav,
   color: rgba(148,163,184,0.78) !important;
 }
 
+/* v0.58.15: sidebar currency chip is optional; full rates live in Finance. */
+.sidebar-extra-preference {
+  position: relative !important;
+  display: grid !important;
+  grid-template-columns: 20px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 9px !important;
+  min-height: 44px !important;
+  margin-bottom: 10px !important;
+  padding: 8px 9px !important;
+  border: 1px solid rgba(34,211,160,0.18) !important;
+  border-radius: 12px !important;
+  background: rgba(20,184,166,0.075) !important;
+  cursor: pointer !important;
+}
+
+.sidebar-extra-preference input {
+  position: absolute !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.sidebar-extra-preference-mark {
+  width: 20px !important;
+  height: 20px !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  border: 1.5px solid rgba(148,163,184,0.44) !important;
+  border-radius: 999px !important;
+  background: rgba(15,23,42,0.72) !important;
+}
+
+.sidebar-extra-preference input:checked + .sidebar-extra-preference-mark {
+  border-color: rgba(34,211,160,0.78) !important;
+  background: radial-gradient(circle at 50% 50%, #7dd3fc 0 28%, rgba(34,211,160,0.94) 30% 100%) !important;
+  box-shadow: 0 0 0 3px rgba(34,211,160,0.12) !important;
+}
+
+.sidebar-extra-preference input:focus-visible + .sidebar-extra-preference-mark {
+  outline: 2px solid rgba(34,211,160,0.42) !important;
+  outline-offset: 2px !important;
+}
+
+.sidebar-extra-preference-copy {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 2px !important;
+}
+
+.sidebar-extra-preference-copy b {
+  color: var(--sb-design-text) !important;
+  font-size: 12.5px !important;
+  font-weight: 850 !important;
+  line-height: 1.15 !important;
+}
+
+.sidebar-extra-preference-copy small {
+  color: var(--sb-design-mute) !important;
+  font-size: 10px !important;
+  font-weight: 750 !important;
+  line-height: 1.2 !important;
+}
+
+body:not(.dark-mode) .sidebar-extra-preference {
+  background: rgba(240,253,250,0.78) !important;
+  border-color: rgba(15,118,110,0.16) !important;
+}
+
+body:not(.dark-mode) .sidebar-extra-preference-mark {
+  background: #F8FAFC !important;
+  border-color: rgba(100,116,139,0.34) !important;
+}
+
+body:not(.dark-mode) .sidebar-extra-preference-copy b {
+  color: #0F172A !important;
+}
+
 /* v0.55.41: Additional editor is a simple CRM page checklist. */
 .sidebar-extra-picker {
   display: grid !important;

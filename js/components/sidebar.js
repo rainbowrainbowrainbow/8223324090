@@ -22,6 +22,7 @@ const Sidebar = (() => {
     const EXTRA_MENU_STORAGE_KEY = 'eg_sidebar_extra_menu_items_v1';
     const EXTRA_MENU_EDIT_STORAGE_KEY = 'eg_sidebar_extra_menu_edit_v1';
     const EXTRA_MENU_COLLAPSED_STORAGE_KEY = 'eg_sidebar_extra_menu_collapsed_v1';
+    const SIDEBAR_CURRENCY_SIGNAL_STORAGE_KEY = 'eg_sidebar_currency_signal_enabled_v1';
     const EXTRA_MENU_DEFAULT_DESCRIPTION = 'вкладка CRM';
     const EXTRA_MENU_CUSTOM_DESCRIPTION = 'користувацька сторінка';
     const EXTRA_MENU_ICON_FALLBACK = 'crm';
@@ -495,6 +496,22 @@ const Sidebar = (() => {
         } catch {}
     }
 
+    function _isSidebarCurrencySignalEnabled() {
+        try {
+            return localStorage.getItem(SIDEBAR_CURRENCY_SIGNAL_STORAGE_KEY) !== 'false';
+        } catch {
+            return true;
+        }
+    }
+
+    function _setSidebarCurrencySignalEnabled(enabled) {
+        try {
+            localStorage.setItem(SIDEBAR_CURRENCY_SIGNAL_STORAGE_KEY, enabled ? 'true' : 'false');
+        } catch {}
+        _state.identityMetaLoadedAt = 0;
+        _state.identityMetaDetails.currency = null;
+    }
+
     function _insertSidebarSectionAfter(sidebar, section, anchor) {
         if (!sidebar || !section || !anchor || anchor.parentElement !== sidebar) return;
         if (section.previousElementSibling === anchor) return;
@@ -566,6 +583,7 @@ const Sidebar = (() => {
     function _renderExtraMenuEditor(selectableItems, selectedHrefs) {
         const selected = new Set(selectedHrefs);
         const selectedCount = selectableItems.filter(item => selected.has(item.href)).length;
+        const currencySignalEnabled = _isSidebarCurrencySignalEnabled();
         const pickerHtml = selectableItems.length ? selectableItems.map(item => {
             const checked = selected.has(item.href);
             const meta = item.description || item.href;
@@ -587,6 +605,14 @@ const Sidebar = (() => {
             <div class="sidebar-extra-editor-tools">
                 <input type="search" class="sidebar-extra-search" data-sidebar-extra-search placeholder="Знайти сторінку CRM..." aria-label="Знайти сторінку швидкого доступу">
             </div>
+            <label class="sidebar-extra-preference">
+                <input type="checkbox" data-sidebar-currency-signal${currencySignalEnabled ? ' checked' : ''}>
+                <span class="sidebar-extra-preference-mark" aria-hidden="true"></span>
+                <span class="sidebar-extra-preference-copy">
+                    <b>Показувати USD у профілі</b>
+                    <small>Повне вікно курсів відкривається у фінансах.</small>
+                </span>
+            </label>
             <div class="sidebar-extra-picker" data-sidebar-extra-picker>
                 ${pickerHtml}
             </div>
@@ -661,6 +687,15 @@ const Sidebar = (() => {
         if (search && search.dataset.sidebarExtraSearchBound !== 'true') {
             search.dataset.sidebarExtraSearchBound = 'true';
             search.addEventListener('input', () => _applyExtraMenuEditorFilter(extras));
+        }
+
+        const currencySignal = extras.querySelector('[data-sidebar-currency-signal]');
+        if (currencySignal && currencySignal.dataset.sidebarCurrencySignalBound !== 'true') {
+            currencySignal.dataset.sidebarCurrencySignalBound = 'true';
+            currencySignal.addEventListener('change', () => {
+                _setSidebarCurrencySignalEnabled(currencySignal.checked);
+                _ensureCommandDeck();
+            });
         }
 
         extras.querySelectorAll('[data-sidebar-extra-page]').forEach((input) => {
@@ -1056,6 +1091,7 @@ const Sidebar = (() => {
         if (!links) return;
 
         let deck = document.getElementById('sidebarCommandDeck');
+        const currencySignalEnabled = _isSidebarCurrencySignalEnabled();
         if (!deck) {
             deck = document.createElement('div');
             deck.id = 'sidebarCommandDeck';
@@ -1081,7 +1117,7 @@ const Sidebar = (() => {
                                 <span class="sidebar-identity-meta-k">Час</span>
                                 <span class="sidebar-identity-meta-v" id="sidebarIdentityTime">--:--</span>
                             </button>
-                            <button type="button" class="sidebar-identity-meta-item" data-sidebar-meta="currency" data-sidebar-stop-profile="true" aria-label="Курси валют">
+                            <button type="button" class="sidebar-identity-meta-item" data-sidebar-meta="currency" data-sidebar-stop-profile="true" aria-label="Курси валют у фінансах" title="Відкрити курси валют у фінансах"${currencySignalEnabled ? '' : ' hidden'}>
                                 <span class="sidebar-identity-meta-k">USD</span>
                                 <span class="sidebar-identity-meta-v" id="sidebarIdentityCurrency">--.--</span>
                             </button>
@@ -1300,6 +1336,10 @@ const Sidebar = (() => {
     }
 
     async function _loadSidebarIdentityMeta(force = false) {
+        if (!_isSidebarCurrencySignalEnabled()) {
+            _state.identityMetaDetails.currency = null;
+            return;
+        }
         const now = Date.now();
         if (_state.identityMetaLoading) return;
         if (!force && _state.identityMetaLoadedAt && now - _state.identityMetaLoadedAt < 10 * 60 * 1000) return;
@@ -1332,11 +1372,13 @@ const Sidebar = (() => {
 
     function _ensureSidebarIdentityMeta() {
         _updateSidebarIdentityTime();
+        const currencyItem = document.querySelector('.sidebar-identity-meta-item[data-sidebar-meta="currency"]');
+        if (currencyItem) currencyItem.hidden = !_isSidebarCurrencySignalEnabled();
         _bindSidebarIdentityMetaInteractions();
         if (!_state.identityMetaTimer) {
             _state.identityMetaTimer = window.setInterval(_updateSidebarIdentityTime, 30 * 1000);
         }
-        _loadSidebarIdentityMeta();
+        if (_isSidebarCurrencySignalEnabled()) _loadSidebarIdentityMeta();
     }
 
     function _sidebarCurrencyRows(details) {
@@ -1361,7 +1403,7 @@ const Sidebar = (() => {
                     ${rows || '<span class="sidebar-identity-detail-muted">Курси тимчасово недоступні.</span>'}
                     <span class="sidebar-identity-detail-muted">База: ${_escHtml(details.base || 'UAH')}${details.date ? ` · ${_escHtml(details.date)}` : ''}</span>
                 </div>
-                <a class="sidebar-identity-detail-link" href="/finance">Відкрити фінанси ›</a>`;
+                <a class="sidebar-identity-detail-link" href="/finance?currency=rates">Відкрити фінанси ›</a>`;
         }
         return `
             <div class="sidebar-identity-detail-head">
@@ -1375,6 +1417,10 @@ const Sidebar = (() => {
     }
 
     function _showSidebarIdentityDetail(type) {
+        if (type === 'currency') {
+            _openFinanceCurrencyRates();
+            return;
+        }
         const deck = document.getElementById('sidebarCommandDeck');
         if (!deck) return;
         let panel = document.getElementById('sidebarIdentityDetailPanel');
@@ -1403,6 +1449,20 @@ const Sidebar = (() => {
                 _showSidebarIdentityDetail(item.dataset.sidebarMeta || 'time');
             });
         });
+    }
+
+    function _openFinanceCurrencyRates() {
+        const normalizedPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+        if (normalizedPath === '/finance') {
+            try {
+                const url = new URL(window.location.href);
+                url.searchParams.set('currency', 'rates');
+                window.history.replaceState({}, '', url.toString());
+            } catch {}
+            window.dispatchEvent(new CustomEvent('finance:open-currency-rates', { detail: { source: 'sidebar' } }));
+            return;
+        }
+        window.location.href = '/finance?currency=rates';
     }
 
     function _setCommandDescription(widget, text) {

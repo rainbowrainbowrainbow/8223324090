@@ -1478,8 +1478,14 @@ function setTaskAssigneeMode(mode = 'self') {
         const self = _ensureCurrentUserInAssignees();
         if (self) select.value = String(self.id);
         select.hidden = true;
+        select.disabled = true;
+        select.setAttribute('aria-hidden', 'true');
+        select.tabIndex = -1;
     } else {
         select.hidden = false;
+        select.disabled = false;
+        select.setAttribute('aria-hidden', 'false');
+        select.removeAttribute('tabindex');
         if (select.value && String(select.value) === String(currentUserId() || '')) select.value = '';
     }
 }

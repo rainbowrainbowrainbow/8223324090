@@ -33,6 +33,8 @@ const {
     isActiveWaitingReply
 } = require('../services/replySla');
 
+function getKleshnya() { return require('../services/kleshnya'); }
+
 const log = createLogger('Leads');
 
 const LEAD_ASSIGNEE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'marketer', 'admin'];
@@ -1480,12 +1482,19 @@ async function onDepositReceived(lead, user) {
 
     for (const task of tasks) {
         try {
-            await pool.query(`
-                INSERT INTO tasks (title, description, category, date, priority, status, created_by)
-                VALUES ($1, $2, $3, $4, $5, 'pending', $6)
-            `, [task.title, task.description, task.category || null,
-                task.due_date || null, task.priority || 'medium',
-                user?.id || null]);
+            await getKleshnya().createTask({
+                title: task.title,
+                description: task.description,
+                category: task.category || 'sales',
+                date: task.due_date || null,
+                priority: task.priority || 'normal',
+                created_by: user?.username || user?.id || 'lead_deposit',
+                source_type: 'lead',
+                source_id: String(lead.id),
+                source_entity_type: 'lead',
+                source_entity_id: String(lead.id),
+                duplicateMode: 'skip'
+            });
         } catch (e) {
             log.error(`Failed to create task: ${task.title}`, e);
         }

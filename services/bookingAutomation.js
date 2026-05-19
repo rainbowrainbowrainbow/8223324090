@@ -15,6 +15,10 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Automation');
 
+function getKleshnya() {
+    return require('./kleshnya');
+}
+
 async function clearContractorInlineKeyboard(chatId, messageId) {
     if (!chatId || !messageId) return;
     try {
@@ -123,19 +127,18 @@ async function executeCreateTask(action, booking, rule) {
     const taskDate = calculateTaskDate(booking.date, rule.days_before);
     const bookingId = booking.id || null;
 
-    await pool.query(
-        `INSERT INTO tasks (title, date, status, priority, category, created_by, type, source_type, source_id)
-         VALUES ($1, $2, 'todo', $3, $4, $5, 'auto_complete', $6, $7)`,
-        [
-            title,
-            taskDate,
-            action.priority || 'normal',
-            action.category || 'purchase',
-            booking.createdBy || booking.created_by || 'system',
-            bookingId ? 'booking' : 'manual',
-            bookingId ? String(bookingId) : null
-        ]
-    );
+    await getKleshnya().createTask({
+        title,
+        date: taskDate,
+        status: 'todo',
+        priority: action.priority || 'normal',
+        category: action.category || 'purchase',
+        created_by: booking.createdBy || booking.created_by || 'system',
+        type: 'auto_complete',
+        source_type: bookingId ? 'booking' : 'manual',
+        source_id: bookingId ? String(bookingId) : null,
+        duplicateMode: 'skip'
+    });
     log.info(`Auto-task created: "${title}" for ${taskDate} (rule: ${rule.name})`);
 }
 

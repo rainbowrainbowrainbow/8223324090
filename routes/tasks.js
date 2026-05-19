@@ -24,6 +24,12 @@ const {
 const { listTaskActionHistory } = require('../services/taskActionHistory');
 const { deriveTaskIntelligence } = require('../services/taskIntelligence');
 const {
+    TaskDuplicateError,
+    canForceTaskDuplicate,
+    duplicateSignatureSql,
+    findActiveDuplicateTask
+} = require('../services/taskDuplicatePolicy');
+const {
     VALID_TASK_CATEGORIES,
     VALID_TASK_SUBCATEGORIES,
     ORDER_OPERATION_PRESETS,
@@ -316,6 +322,10 @@ function normalizeTaskPayload(row) {
         remindAt: row.remind_at || null,
         snoozedUntil: row.snoozed_until || null,
         nextNotificationAt: row.next_notification_at || null,
+        completedAt: row.completed_at || null,
+        archivedAt: row.archived_at || null,
+        archiveReason: row.archive_reason || null,
+        duplicateOfTaskId: row.duplicate_of_task_id || null,
         eveningReviewDate: row.evening_review_date || null,
         relatedEntityType: row.related_entity_type || null,
         relatedEntityId: row.related_entity_id || null,
@@ -370,7 +380,8 @@ router.get('/', async (req, res) => {
             task_mode, taskMode, task_kind, taskKind, visibility: visibilityFilter, workflow_state, workflowState,
             date_from, date_to, page, limit: lim, mine, private: privateOnly, focus,
             related_entity_type, relatedEntityType, related_entity_id, relatedEntityId, source_module, sourceModule,
-            source_entity_type, sourceEntityType, source_entity_id, sourceEntityId, pack_id, packId, pack_status, packStatus
+            source_entity_type, sourceEntityType, source_entity_id, sourceEntityId, pack_id, packId, pack_status, packStatus,
+            view
         } = req.query;
         const conditions = [];
         const params = [];
@@ -397,6 +408,10 @@ router.get('/', async (req, res) => {
         if (date_to && /^\d{4}-\d{2}-\d{2}$/.test(date_to)) {
             conditions.push(`t.date <= $${idx++}`);
             params.push(date_to);
+        }
+        if (view === 'done_today') {
+            conditions.push(`COALESCE(t.status, 'todo') = 'done'`);
+            conditions.push(`DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = CURRENT_DATE`);
         }
         if (assigned_to) {
             if (/^\d+$/.test(String(assigned_to))) {
@@ -524,6 +539,8 @@ router.get('/', async (req, res) => {
         // Pagination (optional — backwards compatible: omit page/limit to get all)
         const limit = Math.min(parseInt(lim) || 500, 500);
         const offset = ((parseInt(page) || 1) - 1) * limit;
+        const orderViewParam = idx++;
+        params.push(view || '');
         params.push(limit, offset);
 
         const result = await pool.query(
@@ -554,6 +571,7 @@ router.get('/', async (req, res) => {
              ) dep ON dep.task_id = t.id
              ${where}
              ORDER BY
+                CASE WHEN $${orderViewParam} = 'done_today' THEN COALESCE(t.completed_at, t.updated_at, t.created_at) END DESC NULLS LAST,
                 CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END,
                 CASE t.status WHEN 'in_progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 END,
                 t.created_at DESC
@@ -591,6 +609,128 @@ router.get('/owners', async (req, res) => {
         });
     } catch (err) {
         log.error('Task owners lookup error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/tasks/dedup-report — active duplicate groups without mutating data
+router.get('/dedup-report', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const signature = duplicateSignatureSql('t');
+        const result = await pool.query(
+            `WITH active AS (
+                SELECT t.*, ${signature} AS duplicate_signature
+                FROM tasks t
+                WHERE COALESCE(t.status, 'todo') NOT IN ('done','archived','cancelled')
+                  AND COALESCE(trim(t.title), '') <> ''
+             ),
+             ranked AS (
+                SELECT *,
+                       MIN(id) OVER (PARTITION BY duplicate_signature) AS canonical_id,
+                       ROW_NUMBER() OVER (PARTITION BY duplicate_signature ORDER BY id ASC) AS rn,
+                       COUNT(*) OVER (PARTITION BY duplicate_signature) AS group_count
+                FROM active
+             )
+             SELECT duplicate_signature,
+                    MIN(canonical_id) AS canonical_id,
+                    COUNT(*)::int AS total,
+                    (COUNT(*) - 1)::int AS duplicate_count,
+                    MIN(title) AS title,
+                    json_agg(json_build_object(
+                        'id', id,
+                        'title', title,
+                        'status', status,
+                        'date', date,
+                        'ownerUserId', owner_user_id,
+                        'sourceType', source_type,
+                        'sourceId', source_id,
+                        'createdAt', created_at
+                    ) ORDER BY id ASC) AS tasks
+             FROM ranked
+             WHERE group_count > 1
+             GROUP BY duplicate_signature
+             ORDER BY duplicate_count DESC, canonical_id ASC
+             LIMIT 100`
+        );
+        res.json({
+            success: true,
+            groups: result.rows,
+            meta: {
+                policy: 'active signature: title + day + category + subcategory + owner + source/template/entity/pack/afisha',
+                cleanup: 'archives duplicates, no DELETE'
+            }
+        });
+    } catch (err) {
+        log.error('Dedup report error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/tasks/dedup-cleanup — archive duplicate active records without deleting history
+router.post('/dedup-cleanup', requireRole('admin'), async (req, res) => {
+    try {
+        const dryRun = isTruthy(req.body?.dryRun);
+        const signature = duplicateSignatureSql('t');
+        if (dryRun) {
+            const report = await pool.query(
+                `WITH active AS (
+                    SELECT t.*, ${signature} AS duplicate_signature
+                    FROM tasks t
+                    WHERE COALESCE(t.status, 'todo') NOT IN ('done','archived','cancelled')
+                      AND COALESCE(trim(t.title), '') <> ''
+                 ),
+                 ranked AS (
+                    SELECT *,
+                           MIN(id) OVER (PARTITION BY duplicate_signature) AS canonical_id,
+                           COUNT(*) OVER (PARTITION BY duplicate_signature) AS group_count
+                    FROM active
+                 )
+                 SELECT COUNT(*)::int AS victims
+                 FROM ranked
+                 WHERE group_count > 1 AND id <> canonical_id`
+            );
+            return res.json({ success: true, dryRun: true, victims: report.rows[0]?.victims || 0 });
+        }
+
+        const cleanup = await pool.query(
+            `WITH active AS (
+                SELECT t.*, ${signature} AS duplicate_signature
+                FROM tasks t
+                WHERE COALESCE(t.status, 'todo') NOT IN ('done','archived','cancelled')
+                  AND COALESCE(trim(t.title), '') <> ''
+             ),
+             ranked AS (
+                SELECT id,
+                       MIN(id) OVER (PARTITION BY duplicate_signature) AS canonical_id,
+                       ROW_NUMBER() OVER (PARTITION BY duplicate_signature ORDER BY id ASC) AS rn,
+                       COUNT(*) OVER (PARTITION BY duplicate_signature) AS group_count
+                FROM active
+             ),
+             victims AS (
+                SELECT id, canonical_id
+                FROM ranked
+                WHERE group_count > 1 AND rn > 1
+             )
+             UPDATE tasks t
+             SET status = 'archived',
+                 workflow_state = 'archived',
+                 archived_at = COALESCE(t.archived_at, NOW()),
+                 archive_reason = 'auto_duplicate',
+                 duplicate_of_task_id = victims.canonical_id,
+                 updated_at = NOW()
+             FROM victims
+             WHERE t.id = victims.id
+             RETURNING t.id, t.title, t.duplicate_of_task_id`
+        );
+        log.info(`Dedup cleanup archived ${cleanup.rowCount} duplicate active tasks`);
+        res.json({
+            success: true,
+            archived: cleanup.rowCount,
+            tasks: cleanup.rows
+        });
+        _alertPush();
+    } catch (err) {
+        log.error('Dedup cleanup error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -1124,9 +1264,11 @@ router.post('/operation-pack', requireRole('admin', 'user'), async (req, res) =>
                 workflow_state: 'todo',
                 source_module: 'tasks_operation_pack'
             });
-            const subtasks = await createChecklistSubtasks(pool, task.id, item.templateKey);
-            task.subtask_count = subtasks.length;
-            task.subtask_done_count = 0;
+            if (!task.duplicateSkipped) {
+                const subtasks = await createChecklistSubtasks(pool, task.id, item.templateKey);
+                task.subtask_count = subtasks.length;
+                task.subtask_done_count = 0;
+            }
             created.push(task);
             taskByTemplateKey[item.templateKey] = task;
         }
@@ -1190,25 +1332,40 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         if (!title || !title.trim()) return res.status(400).json({ error: 'title required' });
         if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Invalid date' });
 
-        // v33.3: Duplicate protection for manual tasks (same title + same date)
         const srcType = source_type || 'manual';
-        const force = b.force === true || b.force === 'true';
-        if (srcType === 'manual' && !force && date) {
-            const dupCheck = await pool.query(
-                `SELECT id, status FROM tasks WHERE title = $1 AND date = $2 AND source_type = 'manual'
-                 AND status NOT IN ('done','archived','cancelled') ORDER BY id DESC LIMIT 1`,
-                [title.trim(), date]
-            );
-            if (dupCheck.rows.length > 0) {
-                const dup = dupCheck.rows[0];
-                return res.status(409).json({
-                    error: 'duplicate',
-                    message: `Задача "${title}" вже існує`,
-                    existingId: dup.id,
-                    existingStatus: dup.status,
-                    hint: 'Передай force=true щоб все одно створити'
-                });
-            }
+        const force = isTruthy(b.force || b.forceDuplicate);
+        if (force && srcType !== 'manual') {
+            return res.status(400).json({ error: 'force is available only for manual tasks' });
+        }
+        if (force && !canForceTaskDuplicate(req.user)) {
+            return res.status(403).json({ error: 'Only managers can force duplicate manual tasks' });
+        }
+        const duplicate = await findActiveDuplicateTask(pool, {
+            title,
+            date,
+            deadline,
+            owner_user_id,
+            category: opsFields.category,
+            subcategory: opsFields.subcategory,
+            source_type: srcType,
+            source_id,
+            template_id,
+            source_entity_type: opsFields.source_entity_type,
+            source_entity_id: opsFields.source_entity_id,
+            pack_id: opsFields.pack_id,
+            checklist_template_key: opsFields.checklist_template_key,
+            afisha_id
+        });
+        if (duplicate && !force) {
+            return res.status(409).json({
+                error: 'duplicate',
+                code: 'TASK_DUPLICATE_ACTIVE',
+                message: `Задача "${title.trim()}" вже існує`,
+                existingId: duplicate.id,
+                existingStatus: duplicate.status,
+                forceAllowed: srcType === 'manual' && canForceTaskDuplicate(req.user),
+                hint: 'Активний дубль не створено. Відкрий існуючу задачу або завершуй її.'
+            });
         }
 
         const username = req.user?.username || 'system';
@@ -1241,6 +1398,8 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             template_id: template_id || null,
             afisha_id: afisha_id || null,
             created_by: username,
+            forceDuplicate: force,
+            duplicateMode: 'reject',
             ...osFields
         });
         if (task.task_kind === 'checklist' && task.checklist_template_key) {
@@ -1268,6 +1427,15 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         });
         _alertPush();
     } catch (err) {
+        if (err instanceof TaskDuplicateError || err.code === 'TASK_DUPLICATE_ACTIVE') {
+            return res.status(409).json({
+                error: 'duplicate',
+                code: err.code || 'TASK_DUPLICATE_ACTIVE',
+                message: err.message,
+                existingId: err.task?.id || null,
+                existingStatus: err.task?.status || null
+            });
+        }
         log.error('Create error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -1542,8 +1710,26 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
         let result;
         if (action === 'archive') {
             result = await pool.query(
-                `UPDATE tasks t SET status = 'archived', workflow_state = 'archived', updated_at = NOW()
+                `UPDATE tasks t
+                 SET status = 'archived',
+                     workflow_state = 'archived',
+                     archived_at = COALESCE(t.archived_at, NOW()),
+                     archive_reason = COALESCE(t.archive_reason, 'manual_bulk'),
+                     updated_at = NOW()
                  WHERE t.id = ANY($1::int[]) ${visibility} AND COALESCE(t.status, 'todo') NOT IN ('archived')`,
+                params
+            );
+        } else if (action === 'restore') {
+            result = await pool.query(
+                `UPDATE tasks t
+                 SET status = 'todo',
+                     workflow_state = 'todo',
+                     archived_at = NULL,
+                     archive_reason = NULL,
+                     duplicate_of_task_id = NULL,
+                     completed_at = NULL,
+                     updated_at = NOW()
+                 WHERE t.id = ANY($1::int[]) ${visibility} AND COALESCE(t.status, 'todo') = 'archived'`,
                 params
             );
         } else if (action === 'done') {

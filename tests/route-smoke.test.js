@@ -499,6 +499,9 @@ function createFakePool() {
             if (/SELECT COUNT\(\*\) as count FROM bookings(?: b)? WHERE (?:b\.)?date = \$1 AND (?:b\.)?status != 'cancelled'/i.test(text)) {
                 return { rows: [{ count: 0 }] };
             }
+            if (/FROM tasks t\s+WHERE COALESCE\(t\.status, 'todo'\) NOT IN \('done','archived','cancelled'\)\s+AND lower\(regexp_replace/i.test(text)) {
+                return { rows: [] };
+            }
 
             throw new Error(`Unexpected route-smoke DB query: ${text}`);
         }

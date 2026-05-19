@@ -104,6 +104,7 @@ let pageCurrentUser = null;
 let captureIntent = {};
 let taskAssigneeMode = 'self';
 let lastCreatedTaskId = null;
+let showCompletedInSlices = localStorage.getItem('eg_tasks_show_completed') === 'true';
 
 // ==========================================
 // UTILITIES
@@ -398,6 +399,13 @@ function taskCreatedTime(task = {}) {
 }
 
 function compareTasksForDisplay(a = {}, b = {}) {
+    const aDone = a.status === 'done';
+    const bDone = b.status === 'done';
+    if (aDone !== bDone) return aDone ? 1 : -1;
+    if (aDone && bDone) {
+        const completedDiff = new Date(taskCompletedAt(b) || b.updated_at || b.created_at || 0) - new Date(taskCompletedAt(a) || a.updated_at || a.created_at || 0);
+        if (completedDiff) return completedDiff;
+    }
     const aIsNew = lastCreatedTaskId && String(a.id) === String(lastCreatedTaskId);
     const bIsNew = lastCreatedTaskId && String(b.id) === String(lastCreatedTaskId);
     if (aIsNew !== bIsNew) return aIsNew ? -1 : 1;
@@ -413,6 +421,34 @@ function sortTasksForDisplay(tasks = []) {
 function setBoardView(view = 'inbox') {
     currentView = view;
     document.querySelectorAll('.board-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === view));
+}
+
+function applyTaskViewShell(view = currentView) {
+    const isTemplates = view === 'templates';
+    const catFilters = document.getElementById('catFilters');
+    const quickAdd = document.getElementById('quickAdd');
+    const operationPackBar = document.getElementById('operationPackBar');
+    const operationsSummary = document.getElementById('operationsSummary');
+    const boardContent = document.getElementById('boardContent');
+    const templatesSection = document.getElementById('templatesSection');
+    const subcatFilters = document.getElementById('subcatFilters');
+    if (catFilters) catFilters.style.display = isTemplates ? 'none' : '';
+    if (subcatFilters) subcatFilters.style.display = isTemplates ? 'none' : '';
+    if (quickAdd) quickAdd.style.display = (isTemplates || userPermissions?.canCreateTasks === false) ? 'none' : '';
+    if (operationPackBar) operationPackBar.style.display = (isTemplates || userPermissions?.canCreateTasks === false) ? 'none' : '';
+    if (operationsSummary) operationsSummary.style.display = isTemplates ? 'none' : '';
+    if (boardContent) boardContent.style.display = isTemplates ? 'none' : '';
+    if (templatesSection) templatesSection.style.display = isTemplates ? '' : 'none';
+}
+
+function activateTaskView(view = 'inbox') {
+    currentView = view;
+    assistantTaskFilter = '';
+    setBoardView(view);
+    applyTaskViewShell(view);
+    updateTaskExplainability();
+    if (view === 'templates') loadTemplates();
+    else renderBoard();
 }
 
 function keepNewTaskVisible(task = {}, fallback = {}) {
@@ -511,7 +547,7 @@ async function initPage() {
         const params = new URLSearchParams(window.location.search);
         const requestedView = params.get('view');
         assistantTaskFilter = normalizeAssistantTaskFilter(params.get('assistantFilter'));
-        const allowedViews = ['inbox', 'today', 'next', 'waiting', 'team', 'my', 'week', 'board', 'routines', 'archive', 'templates'];
+        const allowedViews = ['inbox', 'today', 'next', 'waiting', 'team', 'my', 'week', 'board', 'routines', 'done_today', 'archive', 'templates'];
         if (requestedView && allowedViews.includes(requestedView)) currentView = requestedView;
         if (assistantTaskFilter === 'overdue' && !requestedView) currentView = 'team';
         if (requestedView === 'focus' || currentView === 'focus') currentView = 'today';
@@ -519,39 +555,14 @@ async function initPage() {
         await _loadAssigneeDropdown();
         bootStep('owners:loaded', { count: _assigneeList.length });
         setupTaskComposer();
+        setupTaskGovernanceMenu();
 
         if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
         // Board tab switching
         document.querySelectorAll('.board-tab').forEach(tab => {
             tab.addEventListener('click', () => {
-                document.querySelectorAll('.board-tab').forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                currentView = tab.dataset.view;
-                assistantTaskFilter = '';
-
-                const isTemplates = currentView === 'templates';
-                const catFilters = document.getElementById('catFilters');
-                const quickAdd = document.getElementById('quickAdd');
-                const operationPackBar = document.getElementById('operationPackBar');
-                const operationsSummary = document.getElementById('operationsSummary');
-                const boardContent = document.getElementById('boardContent');
-                const templatesSection = document.getElementById('templatesSection');
-                if (catFilters) catFilters.style.display = isTemplates ? 'none' : '';
-                const subcatFilters = document.getElementById('subcatFilters');
-                if (subcatFilters) subcatFilters.style.display = isTemplates ? 'none' : '';
-                if (quickAdd) quickAdd.style.display = (isTemplates || userPermissions?.canCreateTasks === false) ? 'none' : '';
-                if (operationPackBar) operationPackBar.style.display = (isTemplates || userPermissions?.canCreateTasks === false) ? 'none' : '';
-                if (operationsSummary) operationsSummary.style.display = isTemplates ? 'none' : '';
-                if (boardContent) boardContent.style.display = isTemplates ? 'none' : '';
-                if (templatesSection) templatesSection.style.display = isTemplates ? '' : 'none';
-                updateTaskExplainability();
-
-                if (isTemplates) {
-                    loadTemplates();
-                } else {
-                    renderBoard();
-                }
+                activateTaskView(tab.dataset.view || 'inbox');
             });
         });
 
@@ -663,14 +674,12 @@ async function apiCreateTask(data) {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
         });
         if (handleAuthError(response)) return null;
-        // v33.3: Handle duplicate (409)
         if (response.status === 409) {
             const err = await response.json();
-            if (await confirmModal(`⚠️ ${err.message || 'Задача вже існує'}\nВсе одно додати дубль?`, { type: 'warning', okText: 'Додати' })) {
-                return apiCreateTask({ ...data, force: true });
-            }
+            showNotification(err.message || 'Активний дубль не створено', 'warning');
             return null;
         }
+        if (!response.ok) throw new Error('create task API error');
         return await response.json();
     } catch (err) { console.error('API createTask error:', err); return null; }
 }
@@ -695,6 +704,26 @@ async function apiPatchTaskStatus(id, status) {
         if (handleAuthError(response)) return null;
         return await response.json();
     } catch (err) { console.error('API patchTaskStatus error:', err); return null; }
+}
+
+async function apiGetTaskDedupReport() {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/dedup-report`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) { console.error('API getTaskDedupReport error:', err); return null; }
+}
+
+async function apiCleanupTaskDuplicates() {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/dedup-cleanup`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ dryRun: false })
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) { console.error('API cleanupTaskDuplicates error:', err); return null; }
 }
 
 async function apiSnoozeTask(id, minutes = 60) {
@@ -940,6 +969,7 @@ function getViewLabel(view = currentView) {
         my: 'Мої',
         board: 'Канбан',
         routines: 'Рутини',
+        done_today: 'Виконано сьогодні',
         archive: 'Архів',
         templates: 'Шаблони'
     };
@@ -955,8 +985,41 @@ function isActiveTask(t) { return !['done', 'archived', 'cancelled'].includes(t.
 function isWaitingTask(t) { return taskWorkflow(t) === 'waiting' || taskKind(t) === 'waiting'; }
 function isPrivateTask(t) { return taskVisibility(t) === 'private' || taskMode(t) === 'private'; }
 function isTeamTask(t) { return taskVisibility(t) === 'team' && taskMode(t) === 'work'; }
-function isInboxTask(t) { return taskWorkflow(t) === 'inbox' || (!t.date && !t.deadline && isActiveTask(t)); }
+function isInboxTask(t) { return isActiveTask(t) && (taskWorkflow(t) === 'inbox' || (!t.date && !t.deadline)); }
 function isRoutineTask(t) { return taskKind(t) === 'routine' || t.type === 'recurring'; }
+function taskCompletedAt(t = {}) { return t.completedAt || t.completed_at || null; }
+function formatTaskCompletedTime(t = {}) {
+    const raw = taskCompletedAt(t);
+    if (!raw) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Kyiv' });
+}
+function isCompletedToday(t = {}) {
+    const raw = taskCompletedAt(t);
+    if (t.status !== 'done' || !raw) return false;
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return false;
+    const kyivDate = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(date);
+    return kyivDate === getTodayStr();
+}
+function sortCompletedNewestFirst(a, b) {
+    return new Date(taskCompletedAt(b) || b.updated_at || b.created_at || 0) - new Date(taskCompletedAt(a) || a.updated_at || a.created_at || 0);
+}
+function composeSliceTasks(activeTasks = [], completedTasks = []) {
+    const active = [...activeTasks];
+    if (!showCompletedInSlices) return active;
+    const completedIds = new Set(active.map(t => t.id));
+    const completed = completedTasks
+        .filter(t => t.status === 'done' && !completedIds.has(t.id))
+        .sort(sortCompletedNewestFirst);
+    return [...active, ...completed];
+}
 
 function taskModeBadge(t) {
     const mode = taskMode(t);
@@ -1065,11 +1128,88 @@ function resetTaskFilters() {
     renderBoard();
 }
 
+function setupTaskGovernanceMenu() {
+    const toggle = document.getElementById('tasksGovernanceToggle');
+    const panel = document.getElementById('tasksGovernancePanel');
+    const completedToggle = document.getElementById('toggleCompletedInSlices');
+    if (!toggle || !panel) return;
+
+    const syncCompletedToggle = () => {
+        if (!completedToggle) return;
+        completedToggle.classList.toggle('active', showCompletedInSlices);
+        completedToggle.setAttribute('aria-pressed', showCompletedInSlices ? 'true' : 'false');
+        completedToggle.textContent = showCompletedInSlices ? 'Виконані показані' : 'Показувати виконані';
+    };
+    syncCompletedToggle();
+
+    toggle.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const isOpen = !panel.classList.contains('hidden');
+        panel.classList.toggle('hidden', isOpen);
+        toggle.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+    });
+
+    completedToggle?.addEventListener('click', () => {
+        showCompletedInSlices = !showCompletedInSlices;
+        localStorage.setItem('eg_tasks_show_completed', showCompletedInSlices ? 'true' : 'false');
+        syncCompletedToggle();
+        renderBoard();
+    });
+
+    panel.querySelectorAll('[data-task-governance-view]').forEach(button => {
+        button.addEventListener('click', () => {
+            activateTaskView(button.dataset.taskGovernanceView);
+            panel.classList.add('hidden');
+            toggle.setAttribute('aria-expanded', 'false');
+        });
+    });
+
+    panel.querySelectorAll('[data-task-governance-bulk]').forEach(button => {
+        button.addEventListener('click', async () => {
+            const action = button.dataset.taskGovernanceBulk;
+            if (!getSelectedTaskIds().length) {
+                showNotification('Спершу виберіть задачі чекбоксами', 'warning');
+                return;
+            }
+            await bulkAction(action);
+        });
+    });
+
+    document.getElementById('taskDedupReportBtn')?.addEventListener('click', async () => {
+        const result = await apiGetTaskDedupReport();
+        if (!result?.success) {
+            showNotification('Не вдалося перевірити дублікати', 'error');
+            return;
+        }
+        const groups = result.groups || [];
+        showNotification(groups.length ? `Знайдено груп дублів: ${groups.length}` : 'Активних дублів не знайдено', groups.length ? 'warning' : 'success');
+    });
+
+    document.getElementById('taskDedupCleanupBtn')?.addEventListener('click', async () => {
+        if (!await confirmModal('Архівувати активні дублікати без видалення?', { type: 'warning', okText: 'Архівувати' })) return;
+        const result = await apiCleanupTaskDuplicates();
+        if (!result?.success) {
+            showNotification('Cleanup дублів не виконано', 'error');
+            return;
+        }
+        showNotification(`Архівовано дублів: ${result.archived || 0}`, 'success');
+        await loadAllTasks();
+    });
+
+    document.addEventListener('click', (event) => {
+        if (panel.classList.contains('hidden')) return;
+        if (panel.contains(event.target) || toggle.contains(event.target)) return;
+        panel.classList.add('hidden');
+        toggle.setAttribute('aria-expanded', 'false');
+    });
+}
+
 function updateCounts() {
     const today = getTodayStr();
     const week = getWeekRange();
 
-    const active = filterByCategory(allTasks.filter(t => t.status !== 'done'));
+    const active = filterByCategory(allTasks.filter(isActiveTask));
+    const doneToday = filterByCategory(allTasks.filter(isCompletedToday));
     const todayTasks = active.filter(t => t.date === today || !t.date);
     const weekTasks = active.filter(t => t.date >= week.from && t.date <= week.to);
     const myTasks = active.filter(isTaskInMyWorkspace);
@@ -1088,6 +1228,7 @@ function updateCounts() {
     setCount('countWaiting', active.filter(isWaitingTask).length);
     setCount('countTeam', active.filter(isTeamTask).length);
     setCount('countMy', myTasks.length);
+    setCount('countDoneToday', doneToday.length);
 }
 
 function renderOperationsSummary() {
@@ -1141,27 +1282,35 @@ function renderBoard() {
     renderOperationsSummary();
 
     switch (currentView) {
-        case 'inbox': renderSimpleTaskView(container, 'inbox', t => isInboxTask(t), 'Інбокс чистий. Нові задачі без контексту зʼявлятимуться тут.'); break;
+        case 'inbox': renderSimpleTaskView(container, 'inbox', t => isInboxTask(t), 'Інбокс чистий. Нові задачі без контексту зʼявлятимуться тут.', t => taskWorkflow(t) === 'inbox' || (!t.date && !t.deadline)); break;
         case 'today': renderTodayView(container); break;
         case 'next': renderSimpleTaskView(container, 'next', t => {
             const today = getTodayStr();
             const week = getWeekRange();
             const due = taskDueDate(t);
             return isActiveTask(t) && due && due > today && due <= week.to;
-        }, 'На найближчі дні нічого не заплановано.'); break;
-        case 'waiting': renderSimpleTaskView(container, 'waiting', t => isActiveTask(t) && isWaitingTask(t), 'Немає задач у стані “чекаю”.'); break;
-        case 'team': renderSimpleTaskView(container, 'team', t => isActiveTask(t) && isTeamTask(t), 'Командних задач у цьому зрізі немає.'); break;
+        }, 'На найближчі дні нічого не заплановано.', t => {
+            const today = getTodayStr();
+            const week = getWeekRange();
+            const due = taskDueDate(t) || (taskCompletedAt(t) || '').slice(0, 10);
+            return due && due > today && due <= week.to;
+        }); break;
+        case 'waiting': renderSimpleTaskView(container, 'waiting', t => isActiveTask(t) && isWaitingTask(t), 'Немає задач у стані “чекаю”.', isWaitingTask); break;
+        case 'team': renderSimpleTaskView(container, 'team', t => isActiveTask(t) && isTeamTask(t), 'Командних задач у цьому зрізі немає.', isTeamTask); break;
         case 'week': renderWeekView(container); break;
         case 'my': renderMyView(container); break;
         case 'board': renderKanbanView(container); break;
-        case 'routines': renderSimpleTaskView(container, 'routines', t => isActiveTask(t) && isRoutineTask(t), 'Рутини поки не налаштовані.'); break;
+        case 'routines': renderSimpleTaskView(container, 'routines', t => isActiveTask(t) && isRoutineTask(t), 'Рутини поки не налаштовані.', isRoutineTask); break;
+        case 'done_today': renderDoneTodayView(container); break;
         case 'archive': renderArchiveView(container); break;
         default: renderSimpleTaskView(container, 'inbox', t => isInboxTask(t), 'Інбокс чистий.');
     }
 }
 
-function renderSimpleTaskView(container, view, predicate, emptyText) {
-    const baseTasks = allTasks.filter(predicate);
+function renderSimpleTaskView(container, view, predicate, emptyText, completedPredicate = predicate) {
+    const activeBase = allTasks.filter(predicate);
+    const completedBase = showCompletedInSlices ? allTasks.filter(t => t.status === 'done' && completedPredicate(t)) : [];
+    const baseTasks = composeSliceTasks(activeBase, completedBase);
     const tasks = sortTasksForDisplay(applyAssistantTaskFilter(filterByCategory(baseTasks)));
     if (!tasks.length) {
         container.innerHTML = taskEmptyState(view, baseTasks.length) || `<div class="empty-state">${escapeHtml(emptyText)}</div>`;
@@ -1176,7 +1325,9 @@ function renderSimpleTaskView(container, view, predicate, emptyText) {
 
 function renderTodayView(container) {
     const today = getTodayStr();
-    const baseTasks = allTasks.filter(t => t.date === today || (!t.date && t.status !== 'done'));
+    const activeBase = allTasks.filter(t => isActiveTask(t) && (t.date === today || !t.date));
+    const completedBase = allTasks.filter(t => t.status === 'done' && (t.date === today || isCompletedToday(t)));
+    const baseTasks = composeSliceTasks(activeBase, completedBase);
     let tasks = baseTasks;
     tasks = filterByCategory(tasks);
     tasks = applyAssistantTaskFilter(tasks);
@@ -1211,7 +1362,13 @@ function renderTodayView(container) {
 
 function renderWeekView(container) {
     const week = getWeekRange();
-    const baseTasks = allTasks.filter(t => t.date >= week.from && t.date <= week.to && t.status !== 'done');
+    const activeBase = allTasks.filter(t => isActiveTask(t) && t.date >= week.from && t.date <= week.to);
+    const completedBase = allTasks.filter(t => {
+        if (t.status !== 'done') return false;
+        const due = taskDueDate(t) || (taskCompletedAt(t) || '').slice(0, 10);
+        return due >= week.from && due <= week.to;
+    });
+    const baseTasks = composeSliceTasks(activeBase, completedBase);
     let tasks = baseTasks;
     tasks = filterByCategory(tasks);
     tasks = applyAssistantTaskFilter(tasks);
@@ -1245,7 +1402,9 @@ function renderWeekView(container) {
 // ==========================================
 
 function renderMyView(container) {
-    const baseTasks = allTasks.filter(t => isTaskInMyWorkspace(t) && t.status !== 'done');
+    const activeBase = allTasks.filter(t => isTaskInMyWorkspace(t) && isActiveTask(t));
+    const completedBase = allTasks.filter(t => t.status === 'done' && isTaskInMyWorkspace(t));
+    const baseTasks = composeSliceTasks(activeBase, completedBase);
     let tasks = baseTasks;
     tasks = filterByCategory(tasks);
     tasks = applyAssistantTaskFilter(tasks);
@@ -1267,12 +1426,29 @@ function renderMyView(container) {
     container.innerHTML = summary + sortTasksForDisplay(tasks).map(t => renderTaskCard(t)).join('');
 }
 
+function renderDoneTodayView(container) {
+    const baseTasks = allTasks.filter(isCompletedToday);
+    let tasks = filterByCategory(baseTasks).sort(sortCompletedNewestFirst);
+    tasks = applyAssistantTaskFilter(tasks);
+    if (!tasks.length) {
+        container.innerHTML = taskEmptyState('done_today', baseTasks.length) || '<div class="empty-state">Сьогодні ще нічого не завершено.</div>';
+        return;
+    }
+    const html = `
+        <div class="done-today-board-note">
+            <b>${tasks.length}</b> виконано сьогодні · newest first · історія лишається в системі
+        </div>
+        ${tasks.map(t => renderTaskCard(t)).join('')}
+    `;
+    container.innerHTML = html;
+}
+
 // ==========================================
 // VIEW: KANBAN
 // ==========================================
 
 function renderKanbanView(container) {
-    const baseTasks = allTasks;
+    const baseTasks = allTasks.filter(t => t.status !== 'archived' && t.status !== 'cancelled');
     let tasks = applyAssistantTaskFilter(filterByCategory(baseTasks));
 
     const todo = sortTasksForDisplay(tasks.filter(t => t.status === 'todo'));
@@ -1409,6 +1585,10 @@ function renderTaskCard(t) {
     const assignment = getTaskAssignmentView(t);
     const ownerHtml = `<span class="task-assignment-badge task-assignment-${escapeHtml(assignment.tone)}" title="${escapeHtml(assignment.title)}"><span class="task-assignment-dot" aria-hidden="true"></span>${escapeHtml(assignment.label)}</span>`;
     const intelHtml = renderTaskIntelligence(t);
+    const completedTime = formatTaskCompletedTime(t);
+    const completedHtml = t.status === 'done'
+        ? `<span class="task-completed-badge">Виконано${completedTime ? ` · ${escapeHtml(completedTime)}` : ''}</span>`
+        : '';
 
     return `
     <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''}" data-task-id="${t.id}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}" onclick="openTaskDetail(${t.id})" style="cursor:pointer">
@@ -1429,6 +1609,7 @@ function renderTaskCard(t) {
             ${t.date ? `<span>${formatDateShort(t.date)}</span>` : ''}
             ${deadlineHtml}
             ${ownerHtml}
+            ${completedHtml}
             ${intelHtml}
             ${t.type === 'recurring' ? '<span class="badge badge-normal">Повтор</span>' : ''}
             ${t.type === 'afisha' ? '<span class="badge badge-normal">Афіша</span>' : ''}
@@ -1813,7 +1994,7 @@ window.updateBulkSelection = updateBulkSelection;
 async function bulkAction(action) {
     const ids = getSelectedTaskIds();
     if (!ids.length) return;
-    const labels = { done: 'Виконати', archive: 'Архівувати' };
+    const labels = { done: 'Виконати', archive: 'Архівувати', restore: 'Відновити' };
     if (!await confirmModal(`${labels[action] || action} ${ids.length} задач?`, { type: 'danger' })) return;
     const result = await apiBulkTasks(ids, action);
     if (result && result.success) {

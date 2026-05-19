@@ -8,6 +8,7 @@ const { requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Graduation');
+function getKleshnya() { return require('../services/kleshnya'); }
 function _escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 function mapServiceRow(row) {
@@ -737,14 +738,17 @@ async function onServicePriceChanged(serviceId, username) {
     `, [serviceId]);
 
     for (const pkg of packages.rows) {
-        await pool.query(`
-            INSERT INTO tasks (title, description, assigned_to, priority, category, status, created_by, source_type)
-            VALUES ($1, $2, 'sergiy', 'high', 'admin', 'todo', $3, 'auto')
-        `, [
-            `Каталог: оновити та надрукувати сторінку "${pkg.name}"`,
-            `Ціна послуги змінилась. Потрібно оновити каталог та роздрукувати оновлену сторінку пакету "${pkg.name}".`,
-            username
-        ]);
+        await getKleshnya().createTask({
+            title: `Каталог: оновити та надрукувати сторінку "${pkg.name}"`,
+            description: `Ціна послуги змінилась. Потрібно оновити каталог та роздрукувати оновлену сторінку пакету "${pkg.name}".`,
+            assigned_to: 'sergiy',
+            priority: 'high',
+            category: 'admin',
+            created_by: username,
+            source_type: 'graduation_catalog',
+            source_id: `service_price:${serviceId}:${pkg.slug || pkg.name}`,
+            duplicateMode: 'skip'
+        });
         log.info(`Catalog task created for package "${pkg.name}" (price change)`);
     }
 }
@@ -759,14 +763,17 @@ async function onSettingsChanged(key, newValue, username) {
     `);
 
     for (const pkg of packages.rows) {
-        await pool.query(`
-            INSERT INTO tasks (title, description, assigned_to, priority, category, status, created_by, source_type)
-            VALUES ($1, $2, 'sergiy', 'high', 'admin', 'todo', $3, 'auto')
-        `, [
-            `Каталог: оновити та надрукувати сторінку "${pkg.name}"`,
-            `Глобальний параметр "${key}" змінився (нове значення: ${newValue}). Формульні ціни перераховані. Потрібно оновити каталог та роздрукувати оновлену сторінку.`,
-            username
-        ]);
+        await getKleshnya().createTask({
+            title: `Каталог: оновити та надрукувати сторінку "${pkg.name}"`,
+            description: `Глобальний параметр "${key}" змінився (нове значення: ${newValue}). Формульні ціни перераховані. Потрібно оновити каталог та роздрукувати оновлену сторінку.`,
+            assigned_to: 'sergiy',
+            priority: 'high',
+            category: 'admin',
+            created_by: username,
+            source_type: 'graduation_catalog',
+            source_id: `settings:${key}:${pkg.slug || pkg.name}`,
+            duplicateMode: 'skip'
+        });
         log.info(`Catalog task created for package "${pkg.name}" (${key} changed)`);
     }
 }

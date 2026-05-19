@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.58.16">
-    <link rel="stylesheet" href="css/layout.css?v=0.58.16">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.58.16">
-    <link rel="stylesheet" href="css/pages.css?v=0.58.16">
-    <link rel="stylesheet" href="css/modals.css?v=0.58.16">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.58.16">
-    <link rel="stylesheet" href="css/responsive.css?v=0.58.16">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.58.16">
+    <link rel="stylesheet" href="css/base.css?v=0.59.0">
+    <link rel="stylesheet" href="css/layout.css?v=0.59.0">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.59.0">
+    <link rel="stylesheet" href="css/pages.css?v=0.59.0">
+    <link rel="stylesheet" href="css/modals.css?v=0.59.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.59.0">
+    <link rel="stylesheet" href="css/responsive.css?v=0.59.0">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.59.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -95,6 +95,78 @@
             padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
         }
         .bulk-toolbar-tasks button:hover { background: rgba(255,255,255,0.35); }
+        .tasks-governance {
+            position: relative;
+            display: flex;
+            justify-content: flex-end;
+            margin: 0 0 12px;
+            z-index: 5;
+        }
+        .tasks-governance-toggle {
+            min-height: 42px;
+            border-radius: 14px;
+            border: 1px solid rgba(20,184,166,0.28);
+            background: rgba(15,23,42,0.04);
+            color: var(--gray-700);
+            padding: 8px 14px;
+            font: inherit;
+            font-weight: 900;
+            cursor: pointer;
+        }
+        .tasks-governance-panel {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 8px);
+            width: min(620px, 96vw);
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid rgba(20,184,166,0.24);
+            background: rgba(255,255,255,0.98);
+            box-shadow: 0 22px 70px rgba(15,23,42,0.22);
+        }
+        .tasks-governance-panel.hidden { display: none; }
+        .tasks-governance-group {
+            display: grid;
+            gap: 8px;
+            min-width: 0;
+        }
+        .tasks-governance-group h3 {
+            margin: 0;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--gray-500);
+        }
+        .tasks-governance-group button {
+            border: 1px solid rgba(100,116,139,0.18);
+            border-radius: 12px;
+            background: rgba(241,245,249,0.82);
+            color: var(--gray-700);
+            padding: 9px 10px;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 900;
+            text-align: left;
+            cursor: pointer;
+        }
+        .tasks-governance-group button.active {
+            background: rgba(16,185,129,0.14);
+            border-color: rgba(16,185,129,0.34);
+            color: #047857;
+        }
+        .done-today-board-note {
+            margin: 0 0 12px;
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid rgba(16,185,129,0.24);
+            background: rgba(16,185,129,0.1);
+            color: var(--gray-600);
+            font-size: 13px;
+            font-weight: 800;
+        }
         .task-checkbox-wrap {
             position: absolute; left: -4px; top: 50%; transform: translateY(-50%);
             width: 20px; height: 20px; z-index: 2; cursor: pointer; display: flex; align-items: center;
@@ -117,7 +189,24 @@
         .task-card.cat-trampoline { border-left-color: #7B1FA2; }
         .task-card.cat-personal { border-left-color: #455A64; }
         .task-card.cat-improvement { border-left-color: #0891B2; }
-        .task-card.status-done { opacity: 0.5; }
+        .task-card.status-done {
+            opacity: 0.86;
+            border-left-color: #10b981;
+            background: linear-gradient(135deg, rgba(16,185,129,0.12), rgba(255,255,255,0.86));
+        }
+        .task-card.status-done .task-card-title {
+            text-decoration: line-through;
+            text-decoration-thickness: 2px;
+            text-decoration-color: rgba(16,185,129,0.78);
+            color: var(--gray-500);
+        }
+        .task-completed-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 999px;
+            background: rgba(16,185,129,0.14); color: #059669;
+            border: 1px solid rgba(16,185,129,0.28);
+            font-size: 10px; font-weight: 900;
+        }
         .task-card-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
         .task-card-meta { font-size: 11px; color: var(--gray-500); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
         .task-assignee-badge,
@@ -159,6 +248,27 @@
         body.dark-mode .task-my-scope-summary span { background: rgba(15,23,42,0.62); border-color: rgba(148,163,184,0.12); }
         body.dark-mode .task-my-scope-summary b { color: #5eead4; }
         body.dark-mode .task-no-assignee { color: var(--gray-500); }
+        body.dark-mode .task-card.status-done {
+            background: linear-gradient(135deg, rgba(16,185,129,0.14), rgba(15,23,42,0.78));
+        }
+        body.dark-mode .task-completed-badge { color: #6ee7b7; border-color: rgba(110,231,183,0.26); }
+        body.dark-mode .tasks-governance-toggle { background: rgba(15,23,42,0.72); color: #e2e8f0; }
+        body.dark-mode .tasks-governance-panel {
+            background: rgba(15,23,42,0.98);
+            border-color: rgba(20,184,166,0.24);
+            box-shadow: 0 24px 90px rgba(0,0,0,0.42);
+        }
+        body.dark-mode .tasks-governance-group button {
+            background: rgba(30,41,59,0.72);
+            border-color: rgba(148,163,184,0.14);
+            color: #dbe4f0;
+        }
+        body.dark-mode .tasks-governance-group button.active {
+            background: rgba(20,184,166,0.16);
+            border-color: rgba(45,212,191,0.28);
+            color: #5eead4;
+        }
+        body.dark-mode .done-today-board-note { color: #cbd5e1; background: rgba(16,185,129,0.12); }
         .task-card-actions { display: flex; gap: 4px; margin-top: 6px; }
         .task-card-actions button {
             padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px;
@@ -441,6 +551,14 @@
             .task-add-submit { grid-column: 1; }
             .task-assignee-select[hidden] { display: none !important; }
             .task-owner-toggle { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .tasks-governance { justify-content: stretch; }
+            .tasks-governance-toggle { width: 100%; }
+            .tasks-governance-panel {
+                position: static;
+                width: 100%;
+                grid-template-columns: 1fr;
+                margin-top: 8px;
+            }
             .board-tab { padding: 6px 10px; font-size: 12px; }
             .cat-chip { padding: 5px 10px; font-size: 11px; }
         }
@@ -538,6 +656,7 @@
                 <button type="button" class="board-tab" data-view="waiting">Чекаю <span class="tab-count" id="countWaiting">0</span></button>
                 <button type="button" class="board-tab" data-view="team">Командні <span class="tab-count" id="countTeam">0</span></button>
                 <button type="button" class="board-tab" data-view="my" title="Мої: задачі для мене, собі і ті, які я поставив команді">Мої <span class="tab-count" id="countMy">0</span></button>
+                <button type="button" class="board-tab" data-view="done_today">Виконано сьогодні <span class="tab-count" id="countDoneToday">0</span></button>
                 <button type="button" class="board-tab" data-view="board">Канбан</button>
                 <button type="button" class="board-tab" data-view="routines">Рутини</button>
                 <button type="button" class="board-tab" data-view="templates">Шаблони</button>
@@ -561,6 +680,29 @@
             <!-- Quick add task -->
             <div id="taskExplainability" hidden></div>
             <div id="operationsSummary" class="operations-summary hidden"></div>
+
+            <div class="tasks-governance" id="tasksGovernance">
+                <button type="button" class="tasks-governance-toggle" id="tasksGovernanceToggle" aria-expanded="false" aria-controls="tasksGovernancePanel">Керування задачами</button>
+                <div class="tasks-governance-panel hidden" id="tasksGovernancePanel">
+                    <section class="tasks-governance-group" aria-label="Вигляд задач">
+                        <h3>Вигляд</h3>
+                        <button type="button" id="toggleCompletedInSlices" aria-pressed="false">Показувати виконані</button>
+                        <button type="button" data-task-governance-view="done_today">Виконано сьогодні</button>
+                        <button type="button" data-task-governance-view="archive">Архів</button>
+                    </section>
+                    <section class="tasks-governance-group" aria-label="Масові дії">
+                        <h3>Масові дії</h3>
+                        <button type="button" data-task-governance-bulk="done">Виконати вибрані</button>
+                        <button type="button" data-task-governance-bulk="archive">Архівувати вибрані</button>
+                        <button type="button" data-task-governance-bulk="restore">Відновити вибрані</button>
+                    </section>
+                    <section class="tasks-governance-group" aria-label="Сервіс задач">
+                        <h3>Сервіс</h3>
+                        <button type="button" id="taskDedupReportBtn">Перевірити дублікати</button>
+                        <button type="button" id="taskDedupCleanupBtn">Cleanup дублів</button>
+                    </section>
+                </div>
+            </div>
 
             <div class="quick-add task-composer" id="quickAdd" data-assignee-mode="self">
                 <div class="task-composer-primary">
@@ -661,6 +803,7 @@
                 <span id="bulkCount">0 обрано</span>
                 <button type="button" onclick="bulkAction('done')">✅ Виконати</button>
                 <button type="button" onclick="bulkAction('archive')">📦 Архів</button>
+                <button type="button" onclick="bulkAction('restore')">↩ Відновити</button>
                 <button type="button" onclick="clearBulkSelection()">✕ Скинути</button>
             </div>
 
@@ -716,13 +859,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.58.16"></script>
-    <script src="js/notification.js?v=0.58.16"></script>
-    <script src="js/api.js?v=0.58.16"></script>
-    <script src="js/auth.js?v=0.58.16"></script>
-    <script src="js/components/sidebar.js?v=0.58.16"></script>
+    <script src="js/config.js?v=0.59.0"></script>
+    <script src="js/notification.js?v=0.59.0"></script>
+    <script src="js/api.js?v=0.59.0"></script>
+    <script src="js/auth.js?v=0.59.0"></script>
+    <script src="js/components/sidebar.js?v=0.59.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/tasks-page.js?v=0.58.16"></script>
-    <script src="js/alerts.js?v=0.58.16"></script><script src="js/ui.js?v=0.58.16"></script>
+    <script src="js/tasks-page.js?v=0.59.0"></script>
+    <script src="js/alerts.js?v=0.59.0"></script><script src="js/ui.js?v=0.59.0"></script>
 </body>
 </html>

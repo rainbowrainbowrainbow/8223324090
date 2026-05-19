@@ -400,12 +400,17 @@ async function initDatabase() {
         await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_type VARCHAR(30) DEFAULT 'manual'`); // 'booking','trigger','manual','recurring','kleshnya'
         await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_id VARCHAR(50)`);
         await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_reminded_at TIMESTAMP`);
+        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP`);
+        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archive_reason VARCHAR(80)`);
+        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS duplicate_of_task_id INTEGER`);
         // v10.1: Optimistic locking version column
         await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1`);
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_task_type ON tasks(task_type)');
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_owner ON tasks(owner)');
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline)');
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_escalation ON tasks(escalation_level)');
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_completed_at ON tasks(completed_at)');
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_duplicate_of_task_id ON tasks(duplicate_of_task_id)');
 
         // v10.0: Task change log
         await safeQuery(`

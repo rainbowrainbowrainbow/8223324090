@@ -20,6 +20,10 @@ function getRecurringService() {
     return require('./recurring');
 }
 
+function getKleshnya() {
+    return require('./kleshnya');
+}
+
 const log = createLogger('Scheduler');
 const SYSTEM_BOOKING_NOTIFICATION_ACTOR = Object.freeze({
     id: 0,
@@ -481,20 +485,26 @@ async function checkRecurringTasks() {
 
             if (!shouldCreate) continue;
 
-            // Atomic dedup: INSERT ON CONFLICT prevents race conditions
-            const insertResult = await pool.query(
-                `INSERT INTO tasks (title, description, date, priority, assigned_to, created_by, type, template_id, category,
-                 subcategory, task_kind, checklist_template_key, owner_role, sla_minutes)
-                 VALUES ($1, $2, $3, $4, $5, 'system', 'recurring', $6, $7, $8, COALESCE($9, 'action'), $10, $11, $12)
-                 ON CONFLICT (template_id, date) WHERE template_id IS NOT NULL DO NOTHING
-                 RETURNING id, task_kind, checklist_template_key`,
-                [tpl.title, tpl.description, todayStr, tpl.priority, tpl.assigned_to, tpl.id, tpl.category || 'admin',
-                 tpl.subcategory || null, tpl.default_task_kind || 'action', tpl.checklist_template_key || null,
-                 tpl.owner_role || null, tpl.sla_minutes || null]
-            );
-            if (insertResult.rows.length === 0) continue;
-            if (insertResult.rows[0].task_kind === 'checklist' && insertResult.rows[0].checklist_template_key) {
-                await createChecklistSubtasks(pool, insertResult.rows[0].id, insertResult.rows[0].checklist_template_key);
+            const task = await getKleshnya().createTask({
+                title: tpl.title,
+                description: tpl.description,
+                date: todayStr,
+                priority: tpl.priority,
+                assigned_to: tpl.assigned_to,
+                created_by: 'system',
+                source_type: 'recurring',
+                template_id: tpl.id,
+                category: tpl.category || 'admin',
+                subcategory: tpl.subcategory || null,
+                task_kind: tpl.default_task_kind || 'action',
+                checklist_template_key: tpl.checklist_template_key || null,
+                owner_role: tpl.owner_role || null,
+                sla_minutes: tpl.sla_minutes || null,
+                duplicateMode: 'skip'
+            });
+            if (!task || task.duplicateSkipped) continue;
+            if (task.task_kind === 'checklist' && task.checklist_template_key) {
+                await createChecklistSubtasks(pool, task.id, task.checklist_template_key);
             }
             created++;
         }
@@ -1589,10 +1599,17 @@ async function checkHotLeads() {
                 'Лід без відповіді 24+ годин'
             ].filter(Boolean).join('\n');
 
-            await pool.query(`
-                INSERT INTO tasks (title, description, priority, category, source_type, source_id, date)
-                VALUES ($1, $2, 'high', 'sales', 'lead', $3, $4)
-            `, [title, desc, String(lead.id), getKyivDateStr()]);
+            await getKleshnya().createTask({
+                title,
+                description: desc,
+                priority: 'high',
+                category: 'sales',
+                source_type: 'lead',
+                source_id: String(lead.id),
+                date: getKyivDateStr(),
+                created_by: 'scheduler',
+                duplicateMode: 'skip'
+            });
 
             log.info(`Hot lead task created for: ${lead.client_name} (lead #${lead.id})`);
         }

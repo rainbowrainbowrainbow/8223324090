@@ -12,6 +12,7 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('SvitlanaRoute');
+function getKleshnya() { return require('../services/kleshnya'); }
 
 // ── Auth via secret header ──────────────────────────────────────────────────
 function requireSecret(req, res, next) {
@@ -67,14 +68,22 @@ router.post('/tasks', requireSecret, async (req, res) => {
         if (!title) return res.status(400).json({ error: 'title required' });
 
         const today = date || new Date().toISOString().split('T')[0];
-        const result = await pool.query(
-            `INSERT INTO tasks (title, description, status, priority, date, assigned_to, category, owner, task_type)
-             VALUES ($1, $2, 'todo', $3, $4, $5, 'operational', 'svitlana-bot', 'human')
-             RETURNING id, title, status, priority, date`,
-            [title, description || null, priority || 'normal', today, assigned_to || null]
-        );
+        const task = await getKleshnya().createTask({
+            title,
+            description: description || null,
+            priority: priority || 'normal',
+            date: today,
+            assigned_to: assigned_to || null,
+            category: 'operational',
+            owner: 'svitlana-bot',
+            task_type: 'human',
+            source_type: 'svitlana',
+            source_id: `${today}:${title}:${assigned_to || ''}`,
+            created_by: 'svitlana-bot',
+            duplicateMode: 'skip'
+        });
         log.info(`Task created by svitlana-bot: "${title}" for ${today}`);
-        res.json({ success: true, task: result.rows[0] });
+        res.json({ success: true, task, duplicateSkipped: !!task.duplicateSkipped });
     } catch (err) {
         log.error('POST /svitlana/tasks', err);
         res.status(500).json({ error: 'Internal server error' });

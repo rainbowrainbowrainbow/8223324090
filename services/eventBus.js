@@ -197,38 +197,23 @@ async function executeAction(action, payload, event) {
             const title = interpolate(action.title || 'Auto-task', payload);
             const description = interpolate(action.description || '', payload);
             const bookingSourceId = payload?.booking_id || payload?.bookingId || null;
-            // v40.5: Dedup guard — don't create if same title+date already exists
-            const existing = bookingSourceId
-                ? await pool.query(
-                    `SELECT id FROM tasks
-                     WHERE title = $1
-                       AND source_type = 'booking'
-                       AND source_id = $2
-                       AND status NOT IN ('done','cancelled','archived')
-                     LIMIT 1`,
-                    [title, String(bookingSourceId)]
-                )
-                : await pool.query(
-                    `SELECT id FROM tasks WHERE title = $1 AND date = to_char(CURRENT_DATE, 'YYYY-MM-DD') AND status NOT IN ('done','cancelled','archived') LIMIT 1`,
-                    [title]
-                );
-            if (existing.rows.length > 0) {
-                log.info(`Action: skip duplicate task "${title}" (exists: #${existing.rows[0].id})`);
+            const { createTask } = require('./kleshnya');
+            const task = await createTask({
+                title,
+                description,
+                date: new Date().toISOString().slice(0, 10),
+                priority: action.priority || 'normal',
+                assigned_to: action.assigned_to || null,
+                created_by: 'rule_engine',
+                category: action.category || 'admin',
+                source_type: bookingSourceId ? 'booking' : 'manual',
+                source_id: bookingSourceId ? String(bookingSourceId) : null,
+                duplicateMode: 'skip'
+            });
+            if (task?.duplicateSkipped) {
+                log.info(`Action: skip duplicate task "${title}" (exists: #${task.id})`);
                 break;
             }
-            await pool.query(
-                `INSERT INTO tasks (title, description, date, priority, assigned_to, created_by, type, category, source_type, source_id)
-                 VALUES ($1, $2, to_char(CURRENT_DATE, 'YYYY-MM-DD'), $3, $4, 'rule_engine', 'auto', $5, $6, $7)`,
-                [
-                    title,
-                    description,
-                    action.priority || 'normal',
-                    action.assigned_to || null,
-                    action.category || 'admin',
-                    bookingSourceId ? 'booking' : 'manual',
-                    bookingSourceId ? String(bookingSourceId) : null
-                ]
-            );
             log.info(`Action: created task "${title}"`);
             break;
         }

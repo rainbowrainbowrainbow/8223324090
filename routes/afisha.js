@@ -9,6 +9,8 @@ const { ensureRecurringAfishaForDate } = require('../services/scheduler');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
 
+function getKleshnya() { return require('../services/kleshnya'); }
+
 // All afisha routes require authentication
 router.use(authenticateToken);
 
@@ -441,12 +443,18 @@ router.post('/:id/generate-tasks', async (req, res) => {
         const created = [];
 
         for (const task of tasks) {
-            const result = await pool.query(
-                `INSERT INTO tasks (title, date, status, priority, afisha_id, created_by, type, category)
-                 VALUES ($1, $2, $3, $4, $5, $6, 'afisha', $7) RETURNING *`,
-                [task.title, task.date, task.status, task.priority, task.afisha_id, task.created_by, task.category || 'event']
-            );
-            created.push(result.rows[0]);
+            const createdTask = await getKleshnya().createTask({
+                title: task.title,
+                date: task.date,
+                priority: task.priority,
+                afisha_id: task.afisha_id,
+                created_by: task.created_by,
+                source_type: 'afisha',
+                source_id: String(task.afisha_id),
+                category: task.category || 'event',
+                duplicateMode: 'skip'
+            });
+            created.push(createdTask);
         }
 
         log.info(`Generated ${created.length} tasks for afisha #${id}`);

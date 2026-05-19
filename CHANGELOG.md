@@ -4,6 +4,18 @@
 
 ---
 
+## v0.59.0 - Tasks Truth & Completed Day Board
+
+### Tasks Truth & Completed Day Board [codex]
+- **Canonical duplicate policy для задач** - manual create, шаблони, recurring, booking/rule automation, afisha, leads, catalogs, notes і Svitlana тепер проходять через спільний creator або власну source-idempotency, щоб не плодити активні дублікати.
+- **Manual duplicate більше не засмічує pool** - повторне створення задачі з тією ж active signature повертає `409 duplicate` і підказує відкрити існуючу задачу, а `force=true` лишився тільки для manual flow і високих ролей.
+- **Non-destructive cleanup** - існуючі активні дублікати архівуються з `archive_reason='auto_duplicate'` і `duplicate_of_task_id`, без `DELETE`.
+- **Виконані задачі мають явний стан** - `done` проставляє `completed_at`, rollback очищає його, картка має badge `Виконано` і закреслену назву.
+- **Board `Виконано сьогодні`** - додано окремий зріз із count badge, часом завершення і сортуванням newest-first.
+- **Governance menu** - над Tasks додано компактне керування: показати виконані, перейти в done-today/archive, bulk done/archive/restore, dedup report і cleanup.
+
+---
+
 ## v0.58.16 - Calm Modal Windows
 
 ### Calm Modal Windows [codex]

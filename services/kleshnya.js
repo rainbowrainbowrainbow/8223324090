@@ -16,6 +16,7 @@
 const { pool } = require('../db');
 const { sendTelegramMessage, getConfiguredChatId, getConfiguredThreadId, telegramRequest } = require('./telegram');
 const { createLogger } = require('../utils/logger');
+const { TaskDuplicateError, findActiveDuplicateTask } = require('./taskDuplicatePolicy');
 
 const log = createLogger('Kleshnya');
 
@@ -70,15 +71,45 @@ async function createTask(data) {
         source_entity_type = null, source_entity_id = null, pack_id = null,
         pack_status = null, owner_role = null, sla_minutes = null, escalate_after = null,
         template_id, afisha_id, created_by = 'kleshnya',
+        type = null,
         task_mode = 'work', task_kind = 'action', visibility = 'team', workflow_state = 'todo',
         remind_at = null, snoozed_until = null, last_notified_at = null, next_notification_at = null,
         evening_review_date = null, focus_rank = 0, related_entity_type = null, related_entity_id = null,
-        source_module = null, effort_minutes = null
+        source_module = null, effort_minutes = null,
+        forceDuplicate = false, duplicateMode = 'skip'
     } = data;
 
     if (!title || !title.trim()) throw new Error('title required');
 
     const policy = control_policy || { reminder_minutes: [60, 30, 10], escalation_after_minutes: 120 };
+    const duplicate = await findActiveDuplicateTask(pool, {
+        title,
+        date,
+        deadline,
+        remind_at,
+        owner_user_id,
+        category,
+        subcategory,
+        source_type,
+        source_id,
+        template_id,
+        source_entity_type,
+        source_entity_id,
+        pack_id,
+        checklist_template_key,
+        afisha_id
+    });
+    if (duplicate && !forceDuplicate) {
+        if (duplicateMode === 'reject') {
+            throw new TaskDuplicateError(duplicate, `Задача "${title.trim()}" вже існує`);
+        }
+        log.info(`Task duplicate skipped: #${duplicate.id} "${title.trim()}" [${source_type}]`);
+        return {
+            ...duplicate,
+            duplicateSkipped: true,
+            duplicateOfTaskId: duplicate.id
+        };
+    }
 
     const result = await pool.query(
         `INSERT INTO tasks (title, description, date, priority, assigned_to, owner, owner_user_id, created_by,
@@ -98,7 +129,8 @@ async function createTask(data) {
          category, subcategory || null, checklist_template_key || null,
          source_entity_type || null, source_entity_id || null, pack_id || null, pack_status || null,
          owner_role || null, sla_minutes || null, escalate_after || null,
-         template_id || null, afisha_id || null, source_type === 'recurring' ? 'recurring' : 'manual',
+         template_id || null, afisha_id || null,
+         type || (source_type === 'recurring' ? 'recurring' : (source_type === 'afisha' ? 'afisha' : (source_type === 'booking' ? 'auto_complete' : 'manual'))),
          task_mode, task_kind, visibility, workflow_state, remind_at, snoozed_until,
          last_notified_at, next_notification_at, evening_review_date, focus_rank,
          related_entity_type, related_entity_id, source_module, effort_minutes]
@@ -137,6 +169,9 @@ async function updateTaskStatus(taskId, newStatus, actor = 'system') {
              workflow_state=CASE WHEN $4='done' THEN 'done' WHEN $4='in_progress' THEN 'in_progress' ELSE COALESCE(NULLIF(workflow_state, 'done'), 'todo') END,
              updated_at=NOW(),
              completed_at=CASE WHEN $4='done' THEN NOW() ELSE NULL END,
+             archived_at=NULL,
+             archive_reason=NULL,
+             duplicate_of_task_id=NULL,
              escalation_level=0,
              version=version+1
          WHERE id=$2 AND version=$3`,

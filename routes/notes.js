@@ -7,6 +7,7 @@ const { pool } = require('../db');
 const { requireRole, ANY_ROLE } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Notes');
+function getKleshnya() { return require('../services/kleshnya'); }
 
 // GET /api/notes
 router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
@@ -195,15 +196,22 @@ router.post('/meeting/:id/create-tasks', requireRole(...ANY_ROLE), async (req, r
         let created = 0;
 
         for (const item of items.rows) {
-            const taskResult = await pool.query(
-                `INSERT INTO tasks (title, description, status, priority, assigned_to, owner_id, category)
-                 VALUES ($1, $2, 'todo', 'normal', $3, $4, 'operational') RETURNING id`,
-                [`[${meetingTitle}] ${item.description}`, `Задача зі зустрічі: ${meetingTitle}`,
-                 item.assigned_to, req.user.id || req.user.userId]
-            );
+            const taskResult = await getKleshnya().createTask({
+                title: `[${meetingTitle}] ${item.description}`,
+                description: `Задача зі зустрічі: ${meetingTitle}`,
+                assigned_to: item.assigned_to,
+                owner_user_id: req.user.id || req.user.userId || null,
+                category: 'operational',
+                source_type: 'meeting_action',
+                source_id: String(item.id),
+                source_entity_type: 'meeting',
+                source_entity_id: String(req.params.id),
+                created_by: req.user.username || req.user.name || 'meeting_notes',
+                duplicateMode: 'skip'
+            });
             await pool.query(
                 'UPDATE meeting_action_items SET task_id = $1, status = $2 WHERE id = $3',
-                [taskResult.rows[0].id, 'created', item.id]
+                [taskResult.id, taskResult.duplicateSkipped ? 'linked_existing' : 'created', item.id]
             );
             created++;
         }

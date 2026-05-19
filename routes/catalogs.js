@@ -12,6 +12,7 @@ const { uploadFromUrl, makeFilename } = require('../services/imageStorage');
 const { requireRole, authenticateToken } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Catalogs');
+function getKleshnya() { return require('../services/kleshnya'); }
 
 const KIE_KEY = process.env.KIE_API_KEY || '';
 
@@ -918,13 +919,20 @@ router.post('/:catalogId/automations/:id/run', requireRole('admin', 'creator', '
         const auto = await pool.query('SELECT * FROM catalog_automations WHERE id=$1 AND catalog_id=$2', [req.params.id, req.params.catalogId]);
         if (!auto.rowCount) return res.status(404).json({ error: 'Automation not found' });
         const a = auto.rows[0];
-        // Create task in tasks table
-        const taskR = await pool.query(
-            `INSERT INTO tasks (title, description, category, priority, status, assigned_role, created_by, created_at)
-             VALUES ($1, $2, 'catalog', 'normal', 'pending', $3, $4, NOW()) RETURNING id`,
-            [a.name, a.description || `Автозадача з каталогу ${req.params.catalogId}`, a.assigned_role, req.user?.username || 'system']
-        );
-        res.json({ success: true, taskId: taskR.rows[0].id });
+        const task = await getKleshnya().createTask({
+            title: a.name,
+            description: a.description || `Автозадача з каталогу ${req.params.catalogId}`,
+            category: 'admin',
+            priority: 'normal',
+            owner_role: a.assigned_role || 'admin',
+            created_by: req.user?.username || 'system',
+            source_type: 'catalog_automation',
+            source_id: String(a.id),
+            source_entity_type: 'catalog',
+            source_entity_id: String(req.params.catalogId),
+            duplicateMode: 'skip'
+        });
+        res.json({ success: true, taskId: task.id, duplicateSkipped: !!task.duplicateSkipped });
     } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

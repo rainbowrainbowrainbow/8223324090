@@ -785,6 +785,13 @@ router.get('/catalog/export', requireRole('creator', 'director', 'senior_manager
         const pkgResult = await pool.query(
             'SELECT * FROM graduation_packages WHERE is_active = true ORDER BY sort_order'
         );
+        const packageSlug = String(req.query.package || req.query.pkg || '').trim();
+        const packageRows = packageSlug
+            ? pkgResult.rows.filter(pkg => String(pkg.slug) === packageSlug)
+            : pkgResult.rows;
+        if (packageSlug && packageRows.length === 0) {
+            return res.status(404).send('Package not found');
+        }
         const itemsResult = await pool.query(
             `SELECT pi.package_id, pi.service_id, pi.override_price,
                     s.name as service_name, s.price_per_child, s.duration_min,
@@ -855,7 +862,7 @@ router.get('/catalog/export', requireRole('creator', 'director', 'senior_manager
             return 'ХВ';
         }
 
-        const packagePages = pkgResult.rows.map(p => {
+        const packagePages = packageRows.map(p => {
             const items = itemMap[p.id] || [];
             const totalPrice = items.reduce((sum, i) => sum + getPrice(i), 0);
             const totalDuration = items.reduce((sum, i) => sum + (i.duration_min || 0), 0);
@@ -863,30 +870,31 @@ router.get('/catalog/export', requireRole('creator', 'director', 'senior_manager
             const minKids = p.min_kids || 7;
             const maxKids = p.max_kids || 50;
 
-            const imgPath = p.image_url || `/images/catalogs/graduation/${p.slug}.png`;
+            const imgPath = p.image_url || `/images/catalogs/graduation/${p.slug}-banner.png`;
+            const compactClass = items.length > 8 ? ' is-dense' : '';
 
             // Service names list
             const servicesListHtml = items.map(i =>
-                `<li>— ${i.service_name.toUpperCase()}</li>`
+                `<li>${_escH(i.service_name).toUpperCase()}${i.duration_min ? `<span>${Number(i.duration_min)} хв</span>` : ''}</li>`
             ).join('');
 
             // Service descriptions
             const descsHtml = items
                 .filter(i => i.service_description || i.catalog_description)
-                .map(i => `<div class="desc-item"><strong>${i.service_name.toUpperCase()}</strong> — ${i.catalog_description || i.service_description}</div>`)
+                .map(i => `<div class="desc-item"><strong>${_escH(i.service_name).toUpperCase()}</strong> — ${_escH(i.catalog_description || i.service_description)}</div>`)
                 .join('');
 
             return `
-    <div class="page pkg-page" id="pkg-${p.slug}" style="--bg1:${theme.bg1};--bg2:${theme.bg2};--bg3:${theme.bg3}">
+    <section class="page pkg-page${compactClass}" id="pkg-${_escH(p.slug)}" style="--bg1:${theme.bg1};--bg2:${theme.bg2};--bg3:${theme.bg3};--accent:${theme.accent};--accent-soft:${theme.accentLight}">
         <div class="geo-overlay"></div>
         <div class="page-inner">
             <div class="hero-wrap">
-                <img class="hero-img" src="${imgPath}" alt="${p.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                <img class="hero-img" src="${_escH(imgPath)}" alt="${_escH(p.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
                 <div class="hero-placeholder" style="background:${theme.heroGrad};display:none"><span class="hero-emoji">${theme.emoji}</span></div>
             </div>
             <div class="info-card">
                 <div class="info-label">ВИПУСКНИЙ</div>
-                <div class="info-title">${p.name.toUpperCase()}</div>
+                <div class="info-title">${_escH(p.name).toUpperCase()}</div>
                 <div class="info-row">
                     <div class="info-item"><span class="info-icon">⏱</span><span class="info-val">${fmtDurationHours(totalDuration)}</span><span class="info-unit">${durationUnit(totalDuration)}</span></div>
                     <div class="info-item"><span class="info-icon">👥</span><span class="info-val">${minKids}-${maxKids}</span><span class="info-unit">ДІТЕЙ</span></div>
@@ -898,28 +906,66 @@ router.get('/catalog/export', requireRole('creator', 'director', 'senior_manager
                 <ul class="svc-list">${servicesListHtml}</ul>
             </div>
             ${descsHtml ? `<div class="desc-card">${descsHtml}</div>` : ''}
+            <footer class="page-footer">
+                <strong>Event Genix · Парк Закревського</strong>
+                <span>Київ, вул. Закревського 61/2 · 0800 75 35 53</span>
+            </footer>
         </div>
-    </div>`;
+    </section>`;
         }).join('\n');
+        const autoPrint = ['1', 'true', 'yes'].includes(String(req.query.print || '').toLowerCase());
+        const pageCountText = packageSlug
+            ? `${packageRows[0]?.name || 'Пакет'}`
+            : `${packageRows.length} A4 сторінок`;
 
         const html = `<!DOCTYPE html>
 <html lang="uk">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Випускні 2026 — Парк Закревського</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-@page { margin: 8mm; size: A4 portrait; }
+@page { margin: 0; size: A4 portrait; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Nunito', sans-serif; margin: 0; padding: 0; color: #1a1a1a; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+html, body { min-height: 100%; }
+body { font-family: 'Nunito', sans-serif; margin: 0; padding: 0; color: #1a1a1a; background: #efe9df; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.print-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 18px;
+    background: rgba(17, 24, 39, 0.92);
+    color: #fff;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.22);
+}
+.print-toolbar strong { display: block; font-size: 16px; }
+.print-toolbar span { display: block; color: rgba(255,255,255,0.72); font-size: 12px; margin-top: 2px; }
+.print-toolbar button {
+    border: 0;
+    border-radius: 12px;
+    background: #10b981;
+    color: #fff;
+    font: 900 14px 'Nunito', sans-serif;
+    padding: 10px 18px;
+    cursor: pointer;
+}
 
 .page {
+    width: 210mm;
+    height: 297mm;
     page-break-after: always;
-    min-height: 277mm;
     padding: 0;
     position: relative;
     overflow: hidden;
+    margin: 18px auto;
+    box-shadow: 0 18px 50px rgba(15, 23, 42, 0.24);
+    background: #fff;
 }
 .page:last-child { page-break-after: avoid; }
 
@@ -932,7 +978,6 @@ body { font-family: 'Nunito', sans-serif; margin: 0; padding: 0; color: #1a1a1a;
     background: linear-gradient(135deg, #0D0D0D, #1a1a2e);
     color: white;
     text-align: center;
-    min-height: 277mm;
 }
 .cover-icon { font-size: 80px; margin-bottom: 24px; }
 .cover-title { font-size: 48px; font-weight: 900; color: #C9A84C; line-height: 1.2; }
@@ -958,19 +1003,27 @@ body { font-family: 'Nunito', sans-serif; margin: 0; padding: 0; color: #1a1a1a;
     background-size: 40px 70px;
     background-position: 0 0, 0 0, 20px 35px, 20px 35px, 0 0, 20px 35px;
 }
-.page-inner { position: relative; z-index: 1; padding: 10mm; }
+.page-inner {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    padding: 10mm;
+    display: grid;
+    grid-template-rows: 82mm auto auto minmax(0, 1fr) auto;
+    gap: 4mm;
+}
 
 /* Hero */
-.hero-wrap { width: 100%; aspect-ratio: 16/9; border-radius: 12px; overflow: hidden; margin-bottom: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
+.hero-wrap { width: 100%; height: 82mm; border-radius: 8mm; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.15); background: rgba(255,255,255,0.22); }
 .hero-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .hero-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
 .hero-emoji { font-size: 60px; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3)); }
 
 /* Info Card */
-.info-card { background: rgba(255,255,255,0.92); border-radius: 14px; padding: 14px 12px; margin-bottom: 8px; text-align: center; border: 2px solid rgba(255,255,255,0.7); }
+.info-card { background: rgba(255,255,255,0.93); border-radius: 6mm; padding: 4mm 5mm; text-align: center; border: 1.2mm solid rgba(255,255,255,0.72); }
 .info-label { font-size: 10px; font-weight: 800; letter-spacing: 4px; color: #888; margin-bottom: 2px; }
-.info-title { font-size: 22px; font-weight: 900; color: #1a1a1a; line-height: 1.1; margin-bottom: 10px; text-transform: uppercase; }
-.info-row { display: flex; justify-content: center; gap: 24px; margin-bottom: 8px; }
+.info-title { font-size: 23px; font-weight: 900; color: #1a1a1a; line-height: 1.06; margin-bottom: 3mm; text-transform: uppercase; }
+.info-row { display: flex; justify-content: center; gap: 10mm; margin-bottom: 2mm; }
 .info-item { display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .info-icon { font-size: 16px; }
 .info-val { font-size: 20px; font-weight: 900; color: #1a1a1a; }
@@ -978,36 +1031,97 @@ body { font-family: 'Nunito', sans-serif; margin: 0; padding: 0; color: #1a1a1a;
 .info-disclaimer { font-size: 7px; color: #aaa; line-height: 1.3; margin-top: 4px; }
 
 /* Services Card */
-.svc-card { border-radius: 12px; padding: 10px 16px; margin-bottom: 8px; text-align: center; }
-.svc-list { list-style: none; padding: 0; margin: 0; }
-.svc-list li { font-size: 10px; font-weight: 700; color: #1a1a1a; padding: 3px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+.svc-card { border-radius: 5mm; padding: 4mm 5mm; text-align: left; }
+.svc-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2mm 5mm; }
+.svc-list li { font-size: 9.5px; font-weight: 800; color: #1a1a1a; text-transform: uppercase; letter-spacing: 0.35px; display: flex; align-items: baseline; justify-content: space-between; gap: 3mm; border-bottom: 0.2mm solid rgba(0,0,0,0.08); padding-bottom: 1.3mm; }
+.svc-list span { font-size: 8px; color: #64748b; white-space: nowrap; }
 
 /* Description Card */
-.desc-card { background: rgba(255,255,255,0.88); border-radius: 12px; padding: 10px 14px; border: 2px solid rgba(255,255,255,0.5); }
-.desc-item { font-size: 8.5px; line-height: 1.4; color: #444; margin-bottom: 6px; text-align: center; }
+.desc-card { min-height: 0; overflow: hidden; background: rgba(255,255,255,0.88); border-radius: 5mm; padding: 3.5mm 4.5mm; border: 0.8mm solid rgba(255,255,255,0.5); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2mm 4mm; align-content: start; }
+.desc-item { font-size: 7.4px; line-height: 1.27; color: #444; text-align: left; }
 .desc-item:last-child { margin-bottom: 0; }
-.desc-item strong { font-weight: 900; color: #1a1a1a; font-size: 9px; }
+.desc-item strong { font-weight: 900; color: #1a1a1a; font-size: 7.8px; }
+.page-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6mm;
+    padding: 3mm 4mm;
+    border-radius: 4mm;
+    background: rgba(255,255,255,0.82);
+    color: #1f2937;
+    font-size: 9px;
+}
+.page-footer strong { color: var(--accent); font-size: 10px; }
+.page-footer span { text-align: right; color: #475569; }
+.pkg-page.is-dense .page-inner { grid-template-rows: 74mm auto auto minmax(0, 1fr) auto; gap: 3mm; padding: 8mm; }
+.pkg-page.is-dense .hero-wrap { height: 74mm; }
+.pkg-page.is-dense .info-card { padding: 3mm 4mm; }
+.pkg-page.is-dense .svc-list li { font-size: 8.7px; }
+.pkg-page.is-dense .desc-item { font-size: 6.8px; line-height: 1.22; }
 
 @media screen {
-    body { background: #f0ebe4; }
-    .page { max-width: 210mm; margin: 20px auto; box-shadow: 0 8px 40px rgba(0,0,0,0.12); border-radius: 8px; }
+    body { padding-bottom: 32px; }
+    .page { border-radius: 8mm; }
+    .page-anchor-note { display: none; }
+}
+@media print {
+    .print-toolbar { display: none !important; }
+    body { background: #fff !important; }
+    .page {
+        width: 210mm !important;
+        height: 297mm !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        break-after: page;
+        page-break-after: always;
+    }
+    .page:last-child { break-after: auto; page-break-after: auto; }
+    .page, .page * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
 }
 </style>
 </head>
 <body>
+    <div class="print-toolbar">
+        <div>
+            <strong>Випускні 2026 — A4 export</strong>
+            <span>${_escH(pageCountText)} · один пакет = одна A4-сторінка</span>
+        </div>
+        <button type="button" onclick="window.print()">Друк / PDF</button>
+    </div>
+    ${packageSlug ? '' : `
     <div class="page cover-page">
         <div class="cover-icon">🎓</div>
         <div class="cover-title">Випускні 2026</div>
         <div class="cover-subtitle">Парк Закревського періоду</div>
         <div class="cover-divider"></div>
-        <div class="cover-info">${pkgResult.rows.length} пакетних пропозицій для вашого класу</div>
+        <div class="cover-info">${packageRows.length} пакетних пропозицій для вашого класу</div>
         <div class="cover-contact">
             📞 (050) 344-37-71<br>
             📍 Київ, вул. Закревського 61/2<br>
             💬 @park_zakrevskogo
         </div>
-    </div>
+    </div>`}
 ${packagePages}
+${autoPrint ? `<script>
+window.addEventListener('load', function() {
+    var images = Array.from(document.images || []);
+    Promise.all(images.map(function(img) {
+        if (img.complete) return Promise.resolve();
+        return new Promise(function(resolve) {
+            img.addEventListener('load', resolve, { once: true });
+            img.addEventListener('error', resolve, { once: true });
+            setTimeout(resolve, 1600);
+        });
+    })).then(function() {
+        setTimeout(function() { window.print(); }, 300);
+    });
+});
+</script>` : ''}
 </body>
 </html>`;
 

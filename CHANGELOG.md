@@ -4,6 +4,29 @@
 
 ---
 
+## v0.59.2 - Training Shell Recovery
+
+### Training Shell Recovery [codex]
+- **Навчання повернуто у спільний CRM shell** - сторінка більше не ховає sidebar, header, пошук, тему і кнопку виходу після входу в режим навчання.
+- **Відновлення завислих станів переходу** - training bootstrap знімає старі `page-exiting`, `embed-mode`, `hidden` і busy-стани, якщо попередній fullscreen-перехід залишив сторінку без меню.
+- **Session truth збережено** - `/training` перевіряє токен, відновлює `AppState.currentUser`, синхронізує ім'я в header і user card у sidebar.
+- **Без дублювання sidebar** - сторінка користується спільним `Sidebar.init()` contract і тільки повертає видимість shell, якщо браузер прийшов із застарілого стану.
+- **Guardrail** - `test:ui` перевіряє, що Training не стає ізольованим екраном і не бере direct ownership над logout-кнопкою.
+
+---
+
+## v0.59.1 - Graduation Catalog A4 Recovery
+
+### Graduation Catalog A4 Recovery [codex]
+- **Каталог випускних на екрані відновлено** - desktop viewer більше не відкриває пакет як маленьку 680px mobile-card всередині великого темного полотна.
+- **Print/PDF відокремлено від viewer DOM** - graduation-друк тепер відкриває dedicated `/api/graduation/catalog/export`, а не друкує interactive viewer shell.
+- **Справжній A4 export** - print route отримав `@page A4`, сторінки `210mm x 297mm`, deterministic page breaks і правило один пакет = одна A4-сторінка.
+- **Без blank preview** - print document має власний print-safe білий layout, без app chrome, темних overlay, nav buttons і clipped fullscreen viewer.
+- **Single-package print** - export підтримує `?package=<slug>` для друку конкретного пакета з designs viewer, а повний export лишає cover + всі package pages.
+- **Guardrail** - `test:ui` перевіряє новий screen/print contract, щоб каталог знову не скотився в tiny-card або live-DOM print path.
+
+---
+
 ## v0.59.0 - Tasks Truth & Completed Day Board
 
 ### Tasks Truth & Completed Day Board [codex]

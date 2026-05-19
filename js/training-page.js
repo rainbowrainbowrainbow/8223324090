@@ -15,12 +15,69 @@
     let testsData = [];
 
     // ═══ Init ═══
+    initTrainingShell();
     initTabs();
     initRoleFilter();
-    if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
-    else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
     loadOverviewStats();
     loadArticles();
+
+    function restoreTrainingShellVisibility() {
+        document.body.classList.remove('auth-screen', 'page-exiting', 'shell-baseline');
+        document.body.classList.add('authenticated-shell', 'training-shell-ready');
+        if (window.self === window.top) {
+            document.body.classList.remove('embed-mode');
+            document.documentElement.classList.remove('embed-mode');
+        }
+        document.body.removeAttribute('aria-busy');
+
+        const mainApp = document.getElementById('mainApp');
+        if (mainApp) {
+            mainApp.classList.remove('hidden');
+            mainApp.style.display = '';
+            mainApp.style.visibility = '';
+        }
+        const loginOverlay = document.getElementById('loginOverlay') || document.getElementById('loginScreen');
+        if (loginOverlay) loginOverlay.classList.add('hidden');
+        document.getElementById('sidebarNav')?.classList.remove('hidden');
+        document.querySelector('.header')?.classList.remove('hidden');
+        document.getElementById('sidebarToggle')?.classList.remove('hidden');
+        document.querySelector('.btn-logout')?.classList.remove('hidden');
+
+        if (typeof Sidebar !== 'undefined') {
+            if (typeof Sidebar.markShellReady === 'function') Sidebar.markShellReady();
+            if (typeof Sidebar.initUserCard === 'function') Sidebar.initUserCard();
+        } else {
+            document.body.classList.add('shell-ready');
+            document.documentElement.classList.add('shell-ready');
+        }
+    }
+
+    async function initTrainingShell() {
+        restoreTrainingShellVisibility();
+        try {
+            if (typeof apiVerifyToken === 'function') {
+                const user = await apiVerifyToken();
+                if (!user) {
+                    if (typeof showLoginScreen === 'function') showLoginScreen();
+                    else window.location.href = '/';
+                    return;
+                }
+                if (typeof AppState !== 'undefined') AppState.currentUser = user;
+                try { localStorage.setItem('pzp_current_user', JSON.stringify(user)); } catch {}
+                const userEl = document.getElementById('currentUser');
+                if (userEl) userEl.textContent = user.name || user.username || '';
+            }
+        } catch (err) {
+            console.warn('[training] auth verification fallback', err);
+        } finally {
+            if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+            restoreTrainingShellVisibility();
+        }
+    }
+
+    window.addEventListener('pageshow', restoreTrainingShellVisibility);
+    setTimeout(restoreTrainingShellVisibility, 250);
+    setTimeout(restoreTrainingShellVisibility, 1000);
 
     // ═══ Tabs ═══
     function initTabs() {

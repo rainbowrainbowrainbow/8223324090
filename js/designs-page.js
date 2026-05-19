@@ -1434,6 +1434,10 @@ function closeCatalog() {
 }
 
 function printCatalog(catalogId) {
+    if (catalogId === 'graduation' || _viewerCatalogType === 'graduation') {
+        openGraduationCatalogPrintDocument();
+        return;
+    }
     if (catalogPackages.length === 0) {
         loadCatalogs().then(() => {
             if (catalogPackages.length > 0) doPrintCatalog();
@@ -1458,6 +1462,23 @@ function doPrintCatalog() {
         document.body.classList.remove('printing-catalog');
         closeCatalog();
     }, 300);
+}
+
+function getGraduationPrintUrl(packageSlug) {
+    const token = localStorage.getItem('pzp_token') || '';
+    const params = new URLSearchParams();
+    params.set('token', token);
+    params.set('print', '1');
+    if (packageSlug) params.set('package', packageSlug);
+    return `${window.API_BASE || ''}/api/graduation/catalog/export?${params.toString()}`;
+}
+
+function openGraduationCatalogPrintDocument(packageSlug) {
+    const url = getGraduationPrintUrl(packageSlug);
+    const printWin = window.open(url, '_blank');
+    if (!printWin && typeof showNotification === 'function') {
+        showNotification('Браузер заблокував вікно друку. Дозвольте popup для CRM.', 'error');
+    }
 }
 
 function buildCatalogPageHtml(pkg) {
@@ -1525,7 +1546,7 @@ function buildCatalogPageHtml(pkg) {
             </div>
             <!-- FOOTER -->
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.59.0" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.59.2" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>
@@ -1619,7 +1640,7 @@ function buildAutoPageHtml(page) {
                 ${page.description && itemsHtml ? `<div class="cat-desc" style="margin-top:12px">${esc(page.description)}</div>` : ''}
             </div>
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.59.0" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.59.2" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>
@@ -1633,15 +1654,14 @@ function buildAutoPageHtml(page) {
 }
 
 function printCatalogPage(catalogId, slugOrPageNum) {
+    if (catalogId === 'graduation') {
+        openGraduationCatalogPrintDocument(slugOrPageNum);
+        return;
+    }
     let pkg;
     let renderFn;
-    if (catalogId === 'graduation') {
-        pkg = catalogPackages.find(p => p.slug === slugOrPageNum);
-        renderFn = buildCatalogPageHtml;
-    } else {
-        pkg = catalogPackages.find(p => String(p.page_number) === String(slugOrPageNum));
-        renderFn = buildAutoPageHtml;
-    }
+    pkg = catalogPackages.find(p => String(p.page_number) === String(slugOrPageNum));
+    renderFn = buildAutoPageHtml;
     if (!pkg) return;
 
     const container = document.getElementById('catalogPages');
@@ -1673,6 +1693,7 @@ try {
     window.catalogPrev = catalogPrev;
     window.printCatalog = printCatalog;
     window.printCatalogPage = printCatalogPage;
+    window.openGraduationCatalogPrintDocument = openGraduationCatalogPrintDocument;
     window.buildAutoPageHtml = buildAutoPageHtml;
     window.downloadDesign = downloadDesign;
     window.copyDesign = copyDesign;

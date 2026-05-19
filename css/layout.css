@@ -16,6 +16,24 @@ body[data-page-group]:not(.shell-ready) #mainApp {
     visibility: hidden;
 }
 
+/* v0.59.2: Training is a normal CRM page, not an isolated/fullscreen mode. */
+body.training-shell-ready #mainApp {
+    display: flex !important;
+    visibility: visible !important;
+}
+
+body.training-shell-ready .sidebar-nav,
+body.training-shell-ready .header {
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+
+body.training-shell-ready:not(.auth-screen) .page-login-overlay,
+body.training-shell-ready:not(.auth-screen) #loginScreen {
+    display: none !important;
+}
+
 body[data-page-group]:not(.auth-screen) #loginScreen {
     visibility: hidden;
     pointer-events: none;
@@ -3218,4 +3236,16 @@ body.embed-mode .main-content {
 }
 body.embed-mode {
     background: transparent !important;
+}
+
+/* Training must never inherit a stale embed/fullscreen shell on normal navigation. */
+body.training-shell-ready:not(.auth-screen) .sidebar-nav {
+    display: flex !important;
+}
+body.training-shell-ready:not(.auth-screen) .header {
+    display: block !important;
+}
+body.training-shell-ready:not(.auth-screen) #sidebarToggle,
+body.training-shell-ready:not(.auth-screen) #logoutBtn {
+    display: inline-flex !important;
 }

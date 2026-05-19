@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.59.0">
-    <link rel="stylesheet" href="css/auth.css?v=0.59.0">
-    <link rel="stylesheet" href="css/layout.css?v=0.59.0">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.59.0">
-    <link rel="stylesheet" href="css/timeline.css?v=0.59.0">
-    <link rel="stylesheet" href="css/panel.css?v=0.59.0">
-    <link rel="stylesheet" href="css/modals.css?v=0.59.0">
-    <link rel="stylesheet" href="css/controls.css?v=0.59.0">
-    <link rel="stylesheet" href="css/features.css?v=0.59.0">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.59.0">
-    <link rel="stylesheet" href="css/responsive.css?v=0.59.0">
-    <link rel="stylesheet" href="css/pages.css?v=0.59.0">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.59.0">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.59.0">
+    <link rel="stylesheet" href="css/base.css?v=0.59.2">
+    <link rel="stylesheet" href="css/auth.css?v=0.59.2">
+    <link rel="stylesheet" href="css/layout.css?v=0.59.2">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.59.2">
+    <link rel="stylesheet" href="css/timeline.css?v=0.59.2">
+    <link rel="stylesheet" href="css/panel.css?v=0.59.2">
+    <link rel="stylesheet" href="css/modals.css?v=0.59.2">
+    <link rel="stylesheet" href="css/controls.css?v=0.59.2">
+    <link rel="stylesheet" href="css/features.css?v=0.59.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.59.2">
+    <link rel="stylesheet" href="css/responsive.css?v=0.59.2">
+    <link rel="stylesheet" href="css/pages.css?v=0.59.2">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.59.2">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.59.2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.59.0 Tasks Truth &amp; Completed Day Board">✨ 0.59.0 Tasks Truth &amp; Completed Day Board</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.59.2 Training Shell Recovery">✨ 0.59.2 Training Shell Recovery</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.59.0 — Tasks Truth &amp; Completed Day Board</p>
+                <p class="tagline">AI First CRM v0.59.2 — Training Shell Recovery</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.59.0: Tasks Truth &amp; Completed Day Board</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.59.2: Training Shell Recovery</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1269,6 +1269,27 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.59.2 — Training Shell Recovery</h4>
+                    <ul>
+                        <li><b>Навчання як нормальна CRM-сторінка</b> — режим більше не ховає sidebar, верхнє меню, пошук, перемикач теми і кнопку виходу.</li>
+                        <li><b>Shell recovery</b> — сторінка знімає завислі <code>page-exiting</code>, <code>embed-mode</code>, <code>hidden</code> і busy-стани після старих fullscreen-переходів.</li>
+                        <li><b>Session truth</b> — Training bootstrap перевіряє токен, відновлює <code>AppState.currentUser</code>, ім'я в header і user card у sidebar.</li>
+                        <li><b>Без подвійного sidebar</b> — сторінка не запускає власну навігацію, а користується спільним shell contract і тільки повертає видимість, якщо вона зникла.</li>
+                        <li><b>Guardrail</b> — UI-smoke перевіряє, що training shell не стає ізольованим режимом і не бере direct ownership над logout-кнопкою.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.59.1 — Graduation Catalog A4 Recovery</h4>
+                    <ul>
+                        <li><b>Каталог випускних</b> — desktop-перегляд більше не відкривається як маленька мобільна картка в порожньому темному canvas.</li>
+                        <li><b>Print/PDF відновлено</b> — graduation-друк тепер відкриває окремий print/export document, а не друкує live viewer DOM.</li>
+                        <li><b>Справжній A4</b> — export має <code>@page A4</code>, сторінки <code>210mm × 297mm</code> і правило: один пакет = одна A4-сторінка.</li>
+                        <li><b>Без app chrome у друці</b> — навігація, темний shell, кнопки viewer-а і CRM-обгортки не потрапляють у PDF.</li>
+                        <li><b>Один data source</b> — screen viewer і print route використовують ті самі дані пакетів: назву, тривалість, дітей, ціну, включені блоки й опис.</li>
+                        <li><b>Guardrail</b> — UI-smoke перевіряє separation між readable screen viewer і true A4 graduation export.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.59.0 — Tasks Truth &amp; Completed Day Board</h4>
                     <ul>
@@ -7759,25 +7780,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.59.0"></script>
-    <script src="js/api.js?v=0.59.0"></script>
-    <script src="js/ui.js?v=0.59.0"></script>
-    <script src="js/auth.js?v=0.59.0"></script>
-    <script src="js/timeline.js?v=0.59.0"></script>
-    <script src="js/booking.js?v=0.59.0"></script>
-    <script src="js/settings.js?v=0.59.0"></script>
-    <script src="js/booking-form.js?v=0.59.0"></script>
-    <script src="js/booking-linked.js?v=0.59.0"></script>
-    <script src="js/settings-dashboard.js?v=0.59.0"></script>
-    <script src="js/settings-history.js?v=0.59.0"></script>
-    <script src="js/settings-afisha.js?v=0.59.0"></script>
-    <script src="js/settings-certificates.js?v=0.59.0"></script>
-    <script src="js/offline.js?v=0.59.0"></script>
-    <script src="js/search.js?v=0.59.0"></script>
-    <script src="js/ws.js?v=0.59.0"></script>
-    <script src="js/app.js?v=0.59.0"></script>
-    <script src="js/kleshnya-widget.js?v=0.59.0"></script>
-    <script src="js/components/sidebar.js?v=0.59.0"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.59.0"></script>
+    <script src="js/config.js?v=0.59.2"></script>
+    <script src="js/api.js?v=0.59.2"></script>
+    <script src="js/ui.js?v=0.59.2"></script>
+    <script src="js/auth.js?v=0.59.2"></script>
+    <script src="js/timeline.js?v=0.59.2"></script>
+    <script src="js/booking.js?v=0.59.2"></script>
+    <script src="js/settings.js?v=0.59.2"></script>
+    <script src="js/booking-form.js?v=0.59.2"></script>
+    <script src="js/booking-linked.js?v=0.59.2"></script>
+    <script src="js/settings-dashboard.js?v=0.59.2"></script>
+    <script src="js/settings-history.js?v=0.59.2"></script>
+    <script src="js/settings-afisha.js?v=0.59.2"></script>
+    <script src="js/settings-certificates.js?v=0.59.2"></script>
+    <script src="js/offline.js?v=0.59.2"></script>
+    <script src="js/search.js?v=0.59.2"></script>
+    <script src="js/ws.js?v=0.59.2"></script>
+    <script src="js/app.js?v=0.59.2"></script>
+    <script src="js/kleshnya-widget.js?v=0.59.2"></script>
+    <script src="js/components/sidebar.js?v=0.59.2"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.59.2"></script>
 </body>
 </html>

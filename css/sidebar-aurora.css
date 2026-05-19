@@ -7664,3 +7664,44 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
 .sidebar-nav:not(.collapsed) .sidebar-design-extras:not(.is-collapsed) .sidebar-design-extra-list {
   display: grid !important;
 }
+
+/* v0.58.1: single-state sidebar collapse lock.
+   Historical hover-expand rules are still present above for old snapshots; this
+   final contract keeps the shared Aurora sidebar from flashing into legacy menu
+   variants when the collapse arrow is clicked repeatedly. */
+@media (min-width: 769px) {
+  .sidebar-nav.collapsed,
+  .sidebar-nav.collapsed:hover,
+  body.shell-ready .sidebar-nav.collapsed,
+  body.shell-ready .sidebar-nav.collapsed:hover,
+  body[data-page-group] .sidebar-nav.collapsed,
+  body[data-page-group] .sidebar-nav.collapsed:hover {
+    width: var(--eg-sidebar-collapsed-w) !important;
+    min-width: var(--eg-sidebar-collapsed-w) !important;
+    max-width: var(--eg-sidebar-collapsed-w) !important;
+    overflow-x: hidden !important;
+  }
+
+  .sidebar-nav.collapsed .sidebar-design-extras,
+  .sidebar-nav.collapsed:hover .sidebar-design-extras,
+  .sidebar-nav.collapsed .sidebar-alert-hero,
+  .sidebar-nav.collapsed:hover .sidebar-alert-hero,
+  .sidebar-nav.collapsed .sidebar-command-deck,
+  .sidebar-nav.collapsed:hover .sidebar-command-deck,
+  .sidebar-nav.collapsed .sidebar-pills,
+  .sidebar-nav.collapsed:hover .sidebar-pills,
+  .sidebar-nav.collapsed .sidebar-dashboard-jump-wrap,
+  .sidebar-nav.collapsed:hover .sidebar-dashboard-jump-wrap,
+  .sidebar-nav.collapsed .sidebar-today-dock,
+  .sidebar-nav.collapsed:hover .sidebar-today-dock,
+  .sidebar-nav.collapsed .sidebar-identity-main,
+  .sidebar-nav.collapsed:hover .sidebar-identity-main,
+  .sidebar-nav.collapsed .nav-copy,
+  .sidebar-nav.collapsed:hover .nav-copy,
+  .sidebar-nav.collapsed .sidebar-group-label,
+  .sidebar-nav.collapsed:hover .sidebar-group-label,
+  .sidebar-nav.collapsed .sidebar-group-chevron,
+  .sidebar-nav.collapsed:hover .sidebar-group-chevron {
+    display: none !important;
+  }
+}

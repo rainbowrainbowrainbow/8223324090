@@ -4,14 +4,14 @@
 
 ---
 
-## v0.58.1 - Assistant Chat and Sidebar Hotfix
+## v0.58.2 - Mobile Certificate and Sidebar Stability
 
-### Assistant Chat and Sidebar Hotfix [codex]
-- **Помічник у чатах** - діалог із AI тепер можна переносити в CRM-інструмент `Чати`: історія користувача й відповіді Помічника синхронізуються в окремий канал без втрати контексту.
-- **Рекомендовані дії** - dashboard/task фільтри від Помічника більше не лишаються декоративними: backlog/overdue сценарії ведуть у реальні поверхні й передають `assistantFilter=overdue` у задачі.
-- **Sidebar hotfix** - профільна картка у лівому меню більше не накладає ім'я, алерт, USD і час; `Швидкий доступ` знову реально розгортає/ховає список, а не лише міняє колір.
-- **Живий avatar Помічника** - верхній AI presence отримав нові м'які анімації: орбіти, точки, очі, екран-обличчя і speaking/thinking стани без шуму для всієї сторінки.
-- **Guardrail** - `test:ui` доповнено перевірками для assistant filter route і chat transcript bridge, щоб ці сценарії не відвалились непомітно.
+### Mobile Certificate and Sidebar Stability [codex]
+- **Сертифікати на iPhone** - після видачі нового сертифіката CRM більше не намагається автоматично будувати важкий canvas-preview на мобільному Safari; замість цього відкриває безпечний fallback і лишає завантаження доступним окремою дією.
+- **Закриття модалок** - `×`, backdrop і touch-close тепер закривають найближче активне вікно, а не всі модалки одразу, щоб на iPhone не зависали перекриття після помилки або повторного кліку.
+- **Експорт таймлайна** - PNG-експорт таймлайна і multi-day view отримали mobile Safari fallback: якщо canvas/download блокується, CRM відкриває зображення у новому вікні замість тихого падіння.
+- **Sidebar collapse** - стрілка лівого меню має одного власника стану `Aurora`; подвійний клік більше не перемикає між новим меню і старим legacy-виглядом.
+- **Guardrails** - `test:ui` фіксує iPhone certificate flow, shared modal close, timeline image fallback і єдиний collapse owner для sidebar.
 
 ---
 

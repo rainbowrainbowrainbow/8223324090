@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.58.1">
-    <link rel="stylesheet" href="css/auth.css?v=0.58.1">
-    <link rel="stylesheet" href="css/layout.css?v=0.58.1">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.58.1">
-    <link rel="stylesheet" href="css/timeline.css?v=0.58.1">
-    <link rel="stylesheet" href="css/panel.css?v=0.58.1">
-    <link rel="stylesheet" href="css/modals.css?v=0.58.1">
-    <link rel="stylesheet" href="css/controls.css?v=0.58.1">
-    <link rel="stylesheet" href="css/features.css?v=0.58.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.58.1">
-    <link rel="stylesheet" href="css/responsive.css?v=0.58.1">
-    <link rel="stylesheet" href="css/pages.css?v=0.58.1">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.58.1">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.58.1">
+    <link rel="stylesheet" href="css/base.css?v=0.58.2">
+    <link rel="stylesheet" href="css/auth.css?v=0.58.2">
+    <link rel="stylesheet" href="css/layout.css?v=0.58.2">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.58.2">
+    <link rel="stylesheet" href="css/timeline.css?v=0.58.2">
+    <link rel="stylesheet" href="css/panel.css?v=0.58.2">
+    <link rel="stylesheet" href="css/modals.css?v=0.58.2">
+    <link rel="stylesheet" href="css/controls.css?v=0.58.2">
+    <link rel="stylesheet" href="css/features.css?v=0.58.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.58.2">
+    <link rel="stylesheet" href="css/responsive.css?v=0.58.2">
+    <link rel="stylesheet" href="css/pages.css?v=0.58.2">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.58.2">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.58.2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.58.1 Assistant Chat and Sidebar Hotfix">✨ 0.58.1 Assistant Chat and Sidebar Hotfix</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.58.2 Mobile Certificate and Sidebar Stability">✨ 0.58.2 Mobile Certificate and Sidebar Stability</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.58.1 — Assistant Chat and Sidebar Hotfix</p>
+                <p class="tagline">AI First CRM v0.58.2 — Mobile Certificate and Sidebar Stability</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.58.1: Assistant Chat and Sidebar Hotfix</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.58.2: Mobile Certificate and Sidebar Stability</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -922,7 +922,7 @@
     <!-- v8.4: Модалка видачі сертифіката -->
     <div id="certificateModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Видати сертифікат">
         <div class="modal-content">
-            <span class="modal-close">&times;</span>
+            <button type="button" class="modal-close" data-cert-modal-close="certificateModal" aria-label="Закрити">&times;</button>
             <h3 id="certModalTitle">Видати сертифікат</h3>
             <form id="certificateForm" onsubmit="handleCertificateSubmit(event)">
                 <div class="form-group">
@@ -975,7 +975,7 @@
     <!-- v8.4: Модалка перегляду/деталей сертифіката -->
     <div id="certDetailModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Деталі сертифіката">
         <div class="modal-content">
-            <span class="modal-close">&times;</span>
+            <button type="button" class="modal-close" data-cert-modal-close="certDetailModal" aria-label="Закрити">&times;</button>
             <h3>📄 Деталі сертифіката</h3>
             <div id="certImagePreview" class="cert-image-preview"></div>
             <div id="certDetailContent"></div>
@@ -986,7 +986,7 @@
     <!-- v8.6: Модалка пакетної генерації сертифікатів -->
     <div id="batchCertModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Пакет сертифікатів">
         <div class="modal-content">
-            <span class="modal-close">&times;</span>
+            <button type="button" class="modal-close" data-cert-modal-close="batchCertModal" aria-label="Закрити">&times;</button>
             <h3>📦 Пакетна генерація сертифікатів</h3>
             <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px">Генерує порожні сертифікати з випадковими кодами. ПІБ вписується ручкою.</p>
             <form id="batchCertForm" onsubmit="handleBatchCertSubmit(event)">
@@ -1270,13 +1270,13 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.58.1 — Assistant Chat and Sidebar Hotfix</h4>
+                    <h4>v0.58.2 — Mobile Certificate and Sidebar Stability</h4>
                     <ul>
-                        <li><b>Помічник у чатах</b> — діалог із AI тепер можна переносити в CRM-інструмент <code>Чати</code> з історією запитів і відповідей.</li>
-                        <li><b>Рекомендовані дії</b> — фільтри backlog/overdue від Помічника ведуть у реальні dashboard/tasks поверхні, а не лишаються декоративною кнопкою.</li>
-                        <li><b>Sidebar hotfix</b> — профільна картка більше не накладає ім'я, алерти, USD і час; <code>Швидкий доступ</code> знову нормально розгортається.</li>
-                        <li><b>Живий avatar</b> — верхній Помічник отримав м'які анімації орбіт, точок, очей і speaking/thinking станів без шуму на всю сторінку.</li>
-                        <li><b>Guardrail</b> — UI-smoke перевіряє assistant filter route і chat transcript bridge.</li>
+                        <li><b>Сертифікати на iPhone</b> — після видачі CRM більше не запускає важкий preview автоматично на мобільному Safari; є безпечний fallback і окрема дія для завантаження.</li>
+                        <li><b>Модалки</b> — кнопка <code>×</code>, backdrop і touch-close закривають найближче активне вікно, а не всі вікна одразу.</li>
+                        <li><b>Експорт таймлайна</b> — PNG-експорт отримав fallback: якщо мобільний браузер блокує canvas/download, CRM відкриває зображення у новому вікні.</li>
+                        <li><b>Sidebar collapse</b> — стрілка лівого меню більше не перемикає між новим sidebar і старим legacy-станом при подвійному кліку.</li>
+                        <li><b>Guardrail</b> — UI-smoke перевіряє certificate mobile flow, modal close, timeline image fallback і єдиний collapse owner.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -7606,25 +7606,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.58.1"></script>
-    <script src="js/api.js?v=0.58.1"></script>
-    <script src="js/ui.js?v=0.58.1"></script>
-    <script src="js/auth.js?v=0.58.1"></script>
-    <script src="js/timeline.js?v=0.58.1"></script>
-    <script src="js/booking.js?v=0.58.1"></script>
-    <script src="js/settings.js?v=0.58.1"></script>
-    <script src="js/booking-form.js?v=0.58.1"></script>
-    <script src="js/booking-linked.js?v=0.58.1"></script>
-    <script src="js/settings-dashboard.js?v=0.58.1"></script>
-    <script src="js/settings-history.js?v=0.58.1"></script>
-    <script src="js/settings-afisha.js?v=0.58.1"></script>
-    <script src="js/settings-certificates.js?v=0.58.1"></script>
-    <script src="js/offline.js?v=0.58.1"></script>
-    <script src="js/search.js?v=0.58.1"></script>
-    <script src="js/ws.js?v=0.58.1"></script>
-    <script src="js/app.js?v=0.58.1"></script>
-    <script src="js/kleshnya-widget.js?v=0.58.1"></script>
-    <script src="js/components/sidebar.js?v=0.58.1"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.58.1"></script>
+    <script src="js/config.js?v=0.58.2"></script>
+    <script src="js/api.js?v=0.58.2"></script>
+    <script src="js/ui.js?v=0.58.2"></script>
+    <script src="js/auth.js?v=0.58.2"></script>
+    <script src="js/timeline.js?v=0.58.2"></script>
+    <script src="js/booking.js?v=0.58.2"></script>
+    <script src="js/settings.js?v=0.58.2"></script>
+    <script src="js/booking-form.js?v=0.58.2"></script>
+    <script src="js/booking-linked.js?v=0.58.2"></script>
+    <script src="js/settings-dashboard.js?v=0.58.2"></script>
+    <script src="js/settings-history.js?v=0.58.2"></script>
+    <script src="js/settings-afisha.js?v=0.58.2"></script>
+    <script src="js/settings-certificates.js?v=0.58.2"></script>
+    <script src="js/offline.js?v=0.58.2"></script>
+    <script src="js/search.js?v=0.58.2"></script>
+    <script src="js/ws.js?v=0.58.2"></script>
+    <script src="js/app.js?v=0.58.2"></script>
+    <script src="js/kleshnya-widget.js?v=0.58.2"></script>
+    <script src="js/components/sidebar.js?v=0.58.2"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.58.2"></script>
 </body>
 </html>

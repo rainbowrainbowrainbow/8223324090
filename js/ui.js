@@ -412,6 +412,44 @@ function closeModal(modalEl, options = {}) {
     }
 }
 
+function closeModalFromControl(control, event) {
+    if (!control) return false;
+    if (control.getAttribute('data-cert-modal-close')) return false;
+
+    const surface = control.closest('.modal');
+    if (!surface) return false;
+
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    if (surface.dataset.editableSurface === 'true' && window.UnsafeDismissGuard) {
+        window.UnsafeDismissGuard.attemptCloseEditableSurface(
+            surface,
+            () => closeModal(surface, { force: true }),
+            { reason: 'close-control' }
+        );
+    } else {
+        closeModal(surface);
+    }
+    return true;
+}
+
+function initSharedModalCloseControls() {
+    if (document._sharedModalCloseControlsBound) return;
+    document._sharedModalCloseControlsBound = true;
+
+    const handler = (event) => {
+        const closeControl = event.target?.closest?.('.modal-close');
+        if (!closeControl) return;
+        closeModalFromControl(closeControl, event);
+    };
+
+    document.addEventListener('click', handler, true);
+    document.addEventListener('touchend', handler, { capture: true, passive: false });
+}
+
 async function closeAllModals() {
     for (const m of document.querySelectorAll('.modal')) {
         if (m.id === 'confirmModal') continue;
@@ -427,6 +465,14 @@ async function closeAllModals() {
         }
     }
     return true;
+}
+
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSharedModalCloseControls, { once: true });
+    } else {
+        initSharedModalCloseControls();
+    }
 }
 
 function customConfirm(message, title = 'Підтвердження') {
@@ -1484,45 +1530,93 @@ function drawExportGrid(ctx, start, end, padding, timeWidth, headerHeight, cellW
     }
 }
 
+function isTouchImageExportDevice() {
+    const ua = navigator.userAgent || '';
+    const mobileUa = /iPhone|iPad|iPod|Android/i.test(ua);
+    const coarsePointer = window.matchMedia ? window.matchMedia('(pointer: coarse)').matches : false;
+    return mobileUa || coarsePointer;
+}
+
+function openTouchImageExportWindow() {
+    if (!isTouchImageExportDevice()) return null;
+    try {
+        const win = window.open('', '_blank');
+        if (win) {
+            win.document.write('<!doctype html><html lang="uk"><head><title>Експорт</title></head><body style="font-family:system-ui;padding:20px">Готуємо зображення...</body></html>');
+        }
+        return win;
+    } catch (_) {
+        return null;
+    }
+}
+
+function finishCanvasImageExport(canvas, filename, successMessage, touchWindow) {
+    const dataUrl = canvas.toDataURL('image/png');
+    if (touchWindow && !touchWindow.closed) {
+        const safeFilename = window.escapeHtml ? window.escapeHtml(filename) : String(filename).replace(/[<>&"]/g, '');
+        touchWindow.document.open();
+        touchWindow.document.write(`<!doctype html><html lang="uk"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeFilename}</title><style>body{margin:0;padding:16px;background:#07111f;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}img{display:block;width:100%;height:auto;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.35)}p{font-size:15px;line-height:1.45;color:#cbd5e1}</style></head><body><img src="${dataUrl}" alt="${safeFilename}"><p>На iPhone затисніть зображення, щоб зберегти або поділитися ним.</p></body></html>`);
+        touchWindow.document.close();
+        showNotification('Зображення відкрито в окремому вікні для збереження', 'success');
+        return;
+    }
+
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = dataUrl;
+    link.click();
+    showNotification(successMessage, 'success');
+}
+
 async function exportTimelineImage() {
     // v30.7: Support multi-day export
     if (AppState.multiDayMode) {
         return exportMultiDayImage();
     }
 
-    const bookings = await getBookingsForDate(AppState.selectedDate);
-    const lines = await getLinesForDate(AppState.selectedDate);
-    const { start, end } = getTimeRange();
+    const touchWindow = openTouchImageExportWindow();
+    try {
+        const bookings = await getBookingsForDate(AppState.selectedDate);
+        const lines = await getLinesForDate(AppState.selectedDate);
+        const { start, end } = getTimeRange();
 
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('timeline_canvas_context_unavailable');
 
-    const dpi = 150;
-    canvas.width = 297 * dpi / 25.4;
-    canvas.height = 210 * dpi / 25.4;
+        const dpi = 150;
+        canvas.width = 297 * dpi / 25.4;
+        canvas.height = 210 * dpi / 25.4;
 
-    const padding = 40;
-    const headerHeight = 80;
-    const lineHeight = (canvas.height - headerHeight - padding * 2) / Math.max(lines.length, 1);
-    const timeWidth = 120;
-    const cellWidth = (canvas.width - padding * 2 - timeWidth) / ((end - start) * 4);
+        const padding = 40;
+        const headerHeight = 80;
+        const lineHeight = (canvas.height - headerHeight - padding * 2) / Math.max(lines.length, 1);
+        const timeWidth = 120;
+        const cellWidth = (canvas.width - padding * 2 - timeWidth) / ((end - start) * 4);
 
-    const dateLabel = `${formatDate(AppState.selectedDate)} (${DAYS[AppState.selectedDate.getDay()]})`;
-    drawExportHeader(ctx, canvas, padding, headerHeight, dateLabel);
-    drawExportTimeScale(ctx, start, end, padding, timeWidth, headerHeight, cellWidth);
-    drawExportLines(ctx, lines, bookings, start, padding, timeWidth, headerHeight, lineHeight, cellWidth, canvas.width);
-    drawExportGrid(ctx, start, end, padding, timeWidth, headerHeight, cellWidth, canvas.height);
+        const dateLabel = `${formatDate(AppState.selectedDate)} (${DAYS[AppState.selectedDate.getDay()]})`;
+        drawExportHeader(ctx, canvas, padding, headerHeight, dateLabel);
+        drawExportTimeScale(ctx, start, end, padding, timeWidth, headerHeight, cellWidth);
+        drawExportLines(ctx, lines, bookings, start, padding, timeWidth, headerHeight, lineHeight, cellWidth, canvas.width);
+        drawExportGrid(ctx, start, end, padding, timeWidth, headerHeight, cellWidth, canvas.height);
 
-    const link = document.createElement('a');
-    link.download = `timeline_${formatDate(AppState.selectedDate)}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-
-    showNotification('Таймлайн експортовано як картинку!', 'success');
+        finishCanvasImageExport(
+            canvas,
+            `timeline_${formatDate(AppState.selectedDate)}.png`,
+            'Таймлайн експортовано як картинку!',
+            touchWindow
+        );
+    } catch (err) {
+        if (touchWindow && !touchWindow.closed) touchWindow.close();
+        console.error('Timeline image export failed:', err);
+        showNotification('Помилка експорту таймлайну', 'error');
+    }
 }
 
 // v30.7: Multi-day PNG export — each day as a separate section
 async function exportMultiDayImage() {
+    const touchWindow = openTouchImageExportWindow();
+    try {
     const dates = [];
     const startDate = new Date(AppState.selectedDate);
     for (let i = 0; i < AppState.daysToShow; i++) {
@@ -1555,6 +1649,7 @@ async function exportMultiDayImage() {
 
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('timeline_canvas_context_unavailable');
     canvas.width = canvasWidth;
     canvas.height = totalHeight;
 
@@ -1657,13 +1752,13 @@ async function exportMultiDayImage() {
     // Time scale at top (after header)
     drawExportTimeScale(ctx, globalStart, globalEnd, padding, timeWidth, headerHeight, cellWidth);
 
-    const link = document.createElement('a');
     const fname = `timeline_${formatDate(dates[0])}_${formatDate(dates[dates.length - 1])}.png`;
-    link.download = fname;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-
-    showNotification('Таймлайн експортовано як картинку!', 'success');
+    finishCanvasImageExport(canvas, fname, 'Таймлайн експортовано як картинку!', touchWindow);
+    } catch (err) {
+        if (touchWindow && !touchWindow.closed) touchWindow.close();
+        console.error('Timeline multi-day image export failed:', err);
+        showNotification('Помилка експорту таймлайну', 'error');
+    }
 }
 
 // ==========================================

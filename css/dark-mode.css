@@ -636,6 +636,11 @@ body.dark-mode .cert-detail-row-name {
 body.dark-mode .cert-detail-row-name .cert-detail-val {
     color: #93C5FD;
 }
+body.dark-mode .cert-preview-fallback {
+    background: rgba(20, 184, 166, 0.10);
+    border-color: rgba(45, 212, 191, 0.22);
+    color: #C7D2FE;
+}
 
 body.dark-mode .panel-header {
     background: #1e1e32;

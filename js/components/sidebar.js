@@ -2031,14 +2031,18 @@ const Sidebar = (() => {
         const collapseBtn = _ensureSidebarCollapseButton(sidebar);
         _removeLegacySidebarActions(sidebar);
         _ensureCompactProfileAvatar(sidebar);
+        if (sidebar) sidebar.dataset.sidebarStateOwner = 'aurora';
         if (sidebar) {
             _setSidebarCollapsed(localStorage.getItem('pzp_sidebar_collapsed') === 'true', false);
         }
         if (collapseBtn && sidebar && collapseBtn.dataset.sidebarCollapseBound !== 'true') {
+            collapseBtn.dataset.sidebarCollapseOwner = 'aurora';
             collapseBtn.dataset.sidebarCollapseBound = 'true';
             collapseBtn.addEventListener('click', () => {
                 _setSidebarCollapsed(!sidebar.classList.contains('collapsed'));
             });
+        } else if (collapseBtn) {
+            collapseBtn.dataset.sidebarCollapseOwner = 'aurora';
         }
         if (toggle && sidebar && toggle.dataset.sidebarToggleBound !== 'true') {
             toggle.dataset.sidebarToggleBound = 'true';

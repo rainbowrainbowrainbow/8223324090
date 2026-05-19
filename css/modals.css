@@ -281,7 +281,11 @@ body.dark-mode .confirm-cancel:hover {
     float: right;
     font-size: 28px;
     color: var(--gray-400);
+    border: 0;
+    background: transparent;
+    padding: 0;
     cursor: pointer;
+    font-family: inherit;
     transition: all var(--speed-fast);
     z-index: 3;
     width: 44px;

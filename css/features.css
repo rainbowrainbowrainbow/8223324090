@@ -1468,6 +1468,17 @@ body.dark-mode .filter-mode-banner-text p { color: #FBBF24; }
     margin-bottom: 12px;
 }
 
+.cert-preview-fallback {
+    border: 1px solid rgba(20, 184, 166, 0.18);
+    border-radius: 12px;
+    padding: 12px 14px;
+    background: rgba(20, 184, 166, 0.08);
+    color: var(--gray-600, #4B5563);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.45;
+}
+
 .cert-image-preview canvas {
     display: block;
     width: 100%;

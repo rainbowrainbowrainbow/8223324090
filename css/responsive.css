@@ -1187,6 +1187,52 @@
 
 /* v40.2: iPhone 11 (414px) certificate panel */
 @media (max-width: 430px) {
+    #certificateModal.modal,
+    #certDetailModal.modal,
+    #batchCertModal.modal {
+        align-items: stretch;
+        justify-content: center;
+        padding: max(8px, env(safe-area-inset-top)) 8px max(10px, env(safe-area-inset-bottom));
+        overflow: hidden;
+    }
+
+    #certificateModal .modal-content,
+    #certDetailModal .modal-content,
+    #batchCertModal .modal-content {
+        width: 100%;
+        max-width: none;
+        max-height: calc(100dvh - 18px);
+        min-height: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        border-radius: 18px;
+        padding: 16px;
+    }
+
+    #certificateModal .modal-close,
+    #certDetailModal .modal-close,
+    #batchCertModal .modal-close {
+        position: sticky;
+        top: 0;
+        float: right;
+        z-index: 40;
+        width: 48px;
+        height: 48px;
+        margin: -6px -4px 0 8px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        background: rgba(15, 23, 42, 0.08);
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+    }
+
+    #certificateModal .modal-content h3,
+    #certDetailModal .modal-content h3,
+    #batchCertModal .modal-content h3 {
+        top: -16px;
+        margin: -16px -16px 16px;
+        padding: 18px 58px 14px 16px;
+    }
+
     .certificates-panel {
         width: 100vw;
         right: 0;
@@ -1208,6 +1254,14 @@
         flex: 1;
         min-width: 120px;
         text-align: center;
+    }
+    .cert-image-preview canvas {
+        max-height: 42dvh;
+        object-fit: contain;
+    }
+    .cert-preview-fallback {
+        font-size: 13px;
+        padding: 12px;
     }
 }
 

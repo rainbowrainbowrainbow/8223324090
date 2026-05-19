@@ -2695,8 +2695,14 @@ function getCertStatusBadge(status) {
 function showCreateCertificateModal() {
     const modal = document.getElementById('certificateModal');
     if (!modal) return;
+    bindCertificateModalCloseHandlers();
     document.getElementById('certModalTitle').textContent = '📄 Видати сертифікат';
     document.getElementById('certificateForm')?.reset();
+    const submitBtn = document.querySelector('#certificateForm button[type="submit"]');
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Видати сертифікат';
+    }
     // Reset display mode label
     const modeSelect = document.getElementById('certDisplayMode');
     if (modeSelect) modeSelect.value = 'fio';
@@ -2721,6 +2727,7 @@ function showCreateCertificateModal() {
 function showBatchCertificateModal() {
     const modal = document.getElementById('batchCertModal');
     if (!modal) return;
+    bindCertificateModalCloseHandlers();
     document.getElementById('batchCertForm')?.reset();
     document.getElementById('batchCertResult')?.classList.add('hidden');
     document.getElementById('batchCertSubmitBtn').disabled = false;
@@ -2841,30 +2848,55 @@ function initCertSeasonButtons(rowId, hiddenId) {
 
 async function handleCertificateSubmit(event) {
     event.preventDefault();
-    const data = {
-        displayMode: document.getElementById('certDisplayMode')?.value,
-        displayValue: document.getElementById('certDisplayValue')?.value.trim(),
-        typeText: document.getElementById('certTypeText')?.value.trim() || 'на одноразовий вхід',
-        validUntil: document.getElementById('certValidUntil')?.value || undefined,
-        notes: document.getElementById('certNotes')?.value.trim() || undefined,
-        season: document.getElementById('certSeason')?.value || getCertCurrentSeason()
-    };
+    const form = event.currentTarget || document.getElementById('certificateForm');
+    const submitBtn = event.submitter || form?.querySelector('button[type="submit"]');
+    const originalText = submitBtn?.textContent || '';
 
-    const result = await apiCreateCertificate(data);
-    if (result.success) {
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Видаю...';
+    }
+
+    try {
+        const data = {
+            displayMode: document.getElementById('certDisplayMode')?.value,
+            displayValue: document.getElementById('certDisplayValue')?.value.trim(),
+            typeText: document.getElementById('certTypeText')?.value.trim() || 'на одноразовий вхід',
+            validUntil: document.getElementById('certValidUntil')?.value || undefined,
+            notes: document.getElementById('certNotes')?.value.trim() || undefined,
+            season: document.getElementById('certSeason')?.value || getCertCurrentSeason()
+        };
+
+        const result = await apiCreateCertificate(data);
+        if (!result.success) {
+            showNotification(result.error || 'Помилка видачі', 'error');
+            return;
+        }
+
         const modal = document.getElementById('certificateModal');
         if (window.UnsafeDismissGuard && modal) window.UnsafeDismissGuard.markClean(modal);
-        if (typeof closeModal === 'function') closeModal(modal, { force: true });
-        else modal?.classList.add('hidden');
-        showNotification(`Сертифікат ${result.certificate.certCode} видано!`, 'success');
+        closeCertificateModalById('certificateModal');
         loadCertificates();
-        // Одразу показати деталі нового сертифіката
-        showCertDetail(result.certificate.id);
 
-        // Fire-and-forget: generate image and send to Telegram
-        try { sendCertImageToTelegram(result.certificate); } catch(e) { console.warn('cert img:', e); }
-    } else {
-        showNotification(result.error || 'Помилка видачі', 'error');
+        if (isCertificateTouchDevice()) {
+            showNotification(`Сертифікат ${result.certificate.certCode} видано. Деталі відкриваються з реєстру.`, 'success');
+        } else {
+            showNotification(`Сертифікат ${result.certificate.certCode} видано!`, 'success');
+            // Одразу показати деталі нового сертифіката тільки там, де превʼю стабільне.
+            showCertDetail(result.certificate.id);
+
+            // Fire-and-forget: generate image and send to Telegram on desktop only.
+            try { sendCertImageToTelegram(result.certificate); } catch(e) { console.warn('cert img:', e); }
+        }
+    } catch (err) {
+        console.error('Certificate create failed:', err);
+        showNotification('Помилка видачі сертифіката', 'error');
+    } finally {
+        const modalOpen = !document.getElementById('certificateModal')?.classList.contains('hidden');
+        if (submitBtn && modalOpen) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalText || 'Видати сертифікат';
+        }
     }
 }
 
@@ -2884,16 +2916,22 @@ async function sendCertImageToTelegram(cert) {
     }
 }
 
-async function showCertDetail(id) {
+async function showCertDetail(id, options = {}) {
     const modal = document.getElementById('certDetailModal');
     const content = document.getElementById('certDetailContent');
     const actions = document.getElementById('certDetailActions');
     if (!modal || !content) return;
 
+    bindCertificateModalCloseHandlers();
     const preview = document.getElementById('certImagePreview');
     content.innerHTML = '<p class="empty-state">Завантаження...</p>';
     actions.innerHTML = '';
-    if (preview) preview.innerHTML = '';
+    const skipPreview = options.skipPreview === true || isCertificateTouchDevice();
+    if (preview) {
+        preview.innerHTML = skipPreview
+            ? '<div class="cert-preview-fallback">Превʼю на iPhone вимкнене, щоб не ламати видачу. Зображення можна відкрити кнопкою “Скачати”.</div>'
+            : '<div class="cert-preview-fallback">Готуємо превʼю сертифіката...</div>';
+    }
     modal.classList.remove('hidden');
 
     try {
@@ -2901,16 +2939,21 @@ async function showCertDetail(id) {
         if (!response.ok) throw new Error('Not found');
         const cert = await response.json();
 
-        // Generate certificate image preview
-        if (preview) {
-            generateCertificateCanvas(cert).then(canvas => {
+        // Generate certificate image preview. On iOS Safari this can fail under memory pressure,
+        // so the preview is optional and never blocks the details modal.
+        if (preview && !skipPreview) {
+            try {
+                const canvas = await generateCertificateCanvas(cert);
                 preview.innerHTML = '';
                 canvas.style.width = '100%';
                 canvas.style.height = 'auto';
                 canvas.style.borderRadius = '8px';
                 canvas.style.boxShadow = '0 2px 12px rgba(0,0,0,0.1)';
                 preview.appendChild(canvas);
-            });
+            } catch (previewErr) {
+                console.warn('Certificate preview generation failed:', previewErr);
+                preview.innerHTML = '<div class="cert-preview-fallback">Превʼю не згенерувалось на цьому пристрої. Сам сертифікат виданий, дії нижче доступні.</div>';
+            }
         }
 
         const issuedDate = cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString('uk-UA') : '—';
@@ -3027,6 +3070,60 @@ const CERT_SEASON_BG = {
     autumn: 'images/certificate/Autumn_sert.png'
 };
 const _certBgCache = {};
+const CERT_MODAL_IDS = ['certificateModal', 'certDetailModal', 'batchCertModal'];
+
+function isCertificateTouchDevice() {
+    const ua = navigator.userAgent || '';
+    const isMobileUa = /iPhone|iPad|iPod|Android/i.test(ua);
+    const isCoarseNarrow = window.matchMedia
+        ? window.matchMedia('(pointer: coarse)').matches && window.matchMedia('(max-width: 430px)').matches
+        : false;
+    return isMobileUa || isCoarseNarrow;
+}
+
+function getCertCanvasDimensions() {
+    if (isCertificateTouchDevice()) return { W: 800, H: 533 };
+    return { W: 1200, H: 800 };
+}
+
+function closeCertificateModalById(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!modal || !CERT_MODAL_IDS.includes(modalId)) return;
+    if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.markClean(modal);
+    if (typeof closeModal === 'function') closeModal(modal, { force: true });
+    else modal.classList.add('hidden');
+}
+
+function bindCertificateModalCloseHandlers() {
+    if (document._certificateModalCloseBound) return;
+    document._certificateModalCloseBound = true;
+
+    const closeFromEvent = (event, modalId) => {
+        if (!modalId || !CERT_MODAL_IDS.includes(modalId)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+        closeCertificateModalById(modalId);
+    };
+
+    const onCloseIntent = (event) => {
+        const closeBtn = event.target?.closest?.('[data-cert-modal-close]');
+        if (closeBtn) {
+            closeFromEvent(event, closeBtn.getAttribute('data-cert-modal-close'));
+            return;
+        }
+        if (event.target?.classList?.contains('modal') && CERT_MODAL_IDS.includes(event.target.id)) {
+            closeFromEvent(event, event.target.id);
+        }
+    };
+
+    document.addEventListener('click', onCloseIntent, true);
+    document.addEventListener('touchend', onCloseIntent, { capture: true, passive: false });
+}
+
+if (typeof window !== 'undefined') {
+    window.closeCertificateModalById = closeCertificateModalById;
+}
 
 function getCertCurrentSeason() {
     const m = new Date().getMonth();
@@ -3042,7 +3139,7 @@ function loadCertBg(season) {
     const src = CERT_SEASON_BG[key] || CERT_SEASON_BG.winter;
     return new Promise((resolve) => {
         const img = new Image();
-        img.crossOrigin = 'anonymous';
+        if (/^https?:\/\//i.test(src)) img.crossOrigin = 'anonymous';
         img.onload = () => { _certBgCache[key] = img; resolve(img); };
         img.onerror = () => resolve(null);
         img.src = src + '?v=8.7';
@@ -3066,9 +3163,7 @@ function certRoundRect(ctx, x, y, w, h, r) {
 
 async function generateCertificateCanvas(cert) {
     // v20.2.0: Reduce canvas size on iOS/mobile to prevent getContext null on iPhone 11
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    const W = isMobile ? 800 : 1200;
-    const H = isMobile ? 533 : 800;
+    const { W, H } = getCertCanvasDimensions();
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;
@@ -3076,7 +3171,7 @@ async function generateCertificateCanvas(cert) {
     // v20.2.0: Guard against null context (iOS memory pressure)
     if (!ctx) {
         console.warn('Canvas 2d context unavailable, skipping certificate render');
-        return canvas;
+        throw new Error('certificate_canvas_context_unavailable');
     }
 
     // === DRAW BACKGROUND (seasonal, full image, no crop) ===
@@ -3279,6 +3374,17 @@ async function drawCertQRCode(ctx, cert, W, H, layout) {
 async function downloadCertificateImage(certId) {
     const btn = document.querySelector(`[onclick*="downloadCertificateImage(${certId})"]`);
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Генерація...'; }
+    let mobilePreviewWindow = null;
+    if (isCertificateTouchDevice()) {
+        try {
+            mobilePreviewWindow = window.open('', '_blank');
+            if (mobilePreviewWindow) {
+                mobilePreviewWindow.document.write('<!doctype html><html lang="uk"><head><title>Сертифікат</title></head><body style="font-family:system-ui;padding:20px">Готуємо сертифікат...</body></html>');
+            }
+        } catch (_) {
+            mobilePreviewWindow = null;
+        }
+    }
 
     try {
         const response = await fetch(`${API_BASE}/certificates/${certId}`, { headers: getAuthHeaders(false) });
@@ -3286,12 +3392,23 @@ async function downloadCertificateImage(certId) {
         const cert = await response.json();
 
         const canvas = await generateCertificateCanvas(cert);
-        const link = document.createElement('a');
-        link.download = `${cert.certCode}.png`;
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-        showNotification('Сертифікат завантажено!', 'success');
+        const dataUrl = canvas.toDataURL('image/png');
+        if (mobilePreviewWindow && !mobilePreviewWindow.closed) {
+            const title = escapeHtml(cert.certCode || 'Сертифікат');
+            mobilePreviewWindow.document.open();
+            mobilePreviewWindow.document.write(`<!doctype html><html lang="uk"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{margin:0;padding:16px;background:#07111f;color:#f8fafc;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}img{display:block;width:100%;height:auto;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.35)}p{font-size:15px;line-height:1.45;color:#cbd5e1}</style></head><body><img src="${dataUrl}" alt="${title}"><p>На iPhone затисніть зображення, щоб зберегти або поділитися ним.</p></body></html>`);
+            mobilePreviewWindow.document.close();
+            showNotification('Сертифікат відкрито в окремому вікні для збереження', 'success');
+        } else {
+            const link = document.createElement('a');
+            link.download = `${cert.certCode}.png`;
+            link.href = dataUrl;
+            link.click();
+            showNotification('Сертифікат завантажено!', 'success');
+        }
     } catch (err) {
+        if (mobilePreviewWindow && !mobilePreviewWindow.closed) mobilePreviewWindow.close();
+        console.error('Certificate image generation failed:', err);
         showNotification('Помилка генерації сертифіката', 'error');
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = '🖼️ Скачати'; }

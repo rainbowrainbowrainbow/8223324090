@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.58.1",
+  "version": "0.58.2",
   "eventGenix": {
-    "releaseLabel": "Assistant Chat and Sidebar Hotfix"
+    "releaseLabel": "Mobile Certificate and Sidebar Stability"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

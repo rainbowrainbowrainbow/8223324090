@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.58.10">
-    <link rel="stylesheet" href="css/layout.css?v=0.58.10">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.58.10">
-    <link rel="stylesheet" href="css/pages.css?v=0.58.10">
-    <link rel="stylesheet" href="css/modals.css?v=0.58.10">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.58.10">
-    <link rel="stylesheet" href="css/responsive.css?v=0.58.10">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.58.10">
+    <link rel="stylesheet" href="css/base.css?v=0.58.11">
+    <link rel="stylesheet" href="css/layout.css?v=0.58.11">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.58.11">
+    <link rel="stylesheet" href="css/pages.css?v=0.58.11">
+    <link rel="stylesheet" href="css/modals.css?v=0.58.11">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.58.11">
+    <link rel="stylesheet" href="css/responsive.css?v=0.58.11">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.58.11">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -120,13 +120,44 @@
         .task-card.status-done { opacity: 0.5; }
         .task-card-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
         .task-card-meta { font-size: 11px; color: var(--gray-500); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-        .task-assignee-badge {
-            display: inline-flex; align-items: center; gap: 2px;
-            background: rgba(34,197,94,0.1); color: #16a34a; border: 1px solid rgba(34,197,94,0.2);
-            padding: 1px 6px; border-radius: 6px; font-weight: 700; font-size: 10px;
+        .task-assignee-badge,
+        .task-assignment-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 2px 8px; border-radius: 999px; font-weight: 900; font-size: 10px;
+            border: 1px solid rgba(148,163,184,0.18);
+            background: rgba(241,245,249,0.88); color: var(--gray-600);
+            max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
+        .task-assignment-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; flex: 0 0 auto; }
+        .task-assignment-self { background: rgba(20,184,166,0.14); color: #0f766e; border-color: rgba(20,184,166,0.32); }
+        .task-assignment-delegated { background: rgba(59,130,246,0.12); color: #2563eb; border-color: rgba(59,130,246,0.28); }
+        .task-assignment-incoming { background: rgba(168,85,247,0.12); color: #7c3aed; border-color: rgba(168,85,247,0.26); }
+        .task-assignment-assigned { background: rgba(34,197,94,0.1); color: #16a34a; border-color: rgba(34,197,94,0.2); }
+        .task-assignment-legacy,
+        .task-assignment-none { background: rgba(148,163,184,0.12); color: var(--gray-500); }
         .task-no-assignee { color: var(--gray-300); font-style: italic; }
-        body.dark-mode .task-assignee-badge { background: rgba(34,197,94,0.15); color: #4ade80; }
+        .task-my-scope-summary {
+            display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+            margin: 0 0 10px; padding: 10px 12px; border-radius: 14px;
+            border: 1px solid rgba(20,184,166,0.22);
+            background: linear-gradient(135deg, rgba(20,184,166,0.1), rgba(59,130,246,0.07));
+            color: var(--gray-600); font-size: 12px; font-weight: 800;
+        }
+        .task-my-scope-summary span {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 4px 8px; border-radius: 999px;
+            background: rgba(255,255,255,0.62); border: 1px solid rgba(148,163,184,0.14);
+        }
+        .task-my-scope-summary b { color: #0f766e; }
+        body.dark-mode .task-assignee-badge,
+        body.dark-mode .task-assignment-badge { background: rgba(15,23,42,0.72); border-color: rgba(148,163,184,0.16); }
+        body.dark-mode .task-assignment-self { background: rgba(20,184,166,0.16); color: #5eead4; border-color: rgba(45,212,191,0.28); }
+        body.dark-mode .task-assignment-delegated { background: rgba(59,130,246,0.16); color: #93c5fd; border-color: rgba(96,165,250,0.28); }
+        body.dark-mode .task-assignment-incoming { background: rgba(168,85,247,0.16); color: #c4b5fd; border-color: rgba(196,181,253,0.24); }
+        body.dark-mode .task-assignment-assigned { background: rgba(34,197,94,0.15); color: #4ade80; border-color: rgba(74,222,128,0.22); }
+        body.dark-mode .task-my-scope-summary { background: linear-gradient(135deg, rgba(20,184,166,0.12), rgba(59,130,246,0.08)); color: #cbd5e1; }
+        body.dark-mode .task-my-scope-summary span { background: rgba(15,23,42,0.62); border-color: rgba(148,163,184,0.12); }
+        body.dark-mode .task-my-scope-summary b { color: #5eead4; }
         body.dark-mode .task-no-assignee { color: var(--gray-500); }
         .task-card-actions { display: flex; gap: 4px; margin-top: 6px; }
         .task-card-actions button {
@@ -489,7 +520,7 @@
                 <button type="button" class="board-tab" data-view="next">Наступні <span class="tab-count" id="countNext">0</span></button>
                 <button type="button" class="board-tab" data-view="waiting">Чекаю <span class="tab-count" id="countWaiting">0</span></button>
                 <button type="button" class="board-tab" data-view="team">Командні <span class="tab-count" id="countTeam">0</span></button>
-                <button type="button" class="board-tab" data-view="my">Мої <span class="tab-count" id="countMy">0</span></button>
+                <button type="button" class="board-tab" data-view="my" title="Мої: задачі для мене, собі і ті, які я поставив команді">Мої <span class="tab-count" id="countMy">0</span></button>
                 <button type="button" class="board-tab" data-view="board">Канбан</button>
                 <button type="button" class="board-tab" data-view="routines">Рутини</button>
                 <button type="button" class="board-tab" data-view="templates">Шаблони</button>
@@ -668,13 +699,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.58.10"></script>
-    <script src="js/notification.js?v=0.58.10"></script>
-    <script src="js/api.js?v=0.58.10"></script>
-    <script src="js/auth.js?v=0.58.10"></script>
-    <script src="js/components/sidebar.js?v=0.58.10"></script>
+    <script src="js/config.js?v=0.58.11"></script>
+    <script src="js/notification.js?v=0.58.11"></script>
+    <script src="js/api.js?v=0.58.11"></script>
+    <script src="js/auth.js?v=0.58.11"></script>
+    <script src="js/components/sidebar.js?v=0.58.11"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/tasks-page.js?v=0.58.10"></script>
-    <script src="js/alerts.js?v=0.58.10"></script><script src="js/ui.js?v=0.58.10"></script>
+    <script src="js/tasks-page.js?v=0.58.11"></script>
+    <script src="js/alerts.js?v=0.58.11"></script><script src="js/ui.js?v=0.58.11"></script>
 </body>
 </html>

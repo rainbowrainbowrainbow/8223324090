@@ -259,8 +259,48 @@ function isTaskOwnedByCurrentUser(task = {}) {
     return false;
 }
 
+function taskTextValue(value) {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'object') {
+        return value.label || value.name || value.username || value.title || value.actionId || value.id || '';
+    }
+    return String(value).trim();
+}
+
+function taskIdentityValue(value) {
+    return taskTextValue(value).toLowerCase().trim();
+}
+
+function currentUserIdentityValues() {
+    const user = getTasksCurrentUser() || {};
+    return new Set([
+        user.username,
+        user.name,
+        user.displayName,
+        user.id,
+        user.userId
+    ].map(taskIdentityValue).filter(Boolean));
+}
+
+function getTaskCreatedByLabel(task = {}) {
+    return taskTextValue(task.createdBy || task.created_by || task.createdByName || task.created_by_name);
+}
+
+function isTaskCreatedByCurrentUser(task = {}) {
+    const createdBy = taskIdentityValue(getTaskCreatedByLabel(task));
+    return !!createdBy && currentUserIdentityValues().has(createdBy);
+}
+
+function isTaskDelegatedByCurrentUser(task = {}) {
+    return isTaskCreatedByCurrentUser(task) && !isTaskOwnedByCurrentUser(task) && !!getTaskOwnerLabel(task);
+}
+
+function isTaskInMyWorkspace(task = {}) {
+    return isTaskOwnedByCurrentUser(task) || isTaskCreatedByCurrentUser(task);
+}
+
 function getTaskOwnerLabel(task = {}) {
-    return task.ownerLabel || task.owner_label || task.assigned_to || task.owner || '';
+    return taskTextValue(task.ownerLabel || task.owner_label || task.assigned_to || task.owner);
 }
 
 function getTaskOwnerState(task = {}) {
@@ -274,11 +314,70 @@ function getTaskOwnerStateLabel(task = {}) {
     return 'unassigned';
 }
 
+function getTaskAssignmentView(task = {}) {
+    const ownerLabel = getTaskOwnerLabel(task);
+    const createdBy = getTaskCreatedByLabel(task);
+    const ownedByMe = isTaskOwnedByCurrentUser(task);
+    const createdByMe = isTaskCreatedByCurrentUser(task);
+    const hasTypedOwner = !!taskOwnerUserId(task);
+    if (ownedByMe && createdByMe) {
+        return {
+            tone: 'self',
+            label: 'Собі',
+            title: 'Ви створили цю задачу для себе'
+        };
+    }
+    if (createdByMe && ownerLabel) {
+        return {
+            tone: 'delegated',
+            label: `Я поставив: ${ownerLabel}`,
+            title: 'Задача створена вами для іншої людини'
+        };
+    }
+    if (ownedByMe) {
+        return {
+            tone: 'incoming',
+            label: createdBy ? `Мені від ${createdBy}` : 'Мені',
+            title: 'Задача призначена вам'
+        };
+    }
+    if (ownerLabel) {
+        return {
+            tone: hasTypedOwner ? 'assigned' : 'legacy',
+            label: `Для: ${ownerLabel}`,
+            title: hasTypedOwner ? 'Призначена відповідальному' : 'Старий текстовий відповідальний без typed owner'
+        };
+    }
+    return {
+        tone: 'none',
+        label: 'Без відповідального',
+        title: 'У задачі немає відповідального'
+    };
+}
+
+function formatTaskIntelLabel(value) {
+    const raw = taskTextValue(value);
+    if (!raw) return '';
+    const normalized = raw.toLowerCase();
+    const labels = {
+        action_today: 'на сьогодні',
+        action_overdue: 'прострочено',
+        action_waiting: 'очікує',
+        suggested: 'підказка',
+        high: 'високий ризик',
+        medium: 'середній ризик',
+        low: 'низький ризик'
+    };
+    return labels[normalized] || raw.replace(/_/g, ' ');
+}
+
 function renderTaskIntelligence(task = {}) {
     const intel = task.intelligence || {};
     const pieces = [];
-    if (intel.priorityBand) pieces.push(`<span class="task-intel-badge task-intel-${escapeHtml(intel.priorityBand)}">${escapeHtml(intel.priorityBand)}</span>`);
-    if (intel.recommendedAction) pieces.push(`<span class="task-intel-badge">${escapeHtml(intel.recommendedAction)}</span>`);
+    const priorityBand = formatTaskIntelLabel(intel.priorityBand);
+    const recommendedAction = formatTaskIntelLabel(intel.recommendedAction);
+    if (priorityBand) pieces.push(`<span class="task-intel-badge task-intel-${escapeHtml(taskTextValue(intel.priorityBand))}">${escapeHtml(priorityBand)}</span>`);
+    if (recommendedAction) pieces.push(`<span class="task-intel-badge">${escapeHtml(recommendedAction)}</span>`);
     return pieces.join('');
 }
 
@@ -973,7 +1072,7 @@ function updateCounts() {
     const active = filterByCategory(allTasks.filter(t => t.status !== 'done'));
     const todayTasks = active.filter(t => t.date === today || !t.date);
     const weekTasks = active.filter(t => t.date >= week.from && t.date <= week.to);
-    const myTasks = active.filter(isTaskOwnedByCurrentUser);
+    const myTasks = active.filter(isTaskInMyWorkspace);
     const nextTasks = active.filter(t => {
         const due = taskDueDate(t);
         return due && due > today && due <= week.to;
@@ -1146,7 +1245,7 @@ function renderWeekView(container) {
 // ==========================================
 
 function renderMyView(container) {
-    const baseTasks = allTasks.filter(t => isTaskOwnedByCurrentUser(t) && t.status !== 'done');
+    const baseTasks = allTasks.filter(t => isTaskInMyWorkspace(t) && t.status !== 'done');
     let tasks = baseTasks;
     tasks = filterByCategory(tasks);
     tasks = applyAssistantTaskFilter(tasks);
@@ -1156,7 +1255,16 @@ function renderMyView(container) {
         return;
     }
 
-    container.innerHTML = sortTasksForDisplay(tasks).map(t => renderTaskCard(t)).join('');
+    const owned = tasks.filter(isTaskOwnedByCurrentUser).length;
+    const delegated = tasks.filter(isTaskDelegatedByCurrentUser).length;
+    const self = tasks.filter(t => isTaskOwnedByCurrentUser(t) && isTaskCreatedByCurrentUser(t)).length;
+    const summary = `
+        <div class="task-my-scope-summary" aria-label="Моя зона задач">
+            <span><b>${owned}</b> мені</span>
+            <span><b>${self}</b> собі</span>
+            <span><b>${delegated}</b> я поставив команді</span>
+        </div>`;
+    container.innerHTML = summary + sortTasksForDisplay(tasks).map(t => renderTaskCard(t)).join('');
 }
 
 // ==========================================
@@ -1298,15 +1406,8 @@ function renderTaskCard(t) {
     const escLevel = t.escalation_level || 0;
     const escHtml = escLevel > 0 ? `<span class="escalation-dot escalation-${escLevel}" title="Ескалація: рівень ${escLevel}"></span>` : '';
 
-    const ownerLabel = getTaskOwnerLabel(t);
-    const ownerState = getTaskOwnerStateLabel(t);
-    const ownerClass = ownerState === 'assigned' ? 'task-assignee-badge' : 'task-no-assignee';
-    const ownerTitle = ownerState === 'legacy-unknown'
-        ? 'Legacy owner label without typed user id'
-        : (ownerState === 'unassigned' ? 'Task has no typed owner' : 'Typed task owner');
-    const ownerHtml = ownerLabel
-        ? `<span class="${ownerClass}" title="${escapeHtml(ownerTitle)}">👤 ${escapeHtml(ownerLabel)} <small>${escapeHtml(ownerState)}</small></span>`
-        : '<span class="task-no-assignee">— unassigned</span>';
+    const assignment = getTaskAssignmentView(t);
+    const ownerHtml = `<span class="task-assignment-badge task-assignment-${escapeHtml(assignment.tone)}" title="${escapeHtml(assignment.title)}"><span class="task-assignment-dot" aria-hidden="true"></span>${escapeHtml(assignment.label)}</span>`;
     const intelHtml = renderTaskIntelligence(t);
 
     return `
@@ -1493,6 +1594,7 @@ async function addTask() {
 
     const result = await apiCreateTask(data);
     if (result && result.success) {
+        const createdMode = taskAssigneeMode;
         lastCreatedTaskId = result.task?.id || null;
         keepNewTaskVisible(result.task, data);
         document.getElementById('taskTitle').value = '';
@@ -1501,7 +1603,7 @@ async function addTask() {
         document.querySelectorAll('[data-capture-chip]').forEach(btn => btn.classList.remove('active'));
         setTaskAssigneeMode('self');
         toggleTaskComposerDetails(false);
-        showNotification(ownerUserId ? 'Задачу додано і призначено' : 'Задачу додано', 'success');
+        showNotification(createdMode === 'self' ? 'Задачу додано собі' : 'Задачу додано і призначено команді', 'success');
         await loadAllTasks();
     } else {
         showNotification('Помилка додавання', 'error');

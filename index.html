@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.58.11">
-    <link rel="stylesheet" href="css/auth.css?v=0.58.11">
-    <link rel="stylesheet" href="css/layout.css?v=0.58.11">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.58.11">
-    <link rel="stylesheet" href="css/timeline.css?v=0.58.11">
-    <link rel="stylesheet" href="css/panel.css?v=0.58.11">
-    <link rel="stylesheet" href="css/modals.css?v=0.58.11">
-    <link rel="stylesheet" href="css/controls.css?v=0.58.11">
-    <link rel="stylesheet" href="css/features.css?v=0.58.11">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.58.11">
-    <link rel="stylesheet" href="css/responsive.css?v=0.58.11">
-    <link rel="stylesheet" href="css/pages.css?v=0.58.11">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.58.11">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.58.11">
+    <link rel="stylesheet" href="css/base.css?v=0.58.12">
+    <link rel="stylesheet" href="css/auth.css?v=0.58.12">
+    <link rel="stylesheet" href="css/layout.css?v=0.58.12">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.58.12">
+    <link rel="stylesheet" href="css/timeline.css?v=0.58.12">
+    <link rel="stylesheet" href="css/panel.css?v=0.58.12">
+    <link rel="stylesheet" href="css/modals.css?v=0.58.12">
+    <link rel="stylesheet" href="css/controls.css?v=0.58.12">
+    <link rel="stylesheet" href="css/features.css?v=0.58.12">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.58.12">
+    <link rel="stylesheet" href="css/responsive.css?v=0.58.12">
+    <link rel="stylesheet" href="css/pages.css?v=0.58.12">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.58.12">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.58.12">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.58.11 Task Ownership Clarity">✨ 0.58.11 Task Ownership Clarity</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.58.12 Changelog History Restore">✨ 0.58.12 Changelog History Restore</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.58.11 — Task Ownership Clarity</p>
+                <p class="tagline">AI First CRM v0.58.12 — Changelog History Restore</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.58.11: Task Ownership Clarity</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.58.12: Changelog History Restore</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1270,6 +1270,15 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.58.12 — Changelog History Restore</h4>
+                    <ul>
+                        <li><b>Відновлено історію релізів</b> — у модалку <code>Що нового</code> повернуто пропущені записи ланцюжка <code>0.58.x</code>.</li>
+                        <li><b>Без стрибків між версіями</b> — тепер видно послідовність від <code>v0.58.12</code> до <code>v0.58.0</code>, а не тільки окремі релізи.</li>
+                        <li><b>Повернуто загублений <code>v0.58.1</code></b> — assistant chat/sidebar hotfix знову є в історії релізів.</li>
+                        <li><b>Guardrail</b> — UI-smoke перевіряє, що changelog modal не губить проміжні записи <code>0.58.x</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.58.11 — Task Ownership Clarity</h4>
                     <ul>
                         <li><b>Задача собі тепер очевидна</b> — картки показують бейдж <code>Собі</code>, коли ви створили задачу для себе.</li>
@@ -1290,12 +1299,86 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
+                    <h4>v0.58.9 — Staff HR Profile Links</h4>
+                    <ul>
+                        <li><b>HR-профіль з графіка</b> — клік по конкретній людині у графіку роботи відкриває її профіль через <code>/hr?employee=&lt;id&gt;</code>.</li>
+                        <li><b>Редагування змін не зламано</b> — клітинки графіка й далі відкривають модалку зміни, а не профіль.</li>
+                        <li><b>Account-link окремо</b> — кнопка прив'язки акаунта не конфліктує з переходом у профіль.</li>
+                        <li><b>Доступність</b> — рядок співробітника отримав keyboard/focus поведінку для <code>Enter</code> і <code>Space</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.58.8 — Schedule Modal Layer Fix</h4>
+                    <ul>
+                        <li><b>Модалки графіка завжди зверху</b> — створення або редагування зміни більше не провалюється під Помічника, smart-menu чи інші overlay.</li>
+                        <li><b>Shared ModalLayer</b> — додано єдиний guard у <code>js/ui.js</code>, який піднімає активні модалки в системний top layer.</li>
+                        <li><b>Стабільна z-index шкала</b> — modal, confirm, notification і tooltip tokens узгоджені між сторінками.</li>
+                        <li><b>Confirm не губиться</b> — попередження про незбережені зміни відкривається поверх форми.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.58.7 — Assistant Dialog Continuity</h4>
+                    <ul>
+                        <li><b>Один актуальний діалог Помічника</b> — rail використовує стабільний user-scoped <code>conversationId</code>, а не створює випадкові розмови.</li>
+                        <li><b>CRM Chat відкриває правильну гілку</b> — перехід у <code>Мої чати</code> знаходить канал <code># Помічник</code> і синхронізує bridge payload.</li>
+                        <li><b>Старі сесії сірі</b> — історія зі старих browser-сесій позначена окремо, щоб не плутати її з активним діалогом.</li>
+                        <li><b>Enter надсилає</b> — у великому вікні Помічника <code>Enter</code> відправляє запит, а <code>Shift+Enter</code> лишає перенос рядка.</li>
+                        <li><b>Quick Access без подвійного режиму</b> — шестерня відкриває налаштування, а стрілка керує розгортанням списку.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.58.6 — Assistant Chat and Alert Actions</h4>
                     <ul>
                         <li><b>Один діалог у чаті</b> — якщо перейти з Помічника у <code>Мої чати</code>, повідомлення там продовжують той самий LLM-діалог і Помічник відповідає у каналі.</li>
                         <li><b>Сповіщення з дією</b> — Omni-alerts тепер ведуть на вкладку підключення каналу і підсвічують Viber/SMS/Facebook/інший проблемний provider.</li>
                         <li><b>Менше миготіння</b> — центр сповіщень не перемальовує відкриту панель, якщо websocket прислав той самий список без реальних змін.</li>
                         <li><b>Ширший topbar</b> — рядок запиту Помічника у верхньому меню отримав більше місця, а відповідь стала читабельнішою у два рядки.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.58.5 — Top Menu Assistant Rail</h4>
+                    <ul>
+                        <li><b>Помічник у верхньому меню</b> — shared rail монтується прямо в <code>.header-content</code>, перед пошуком і user controls.</li>
+                        <li><b>Без накладання аватарів</b> — CSS guardrail обрізає дубльовані decorative layers і лишає один чистий avatar core.</li>
+                        <li><b>Lift-out motion</b> — hover/focus стани м'яко піднімають avatar, input і кнопки без зсуву layout.</li>
+                        <li><b>Responsive topbar</b> — на вузьких екранах Помічник стискається у верхньому меню без другого рядка.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.58.4 — Chat Task Assignment Signals</h4>
+                    <ul>
+                        <li><b>Задача автору повідомлення</b> — кнопка <code>Поставити задачу</code> у чаті за замовченням вибирає автора повідомлення, якщо його можна надійно зіставити.</li>
+                        <li><b>Self-task лишився явним</b> — кнопка <code>Собі</code> доступна, але не перетягує default-вибір без наміру оператора.</li>
+                        <li><b>Звуковий сигнал виконавцю</b> — після створення або перепризначення CRM шле <code>task:assigned</code> конкретному виконавцю.</li>
+                        <li><b>Без зайвого шуму</b> — self-task не дублює WebSocket-сигнал самому собі.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.58.3 — Unified Assistant Surface</h4>
+                    <ul>
+                        <li><b>Один Помічник на сторінці</b> — старий floating widget більше не створює другу кнопку, чат або панель поверх canonical rail.</li>
+                        <li><b>Legacy bridge</b> — старі виклики <code>KleshnyaWidget.open()</code> делегують у shared rail.</li>
+                        <li><b>Timeline safety</b> — старий widget на таймлайні не може повторно показати legacy FAB.</li>
+                        <li><b>Каталоги без декоративного AI topbar</b> — у fullscreen/print режимах каталогу rail ховається разом із shell-навігацією.</li>
+                        <li><b>Компактні каталоги</b> — hero, статистика, послуги, footer і кнопки стали нижчими, щоб сторінка вміщалась у viewport.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.58.2 — Mobile Certificate and Sidebar Stability</h4>
+                    <ul>
+                        <li><b>Сертифікати на iPhone</b> — після видачі нового сертифіката CRM не будує важкий canvas-preview на mobile Safari, а відкриває безпечний fallback.</li>
+                        <li><b>Закриття модалок</b> — <code>×</code>, backdrop і touch-close закривають найближче активне вікно, а не всі overlay одразу.</li>
+                        <li><b>Експорт таймлайна</b> — PNG/export має Safari fallback, якщо canvas/download блокується.</li>
+                        <li><b>Sidebar collapse</b> — стрілка лівого меню має одного власника стану і не перемикає старий legacy-вигляд.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.58.1 — Assistant Chat and Sidebar Hotfix</h4>
+                    <ul>
+                        <li><b>Помічник у чатах</b> — діалог із AI можна переносити в CRM-інструмент <code>Чати</code> з історією запитів і відповідей.</li>
+                        <li><b>Рекомендовані дії</b> — фільтри backlog/overdue від Помічника ведуть у реальні dashboard/tasks поверхні.</li>
+                        <li><b>Sidebar hotfix</b> — профільна картка більше не накладає ім'я, алерти, USD і час.</li>
+                        <li><b>Живий avatar</b> — верхній Помічник отримав м'які анімації орбіт, точок, очей і speaking/thinking станів.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -7625,25 +7708,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.58.11"></script>
-    <script src="js/api.js?v=0.58.11"></script>
-    <script src="js/ui.js?v=0.58.11"></script>
-    <script src="js/auth.js?v=0.58.11"></script>
-    <script src="js/timeline.js?v=0.58.11"></script>
-    <script src="js/booking.js?v=0.58.11"></script>
-    <script src="js/settings.js?v=0.58.11"></script>
-    <script src="js/booking-form.js?v=0.58.11"></script>
-    <script src="js/booking-linked.js?v=0.58.11"></script>
-    <script src="js/settings-dashboard.js?v=0.58.11"></script>
-    <script src="js/settings-history.js?v=0.58.11"></script>
-    <script src="js/settings-afisha.js?v=0.58.11"></script>
-    <script src="js/settings-certificates.js?v=0.58.11"></script>
-    <script src="js/offline.js?v=0.58.11"></script>
-    <script src="js/search.js?v=0.58.11"></script>
-    <script src="js/ws.js?v=0.58.11"></script>
-    <script src="js/app.js?v=0.58.11"></script>
-    <script src="js/kleshnya-widget.js?v=0.58.11"></script>
-    <script src="js/components/sidebar.js?v=0.58.11"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.58.11"></script>
+    <script src="js/config.js?v=0.58.12"></script>
+    <script src="js/api.js?v=0.58.12"></script>
+    <script src="js/ui.js?v=0.58.12"></script>
+    <script src="js/auth.js?v=0.58.12"></script>
+    <script src="js/timeline.js?v=0.58.12"></script>
+    <script src="js/booking.js?v=0.58.12"></script>
+    <script src="js/settings.js?v=0.58.12"></script>
+    <script src="js/booking-form.js?v=0.58.12"></script>
+    <script src="js/booking-linked.js?v=0.58.12"></script>
+    <script src="js/settings-dashboard.js?v=0.58.12"></script>
+    <script src="js/settings-history.js?v=0.58.12"></script>
+    <script src="js/settings-afisha.js?v=0.58.12"></script>
+    <script src="js/settings-certificates.js?v=0.58.12"></script>
+    <script src="js/offline.js?v=0.58.12"></script>
+    <script src="js/search.js?v=0.58.12"></script>
+    <script src="js/ws.js?v=0.58.12"></script>
+    <script src="js/app.js?v=0.58.12"></script>
+    <script src="js/kleshnya-widget.js?v=0.58.12"></script>
+    <script src="js/components/sidebar.js?v=0.58.12"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.58.12"></script>
 </body>
 </html>

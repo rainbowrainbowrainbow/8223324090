@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.59.5",
+  "version": "0.59.6",
   "eventGenix": {
-    "releaseLabel": "Sidebar Passive Time Widgets"
+    "releaseLabel": "Assistant Chat Input Truth"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

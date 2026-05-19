@@ -4,6 +4,17 @@
 
 ---
 
+## v0.59.6 - Assistant Chat Input Truth
+
+### Assistant Chat Input Truth [codex]
+- **Помічник тепер відповідає на конкретне повідомлення користувача** - backend prompt явно піднімає останній `userMessage` над загальним CRM snapshot, щоб чат не повторював старий briefing замість відповіді на питання.
+- **Запит "які саме задачі?" став grounded** - для таких фраз Помічник підтягує видимі активні задачі з `tasks`, повертає назви, відповідальних і терміни, не вигадуючи список із загального dashboard count.
+- **OmniClaw `# Помічник` синхронізує той самий діалог** - chat route передає `userId`, `username`, `chatHistory`, сторінку і return context у той самий assistant reply path.
+- **Зменшено stale-відповіді** - якщо користувач просить конкретику або список, модель отримує пряму інструкцію відповідати на цю фразу, а не на попередній page-summary.
+- **Guardrail** - unit-тест фіксує прямий task-list сценарій і перевіряє, що він повертає фактичні задачі без fallback на старий `Show reply backlog`.
+
+---
+
 ## v0.59.5 - Sidebar Passive Time Widgets
 
 ### Sidebar Passive Time Widgets [codex]

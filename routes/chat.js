@@ -868,6 +868,9 @@ router.post('/assistant/reply', async (req, res) => {
         const reply = await dashboardAssistant.getDashboardAssistantReply({
             userMessage: content,
             intent: content,
+            userId,
+            username: req.user.username || '',
+            name: req.user.name || req.user.displayName || '',
             role: req.user.role || '',
             displayRole: req.user.displayRole || '',
             page,

@@ -196,6 +196,59 @@ describe('dashboard assistant service contract', () => {
         assert.match(reply.recommendation, /Open debts tab/);
     });
 
+    it('answers exact task-list questions from visible tasks instead of stale dashboard briefing', async () => {
+        process.env.OPENAI_API_KEY = 'test-openai-key';
+        clearAssistantModules();
+        installMock('../db', {
+            pool: {
+                query: async (sql, params) => {
+                    assert.match(sql, /FROM tasks t/);
+                    assert.ok(Array.isArray(params));
+                    return {
+                        rows: [
+                            {
+                                id: 11,
+                                title: 'Закрити задачу по звітах',
+                                status: 'todo',
+                                priority: 'high',
+                                deadline: '2026-05-20T09:00:00.000Z',
+                                category: 'admin',
+                                owner_name: 'Сергій'
+                            },
+                            {
+                                id: 12,
+                                title: 'Очистити чергу відповідей',
+                                status: 'todo',
+                                priority: 'normal',
+                                deadline: null,
+                                date: '2026-05-20',
+                                category: 'chat',
+                                owner_username: 'manager'
+                            }
+                        ]
+                    };
+                }
+            }
+        });
+        global.fetch = async () => {
+            throw new Error('OpenAI should not be called for direct task detail answers');
+        };
+
+        const { getDashboardAssistantReply } = require('../services/dashboardAssistant');
+        const reply = await getDashboardAssistantReply({
+            role: 'creator',
+            userId: 1,
+            username: 'creator-user',
+            page: 'dashboard',
+            userMessage: 'ок які саме задачі є?'
+        });
+
+        assert.equal(reply.model, 'local-task-context');
+        assert.match(reply.summary, /Закрити задачу по звітах/);
+        assert.match(reply.summary, /Очистити чергу відповідей/);
+        assert.doesNotMatch(reply.summary, /Show reply backlog/);
+    });
+
     it('frames the same business context differently for director and manager roles', () => {
         clearAssistantModules();
         const { normalizeAssistantReply } = require('../services/dashboardAssistant');
@@ -274,9 +327,13 @@ describe('dashboard assistant route context', () => {
             assert.equal(manager.status, 200);
             assert.equal(creator.status, 200);
             assert.equal(calls[0].role, 'manager');
+            assert.equal(calls[0].userId, 20);
+            assert.equal(calls[0].username, 'manager-user');
             assert.equal(calls[0].scenePreset, 'manager');
             assert.equal(calls[0].recentState.previewRole, '');
             assert.equal(calls[1].role, 'creator');
+            assert.equal(calls[1].userId, 1);
+            assert.equal(calls[1].username, 'creator-user');
             assert.equal(calls[1].scenePreset, 'director');
             assert.equal(calls[1].recentState.previewRole, 'director');
         } finally {

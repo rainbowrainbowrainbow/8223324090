@@ -104,6 +104,190 @@ function compactChatHistory(value, limit = 14) {
         .slice(-limit);
 }
 
+function isTaskDetailQuestion(message = '') {
+    const text = String(message || '').toLowerCase();
+    if (!text) return false;
+    return [
+        /які\s+саме\s+задач/,
+        /які\s+задач/,
+        /що\s+за\s+задач/,
+        /список\s+задач/,
+        /переліч(и|ити).*задач/,
+        /конкретн.*задач/,
+        /какие\s+задач/,
+        /какие\s+именно\s+задач/,
+        /which\s+tasks/,
+        /what\s+tasks/,
+        /list\s+tasks/,
+        /show\s+tasks/
+    ].some(pattern => pattern.test(text));
+}
+
+function getDbPool() {
+    return require('../db').pool;
+}
+
+function getTaskVisibilityScope(user, params, alias = 't') {
+    return require('./taskPolicy').buildTaskVisibilityScope(user, params, alias);
+}
+
+function formatTaskDue(row = {}) {
+    const raw = row.deadline || row.date || '';
+    if (!raw) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return String(raw).slice(0, 16);
+    try {
+        return date.toLocaleString('uk-UA', {
+            timeZone: 'Europe/Kyiv',
+            day: '2-digit',
+            month: '2-digit',
+            hour: row.deadline ? '2-digit' : undefined,
+            minute: row.deadline ? '2-digit' : undefined
+        }).replace(',', '');
+    } catch {
+        return String(raw).slice(0, 16);
+    }
+}
+
+function normalizeTaskDetailRow(row = {}) {
+    const owner = compactString(row.owner_name || row.owner_username || row.assigned_to || row.owner, 80);
+    return {
+        id: row.id,
+        title: compactString(row.title || 'Задача', 180),
+        status: compactString(row.status || 'todo', 40),
+        priority: compactString(row.priority || 'normal', 40),
+        category: compactString(row.category || '', 60),
+        owner,
+        dueLabel: formatTaskDue(row),
+        sourceType: compactString(row.source_type || '', 60),
+        sourceId: compactString(row.source_id || '', 80)
+    };
+}
+
+async function loadVisibleTaskDetails(context = {}) {
+    if (!isTaskDetailQuestion(context.userMessage)) return null;
+    const params = [];
+    const actor = {
+        id: context.userId || context.actor?.id || context.roleSnapshot?.userId || null,
+        userId: context.userId || context.actor?.userId || context.roleSnapshot?.userId || null,
+        username: context.username || context.actor?.username || context.roleSnapshot?.username || '',
+        name: context.name || context.displayName || context.actor?.name || context.roleSnapshot?.name || '',
+        role: context.role || ''
+    };
+    const visibility = getTaskVisibilityScope(actor, params, 't');
+    const query = `
+        SELECT t.id, t.title, t.status, t.priority, t.deadline, t.date, t.category,
+               t.assigned_to, t.owner, t.owner_user_id, t.source_type, t.source_id,
+               u.name AS owner_name, u.username AS owner_username
+        FROM tasks t
+        LEFT JOIN users u ON u.id = t.owner_user_id
+        WHERE COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
+          ${visibility}
+        ORDER BY
+          CASE
+            WHEN (t.deadline IS NOT NULL AND t.deadline < NOW())
+              OR (t.deadline IS NULL AND LEFT(COALESCE(t.date, ''), 10) < TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD'))
+            THEN 0 ELSE 1
+          END,
+          COALESCE(
+            t.deadline,
+            CASE WHEN COALESCE(t.date, '') ~ '^\\d{4}-\\d{2}-\\d{2}' THEN LEFT(t.date, 10)::timestamp ELSE NULL END,
+            t.created_at
+          ) ASC NULLS LAST,
+          CASE COALESCE(t.priority, 'normal')
+            WHEN 'critical' THEN 0
+            WHEN 'high' THEN 1
+            WHEN 'normal' THEN 2
+            WHEN 'medium' THEN 2
+            WHEN 'low' THEN 3
+            ELSE 4
+          END,
+          t.created_at DESC
+        LIMIT 12
+    `;
+    const result = await getDbPool().query(query, params);
+    return {
+        requested: true,
+        source: 'api:/api/tasks',
+        items: result.rows.map(normalizeTaskDetailRow)
+    };
+}
+
+function mergeTaskDetailsIntoContext(context = {}, taskDetails = null) {
+    if (!taskDetails) return context;
+    const details = Array.isArray(context.contextSummary?.details) ? context.contextSummary.details.slice(0, 12) : [];
+    if (taskDetails.items.length) {
+        details.push(`visibleTaskTitles=${taskDetails.items.map(item => item.title).join(' | ')}`);
+    } else {
+        details.push('visibleTaskTitles=none');
+    }
+    context.contextSummary = {
+        ...(context.contextSummary || {}),
+        headline: context.contextSummary?.headline || 'Assistant requested task details',
+        details,
+        source: context.contextSummary?.source || taskDetails.source
+    };
+    context.taskDetails = taskDetails;
+    context.signals = Array.isArray(context.signals) ? context.signals.slice(0, 16) : [];
+    context.signals.push({
+        signalId: 'assistant.requested_task_details',
+        label: 'User asked for exact visible tasks',
+        value: taskDetails.items.length,
+        severity: taskDetails.items.length ? 'info' : 'warning',
+        evidence: taskDetails.items.length
+            ? `Користувач питає конкретні задачі; видно ${taskDetails.items.length}.`
+            : 'Користувач питає конкретні задачі, але видимий список порожній.',
+        source: taskDetails.source
+    });
+    return context;
+}
+
+async function enrichAssistantContext(context = {}) {
+    if (!isTaskDetailQuestion(context.userMessage)) return context;
+    try {
+        return mergeTaskDetailsIntoContext(context, await loadVisibleTaskDetails(context));
+    } catch (err) {
+        log.warn('Unable to load task details for assistant answer', { error: err.message });
+        context.taskDetails = {
+            requested: true,
+            source: 'api:/api/tasks',
+            items: [],
+            unavailableReason: compactString(err.message || err, 180)
+        };
+        context.fallbackReason = compactString(context.fallbackReason || 'task_details_unavailable', 240);
+        return context;
+    }
+}
+
+function buildDirectTaskDetailsReply(context = {}) {
+    const taskDetails = context.taskDetails;
+    if (!taskDetails?.requested || !isTaskDetailQuestion(context.userMessage)) return null;
+    const items = Array.isArray(taskDetails.items) ? taskDetails.items.slice(0, 8) : [];
+    if (!items.length) {
+        return {
+            summary: taskDetails.unavailableReason
+                ? 'Я бачу твій запит по конкретних задачах, але зараз не можу підтягнути список задач із API. Краще відкрити вкладку «Задачі» і перевірити активний зріз напряму.'
+                : 'Зараз у видимому для тебе зрізі не бачу активних задач. Якщо очікуєш список, відкрий «Задачі» або уточни фільтр: мої, команда, сьогодні чи прострочені.',
+            evidence: context.signals || [],
+            recommendation: 'Наступний крок — відкрити сторінку «Задачі» або уточнити потрібний зріз.'
+        };
+    }
+    const lines = items.map((task, index) => {
+        const meta = [
+            task.owner ? `відповідальний: ${task.owner}` : '',
+            task.dueLabel ? `термін: ${task.dueLabel}` : '',
+            task.priority && task.priority !== 'normal' ? `пріоритет: ${task.priority}` : ''
+        ].filter(Boolean).join(', ');
+        return `${index + 1}. ${task.title}${meta ? ` — ${meta}` : ''}`;
+    });
+    const more = taskDetails.items.length > items.length ? `\nЩе ${taskDetails.items.length - items.length} задач(і) не показую, щоб не забити панель.` : '';
+    return {
+        summary: `Ось конкретні активні задачі, які зараз бачу:\n${lines.join('\n')}${more}`,
+        evidence: context.signals || [],
+        recommendation: `Почни з першої простроченої або найстарішої задачі: ${items[0].title}.`
+    };
+}
+
 function pageStrategicAngle(page = '') {
     const key = String(page || '').toLowerCase();
     if (key === 'dashboard') return 'bottlenecks, пріоритети і контроль операційної черги';
@@ -160,6 +344,9 @@ function buildAssistantContext(input = {}) {
         voiceMode: input.voiceMode === true,
         sourceSurface: compactString(input.sourceSurface, 80),
         assistantConversationId: compactString(input.conversationId || input.assistantConversationId, 120),
+        userId: input.userId || input.actor?.id || null,
+        username: compactString(input.username || input.actor?.username, 120),
+        name: compactString(input.name || input.displayName || input.actor?.name, 160),
         chatHistory: compactChatHistory(input.chatHistory || recentState.chatHistory || recentState.assistantChatHistory),
         recentState: {
             mode: compactString(recentState.mode, 40),
@@ -244,7 +431,11 @@ function normalizeAssistantReply(reply, context = {}, extra = {}) {
 async function getDashboardAssistantReply(input = {}) {
     const apiKey = requireOpenAIKey();
     const instructions = loadDashboardAssistantInstructions();
-    const context = buildAssistantContext(input);
+    const context = await enrichAssistantContext(buildAssistantContext(input));
+    const directReply = buildDirectTaskDetailsReply(context);
+    if (directReply) {
+        return normalizeAssistantReply(directReply, context, { model: 'local-task-context', mode: 'speaking' });
+    }
     const model = process.env.OPENAI_ASSISTANT_MODEL || 'gpt-4.1-mini';
 
     const response = await fetch(`${OPENAI_API_BASE}/responses`, {
@@ -262,6 +453,8 @@ async function getDashboardAssistantReply(input = {}) {
                     content: [
                         'Контекст CRM assistant rail. Дай коротку in-product підказку українською.',
                         'Формат думки: що бачу → чому це важливо → одна найкраща наступна дія. Не розширюй відповідь, якщо даних мало.',
+                        `Поточне повідомлення користувача: ${context.userMessage}`,
+                        'Відповідай саме на це повідомлення. Якщо користувач просить конкретику або список, не повторюй загальний briefing: використовуй taskDetails, chatHistory, contextSummary та evidence з JSON нижче.',
                         JSON.stringify(context, null, 2)
                     ].join('\n\n')
                 }

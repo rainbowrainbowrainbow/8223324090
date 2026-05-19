@@ -976,6 +976,11 @@
             teachingTarget: context.teachingTarget || null,
             fallbackReason: context.fallbackReason || '',
             roleSnapshot: context.roleSnapshot || null,
+            chatHistory: history.slice(-12).map(item => ({
+                role: item.role,
+                text: item.text,
+                at: item.at
+            })),
             voiceMode: context.voiceMode === true,
             recentState: {
                 mode: state.mode,

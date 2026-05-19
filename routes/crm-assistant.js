@@ -74,6 +74,9 @@ router.post('/reply', async (req, res) => {
         const scenePreset = previewRole || userRole || '';
         const assistantInput = {
             ...body,
+            userId: req.user?.id || req.user?.userId || null,
+            username: req.user?.username || '',
+            name: req.user?.name || req.user?.displayName || '',
             role: userRole,
             displayRole: body.displayRole || '',
             scenePreset,

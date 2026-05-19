@@ -4,6 +4,19 @@
 
 ---
 
+## v0.58.0 - Enterprise Sidebar Navigation
+
+### Enterprise Sidebar Navigation [codex]
+- **Sidebar Shell** - ліве меню переведено на компактний enterprise layout із цільовою desktop-шириною `320-340px`, мобільним drawer `min(92vw, 360px)` і стабільним collapsed rail.
+- **User Summary** - профільна картка стала чистою: аватар, ім'я, role badge, алерт-рядок, USD і час; weather-блок та декоративні зайві елементи прибрані з sidebar.
+- **Метрики** - `Задачі`, `Алерти` і `Ліди` отримали reusable `getMetricTone()` із семантичними станами `neutral/success/warning/danger/info/accent`.
+- **Alert Preview** - карусель алертів лишилась робочою, але стала нижчою, спокійнішою і з одним severity marker.
+- **Quick Access і секції** - швидкий доступ, `Продажі`, `Команда`, `Продукт`, `Система` вирівняні в одному компонентному стилі без зміни доступів, route config або поведінки редактора.
+- **Accessibility** - акордеони отримали `aria-expanded`/`aria-controls`, активні навігаційні пункти отримали `aria-current`, focus states посилені для dark/light тем.
+- **Guardrail** - `test:ui` фіксує відсутність sidebar weather fetch, component contracts, metric tones, ARIA і нові width targets.
+
+---
+
 ## v0.57.15 - Light Header Contrast
 
 ### Light Header Contrast [codex]

@@ -26,7 +26,6 @@ const Sidebar = (() => {
     const EXTRA_MENU_CUSTOM_DESCRIPTION = 'користувацька сторінка';
     const EXTRA_MENU_ICON_FALLBACK = 'crm';
     const SIDEBAR_IDENTITY_WIDGETS = {
-        weather: '/api/dashboard/widgets/weather',
         currency: '/api/dashboard/widgets/currency'
     };
     const COMMAND_DEFAULT_STATE = {
@@ -44,6 +43,16 @@ const Sidebar = (() => {
         newLeads: 0
     };
     const _commandState = { ...COMMAND_DEFAULT_STATE };
+    const SIDEBAR_COMPONENTS = Object.freeze({
+        SidebarShell: 'sidebar-nav',
+        SidebarBrand: 'sidebar-brand',
+        UserSummaryCard: 'sidebar-identity-card',
+        MetricChip: 'focus-chip',
+        AlertPreviewCard: 'sidebar-alert-hero',
+        QuickAccess: 'sidebar-design-extras',
+        SidebarSection: 'sidebar-group',
+        SidebarItem: 'nav-link'
+    });
 
     // ═══ NAV_ITEMS ════════════════════════════════════════════════
     const NAV_ITEMS = [
@@ -704,15 +713,17 @@ const Sidebar = (() => {
 
                 html += `
 <div class="sidebar-group${hasActive ? ' has-active' : ''}" data-group-key="${item.key}">
-  <button class="sidebar-group-header${finalOpen ? ' open' : ''}${hasActive ? ' has-active' : ''}"
+  <button type="button" class="sidebar-group-header${finalOpen ? ' open' : ''}${hasActive ? ' has-active' : ''}"
           onclick="Sidebar.toggleGroup('${item.key}', this)"
-          title="${item.label}">
+          title="${item.label}"
+          aria-expanded="${finalOpen ? 'true' : 'false'}"
+          aria-controls="sidebarGroupItems-${item.key}">
     ${_renderIcon(item.icon)}
     <span class="nav-text sidebar-group-label">${item.label}</span>
     <span class="sidebar-group-signal" id="sidebarGroupSignal-${item.key}" aria-hidden="true"></span>
     ${_renderGroupChevron()}
   </button>
-  <div class="sidebar-group-items${finalOpen ? ' open' : ''}">
+  <div class="sidebar-group-items${finalOpen ? ' open' : ''}" id="sidebarGroupItems-${item.key}">
     <div class="sidebar-group-inner">`;
                 continue;
             }
@@ -737,7 +748,7 @@ const Sidebar = (() => {
             const badgeClass = badgeType === 'alerts' ? ' nav-badge alert' : ' nav-badge';
 
             const statusText = _navStatusFor(item);
-            html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.href}"${onclickAttr}>
+            html += `<a href="${item.href}" class="nav-link${isActive ? ' active' : ''}" data-page-access="${item.href}"${isActive ? ' aria-current="page"' : ''}${onclickAttr}>
   ${_renderIcon(item.icon)}
   <span class="nav-copy">
     <span class="nav-text">${item.label}</span>
@@ -793,6 +804,7 @@ const Sidebar = (() => {
         const isOpen = items.classList.contains('open');
         items.classList.toggle('open', !isOpen);
         btn.classList.toggle('open', !isOpen);
+        btn.setAttribute('aria-expanded', !isOpen ? 'true' : 'false');
         _saveGroupStateFromDom(document.getElementById('sidebarNav'));
         _queueActiveIndicatorUpdate();
     }
@@ -883,6 +895,33 @@ const Sidebar = (() => {
             header.classList.toggle('signal-critical', topSeverity === 'critical');
             header.classList.toggle('signal-hot', topSeverity === 'hot');
         });
+    }
+
+    /**
+     * @typedef {'tasks'|'alerts'|'leads'} MetricKind
+     * @param {MetricKind} kind
+     * @param {number} count
+     */
+    function getMetricTone(kind, count) {
+        const safeCount = Math.max(0, Number(count || 0));
+        switch (kind) {
+            case 'tasks':
+                if (safeCount === 0) return 'neutral';
+                if (safeCount <= 3) return 'success';
+                if (safeCount <= 7) return 'warning';
+                return 'danger';
+            case 'alerts':
+                if (safeCount === 0) return 'success';
+                if (safeCount <= 2) return 'warning';
+                return 'danger';
+            case 'leads':
+                if (safeCount === 0) return 'neutral';
+                if (safeCount <= 5) return 'info';
+                if (safeCount <= 20) return 'success';
+                return 'accent';
+            default:
+                return safeCount > 0 ? 'info' : 'neutral';
+        }
     }
 
     function _queueActiveIndicatorUpdate() {
@@ -1039,10 +1078,6 @@ const Sidebar = (() => {
                                 <span class="sidebar-identity-meta-k">Час</span>
                                 <span class="sidebar-identity-meta-v" id="sidebarIdentityTime">--:--</span>
                             </button>
-                            <button type="button" class="sidebar-identity-meta-item" data-sidebar-meta="weather" data-sidebar-stop-profile="true" aria-label="Деталі погоди">
-                                <span class="sidebar-identity-meta-k">Погода</span>
-                                <span class="sidebar-identity-meta-v" id="sidebarIdentityWeather">--°</span>
-                            </button>
                             <button type="button" class="sidebar-identity-meta-item" data-sidebar-meta="currency" data-sidebar-stop-profile="true" aria-label="Курси валют">
                                 <span class="sidebar-identity-meta-k">USD</span>
                                 <span class="sidebar-identity-meta-v" id="sidebarIdentityCurrency">--.--</span>
@@ -1053,19 +1088,19 @@ const Sidebar = (() => {
                 </div>
 
                 <div class="sidebar-focus-deck" id="sidebarFocusDeck" aria-label="Операційний фокус">
-                    <a href="/tasks?view=my" class="focus-chip focus-chip--tasks" id="focusChipTasks" aria-label="Мої задачі">
+                    <a href="/tasks?view=my" class="focus-chip focus-chip--tasks" id="focusChipTasks" data-metric-kind="tasks" aria-label="Мої задачі">
                         <span class="focus-chip-icon">${_renderStatusIcon('tasks')}</span>
                         <span class="focus-chip-value" id="focusChipTasksValue">0</span>
                         <span class="focus-chip-label">Задачі</span>
                         <span class="focus-chip-meta" id="focusChipTasksMeta">спокійно</span>
                     </a>
-                    <button type="button" class="focus-chip focus-chip--alerts" id="focusChipAlerts" aria-label="Алерти">
+                    <button type="button" class="focus-chip focus-chip--alerts" id="focusChipAlerts" data-metric-kind="alerts" aria-label="Алерти">
                         <span class="focus-chip-icon">${_renderStatusIcon('alerts')}</span>
                         <span class="focus-chip-value" id="focusChipAlertsValue">0</span>
                         <span class="focus-chip-label">Алерти</span>
                         <span class="focus-chip-meta" id="focusChipAlertsMeta">спокійно</span>
                     </button>
-                    <a href="/sales-funnel" class="focus-chip focus-chip--funnel" id="focusChipFunnel" aria-label="Ліди">
+                    <a href="/sales-funnel" class="focus-chip focus-chip--funnel" id="focusChipFunnel" data-metric-kind="leads" aria-label="Ліди">
                         <span class="focus-chip-icon">${_renderStatusIcon('funnel')}</span>
                         <span class="focus-chip-value" id="focusChipFunnelValue">0</span>
                         <span class="focus-chip-label">Ліди</span>
@@ -1181,28 +1216,6 @@ const Sidebar = (() => {
         }
     }
 
-    function _sidebarWeatherIcon(code) {
-        const weatherCode = Number(code);
-        if ([0].includes(weatherCode)) return '☀';
-        if ([1, 2].includes(weatherCode)) return '🌤';
-        if ([3, 45, 48].includes(weatherCode)) return '☁';
-        if ([51, 53, 55, 61, 63, 65, 80, 81].includes(weatherCode)) return '🌧';
-        if ([71, 73, 75, 85, 86].includes(weatherCode)) return '❄';
-        if ([82, 95, 96, 99].includes(weatherCode)) return '⛈';
-        return '🌡';
-    }
-
-    function _sidebarWeatherText(code) {
-        const weatherCode = Number(code);
-        if ([0].includes(weatherCode)) return 'ясно';
-        if ([1, 2].includes(weatherCode)) return 'мінлива хмарність';
-        if ([3, 45, 48].includes(weatherCode)) return 'хмарно';
-        if ([51, 53, 55, 61, 63, 65, 80, 81].includes(weatherCode)) return 'дощ';
-        if ([71, 73, 75, 85, 86].includes(weatherCode)) return 'сніг';
-        if ([82, 95, 96, 99].includes(weatherCode)) return 'гроза';
-        return 'погода';
-    }
-
     function _setSidebarIdentityMetaValue(id, value, state = '') {
         const el = document.getElementById(id);
         if (!el) return;
@@ -1255,20 +1268,6 @@ const Sidebar = (() => {
         return response.json();
     }
 
-    async function _fetchSidebarWeatherFallback() {
-        const response = await fetch('https://api.open-meteo.com/v1/forecast?latitude=50.45&longitude=30.52&current=temperature_2m,weather_code,wind_speed_10m&timezone=Europe/Kyiv');
-        if (!response.ok) throw new Error('sidebar weather fallback failed');
-        const data = await response.json();
-        const current = data.current || {};
-        return {
-            temperature: current.temperature_2m,
-            weatherCode: current.weather_code ?? current.weathercode,
-            windSpeed: current.wind_speed_10m ?? current.windspeed_10m,
-            city: 'Київ',
-            updatedAt: current.time || data.current_time || ''
-        };
-    }
-
     function _normalizeSidebarCurrencyRates(source) {
         const rates = source?.rates && typeof source.rates === 'object'
             ? { ...source.rates }
@@ -1302,34 +1301,10 @@ const Sidebar = (() => {
         if (!force && _state.identityMetaLoadedAt && now - _state.identityMetaLoadedAt < 10 * 60 * 1000) return;
         _state.identityMetaLoading = true;
         try {
-            const [weatherResult, currencyResult, currencyFallbackResult] = await Promise.allSettled([
-                _fetchSidebarWidget('weather'),
+            const [currencyResult, currencyFallbackResult] = await Promise.allSettled([
                 _fetchSidebarWidget('currency'),
                 _fetchSidebarCurrencyFallback()
             ]);
-            let weatherData = null;
-            if (weatherResult.status === 'fulfilled' && weatherResult.value && !weatherResult.value.error) {
-                weatherData = weatherResult.value;
-            } else {
-                weatherData = await _fetchSidebarWeatherFallback().catch(() => null);
-            }
-            if (weatherData && !weatherData.error) {
-                const data = weatherData;
-                const temp = Number(data.temperature);
-                const label = Number.isFinite(temp) ? `${_sidebarWeatherIcon(data.weatherCode)} ${Math.round(temp)}°` : 'н/д';
-                _state.identityMetaDetails.weather = {
-                    city: data.city || 'Київ',
-                    temperature: temp,
-                    weatherCode: data.weatherCode,
-                    windSpeed: Number(data.windSpeed),
-                    updatedAt: data.updatedAt || data.time || ''
-                };
-                _setSidebarIdentityMetaValue('sidebarIdentityWeather', label, Number.isFinite(temp) ? 'live' : 'limited');
-            } else {
-                _state.identityMetaDetails.weather = null;
-                _setSidebarIdentityMetaValue('sidebarIdentityWeather', 'н/д', 'limited');
-            }
-
             const dashboardCurrency = currencyResult.status === 'fulfilled' && currencyResult.value && !currencyResult.value.error
                 ? currencyResult.value
                 : null;
@@ -1343,9 +1318,7 @@ const Sidebar = (() => {
                 Number.isFinite(usdRate) && usdRate > 0 ? 'live' : 'limited'
             );
         } catch (err) {
-            _state.identityMetaDetails.weather = null;
             _state.identityMetaDetails.currency = null;
-            _setSidebarIdentityMetaValue('sidebarIdentityWeather', 'н/д', 'limited');
             _setSidebarIdentityMetaValue('sidebarIdentityCurrency', 'н/д', 'limited');
         } finally {
             _state.identityMetaLoadedAt = Date.now();
@@ -1386,22 +1359,6 @@ const Sidebar = (() => {
                 </div>
                 <a class="sidebar-identity-detail-link" href="/finance">Відкрити фінанси ›</a>`;
         }
-        if (type === 'weather') {
-            const details = _state.identityMetaDetails.weather || {};
-            const temp = Number(details.temperature);
-            const wind = Number(details.windSpeed);
-            return `
-                <div class="sidebar-identity-detail-head">
-                    <strong>Погода</strong>
-                    <button type="button" class="sidebar-identity-detail-close" data-sidebar-detail-close aria-label="Закрити">×</button>
-                </div>
-                <div class="sidebar-identity-detail-body">
-                    <span class="sidebar-identity-detail-big">${Number.isFinite(temp) ? `${_sidebarWeatherIcon(details.weatherCode)} ${Math.round(temp)}°` : 'н/д'}</span>
-                    <span>${_escHtml(details.city || 'Київ')} · ${_escHtml(_sidebarWeatherText(details.weatherCode))}</span>
-                    <span class="sidebar-identity-detail-muted">Вітер: ${Number.isFinite(wind) ? `${Math.round(wind)} км/год` : 'н/д'}</span>
-                </div>
-                <button type="button" class="sidebar-identity-detail-link" data-sidebar-refresh-weather>Оновити погоду</button>`;
-        }
         return `
             <div class="sidebar-identity-detail-head">
                 <strong>Час</strong>
@@ -1430,11 +1387,6 @@ const Sidebar = (() => {
         panel.querySelector('[data-sidebar-detail-close]')?.addEventListener('click', () => {
             panel.hidden = true;
         });
-        panel.querySelector('[data-sidebar-refresh-weather]')?.addEventListener('click', async () => {
-            _state.identityMetaLoadedAt = 0;
-            await _loadSidebarIdentityMeta(true);
-            _showSidebarIdentityDetail('weather');
-        });
     }
 
     function _bindSidebarIdentityMetaInteractions() {
@@ -1459,8 +1411,10 @@ const Sidebar = (() => {
         if (!widget) return;
         const safeCount = Math.max(0, Number(count || 0));
         const severity = options.critical ? 'critical' : (options.hot ? 'hot' : (safeCount > 0 ? 'live' : 'idle'));
+        const metricTone = getMetricTone(options.kind || widget.dataset.metricKind || 'tasks', safeCount);
         widget.dataset.sidebarCount = String(safeCount);
         widget.dataset.sidebarSeverity = severity;
+        widget.dataset.metricTone = metricTone;
         widget.classList.remove('is-zero', 'is-live', 'is-hot', 'is-critical');
         widget.classList.add(safeCount > 0 ? 'is-live' : 'is-zero');
         if (severity === 'hot') widget.classList.add('is-hot');
@@ -1736,6 +1690,7 @@ const Sidebar = (() => {
         widget.classList.toggle('has-alerts', active.length > 0);
         widget.classList.toggle('has-critical', unread.some(alert => alert.level === 'critical'));
         _setFocusChipOperationalState(widget, active.length, {
+            kind: 'alerts',
             critical: unread.some(alert => alert.level === 'critical'),
             hot: count > 0
         });
@@ -1804,7 +1759,7 @@ const Sidebar = (() => {
             _commandState.tasksOverdue = overdueCount;
             _setCommandDescription(widget, taskTitle);
             widget.classList.toggle('has-overdue', overdueCount > 0);
-            _setFocusChipOperationalState(widget, activeCount, { critical: overdueCount > 0 });
+            _setFocusChipOperationalState(widget, activeCount, { kind: 'tasks', critical: overdueCount > 0 });
         } catch {}
         _state.taskWidgetTimer = setTimeout(_refreshTaskMiniWidget, 300000);
     }
@@ -1858,7 +1813,7 @@ const Sidebar = (() => {
             _setCommandDescription(widget, funnelTitle);
             widget.classList.toggle('has-action', actionCount > 0);
             widget.classList.toggle('has-new', actionCount === 0 && newCount > 0);
-            _setFocusChipOperationalState(widget, displayCount, { hot: actionCount > 0 || newCount > 0 });
+            _setFocusChipOperationalState(widget, displayCount, { kind: 'leads', hot: actionCount > 0 || newCount > 0 });
             widget.href = firstLead?.id ? `/sales-funnel?lead=${encodeURIComponent(firstLead.id)}` : '/sales-funnel';
         } catch {}
         _state.funnelWidgetTimer = setTimeout(_refreshFunnelWidget, 300000);
@@ -2311,6 +2266,8 @@ const Sidebar = (() => {
         clearShellReady: _clearShellReady,
         NAV_ITEMS,
         SIDEBAR_ACCESS,
-        hasAccess
+        hasAccess,
+        getMetricTone,
+        SIDEBAR_COMPONENTS
     };
 })();

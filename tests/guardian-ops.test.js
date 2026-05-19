@@ -46,7 +46,11 @@ function clearModules() {
 }
 
 function resetState() {
-    const now = new Date('2026-05-12T10:00:00.000Z').toISOString();
+    const fixtureStart = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    fixtureStart.setUTCMinutes(5, 0, 0);
+    const fixtureFollowUp = new Date(fixtureStart.getTime() + 20 * 60 * 1000);
+    const fixtureRepeatWindowEnd = new Date(fixtureStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const now = fixtureStart.toISOString();
     state = {
         outbox: [
             {
@@ -218,16 +222,16 @@ function resetState() {
             { id: 70, action_type: 'mute', channel_id: 10, channel_name: 'Ops', target_user_id: 42, target_username: 'repeat-user', message_id: null, details: { reason: 'mute' }, created_at: now }
         ],
         counters: [
-            { id: 90, counter_type: 'repeat_offender', user_id: 42, username: 'repeat-user', window_key: 'rolling-7d', window_start: now, window_end: '2026-05-19T10:00:00.000Z', count: 1, alerted_at: now, last_channel_id: 10, last_channel_name: 'Ops', last_username: 'repeat-user', last_source_type: 'guardian_mute', last_source_id: '77', updated_at: now }
+            { id: 90, counter_type: 'repeat_offender', user_id: 42, username: 'repeat-user', window_key: 'rolling-7d', window_start: now, window_end: fixtureRepeatWindowEnd.toISOString(), count: 1, alerted_at: now, last_channel_id: 10, last_channel_name: 'Ops', last_username: 'repeat-user', last_source_type: 'guardian_mute', last_source_id: '77', updated_at: now }
         ],
         users: [
             { id: 42, username: 'repeat-user', name: 'Repeat User' }
         ],
         moderationEvents: [
-            { id: 500, counter_type: 'repeat_offender', user_id: 42, channel_id: 10, source_type: 'guardian_mute', source_id: '77', username: 'repeat-user', occurred_at: '2026-05-12T10:00:00.000Z' },
-            { id: 501, counter_type: 'repeat_offender', user_id: 42, channel_id: 10, source_type: 'guardian_mute', source_id: '78', username: 'repeat-user', occurred_at: '2026-05-12T10:20:00.000Z' },
-            { id: 502, counter_type: 'hourly_blocks', user_id: 42, channel_id: 10, source_type: 'guardian_mute', source_id: '77', username: 'repeat-user', occurred_at: '2026-05-12T10:00:00.000Z' },
-            { id: 503, counter_type: 'hourly_blocks', user_id: 42, channel_id: 10, source_type: 'guardian_mute', source_id: '78', username: 'repeat-user', occurred_at: '2026-05-12T10:20:00.000Z' }
+            { id: 500, counter_type: 'repeat_offender', user_id: 42, channel_id: 10, source_type: 'guardian_mute', source_id: '77', username: 'repeat-user', occurred_at: now },
+            { id: 501, counter_type: 'repeat_offender', user_id: 42, channel_id: 10, source_type: 'guardian_mute', source_id: '78', username: 'repeat-user', occurred_at: fixtureFollowUp.toISOString() },
+            { id: 502, counter_type: 'hourly_blocks', user_id: 42, channel_id: 10, source_type: 'guardian_mute', source_id: '77', username: 'repeat-user', occurred_at: now },
+            { id: 503, counter_type: 'hourly_blocks', user_id: 42, channel_id: 10, source_type: 'guardian_mute', source_id: '78', username: 'repeat-user', occurred_at: fixtureFollowUp.toISOString() }
         ],
         writes: []
     };

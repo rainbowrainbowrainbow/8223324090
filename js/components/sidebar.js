@@ -1115,10 +1115,14 @@ const Sidebar = (() => {
                         </span>
                         <span class="sidebar-identity-summary" id="sidebarIdentitySummary">Операційний стан завантажується...</span>
                         <span class="sidebar-identity-meta" id="sidebarIdentityMeta" aria-label="Швидкий статус">
-                            <button type="button" class="sidebar-identity-meta-item" data-sidebar-meta="time" data-sidebar-stop-profile="true" aria-label="Деталі часу">
+                            <span class="sidebar-identity-meta-item" data-sidebar-meta="time" data-sidebar-static="true" data-sidebar-stop-profile="true" aria-label="Поточний час">
                                 <span class="sidebar-identity-meta-k">Час</span>
                                 <span class="sidebar-identity-meta-v" id="sidebarIdentityTime">--:--</span>
-                            </button>
+                            </span>
+                            <span class="sidebar-identity-meta-item" data-sidebar-meta="date" data-sidebar-static="true" data-sidebar-stop-profile="true" aria-label="Сьогоднішній день">
+                                <span class="sidebar-identity-meta-k">День</span>
+                                <span class="sidebar-identity-meta-v" id="sidebarIdentityDate">--.--</span>
+                            </span>
                             <button type="button" class="sidebar-identity-meta-item" data-sidebar-meta="currency" data-sidebar-stop-profile="true" aria-label="Курси валют у фінансах" title="Відкрити курси валют у фінансах"${currencySignalEnabled ? '' : ' hidden'}>
                                 <span class="sidebar-identity-meta-k">USD</span>
                                 <span class="sidebar-identity-meta-v" id="sidebarIdentityCurrency">--.--</span>
@@ -1258,6 +1262,19 @@ const Sidebar = (() => {
         }
     }
 
+    function _formatSidebarKyivDate(date = new Date()) {
+        try {
+            return new Intl.DateTimeFormat('uk-UA', {
+                timeZone: 'Europe/Kyiv',
+                weekday: 'short',
+                day: '2-digit',
+                month: '2-digit'
+            }).format(date).replace(/\.$/, '');
+        } catch (err) {
+            return date.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit' });
+        }
+    }
+
     function _setSidebarIdentityMetaValue(id, value, state = '') {
         const el = document.getElementById(id);
         if (!el) return;
@@ -1276,9 +1293,12 @@ const Sidebar = (() => {
     }
 
     function _updateSidebarIdentityTime() {
-        _setSidebarIdentityMetaValue('sidebarIdentityTime', _formatSidebarKyivTime(), 'live');
+        const now = new Date();
+        _setSidebarIdentityMetaValue('sidebarIdentityTime', _formatSidebarKyivTime(now), 'live');
+        _setSidebarIdentityMetaValue('sidebarIdentityDate', _formatSidebarKyivDate(now), 'live');
         _state.identityMetaDetails.time = {
-            time: _formatSidebarKyivTime(),
+            time: _formatSidebarKyivTime(now),
+            date: _formatSidebarKyivDate(now),
             label: 'Київський час',
             timezone: 'Europe/Kyiv'
         };
@@ -1445,6 +1465,7 @@ const Sidebar = (() => {
         document.querySelectorAll('.sidebar-identity-meta-item').forEach((item) => {
             if (item.dataset.sidebarMetaBound === 'true') return;
             item.dataset.sidebarMetaBound = 'true';
+            if (item.dataset.sidebarStatic === 'true') return;
             item.addEventListener('click', (event) => {
                 event.preventDefault();
                 event.stopPropagation();

@@ -7738,6 +7738,45 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
   display: none !important;
 }
 
+/* v0.59.5: passive time/date widgets.
+   The time chip is now read-only, and the new day chip adds useful context
+   without opening side panels or stealing profile clicks. */
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-static="true"] {
+  cursor: default !important;
+  user-select: none !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="date"] {
+  order: 3 !important;
+  grid-column: 1 / -1 !important;
+  min-height: 28px !important;
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 7px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="date"] .sidebar-identity-meta-k {
+  font-size: 8px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="date"] .sidebar-identity-meta-v {
+  justify-self: end !important;
+  font-size: 11px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-static="true"]:hover,
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-static="true"]:focus-visible {
+  transform: none !important;
+  box-shadow: none !important;
+  border-color: var(--sb-enterprise-border) !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"]:hover,
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"]:focus-visible {
+  cursor: pointer !important;
+}
+
 .sidebar-nav:not(.collapsed) .sidebar-design-extras:not(.is-collapsed) .sidebar-design-extra-list {
   display: grid !important;
 }

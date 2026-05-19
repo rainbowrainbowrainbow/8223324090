@@ -15,6 +15,7 @@
     var ASSISTANT_CHAT_REOPEN_KEY = 'eg_assistant_chat_reopen_panel';
     var ASSISTANT_CHAT_TRANSCRIPT_KEY = 'eg_assistant_chat_transcript_v1';
     var ASSISTANT_CHAT_SYNC_CHANNEL_KEY = 'eg_assistant_chat_synced_channel_id';
+    var ASSISTANT_CHAT_SESSION_KEY = 'eg_crm_assistant_session_id';
     var _assistantReplyQueue = Promise.resolve();
     var _replyTo = null;
     var _editingMsg = null;
@@ -921,6 +922,65 @@
         }
     }
 
+    function _assistantUserScope() {
+        var raw = _currentUserId || '';
+        if (!raw) {
+            try {
+                var saved = JSON.parse(localStorage.getItem('pzp_current_user') || 'null');
+                raw = saved?.id || saved?.userId || saved?.username || '';
+            } catch {}
+        }
+        return String(raw || 'local').toLowerCase().replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'local';
+    }
+
+    function _assistantSessionIdFromBridge(bridge) {
+        var payload = bridge && typeof bridge === 'object' ? bridge : _safeAssistantBridgePayload();
+        if (payload.sessionId) return String(payload.sessionId).slice(0, 120);
+        try {
+            return String(sessionStorage.getItem(ASSISTANT_CHAT_SESSION_KEY + ':' + _assistantUserScope()) || sessionStorage.getItem(ASSISTANT_CHAT_SESSION_KEY) || '').slice(0, 120);
+        } catch {
+            return '';
+        }
+    }
+
+    function _isOldAssistantSessionMessage(msg) {
+        if (!_isAssistantDialogChannel(_currentChannel) || !msg?.metadata) return false;
+        var messageSession = String(msg.metadata.assistantSessionId || msg.metadata.sessionId || '').trim();
+        var currentSession = _assistantSessionIdFromBridge();
+        return Boolean(messageSession && currentSession && messageSession !== currentSession);
+    }
+
+    async function _ensureAssistantDialogChannelFromBridge(channels) {
+        if (!_isAssistantReturnRequest()) return null;
+        var synced = _findChannelById(channels, sessionStorage.getItem(ASSISTANT_CHAT_SYNC_CHANNEL_KEY) || '');
+        if (synced && _isAssistantDialogChannel(synced)) return synced;
+        var bridge = _safeAssistantBridgePayload();
+        try {
+            var data = await _api('POST', '/assistant/transcript', {
+                conversationId: bridge.conversationId || 'crm-assistant-user-' + _assistantUserScope(),
+                sessionId: _assistantSessionIdFromBridge(bridge),
+                pageTitle: bridge.pageTitle || document.title || 'CRM Chat: Помічник',
+                page: bridge.page || 'chat',
+                returnUrl: bridge.returnUrl || _assistantReturnUrl(),
+                messages: Array.isArray(bridge.messages) ? bridge.messages : []
+            });
+            if (!data?.channel?.id) return null;
+            try {
+                sessionStorage.setItem(ASSISTANT_CHAT_SYNC_CHANNEL_KEY, String(data.channel.id));
+            } catch {}
+            var existing = _findChannelById(_channels, data.channel.id);
+            if (!existing) {
+                _channels.unshift(data.channel);
+                _renderChannels();
+                existing = _findChannelById(_channels, data.channel.id);
+            }
+            return existing || data.channel;
+        } catch (err) {
+            console.warn('[Chat] Unable to ensure assistant dialog channel:', err);
+            return null;
+        }
+    }
+
     function _isAssistantDialogChannel(channel) {
         if (!channel) return false;
         try {
@@ -955,6 +1015,7 @@
         var payload = bridge && typeof bridge === 'object' ? { ...bridge } : {};
         var now = new Date().toISOString();
         payload.conversationId = String(payload.conversationId || 'assistant-chat-' + (_currentUserId || channel.id));
+        payload.sessionId = payload.sessionId || _assistantSessionIdFromBridge(payload);
         payload.pageTitle = payload.pageTitle || 'CRM Chat: Помічник';
         payload.page = payload.page || 'chat';
         payload.returnUrl = payload.returnUrl || '/chat?assistantReturn=1&channelId=' + encodeURIComponent(channel.id);
@@ -963,13 +1024,15 @@
             id: 'chat-user-' + Date.now(),
             role: 'user',
             text: String(userText || '').trim(),
-            at: now
+            at: now,
+            sessionId: payload.sessionId
         });
         payload.messages.push({
             id: 'chat-assistant-' + Date.now(),
             role: 'assistant',
             text: String(assistantText || '').trim(),
-            at: now
+            at: now,
+            sessionId: payload.sessionId
         });
         payload.messages = payload.messages.filter(function (item) { return item && String(item.text || '').trim(); }).slice(-80);
         try {
@@ -988,6 +1051,7 @@
                 content: userText,
                 clientMessageId: clientMessageId || '',
                 conversationId: bridge.conversationId || 'assistant-chat-' + (_currentUserId || channel.id),
+                sessionId: _assistantSessionIdFromBridge(bridge),
                 pageTitle: bridge.pageTitle || document.title || 'CRM Chat: Помічник',
                 page: bridge.page || 'chat',
                 returnUrl: bridge.returnUrl || _assistantReturnUrl()
@@ -3650,7 +3714,8 @@
 
             _renderChannels();
 
-            var initialChannel = _resolveInitialChannelTarget(_channels);
+            var assistantChannel = await _ensureAssistantDialogChannelFromBridge(_channels);
+            var initialChannel = assistantChannel || _resolveInitialChannelTarget(_channels);
             if (initialChannel) {
                 await _selectChannel(initialChannel);
             } else {
@@ -3672,7 +3737,8 @@
             _channels = await _api('GET', '/channels') || [];
             _renderChannels();
             if (options.reselect !== false) {
-                var target = _resolveInitialChannelTarget(_channels);
+                var assistantChannel = await _ensureAssistantDialogChannelFromBridge(_channels);
+                var target = assistantChannel || _resolveInitialChannelTarget(_channels);
                 if (target) {
                     await _selectChannel(target);
                 } else {
@@ -3935,6 +4001,7 @@
         var isBot = msg.isBot || msg.username === 'openclaw';
         var isGuardian = msg.isBot && msg.username === 'guardian' || msg.username === 'guardian';
         if (isGuardian) isBot = true;
+        var oldAssistantSession = _isOldAssistantSessionMessage(msg);
         var emojiOnly = !msg.deletedAt && msg.content && _isOnlyEmoji(msg.content);
 
         // Feature 3: Time-based gradient class
@@ -3953,7 +4020,7 @@
         else if (msg.role === 'cashier') roleClass = ' role-cashier-msg';
 
         var el = document.createElement('div');
-        el.className = 'chat-message' + (isOwn ? ' own' : '') + (isGrouped ? ' grouped' : '') + (emojiOnly ? ' emoji-only' : '') + (isBot ? ' bot' : '') + (isGuardian ? ' guardian' : '') + timeClass + roleClass;
+        el.className = 'chat-message' + (isOwn ? ' own' : '') + (isGrouped ? ' grouped' : '') + (emojiOnly ? ' emoji-only' : '') + (isBot ? ' bot' : '') + (isGuardian ? ' guardian' : '') + (oldAssistantSession ? ' assistant-old-session' : '') + timeClass + roleClass;
         el.dataset.messageId = msg.id;
         el.dataset.seq = msg.seq;
         el.dataset.userId = msg.userId;
@@ -4030,6 +4097,7 @@
                 '<div class="chat-bubble-header">' +
                     '<span class="chat-bubble-username ' + usernameColorClass + roleUsernameClass + '">' + _esc(msg.displayName || msg.username) + '</span>' +
                     (isGuardian ? '<span class="chat-bot-badge guardian-badge">GUARD</span>' : (isBot ? '<span class="chat-bot-badge">BOT</span>' : roleBadgeHtml)) +
+                    (oldAssistantSession ? '<span class="chat-old-session-badge">стара сесія</span>' : '') +
                     (msg.isImportant ? '<span class="chat-important-badge">❗</span>' : '') +
                     editedHtml +
                     '<span class="chat-bubble-time">' + time + readCheckHtml + '</span>' +
@@ -4541,6 +4609,16 @@
             replyTo: _replyTo ? _replyTo.id : null,
             clientMessageId: 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
         };
+        if (_isAssistantDialogChannel(_currentChannel)) {
+            var assistantBridge = _safeAssistantBridgePayload();
+            msgData.metadata = {
+                source: 'crm_assistant_chat',
+                conversationId: assistantBridge.conversationId || 'crm-assistant-user-' + _assistantUserScope(),
+                assistantSessionId: _assistantSessionIdFromBridge(assistantBridge),
+                page: assistantBridge.page || 'chat',
+                returnUrl: assistantBridge.returnUrl || _assistantReturnUrl()
+            };
+        }
 
         _cancelReply();
 

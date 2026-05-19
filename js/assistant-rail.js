@@ -61,6 +61,9 @@
     const ASSISTANT_CHAT_REOPEN_KEY = 'eg_assistant_chat_reopen_panel';
     const ASSISTANT_CHAT_TRANSCRIPT_KEY = 'eg_assistant_chat_transcript_v1';
     const ASSISTANT_CHAT_SYNC_CHANNEL_KEY = 'eg_assistant_chat_synced_channel_id';
+    const ASSISTANT_CHAT_SESSION_KEY = 'eg_crm_assistant_session_id';
+    const ASSISTANT_CHAT_HISTORY_KEY = 'eg_crm_assistant_history_v2';
+    const ASSISTANT_CHAT_CONVERSATION_KEY = 'eg_crm_assistant_conversation_id_v2';
     const ASSISTANT_CHAT_HISTORY_LIMIT = 80;
 
     let state = {
@@ -176,6 +179,8 @@
     let audioUrl = null;
     let history = [];
     let assistantConversationId = sessionStorage.getItem('eg_crm_assistant_conversation_id') || '';
+    let assistantHistoryLoadedForKey = '';
+    let assistantSessionId = '';
     let proactiveTimer = null;
     let proactiveShownForPage = null;
     let pageInteractionDetected = false;
@@ -205,6 +210,37 @@
     function getRole() {
         if (typeof getUserRole === 'function') return getUserRole();
         return window.AppState?.currentUser?.role || null;
+    }
+
+    function getAssistantUserScope() {
+        const candidates = [window.AppState?.currentUser];
+        try {
+            const saved = JSON.parse(localStorage.getItem('pzp_current_user') || 'null');
+            if (saved) candidates.push(saved);
+        } catch {}
+        const user = candidates.find(item => item && (item.id || item.userId || item.username || item.name)) || {};
+        const raw = user.id || user.userId || user.username || user.name || 'local';
+        return String(raw).toLowerCase().replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'local';
+    }
+
+    function assistantScopedKey(base) {
+        return `${base}:${getAssistantUserScope()}`;
+    }
+
+    function getAssistantSessionId() {
+        if (assistantSessionId) return assistantSessionId;
+        const key = assistantScopedKey(ASSISTANT_CHAT_SESSION_KEY);
+        try {
+            assistantSessionId = sessionStorage.getItem(key) || '';
+            if (!assistantSessionId) {
+                assistantSessionId = `asst-session-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+                sessionStorage.setItem(key, assistantSessionId);
+            }
+            sessionStorage.setItem(ASSISTANT_CHAT_SESSION_KEY, assistantSessionId);
+        } catch {
+            assistantSessionId = assistantSessionId || `asst-session-${Date.now().toString(36)}`;
+        }
+        return assistantSessionId;
     }
 
     function roleLabel(role) {
@@ -1272,17 +1308,65 @@
     }
 
     function getAssistantConversationId() {
-        if (!assistantConversationId) {
-            assistantConversationId = `crm-assistant-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-            try {
-                sessionStorage.setItem('eg_crm_assistant_conversation_id', assistantConversationId);
-            } catch {}
+        const scope = getAssistantUserScope();
+        const stableId = `crm-assistant-user-${scope}`;
+        const key = assistantScopedKey(ASSISTANT_CHAT_CONVERSATION_KEY);
+        try {
+            const stored = localStorage.getItem(key) || '';
+            assistantConversationId = stored && stored.indexOf('crm-assistant-user-') === 0 ? stored : stableId;
+            localStorage.setItem(key, assistantConversationId);
+            sessionStorage.setItem('eg_crm_assistant_conversation_id', assistantConversationId);
+        } catch {
+            assistantConversationId = assistantConversationId && assistantConversationId.indexOf('crm-assistant-user-') === 0
+                ? assistantConversationId
+                : stableId;
         }
         return assistantConversationId;
     }
 
     function assistantHistoryItemId(role) {
         return `${getAssistantConversationId()}-${Date.now().toString(36)}-${role}-${history.length}`;
+    }
+
+    function isOldAssistantSession(item) {
+        if (!item || !item.sessionId) return false;
+        return item.sessionId !== getAssistantSessionId();
+    }
+
+    function normalizeStoredAssistantHistoryItem(item, index = 0) {
+        const role = item?.role === 'user' ? 'user' : 'assistant';
+        const text = String(item?.text || item?.content || '').trim();
+        if (!text) return null;
+        return {
+            id: String(item.id || `${getAssistantConversationId()}-stored-${index}`),
+            role,
+            text: text.slice(0, 3800),
+            at: item.at || item.createdAt || new Date().toISOString(),
+            sessionId: item.sessionId || '',
+            conversationId: item.conversationId || getAssistantConversationId(),
+            page: item.page || ''
+        };
+    }
+
+    function loadAssistantPersistentHistory() {
+        const key = assistantScopedKey(ASSISTANT_CHAT_HISTORY_KEY);
+        if (assistantHistoryLoadedForKey === key) return;
+        assistantHistoryLoadedForKey = key;
+        try {
+            const parsed = JSON.parse(localStorage.getItem(key) || '[]');
+            history = Array.isArray(parsed)
+                ? parsed.map(normalizeStoredAssistantHistoryItem).filter(Boolean).slice(-ASSISTANT_CHAT_HISTORY_LIMIT)
+                : [];
+        } catch {
+            history = [];
+        }
+        storeAssistantTranscriptPayload(buildAssistantChatTransferPayload());
+    }
+
+    function persistAssistantHistory() {
+        try {
+            localStorage.setItem(assistantScopedKey(ASSISTANT_CHAT_HISTORY_KEY), JSON.stringify(history.slice(-ASSISTANT_CHAT_HISTORY_LIMIT)));
+        } catch {}
     }
 
     function storeAssistantTranscriptPayload(payload) {
@@ -1297,6 +1381,7 @@
         const snapshot = buildAssistantSnapshot();
         return {
             conversationId: getAssistantConversationId(),
+            sessionId: getAssistantSessionId(),
             pageTitle: snapshot.pageFull || document.title || 'CRM',
             page: getCurrentPageKey(),
             returnUrl: currentAssistantReturnUrl(),
@@ -1304,7 +1389,10 @@
                 id: item.id || `${getAssistantConversationId()}-${index}`,
                 role: item.role === 'user' ? 'user' : 'assistant',
                 text: item.text,
-                at: item.at
+                at: item.at,
+                sessionId: item.sessionId || getAssistantSessionId(),
+                conversationId: item.conversationId || getAssistantConversationId(),
+                page: item.page || getCurrentPageKey()
             }))
         };
     }
@@ -1313,8 +1401,17 @@
         const line = String(text || '').trim();
         if (!line) return;
         const safeRole = role === 'user' ? 'user' : 'assistant';
-        history.push({ id: assistantHistoryItemId(safeRole), role: safeRole, text: line, at: new Date().toISOString() });
+        history.push({
+            id: assistantHistoryItemId(safeRole),
+            role: safeRole,
+            text: line,
+            at: new Date().toISOString(),
+            sessionId: getAssistantSessionId(),
+            conversationId: getAssistantConversationId(),
+            page: getCurrentPageKey()
+        });
         if (history.length > ASSISTANT_CHAT_HISTORY_LIMIT) history = history.slice(-ASSISTANT_CHAT_HISTORY_LIMIT);
+        persistAssistantHistory();
         storeAssistantTranscriptPayload(buildAssistantChatTransferPayload());
     }
 
@@ -1326,7 +1423,6 @@
     async function syncAssistantDialogToCrmChat() {
         const payload = buildAssistantChatTransferPayload();
         storeAssistantTranscriptPayload(payload);
-        if (!payload.messages.length) return null;
         const resp = await fetch('/api/chat/assistant/transcript', {
             method: 'POST',
             headers: {
@@ -1453,6 +1549,11 @@
         document.getElementById('crmAssistantOpenChatBtn')?.addEventListener('click', openCrmChatFromAssistant);
         document.getElementById('crmAssistantOpenChatInline')?.addEventListener('click', openCrmChatFromAssistant);
         document.getElementById('crmAssistantForm')?.addEventListener('submit', submitPrompt);
+        document.getElementById('crmAssistantPromptInput')?.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+            event.preventDefault();
+            event.currentTarget.closest('form')?.requestSubmit();
+        });
         overlay.querySelectorAll('[data-crm-assistant-prompt]').forEach(btn => {
             btn.addEventListener('click', () => runQuickPrompt(btn.dataset.crmAssistantPrompt));
         });
@@ -1470,8 +1571,8 @@
         if (!container) return;
         const items = history.length ? history : [{ role: 'assistant', text: state.subtitle || 'Я готовий допомогти по цій сторінці.' }];
         container.innerHTML = items.map(item => `
-            <div class="crm-assistant-history-item ${escapeHtml(item.role)}">
-                <span>${item.role === 'user' ? 'Ти' : 'Помічник'}</span>
+            <div class="crm-assistant-history-item ${escapeHtml(item.role)}${isOldAssistantSession(item) ? ' old-session' : ''}">
+                <span>${item.role === 'user' ? 'Ти' : 'Помічник'}${isOldAssistantSession(item) ? '<small>стара сесія</small>' : ''}</span>
                 <p>${escapeHtml(item.text)}</p>
             </div>
         `).join('');
@@ -1836,6 +1937,9 @@
     function init(options = {}) {
         initCount += 1;
         foundation()?.init?.({ pageId: getCurrentPageKey(), ...options });
+        getAssistantSessionId();
+        getAssistantConversationId();
+        loadAssistantPersistentHistory();
         if (!ensureMounted()) return false;
         initAssistantWindowBridge();
         if (options.subtitle) announceFromPage(options.subtitle);

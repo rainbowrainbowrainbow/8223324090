@@ -3649,6 +3649,37 @@ body.dark-mode .chat-date-divider span,
     box-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
 }
 
+.chat-message.assistant-old-session {
+    opacity: 0.56;
+    filter: grayscale(0.5);
+}
+
+.chat-message.assistant-old-session .chat-bubble {
+    background: linear-gradient(135deg, rgba(100, 116, 139, 0.18), rgba(71, 85, 105, 0.14)) !important;
+    border-color: rgba(148, 163, 184, 0.26) !important;
+    box-shadow: none !important;
+}
+
+.chat-old-session-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 18px;
+    padding: 2px 7px;
+    margin-left: 6px;
+    border-radius: 999px;
+    background: rgba(100, 116, 139, 0.18);
+    color: rgba(71, 85, 105, 0.82);
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+[data-theme="dark"] .chat-old-session-badge {
+    background: rgba(148, 163, 184, 0.14);
+    color: rgba(203, 213, 225, 0.76);
+}
+
 .chat-message.bot .chat-bubble-username {
     color: #059669 !important;
     font-weight: 700;

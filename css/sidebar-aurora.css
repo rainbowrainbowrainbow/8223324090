@@ -7665,6 +7665,11 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
   display: grid !important;
 }
 
+.sidebar-nav:not(.collapsed) .sidebar-design-extra-list[hidden],
+.sidebar-nav:not(.collapsed) .sidebar-design-extras.is-editing .sidebar-design-extra-list {
+  display: none !important;
+}
+
 /* v0.58.1: single-state sidebar collapse lock.
    Historical hover-expand rules are still present above for old snapshots; this
    final contract keeps the shared Aurora sidebar from flashing into legacy menu

@@ -3142,6 +3142,18 @@ body:not(.dark-mode) .crm-assistant-form {
     padding: 0 4px;
 }
 
+.crm-assistant-chat-workspace .crm-assistant-history-item span small {
+    margin-left: 8px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(100, 116, 139, 0.18);
+    color: rgba(203, 213, 225, 0.76);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
 .crm-assistant-chat-workspace .crm-assistant-history-item.user span {
     text-align: right;
 }
@@ -3162,6 +3174,17 @@ body:not(.dark-mode) .crm-assistant-form {
     background: linear-gradient(135deg, rgba(13, 148, 136, 0.86), rgba(16, 185, 129, 0.72)) !important;
     color: #ECFEFF !important;
     border-color: rgba(94, 234, 212, 0.30) !important;
+}
+
+.crm-assistant-chat-workspace .crm-assistant-history-item.old-session {
+    opacity: 0.58;
+    filter: grayscale(0.44);
+}
+
+.crm-assistant-chat-workspace .crm-assistant-history-item.old-session p {
+    background: rgba(71, 85, 105, 0.36) !important;
+    border-color: rgba(148, 163, 184, 0.18) !important;
+    box-shadow: none !important;
 }
 
 body:not(.dark-mode) .crm-assistant-chat-workspace {

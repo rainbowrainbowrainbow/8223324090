@@ -618,11 +618,14 @@ const Sidebar = (() => {
             sectionToggle.addEventListener('click', (event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                const nextCollapsed = !extras.classList.contains('is-collapsed');
-                _setExtraMenuCollapsed(nextCollapsed);
-                if (nextCollapsed) {
+                const editorWasOpen = _isExtraMenuEditorOpen();
+                if (editorWasOpen) {
                     _state.extraEditingId = '';
                     _setExtraMenuEditorOpen(false);
+                    _setExtraMenuCollapsed(false);
+                } else {
+                    const nextCollapsed = !extras.classList.contains('is-collapsed');
+                    _setExtraMenuCollapsed(nextCollapsed);
                 }
                 _ensureCommandDeck();
             });
@@ -635,8 +638,8 @@ const Sidebar = (() => {
                 event.preventDefault();
                 event.stopPropagation();
                 const nextOpen = !_isExtraMenuEditorOpen();
-                if (nextOpen) _setExtraMenuCollapsed(false);
                 _setExtraMenuEditorOpen(nextOpen);
+                _setExtraMenuCollapsed(true);
                 if (!nextOpen) _state.extraEditingId = '';
                 _ensureCommandDeck();
             });
@@ -1141,7 +1144,8 @@ const Sidebar = (() => {
         const selectableExtraItems = _getSelectableExtraMenuItems(role);
         const selectedExtraHrefs = _getSelectedExtraMenuHrefs(role);
         const extraEditorOpen = _isExtraMenuEditorOpen();
-        const extraCollapsed = _isExtraMenuCollapsed() && !extraEditorOpen;
+        const extraCollapsed = _isExtraMenuCollapsed();
+        const extraListHidden = extraEditorOpen || extraCollapsed;
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
         const currentHash = location.hash.replace('#', '');
         let extras = document.getElementById('sidebarDesignExtras');
@@ -1149,23 +1153,23 @@ const Sidebar = (() => {
             extras = document.createElement('div');
             extras.id = 'sidebarDesignExtras';
         }
-        extras.className = `sidebar-design-extras${extraEditorOpen ? ' is-editing' : ''}${extraCollapsed ? ' is-collapsed' : ''}`;
+        extras.className = `sidebar-design-extras${extraEditorOpen ? ' is-editing' : ''}${extraCollapsed && !extraEditorOpen ? ' is-collapsed' : ''}`;
         extras.innerHTML = `
                 <div class="sidebar-design-extras-head-row">
-                <button type="button" class="sidebar-design-extras-head" data-sidebar-extra-toggle-section aria-expanded="${extraCollapsed ? 'false' : 'true'}">
+                <button type="button" class="sidebar-design-extras-head" data-sidebar-extra-toggle-section aria-expanded="${extraListHidden ? 'false' : 'true'}">
                     <span class="sidebar-design-extras-dot" aria-hidden="true"></span>
                     <span class="sidebar-design-extras-copy">
                         <span class="sidebar-design-extras-title">Швидкий доступ</span>
                         <span class="sidebar-design-extras-subtitle">обране меню</span>
                     </span>
-                    <span class="sidebar-design-extras-chevron" aria-hidden="true">${extraCollapsed ? '⌄' : '⌃'}</span>
+                    <span class="sidebar-design-extras-chevron" aria-hidden="true">${extraListHidden ? '⌄' : '⌃'}</span>
                 </button>
                     <button type="button" class="sidebar-design-extras-manage" data-sidebar-extra-toggle-editor aria-expanded="${extraEditorOpen ? 'true' : 'false'}" aria-label="${extraEditorOpen ? 'Завершити редагування швидкого доступу' : 'Редагувати швидкий доступ'}" title="${extraEditorOpen ? 'Готово' : 'Редагувати швидкий доступ'}">
                         <span class="sidebar-design-extras-gear" aria-hidden="true">⚙</span>
                         <span class="sidebar-design-extras-manage-text">${extraEditorOpen ? 'Готово' : 'Редагувати'}</span>
                     </button>
                 </div>
-                <div class="sidebar-design-extra-list"${extraCollapsed ? ' hidden' : ''}>
+                <div class="sidebar-design-extra-list"${extraListHidden ? ' hidden' : ''}>
                     ${extraItems.length ? extraItems.map(item => _renderExtraMenuLink(item, currentPath, currentHash, { editMode: extraEditorOpen })).join('') : '<div class="sidebar-design-extra-empty">Нічого не вибрано. Натисни шестерню і постав галочки.</div>'}
                 </div>
                 ${extraEditorOpen ? _renderExtraMenuEditor(selectableExtraItems, selectedExtraHrefs) : ''}`;

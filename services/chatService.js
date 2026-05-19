@@ -517,7 +517,10 @@ function normalizeAssistantTranscriptMessage(item = {}, index = 0) {
         role,
         text,
         at: item.at || null,
-        sourceId: String(item.id || item.messageId || index)
+        sourceId: String(item.id || item.messageId || index),
+        sessionId: String(item.sessionId || item.assistantSessionId || '').slice(0, 120),
+        conversationId: String(item.conversationId || '').slice(0, 120),
+        page: String(item.page || '').slice(0, 80)
     };
 }
 
@@ -568,10 +571,11 @@ async function importAssistantTranscript(userId, payload = {}) {
             const metadata = {
                 source: 'crm_assistant_transcript',
                 conversationId,
+                assistantSessionId: item.sessionId || payload.sessionId || '',
                 role: item.role,
                 originalAt: item.at || null,
                 pageTitle: payload.pageTitle || '',
-                page: payload.page || '',
+                page: item.page || payload.page || '',
                 returnUrl: payload.returnUrl || ''
             };
             const inserted = await client.query(`

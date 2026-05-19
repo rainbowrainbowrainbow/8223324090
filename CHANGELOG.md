@@ -4,6 +4,18 @@
 
 ---
 
+## v0.58.7 - Assistant Dialog Continuity
+
+### Assistant Dialog Continuity [codex]
+- **Один актуальний діалог Помічника** - `CrmAssistantRail` перейшов на стабільний user-scoped `conversationId`, щоб поточна розмова не створювала нові випадкові діалоги між сесіями.
+- **CRM Chat відкриває правильну гілку** - перехід у `Мої чати` тепер створює або знаходить канал `# Помічник`, синхронізує bridge payload і автоматично вибирає саме цей канал навіть без попередніх повідомлень.
+- **Старі сесії позначені сірим** - expanded assistant panel і CRM Chat показують повідомлення зі старих browser-сесій як `стара сесія`, щоб оператор бачив історію, але не плутав її з актуальною гілкою.
+- **Enter надсилає повідомлення** - у великому вікні Помічника `Enter` відправляє запит, а `Shift+Enter` лишає перенос рядка.
+- **Quick Access без подвійного режиму** - шестерня відкриває тільки меню налаштувань з галочками, а оригінальний список швидкого доступу розгортається лише через стрілку.
+- **Guardrails** - `test:ui` фіксує один assistant-dialog, session metadata, old-session styling, Enter-submit і розділену поведінку quick access.
+
+---
+
 ## v0.58.6 - Assistant Chat and Alert Actions
 
 ### Assistant Chat and Alert Actions [codex]

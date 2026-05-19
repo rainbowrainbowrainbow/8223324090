@@ -806,7 +806,7 @@ router.post('/channels', async (req, res) => {
 router.post('/assistant/transcript', async (req, res) => {
     try {
         const userId = req.user.id || req.user.userId;
-        const { conversationId, pageTitle, page, returnUrl, messages } = req.body || {};
+        const { conversationId, sessionId, pageTitle, page, returnUrl, messages } = req.body || {};
         if (!Array.isArray(messages)) {
             return res.status(400).json({ error: 'Assistant transcript messages are required' });
         }
@@ -815,6 +815,7 @@ router.post('/assistant/transcript', async (req, res) => {
         }
         const result = await chat.importAssistantTranscript(userId, {
             conversationId,
+            sessionId,
             pageTitle,
             page,
             returnUrl,
@@ -860,6 +861,7 @@ router.post('/assistant/reply', async (req, res) => {
             .slice(-16);
 
         const conversationId = String(body.conversationId || `assistant-chat-${userId}`).slice(0, 120);
+        const sessionId = String(body.sessionId || body.assistantSessionId || '').slice(0, 120);
         const pageTitle = String(body.pageTitle || 'CRM Chat: Помічник').slice(0, 160);
         const page = String(body.page || 'chat').slice(0, 80);
         const returnUrl = String(body.returnUrl || '/chat').slice(0, 240);
@@ -890,6 +892,7 @@ router.post('/assistant/reply', async (req, res) => {
 
         const imported = await chat.importAssistantTranscript(userId, {
             conversationId,
+            sessionId,
             pageTitle,
             page,
             returnUrl,
@@ -897,7 +900,8 @@ router.post('/assistant/reply', async (req, res) => {
                 id: `chat-reply-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
                 role: 'assistant',
                 text: replyText,
-                at: new Date().toISOString()
+                at: new Date().toISOString(),
+                sessionId
             }]
         });
 

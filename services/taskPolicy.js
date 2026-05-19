@@ -36,6 +36,17 @@ function buildTaskOwnerMatch(user, params, alias = 't') {
     return `(${typedMatch} OR ${legacyMatch})`;
 }
 
+function buildTaskObserverMatch(user, params, alias = 't') {
+    const userId = normalizeUserId(user);
+    if (!userId) return 'FALSE';
+    return `EXISTS (
+        SELECT 1
+        FROM task_observers task_observer_scope
+        WHERE task_observer_scope.task_id = ${alias}.id
+          AND task_observer_scope.user_id = ${pushParam(params, userId)}
+    )`;
+}
+
 function buildTaskVisibilityScope(user, params, alias = 't') {
     const perms = getPermissions(user?.role);
 
@@ -43,8 +54,10 @@ function buildTaskVisibilityScope(user, params, alias = 't') {
     const tokenRefs = userNameTokens(user).map(token => pushParam(params, token));
     const legacyMatch = buildLegacyOwnerMatch(alias, tokenRefs);
     const typedOwnMatch = userId ? `${alias}.owner_user_id = ${pushParam(params, userId)}` : 'FALSE';
+    const observerMatch = buildTaskObserverMatch(user, params, alias);
     const ownMatch = `(${typedOwnMatch} OR ${legacyMatch})`;
-    const privacyMatch = `(COALESCE(${alias}.visibility, 'team') = 'team' OR ${ownMatch})`;
+    const ownOrObserverMatch = `(${typedOwnMatch} OR ${legacyMatch} OR ${observerMatch})`;
+    const privacyMatch = `(COALESCE(${alias}.visibility, 'team') = 'team' OR ${ownOrObserverMatch})`;
 
     if (perms.taskVisibility === 'all') return `AND ${privacyMatch}`;
 
@@ -95,11 +108,12 @@ function buildTaskVisibilityScope(user, params, alias = 't') {
             OR ${alias}.owner_user_id IN (${departmentUsers})
             OR (${alias}.owner_user_id IS NULL AND (${alias}.assigned_to IN (${departmentLegacyTokens}) OR ${alias}.owner IN (${departmentLegacyTokens})))
             OR ${legacyMatch}
+            OR ${observerMatch}
         )`;
     }
 
     if (!userId && !tokenRefs.length) return 'AND 1 = 0';
-    return `AND ${ownMatch}`;
+    return `AND ${ownOrObserverMatch}`;
 }
 
 function ownsTask(user, task = {}) {
@@ -110,13 +124,25 @@ function ownsTask(user, task = {}) {
     return tokens.has(String(task.assigned_to || '').trim()) || tokens.has(String(task.owner || '').trim());
 }
 
+function observesTask(user, task = {}) {
+    const userId = normalizeUserId(user);
+    if (!userId) return false;
+    if (task.viewer_is_observer === true || task.viewerIsObserver === true) return true;
+    const ids = task.observer_user_ids || task.observerUserIds || task.observers;
+    if (!Array.isArray(ids)) return false;
+    return ids.some(value => {
+        if (value && typeof value === 'object') return Number(value.user_id || value.userId || value.id || 0) === userId;
+        return Number(value || 0) === userId;
+    });
+}
+
 function canViewTask(user, task = {}) {
     const perms = getPermissions(user?.role);
     const privateVisibility = ['private', 'me_only'].includes(String(task.visibility || '').trim());
-    if (privateVisibility && !ownsTask(user, task)) return false;
+    if (privateVisibility && !ownsTask(user, task) && !observesTask(user, task)) return false;
     if (perms.taskVisibility === 'all') return true;
     if (perms.taskVisibility === 'department') return true;
-    return ownsTask(user, task);
+    return ownsTask(user, task) || observesTask(user, task);
 }
 
 function canMutateTask(user, task = {}) {
@@ -137,6 +163,14 @@ function canRescheduleTask(user, task = {}) {
     return canMutateTask(user, task);
 }
 
+function canAccessTaskMaterials(user, task = {}) {
+    return canViewTask(user, task);
+}
+
+function canManageTaskObservers(user, task = {}) {
+    return canMutateTask(user, task) || canReassignTask(user, task);
+}
+
 function taskOwnerState(task = {}) {
     if (Number(task.owner_user_id || task.ownerUserId || 0) > 0) return 'typed';
     if (task.assigned_to || task.owner) return 'legacy_unknown_owner';
@@ -145,13 +179,17 @@ function taskOwnerState(task = {}) {
 
 module.exports = {
     ACTIVE_TASK_STATUS_SQL,
+    buildTaskObserverMatch,
     buildTaskOwnerMatch,
     buildTaskVisibilityScope,
+    canAccessTaskMaterials,
+    canManageTaskObservers,
     canViewTask,
     canMutateTask,
     canReassignTask,
     canRescheduleTask,
     normalizeUserId,
+    observesTask,
     ownsTask,
     taskOwnerState,
     userDisplayName,

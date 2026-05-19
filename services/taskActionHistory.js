@@ -5,7 +5,8 @@ const DEFAULT_TASK_SOURCE_SURFACE = 'manager_queue_task_execution_v2';
 const TASK_ACTION_TYPES = Object.freeze({
     COMPLETED: 'task_completed',
     OWNER_REASSIGNED: 'task_owner_reassigned',
-    RESCHEDULED: 'task_rescheduled'
+    RESCHEDULED: 'task_rescheduled',
+    OBSERVERS_UPDATED: 'task_observers_updated'
 });
 
 function actorSnapshot(actor = {}) {
@@ -30,6 +31,8 @@ function summaryForAction(actionType) {
             return 'Task owner reassigned';
         case TASK_ACTION_TYPES.RESCHEDULED:
             return 'Task rescheduled';
+        case TASK_ACTION_TYPES.OBSERVERS_UPDATED:
+            return 'Task observers updated';
         default:
             return 'Task execution action';
     }

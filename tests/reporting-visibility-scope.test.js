@@ -76,6 +76,25 @@ test('cross-entity search and workspace shortcuts cannot bypass booking/task vis
     assert.match(leads, /buildTaskVisibilityScope\(req\.user, taskParams, 't'\)/, 'lead workspace linked tasks should be task-scoped');
 });
 
+test('task observers extend canonical task visibility without mutation authority', () => {
+    const policy = read('services/taskPolicy.js');
+    assert.match(policy, /function buildTaskObserverMatch/, 'task observer visibility should live in taskPolicy');
+    assert.match(policy, /FROM task_observers task_observer_scope/, 'visibility scope should use durable task_observers table');
+    assert.match(policy, /function observesTask/, 'row-level canViewTask should understand observer metadata');
+    assert.match(policy, /function canAccessTaskMaterials/, 'materials access should be an explicit read policy');
+    assert.match(policy, /function canManageTaskObservers/, 'observer management should remain behind mutation/reassign authority');
+
+    const tasksRoute = read('routes/tasks.js');
+    assert.match(tasksRoute, /router\.get\('\/:id\/observers'/, 'task observers should have a read endpoint');
+    assert.match(tasksRoute, /router\.put\('\/:id\/observers'/, 'task observers should have an explicit management endpoint');
+    assert.match(tasksRoute, /materialsAccess: 'detail_subtasks_history_logs'/, 'observer access should expose task materials, not only the card');
+    assert.match(tasksRoute, /TASK_ACTION_TYPES\.OBSERVERS_UPDATED/, 'observer changes should leave task action history');
+
+    const migration = read('db/migrations/186_task_observer_visibility.sql');
+    assert.match(migration, /CREATE TABLE IF NOT EXISTS task_observers/, 'observer policy should be durable schema');
+    assert.match(migration, /PRIMARY KEY \(task_id, user_id\)/, 'observer rows should be idempotent per task/user');
+});
+
 test('notification and helper summaries use canonical booking scope and safe actor context', () => {
     const scheduler = read('services/scheduler.js');
     assert.match(scheduler, /SYSTEM_BOOKING_NOTIFICATION_ACTOR/, 'scheduler should make privileged system broadcasts explicit');

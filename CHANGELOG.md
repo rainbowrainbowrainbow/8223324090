@@ -4,6 +4,18 @@
 
 ---
 
+## v0.59.7 - Task Observer Visibility Policy
+
+### Task Observer Visibility Policy [codex]
+- **Додано політику спостерігачів задач** - у задачі тепер можна вказати людей, які мають право спостерігати за виконанням без перепризначення власника.
+- **Повний read-доступ до матеріалів** - спостерігачі проходять через canonical `task_observers` policy і бачать detail, опис, чеклісти, історію дій, logs та робочий контекст задачі.
+- **Без зайвих прав на зміну** - observer-доступ не дає виконувати, перепризначати або переносити задачу; mutation лишається за власником і ролями з task authority.
+- **UI у detail задачі** - у картці задачі додано блок `Спостерігачі і матеріали` з мультивибором людей і окремим збереженням доступу.
+- **Audit trail** - зміна списку спостерігачів пишеться в `task_action_history` як `task_observers_updated`.
+- **Guardrail** - тести фіксують durable schema, canonical visibility scope, observer endpoints і UI-контракт доступу до матеріалів.
+
+---
+
 ## v0.59.6 - Assistant Chat Input Truth
 
 ### Assistant Chat Input Truth [codex]

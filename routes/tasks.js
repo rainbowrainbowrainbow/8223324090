@@ -12,7 +12,13 @@ router.use(authenticateToken);
 router.param('id', (req, res, next, val) => { if (val && !/^\d+$/.test(val)) return res.status(400).json({ error: 'Invalid ID format' }); next(); });
 const { createLogger } = require('../utils/logger');
 const { getPermissions } = require('../config/roles');
-const { buildTaskOwnerMatch, buildTaskVisibilityScope, canMutateTask, normalizeUserId } = require('../services/taskPolicy');
+const {
+    buildTaskOwnerMatch,
+    buildTaskVisibilityScope,
+    canManageTaskObservers,
+    canMutateTask,
+    normalizeUserId
+} = require('../services/taskPolicy');
 const {
     completeTask,
     getAssignableTaskOwner,
@@ -21,7 +27,7 @@ const {
     resolveDeadline,
     rescheduleTask
 } = require('../services/taskExecution');
-const { listTaskActionHistory } = require('../services/taskActionHistory');
+const { listTaskActionHistory, logTaskActionEvent, TASK_ACTION_TYPES } = require('../services/taskActionHistory');
 const { deriveTaskIntelligence } = require('../services/taskIntelligence');
 const {
     TaskDuplicateError,
@@ -205,6 +211,122 @@ function normalizeDependencyIds(value) {
         .filter(id => Number.isInteger(id) && id > 0);
 }
 
+function normalizeObserverIds(value) {
+    const raw = Array.isArray(value)
+        ? value
+        : (typeof value === 'string' ? value.split(',') : []);
+    return [...new Set(raw
+        .map(item => {
+            if (item && typeof item === 'object') return parseInt(item.userId || item.user_id || item.id, 10);
+            return parseInt(item, 10);
+        })
+        .filter(id => Number.isInteger(id) && id > 0))];
+}
+
+function observerIdsFromBody(body = {}) {
+    if (body.observerUserIds !== undefined) return normalizeObserverIds(body.observerUserIds);
+    if (body.observer_user_ids !== undefined) return normalizeObserverIds(body.observer_user_ids);
+    if (body.observers !== undefined) return normalizeObserverIds(body.observers);
+    if (body.watchers !== undefined) return normalizeObserverIds(body.watchers);
+    return [];
+}
+
+function hasObserverPatch(body = {}) {
+    return body.observerUserIds !== undefined
+        || body.observer_user_ids !== undefined
+        || body.observers !== undefined
+        || body.watchers !== undefined;
+}
+
+function normalizeObserverRow(row = {}) {
+    return {
+        userId: row.user_id || row.id || null,
+        username: row.username || null,
+        name: row.name || null,
+        role: row.role || null,
+        label: row.name || row.username || (row.user_id ? `User #${row.user_id}` : null),
+        accessLevel: row.access_level || 'materials',
+        addedBy: row.added_by || null,
+        createdAt: row.created_at || null
+    };
+}
+
+async function listTaskObservers(taskId, options = {}) {
+    const query = options.pool || pool;
+    const result = await query.query(
+        `SELECT tob.user_id, tob.access_level, tob.added_by, tob.created_at,
+                u.username, u.name, u.role
+         FROM task_observers tob
+         JOIN users u ON u.id = tob.user_id
+         WHERE tob.task_id = $1
+         ORDER BY COALESCE(NULLIF(u.name, ''), u.username), u.id`,
+        [taskId]
+    );
+    return result.rows.map(normalizeObserverRow);
+}
+
+async function replaceTaskObservers(task, observerIds = [], actor) {
+    const taskId = Number(task?.id);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+        const err = new Error('Valid task id is required');
+        err.statusCode = 400;
+        err.code = 'INVALID_TASK_ID';
+        throw err;
+    }
+    if (!canManageTaskObservers(actor, task)) {
+        const err = new Error('Недостатньо прав для зміни спостерігачів задачі');
+        err.statusCode = 403;
+        err.code = 'TASK_OBSERVERS_FORBIDDEN';
+        throw err;
+    }
+
+    const ownerId = Number(task.owner_user_id || task.ownerUserId || 0);
+    const uniqueIds = normalizeObserverIds(observerIds).filter(id => id !== ownerId);
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const previous = await listTaskObservers(taskId, { pool: client });
+        const validated = [];
+        for (const userId of uniqueIds) {
+            const owner = await getAssignableTaskOwner(userId, { pool: client, actor });
+            validated.push(owner);
+        }
+
+        await client.query('DELETE FROM task_observers WHERE task_id = $1', [taskId]);
+        for (const owner of validated) {
+            await client.query(
+                `INSERT INTO task_observers (task_id, user_id, access_level, added_by)
+                 VALUES ($1, $2, 'materials', $3)
+                 ON CONFLICT (task_id, user_id) DO UPDATE
+                 SET access_level = EXCLUDED.access_level,
+                     added_by = EXCLUDED.added_by`,
+                [taskId, owner.id, normalizeUserId(actor)]
+            );
+        }
+        const observers = await listTaskObservers(taskId, { pool: client });
+        await logTaskActionEvent({
+            taskId,
+            actionType: TASK_ACTION_TYPES.OBSERVERS_UPDATED,
+            actor,
+            sourceSurface: 'task_page',
+            oldValue: { observerUserIds: previous.map(item => item.userId) },
+            newValue: { observerUserIds: observers.map(item => item.userId) },
+            meta: {
+                route: 'tasks_task_observers',
+                accessLevel: 'materials',
+                policy: 'observers_can_read_task_materials'
+            }
+        }, { pool: client });
+        await client.query('COMMIT');
+        return observers;
+    } catch (err) {
+        try { await client.query('ROLLBACK'); } catch {}
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
 async function createTaskDependencyRows(taskId, dependencyIds = []) {
     const ids = normalizeDependencyIds(dependencyIds).filter(id => Number(id) !== Number(taskId));
     if (!ids.length) return [];
@@ -317,6 +439,12 @@ function normalizeTaskPayload(row) {
         taskMode,
         taskKind,
         visibility,
+        observerCount: Number(row.observer_count || 0),
+        viewerIsObserver: row.viewer_is_observer === true,
+        viewerObserverAccessLevel: row.viewer_observer_access_level || null,
+        observers: Array.isArray(row.observers) ? row.observers : [],
+        observerUserIds: Array.isArray(row.observers) ? row.observers.map(item => item.userId || item.user_id).filter(Boolean) : [],
+        materialAccess: row.viewer_is_observer === true ? 'observer_full_read' : 'policy_default',
         workflowState,
         focusRank: row.focus_rank || 0,
         remindAt: row.remind_at || null,
@@ -539,12 +667,28 @@ router.get('/', async (req, res) => {
         // Pagination (optional — backwards compatible: omit page/limit to get all)
         const limit = Math.min(parseInt(lim) || 500, 500);
         const offset = ((parseInt(page) || 1) - 1) * limit;
+        const viewerUserIdParam = idx++;
+        params.push(normalizeUserId(req.user) || 0);
         const orderViewParam = idx++;
         params.push(view || '');
         params.push(limit, offset);
 
         const result = await pool.query(
             `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
+                    COALESCE((SELECT COUNT(*) FROM task_observers tob WHERE tob.task_id = t.id), 0)::int AS observer_count,
+                    EXISTS (
+                        SELECT 1
+                        FROM task_observers viewer_tob
+                        WHERE viewer_tob.task_id = t.id
+                          AND viewer_tob.user_id = $${viewerUserIdParam}
+                    ) AS viewer_is_observer,
+                    (
+                        SELECT viewer_tob.access_level
+                        FROM task_observers viewer_tob
+                        WHERE viewer_tob.task_id = t.id
+                          AND viewer_tob.user_id = $${viewerUserIdParam}
+                        LIMIT 1
+                    ) AS viewer_observer_access_level,
                     COALESCE(st.total, 0)::int AS subtask_count,
                     COALESCE(st.done, 0)::int AS subtask_done_count,
                     COALESCE(dep.total, 0)::int AS dependency_count,
@@ -914,8 +1058,25 @@ router.get('/:id', async (req, res) => {
         if (id === 'logs') return res.status(400).json({ error: 'Use /api/tasks/:id/logs' });
         const params = [id];
         const visibility = buildTaskVisibilityScope(req.user, params, 't');
+        const viewerUserIdParam = params.length + 1;
+        params.push(normalizeUserId(req.user) || 0);
         const result = await pool.query(
             `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
+                    COALESCE((SELECT COUNT(*) FROM task_observers tob WHERE tob.task_id = t.id), 0)::int AS observer_count,
+                    EXISTS (
+                        SELECT 1
+                        FROM task_observers viewer_tob
+                        WHERE viewer_tob.task_id = t.id
+                          AND viewer_tob.user_id = $${viewerUserIdParam}
+                    ) AS viewer_is_observer,
+                    (
+                        SELECT viewer_tob.access_level
+                        FROM task_observers viewer_tob
+                        WHERE viewer_tob.task_id = t.id
+                          AND viewer_tob.user_id = $${viewerUserIdParam}
+                        LIMIT 1
+                    ) AS viewer_observer_access_level,
+                    COALESCE(observer_rows.observers, '[]'::json) AS observers,
                     COALESCE(st.total, 0)::int AS subtask_count,
                     COALESCE(st.done, 0)::int AS subtask_done_count,
                     COALESCE(dep.total, 0)::int AS dependency_count,
@@ -940,6 +1101,20 @@ router.get('/:id', async (req, res) => {
                 JOIN tasks blocker ON blocker.id = d.depends_on_task_id
                 GROUP BY d.task_id
              ) dep ON dep.task_id = t.id
+             LEFT JOIN (
+                SELECT tob.task_id,
+                       json_agg(json_build_object(
+                           'userId', tob.user_id,
+                           'username', ou.username,
+                           'name', ou.name,
+                           'role', ou.role,
+                           'accessLevel', tob.access_level,
+                           'createdAt', tob.created_at
+                       ) ORDER BY COALESCE(NULLIF(ou.name, ''), ou.username), ou.id) AS observers
+                FROM task_observers tob
+                JOIN users ou ON ou.id = tob.user_id
+                GROUP BY tob.task_id
+             ) observer_rows ON observer_rows.task_id = t.id
              WHERE t.id = $1 ${visibility}
              LIMIT 1`,
             params
@@ -973,6 +1148,48 @@ router.get('/:id/history', async (req, res) => {
     } catch (err) {
         log.error('Get task action history error', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/tasks/:id/observers — people with read/materials access to this task.
+router.get('/:id/observers', async (req, res) => {
+    try {
+        const visibleParams = [req.params.id];
+        const visibility = buildTaskVisibilityScope(req.user, visibleParams, 't');
+        const visible = await pool.query(`SELECT t.id FROM tasks t WHERE t.id = $1 ${visibility} LIMIT 1`, visibleParams);
+        if (!visible.rows.length) return res.status(404).json({ error: 'Task not found' });
+        const observers = await listTaskObservers(req.params.id);
+        res.json({
+            success: true,
+            observers,
+            meta: {
+                policy: 'task_observers',
+                access: 'read_task_detail_subtasks_history_materials',
+                mutation: 'not_granted_by_observer'
+            }
+        });
+    } catch (err) {
+        log.error('Get task observers error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// PUT /api/tasks/:id/observers — replace observer list for a visible mutable task.
+router.put('/:id/observers', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const task = await loadMutableTask(req.params.id, req.user);
+        const observers = await replaceTaskObservers(task, observerIdsFromBody(req.body || {}), req.user);
+        res.json({
+            success: true,
+            observers,
+            meta: {
+                policy: 'task_observers',
+                accessLevel: 'materials',
+                materialsAccess: 'detail_subtasks_history_logs'
+            }
+        });
+    } catch (err) {
+        return sendTaskActionError(res, err);
     }
 });
 
@@ -1408,6 +1625,10 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             task.subtask_done_count = 0;
         }
         await createTaskDependencyRows(task.id, dependency_ids);
+        if (hasObserverPatch(b)) {
+            task.observers = await replaceTaskObservers(task, observerIdsFromBody(b), req.user);
+            task.observer_count = task.observers.length;
+        }
         emitTaskAssignedToOwner(task, req.user);
 
         res.json({
@@ -1567,6 +1788,10 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         }
 
         const updatedTask = result.rows[0];
+        if (hasObserverPatch(b)) {
+            updatedTask.observers = await replaceTaskObservers(updatedTask, observerIdsFromBody(b), req.user);
+            updatedTask.observer_count = updatedTask.observers.length;
+        }
         if (
             updatedTask.task_kind === 'checklist' &&
             updatedTask.checklist_template_key &&

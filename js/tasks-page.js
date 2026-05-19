@@ -803,6 +803,27 @@ async function apiGetTaskHistory(taskId) {
     } catch (err) { console.error('API getTaskHistory error:', err); return { success: false, history: [], error: err.message }; }
 }
 
+async function apiGetTaskObservers(taskId) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${taskId}/observers`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return { success: false, observers: [] };
+        if (!response.ok) throw new Error('observers API error');
+        return await response.json();
+    } catch (err) { console.error('API getTaskObservers error:', err); return { success: false, observers: [], error: err.message }; }
+}
+
+async function apiSaveTaskObservers(taskId, observerUserIds) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${taskId}/observers`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ observerUserIds })
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) { console.error('API saveTaskObservers error:', err); return null; }
+}
+
 async function apiCompleteTask(taskId) {
     try {
         const response = await fetch(`${API_BASE}/tasks/${taskId}/complete`, {
@@ -2115,6 +2136,16 @@ async function openTaskDetail(taskId) {
             const label = s.label || s.name || s.username || ('User #' + s.id);
             return `<option value="${s.id}"${selected}>${escapeHtml(label)}${s.role ? ' (' + escapeHtml(s.role) + ')' : ''}</option>`;
         }).join('');
+        const currentObserverIds = new Set((Array.isArray(t.observers) ? t.observers : [])
+            .map(item => Number(item.userId || item.user_id || item.id || 0))
+            .filter(Boolean));
+        const observerSelectHtml = _assigneeList
+            .filter(s => taskOwnerUserId(t) !== Number(s.id))
+            .map(s => {
+                const selected = currentObserverIds.has(Number(s.id)) ? ' selected' : '';
+                const label = s.label || s.name || s.username || ('User #' + s.id);
+                return `<option value="${s.id}"${selected}>${escapeHtml(label)}${s.role ? ' (' + escapeHtml(s.role) + ')' : ''}</option>`;
+            }).join('');
         const ownerStateLabel = getTaskOwnerStateLabel(t);
         const taskIntel = t.intelligence || {};
         const taskWhy = Array.isArray(taskIntel.why) ? taskIntel.why.join(' ') : (taskIntel.why || '');
@@ -2196,6 +2227,20 @@ async function openTaskDetail(taskId) {
                     </div>
                     ${taskWhy ? `<div style="margin-top:6px;font-size:12px;color:var(--gray-500)">${escapeHtml(taskWhy)}</div>` : ''}
                 </div>
+                <div style="border:1px solid var(--gray-100);border-radius:10px;padding:10px;background:rgba(20,184,166,0.06)">
+                    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">
+                        <div>
+                            <strong style="font-size:13px">Спостерігачі і матеріали</strong>
+                            <div style="font-size:12px;color:var(--gray-500);margin-top:3px">Обрані люди бачать задачу, опис, чекліст, історію дій і робочі матеріали без права змінювати виконання.</div>
+                        </div>
+                        <span id="_tdObserverCount" style="font-size:11px;font-weight:800;color:#0f766e;background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.24);border-radius:999px;padding:4px 8px">${Number(t.observerCount || currentObserverIds.size || 0)} доступ</span>
+                    </div>
+                    <select id="_tdObservers" multiple size="4" ${_inp} style="width:100%;min-height:96px;padding:8px;border:1px solid var(--gray-200);border-radius:8px;font-size:13px;font-family:inherit">
+                        ${observerSelectHtml}
+                    </select>
+                    <div id="_tdObserversHint" style="font-size:12px;color:var(--gray-500);margin-top:6px">Ctrl/Cmd + клік: вибрати кількох спостерігачів. Власник задачі вже має повний доступ.</div>
+                    <button type="button" onclick="saveTaskObservers(${t.id})" style="margin-top:8px;border:1px solid rgba(20,184,166,0.34);background:rgba(20,184,166,0.12);color:#0f766e;border-radius:8px;padding:7px 10px;font-weight:800;cursor:pointer">Зберегти доступ</button>
+                </div>
                 <div style="border:1px solid var(--gray-100);border-radius:10px;padding:10px">
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
                         <strong style="font-size:13px">Task Action History</strong>
@@ -2217,6 +2262,7 @@ async function openTaskDetail(taskId) {
         resetTaskDetailDirtyState();
         if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay);
         loadTaskHistory(t.id);
+        loadTaskObservers(t.id);
 
         // Highlight card in list
         document.querySelectorAll('.task-card').forEach(c => c.style.outline = '');
@@ -2230,7 +2276,8 @@ function historyActionTitle(actionType) {
     const labels = {
         task_completed: 'Task completed',
         task_owner_reassigned: 'Owner reassigned',
-        task_rescheduled: 'Task rescheduled'
+        task_rescheduled: 'Task rescheduled',
+        task_observers_updated: 'Observers updated'
     };
     return labels[actionType] || actionType || 'Task action';
 }
@@ -2239,6 +2286,7 @@ function shortHistoryValue(value = {}) {
     if (!value || typeof value !== 'object') return '';
     if (value.status) return `status: ${value.status}`;
     if (value.ownerUserId !== undefined) return `owner: ${value.ownerUserId || 'none'}`;
+    if (Array.isArray(value.observerUserIds)) return `observers: ${value.observerUserIds.length}`;
     if (value.deadline !== undefined) return `deadline: ${value.deadline || 'none'}`;
     return '';
 }
@@ -2269,6 +2317,38 @@ async function loadTaskHistory(taskId) {
     target.innerHTML = renderTaskHistory(result.history || []);
 }
 window.loadTaskHistory = loadTaskHistory;
+
+async function loadTaskObservers(taskId) {
+    const select = document.getElementById('_tdObservers');
+    const count = document.getElementById('_tdObserverCount');
+    if (!select) return;
+    const result = await apiGetTaskObservers(taskId);
+    if (!result?.success) {
+        const hint = document.getElementById('_tdObserversHint');
+        if (hint) hint.textContent = 'Не вдалося завантажити спостерігачів. Доступ не змінено.';
+        return;
+    }
+    const ids = new Set((result.observers || []).map(item => Number(item.userId || item.user_id || item.id || 0)).filter(Boolean));
+    Array.from(select.options).forEach(option => { option.selected = ids.has(Number(option.value)); });
+    if (count) count.textContent = `${ids.size} доступ`;
+}
+window.loadTaskObservers = loadTaskObservers;
+
+async function saveTaskObservers(taskId) {
+    const select = document.getElementById('_tdObservers');
+    if (!select) return;
+    const observerUserIds = Array.from(select.selectedOptions).map(option => Number(option.value)).filter(Boolean);
+    const result = await apiSaveTaskObservers(taskId, observerUserIds);
+    if (result?.success) {
+        showNotification('Доступ спостерігачів оновлено', 'success');
+        const count = document.getElementById('_tdObserverCount');
+        if (count) count.textContent = `${(result.observers || []).length} доступ`;
+        await loadTaskHistory(taskId);
+        return;
+    }
+    showNotification(result?.error || 'Не вдалося оновити спостерігачів', 'error');
+}
+window.saveTaskObservers = saveTaskObservers;
 
 async function taskDetailComplete(taskId) {
     const result = await apiCompleteTask(taskId);

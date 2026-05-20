@@ -8,8 +8,13 @@ const log = createLogger('DashboardAssistantAudio');
 const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
 const DEFAULT_TTS_MODEL = 'gpt-4o-mini-tts';
 const FALLBACK_TTS_MODEL = 'tts-1';
+const DEFAULT_TTS_VOICE = 'nova';
 const TTS_VOICES = new Set(['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer', 'verse']);
-const TTS_INSTRUCTIONS = 'Speak Ukrainian naturally and briefly as a calm CRM guide. This is an AI voice, not a human.';
+const TTS_INSTRUCTIONS = [
+    'Speak in natural Ukrainian (uk-UA), warm and clear, as a calm CRM guide.',
+    'Do not pronounce markdown, emoji, URLs, internal ids, or formatting symbols.',
+    'Use a measured pace, Ukrainian stress and intonation, and avoid a robotic English accent.'
+].join(' ');
 
 function requireOpenAIKey() {
     const key = process.env.OPENAI_API_KEY;
@@ -20,8 +25,36 @@ function requireOpenAIKey() {
 }
 
 function normalizeVoice(value) {
-    const voice = String(value || process.env.OPENAI_TTS_VOICE || 'alloy').trim();
-    return TTS_VOICES.has(voice) ? voice : 'alloy';
+    const voice = String(value || process.env.OPENAI_TTS_VOICE || DEFAULT_TTS_VOICE).trim();
+    return TTS_VOICES.has(voice) ? voice : DEFAULT_TTS_VOICE;
+}
+
+function normalizeSpeechText(value) {
+    const input = String(value || '').trim();
+    if (!input) return '';
+
+    return input
+        .replace(/```[\s\S]*?```/g, ' ')
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/\[([^\]]+)\]\((?:https?:\/\/|\/)[^)]+\)/g, '$1')
+        .replace(/https?:\/\/\S+/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, ' і ')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/__([^_]+)__/g, '$1')
+        .replace(/[*_~#>`]+/g, ' ')
+        .replace(/[•·]/g, ', ')
+        .replace(/[→⇒]/g, ', ')
+        .replace(/\bCRM\b/g, 'сі-ер-ем')
+        .replace(/\bAI\b/g, 'ей-ай')
+        .replace(/\bAPI\b/g, 'ей-пі-ай')
+        .replace(/\bP&L\b/g, 'прибутки і витрати')
+        .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, ' ')
+        .replace(/\s+([,.!?;:])/g, '$1')
+        .replace(/([,.!?;:]){3,}/g, '$1')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
 }
 
 function uniqueSpeechModels(...models) {
@@ -88,7 +121,7 @@ async function transcribeDashboardAudio({ buffer, filename = 'crm-assistant.webm
 
 async function synthesizeDashboardSpeech(text) {
     const apiKey = requireOpenAIKey();
-    const input = String(text || '').trim().slice(0, 4096);
+    const input = normalizeSpeechText(text).slice(0, 4096);
     if (!input) throw dashboardAssistantError('text_required', 400, 'Text is required');
 
     const models = uniqueSpeechModels(process.env.OPENAI_TTS_MODEL || DEFAULT_TTS_MODEL, DEFAULT_TTS_MODEL, FALLBACK_TTS_MODEL);
@@ -119,6 +152,7 @@ module.exports = {
     transcribeDashboardAudio,
     synthesizeDashboardSpeech,
     normalizeVoice,
+    normalizeSpeechText,
     uniqueSpeechModels,
     speechModelSupportsInstructions
 };

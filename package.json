@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.60.5",
+  "version": "0.60.6",
   "eventGenix": {
-    "releaseLabel": "Assistant Light Mode Polish"
+    "releaseLabel": "Assistant Ukrainian Voice Polish"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

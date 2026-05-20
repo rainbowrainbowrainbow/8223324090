@@ -283,8 +283,21 @@ describe('dashboard assistant service contract', () => {
         clearAssistantModules();
         const { normalizeVoice } = require('../services/dashboardAssistantAudio');
 
-        assert.equal(normalizeVoice(), 'alloy');
+        assert.equal(normalizeVoice(), 'nova');
         assert.equal(normalizeVoice('coral'), 'coral');
+    });
+
+    it('normalizes assistant speech text before TTS', () => {
+        clearAssistantModules();
+        const { normalizeSpeechText } = require('../services/dashboardAssistantAudio');
+
+        const spoken = normalizeSpeechText('Так, чую 🙂 Відкрий **просрочені задачі** в CRM: https://example.test/x');
+
+        assert.equal(spoken.includes('🙂'), false);
+        assert.equal(spoken.includes('**'), false);
+        assert.equal(spoken.includes('https://'), false);
+        assert.match(spoken, /просрочені задачі/);
+        assert.match(spoken, /сі-ер-ем/);
     });
 
     it('falls back to legacy TTS without instructions when the preferred speech model fails', async () => {
@@ -317,6 +330,7 @@ describe('dashboard assistant service contract', () => {
         assert.equal(calls.length, 2);
         assert.equal(calls[0].body.model, 'gpt-4o-mini-tts');
         assert.equal(calls[0].body.instructions.includes('Ukrainian'), true);
+        assert.equal(calls[0].body.voice, 'nova');
         assert.equal(calls[1].body.model, 'tts-1');
         assert.equal(Object.prototype.hasOwnProperty.call(calls[1].body, 'instructions'), false);
     });

@@ -1328,6 +1328,21 @@
             });
             return;
         }
+        if (String(error?.message || '').includes('speech_synthesis_no_ukrainian_voice')) {
+            emitTelemetry('playback_failed', {
+                module: 'rail:playback',
+                playbackState: 'text-fallback',
+                failureReason: 'browser_has_no_ukrainian_voice',
+                fallbackShown: true
+            });
+            setState({
+                mode: state.voiceEnabled ? 'idle' : 'muted',
+                playbackState: 'text-fallback',
+                subtitle: line,
+                tickerText: ''
+            });
+            return;
+        }
         emitTelemetry('playback_failed', {
             module: 'rail:playback',
             playbackState: 'error',
@@ -1340,6 +1355,77 @@
             subtitle: line,
             tickerText: ''
         });
+    }
+
+    function normalizeBrowserSpeechText(value) {
+        return String(value || '')
+            .replace(/```[\s\S]*?```/g, ' ')
+            .replace(/`([^`]+)`/g, '$1')
+            .replace(/\[([^\]]+)\]\((?:https?:\/\/|\/)[^)]+\)/g, '$1')
+            .replace(/https?:\/\/\S+/gi, ' ')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/&amp;/gi, ' і ')
+            .replace(/\*\*([^*]+)\*\*/g, '$1')
+            .replace(/__([^_]+)__/g, '$1')
+            .replace(/[*_~#>`]+/g, ' ')
+            .replace(/[•·]/g, ', ')
+            .replace(/[→⇒]/g, ', ')
+            .replace(/\bCRM\b/g, 'сі-ер-ем')
+            .replace(/\bAI\b/g, 'ей-ай')
+            .replace(/\bAPI\b/g, 'ей-пі-ай')
+            .replace(/\bP&L\b/g, 'прибутки і витрати')
+            .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, ' ')
+            .replace(/\s+([,.!?;:])/g, '$1')
+            .replace(/([,.!?;:]){3,}/g, '$1')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+    }
+
+    function waitForBrowserSpeechVoices(synth) {
+        return new Promise(resolve => {
+            let settled = false;
+            const readVoices = () => (typeof synth?.getVoices === 'function' ? synth.getVoices() : []);
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timer);
+                try {
+                    if (typeof synth.removeEventListener === 'function') synth.removeEventListener('voiceschanged', finish);
+                    else if (synth.onvoiceschanged === finish) synth.onvoiceschanged = null;
+                } catch {}
+                resolve(readVoices());
+            };
+            const timer = window.setTimeout(finish, 700);
+            try {
+                if (typeof synth.addEventListener === 'function') synth.addEventListener('voiceschanged', finish, { once: true });
+                else synth.onvoiceschanged = finish;
+                readVoices();
+            } catch {
+                finish();
+            }
+        });
+    }
+
+    async function getBrowserSpeechVoices(synth) {
+        const voices = typeof synth?.getVoices === 'function' ? synth.getVoices() : [];
+        if (voices.length) return voices;
+        return waitForBrowserSpeechVoices(synth);
+    }
+
+    function scoreBrowserSpeechVoice(voice) {
+        const lang = String(voice?.lang || '').toLowerCase();
+        const name = String(voice?.name || '').toLowerCase();
+        let score = 0;
+        if (/^uk([-_]|$)/i.test(lang)) score = 100;
+        else if (/ukrain|україн/i.test(`${name} ${lang}`)) score = 96;
+        else if (/^ru([-_]|$)/i.test(lang)) score = 72;
+        else if (/russian|русск|русский/i.test(`${name} ${lang}`)) score = 68;
+        else if (/^pl([-_]|$)/i.test(lang)) score = 52;
+        if (!score) return 0;
+        if (/natural|neural|online|microsoft|google/i.test(name)) score += 4;
+        if (voice?.localService === false) score += 2;
+        return score;
     }
 
     async function fetchSpeechBlob(line, runId) {
@@ -1370,12 +1456,13 @@
         }
     }
 
-    function pickBrowserSpeechVoice(synth) {
-        const voices = typeof synth?.getVoices === 'function' ? synth.getVoices() : [];
-        return voices.find(voice => /^uk[-_]?/i.test(voice.lang || ''))
-            || voices.find(voice => /ukrain/i.test(`${voice.name || ''} ${voice.lang || ''}`))
-            || voices.find(voice => /^ru[-_]?/i.test(voice.lang || ''))
-            || null;
+    async function pickBrowserSpeechVoice(synth) {
+        const voices = await getBrowserSpeechVoices(synth);
+        const ranked = voices
+            .map(voice => ({ voice, score: scoreBrowserSpeechVoice(voice) }))
+            .filter(item => item.score >= 50)
+            .sort((a, b) => b.score - a.score);
+        return ranked[0]?.voice || null;
     }
 
     async function speakWithBrowserVoice(line, runId) {
@@ -1383,10 +1470,14 @@
         if (!synth || typeof SpeechSynthesisUtterance === 'undefined') {
             throw new Error('speech_synthesis_unavailable');
         }
+        const speechLine = normalizeBrowserSpeechText(line).slice(0, 2200);
+        if (!speechLine) throw new Error('speech_synthesis_empty_text');
+        const selectedVoice = await pickBrowserSpeechVoice(synth);
+        if (!selectedVoice) throw new Error('speech_synthesis_no_ukrainian_voice');
         return new Promise((resolve, reject) => {
             let settled = false;
             let started = false;
-            const utterance = new SpeechSynthesisUtterance(line.slice(0, 3800));
+            const utterance = new SpeechSynthesisUtterance(speechLine);
             const settle = (result, error) => {
                 if (settled) return;
                 settled = true;
@@ -1401,11 +1492,11 @@
                     settle(null, new Error('speech_synthesis_start_timeout'));
                 }
             }, 4500);
-            utterance.lang = 'uk-UA';
-            utterance.rate = 0.96;
-            utterance.pitch = 1;
+            utterance.lang = selectedVoice.lang || 'uk-UA';
+            utterance.rate = /^uk[-_]?/i.test(selectedVoice.lang || '') ? 0.94 : 0.91;
+            utterance.pitch = 0.98;
             utterance.volume = 1;
-            utterance.voice = pickBrowserSpeechVoice(synth);
+            utterance.voice = selectedVoice;
             utterance.onstart = () => {
                 if (runId !== playbackRunId) return settle({ interrupted: true });
                 started = true;

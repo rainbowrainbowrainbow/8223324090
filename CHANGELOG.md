@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.6 - Assistant Ukrainian Voice Polish
+
+### Assistant Ukrainian Voice Polish [codex]
+- **Українська озвучка** - Помічник чистить текст перед TTS: прибирає markdown, emoji, URL і службові символи, щоб голос не читав зайвий шум.
+- **Кращий voice preset** - дефолтний OpenAI TTS voice змінено на `nova` для м'якшого звучання української.
+- **Browser fallback без кривої української** - якщо в браузері немає нормального українського або близького voice, система лишає чистий текст замість англомовної ламаної озвучки.
+- **Guardrail** - тести перевіряють speech text cleanup, TTS voice fallback і захист від поганого browser speech fallback.
+
+---
+
 ## v0.60.5 - Assistant Light Mode Polish
 
 ### Assistant Light Mode Polish [codex]

@@ -115,7 +115,7 @@ checkPage('index.html', (doc, html) => {
     const recent058ChangelogOrder = ['v0.58.13','v0.58.12','v0.58.11','v0.58.10','v0.58.9','v0.58.8','v0.58.7','v0.58.6','v0.58.5','v0.58.4','v0.58.3','v0.58.2','v0.58.1','v0.58.0'];
     const recent058ChangelogPositions = recent058ChangelogOrder.map(version => html.indexOf(`<h4>${version} `));
     check('changelog modal keeps the full v0.58 release history without gaps', recent058ChangelogPositions.every(pos => pos >= 0) && recent058ChangelogPositions.every((pos, index, list) => index === 0 || pos > list[index - 1]));
-const recent060ChangelogOrder = ['v0.60.7','v0.60.6','v0.60.5','v0.60.4','v0.60.3','v0.60.2','v0.60.1','v0.60.0'];
+const recent060ChangelogOrder = ['v0.60.8','v0.60.7','v0.60.6','v0.60.5','v0.60.4','v0.60.3','v0.60.2','v0.60.1','v0.60.0'];
     const recent060ChangelogPositions = recent060ChangelogOrder.map(version => html.indexOf(`<h4>${version} `));
     check('changelog modal keeps the full v0.60 release history without gaps', recent060ChangelogPositions.every(pos => pos >= 0) && recent060ChangelogPositions.every((pos, index, list) => index === 0 || pos > list[index - 1]));
 });

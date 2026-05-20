@@ -4,6 +4,15 @@
 
 ---
 
+## v0.60.8 - Assistant Fix Rollup
+
+### Assistant Fix Rollup [codex]
+- **Повний rollup Помічника** - зафіксовано всі останні зміни без пропусків у версіях: full rethink, timeline context, voice fallback, light mode, українська озвучка та scroll у міні-вікні.
+- **Версії без дірок** - changelog тримає послідовний ланцюг `v0.60.8 -> v0.60.7 -> v0.60.6 -> v0.60.5 -> v0.60.4 -> v0.60.3 -> v0.60.2 -> v0.60.1 -> v0.60.0`.
+- **Guardrail** - UI-smoke перевіряє весь актуальний `v0.60.x` порядок, щоб жодне оновлення Помічника знову не випало з modal changelog.
+
+---
+
 ## v0.60.7 - Assistant Chat Scroll Fix
 
 ### Assistant Chat Scroll Fix [codex]

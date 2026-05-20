@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.60.3",
+  "version": "0.60.4",
   "eventGenix": {
-    "releaseLabel": "Assistant Timeline Context Fix"
+    "releaseLabel": "Assistant Voice Fallback Fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

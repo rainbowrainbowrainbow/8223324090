@@ -177,6 +177,7 @@
     let listeningStream = null;
     let audioPlayer = null;
     let audioUrl = null;
+    let speechSynthesisUtterance = null;
     let history = [];
     let assistantConversationId = sessionStorage.getItem('eg_crm_assistant_conversation_id') || '';
     let assistantHistoryLoadedForKey = '';
@@ -209,6 +210,7 @@
     const VOICE_SILENCE_MS = 1150;
     const VOICE_MAX_RECORD_MS = 16000;
     const VOICE_RMS_FLOOR = 0.018;
+    const SPEECH_TTS_TIMEOUT_MS = 12000;
 
     function escapeHtml(value) {
         const div = document.createElement('div');
@@ -412,6 +414,10 @@
         const rail = document.getElementById('crmAssistantRail');
         if (!rail || rail.dataset.controlsBound === 'true') return;
         rail.dataset.controlsBound = 'true';
+        rail.addEventListener('pointerdown', primeAssistantVoicePlayback, { passive: true });
+        rail.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') primeAssistantVoicePlayback();
+        });
         document.getElementById('crmAssistantRailAvatar')?.addEventListener('click', expand);
         document.getElementById('crmAssistantMicBtn')?.addEventListener('click', toggleListening);
         document.getElementById('crmAssistantStopBtn')?.addEventListener('click', stopAssistantActivity);
@@ -427,6 +433,7 @@
         });
         document.getElementById('crmAssistantInlineForm')?.addEventListener('submit', event => {
             event.preventDefault();
+            primeAssistantVoicePlayback();
             const input = document.getElementById('crmAssistantInlineInput');
             const text = String(input?.value || '').trim();
             if (input) input.value = '';
@@ -1262,6 +1269,23 @@
             URL.revokeObjectURL(audioUrl);
             audioUrl = null;
         }
+        stopBrowserSpeechPlayback();
+    }
+
+    function getBrowserSpeechSynthesis() {
+        return window.speechSynthesis || null;
+    }
+
+    function stopBrowserSpeechPlayback() {
+        const synth = getBrowserSpeechSynthesis();
+        if (synth && speechSynthesisUtterance) {
+            try { synth.cancel(); } catch {}
+        }
+        speechSynthesisUtterance = null;
+    }
+
+    function primeAssistantVoicePlayback() {
+        try { getBrowserSpeechSynthesis()?.resume?.(); } catch {}
     }
 
     function stopAudioPlayback(options = {}) {
@@ -1318,35 +1342,101 @@
         });
     }
 
-    async function speakText(text) {
-        const line = String(text || '').trim();
-        if (!line) return;
-        playbackRunId += 1;
-        const runId = playbackRunId;
-        releaseAudioPlayer();
-        let resp;
+    async function fetchSpeechBlob(line, runId) {
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const timeoutId = controller
+            ? window.setTimeout(() => controller.abort(), SPEECH_TTS_TIMEOUT_MS)
+            : 0;
         try {
-            resp = await fetch('/api/crm-assistant/speak', {
+            const resp = await fetch('/api/crm-assistant/speak', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': 'Bearer ' + localStorage.getItem('pzp_token')
                 },
-                body: JSON.stringify({ text: line })
+                body: JSON.stringify({ text: line }),
+                signal: controller?.signal
             });
-        } catch (err) {
-            if (runId !== playbackRunId) return { interrupted: true };
-            throw err;
+            if (runId !== playbackRunId) return null;
+            if (!resp.ok) {
+                const data = await resp.json().catch(() => ({}));
+                throw new Error(data.error || `crm_assistant_speak_http_${resp.status}`);
+            }
+            const blob = await resp.blob();
+            if (!blob || blob.size < 64) throw new Error('speech_audio_empty');
+            return blob;
+        } finally {
+            if (timeoutId) window.clearTimeout(timeoutId);
         }
-        if (runId !== playbackRunId) return { interrupted: true };
-        if (!resp.ok) {
-            const data = await resp.json().catch(() => ({}));
-            throw new Error(data.error || `crm_assistant_speak_http_${resp.status}`);
+    }
+
+    function pickBrowserSpeechVoice(synth) {
+        const voices = typeof synth?.getVoices === 'function' ? synth.getVoices() : [];
+        return voices.find(voice => /^uk[-_]?/i.test(voice.lang || ''))
+            || voices.find(voice => /ukrain/i.test(`${voice.name || ''} ${voice.lang || ''}`))
+            || voices.find(voice => /^ru[-_]?/i.test(voice.lang || ''))
+            || null;
+    }
+
+    async function speakWithBrowserVoice(line, runId) {
+        const synth = getBrowserSpeechSynthesis();
+        if (!synth || typeof SpeechSynthesisUtterance === 'undefined') {
+            throw new Error('speech_synthesis_unavailable');
         }
-        const blob = await resp.blob();
-        if (runId !== playbackRunId) return { interrupted: true };
+        return new Promise((resolve, reject) => {
+            let settled = false;
+            let started = false;
+            const utterance = new SpeechSynthesisUtterance(line.slice(0, 3800));
+            const settle = (result, error) => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(startTimer);
+                if (speechSynthesisUtterance === utterance) speechSynthesisUtterance = null;
+                if (error) reject(error);
+                else resolve(result);
+            };
+            const startTimer = window.setTimeout(() => {
+                if (!started) {
+                    try { synth.cancel(); } catch {}
+                    settle(null, new Error('speech_synthesis_start_timeout'));
+                }
+            }, 4500);
+            utterance.lang = 'uk-UA';
+            utterance.rate = 0.96;
+            utterance.pitch = 1;
+            utterance.volume = 1;
+            utterance.voice = pickBrowserSpeechVoice(synth);
+            utterance.onstart = () => {
+                if (runId !== playbackRunId) return settle({ interrupted: true });
+                started = true;
+                setState({ mode: 'speaking', playbackState: 'browser-speech', subtitle: line, tickerText: line });
+                scheduleSpeakingIdleFallback(line);
+            };
+            utterance.onend = () => {
+                if (runId !== playbackRunId) return settle({ interrupted: true });
+                clearSpeakingIdleTimer();
+                if (state.mode === 'speaking') setState({ mode: 'idle', playbackState: 'ended', tickerText: '' });
+                settle({ success: true, fallback: 'browser-speech' });
+            };
+            utterance.onerror = event => {
+                settle(null, new Error(event?.error || 'speech_synthesis_failed'));
+            };
+            speechSynthesisUtterance = utterance;
+            try {
+                synth.cancel();
+                synth.resume?.();
+                synth.speak(utterance);
+            } catch (error) {
+                settle(null, error);
+            }
+        });
+    }
+
+    async function playSpeechBlob(blob, line, runId) {
         audioUrl = URL.createObjectURL(blob);
         audioPlayer = new Audio(audioUrl);
+        audioPlayer.preload = 'auto';
+        let audioElementErrorHandled = false;
         audioPlayer.onended = () => {
             if (runId !== playbackRunId) return;
             releaseAudioPlayer();
@@ -1354,16 +1444,47 @@
             if (state.mode === 'speaking') setState({ mode: 'idle', playbackState: 'ended', tickerText: '' });
         };
         audioPlayer.onerror = () => {
-            if (runId !== playbackRunId) return;
+            if (runId !== playbackRunId || audioElementErrorHandled) return;
+            audioElementErrorHandled = true;
             releaseAudioPlayer();
-            if (state.mode === 'speaking') setState({ mode: 'idle', playbackState: 'error', tickerText: '' });
+            clearSpeakingIdleTimer();
+            speakWithBrowserVoice(line, runId).catch(error => handlePlaybackFailure(error, line));
         };
-        await audioPlayer.play();
+        try {
+            await audioPlayer.play();
+        } catch (error) {
+            audioElementErrorHandled = true;
+            throw error;
+        }
         if (runId === playbackRunId) {
             setState({ mode: 'speaking', playbackState: 'playing', subtitle: line, tickerText: line });
             scheduleSpeakingIdleFallback(line);
         }
         return { success: true };
+    }
+
+    async function speakText(text) {
+        const line = String(text || '').trim();
+        if (!line) return;
+        playbackRunId += 1;
+        const runId = playbackRunId;
+        releaseAudioPlayer();
+        primeAssistantVoicePlayback();
+        try {
+            const blob = await fetchSpeechBlob(line, runId);
+            if (runId !== playbackRunId) return { interrupted: true };
+            if (blob) return playSpeechBlob(blob, line, runId);
+            return { interrupted: true };
+        } catch (primaryError) {
+            if (runId !== playbackRunId) return;
+            emitTelemetry('playback_failed', {
+                module: 'rail:playback',
+                playbackState: 'browser-fallback',
+                failureReason: primaryError?.message || primaryError?.name || 'tts_playback_failed',
+                fallbackShown: true
+            });
+            return speakWithBrowserVoice(line, runId);
+        }
     }
 
     async function playReply(reply, options = {}) {
@@ -1374,11 +1495,11 @@
         clearSpeakingIdleTimer();
         stopAudioPlayback();
         setState({
-            mode: shouldPlayAudio ? 'speaking' : state.voiceEnabled ? 'idle' : 'muted',
+            mode: shouldPlayAudio ? 'thinking' : state.voiceEnabled ? 'idle' : 'muted',
             subtitle: text,
-            tickerText: shouldPlayAudio ? text : '',
+            tickerText: '',
             lastSpokenLine: text,
-            playbackState: shouldPlayAudio ? 'loading' : state.voiceEnabled ? 'text' : 'muted'
+            playbackState: shouldPlayAudio ? 'voice-loading' : state.voiceEnabled ? 'text' : 'muted'
         });
         renderHistory();
         if (!shouldPlayAudio) {

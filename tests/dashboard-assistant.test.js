@@ -9,6 +9,7 @@ const originalEnv = {
     JWT_SECRET: process.env.JWT_SECRET,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     OPENAI_API_BASE: process.env.OPENAI_API_BASE,
+    OPENAI_TTS_MODEL: process.env.OPENAI_TTS_MODEL,
     OPENAI_TTS_VOICE: process.env.OPENAI_TTS_VOICE
 };
 const originalFetch = global.fetch;
@@ -284,6 +285,40 @@ describe('dashboard assistant service contract', () => {
 
         assert.equal(normalizeVoice(), 'alloy');
         assert.equal(normalizeVoice('coral'), 'coral');
+    });
+
+    it('falls back to legacy TTS without instructions when the preferred speech model fails', async () => {
+        process.env.OPENAI_API_KEY = 'test-openai-key';
+        process.env.OPENAI_API_BASE = 'https://openai.test/v1';
+        delete process.env.OPENAI_TTS_MODEL;
+        clearAssistantModules();
+
+        const calls = [];
+        global.fetch = async (url, options) => {
+            calls.push({ url, body: JSON.parse(options.body) });
+            if (calls.length === 1) {
+                return {
+                    ok: false,
+                    status: 400,
+                    json: async () => ({ error: { message: 'model unavailable' } })
+                };
+            }
+            return {
+                ok: true,
+                status: 200,
+                arrayBuffer: async () => Buffer.from('mp3-ok')
+            };
+        };
+
+        const { synthesizeDashboardSpeech } = require('../services/dashboardAssistantAudio');
+        const buffer = await synthesizeDashboardSpeech('voice check');
+
+        assert.equal(buffer.toString(), 'mp3-ok');
+        assert.equal(calls.length, 2);
+        assert.equal(calls[0].body.model, 'gpt-4o-mini-tts');
+        assert.equal(calls[0].body.instructions.includes('Ukrainian'), true);
+        assert.equal(calls[1].body.model, 'tts-1');
+        assert.equal(Object.prototype.hasOwnProperty.call(calls[1].body, 'instructions'), false);
     });
 });
 

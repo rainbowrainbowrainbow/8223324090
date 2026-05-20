@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.60.3">
-    <link rel="stylesheet" href="css/auth.css?v=0.60.3">
-    <link rel="stylesheet" href="css/layout.css?v=0.60.3">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.3">
-    <link rel="stylesheet" href="css/timeline.css?v=0.60.3">
-    <link rel="stylesheet" href="css/panel.css?v=0.60.3">
-    <link rel="stylesheet" href="css/modals.css?v=0.60.3">
-    <link rel="stylesheet" href="css/controls.css?v=0.60.3">
-    <link rel="stylesheet" href="css/features.css?v=0.60.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.3">
-    <link rel="stylesheet" href="css/responsive.css?v=0.60.3">
-    <link rel="stylesheet" href="css/pages.css?v=0.60.3">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.60.3">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.3">
+    <link rel="stylesheet" href="css/base.css?v=0.60.4">
+    <link rel="stylesheet" href="css/auth.css?v=0.60.4">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.4">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.4">
+    <link rel="stylesheet" href="css/timeline.css?v=0.60.4">
+    <link rel="stylesheet" href="css/panel.css?v=0.60.4">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.4">
+    <link rel="stylesheet" href="css/controls.css?v=0.60.4">
+    <link rel="stylesheet" href="css/features.css?v=0.60.4">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.4">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.4">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.4">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.60.4">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.60.3 Assistant Timeline Context Fix">✨ 0.60.3 Assistant Timeline Context Fix</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.60.4 Assistant Voice Fallback Fix">✨ 0.60.4 Assistant Voice Fallback Fix</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.60.3 — Assistant Timeline Context Fix</p>
+                <p class="tagline">AI First CRM v0.60.4 — Assistant Voice Fallback Fix</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.60.3: Assistant Timeline Context Fix</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.60.4: Assistant Voice Fallback Fix</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1270,12 +1270,12 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.60.3 — Assistant Timeline Context Fix</h4>
+                    <h4>v0.60.4 — Assistant Voice Fallback Fix</h4>
                     <ul>
-                        <li><b>Помічник бачить відкриту дату</b> — питання про розклад у таймлайні тепер беруть дату з відкритої сторінки, а не автоматично з поточного календарного дня.</li>
-                        <li><b>Бронювання не губляться</b> — якщо API не повернуло записи, але на видимому таймлайні є картки бронювань, Помічник підмішує DOM-зріз і не каже помилково, що бронювань немає.</li>
-                        <li><b>Афіша рахується окремо</b> — події афіші з різним часом більше не схлопуються в один пункт при fallback-зчитуванні з таймлайна.</li>
-                        <li><b>Guardrail</b> — UI-smoke перевіряє selected-date контракт і DOM fallback для видимих booking blocks у shared assistant rail.</li>
+                        <li><b>Голос Помічника стабілізовано</b> — відповідь більше не зависає у speaking-анімації без реального старту аудіо.</li>
+                        <li><b>TTS fallback</b> — backend пробує резервну speech-модель, якщо основна модель озвучення недоступна або відхилена OpenAI.</li>
+                        <li><b>Browser voice fallback</b> — якщо mp3-відтворення заблоковане або не стартує, Помічник пробує озвучити відповідь через браузерний голосовий синтез.</li>
+                        <li><b>Guardrail</b> — тести покривають timeout, fallback-стани голосу і безпечний TTS fallback без зайвих unsupported-параметрів.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -7900,25 +7900,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.60.3"></script>
-    <script src="js/api.js?v=0.60.3"></script>
-    <script src="js/ui.js?v=0.60.3"></script>
-    <script src="js/auth.js?v=0.60.3"></script>
-    <script src="js/timeline.js?v=0.60.3"></script>
-    <script src="js/booking.js?v=0.60.3"></script>
-    <script src="js/settings.js?v=0.60.3"></script>
-    <script src="js/booking-form.js?v=0.60.3"></script>
-    <script src="js/booking-linked.js?v=0.60.3"></script>
-    <script src="js/settings-dashboard.js?v=0.60.3"></script>
-    <script src="js/settings-history.js?v=0.60.3"></script>
-    <script src="js/settings-afisha.js?v=0.60.3"></script>
-    <script src="js/settings-certificates.js?v=0.60.3"></script>
-    <script src="js/offline.js?v=0.60.3"></script>
-    <script src="js/search.js?v=0.60.3"></script>
-    <script src="js/ws.js?v=0.60.3"></script>
-    <script src="js/app.js?v=0.60.3"></script>
-    <script src="js/kleshnya-widget.js?v=0.60.3"></script>
-    <script src="js/components/sidebar.js?v=0.60.3"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.60.3"></script>
+    <script src="js/config.js?v=0.60.4"></script>
+    <script src="js/api.js?v=0.60.4"></script>
+    <script src="js/ui.js?v=0.60.4"></script>
+    <script src="js/auth.js?v=0.60.4"></script>
+    <script src="js/timeline.js?v=0.60.4"></script>
+    <script src="js/booking.js?v=0.60.4"></script>
+    <script src="js/settings.js?v=0.60.4"></script>
+    <script src="js/booking-form.js?v=0.60.4"></script>
+    <script src="js/booking-linked.js?v=0.60.4"></script>
+    <script src="js/settings-dashboard.js?v=0.60.4"></script>
+    <script src="js/settings-history.js?v=0.60.4"></script>
+    <script src="js/settings-afisha.js?v=0.60.4"></script>
+    <script src="js/settings-certificates.js?v=0.60.4"></script>
+    <script src="js/offline.js?v=0.60.4"></script>
+    <script src="js/search.js?v=0.60.4"></script>
+    <script src="js/ws.js?v=0.60.4"></script>
+    <script src="js/app.js?v=0.60.4"></script>
+    <script src="js/kleshnya-widget.js?v=0.60.4"></script>
+    <script src="js/components/sidebar.js?v=0.60.4"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.60.4"></script>
 </body>
 </html>

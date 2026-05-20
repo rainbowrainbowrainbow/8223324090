@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.4 - Assistant Voice Fallback Fix
+
+### Assistant Voice Fallback Fix [codex]
+- **Голос Помічника стабілізовано** - відповідь більше не зависає у speaking-анімації без реального старту аудіо.
+- **TTS fallback** - backend пробує резервну speech-модель, якщо основна модель озвучення недоступна або відхилена OpenAI.
+- **Browser voice fallback** - якщо mp3-відтворення заблоковане, зависло або не стартує, Помічник пробує озвучити відповідь через браузерний `speechSynthesis`.
+- **Guardrail** - тести покривають timeout, fallback-стани голосу і безпечний TTS fallback без unsupported-параметрів для legacy speech model.
+
+---
+
 ## v0.60.3 - Assistant Timeline Context Fix
 
 ### Assistant Timeline Context Fix [codex]

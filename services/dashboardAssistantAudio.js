@@ -1,12 +1,15 @@
 /**
- * services/dashboardAssistantAudio.js — transcription + TTS for CRM assistant rail
+ * services/dashboardAssistantAudio.js - transcription + TTS for CRM assistant rail
  */
 const { createLogger } = require('../utils/logger');
 const { dashboardAssistantError } = require('./dashboardAssistant');
 
 const log = createLogger('DashboardAssistantAudio');
 const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
+const DEFAULT_TTS_MODEL = 'gpt-4o-mini-tts';
+const FALLBACK_TTS_MODEL = 'tts-1';
 const TTS_VOICES = new Set(['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer', 'verse']);
+const TTS_INSTRUCTIONS = 'Speak Ukrainian naturally and briefly as a calm CRM guide. This is an AI voice, not a human.';
 
 function requireOpenAIKey() {
     const key = process.env.OPENAI_API_KEY;
@@ -19,6 +22,38 @@ function requireOpenAIKey() {
 function normalizeVoice(value) {
     const voice = String(value || process.env.OPENAI_TTS_VOICE || 'alloy').trim();
     return TTS_VOICES.has(voice) ? voice : 'alloy';
+}
+
+function uniqueSpeechModels(...models) {
+    return models
+        .map(model => String(model || '').trim())
+        .filter(Boolean)
+        .filter((model, index, list) => list.indexOf(model) === index);
+}
+
+function speechModelSupportsInstructions(model) {
+    return /^gpt-4o/i.test(String(model || ''));
+}
+
+async function requestSpeechAudio(apiKey, model, input) {
+    const body = {
+        model,
+        voice: normalizeVoice(),
+        input,
+        response_format: 'mp3'
+    };
+    if (speechModelSupportsInstructions(model)) {
+        body.instructions = TTS_INSTRUCTIONS;
+    }
+
+    return fetch(`${OPENAI_API_BASE}/audio/speech`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+    });
 }
 
 async function transcribeDashboardAudio({ buffer, filename = 'crm-assistant.webm', mimetype = 'audio/webm' } = {}) {
@@ -56,35 +91,34 @@ async function synthesizeDashboardSpeech(text) {
     const input = String(text || '').trim().slice(0, 4096);
     if (!input) throw dashboardAssistantError('text_required', 400, 'Text is required');
 
-    const response = await fetch(`${OPENAI_API_BASE}/audio/speech`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            model: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
-            voice: normalizeVoice(),
-            input,
-            response_format: 'mp3',
-            instructions: 'Говори українською природно, коротко, як спокійний CRM-провідник. Це AI-голос, не людина.'
-        })
-    });
-
-    if (!response.ok) {
+    const models = uniqueSpeechModels(process.env.OPENAI_TTS_MODEL || DEFAULT_TTS_MODEL, DEFAULT_TTS_MODEL, FALLBACK_TTS_MODEL);
+    let lastFailure = null;
+    for (const model of models) {
+        const response = await requestSpeechAudio(apiKey, model, input);
+        if (response.ok) {
+            return Buffer.from(await response.arrayBuffer());
+        }
         const payload = await response.json().catch(() => ({}));
-        log.warn('OpenAI speech failed', {
+        lastFailure = {
             status: response.status,
+            model,
             error: payload?.error?.message || payload?.error || 'unknown'
+        };
+        log.warn('OpenAI speech failed', {
+            status: lastFailure.status,
+            model: lastFailure.model,
+            error: lastFailure.error
         });
-        throw dashboardAssistantError('speech_failed', response.status >= 500 ? 502 : response.status, 'OpenAI speech request failed');
+        if (response.status === 401 || response.status === 403) break;
     }
 
-    return Buffer.from(await response.arrayBuffer());
+    throw dashboardAssistantError('speech_failed', lastFailure?.status >= 500 ? 502 : (lastFailure?.status || 502), 'OpenAI speech request failed');
 }
 
 module.exports = {
     transcribeDashboardAudio,
     synthesizeDashboardSpeech,
-    normalizeVoice
+    normalizeVoice,
+    uniqueSpeechModels,
+    speechModelSupportsInstructions
 };

@@ -7,6 +7,11 @@ const {
     legacyPasswordResetAllowed,
     openclawBootstrapUser
 } = require('../db/userSeedPolicy');
+const {
+    LOGIN_IDENTITY_WHERE_SQL,
+    normalizeLoginAliases,
+    normalizeLoginIdentifier
+} = require('../services/authIdentity');
 
 describe('user seed policy', () => {
     it('treats Railway and NODE_ENV production as production-like', () => {
@@ -90,5 +95,13 @@ describe('user seed policy', () => {
         assert.equal(user.enabled, true);
         assert.equal(user.username, 'openclaw');
         assert.equal(user.password, 'long-private-password');
+    });
+
+    it('supports explicit login aliases without changing password truth', () => {
+        assert.equal(normalizeLoginIdentifier('  Zhenia  '), 'zhenia');
+        assert.deepEqual(normalizeLoginAliases(['Zhenia', ' zhenia ', 'Женя', '']), ['Zhenia', 'Женя']);
+        assert.match(LOGIN_IDENTITY_WHERE_SQL, /u\.username/);
+        assert.match(LOGIN_IDENTITY_WHERE_SQL, /u\.login_aliases/);
+        assert.match(LOGIN_IDENTITY_WHERE_SQL, /unnest/);
     });
 });

@@ -17,6 +17,7 @@ const {
     buildAuthUserPayload, normalizeRoleList, normalizePageAllowlist, userHasAnyRole
 } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
+const { LOGIN_IDENTITY_WHERE_SQL, normalizeLoginIdentifier } = require('../services/authIdentity');
 const { buildTaskOwnerMatch, normalizeUserId } = require('../services/taskPolicy');
 const { canonicalTaskOrderSql } = require('../services/taskScheduling');
 const {
@@ -70,7 +71,8 @@ function profileTaskOwnerWhere(user, alias = '') {
 router.post('/login', async (req, res) => {
     try {
         const { username, password } = req.body;
-        if (!username || !password) {
+        const loginIdentifier = normalizeLoginIdentifier(username);
+        if (!loginIdentifier || !password) {
             return res.status(400).json({ error: 'Введіть ім\'я та пароль' });
         }
 
@@ -79,8 +81,10 @@ router.post('/login', async (req, res) => {
                     u.avatar_emoji, u.avatar_color, upe.avatar_url
              FROM users u
              LEFT JOIN user_profiles_ext upe ON upe.username = u.username
-             WHERE LOWER(u.username) = LOWER($1)`,
-            [username.trim()]
+             WHERE ${LOGIN_IDENTITY_WHERE_SQL}
+             ORDER BY CASE WHEN LOWER(u.username) = $1 THEN 0 ELSE 1 END
+             LIMIT 1`,
+            [loginIdentifier]
         );
 
         // v39.9: Unified error message prevents username enumeration
@@ -88,7 +92,7 @@ router.post('/login', async (req, res) => {
         const valid = user && user.is_active !== false && await bcrypt.compare(password, user?.password_hash || '').catch(() => false);
 
         if (!valid) {
-            log.warn(`Login failed for "${username}" (invalid credentials)`);
+            log.warn(`Login failed for "${loginIdentifier}" (invalid credentials)`);
             return res.status(401).json({ error: 'Невірний логін або пароль' });
         }
 
@@ -101,7 +105,7 @@ router.post('/login', async (req, res) => {
         const authUser = buildAuthUserPayload(user);
         const token = jwt.sign(authUser, JWT_SECRET, { expiresIn: '24h' });
 
-        log.info(`User "${username}" logged in (role: ${user.role})`);
+        log.info(`User "${user.username}" logged in (role: ${user.role})`);
 
         // v22.10.0: Update login streak (fire-and-forget)
         try { require('./streaks').updateStreak(user.id, 'login'); } catch (e) { log.warn('Streak update failed', e.message); }

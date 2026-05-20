@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.27 - Auth Login Alias Recovery
+
+### Auth Login Alias Recovery [codex]
+- **Auth lookup став гнучкішим без зміни паролів** - login route тепер шукає користувача не тільки за `users.username`, а й за контрольованими `users.login_aliases`, залишаючи password hash і єдиний user record джерелом правди.
+- **Zhenia відновлено через alias до Zhenya** - додано idempotent migration, яка додає `Zhenia` / `Женя` як aliases для існуючого акаунта `Zhenya`, якщо він є в production DB.
+- **Без duplicate user і blind reset** - пароль, hash, ролі, refresh tokens і активність користувача не перезаписуються; fix працює на canonical auth layer.
+- **Regression coverage** - додано unit-перевірки для нормалізації login identifier і SQL-contract alias lookup.
+
+---
+
 ## v0.60.26 - Graduation Diploma Brand Visual Polish
 
 ### Graduation Diploma Brand Visual Polish [codex]

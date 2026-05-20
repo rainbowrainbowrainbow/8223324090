@@ -30,6 +30,14 @@ const {
 const { listTaskActionHistory, logTaskActionEvent, TASK_ACTION_TYPES } = require('../services/taskActionHistory');
 const { deriveTaskIntelligence } = require('../services/taskIntelligence');
 const {
+    attachTaskSchedule,
+    canonicalTaskOrderSql,
+    getAvailability,
+    getSchedulePolicy,
+    hasSchedulePayload,
+    scheduleTask
+} = require('../services/taskScheduling');
+const {
     TaskDuplicateError,
     activeDuplicateCanonicalFilterSql,
     canForceTaskDuplicate,
@@ -425,6 +433,7 @@ async function resolveTypedTaskOwner(input = {}, actor = null) {
 }
 
 function normalizeTaskPayload(row) {
+    const scheduledRow = attachTaskSchedule(row);
     const ownerLabel = row.owner_name || row.owner_username || row.assigned_to || row.owner || null;
     const ownerState = row.owner_user_id ? 'typed' : (row.assigned_to || row.owner ? 'legacy_unknown_owner' : 'unassigned');
     const status = row.status || 'todo';
@@ -433,7 +442,7 @@ function normalizeTaskPayload(row) {
     const visibility = row.visibility || (taskMode === 'private' ? 'private' : 'team');
     const workflowState = row.workflow_state || workflowFromStatus(status);
     return {
-        ...row,
+        ...scheduledRow,
         ownerLabel,
         ownerState,
         ownerUserId: row.owner_user_id || null,
@@ -488,6 +497,8 @@ function sourceSurface(body = {}, fallback = 'task_detail') {
     if (raw === 'manager_queue_task_execution_v2') return raw;
     if (raw === 'task_detail') return raw;
     if (raw === 'task_page') return raw;
+    if (raw === 'profile_my_cabinet') return raw;
+    if (raw === 'alerts_panel') return raw;
     return fallback;
 }
 
@@ -721,10 +732,11 @@ router.get('/', async (req, res) => {
              ) dep ON dep.task_id = t.id
              ${where}
              ORDER BY
-                CASE WHEN $${orderViewParam} = 'done_today' THEN COALESCE(t.completed_at, t.updated_at, t.created_at) END DESC NULLS LAST,
-                CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END,
-                CASE t.status WHEN 'in_progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 END,
-                t.created_at DESC
+                 CASE WHEN $${orderViewParam} = 'done_today' THEN COALESCE(t.completed_at, t.updated_at, t.created_at) END DESC NULLS LAST,
+                 ${canonicalTaskOrderSql('t')},
+                 CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 END,
+                 CASE t.status WHEN 'in_progress' THEN 0 WHEN 'todo' THEN 1 WHEN 'done' THEN 2 END,
+                 t.created_at DESC
             LIMIT $${idx++} OFFSET $${idx++}`,
             params
         );
@@ -982,10 +994,11 @@ router.get('/my-cabinet', async (req, res) => {
              ) st ON st.task_id = t.id
              WHERE ${ownMatch}
                AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
-             ORDER BY
-                CASE WHEN COALESCE(t.focus_rank, 0) > 0 THEN 0 ELSE 1 END,
-                COALESCE(t.focus_rank, 99),
-                COALESCE(t.deadline, t.remind_at, t.date::timestamp, t.created_at) ASC
+              ORDER BY
+                 CASE WHEN COALESCE(t.focus_rank, 0) > 0 THEN 0 ELSE 1 END,
+                 COALESCE(t.focus_rank, 99),
+                 ${canonicalTaskOrderSql('t')},
+                 COALESCE(t.deadline, t.remind_at, t.date::timestamp, t.created_at) ASC
              LIMIT 160`,
             ownParams
         );
@@ -1055,6 +1068,25 @@ router.get('/my-cabinet', async (req, res) => {
     } catch (err) {
         log.error('My cabinet task projection error', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/schedule-policy', async (req, res) => {
+    res.json({ success: true, policy: getSchedulePolicy() });
+});
+
+router.get('/schedule/availability', async (req, res) => {
+    try {
+        const availability = await getAvailability({
+            ownerUserId: req.query.ownerUserId || req.query.owner_user_id,
+            date: req.query.date || req.query.scheduledDate || req.query.scheduled_date,
+            slot: req.query.slot || req.query.scheduleSlot || req.query.schedule_slot,
+            durationMinutes: req.query.durationMinutes || req.query.duration_minutes,
+            excludeTaskId: req.query.excludeTaskId || req.query.exclude_task_id
+        });
+        res.json({ success: true, availability });
+    } catch (err) {
+        sendTaskActionError(res, err);
     }
 });
 
@@ -1396,6 +1428,23 @@ router.post('/:id/reassign', async (req, res) => {
 
 router.post('/:id/reschedule', async (req, res) => {
     try {
+        if (hasSchedulePayload(req.body || {})) {
+            const result = await scheduleTask(req.params.id, req.body || {}, req.user, {
+                sourceSurface: sourceSurface(req.body),
+                route: 'tasks_task_schedule'
+            });
+            _alertPush();
+            return res.json({
+                success: true,
+                task: normalizeTaskPayload(result.task),
+                historyEvent: result.historyEvent,
+                proposals: result.proposals || [],
+                meta: {
+                    durableMutation: true,
+                    canonicalField: 'tasks.scheduled_start_at'
+                }
+            });
+        }
         const deadline = resolveDeadline(req.body || {});
         const result = await rescheduleTask(req.params.id, deadline, req.user, {
             sourceSurface: sourceSurface(req.body),
@@ -1417,6 +1466,28 @@ router.post('/:id/reschedule', async (req, res) => {
 });
 
 // v10.0: GET /api/tasks/:id/logs — task change history
+router.post('/:id/schedule', async (req, res) => {
+    try {
+        const result = await scheduleTask(req.params.id, req.body || {}, req.user, {
+            sourceSurface: sourceSurface(req.body),
+            route: 'tasks_task_schedule'
+        });
+        _alertPush();
+        res.json({
+            success: true,
+            task: normalizeTaskPayload(result.task),
+            historyEvent: result.historyEvent,
+            proposals: result.proposals || [],
+            meta: {
+                durableMutation: true,
+                canonicalField: 'tasks.scheduled_start_at'
+            }
+        });
+    } catch (err) {
+        sendTaskActionError(res, err);
+    }
+});
+
 router.get('/:id/logs', async (req, res) => {
     try {
         const { id } = req.params;
@@ -1481,6 +1552,7 @@ router.post('/operation-pack', requireRole('admin', 'user'), async (req, res) =>
                 sla_minutes: item.sla_minutes || template.sla_minutes,
                 escalate_after: null,
                 created_by: username,
+                created_by_user_id: normalizeUserId(req.user),
                 task_mode: 'work',
                 task_kind: 'checklist',
                 visibility: 'team',
@@ -1528,7 +1600,7 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
         // Support both snake_case and camelCase (for external integrations like OpenClaw)
         const title = b.title;
         const description = b.description;
-        const date = b.date;
+        const date = b.date || b.schedule?.date || b.scheduledDate || b.scheduled_date;
         const priority = b.priority;
         const typedOwner = await resolveTypedTaskOwner(b, req.user);
         const assigned_to = typedOwner?.assignedToSnapshot || b.assigned_to || b.assignedTo;
@@ -1621,14 +1693,25 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
             template_id: template_id || null,
             afisha_id: afisha_id || null,
             created_by: username,
+            created_by_user_id: normalizeUserId(req.user),
             forceDuplicate: force,
             duplicateMode: 'reject',
             ...osFields
         });
+        let responseTask = task;
+        let scheduleResult = null;
+        if (!task.duplicateSkipped && hasSchedulePayload(b)) {
+            scheduleResult = await scheduleTask(task.id, { ...b, date }, req.user, {
+                sourceSurface: sourceSurface(b, 'task_page'),
+                route: 'tasks_create_schedule'
+            });
+            Object.assign(task, scheduleResult.task);
+            responseTask = scheduleResult.task;
+        }
         if (task.task_kind === 'checklist' && task.checklist_template_key) {
             const subtasks = await createChecklistSubtasks(pool, task.id, task.checklist_template_key);
-            task.subtask_count = subtasks.length;
-            task.subtask_done_count = 0;
+            responseTask.subtask_count = subtasks.length;
+            responseTask.subtask_done_count = 0;
         }
         await createTaskDependencyRows(task.id, dependency_ids);
         if (hasObserverPatch(b)) {
@@ -1639,7 +1722,8 @@ router.post('/', requireRole('admin', 'user'), async (req, res) => {
 
         res.json({
             success: true,
-            task,
+            task: normalizeTaskPayload(responseTask),
+            schedule: scheduleResult ? { historyEvent: scheduleResult.historyEvent, proposals: scheduleResult.proposals || [] } : null,
             meta: {
                 canonicalOwnerField: 'tasks.owner_user_id',
                 legacyDisplayFields: ['assigned_to', 'owner'],
@@ -1793,7 +1877,15 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             } catch (e) { /* gamification not ready */ }
         }
 
-        const updatedTask = result.rows[0];
+        let updatedTask = result.rows[0];
+        let scheduleResult = null;
+        if (hasSchedulePayload(b)) {
+            scheduleResult = await scheduleTask(id, { ...b, date }, req.user, {
+                sourceSurface: sourceSurface(b, 'task_detail'),
+                route: 'tasks_update_schedule'
+            });
+            updatedTask = scheduleResult.task;
+        }
         if (hasObserverPatch(b)) {
             updatedTask.observers = await replaceTaskObservers(updatedTask, observerIdsFromBody(b), req.user);
             updatedTask.observer_count = updatedTask.observers.length;
@@ -1815,7 +1907,7 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
             emitTaskAssignedToOwner(updatedTask, req.user);
         }
 
-        res.json({ success: true, task: updatedTask });
+        res.json({ success: true, task: normalizeTaskPayload(updatedTask), schedule: scheduleResult ? { historyEvent: scheduleResult.historyEvent, proposals: scheduleResult.proposals || [] } : null });
         _alertPush();
     } catch (err) {
         log.error('Update error', err);

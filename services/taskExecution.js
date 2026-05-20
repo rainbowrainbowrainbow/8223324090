@@ -223,8 +223,9 @@ async function completeTask(taskId, actor, options = {}) {
         const result = await query.query(
             `UPDATE tasks
              SET status = 'done',
-                 workflow_state = 'done',
-                 completed_at = NOW(),
+                  workflow_state = 'done',
+                  schedule_status = CASE WHEN scheduled_start_at IS NOT NULL THEN 'completed' ELSE schedule_status END,
+                  completed_at = NOW(),
                  updated_at = NOW(),
                  escalation_level = 0,
              version = COALESCE(version, 1) + 1

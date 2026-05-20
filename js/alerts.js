@@ -285,9 +285,12 @@ async function _quickAction(alertId, action) {
         const taskId = alert.taskId;
         if (taskId) {
             try {
-                await fetch(`/api/tasks/${taskId}`, {
-                    method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ deadline: newDate + 'T23:59:59Z' })
+                await fetch(`/api/tasks/${taskId}/reschedule`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({
+                        schedule: { date: newDate, slot: 'morning', durationMinutes: 30 },
+                        sourceSurface: 'alerts_panel'
+                    })
                 });
                 if (typeof showNotification === 'function') showNotification('Дедлайн перенесено', 'success');
                 _dismissAlert(alertId);

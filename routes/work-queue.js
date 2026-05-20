@@ -32,6 +32,7 @@ const {
     resolveDeadline,
     rescheduleTask
 } = require('../services/taskExecution');
+const { hasSchedulePayload, scheduleTask } = require('../services/taskScheduling');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('WorkQueue');
@@ -560,6 +561,13 @@ router.patch('/tasks/:taskId/deadline', async (req, res) => {
         const taskId = parsePositiveInt(req.params.taskId);
         if (!taskId) {
             return res.status(400).json({ success: false, error: 'Valid taskId is required', code: 'INVALID_TASK_ID' });
+        }
+        if (hasSchedulePayload(req.body || {})) {
+            const result = await scheduleTask(taskId, req.body || {}, req.user, {
+                sourceSurface: resolveTaskSourceSurface(req.body || {}),
+                route: 'work_queue_task_schedule'
+            });
+            return res.json({ success: true, action: 'task_schedule', task: result.task, historyEvent: result.historyEvent, proposals: result.proposals || [] });
         }
         const deadline = resolveDeadline(req.body || {});
         const result = await rescheduleTask(taskId, deadline, req.user, {

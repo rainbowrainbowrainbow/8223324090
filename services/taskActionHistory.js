@@ -6,7 +6,13 @@ const TASK_ACTION_TYPES = Object.freeze({
     COMPLETED: 'task_completed',
     OWNER_REASSIGNED: 'task_owner_reassigned',
     RESCHEDULED: 'task_rescheduled',
-    OBSERVERS_UPDATED: 'task_observers_updated'
+    OBSERVERS_UPDATED: 'task_observers_updated',
+    SCHEDULED: 'task_scheduled',
+    SCHEDULE_MOVED: 'task_schedule_moved',
+    SCHEDULE_MANUAL_OVERRIDE: 'task_schedule_manual_override',
+    SCHEDULE_PROPOSAL_CREATED: 'task_schedule_proposal_created',
+    SLOT_MISSED: 'task_slot_missed',
+    DISCIPLINE_PENALTY_APPLIED: 'task_discipline_penalty_applied'
 });
 
 function actorSnapshot(actor = {}) {
@@ -33,6 +39,18 @@ function summaryForAction(actionType) {
             return 'Task rescheduled';
         case TASK_ACTION_TYPES.OBSERVERS_UPDATED:
             return 'Task observers updated';
+        case TASK_ACTION_TYPES.SCHEDULED:
+            return 'Task scheduled';
+        case TASK_ACTION_TYPES.SCHEDULE_MOVED:
+            return 'Task schedule moved';
+        case TASK_ACTION_TYPES.SCHEDULE_MANUAL_OVERRIDE:
+            return 'Task schedule manual override';
+        case TASK_ACTION_TYPES.SCHEDULE_PROPOSAL_CREATED:
+            return 'Task schedule proposal created';
+        case TASK_ACTION_TYPES.SLOT_MISSED:
+            return 'Task slot missed';
+        case TASK_ACTION_TYPES.DISCIPLINE_PENALTY_APPLIED:
+            return 'Task discipline penalty applied';
         default:
             return 'Task execution action';
     }

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.9 - Smart Task Scheduling
+
+### Smart Task Scheduling [codex]
+- **4 швидкі слоти дня** - задачі можна планувати через компактні слоти з дефолтною тривалістю 30 хв і backend-пошуком найближчого вільного вікна.
+- **Єдиний scheduling contract** - створення, перенесення, profile/my-cabinet, alerts і work queue отримали спільну логіку розкладу, історії та сортування.
+- **Історія та accountability** - перенесення, manual override, proposal state і missed-slot події пишуться в durable history; discipline event і штраф обробляються idempotent, без подвійного нарахування.
+- **Версійна послідовність** - реліз продовжує ланцюг `v0.60.8 -> v0.60.9` без пропущеного visible changelog.
+
+---
+
 ## v0.60.8 - Assistant Fix Rollup
 
 ### Assistant Fix Rollup [codex]

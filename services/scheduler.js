@@ -14,6 +14,7 @@ const { formatAfishaBlock } = require('./templates');
 const { createLogger } = require('../utils/logger');
 const { canViewBooking, getVisibleBookingScope } = require('./bookingVisibility');
 const { createChecklistSubtasks } = require('./taskTaxonomy');
+const { processMissedSlots } = require('./taskScheduling');
 
 // Lazy require to avoid circular dependency at load time
 function getRecurringService() {
@@ -1356,6 +1357,14 @@ async function checkScheduledAnnouncements() {
 async function checkTaskOverdue() {
     try {
         const todayStr = getKyivDateStr();
+        try {
+            const missed = await processMissedSlots({ pool, limit: 100 });
+            if (missed.processedCount > 0) {
+                log.info(`Task scheduled slots missed: ${missed.processedCount}`);
+            }
+        } catch (e) {
+            if (!e.message?.includes('does not exist')) log.error('processMissedSlots error', e);
+        }
 
         // 1. Mark overdue tasks
         const result = await pool.query(

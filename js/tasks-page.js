@@ -93,6 +93,12 @@ const STATUS_ICONS = { todo: '', in_progress: '', done: '' };
 const STATUS_LABELS = { todo: 'До виконання', in_progress: 'В роботі', done: 'Готово' };
 const PRIORITY_ICONS = { high: '', normal: '', low: '' };
 const PATTERN_LABELS = { daily: 'Щоденно', weekdays: 'Будні', weekly: 'Щотижня (пн)', custom: 'Обрані дні' };
+const TASK_SCHEDULE_SLOTS = [
+    { key: 'morning', icon: '🌅', label: 'Ранок' },
+    { key: 'midday', icon: '☀️', label: 'День' },
+    { key: 'afternoon', icon: '🌤️', label: 'Після обіду' },
+    { key: 'evening', icon: '🌙', label: 'Вечір' }
+];
 
 let currentView = 'inbox';
 let currentCategory = 'all';
@@ -105,6 +111,7 @@ let captureIntent = {};
 let taskAssigneeMode = 'self';
 let lastCreatedTaskId = null;
 let showCompletedInSlices = localStorage.getItem('eg_tasks_show_completed') === 'true';
+let quickScheduleSlot = 'morning';
 
 // ==========================================
 // UTILITIES
@@ -217,6 +224,70 @@ function formatDateShort(dateStr) {
     const days = ['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
     const dt = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
     return `${d}.${m} ${days[dt.getDay()]}`;
+}
+
+function scheduleSlotConfig(slotKey) {
+    return TASK_SCHEDULE_SLOTS.find(slot => slot.key === slotKey) || null;
+}
+
+function taskScheduleStart(task = {}) {
+    return task.scheduledStartAt || task.scheduled_start_at || task.schedule?.startAt || null;
+}
+
+function taskScheduleEnd(task = {}) {
+    return task.scheduledEndAt || task.scheduled_end_at || task.schedule?.endAt || null;
+}
+
+function taskScheduleStatus(task = {}) {
+    return task.scheduleStatus || task.schedule_status || task.schedule?.status || (taskScheduleStart(task) ? 'scheduled' : 'unscheduled');
+}
+
+function taskScheduleSlot(task = {}) {
+    return task.scheduleSlot || task.schedule_slot || task.schedule?.slot || null;
+}
+
+function taskScheduleDate(task = {}) {
+    const raw = taskScheduleStart(task) || task.date || task.deadline || '';
+    return String(raw || '').slice(0, 10);
+}
+
+function formatScheduleRange(task = {}) {
+    const start = taskScheduleStart(task);
+    const status = taskScheduleStatus(task);
+    const slot = scheduleSlotConfig(taskScheduleSlot(task));
+    if (status === 'proposal') return `${slot?.icon || '📌'} ${slot?.label || 'Пропозиція'} · потребує підтвердження`;
+    if (status === 'missed') return `${slot?.icon || '⚠️'} слот пропущено`;
+    if (!start) return '';
+    const date = new Date(start);
+    if (Number.isNaN(date.getTime())) return '';
+    const day = date.toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv', day: '2-digit', month: '2-digit' });
+    const time = date.toLocaleTimeString('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit' });
+    return `${slot?.icon || '🕒'} ${day} ${time}`;
+}
+
+function renderScheduleBadge(task = {}) {
+    const label = formatScheduleRange(task);
+    if (!label) return '';
+    const status = taskScheduleStatus(task);
+    const tone = status === 'proposal' ? ' is-proposal' : (status === 'missed' ? ' is-missed' : '');
+    return `<span class="task-card-schedule${tone}" title="Smart schedule">${escapeHtml(label)}</span>`;
+}
+
+function schedulePayloadFor(date, slot, durationMinutes) {
+    return {
+        schedule: {
+            date: date || getTodayStr(),
+            slot: slot || quickScheduleSlot || 'morning',
+            durationMinutes: Math.max(5, parseInt(durationMinutes, 10) || 30)
+        },
+        sourceSurface: 'task_page'
+    };
+}
+
+function renderCardScheduleActions(taskId) {
+    return `<span class="task-card-slot-actions" aria-label="Швидко перенести">${TASK_SCHEDULE_SLOTS.map(slot => (
+        `<button type="button" title="${escapeHtml(slot.label)}" onclick="quickScheduleTask(event, ${taskId}, '${slot.key}')">${slot.icon}</button>`
+    )).join('')}</span>`;
 }
 
 function getTaskDeepLinkId() {
@@ -409,6 +480,16 @@ function compareTasksForDisplay(a = {}, b = {}) {
     const aIsNew = lastCreatedTaskId && String(a.id) === String(lastCreatedTaskId);
     const bIsNew = lastCreatedTaskId && String(b.id) === String(lastCreatedTaskId);
     if (aIsNew !== bIsNew) return aIsNew ? -1 : 1;
+    const aOrder = a.scheduleSort?.order;
+    const bOrder = b.scheduleSort?.order;
+    if (Array.isArray(aOrder) && Array.isArray(bOrder)) {
+        for (let i = 0; i < Math.max(aOrder.length, bOrder.length); i += 1) {
+            const av = aOrder[i] ?? '';
+            const bv = bOrder[i] ?? '';
+            if (av < bv) return -1;
+            if (av > bv) return 1;
+        }
+    }
     const createdDiff = taskCreatedTime(b) - taskCreatedTime(a);
     if (createdDiff) return createdDiff;
     return String(a.title || '').localeCompare(String(b.title || ''), 'uk');
@@ -850,14 +931,29 @@ async function apiReassignTask(taskId, ownerUserId) {
 
 async function apiRescheduleTask(taskId, deadline) {
     try {
+        const payload = deadline && typeof deadline === 'object'
+            ? { ...deadline, sourceSurface: deadline.sourceSurface || 'task_page' }
+            : { deadline, sourceSurface: 'task_page' };
         const response = await fetch(`${API_BASE}/tasks/${taskId}/reschedule`, {
             method: 'POST',
             headers: getAuthHeaders(),
-            body: JSON.stringify({ deadline, sourceSurface: 'task_page' })
+            body: JSON.stringify(payload)
         });
         if (handleAuthError(response)) return null;
         return await response.json();
     } catch (err) { console.error('API rescheduleTask error:', err); return null; }
+}
+
+async function apiScheduleTask(taskId, payload) {
+    try {
+        const response = await fetch(`${API_BASE}/tasks/${taskId}/schedule`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ ...payload, sourceSurface: payload?.sourceSurface || 'task_page' })
+        });
+        if (handleAuthError(response)) return null;
+        return await response.json();
+    } catch (err) { console.error('API scheduleTask error:', err); return null; }
 }
 
 // ==========================================
@@ -954,7 +1050,7 @@ function normalizeAssistantTaskFilter(value) {
 
 function isOverdueTask(task = {}) {
     if (!isActiveTask(task)) return false;
-    const raw = task.deadline || task.remindAt || task.remind_at || task.date || '';
+    const raw = taskScheduleEnd(task) || taskScheduleStart(task) || task.deadline || task.remindAt || task.remind_at || task.date || '';
     if (!raw) return false;
     const dueDate = taskDueDate(task);
     const today = getTodayStr();
@@ -1001,12 +1097,12 @@ function taskMode(t = {}) { return t.taskMode || t.task_mode || 'work'; }
 function taskKind(t = {}) { return t.taskKind || t.task_kind || 'action'; }
 function taskVisibility(t = {}) { return t.visibility || (taskMode(t) === 'private' ? 'private' : 'team'); }
 function taskWorkflow(t = {}) { return t.workflowState || t.workflow_state || (t.status === 'done' ? 'done' : 'todo'); }
-function taskDueDate(t = {}) { return (t.deadline || t.remindAt || t.remind_at || t.date || '').slice(0, 10); }
+function taskDueDate(t = {}) { return (taskScheduleStart(t) || t.deadline || t.remindAt || t.remind_at || t.date || '').slice(0, 10); }
 function isActiveTask(t) { return !['done', 'archived', 'cancelled'].includes(t.status); }
 function isWaitingTask(t) { return taskWorkflow(t) === 'waiting' || taskKind(t) === 'waiting'; }
 function isPrivateTask(t) { return taskVisibility(t) === 'private' || taskMode(t) === 'private'; }
 function isTeamTask(t) { return taskVisibility(t) === 'team' && taskMode(t) === 'work'; }
-function isInboxTask(t) { return isActiveTask(t) && (taskWorkflow(t) === 'inbox' || (!t.date && !t.deadline)); }
+function isInboxTask(t) { return isActiveTask(t) && (taskWorkflow(t) === 'inbox' || (!t.date && !t.deadline && !taskScheduleStart(t))); }
 function isRoutineTask(t) { return taskKind(t) === 'routine' || t.type === 'recurring'; }
 function taskCompletedAt(t = {}) { return t.completedAt || t.completed_at || null; }
 function formatTaskCompletedTime(t = {}) {
@@ -1356,6 +1452,9 @@ function getTasksAssistantSnapshot() {
                 subcategory: task.subcategory || '',
                 date: task.date || '',
                 deadline: task.deadline || task.remindAt || task.remind_at || '',
+                scheduledStartAt: taskScheduleStart(task) || '',
+                scheduleSlot: taskScheduleSlot(task) || '',
+                scheduleStatus: taskScheduleStatus(task),
                 ownerUserId: taskOwnerUserId(task),
                 ownerLabel: getTaskOwnerLabel(task),
                 assignmentLabel: assignment.label,
@@ -1741,6 +1840,7 @@ function renderTaskCard(t) {
             ${ownerRoleBadge}
             <span>${catInfo.icon} ${escapeHtml(taxoLabel)}</span>
             ${t.date ? `<span>${formatDateShort(t.date)}</span>` : ''}
+            ${renderScheduleBadge(t)}
             ${deadlineHtml}
             ${ownerHtml}
             ${completedHtml}
@@ -1751,6 +1851,7 @@ function renderTaskCard(t) {
         <div class="task-card-actions">
             <button class="${btnClass}" onclick="event.stopPropagation(); cycleStatus(${t.id}, '${nextStatus}')">${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
             ${!isWaitingTask(t) ? `<button onclick="markTaskWaiting(event, ${t.id})">Чекаю</button>` : ''}
+            ${renderCardScheduleActions(t.id)}
             <button onclick="snoozeTaskQuick(event, ${t.id}, 60)">+1 год</button>
             ${!userPermissions || userPermissions.canDeleteTasks ? `<button class="btn-delete" onclick="deleteTask(event, ${t.id})">✕</button>` : ''}
         </div>
@@ -1818,8 +1919,20 @@ function toggleTaskComposerDetails(force) {
 function setupTaskComposer() {
     _renderAssigneeSelect();
     setTaskAssigneeMode('self');
+    const dateInput = document.getElementById('taskScheduleDate');
+    if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
     document.querySelectorAll('[data-task-assignee-mode]').forEach(btn => {
         btn.addEventListener('click', () => setTaskAssigneeMode(btn.dataset.taskAssigneeMode));
+    });
+    document.querySelectorAll('[data-schedule-slot]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            quickScheduleSlot = btn.dataset.scheduleSlot || 'morning';
+            document.querySelectorAll('[data-schedule-slot]').forEach(slotBtn => {
+                const active = slotBtn.dataset.scheduleSlot === quickScheduleSlot;
+                slotBtn.classList.toggle('active', active);
+                slotBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
+        });
     });
     document.getElementById('taskDetailsToggle')?.addEventListener('click', () => toggleTaskComposerDetails());
 }
@@ -1854,6 +1967,8 @@ function applyCaptureChip(chip) {
         if (visibility) visibility.value = 'private';
     }
     if (chip === 'waiting' && kind) kind.value = 'waiting';
+    const dateInput = document.getElementById('taskScheduleDate');
+    if (dateInput && (chip === 'today' || chip === 'tomorrow')) dateInput.value = dateFromCaptureIntent();
 }
 
 function defaultVisibilityForTaskMode(mode, explicitVisibility) {
@@ -1888,7 +2003,8 @@ async function addTask() {
     const mode = document.getElementById('taskMode')?.value || (captureIntent.private ? 'private' : (captureIntent.personal ? 'personal' : 'work'));
     const kind = document.getElementById('taskKind')?.value || (captureIntent.waiting ? 'waiting' : 'action');
     const visibility = defaultVisibilityForTaskMode(mode, document.getElementById('taskVisibility')?.value || 'team');
-    const today = dateFromCaptureIntent();
+    const today = document.getElementById('taskScheduleDate')?.value || dateFromCaptureIntent();
+    const durationMinutes = Math.max(5, parseInt(document.getElementById('taskScheduleDuration')?.value, 10) || 30);
     const workflow = captureIntent.waiting ? 'waiting' : 'inbox';
 
     const data = {
@@ -1908,9 +2024,21 @@ async function addTask() {
     };
     if (ownerUserId) data.ownerUserId = ownerUserId;
 
-    // Build deadline if time specified
+    data.schedule = {
+        date: today,
+        slot: quickScheduleSlot,
+        durationMinutes
+    };
+    data.effort_minutes = durationMinutes;
+
+    // Build exact manual schedule if time specified
     if (deadlineTime) {
         data.deadline = `${today}T${deadlineTime}:00`;
+        data.schedule = {
+            date: today,
+            scheduledStartAt: `${today}T${deadlineTime}`,
+            durationMinutes
+        };
     }
 
     const result = await apiCreateTask(data);
@@ -1920,6 +2048,8 @@ async function addTask() {
         keepNewTaskVisible(result.task, data);
         document.getElementById('taskTitle').value = '';
         if (document.getElementById('taskDeadlineTime')) document.getElementById('taskDeadlineTime').value = '';
+        if (document.getElementById('taskScheduleDuration')) document.getElementById('taskScheduleDuration').value = '30';
+        if (document.getElementById('taskScheduleDate')) document.getElementById('taskScheduleDate').value = getTodayStr();
         captureIntent = {};
         document.querySelectorAll('[data-capture-chip]').forEach(btn => btn.classList.remove('active'));
         setTaskAssigneeMode('self');
@@ -1978,6 +2108,22 @@ async function snoozeTaskQuick(event, taskId, minutes) {
         if (typeof showNotification === 'function') showNotification('Задачу відкладено', 'success');
     }
 }
+
+async function quickScheduleTask(event, taskId, slot) {
+    event.stopPropagation();
+    const task = allTasks.find(t => Number(t.id) === Number(taskId)) || {};
+    const date = taskScheduleDate(task) || getTodayStr();
+    const duration = task.effortMinutes || task.effort_minutes || 30;
+    const result = await apiScheduleTask(taskId, schedulePayloadFor(date, slot, duration));
+    if (result?.success) {
+        const proposal = (result.proposals || []).length || result.task?.scheduleStatus === 'proposal';
+        showNotification(proposal ? 'Слот зайнятий: збережено пропозицію часу' : 'Задачу заплановано', proposal ? 'info' : 'success');
+        await loadAllTasks();
+        return;
+    }
+    showNotification(result?.error || 'Не вдалося запланувати задачу', 'error');
+}
+window.quickScheduleTask = quickScheduleTask;
 
 async function markTaskWaiting(event, taskId) {
     event.stopPropagation();
@@ -2162,7 +2308,7 @@ window.clearBulkSelection = clearBulkSelection;
 let _taskDetailInitialState = null;
 
 function getTaskDetailFormState() {
-    const ids = ['_tdTitle', '_tdDesc', '_tdStatus', '_tdPriority', '_tdDeadline', '_tdAssigned', '_tdCategory', '_tdSubcategory', '_tdMode', '_tdKind', '_tdVisibility', '_tdWorkflow', '_tdRemindAt', '_tdPackStatus', '_tdOwnerRole', '_tdSlaMinutes'];
+    const ids = ['_tdTitle', '_tdDesc', '_tdStatus', '_tdPriority', '_tdDeadline', '_tdAssigned', '_tdScheduleDate', '_tdScheduleDuration', '_tdScheduleStart', '_tdCategory', '_tdSubcategory', '_tdMode', '_tdKind', '_tdVisibility', '_tdWorkflow', '_tdRemindAt', '_tdPackStatus', '_tdOwnerRole', '_tdSlaMinutes'];
     return ids.map(id => {
         const el = document.getElementById(id);
         return el ? String(el.value || '') : '';
@@ -2251,6 +2397,12 @@ async function openTaskDetail(taskId) {
 
         const dlIso = formatDateTimeInput(t.deadline);
         const remindIso = formatDateTimeInput(t.remindAt || t.remind_at);
+        const scheduleStartIso = formatDateTimeInput(taskScheduleStart(t));
+        const scheduleDateValue = taskScheduleDate(t) || getTodayStr();
+        const scheduleDurationValue = t.effortMinutes || t.effort_minutes || t.schedule?.durationMinutes || 30;
+        const scheduleSlotValue = taskScheduleSlot(t) || 'morning';
+        const scheduleBadge = renderScheduleBadge(t);
+        const scheduleSlotButtons = TASK_SCHEDULE_SLOTS.map(slot => `<button type="button" class="task-slot-btn ${scheduleSlotValue === slot.key ? 'active' : ''}" data-detail-schedule-slot="${slot.key}" aria-pressed="${scheduleSlotValue === slot.key ? 'true' : 'false'}" title="${escapeHtml(slot.label)}">${slot.icon}</button>`).join('');
         const ownerSelectHtml = _assigneeList.map(s => {
             const selected = taskOwnerUserId(t) === Number(s.id) ? ' selected' : '';
             const label = s.label || s.name || s.username || ('User #' + s.id);
@@ -2304,6 +2456,18 @@ async function openTaskDetail(taskId) {
                         <option value="">— нікому —</option>
                         ${ownerSelectHtml}
                     </select></div>
+                </div>
+                <div style="border:1px solid rgba(20,184,166,0.18);border-radius:12px;padding:10px;background:rgba(20,184,166,0.06)">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+                        <strong style="font-size:13px">Smart schedule</strong>
+                        ${scheduleBadge || '<span class="task-card-schedule">Без часу</span>'}
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 90px;gap:8px;margin-bottom:8px">
+                        <div><label ${_lbl}>Дата</label><input id="_tdScheduleDate" type="date" value="${escapeHtml(scheduleDateValue)}" ${_inp}></div>
+                        <div><label ${_lbl}>Хв</label><input id="_tdScheduleDuration" type="number" min="5" max="480" step="5" value="${escapeHtml(scheduleDurationValue)}" ${_inp}></div>
+                    </div>
+                    <div class="task-slot-picker" id="_tdScheduleSlots">${scheduleSlotButtons}</div>
+                    <div style="margin-top:8px"><label ${_lbl}>Точний час</label><input id="_tdScheduleStart" type="datetime-local" value="${scheduleStartIso}" ${_inp}></div>
                 </div>
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">
                     <div><label ${_lbl}>Категорія</label><select id="_tdCategory" ${_inp}>
@@ -2378,6 +2542,17 @@ async function openTaskDetail(taskId) {
             </div>
         </div>`;
         document.getElementById('_tdCategory')?.addEventListener('change', syncDetailSubcategoryVisibility);
+        document.querySelectorAll('[data-detail-schedule-slot]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('[data-detail-schedule-slot]').forEach(slotBtn => {
+                    const active = slotBtn === btn;
+                    slotBtn.classList.toggle('active', active);
+                    slotBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+                });
+                const exact = document.getElementById('_tdScheduleStart');
+                if (exact) exact.value = '';
+            });
+        });
         syncDetailSubcategoryVisibility();
         resetTaskDetailDirtyState();
         if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay);
@@ -2397,7 +2572,13 @@ function historyActionTitle(actionType) {
         task_completed: 'Task completed',
         task_owner_reassigned: 'Owner reassigned',
         task_rescheduled: 'Task rescheduled',
-        task_observers_updated: 'Observers updated'
+        task_observers_updated: 'Observers updated',
+        task_scheduled: 'Task scheduled',
+        task_schedule_moved: 'Schedule moved',
+        task_schedule_manual_override: 'Manual schedule',
+        task_schedule_proposal_created: 'Schedule proposal',
+        task_slot_missed: 'Slot missed',
+        task_discipline_penalty_applied: 'Discipline penalty'
     };
     return labels[actionType] || actionType || 'Task action';
 }
@@ -2408,6 +2589,9 @@ function shortHistoryValue(value = {}) {
     if (value.ownerUserId !== undefined) return `owner: ${value.ownerUserId || 'none'}`;
     if (Array.isArray(value.observerUserIds)) return `observers: ${value.observerUserIds.length}`;
     if (value.deadline !== undefined) return `deadline: ${value.deadline || 'none'}`;
+    if (value.scheduledStartAt !== undefined || value.scheduleStatus !== undefined) {
+        return `${value.scheduleStatus || 'schedule'}: ${value.scheduledStartAt || value.scheduleSlot || 'none'}`;
+    }
     return '';
 }
 
@@ -2501,20 +2685,24 @@ async function taskDetailReassign(taskId) {
 window.taskDetailReassign = taskDetailReassign;
 
 async function taskDetailReschedule(taskId) {
-    const deadline = document.getElementById('_tdDeadline')?.value;
-    if (!deadline) {
-        showNotification('Вкажіть дедлайн для reschedule', 'error');
-        return;
-    }
-    const result = await apiRescheduleTask(taskId, deadline);
+    const date = document.getElementById('_tdScheduleDate')?.value || getTodayStr();
+    const durationMinutes = Math.max(5, parseInt(document.getElementById('_tdScheduleDuration')?.value, 10) || 30);
+    const manualStart = document.getElementById('_tdScheduleStart')?.value || '';
+    const activeSlot = document.querySelector('[data-detail-schedule-slot].active')?.dataset?.detailScheduleSlot || 'morning';
+    const payload = manualStart
+        ? { schedule: { date, scheduledStartAt: manualStart, durationMinutes }, sourceSurface: 'task_detail' }
+        : schedulePayloadFor(date, activeSlot, durationMinutes);
+    payload.sourceSurface = 'task_detail';
+    const result = await apiScheduleTask(taskId, payload);
     if (result?.success) {
-        showNotification('Дедлайн задачі оновлено', 'success');
+        const proposal = (result.proposals || []).length || result.task?.scheduleStatus === 'proposal';
+        showNotification(proposal ? 'Слот зайнятий: збережено пропозицію часу' : 'Розклад задачі оновлено', proposal ? 'info' : 'success');
         await loadTaskHistory(taskId);
         resetTaskDetailDirtyState();
         await loadAllTasks();
         return;
     }
-    showNotification(result?.error || 'Не вдалося змінити дедлайн', 'error');
+    showNotification(result?.error || 'Не вдалося змінити розклад', 'error');
 }
 window.taskDetailReschedule = taskDetailReschedule;
 
@@ -2530,6 +2718,10 @@ async function saveTaskDetail(taskId) {
         const token = localStorage.getItem('pzp_token');
         const category = document.getElementById('_tdCategory')?.value || 'admin';
         const subcategory = selectedSubcategoryFor(category, '_tdSubcategory');
+        const scheduleDate = document.getElementById('_tdScheduleDate')?.value || getTodayStr();
+        const scheduleDuration = Math.max(5, parseInt(document.getElementById('_tdScheduleDuration')?.value, 10) || 30);
+        const scheduleExact = document.getElementById('_tdScheduleStart')?.value || '';
+        const scheduleSlot = document.querySelector('[data-detail-schedule-slot].active')?.dataset?.detailScheduleSlot || 'morning';
         const body = {
             title,
             description: document.getElementById('_tdDesc')?.value.trim() || null,
@@ -2539,6 +2731,10 @@ async function saveTaskDetail(taskId) {
             subcategory,
             checklist_template_key: normalizeChecklistTemplateKey(category, subcategory),
             deadline: document.getElementById('_tdDeadline')?.value || null,
+            effort_minutes: scheduleDuration,
+            schedule: scheduleExact
+                ? { date: scheduleDate, scheduledStartAt: scheduleExact, durationMinutes: scheduleDuration }
+                : { date: scheduleDate, slot: scheduleSlot, durationMinutes: scheduleDuration },
             task_mode: document.getElementById('_tdMode')?.value || 'work',
             task_kind: document.getElementById('_tdKind')?.value || 'action',
             visibility: document.getElementById('_tdVisibility')?.value || 'team',

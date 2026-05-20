@@ -17,6 +17,7 @@ const {
 } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { buildTaskOwnerMatch, normalizeUserId } = require('../services/taskPolicy');
+const { canonicalTaskOrderSql } = require('../services/taskScheduling');
 const {
     uploadProfileAvatarWithFallback,
     validateProfileAvatarFile,
@@ -242,19 +243,23 @@ router.get('/profile', authenticateToken, async (req, res) => {
             ),
             // 3: Overdue tasks WITH DETAILS (not just count)
             pool.query(
-                `SELECT id, title, deadline, priority, category, task_mode, task_kind, visibility, workflow_state FROM tasks
+                `SELECT id, title, deadline, scheduled_start_at, scheduled_end_at, schedule_slot, schedule_status, priority, category, task_mode, task_kind, visibility, workflow_state FROM tasks
                  WHERE ${ownerWhere}
-                 AND status != 'done' AND deadline IS NOT NULL AND deadline < NOW()
-                 ORDER BY deadline ASC LIMIT 10`,
+                 AND status != 'done'
+                 AND ((scheduled_end_at IS NOT NULL AND scheduled_end_at < NOW()) OR (scheduled_end_at IS NULL AND deadline IS NOT NULL AND deadline < NOW()))
+                 ORDER BY ${canonicalTaskOrderSql('tasks')} LIMIT 10`,
                 ownerParams
             ),
             // 4: Upcoming deadline tasks (within 48h — extended from 24h)
             pool.query(
-                `SELECT id, title, deadline, priority, category, status, task_mode, task_kind, visibility, workflow_state FROM tasks
+                `SELECT id, title, deadline, scheduled_start_at, scheduled_end_at, schedule_slot, schedule_status, priority, category, status, task_mode, task_kind, visibility, workflow_state FROM tasks
                  WHERE ${ownerWhere}
-                 AND status != 'done' AND deadline IS NOT NULL
-                 AND deadline > NOW() AND deadline < NOW() + INTERVAL '48 hours'
-                 ORDER BY deadline ASC LIMIT 10`,
+                 AND status != 'done'
+                 AND (
+                    (scheduled_start_at IS NOT NULL AND scheduled_start_at > NOW() AND scheduled_start_at < NOW() + INTERVAL '48 hours')
+                    OR (scheduled_start_at IS NULL AND deadline IS NOT NULL AND deadline > NOW() AND deadline < NOW() + INTERVAL '48 hours')
+                 )
+                 ORDER BY ${canonicalTaskOrderSql('tasks')} LIMIT 10`,
                 ownerParams
             ),
             // 5: Tasks by category
@@ -324,13 +329,14 @@ router.get('/profile', authenticateToken, async (req, res) => {
             ),
             // 14: My tasks list (active, last 15)
             pool.query(
-                `SELECT id, title, status, priority, deadline, category, dependency_ids,
+                `SELECT id, title, status, priority, deadline, scheduled_start_at, scheduled_end_at, schedule_slot, schedule_status, category, dependency_ids,
                         task_mode, task_kind, visibility, workflow_state, focus_rank, remind_at, snoozed_until
                  FROM tasks
                  WHERE ${ownerWhere} AND status != 'done'
-                 ORDER BY CASE WHEN deadline IS NOT NULL AND deadline < NOW() THEN 0 ELSE 1 END,
-                 CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
-                 deadline ASC NULLS LAST
+                 ORDER BY ${canonicalTaskOrderSql('tasks')},
+                  CASE WHEN deadline IS NOT NULL AND deadline < NOW() THEN 0 ELSE 1 END,
+                  CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+                  deadline ASC NULLS LAST
                  LIMIT 15`,
                 ownerParams
             ),
@@ -515,8 +521,13 @@ router.get('/profile', authenticateToken, async (req, res) => {
             const isBlocked = deps.length > 0 && deps.some(d => allTaskIds.includes(d));
             return {
                 id: t.id, title: t.title, status: t.status, priority: t.priority,
-                deadline: t.deadline, category: t.category,
-                isOverdue: t.deadline && new Date(t.deadline) < now,
+                deadline: t.deadline,
+                scheduledStartAt: t.scheduled_start_at,
+                scheduledEndAt: t.scheduled_end_at,
+                scheduleSlot: t.schedule_slot,
+                scheduleStatus: t.schedule_status,
+                category: t.category,
+                isOverdue: (t.scheduled_end_at || t.deadline) && new Date(t.scheduled_end_at || t.deadline) < now,
                 isBlocked
             };
         }) : [];

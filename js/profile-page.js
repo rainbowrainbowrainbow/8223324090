@@ -777,7 +777,8 @@ async function saveProfileAvatar(type) {
 }
 
 function renderProfileTaskRow(task, tag = '') {
-    const due = task.deadline ? profileFormatTime(task.deadline) : 'Без дедлайну';
+    const dueAt = task.scheduledStartAt || task.scheduled_start_at || task.schedule?.startAt || task.deadline;
+    const due = dueAt ? profileFormatTime(dueAt) : 'Без дедлайну';
     const priority = task.priority || 'medium';
     return `
         <div class="profile-task-row ${task.isOverdue || tag === 'Прострочено' ? 'is-overdue' : ''}">
@@ -943,7 +944,8 @@ function taskKindLabel(task) {
 }
 
 function renderCabinetTaskCard(task, compact = false) {
-    const due = task.deadline || task.remindAt || task.remind_at || task.date;
+    const due = task.scheduledStartAt || task.scheduled_start_at || task.schedule?.startAt || task.deadline || task.remindAt || task.remind_at || task.date;
+    const scheduleStatus = task.scheduleStatus || task.schedule_status || task.schedule?.status || '';
     const subDone = Number(task.subtask_done_count || task.subtaskDoneCount || 0);
     const subTotal = Number(task.subtask_count || task.subtaskCount || 0);
     return `
@@ -954,6 +956,8 @@ function renderCabinetTaskCard(task, compact = false) {
                     <span>${taskModeLabel(task)}</span>
                     <span>${taskKindLabel(task)}</span>
                     ${due ? `<span>${formatDate(due)}</span>` : ''}
+                    ${scheduleStatus === 'proposal' ? '<span>потрібне підтвердження часу</span>' : ''}
+                    ${scheduleStatus === 'missed' ? '<span>слот пропущено</span>' : ''}
                     ${subTotal ? `<span>${subDone}/${subTotal}</span>` : ''}
                 </div>
             </div>
@@ -1079,7 +1083,11 @@ async function setCabinetTaskStatus(taskId, status) {
 }
 
 async function snoozeCabinetTask(taskId, minutes) {
-    await apiPost(`/tasks/${taskId}/snooze`, { minutes });
+    const today = new Date().toISOString().slice(0, 10);
+    await apiPost(`/tasks/${taskId}/reschedule`, {
+        schedule: { date: today, slot: 'afternoon', durationMinutes: 30 },
+        sourceSurface: 'profile_my_cabinet'
+    });
     await refreshMyCabinetTab();
 }
 
@@ -1097,6 +1105,8 @@ async function createCabinetTask(event, mode) {
         task_kind: kind,
         visibility: mode === 'private' ? 'private' : 'me_only',
         workflow_state: 'inbox',
+        schedule: { date: new Date().toISOString().slice(0, 10), slot: 'morning', durationMinutes: 30 },
+        effort_minutes: 30,
         source_type: 'profile',
         source_module: 'my_cabinet'
     });

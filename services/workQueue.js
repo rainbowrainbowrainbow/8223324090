@@ -3,6 +3,7 @@ const { REPLY_SLA_STATES, deriveReplySlaState } = require('./replySla');
 const { enrichQueueBuckets } = require('./queueIntelligence');
 const { buildTaskVisibilityScope, taskOwnerState } = require('./taskPolicy');
 const { getVisibleBookingScope, resolveBookingDerivedLinkedRoute } = require('./bookingVisibility');
+const { attachTaskSchedule, canonicalTaskOrderSql } = require('./taskScheduling');
 
 const BUCKETS = [
     { key: 'overdue', label: 'Прострочено' },
@@ -209,13 +210,14 @@ function bookingDerivedTaskRoute(row, actor = null) {
 }
 
 function taskItem(row, bucket, options = {}) {
+    const scheduled = attachTaskSchedule(row);
     const sourceType = row.task_source_type || row.source_type || null;
     const sourceId = row.task_source_id || row.source_id || null;
     const leadId = row.linked_lead_id || (sourceType === 'lead' && /^\d+$/.test(String(sourceId || '')) ? Number(sourceId) : null);
     const linkedBookingVisible = row.linked_booking_visible === true || row.linked_booking_visible === 'true';
     const bookingId = row.linked_booking_id || (linkedBookingVisible && sourceType === 'booking' ? sourceId : null);
     const conversationId = row.linked_conversation_id || null;
-    const dueAt = isoValue(row.deadline) || dateValue(row.date);
+    const dueAt = scheduled.scheduledStartAt || isoValue(row.deadline) || dateValue(row.date);
     const hasExactCase = Boolean(conversationId || leadId || bookingId);
     const ownerState = taskOwnerState(row);
     const ownerLabel = row.owner_name || row.owner_username || row.assigned_to || row.owner || null;
@@ -255,6 +257,8 @@ function taskItem(row, bucket, options = {}) {
                 reason: bookingRoute.reason
             } : null,
             version: row.version || null,
+            schedule: scheduled.schedule,
+            scheduleSort: scheduled.scheduleSort,
             updatedAt: isoValue(row.updated_at),
             createdAt: isoValue(row.created_at),
             conversationId,
@@ -481,6 +485,9 @@ async function loadTaskBucket(pool, user, bucket, whereSql, whereParams, limit, 
     const limitRef = pushParam(params, limit);
     const query = `
         SELECT t.id, t.title, t.description, t.status, t.priority, t.deadline, t.date,
+               t.scheduled_start_at, t.scheduled_end_at, t.schedule_slot, t.schedule_mode,
+               t.schedule_status, t.schedule_meta, t.schedule_proposal, t.missed_at,
+               t.missed_processed_at, t.effort_minutes, t.created_by_user_id,
                t.category, t.assigned_to, t.owner, t.owner_user_id, t.version, t.updated_at,
                ou.name AS owner_name, ou.username AS owner_username,
                t.source_type AS task_source_type,
@@ -500,8 +507,7 @@ async function loadTaskBucket(pool, user, bucket, whereSql, whereParams, limit, 
           ${visibility}
           AND (${whereSql})
         ORDER BY
-          CASE WHEN t.deadline IS NOT NULL THEN t.deadline ELSE NULL END ASC NULLS LAST,
-          LEFT(COALESCE(t.date, ''), 10) ASC NULLS LAST,
+          ${canonicalTaskOrderSql('t')},
           CASE COALESCE(t.priority, 'normal') WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END,
           t.created_at DESC
         LIMIT ${limitRef}
@@ -719,7 +725,7 @@ async function buildWorkQueue({
         pool,
         user,
         'overdue',
-        "(t.deadline IS NOT NULL AND t.deadline < NOW()) OR (t.deadline IS NULL AND LEFT(COALESCE(t.date, ''), 10) < $1)",
+        "(t.scheduled_end_at IS NOT NULL AND t.scheduled_end_at < NOW()) OR (t.scheduled_end_at IS NULL AND t.deadline IS NOT NULL AND t.deadline < NOW()) OR (t.scheduled_end_at IS NULL AND t.deadline IS NULL AND LEFT(COALESCE(t.date, ''), 10) < $1)",
         [todayStr],
         safeLimit,
         'task_due_overdue'
@@ -729,7 +735,7 @@ async function buildWorkQueue({
         pool,
         user,
         'today',
-        "(t.deadline IS NOT NULL AND t.deadline >= NOW() AND t.deadline::date = $1::date) OR (t.deadline IS NULL AND LEFT(COALESCE(t.date, ''), 10) = $1)",
+        "(t.scheduled_start_at IS NOT NULL AND (t.scheduled_start_at AT TIME ZONE 'Europe/Kyiv')::date = $1::date) OR (t.scheduled_start_at IS NULL AND t.deadline IS NOT NULL AND t.deadline >= NOW() AND t.deadline::date = $1::date) OR (t.scheduled_start_at IS NULL AND t.deadline IS NULL AND LEFT(COALESCE(t.date, ''), 10) = $1)",
         [todayStr],
         safeLimit,
         'task_due_today'
@@ -739,7 +745,7 @@ async function buildWorkQueue({
         pool,
         user,
         'tomorrow',
-        "(t.deadline IS NOT NULL AND t.deadline::date = $1::date) OR (t.deadline IS NULL AND LEFT(COALESCE(t.date, ''), 10) = $1)",
+        "(t.scheduled_start_at IS NOT NULL AND (t.scheduled_start_at AT TIME ZONE 'Europe/Kyiv')::date = $1::date) OR (t.scheduled_start_at IS NULL AND t.deadline IS NOT NULL AND t.deadline::date = $1::date) OR (t.scheduled_start_at IS NULL AND t.deadline IS NULL AND LEFT(COALESCE(t.date, ''), 10) = $1)",
         [tomorrowStr],
         safeLimit,
         'task_due_tomorrow'

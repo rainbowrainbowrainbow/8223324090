@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.60.8">
-    <link rel="stylesheet" href="css/layout.css?v=0.60.8">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.8">
-    <link rel="stylesheet" href="css/pages.css?v=0.60.8">
-    <link rel="stylesheet" href="css/modals.css?v=0.60.8">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.8">
-    <link rel="stylesheet" href="css/responsive.css?v=0.60.8">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.8">
+    <link rel="stylesheet" href="css/base.css?v=0.60.9">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.9">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.9">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.9">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.9">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.9">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.9">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.9">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -480,6 +480,68 @@
             background: rgba(20,184,166,0.12);
             box-shadow: inset 0 0 0 1px rgba(20,184,166,0.12);
         }
+        .task-slot-picker {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(42px, 1fr));
+            gap: 6px;
+        }
+        .task-slot-btn {
+            min-height: 42px;
+            border: 1px solid rgba(100,116,139,0.18);
+            border-radius: 12px;
+            background: rgba(248,250,252,0.92);
+            color: #0f172a;
+            font-size: 18px;
+            cursor: pointer;
+            transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+        }
+        .task-slot-btn:hover {
+            transform: translateY(-1px);
+            border-color: rgba(20,184,166,0.35);
+        }
+        .task-slot-btn.active {
+            border-color: rgba(20,184,166,0.5);
+            background: rgba(20,184,166,0.14);
+            box-shadow: inset 0 0 0 1px rgba(20,184,166,0.18), 0 8px 18px rgba(20,184,166,0.12);
+        }
+        .task-slot-btn:focus-visible {
+            outline: 2px solid rgba(20,184,166,0.5);
+            outline-offset: 2px;
+        }
+        .task-card-schedule {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            border-radius: 999px;
+            padding: 3px 8px;
+            font-size: 11px;
+            font-weight: 900;
+            color: #0f766e;
+            background: rgba(20,184,166,0.12);
+            border: 1px solid rgba(20,184,166,0.24);
+        }
+        .task-card-schedule.is-proposal {
+            color: #92400e;
+            background: rgba(245,158,11,0.14);
+            border-color: rgba(245,158,11,0.28);
+        }
+        .task-card-schedule.is-missed {
+            color: #b91c1c;
+            background: rgba(239,68,68,0.12);
+            border-color: rgba(239,68,68,0.24);
+        }
+        .task-card-slot-actions {
+            display: inline-grid;
+            grid-template-columns: repeat(4, 32px);
+            gap: 4px;
+        }
+        .task-card-slot-actions button {
+            min-width: 32px;
+            min-height: 32px;
+            padding: 0;
+            border-radius: 9px;
+        }
         .task-capture-chips { display: none; }
 
         html[data-theme="dark"] .quick-add.task-composer,
@@ -534,6 +596,17 @@
             color: #99f6e4;
             border-color: rgba(45,212,191,0.32);
             background: rgba(20,184,166,0.12);
+        }
+        html[data-theme="dark"] .task-slot-btn,
+        body.dark-mode .task-slot-btn {
+            background: rgba(15,23,42,0.78);
+            border-color: rgba(148,163,184,0.16);
+            color: #e5edf7;
+        }
+        html[data-theme="dark"] .task-slot-btn.active,
+        body.dark-mode .task-slot-btn.active {
+            background: rgba(20,184,166,0.16);
+            border-color: rgba(45,212,191,0.34);
         }
 
         /* Responsive */
@@ -742,6 +815,14 @@
                     </div>
                     <div class="task-composer-group">
                         <span class="task-composer-label">План</span>
+                        <input type="date" id="taskScheduleDate" title="Дата плану" aria-label="Дата плану">
+                        <input type="number" id="taskScheduleDuration" min="5" max="480" step="5" value="30" title="Тривалість, хв" aria-label="Тривалість задачі у хвилинах">
+                        <div class="task-slot-picker" id="taskSlotPicker" role="group" aria-label="Швидкі слоти дня">
+                            <button class="task-slot-btn active" type="button" data-schedule-slot="morning" aria-pressed="true" title="Ранок">🌅</button>
+                            <button class="task-slot-btn" type="button" data-schedule-slot="midday" aria-pressed="false" title="День">☀️</button>
+                            <button class="task-slot-btn" type="button" data-schedule-slot="afternoon" aria-pressed="false" title="Після обіду">🌤️</button>
+                            <button class="task-slot-btn" type="button" data-schedule-slot="evening" aria-pressed="false" title="Вечір">🌙</button>
+                        </div>
                         <input type="time" id="taskDeadlineTime" title="Дедлайн (час)" aria-label="Дедлайн">
                         <button class="task-chip" type="button" data-capture-chip="today">Сьогодні</button>
                         <button class="task-chip" type="button" data-capture-chip="tomorrow">Завтра</button>
@@ -859,13 +940,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.60.8"></script>
-    <script src="js/notification.js?v=0.60.8"></script>
-    <script src="js/api.js?v=0.60.8"></script>
-    <script src="js/auth.js?v=0.60.8"></script>
-    <script src="js/components/sidebar.js?v=0.60.8"></script>
+    <script src="js/config.js?v=0.60.9"></script>
+    <script src="js/notification.js?v=0.60.9"></script>
+    <script src="js/api.js?v=0.60.9"></script>
+    <script src="js/auth.js?v=0.60.9"></script>
+    <script src="js/components/sidebar.js?v=0.60.9"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/tasks-page.js?v=0.60.8"></script>
-    <script src="js/alerts.js?v=0.60.8"></script><script src="js/ui.js?v=0.60.8"></script>
+    <script src="js/tasks-page.js?v=0.60.9"></script>
+    <script src="js/alerts.js?v=0.60.9"></script><script src="js/ui.js?v=0.60.9"></script>
 </body>
 </html>

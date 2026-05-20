@@ -24,6 +24,13 @@
     let analyticsData = null;
     let currentKidsCount = 15;
     let currentDiscount = 0;
+    let diplomaQuoteId = null;
+    let diplomaRoster = [];
+    let diplomaSummary = null;
+    let diplomaTemplate = null;
+    let graduationEventDate = '';
+    let graduationStartTime = '10:00';
+    let graduationEndTime = '';
 
     // #14: Category colors
     const CATEGORY_COLORS = {
@@ -179,6 +186,59 @@
         const animators = calcAnimators(kids);
 
         return { totalPerChild, totalAll, totalCost, profit, margin, kickback, totalDuration, kids, discount, animators, entryFlat };
+    }
+
+    function timeToMinutes(value) {
+        const parts = String(value || '').split(':').map(Number);
+        if (parts.length < 2 || parts.some(n => Number.isNaN(n))) return null;
+        return parts[0] * 60 + parts[1];
+    }
+
+    function minutesToTime(minutes) {
+        const normalized = ((minutes % 1440) + 1440) % 1440;
+        const h = Math.floor(normalized / 60);
+        const m = normalized % 60;
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+
+    function renderEventTimingLabel(totalDuration) {
+        const start = timeToMinutes(graduationStartTime);
+        const end = timeToMinutes(graduationEndTime);
+        if (start !== null && end !== null) {
+            const diff = end >= start ? end - start : (24 * 60 - start + end);
+            return `${graduationStartTime}–${graduationEndTime} · ${formatDuration(diff)}`;
+        }
+        if (start !== null && totalDuration > 0) {
+            return `${graduationStartTime}–${minutesToTime(start + totalDuration)} · ${formatDuration(totalDuration)}`;
+        }
+        return 'Час можна задати вручну для нестандартного випускного';
+    }
+
+    function updateEventTiming() {
+        graduationEventDate = document.getElementById('gradEventDate')?.value || '';
+        graduationStartTime = document.getElementById('gradStartTime')?.value || graduationStartTime || '10:00';
+        graduationEndTime = document.getElementById('gradEndTime')?.value || '';
+        recalc();
+    }
+
+    function buildServiceTiming() {
+        const start = timeToMinutes(graduationStartTime);
+        let cursor = start;
+        return services
+            .filter(s => selectedServiceIds.has(s.id) && s.durationMin > 0)
+            .map((svc) => {
+                const itemStart = cursor !== null ? minutesToTime(cursor) : null;
+                const itemEnd = cursor !== null ? minutesToTime(cursor + (svc.durationMin || 0)) : null;
+                if (cursor !== null) cursor += (svc.durationMin || 0);
+                return {
+                    serviceId: svc.id,
+                    name: svc.name,
+                    startTime: itemStart,
+                    endTime: itemEnd,
+                    durationMin: svc.durationMin || 0,
+                    timeMode: 'manual'
+                };
+            });
     }
 
     // === API ===
@@ -392,6 +452,7 @@
             case 'constructor': renderConstructor(content); break;
             case 'packages': renderPackages(content); break;
             case 'quotes': renderQuotes(content); break;
+            case 'diplomas': renderDiplomas(content); break;
             case 'settings': renderSettings(content); break;
             case 'analytics': renderAnalytics(content); break;
         }
@@ -455,6 +516,27 @@
                     <button class="grad-btn grad-btn-sm grad-btn-share" onclick="GradPage.copyShareLink()" title="Скопіювати посилання">
                         🔗 Поділитись
                     </button>
+                </div>
+            </div>
+            <div class="grad-control-row grad-time-row">
+                <div class="grad-field">
+                    <label>Дата випускного</label>
+                    <input type="date" id="gradEventDate" value="${_esc(graduationEventDate)}"
+                        onchange="GradPage.updateEventTiming()" style="font-size:16px">
+                </div>
+                <div class="grad-field">
+                    <label>Початок</label>
+                    <input type="time" id="gradStartTime" value="${_esc(graduationStartTime)}"
+                        onchange="GradPage.updateEventTiming()" style="font-size:16px">
+                </div>
+                <div class="grad-field">
+                    <label>Кінець</label>
+                    <input type="time" id="gradEndTime" value="${_esc(graduationEndTime)}"
+                        onchange="GradPage.updateEventTiming()" style="font-size:16px">
+                </div>
+                <div class="grad-field grad-time-summary">
+                    <label>Таймінг позицій</label>
+                    <div class="grad-time-chip">${renderEventTimingLabel(totals.totalDuration)}</div>
                 </div>
             </div>
         </div>
@@ -1110,6 +1192,294 @@
         container.innerHTML = html;
     }
 
+    function genderLabel(gender) {
+        return { girl: 'Дівчинка', boy: 'Хлопчик', neutral: 'Нейтрально', unspecified: 'Не вказано' }[gender] || 'Не вказано';
+    }
+
+    function genderSourceLabel(source) {
+        return { manual: 'вручну', suggested: 'підказка', imported: 'імпорт', unknown: 'потрібно перевірити' }[source] || source || 'потрібно перевірити';
+    }
+
+    async function loadDiplomaRoster(quoteId) {
+        if (!quoteId) return { children: [], summary: null };
+        const data = await gradApi('GET', `/graduation/quotes/${quoteId}/children`);
+        diplomaRoster = Array.isArray(data.children) ? data.children : [];
+        diplomaSummary = data.summary || null;
+        return data;
+    }
+
+    async function renderDiplomas(container) {
+        container.innerHTML = '<div class="grad-empty">Завантаження дипломів...</div>';
+        await loadQuotes();
+        if (!quotes.length) {
+            container.innerHTML = `
+            <div class="grad-diplomas">
+                <div class="grad-diploma-empty">
+                    <h3>Спочатку збережіть кошик випускного</h3>
+                    <p>Список дітей на дипломи прив’язується до конкретного graduation quote, щоб експорти та побажання не губились.</p>
+                    <button class="grad-btn grad-btn-primary" onclick="GradPage.switchTab('constructor')">Перейти в конструктор</button>
+                </div>
+            </div>`;
+            return;
+        }
+
+        if (!diplomaQuoteId || !quotes.some(q => String(q.id) === String(diplomaQuoteId))) {
+            diplomaQuoteId = quotes[0].id;
+        }
+
+        try {
+            const [template] = await Promise.all([
+                gradApi('GET', '/graduation/diploma/template'),
+                loadDiplomaRoster(diplomaQuoteId)
+            ]);
+            diplomaTemplate = template;
+        } catch (err) {
+            container.innerHTML = '<div class="grad-empty">Помилка завантаження дипломного контуру</div>';
+            return;
+        }
+
+        const selectedQuote = quotes.find(q => String(q.id) === String(diplomaQuoteId)) || quotes[0];
+        const summary = diplomaSummary || { total: 0, needsGenderReview: 0, customWishes: 0, generated: 0 };
+        const quoteOptions = quotes.map(q => `
+            <option value="${q.id}" ${String(q.id) === String(diplomaQuoteId) ? 'selected' : ''}>
+                ${_esc(q.quoteNumber || `Quote ${q.id}`)} · ${q.kidsCount || 0} дітей · ${formatPrice(q.totalAll || 0)}
+            </option>`).join('');
+
+        container.innerHTML = `
+        <div class="grad-diplomas">
+            <div class="grad-diploma-hero">
+                <div>
+                    <div class="grad-diploma-kicker">Graduation diploma system</div>
+                    <h2>Дипломи випускників</h2>
+                    <p>Окремий список дітей, gender-aware побажання, преміальний HTML/SVG шаблон і print/PDF export для конкретного випускного.</p>
+                </div>
+                <div class="grad-diploma-template-card">
+                    <span>Шаблон</span>
+                    <strong>${_esc(diplomaTemplate?.name || 'Класичний диплом')}</strong>
+                    <small>A4 landscape · SVG frame · print-safe</small>
+                </div>
+            </div>
+
+            <div class="grad-diploma-toolbar">
+                <label class="grad-diploma-quote-select">
+                    <span>Кошик / випускний</span>
+                    <select onchange="GradPage.selectDiplomaQuote(this.value)">${quoteOptions}</select>
+                </label>
+                <button class="grad-btn grad-btn-sm grad-btn-primary" onclick="GradPage.addDiplomaChild()">Додати дитину</button>
+                <button class="grad-btn grad-btn-sm" onclick="GradPage.importDiplomaChildren()">Вставити списком</button>
+                <button class="grad-btn grad-btn-sm" onclick="GradPage.generateDiplomaWishes()" ${summary.total ? '' : 'disabled'}>Автопобажання</button>
+                <button class="grad-btn grad-btn-sm" onclick="GradPage.previewDiploma()" ${summary.total ? '' : 'disabled'}>Preview диплом</button>
+                <button class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomasPdf()" ${summary.total ? '' : 'disabled'}>Експорт PDF</button>
+                <button class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomaRoster('csv')" ${summary.total ? '' : 'disabled'}>CSV</button>
+                <button class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomaRoster('xlsx')" ${summary.total ? '' : 'disabled'}>XLSX</button>
+                <button class="grad-btn grad-btn-sm" onclick="GradPage.printDiplomaSheet()" ${summary.total ? '' : 'disabled'}>Print sheet</button>
+            </div>
+
+            <div class="grad-diploma-summary">
+                <div><strong>${summary.total || 0}</strong><span>дітей у списку</span></div>
+                <div><strong>${summary.needsGenderReview || 0}</strong><span>стать перевірити</span></div>
+                <div><strong>${summary.customWishes || 0}</strong><span>власних побажань</span></div>
+                <div><strong>${summary.generated || 0}</strong><span>готові до друку</span></div>
+            </div>
+
+            <div class="grad-diploma-context">
+                <strong>${_esc(selectedQuote?.quoteNumber || '')}</strong>
+                <span>Roster прив’язаний до цього quote${selectedQuote?.bookingId ? ` та бронювання ${_esc(selectedQuote.bookingId)}` : ''}.</span>
+            </div>
+
+            ${renderDiplomaRosterTable()}
+        </div>`;
+    }
+
+    function renderDiplomaRosterTable() {
+        if (!diplomaRoster.length) {
+            return `
+            <div class="grad-diploma-empty">
+                <h3>Список дітей порожній</h3>
+                <p>Додайте дітей вручну або вставте список: один рядок = одна дитина, формат за потреби: ПІБ;стать;клас;побажання.</p>
+            </div>`;
+        }
+
+        return `
+        <div class="grad-diploma-table">
+            <div class="grad-diploma-row grad-diploma-head">
+                <span>ПІБ</span><span>Стать</span><span>Побажання</span><span>Статус</span><span>Дії</span>
+            </div>
+            ${diplomaRoster.map(child => `
+            <div class="grad-diploma-row">
+                <div>
+                    <strong>${_esc(child.fullName)}</strong>
+                    ${child.classLabel ? `<small>${_esc(child.classLabel)}</small>` : ''}
+                </div>
+                <div>
+                    <span class="grad-diploma-pill ${child.genderSource === 'manual' || child.genderSource === 'imported' ? 'ok' : 'warn'}">${genderLabel(child.gender)}</span>
+                    <small>${genderSourceLabel(child.genderSource)}</small>
+                </div>
+                <div class="grad-diploma-wish-cell">${_esc(child.finalWish || child.autoWish || child.customWish || 'Ще немає побажання')}</div>
+                <div><span class="grad-diploma-pill">${_esc(child.diplomaStatus || 'draft')}</span></div>
+                <div class="grad-diploma-actions">
+                    <button class="grad-btn grad-btn-sm" onclick="GradPage.editDiplomaChild(${child.id})">Редагувати</button>
+                    <button class="grad-btn grad-btn-sm" onclick="GradPage.previewDiploma(${child.id})">Preview</button>
+                    <button class="grad-btn grad-btn-sm grad-btn-clear" onclick="GradPage.deleteDiplomaChild(${child.id})">Видалити</button>
+                </div>
+            </div>`).join('')}
+        </div>`;
+    }
+
+    function diplomaGenderOptions(value) {
+        return [
+            { value: 'unspecified', label: 'Автопідказка / не вказано' },
+            { value: 'girl', label: 'Дівчинка' },
+            { value: 'boy', label: 'Хлопчик' },
+            { value: 'neutral', label: 'Нейтрально' }
+        ].map(opt => ({ ...opt, selected: opt.value === value }));
+    }
+
+    function childFormFields(child = {}) {
+        return [
+            { key: 'fullName', label: 'ПІБ', defaultValue: child.fullName || '', required: true },
+            { key: 'gender', label: 'Стать', type: 'select', defaultValue: child.gender || 'unspecified', options: diplomaGenderOptions(child.gender || 'unspecified') },
+            { key: 'classLabel', label: 'Клас / група', defaultValue: child.classLabel || '', placeholder: '4-А, група Сонечко' },
+            { key: 'customWish', label: 'Власне побажання', type: 'textarea', defaultValue: child.customWish || '', placeholder: 'Якщо заповнено - перемагає автопобажання' }
+        ];
+    }
+
+    async function addDiplomaChild() {
+        const values = await formModal('Додати дитину на диплом', childFormFields(), { icon: '🎓', okText: 'Додати' });
+        if (!values || !diplomaQuoteId) return;
+        try {
+            await gradApi('POST', `/graduation/quotes/${diplomaQuoteId}/children`, values);
+            showNotification('Дитину додано в список дипломів', 'success');
+            renderCurrentTab();
+        } catch (err) {
+            showNotification(err.message || 'Помилка додавання', 'error');
+        }
+    }
+
+    async function editDiplomaChild(childId) {
+        const child = diplomaRoster.find(c => String(c.id) === String(childId));
+        if (!child) return;
+        const values = await formModal('Редагувати дитину', childFormFields(child), { icon: '✏️', okText: 'Зберегти' });
+        if (!values || !diplomaQuoteId) return;
+        try {
+            await gradApi('PUT', `/graduation/quotes/${diplomaQuoteId}/children/${childId}`, {
+                ...child,
+                ...values,
+                genderSource: values.gender === 'unspecified' ? 'unknown' : 'manual'
+            });
+            showNotification('Дані дитини оновлено', 'success');
+            renderCurrentTab();
+        } catch (err) {
+            showNotification(err.message || 'Помилка оновлення', 'error');
+        }
+    }
+
+    async function deleteDiplomaChild(childId) {
+        if (!await confirmModal('Видалити дитину зі списку дипломів?', { type: 'danger' })) return;
+        try {
+            await gradApi('DELETE', `/graduation/quotes/${diplomaQuoteId}/children/${childId}`);
+            showNotification('Дитину видалено', 'success');
+            renderCurrentTab();
+        } catch (err) {
+            showNotification('Помилка видалення', 'error');
+        }
+    }
+
+    async function importDiplomaChildren() {
+        const values = await formModal('Вставити список дітей', [
+            { key: 'text', label: 'Список', type: 'textarea', required: true, placeholder: 'Марія Іваненко;дівчинка;4-А;власне побажання\nАртем Петренко;хлопчик;4-А' }
+        ], { icon: '📋', okText: 'Імпортувати' });
+        if (!values || !diplomaQuoteId) return;
+        try {
+            const result = await gradApi('POST', `/graduation/quotes/${diplomaQuoteId}/children/import`, values);
+            showNotification(`Імпортовано ${result.imported || 0} дітей`, 'success');
+            renderCurrentTab();
+        } catch (err) {
+            showNotification(err.message || 'Помилка імпорту', 'error');
+        }
+    }
+
+    async function generateDiplomaWishes() {
+        if (!diplomaQuoteId) return;
+        try {
+            const result = await gradApi('POST', `/graduation/quotes/${diplomaQuoteId}/children/wishes`, {});
+            showNotification(`Оновлено побажання: ${result.updated || 0}`, 'success');
+            renderCurrentTab();
+        } catch (err) {
+            showNotification('Помилка генерації побажань', 'error');
+        }
+    }
+
+    async function openHtmlExport(path, loadingTitle) {
+        const popup = window.open('', '_blank');
+        if (!popup) {
+            showNotification('Браузер заблокував popup. Дозвольте відкриття вікон.', 'error');
+            return;
+        }
+        popup.document.write(`<html><body style="font-family:system-ui;padding:24px">${loadingTitle || 'Завантаження...'}</body></html>`);
+        const response = await fetch(`${API_BASE}${path}`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return;
+        if (!response.ok) throw new Error('Export failed');
+        const html = await response.text();
+        popup.document.open();
+        popup.document.write(html);
+        popup.document.close();
+    }
+
+    async function previewDiploma(childId) {
+        if (!diplomaQuoteId) return;
+        const query = childId ? `?childId=${encodeURIComponent(childId)}` : '';
+        try {
+            await openHtmlExport(`/graduation/quotes/${diplomaQuoteId}/diplomas/preview${query}`, 'Готуємо preview диплома...');
+        } catch (err) {
+            showNotification('Помилка preview диплома', 'error');
+        }
+    }
+
+    async function exportDiplomasPdf() {
+        if (!diplomaQuoteId) return;
+        try {
+            await openHtmlExport(`/graduation/quotes/${diplomaQuoteId}/diplomas/export/pdf?print=1`, 'Готуємо дипломи для друку/PDF...');
+        } catch (err) {
+            showNotification('Помилка PDF export', 'error');
+        }
+    }
+
+    async function printDiplomaSheet() {
+        if (!diplomaQuoteId) return;
+        try {
+            await openHtmlExport(`/graduation/quotes/${diplomaQuoteId}/diplomas/print-sheet?print=1`, 'Готуємо print sheet...');
+        } catch (err) {
+            showNotification('Помилка друку списку', 'error');
+        }
+    }
+
+    async function exportDiplomaRoster(kind) {
+        if (!diplomaQuoteId) return;
+        const ext = kind === 'xlsx' ? 'xlsx' : 'csv';
+        try {
+            const response = await fetch(`${API_BASE}/graduation/quotes/${diplomaQuoteId}/diplomas/export/${ext}`, { headers: getAuthHeaders(false) });
+            if (handleAuthError(response)) return;
+            if (!response.ok) throw new Error('Export failed');
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `graduation_children_${diplomaQuoteId}.${ext}`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (err) {
+            showNotification('Помилка експорту списку', 'error');
+        }
+    }
+
+    function selectDiplomaQuote(id) {
+        diplomaQuoteId = id;
+        renderCurrentTab();
+    }
+
     // #46, #47, #48: Analytics tab
     async function renderAnalytics(container) {
         container.innerHTML = '<div class="grad-empty">Завантаження аналітики...</div>';
@@ -1434,7 +1804,12 @@
                 totalCost: totals.totalCost,
                 totalProfit: totals.profit,
                 profitMargin: totals.margin,
-                customerId: customerId ? parseInt(customerId) : null
+                customerId: customerId ? parseInt(customerId) : null,
+                eventDate: graduationEventDate || null,
+                eventStartTime: graduationStartTime || null,
+                eventEndTime: graduationEndTime || null,
+                eventTimeMode: graduationEndTime ? 'manual' : 'floating',
+                serviceTiming: buildServiceTiming()
             });
             showNotification(`Конфігурацію ${quote.quoteNumber} збережено`, 'success');
         } catch (err) {
@@ -1456,6 +1831,9 @@
 
             currentKidsCount = Math.max(1, parseInt(quote.kidsCount) || 15);
             currentDiscount = Math.max(0, Math.min(100, parseFloat(quote.discountPercent) || 0));
+            graduationEventDate = quote.eventDate ? String(quote.eventDate).slice(0, 10) : '';
+            graduationStartTime = quote.eventStartTime || graduationStartTime || '10:00';
+            graduationEndTime = quote.eventEndTime || '';
             recalc();
 
             showNotification(`Кошик ${quote.quoteNumber} завантажено`, 'success');
@@ -1487,7 +1865,12 @@
                 totalCost: totals.totalCost,
                 totalProfit: totals.profit,
                 profitMargin: totals.margin,
-                customerId: customerId ? parseInt(customerId) : null
+                customerId: customerId ? parseInt(customerId) : null,
+                eventDate: graduationEventDate || null,
+                eventStartTime: graduationStartTime || null,
+                eventEndTime: graduationEndTime || null,
+                eventTimeMode: graduationEndTime ? 'manual' : 'floating',
+                serviceTiming: buildServiceTiming()
             });
             viewProposal(quote.id);
         } catch (err) {
@@ -1513,14 +1896,16 @@
     async function convertToBooking(id) {
         const result2 = await formModal('Конвертувати в бронювання', [
             { key: 'date', label: 'Дата бронювання', type: 'date', required: true },
-            { key: 'time', label: 'Час початку', type: 'time', defaultValue: '10:00', required: true }
+            { key: 'time', label: 'Час початку', type: 'time', defaultValue: graduationStartTime || '10:00', required: true },
+            { key: 'endTime', label: 'Час завершення', type: 'time', defaultValue: graduationEndTime || '' }
         ], { icon: '📅' });
         if (!result2) return;
         const date = result2.date;
         const time = result2.time;
+        const endTime = result2.endTime;
 
         try {
-            const result = await gradApi('POST', `/graduation/quotes/${id}/booking`, { date, time });
+            const result = await gradApi('POST', `/graduation/quotes/${id}/booking`, { date, time, endTime, serviceTiming: buildServiceTiming() });
             showNotification(`Бронювання ${result.bookingId} створено!`, 'success');
             renderQuotes(document.getElementById('gradContent'));
         } catch (err) {
@@ -1700,6 +2085,7 @@
         adjustKids,
         updateKids,
         updateDiscount,
+        updateEventTiming,
         adjustPkgKids,
         recalcPackages,
         updateCoeff,
@@ -1729,6 +2115,16 @@
         catalogNav,
         exportCatalog,
         printPackagePage,
-        shareCatalogPage
+        shareCatalogPage,
+        selectDiplomaQuote,
+        addDiplomaChild,
+        editDiplomaChild,
+        deleteDiplomaChild,
+        importDiplomaChildren,
+        generateDiplomaWishes,
+        previewDiploma,
+        exportDiplomasPdf,
+        exportDiplomaRoster,
+        printDiplomaSheet
     };
 })();

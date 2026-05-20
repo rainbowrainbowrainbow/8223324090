@@ -6,6 +6,18 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
+const ExcelJS = require('exceljs');
+const {
+    DEFAULT_DIPLOMA_TEMPLATE,
+    toCamelTemplate,
+    normalizeChildInput,
+    mapChildRow,
+    pickWish,
+    parseRosterImport,
+    buildDiplomaDocument,
+    buildRosterPrintSheet,
+    buildRosterCsv
+} = require('../services/graduationDiplomas');
 
 const log = createLogger('Graduation');
 function getKleshnya() { return require('../services/kleshnya'); }
@@ -61,6 +73,11 @@ function mapQuoteRow(row) {
         profitMargin: row.profit_margin,
         status: row.status,
         bookingId: row.booking_id,
+        eventDate: row.event_date,
+        eventStartTime: row.event_start_time,
+        eventEndTime: row.event_end_time,
+        eventTimeMode: row.event_time_mode,
+        serviceTiming: row.service_timing || [],
         notes: row.notes,
         createdBy: row.created_by,
         createdAt: row.created_at,
@@ -311,7 +328,8 @@ router.get('/packages/:slug', async (req, res) => {
 router.post('/quotes', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
         const { kidsCount, discountPercent, selectedServices, packageId, totalPerChild,
-                totalAll, totalCost, totalProfit, profitMargin, notes, customerId } = req.body;
+                totalAll, totalCost, totalProfit, profitMargin, notes, customerId,
+                eventDate, eventStartTime, eventEndTime, eventTimeMode, serviceTiming } = req.body;
 
         if (!kidsCount || kidsCount < 1) {
             return res.status(400).json({ error: 'kidsCount is required (min 1)' });
@@ -330,12 +348,16 @@ router.post('/quotes', requireRole('creator', 'director', 'senior_manager', 'man
             `INSERT INTO graduation_quotes
                 (quote_number, customer_id, kids_count, discount_percent, selected_services,
                  package_id, total_per_child, total_all, total_cost, total_profit,
-                 profit_margin, notes, created_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+                 profit_margin, notes, created_by, event_date, event_start_time, event_end_time,
+                 event_time_mode, service_timing)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
             [quoteNumber, customerId || null, kidsCount, discountPercent || 0,
              JSON.stringify(selectedServices || []), packageId || null,
              totalPerChild || 0, totalAll || 0, totalCost || 0, totalProfit || 0,
-             profitMargin || 0, notes || null, req.user.username]
+             profitMargin || 0, notes || null, req.user.username, eventDate || null,
+             eventStartTime || null, eventEndTime || null,
+             ['manual', 'preset', 'floating'].includes(eventTimeMode) ? eventTimeMode : 'floating',
+             JSON.stringify(Array.isArray(serviceTiming) ? serviceTiming : [])]
         );
 
         log.info(`Quote ${quoteNumber} created by ${req.user.username}`);
@@ -403,13 +425,22 @@ router.put('/quotes/:id', requireRole('creator', 'director', 'senior_manager', '
                 profit_margin = COALESCE($9, profit_margin),
                 notes = COALESCE($10, notes),
                 customer_id = $11,
+                event_date = $12,
+                event_start_time = COALESCE($13, event_start_time),
+                event_end_time = COALESCE($14, event_end_time),
+                event_time_mode = COALESCE($15, event_time_mode),
+                service_timing = COALESCE($16, service_timing),
                 updated_at = NOW()
-            WHERE id = $12 RETURNING *`,
+            WHERE id = $17 RETURNING *`,
             [
                 b.kidsCount, b.discountPercent,
                 b.selectedServices ? JSON.stringify(b.selectedServices) : null,
                 b.packageId || null, b.totalPerChild, b.totalAll, b.totalCost,
-                b.totalProfit, b.profitMargin, b.notes, b.customerId || null, id
+                b.totalProfit, b.profitMargin, b.notes, b.customerId || null,
+                b.eventDate || null, b.eventStartTime || null, b.eventEndTime || null,
+                ['manual', 'preset', 'floating'].includes(b.eventTimeMode) ? b.eventTimeMode : null,
+                Array.isArray(b.serviceTiming) ? JSON.stringify(b.serviceTiming) : null,
+                id
             ]
         );
 
@@ -461,7 +492,7 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
             return res.status(400).json({ error: 'Quote already has a booking' });
         }
 
-        const { date, time, room, lineId } = req.body;
+        const { date, time, endTime, room, lineId, serviceTiming } = req.body;
         if (!date || !time) {
             return res.status(400).json({ error: 'date and time are required' });
         }
@@ -496,6 +527,10 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
                      quoteId: q.id,
                      quoteNumber: q.quote_number,
                      services: q.selected_services,
+                     serviceTiming: Array.isArray(serviceTiming) ? serviceTiming : (q.service_timing || []),
+                     eventStartTime: time,
+                     eventEndTime: endTime || q.event_end_time || null,
+                     eventTimeMode: endTime || q.event_end_time ? 'manual' : (q.event_time_mode || 'floating'),
                      kidsCount: q.kids_count,
                      packageId: q.package_id
                  }), req.user.username]
@@ -519,6 +554,418 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
     } catch (err) {
         log.error('Create booking from quote error', err);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+async function ensureDefaultDiplomaTemplate() {
+    const existing = await pool.query(
+        'SELECT * FROM graduation_diploma_templates WHERE is_active = true ORDER BY is_default DESC, id ASC LIMIT 1'
+    );
+    if (existing.rows.length > 0) return existing.rows[0];
+
+    const t = DEFAULT_DIPLOMA_TEMPLATE;
+    const inserted = await pool.query(
+        `INSERT INTO graduation_diploma_templates
+            (code, name, is_default, title_text, subtitle_text, footer_text, principal_name,
+             principal_role, palette_json, layout_json, artwork_image_url, is_active)
+         VALUES ($1,$2,true,$3,$4,$5,$6,$7,$8,$9,$10,true)
+         ON CONFLICT (code) DO UPDATE SET is_active = true, is_default = true, updated_at = NOW()
+         RETURNING *`,
+        [
+            t.code, t.name, t.titleText, t.subtitleText, t.footerText, t.principalName,
+            t.principalRole, JSON.stringify(t.palette), JSON.stringify(t.layout), t.artworkImageUrl
+        ]
+    );
+    return inserted.rows[0];
+}
+
+async function getGraduationQuoteOr404(id, res) {
+    const result = await pool.query('SELECT * FROM graduation_quotes WHERE id = $1', [id]);
+    if (result.rows.length === 0) {
+        res.status(404).json({ error: 'Quote not found' });
+        return null;
+    }
+    return result.rows[0];
+}
+
+async function loadDiplomaChildren(quoteId) {
+    const result = await pool.query(
+        `SELECT * FROM graduation_children
+         WHERE graduation_quote_id = $1
+         ORDER BY sort_order ASC, id ASC`,
+        [quoteId]
+    );
+    return result.rows.map(mapChildRow);
+}
+
+async function markDiplomaExport(quoteId, templateId, exportKind, childrenCount, username) {
+    await pool.query(
+        `INSERT INTO graduation_diploma_exports
+            (graduation_quote_id, template_id, export_kind, children_count, created_by)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [quoteId, templateId || null, exportKind, childrenCount || 0, username || null]
+    );
+}
+
+// GET /api/graduation/diploma/template — default diploma template
+router.get('/diploma/template', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const row = await ensureDefaultDiplomaTemplate();
+        res.json(toCamelTemplate(row));
+    } catch (err) {
+        log.error('Get diploma template error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// PATCH /api/graduation/diploma/template — update default diploma copy/settings
+router.patch('/diploma/template', requireRole('creator', 'director'), async (req, res) => {
+    try {
+        const current = await ensureDefaultDiplomaTemplate();
+        const b = req.body || {};
+        const result = await pool.query(
+            `UPDATE graduation_diploma_templates SET
+                name = COALESCE($1, name),
+                title_text = COALESCE($2, title_text),
+                subtitle_text = COALESCE($3, subtitle_text),
+                footer_text = COALESCE($4, footer_text),
+                principal_name = COALESCE($5, principal_name),
+                principal_role = COALESCE($6, principal_role),
+                palette_json = COALESCE($7, palette_json),
+                layout_json = COALESCE($8, layout_json),
+                artwork_image_url = $9,
+                updated_at = NOW()
+             WHERE id = $10 RETURNING *`,
+            [
+                b.name || null,
+                b.titleText || b.title_text || null,
+                b.subtitleText || b.subtitle_text || null,
+                b.footerText || b.footer_text || null,
+                b.principalName || b.principal_name || null,
+                b.principalRole || b.principal_role || null,
+                b.palette ? JSON.stringify(b.palette) : null,
+                b.layout ? JSON.stringify(b.layout) : null,
+                b.artworkImageUrl || b.artwork_image_url || null,
+                current.id
+            ]
+        );
+        res.json(toCamelTemplate(result.rows[0]));
+    } catch (err) {
+        log.error('Patch diploma template error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/graduation/quotes/:id/children — diploma roster
+router.get('/quotes/:id/children', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        if (!quote) return;
+        const children = await loadDiplomaChildren(req.params.id);
+        const summary = {
+            total: children.length,
+            needsGenderReview: children.filter(c => c.genderSource !== 'manual' && c.genderSource !== 'imported').length,
+            customWishes: children.filter(c => !!c.customWish).length,
+            generated: children.filter(c => ['generated', 'printed', 'exported'].includes(c.diplomaStatus)).length
+        };
+        res.json({ quote: mapQuoteRow(quote), children, summary });
+    } catch (err) {
+        log.error('List graduation children error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/graduation/quotes/:id/children — add child to diploma roster
+router.post('/quotes/:id/children', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        if (!quote) return;
+        const child = normalizeChildInput(req.body || {});
+        const maxSort = await pool.query(
+            'SELECT COALESCE(MAX(sort_order), 0) AS max_sort FROM graduation_children WHERE graduation_quote_id = $1',
+            [req.params.id]
+        );
+        const sortOrder = Number(maxSort.rows[0]?.max_sort || 0) + 1;
+        const result = await pool.query(
+            `INSERT INTO graduation_children
+                (graduation_quote_id, booking_id, full_name, first_name, last_name, gender, gender_source,
+                 gender_confidence, class_label, custom_wish, auto_wish, final_wish,
+                 diploma_title_override, diploma_status, sort_order)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+             RETURNING *`,
+            [
+                req.params.id, quote.booking_id || null, child.fullName, child.firstName, child.lastName,
+                child.gender, child.genderSource, child.genderConfidence, child.classLabel || null,
+                child.customWish || null, child.autoWish || null, child.finalWish || null,
+                child.diplomaTitleOverride || null, child.diplomaStatus, sortOrder
+            ]
+        );
+        res.status(201).json(mapChildRow(result.rows[0]));
+    } catch (err) {
+        log.error('Create graduation child error', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
+    }
+});
+
+// POST /api/graduation/quotes/:id/children/import — paste roster lines
+router.post('/quotes/:id/children/import', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        if (!quote) return;
+        const parsed = parseRosterImport(req.body?.text || req.body?.roster || '');
+        if (parsed.length === 0) return res.status(400).json({ error: 'No roster rows found' });
+        await client.query('BEGIN');
+        const maxSort = await client.query(
+            'SELECT COALESCE(MAX(sort_order), 0) AS max_sort FROM graduation_children WHERE graduation_quote_id = $1',
+            [req.params.id]
+        );
+        let sortOrder = Number(maxSort.rows[0]?.max_sort || 0);
+        const inserted = [];
+        for (const child of parsed) {
+            sortOrder += 1;
+            const result = await client.query(
+                `INSERT INTO graduation_children
+                    (graduation_quote_id, booking_id, full_name, first_name, last_name, gender, gender_source,
+                     gender_confidence, class_label, custom_wish, auto_wish, final_wish,
+                     diploma_title_override, diploma_status, sort_order)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                 RETURNING *`,
+                [
+                    req.params.id, quote.booking_id || null, child.fullName, child.firstName, child.lastName,
+                    child.gender, child.genderSource, child.genderConfidence, child.classLabel || null,
+                    child.customWish || null, child.autoWish || null, child.finalWish || null,
+                    child.diplomaTitleOverride || null, child.diplomaStatus, sortOrder
+                ]
+            );
+            inserted.push(mapChildRow(result.rows[0]));
+        }
+        await client.query('COMMIT');
+        res.status(201).json({ imported: inserted.length, children: inserted });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('Import graduation children error', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// PUT /api/graduation/quotes/:id/children/:childId — update roster child
+router.put('/quotes/:id/children/:childId', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        if (!quote) return;
+        const child = normalizeChildInput(req.body || {});
+        const result = await pool.query(
+            `UPDATE graduation_children SET
+                booking_id = COALESCE($1, booking_id),
+                full_name = $2,
+                first_name = $3,
+                last_name = $4,
+                gender = $5,
+                gender_source = $6,
+                gender_confidence = $7,
+                class_label = $8,
+                custom_wish = $9,
+                auto_wish = $10,
+                final_wish = $11,
+                diploma_title_override = $12,
+                diploma_status = $13,
+                updated_at = NOW()
+             WHERE id = $14 AND graduation_quote_id = $15 RETURNING *`,
+            [
+                quote.booking_id || null, child.fullName, child.firstName, child.lastName,
+                child.gender, child.genderSource, child.genderConfidence, child.classLabel || null,
+                child.customWish || null, child.autoWish || null,
+                (child.customWish || child.finalWish || child.autoWish || null),
+                child.diplomaTitleOverride || null, child.diplomaStatus,
+                req.params.childId, req.params.id
+            ]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Child not found' });
+        res.json(mapChildRow(result.rows[0]));
+    } catch (err) {
+        log.error('Update graduation child error', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
+    }
+});
+
+// DELETE /api/graduation/quotes/:id/children/:childId — remove roster child
+router.delete('/quotes/:id/children/:childId', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const result = await pool.query(
+            'DELETE FROM graduation_children WHERE id = $1 AND graduation_quote_id = $2 RETURNING id',
+            [req.params.childId, req.params.id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Child not found' });
+        res.json({ success: true });
+    } catch (err) {
+        log.error('Delete graduation child error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/graduation/quotes/:id/children/wishes — generate non-duplicate wishes for roster
+router.post('/quotes/:id/children/wishes', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        if (!quote) return;
+        const rows = await client.query(
+            `SELECT * FROM graduation_children
+             WHERE graduation_quote_id = $1
+             ORDER BY sort_order ASC, id ASC`,
+            [req.params.id]
+        );
+        const used = new Set();
+        const updated = [];
+        await client.query('BEGIN');
+        for (let i = 0; i < rows.rows.length; i += 1) {
+            const child = mapChildRow(rows.rows[i]);
+            const autoWish = pickWish(child, used, i);
+            const finalWish = child.customWish || autoWish;
+            const result = await client.query(
+                `UPDATE graduation_children SET
+                    auto_wish = $1,
+                    final_wish = $2,
+                    diploma_status = CASE WHEN diploma_status = 'draft' THEN 'generated' ELSE diploma_status END,
+                    updated_at = NOW()
+                 WHERE id = $3 RETURNING *`,
+                [autoWish, finalWish, child.id]
+            );
+            updated.push(mapChildRow(result.rows[0]));
+        }
+        await client.query('COMMIT');
+        res.json({ updated: updated.length, children: updated });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        log.error('Generate diploma wishes error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// GET /api/graduation/quotes/:id/diplomas/preview — single diploma HTML preview
+router.get('/quotes/:id/diplomas/preview', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        if (!quote) return;
+        const template = toCamelTemplate(await ensureDefaultDiplomaTemplate());
+        const childId = req.query.childId;
+        let children = await loadDiplomaChildren(req.params.id);
+        if (childId) children = children.filter(child => String(child.id) === String(childId));
+        const html = buildDiplomaDocument(children.slice(0, 1), template, quote, { title: 'Preview диплома' });
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(html);
+    } catch (err) {
+        log.error('Diploma preview error', err);
+        res.status(500).send('Internal server error');
+    }
+});
+
+// GET /api/graduation/quotes/:id/diplomas/export/pdf — print-ready batch HTML for Save as PDF
+router.get('/quotes/:id/diplomas/export/pdf', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        if (!quote) return;
+        const templateRow = await ensureDefaultDiplomaTemplate();
+        const template = toCamelTemplate(templateRow);
+        const children = await loadDiplomaChildren(req.params.id);
+        await markDiplomaExport(req.params.id, templateRow.id, 'pdf_batch', children.length, req.user.username);
+        await pool.query(
+            `UPDATE graduation_children
+             SET diploma_status = CASE WHEN diploma_status IN ('draft', 'generated') THEN 'exported' ELSE diploma_status END,
+                 updated_at = NOW()
+             WHERE graduation_quote_id = $1`,
+            [req.params.id]
+        );
+        const autoPrint = ['1', 'true', 'yes'].includes(String(req.query.print || '').toLowerCase());
+        const html = buildDiplomaDocument(children, template, quote, {
+            autoPrint,
+            title: `Дипломи ${quote.quote_number || req.params.id}`
+        });
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(html);
+    } catch (err) {
+        log.error('Diploma PDF export error', err);
+        res.status(500).send('Internal server error');
+    }
+});
+
+// GET /api/graduation/quotes/:id/diplomas/export/csv — roster CSV
+router.get('/quotes/:id/diplomas/export/csv', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        if (!quote) return;
+        const templateRow = await ensureDefaultDiplomaTemplate();
+        const children = await loadDiplomaChildren(req.params.id);
+        await markDiplomaExport(req.params.id, templateRow.id, 'csv', children.length, req.user.username);
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="graduation_children_${quote.quote_number || req.params.id}.csv"`);
+        res.send(buildRosterCsv(children));
+    } catch (err) {
+        log.error('Diploma CSV export error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/graduation/quotes/:id/diplomas/export/xlsx — roster XLSX
+router.get('/quotes/:id/diplomas/export/xlsx', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        if (!quote) return;
+        const templateRow = await ensureDefaultDiplomaTemplate();
+        const children = await loadDiplomaChildren(req.params.id);
+        await markDiplomaExport(req.params.id, templateRow.id, 'xlsx', children.length, req.user.username);
+
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'Event Genix';
+        const sheet = workbook.addWorksheet('Дипломи');
+        sheet.columns = [
+            { header: 'ID', key: 'id', width: 8 },
+            { header: 'ПІБ', key: 'fullName', width: 28 },
+            { header: 'Ім’я', key: 'firstName', width: 16 },
+            { header: 'Прізвище', key: 'lastName', width: 18 },
+            { header: 'Стать', key: 'gender', width: 12 },
+            { header: 'Джерело статі', key: 'genderSource', width: 16 },
+            { header: 'Клас / група', key: 'classLabel', width: 14 },
+            { header: 'Власне побажання', key: 'customWish', width: 34 },
+            { header: 'Автопобажання', key: 'autoWish', width: 34 },
+            { header: 'Фінальне побажання', key: 'finalWish', width: 42 },
+            { header: 'Статус', key: 'diplomaStatus', width: 14 }
+        ];
+        sheet.getRow(1).font = { bold: true };
+        sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEADCA8' } };
+        for (const child of children) sheet.addRow(child);
+        sheet.eachRow((row) => {
+            row.alignment = { vertical: 'top', wrapText: true };
+        });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="graduation_children_${quote.quote_number || req.params.id}.xlsx"`);
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (err) {
+        log.error('Diploma XLSX export error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// GET /api/graduation/quotes/:id/diplomas/print-sheet — roster print sheet
+router.get('/quotes/:id/diplomas/print-sheet', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        if (!quote) return;
+        const templateRow = await ensureDefaultDiplomaTemplate();
+        const children = await loadDiplomaChildren(req.params.id);
+        await markDiplomaExport(req.params.id, templateRow.id, 'print_sheet', children.length, req.user.username);
+        const autoPrint = ['1', 'true', 'yes'].includes(String(req.query.print || '').toLowerCase());
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(buildRosterPrintSheet(children, quote, { autoPrint }));
+    } catch (err) {
+        log.error('Diploma print sheet error', err);
+        res.status(500).send('Internal server error');
     }
 });
 

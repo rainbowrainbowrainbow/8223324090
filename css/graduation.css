@@ -1559,6 +1559,288 @@ body.dark-mode .catalog-page-counter { color: #aaa; }
 /* Package pages keep their vibrant colors even in dark mode */
 
 /* ============================================
+   DIPLOMAS — roster, wishes, print exports
+   ============================================ */
+.grad-time-row {
+    margin-top: 12px;
+    align-items: end;
+}
+.grad-time-summary {
+    min-width: 220px;
+}
+.grad-time-chip {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(201,168,76,0.22);
+    background: rgba(201,168,76,0.08);
+    color: var(--gray-700);
+    font-weight: 800;
+    font-size: 13px;
+}
+.grad-diplomas {
+    display: grid;
+    gap: 16px;
+}
+.grad-diploma-hero {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    align-items: stretch;
+    padding: 20px;
+    border-radius: 22px;
+    border: 1px solid rgba(201,168,76,0.22);
+    background:
+        radial-gradient(circle at top left, rgba(201,168,76,0.16), transparent 38%),
+        linear-gradient(135deg, rgba(255,248,225,0.96), rgba(255,255,255,0.94));
+    box-shadow: 0 18px 45px rgba(47,36,21,0.08);
+}
+.grad-diploma-kicker {
+    color: #9a6b0c;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .14em;
+    font-weight: 900;
+}
+.grad-diploma-hero h2 {
+    margin: 6px 0 8px;
+    font-size: 28px;
+    color: #2f2415;
+}
+.grad-diploma-hero p {
+    margin: 0;
+    color: #6b5a3d;
+    max-width: 720px;
+    line-height: 1.5;
+}
+.grad-diploma-template-card {
+    min-width: 230px;
+    display: grid;
+    gap: 4px;
+    align-content: center;
+    padding: 16px;
+    border-radius: 18px;
+    background: rgba(255,255,255,0.72);
+    border: 1px solid rgba(201,168,76,0.25);
+}
+.grad-diploma-template-card span,
+.grad-diploma-template-card small {
+    color: #7b6848;
+    font-size: 12px;
+    font-weight: 700;
+}
+.grad-diploma-template-card strong {
+    color: #2f2415;
+    font-size: 16px;
+}
+.grad-diploma-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: end;
+    padding: 14px;
+    border-radius: 18px;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: rgba(255,255,255,0.72);
+}
+.grad-diploma-quote-select {
+    display: grid;
+    gap: 5px;
+    min-width: min(100%, 360px);
+    flex: 1;
+}
+.grad-diploma-quote-select span {
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 800;
+}
+.grad-diploma-quote-select select {
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(0,0,0,0.12);
+    background: #fff;
+    color: var(--gray-800);
+    font: inherit;
+    font-weight: 700;
+}
+.grad-diploma-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+}
+.grad-diploma-summary > div {
+    display: grid;
+    gap: 3px;
+    padding: 14px;
+    border-radius: 16px;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: rgba(255,255,255,0.75);
+}
+.grad-diploma-summary strong {
+    font-size: 24px;
+    color: #7c2d12;
+}
+.grad-diploma-summary span {
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 800;
+}
+.grad-diploma-context {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(201,168,76,0.18);
+    background: rgba(201,168,76,0.07);
+    color: var(--gray-700);
+}
+.grad-diploma-table {
+    display: grid;
+    gap: 8px;
+}
+.grad-diploma-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.2fr) 150px minmax(220px, 1.6fr) 110px minmax(230px, auto);
+    gap: 12px;
+    align-items: center;
+    padding: 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: rgba(255,255,255,0.78);
+}
+.grad-diploma-head {
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    background: rgba(201,168,76,0.10);
+}
+.grad-diploma-row strong {
+    display: block;
+    color: var(--gray-900);
+}
+.grad-diploma-row small {
+    display: block;
+    margin-top: 3px;
+    color: var(--gray-500);
+    font-size: 11px;
+}
+.grad-diploma-wish-cell {
+    color: var(--gray-700);
+    line-height: 1.35;
+    font-size: 13px;
+}
+.grad-diploma-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(100,116,139,0.20);
+    background: rgba(100,116,139,0.08);
+    color: var(--gray-700);
+    font-size: 11px;
+    font-weight: 900;
+}
+.grad-diploma-pill.ok {
+    border-color: rgba(16,185,129,0.25);
+    background: rgba(16,185,129,0.10);
+    color: #047857;
+}
+.grad-diploma-pill.warn {
+    border-color: rgba(245,158,11,0.30);
+    background: rgba(245,158,11,0.12);
+    color: #92400e;
+}
+.grad-diploma-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+.grad-diploma-empty {
+    padding: 32px;
+    border-radius: 18px;
+    border: 1px dashed rgba(201,168,76,0.35);
+    background: rgba(201,168,76,0.07);
+    text-align: center;
+}
+.grad-diploma-empty h3 {
+    margin: 0 0 6px;
+    color: var(--gray-800);
+}
+.grad-diploma-empty p {
+    margin: 0 auto 14px;
+    max-width: 560px;
+    color: var(--gray-500);
+}
+
+body.dark-mode .grad-time-chip,
+body.dark-mode .grad-diploma-context {
+    color: #d8d2c2;
+    background: rgba(201,168,76,0.10);
+    border-color: rgba(201,168,76,0.26);
+}
+body.dark-mode .grad-diploma-hero {
+    background:
+        radial-gradient(circle at top left, rgba(201,168,76,0.12), transparent 40%),
+        linear-gradient(135deg, rgba(31,27,20,0.96), rgba(18,22,29,0.94));
+    border-color: rgba(201,168,76,0.24);
+}
+body.dark-mode .grad-diploma-hero h2,
+body.dark-mode .grad-diploma-template-card strong,
+body.dark-mode .grad-diploma-row strong,
+body.dark-mode .grad-diploma-empty h3 {
+    color: #f7ecd2;
+}
+body.dark-mode .grad-diploma-hero p,
+body.dark-mode .grad-diploma-template-card span,
+body.dark-mode .grad-diploma-template-card small,
+body.dark-mode .grad-diploma-wish-cell {
+    color: #c9c0ad;
+}
+body.dark-mode .grad-diploma-template-card,
+body.dark-mode .grad-diploma-toolbar,
+body.dark-mode .grad-diploma-summary > div,
+body.dark-mode .grad-diploma-row {
+    background: rgba(255,255,255,0.055);
+    border-color: rgba(255,255,255,0.10);
+}
+body.dark-mode .grad-diploma-quote-select select {
+    background: rgba(15,23,42,0.92);
+    color: #f8fafc;
+    border-color: rgba(255,255,255,0.12);
+}
+body.dark-mode .grad-diploma-head {
+    background: rgba(201,168,76,0.10);
+}
+
+@media (max-width: 980px) {
+    .grad-diploma-hero {
+        flex-direction: column;
+    }
+    .grad-diploma-template-card {
+        min-width: 0;
+    }
+    .grad-diploma-row {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    .grad-diploma-head {
+        display: none;
+    }
+    .grad-diploma-actions {
+        justify-content: flex-start;
+    }
+}
+
+/* ============================================
    PRINT STYLES — 1 package = 1 A4 page
    ============================================ */
 @media print {

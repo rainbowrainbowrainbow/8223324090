@@ -4,6 +4,17 @@
 
 ---
 
+## v0.60.21 - Graduation Diplomas Child Roster
+
+### Graduation Diplomas Child Roster [codex]
+- **Дипломи всередині Graduation** - у модулі випускних додано вкладку `Дипломи` з прив'язкою до конкретного quote/booking, щоб список дітей, побажання і export не жили окремо від graduation flow.
+- **Children roster** - додано таблиці та API для списку дітей: ПІБ, gender, джерело gender, клас/група, власне побажання, автопобажання, фінальне побажання і статус диплома.
+- **Wish engine** - додано gender-aware пул побажань для girl/boy/neutral, manual override, import parser і генерацію без повторів у межах batch, де це можливо.
+- **HTML/SVG дипломи та print/PDF export** - додано класичний A4 landscape диплом з SVG-рамкою, урочистою композицією, preview одного диплома, batch print/PDF HTML, CSV/XLSX і print sheet.
+- **Гнучкий таймінг випускного** - graduation quote отримав event date/start/end/manual timing contract, а конвертація в booking переносить довільний час і service timing в `extra_data`.
+
+---
+
 ## v0.60.20 - Unified Finance Analytics Control Page
 
 ### Unified Finance Analytics Control Page [codex]

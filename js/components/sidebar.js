@@ -35,13 +35,6 @@ const Sidebar = (() => {
         alertsActive: 0,
         alertsUnread: 0,
         alertsCritical: 0,
-        alertItems: [],
-        alertCursor: 0,
-        alertCurrentId: '',
-        alertTargetHref: '',
-        alertHeadline: '',
-        alertMeta: '',
-        alertLevel: '',
         hotLeads: 0,
         newLeads: 0
     };
@@ -51,7 +44,6 @@ const Sidebar = (() => {
         SidebarBrand: 'sidebar-brand',
         UserSummaryCard: 'sidebar-identity-card',
         MetricChip: 'focus-chip',
-        AlertPreviewCard: 'sidebar-alert-hero',
         QuickAccess: 'sidebar-design-extras',
         SidebarSection: 'sidebar-group',
         SidebarItem: 'nav-link'
@@ -1163,29 +1155,6 @@ const Sidebar = (() => {
                         <span class="focus-chip-label">Ліди</span>
                         <span class="focus-chip-meta" id="focusChipFunnelMeta">без нових</span>
                     </a>
-                </div>
-
-                <div class="sidebar-primary-action sidebar-alert-hero" id="sidebarPrimaryAction" role="group" aria-live="polite" aria-label="Операційний фокус">
-                    <span class="sidebar-alert-hero-stack" aria-hidden="true"></span>
-                    <span class="sidebar-alert-hero-head">
-                        <span class="sidebar-alert-hero-kicker">
-                            <span class="sidebar-alert-hero-dot" aria-hidden="true"></span>
-                            <span class="sidebar-primary-action-kicker">AI фокус</span>
-                        </span>
-                        <span class="sidebar-alert-hero-nav" id="sidebarAlertHeroNav" aria-label="Листання алертів">
-                            <button type="button" class="sidebar-alert-nav-btn" data-sidebar-alert-nav="prev" aria-label="Попередній алерт">‹</button>
-                            <span class="sidebar-alert-hero-index" id="sidebarAlertHeroIndex">готово</span>
-                            <button type="button" class="sidebar-alert-nav-btn" data-sidebar-alert-nav="next" aria-label="Наступний алерт">›</button>
-                        </span>
-                    </span>
-                    <button type="button" class="sidebar-alert-hero-open" id="sidebarAlertHeroOpen">
-                        <span class="sidebar-primary-action-label">Відкрити центр керування</span>
-                        <span class="sidebar-alert-hero-meta" id="sidebarAlertHeroMeta">Короткий маршрут до наступної дії</span>
-                        <span class="sidebar-alert-hero-actions" aria-hidden="true">
-                            <span>Відкрити</span>
-                            <span>›</span>
-                        </span>
-                    </button>
                 </div>`;
         }
         if (deck.parentElement !== sidebar) {
@@ -1531,26 +1500,6 @@ const Sidebar = (() => {
         return 'Система стабільна';
     }
 
-    function _getSidebarPrimaryAction(role, state) {
-        const salesRoles = ['creator', 'director', 'vice_director', 'manager', 'senior_manager', 'marketer', 'reception'];
-        if (state.alertsCritical > 0 || state.alertsUnread > 0) {
-            return { label: 'Розібрати алерти', kicker: state.alertsCritical > 0 ? 'Критично' : 'Увага', action: 'alerts' };
-        }
-        if (state.tasksOverdue > 0) {
-            return { label: 'Закрити прострочені задачі', kicker: 'Фокус', href: '/tasks?view=my&filter=overdue' };
-        }
-        if ((state.hotLeads > 0 || state.newLeads > 0) && salesRoles.includes(role)) {
-            return { label: 'Обробити гарячі ліди', kicker: 'Продажі', href: '/sales-funnel?filter=hot' };
-        }
-        if (['hr', 'admin'].includes(role)) {
-            return { label: 'Перевірити команду', kicker: 'Команда', href: '/hr#team' };
-        }
-        if (['art_director', 'marketer'].includes(role)) {
-            return { label: 'Відкрити контент-потік', kicker: 'Продукт', href: '/content' };
-        }
-        return { label: 'Відкрити центр керування', kicker: 'AI фокус', href: '/dashboard' };
-    }
-
     function _getSidebarHeroTone(state = _commandState) {
         if (state.alertsCritical > 0) return 'critical';
         if (state.alertsUnread > 0 || state.tasksOverdue > 0 || state.hotLeads > 0) return 'warning';
@@ -1567,217 +1516,6 @@ const Sidebar = (() => {
         }[tone] || 'ГОТОВО';
     }
 
-    function _getSidebarHeroIndex(state = _commandState, tone = _getSidebarHeroTone(state)) {
-        const alertTotal = Array.isArray(state.alertItems) ? state.alertItems.length : 0;
-        if (alertTotal > 0) {
-            const cursor = Math.min(Math.max(Number(state.alertCursor || 0), 0), alertTotal - 1);
-            return `${cursor + 1} / ${alertTotal}`;
-        }
-        if (tone === 'critical' || tone === 'warning') {
-            const active = Number(state.alertsActive || state.alertsUnread || 0);
-            if (active > 0) return `1 / ${active}`;
-        }
-        if (state.tasksOverdue > 0) return `${_formatSignalCount(state.tasksOverdue)} простр.`;
-        if (state.hotLeads > 0) return `${_formatSignalCount(state.hotLeads)} лідів`;
-        return 'готово';
-    }
-
-    function _sidebarAlertText(alert, fallback = '') {
-        return String(alert?.title || alert?.message || alert?.description || fallback || '').trim();
-    }
-
-    function _sidebarAlertMeta(alert) {
-        return String(alert?.subtitle || alert?.meta || alert?.context || alert?.type || '').trim();
-    }
-
-    function _sidebarAlertIdentity(alert, index = 0) {
-        return String(alert?.id || alert?.key || `${alert?.level || 'alert'}:${_sidebarAlertText(alert, index)}:${index}`);
-    }
-
-    function _sidebarAlertTargetUrl(alert) {
-        if (!alert) return '';
-        if (alert.link) return String(alert.link);
-        if (alert.taskId) return `/tasks?open=${encodeURIComponent(alert.taskId)}`;
-        if (alert.bookingId) {
-            const date = alert.date || alert.bookingDate || alert.booking_date || '';
-            const dateParam = date ? `date=${encodeURIComponent(date)}&` : '';
-            return `/?${dateParam}highlight=${encodeURIComponent(alert.bookingId)}`;
-        }
-        if (alert.stockItem || String(alert.id || '').startsWith('stock_')) return '/warehouse#procurement';
-        if (alert.id === 'cold_leads') return '/sales-funnel';
-        if (alert.id === 'no_shift') return '/finance';
-        return '';
-    }
-
-    function _buildSidebarAlertItems(active, unread) {
-        const seen = new Set();
-        return [...(unread || []), ...(active || [])].filter((alert, index) => {
-            const id = _sidebarAlertIdentity(alert, index);
-            if (seen.has(id)) return false;
-            seen.add(id);
-            return true;
-        });
-    }
-
-    function _syncSidebarCurrentAlert() {
-        const items = Array.isArray(_commandState.alertItems) ? _commandState.alertItems : [];
-        if (!items.length) {
-            _commandState.alertCursor = 0;
-            _commandState.alertLevel = '';
-            _commandState.alertHeadline = '';
-            _commandState.alertMeta = '';
-            _commandState.alertCurrentId = '';
-            _commandState.alertTargetHref = '';
-            return;
-        }
-        _commandState.alertCursor = Math.min(Math.max(Number(_commandState.alertCursor || 0), 0), items.length - 1);
-        const current = items[_commandState.alertCursor] || items[0];
-        _commandState.alertLevel = current?.level || '';
-        _commandState.alertHeadline = _sidebarAlertText(current);
-        _commandState.alertMeta = _sidebarAlertMeta(current);
-        _commandState.alertCurrentId = _sidebarAlertIdentity(current, _commandState.alertCursor);
-        _commandState.alertTargetHref = _sidebarAlertTargetUrl(current);
-    }
-
-    function _shiftSidebarAlertCursor(delta) {
-        const items = Array.isArray(_commandState.alertItems) ? _commandState.alertItems : [];
-        if (items.length <= 1) return;
-        const step = Number(delta || 0);
-        const total = items.length;
-        _commandState.alertCursor = (_commandState.alertCursor + step + total) % total;
-        _syncSidebarCurrentAlert();
-        _updateSidebarCommandDeck();
-    }
-
-    function _bindSidebarAlertHeroControls(actionEl) {
-        if (!actionEl || actionEl.dataset.alertHeroControlsBound === 'true') return;
-        actionEl.dataset.alertHeroControlsBound = 'true';
-        actionEl.querySelectorAll('[data-sidebar-alert-nav]').forEach((btn) => {
-            btn.addEventListener('click', (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                _shiftSidebarAlertCursor(btn.dataset.sidebarAlertNav === 'prev' ? -1 : 1);
-            });
-        });
-        actionEl.addEventListener('keydown', (event) => {
-            if (!Array.isArray(_commandState.alertItems) || _commandState.alertItems.length <= 1) return;
-            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-            event.preventDefault();
-            _shiftSidebarAlertCursor(event.key === 'ArrowLeft' ? -1 : 1);
-        });
-    }
-
-    function _cssEscape(value) {
-        if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(String(value));
-        return String(value).replace(/["\\]/g, '\\$&');
-    }
-
-    function _markSidebarAlertRead(alertId) {
-        if (!alertId) return;
-        const read = _alertSetFromStorage('crm_alerts_read_v2');
-        read.add(alertId);
-        localStorage.setItem('crm_alerts_read_v2', JSON.stringify(Array.from(read)));
-    }
-
-    function _focusAlertPanelItem(alertId) {
-        if (!alertId) return;
-        const item = document.querySelector(`[data-alert-id="${_cssEscape(alertId)}"]`);
-        if (!item) return;
-        item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        item.classList.add('sidebar-alert-target');
-        setTimeout(() => item.classList.remove('sidebar-alert-target'), 2600);
-    }
-
-    function _openAlertsPanelAtAlert(alertId, event) {
-        if (event) {
-            event.preventDefault();
-            event.stopPropagation();
-        }
-        if (typeof _ensureAlertElements === 'function') _ensureAlertElements();
-        const panel = document.getElementById('alertsPanel');
-        if (typeof _openAlertsPanel === 'function') {
-            _openAlertsPanel();
-        } else if (typeof toggleAlertsPanel === 'function' && !panel?.classList.contains('open')) {
-            toggleAlertsPanel(event);
-        } else if (!panel?.classList.contains('open')) {
-            openAlerts(event);
-        }
-        setTimeout(() => _focusAlertPanelItem(alertId), 180);
-    }
-
-    function _navigateSidebarAlertTarget(link, alertId) {
-        if (!link) {
-            _openAlertsPanelAtAlert(alertId);
-            return;
-        }
-        if (typeof _goAlert === 'function') {
-            _goAlert(link, alertId);
-            return;
-        }
-        let targetUrl;
-        try {
-            targetUrl = new URL(link, window.location.origin);
-        } catch {
-            window.location.href = link;
-            return;
-        }
-        if (targetUrl.origin !== window.location.origin) {
-            window.location.href = targetUrl.href;
-            return;
-        }
-        if (targetUrl.pathname === window.location.pathname) {
-            const nextPath = `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
-            const currentFullPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-            if (nextPath !== currentFullPath) window.history.pushState(null, '', nextPath);
-            const openTask = targetUrl.searchParams.get('open');
-            if (openTask && typeof window.openTaskDetail === 'function') {
-                window.openTaskDetail(parseInt(openTask, 10));
-                return;
-            }
-            const highlight = targetUrl.searchParams.get('highlight');
-            if (highlight) {
-                const target = document.querySelector(`[data-booking-id="${_cssEscape(highlight)}"]`);
-                if (target) {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    target.classList.add('highlight-pulse');
-                }
-            }
-            try {
-                window.dispatchEvent(new CustomEvent('crm:alert-navigate', { detail: { url: targetUrl, alertId } }));
-            } catch {}
-            return;
-        }
-        window.location.href = `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`;
-    }
-
-    function _openSidebarCurrentAlert(event) {
-        const items = Array.isArray(_commandState.alertItems) ? _commandState.alertItems : [];
-        const current = items[_commandState.alertCursor] || items[0];
-        if (!current) {
-            openAlerts(event);
-            return;
-        }
-        if (event) {
-            event.preventDefault();
-            event.stopPropagation();
-        }
-        const alertId = _commandState.alertCurrentId || _sidebarAlertIdentity(current, _commandState.alertCursor);
-        const link = _commandState.alertTargetHref || _sidebarAlertTargetUrl(current);
-        _markSidebarAlertRead(alertId);
-        _navigateSidebarAlertTarget(link, alertId);
-    }
-
-    function _getSidebarHeroMeta(state = _commandState, tone = _getSidebarHeroTone(state)) {
-        if (state.alertHeadline) {
-            return state.alertMeta || 'Алерт потребує уваги';
-        }
-        if (state.tasksOverdue > 0) return 'Задачі · прострочені дедлайни';
-        if (state.hotLeads > 0) return 'Продажі · гарячі ліди чекають дії';
-        if (state.tasksActive > 0) return 'Операції · задачі в роботі';
-        if (tone === 'ok') return 'Наступна дія: перевірити день або відкрити брифінг';
-        return 'Система підказує наступний крок';
-    }
-
     function _updateSidebarCommandDeck() {
         const tone = _getSidebarHeroTone(_commandState);
         const deck = document.getElementById('sidebarCommandDeck');
@@ -1790,46 +1528,6 @@ const Sidebar = (() => {
 
         const summaryEl = document.getElementById('sidebarIdentitySummary');
         if (summaryEl) summaryEl.textContent = _getSidebarSummaryState();
-
-        const actionEl = document.getElementById('sidebarPrimaryAction');
-        if (!actionEl) return;
-        const user = _getCurrentSidebarUser();
-        const role = _getSidebarActiveRole(user);
-        const action = _getSidebarPrimaryAction(role, _commandState);
-        actionEl.dataset.tone = tone;
-        actionEl.querySelector('.sidebar-primary-action-kicker')?.replaceChildren(document.createTextNode(action.kicker));
-        actionEl.querySelector('.sidebar-primary-action-label')?.replaceChildren(document.createTextNode(_commandState.alertHeadline || action.label));
-        _bindSidebarAlertHeroControls(actionEl);
-        const indexEl = document.getElementById('sidebarAlertHeroIndex');
-        if (indexEl) indexEl.textContent = _getSidebarHeroIndex(_commandState, tone);
-        const alertItemsCount = Array.isArray(_commandState.alertItems) ? _commandState.alertItems.length : 0;
-        actionEl.classList.toggle('has-alert-carousel', alertItemsCount > 1);
-        actionEl.querySelectorAll('[data-sidebar-alert-nav]').forEach((btn) => {
-            btn.disabled = alertItemsCount <= 1;
-            btn.setAttribute('aria-hidden', alertItemsCount > 1 ? 'false' : 'true');
-        });
-        const metaEl = document.getElementById('sidebarAlertHeroMeta');
-        if (metaEl) metaEl.textContent = _getSidebarHeroMeta(_commandState, tone);
-        actionEl.dataset.action = action.action || '';
-        actionEl.dataset.href = action.href || '';
-        actionEl.dataset.alertId = _commandState.alertCurrentId || '';
-        actionEl.dataset.alertHref = _commandState.alertTargetHref || '';
-        const openEl = document.getElementById('sidebarAlertHeroOpen') || actionEl;
-        openEl.setAttribute('aria-label', `${_getSidebarHeroIndex(_commandState, tone)} · ${_commandState.alertHeadline || action.label}`);
-        openEl.dataset.alertId = _commandState.alertCurrentId || '';
-        openEl.dataset.alertHref = _commandState.alertTargetHref || '';
-        if (openEl.dataset.primaryBound !== 'true') {
-            openEl.dataset.primaryBound = 'true';
-            openEl.addEventListener('click', (event) => {
-                const actionName = actionEl.dataset.action;
-                const href = actionEl.dataset.href;
-                if (actionName === 'alerts') {
-                    _openSidebarCurrentAlert(event);
-                    return;
-                }
-                if (href) window.location.href = href;
-            });
-        }
     }
 
     function _ensureActiveIndicator() {
@@ -1883,12 +1581,6 @@ const Sidebar = (() => {
         const active = alerts.filter(alert => !dismissed.has(alert.id));
         const unread = active.filter(alert => !read.has(alert.id));
         const count = unread.length;
-        const previousCurrent = _commandState.alertItems?.[_commandState.alertCursor] || null;
-        const previousCurrentId = previousCurrent ? _sidebarAlertIdentity(previousCurrent, _commandState.alertCursor) : '';
-        const alertItems = _buildSidebarAlertItems(active, unread);
-        const nextCursor = previousCurrentId
-            ? alertItems.findIndex((alert, index) => _sidebarAlertIdentity(alert, index) === previousCurrentId)
-            : -1;
         const countEl = document.getElementById('focusChipAlertsValue');
         const metaEl = document.getElementById('focusChipAlertsMeta');
         if (countEl) {
@@ -1905,9 +1597,6 @@ const Sidebar = (() => {
         _commandState.alertsActive = active.length;
         _commandState.alertsUnread = count;
         _commandState.alertsCritical = unread.filter(alert => alert.level === 'critical').length;
-        _commandState.alertItems = alertItems;
-        _commandState.alertCursor = nextCursor >= 0 ? nextCursor : Math.min(_commandState.alertCursor || 0, Math.max(alertItems.length - 1, 0));
-        _syncSidebarCurrentAlert();
         _setCommandDescription(widget, alertTitle);
         widget.classList.toggle('has-alerts', active.length > 0);
         widget.classList.toggle('has-critical', unread.some(alert => alert.level === 'critical'));

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.60.22 - Sidebar Alert Card Cleanup
+
+### Sidebar Alert Card Cleanup [codex]
+- **Панель стала чистішою** - з shared sidebar command deck прибрано великий overdue/critical alert-card з `КРИТИЧНО`, pager `1 / N` і CTA `Відкрити`.
+- **Alerts data layer збережено** - focus chip `Алерти`, badge/count стан і повний alerts center продовжують працювати через існуючий `js/alerts.js`.
+- **Мертвий carousel state прибрано** - з sidebar renderer видалено current-alert/pager/hero navigation JS, щоб після cleanup не лишався недосяжний widget-code.
+
+---
+
 ## v0.60.21 - Graduation Diplomas Child Roster
 
 ### Graduation Diplomas Child Roster [codex]

@@ -8,6 +8,14 @@ const ROOT_HTML_SURFACE = [
         purpose: 'Operational analytics dashboard.'
     },
     {
+        file: 'afisha.html',
+        canonicalPath: '/afisha',
+        owner: 'afisha',
+        status: 'canonical-page',
+        aliases: [],
+        purpose: 'Standalone product page for Afisha events, import/export, recurring templates, and task generation.'
+    },
+    {
         file: 'art-director.html',
         canonicalPath: '/art',
         owner: 'art-director',
@@ -321,7 +329,6 @@ const LEGACY_STATIC_REDIRECTS = [
     { path: '/art-director.html', target: '/art', owner: 'art-director' },
     { path: '/leads', target: '/sales-funnel', owner: 'leads' },
     { path: '/kleshnya', target: '/chat', owner: 'chat' },
-    { path: '/afisha', target: '/?open=afisha', owner: 'timeline-modal' },
     { path: '/manager-guide', target: '/landing/manager-guide.html', owner: 'landing' },
     { path: '/manager-guide.html', target: '/landing/manager-guide.html', owner: 'landing' },
     { path: '/sales-deck', target: '/landing/sales-deck.html', owner: 'landing' },

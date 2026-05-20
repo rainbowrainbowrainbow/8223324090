@@ -120,7 +120,7 @@ function _checkAutoOpen() {
     setTimeout(() => {
         switch (open) {
             case 'afisha':
-                if (typeof showAfishaModal === 'function') showAfishaModal();
+                window.location.href = '/afisha';
                 break;
             case 'certificates':
                 if (typeof openCertificatesPanel === 'function') openCertificatesPanel();
@@ -311,7 +311,7 @@ function initTimelineListeners() {
     // v36.2: Afisha top-bar button
     const afishaTopBtn = document.getElementById('afishaTopBtn');
     if (afishaTopBtn) afishaTopBtn.addEventListener('click', () => {
-        if (typeof showAfishaModal === 'function') showAfishaModal();
+        window.location.href = '/afisha';
     });
 
     // v20.10.0: History CSV export
@@ -701,21 +701,10 @@ function initSettingsListeners() {
     const afishaBtn = document.getElementById('afishaBtn');
     if (afishaBtn) {
         afishaBtn.addEventListener('click', async (e) => {
-            e.stopPropagation(); // не закривати dropdown до відкриття модала
-            try {
-                if (typeof showAfishaModal === 'function') {
-                    await showAfishaModal();
-                } else if (window.SettingsAfisha) {
-                    await window.SettingsAfisha.init();
-                } else {
-                    console.error('[afishaBtn] showAfishaModal not defined');
-                }
-            } catch (err) {
-                console.error('[afishaBtn] error:', err);
-            }
-            // Закрити dropdown після відкриття модала
+            e.stopPropagation();
             const content = document.getElementById('dropdownContent');
             if (content) content.classList.add('hidden');
+            window.location.href = '/afisha';
         });
     }
 

@@ -81,9 +81,9 @@ const SEARCH_NAV_ALIASES = {
     '/sound#projects': ['звук', 'sound', 'аудіо', 'проєкти звуку'],
     '/sound#library': ['бібліотека звуку', 'sound library', 'треки', 'музика'],
     '/sound#announcements': ['оголошення', 'announcements', 'аудіо оголошення'],
-    '#afisha': ['афіша', 'afisha', 'події афіші'],
+    '/afisha': ['афіша', 'afisha', 'події афіші', 'створити афішу', 'додати подію', 'розклад подій'],
     '/certificates': ['сертифікати', 'certificates', 'сертифікат', 'реєстр сертифікатів'],
-    '/certificates/new': ['видати сертифікат', 'new certificate', 'створити сертифікат'],
+    '/certificates/new': ['видати сертифікат', 'new certificate', 'створити сертифікат', 'видати грамоту', 'створити грамоту', 'грамота', 'грамоту'],
     '/certificates/batch': ['пакет сертифікатів', 'batch certificates', 'пакетна видача'],
     '/kleshnya': ['помічник', 'assistant', 'ai провідник', 'клешня'],
     '/guardian-ops': ['guardian ops', 'guardian', 'безпека', 'модерація'],
@@ -108,6 +108,7 @@ const SEARCH_FALLBACK_NAV_ITEMS = [
     { href: '/staff', icon: '◷', label: 'Графік', access: 'schedule_daily', group: 'team' },
     { href: '/hr', icon: '☷', label: 'Кадри', access: 'hr_page', group: 'team' },
     { href: '/programs', icon: '✦', label: 'Програми', access: 'programs', group: 'product' },
+    { href: '/afisha', icon: '🎭', label: 'Афіша', access: 'afisha', group: 'product' },
     { href: '/certificates', icon: '🎫', label: 'Сертифікати', access: 'certificates', group: 'product' },
     { href: '/certificates/new', icon: '🎫', label: 'Видати сертифікат', access: 'certificates', group: 'product' },
     { href: '/warehouse', icon: '▣', label: 'Склад', access: 'warehouse', group: 'system' },
@@ -173,7 +174,7 @@ function canAccessSearchNavItem(item) {
     if (window.Sidebar?.hasAccess && item.access) return window.Sidebar.hasAccess(item, role);
     const href = normalizeSearchHref(item.href);
     if (href.startsWith('#')) return true;
-    const base = href.split('#')[0] || '/';
+    const base = (href.split('#')[0] || '/').split('?')[0] || '/';
     if (typeof window.canAccessPage === 'function') return window.canAccessPage(base);
     return true;
 }
@@ -215,6 +216,21 @@ function navigationDescriptorFromItem(item, source = 'sidebar') {
     };
 }
 
+function getFeatureRegistryNavigationItems() {
+    if (!window.CrmFeatureRegistry?.getFeatureSearchItems) return [];
+    return window.CrmFeatureRegistry.getFeatureSearchItems().map(feature => ({
+        href: feature.href,
+        icon: feature.icon,
+        label: feature.label,
+        access: feature.access,
+        group: feature.group,
+        aliases: feature.aliases || [],
+        featureId: feature.featureId,
+        featureSummary: feature.featureSummary,
+        featureBreadcrumb: feature.featureBreadcrumb
+    }));
+}
+
 function getNavigationIndex() {
     const map = new Map();
     const add = (item, source) => {
@@ -223,9 +239,21 @@ function getNavigationIndex() {
         const descriptor = navigationDescriptorFromItem(item, source);
         if (!descriptor) return;
         const key = `${descriptor.href}|${descriptor.action || ''}`;
-        if (!map.has(key)) map.set(key, descriptor);
+        if (map.has(key)) {
+            const existing = map.get(key);
+            existing.keywords = Array.from(new Set([...(existing.keywords || []), ...(descriptor.keywords || [])]));
+            if (source === 'feature-registry') {
+                existing.title = descriptor.title || existing.title;
+                existing.subtitle = descriptor.subtitle || existing.subtitle;
+                existing.badge = existing.badge || descriptor.badge;
+                existing.source = `${existing.source}+${source}`;
+            }
+            return;
+        }
+        map.set(key, descriptor);
     };
 
+    getFeatureRegistryNavigationItems().forEach(item => add(item, 'feature-registry'));
     (window.Sidebar?.NAV_ITEMS || []).forEach(item => add(item, 'sidebar'));
     SEARCH_FALLBACK_NAV_ITEMS.forEach(item => add(item, 'fallback'));
     SEARCH_GROUP_SHORTCUTS.forEach(item => add(item, 'group'));

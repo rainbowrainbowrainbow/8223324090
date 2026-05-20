@@ -29,13 +29,6 @@ const EMBEDDED_STATIC_PAGE_EXCEPTIONS = [
 
 const MODAL_PAGE_ACCESS_SURFACES = [
     {
-        path: '/afisha',
-        sidebarHref: '#afisha',
-        redirectTarget: '/?open=afisha',
-        owner: 'timeline-modal',
-        reason: 'Hash-modal surface in index.html with a legacy root redirect bridge.'
-    },
-    {
         path: '/settings',
         sidebarHref: '#settings',
         redirectTarget: null,

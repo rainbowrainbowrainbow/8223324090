@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <script>
+    (function(){try{var s=localStorage.getItem('pzp_dark_mode');var d=s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Афіша</title>
+    <meta name="description" content="Event Genix — афіша подій">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=0.60.24">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.24">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.24">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.24">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.24">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.24">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.24">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.24">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="afisha-page" data-page="afisha" data-page-group="crm">
+    <script>
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
+
+    <div id="mainApp" class="main-app hidden">
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-subtitle">AI First CRM</span>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-user-card">
+                <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                <div class="sidebar-user-info">
+                    <button type="button" class="sidebar-user-name" id="sidebarUserName" title="Відкрити профіль">Користувач</button>
+                    <div class="sidebar-user-role" id="sidebarUserRole">Роль</div>
+                </div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+            <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+                <span class="collapse-icon">◀</span>
+                <span class="collapse-text">Згорнути</span>
+            </button>
+        </aside>
+
+        <header class="header">
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <button type="button" class="alert-bell-btn" id="alertBell" onclick="toggleAlertsPanel(event)" title="Алерти"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="alert-badge" id="alertBadge" style="display:none">0</span></button>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button type="button" class="btn-logout" onclick="logout()">Вийти</button>
+                </div>
+            </div>
+        </header>
+        <div class="alerts-panel-v4" id="alertsPanel"></div>
+
+        <main id="main-content" class="page-container afisha-shell">
+            <section class="afisha-page-hero">
+                <div>
+                    <div class="page-kicker">Продукт</div>
+                    <h1>Афіша подій</h1>
+                    <p>Окрема робоча сторінка для створення подій, recurring шаблонів, імпорту і задач з афіші.</p>
+                </div>
+                <div class="afisha-page-actions" aria-label="Швидкі дії афіші">
+                    <button type="button" class="btn-page-secondary" id="afishaRefreshBtn">Оновити</button>
+                    <button type="button" class="btn-page-primary" id="afishaFocusCreateBtn">Додати подію</button>
+                </div>
+            </section>
+
+            <section id="afishaStats" class="afisha-summary-grid" aria-live="polite"></section>
+
+            <section class="afisha-workspace">
+                <form id="afishaPageForm" class="afisha-form-card">
+                    <div class="afisha-section-title">
+                        <div>
+                            <span id="afishaFormKicker">Нова подія</span>
+                            <h2 id="afishaFormTitle">Додати в афішу</h2>
+                        </div>
+                        <button type="button" class="btn-page-secondary hidden" id="afishaCancelEditBtn">Скасувати редагування</button>
+                    </div>
+                    <input type="hidden" id="afishaPageEditId">
+                    <div class="form-grid">
+                        <label class="form-field">
+                            <span>Тип</span>
+                            <select id="afishaPageType">
+                                <option value="event">Подія</option>
+                                <option value="birthday">День народження</option>
+                                <option value="regular">Постійна активність</option>
+                            </select>
+                        </label>
+                        <label class="form-field">
+                            <span>Дата</span>
+                            <input type="date" id="afishaPageDate" required>
+                        </label>
+                        <label class="form-field">
+                            <span>Час</span>
+                            <input type="time" id="afishaPageTime" required>
+                        </label>
+                        <label class="form-field">
+                            <span>Тривалість, хв</span>
+                            <input type="number" id="afishaPageDuration" min="15" step="15" value="60">
+                        </label>
+                        <label class="form-field form-field-wide">
+                            <span>Назва</span>
+                            <input type="text" id="afishaPageTitle" maxlength="180" placeholder="Назва події" required>
+                        </label>
+                        <label class="form-field form-field-wide">
+                            <span>Опис</span>
+                            <textarea id="afishaPageDescription" rows="3" placeholder="Опціонально: короткий опис для команди"></textarea>
+                        </label>
+                    </div>
+                    <div class="afisha-form-actions">
+                        <button type="submit" class="btn-page-primary" id="afishaPageSubmitBtn">Додати подію</button>
+                    </div>
+                </form>
+
+                <section class="afisha-list-card">
+                    <div class="afisha-section-title">
+                        <div>
+                            <span>Список</span>
+                            <h2>Події афіші</h2>
+                        </div>
+                        <div class="afisha-filter-row">
+                            <input type="date" id="afishaFilterDate" title="Фільтр за датою">
+                            <select id="afishaFilterType" title="Тип події">
+                                <option value="">Усі типи</option>
+                                <option value="event">Події</option>
+                                <option value="birthday">Дні народження</option>
+                                <option value="regular">Постійні</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="afisha-date-actions">
+                        <button type="button" class="btn-page-secondary" id="afishaDistributeBtn">Розподілити по аніматорах</button>
+                        <button type="button" class="btn-page-secondary" id="afishaUndistributeBtn">Скинути розподіл</button>
+                    </div>
+                    <div id="afishaPageList" class="afisha-page-list">
+                        <div class="empty-state">Завантаження...</div>
+                    </div>
+                </section>
+            </section>
+
+            <section class="afisha-ops-grid">
+                <section class="afisha-ops-card">
+                    <div class="afisha-section-title">
+                        <div>
+                            <span>Bulk</span>
+                            <h2>Імпорт / експорт</h2>
+                        </div>
+                    </div>
+                    <textarea id="afishaImportText" rows="5" placeholder="2026-05-20;12:00;60;Піратська вечірка;Опис;event"></textarea>
+                    <div class="afisha-form-actions">
+                        <button type="button" class="btn-page-secondary" id="afishaImportBtn">Імпортувати</button>
+                        <button type="button" class="btn-page-secondary" id="afishaExportBtn">Експортувати CSV</button>
+                    </div>
+                </section>
+
+                <section class="afisha-ops-card">
+                    <div class="afisha-section-title">
+                        <div>
+                            <span>Recurring</span>
+                            <h2>Шаблони подій</h2>
+                        </div>
+                    </div>
+                    <form id="afishaTemplateForm" class="afisha-template-form">
+                        <input type="text" id="afishaTplTitle" placeholder="Назва шаблону" required>
+                        <input type="time" id="afishaTplTime" value="12:00" required>
+                        <input type="number" id="afishaTplDuration" min="15" step="15" value="60" title="Тривалість">
+                        <select id="afishaTplPattern">
+                            <option value="weekly">Щосуботи</option>
+                            <option value="weekends">Кожні вихідні</option>
+                            <option value="weekdays">Будні</option>
+                            <option value="daily">Щодня</option>
+                            <option value="custom">Свої дні</option>
+                        </select>
+                        <input type="text" id="afishaTplDays" placeholder="1,3,5" class="hidden">
+                        <button type="submit" class="btn-page-primary">Додати шаблон</button>
+                    </form>
+                    <div id="afishaTemplateList" class="afisha-template-list"></div>
+                </section>
+            </section>
+        </main>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/ui.js?v=0.60.24"></script>
+    <script src="js/config.js?v=0.60.24"></script>
+    <script src="js/notification.js?v=0.60.24"></script>
+    <script src="js/api.js?v=0.60.24"></script>
+    <script src="js/auth.js?v=0.60.24"></script>
+    <script src="js/components/sidebar.js?v=0.60.24"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/afisha-page.js?v=0.60.24"></script>
+    <script src="js/alerts.js?v=0.60.24"></script>
+</body>
+</html>

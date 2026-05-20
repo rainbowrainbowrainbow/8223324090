@@ -21,6 +21,7 @@ and focused tests in the same pack.
 | File | Canonical Path | Owner | Status | Notes |
 | --- | --- | --- | --- | --- |
 | `analytics.html` | `/analytics` | analytics | canonical-page | Operational analytics dashboard. |
+| `afisha.html` | `/afisha` | afisha | canonical-page | Standalone product page for Afisha events, import/export, recurring templates, and task generation. |
 | `art-director.html` | `/art` | art-director | canonical-page | Legacy `/art-director` and `/art-director.html` redirect to `/art`. |
 | `center.html` | `/center` | center | canonical-page | Entertainment center operations page. |
 | `chat.html` | `/chat` | chat | canonical-page | `/kleshnya` redirects to this messenger surface. |
@@ -73,7 +74,6 @@ and focused tests in the same pack.
 | `/art-director.html` | `/art` | art-director | Old root HTML URL. |
 | `/leads` | `/sales-funnel` | leads | Old sales funnel URL. |
 | `/kleshnya` | `/chat` | chat | Assistant surface now lives in chat. |
-| `/afisha` | `/?open=afisha` | timeline-modal | Modal bridge in `index.html`. |
 | `/manager-guide` | `/landing/manager-guide.html` | landing | Public landing legacy URL. |
 | `/manager-guide.html` | `/landing/manager-guide.html` | landing | Public landing legacy URL. |
 | `/sales-deck` | `/landing/sales-deck.html` | landing | Public landing legacy URL. |

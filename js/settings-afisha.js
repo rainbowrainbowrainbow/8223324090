@@ -7,12 +7,10 @@
 
 window.SettingsAfisha = {
     /**
-     * Initialize and show afisha modal (delegates to showAfishaModal)
+     * Initialize Afisha workspace.
      */
     async init() {
-        if (typeof showAfishaModal === 'function') {
-            await showAfishaModal();
-        }
+        window.location.href = '/afisha';
     },
 
     /**

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.24 - Assistant Feature Locator Afisha Page
+
+### Assistant Feature Locator Afisha Page [codex]
+- **AI-провідник навчився знаходити функції** - додано shared `js/crm-feature-registry.js`, який відповідає на запити типу `де видати грамоту` через точний шлях `/certificates/new` і підтримується одним registry для майбутніх функцій.
+- **Глобальний пошук використовує той самий registry** - пошук CRM підтягує aliases із feature registry, тож `грамота`, `видати сертифікат`, `створити афішу` і схожі запити ведуть у правильні сторінки.
+- **Афіша стала окремою сторінкою** - `/afisha` більше не redirect у timeline modal, а відкриває standalone workspace для подій, імпорту/експорту, recurring шаблонів, розподілу і генерації задач.
+- **Art не змішує макети з operational афішею** - в Art категорія уточнена як `Макети афіш`, а кнопка `Афіша подій` веде на `/afisha`.
+
+---
+
 ## v0.60.23 - Certificates Page Creation Flow
 
 ### Certificates Page Creation Flow [codex]

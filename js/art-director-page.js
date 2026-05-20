@@ -32,7 +32,7 @@ const CATEGORY_ICONS = {
 };
 
 const CATEGORY_LABELS = {
-    poster: 'Афіша', social: 'Соцмережі', certificate: 'Сертифікат',
+    poster: 'Макет афіші', social: 'Соцмережі', certificate: 'Сертифікат',
     banner: 'Банер', print: 'Друк'
 };
 
@@ -903,6 +903,9 @@ function setupModals() {
 
     // Create content button
     document.getElementById('btnCreateContent')?.addEventListener('click', openCreateContent);
+    document.getElementById('btnOpenAfishaPage')?.addEventListener('click', () => {
+        window.location.href = '/afisha';
+    });
 
     // Pipeline filters
     document.getElementById('pipelineCategoryFilter')?.addEventListener('change', () => {

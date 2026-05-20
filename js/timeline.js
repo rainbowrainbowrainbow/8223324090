@@ -811,14 +811,10 @@ function showAfishaTooltip(e, event) {
 }
 
 function openAfishaModalAt(date, time) {
-    const modal = document.getElementById('afishaModal');
-    if (!modal) return;
-    modal.classList.remove('hidden');
-    const dateInput = document.getElementById('afishaDate');
-    const timeInput = document.getElementById('afishaTime');
-    if (dateInput) dateInput.value = date;
-    if (time && timeInput) timeInput.value = time;
-    renderAfishaList();
+    const params = new URLSearchParams();
+    if (date) params.set('date', date);
+    if (time) params.set('time', time);
+    window.location.href = `/afisha${params.toString() ? `?${params}` : ''}`;
 }
 
 // ==========================================

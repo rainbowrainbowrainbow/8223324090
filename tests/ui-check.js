@@ -195,6 +195,14 @@ checkPage('finance.html', (doc, html) => {
     check('Finance page owns a dedicated currency rates modal', !!doc.getElementById('currencyRatesModal') && !!doc.getElementById('openCurrencyRatesBtn') && html.includes('currency-rates-window') && html.includes('Курси валют'));
 });
 
+checkPage('afisha.html', (doc, html) => {
+    const afishaPageCode = fs.readFileSync(path.join(ROOT, 'js', 'afisha-page.js'), 'utf8');
+    check('Afisha page exposes standalone create and list workspace', !!doc.getElementById('afishaPageForm') && !!doc.getElementById('afishaPageList') && !!doc.getElementById('afishaStats'));
+    check('Afisha page exposes import/export and recurring templates', !!doc.getElementById('afishaImportText') && !!doc.getElementById('afishaTemplateForm') && !!doc.getElementById('afishaTemplateList'));
+    check('Afisha page uses API-backed event CRUD without timeline modal dependency', afishaPageCode.includes("api('POST', '/afisha'") && afishaPageCode.includes("api('PUT', `/afisha/") && afishaPageCode.includes("api('DELETE', `/afisha/") && !html.includes('id="afishaModal"'));
+    check('Afisha page includes shared shell and dedicated script', html.includes('sidebarLinks') && html.includes('js/afisha-page.js') && html.includes('data-page="afisha"'));
+});
+
 checkPage('certificates.html', (doc, html) => {
     const certificatePageCode = fs.readFileSync(path.join(ROOT, 'js', 'certificates-page.js'), 'utf8');
     check('Certificates page exposes standalone list route surface', !!doc.getElementById('certificatesListView') && !!doc.getElementById('certPageList') && !!doc.getElementById('certPageStats'));
@@ -356,7 +364,7 @@ const criticalJS = [
     'js/dashboard-page.js', 'js/finance-page.js', 'js/analytics-page.js',
     'js/hr-page.js', 'js/staff-page.js', 'js/customers-page.js',
     'js/tasks-page.js', 'js/leads-page.js', 'js/chat-page.js', 'js/chat-settings-page.js',
-    'js/warehouse-page.js', 'js/reports-page.js', 'js/certificates-page.js',
+    'js/warehouse-page.js', 'js/reports-page.js', 'js/certificates-page.js', 'js/afisha-page.js', 'js/crm-feature-registry.js',
     'js/booking.js', 'js/timeline.js', 'js/settings.js',
     'js/graduation.js', 'js/sound-page.js', 'js/guardian-ops-page.js',
 ];
@@ -440,6 +448,7 @@ const sidebarCode = fs.readFileSync(path.join(ROOT, 'js/components/sidebar.js'),
 const layoutCss = fs.readFileSync(path.join(ROOT, 'css/layout.css'), 'utf8');
 const featuresCss = fs.readFileSync(path.join(ROOT, 'css/features.css'), 'utf8');
 const searchCode = fs.readFileSync(path.join(ROOT, 'js/search.js'), 'utf8');
+const featureRegistryCode = fs.readFileSync(path.join(ROOT, 'js/crm-feature-registry.js'), 'utf8');
 const sidebarAuroraCss = fs.readFileSync(path.join(ROOT, 'css/sidebar-aurora.css'), 'utf8');
 const responsiveCss = fs.readFileSync(path.join(ROOT, 'css/responsive.css'), 'utf8');
 const settingsCode = fs.readFileSync(path.join(ROOT, 'js/settings.js'), 'utf8');
@@ -454,6 +463,7 @@ check('Sidebar has /designer', sidebarCode.includes("href: '/designer'"));
 check('Sidebar has /guardian-ops', sidebarCode.includes("href: '/guardian-ops'"));
 check('Sidebar exposes /omni for communications', sidebarCode.includes("href: '/omni'") && sidebarCode.includes('omni:'));
 check('Sidebar has Центр керування', sidebarCode.includes('Центр керування'));
+check('Sidebar promotes Afisha to standalone page instead of hash modal', sidebarCode.includes("href: '/afisha'") && !sidebarCode.includes("href: '#afisha'") && sidebarCode.includes("window.location.href = '/afisha'"));
 
 check('Sidebar navigation no longer delays on visible old DOM', !sidebarCode.includes('setTimeout(() => { window.location.href = href; }, 180)') && sidebarCode.includes('requestAnimationFrame(navigate)'));
 check('Sidebar init is idempotent for shared bindings', sidebarCode.includes('transitionsBound') && sidebarCode.includes('sidebarToggleBound') && sidebarCode.includes('sidebarOverlayBound') && sidebarCode.includes('sidebarLinkBound'));
@@ -463,8 +473,8 @@ check('Sidebar additional menu uses a simple CRM page checklist editor', sidebar
 check('Sidebar removes duplicated day menu and keeps Additional as the only quick CRM section with certificate creation shortcuts', !sidebarCode.includes('TODAY_MENU_HREFS') && !sidebarCode.includes('sidebar-today-menu-grid') && sidebarCode.includes('_removeSidebarTodayDock') && sidebarCode.includes("const EXTRA_MENU_HREFS = ['/dashboard', '/certificates/new', '/certificates/batch', '/tasks', '/chat']") && sidebarCode.includes("href: '/certificates'") && sidebarCode.includes("href: '/certificates/new'") && sidebarCode.includes('quickAccessOnly: true') && !sidebarCode.includes("href: '#certificates'"));
 check('Theme switch belongs to the top-right header, not the sidebar or timeline toolbar', authCode.includes('function initHeaderThemeToggle') && authCode.includes('headerThemeToggle') && authCode.includes("currentUser.insertAdjacentElement('afterend', btn)") && authCode.includes('applyCrmThemeMode') && layoutCss.includes('.header-theme-toggle') && layoutCss.includes('.header-theme-glyph--sun') && layoutCss.includes('.header-theme-glyph--moon') && layoutCss.includes('.header-theme-toggle.is-dark .header-theme-thumb') && !layoutCss.includes('.sidebar-theme-btn') && !sidebarCode.includes('_initThemeToggle') && !sidebarCode.includes('sidebar-theme-btn') && !htmlContains('index.html', 'id="darkModeToggle"') && !htmlContains('index.html', 'id="darkModeIcon"'));
 check('Header right-side actions hide duplicate profile name and share compact control sizing', layoutCss.includes('.header .user-panel > .user-name') && layoutCss.includes('display: none !important') && layoutCss.includes('width: 64px') && layoutCss.includes('min-height: 42px') && layoutCss.includes('border-radius: 12px'));
-check('Global search is injected by the shared authenticated header on all CRM pages', authCode.includes('function initGlobalHeaderSearch') && authCode.includes('ensureGlobalSearchModal') && authCode.includes('js/search.js') && authCode.includes('globalHeaderSearchBtn') && layoutCss.includes('v0.56.6: shared header search') && layoutCss.includes('.header-search-btn') && layoutCss.includes('.search-overlay') && layoutCss.includes('.search-container'));
-check('Global search finds CRM pages, sections, and assistant redirect commands', searchCode.includes('SEARCH_NAV_ALIASES') && searchCode.includes('window.Sidebar?.NAV_ITEMS') && searchCode.includes('buildNavigationResults') && searchCode.includes('buildAssistantSuggestion') && searchCode.includes('assistant_command') && searchCode.includes('window.CrmAssistantRail?.tryRunAssistantCommand') && searchCode.includes('/sales-funnel') && searchCode.includes('/finance') && layoutCss.includes('v0.57.12: global search is also a CRM navigation and assistant command hub') && featuresCss.includes('v0.57.12: global search navigation/assistant hub styling parity'));
+check('Global search is injected by the shared authenticated header on all CRM pages', authCode.includes('function initGlobalHeaderSearch') && authCode.includes('ensureGlobalSearchModal') && authCode.includes('js/search.js') && authCode.includes('js/crm-feature-registry.js') && authCode.includes('globalHeaderSearchBtn') && layoutCss.includes('v0.56.6: shared header search') && layoutCss.includes('.header-search-btn') && layoutCss.includes('.search-overlay') && layoutCss.includes('.search-container'));
+check('Global search finds CRM pages, sections, feature registry aliases, and assistant redirect commands', searchCode.includes('SEARCH_NAV_ALIASES') && searchCode.includes('window.Sidebar?.NAV_ITEMS') && searchCode.includes('getFeatureRegistryNavigationItems') && featureRegistryCode.includes('видати грамоту') && featureRegistryCode.includes("href: '/afisha'") && searchCode.includes('buildNavigationResults') && searchCode.includes('buildAssistantSuggestion') && searchCode.includes('assistant_command') && searchCode.includes('window.CrmAssistantRail?.tryRunAssistantCommand') && searchCode.includes('/sales-funnel') && searchCode.includes('/finance') && layoutCss.includes('v0.57.12: global search is also a CRM navigation and assistant command hub') && featuresCss.includes('v0.57.12: global search navigation/assistant hub styling parity'));
 const visibleAssistantNamingText = [
     'js/assistant-rail.js',
     'js/dashboard-page.js',

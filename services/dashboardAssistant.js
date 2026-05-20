@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('../utils/logger');
+const featureRegistry = require('../js/crm-feature-registry');
 
 const log = createLogger('DashboardAssistant');
 const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
@@ -483,6 +484,63 @@ function buildDirectTaskDetailsReply(context = {}) {
     };
 }
 
+function isFeatureLocatorQuestion(message = '') {
+    const text = featureRegistry.normalizeFeatureText(message);
+    if (!text) return false;
+    const hasLocatorIntent = /(де|куди|знайти|підкажи|покажи|відкрити|відкрий|можливість|функц|where|find|open)/i.test(text);
+    const matches = featureRegistry.searchCrmFeatures(message, { limit: 1, minScore: hasLocatorIntent ? 45 : 88 });
+    return hasLocatorIntent && matches.length > 0;
+}
+
+function buildFeatureLocatorContext(message = '') {
+    const matches = featureRegistry.searchCrmFeatures(message, { limit: 4, minScore: 45 });
+    if (!matches.length) return null;
+    return {
+        source: 'crm-feature-registry',
+        query: compactString(message, 180),
+        matches: matches.map(feature => ({
+            id: feature.id,
+            title: feature.title,
+            href: feature.href,
+            breadcrumb: feature.breadcrumb,
+            summary: feature.summary,
+            primaryAction: feature.primaryAction,
+            score: feature.score
+        }))
+    };
+}
+
+function buildDirectFeatureLocatorReply(context = {}) {
+    if (!isFeatureLocatorQuestion(context.userMessage)) return null;
+    const locator = context.featureLocator || buildFeatureLocatorContext(context.userMessage);
+    const primary = locator?.matches?.[0];
+    if (!primary) return null;
+    const alternatives = (locator.matches || []).slice(1, 3)
+        .map(item => `${item.breadcrumb || item.title} (${item.href})`)
+        .join('; ');
+    const altText = alternatives ? ` Якщо це не той сценарій, поруч є: ${alternatives}.` : '';
+    return {
+        summary: `${primary.title} знаходиться тут: ${primary.breadcrumb || primary.title}. Відкрий ${primary.href}.${altText}`,
+        evidence: [{
+            label: 'CRM feature registry',
+            source: 'js/crm-feature-registry.js',
+            evidence: `Запит зіставлено з ${primary.id}: ${primary.summary || primary.title}.`
+        }],
+        recommendation: primary.summary
+            ? `${primary.summary} Найшвидший крок — ${primary.primaryAction || 'відкрити сторінку'}.`
+            : `Найшвидший крок — відкрити ${primary.href}.`,
+        actionProposal: {
+            actionId: 'assistant.navigate',
+            actionType: 'navigate',
+            label: primary.primaryAction || `Відкрити ${primary.title}`,
+            payload: { href: primary.href, pageId: primary.href.replace(/^\//, '').split(/[?#]/)[0] || 'timeline' },
+            confirmationNeeded: false
+        },
+        confidence: 'high',
+        riskLevel: 'none'
+    };
+}
+
 function pageStrategicAngle(page = '') {
     const key = String(page || '').toLowerCase();
     if (key === 'dashboard') return 'bottlenecks, пріоритети і контроль операційної черги';
@@ -552,6 +610,7 @@ function buildAssistantContext(input = {}) {
     };
     context.strategicFrame = buildStrategicFrame(context);
     context.pagePriority = pageStrategicAngle(context.page);
+    context.featureLocator = buildFeatureLocatorContext(context.userMessage);
     return context;
 }
 
@@ -639,13 +698,17 @@ function normalizeAssistantReply(reply, context = {}, extra = {}) {
 }
 
 async function getDashboardAssistantReply(input = {}) {
-    const apiKey = requireOpenAIKey();
     const instructions = loadDashboardAssistantInstructions();
     const context = await enrichAssistantContext(buildAssistantContext(input));
     const directReply = buildDirectTaskDetailsReply(context);
     if (directReply) {
         return normalizeAssistantReply(directReply, context, { model: 'local-task-context', mode: 'speaking' });
     }
+    const featureReply = buildDirectFeatureLocatorReply(context);
+    if (featureReply) {
+        return normalizeAssistantReply(featureReply, context, { model: 'local-feature-locator', mode: 'speaking' });
+    }
+    const apiKey = requireOpenAIKey();
     const model = process.env.OPENAI_ASSISTANT_MODEL || 'gpt-4.1-mini';
 
     const response = await fetch(`${OPENAI_API_BASE}/responses`, {
@@ -692,6 +755,7 @@ module.exports = {
     getDashboardAssistantReply,
     loadDashboardAssistantInstructions,
     buildAssistantContext,
+    buildDirectFeatureLocatorReply,
     normalizeAssistantReply,
     getAssistantProviderBoundary,
     dashboardAssistantError

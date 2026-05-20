@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.60.23">
-    <link rel="stylesheet" href="css/layout.css?v=0.60.23">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.23">
-    <link rel="stylesheet" href="css/pages.css?v=0.60.23">
-    <link rel="stylesheet" href="css/modals.css?v=0.60.23">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.23">
-    <link rel="stylesheet" href="css/responsive.css?v=0.60.23">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.23">
+    <link rel="stylesheet" href="css/base.css?v=0.60.24">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.24">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.24">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.24">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.24">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.24">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.24">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.24">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -397,7 +397,7 @@
                     <div class="pipeline-toolbar" id="pipelineToolbar">
                         <select id="pipelineCategoryFilter">
                             <option value="">Всі категорії</option>
-                            <option value="poster">Афіші</option>
+                            <option value="poster">Макети афіш</option>
                             <option value="social">Соцмережі</option>
                             <option value="certificate">Сертифікати</option>
                             <option value="banner">Банери</option>
@@ -411,6 +411,7 @@
                             <option value="low">Низький</option>
                         </select>
                         <input type="text" id="pipelineSearch" aria-label="Пошук..." placeholder="Пошук...">
+                        <button type="button" class="btn-create" id="btnOpenAfishaPage">Афіша подій</button>
                         <button type="button" class="btn-create" id="btnCreateContent">+ Створити</button>
                     </div>
                     <div class="pipeline-kanban" id="pipelineKanban">
@@ -422,7 +423,7 @@
                 <div class="artdir-tab-content" id="tab-templates">
                     <div class="template-categories" id="templateCategories">
                         <button type="button" class="template-cat-chip active" data-cat="">Всі</button>
-                        <button type="button" class="template-cat-chip" data-cat="poster">Афіші</button>
+                        <button type="button" class="template-cat-chip" data-cat="poster">Макети афіш</button>
                         <button type="button" class="template-cat-chip" data-cat="social">Соцмережі</button>
                         <button type="button" class="template-cat-chip" data-cat="certificate">Сертифікати</button>
                         <button type="button" class="template-cat-chip" data-cat="banner">Банери</button>
@@ -464,7 +465,7 @@
                         <div>
                             <label style="font-size:12px; font-weight:700; display:block; margin-bottom:4px;">Категорія *</label>
                             <select id="contentCategory" required style="width:100%; min-width:0; max-width:100%; padding:8px 12px; border:1.5px solid var(--gray-200); border-radius:10px; font-family:inherit; font-size:16px;">
-                                <option value="poster">Афіша</option>
+                                <option value="poster">Макет афіші</option>
                                 <option value="social">Соцмережі</option>
                                 <option value="certificate">Сертифікат</option>
                                 <option value="banner">Банер</option>
@@ -572,13 +573,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.60.23"></script>
-    <script src="js/config.js?v=0.60.23"></script>
-    <script src="js/notification.js?v=0.60.23"></script>
-    <script src="js/api.js?v=0.60.23"></script>
-    <script src="js/auth.js?v=0.60.23"></script>
-    <script src="js/components/sidebar.js?v=0.60.23"></script>
+    <script src="js/ui.js?v=0.60.24"></script>
+    <script src="js/config.js?v=0.60.24"></script>
+    <script src="js/notification.js?v=0.60.24"></script>
+    <script src="js/api.js?v=0.60.24"></script>
+    <script src="js/auth.js?v=0.60.24"></script>
+    <script src="js/components/sidebar.js?v=0.60.24"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/art-director-page.js?v=0.60.23"></script><script src="js/alerts.js?v=0.60.23"></script>
+    <script src="js/art-director-page.js?v=0.60.24"></script><script src="js/alerts.js?v=0.60.24"></script>
 </body>
 </html>

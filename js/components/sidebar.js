@@ -84,8 +84,7 @@ const Sidebar = (() => {
         { href: '/sound#projects',      icon: '🎬', label: 'Звук',   access: 'sound',          group: 'product' },
         { href: '/sound#library',       icon: '🎵', label: 'Бібліотека звуку', access: 'sound', group: 'product' },
         { href: '/sound#announcements', icon: '📢', label: 'Оголошення', access: 'sound',      group: 'product' },
-        { href: '#afisha',       icon: '🎭', label: 'Афіша',         access: 'afisha',         group: 'product',
-          action: 'sidebarOpenAfisha',       isHashLink: true },
+        { href: '/afisha',       icon: '🎭', label: 'Афіша',         access: 'afisha',         group: 'product' },
         { href: '/certificates', icon: '🎫', label: 'Сертифікати',   access: 'certificates',   group: 'product' },
         { href: '/certificates/new', icon: '🎫', label: 'Видати сертифікат', access: 'certificates', group: 'product', quickAccessOnly: true },
         { href: '/certificates/batch', icon: '📦', label: 'Пакет сертифікатів', access: 'certificates', group: 'product', quickAccessOnly: true },
@@ -2150,11 +2149,7 @@ const Sidebar = (() => {
     // On timeline (index.html) — open modal directly
     // On other pages — redirect to / with ?open= parameter
     window.sidebarOpenAfisha = function() {
-        if (typeof showAfishaModal === 'function') {
-            showAfishaModal();
-        } else {
-            window.location.href = '/?open=afisha';
-        }
+        window.location.href = '/afisha';
     };
     window.sidebarOpenCertificates = function() {
         if (typeof openCertificatesPanel === 'function') {

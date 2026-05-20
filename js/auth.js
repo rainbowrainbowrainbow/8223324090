@@ -1688,6 +1688,7 @@ function initHeaderThemeToggle() {
 
 // v0.56.6: global search belongs to the shared authenticated header on every CRM page.
 let _globalHeaderSearchScriptPromise = null;
+let _globalFeatureRegistryScriptPromise = null;
 
 function _sharedAssetSuffixFromAuth() {
     const script = Array.from(document.scripts || []).find(item => /(^|\/)js\/auth\.js/.test(item.getAttribute('src') || ''))
@@ -1752,13 +1753,44 @@ function ensureGlobalSearchModal() {
     });
 }
 
+function ensureCrmFeatureRegistryScript() {
+    if (window.CrmFeatureRegistry) return Promise.resolve(true);
+    if (_globalFeatureRegistryScriptPromise) return _globalFeatureRegistryScriptPromise;
+
+    const existing = Array.from(document.scripts || []).find(item => /(^|\/)js\/crm-feature-registry\.js/.test(item.getAttribute('src') || ''));
+    if (existing) {
+        _globalFeatureRegistryScriptPromise = new Promise(resolve => {
+            if (window.CrmFeatureRegistry) {
+                resolve(true);
+                return;
+            }
+            existing.addEventListener('load', () => resolve(Boolean(window.CrmFeatureRegistry)), { once: true });
+            existing.addEventListener('error', () => resolve(false), { once: true });
+            setTimeout(() => resolve(Boolean(window.CrmFeatureRegistry)), 600);
+        });
+        return _globalFeatureRegistryScriptPromise;
+    }
+
+    _globalFeatureRegistryScriptPromise = new Promise(resolve => {
+        const script = document.createElement('script');
+        script.src = `js/crm-feature-registry.js${_sharedAssetSuffixFromAuth()}`;
+        script.dataset.crmFeatureRegistry = 'true';
+        script.onload = () => resolve(Boolean(window.CrmFeatureRegistry));
+        script.onerror = () => resolve(false);
+        document.body.appendChild(script);
+    });
+    return _globalFeatureRegistryScriptPromise;
+}
+
 function ensureGlobalSearchScript() {
-    if (typeof window.openSearch === 'function') return Promise.resolve(true);
+    if (typeof window.openSearch === 'function') {
+        return ensureCrmFeatureRegistryScript().then(() => true);
+    }
     if (_globalHeaderSearchScriptPromise) return _globalHeaderSearchScriptPromise;
 
     const existing = Array.from(document.scripts || []).find(item => /(^|\/)js\/search\.js/.test(item.getAttribute('src') || ''));
     if (existing) {
-        _globalHeaderSearchScriptPromise = new Promise(resolve => {
+        _globalHeaderSearchScriptPromise = ensureCrmFeatureRegistryScript().then(() => new Promise(resolve => {
             if (typeof window.openSearch === 'function') {
                 resolve(true);
                 return;
@@ -1766,18 +1798,18 @@ function ensureGlobalSearchScript() {
             existing.addEventListener('load', () => resolve(typeof window.openSearch === 'function'), { once: true });
             existing.addEventListener('error', () => resolve(false), { once: true });
             setTimeout(() => resolve(typeof window.openSearch === 'function'), 600);
-        });
+        }));
         return _globalHeaderSearchScriptPromise;
     }
 
-    _globalHeaderSearchScriptPromise = new Promise(resolve => {
+    _globalHeaderSearchScriptPromise = ensureCrmFeatureRegistryScript().then(() => new Promise(resolve => {
         const script = document.createElement('script');
         script.src = `js/search.js${_sharedAssetSuffixFromAuth()}`;
         script.dataset.globalHeaderSearch = 'true';
         script.onload = () => resolve(typeof window.openSearch === 'function');
         script.onerror = () => resolve(false);
         document.body.appendChild(script);
-    });
+    }));
     return _globalHeaderSearchScriptPromise;
 }
 

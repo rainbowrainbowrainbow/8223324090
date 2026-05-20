@@ -4,6 +4,15 @@
 
 ---
 
+## v0.60.7 - Assistant Chat Scroll Fix
+
+### Assistant Chat Scroll Fix [codex]
+- **Чат у міні-вікні** - історія діалогу Помічника отримала власну вертикальну прокрутку в expanded panel і більше не обрізає старі повідомлення.
+- **Стабільний scroll** - прибрано `align-content: end` для scrollable history, додано `overscroll-behavior`, `scrollbar-gutter` і touch-scroll, щоб прокрутка не перехоплювалась зовнішньою панеллю.
+- **Guardrail** - UI-smoke перевіряє scroll-контракт expanded assistant chat.
+
+---
+
 ## v0.60.6 - Assistant Ukrainian Voice Polish
 
 ### Assistant Ukrainian Voice Polish [codex]

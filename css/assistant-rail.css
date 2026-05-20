@@ -5575,3 +5575,45 @@ body:not(.dark-mode) .crm-assistant-rail .assistant-rail-btn:disabled {
     background: rgba(226, 232, 240, 0.78) !important;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
 }
+
+/* v0.60.7: assistant mini-window chat scroll.
+   The expanded assistant keeps the composer outside the chat workspace, so the
+   history card must own vertical scrolling instead of clipping grid content. */
+.crm-assistant-panel-content {
+    min-height: 0 !important;
+}
+
+.crm-assistant-chat-workspace {
+    min-height: 0 !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr) !important;
+}
+
+.crm-assistant-chat-workspace .crm-assistant-history {
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    align-content: start !important;
+    overscroll-behavior: contain !important;
+    scrollbar-gutter: stable !important;
+    padding-right: 8px !important;
+    touch-action: pan-y !important;
+}
+
+.crm-assistant-chat-workspace .crm-assistant-history-item {
+    max-width: min(560px, 100%) !important;
+}
+
+@media (max-width: 940px) {
+    .crm-assistant-chat-workspace {
+        min-height: 280px !important;
+    }
+
+    .crm-assistant-chat-workspace .crm-assistant-history {
+        max-height: 340px !important;
+    }
+}

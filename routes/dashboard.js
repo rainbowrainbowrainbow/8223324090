@@ -60,8 +60,11 @@ const BOARD_MAX_ITEMS = 120;
 const BOARD_MAX_DRAWINGS = 500;
 const BOARD_ALLOWED_TYPES = new Set(['widget', 'note', 'text', 'shape', 'frame']);
 const BOARD_ALLOWED_WIDGET_DEPTHS = new Set(['live-compact', 'headline-only', 'live-expanded', 'snapshot-card']);
-const BOARD_ALLOWED_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser']);
+const BOARD_ALLOWED_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser', 'connector', 'note', 'text', 'frame', 'widget', 'line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
+const BOARD_DRAW_TOOLS = new Set(['brush', 'highlighter']);
 const BOARD_ALLOWED_SHAPES = new Set(['line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
+const BOARD_ALLOWED_CONNECTOR_STYLES = new Set(['line', 'arrow', 'curve']);
+const BOARD_ALLOWED_RELATION_TYPES = new Set(['idea', 'depends', 'blocks', 'feeds', 'inspires']);
 
 function parseJsonObject(value, fallback = {}) {
     if (!value) return { ...fallback };
@@ -91,10 +94,18 @@ function normalizeBoardShape(value) {
     return BOARD_ALLOWED_SHAPES.has(value) ? value : 'rect';
 }
 
+function normalizeBoardConnectorStyle(value) {
+    return BOARD_ALLOWED_CONNECTOR_STYLES.has(value) ? value : 'arrow';
+}
+
+function normalizeBoardRelationType(value) {
+    return BOARD_ALLOWED_RELATION_TYPES.has(value) ? value : 'idea';
+}
+
 function sanitizeBoardStroke(stroke, index = 0) {
     if (!stroke || typeof stroke !== 'object' || !Array.isArray(stroke.points) || stroke.points.length < 2) return null;
     const tool = normalizeBoardTool(stroke.tool);
-    if (tool === 'select' || tool === 'hand' || tool === 'eraser') return null;
+    if (!BOARD_DRAW_TOOLS.has(tool)) return null;
     const points = stroke.points
         .slice(0, 2000)
         .map(point => {
@@ -113,6 +124,31 @@ function sanitizeBoardStroke(stroke, index = 0) {
         width: safeNumber(stroke.width, tool === 'highlighter' ? 12 : 2, 1, 24),
         opacity: safeNumber(stroke.opacity, tool === 'highlighter' ? 0.34 : 0.9, 0.05, 1),
         points
+    };
+}
+
+function sanitizeBoardConnector(connector, index = 0) {
+    if (!connector || typeof connector !== 'object') return null;
+    const from = parseJsonObject(connector.from, {});
+    const to = parseJsonObject(connector.to, {});
+    const fromItemId = String(from.itemId || '').slice(0, 90);
+    const toItemId = String(to.itemId || '').slice(0, 90);
+    if (!fromItemId || !toItemId || fromItemId === toItemId) return null;
+    return {
+        id: String(connector.id || `conn-${Date.now()}-${index}`).slice(0, 90),
+        from: {
+            itemId: fromItemId,
+            anchor: ['top', 'right', 'bottom', 'left'].includes(from.anchor) ? from.anchor : 'right'
+        },
+        to: {
+            itemId: toItemId,
+            anchor: ['top', 'right', 'bottom', 'left'].includes(to.anchor) ? to.anchor : 'left'
+        },
+        style: normalizeBoardConnectorStyle(connector.style),
+        relationType: normalizeBoardRelationType(connector.relationType),
+        color: String(connector.color || '#94a3b8').slice(0, 32),
+        width: safeNumber(connector.width, 2, 1, 8),
+        label: String(connector.label || '').slice(0, 80)
     };
 }
 
@@ -137,14 +173,19 @@ function defaultBoardState(overrides = {}) {
         viewport: { x: 0, y: 0, zoom: 1 },
         items: [],
         drawings: [],
+        connectors: [],
         activeTool: 'select',
         preferences: {
             snapToGrid: true,
+            showGrid: true,
+            showGuides: true,
             showMiniMap: false,
             maxLiveWidgets: 6,
             strokeColor: '#10b981',
             fillColor: 'rgba(16, 185, 129, 0.10)',
-            strokeWidth: 2
+            strokeWidth: 2,
+            connectorStyle: 'arrow',
+            relationType: 'idea'
         },
         ...overrides
     };
@@ -197,6 +238,9 @@ function sanitizeBoardState(input, role) {
     const drawings = Array.isArray(source.drawings)
         ? source.drawings.slice(0, BOARD_MAX_DRAWINGS).map(sanitizeBoardStroke).filter(Boolean)
         : [];
+    const connectors = Array.isArray(source.connectors)
+        ? source.connectors.slice(0, 300).map(sanitizeBoardConnector).filter(Boolean)
+        : [];
 
     return defaultBoardState({
         viewport: {
@@ -206,14 +250,19 @@ function sanitizeBoardState(input, role) {
         },
         items,
         drawings,
+        connectors,
         activeTool: normalizeBoardTool(source.activeTool),
         preferences: {
             snapToGrid: preferencesSource.snapToGrid !== false,
+            showGrid: preferencesSource.showGrid !== false,
+            showGuides: preferencesSource.showGuides !== false,
             showMiniMap: preferencesSource.showMiniMap === true,
             maxLiveWidgets: safeNumber(preferencesSource.maxLiveWidgets, 6, 1, 8),
             strokeColor: String(preferencesSource.strokeColor || '#10b981').slice(0, 32),
             fillColor: String(preferencesSource.fillColor || 'rgba(16, 185, 129, 0.10)').slice(0, 64),
-            strokeWidth: safeNumber(preferencesSource.strokeWidth, 2, 1, 12)
+            strokeWidth: safeNumber(preferencesSource.strokeWidth, 2, 1, 12),
+            connectorStyle: normalizeBoardConnectorStyle(preferencesSource.connectorStyle),
+            relationType: normalizeBoardRelationType(preferencesSource.relationType)
         }
     });
 }
@@ -541,10 +590,29 @@ router.get('/widgets/:type', async (req, res) => {
             case 'team_online': {
                 const rawLimit = parseInt(req.query.limit, 10);
                 const limit = Math.max(5, Math.min(Number.isInteger(rawLimit) ? rawLimit : 30, 80));
+                const scope = String(req.query.scope || 'online').toLowerCase();
+                const includeHistory = ['history', 'all', 'shift', 'last_seen'].includes(scope);
                 const onlineUserIds = (typeof getOnlineUserIds === 'function' ? getOnlineUserIds() : [])
                     .map(id => parseInt(id, 10))
                     .filter(id => Number.isInteger(id) && id > 0);
                 const onlineSet = new Set(onlineUserIds.map(String));
+                if (!includeHistory && onlineUserIds.length === 0) {
+                    data = {
+                        online: [],
+                        users: [],
+                        meta: {
+                            scope: 'online',
+                            onlineSource: 'websocket_online_users',
+                            lastSeenSource: 'hidden_until_history_enabled',
+                            onlineCount: 0,
+                            recentlyActiveCount: 0,
+                            returned: 0,
+                            limit,
+                            refreshable: true
+                        }
+                    };
+                    break;
+                }
                 const result = await pool.query(`
                     SELECT u.id, u.username, u.name, u.role,
                            u.last_seen_at AS user_last_seen_at,
@@ -554,13 +622,19 @@ router.get('/widgets/:type', async (req, res) => {
                     LEFT JOIN employee_profiles ep ON ep.user_id = u.id AND ep.is_active = true
                     WHERE COALESCE(u.is_active, true) = true
                     AND u.role NOT IN ('bot', 'viewer')
+                    AND lower(COALESCE(u.username, '')) NOT LIKE 'openclaw%'
+                    AND lower(COALESCE(u.username, '')) NOT LIKE 'open_claw%'
+                    AND lower(COALESCE(u.username, '')) NOT LIKE 'open-claw%'
+                    AND lower(COALESCE(u.name, '')) NOT LIKE 'openclaw%'
+                    AND lower(COALESCE(u.name, '')) NOT LIKE 'open claw%'
+                    AND ($3::boolean = true OR u.id = ANY($1::int[]))
                     ORDER BY
                         CASE WHEN u.id = ANY($1::int[]) THEN 0 ELSE 1 END,
                         COALESCE(u.last_seen_at, ep.last_activity_at) DESC NULLS LAST,
                         COALESCE(NULLIF(u.name, ''), u.username) ASC,
                         u.id ASC
                     LIMIT $2
-                `, [onlineUserIds, limit]);
+                `, [onlineUserIds, limit, includeHistory]);
                 const now = Date.now();
                 const users = result.rows.map(row => {
                     const lastSeenDate = row.last_seen ? new Date(row.last_seen) : null;
@@ -585,6 +659,7 @@ router.get('/widgets/:type', async (req, res) => {
                     online: users,
                     users,
                     meta: {
+                        scope: includeHistory ? 'history' : 'online',
                         onlineSource: 'websocket_online_users',
                         lastSeenSource: 'users.last_seen_at_or_employee_profiles.last_activity_at',
                         onlineCount: users.filter(user => user.isOnline).length,

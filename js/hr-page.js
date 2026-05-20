@@ -147,6 +147,24 @@ async function hrFetch(path, options = {}, legacyBody = undefined) {
     return resp.json();
 }
 
+async function crmApiFetch(path, options = {}) {
+    const token = localStorage.getItem('pzp_token');
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (options && options.body && typeof options.body !== 'string') {
+        options = { ...options, body: JSON.stringify(options.body) };
+    }
+    const resp = await fetch(path, { headers, ...options });
+    if (resp.status === 401) {
+        localStorage.removeItem('pzp_token');
+        location.href = '/';
+        return null;
+    }
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { success: false, status: resp.status, error: data.error || `HTTP ${resp.status}` };
+    return data;
+}
+
 // ==========================================
 // PAGE INIT
 // ==========================================
@@ -255,7 +273,7 @@ async function activateHrTab(target, options = {}) {
         reports: loadReports, 'ai-team': renderAITeam, leaves: loadLeaves,
         salary: loadSalary, ratings: loadRatings, onboarding: loadOnboarding,
         costumes: loadCostumes, vacancies: loadVacancies, reserve: loadReservePool,
-        blacklist: loadBlacklist
+        blacklist: loadBlacklist, accounts: loadAccountCenter
     };
     await loaders[target]?.();
 }
@@ -752,6 +770,7 @@ async function copyWeek() {
 // ==========================================
 
 let teamStaff = [];
+let accountUsers = [];
 
 async function loadTeam() {
     const activeOnly = document.getElementById('teamActiveOnly')?.checked ?? true;
@@ -851,6 +870,145 @@ function renderTeam(staff) {
             </div>
         </div>`;
     }).join('');
+}
+
+// ==========================================
+// TAB 3B: ACCOUNT CENTER
+// ==========================================
+
+function isSystemAccount(u) {
+    const username = String(u.username || '').toLowerCase();
+    const name = String(u.name || '').toLowerCase();
+    return username.startsWith('openclaw')
+        || username.startsWith('open_claw')
+        || username.startsWith('open-claw')
+        || name.startsWith('openclaw')
+        || name.startsWith('open claw');
+}
+
+function isKarinaAccount(u) {
+    const haystack = `${u.username || ''} ${u.name || ''} ${u.profile_name || ''} ${u.staff_name || ''}`.toLowerCase();
+    const hasCyrillicName = (haystack.includes('карина') || haystack.includes('каріна')) && haystack.includes('крамаренко');
+    const hasLatinName = haystack.includes('karina kramarenko')
+        || haystack.includes('karina.kramarenko')
+        || haystack.includes('karyna kramarenko')
+        || haystack.includes('karyna.kramarenko');
+    return hasCyrillicName || hasLatinName;
+}
+
+function formatAccountLastSeen(value) {
+    if (!value) return 'активність невідома';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return 'активність невідома';
+    return d.toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+async function loadAccountCenter() {
+    const root = document.getElementById('accountCenterList');
+    if (root) root.innerHTML = '<div class="hr-account-empty">Завантаження акаунтів...</div>';
+    const data = await crmApiFetch('/api/users');
+    if (!Array.isArray(data)) {
+        if (root) root.innerHTML = `<div class="hr-account-empty">Центр акаунтів недоступний: ${escapeHtml(data?.error || 'немає доступу')}</div>`;
+        return;
+    }
+    accountUsers = data;
+    renderAccountCenter();
+    const search = document.getElementById('accountCenterSearch');
+    const activeOnly = document.getElementById('accountCenterActiveOnly');
+    const showSystem = document.getElementById('accountCenterShowSystem');
+    if (search) search.oninput = renderAccountCenter;
+    if (activeOnly) activeOnly.onchange = renderAccountCenter;
+    if (showSystem) showSystem.onchange = renderAccountCenter;
+}
+
+function renderAccountCenter() {
+    const root = document.getElementById('accountCenterList');
+    if (!root) return;
+    const query = String(document.getElementById('accountCenterSearch')?.value || '').trim().toLowerCase();
+    const activeOnly = document.getElementById('accountCenterActiveOnly')?.checked !== false;
+    const showSystem = document.getElementById('accountCenterShowSystem')?.checked === true;
+    let rows = accountUsers;
+    if (!showSystem) rows = rows.filter(u => !isSystemAccount(u));
+    if (activeOnly) rows = rows.filter(u => u.is_active !== false);
+    if (query) {
+        rows = rows.filter(u => `${u.username || ''} ${u.name || ''} ${u.role || ''} ${u.staff_name || ''}`.toLowerCase().includes(query));
+    }
+    const karinaCount = accountUsers.filter(u => u.is_active !== false && isKarinaAccount(u)).length;
+    const stats = document.getElementById('accountCenterStats');
+    if (stats) {
+        stats.textContent = `${rows.length} показано · ${accountUsers.filter(u => u.is_active !== false && !isSystemAccount(u)).length} активних · ${karinaCount} збігів Каріни`;
+    }
+    if (!rows.length) {
+        root.innerHTML = '<div class="hr-account-empty">Акаунтів за цим фільтром немає.</div>';
+        return;
+    }
+    root.innerHTML = rows.map(u => {
+        const active = u.is_active !== false;
+        const staff = u.staff_name ? `${escapeHtml(u.staff_name)}${u.staff_department ? ' · ' + escapeHtml(u.staff_department) : ''}` : 'не привʼязано до staff';
+        const role = ROLE_LABELS[u.role] || u.role || 'user';
+        const karina = isKarinaAccount(u);
+        return `<article class="hr-account-row ${active ? '' : 'is-disabled'} ${karina ? 'is-targeted' : ''}">
+            <div class="hr-account-avatar">${escapeHtml((u.name || u.username || '?').slice(0, 1).toUpperCase())}</div>
+            <div class="hr-account-main">
+                <div class="hr-account-title">
+                    <strong>${escapeHtml(u.name || u.username || 'Без імені')}</strong>
+                    <span>${escapeHtml(u.username || '')}</span>
+                    ${karina ? '<em>Каріна Крамаренко</em>' : ''}
+                </div>
+                <div class="hr-account-meta">${escapeHtml(role)} · ${staff} · ${formatAccountLastSeen(u.last_seen_at)}</div>
+            </div>
+            <div class="hr-account-actions">
+                <span class="hr-account-state ${active ? 'ok' : 'off'}">${active ? 'активний' : 'вимкнений'}</span>
+                ${u.staff_id ? `<a class="hr-account-link" href="/hr?employee=${encodeURIComponent(u.staff_id)}">HR профіль</a>` : ''}
+                <button type="button" class="hr-account-toggle" onclick="toggleAccountActive(${Number(u.id)}, ${active ? 'false' : 'true'}, this)">${active ? 'Вимкнути' : 'Активувати'}</button>
+            </div>
+        </article>`;
+    }).join('');
+}
+
+async function toggleAccountActive(userId, isActive, button) {
+    if (!Number.isFinite(Number(userId))) return;
+    const label = isActive ? 'активувати акаунт' : 'вимкнути акаунт';
+    const ok = typeof confirmModal === 'function'
+        ? await confirmModal(`Підтвердити: ${label}?`, { type: isActive ? 'info' : 'warning', okText: isActive ? 'Активувати' : 'Вимкнути' })
+        : window.confirm(`Підтвердити: ${label}?`);
+    if (!ok) return;
+    if (button) button.disabled = true;
+    const result = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/active`, {
+        method: 'PATCH',
+        body: { isActive }
+    });
+    if (button) button.disabled = false;
+    if (!result?.success) {
+        showNotification(result?.error || 'Не вдалося оновити акаунт', 'error');
+        return;
+    }
+    showNotification(isActive ? 'Акаунт активовано' : 'Акаунт вимкнено', 'success');
+    await loadAccountCenter();
+}
+
+async function deactivateKarinaAccounts(button) {
+    const targets = accountUsers.filter(u => u.is_active !== false && isKarinaAccount(u));
+    if (!targets.length) {
+        showNotification('Активних акаунтів Каріни Крамаренко не знайдено', 'info');
+        return;
+    }
+    const ok = typeof confirmModal === 'function'
+        ? await confirmModal(`Вимкнути ${targets.length} акаунт(ів) Каріни Крамаренко?`, { type: 'warning', okText: 'Вимкнути' })
+        : window.confirm(`Вимкнути ${targets.length} акаунт(ів) Каріни Крамаренко?`);
+    if (!ok) return;
+    if (button) button.disabled = true;
+    let changed = 0;
+    for (const u of targets) {
+        const result = await crmApiFetch(`/api/users/${encodeURIComponent(u.id)}/active`, {
+            method: 'PATCH',
+            body: { isActive: false }
+        });
+        if (result?.success) changed += 1;
+    }
+    if (button) button.disabled = false;
+    showNotification(`Вимкнено акаунтів: ${changed}`, changed ? 'success' : 'error');
+    await loadAccountCenter();
 }
 
 function openStaffEdit(staffId) {

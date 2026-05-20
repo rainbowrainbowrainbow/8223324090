@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.59.9">
-    <link rel="stylesheet" href="css/layout.css?v=0.59.9">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.59.9">
-    <link rel="stylesheet" href="css/pages.css?v=0.59.9">
-    <link rel="stylesheet" href="css/modals.css?v=0.59.9">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.59.9">
-    <link rel="stylesheet" href="css/responsive.css?v=0.59.9">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.59.9">
+    <link rel="stylesheet" href="css/base.css?v=0.60.0">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.0">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.0">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.0">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.0">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.0">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -737,6 +737,139 @@
         }
         .hr-team-edit:hover { background: var(--gray-50); color: var(--primary); }
 
+        .hr-account-head,
+        .hr-account-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+        .hr-account-head h3 {
+            margin: 0 0 4px;
+            font-size: 22px;
+            color: var(--gray-900);
+        }
+        .hr-account-head p {
+            margin: 0;
+            color: var(--gray-500);
+            font-size: var(--font-sm);
+        }
+        .hr-account-danger,
+        .hr-account-toggle,
+        .hr-account-link {
+            border: 1px solid rgba(148,163,184,0.28);
+            border-radius: 12px;
+            padding: 9px 12px;
+            background: rgba(15,23,42,0.04);
+            color: var(--gray-700);
+            font-weight: 900;
+            font-size: 12px;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .hr-account-danger {
+            border-color: rgba(239,68,68,0.32);
+            background: rgba(239,68,68,0.10);
+            color: #B91C1C;
+        }
+        .hr-account-list {
+            display: grid;
+            gap: 10px;
+        }
+        .hr-account-row {
+            display: grid;
+            grid-template-columns: 44px minmax(0, 1fr) auto;
+            gap: 12px;
+            align-items: center;
+            padding: 12px;
+            border: 1px solid rgba(148,163,184,0.20);
+            border-radius: 16px;
+            background: rgba(255,255,255,0.84);
+            box-shadow: var(--shadow-xs);
+        }
+        .hr-account-row.is-disabled {
+            opacity: 0.58;
+        }
+        .hr-account-row.is-targeted {
+            border-color: rgba(239,68,68,0.32);
+            background: rgba(254,242,242,0.78);
+        }
+        .hr-account-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 14px;
+            display: grid;
+            place-items: center;
+            background: rgba(16,185,129,0.12);
+            color: #047857;
+            font-weight: 900;
+        }
+        .hr-account-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .hr-account-title strong {
+            color: var(--gray-900);
+            font-size: 15px;
+        }
+        .hr-account-title span,
+        .hr-account-title em {
+            color: var(--gray-500);
+            font-size: 12px;
+            font-style: normal;
+            font-weight: 800;
+        }
+        .hr-account-title em {
+            color: #B91C1C;
+        }
+        .hr-account-meta,
+        .hr-account-stats,
+        .hr-account-check {
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .hr-account-check {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .hr-account-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .hr-account-state {
+            padding: 5px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 900;
+            background: rgba(148,163,184,0.14);
+            color: var(--gray-500);
+        }
+        .hr-account-state.ok {
+            background: rgba(16,185,129,0.12);
+            color: #047857;
+        }
+        .hr-account-state.off {
+            background: rgba(148,163,184,0.14);
+            color: #64748B;
+        }
+        .hr-account-empty {
+            padding: 28px;
+            border: 1px dashed rgba(148,163,184,0.3);
+            border-radius: 16px;
+            color: var(--gray-500);
+            text-align: center;
+            font-weight: 800;
+        }
+
         /* ==========================================
            TAB 4: REPORTS
            ========================================== */
@@ -936,6 +1069,7 @@
         body.dark-mode .hr-summary-card,
         body.dark-mode .hr-staff-row,
         body.dark-mode .hr-team-card,
+        body.dark-mode .hr-account-row,
         body.dark-mode .hr-report-stat,
         body.dark-mode .hr-modal {
             background: #2A2A4A;
@@ -946,6 +1080,8 @@
         body.dark-mode .hr-summary-card .hr-summary-label { color: #9CA3AF; }
         body.dark-mode .hr-staff-name,
         body.dark-mode .hr-team-name,
+        body.dark-mode .hr-account-title strong,
+        body.dark-mode .hr-account-head h3,
         body.dark-mode .hr-today-date,
         body.dark-mode .hr-week-label,
         body.dark-mode .hr-modal h3 {
@@ -977,11 +1113,31 @@
         }
         body.dark-mode #scheduleTemplate label { color: #CBD5E1 !important; }
         body.dark-mode #templateSelect,
-        body.dark-mode .hr-team-select {
+        body.dark-mode .hr-team-select,
+        body.dark-mode .hr-team-search {
             background: #1E1E38;
             border-color: #4A4A6A;
             color: #F8FAFC;
             color-scheme: dark;
+        }
+        body.dark-mode .hr-account-row.is-targeted {
+            background: rgba(127,29,29,0.22);
+            border-color: rgba(248,113,113,0.34);
+        }
+        body.dark-mode .hr-account-toggle,
+        body.dark-mode .hr-account-link {
+            background: rgba(15,23,42,0.38);
+            border-color: rgba(148,163,184,0.22);
+            color: #E2E8F0;
+        }
+        body.dark-mode .hr-account-danger {
+            background: rgba(239,68,68,0.16);
+            border-color: rgba(248,113,113,0.36);
+            color: #FCA5A5;
+        }
+        body.dark-mode .hr-account-empty {
+            border-color: rgba(148,163,184,0.20);
+            color: #94A3B8;
         }
         body.dark-mode .hr-schedule-wrap {
             border-color: rgba(148,163,184,0.16);
@@ -1043,6 +1199,8 @@
             .hr-team-card { padding: 14px; }
             .hr-team-avatar { width: 48px; height: 48px; font-size: 18px; }
             .hr-team-badges { gap: 4px; }
+            .hr-account-row { grid-template-columns: 40px 1fr; }
+            .hr-account-actions { grid-column: 1 / -1; justify-content: flex-start; }
             .hr-badge { font-size: 10px; padding: 1px 4px; }
             .hr-report-controls { flex-direction: column; align-items: stretch; }
             .hr-clock-btn { min-width: 120px; padding: 8px 12px; }
@@ -1328,6 +1486,7 @@
                 <button type="button" class="hr-tab active" data-tab="today">Хто зараз</button>
                 <button type="button" class="hr-tab" data-tab="schedule">Розклад</button>
                 <button type="button" class="hr-tab" data-tab="team">Команда</button>
+                <button type="button" class="hr-tab" data-tab="accounts">Акаунти</button>
                 <button type="button" class="hr-tab" data-tab="structure">Структура</button>
                 <button type="button" class="hr-tab" data-tab="reserve">Резерв</button>
                 <button type="button" class="hr-tab" data-tab="blacklist">Чорний список</button>
@@ -1411,6 +1570,24 @@
                     </label>
                 </div>
                 <div id="teamGrid" class="hr-team-grid"></div>
+            </div>
+
+            <!-- TAB 3B: ACCOUNTS -->
+            <div id="tab-accounts" class="hr-tab-content">
+                <div class="hr-account-head">
+                    <div>
+                        <h3>Центр керування акаунтами</h3>
+                        <p>Активність, привʼязка до HR-профілю і безпечне вимкнення зайвих акаунтів.</p>
+                    </div>
+                    <button type="button" class="hr-account-danger" onclick="deactivateKarinaAccounts(this)">Вимкнути акаунти Каріни</button>
+                </div>
+                <div class="hr-account-toolbar">
+                    <input type="text" id="accountCenterSearch" class="hr-team-search" placeholder="Знайти акаунт, імʼя, роль або staff...">
+                    <span id="accountCenterStats" class="hr-account-stats">0 акаунтів</span>
+                    <label class="hr-account-check"><input type="checkbox" id="accountCenterActiveOnly" checked> тільки активні</label>
+                    <label class="hr-account-check"><input type="checkbox" id="accountCenterShowSystem"> system</label>
+                </div>
+                <div id="accountCenterList" class="hr-account-list"></div>
             </div>
 
             <!-- TAB 3A: COMPANY STRUCTURE -->
@@ -1836,15 +2013,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.59.9"></script>
-    <script src="js/config.js?v=0.59.9"></script>
-    <script src="js/notification.js?v=0.59.9"></script>
-    <script src="js/api.js?v=0.59.9"></script>
-    <script src="js/auth.js?v=0.59.9"></script>
-    <script src="js/components/sidebar.js?v=0.59.9"></script>
+    <script src="js/ui.js?v=0.60.0"></script>
+    <script src="js/config.js?v=0.60.0"></script>
+    <script src="js/notification.js?v=0.60.0"></script>
+    <script src="js/api.js?v=0.60.0"></script>
+    <script src="js/auth.js?v=0.60.0"></script>
+    <script src="js/components/sidebar.js?v=0.60.0"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.59.9"></script>
-    <script src="js/alerts.js?v=0.59.9"></script><script>
+    <script src="js/hr-page.js?v=0.60.0"></script>
+    <script src="js/alerts.js?v=0.60.0"></script><script>
     // ─── Shifts Summary (v33.5) ──────────
     async function loadShiftsSummary() {
         const month = document.getElementById('shiftsMonthPicker')?.value || new Date().toISOString().slice(0,7);

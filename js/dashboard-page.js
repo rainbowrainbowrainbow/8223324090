@@ -10,11 +10,32 @@ const DashboardPage = (() => {
     const BOARD_SAVE_DEBOUNCE_MS = 900;
     const BOARD_ALLOWED_TYPES = new Set(['widget', 'note', 'text', 'shape', 'frame']);
     const BOARD_ALLOWED_DEPTHS = new Set(['live-compact', 'headline-only', 'snapshot-static']);
-    const BOARD_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser', 'connector']);
+    const BOARD_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser', 'connector', 'note', 'text', 'frame', 'widget', 'line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
+    const BOARD_CREATE_TOOLS = new Set(['note', 'text', 'frame', 'widget']);
+    const BOARD_SHAPE_TOOLS = new Set(['line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
+    const BOARD_DRAW_TOOLS = new Set(['brush', 'highlighter']);
+    const BOARD_TOOL_LABELS = {
+        select: 'Вибір',
+        hand: 'Рука',
+        brush: 'Пензель',
+        highlighter: 'Маркер',
+        eraser: 'Гумка',
+        connector: 'Зв’язок',
+        note: 'Нотатка',
+        text: 'Текст',
+        frame: 'Фрейм',
+        widget: 'Віджет',
+        line: 'Лінія',
+        arrow: 'Стрілка',
+        rect: 'Прямокутник',
+        'round-rect': 'Скруглений блок',
+        ellipse: 'Еліпс',
+        diamond: 'Ромб'
+    };
     const BOARD_ALLOWED_SHAPES = new Set(['line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
     const BOARD_CONNECTOR_STYLES = new Set(['line', 'arrow', 'curve']);
     const BOARD_RELATION_TYPES = new Set(['idea', 'depends', 'blocks', 'feeds', 'inspires']);
-    const BOARD_WORKSPACE_MODES = new Set(['board:view', 'board:edit', 'board:draw', 'board:connect', 'object:text-edit', 'object:widget-inspect']);
+    const BOARD_WORKSPACE_MODES = new Set(['board:view', 'board:edit', 'board:draw', 'board:connect', 'board:create', 'board:shape', 'object:text-edit', 'object:widget-inspect']);
     const BOARD_AI_PRESETS = new Set(['expand', 'mood-pack', 'cluster', 'summarize', 'tasks', 'remix', 'name-frame', 'prompt-to-board']);
     const DASHBOARD_RETIRED_WIDGETS = new Set(['finance_today', 'reports_today', 'account_stats', 'week_bookings', 'my_focus']);
     const DASHBOARD_PRESENTATION_MODES = new Set(['mixed-scene', 'flat-grid']);
@@ -249,6 +270,8 @@ const DashboardPage = (() => {
                 activeTool: 'select',
                 preferences: {
                     snapToGrid: true,
+                    showGrid: true,
+                    showGuides: true,
                     showMiniMap: false,
                     maxLiveWidgets: BOARD_LIVE_WIDGET_CAP,
                     strokeColor: '#10b981',
@@ -315,7 +338,7 @@ const DashboardPage = (() => {
     function normalizeBoardStroke(stroke, index = 0) {
         if (!stroke || typeof stroke !== 'object' || !Array.isArray(stroke.points) || stroke.points.length < 2) return null;
         const tool = normalizeBoardTool(stroke.tool);
-        if (tool === 'select' || tool === 'hand' || tool === 'eraser') return null;
+        if (!BOARD_DRAW_TOOLS.has(tool)) return null;
         const points = stroke.points
             .slice(0, 2000)
             .map(point => {
@@ -450,6 +473,8 @@ const DashboardPage = (() => {
             activeTool: normalizeBoardTool(source.activeTool),
             preferences: {
                 snapToGrid: preferences.snapToGrid !== false,
+                showGrid: preferences.showGrid !== false,
+                showGuides: preferences.showGuides !== false,
                 showMiniMap: preferences.showMiniMap === true,
                 maxLiveWidgets: safeNumber(preferences.maxLiveWidgets, BOARD_LIVE_WIDGET_CAP, 1, 8),
                 strokeColor: String(preferences.strokeColor || '#10b981').slice(0, 32),
@@ -639,6 +664,7 @@ const DashboardPage = (() => {
         const gridBtn = document.getElementById('dashboardGridModeBtn');
         const boardBtn = document.getElementById('dashboardBoardModeBtn');
         const controls = document.getElementById('boardEditControls');
+        const toolOptions = document.getElementById('boardToolOptions');
         const viewBtn = document.getElementById('boardViewModeBtn');
         const editBtn = document.getElementById('boardEditModeBtn');
         const status = document.getElementById('boardSaveStatus');
@@ -652,8 +678,14 @@ const DashboardPage = (() => {
         viewBtn?.classList.toggle('active', _boardWorkspaceMode === 'board:view');
         editBtn?.classList.toggle('active', _boardWorkspaceMode !== 'board:view');
         document.querySelectorAll('[data-board-tool]').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.boardTool === (_config?.boardState?.activeTool || 'select'));
+            const active = btn.dataset.boardTool === (_config?.boardState?.activeTool || 'select');
+            btn.classList.toggle('active', active);
+            btn.setAttribute('aria-pressed', active ? 'true' : 'false');
         });
+        if (toolOptions) {
+            toolOptions.classList.toggle('hidden', !isBoard);
+            toolOptions.innerHTML = isBoard ? renderBoardToolOptions() : '';
+        }
         if (undoBtn) undoBtn.disabled = _boardUndoStack.length === 0;
         if (redoBtn) redoBtn.disabled = _boardRedoStack.length === 0;
         if (status) {
@@ -664,6 +696,46 @@ const DashboardPage = (() => {
             status.textContent = text;
             status.dataset.state = _boardSaveStatus;
         }
+    }
+
+    function renderBoardToolOptions() {
+        const tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
+        const prefs = safeObject(_config?.boardState?.preferences, {});
+        const label = BOARD_TOOL_LABELS[tool] || tool;
+        const modeHint = BOARD_CREATE_TOOLS.has(tool) || BOARD_SHAPE_TOOLS.has(tool)
+            ? 'Натисніть на дошці, щоб поставити об’єкт.'
+            : BOARD_DRAW_TOOLS.has(tool)
+                ? 'Малювання працює прямо по canvas.'
+                : tool === 'connector'
+                    ? 'Виберіть anchors на двох об’єктах.'
+                    : 'Перемикайте інструменти як у редакторі.';
+        return `
+            <div class="board-tool-current">
+                <span>Інструмент</span>
+                <strong>${escapeHtml(label)}</strong>
+                <em>${escapeHtml(modeHint)}</em>
+            </div>
+            <label class="board-tool-check">
+                <input type="checkbox" ${prefs.snapToGrid !== false ? 'checked' : ''} onchange="DashboardPage.setBoardPreference('snapToGrid', this.checked)">
+                <span>Snap</span>
+            </label>
+            <label class="board-tool-check">
+                <input type="checkbox" ${prefs.showGrid !== false ? 'checked' : ''} onchange="DashboardPage.setBoardPreference('showGrid', this.checked)">
+                <span>Сітка</span>
+            </label>
+            <label class="board-tool-check">
+                <input type="checkbox" ${prefs.showGuides !== false ? 'checked' : ''} onchange="DashboardPage.setBoardPreference('showGuides', this.checked)">
+                <span>Напрямні</span>
+            </label>
+            <label class="board-tool-color" title="Колір малювання">
+                <span>Колір</span>
+                <input type="color" value="${escapeHtml(prefs.strokeColor || '#10b981')}" onchange="DashboardPage.setBoardPreference('strokeColor', this.value)">
+            </label>
+            <label class="board-tool-range" title="Товщина лінії">
+                <span>${Number(prefs.strokeWidth || 2)}px</span>
+                <input type="range" min="1" max="12" value="${Number(prefs.strokeWidth || 2)}" oninput="DashboardPage.setBoardPreference('strokeWidth', this.value)">
+            </label>
+        `;
     }
 
     async function init() {
@@ -2802,7 +2874,9 @@ const DashboardPage = (() => {
         if (_boardWidgetInspectId) return 'object:widget-inspect';
         const tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
         if (tool === 'connector') return 'board:connect';
-        if (tool === 'brush' || tool === 'highlighter' || tool === 'eraser') return 'board:draw';
+        if (BOARD_DRAW_TOOLS.has(tool) || tool === 'eraser') return 'board:draw';
+        if (BOARD_CREATE_TOOLS.has(tool)) return 'board:create';
+        if (BOARD_SHAPE_TOOLS.has(tool)) return 'board:shape';
         return _boardInteractionMode === 'edit' ? 'board:edit' : 'board:view';
     }
 
@@ -2821,6 +2895,11 @@ const DashboardPage = (() => {
         canvas.dataset.activeTool = _config.boardState?.activeTool || 'select';
         canvas.dataset.workspaceMode = _boardWorkspaceMode;
         canvas.dataset.connectorDraft = _boardConnectorDraft ? 'true' : 'false';
+        const prefs = safeObject(_config.boardState?.preferences, {});
+        canvas.dataset.gridVisible = prefs.showGrid === false ? 'false' : 'true';
+        canvas.dataset.guidesVisible = prefs.showGuides === false ? 'false' : 'true';
+        shell.dataset.gridVisible = canvas.dataset.gridVisible;
+        shell.dataset.guidesVisible = canvas.dataset.guidesVisible;
         const items = getBoardItems();
         const drawings = getBoardDrawings();
         const connectors = getBoardConnectors();
@@ -3169,14 +3248,21 @@ const DashboardPage = (() => {
     function beginBoardCanvasPointer(event) {
         if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
         if (event.target?.closest?.('.dashboard-board-item') || isBoardInteractiveTarget(event.target)) return;
-        if (event.target?.closest?.('.dashboard-board-empty, .dashboard-board-warning')) return;
         const tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
+        const blockedSurface = event.target?.closest?.('.dashboard-board-empty, .dashboard-board-warning');
+        if (blockedSurface && !(BOARD_CREATE_TOOLS.has(tool) || BOARD_SHAPE_TOOLS.has(tool))) return;
         if (tool === 'connector') {
             _boardConnectorDraft = null;
             renderBoard();
             return;
         }
-        if (tool === 'brush' || tool === 'highlighter') {
+        if (BOARD_CREATE_TOOLS.has(tool) || BOARD_SHAPE_TOOLS.has(tool)) {
+            event.preventDefault();
+            event.stopPropagation();
+            createBoardItemFromTool(tool, boardPointFromEvent(event));
+            return;
+        }
+        if (BOARD_DRAW_TOOLS.has(tool)) {
             beginBoardStroke(event, tool);
             return;
         }
@@ -3407,8 +3493,39 @@ const DashboardPage = (() => {
         return item;
     }
 
+    function boardPointForNewItem(point, width = 260, height = 150) {
+        const prefs = safeObject(_config?.boardState?.preferences, {});
+        const snap = prefs.snapToGrid !== false ? 10 : 1;
+        const fallback = 48 + (getBoardItems().length % 4) * 32;
+        const rawX = Array.isArray(point) ? Number(point[0] || 0) - Math.round(width / 2) : fallback;
+        const rawY = Array.isArray(point) ? Number(point[1] || 0) - Math.round(height / 2) : fallback;
+        return {
+            x: Math.round(rawX / snap) * snap,
+            y: Math.round(rawY / snap) * snap
+        };
+    }
+
+    function createBoardItemFromTool(tool, point = null) {
+        const action = normalizeBoardTool(tool);
+        if (action === 'note') {
+            const size = { w: 260, h: 150 };
+            return addBoardItem({ type: 'note', ...boardPointForNewItem(point, size.w, size.h), ...size, text: 'Нова нотатка' });
+        }
+        if (action === 'text') {
+            const size = { w: 320, h: 160 };
+            return addBoardItem({ type: 'text', ...boardPointForNewItem(point, size.w, size.h), ...size, text: 'Новий текстовий блок', title: 'Text' });
+        }
+        if (action === 'frame') {
+            const size = { w: 420, h: 260 };
+            return addBoardItem({ type: 'frame', ...boardPointForNewItem(point, size.w, size.h), ...size, text: 'Нова зона', title: 'Frame' });
+        }
+        if (action === 'widget') return addBoardWidget(point);
+        if (BOARD_SHAPE_TOOLS.has(action)) return addBoardShape(action, point);
+        return null;
+    }
+
     function addBoardNote() {
-        addBoardItem({ type: 'note', w: 260, h: 150, text: 'Нова нотатка' });
+        createBoardItemFromTool('note');
     }
 
     function addBoardNoteToZone(zoneId) {
@@ -3428,14 +3545,14 @@ const DashboardPage = (() => {
     }
 
     function addBoardText() {
-        addBoardItem({ type: 'text', w: 320, h: 160, text: 'Новий текстовий блок', title: 'Text' });
+        createBoardItemFromTool('text');
     }
 
     function addBoardFrame() {
-        addBoardItem({ type: 'frame', w: 420, h: 260, text: 'Нова зона', title: 'Frame' });
+        createBoardItemFromTool('frame');
     }
 
-    function addBoardShape(shape = 'rect') {
+    function addBoardShape(shape = 'rect', point = null) {
         const safeShape = normalizeBoardShape(shape);
         const shapeTitles = {
             line: 'Line',
@@ -3445,26 +3562,31 @@ const DashboardPage = (() => {
             ellipse: 'Ellipse',
             diamond: 'Diamond'
         };
+        const size = {
+            w: safeShape === 'line' || safeShape === 'arrow' ? 260 : 220,
+            h: safeShape === 'line' || safeShape === 'arrow' ? 70 : 120
+        };
         addBoardItem({
             type: 'shape',
-            w: safeShape === 'line' || safeShape === 'arrow' ? 260 : 220,
-            h: safeShape === 'line' || safeShape === 'arrow' ? 70 : 120,
+            ...boardPointForNewItem(point, size.w, size.h),
+            ...size,
             shape: safeShape,
             title: shapeTitles[safeShape] || 'Shape'
         });
     }
 
-    function addBoardWidget() {
+    function addBoardWidget(point = null) {
         const available = normalizeDashboardWidgets(_config.widgets || []).filter(canUseWidget);
         const existing = new Set(getBoardItems().filter(item => item.type === 'widget').map(item => item.widgetType));
         const widgetType = available.find(key => !existing.has(key)) || available[0] || 'tasks';
         if (!canUseWidget(widgetType)) return;
+        const size = { w: 340, h: 235 };
         addBoardItem({
             type: 'widget',
             widgetType,
             title: WIDGET_DEFS[widgetType]?.title || widgetType,
-            w: 340,
-            h: 235,
+            ...boardPointForNewItem(point, size.w, size.h),
+            ...size,
             depth: getBoardItems().filter(item => item.type === 'widget' && item.depth === 'live-compact').length >= BOARD_LIVE_WIDGET_CAP
                 ? 'headline-only'
                 : 'live-compact'
@@ -3498,13 +3620,10 @@ const DashboardPage = (() => {
 
     function runBoardCreateAction(kind, payload = {}) {
         const action = String(kind || '').trim();
-        if (action === 'note') return addBoardNote();
-        if (action === 'text') return addBoardText();
-        if (action === 'frame') return addBoardFrame();
-        if (action === 'widget') return addBoardWidget();
         if (action === 'connector') return setBoardTool('connector');
-        if (BOARD_ALLOWED_SHAPES.has(action)) return addBoardShape(action);
-        if (payload?.shape && BOARD_ALLOWED_SHAPES.has(payload.shape)) return addBoardShape(payload.shape);
+        if (payload?.immediate === true) return createBoardItemFromTool(action, payload.point || null);
+        if (BOARD_CREATE_TOOLS.has(action) || BOARD_SHAPE_TOOLS.has(action)) return setBoardTool(action);
+        if (payload?.shape && BOARD_ALLOWED_SHAPES.has(payload.shape)) return setBoardTool(payload.shape);
     }
 
     function selectedBoardTextSeed() {
@@ -3913,10 +4032,11 @@ const DashboardPage = (() => {
             _boardInteractionMode = 'edit';
             _boardWidgetInspectId = null;
             _boardObjectEditing = null;
-        } else if (nextTool === 'brush' || nextTool === 'highlighter' || nextTool === 'eraser') {
+        } else if (BOARD_DRAW_TOOLS.has(nextTool) || nextTool === 'eraser' || BOARD_CREATE_TOOLS.has(nextTool) || BOARD_SHAPE_TOOLS.has(nextTool)) {
             _boardInteractionMode = 'edit';
             _boardConnectorDraft = null;
             _boardWidgetInspectId = null;
+            _boardObjectEditing = null;
         } else if (nextTool === 'select') {
             _boardConnectorDraft = null;
         }
@@ -3959,6 +4079,26 @@ const DashboardPage = (() => {
             _boardWidgetInspectId = payload.id || _boardSelectedId;
             _boardObjectEditing = { id: _boardWidgetInspectId, kind: 'widget' };
         }
+        syncBoardToolbar();
+        renderBoard();
+    }
+
+    function setBoardPreference(key, value) {
+        if (!_config?.boardState) return;
+        const prefs = safeObject(_config.boardState.preferences, {});
+        if (['snapToGrid', 'showGrid', 'showGuides', 'showMiniMap'].includes(key)) {
+            prefs[key] = value === true || value === 'true';
+        } else if (key === 'strokeColor') {
+            prefs.strokeColor = String(value || '#10b981').slice(0, 32);
+        } else if (key === 'fillColor') {
+            prefs.fillColor = String(value || 'rgba(16, 185, 129, 0.10)').slice(0, 64);
+        } else if (key === 'strokeWidth') {
+            prefs.strokeWidth = safeNumber(value, 2, 1, 12);
+        } else {
+            return;
+        }
+        _config.boardState.preferences = { ...prefs };
+        markBoardDirty('board-preference');
         syncBoardToolbar();
         renderBoard();
     }
@@ -4071,6 +4211,25 @@ const DashboardPage = (() => {
         return list;
     }
 
+    function isTeamOnlineHistoryEnabled() {
+        return localStorage.getItem('pzp_team_online_history') === '1';
+    }
+
+    function setTeamOnlineHistory(enabled) {
+        if (enabled) localStorage.setItem('pzp_team_online_history', '1');
+        else localStorage.removeItem('pzp_team_online_history');
+        loadWidgetData('team_online');
+    }
+
+    function buildWidgetDataUrl(type) {
+        const url = new URL(`/api/dashboard/widgets/${type}`, window.location.origin);
+        if (type === 'team_online') {
+            url.searchParams.set('scope', isTeamOnlineHistoryEnabled() ? 'history' : 'online');
+            url.searchParams.set('limit', isTeamOnlineHistoryEnabled() ? '80' : '30');
+        }
+        return url.pathname + url.search;
+    }
+
     async function loadWidgetData(type, targetContainer = null) {
         const container = targetContainer || document.getElementById(`widget-${type}`);
         if (!container) return;
@@ -4081,7 +4240,7 @@ const DashboardPage = (() => {
         }
 
         try {
-            const resp = await fetch(`/api/dashboard/widgets/${type}`, {
+            const resp = await fetch(buildWidgetDataUrl(type), {
                 headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
             });
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -4406,12 +4565,22 @@ const DashboardPage = (() => {
 
     function renderTeamOnline(data, container) {
         const users = Array.isArray(data.users) ? data.users : (Array.isArray(data.online) ? data.online : []);
+        const historyEnabled = isTeamOnlineHistoryEnabled();
+        const meta = data.meta || {};
+        const summary = `
+            <div class="team-presence-toolbar">
+                <div class="team-presence-summary">${escapeHtml(`Онлайн: ${meta.onlineCount || 0}${historyEnabled ? '; історія: ' + (meta.returned || 0) : ''}`)}</div>
+                <label class="team-presence-history-toggle" title="Показати останню активність людей, які не онлайн зараз">
+                    <input type="checkbox" ${historyEnabled ? 'checked' : ''} onchange="DashboardPage.setTeamOnlineHistory(this.checked)">
+                    <span>історія</span>
+                </label>
+            </div>
+        `;
         if (users.length === 0) {
-            container.innerHTML = '<div class="widget-empty">Немає даних про активність команди</div>';
+            container.innerHTML = `${summary}<div class="widget-empty">Зараз нікого онлайн. Увімкни «історію», щоб побачити останню активність.</div>`;
             return;
         }
 
-        const meta = data.meta || {};
         const items = users.map(m => {
             const name = m.name || m.username || 'User';
             const initial = name.charAt(0).toUpperCase();
@@ -4432,9 +4601,6 @@ const DashboardPage = (() => {
             </div>`;
         }).join('');
 
-        const summary = meta.returned
-            ? `<div class="team-presence-summary">${escapeHtml(`Онлайн: ${meta.onlineCount || 0}; нещодавно активні: ${meta.recentlyActiveCount || 0}`)}</div>`
-            : '';
         container.innerHTML = `${summary}<div class="team-grid team-presence-grid">${items}</div>`;
     }
 
@@ -4952,10 +5118,20 @@ const DashboardPage = (() => {
             .join('|');
         const writingLane = document.getElementById('settingsWritingLane');
         const controlledChaos = document.getElementById('settingsControlledChaos');
+        const snapToGrid = document.getElementById('settingsBoardSnapToGrid');
+        const showGrid = document.getElementById('settingsBoardShowGrid');
+        const showGuides = document.getElementById('settingsBoardShowGuides');
+        const strokeColor = document.getElementById('settingsBoardStrokeColor');
+        const strokeWidth = document.getElementById('settingsBoardStrokeWidth');
         return [
             widgets,
             `writing:${writingLane ? writingLane.checked : _config?.sceneOptions?.writingLane !== false}`,
-            `chaos:${controlledChaos ? controlledChaos.checked : _config?.sceneOptions?.controlledChaos !== false}`
+            `chaos:${controlledChaos ? controlledChaos.checked : _config?.sceneOptions?.controlledChaos !== false}`,
+            `snap:${snapToGrid ? snapToGrid.checked : _config?.boardState?.preferences?.snapToGrid !== false}`,
+            `grid:${showGrid ? showGrid.checked : _config?.boardState?.preferences?.showGrid !== false}`,
+            `guides:${showGuides ? showGuides.checked : _config?.boardState?.preferences?.showGuides !== false}`,
+            `stroke:${strokeColor ? strokeColor.value : _config?.boardState?.preferences?.strokeColor || '#10b981'}`,
+            `width:${strokeWidth ? strokeWidth.value : _config?.boardState?.preferences?.strokeWidth || 2}`
         ].join('|');
     }
 
@@ -5000,6 +5176,7 @@ const DashboardPage = (() => {
         const effectiveRole = getEffectiveDashboardRole();
         const effectiveScene = getEffectiveDashboardScene();
         const sceneOptions = normalizeSceneOptions(_config?.sceneOptions);
+        const boardPrefs = safeObject(_config?.boardState?.preferences, {});
         const availableWidgets = Object.entries(WIDGET_DEFS)
             .filter(([key]) => canUseWidgetForRole(key, effectiveRole));
 
@@ -5072,6 +5249,42 @@ const DashboardPage = (() => {
                             <input type="checkbox" id="settingsControlledChaos" ${sceneOptions.controlledChaos ? 'checked' : ''}>
                             <span class="settings-toggle-slider"></span>
                         </span>
+                    </label>
+                </div>
+                <div class="dashboard-settings-scene-card dashboard-settings-board-card">
+                    <div class="dashboard-settings-scene-summary">
+                        <span>Board editor</span>
+                        <strong>Сцена + дошка</strong>
+                        <em>Єдиний простір редагування: інструмент, сітка, snap і стиль ліній.</em>
+                    </div>
+                    <label class="dashboard-settings-scene-row">
+                        <span>Snap до сітки</span>
+                        <span class="settings-toggle">
+                            <input type="checkbox" id="settingsBoardSnapToGrid" ${boardPrefs.snapToGrid !== false ? 'checked' : ''}>
+                            <span class="settings-toggle-slider"></span>
+                        </span>
+                    </label>
+                    <label class="dashboard-settings-scene-row">
+                        <span>Показувати сітку</span>
+                        <span class="settings-toggle">
+                            <input type="checkbox" id="settingsBoardShowGrid" ${boardPrefs.showGrid !== false ? 'checked' : ''}>
+                            <span class="settings-toggle-slider"></span>
+                        </span>
+                    </label>
+                    <label class="dashboard-settings-scene-row">
+                        <span>Показувати напрямні</span>
+                        <span class="settings-toggle">
+                            <input type="checkbox" id="settingsBoardShowGuides" ${boardPrefs.showGuides !== false ? 'checked' : ''}>
+                            <span class="settings-toggle-slider"></span>
+                        </span>
+                    </label>
+                    <label class="dashboard-settings-scene-row dashboard-settings-inline-control">
+                        <span>Колір інструменту</span>
+                        <input type="color" id="settingsBoardStrokeColor" value="${escapeHtml(boardPrefs.strokeColor || '#10b981')}">
+                    </label>
+                    <label class="dashboard-settings-scene-row dashboard-settings-inline-control">
+                        <span>Товщина лінії</span>
+                        <input type="range" id="settingsBoardStrokeWidth" min="1" max="12" value="${Number(boardPrefs.strokeWidth || 2)}">
                     </label>
                 </div>
                 <div class="settings-widget-list" id="settingsWidgetList">${widgetItems}</div>
@@ -5166,6 +5379,16 @@ const DashboardPage = (() => {
             writingLane: document.getElementById('settingsWritingLane')?.checked !== false,
             controlledChaos: document.getElementById('settingsControlledChaos')?.checked !== false
         };
+        const currentBoardState = normalizeBoardState(_config.boardState || {});
+        currentBoardState.preferences = {
+            ...safeObject(currentBoardState.preferences, {}),
+            snapToGrid: document.getElementById('settingsBoardSnapToGrid')?.checked !== false,
+            showGrid: document.getElementById('settingsBoardShowGrid')?.checked !== false,
+            showGuides: document.getElementById('settingsBoardShowGuides')?.checked !== false,
+            strokeColor: String(document.getElementById('settingsBoardStrokeColor')?.value || currentBoardState.preferences?.strokeColor || '#10b981').slice(0, 32),
+            strokeWidth: safeNumber(document.getElementById('settingsBoardStrokeWidth')?.value, currentBoardState.preferences?.strokeWidth || 2, 1, 12)
+        };
+        _config.boardState = normalizeBoardState(currentBoardState);
         _config.layout = {
             ...safeObject(_config.layout, {}),
             mode: _config.mode || 'grid',
@@ -5180,7 +5403,8 @@ const DashboardPage = (() => {
             await saveDashboardConfig({
                 widgets: selected,
                 presentationMode: _config.presentationMode,
-                sceneOptions: _config.sceneOptions
+                sceneOptions: _config.sceneOptions,
+                boardState: _config.boardState
             });
         } catch (err) {
             console.error('Save settings error:', err);
@@ -6246,12 +6470,14 @@ const DashboardPage = (() => {
         clearReplyExpectation,
         escalateReplyExpectation,
         refreshWidget,
+        setTeamOnlineHistory,
         setDashboardMode,
         setDashboardRolePreview,
         setDashboardSceneOption,
         setBoardWorkspaceMode,
         setBoardInteractionMode,
         setBoardTool,
+        setBoardPreference,
         runBoardCreateAction,
         addBoardNote,
         addBoardNoteToZone,

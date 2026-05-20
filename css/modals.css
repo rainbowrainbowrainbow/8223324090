@@ -274,6 +274,21 @@ body.dark-mode .confirm-cancel:hover {
     animation: none !important;
 }
 
+/* v0.59.12: confirm dialogs are singleton, centered, and motion-free.
+   They must not slide, bounce, stack, or leave a second action prompt below. */
+.confirm-overlay[data-confirm-kind="confirm"] {
+    align-items: center !important;
+    justify-content: center !important;
+    animation: none !important;
+}
+
+.confirm-overlay[data-confirm-kind="confirm"].confirm-exit,
+.confirm-overlay[data-confirm-kind="confirm"].confirm-exit .confirm-dialog,
+.confirm-overlay[data-confirm-kind="confirm"] .confirm-dialog {
+    animation: none !important;
+    transform: none !important;
+}
+
 .modal::after,
 .modal-content::after,
 .modal-content.modal-wide::after,

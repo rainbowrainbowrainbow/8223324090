@@ -1742,10 +1742,10 @@ function renderTaskCard(t) {
             ${t.type === 'afisha' ? '<span class="badge badge-normal">Афіша</span>' : ''}
         </div>
         <div class="task-card-actions">
-            <button class="${btnClass}" onclick="cycleStatus(${t.id}, '${nextStatus}')">${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
+            <button class="${btnClass}" onclick="event.stopPropagation(); cycleStatus(${t.id}, '${nextStatus}')">${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
             ${!isWaitingTask(t) ? `<button onclick="markTaskWaiting(event, ${t.id})">Чекаю</button>` : ''}
             <button onclick="snoozeTaskQuick(event, ${t.id}, 60)">+1 год</button>
-            ${!userPermissions || userPermissions.canDeleteTasks ? `<button class="btn-delete" onclick="deleteTask(${t.id})">✕</button>` : ''}
+            ${!userPermissions || userPermissions.canDeleteTasks ? `<button class="btn-delete" onclick="deleteTask(event, ${t.id})">✕</button>` : ''}
         </div>
     </div>`;
 }
@@ -1993,7 +1993,14 @@ async function markTaskWaiting(event, taskId) {
     }
 }
 
-async function deleteTask(taskId) {
+async function deleteTask(eventOrTaskId, maybeTaskId) {
+    let taskId = eventOrTaskId;
+    if (eventOrTaskId && typeof eventOrTaskId === 'object') {
+        eventOrTaskId.preventDefault?.();
+        eventOrTaskId.stopPropagation?.();
+        taskId = maybeTaskId;
+    }
+    clearBulkSelection();
     if (!await confirmModal('Видалити цю задачу?', { type: 'danger', okText: 'Видалити' })) return;
     const result = await apiDeleteTask(taskId);
     if (result && result.success) {

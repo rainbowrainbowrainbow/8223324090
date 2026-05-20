@@ -40,6 +40,121 @@
         return `${text.slice(0, Math.max(0, limit - 1)).trim()}...`;
     }
 
+    const UI_TEXT_REPLACEMENTS = [
+        [/\bShow overdue tasks\b/gi, 'Показати прострочені задачі'],
+        [/\bFocus work queue\b/gi, 'Відкрити робочу чергу'],
+        [/\bShow reply backlog\b/gi, 'Показати чергу відповідей'],
+        [/\bRefresh work queue\b/gi, 'Оновити робочу чергу'],
+        [/\bOpen waiting tasks\b/gi, 'Відкрити задачі в очікуванні'],
+        [/\bFocus first overdue task\b/gi, 'Показати першу прострочену задачу'],
+        [/\bOpen debts tab\b/gi, 'Відкрити борги'],
+        [/\bOpen finance analytics\b/gi, 'Відкрити фінансову аналітику'],
+        [/\bOpen leads kanban\b/gi, 'Відкрити канбан лідів'],
+        [/\bFocus hot lead\b/gi, 'Показати гарячий лід'],
+        [/\bFilter unread chats\b/gi, 'Показати непрочитані чати'],
+        [/\bFocus first unread chat\b/gi, 'Показати перший непрочитаний чат'],
+        [/\bDashboard widget grid\b/gi, 'Сітка віджетів дашборда'],
+        [/\bDashboard work queue snapshot\b/gi, 'Зріз робочої черги дашборда'],
+        [/\bDashboard operating context\b/gi, 'Операційний контекст дашборда'],
+        [/\bWork queue items\b/gi, 'Елементи робочої черги'],
+        [/\bWaiting reply pressure\b/gi, 'Тиск очікуваних відповідей'],
+        [/\bOverdue task pressure\b/gi, 'Тиск прострочених задач'],
+        [/\bLead follow-ups due\b/gi, 'Ліди, яким потрібен follow-up'],
+        [/\bBooking confirmations\b/gi, 'Підтвердження бронювань'],
+        [/\bWork queue bottleneck\b/gi, 'Вузьке місце робочої черги'],
+        [/\bWork queue API snapshot unavailable\b/gi, 'Зріз робочої черги недоступний'],
+        [/\bWaiting reply queue\b/gi, 'Черга відповідей'],
+        [/\bOverdue work queue\b/gi, 'Прострочене в робочій черзі'],
+        [/\bCurrent tasks board slice\b/gi, 'Поточний зріз задач'],
+        [/\bInbox tab count\b/gi, 'Кількість в інбоксі'],
+        [/\bToday tab count\b/gi, 'Кількість на сьогодні'],
+        [/\bTeam tab count\b/gi, 'Командні задачі'],
+        [/\bMy tab count\b/gi, 'Мої задачі'],
+        [/\bOverdue tasks\b/gi, 'Прострочені задачі'],
+        [/\bWaiting tasks\b/gi, 'Задачі в очікуванні'],
+        [/\bNear deadline tasks\b/gi, 'Задачі з близьким дедлайном'],
+        [/\bTasks without typed owner\b/gi, 'Задачі без відповідального'],
+        [/\bPersonal cabinet projection\b/gi, 'Персональний зріз кабінету'],
+        [/\bTasks API snapshot unavailable\b/gi, 'Зріз задач недоступний'],
+        [/\bToday tasks\b/gi, 'Задачі на сьогодні'],
+        [/\bVisible overdue deadlines\b/gi, 'Видимі прострочені дедлайни'],
+        [/\bTasks live board snapshot\b/gi, 'Живий зріз дошки задач'],
+        [/\bTasks API personal projection\b/gi, 'Персональний API-зріз задач'],
+        [/\bTasks board context\b/gi, 'Контекст дошки задач'],
+        [/\bFinance API snapshot\b/gi, 'Фінансовий API-зріз'],
+        [/\bOverdue payment debt\b/gi, 'Прострочена заборгованість'],
+        [/\bNegative monthly profit\b/gi, 'Мінусовий прибуток місяця'],
+        [/\bNegative weekly cashflow\b/gi, 'Мінусовий cashflow тижня'],
+        [/\bFinance KPI cards\b/gi, 'Фінансові KPI'],
+        [/\bVisible debt rows\b/gi, 'Видимі рядки боргів'],
+        [/\bFinance risk\/control snapshot\b/gi, 'Фінансовий зріз ризиків і контролю'],
+        [/\bFinance control context\b/gi, 'Фінансовий контекст контролю'],
+        [/\bHot leads waiting follow-up\b/gi, 'Гарячі ліди чекають follow-up'],
+        [/\bNew leads this period\b/gi, 'Нові ліди за період'],
+        [/\bUnread chat messages\b/gi, 'Непрочитані повідомлення'],
+        [/\bCommunication snapshot loaded\b/gi, 'Зріз комунікацій завантажено'],
+        [/\bCommunication API snapshot unavailable\b/gi, 'Зріз комунікацій недоступний'],
+        [/\bVisible hot\/idle leads\b/gi, 'Видимі гарячі або завислі ліди'],
+        [/\bWorkspace waiting reply signals\b/gi, 'Сигнали очікування відповіді'],
+        [/\bChat response snapshot\b/gi, 'Зріз відповідей у чаті'],
+        [/\bLead\/chat follow-up snapshot\b/gi, 'Зріз follow-up лідів і чатів'],
+        [/\bChat response context\b/gi, 'Контекст відповідей у чаті'],
+        [/\bLead pipeline context\b/gi, 'Контекст pipeline лідів'],
+        [/\bTask board filters\b/gi, 'Фільтри дошки задач'],
+        [/\bTask board\b/gi, 'Дошка задач'],
+        [/\bFirst visible overdue task\b/gi, 'Перша видима прострочена задача'],
+        [/\bDebt control\b/gi, 'Контроль боргів'],
+        [/\bFinance analytics\b/gi, 'Фінансова аналітика'],
+        [/\bLead stats\b/gi, 'Статистика лідів'],
+        [/\bLead pipeline kanban\b/gi, 'Канбан pipeline лідів'],
+        [/\bWaiting reply signal\b/gi, 'Сигнал очікування відповіді'],
+        [/\bChat messages\b/gi, 'Повідомлення чату'],
+        [/\bFirst unread channel\b/gi, 'Перший непрочитаний канал'],
+        [/\bUse the dashboard widget grid as the main operating surface\b/gi, 'Використай сітку віджетів дашборда як головну робочу поверхню'],
+        [/\bWork queue is hidden for this role or not loaded yet\b/gi, 'Робоча черга прихована для цієї ролі або ще не завантажена'],
+        [/\bWork queue is not visible on this dashboard\b/gi, 'Робочу чергу не видно на цьому дашборді'],
+        [/\bOverdue task filter is unavailable\b/gi, 'Фільтр прострочених задач недоступний'],
+        [/\bReply backlog controls are unavailable\b/gi, 'Керування чергою відповідей недоступне'],
+        [/\bDashboard work queue refresh is unavailable\b/gi, 'Оновлення робочої черги недоступне'],
+        [/\bWaiting tasks tab is unavailable\b/gi, 'Вкладка задач в очікуванні недоступна'],
+        [/\bNo stable overdue task card is visible\b/gi, 'Зараз не видно стабільної картки простроченої задачі'],
+        [/\bNo visible overdue task has a stable card target right now\b/gi, 'Зараз немає видимої простроченої задачі зі стабільною карткою'],
+        [/\bFinance debts tab is unavailable\b/gi, 'Вкладка боргів недоступна'],
+        [/\bFinance advanced analytics tab is unavailable\b/gi, 'Вкладка фінансової аналітики недоступна'],
+        [/\bOpen the debts tab to inspect unpaid bookings\b/gi, 'Відкрий борги, щоб перевірити неоплачені бронювання'],
+        [/\bLeads kanban is unavailable\b/gi, 'Канбан лідів недоступний'],
+        [/\bNo stable hot lead target is visible\b/gi, 'Зараз не видно стабільної цілі гарячого ліда'],
+        [/\bNo exact waiting-reply workspace target is visible yet\b/gi, 'Зараз не видно точної цілі для очікування відповіді'],
+        [/\bUnread chat filter is unavailable\b/gi, 'Фільтр непрочитаних чатів недоступний'],
+        [/\bNo stable unread chat target is visible\b/gi, 'Зараз не видно стабільної цілі непрочитаного чату'],
+        [/\bNo unread channel is visible right now\b/gi, 'Зараз не видно непрочитаного каналу'],
+        [/\bNo stable target is available for this guidance\b/gi, 'Для цієї підказки зараз немає стабільної цілі'],
+        [/\bdashboard\.focus-work-queue\b/gi, 'фокус на робочу чергу'],
+        [/\bdashboard\.show-overdue-tasks\b/gi, 'фільтр прострочених задач'],
+        [/\bdashboard\.show-reply-backlog\b/gi, 'черга відповідей'],
+        [/\btasks\.focus-overdue\b/gi, 'прострочені задачі'],
+        [/\bfinance\.open-debts\b/gi, 'борги'],
+        [/\bleads\.focus-hot\b/gi, 'гарячі ліди'],
+        [/\bchat\.filter-unread\b/gi, 'непрочитані чати'],
+        [/\bFILTER\b/g, 'фільтр'],
+        [/\bFOCUS\b/g, 'фокус'],
+        [/\bteam_online\b/g, 'Команда онлайн'],
+        [/\bstaff_today\b/g, 'Хто на зміні'],
+        [/\bwork queue\b/gi, 'робоча черга'],
+        [/\bdashboard\b/gi, 'дашборд'],
+        [/\bcreator\b/gi, 'роль творця'],
+        [/\btyped owner\b/gi, 'відповідальний']
+    ];
+
+    function localizeAssistantText(value) {
+        let text = String(value || '').trim();
+        if (!text) return '';
+        UI_TEXT_REPLACEMENTS.forEach(([pattern, replacement]) => {
+            text = text.replace(pattern, replacement);
+        });
+        return text;
+    }
+
     function toList(value, limit = 20) {
         if (!Array.isArray(value)) return [];
         return value.filter(Boolean).slice(0, limit);
@@ -355,10 +470,10 @@
             return {
                 signalId: `signal-${index + 1}`,
                 page: getPageId(),
-                label: compactText(signal, 140),
+                label: compactText(localizeAssistantText(signal), 140),
                 value: '',
                 severity: 'info',
-                evidence: compactText(signal, 220),
+                evidence: compactText(localizeAssistantText(signal), 220),
                 source: 'adapter_text'
             };
         }
@@ -366,10 +481,10 @@
         return {
             signalId: compactText(signal.signalId || signal.id || `signal-${index + 1}`, 80),
             page: compactText(signal.page || getPageId(), 80),
-            label: compactText(signal.label || signal.title || signal.type || 'Signal', 140),
+            label: compactText(localizeAssistantText(signal.label || signal.title || signal.type || 'Сигнал'), 140),
             value: compactText(signal.value ?? signal.count ?? '', 120),
             severity,
-            evidence: compactText(signal.evidence || signal.reason || signal.text || signal.label || '', 260),
+            evidence: compactText(localizeAssistantText(signal.evidence || signal.reason || signal.text || signal.label || ''), 260),
             source: compactText(signal.source || 'adapter', 80)
         };
     }
@@ -389,13 +504,13 @@
         const normalized = {
             targetId: compactText(target.targetId || target.id || `target-${index + 1}`, 90),
             page: compactText(target.page || getPageId(), 80),
-            label: compactText(target.label || target.title || 'Assistant target', 140),
+            label: compactText(localizeAssistantText(target.label || target.title || 'Ціль Помічника'), 140),
             selectorOrRef,
             kind: compactText(target.kind || 'section', 40),
             priority: Number.isFinite(Number(target.priority)) ? Number(target.priority) : index + 1,
             available: target.available !== false && stable,
-            reason: compactText(target.reason || (stable ? '' : 'selector_not_stable'), 180),
-            fallbackText: compactText(target.fallbackText || 'No stable target is available for this guidance.', 220)
+            reason: compactText(localizeAssistantText(target.reason || (stable ? '' : 'selector_not_stable')), 180),
+            fallbackText: compactText(localizeAssistantText(target.fallbackText || 'Для цієї підказки зараз немає стабільної цілі.'), 220)
         };
         if (typeof selectorOrRef === 'string' && stable) {
             normalized.available = Boolean(document.querySelector(selectorOrRef));
@@ -424,11 +539,11 @@
             actionId: compactText(action.actionId || action.id || `action-${index + 1}`, 100),
             page: compactText(action.page || getPageId(), 80),
             actionType: compactText(action.actionType || action.type || 'focus', 60),
-            label: compactText(action.label || action.title || 'Assistant action', 140),
+            label: compactText(localizeAssistantText(action.label || action.title || 'Дія Помічника'), 140),
             run: typeof action.run === 'function' ? action.run : null,
             confirmationNeeded: action.confirmationNeeded === true,
             targetResolver: typeof action.targetResolver === 'function' ? action.targetResolver : null,
-            failureMessage: compactText(action.failureMessage || 'Action is unavailable right now.', 220)
+            failureMessage: compactText(localizeAssistantText(action.failureMessage || 'Дія зараз недоступна.'), 220)
         };
     }
 
@@ -1503,9 +1618,9 @@
 
     function normalizeEvidence(value = []) {
         return toList(value, 8).map((item, index) => {
-            if (typeof item === 'string') return { label: compactText(item, 160), source: 'assistant', signalId: `evidence-${index + 1}` };
+            if (typeof item === 'string') return { label: compactText(localizeAssistantText(item), 160), source: 'assistant', signalId: `evidence-${index + 1}` };
             return {
-                label: compactText(item.label || item.evidence || item.text || item.signalId || `Evidence ${index + 1}`, 180),
+                label: compactText(localizeAssistantText(item.label || item.evidence || item.text || item.signalId || `Доказ ${index + 1}`), 180),
                 value: compactText(item.value || item.count || '', 80),
                 source: compactText(item.source || 'adapter', 80),
                 signalId: compactText(item.signalId || item.id || `evidence-${index + 1}`, 80),
@@ -1561,7 +1676,7 @@
 
     function normalizeReply(reply = {}, context = {}) {
         const source = typeof reply === 'string' ? { text: reply } : (reply || {});
-        const summary = compactText(source.summary || source.subtitle || source.text || source.recommendation || '', 700);
+        const summary = compactText(localizeAssistantText(source.summary || source.subtitle || source.text || source.recommendation || ''), 700);
         const evidenceSource = source.evidence || context.evidence || context.signals || [];
         const actionProposal = source.actionProposal
             ? serializeAction(source.actionProposal)
@@ -1572,15 +1687,15 @@
         const normalized = {
             mode: normalizeMode(source.mode || (summary ? 'speaking' : 'idle')),
             summary,
-            text: compactText(source.text || summary, 900),
-            subtitle: compactText(source.subtitle || summary, 700),
+            text: compactText(localizeAssistantText(source.text || summary), 900),
+            subtitle: compactText(localizeAssistantText(source.subtitle || summary), 700),
             evidence: normalizeEvidence(evidenceSource),
             riskLevel: RISK_LEVELS.has(source.riskLevel) ? source.riskLevel : inferReplyRiskLevel(evidenceSource, source.fallbackReason || context.fallbackReason),
             confidence: CONFIDENCE_LEVELS.has(source.confidence) ? source.confidence : (normalizeEvidence(evidenceSource).length ? 'medium' : 'low'),
-            recommendation: compactText(source.recommendation || buildStrategicRecommendation(context, summary), 700),
+            recommendation: compactText(localizeAssistantText(source.recommendation || buildStrategicRecommendation(context, summary)), 700),
             actionProposal,
             teachingTarget,
-            fallbackReason: compactText(source.fallbackReason || context.fallbackReason || '', 240),
+            fallbackReason: compactText(localizeAssistantText(source.fallbackReason || context.fallbackReason || ''), 240),
             model: source.model || ''
         };
         store.setState({

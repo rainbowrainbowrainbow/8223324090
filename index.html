@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.59.9">
-    <link rel="stylesheet" href="css/auth.css?v=0.59.9">
-    <link rel="stylesheet" href="css/layout.css?v=0.59.9">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.59.9">
-    <link rel="stylesheet" href="css/timeline.css?v=0.59.9">
-    <link rel="stylesheet" href="css/panel.css?v=0.59.9">
-    <link rel="stylesheet" href="css/modals.css?v=0.59.9">
-    <link rel="stylesheet" href="css/controls.css?v=0.59.9">
-    <link rel="stylesheet" href="css/features.css?v=0.59.9">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.59.9">
-    <link rel="stylesheet" href="css/responsive.css?v=0.59.9">
-    <link rel="stylesheet" href="css/pages.css?v=0.59.9">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.59.9">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.59.9">
+    <link rel="stylesheet" href="css/base.css?v=0.60.0">
+    <link rel="stylesheet" href="css/auth.css?v=0.60.0">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.0">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.0">
+    <link rel="stylesheet" href="css/timeline.css?v=0.60.0">
+    <link rel="stylesheet" href="css/panel.css?v=0.60.0">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.0">
+    <link rel="stylesheet" href="css/controls.css?v=0.60.0">
+    <link rel="stylesheet" href="css/features.css?v=0.60.0">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.0">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.0">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.0">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.60.0">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.59.9 Modal Sweep Animation Kill Switch">✨ 0.59.9 Modal Sweep Animation Kill Switch</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.60.0 Dashboard Scene Board Tools">✨ 0.60.0 Dashboard Scene Board Tools</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.59.9 — Modal Sweep Animation Kill Switch</p>
+                <p class="tagline">AI First CRM v0.60.0 — Dashboard Scene Board Tools</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.59.9: Modal Sweep Animation Kill Switch</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.60.0: Dashboard Scene Board Tools</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1269,6 +1269,47 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.60.0 — Dashboard Scene Board Tools</h4>
+                    <ul>
+                        <li><b>Сцена і Board зведені в один режим</b> — Dashboard тепер показує єдиний простір редагування <code>Сцена + Board</code> без розʼїзду між окремими станами.</li>
+                        <li><b>Toolbar працює як active-tool редактор</b> — Note, Text, Frame, Widget, Line, Arrow, Rect, Ellipse, Brush, Eraser і Connector проходять через один вибір активного інструмента.</li>
+                        <li><b>Створення по кліку на дошці</b> — create/shape інструменти ставлять обʼєкт саме в точку canvas, а не додають випадковий блок через старий одноразовий action.</li>
+                        <li><b>Налаштування дошки в UI</b> — додано snap, сітку, напрямні, колір і товщину лінії в панелі інструмента та в налаштуваннях dashboard.</li>
+                        <li><b>Стан Board не губиться</b> — backend тепер приймає повний набір active tools, <code>connector</code> і список <code>connectors</code>, тому звʼязки не скидаються після збереження.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.59.12 — Task Confirm Modal Cleanup</h4>
+                    <ul>
+                        <li><b>Один confirm на екрані</b> — delete і bulk action у задачах більше не відкривають два confirm-вікна одночасно.</li>
+                        <li><b>Видалення задач стабілізовано</b> — кнопка видалення не пробиває клік у картку, очищає bulk selection і не запускає чужий action prompt.</li>
+                        <li><b>Без нервової анімації</b> — confirm-вікна зафіксовані по центру без slide/bounce/wave руху.</li>
+                        <li><b>Менше спаму notification</b> — однакові toast-повідомлення приглушуються, якщо прилітають повторно за короткий час.</li>
+                        <li><b>Guardrail</b> — UI-smoke перевіряє singleton confirm, motion-free CSS і безпечний delete flow у задачах.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.59.11 — Assistant Ukrainian Label Guardrails</h4>
+                    <ul>
+                        <li><b>Помічник говорить мовою CRM</b> — action labels на кшталт <code>Show overdue tasks</code>, <code>Focus work queue</code> і <code>FILTER</code> більше не показуються користувачу англійською.</li>
+                        <li><b>Технічні id приховано</b> — <code>team_online</code>, <code>staff_today</code>, <code>dashboard.focus-work-queue</code> та схожі ключі перетворюються на людські назви: «Команда онлайн», «Хто на зміні», «робоча черга», «фільтр».</li>
+                        <li><b>Backend guardrail</b> — prompt і нормалізація відповіді тепер прямо забороняють моделі цитувати внутрішні enum/widget keys у чаті.</li>
+                        <li><b>UI guardrail</b> — картка рекомендованої дії перекладає типи дій у короткі українські бейджі: «фільтр», «фокус», «оновлення».</li>
+                        <li><b>Тести</b> — UI-smoke перевіряє локалізацію action/target labels і заборону технічних id у assistant output.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.59.10 — HR Account Center And Team Online Truth</h4>
+                    <ul>
+                        <li><b>Команда онлайн стала правдивою</b> — віджет за замовчуванням показує тільки тих, хто реально онлайн зараз, без старих last-seen записів у списку.</li>
+                        <li><b>Тиха історія активності</b> — додано непомітний перемикач <code>історія</code>, який за потреби показує останню активність людей, що були на зміні раніше.</li>
+                        <li><b>OpenClaw прибрано з команди</b> — системний акаунт більше не відображається як реальний співробітник у віджеті.</li>
+                        <li><b>HR-центр акаунтів</b> — у розділі HR зʼявилась вкладка <code>Акаунти</code> з пошуком, статусами, HR-профілем і безпечним вимкненням акаунтів.</li>
+                        <li><b>Каріну Крамаренко вимикаємо без DELETE</b> — додано міграцію soft-disable для її знайдених акаунтів і профілів, щоб не ламати історію системи.</li>
+                        <li><b>Guardrail</b> — UI-smoke перевіряє live-only default, history toggle, приховування OpenClaw і наявність HR account center.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.59.9 — Modal Sweep Animation Kill Switch</h4>
                     <ul>
@@ -7849,25 +7890,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.59.9"></script>
-    <script src="js/api.js?v=0.59.9"></script>
-    <script src="js/ui.js?v=0.59.9"></script>
-    <script src="js/auth.js?v=0.59.9"></script>
-    <script src="js/timeline.js?v=0.59.9"></script>
-    <script src="js/booking.js?v=0.59.9"></script>
-    <script src="js/settings.js?v=0.59.9"></script>
-    <script src="js/booking-form.js?v=0.59.9"></script>
-    <script src="js/booking-linked.js?v=0.59.9"></script>
-    <script src="js/settings-dashboard.js?v=0.59.9"></script>
-    <script src="js/settings-history.js?v=0.59.9"></script>
-    <script src="js/settings-afisha.js?v=0.59.9"></script>
-    <script src="js/settings-certificates.js?v=0.59.9"></script>
-    <script src="js/offline.js?v=0.59.9"></script>
-    <script src="js/search.js?v=0.59.9"></script>
-    <script src="js/ws.js?v=0.59.9"></script>
-    <script src="js/app.js?v=0.59.9"></script>
-    <script src="js/kleshnya-widget.js?v=0.59.9"></script>
-    <script src="js/components/sidebar.js?v=0.59.9"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.59.9"></script>
+    <script src="js/config.js?v=0.60.0"></script>
+    <script src="js/api.js?v=0.60.0"></script>
+    <script src="js/ui.js?v=0.60.0"></script>
+    <script src="js/auth.js?v=0.60.0"></script>
+    <script src="js/timeline.js?v=0.60.0"></script>
+    <script src="js/booking.js?v=0.60.0"></script>
+    <script src="js/settings.js?v=0.60.0"></script>
+    <script src="js/booking-form.js?v=0.60.0"></script>
+    <script src="js/booking-linked.js?v=0.60.0"></script>
+    <script src="js/settings-dashboard.js?v=0.60.0"></script>
+    <script src="js/settings-history.js?v=0.60.0"></script>
+    <script src="js/settings-afisha.js?v=0.60.0"></script>
+    <script src="js/settings-certificates.js?v=0.60.0"></script>
+    <script src="js/offline.js?v=0.60.0"></script>
+    <script src="js/search.js?v=0.60.0"></script>
+    <script src="js/ws.js?v=0.60.0"></script>
+    <script src="js/app.js?v=0.60.0"></script>
+    <script src="js/kleshnya-widget.js?v=0.60.0"></script>
+    <script src="js/components/sidebar.js?v=0.60.0"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.60.0"></script>
 </body>
 </html>

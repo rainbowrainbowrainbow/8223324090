@@ -4,6 +4,52 @@
 
 ---
 
+## v0.60.0 - Dashboard Scene Board Tools
+
+### Dashboard Scene Board Tools [codex]
+- **Сцена і Board зведені в один UX-режим** - кнопка Dashboard тепер явно веде у `Сцена + Board`, а стан дошки лишається одним джерелом правди.
+- **Toolbar працює через active tool** - Note, Text, Frame, Widget, Line, Arrow, Rect, Ellipse, Brush, Eraser і Connector активуються одним шляхом `setBoardTool()`.
+- **Створення по точці canvas** - create/shape інструменти додають обʼєкти у місце кліку на дошці замість старого одноразового додавання у випадкову позицію.
+- **Board settings у налаштуваннях** - додано snap, сітку, напрямні, колір і товщину лінії в settings modal та live tool panel.
+- **Backend не губить Board state** - dashboard config тепер приймає всі активні tools, `connector`, `connectors`, `connectorStyle` і `relationType`.
+- **Guardrail** - UI-smoke перевіряє active-tool контракт, settings persistence і backend connector preservation.
+
+---
+
+## v0.59.12 - Task Confirm Modal Cleanup
+
+### Task Confirm Modal Cleanup [codex]
+- **Один confirm на екрані** - shared `confirmModal()` тепер закриває попередній confirm перед відкриттям нового, тому delete і bulk action більше не накладаються один на одного.
+- **Задачі не пробивають клік у сусідні дії** - кнопка видалення зупиняє bubbling, очищає bulk selection і не відкриває додатковий confirm під основним вікном.
+- **Без дратівливої анімації** - confirm-вікна для небезпечних дій зафіксовані по центру і без slide/bounce/wave руху.
+- **Повторні toast приглушено** - однакові повідомлення протягом короткого інтервалу більше не засмічують екран пачкою дубльованих notification.
+- **Guardrail** - UI-smoke перевіряє singleton confirm, motion-free CSS і безпечний delete flow у задачах.
+
+---
+
+## v0.59.11 - Assistant Ukrainian Label Guardrails
+
+### Assistant Ukrainian Label Guardrails [codex]
+- **Помічник говорить мовою CRM** - action labels на кшталт `Show overdue tasks`, `Focus work queue` і `FILTER` більше не показуються користувачу англійською.
+- **Технічні id приховано** - `team_online`, `staff_today`, `dashboard.focus-work-queue` та схожі ключі перетворюються на людські назви: «Команда онлайн», «Хто на зміні», «робоча черга», «фільтр».
+- **Backend guardrail** - prompt і нормалізація відповіді тепер прямо забороняють моделі цитувати внутрішні enum/widget keys у чаті.
+- **UI guardrail** - картка рекомендованої дії перекладає типи дій у короткі українські бейджі: «фільтр», «фокус», «оновлення».
+- **Тести** - `test:ui` перевіряє локалізацію action/target labels і заборону технічних id у assistant output.
+
+---
+
+## v0.59.10 - HR Account Center And Team Online Truth
+
+### HR Account Center And Team Online Truth [codex]
+- **Команда онлайн стала правдивою** - віджет за замовчуванням показує тільки людей, які реально онлайн зараз, без старих last-seen записів у стандартному вигляді.
+- **Історія активності тільки за галочкою** - додано тихий перемикач `історія`, який за потреби показує останню активність людей зі зміни.
+- **OpenClaw прибрано з команди** - системний інтеграційний акаунт більше не відображається як реальний співробітник у віджеті.
+- **HR-центр акаунтів** - у розділі HR додано вкладку `Акаунти` з пошуком, статусами, HR-профілем і безпечним вимкненням акаунтів.
+- **Каріна Крамаренко soft-disabled** - додано міграцію, яка вимикає знайдені акаунти й активні employee profiles без фізичного `DELETE`, щоб не ламати історію.
+- **Guardrail** - `test:ui` перевіряє live-only default, history toggle, приховування OpenClaw і наявність HR account center.
+
+---
+
 ## v0.59.9 - Modal Sweep Animation Kill Switch
 
 ### Modal Sweep Animation Kill Switch [codex]

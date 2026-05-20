@@ -56,6 +56,46 @@ function compactString(value, limit = 1600) {
     return String(value || '').trim().slice(0, limit);
 }
 
+const ASSISTANT_UI_TEXT_REPLACEMENTS = [
+    [/\bShow overdue tasks\b/gi, 'Показати прострочені задачі'],
+    [/\bFocus work queue\b/gi, 'Відкрити робочу чергу'],
+    [/\bShow reply backlog\b/gi, 'Показати чергу відповідей'],
+    [/\bRefresh work queue\b/gi, 'Оновити робочу чергу'],
+    [/\bDashboard widget grid\b/gi, 'Сітка віджетів дашборда'],
+    [/\bWork queue\b/gi, 'Робоча черга'],
+    [/\bwork queue\b/gi, 'робоча черга'],
+    [/\bOverdue task pressure\b/gi, 'Тиск прострочених задач'],
+    [/\bWaiting reply pressure\b/gi, 'Тиск очікуваних відповідей'],
+    [/\bOpen waiting tasks\b/gi, 'Відкрити задачі в очікуванні'],
+    [/\bFocus first overdue task\b/gi, 'Показати першу прострочену задачу'],
+    [/\bdashboard\.focus-work-queue\b/gi, 'фокус на робочу чергу'],
+    [/\bdashboard\.show-overdue-tasks\b/gi, 'фільтр прострочених задач'],
+    [/\bdashboard\.show-reply-backlog\b/gi, 'черга відповідей'],
+    [/\btasks\.focus-overdue\b/gi, 'прострочені задачі'],
+    [/\bfinance\.open-debts\b/gi, 'борги'],
+    [/\bleads\.focus-hot\b/gi, 'гарячі ліди'],
+    [/\bchat\.filter-unread\b/gi, 'непрочитані чати'],
+    [/\bFILTER\b/g, 'фільтр'],
+    [/\bFOCUS\b/g, 'фокус'],
+    [/\bteam_online\b/g, 'Команда онлайн'],
+    [/\bstaff_today\b/g, 'Хто на зміні'],
+    [/\bdashboard\b/gi, 'дашборд'],
+    [/\bcreator\b/gi, 'роль творця']
+];
+
+function localizeAssistantText(value) {
+    let text = compactString(value, 2000);
+    if (!text) return '';
+    ASSISTANT_UI_TEXT_REPLACEMENTS.forEach(([pattern, replacement]) => {
+        text = text.replace(pattern, replacement);
+    });
+    return text;
+}
+
+function shouldLocalizeRecordKey(key = '') {
+    return /label|title|text|evidence|reason|message|summary|recommendation|description|fallback/i.test(String(key));
+}
+
 function compactList(value, limit = 30) {
     if (!Array.isArray(value)) return [];
     return value
@@ -70,7 +110,9 @@ function compactRecord(value) {
     for (const [key, raw] of Object.entries(value)) {
         if (raw === null || raw === undefined) continue;
         if (['string', 'number', 'boolean'].includes(typeof raw)) {
-            out[key] = compactString(raw, 240);
+            out[key] = typeof raw === 'string'
+                ? compactString(shouldLocalizeRecordKey(key) ? localizeAssistantText(raw) : raw, 240)
+                : compactString(raw, 240);
         }
     }
     return Object.keys(out).length ? out : null;
@@ -80,7 +122,7 @@ function compactRecordList(value, limit = 12) {
     if (!Array.isArray(value)) return [];
     return value
         .map(item => {
-            if (typeof item === 'string') return { label: compactString(item, 180) };
+            if (typeof item === 'string') return { label: compactString(localizeAssistantText(item), 180) };
             return compactRecord(item);
         })
         .filter(Boolean)
@@ -407,11 +449,26 @@ function buildStrategicRecommendation(context = {}, summary = '') {
 
 function normalizeAssistantReply(reply, context = {}, extra = {}) {
     const source = reply && typeof reply === 'object' ? reply : { text: reply };
-    const summary = compactString(source.summary || source.subtitle || source.text || source.recommendation, 900)
+    const summary = compactString(localizeAssistantText(source.summary || source.subtitle || source.text || source.recommendation), 900)
         || 'Поки що не можу сформулювати підказку. Спробуй переформулювати запит.';
     const evidence = compactRecordList(source.evidence?.length ? source.evidence : (context.evidence?.length ? context.evidence : context.signals), 8);
     const actionProposal = source.actionProposal || context.actionProposal || (Array.isArray(context.actions) ? context.actions[0] : null) || null;
     const teachingTarget = source.teachingTarget || context.teachingTarget || (Array.isArray(context.teachingTargets) ? context.teachingTargets.find(target => target.available !== false) : null) || null;
+    const normalizedActionProposal = actionProposal && typeof actionProposal === 'object'
+        ? {
+            ...actionProposal,
+            label: localizeAssistantText(actionProposal.label || actionProposal.title || ''),
+            failureMessage: localizeAssistantText(actionProposal.failureMessage || '')
+        }
+        : actionProposal;
+    const normalizedTeachingTarget = teachingTarget && typeof teachingTarget === 'object'
+        ? {
+            ...teachingTarget,
+            label: localizeAssistantText(teachingTarget.label || teachingTarget.title || ''),
+            reason: localizeAssistantText(teachingTarget.reason || ''),
+            fallbackText: localizeAssistantText(teachingTarget.fallbackText || '')
+        }
+        : teachingTarget;
     return {
         mode: extra.mode || source.mode || 'speaking',
         summary,
@@ -420,10 +477,10 @@ function normalizeAssistantReply(reply, context = {}, extra = {}) {
         evidence,
         riskLevel: extra.riskLevel || source.riskLevel || inferRiskLevel(context),
         confidence: source.confidence || (evidence.length ? 'medium' : 'low'),
-        recommendation: compactString(source.recommendation || buildStrategicRecommendation(context, summary), 900),
-        actionProposal,
-        teachingTarget,
-        fallbackReason: source.fallbackReason || context.fallbackReason || '',
+        recommendation: compactString(localizeAssistantText(source.recommendation || buildStrategicRecommendation(context, summary)), 900),
+        actionProposal: normalizedActionProposal,
+        teachingTarget: normalizedTeachingTarget,
+        fallbackReason: localizeAssistantText(source.fallbackReason || context.fallbackReason || ''),
         model: extra.model || source.model || ''
     };
 }
@@ -453,6 +510,7 @@ async function getDashboardAssistantReply(input = {}) {
                     content: [
                         'Контекст CRM assistant rail. Дай коротку in-product підказку українською.',
                         'Формат думки: що бачу → чому це важливо → одна найкраща наступна дія. Не розширюй відповідь, якщо даних мало.',
+                        'Мова відповіді: відповідай українською або мовою користувача. Не показуй технічні id, enum, actionId чи widget keys на кшталт team_online, staff_today, dashboard.focus-work-queue, FILTER. Перекладай їх у людські назви: «Команда онлайн», «Хто на зміні», «робоча черга», «фільтр».',
                         `Поточне повідомлення користувача: ${context.userMessage}`,
                         'Відповідай саме на це повідомлення. Якщо користувач просить конкретику або список, не повторюй загальний briefing: використовуй taskDetails, chatHistory, contextSummary та evidence з JSON нижче.',
                         JSON.stringify(context, null, 2)

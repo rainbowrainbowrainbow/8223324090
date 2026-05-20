@@ -606,6 +606,15 @@ function customConfirm(message, title = 'Підтвердження') {
 }
 
 const _toastMaxVisible = 3;
+const _toastDedupeMs = 1400;
+const _toastRecent = new Map();
+let _activeConfirmClose = null;
+
+function closeActiveConfirmModal(result = false) {
+    if (typeof _activeConfirmClose === 'function') {
+        _activeConfirmClose(result, { immediate: true });
+    }
+}
 // ==========================================
 // CUSTOM CONFIRM MODAL (replaces native confirm())
 // ==========================================
@@ -617,6 +626,8 @@ const _toastMaxVisible = 3;
  */
 function confirmModal(message, options = {}) {
     return new Promise((resolve) => {
+        closeActiveConfirmModal(false);
+        document.querySelectorAll('.confirm-overlay[data-confirm-kind="confirm"]').forEach(el => el.remove());
         const { okText = 'Підтвердити', cancelText = 'Скасувати', type = 'warning' } = options;
         const icons = { danger: '🗑️', success: '✅', warning: '⚠️' };
         const icon = icons[type] || '❓';
@@ -624,6 +635,9 @@ function confirmModal(message, options = {}) {
 
         const overlay = document.createElement('div');
         overlay.className = 'confirm-overlay';
+        overlay.dataset.confirmKind = 'confirm';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
         overlay.innerHTML = `
             <div class="confirm-dialog ${type}">
                 <div class="confirm-icon">${icon}</div>
@@ -635,14 +649,20 @@ function confirmModal(message, options = {}) {
             </div>`;
 
         let closed = false;
-        const close = (result) => {
+        const close = (result, closeOptions = {}) => {
             if (closed) return;
             closed = true;
-            overlay.classList.add('confirm-exit');
+            if (_activeConfirmClose === close) _activeConfirmClose = null;
+            if (!closeOptions.immediate) overlay.classList.add('confirm-exit');
             document.removeEventListener('keydown', onKey);
-            setTimeout(() => overlay.remove(), 200);
+            if (closeOptions.immediate) {
+                overlay.remove();
+            } else {
+                setTimeout(() => overlay.remove(), 80);
+            }
             resolve(result);
         };
+        _activeConfirmClose = close;
 
         overlay.querySelector('.confirm-cancel').addEventListener('click', () => close(false));
         overlay.querySelector('.confirm-ok').addEventListener('click', () => close(true));
@@ -848,6 +868,16 @@ function formModal(title, fields, options = {}) {
 }
 
 function showNotification(message, type = '') {
+    const normalizedMessage = String(message ?? '');
+    const dedupeKey = `${type || 'info'}:${normalizedMessage}`;
+    const now = Date.now();
+    const recentAt = _toastRecent.get(dedupeKey) || 0;
+    if (normalizedMessage && now - recentAt < _toastDedupeMs) return;
+    _toastRecent.set(dedupeKey, now);
+    setTimeout(() => {
+        if (_toastRecent.get(dedupeKey) === now) _toastRecent.delete(dedupeKey);
+    }, _toastDedupeMs + 250);
+
     let container = document.getElementById('toastContainer');
     if (!container) {
         container = document.createElement('div');
@@ -867,7 +897,7 @@ function showNotification(message, type = '') {
     toast.className = 'toast' + (type ? ` ${type}` : '');
     toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
     toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
-    toast.textContent = message;
+    toast.textContent = normalizedMessage;
 
     container.appendChild(toast);
 

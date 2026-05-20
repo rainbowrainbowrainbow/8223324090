@@ -2773,6 +2773,18 @@ body.dark-mode .team-presence-member.is-offline .team-online-dot {
     box-shadow: none;
 }
 
+body.dark-mode .team-presence-history-toggle {
+    background: rgba(15, 23, 42, 0.36);
+    border-color: rgba(148, 163, 184, 0.18);
+    color: #94A3B8;
+}
+
+body.dark-mode .team-presence-history-toggle:hover,
+body.dark-mode .team-presence-history-toggle:focus-within {
+    border-color: rgba(45, 212, 191, 0.34);
+    color: #99F6E4;
+}
+
 /* Chat dashboard dark polish */
 body.dark-mode .chat-layout,
 body.dark-mode .chat-main {

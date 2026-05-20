@@ -573,6 +573,85 @@ body.dark-mode .dashboard-assistant-history-item.user p {
     border-color: rgba(16, 185, 129, 0.16);
 }
 
+.board-tool-options {
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) repeat(3, auto) auto minmax(110px, auto);
+    align-items: center;
+    gap: 8px;
+    min-width: min(100%, 620px);
+}
+
+.board-tool-options.hidden {
+    display: none;
+}
+
+.board-tool-current {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+}
+
+.board-tool-current span,
+.board-tool-color span,
+.board-tool-range span {
+    color: #64748B;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.board-tool-current strong {
+    color: #0F172A;
+    font-size: 13px;
+    font-weight: 950;
+}
+
+.board-tool-current em {
+    color: #64748B;
+    font-size: 11px;
+    font-style: normal;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.board-tool-check,
+.board-tool-color,
+.board-tool-range {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 0 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    background: rgba(255, 255, 255, 0.55);
+    color: #334155;
+    font-size: 11px;
+    font-weight: 850;
+}
+
+.board-tool-check input {
+    width: 14px;
+    height: 14px;
+    accent-color: #10B981;
+}
+
+.board-tool-color input {
+    width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    padding: 0;
+}
+
+.board-tool-range input {
+    width: 82px;
+    accent-color: #10B981;
+}
+
 .dashboard-mode-toggle,
 .board-edit-controls {
     display: flex;
@@ -682,6 +761,11 @@ body.dark-mode .dashboard-assistant-history-item.user p {
     cursor: crosshair;
 }
 
+.dashboard-board-canvas[data-workspace-mode="board:create"],
+.dashboard-board-canvas[data-workspace-mode="board:shape"] {
+    cursor: crosshair;
+}
+
 .dashboard-board-canvas[data-active-tool="brush"],
 .dashboard-board-canvas[data-active-tool="highlighter"] {
     cursor: crosshair;
@@ -693,6 +777,14 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 
 .dashboard-board-canvas[data-active-tool="hand"] {
     cursor: grab;
+}
+
+.dashboard-board-shell[data-grid-visible="false"] {
+    background-image: none;
+}
+
+.dashboard-board-shell[data-guides-visible="false"] .board-anchor-set {
+    opacity: 0;
 }
 
 .dashboard-board-drawing-layer {
@@ -1171,11 +1263,25 @@ body.dark-mode .dashboard-mode-btn,
 body.dark-mode .dashboard-board-item-frame,
 body.dark-mode .dashboard-board-item-actions button,
 body.dark-mode .board-palette-group,
+body.dark-mode .board-tool-check,
+body.dark-mode .board-tool-color,
+body.dark-mode .board-tool-range,
 body.dark-mode .board-inspector-section,
 body.dark-mode .board-inspector-chip {
     background: rgba(255, 255, 255, 0.055);
     border-color: rgba(255, 255, 255, 0.08);
     color: #cbd5e1;
+}
+
+body.dark-mode .board-tool-current strong {
+    color: #e5e7eb;
+}
+
+body.dark-mode .board-tool-current span,
+body.dark-mode .board-tool-current em,
+body.dark-mode .board-tool-color span,
+body.dark-mode .board-tool-range span {
+    color: #94a3b8;
 }
 
 body.dark-mode .dashboard-mode-btn.active {
@@ -3123,6 +3229,47 @@ body.dark-mode .board-frame-label {
     margin-bottom: 8px;
 }
 
+.team-presence-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.team-presence-toolbar .team-presence-summary {
+    margin-bottom: 0;
+}
+
+.team-presence-history-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    color: #94A3B8;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    opacity: 0.62;
+    cursor: pointer;
+    user-select: none;
+}
+
+.team-presence-history-toggle:hover,
+.team-presence-history-toggle:focus-within {
+    opacity: 1;
+    border-color: rgba(16, 185, 129, 0.35);
+    color: #0F766E;
+}
+
+.team-presence-history-toggle input {
+    width: 10px;
+    height: 10px;
+    accent-color: #10B981;
+}
+
 .team-avatar {
     width: 24px;
     height: 24px;
@@ -3945,6 +4092,25 @@ body.dark-mode .board-frame-label {
 
 .dashboard-settings-role-preview {
     margin-bottom: 4px;
+}
+
+.dashboard-settings-board-card {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(59, 130, 246, 0.05));
+    border-color: rgba(16, 185, 129, 0.16);
+}
+
+.dashboard-settings-inline-control input[type="color"] {
+    width: 36px;
+    height: 28px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    padding: 0;
+}
+
+.dashboard-settings-inline-control input[type="range"] {
+    width: 148px;
+    accent-color: #10B981;
 }
 
 .settings-widget-list {

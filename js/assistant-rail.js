@@ -1665,6 +1665,20 @@
         return step.text || result.target?.label || 'Показую стабільний елемент на екрані.';
     }
 
+    function actionTypeLabel(type = '') {
+        const key = String(type || '').toLowerCase();
+        if (key === 'filter') return 'фільтр';
+        if (key === 'focus') return 'фокус';
+        if (key === 'refresh') return 'оновлення';
+        if (key === 'navigate' || key === 'navigation') return 'навігація';
+        if (key === 'highlight') return 'підсвітка';
+        if (key === 'theme') return 'тема';
+        if (key === 'voice') return 'голос';
+        if (key === 'ui') return 'інтерфейс';
+        if (key === 'create') return 'створення';
+        return type || 'дія';
+    }
+
     function renderActionProposal() {
         const container = document.getElementById('crmAssistantActionProposal');
         if (!container) return;
@@ -1687,7 +1701,7 @@
         }
         const confirmation = proposal.confirmationNeeded ? '<small>потрібне підтвердження</small>' : '<small>безпечна дія</small>';
         const reason = actionReasonText(signal, proposal, context);
-        const actionType = proposal.actionType ? `<em>${escapeHtml(proposal.actionType)}</em>` : '';
+        const actionType = proposal.actionType ? `<em>${escapeHtml(actionTypeLabel(proposal.actionType))}</em>` : '';
         container.innerHTML = `
             <div class="crm-assistant-action-card" data-action-type="${escapeHtml(proposal.actionType || 'focus')}">
                 <div>

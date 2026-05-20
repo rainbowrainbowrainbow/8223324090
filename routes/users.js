@@ -10,13 +10,29 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Users');
 
-// GET /api/users — list all users (creator + director only)
+const ACCOUNT_MANAGER_ROLES = ['creator', 'director', 'hr'];
+const HR_PROTECTED_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
+
+function canToggleAccount(actor, target) {
+    if (!actor || !target) return false;
+    if (target.id === actor.id) return false;
+    if (actor.role === 'hr' && HR_PROTECTED_ROLES.includes(target.role)) return false;
+    return true;
+}
+
+// GET /api/users — list all users for account management (creator/director/hr)
 // v39.8: Security — require authentication
 router.use(authenticateToken);
-router.get('/', requireRole('creator', 'director'), async (req, res) => {
+router.get('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT id, username, name, role, is_active, created_at FROM users ORDER BY id'
+            `SELECT u.id, u.username, u.name, u.role, u.is_active, u.created_at, u.last_seen_at,
+                    ep.staff_id, ep.id AS profile_id, ep.full_name AS profile_name,
+                    s.name AS staff_name, s.department AS staff_department, s.position AS staff_position
+             FROM users u
+             LEFT JOIN employee_profiles ep ON ep.user_id = u.id AND ep.is_active = true
+             LEFT JOIN staff s ON s.id = ep.staff_id
+             ORDER BY COALESCE(u.is_active, true) DESC, lower(COALESCE(NULLIF(u.name, ''), u.username)), u.id`
         );
         res.json(result.rows);
     } catch (err) {
@@ -92,20 +108,25 @@ router.post('/:id/reset-password', requireRole('creator', 'director'), async (re
     }
 });
 
-// PATCH /api/users/:id/active — activate/deactivate user (creator + director only)
-router.patch('/:id/active', requireRole('creator', 'director'), async (req, res) => {
+// PATCH /api/users/:id/active — activate/deactivate user (creator/director/hr, guarded)
+router.patch('/:id/active', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
     try {
         const { id } = req.params;
         const { isActive } = req.body;
 
-        const target = await pool.query('SELECT id, username FROM users WHERE id = $1', [parseInt(id)]);
+        const target = await pool.query('SELECT id, username, role FROM users WHERE id = $1', [parseInt(id)]);
         if (target.rows.length === 0) return res.status(404).json({ error: 'Користувача не знайдено' });
 
-        if (target.rows[0].id === req.user.id) {
-            return res.status(400).json({ error: 'Не можна деактивувати себе' });
+        if (!canToggleAccount(req.user, target.rows[0])) {
+            return res.status(400).json({ error: 'Цей акаунт не можна змінити з поточного рівня доступу' });
         }
 
         await pool.query('UPDATE users SET is_active = $1 WHERE id = $2', [!!isActive, parseInt(id)]);
+        if (!isActive) {
+            await pool.query('UPDATE employee_profiles SET is_active = false WHERE user_id = $1', [parseInt(id)]);
+        } else {
+            await pool.query('UPDATE employee_profiles SET is_active = true WHERE user_id = $1 AND staff_id IS NOT NULL', [parseInt(id)]);
+        }
 
         log.info(`User ${req.user.username} ${isActive ? 'activated' : 'deactivated'} ${target.rows[0].username}`);
         res.json({ success: true, username: target.rows[0].username, isActive: !!isActive });

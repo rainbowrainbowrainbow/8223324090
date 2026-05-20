@@ -62,6 +62,7 @@ const GUARDIAN_OPS_ACCESS = ['creator', 'director', 'admin', 'security'];
 const PAGE_ACCESS = {
     '/dashboard': ROLE_HIERARCHY,  // Everyone
     '/':          ALL_STAFF,
+    '/maysternya-doli': ['creator'],
     '/tasks':     ALL_STAFF,
     '/chat':      ALL_STAFF,
     '/chat-settings': ['creator', 'director', 'admin'],
@@ -116,6 +117,47 @@ const ACTION_PERMISSIONS = {
     export_data:     MANAGER_UP,
     manage_staff:    [...MANAGER_UP, 'hr'],
 };
+
+function normalizeRoleList(user) {
+    const roles = [];
+    if (user?.role) roles.push(user.role);
+    if (Array.isArray(user?.roles)) roles.push(...user.roles);
+    if (Array.isArray(user?.extra_roles)) roles.push(...user.extra_roles);
+    if (Array.isArray(user?.extraRoles)) roles.push(...user.extraRoles);
+    return Array.from(new Set(roles.filter(role => ROLE_HIERARCHY.includes(role))));
+}
+
+function normalizePageAllowlist(user) {
+    const values = [];
+    if (Array.isArray(user?.page_allowlist)) values.push(...user.page_allowlist);
+    if (Array.isArray(user?.pageAllowlist)) values.push(...user.pageAllowlist);
+    return Array.from(new Set(values.filter(Boolean).map(String)));
+}
+
+function userHasAnyRole(user, allowedRoles) {
+    if (!Array.isArray(allowedRoles) || !allowedRoles.length) return false;
+    const roles = normalizeRoleList(user);
+    return roles.includes('creator') || roles.some(role => allowedRoles.includes(role));
+}
+
+function userMaxRoleLevel(user) {
+    return normalizeRoleList(user).reduce((max, role) => Math.max(max, ROLE_LEVEL[role] ?? -1), -1);
+}
+
+function buildAuthUserPayload(user) {
+    const extraRoles = Array.isArray(user?.extra_roles) ? user.extra_roles : (Array.isArray(user?.extraRoles) ? user.extraRoles : []);
+    const pageAllowlist = normalizePageAllowlist(user);
+    const roles = normalizeRoleList({ ...user, extraRoles });
+    return {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        roles,
+        extraRoles: roles.filter(role => role !== user.role),
+        pageAllowlist,
+        name: user.name
+    };
+}
 
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
@@ -180,7 +222,7 @@ function requireRole(...roles) {
     }
 
     return (req, res, next) => {
-        if (!req.user || !expandedRoles.has(req.user.role)) {
+        if (!req.user || !userHasAnyRole(req.user, Array.from(expandedRoles))) {
             return res.status(403).json({ error: 'Insufficient permissions' });
         }
         next();
@@ -191,7 +233,7 @@ function requireRole(...roles) {
 function requireMinRole(minRole) {
     return (req, res, next) => {
         if (!req.user) return res.status(401).json({ error: 'Authentication required' });
-        const userLevel = ROLE_LEVEL[req.user.role];
+        const userLevel = userMaxRoleLevel(req.user);
         const minLevel = ROLE_LEVEL[minRole];
         if (userLevel === undefined || minLevel === undefined || userLevel < minLevel) {
             return res.status(403).json({ error: 'Insufficient permissions' });
@@ -205,7 +247,7 @@ function requireAction(action) {
     return (req, res, next) => {
         if (!req.user) return res.status(401).json({ error: 'Authentication required' });
         const allowed = ACTION_PERMISSIONS[action];
-        if (!allowed || !allowed.includes(req.user.role)) {
+        if (!allowed || !userHasAnyRole(req.user, allowed)) {
             return res.status(403).json({ error: 'Insufficient permissions' });
         }
         next();
@@ -237,8 +279,9 @@ function hashRefreshToken(token) {
  * Create a new access + refresh token pair
  */
 async function createTokenPair(user, { deviceInfo, ipAddress } = {}) {
+    const authUser = buildAuthUserPayload(user);
     const accessToken = jwt.sign(
-        { id: user.id, username: user.username, role: user.role, name: user.name },
+        authUser,
         JWT_SECRET,
         { expiresIn: ACCESS_TOKEN_EXPIRY }
     );
@@ -292,7 +335,7 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {
 
     // Get user
     const userResult = await pool.query(
-        'SELECT id, username, role, name, is_active FROM users WHERE id = $1',
+        'SELECT id, username, role, extra_roles, page_allowlist, name, is_active FROM users WHERE id = $1',
         [oldToken.user_id]
     );
 
@@ -368,5 +411,10 @@ module.exports = {
     ROLE_LEVEL,
     PAGE_ACCESS,
     ACTION_PERMISSIONS,
+    normalizeRoleList,
+    normalizePageAllowlist,
+    userHasAnyRole,
+    userMaxRoleLevel,
+    buildAuthUserPayload,
     ANY_ROLE
 };

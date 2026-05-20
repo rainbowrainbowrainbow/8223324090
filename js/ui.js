@@ -1215,7 +1215,8 @@ function toggleCompactMode(event) {
         : toggle
             ? toggle.checked
             : !AppState.compactMode;
-    localStorage.setItem('pzp_compact_mode', AppState.compactMode);
+    const key = typeof timelineStorageKey === 'function' ? timelineStorageKey('compact_mode') : 'pzp_compact_mode';
+    localStorage.setItem(key, AppState.compactMode);
     applyTimelineResponsiveDensity();
     if (toggle) toggle.checked = AppState.compactMode;
     renderTimeline();
@@ -1228,7 +1229,8 @@ function toggleCompactMode(event) {
 function changeZoom(level) {
     AppState.zoomLevel = level;
     CONFIG.TIMELINE.CELL_MINUTES = level;
-    localStorage.setItem('pzp_zoom_level', level);
+    const key = typeof timelineStorageKey === 'function' ? timelineStorageKey('zoom_level') : 'pzp_zoom_level';
+    localStorage.setItem(key, level);
     applyTimelineResponsiveDensity();
     updateZoomButtons();
     renderTimeline();

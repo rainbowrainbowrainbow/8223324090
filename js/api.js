@@ -5,6 +5,20 @@
 
 const API_BASE = '/api';
 
+function timelineApiUrl(url) {
+    if (typeof window !== 'undefined' && window.TimelineBusinessContext) {
+        return window.TimelineBusinessContext.appendApiContext(url);
+    }
+    return url;
+}
+
+function timelineApiPayload(payload) {
+    if (typeof window !== 'undefined' && window.TimelineBusinessContext) {
+        return window.TimelineBusinessContext.withApiContext(payload);
+    }
+    return payload;
+}
+
 // v39.9: Global safe fetch wrapper — auto-checks response.ok, handles auth errors
 async function safeFetch(url, opts = {}) {
     if (!opts.headers) opts.headers = {};
@@ -84,7 +98,7 @@ async function apiCall(method, url, body = null, { fallback = null, raw = false 
 
 async function apiGetBookings(date) {
     try {
-        const response = await fetch(`${API_BASE}/bookings/${date}`, { headers: getAuthHeaders(false) });
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${date}`)}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -100,7 +114,7 @@ async function apiCreateBooking(booking) {
         const response = await fetch(`${API_BASE}/bookings`, {
             method: 'POST',
             headers: getAuthHeaders(),
-            body: JSON.stringify(booking)
+            body: JSON.stringify(timelineApiPayload(booking))
         });
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) {
@@ -120,7 +134,7 @@ async function apiCreateBookingFull(main, linked) {
         const response = await fetch(`${API_BASE}/bookings/full`, {
             method: 'POST',
             headers: getAuthHeaders(),
-            body: JSON.stringify({ main, linked })
+            body: JSON.stringify(timelineApiPayload({ main: timelineApiPayload(main), linked: (linked || []).map(item => timelineApiPayload(item)) }))
         });
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) {
@@ -136,7 +150,7 @@ async function apiCreateBookingFull(main, linked) {
 
 async function apiDeleteBooking(id) {
     try {
-        const response = await fetch(`${API_BASE}/bookings/${id}`, {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${id}`)}`, {
             method: 'DELETE',
             headers: getAuthHeaders(false)
         });
@@ -154,10 +168,10 @@ async function apiDeleteBooking(id) {
 
 async function apiUpdateBooking(id, booking) {
     try {
-        const response = await fetch(`${API_BASE}/bookings/${id}`, {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${id}`)}`, {
             method: 'PUT',
             headers: getAuthHeaders(),
-            body: JSON.stringify(booking)
+            body: JSON.stringify(timelineApiPayload(booking))
         });
         if (handleAuthError(response)) return { success: false };
         // Optimistic locking: 409 with conflict field
@@ -187,7 +201,7 @@ async function apiConfirmBooking(id, payload = {}) {
         const response = await fetch(`${API_BASE}/bookings/${encodeURIComponent(id)}/confirm`, {
             method: 'POST',
             headers: getAuthHeaders(),
-            body: JSON.stringify(payload || {})
+            body: JSON.stringify(timelineApiPayload(payload || {}))
         });
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) {
@@ -206,7 +220,7 @@ async function apiUpdateLinkedBookingsAtomic(id, payload) {
         const response = await fetch(`${API_BASE}/bookings/${id}/linked-atomic`, {
             method: 'POST',
             headers: getAuthHeaders(),
-            body: JSON.stringify(payload || {})
+            body: JSON.stringify(timelineApiPayload(payload || {}))
         });
         if (handleAuthError(response)) return { success: false };
         if (response.status === 409) {
@@ -231,7 +245,7 @@ async function apiUpdateLinkedBookingsAtomic(id, payload) {
 
 async function apiGetLines(date) {
     try {
-        const response = await fetch(`${API_BASE}/lines/${date}`, { headers: getAuthHeaders(false) });
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/lines/${date}`)}`, { headers: getAuthHeaders(false) });
         // console.log('[apiGetLines] status=' + response.status + ' date=' + date);
         if (handleAuthError(response)) { console.warn('[apiGetLines] Auth error — returning null'); return null; }
         if (!response.ok) throw new Error('API error ' + response.status);
@@ -246,10 +260,10 @@ async function apiGetLines(date) {
 
 async function apiSaveLines(date, lines) {
     try {
-        const response = await fetch(`${API_BASE}/lines/${date}`, {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/lines/${date}`)}`, {
             method: 'POST',
             headers: getAuthHeaders(),
-            body: JSON.stringify(lines)
+            body: JSON.stringify((lines || []).map(line => timelineApiPayload(line)))
         });
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) throw new Error('API error');

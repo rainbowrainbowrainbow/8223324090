@@ -77,6 +77,13 @@ const ProductSalesState = {
 
 document.addEventListener('DOMContentLoaded', initializeApp);
 
+function timelineStorageKey(name) {
+    if (typeof window !== 'undefined' && window.TimelineBusinessContext) {
+        return window.TimelineBusinessContext.storageKey(name);
+    }
+    return `pzp_${name}`;
+}
+
 function initializeApp() {
     initializeLocalData();
     initializeCostumes();
@@ -132,9 +139,9 @@ function loadPreferences() {
     if (darkToggle) darkToggle.checked = AppState.darkMode;
     const darkIcon = document.getElementById('darkModeIcon');
     if (darkIcon) darkIcon.textContent = AppState.darkMode ? '☀️' : '🌙';
-    AppState.compactMode = localStorage.getItem('pzp_compact_mode') === 'true';
-    AppState.zoomLevel = parseInt(localStorage.getItem('pzp_zoom_level')) || 15;
-    AppState.statusFilter = localStorage.getItem('pzp_status_filter') || 'all';
+    AppState.compactMode = localStorage.getItem(timelineStorageKey('compact_mode')) === 'true';
+    AppState.zoomLevel = parseInt(localStorage.getItem(timelineStorageKey('zoom_level'))) || 15;
+    AppState.statusFilter = localStorage.getItem(timelineStorageKey('status_filter')) || 'all';
     CONFIG.TIMELINE.CELL_MINUTES = AppState.zoomLevel;
     const compactToggle = document.getElementById('compactModeToggle');
     if (compactToggle) compactToggle.checked = AppState.compactMode;
@@ -269,7 +276,7 @@ function initTimelineListeners() {
             document.querySelectorAll('.status-filter-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             AppState.statusFilter = btn.dataset.filter;
-            localStorage.setItem('pzp_status_filter', AppState.statusFilter);
+            localStorage.setItem(timelineStorageKey('status_filter'), AppState.statusFilter);
             applyStatusFilter();
         });
     });

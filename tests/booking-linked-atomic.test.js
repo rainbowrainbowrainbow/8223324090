@@ -51,6 +51,7 @@ function bookingRow(overrides = {}) {
         updated_at: new Date('2099-01-01T00:00:00Z').toISOString(),
         group_name: null,
         extra_data: null,
+        business_context: 'event_genix',
         skip_notification: false,
         customer_id: null,
         payment_method: null,
@@ -82,16 +83,25 @@ function makeDb(initialRows) {
             return { rows: state.rows.filter(row => row.id === params[0]) };
         }
 
-        if (/SELECT \* FROM bookings WHERE linked_to = \$1 AND status != 'cancelled' FOR UPDATE/i.test(sql)) {
-            return { rows: state.rows.filter(row => row.linked_to === params[0] && row.status !== 'cancelled') };
+        if (/SELECT \* FROM bookings WHERE linked_to = \$1(?: AND business_context = \$2)? AND status != 'cancelled' FOR UPDATE/i.test(sql)) {
+            const businessContext = params[1];
+            return {
+                rows: state.rows.filter(row =>
+                    row.linked_to === params[0] &&
+                    (!businessContext || (row.business_context || 'event_genix') === businessContext) &&
+                    row.status !== 'cancelled'
+                )
+            };
         }
 
         if (/FROM bookings WHERE date = \$1 AND line_id = \$2/i.test(sql)) {
-            const exclude = new Set(params[2] || []);
+            const businessContext = sql.includes('business_context = $3') ? params[2] : null;
+            const exclude = new Set((businessContext ? params[3] : params[2]) || []);
             return {
                 rows: state.rows.filter(row =>
                     row.date === params[0] &&
                     row.line_id === params[1] &&
+                    (!businessContext || (row.business_context || 'event_genix') === businessContext) &&
                     row.status !== 'cancelled' &&
                     !exclude.has(row.id)
                 )
@@ -99,11 +109,13 @@ function makeDb(initialRows) {
         }
 
         if (/FROM bookings WHERE date = \$1 AND room = \$2/i.test(sql)) {
-            const exclude = new Set(params[2] || []);
+            const businessContext = sql.includes('business_context = $3') ? params[2] : null;
+            const exclude = new Set((businessContext ? params[3] : params[2]) || []);
             return {
                 rows: state.rows.filter(row =>
                     row.date === params[0] &&
                     row.room === params[1] &&
+                    (!businessContext || (row.business_context || 'event_genix') === businessContext) &&
                     row.status !== 'cancelled' &&
                     !exclude.has(row.id)
                 )
@@ -111,10 +123,12 @@ function makeDb(initialRows) {
         }
 
         if (/WHERE \(hosts = \$1 OR second_animator = \$1::text\)/i.test(sql)) {
-            const exclude = new Set(params[2] || []);
+            const businessContext = sql.includes('business_context = $3') ? params[2] : null;
+            const exclude = new Set((businessContext ? params[3] : params[2]) || []);
             return {
                 rows: state.rows.filter(row =>
                     row.date === params[1] &&
+                    (!businessContext || (row.business_context || 'event_genix') === businessContext) &&
                     row.status !== 'cancelled' &&
                     !row.linked_to &&
                     !exclude.has(row.id) &&

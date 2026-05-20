@@ -13,7 +13,8 @@ const multer = require('multer');
 const { pool } = require('../db');
 const {
     JWT_SECRET, authenticateToken, PAGE_ACCESS, ACTION_PERMISSIONS, ROLE_HIERARCHY, ROLE_LEVEL,
-    createTokenPair, rotateRefreshToken, revokeRefreshToken, revokeAllUserTokens, cleanupRefreshTokens
+    createTokenPair, rotateRefreshToken, revokeRefreshToken, revokeAllUserTokens, cleanupRefreshTokens,
+    buildAuthUserPayload, normalizeRoleList, normalizePageAllowlist, userHasAnyRole
 } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { buildTaskOwnerMatch, normalizeUserId } = require('../services/taskPolicy');
@@ -74,7 +75,7 @@ router.post('/login', async (req, res) => {
         }
 
         const result = await pool.query(
-            `SELECT u.id, u.username, u.password_hash, u.role, u.name, u.is_active,
+            `SELECT u.id, u.username, u.password_hash, u.role, u.extra_roles, u.page_allowlist, u.name, u.is_active,
                     u.avatar_emoji, u.avatar_color, upe.avatar_url
              FROM users u
              LEFT JOIN user_profiles_ext upe ON upe.username = u.username
@@ -97,11 +98,8 @@ router.post('/login', async (req, res) => {
         const { accessToken, refreshToken, expiresAt } = await createTokenPair(user, { deviceInfo, ipAddress });
 
         // Backward compat: also issue legacy long-lived token for existing clients
-        const token = jwt.sign(
-            { id: user.id, username: user.username, role: user.role, name: user.name },
-            JWT_SECRET,
-            { expiresIn: '24h' }
-        );
+        const authUser = buildAuthUserPayload(user);
+        const token = jwt.sign(authUser, JWT_SECRET, { expiresIn: '24h' });
 
         log.info(`User "${username}" logged in (role: ${user.role})`);
 
@@ -113,7 +111,7 @@ router.post('/login', async (req, res) => {
             accessToken, // new: short-lived (15m)
             refreshToken, // new: long-lived (30d), store securely
             refreshExpiresAt: expiresAt,
-            user: { id: user.id, username: user.username, role: user.role, name: user.name, ...userAvatarPayload(user) }
+            user: { ...authUser, ...userAvatarPayload(user) }
         });
     } catch (err) {
         log.error('Login error', err);
@@ -125,7 +123,7 @@ router.get('/verify', authenticateToken, async (req, res) => {
     try {
         // Read fresh role from DB (JWT may have stale role after role migration)
         const result = await pool.query(
-            `SELECT u.id, u.username, u.role, u.name, u.avatar_emoji, u.avatar_color, upe.avatar_url
+            `SELECT u.id, u.username, u.role, u.extra_roles, u.page_allowlist, u.name, u.avatar_emoji, u.avatar_color, upe.avatar_url
              FROM users u
              LEFT JOIN user_profiles_ext upe ON upe.username = u.username
              WHERE u.username = $1 AND u.is_active = true`,
@@ -135,8 +133,7 @@ router.get('/verify', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'User not found or deactivated' });
         }
         const user = result.rows[0];
-        const { id, role, name, username } = user;
-        res.json({ user: { id, username, role, name, ...userAvatarPayload(user) } });
+        res.json({ user: { ...buildAuthUserPayload(user), ...userAvatarPayload(user) } });
     } catch (err) {
         res.status(500).json({ error: 'Verification failed' });
     }
@@ -925,22 +922,28 @@ router.put('/password', authenticateToken, async (req, res) => {
 // v22.18.0: RBAC — return user permissions for frontend enforcement
 router.get('/permissions', authenticateToken, (req, res) => {
     const role = req.user.role;
-    const level = ROLE_LEVEL[role] ?? -1;
+    const roles = normalizeRoleList(req.user);
+    const pageAllowlist = normalizePageAllowlist(req.user);
+    const level = roles.reduce((max, item) => Math.max(max, ROLE_LEVEL[item] ?? -1), -1);
 
     // Pages the user can access
     const pages = {};
-    for (const [page, roles] of Object.entries(PAGE_ACCESS)) {
-        pages[page] = roles.includes(role);
+    for (const [page, pageRoles] of Object.entries(PAGE_ACCESS)) {
+        pages[page] = pageAllowlist.includes(page)
+            || pageRoles === null
+            || userHasAnyRole(req.user, pageRoles);
     }
 
     // Actions the user can perform
     const actions = {};
     for (const [action, roles] of Object.entries(ACTION_PERMISSIONS)) {
-        actions[action] = roles.includes(role);
+        actions[action] = userHasAnyRole(req.user, roles);
     }
 
     res.json({
         role,
+        roles: normalizeRoleList(req.user),
+        pageAllowlist,
         level,
         pages,
         actions
@@ -960,18 +963,15 @@ router.post('/impersonate', authenticateToken, async (req, res) => {
         if (!userId) return res.status(400).json({ error: 'userId required' });
 
         const result = await pool.query(
-            'SELECT id, username, role, name, is_active FROM users WHERE id = $1',
+            'SELECT id, username, role, extra_roles, page_allowlist, name, is_active FROM users WHERE id = $1',
             [parseInt(userId)]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
         const target = result.rows[0];
         if (!target.is_active) return res.status(400).json({ error: 'User is deactivated' });
 
-        const token = jwt.sign(
-            { id: target.id, username: target.username, role: target.role, name: target.name, imp: true, impBy: req.user.username },
-            JWT_SECRET,
-            { expiresIn: '1h' }
-        );
+        const authUser = { ...buildAuthUserPayload(target), imp: true, impBy: req.user.username };
+        const token = jwt.sign(authUser, JWT_SECRET, { expiresIn: '1h' });
 
         // Audit log
         try {
@@ -984,7 +984,7 @@ router.post('/impersonate', authenticateToken, async (req, res) => {
         } catch (e) { log.warn('Audit log failed for impersonation', e.message); }
 
         log.info(`Impersonation: ${req.user.username} → ${target.username} (${target.role})`);
-        res.json({ token, user: { id: target.id, username: target.username, role: target.role, name: target.name } });
+        res.json({ token, user: authUser });
     } catch (err) {
         log.error('Impersonate error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -998,7 +998,7 @@ router.get('/users-list', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Only creator can list users' });
         }
         const result = await pool.query(
-            'SELECT id, username, name, role FROM users WHERE is_active = true ORDER BY name'
+            'SELECT id, username, name, role, extra_roles, page_allowlist FROM users WHERE is_active = true ORDER BY name'
         );
         res.json(result.rows);
     } catch (err) {
@@ -1027,7 +1027,7 @@ router.post('/refresh', async (req, res) => {
             accessToken: result.accessToken,
             refreshToken: result.refreshToken,
             refreshExpiresAt: result.expiresAt,
-            user: { id: result.user.id, username: result.user.username, role: result.user.role, name: result.user.name }
+            user: buildAuthUserPayload(result.user)
         });
     } catch (err) {
         log.error('Refresh error', err);

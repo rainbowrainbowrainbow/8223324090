@@ -3,6 +3,7 @@
  */
 const { pool } = require('../db');
 const { normalizePinataFields, buildPinataServices } = require('./pinataMode');
+const { normalizeTimelineContext, DEFAULT_TIMELINE_CONTEXT } = require('./timelineContext');
 
 // --- Validators ---
 
@@ -50,12 +51,13 @@ const ALL_ROOMS = [
 
 // --- Conflict checks ---
 
-async function checkRoomConflict(client, date, room, time, duration, excludeId = null) {
+async function checkRoomConflict(client, date, room, time, duration, excludeId = null, businessContext = DEFAULT_TIMELINE_CONTEXT) {
     if (!room || room === 'Інше') return null;
-    const params = excludeId ? [date, room, excludeId] : [date, room];
+    const context = normalizeTimelineContext(businessContext);
+    const params = excludeId ? [date, room, context, excludeId] : [date, room, context];
     const result = await client.query(
-        "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND status != 'cancelled'" +
-        (excludeId ? ' AND id != $3' : ''),
+        "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND business_context = $3 AND status != 'cancelled'" +
+        (excludeId ? ' AND id != $4' : ''),
         params
     );
     const newStart = timeToMinutes(time);
@@ -70,11 +72,12 @@ async function checkRoomConflict(client, date, room, time, duration, excludeId =
     return null;
 }
 
-async function checkServerConflicts(client, date, lineId, time, duration, excludeId = null) {
-    const params = excludeId ? [date, lineId, excludeId] : [date, lineId];
+async function checkServerConflicts(client, date, lineId, time, duration, excludeId = null, businessContext = DEFAULT_TIMELINE_CONTEXT) {
+    const context = normalizeTimelineContext(businessContext);
+    const params = excludeId ? [date, lineId, context, excludeId] : [date, lineId, context];
     const result = await client.query(
-        "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND line_id = $2 AND status != 'cancelled'" +
-        (excludeId ? ' AND id != $3' : ''),
+        "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND line_id = $2 AND business_context = $3 AND status != 'cancelled'" +
+        (excludeId ? ' AND id != $4' : ''),
         params
     );
     const newStart = timeToMinutes(time);
@@ -100,15 +103,16 @@ async function checkServerConflicts(client, date, lineId, time, duration, exclud
     return { overlap: false, noPause, conflictWith: null };
 }
 
-async function checkServerDuplicate(client, date, programId, time, duration, excludeId = null) {
+async function checkServerDuplicate(client, date, programId, time, duration, excludeId = null, businessContext = DEFAULT_TIMELINE_CONTEXT) {
     if (!programId) return null;
     // v43.10.0: custom programs ("Інше") share programId but are independent — never dedupe
     if (programId === 'custom') return null;
-    const params = excludeId ? [date, programId, excludeId] : [date, programId];
+    const context = normalizeTimelineContext(businessContext);
+    const params = excludeId ? [date, programId, context, excludeId] : [date, programId, context];
     // v19.12: Include time+duration in initial SELECT to eliminate N+1 queries
     const result = await client.query(
-        "SELECT id, category, time, duration FROM bookings WHERE date = $1 AND program_id = $2 AND status != 'cancelled'" +
-        (excludeId ? ' AND id != $3' : ''),
+        "SELECT id, category, time, duration FROM bookings WHERE date = $1 AND program_id = $2 AND business_context = $3 AND status != 'cancelled'" +
+        (excludeId ? ' AND id != $4' : ''),
         params
     );
     const newStart = timeToMinutes(time);
@@ -141,6 +145,7 @@ function mapBookingRow(row) {
 
     return {
         id: row.id,
+        businessContext: row.business_context || DEFAULT_TIMELINE_CONTEXT,
         date: row.date,
         time: row.time,
         lineId: row.line_id,
@@ -239,24 +244,26 @@ async function syncScheduledAnimatorLines(date, db = pool) {
 
     for (const line of scheduledLines) {
         await db.query(
-            `INSERT INTO lines_by_date (date, line_id, name, color, from_sheet)
-             VALUES ($1, $2, $3, $4, true)
-             ON CONFLICT (date, line_id)
+            `INSERT INTO lines_by_date (business_context, date, line_id, name, color, from_sheet)
+             VALUES ($1, $2, $3, $4, $5, true)
+             ON CONFLICT (business_context, date, line_id)
              DO UPDATE SET
                 name = EXCLUDED.name,
                 color = EXCLUDED.color,
                 from_sheet = true`,
-            [date, line.id, line.name, line.color]
+            [DEFAULT_TIMELINE_CONTEXT, date, line.id, line.name, line.color]
         );
     }
 
     await db.query(
         `DELETE FROM lines_by_date l
          WHERE l.date = $1
+           AND l.business_context = $4
            AND l.line_id IN ($2, $3)
            AND NOT EXISTS (
                 SELECT 1 FROM bookings b
                 WHERE b.date = l.date
+                  AND b.business_context = l.business_context
                   AND b.line_id = l.line_id
                   AND b.status != 'cancelled'
            )
@@ -265,7 +272,7 @@ async function syncScheduledAnimatorLines(date, db = pool) {
                 WHERE a.date = l.date
                   AND a.line_id = l.line_id
            )`,
-        [date, `line1_${date}`, `line2_${date}`]
+        [date, `line1_${date}`, `line2_${date}`, DEFAULT_TIMELINE_CONTEXT]
     );
 
     return { source: 'staff_schedule', count: scheduledLines.length };
@@ -274,7 +281,7 @@ async function syncScheduledAnimatorLines(date, db = pool) {
 // --- Default lines ---
 
 async function ensureDefaultLines(date, db = pool) {
-    const existing = await db.query('SELECT COUNT(*) FROM lines_by_date WHERE date = $1', [date]);
+    const existing = await db.query('SELECT COUNT(*) FROM lines_by_date WHERE date = $1 AND business_context = $2', [date, DEFAULT_TIMELINE_CONTEXT]);
     const count = parseInt(existing.rows[0].count);
     // v12.6: Only create defaults when NO lines exist (count === 0)
     // Previously count < 2 caused phantom "Аніматор 1/2" to reappear after user deleted a line
@@ -285,8 +292,8 @@ async function ensureDefaultLines(date, db = pool) {
         ];
         for (const line of defaults) {
             await db.query(
-                'INSERT INTO lines_by_date (date, line_id, name, color) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
-                [date, line.id, line.name, line.color]
+                'INSERT INTO lines_by_date (business_context, date, line_id, name, color) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING',
+                [DEFAULT_TIMELINE_CONTEXT, date, line.id, line.name, line.color]
             );
         }
     }

@@ -479,6 +479,7 @@ const _GUARDIAN_OPS_ACCESS = ['creator', 'director', 'admin', 'security'];
 const PAGE_ACCESS = {
     '/dashboard': ROLE_HIERARCHY.slice(),
     '/':          _ALL_STAFF,
+    '/maysternya-doli': ['creator'],
     '/tasks':     _ALL_STAFF,
     '/chat':      _ALL_STAFF,
     '/chat-settings': ['creator', 'director', 'admin'],
@@ -539,15 +540,45 @@ function getUserRole() {
     return AppState.currentUser ? AppState.currentUser.role : null;
 }
 
+function getUserRoles() {
+    const roles = [];
+    const primary = getUserRole();
+    if (primary) roles.push(primary);
+    const user = AppState.currentUser || {};
+    if (Array.isArray(user.roles)) roles.push(...user.roles);
+    if (Array.isArray(user.extraRoles)) roles.push(...user.extraRoles);
+    if (Array.isArray(user.extra_roles)) roles.push(...user.extra_roles);
+    return Array.from(new Set(roles.filter(Boolean).map(String)));
+}
+
+function getUserPageAllowlist() {
+    const user = AppState.currentUser || {};
+    const pages = [];
+    if (Array.isArray(user.pageAllowlist)) pages.push(...user.pageAllowlist);
+    if (Array.isArray(user.page_allowlist)) pages.push(...user.page_allowlist);
+    return Array.from(new Set(pages.filter(Boolean).map(String)));
+}
+
 function hasMinRole(minRole) {
-    const role = getUserRole();
-    return role && (ROLE_LEVEL[role] || 0) >= (ROLE_LEVEL[minRole] || 99);
+    return getUserRoles().some(role => (ROLE_LEVEL[role] || 0) >= (ROLE_LEVEL[minRole] || 99));
 }
 
 function canAccess(action) {
-    const role = getUserRole();
+    if (window.TimelineBusinessContext?.current().key === 'maysternya_doli') {
+        const aliases = {
+            create_booking: 'create',
+            edit_booking: 'edit',
+            delete_booking: 'delete',
+            export_data: 'export',
+            manage_settings: 'settings'
+        };
+        if (aliases[action]) {
+            return window.TimelineBusinessContext.canUseAction(aliases[action], AppState.currentUser);
+        }
+    }
     const allowed = ACTION_PERMISSIONS[action];
-    return role && allowed && allowed.includes(role);
+    if (!allowed) return false;
+    return getUserRoles().some(role => allowed.includes(role));
 }
 
 function _normalizePagePath(page) {
@@ -567,8 +598,9 @@ function _isPageAllowedForRole(page, role) {
 }
 
 function canAccessPage(page) {
-    const role = getUserRole();
-    return _isPageAllowedForRole(page, role) === true;
+    const normalized = _normalizePagePath(page);
+    if (normalized && getUserPageAllowlist().includes(normalized)) return true;
+    return getUserRoles().some(role => _isPageAllowedForRole(page, role) === true);
 }
 
 function isViewer() {
@@ -606,6 +638,12 @@ function showMainApp() {
     document.body.classList.remove('panel-open');
     const backdrop = document.getElementById('panelBackdrop');
     if (backdrop) backdrop.classList.add('hidden');
+
+    if (window.TimelineBusinessContext?.current().key === 'maysternya_doli'
+        && !window.TimelineBusinessContext.canAccessContext(AppState.currentUser)) {
+        window.location.href = '/dashboard';
+        return;
+    }
 
     // Settings (gear) — тільки для creator/director
     const settingsBtn = document.getElementById('settingsBtn');
@@ -653,6 +691,14 @@ function showMainApp() {
     const productSalesBtn = document.getElementById('productSalesBtn');
     if (productSalesBtn) {
         productSalesBtn.classList.toggle('hidden', !canAccess('export_data'));
+    }
+
+    if (window.TimelineBusinessContext?.current().key === 'maysternya_doli') {
+        const canUse = action => window.TimelineBusinessContext.canUseAction(action, AppState.currentUser);
+        document.getElementById('addLineBtn')?.classList.toggle('hidden', !canUse('settings'));
+        document.getElementById('exportTimelineBtn')?.classList.toggle('hidden', !canUse('export'));
+        document.getElementById('productSalesBtn')?.classList.add('hidden');
+        document.getElementById('settingsBtn')?.classList.toggle('hidden', !canUse('settings'));
     }
 
     // Dark mode toggle

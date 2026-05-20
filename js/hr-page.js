@@ -903,6 +903,18 @@ function formatAccountLastSeen(value) {
     return d.toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
+function normalizeAccountArray(value) {
+    return Array.isArray(value) ? value.filter(Boolean).map(String) : [];
+}
+
+function formatAccountAccess(u) {
+    const roles = [u.role, ...normalizeAccountArray(u.extra_roles || u.extraRoles)]
+        .filter(Boolean)
+        .map(role => ROLE_LABELS[role] || role);
+    const pages = normalizeAccountArray(u.page_allowlist || u.pageAllowlist);
+    return `${roles.join(' + ') || 'user'}${pages.length ? ' · pages: ' + pages.join(', ') : ''}`;
+}
+
 async function loadAccountCenter() {
     const root = document.getElementById('accountCenterList');
     if (root) root.innerHTML = '<div class="hr-account-empty">Завантаження акаунтів...</div>';
@@ -945,7 +957,7 @@ function renderAccountCenter() {
     root.innerHTML = rows.map(u => {
         const active = u.is_active !== false;
         const staff = u.staff_name ? `${escapeHtml(u.staff_name)}${u.staff_department ? ' · ' + escapeHtml(u.staff_department) : ''}` : 'не привʼязано до staff';
-        const role = ROLE_LABELS[u.role] || u.role || 'user';
+        const role = formatAccountAccess(u);
         const karina = isKarinaAccount(u);
         return `<article class="hr-account-row ${active ? '' : 'is-disabled'} ${karina ? 'is-targeted' : ''}">
             <div class="hr-account-avatar">${escapeHtml((u.name || u.username || '?').slice(0, 1).toUpperCase())}</div>
@@ -960,10 +972,36 @@ function renderAccountCenter() {
             <div class="hr-account-actions">
                 <span class="hr-account-state ${active ? 'ok' : 'off'}">${active ? 'активний' : 'вимкнений'}</span>
                 ${u.staff_id ? `<a class="hr-account-link" href="/hr?employee=${encodeURIComponent(u.staff_id)}">HR профіль</a>` : ''}
+                <button type="button" class="hr-account-toggle" onclick="openAccountAccessEditor(${Number(u.id)}, this)">Доступ</button>
                 <button type="button" class="hr-account-toggle" onclick="toggleAccountActive(${Number(u.id)}, ${active ? 'false' : 'true'}, this)">${active ? 'Вимкнути' : 'Активувати'}</button>
             </div>
         </article>`;
     }).join('');
+}
+
+async function openAccountAccessEditor(userId, button) {
+    const user = accountUsers.find(item => Number(item.id) === Number(userId));
+    if (!user) return;
+    const currentExtra = normalizeAccountArray(user.extra_roles || user.extraRoles).join(', ');
+    const currentPages = normalizeAccountArray(user.page_allowlist || user.pageAllowlist).join(', ');
+    const extraInput = window.prompt('Додаткові ролі через кому (наприклад: manager, accountant). Primary role не дублюй.', currentExtra);
+    if (extraInput === null) return;
+    const pagesInput = window.prompt('Доступ до сторінок через кому. Для Майстерні долі: /maysternya-doli', currentPages || '/maysternya-doli');
+    if (pagesInput === null) return;
+    const extraRoles = extraInput.split(',').map(item => item.trim()).filter(Boolean);
+    const pageAllowlist = pagesInput.split(',').map(item => item.trim()).filter(Boolean);
+    if (button) button.disabled = true;
+    const result = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/role`, {
+        method: 'PATCH',
+        body: { role: user.role, extraRoles, pageAllowlist }
+    });
+    if (button) button.disabled = false;
+    if (!result?.success) {
+        showNotification(result?.error || 'Не вдалося оновити доступ акаунта', 'error');
+        return;
+    }
+    showNotification('Доступ акаунта оновлено. Після нового логіну права перерахуються автоматично.', 'success');
+    await loadAccountCenter();
 }
 
 async function toggleAccountActive(userId, isActive, button) {

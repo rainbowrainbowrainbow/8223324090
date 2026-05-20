@@ -461,7 +461,8 @@ function updateFilterBanner() {
 
 function resetStatusFilter() {
     AppState.statusFilter = 'all';
-    localStorage.setItem('pzp_status_filter', 'all');
+    const key = typeof timelineStorageKey === 'function' ? timelineStorageKey('status_filter') : 'pzp_status_filter';
+    localStorage.setItem(key, 'all');
     document.querySelectorAll('.status-filter-btn').forEach(b => b.classList.remove('active'));
     const allBtn = document.querySelector('.status-filter-btn[data-filter="all"]');
     if (allBtn) allBtn.classList.add('active');

@@ -13,6 +13,7 @@ const { pool, generateBookingNumber } = require('../db');
 const { checkServerConflicts, checkRoomConflict, ensureDefaultLines, getKyivDateStr } = require('./booking');
 const { processBookingAutomation } = require('./bookingAutomation');
 const { createLogger } = require('../utils/logger');
+const { DEFAULT_TIMELINE_CONTEXT } = require('./timelineContext');
 
 const log = createLogger('Recurring');
 
@@ -129,23 +130,23 @@ async function resolveLineByName(lineName, date) {
 
     // Try exact match
     const result = await pool.query(
-        'SELECT line_id FROM lines_by_date WHERE date = $1 AND name = $2',
-        [date, lineName]
+        'SELECT line_id FROM lines_by_date WHERE date = $1 AND name = $2 AND business_context = $3',
+        [date, lineName, DEFAULT_TIMELINE_CONTEXT]
     );
     if (result.rows.length > 0) return result.rows[0].line_id;
 
     // Ensure default lines exist, then retry
     await ensureDefaultLines(date);
     const retry = await pool.query(
-        'SELECT line_id FROM lines_by_date WHERE date = $1 AND name = $2',
-        [date, lineName]
+        'SELECT line_id FROM lines_by_date WHERE date = $1 AND name = $2 AND business_context = $3',
+        [date, lineName, DEFAULT_TIMELINE_CONTEXT]
     );
     if (retry.rows.length > 0) return retry.rows[0].line_id;
 
     // Fallback: first available line
     const anyLine = await pool.query(
-        'SELECT line_id FROM lines_by_date WHERE date = $1 ORDER BY line_id LIMIT 1',
-        [date]
+        'SELECT line_id FROM lines_by_date WHERE date = $1 AND business_context = $2 ORDER BY line_id LIMIT 1',
+        [date, DEFAULT_TIMELINE_CONTEXT]
     );
     return anyLine.rows[0]?.line_id || null;
 }
@@ -156,8 +157,8 @@ async function resolveLineByName(lineName, date) {
 async function getFirstLineForDate(date) {
     await ensureDefaultLines(date);
     const result = await pool.query(
-        'SELECT line_id FROM lines_by_date WHERE date = $1 ORDER BY line_id LIMIT 1',
-        [date]
+        'SELECT line_id FROM lines_by_date WHERE date = $1 AND business_context = $2 ORDER BY line_id LIMIT 1',
+        [date, DEFAULT_TIMELINE_CONTEXT]
     );
     return result.rows[0]?.line_id || null;
 }
@@ -222,8 +223,8 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
 
         // Dedup: check if booking already exists for this template + date
         const existing = await pool.query(
-            'SELECT id FROM bookings WHERE recurring_template_id = $1 AND date = $2 AND status != $3',
-            [template.id, dateStr, 'cancelled']
+            'SELECT id FROM bookings WHERE recurring_template_id = $1 AND date = $2 AND business_context = $3 AND status != $4',
+            [template.id, dateStr, DEFAULT_TIMELINE_CONTEXT, 'cancelled']
         );
         if (existing.rows.length > 0) {
             current.setDate(current.getDate() + 1);
@@ -286,7 +287,7 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
             await client.query('BEGIN');
 
             // Check line conflict
-            const lineConflict = await checkServerConflicts(client, dateStr, primaryLineId, timeStart, duration);
+            const lineConflict = await checkServerConflicts(client, dateStr, primaryLineId, timeStart, duration, null, DEFAULT_TIMELINE_CONTEXT);
             if (lineConflict.overlap) {
                 await client.query('ROLLBACK');
                 client.release();
@@ -299,7 +300,7 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
             }
 
             // Check room conflict
-            const roomConflict = await checkRoomConflict(client, dateStr, template.room, timeStart, duration);
+            const roomConflict = await checkRoomConflict(client, dateStr, template.room, timeStart, duration, null, DEFAULT_TIMELINE_CONTEXT);
             if (roomConflict) {
                 await client.query('ROLLBACK');
                 client.release();
@@ -317,13 +318,13 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
 
             await client.query(
                 `INSERT INTO bookings
-                 (id, date, time, line_id, program_id, program_code, label, program_name, category,
+                  (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category,
                   duration, price, hosts, second_animator, pinata_filler, pinata_mode,
                   pinata_number, pinata_filler_number, client_pinata_service_price,
                   client_pinata_service_note, costume, room, notes,
                   created_by, linked_to, status, kids_count, group_name, extra_data, recurring_template_id)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
-                [mainId, dateStr, timeStart, primaryLineId,
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,
+                [mainId, DEFAULT_TIMELINE_CONTEXT, dateStr, timeStart, primaryLineId,
                  template.product_id, template.product_code, template.product_label, template.product_name,
                  template.category, duration, template.price, template.hosts || 1,
                  template.second_animator_name, template.pinata_filler, template.pinata_mode || 'none',
@@ -340,7 +341,7 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
                 const secondLineId = await resolveLineByName(template.second_animator_name, dateStr);
                 if (secondLineId) {
                     // Check second animator conflict
-                    const secondConflict = await checkServerConflicts(client, dateStr, secondLineId, timeStart, duration);
+                    const secondConflict = await checkServerConflicts(client, dateStr, secondLineId, timeStart, duration, null, DEFAULT_TIMELINE_CONTEXT);
                     if (secondConflict.overlap) {
                         await client.query('ROLLBACK');
                         client.release();
@@ -356,13 +357,13 @@ async function generateBookingsForTemplate(template, fromDate, toDate) {
                     const linkedId = await generateBookingNumber(client);
                     await client.query(
                         `INSERT INTO bookings
-                         (id, date, time, line_id, program_id, program_code, label, program_name, category,
+                          (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category,
                           duration, price, hosts, second_animator, pinata_filler, pinata_mode,
                           pinata_number, pinata_filler_number, client_pinata_service_price,
                           client_pinata_service_note, costume, room, notes,
                           created_by, linked_to, status, kids_count, group_name, extra_data, recurring_template_id)
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
-                        [linkedId, dateStr, timeStart, secondLineId,
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,
+                        [linkedId, DEFAULT_TIMELINE_CONTEXT, dateStr, timeStart, secondLineId,
                          template.product_id, template.product_code, template.product_label, template.product_name,
                          template.category, duration, template.price, template.hosts || 1,
                          template.second_animator_name, template.pinata_filler, template.pinata_mode || 'none',

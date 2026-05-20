@@ -4,6 +4,17 @@
 
 ---
 
+## v0.60.16 - Maysternya Doli Timeline Surface
+
+### Maysternya Doli Timeline Surface [codex]
+- **Окремий timeline для Майстерні долі** - додано приватний route `/maysternya-doli`, який повторно використовує основний timeline UX, але має власні психологічні labels, програми консультацій і стартову лінію/кабінет.
+- **Доступ через whitelist і додаткові ролі** - користувачі отримали `page_allowlist` та `extra_roles`; видимість сторінок і sidebar тепер перераховується з урахуванням основної ролі, додаткових ролей і конкретного allowlist.
+- **Role-aware кнопки всередині нового timeline** - створення, редагування, експорт, налаштування та destructive actions для Майстерні контролюються окремою action matrix, а не показуються всім дозволеним користувачам однаково.
+- **Ізоляція storage/API/data** - bookings, linked updates, lines, filters, compact/zoom state, drafts і localStorage ключі отримали business context `maysternya_doli`, щоб записи Майстерні не читались і не перезаписувались у Event Genix timeline.
+- **Основний timeline збережено** - Event Genix залишається default context `event_genix`, а side effects на кшталт Telegram, finance, leads, products і warehouse не запускаються з нового психологічного surface.
+
+---
+
 ## v0.60.15 - CRM Assistant Formatting Post-Release Hardening
 
 ### CRM Assistant Formatting Post-Release Hardening [codex]

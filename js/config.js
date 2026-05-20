@@ -16,7 +16,7 @@ function debounce(fn, ms) {
 // ПРОГРАМИ (з тривалістю в назві)
 // ==========================================
 
-const PROGRAMS = [
+const EVENT_GENIX_PROGRAMS = [
     // Квести
     { id: 'kv1', code: 'КВ1', label: 'КВ1(60)', name: 'Легендарний тренд', icon: '🎭', category: 'quest', duration: 60, price: 2200, hosts: 1, age: '5-10р', kids: '4-10', description: 'Сучасна блогерська пригода на 60 хвилин: діти проходять серію веселих челенджів, знімають короткі відео «як у TikTok/YouTube», навчаються простим зйомкам і працюють у команді з ведучим-блогером. Наприкінці отримуєте змонтований ролик до 1 хв для пам\'яті, ролік робить до 2 тижнів.' },
     { id: 'kv4', code: 'КВ4', label: 'КВ4(60)', name: 'Шпигунська історія', icon: '🕵️', category: 'quest', duration: 60, price: 2800, hosts: 2, age: '5-12р', kids: '4-10', description: 'Детективна історія про викрадену картину: за 60 хвилин діти вчаться помічати деталі, працюють із простими шифрами, збирають «докази» та організовують спостереження за підозрюваним. Кульмінація — командне розкриття справи та короткий брифінг від ведучого.' },
@@ -69,6 +69,28 @@ const PROGRAMS = [
     { id: 'custom', code: 'Інше', label: 'Інше', name: 'Інше (вкажіть)', icon: '✏️', category: 'custom', duration: 30, price: 0, hosts: 1, isCustom: true }
 ];
 
+const MAYSTERNYA_DOLI_PROGRAMS = [
+    { id: 'md_consult_60', code: 'КОНС', label: 'Консультація(60)', name: 'Індивідуальна консультація', icon: '🧭', category: 'custom', duration: 60, price: 1800, hosts: 1, description: 'Базовий слот для індивідуальної психологічної консультації.' },
+    { id: 'md_consult_90', code: 'КОНС90', label: 'Консультація(90)', name: 'Розширена консультація', icon: '🧠', category: 'custom', duration: 90, price: 2400, hosts: 1, description: 'Подовжений слот для глибшої роботи з клієнтом.' },
+    { id: 'md_family_90', code: 'СІМ', label: 'Сімейна(90)', name: 'Сімейна консультація', icon: '🤝', category: 'custom', duration: 90, price: 2600, hosts: 1, description: 'Запис для парної або сімейної консультації.' },
+    { id: 'md_diagnostic_60', code: 'ДІАГ', label: 'Діагностика(60)', name: 'Діагностична зустріч', icon: '📋', category: 'custom', duration: 60, price: 1800, hosts: 1, description: 'Первинна діагностична зустріч або оцінка запиту.' },
+    { id: 'md_followup_45', code: 'ФОЛОУ', label: 'Follow-up(45)', name: 'Короткий follow-up', icon: '✨', category: 'custom', duration: 45, price: 1400, hosts: 1, description: 'Короткий контрольний або підтримувальний запис.' },
+    { id: 'md_custom', code: 'ІНШЕ', label: 'Інше', name: 'Інший запис', icon: '✏️', category: 'custom', duration: 60, price: 0, hosts: 1, isCustom: true }
+];
+
+const IS_MAYSTERNYA_DOLI_TIMELINE = typeof window !== 'undefined'
+    && window.TimelineBusinessContext
+    && window.TimelineBusinessContext.current().key === 'maysternya_doli';
+
+const PROGRAMS = IS_MAYSTERNYA_DOLI_TIMELINE ? MAYSTERNYA_DOLI_PROGRAMS : EVENT_GENIX_PROGRAMS;
+
+function timelineConfigStorageKey(name) {
+    if (typeof window !== 'undefined' && window.TimelineBusinessContext) {
+        return window.TimelineBusinessContext.storageKey(name);
+    }
+    return `pzp_${name}`;
+}
+
 // ==========================================
 // КОСТЮМИ
 // ==========================================
@@ -88,12 +110,12 @@ const COSTUMES = [
 const CONFIG = {
     STORAGE: {
         USERS: 'pzp_users',
-        BOOKINGS: 'pzp_bookings',
-        LINES: 'pzp_lines',
-        LINES_BY_DATE: 'pzp_lines_by_date',
+        BOOKINGS: timelineConfigStorageKey('bookings'),
+        LINES: timelineConfigStorageKey('lines'),
+        LINES_BY_DATE: timelineConfigStorageKey('lines_by_date'),
         CURRENT_USER: 'pzp_current_user',
         SESSION: 'pzp_session',
-        HISTORY: 'pzp_history'
+        HISTORY: timelineConfigStorageKey('history')
     },
     TIMELINE: {
         WEEKDAY_START: 12,
@@ -110,10 +132,12 @@ const CONFIG = {
 const DAYS = ['Неділя', 'Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота'];
 
 // Кольори категорій для canvas/minimap
-const CATEGORY_COLORS = {
-    quest: '#7C3AED', animation: '#2563EB', show: '#EA580C',
-    photo: '#0891B2', masterclass: '#65A30D', pinata: '#DB2777', custom: '#64748B'
-};
+const CATEGORY_COLORS = IS_MAYSTERNYA_DOLI_TIMELINE
+    ? { custom: '#0EA586' }
+    : {
+        quest: '#7C3AED', animation: '#2563EB', show: '#EA580C',
+        photo: '#0891B2', masterclass: '#65A30D', pinata: '#DB2777', custom: '#64748B'
+    };
 
 // Кольори для ліній аніматорів
 const LINE_COLORS = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'];
@@ -263,6 +287,11 @@ const PRODUCTS_CACHE_TTL = 5 * 60 * 1000;
  */
 async function getProducts() {
     const now = Date.now();
+    if (IS_MAYSTERNYA_DOLI_TIMELINE) {
+        AppState.products = PROGRAMS;
+        AppState.productsLoadedAt = now;
+        return AppState.products;
+    }
     // Return cached if still fresh
     if (AppState.products && (now - AppState.productsLoadedAt) < PRODUCTS_CACHE_TTL) {
         return AppState.products;

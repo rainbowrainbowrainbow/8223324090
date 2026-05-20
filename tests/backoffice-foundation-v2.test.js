@@ -115,7 +115,7 @@ describe('backoffice foundation v2 contracts', () => {
         assert.match(bookingService, /s\.role_type = 'animator'/);
         assert.match(bookingService, /COALESCE\(s\.is_freelance, false\) = true/);
         assert.doesNotMatch(bookingService, /s\.department = 'animators'\s+OR\s+s\.role_type = 'animator'/);
-        assert.match(bookingService, /INSERT INTO lines_by_date[\s\S]*ON CONFLICT \(date, line_id\)/);
+        assert.match(bookingService, /INSERT INTO lines_by_date[\s\S]*ON CONFLICT \(business_context, date, line_id\)/);
         assert.match(linesRoute, /syncScheduledAnimatorLines\(date\)/);
         assert.match(linesRoute, /X-Timeline-Lines-Source/);
         assert.match(timelinePage, /function getLineSubtitle/);

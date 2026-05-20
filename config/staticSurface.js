@@ -148,7 +148,7 @@ const ROOT_HTML_SURFACE = [
         canonicalPath: '/',
         owner: 'timeline',
         status: 'root-shell',
-        aliases: ['*'],
+        aliases: ['/maysternya-doli', '*'],
         purpose: 'Main CRM shell, root static entry, and final non-API fallback.'
     },
     {

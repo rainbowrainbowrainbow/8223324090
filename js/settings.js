@@ -410,6 +410,26 @@ async function addAnimatorLineLocallyAfterTelegramFallback(dateStr, note, result
 async function addNewLine() {
     const dateStr = formatDate(AppState.selectedDate);
 
+    if (window.TimelineBusinessContext?.current().key === 'maysternya_doli') {
+        const name = window.prompt('Назва спеціаліста або кабінету', 'Майстерня долі');
+        if (!name || !name.trim()) return;
+        const lines = (AppState.linesByDate[dateStr] || AppState.lines || []).slice();
+        const line = {
+            id: `md_${Date.now()}`,
+            name: name.trim().slice(0, 80),
+            color: '#0EA586',
+            fromSheet: false
+        };
+        const saved = await saveLinesForDate(dateStr, [...lines, line]);
+        if (!saved) {
+            showNotification('Не вдалося додати лінію Майстерні долі', 'error');
+            return;
+        }
+        await renderTimeline();
+        showNotification('Лінію Майстерні долі додано', 'success');
+        return;
+    }
+
     // v3.9: Modal instead of prompt()
     const note = await showNoteModal();
     if (note === null) return; // Скасовано

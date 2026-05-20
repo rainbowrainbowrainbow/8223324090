@@ -132,6 +132,15 @@ function normalizeRole(user) {
     return String(user?.role || '').trim();
 }
 
+function normalizeRoles(user) {
+    return [user?.role]
+        .concat(Array.isArray(user?.roles) ? user.roles : [])
+        .concat(Array.isArray(user?.extraRoles) ? user.extraRoles : [])
+        .concat(Array.isArray(user?.extra_roles) ? user.extra_roles : [])
+        .map(value => String(value || '').trim())
+        .filter(Boolean);
+}
+
 function normalizeUserId(user) {
     const parsed = Number(user?.id || user?.userId || 0);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -165,15 +174,15 @@ function pushParam(params, value) {
 }
 
 function isFullBookingRole(user) {
-    return FULL_BOOKING_ROLES.has(normalizeRole(user));
+    return normalizeRoles(user).some(role => FULL_BOOKING_ROLES.has(role));
 }
 
 function hasOperationalBookingView(user) {
-    return BOOKING_VIEW_ROLES.has(normalizeRole(user));
+    return normalizeRoles(user).some(role => BOOKING_VIEW_ROLES.has(role));
 }
 
 function hasOperationalBookingEdit(user) {
-    return BOOKING_EDIT_ROLES.has(normalizeRole(user));
+    return normalizeRoles(user).some(role => BOOKING_EDIT_ROLES.has(role));
 }
 
 function normalizeBookingValue(value) {

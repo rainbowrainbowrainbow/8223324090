@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.60.15",
+  "version": "0.60.16",
   "eventGenix": {
-    "releaseLabel": "CRM Assistant Formatting Post-Release Hardening"
+    "releaseLabel": "Maysternya Doli Timeline Surface"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

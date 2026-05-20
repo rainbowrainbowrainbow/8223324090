@@ -11,6 +11,12 @@ const { attachLeadBookingLink } = require('../services/leadBookingLink');
 const { broadcast } = require('../services/websocket');
 const { publish: publishEvent } = require('../services/eventBus');
 const {
+    DEFAULT_TIMELINE_CONTEXT,
+    timelineContextFromRequest,
+    requireTimelineContext,
+    requireTimelineAction
+} = require('../services/timelineContext');
+const {
     bookingAccessDeniedPayload,
     buildBookingVisibilityScope,
     canEditBooking,
@@ -34,11 +40,16 @@ function sendBookingDenied(req, res, booking) {
     return res.status(403).json({ success: false, error: 'Insufficient booking permissions' });
 }
 
+function sideEffectsAllowedForContext(context) {
+    return (context || DEFAULT_TIMELINE_CONTEXT) === DEFAULT_TIMELINE_CONTEXT;
+}
+
 // Resolve animator line name for notifications
-async function getLineName(lineId, date) {
+async function getLineName(lineId, date, businessContext = DEFAULT_TIMELINE_CONTEXT) {
     try {
         const result = await pool.query(
-            'SELECT name FROM lines_by_date WHERE line_id = $1 AND date = $2', [lineId, date]
+            'SELECT name FROM lines_by_date WHERE line_id = $1 AND date = $2 AND business_context = $3',
+            [lineId, date, businessContext || DEFAULT_TIMELINE_CONTEXT]
         );
         return result.rows[0]?.name || null;
     } catch (err) {
@@ -183,6 +194,7 @@ function pickAtomicLinkedPatch(input) {
 function buildAtomicLinkedCandidate(row, patch = {}) {
     return {
         id: row.id,
+        business_context: row.business_context || DEFAULT_TIMELINE_CONTEXT,
         date: Object.prototype.hasOwnProperty.call(patch, 'date') ? patch.date : row.date,
         time: Object.prototype.hasOwnProperty.call(patch, 'time') ? patch.time : row.time,
         line_id: Object.prototype.hasOwnProperty.call(patch, 'line_id') ? patch.line_id : row.line_id,
@@ -214,9 +226,9 @@ async function findAtomicLineConflict(client, candidate, excludeIds) {
     const result = await client.query(
         `SELECT id, time, duration, label, program_code
          FROM bookings
-         WHERE date = $1 AND line_id = $2 AND status != 'cancelled'
-           AND id != ALL($3::text[])`,
-        [candidate.date, candidate.line_id, excludeIds]
+         WHERE date = $1 AND line_id = $2 AND business_context = $3 AND status != 'cancelled'
+           AND id != ALL($4::text[])`,
+        [candidate.date, candidate.line_id, candidate.business_context || DEFAULT_TIMELINE_CONTEXT, excludeIds]
     );
     const start = timeToMinutes(candidate.time);
     const end = start + (parseInt(candidate.duration, 10) || 0);
@@ -232,9 +244,9 @@ async function findAtomicRoomConflict(client, candidate, excludeIds) {
     const result = await client.query(
         `SELECT id, time, duration, label, program_code
          FROM bookings
-         WHERE date = $1 AND room = $2 AND status != 'cancelled'
-           AND id != ALL($3::text[])`,
-        [candidate.date, candidate.room, excludeIds]
+         WHERE date = $1 AND room = $2 AND business_context = $3 AND status != 'cancelled'
+           AND id != ALL($4::text[])`,
+        [candidate.date, candidate.room, candidate.business_context || DEFAULT_TIMELINE_CONTEXT, excludeIds]
     );
     const start = timeToMinutes(candidate.time);
     const end = start + (parseInt(candidate.duration, 10) || 0);
@@ -252,9 +264,9 @@ async function findAtomicAnimatorConflict(client, candidate, excludeIds) {
         `SELECT id, time, duration, label, program_code
          FROM bookings
          WHERE (hosts = $1 OR second_animator = $1::text)
-           AND date = $2 AND status != 'cancelled' AND linked_to IS NULL
-           AND id != ALL($3::text[])`,
-        [animId, candidate.date, excludeIds]
+           AND date = $2 AND business_context = $3 AND status != 'cancelled' AND linked_to IS NULL
+           AND id != ALL($4::text[])`,
+        [animId, candidate.date, candidate.business_context || DEFAULT_TIMELINE_CONTEXT, excludeIds]
     );
     const start = timeToMinutes(candidate.time);
     const end = start + (parseInt(candidate.duration, 10) || 0);
@@ -294,7 +306,7 @@ router.get('/occupancy', async (req, res) => {
         const from = req.query.from || new Date().toISOString().slice(0, 10);
         const to = req.query.to || from;
         const workdayHours = 10;
-        const params = [from, to];
+        const params = [from, to, DEFAULT_TIMELINE_CONTEXT];
         const visibility = buildBookingVisibilityScope(req.user, params, 'b');
 
         const result = await pool.query(`
@@ -302,6 +314,7 @@ router.get('/occupancy', async (req, res) => {
                    COALESCE(SUM(b.duration), 0)::int AS total_minutes
             FROM bookings b
             WHERE b.date::date >= $1::date AND b.date::date <= $2::date
+              AND b.business_context = $3
               AND b.status != 'cancelled' AND b.linked_to IS NULL
               ${visibility}
             GROUP BY b.line_id
@@ -329,11 +342,13 @@ router.get('/:date', async (req, res) => {
     try {
         const { date } = req.params;
         if (!validateDate(date)) return res.status(400).json({ error: 'Invalid date format' });
-        const params = [date];
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        const params = [date, businessContext];
         const visibility = buildBookingVisibilityScope(req.user, params, 'b');
         // v19.13: Explicit column list instead of SELECT *
         const result = await pool.query(
-            `SELECT id, date, time, line_id, program_id, program_code, label, program_name,
+            `SELECT id, business_context, date, time, line_id, program_id, program_code, label, program_name,
                     category, duration, price, hosts, second_animator, pinata_filler,
                     pinata_mode, pinata_number, pinata_filler_number,
                     client_pinata_service_price, client_pinata_service_note, costume,
@@ -341,7 +356,7 @@ router.get('/:date', async (req, res) => {
                     updated_at, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id,
                     confirmed_at, confirmed_by, confirmation_note, confirmation_source
              FROM bookings b
-             WHERE b.date = $1 AND b.status != 'cancelled'
+             WHERE b.date = $1 AND b.business_context = $2 AND b.status != 'cancelled'
                ${visibility}
              ORDER BY time`,
             params
@@ -357,6 +372,11 @@ router.get('/:date', async (req, res) => {
 router.post('/', requireAction('create_booking'), async (req, res) => {
     // v39.9: Validate BEFORE pool.connect() to prevent connection leaks on early returns
     const b = req.body;
+    const businessContext = timelineContextFromRequest(req);
+    if (!requireTimelineContext(req, res, businessContext)) return;
+    if (!requireTimelineAction(req, res, businessContext, 'create')) return;
+    b.businessContext = businessContext;
+    if (!sideEffectsAllowedForContext(businessContext)) b.skipNotification = true;
     if (!b.date || !b.time || !b.lineId) {
         return res.status(400).json({ error: 'Missing required fields: date, time, lineId' });
     }
@@ -392,7 +412,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         if (!b.linkedTo) {
-            const conflict = await checkServerConflicts(client, b.date, b.lineId, b.time, b.duration || 0);
+            const conflict = await checkServerConflicts(client, b.date, b.lineId, b.time, b.duration || 0, null, businessContext);
             if (conflict.overlap) {
                 await client.query('ROLLBACK');
                 return res.status(409).json({
@@ -401,13 +421,13 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 });
             }
 
-            const duplicate = await checkServerDuplicate(client, b.date, b.programId, b.time, b.duration || 0);
+            const duplicate = await checkServerDuplicate(client, b.date, b.programId, b.time, b.duration || 0, null, businessContext);
             if (duplicate) {
                 await client.query('ROLLBACK');
                 return res.status(409).json({ success: false, error: 'Ця програма вже є в цей час' });
             }
 
-            const roomConflict = await checkRoomConflict(client, b.date, b.room, b.time, b.duration || 0);
+            const roomConflict = await checkRoomConflict(client, b.date, b.room, b.time, b.duration || 0, null, businessContext);
             if (roomConflict) {
                 await client.query('ROLLBACK');
                 return res.status(409).json({
@@ -428,7 +448,8 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         // CRM: resolve or create customer (v30.4: auto-link by phone)
         let customerId = b.customerId ? parseInt(b.customerId) : null;
-        if (b.customer && b.customer.name && !customerId) {
+        if (!sideEffectsAllowedForContext(businessContext)) customerId = null;
+        if (sideEffectsAllowedForContext(businessContext) && b.customer && b.customer.name && !customerId) {
             const c = b.customer;
             // v30.4: Try to find existing customer by phone first
             if (c.phone && c.phone.trim()) {
@@ -457,7 +478,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         // v33.8.0 Integration 6: Certificate validation (INSIDE transaction)
         let certificateId = null;
-        if (b.certificateCode) {
+        if (sideEffectsAllowedForContext(businessContext) && b.certificateCode) {
             const certRow = await client.query(
                 `SELECT id, status, display_value FROM certificates WHERE cert_code = $1 FOR UPDATE`,
                 [String(b.certificateCode).toUpperCase()]
@@ -476,15 +497,15 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         const insertResult = await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)
+            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)
              RETURNING *`,
-            [b.id, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, b.skipNotification || false, customerId, b.paymentMethod || null, certificateId]
+            [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.notes, b.createdBy, b.linkedTo, b.status || 'confirmed', b.kidsCount || null, b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, sideEffectsAllowedForContext(businessContext) ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId]
         );
 
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
         // Update first_visit which is not covered by the trigger
-        if (customerId) {
+        if (sideEffectsAllowedForContext(businessContext) && customerId) {
             await client.query(
                 `UPDATE customers SET
                     first_visit = LEAST(COALESCE(first_visit, $1::date), $1::date),
@@ -494,7 +515,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             );
         }
 
-        if (!b.linkedTo && b.leadId) {
+        if (sideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.leadId) {
             await attachLeadBookingLink(client, {
                 leadId: b.leadId,
                 bookingId: b.id,
@@ -508,7 +529,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         );
 
         // v19.10: Finance auto-record INSIDE transaction for consistency
-        if (!b.linkedTo && b.price > 0 && b.status !== 'preliminary') {
+        if (sideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.price > 0 && b.status !== 'preliminary') {
             try {
                 await client.query(
                     `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, booking_id, created_by)
@@ -522,7 +543,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         // v33.8.0 Integration 6: Certificate payment finance record
-        if (certificateId && b.price > 0) {
+        if (sideEffectsAllowedForContext(businessContext) && certificateId && b.price > 0) {
             try {
                 await client.query(
                     `INSERT INTO finance_transactions (type, category_id, amount, description, date, payment_method, booking_id, certificate_id, created_by)
@@ -538,8 +559,8 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         await client.query('COMMIT');
 
         // v12.6: skip_notification flag — suppress all notifications
-        if (!b.linkedTo && b.status !== 'preliminary' && !b.skipNotification) {
-            getLineName(b.lineId, b.date).then(lineName => notifyTelegram('create', {
+        if (sideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.status !== 'preliminary' && !b.skipNotification) {
+            getLineName(b.lineId, b.date, businessContext).then(lineName => notifyTelegram('create', {
                 ...b, label: b.label, program_code: b.programCode,
                 program_name: b.programName, kids_count: b.kidsCount,
                 created_by: b.createdBy
@@ -548,7 +569,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         // v8.3: Run automation rules (fire-and-forget after commit)
-        if (!b.linkedTo) {
+        if (sideEffectsAllowedForContext(businessContext) && !b.linkedTo) {
             processBookingAutomation(b)
                 .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
         }
@@ -560,7 +581,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         _alertPush();
 
         // v19.1: Publish to event queue
-        if (!b.linkedTo) {
+        if (sideEffectsAllowedForContext(businessContext) && !b.linkedTo) {
             publishEvent('booking.created', {
                 booking_id: b.id, date: b.date, time: b.time, room: b.room,
                 program_code: b.programCode, program_name: b.programName,
@@ -574,7 +595,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         // ==========================================
 
         // Integration 1: Warehouse stock deduction
-        if (b.programId) {
+        if (sideEffectsAllowedForContext(businessContext) && b.programId) {
             setImmediate(async () => {
                 try {
                     const reqs = await pool.query(
@@ -755,9 +776,14 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { main, linked } = req.body;
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'create')) return;
         if (!main || !main.date || !main.time || !main.lineId) {
             return res.status(400).json({ error: 'Missing required fields: date, time, lineId' });
         }
+        main.businessContext = businessContext;
+        if (!sideEffectsAllowedForContext(businessContext)) main.skipNotification = true;
         if (!validateDate(main.date)) { return res.status(400).json({ error: 'Invalid date format' }); }
         if (!validateTime(main.time)) { return res.status(400).json({ error: 'Invalid time format' }); }
         const mainPinataFields = applyPinataNormalization(main);
@@ -771,7 +797,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
 
         await client.query('BEGIN');
 
-        const conflict = await checkServerConflicts(client, main.date, main.lineId, main.time, main.duration || 0);
+        const conflict = await checkServerConflicts(client, main.date, main.lineId, main.time, main.duration || 0, null, businessContext);
         if (conflict.overlap) {
             await client.query('ROLLBACK');
             return res.status(409).json({
@@ -780,13 +806,13 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             });
         }
 
-        const duplicate = await checkServerDuplicate(client, main.date, main.programId, main.time, main.duration || 0);
+        const duplicate = await checkServerDuplicate(client, main.date, main.programId, main.time, main.duration || 0, null, businessContext);
         if (duplicate) {
             await client.query('ROLLBACK');
             return res.status(409).json({ success: false, error: 'Ця програма вже є в цей час' });
         }
 
-        const roomConflict = await checkRoomConflict(client, main.date, main.room, main.time, main.duration || 0);
+        const roomConflict = await checkRoomConflict(client, main.date, main.room, main.time, main.duration || 0, null, businessContext);
         if (roomConflict) {
             await client.query('ROLLBACK');
             return res.status(409).json({
@@ -797,7 +823,8 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
 
         // CRM: resolve or create customer
         let customerId = main.customerId ? parseInt(main.customerId) : null;
-        if (main.customer && main.customer.name && !customerId) {
+        if (!sideEffectsAllowedForContext(businessContext)) customerId = null;
+        if (sideEffectsAllowedForContext(businessContext) && main.customer && main.customer.name && !customerId) {
             const c = main.customer;
             const custResult = await client.query(
                 `INSERT INTO customers (name, phone, instagram, child_name, child_birthday, source)
@@ -812,14 +839,14 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         }
 
         const mainInsert = await client.query(
-            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)
+            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
              RETURNING *`,
-            [main.id, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId]
+            [main.id, businessContext, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.notes, main.createdBy, null, main.status || 'confirmed', main.kidsCount || null, main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId]
         );
 
         // v19.10: CRM aggregates now handled by DB trigger
-        if (customerId) {
+        if (sideEffectsAllowedForContext(businessContext) && customerId) {
             await client.query(
                 `UPDATE customers SET
                     first_visit = LEAST(COALESCE(first_visit, $1::date), $1::date),
@@ -829,7 +856,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             );
         }
 
-        if (main.leadId) {
+        if (sideEffectsAllowedForContext(businessContext) && main.leadId) {
             await attachLeadBookingLink(client, {
                 leadId: main.leadId,
                 bookingId: main.id,
@@ -840,7 +867,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         const linkedRows = [];
         if (Array.isArray(linked)) {
             for (const lb of linked) {
-                const lConflict = await checkServerConflicts(client, lb.date, lb.lineId, lb.time, lb.duration || 0);
+                const lConflict = await checkServerConflicts(client, lb.date, lb.lineId, lb.time, lb.duration || 0, null, businessContext);
                 if (lConflict.overlap) {
                     await client.query('ROLLBACK');
                     return res.status(409).json({
@@ -851,10 +878,10 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
 
                 const lbId = await generateBookingNumber(client);
                 const lbInsert = await client.query(
-                    `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
+                    `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
                      RETURNING *`,
-                    [lbId, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.pinataMode, lb.pinataNumber, lb.pinataFillerNumber, lb.clientPinataServicePrice, lb.clientPinataServiceNote, lb.costume || null, lb.room, lb.notes, lb.createdBy, main.id, lb.status || main.status || 'confirmed', lb.kidsCount || null, lb.groupName || main.groupName || null, lb.extraData ? JSON.stringify(lb.extraData) : (main.extraData ? JSON.stringify(main.extraData) : null)]
+                    [lbId, businessContext, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.pinataMode, lb.pinataNumber, lb.pinataFillerNumber, lb.clientPinataServicePrice, lb.clientPinataServiceNote, lb.costume || null, lb.room, lb.notes, lb.createdBy, main.id, lb.status || main.status || 'confirmed', lb.kidsCount || null, lb.groupName || main.groupName || null, lb.extraData ? JSON.stringify(lb.extraData) : (main.extraData ? JSON.stringify(main.extraData) : null)]
                 );
                 if (lbInsert.rows[0]) linkedRows.push(lbInsert.rows[0]);
             }
@@ -868,8 +895,8 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         await client.query('COMMIT');
 
         // v12.6: skip_notification flag — suppress all notifications
-        if (main.status !== 'preliminary' && !main.skipNotification) {
-            getLineName(main.lineId, main.date).then(lineName => notifyTelegram('create', {
+        if (sideEffectsAllowedForContext(businessContext) && main.status !== 'preliminary' && !main.skipNotification) {
+            getLineName(main.lineId, main.date, businessContext).then(lineName => notifyTelegram('create', {
                 ...main, program_code: main.programCode, program_name: main.programName,
                 kids_count: main.kidsCount, created_by: main.createdBy
             }, { username: main.createdBy || req.user?.username, lineName }))
@@ -877,8 +904,10 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         }
 
         // v8.3: Run automation rules (fire-and-forget after commit)
-        processBookingAutomation(main)
-            .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
+        if (sideEffectsAllowedForContext(businessContext)) {
+            processBookingAutomation(main)
+                .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
+        }
 
         const mainBooking = mainInsert.rows[0] ? mapBookingRow(mainInsert.rows[0]) : { id: main.id };
         const linkedBookings = linkedRows.map(mapBookingRow);
@@ -887,13 +916,15 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         broadcast('booking:created', mainBooking, req.user?.id?.toString(), main.date);
 
         // v19.1: Publish to event queue
-        publishEvent('booking.created', {
-            booking_id: main.id, date: main.date, time: main.time, room: main.room,
-            program_code: main.programCode, program_name: main.programName,
-            status: main.status || 'confirmed', price: main.price || 0,
-            kids_count: main.kidsCount, created_by: main.createdBy,
-            linked_count: linkedRows.length
-        }, `booking_created_${main.id}`);
+        if (sideEffectsAllowedForContext(businessContext)) {
+            publishEvent('booking.created', {
+                booking_id: main.id, date: main.date, time: main.time, room: main.room,
+                program_code: main.programCode, program_name: main.programName,
+                status: main.status || 'confirmed', price: main.price || 0,
+                kids_count: main.kidsCount, created_by: main.createdBy,
+                linked_count: linkedRows.length
+            }, `booking_created_${main.id}`);
+        }
 
         res.json({ success: true, mainBooking, linkedBookings });
     } catch (err) {
@@ -921,6 +952,15 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Бронювання не знайдено' });
         }
+        if (!requireTimelineContext(req, res, booking.business_context || DEFAULT_TIMELINE_CONTEXT)) {
+            await client.query('ROLLBACK');
+            return;
+        }
+        const businessContext = booking.business_context || DEFAULT_TIMELINE_CONTEXT;
+        if (!requireTimelineAction(req, res, businessContext, 'delete')) {
+            await client.query('ROLLBACK');
+            return;
+        }
         if (!canEditBooking(req.user, booking)) {
             await client.query('ROLLBACK');
             return sendBookingDenied(req, res, booking);
@@ -933,18 +973,18 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         );
 
         if (permanent) {
-            await client.query('DELETE FROM bookings WHERE id = $1 OR linked_to = $1', [id]);
+            await client.query('DELETE FROM bookings WHERE (id = $1 OR linked_to = $1) AND business_context = $2', [id, businessContext]);
         } else {
             await client.query(
-                "UPDATE bookings SET status = 'cancelled', updated_at = NOW() WHERE id = $1 OR linked_to = $1",
-                [id]
+                "UPDATE bookings SET status = 'cancelled', updated_at = NOW() WHERE (id = $1 OR linked_to = $1) AND business_context = $2",
+                [id, businessContext]
             );
         }
 
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
 
         // v19.10: Remove auto-recorded finance transaction inside transaction
-        if (booking.price > 0 && !booking.linked_to) {
+        if (sideEffectsAllowedForContext(businessContext) && booking.price > 0 && !booking.linked_to) {
             try {
                 await client.query(
                     'DELETE FROM finance_transactions WHERE booking_id = $1',
@@ -966,7 +1006,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         await client.query('COMMIT');
 
         // v33.8.0: Restore stock on cancel (fire-and-forget — non-critical)
-        if (booking.program_id) {
+        if (sideEffectsAllowedForContext(businessContext) && booking.program_id) {
             setImmediate(async () => {
                 try {
                     const reqs = await pool.query(
@@ -986,26 +1026,30 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         }
         // v39.9: Certificate restore moved inside transaction (above)
 
-        getLineName(booking.line_id, booking.date).then(lineName =>
-            notifyTelegram('delete', booking, { username: req.user?.username, lineName }))
-            .catch(err => log.error(`Telegram notify failed (delete): ${err.message}`));
+        if (sideEffectsAllowedForContext(businessContext)) {
+            getLineName(booking.line_id, booking.date, businessContext).then(lineName =>
+                notifyTelegram('delete', booking, { username: req.user?.username, lineName }))
+                .catch(err => log.error(`Telegram notify failed (delete): ${err.message}`));
+        }
 
         // WebSocket: notify other clients
         broadcast('booking:deleted', { id, date: booking.date, permanent }, req.user?.id?.toString(), booking.date);
         _alertPush();
 
         // v19.1: Publish to event queue
-        publishEvent('booking.cancelled', {
-            booking_id: id,
-            booking_number: booking.booking_number || booking.id,
-            date: booking.date,
-            time: booking.time || '',
-            room: booking.room,
-            label: booking.label || booking.program_code || '',
-            program_code: booking.program_code,
-            permanent,
-            cancelled_by: req.user?.username
-        }, `booking_cancelled_${id}`);
+        if (sideEffectsAllowedForContext(businessContext)) {
+            publishEvent('booking.cancelled', {
+                booking_id: id,
+                booking_number: booking.booking_number || booking.id,
+                date: booking.date,
+                time: booking.time || '',
+                room: booking.room,
+                label: booking.label || booking.program_code || '',
+                program_code: booking.program_code,
+                permanent,
+                cancelled_by: req.user?.username
+            }, `booking_cancelled_${id}`);
+        }
 
         res.json({ success: true, permanent });
     } catch (err) {
@@ -1053,6 +1097,15 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Booking not found' });
         }
+        const businessContext = oldMain.business_context || DEFAULT_TIMELINE_CONTEXT;
+        if (!requireTimelineContext(req, res, businessContext)) {
+            await client.query('ROLLBACK');
+            return;
+        }
+        if (!requireTimelineAction(req, res, businessContext, 'edit')) {
+            await client.query('ROLLBACK');
+            return;
+        }
         if (!canEditBooking(req.user, oldMain)) {
             await client.query('ROLLBACK');
             return sendBookingDenied(req, res, oldMain);
@@ -1063,8 +1116,8 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
         }
 
         const linkedResult = await client.query(
-            "SELECT * FROM bookings WHERE linked_to = $1 AND status != 'cancelled' FOR UPDATE",
-            [id]
+            "SELECT * FROM bookings WHERE linked_to = $1 AND business_context = $2 AND status != 'cancelled' FOR UPDATE",
+            [id, businessContext]
         );
         const linkedRows = linkedResult.rows;
         const linkedById = new Map(linkedRows.map(row => [row.id, row]));
@@ -1195,8 +1248,8 @@ router.post('/:id/linked-atomic', requireAction('edit_booking'), async (req, res
         }
         _alertPush();
 
-        if (mainBooking.status !== 'preliminary') {
-            getLineName(mainBooking.lineId, mainBooking.date).then(lineName => notifyTelegram('edit', {
+        if (sideEffectsAllowedForContext(businessContext) && mainBooking.status !== 'preliminary') {
+            getLineName(mainBooking.lineId, mainBooking.date, businessContext).then(lineName => notifyTelegram('edit', {
                 ...mainBooking,
                 program_code: mainBooking.programCode,
                 program_name: mainBooking.programName,
@@ -1236,6 +1289,14 @@ router.post('/:id/confirm', requireAction('edit_booking'), async (req, res) => {
         if (!current) {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Booking not found' });
+        }
+        if (!requireTimelineContext(req, res, current.business_context || DEFAULT_TIMELINE_CONTEXT)) {
+            await client.query('ROLLBACK');
+            return;
+        }
+        if (!requireTimelineAction(req, res, current.business_context || DEFAULT_TIMELINE_CONTEXT, 'edit')) {
+            await client.query('ROLLBACK');
+            return;
         }
         if (!canEditBooking(req.user, current)) {
             await client.query('ROLLBACK');
@@ -1298,7 +1359,9 @@ router.post('/:id/confirm', requireAction('edit_booking'), async (req, res) => {
         client.release();
     }
 
-    runBookingConfirmationSideEffects(confirmedRow, actor, source, confirmedRows);
+    if (sideEffectsAllowedForContext(confirmedRow.business_context || DEFAULT_TIMELINE_CONTEXT)) {
+        runBookingConfirmationSideEffects(confirmedRow, actor, source, confirmedRows);
+    }
     res.json({
         success: true,
         ok: true,
@@ -1317,6 +1380,11 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
     const existing = await pool.query('SELECT * FROM bookings WHERE id = $1', [id]);
     if (!existing.rows.length) { return res.status(404).json({ error: 'Booking not found' }); }
     const old = existing.rows[0];
+    const businessContext = old.business_context || DEFAULT_TIMELINE_CONTEXT;
+    if (!requireTimelineContext(req, res, businessContext)) return;
+    if (!requireTimelineAction(req, res, businessContext, 'edit')) return;
+    b.businessContext = businessContext;
+    if (!sideEffectsAllowedForContext(businessContext)) b.skipNotification = true;
     if (!canEditBooking(req.user, old)) {
         return sendBookingDenied(req, res, old);
     }
@@ -1378,7 +1446,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             const roomChanged = oldBooking.room !== b.room || timeSlotChanged;
 
             if (timeSlotChanged) {
-                const conflict = await checkServerConflicts(client, b.date, b.lineId, b.time, b.duration || 0, id);
+                const conflict = await checkServerConflicts(client, b.date, b.lineId, b.time, b.duration || 0, id, businessContext);
                 if (conflict.overlap) {
                     await client.query('ROLLBACK');
                     return res.status(409).json({
@@ -1390,12 +1458,12 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 
             if (roomChanged && b.room && b.room !== 'Інше') {
                 // v12.6: Exclude linked bookings of this booking from room conflict check
-                const linkedIds = await client.query('SELECT id FROM bookings WHERE linked_to = $1', [id]);
+                const linkedIds = await client.query('SELECT id FROM bookings WHERE linked_to = $1 AND business_context = $2', [id, businessContext]);
                 const excludeIds = [id, ...linkedIds.rows.map(r => r.id)];
                 let roomConflict = null;
                 const roomResult = await client.query(
-                    "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND status != 'cancelled' AND id != ALL($3::text[])",
-                    [b.date, b.room, excludeIds]
+                    "SELECT id, time, duration, label, program_code FROM bookings WHERE date = $1 AND room = $2 AND business_context = $3 AND status != 'cancelled' AND id != ALL($4::text[])",
+                    [b.date, b.room, businessContext, excludeIds]
                 );
                 const newStart = timeToMinutes(b.time);
                 const newEnd = newStart + (b.duration || 0);
@@ -1427,8 +1495,9 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                     SELECT id, time, duration, label, program_code FROM bookings
                     WHERE (hosts = $1 OR second_animator = $1::text)
                       AND date = $2 AND id != $3
+                      AND business_context = $4
                       AND status != 'cancelled' AND linked_to IS NULL
-                `, [animId, b.date, id]);
+                `, [animId, b.date, id, businessContext]);
 
                 for (const ac of animConflict.rows) {
                     const acStart = timeToMinutes(ac.time);
@@ -1455,7 +1524,9 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         }
 
         // CRM: resolve customer_id for update
-        const updateCustomerId = b.customerId ? parseInt(b.customerId) : (oldBooking.customer_id || null);
+        const updateCustomerId = sideEffectsAllowedForContext(businessContext)
+            ? (b.customerId ? parseInt(b.customerId) : (oldBooking.customer_id || null))
+            : null;
 
         let updateResult;
         if (clientUpdatedAt) {
@@ -1519,7 +1590,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 
         // v8.7: Sync linked bookings when secondAnimator changes
         if (!b.linkedTo) {
-            const linkedResult = await client.query('SELECT id, line_id FROM bookings WHERE linked_to = $1', [id]);
+            const linkedResult = await client.query('SELECT id, line_id FROM bookings WHERE linked_to = $1 AND business_context = $2', [id, businessContext]);
             const oldSecond = oldBooking.second_animator;
             const newSecond = b.secondAnimator;
             const secondChanged = (oldSecond || '') !== (newSecond || '');
@@ -1532,15 +1603,15 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
                 // Create new linked booking if secondAnimator is set
                 if (newSecond) {
                     const lineRes = await client.query(
-                        'SELECT line_id FROM lines_by_date WHERE name = $1 AND date = $2',
-                        [newSecond, b.date]
+                        'SELECT line_id FROM lines_by_date WHERE name = $1 AND date = $2 AND business_context = $3',
+                        [newSecond, b.date, businessContext]
                     );
                     if (lineRes.rows.length > 0) {
                         const newLinkedId = await generateBookingNumber(client);
                         await client.query(
-                            `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
-                             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)`,
-                            [newLinkedId, b.date, b.time, lineRes.rows[0].line_id, b.programId, b.programCode,
+                            `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
+                             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
+                            [newLinkedId, businessContext, b.date, b.time, lineRes.rows[0].line_id, b.programId, b.programCode,
                              b.label, b.programName, b.category, b.duration, b.price, b.hosts,
                              b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber,
                              b.pinataFillerNumber, b.clientPinataServicePrice,
@@ -1568,15 +1639,15 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
             } else if (secondChanged && newSecond && linkedResult.rows.length === 0) {
                 // Was missing linked booking (old bug) — create it now
                 const lineRes = await client.query(
-                    'SELECT line_id FROM lines_by_date WHERE name = $1 AND date = $2',
-                    [newSecond, b.date]
+                    'SELECT line_id FROM lines_by_date WHERE name = $1 AND date = $2 AND business_context = $3',
+                    [newSecond, b.date, businessContext]
                 );
                 if (lineRes.rows.length > 0) {
                     const newLinkedId = await generateBookingNumber(client);
                     await client.query(
-                        `INSERT INTO bookings (id, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)`,
-                        [newLinkedId, b.date, b.time, lineRes.rows[0].line_id, b.programId, b.programCode,
+                        `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
+                        [newLinkedId, businessContext, b.date, b.time, lineRes.rows[0].line_id, b.programId, b.programCode,
                          b.label, b.programName, b.category, b.duration, b.price, b.hosts,
                          b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber,
                          b.pinataFillerNumber, b.clientPinataServicePrice,
@@ -1606,16 +1677,18 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
 
         const statusChanged = oldBooking.status !== newStatus;
         const notifyCatch = err => log.error(`Telegram notify failed (update): ${err.message}`);
-        getLineName(b.lineId, b.date).then(lineName => {
-            if (statusChanged && oldBooking.status === 'preliminary' && newStatus === 'confirmed') {
-                notifyTelegram('create', bookingForNotify, { username, bookingId: id, lineName }).catch(notifyCatch);
-            } else if (statusChanged) {
-                notifyTelegram('status_change', bookingForNotify, { username, bookingId: id, lineName }).catch(notifyCatch);
-            } else if (!b.linkedTo && newStatus !== 'preliminary') {
-                notifyTelegram('edit', bookingForNotify, { username, bookingId: id, lineName }).catch(notifyCatch);
-            }
-        }).catch(notifyCatch);
-        if (statusChanged && oldBooking.status === 'preliminary' && newStatus === 'confirmed') {
+        if (sideEffectsAllowedForContext(businessContext)) {
+            getLineName(b.lineId, b.date, businessContext).then(lineName => {
+                if (statusChanged && oldBooking.status === 'preliminary' && newStatus === 'confirmed') {
+                    notifyTelegram('create', bookingForNotify, { username, bookingId: id, lineName }).catch(notifyCatch);
+                } else if (statusChanged) {
+                    notifyTelegram('status_change', bookingForNotify, { username, bookingId: id, lineName }).catch(notifyCatch);
+                } else if (!b.linkedTo && newStatus !== 'preliminary') {
+                    notifyTelegram('edit', bookingForNotify, { username, bookingId: id, lineName }).catch(notifyCatch);
+                }
+            }).catch(notifyCatch);
+        }
+        if (sideEffectsAllowedForContext(businessContext) && statusChanged && oldBooking.status === 'preliminary' && newStatus === 'confirmed') {
             // v8.3.2: Fetch fresh row from DB for automation (req.body may lack extra_data)
             pool.query('SELECT * FROM bookings WHERE id = $1', [id])
                 .then(r => r.rows[0] ? processBookingAutomation({ ...mapBookingRow(r.rows[0]), _event: 'confirm' }) : null)
@@ -1627,7 +1700,7 @@ router.put('/:id', requireAction('edit_booking'), async (req, res) => {
         _alertPush();
 
         // v19.1: Publish status change events to event queue
-        if (statusChanged) {
+        if (sideEffectsAllowedForContext(businessContext) && statusChanged) {
             const eventType = newStatus === 'confirmed' ? 'booking.confirmed' : `booking.status_changed`;
             publishEvent(eventType, {
                 booking_id: id, date: b.date, time: b.time, room: b.room,
@@ -1658,6 +1731,8 @@ router.patch('/:id/payment', requireAction('edit_booking'), async (req, res) => 
         if (!booking) {
             return res.status(404).json({ error: 'Booking not found' });
         }
+        if (!requireTimelineContext(req, res, booking.business_context || DEFAULT_TIMELINE_CONTEXT)) return;
+        if (!requireTimelineAction(req, res, booking.business_context || DEFAULT_TIMELINE_CONTEXT, 'edit')) return;
         if (!canEditBooking(req.user, booking)) {
             return sendBookingDenied(req, res, booking);
         }

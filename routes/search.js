@@ -6,6 +6,7 @@ const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { buildTaskVisibilityScope } = require('../services/taskPolicy');
+const { DEFAULT_TIMELINE_CONTEXT } = require('../services/timelineContext');
 const log = createLogger('Search');
 
 function pushParam(params, value) {
@@ -15,7 +16,15 @@ function pushParam(params, value) {
 
 function canAccessPage(user, path) {
     const access = PAGE_ACCESS[path];
-    return Array.isArray(access) && access.includes(user?.role);
+    const pages = Array.isArray(user?.pageAllowlist) ? user.pageAllowlist : (Array.isArray(user?.page_allowlist) ? user.page_allowlist : []);
+    if (pages.includes(path)) return true;
+    if (access === null) return Boolean(user);
+    const roles = [user?.role]
+        .concat(Array.isArray(user?.roles) ? user.roles : [])
+        .concat(Array.isArray(user?.extraRoles) ? user.extraRoles : [])
+        .concat(Array.isArray(user?.extra_roles) ? user.extra_roles : [])
+        .filter(Boolean);
+    return Array.isArray(access) && roles.some(role => access.includes(role));
 }
 
 // GET /api/search?q=text&limit=20
@@ -27,7 +36,7 @@ router.get('/', async (req, res) => {
         const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
         const pattern = `%${q}%`;
 
-        const bookingParams = [pattern];
+        const bookingParams = [pattern, DEFAULT_TIMELINE_CONTEXT];
         const bookingScope = getVisibleBookingScope(req.user, bookingParams, 'b');
         const bookingLimitRef = pushParam(bookingParams, limit);
 
@@ -45,6 +54,7 @@ router.get('/', async (req, res) => {
                 SELECT b.id, b.date, b.time, b.label, b.program_name, b.status, b.line_id, b.group_name, b.price
                 FROM bookings b
                 WHERE (b.id ILIKE $1 OR b.label ILIKE $1 OR b.program_name ILIKE $1 OR b.group_name ILIKE $1 OR b.notes ILIKE $1)
+                  AND b.business_context = $2
                   AND b.status != 'cancelled'
                   ${bookingScope.sql}
                 ORDER BY b.date DESC, b.time ASC

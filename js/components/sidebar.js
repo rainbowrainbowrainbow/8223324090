@@ -62,6 +62,7 @@ const Sidebar = (() => {
         { type: 'group', key: 'today', label: 'Сьогодні', icon: '🏠', priority: 1, defaultOpen: true },
         { href: '/dashboard',    icon: '🏠', label: 'Дашборд',       access: 'all',            group: 'today' },
         { href: '/',             icon: '📅', label: 'Таймлайн',      access: 'timeline',       group: 'today' },
+        { href: '/maysternya-doli', icon: '◇', label: 'Майстерня долі', access: 'maysternya_doli', group: 'today' },
         { href: '/tasks',        icon: '✅', label: 'Задачі',        access: 'tasks',          group: 'today', statusKey: 'tasks' },
         { href: '/chat',         icon: '💬', label: 'Чат',           access: 'chat',           group: 'today', statusKey: 'chat' },
 
@@ -120,6 +121,7 @@ const Sidebar = (() => {
         tasks:          _ALL_STAFF,
         chat:           _ALL_STAFF,
         timeline:       [..._ADMIN_UP, 'reception', 'senior_instructor', 'instructor', 'security'],
+        maysternya_doli: ['creator'],
         management:     [..._MGR_UP, 'admin', 'marketer'],
         leads:          [..._MGR_UP, 'marketer'],
         omni:           _MGR_UP,
@@ -852,11 +854,22 @@ const Sidebar = (() => {
     // ═══ ACCESS CHECK ══════════════════════════════════════════════
     function hasAccess(item, role) {
         // v39.10: Creator always sees everything
-        if (role === 'creator') return true;
+        const user = _getCurrentSidebarUser();
+        const roles = new Set([role]);
+        if (Array.isArray(user?.roles)) user.roles.forEach(value => roles.add(value));
+        if (Array.isArray(user?.extraRoles)) user.extraRoles.forEach(value => roles.add(value));
+        if (Array.isArray(user?.extra_roles)) user.extra_roles.forEach(value => roles.add(value));
+        if (roles.has('creator')) return true;
+        if (item?.href === '/maysternya-doli') {
+            const pages = [];
+            if (Array.isArray(user?.pageAllowlist)) pages.push(...user.pageAllowlist);
+            if (Array.isArray(user?.page_allowlist)) pages.push(...user.page_allowlist);
+            return pages.includes('/maysternya-doli');
+        }
         const access = SIDEBAR_ACCESS[item.access];
         if (access === true) return true;
         if (!access) return false;
-        return access.includes(role);
+        return Array.from(roles).some(value => access.includes(value));
     }
 
     function _badgeTypeFor(item) {

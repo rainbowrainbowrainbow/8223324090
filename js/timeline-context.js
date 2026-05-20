@@ -1,0 +1,166 @@
+/**
+ * Timeline business context.
+ *
+ * The root timeline keeps the legacy Event Genix context. /maysternya-doli
+ * reuses the same timeline UI with isolated API/storage namespaces and a
+ * smaller role-aware action surface.
+ */
+(function () {
+    const CONTEXTS = {
+        event_genix: {
+            key: 'event_genix',
+            path: '/',
+            pageAccessPath: '/',
+            title: 'Event Genix | Бронювання',
+            navLabel: 'Таймлайн',
+            productName: 'Event Genix',
+            subtitle: 'AI First CRM',
+            storagePrefix: 'pzp',
+            apiValue: 'event_genix',
+            isPrivateSurface: false,
+            actionRoles: {
+                create: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin', 'reception'],
+                edit: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin', 'reception'],
+                delete: ['creator', 'director'],
+                export: ['creator', 'director', 'vice_director', 'senior_manager', 'manager'],
+                sales: ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant'],
+                settings: ['creator', 'director']
+            }
+        },
+        maysternya_doli: {
+            key: 'maysternya_doli',
+            path: '/maysternya-doli',
+            pageAccessPath: '/maysternya-doli',
+            title: 'Майстерня долі | Записи',
+            navLabel: 'Майстерня долі',
+            productName: 'Майстерня долі',
+            subtitle: 'Записи психолога',
+            storagePrefix: 'md',
+            apiValue: 'maysternya_doli',
+            isPrivateSurface: true,
+            actionRoles: {
+                create: ['creator', 'director'],
+                edit: ['creator', 'director'],
+                delete: ['creator'],
+                export: ['creator', 'director'],
+                sales: [],
+                settings: ['creator']
+            }
+        }
+    };
+
+    function normalizedPath() {
+        return (window.location.pathname || '/').replace(/\.html$/, '').replace(/\/$/, '') || '/';
+    }
+
+    function currentContext() {
+        const path = normalizedPath();
+        if (path === CONTEXTS.maysternya_doli.path) return CONTEXTS.maysternya_doli;
+        return CONTEXTS.event_genix;
+    }
+
+    function userRoles(user) {
+        const roles = [];
+        if (user && user.role) roles.push(user.role);
+        if (Array.isArray(user?.roles)) roles.push(...user.roles);
+        if (Array.isArray(user?.extraRoles)) roles.push(...user.extraRoles);
+        if (Array.isArray(user?.extra_roles)) roles.push(...user.extra_roles);
+        return Array.from(new Set(roles.filter(Boolean).map(String)));
+    }
+
+    function userPageAllowlist(user) {
+        const values = [];
+        if (Array.isArray(user?.pageAllowlist)) values.push(...user.pageAllowlist);
+        if (Array.isArray(user?.page_allowlist)) values.push(...user.page_allowlist);
+        return Array.from(new Set(values.filter(Boolean).map(String)));
+    }
+
+    function hasAnyRole(user, allowedRoles) {
+        if (!Array.isArray(allowedRoles) || allowedRoles.length === 0) return false;
+        const roles = userRoles(user);
+        return roles.includes('creator') || roles.some(role => allowedRoles.includes(role));
+    }
+
+    function canAccessContext(user, ctx = currentContext()) {
+        if (!ctx?.isPrivateSurface) return Boolean(user);
+        if (!user) return false;
+        if (userRoles(user).includes('creator')) return true;
+        return userPageAllowlist(user).includes(ctx.pageAccessPath);
+    }
+
+    function canUseAction(action, user, ctx = currentContext()) {
+        if (!canAccessContext(user, ctx)) return false;
+        return hasAnyRole(user, ctx.actionRoles?.[action] || []);
+    }
+
+    function storageKey(name) {
+        const ctx = currentContext();
+        return `${ctx.storagePrefix}_${name}`;
+    }
+
+    function appendApiContext(url) {
+        const ctx = currentContext();
+        if (ctx.key === 'event_genix') return url;
+        const joiner = url.includes('?') ? '&' : '?';
+        return `${url}${joiner}businessContext=${encodeURIComponent(ctx.apiValue)}`;
+    }
+
+    function withApiContext(payload) {
+        const ctx = currentContext();
+        if (ctx.key === 'event_genix') return payload;
+        return { ...(payload || {}), businessContext: ctx.apiValue };
+    }
+
+    function applyLabels() {
+        const ctx = currentContext();
+        document.title = ctx.title;
+        document.body?.classList.toggle('timeline-context-maysternya', ctx.key === 'maysternya_doli');
+        document.body?.setAttribute('data-timeline-context', ctx.key);
+
+        const titleEl = document.querySelector('.em-logo-title');
+        if (titleEl) titleEl.textContent = ctx.productName;
+        const subEl = document.querySelector('.em-logo-sub');
+        if (subEl) subEl.textContent = ctx.subtitle;
+
+        if (ctx.key === 'maysternya_doli') {
+            const salesBtn = document.getElementById('productSalesBtn');
+            if (salesBtn) salesBtn.classList.add('hidden');
+            const roomBtn = document.getElementById('roomLoadBtn');
+            if (roomBtn) roomBtn.textContent = 'Кабінети';
+            const addLineBtn = document.getElementById('addLineBtn');
+            if (addLineBtn) addLineBtn.textContent = 'Додати спеціаліста';
+            const legend = document.querySelector('.legend');
+            if (legend) {
+                legend.innerHTML = `
+                    <span class="legend-item"><span class="dot custom"></span>Консультації</span>
+                    <span class="legend-item"><span class="dot preliminary-dot"></span>Попередній запис</span>
+                `;
+            }
+            document.querySelectorAll('[title*="Афіша"], [title*="програм"], a[href="/programs"]').forEach(el => {
+                el.classList.add('hidden');
+            });
+        }
+    }
+
+    const api = {
+        CONTEXTS,
+        current: currentContext,
+        userRoles,
+        userPageAllowlist,
+        hasAnyRole,
+        canAccessContext,
+        canUseAction,
+        storageKey,
+        appendApiContext,
+        withApiContext,
+        applyLabels
+    };
+
+    window.TimelineBusinessContext = api;
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', applyLabels, { once: true });
+    } else {
+        applyLabels();
+    }
+})();

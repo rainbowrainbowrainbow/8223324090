@@ -9,6 +9,7 @@ const { logAdminAction } = require('../services/adminAudit');
 const { settingsCache } = require('../services/cache');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { getReleaseMetadata } = require('../services/release');
+const { DEFAULT_TIMELINE_CONTEXT } = require('../services/timelineContext');
 const {
     getChatSettingsBundle,
     getUnifiedAIConfig,
@@ -186,11 +187,12 @@ router.get('/stats/:dateFrom/:dateTo', requireRole('creator', 'director'), async
         if (!validateDate(dateFrom) || !validateDate(dateTo)) {
             return res.status(400).json({ error: 'Invalid date format' });
         }
-        const params = [dateFrom, dateTo];
+        const params = [dateFrom, dateTo, DEFAULT_TIMELINE_CONTEXT];
         const visibility = getVisibleBookingScope(req.user, params, 'b');
         const result = await pool.query(
             `SELECT b.* FROM bookings b
              WHERE b.date >= $1 AND b.date <= $2
+               AND b.business_context = $3
                AND b.linked_to IS NULL
                AND b.status != 'cancelled'
                ${visibility.sql}
@@ -273,12 +275,12 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
         if (!validateTime(time)) return res.status(400).json({ error: 'Invalid time' });
         const dur = parseInt(duration) || 60;
 
-        const params = [date];
+        const params = [date, DEFAULT_TIMELINE_CONTEXT];
         const visibility = getVisibleBookingScope(req.user, params, 'b');
         const bookings = await pool.query(
             `SELECT b.room, b.time, b.duration
              FROM bookings b
-             WHERE b.date = $1 AND b.status != 'cancelled'
+             WHERE b.date = $1 AND b.business_context = $2 AND b.status != 'cancelled'
              ${visibility.sql}`,
             params
         );

@@ -26,7 +26,7 @@ router.use(authenticateToken);
 router.get('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT u.id, u.username, u.name, u.role, u.is_active, u.created_at, u.last_seen_at,
+            `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.page_allowlist, u.is_active, u.created_at, u.last_seen_at,
                     ep.staff_id, ep.id AS profile_id, ep.full_name AS profile_name,
                     s.name AS staff_name, s.department AS staff_department, s.position AS staff_position
              FROM users u
@@ -45,6 +45,16 @@ router.get('/', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, res) => {
 router.get('/roles', async (req, res) => {
     res.json({
         hierarchy: ROLE_HIERARCHY,
+        rolePresets: {
+            executive: ['creator', 'director', 'vice_director'],
+            management: ['senior_manager', 'manager'],
+            operations: ['admin', 'reception', 'security'],
+            creative: ['art_director', 'marketer'],
+            finance: ['accountant'],
+            programs: ['senior_instructor', 'instructor', 'animator'],
+            maysternyaDoli: ['director', 'manager', 'admin'],
+            support: ['barista', 'wardrobe', 'cleaning', 'maintenance', 'dishwasher', 'waiter']
+        },
         pageAccess: PAGE_ACCESS,
         actionPermissions: ACTION_PERMISSIONS
     });
@@ -54,11 +64,18 @@ router.get('/roles', async (req, res) => {
 router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) => {
     try {
         const { id } = req.params;
-        const { role } = req.body;
+        const { role, extraRoles, pageAllowlist } = req.body;
 
         if (!role || !ROLE_HIERARCHY.includes(role)) {
             return res.status(400).json({ error: `Невалідна роль. Допустимі: ${ROLE_HIERARCHY.join(', ')}` });
         }
+
+        const normalizedExtraRoles = Array.isArray(extraRoles)
+            ? Array.from(new Set(extraRoles.filter(item => ROLE_HIERARCHY.includes(item) && item !== role))).slice(0, 3)
+            : null;
+        const normalizedPageAllowlist = Array.isArray(pageAllowlist)
+            ? Array.from(new Set(pageAllowlist.filter(item => typeof item === 'string' && item.startsWith('/')))).slice(0, 50)
+            : null;
 
         // Cannot change own role (safety)
         const target = await pool.query('SELECT id, username, role FROM users WHERE id = $1', [parseInt(id)]);
@@ -69,15 +86,22 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
         }
 
         // Director cannot set creator role
-        if (req.user.role === 'director' && role === 'creator') {
+        if (req.user.role === 'director' && (role === 'creator' || (normalizedExtraRoles || []).includes('creator'))) {
             return res.status(403).json({ error: 'Тільки creator може призначити creator' });
         }
 
         const oldRole = target.rows[0].role;
-        await pool.query('UPDATE users SET role = $1 WHERE id = $2', [role, parseInt(id)]);
+        await pool.query(
+            `UPDATE users
+             SET role = $1,
+                 extra_roles = COALESCE($2::text[], extra_roles),
+                 page_allowlist = COALESCE($3::text[], page_allowlist)
+             WHERE id = $4`,
+            [role, normalizedExtraRoles, normalizedPageAllowlist, parseInt(id)]
+        );
 
         log.info(`User ${req.user.username} changed role of ${target.rows[0].username}: ${oldRole} → ${role}`);
-        res.json({ success: true, username: target.rows[0].username, oldRole, newRole: role });
+        res.json({ success: true, username: target.rows[0].username, oldRole, newRole: role, extraRoles: normalizedExtraRoles, pageAllowlist: normalizedPageAllowlist });
     } catch (err) {
         log.error('Change role error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -139,7 +163,7 @@ router.patch('/:id/active', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, r
 // POST /api/users — create new user (creator + director only)
 router.post('/', requireRole('creator', 'director'), async (req, res) => {
     try {
-        const { username, password, name, role } = req.body;
+        const { username, password, name, role, extraRoles, pageAllowlist } = req.body;
 
         if (!username || !password || !name) {
             return res.status(400).json({ error: 'username, password, name обов\'язкові' });
@@ -151,8 +175,16 @@ router.post('/', requireRole('creator', 'director'), async (req, res) => {
             return res.status(400).json({ error: `Невалідна роль. Допустимі: ${ROLE_HIERARCHY.join(', ')}` });
         }
 
+        const primaryRole = role || 'admin';
+        const normalizedExtraRoles = Array.isArray(extraRoles)
+            ? Array.from(new Set(extraRoles.filter(item => ROLE_HIERARCHY.includes(item) && item !== primaryRole))).slice(0, 3)
+            : [];
+        const normalizedPageAllowlist = Array.isArray(pageAllowlist)
+            ? Array.from(new Set(pageAllowlist.filter(item => typeof item === 'string' && item.startsWith('/')))).slice(0, 50)
+            : [];
+
         // Director cannot create creator
-        if (req.user.role === 'director' && role === 'creator') {
+        if (req.user.role === 'director' && (primaryRole === 'creator' || normalizedExtraRoles.includes('creator'))) {
             return res.status(403).json({ error: 'Тільки creator може створити creator' });
         }
 
@@ -163,11 +195,11 @@ router.post('/', requireRole('creator', 'director'), async (req, res) => {
 
         const hash = await bcrypt.hash(password, 10);
         const result = await pool.query(
-            'INSERT INTO users (username, password_hash, name, role) VALUES ($1, $2, $3, $4) RETURNING id, username, name, role',
-            [username.trim(), hash, name.trim(), role || 'admin']
+            'INSERT INTO users (username, password_hash, name, role, extra_roles, page_allowlist) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, username, name, role, extra_roles, page_allowlist',
+            [username.trim(), hash, name.trim(), primaryRole, normalizedExtraRoles, normalizedPageAllowlist]
         );
 
-        log.info(`User ${req.user.username} created user ${username} (role: ${role || 'admin'})`);
+        log.info(`User ${req.user.username} created user ${username} (role: ${primaryRole})`);
 
         // Auto-add new user to default chat channels
         try {

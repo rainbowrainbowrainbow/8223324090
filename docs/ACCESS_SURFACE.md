@@ -73,6 +73,16 @@ sidebar entries unless they become standalone pages.
 These paths stay in `PAGE_ACCESS` because UI visibility checks and sidebar
 actions need a role matrix even though the UI is modal-based.
 
+## Root-Shell Business Aliases
+
+| Path | Owner | Reason |
+| --- | --- | --- |
+| `/maysternya-doli` | timeline | Private root-shell timeline context for `Майстерня долі`; visible by creator role or per-user page allowlist, with data isolated by `business_context=maysternya_doli`. |
+
+Root-shell business aliases reuse `index.html`, but they still need explicit
+`PAGE_ACCESS`, sidebar access, and backend context checks because storage and
+API payloads are business-scoped.
+
 ## Sidebar Role Exception
 
 | Path | Owner | Reason |

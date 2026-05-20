@@ -4,6 +4,15 @@
 
 ---
 
+## v0.60.10 - Scheduling Docs QA Sync
+
+### Scheduling Docs QA Sync [codex]
+- **Документи smart scheduling** - додано системний аналіз і окремий implementation task для наступного handoff без змішування з продакшн-кодом.
+- **Approved defaults guardrail** - task-файл фіксує approved first-pass defaults як робочі дефолти і не повертає їх у hard-stop product gate.
+- **Без втрати релізів** - visible changelog зберігає послідовність `v0.60.9 -> v0.60.10` і попередній Smart Task Scheduling запис.
+
+---
+
 ## v0.60.9 - Smart Task Scheduling
 
 ### Smart Task Scheduling [codex]

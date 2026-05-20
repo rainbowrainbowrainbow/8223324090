@@ -21,12 +21,10 @@ function installModuleMock(modulePath, exports) {
 
 function installTelegramMock() {
     const calls = [];
-    const restore = installModuleMock('../services/telegram', {
-        TELEGRAM_BOT_TOKEN: 'unit-token',
-        WEBHOOK_SECRET: 'unit-secret',
+    const behavior = {
         telegramRequest: async (method, body) => {
             calls.push({ method, body });
-            return { ok: true, result: true };
+            return { ok: true, result: method === 'sendMessage' ? { message_id: 9001 } : true };
         },
         sendTelegramMessage: async (chatId, text, options) => {
             calls.push({ method: 'sendTelegramMessage', body: { chatId, text, options } });
@@ -35,9 +33,19 @@ function installTelegramMock() {
         getConfiguredChatId: async () => null,
         getConfiguredThreadId: async () => null,
         getTelegramChatId: async () => [],
-        ensureWebhook: async () => true
+        ensureWebhook: async () => ({ ok: true })
+    };
+    const restore = installModuleMock('../services/telegram', {
+        TELEGRAM_BOT_TOKEN: 'unit-token',
+        WEBHOOK_SECRET: 'unit-secret',
+        telegramRequest: (...args) => behavior.telegramRequest(...args),
+        sendTelegramMessage: (...args) => behavior.sendTelegramMessage(...args),
+        getConfiguredChatId: (...args) => behavior.getConfiguredChatId(...args),
+        getConfiguredThreadId: (...args) => behavior.getConfiguredThreadId(...args),
+        getTelegramChatId: (...args) => behavior.getTelegramChatId(...args),
+        ensureWebhook: (...args) => behavior.ensureWebhook(...args)
     });
-    return { calls, restore };
+    return { calls, behavior, restore };
 }
 
 function installDbMock() {
@@ -72,6 +80,16 @@ function installDbMock() {
             return { rows: [], rowCount: 1 };
         }
 
+        if (/SELECT value FROM settings WHERE key/i.test(text)) {
+            return { rows: [], rowCount: 0 };
+        }
+
+        if (/INSERT INTO pending_animators/i.test(text)) {
+            const nextId = Math.max(...state.animators.keys()) + 1;
+            state.animators.set(nextId, { status: 'pending', date: params[0], note: params[1] || null });
+            return { rows: [{ id: nextId }], rowCount: 1 };
+        }
+
         if (/UPDATE pending_animators SET status/i.test(text)) {
             const [newStatus, id, expected] = params;
             const row = state.animators.get(id);
@@ -83,6 +101,9 @@ function installDbMock() {
         }
         if (/SELECT \* FROM lines_by_date/i.test(text)) {
             return { rows: [] };
+        }
+        if (/SELECT name FROM lines_by_date/i.test(text)) {
+            return { rows: [{ name: 'Аніматор 1' }, { name: 'Аніматор 2' }] };
         }
         if (/INSERT INTO lines_by_date/i.test(text)) {
             state.lineInserts += 1;
@@ -172,7 +193,8 @@ function installRouteDependencyMocks(dbState) {
             sendTomorrowReminder: async () => ({})
         }),
         installModuleMock('../services/booking', {
-            ensureDefaultLines: async () => true
+            ensureDefaultLines: async () => true,
+            validateDate: value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))
         }),
         installModuleMock('../services/bot', {
             handleBotCommand: async () => null,
@@ -187,6 +209,12 @@ function installRouteDependencyMocks(dbState) {
         }),
         installModuleMock('../services/leadNotifier', {
             notifyNewLead: async () => null
+        }),
+        installModuleMock('../middleware/auth', {
+            authenticateToken: (req, res, next) => {
+                req.user = { id: 1, username: 'unit', role: 'creator' };
+                next();
+            }
         }),
         installModuleMock('../services/kleshnya', {
             updateTaskStatus: async (taskId, newStatus) => {
@@ -280,6 +308,55 @@ describe('Telegram callback single-use hardening', () => {
         restoreDeps();
         dbMock.restore();
         telegram.restore();
+    });
+
+    it('does not send ask-animator buttons when webhook setup is not ready', async () => {
+        telegram.behavior.getConfiguredChatId = async () => '-1001805304620';
+        telegram.behavior.getConfiguredThreadId = async () => 1;
+        telegram.behavior.ensureWebhook = async () => ({
+            ok: false,
+            reason: 'setWebhook_failed',
+            description: 'bad webhook'
+        });
+
+        const res = await fetch(`${baseUrl}/api/telegram/ask-animator`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: '2099-01-01', note: 'unit webhook failure' })
+        });
+        const data = await res.json();
+
+        assert.equal(res.status, 200);
+        assert.equal(data.success, false);
+        assert.equal(data.reason, 'webhook_unavailable');
+        assert.equal(data.fallback, 'manual_line');
+        assert.equal(data.target.threadId, 1);
+        assert.equal(callsByMethod(telegram.calls, 'sendMessage').length, 0);
+        assert.equal(dbMock.state.animators.has(2), false);
+    });
+
+    it('sends ask-animator approval buttons after webhook setup is ready', async () => {
+        telegram.behavior.getConfiguredChatId = async () => '-1001805304620';
+        telegram.behavior.getConfiguredThreadId = async () => 1;
+        telegram.behavior.ensureWebhook = async () => ({ ok: true, webhookUrl: 'https://crm.test/api/telegram/webhook' });
+
+        const res = await fetch(`${baseUrl}/api/telegram/ask-animator`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: '2099-01-01', note: 'unit ready webhook' })
+        });
+        const data = await res.json();
+        const sendCall = callsByMethod(telegram.calls, 'sendMessage').at(-1);
+
+        assert.equal(res.status, 200);
+        assert.equal(data.success, true);
+        assert.equal(data.requestId, 2);
+        assert.equal(data.target.threadId, 1);
+        assert.equal(sendCall.body.chat_id, '-1001805304620');
+        assert.equal(sendCall.body.message_thread_id, 1);
+        assert.equal(sendCall.body.reply_markup.inline_keyboard[0][0].callback_data, 'add_anim:2');
+        assert.equal(sendCall.body.reply_markup.inline_keyboard[0][1].callback_data, 'no_anim:2');
+        assert.equal(dbMock.state.animators.get(2).status, 'pending');
     });
 
     it('processes animator approval once and clears stale animator buttons', async () => {

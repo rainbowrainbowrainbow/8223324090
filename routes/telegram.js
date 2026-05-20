@@ -23,9 +23,18 @@ function classifyTelegramAskFailure(result, err) {
     const description = String(result?.description || err?.message || result?.error || '').toLowerCase();
     if (description.includes('no bot token') || description.includes('token')) return 'no_bot_token';
     if (description.includes('chat not found') || description.includes('chat_id') || description.includes('chat id')) return 'no_chat_id';
+    if (description.includes('webhook')) return 'webhook_unavailable';
     if (description.includes('circuit breaker')) return 'telegram_circuit_open';
     if (description.includes('timeout') || description.includes('econn') || description.includes('network')) return 'telegram_unavailable';
     return 'telegram_send_failed';
+}
+
+function publicTelegramTarget(target = {}) {
+    return {
+        chatId: target.chatId ? String(target.chatId) : null,
+        threadId: target.threadId || null,
+        source: target.source || 'unknown'
+    };
 }
 
 async function getSettingValue(key) {
@@ -281,10 +290,25 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
         if (!chatId) {
             return res.json({ success: false, reason: 'no_chat_id', fallback: 'manual_line' });
         }
+        const publicTarget = publicTelegramTarget(target);
+        log.info('Ask animator target resolved', publicTarget);
 
         const isHttps = req.get('x-forwarded-proto') === 'https' || req.protocol === 'https';
         const appUrl = `${isHttps ? 'https' : 'http'}://${req.get('host')}`;
-        await ensureWebhook(appUrl);
+        const webhookResult = await ensureWebhook(appUrl);
+        if (webhookResult?.ok === false) {
+            log.warn('Ask animator blocked because Telegram webhook is not ready', {
+                ...publicTarget,
+                webhookReason: webhookResult.reason || webhookResult.description || 'unknown'
+            });
+            return res.json({
+                success: false,
+                reason: 'webhook_unavailable',
+                webhookReason: webhookResult.reason || webhookResult.description || null,
+                fallback: 'manual_line',
+                target: { threadId: publicTarget.threadId, source: publicTarget.source }
+            });
+        }
 
         await ensureDefaultLines(date);
 
@@ -352,6 +376,12 @@ router.post('/ask-animator', authenticateToken, async (req, res) => {
                 fallback: 'manual_line'
             });
         }
+
+        log.info('Ask animator Telegram message sent', {
+            requestId,
+            ...publicTarget,
+            messageId: result?.result?.message_id || null
+        });
 
         res.json({ success: true, requestId, target: { threadId: threadId || null, source: target.source } });
     } catch (err) {
@@ -456,6 +486,11 @@ router.post('/webhook', async (req, res) => {
             if (data.startsWith('add_anim:')) {
                 const requestId = safeParseInt(data.split(':')[1]);
                 if (!requestId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
+                log.info('Animator approval callback received', {
+                    requestId,
+                    chatId: String(chatId),
+                    messageId: message?.message_id || null
+                });
 
                 const pending = await pool.query(
                     'UPDATE pending_animators SET status = $1 WHERE id = $2 AND status = $3 RETURNING *',
@@ -489,6 +524,7 @@ router.post('/webhook', async (req, res) => {
 
                 await answerCallback(id, 'Аніматора додано!');
                 await editCallbackMessageFinal(message, `✅ <b>Додано: ${newName}</b>`, 'add_anim');
+                log.info('Animator request approved and line added', { requestId, date, lineId: newLineId, lineName: newName });
 
             } else if (data.startsWith('cert_use:')) {
                 const certId = safeParseInt(data.split(':')[1]);
@@ -588,6 +624,11 @@ router.post('/webhook', async (req, res) => {
             } else if (data.startsWith('no_anim:')) {
                 const requestId = safeParseInt(data.split(':')[1]);
                 if (!requestId) { await answerCallback(id, 'Невалідний запит'); return res.sendStatus(200); }
+                log.info('Animator reject callback received', {
+                    requestId,
+                    chatId: String(chatId),
+                    messageId: message?.message_id || null
+                });
 
                 const rejected = await pool.query(
                     'UPDATE pending_animators SET status = $1 WHERE id = $2 AND status = $3 RETURNING *',
@@ -600,6 +641,7 @@ router.post('/webhook', async (req, res) => {
 
                 await answerCallback(id, 'Відхилено');
                 await editCallbackMessageFinal(message, '❌ <b>Відхилено</b>', 'no_anim');
+                log.info('Animator request rejected', { requestId });
             // v20.4.0: Training approve/reject callbacks
             } else if (data.startsWith('training_approve_') || data.startsWith('training_reject_')) {
                 try {

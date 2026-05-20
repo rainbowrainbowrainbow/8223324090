@@ -388,16 +388,36 @@ async function processRetryQueue() {
 }
 
 async function ensureWebhook(appUrl) {
-    if (webhookSet) return;
+    const webhookUrl = `${appUrl}/api/telegram/webhook`;
+    if (webhookSet) {
+        return { ok: true, webhookUrl, skipped: true, reason: 'already_set' };
+    }
     try {
-        const webhookUrl = `${appUrl}/api/telegram/webhook`;
         const result = await telegramRequest('setWebhook', { url: webhookUrl, secret_token: WEBHOOK_SECRET });
         if (result && result.ok) {
             webhookSet = true;
             log.info(`Webhook set: ${webhookUrl}`);
+            return { ok: true, webhookUrl, result };
         }
+        log.warn('Webhook setup returned non-ok response', {
+            webhookUrl,
+            errorCode: result?.error_code || null,
+            description: result?.description || null
+        });
+        return {
+            ok: false,
+            webhookUrl,
+            reason: result?.description || result?.error || 'setWebhook_failed',
+            errorCode: result?.error_code || null
+        };
     } catch (err) {
         log.error('Webhook setup error', err);
+        return {
+            ok: false,
+            webhookUrl,
+            reason: err.code || 'setWebhook_exception',
+            description: err.message
+        };
     }
 }
 

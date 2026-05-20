@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.18 - Telegram Animator Webhook Guard
+
+### Telegram Animator Webhook Guard [codex]
+- **Запит на додавання аніматора більше не створює мертві кнопки** - `/api/telegram/ask-animator` тепер перевіряє, що Telegram webhook для callback реально готовий, перш ніж створювати pending-запит і відправляти inline-кнопки `Так` / `Ні`.
+- **Зрозумілий fallback замість silent fail** - якщо webhook не встановився або Telegram повернув помилку, CRM повертає `webhook_unavailable` і `manual_line`, щоб інтерфейс не чекав відповідь з кнопок, які live CRM не зможе отримати.
+- **Target і callback path стали видимими в логах** - додано точкові логи для вибору chat/thread, результату відправки повідомлення, отримання approve/reject callback і фактичного додавання/відхилення лінії аніматора.
+- **Guardrail для ask-animator flow** - тест покриває дві критичні гілки: кнопки не відправляються без готового webhook, а при готовому webhook ідуть у правильний chat/topic з callback payload `add_anim` / `no_anim`.
+
+---
+
 ## v0.60.17 - Task Assistant Summary Scope
 
 ### Task Assistant Summary Scope [codex]

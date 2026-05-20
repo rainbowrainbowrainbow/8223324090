@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.59.7",
+  "version": "0.59.9",
   "eventGenix": {
-    "releaseLabel": "Task Observer Visibility Policy"
+    "releaseLabel": "Modal Sweep Animation Kill Switch"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

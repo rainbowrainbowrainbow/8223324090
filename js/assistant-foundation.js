@@ -1656,7 +1656,53 @@
         return { headline: 'Dashboard work queue snapshot', details, source: 'api:/api/work-queue' };
     }
 
+    function getTaskPageSnapshot() {
+        try {
+            const snapshot = window.TasksPage?.getAssistantSnapshot?.();
+            if (snapshot && typeof snapshot === 'object') return snapshot;
+        } catch (err) {
+            emitTelemetry('snapshot_failed', {
+                page: 'tasks',
+                snapshotKey: 'TasksPage.getAssistantSnapshot',
+                failureReason: err.message || String(err),
+                fallbackShown: true
+            });
+            console.warn('[crm-assistant-foundation] task page snapshot failed', err);
+        }
+        return null;
+    }
+
     function taskSignals() {
+        const pageSnapshot = getTaskPageSnapshot();
+        if (pageSnapshot) {
+            const counts = pageSnapshot.counts || {};
+            const viewLabel = pageSnapshot.currentViewLabel || pageSnapshot.currentView || 'tasks';
+            const source = pageSnapshot.source || 'TasksPage.getAssistantSnapshot';
+            const currentViewCount = numberValue(counts.currentView, 0);
+            const currentVisible = numberValue(counts.currentVisible, currentViewCount);
+            const signals = [
+                {
+                    signalId: 'tasks.page.current_view',
+                    label: 'Current tasks board slice',
+                    value: currentViewCount,
+                    severity: currentViewCount ? 'info' : 'success',
+                    evidence: `У зрізі "${viewLabel}" зараз ${currentViewCount} задач; показано після фільтрів: ${currentVisible}.`,
+                    source
+                },
+                { signalId: 'tasks.page.inbox', label: 'Inbox tab count', value: numberValue(counts.inbox, 0), severity: numberValue(counts.inbox, 0) ? 'warning' : 'info', evidence: `Інбокс: ${numberValue(counts.inbox, 0)} задач.`, source },
+                { signalId: 'tasks.page.today', label: 'Today tab count', value: numberValue(counts.today, 0), severity: numberValue(counts.today, 0) ? 'info' : 'success', evidence: `Сьогодні: ${numberValue(counts.today, 0)} задач.`, source },
+                { signalId: 'tasks.page.team', label: 'Team tab count', value: numberValue(counts.team, 0), severity: numberValue(counts.team, 0) ? 'info' : 'success', evidence: `Командні: ${numberValue(counts.team, 0)} задач.`, source },
+                { signalId: 'tasks.page.my', label: 'My tab count', value: numberValue(counts.my, 0), severity: numberValue(counts.my, 0) ? 'info' : 'success', evidence: `Мої: ${numberValue(counts.my, 0)} задач.`, source }
+            ];
+            if (numberValue(counts.overdue, 0)) signals.push({ signalId: 'tasks.overdue', label: 'Overdue tasks', value: numberValue(counts.overdue, 0), severity: 'danger', evidence: `${numberValue(counts.overdue, 0)} прострочених задач у live task board snapshot.`, source });
+            if (numberValue(counts.waiting, 0)) signals.push({ signalId: 'tasks.waiting', label: 'Waiting tasks', value: numberValue(counts.waiting, 0), severity: 'warning', evidence: `${numberValue(counts.waiting, 0)} задач у waiting/workflow стані.`, source });
+            if (numberValue(counts.next, 0) || numberValue(counts.nearDeadline, 0)) {
+                const deadlineCount = Math.max(numberValue(counts.next, 0), numberValue(counts.nearDeadline, 0));
+                signals.push({ signalId: 'tasks.near_deadline', label: 'Near deadline tasks', value: deadlineCount, severity: 'warning', evidence: `${deadlineCount} задач у найближчому плані або з близьким дедлайном.`, source });
+            }
+            if (numberValue(counts.missingOwner, 0)) signals.push({ signalId: 'tasks.missing_owner', label: 'Tasks without typed owner', value: numberValue(counts.missingOwner, 0), severity: 'warning', evidence: `${numberValue(counts.missingOwner, 0)} активних задач без typed owner у live task board snapshot.`, source });
+            return signals;
+        }
         const cabinet = getSnapshotData('tasks', 'taskCabinet');
         const visibleTasksPayload = getSnapshotData('tasks', 'tasks');
         const visibleTasks = Array.isArray(visibleTasksPayload) ? visibleTasksPayload : toList(visibleTasksPayload?.tasks || visibleTasksPayload?.items || [], 200);
@@ -1674,7 +1720,7 @@
         }).length;
         const signals = [];
         if (cabinet) {
-            signals.push({ signalId: 'tasks.cabinet.total_visible', label: 'Visible task projection', value: numberValue(cabinet.all?.length, 0), source: 'api:/api/tasks/my-cabinet' });
+            signals.push({ signalId: 'tasks.cabinet.personal_projection', label: 'Personal cabinet projection', value: numberValue(cabinet.all?.length, 0), source: 'api:/api/tasks/my-cabinet' });
             if (overdue) signals.push({ signalId: 'tasks.overdue', label: 'Overdue tasks', value: overdue, severity: 'danger', evidence: `${overdue} задач прострочено у персональній проекції.`, source: 'api:/api/tasks/my-cabinet' });
             if (waiting) signals.push({ signalId: 'tasks.waiting', label: 'Waiting tasks', value: waiting, severity: 'warning', evidence: `${waiting} задач у waiting/workflow стані.`, source: 'api:/api/tasks/my-cabinet' });
             if (inbox) signals.push({ signalId: 'tasks.inbox', label: 'Inbox tasks', value: inbox, severity: 'warning', evidence: `${inbox} задач у inbox потребують розбору.`, source: 'api:/api/tasks/my-cabinet' });
@@ -1692,10 +1738,31 @@
     }
 
     function taskSummary() {
+        const pageSnapshot = getTaskPageSnapshot();
+        if (pageSnapshot) {
+            const counts = pageSnapshot.counts || {};
+            return {
+                headline: 'Tasks live board snapshot',
+                details: [
+                    `view=${pageSnapshot.currentView || 'tasks'}`,
+                    `viewCount=${numberValue(counts.currentView, 0)}`,
+                    `visibleAfterFilter=${numberValue(counts.currentVisible, counts.currentView)}`,
+                    `inbox=${numberValue(counts.inbox, 0)}`,
+                    `today=${numberValue(counts.today, 0)}`,
+                    `next=${numberValue(counts.next, 0)}`,
+                    `waiting=${numberValue(counts.waiting, 0)}`,
+                    `team=${numberValue(counts.team, 0)}`,
+                    `my=${numberValue(counts.my, 0)}`,
+                    `overdue=${numberValue(counts.overdue, 0)}`,
+                    `assistantFilter=${pageSnapshot.assistantFilter || 'none'}`
+                ],
+                source: pageSnapshot.source || 'TasksPage.getAssistantSnapshot'
+            };
+        }
         const cabinet = getSnapshotData('tasks', 'taskCabinet');
         if (cabinet) {
             return {
-                headline: 'Tasks API snapshot',
+                headline: 'Tasks API personal projection',
                 details: [
                     `today=${numberValue(cabinet.stats?.todayPlanned, 0)}`,
                     `waiting=${numberValue(cabinet.stats?.waitingCount, 0)}`,

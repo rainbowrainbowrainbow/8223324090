@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.59.7">
-    <link rel="stylesheet" href="css/auth.css?v=0.59.7">
-    <link rel="stylesheet" href="css/layout.css?v=0.59.7">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.59.7">
-    <link rel="stylesheet" href="css/timeline.css?v=0.59.7">
-    <link rel="stylesheet" href="css/panel.css?v=0.59.7">
-    <link rel="stylesheet" href="css/modals.css?v=0.59.7">
-    <link rel="stylesheet" href="css/controls.css?v=0.59.7">
-    <link rel="stylesheet" href="css/features.css?v=0.59.7">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.59.7">
-    <link rel="stylesheet" href="css/responsive.css?v=0.59.7">
-    <link rel="stylesheet" href="css/pages.css?v=0.59.7">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.59.7">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.59.7">
+    <link rel="stylesheet" href="css/base.css?v=0.59.9">
+    <link rel="stylesheet" href="css/auth.css?v=0.59.9">
+    <link rel="stylesheet" href="css/layout.css?v=0.59.9">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.59.9">
+    <link rel="stylesheet" href="css/timeline.css?v=0.59.9">
+    <link rel="stylesheet" href="css/panel.css?v=0.59.9">
+    <link rel="stylesheet" href="css/modals.css?v=0.59.9">
+    <link rel="stylesheet" href="css/controls.css?v=0.59.9">
+    <link rel="stylesheet" href="css/features.css?v=0.59.9">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.59.9">
+    <link rel="stylesheet" href="css/responsive.css?v=0.59.9">
+    <link rel="stylesheet" href="css/pages.css?v=0.59.9">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.59.9">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.59.9">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.59.7 Task Observer Visibility Policy">✨ 0.59.7 Task Observer Visibility Policy</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.59.9 Modal Sweep Animation Kill Switch">✨ 0.59.9 Modal Sweep Animation Kill Switch</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.59.7 — Task Observer Visibility Policy</p>
+                <p class="tagline">AI First CRM v0.59.9 — Modal Sweep Animation Kill Switch</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.59.7: Task Observer Visibility Policy</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.59.9: Modal Sweep Animation Kill Switch</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1270,13 +1270,33 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.59.9 — Modal Sweep Animation Kill Switch</h4>
+                    <ul>
+                        <li><b>Прибрано лагучий відблиск на вікнах</b> — CRM-модалки більше не отримують sweep/shine/wave-анімацію поверх контенту.</li>
+                        <li><b>Продажі програм стабілізовано</b> — заголовок модалки виведено з глобального sticky-шаблону, тому він більше не малює темний блок поверх фільтрів.</li>
+                        <li><b>Без repaint-heavy входу</b> — для modal/window surfaces вимкнено entrance-анімацію, яка давала хвилю і підлагування на частині екранів.</li>
+                        <li><b>Контент не чіпали</b> — Excel/CSV, фільтри, таблиці й експорт у <code>Продажі програм</code> залишились на місці.</li>
+                        <li><b>Guardrail</b> — UI-smoke перевіряє kill switch для модалок і product-sales title override.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.59.8 — Tasks Assistant Live Snapshot</h4>
+                    <ul>
+                        <li><b>Live snapshot для задач</b> — Помічник на сторінці <code>/tasks</code> бере окремий зріз із самої сторінки задач, а не плутає його з персональним cabinet/API fallback.</li>
+                        <li><b>Правильні count-и вкладок</b> — у контексті Помічника є реальні значення <code>Інбокс</code>, <code>Сьогодні</code>, <code>Наступні</code>, <code>Чекаю</code>, <code>Командні</code> і <code>Мої</code>.</li>
+                        <li><b>Без фрази “6 видимих задач” з неправильного джерела</b> — відповідь більше не називає невеликий DOM/персональний зріз повною картиною task board.</li>
+                        <li><b>Fallback збережено</b> — якщо live snapshot сторінки ще не готовий, Помічник безпечно повертається до API snapshot, але маркує його як персональну проєкцію.</li>
+                        <li><b>Guardrail</b> — UI-smoke перевіряє <code>TasksPage.getAssistantSnapshot</code> і пріоритет live snapshot у foundation adapter.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.59.7 — Task Observer Visibility Policy</h4>
                     <ul>
-                        <li><b>Спостерігачі задач</b> — у задачі можна додати людей, які мають право бачити виконання без зміни власника.</li>
-                        <li><b>Доступ до матеріалів</b> — observers проходять через canonical <code>task_observers</code> policy і бачать detail, опис, чекліст, history/logs та робочий контекст задачі.</li>
-                        <li><b>Без зайвих mutation-прав</b> — спостерігач може читати матеріали, але не може виконувати, переносити чи перепризначати задачу без ролі/власності.</li>
-                        <li><b>UI у detail задачі</b> — додано блок <code>Спостерігачі і матеріали</code> з мультивибором людей і окремим збереженням доступу.</li>
-                        <li><b>Audit trail</b> — зміна observer-списку пишеться в <code>task_action_history</code> як <code>task_observers_updated</code>.</li>
+                        <li><b>Політика спостерігачів задач</b> — у задачі можна вказати людей, які бачать виконання без перепризначення власника.</li>
+                        <li><b>Повний read-доступ до матеріалів</b> — спостерігачі бачать detail, опис, чеклісти, історію дій, logs і робочий контекст задачі.</li>
+                        <li><b>Без зайвих прав на зміну</b> — observer-доступ не дає виконувати, переносити або перепризначати задачу.</li>
+                        <li><b>UI у detail задачі</b> — додано блок <code>Спостерігачі і матеріали</code> з мультивибором людей та окремим збереженням доступу.</li>
+                        <li><b>Audit trail</b> — зміни списку спостерігачів пишуться в історію задач як <code>task_observers_updated</code>.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -7829,25 +7849,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.59.7"></script>
-    <script src="js/api.js?v=0.59.7"></script>
-    <script src="js/ui.js?v=0.59.7"></script>
-    <script src="js/auth.js?v=0.59.7"></script>
-    <script src="js/timeline.js?v=0.59.7"></script>
-    <script src="js/booking.js?v=0.59.7"></script>
-    <script src="js/settings.js?v=0.59.7"></script>
-    <script src="js/booking-form.js?v=0.59.7"></script>
-    <script src="js/booking-linked.js?v=0.59.7"></script>
-    <script src="js/settings-dashboard.js?v=0.59.7"></script>
-    <script src="js/settings-history.js?v=0.59.7"></script>
-    <script src="js/settings-afisha.js?v=0.59.7"></script>
-    <script src="js/settings-certificates.js?v=0.59.7"></script>
-    <script src="js/offline.js?v=0.59.7"></script>
-    <script src="js/search.js?v=0.59.7"></script>
-    <script src="js/ws.js?v=0.59.7"></script>
-    <script src="js/app.js?v=0.59.7"></script>
-    <script src="js/kleshnya-widget.js?v=0.59.7"></script>
-    <script src="js/components/sidebar.js?v=0.59.7"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.59.7"></script>
+    <script src="js/config.js?v=0.59.9"></script>
+    <script src="js/api.js?v=0.59.9"></script>
+    <script src="js/ui.js?v=0.59.9"></script>
+    <script src="js/auth.js?v=0.59.9"></script>
+    <script src="js/timeline.js?v=0.59.9"></script>
+    <script src="js/booking.js?v=0.59.9"></script>
+    <script src="js/settings.js?v=0.59.9"></script>
+    <script src="js/booking-form.js?v=0.59.9"></script>
+    <script src="js/booking-linked.js?v=0.59.9"></script>
+    <script src="js/settings-dashboard.js?v=0.59.9"></script>
+    <script src="js/settings-history.js?v=0.59.9"></script>
+    <script src="js/settings-afisha.js?v=0.59.9"></script>
+    <script src="js/settings-certificates.js?v=0.59.9"></script>
+    <script src="js/offline.js?v=0.59.9"></script>
+    <script src="js/search.js?v=0.59.9"></script>
+    <script src="js/ws.js?v=0.59.9"></script>
+    <script src="js/app.js?v=0.59.9"></script>
+    <script src="js/kleshnya-widget.js?v=0.59.9"></script>
+    <script src="js/components/sidebar.js?v=0.59.9"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.59.9"></script>
 </body>
 </html>

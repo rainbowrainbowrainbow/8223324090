@@ -1252,6 +1252,112 @@ function updateCounts() {
     setCount('countDoneToday', doneToday.length);
 }
 
+function getTasksAssistantViewBase(view = currentView) {
+    const today = getTodayStr();
+    const week = getWeekRange();
+    const active = allTasks.filter(isActiveTask);
+    switch (view) {
+        case 'today':
+            return active.filter(t => t.date === today || !t.date);
+        case 'next':
+            return active.filter(t => {
+                const due = taskDueDate(t);
+                return due && due > today && due <= week.to;
+            });
+        case 'waiting':
+            return active.filter(isWaitingTask);
+        case 'team':
+            return active.filter(isTeamTask);
+        case 'week':
+            return active.filter(t => t.date >= week.from && t.date <= week.to);
+        case 'my':
+            return active.filter(isTaskInMyWorkspace);
+        case 'board':
+            return allTasks.filter(t => t.status !== 'archived' && t.status !== 'cancelled');
+        case 'routines':
+            return active.filter(isRoutineTask);
+        case 'done_today':
+            return allTasks.filter(isCompletedToday);
+        case 'archive':
+            return allTasks.filter(t => t.status === 'archived');
+        case 'inbox':
+        default:
+            return active.filter(isInboxTask);
+    }
+}
+
+function getTasksAssistantCounts() {
+    const today = getTodayStr();
+    const week = getWeekRange();
+    const inTwoDays = new Date();
+    inTwoDays.setDate(inTwoDays.getDate() + 2);
+    const nearDeadlineLimit = inTwoDays.toISOString().slice(0, 10);
+    const active = filterByCategory(allTasks.filter(isActiveTask));
+    const doneToday = filterByCategory(allTasks.filter(isCompletedToday));
+    const currentViewBase = filterByCategory(getTasksAssistantViewBase(currentView));
+    const currentViewFiltered = applyAssistantTaskFilter(currentViewBase);
+    const nextTasks = active.filter(t => {
+        const due = taskDueDate(t);
+        return due && due > today && due <= week.to;
+    });
+    return {
+        loaded: allTasks.length,
+        active: active.length,
+        inbox: active.filter(isInboxTask).length,
+        today: active.filter(t => t.date === today || !t.date).length,
+        week: active.filter(t => t.date >= week.from && t.date <= week.to).length,
+        next: nextTasks.length,
+        waiting: active.filter(isWaitingTask).length,
+        team: active.filter(isTeamTask).length,
+        my: active.filter(isTaskInMyWorkspace).length,
+        doneToday: doneToday.length,
+        archive: filterByCategory(allTasks.filter(t => t.status === 'archived')).length,
+        currentView: currentViewBase.length,
+        currentVisible: currentViewFiltered.length,
+        assistantFilteredOut: Math.max(0, currentViewBase.length - currentViewFiltered.length),
+        overdue: active.filter(isOverdueTask).length,
+        nearDeadline: active.filter(t => {
+            const due = taskDueDate(t);
+            return due && due >= today && due <= nearDeadlineLimit;
+        }).length,
+        missingOwner: active.filter(t => !taskOwnerUserId(t) && !getTaskOwnerLabel(t)).length
+    };
+}
+
+function getTasksAssistantSnapshot() {
+    const currentViewBase = filterByCategory(getTasksAssistantViewBase(currentView));
+    const currentViewTasks = sortTasksForDisplay(applyAssistantTaskFilter(currentViewBase));
+    return {
+        source: 'TasksPage.getAssistantSnapshot',
+        loaded: Array.isArray(allTasks),
+        currentView,
+        currentViewLabel: getViewLabel(currentView),
+        currentCategory,
+        currentCategoryLabel: getCategoryLabel(currentCategory),
+        currentSubcategory,
+        currentSubcategoryLabel: getSubcategoryLabel(currentCategory, currentSubcategory),
+        assistantFilter: assistantTaskFilter || '',
+        counts: getTasksAssistantCounts(),
+        topTasks: currentViewTasks.slice(0, 8).map(task => {
+            const assignment = getTaskAssignmentView(task);
+            return {
+                id: task.id,
+                title: taskTextValue(task.title),
+                status: task.status || '',
+                workflowState: taskWorkflow(task),
+                category: task.category || 'admin',
+                subcategory: task.subcategory || '',
+                date: task.date || '',
+                deadline: task.deadline || task.remindAt || task.remind_at || '',
+                ownerUserId: taskOwnerUserId(task),
+                ownerLabel: getTaskOwnerLabel(task),
+                assignmentLabel: assignment.label,
+                isOverdue: isOverdueTask(task)
+            };
+        })
+    };
+}
+
 function renderOperationsSummary() {
     const host = document.getElementById('operationsSummary');
     if (!host) return;
@@ -2464,5 +2570,10 @@ async function quickChangeStatus(taskId, newStatus) {
     } catch (err) { showNotification('Помилка зміни статусу: ' + (err.message || ''), 'error'); }
 }
 window.quickChangeStatus = quickChangeStatus;
+
+window.TasksPage = {
+    ...(window.TasksPage || {}),
+    getAssistantSnapshot: getTasksAssistantSnapshot
+};
 
 document.addEventListener('DOMContentLoaded', initPage);

@@ -256,6 +256,41 @@ body.dark-mode .confirm-cancel:hover {
     100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 
+/* v0.59.9: CRM window motion kill switch.
+   Modal windows must not receive sweep/shine/wave overlays or repaint-heavy
+   entrance animation; this keeps the content stable on lower-powered devices. */
+.modal,
+.modal-content,
+.modal-content.modal-wide,
+.modal-content.modal-large,
+.modal-content.modal-medium,
+.product-sales-modal-content,
+.lead-modal,
+.lead-modal-overlay,
+.confirm-overlay,
+.confirm-dialog,
+.achievement-modal,
+.alerts-panel-v4 {
+    animation: none !important;
+}
+
+.modal::after,
+.modal-content::after,
+.modal-content.modal-wide::after,
+.modal-content.modal-large::after,
+.modal-content.modal-medium::after,
+.product-sales-modal-content::after,
+.lead-modal::after,
+.confirm-dialog::after,
+.achievement-modal::after,
+.alerts-panel-v4::after {
+    content: none !important;
+    display: none !important;
+    animation: none !important;
+    background: none !important;
+    box-shadow: none !important;
+}
+
 /* Sticky modal header — title + close button stay on top when scrolling */
 .modal-content h3 {
     position: sticky;
@@ -2767,7 +2802,13 @@ body.dark-mode .btn-product-sales:hover {
 }
 
 .product-sales-head h3 {
+    position: static !important;
+    top: auto !important;
     margin: 0 0 6px 0;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    z-index: auto !important;
 }
 
 .product-sales-head p {

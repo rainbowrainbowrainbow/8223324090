@@ -4,6 +4,28 @@
 
 ---
 
+## v0.59.9 - Modal Sweep Animation Kill Switch
+
+### Modal Sweep Animation Kill Switch [codex]
+- **Прибрано laggy sweep/shine на CRM-вікнах** - модальні вікна більше не отримують хвилюючий відблиск або repaint-heavy entrance animation поверх контенту.
+- **`Продажі програм` стабілізовано** - заголовок звіту більше не підпадає під глобальний sticky `modal-content h3`, тому не малює темний блок у верхній частині модалки.
+- **Захист від майбутніх overlay-псевдоелементів** - `modal-content::after` і споріднені window surfaces примусово не створюють sweep/shine overlay.
+- **Функціонал звіту збережено** - Excel/CSV, фільтри, таблиці, сортування і виписка продажів лишились без зміни бізнес-логіки.
+- **Guardrail** - `test:ui` перевіряє modal motion kill switch і product-sales title override.
+
+---
+
+## v0.59.8 - Tasks Assistant Live Snapshot
+
+### Tasks Assistant Live Snapshot [codex]
+- **Помічник читає live snapshot сторінки задач** - `/tasks` тепер експортує `TasksPage.getAssistantSnapshot()` з поточним view, категорією, assistant-фільтром, count-ами вкладок і верхніми задачами зі зрізу.
+- **Відповіді більше не спираються на хибні "видимі 6 задач"** - assistant foundation бере live board snapshot перед `/api/tasks/my-cabinet`, тому бачить реальні `Інбокс`, `Сьогодні`, `Наступні`, `Чекаю`, `Командні` і `Мої`.
+- **API fallback став чесним** - старий `/api/tasks/my-cabinet` лишився резервом, але тепер названий персональною проєкцією, а не повним видимим task board.
+- **Ризики задач grounded у board state** - прострочка, waiting, найближчі дедлайни і задачі без owner тепер формуються з тієї ж логіки, що і екран `/tasks`.
+- **Guardrail** - `test:ui` перевіряє live snapshot contract у `tasks-page.js` і пріоритетне використання `TasksPage.getAssistantSnapshot` у `assistant-foundation.js`.
+
+---
+
 ## v0.59.7 - Task Observer Visibility Policy
 
 ### Task Observer Visibility Policy [codex]

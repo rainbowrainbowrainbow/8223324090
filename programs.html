@@ -8,7 +8,7 @@
 
     <script type="text/javascript">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","w841e2emn0");</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Event Genix | Програми</title>
+    <title>Event Genix | Products</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
@@ -22,14 +22,14 @@
         try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
     })();
     </script>
-    <link rel="stylesheet" href="css/base.css?v=0.60.18">
-    <link rel="stylesheet" href="css/layout.css?v=0.60.18">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.18">
-    <link rel="stylesheet" href="css/pages.css?v=0.60.18">
-    <link rel="stylesheet" href="css/modals.css?v=0.60.18">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.18">
-    <link rel="stylesheet" href="css/responsive.css?v=0.60.18">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.18">
+    <link rel="stylesheet" href="css/base.css?v=0.60.19">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.19">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.19">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.19">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.19">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.19">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.19">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.19">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -39,6 +39,277 @@
         .embed-mode .skip-link,
         .embed-mode .page-login-overlay { display: none !important; }
         .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
+
+        .product-ia-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 0 0 16px;
+            padding: 6px;
+            border: 1px solid var(--border-color, rgba(148, 163, 184, 0.24));
+            border-radius: 16px;
+            background: var(--card-bg, rgba(255, 255, 255, 0.78));
+        }
+
+        .product-ia-tab {
+            min-height: 40px;
+            padding: 0 16px;
+            border: 1px solid transparent;
+            border-radius: 12px;
+            background: transparent;
+            color: var(--gray-600, #64748b);
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .product-ia-tab:hover,
+        .product-ia-tab:focus-visible {
+            border-color: var(--primary-color, #14b8a6);
+            color: var(--text-primary, #0f172a);
+            outline: none;
+        }
+
+        .product-ia-tab.active {
+            background: var(--primary-color, #14b8a6);
+            color: #062018;
+            border-color: transparent;
+        }
+
+        .product-tab-panel.hidden { display: none !important; }
+        .program-desc {
+            font-size: 13px;
+            color: var(--gray-500);
+            margin-top: 8px;
+            line-height: 1.45;
+        }
+
+        .product-doc-panel {
+            display: grid;
+            gap: 10px;
+            margin-top: 14px;
+            padding: 12px;
+            border: 1px solid var(--border-color, rgba(148, 163, 184, 0.24));
+            border-radius: 14px;
+            background: rgba(15, 23, 42, 0.035);
+        }
+
+        .product-doc-empty {
+            background: rgba(245, 158, 11, 0.08);
+            border-style: dashed;
+        }
+
+        .product-doc-main,
+        .product-doc-actions,
+        .product-doc-checks {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .product-doc-label {
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0;
+        }
+
+        .product-doc-title {
+            max-width: 100%;
+            min-width: 0;
+            overflow: hidden;
+            color: var(--text-primary, #0f172a);
+            font-size: 13px;
+            font-weight: 800;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .product-doc-status,
+        .product-doc-kind,
+        .product-catalog-status {
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            padding: 0 9px;
+            border-radius: 999px;
+            border: 1px solid rgba(20, 184, 166, 0.28);
+            background: rgba(20, 184, 166, 0.10);
+            color: var(--primary-dark, #0f766e);
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .product-doc-status.unlinked {
+            border-color: rgba(245, 158, 11, 0.30);
+            background: rgba(245, 158, 11, 0.12);
+            color: #b45309;
+        }
+
+        .product-doc-checks label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 30px;
+            color: var(--gray-600, #475569);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .btn-doc-open,
+        .btn-doc-link {
+            min-height: 34px;
+            font-size: 12px;
+            text-decoration: none;
+        }
+
+        .product-catalog-intro {
+            margin: 0 0 16px;
+            color: var(--gray-500);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .product-catalog-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 14px;
+        }
+
+        .product-catalog-card {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 12px;
+            padding: 16px;
+            border: 1px solid var(--border-color, rgba(148, 163, 184, 0.24));
+            border-radius: 18px;
+            background: var(--card-bg, #fff);
+            box-shadow: var(--shadow-sm, 0 8px 24px rgba(15, 23, 42, 0.06));
+        }
+
+        .product-catalog-icon {
+            display: grid;
+            place-items: center;
+            width: 44px;
+            height: 44px;
+            border-radius: 14px;
+            background: rgba(20, 184, 166, 0.12);
+            font-size: 22px;
+        }
+
+        .product-catalog-title {
+            color: var(--text-primary, #0f172a);
+            font-size: 15px;
+            font-weight: 900;
+        }
+
+        .product-catalog-desc {
+            margin-top: 4px;
+            color: var(--gray-500);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .product-catalog-meta {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .product-catalog-actions {
+            grid-column: 1 / -1;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .product-doc-modal .modal-content {
+            max-width: 560px;
+        }
+
+        .product-doc-modal .form-field {
+            margin-bottom: 12px;
+        }
+
+        .product-doc-modal input[type="text"],
+        .product-doc-modal input[type="url"],
+        .product-doc-modal select {
+            width: 100%;
+        }
+
+        .product-doc-modal .doc-checkboxes {
+            display: grid;
+            gap: 8px;
+            margin: 12px 0;
+        }
+
+        .product-doc-modal .doc-checkboxes label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+        }
+
+        .product-doc-modal-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: flex-end;
+            margin-top: 16px;
+        }
+
+        body.dark-mode .product-ia-tabs,
+        [data-theme="dark"] .product-ia-tabs,
+        body.dark-mode .product-catalog-card,
+        [data-theme="dark"] .product-catalog-card {
+            background: rgba(17, 24, 39, 0.92);
+            border-color: rgba(255, 255, 255, 0.10);
+        }
+
+        body.dark-mode .product-doc-panel,
+        [data-theme="dark"] .product-doc-panel {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.10);
+        }
+
+        body.dark-mode .product-doc-empty,
+        [data-theme="dark"] .product-doc-empty {
+            background: rgba(245, 158, 11, 0.08);
+        }
+
+        body.dark-mode .product-doc-title,
+        body.dark-mode .product-catalog-title,
+        [data-theme="dark"] .product-doc-title,
+        [data-theme="dark"] .product-catalog-title {
+            color: #f8fafc;
+        }
+
+        @media (max-width: 720px) {
+            .product-ia-tabs,
+            .product-catalog-actions,
+            .product-doc-actions {
+                align-items: stretch;
+                flex-direction: column;
+            }
+
+            .product-ia-tab,
+            .product-catalog-actions a,
+            .product-doc-actions a,
+            .product-doc-actions button {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .product-catalog-card {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body data-page-group="art">
@@ -94,83 +365,124 @@
 
         <main id="main-content" class="page-container">
             <div class="page-header">
-                <h2>Каталог програм</h2>
+                <h2 id="productsPageTitle">Products · Розважальні програми</h2>
                 <button type="button" id="addProductBtn" class="btn-page-primary">+ Додати програму</button>
             </div>
 
-            <!-- Category tabs -->
-            <div id="categoryTabs" class="category-tabs"></div>
+            <div id="productIaTabs" class="product-ia-tabs" aria-label="Products tabs"></div>
 
-            <!-- Add/edit form (hidden by default) -->
-            <div id="productForm" class="inline-form" style="display:none;">
-                <div class="form-field">
-                    <label>Код</label>
-                    <input type="text" id="pf-code" aria-label="КВ1" placeholder="КВ1" maxlength="20" style="width:80px">
-                </div>
-                <div class="form-field">
-                    <label>Назва</label>
-                    <input type="text" id="pf-name" aria-label="Квест «Загадки Фараона»" placeholder="Квест «Загадки Фараона»" style="min-width:200px">
-                </div>
-                <div class="form-field">
-                    <label>Мітка</label>
-                    <input type="text" id="pf-label" aria-label="КВ1(60)" placeholder="КВ1(60)" style="width:120px">
-                </div>
-                <div class="form-field">
-                    <label>Іконка</label>
-                    <input type="text" id="pf-icon" aria-label="🏛" placeholder="🏛" style="width:60px">
-                </div>
-                <div class="form-field">
-                    <label>Категорія</label>
-                    <select id="pf-category">
-                        <option value="quest">Квести</option>
-                        <option value="animation">Анімація</option>
-                        <option value="show">Шоу</option>
-                        <option value="photo">Фото</option>
-                        <option value="masterclass">Майстер-класи</option>
-                        <option value="pinata">Піньяти</option>
-                        <option value="custom">Кастом</option>
-                    </select>
-                </div>
-                <div class="form-field">
-                    <label>Хвилин</label>
-                    <input type="number" id="pf-duration" value="60" min="0" step="15" style="width:80px">
-                </div>
-                <div class="form-field">
-                    <label>Ціна (₴)</label>
-                    <input type="number" id="pf-price" value="0" min="0" style="width:100px">
-                </div>
-                <div class="form-field">
-                    <label>Ведучих</label>
-                    <input type="number" id="pf-hosts" value="1" min="0" style="width:70px">
-                </div>
-                <div class="form-field">
-                    <label>Вік</label>
-                    <input type="text" id="pf-age" aria-label="6-12" placeholder="6-12" style="width:80px">
-                </div>
-                <div class="form-field">
-                    <label>Дітей</label>
-                    <input type="text" id="pf-kids" aria-label="до 15" placeholder="до 15" style="width:80px">
-                </div>
-                <div class="form-field">
-                    <label>Опис</label>
-                    <input type="text" id="pf-description" aria-label="Короткий опис" placeholder="Короткий опис" style="min-width:200px">
-                </div>
-                <div class="form-field" style="flex-direction:row; align-items:center; gap:8px; margin-top:20px;">
-                    <label style="display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="pf-perchild"> За дитину</label>
-                    <label style="display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="pf-filler"> Наповнювач</label>
-                    <label style="display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="pf-active" checked> Активна</label>
-                </div>
-                <input type="hidden" id="pf-id" value="">
-                <input type="hidden" id="pf-sort" value="0">
-                <div style="display:flex; gap:8px; margin-top:20px;">
-                    <button type="button" id="saveProductBtn" class="btn-page-primary">Зберегти</button>
-                    <button type="button" id="cancelProductBtn" class="btn-page-secondary">Скасувати</button>
-                </div>
-            </div>
+            <section id="programsPanel" class="product-tab-panel">
+                <!-- Category tabs -->
+                <div id="categoryTabs" class="category-tabs"></div>
 
-            <!-- Products grid -->
-            <div id="productsGrid" class="cards-grid"></div>
+                <!-- Add/edit form (hidden by default) -->
+                <div id="productForm" class="inline-form" style="display:none;">
+                    <div class="form-field">
+                        <label>Код</label>
+                        <input type="text" id="pf-code" aria-label="КВ1" placeholder="КВ1" maxlength="20" style="width:80px">
+                    </div>
+                    <div class="form-field">
+                        <label>Назва</label>
+                        <input type="text" id="pf-name" aria-label="Квест «Загадки Фараона»" placeholder="Квест «Загадки Фараона»" style="min-width:200px">
+                    </div>
+                    <div class="form-field">
+                        <label>Мітка</label>
+                        <input type="text" id="pf-label" aria-label="КВ1(60)" placeholder="КВ1(60)" style="width:120px">
+                    </div>
+                    <div class="form-field">
+                        <label>Іконка</label>
+                        <input type="text" id="pf-icon" aria-label="🏛" placeholder="🏛" style="width:60px">
+                    </div>
+                    <div class="form-field">
+                        <label>Категорія</label>
+                        <select id="pf-category">
+                            <option value="quest">Квести</option>
+                            <option value="animation">Анімація</option>
+                            <option value="show">Шоу</option>
+                            <option value="photo">Фото</option>
+                            <option value="masterclass">Майстер-класи</option>
+                            <option value="pinata">Піньяти</option>
+                            <option value="custom">Кастом</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label>Хвилин</label>
+                        <input type="number" id="pf-duration" value="60" min="0" step="15" style="width:80px">
+                    </div>
+                    <div class="form-field">
+                        <label>Ціна (₴)</label>
+                        <input type="number" id="pf-price" value="0" min="0" style="width:100px">
+                    </div>
+                    <div class="form-field">
+                        <label>Ведучих</label>
+                        <input type="number" id="pf-hosts" value="1" min="0" style="width:70px">
+                    </div>
+                    <div class="form-field">
+                        <label>Вік</label>
+                        <input type="text" id="pf-age" aria-label="6-12" placeholder="6-12" style="width:80px">
+                    </div>
+                    <div class="form-field">
+                        <label>Дітей</label>
+                        <input type="text" id="pf-kids" aria-label="до 15" placeholder="до 15" style="width:80px">
+                    </div>
+                    <div class="form-field">
+                        <label>Опис</label>
+                        <input type="text" id="pf-description" aria-label="Короткий опис" placeholder="Короткий опис" style="min-width:200px">
+                    </div>
+                    <div class="form-field" style="flex-direction:row; align-items:center; gap:8px; margin-top:20px;">
+                        <label style="display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="pf-perchild"> За дитину</label>
+                        <label style="display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="pf-filler"> Наповнювач</label>
+                        <label style="display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="pf-active" checked> Активна</label>
+                    </div>
+                    <input type="hidden" id="pf-id" value="">
+                    <input type="hidden" id="pf-sort" value="0">
+                    <div style="display:flex; gap:8px; margin-top:20px;">
+                        <button type="button" id="saveProductBtn" class="btn-page-primary">Зберегти</button>
+                        <button type="button" id="cancelProductBtn" class="btn-page-secondary">Скасувати</button>
+                    </div>
+                </div>
+
+                <!-- Products grid -->
+                <div id="productsGrid" class="cards-grid"></div>
+            </section>
+
+            <section id="catalogsPanel" class="product-tab-panel hidden">
+                <p class="product-catalog-intro">Єдина точка входу до готових каталогів продуктового блоку: випускні, піньяти, меню, костюми та інші каталоги, що вже живуть у CRM.</p>
+                <div id="catalogsGrid" class="product-catalog-grid"></div>
+            </section>
         </main>
+    </div>
+
+    <div id="productDocumentModal" class="modal hidden product-doc-modal" role="dialog" aria-modal="true" aria-labelledby="productDocModalTitle">
+        <div class="modal-content modal-medium">
+            <h3 id="productDocModalTitle">Документ програми</h3>
+            <p id="productDocProductName" class="muted"></p>
+            <div class="form-field">
+                <label for="productDocUrl">URL документа</label>
+                <input type="url" id="productDocUrl" placeholder="https://docs.google.com/document/d/...">
+            </div>
+            <div class="form-field">
+                <label for="productDocTitle">Назва документа</label>
+                <input type="text" id="productDocTitle" placeholder="Анімація — базова картка v2">
+            </div>
+            <div class="form-field">
+                <label for="productDocKind">Тип документа</label>
+                <select id="productDocKind">
+                    <option value="google_doc">Google Doc</option>
+                    <option value="pdf">PDF</option>
+                    <option value="link">Інший URL</option>
+                </select>
+            </div>
+            <div class="doc-checkboxes">
+                <label><input type="checkbox" id="productDocVerified"> Картку перевірено вручну</label>
+                <label><input type="checkbox" id="productDocMatches"> Картка відповідає документу</label>
+            </div>
+            <div class="product-doc-modal-actions">
+                <button type="button" id="productDocUnlinkBtn" class="btn-page-danger">Відвʼязати</button>
+                <button type="button" id="productDocCancelBtn" class="btn-page-secondary">Скасувати</button>
+                <button type="button" id="productDocSaveBtn" class="btn-page-primary">Зберегти</button>
+            </div>
+        </div>
     </div>
 
     <!-- v10.4: Особистий кабінет -->
@@ -188,13 +500,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.60.18"></script>
-    <script src="js/config.js?v=0.60.18"></script>
-    <script src="js/notification.js?v=0.60.18"></script>
-    <script src="js/api.js?v=0.60.18"></script>
-    <script src="js/auth.js?v=0.60.18"></script>
-    <script src="js/components/sidebar.js?v=0.60.18"></script>
+    <script src="js/ui.js?v=0.60.19"></script>
+    <script src="js/config.js?v=0.60.19"></script>
+    <script src="js/notification.js?v=0.60.19"></script>
+    <script src="js/api.js?v=0.60.19"></script>
+    <script src="js/auth.js?v=0.60.19"></script>
+    <script src="js/components/sidebar.js?v=0.60.19"></script>
     <script>if (typeof Sidebar !== "undefined" && !document.documentElement.classList.contains('embed-mode')) Sidebar.init("#sidebarLinks");</script>
-    <script src="js/programs-page.js?v=0.60.18"></script><script src="js/alerts.js?v=0.60.18"></script>
+    <script src="js/programs-page.js?v=0.60.19"></script><script src="js/alerts.js?v=0.60.19"></script>
 </body>
 </html>

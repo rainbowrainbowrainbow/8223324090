@@ -39,6 +39,73 @@ function getProductPriceUnit(product) {
     return product.is_per_child ? 'грн/дитина' : 'грн';
 }
 
+const SOURCE_DOCUMENT_KINDS = new Set(['google_doc', 'pdf', 'link']);
+
+function pickField(body, camelName, snakeName, fallback = undefined) {
+    if (body && Object.prototype.hasOwnProperty.call(body, camelName)) return body[camelName];
+    if (body && Object.prototype.hasOwnProperty.call(body, snakeName)) return body[snakeName];
+    return fallback;
+}
+
+function cleanNullableString(value, maxLength) {
+    if (value === undefined || value === null) return null;
+    const text = String(value).trim();
+    if (!text) return null;
+    return text.slice(0, maxLength);
+}
+
+function normalizeSourceDocumentPayload(body, existing = {}) {
+    const url = cleanNullableString(
+        pickField(body, 'sourceDocumentUrl', 'source_document_url', existing.source_document_url),
+        2000
+    );
+    const title = cleanNullableString(
+        pickField(body, 'sourceDocumentTitle', 'source_document_title', existing.source_document_title),
+        240
+    );
+    const kind = cleanNullableString(
+        pickField(body, 'sourceDocumentKind', 'source_document_kind', existing.source_document_kind),
+        30
+    );
+
+    if (!url) {
+        return {
+            fields: {
+                url: null,
+                title: null,
+                kind: null,
+                verifiedManual: false,
+                cardMatchesDocument: false
+            },
+            errors: []
+        };
+    }
+
+    const errors = [];
+    try {
+        const parsed = new URL(url);
+        if (!['http:', 'https:'].includes(parsed.protocol)) errors.push('source_document_url must be http(s)');
+    } catch {
+        errors.push('source_document_url must be a valid URL');
+    }
+
+    if (!title) errors.push('source_document_title is required when document URL is set');
+    if (!kind || !SOURCE_DOCUMENT_KINDS.has(kind)) {
+        errors.push('source_document_kind must be google_doc, pdf, or link');
+    }
+
+    return {
+        fields: {
+            url,
+            title,
+            kind,
+            verifiedManual: Boolean(pickField(body, 'sourceDocumentVerifiedManual', 'source_document_verified_manual', existing.source_document_verified_manual)),
+            cardMatchesDocument: Boolean(pickField(body, 'sourceCardMatchesDocument', 'source_card_matches_document', existing.source_card_matches_document))
+        },
+        errors
+    };
+}
+
 async function getProductWithPriceRule(client, id) {
     const result = await client.query(`${PRODUCT_PRICE_JOIN} WHERE p.id = $1`, [id]);
     return result.rows[0] || null;
@@ -119,6 +186,13 @@ function mapProductRow(row) {
         isCustom: row.is_custom,
         isActive: row.is_active,
         sortOrder: row.sort_order,
+        sourceDocumentUrl: row.source_document_url || null,
+        sourceDocumentTitle: row.source_document_title || null,
+        sourceDocumentKind: row.source_document_kind || null,
+        sourceDocumentVerifiedManual: row.source_document_verified_manual === true,
+        sourceCardMatchesDocument: row.source_card_matches_document === true,
+        sourceDocumentLinkedAt: row.source_document_linked_at || null,
+        sourceDocumentLinkedBy: row.source_document_linked_by || null,
         updatedAt: row.updated_at,
         updatedBy: row.updated_by
     };
@@ -168,6 +242,84 @@ router.get('/', async (req, res) => {
     }
 });
 
+// GET /api/products/catalogs — Product-level catalog entry points backed by the existing catalog engine
+router.get('/catalogs', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                cd.id,
+                cd.name,
+                cd.emoji,
+                cd.description,
+                COALESCE(cd.status, 'draft') AS status,
+                GREATEST(COALESCE(cd.page_count, 0), COUNT(DISTINCT cp.id)::int) AS page_count,
+                COUNT(DISTINCT ci.id)::int AS item_count,
+                cd.sort_order
+            FROM catalog_definitions cd
+            LEFT JOIN catalog_pages cp
+                ON cp.catalog_id = cd.id
+               AND COALESCE(cp.is_active, true) = true
+            LEFT JOIN catalog_items ci
+                ON ci.catalog_id = cd.id
+               AND COALESCE(ci.status, 'active') = 'active'
+            WHERE COALESCE(cd.is_active, true) = true
+            GROUP BY cd.id, cd.name, cd.emoji, cd.description, cd.status, cd.page_count, cd.sort_order
+            ORDER BY
+                CASE cd.id
+                    WHEN 'graduation' THEN 0
+                    WHEN 'pinyata' THEN 1
+                    WHEN 'cake' THEN 2
+                    WHEN 'menu' THEN 3
+                    WHEN 'costume' THEN 4
+                    ELSE 20
+                END,
+                cd.sort_order,
+                cd.name
+        `);
+
+        const catalogs = result.rows.map(row => ({
+            id: row.id,
+            title: row.name || row.id,
+            emoji: row.emoji || '📂',
+            description: row.description || null,
+            status: row.status || 'draft',
+            pageCount: Number(row.page_count || 0),
+            itemCount: Number(row.item_count || 0),
+            source: row.id === 'graduation' ? 'graduation_catalog' : 'catalog_pages',
+            href: row.id === 'graduation' ? '/graduation' : `/designs#catalog-${encodeURIComponent(row.id)}`,
+            secondaryHref: row.id === 'graduation' ? '/designs#catalog-graduation' : '/designs#catalogs',
+            actionLabel: row.id === 'graduation' ? 'Відкрити випускні' : 'Відкрити каталог'
+        }));
+
+        if (!catalogs.some(catalog => catalog.id === 'graduation')) {
+            const graduationCount = await pool.query(
+                `SELECT COUNT(*)::int AS count
+                 FROM graduation_packages
+                 WHERE COALESCE(is_active, true) = true`
+            ).catch(() => ({ rows: [{ count: 0 }] }));
+
+            catalogs.unshift({
+                id: 'graduation',
+                title: 'Випускні',
+                emoji: '🎓',
+                description: 'Конструктор і друкований каталог випускних програм.',
+                status: 'ready',
+                pageCount: Number(graduationCount.rows[0]?.count || 0),
+                itemCount: Number(graduationCount.rows[0]?.count || 0),
+                source: 'graduation_catalog',
+                href: '/graduation',
+                secondaryHref: '/designs#catalog-graduation',
+                actionLabel: 'Відкрити випускні'
+            });
+        }
+
+        res.json({ success: true, catalogs });
+    } catch (err) {
+        log.error('List product catalog entry points error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 // GET /api/products/:id — Get single product
 router.get('/:id', async (req, res) => {
     try {
@@ -182,6 +334,64 @@ router.get('/:id', async (req, res) => {
         res.json(mapProductRow(product));
     } catch (err) {
         log.error('Get product error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// PATCH /api/products/:id/source-document — Link/unlink a manual source document
+router.patch('/:id/source-document', requireRole('admin', 'manager'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!id || id.length > 50) {
+            return res.status(400).json({ error: 'Invalid product ID' });
+        }
+
+        const existing = await getProductWithPriceRule(pool, id);
+        if (!existing) {
+            return res.status(404).json({ error: 'Product not found' });
+        }
+
+        const { fields, errors } = normalizeSourceDocumentPayload(req.body || {}, existing);
+        if (errors.length > 0) {
+            return res.status(400).json({ error: errors.join('; ') });
+        }
+
+        await pool.query(
+            `UPDATE products SET
+                source_document_url = $1,
+                source_document_title = $2,
+                source_document_kind = $3,
+                source_document_verified_manual = $4,
+                source_card_matches_document = $5,
+                source_document_linked_at = CASE
+                    WHEN $1::text IS NULL THEN NULL
+                    WHEN COALESCE(source_document_url, '') <> $1 THEN NOW()
+                    ELSE COALESCE(source_document_linked_at, NOW())
+                END,
+                source_document_linked_by = CASE
+                    WHEN $1::text IS NULL THEN NULL
+                    WHEN COALESCE(source_document_url, '') <> $1 THEN $6
+                    ELSE COALESCE(source_document_linked_by, $6)
+                END,
+                updated_at = NOW(),
+                updated_by = $6
+             WHERE id = $7`,
+            [
+                fields.url,
+                fields.title,
+                fields.kind,
+                fields.verifiedManual,
+                fields.cardMatchesDocument,
+                req.user.username,
+                id
+            ]
+        );
+
+        const product = await getProductWithPriceRule(pool, id);
+        log.info(`Product source document updated: ${id} by ${req.user.username}`);
+        res.json(mapProductRow(product));
+    } catch (err) {
+        log.error('Update product source document error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

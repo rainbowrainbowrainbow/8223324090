@@ -120,6 +120,17 @@ function setupTabs() {
         }
     };
 
+    const openCatalogHash = (hash) => {
+        if (!hash || !hash.startsWith('catalog-')) return false;
+        const catalogId = hash.replace(/^catalog-/, '').trim();
+        if (!catalogId) return false;
+        switchTab('catalogs');
+        setTimeout(() => {
+            if (typeof openCatalogPages === 'function') openCatalogPages(catalogId);
+        }, 120);
+        return true;
+    };
+
     document.querySelectorAll('.design-tab').forEach(tab => {
         tab.addEventListener('click', () => switchTab(tab.dataset.tab));
     });
@@ -127,11 +138,14 @@ function setupTabs() {
     // Auto-switch tab from URL hash (#catalogs, #collections, etc.)
     const hash = window.location.hash.replace('#', '');
     const validTabs = ['gallery', 'collections', 'price', 'calendar', 'catalogs'];
-    switchTab(hash && validTabs.includes(hash) ? hash : 'gallery');
+    if (!openCatalogHash(hash)) {
+        switchTab(hash && validTabs.includes(hash) ? hash : 'gallery');
+    }
 
     // Listen for hash changes (sidebar navigation without page reload)
     window.addEventListener('hashchange', () => {
         const h = window.location.hash.replace('#', '');
+        if (openCatalogHash(h)) return;
         if (h && ['gallery', 'collections', 'price', 'calendar', 'catalogs'].includes(h)) {
             switchTab(h);
         }
@@ -1546,7 +1560,7 @@ function buildCatalogPageHtml(pkg) {
             </div>
             <!-- FOOTER -->
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.60.18" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.60.19" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>
@@ -1640,7 +1654,7 @@ function buildAutoPageHtml(page) {
                 ${page.description && itemsHtml ? `<div class="cat-desc" style="margin-top:12px">${esc(page.description)}</div>` : ''}
             </div>
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.60.18" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.60.19" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>

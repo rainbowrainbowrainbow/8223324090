@@ -501,6 +501,19 @@ async function apiGetProduct(id) {
     }
 }
 
+async function apiGetProductCatalogs() {
+    try {
+        const response = await fetch(`${API_BASE}/products/catalogs`, { headers: getAuthHeaders(false) });
+        if (handleAuthError(response)) return [];
+        if (!response.ok) throw new Error('API error');
+        const data = await response.json();
+        return data.catalogs || [];
+    } catch (err) {
+        console.error('API getProductCatalogs error:', err);
+        return [];
+    }
+}
+
 // v7.1: Products CRUD API
 async function apiCreateProduct(product) {
     try {
@@ -538,6 +551,26 @@ async function apiUpdateProduct(id, product) {
         return { success: true, product: data };
     } catch (err) {
         console.error('API updateProduct error:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+async function apiUpdateProductDocument(id, payload) {
+    try {
+        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/source-document`, {
+            method: 'PATCH',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload || {})
+        });
+        if (handleAuthError(response)) return { success: false };
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            return { success: false, error: body.error || 'API error' };
+        }
+        const data = await response.json();
+        return { success: true, product: data };
+    } catch (err) {
+        console.error('API updateProductDocument error:', err);
         return { success: false, error: err.message };
     }
 }

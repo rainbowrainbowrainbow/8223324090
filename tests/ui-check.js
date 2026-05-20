@@ -439,7 +439,7 @@ const graduationCode = fs.readFileSync(path.join(ROOT, 'js/graduation.js'), 'utf
 const designsPageCode = fs.readFileSync(path.join(ROOT, 'js/designs-page.js'), 'utf8');
 const globalModalsCss = fs.readFileSync(path.join(ROOT, 'css/modals.css'), 'utf8');
 check('Sidebar has /designs', sidebarCode.includes("href: '/designs'"));
-check('Sidebar has /designs#catalogs', sidebarCode.includes("href: '/designs#catalogs'"));
+check('Sidebar has Products catalogs entry', sidebarCode.includes("href: '/programs#catalogs'"));
 check('Sidebar has /designer', sidebarCode.includes("href: '/designer'"));
 check('Sidebar has /guardian-ops', sidebarCode.includes("href: '/guardian-ops'"));
 check('Sidebar exposes /omni for communications', sidebarCode.includes("href: '/omni'") && sidebarCode.includes('omni:'));

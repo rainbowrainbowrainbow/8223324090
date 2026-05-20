@@ -4,6 +4,17 @@
 
 ---
 
+## v0.60.19 - Products IA Documents Catalogs
+
+### Products IA Documents Catalogs [codex]
+- **Products IA зібрано логічніше** - у продуктовому модулі вкладку програм винесено як `Розважальні програми`, а каталоги отримали окрему вкладку `Каталоги` всередині `/programs`.
+- **Ручна прив'язка документів до програм** - на картках розважальних програм з'явився блок `Документ` з URL, назвою, типом `google_doc` / `pdf` / `link`, діями `Прив'язати`, `Відкрити`, `Змінити / відв'язати` та двома ручними прапорцями перевірки.
+- **Мінімальний backend contract без зайвого engine** - додано nullable document-linkage поля в `products`, PATCH `/api/products/:id/source-document` з валідацією URL/type і аудитом користувача.
+- **Каталоги переекспоновано без дублювання** - Products -> Каталоги використовує існуючі `catalog_definitions` / `catalog_pages`, а старий Designs viewer лишається робочим deep-link target для піньят, меню, костюмів та інших готових каталогів.
+- **Sidebar веде через Products** - product-група тепер має `Розважальні програми` і `Каталоги`, де каталоги відкриваються з `/programs#catalogs`, а backward-compatible Designs catalog viewer не дублюється.
+
+---
+
 ## v0.60.18 - Telegram Animator Webhook Guard
 
 ### Telegram Animator Webhook Guard [codex]

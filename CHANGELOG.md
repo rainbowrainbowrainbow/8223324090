@@ -4,6 +4,17 @@
 
 ---
 
+## v0.60.2 - Assistant Full Rethink
+
+### Assistant Full Rethink [codex]
+- **Один canonical avatar** - shared assistant rail більше не рендерить face/glasses/dot-cloud stack; видимий presence зібраний в один компактний avatar path зі спокійними state-кільцями.
+- **Читабельний subtitle lane** - відповідь асистента винесена у широку flat-лінію під presence, короткий текст стоїть статично, довгий scroll-иться тільки при overflow і паузиться на hover/focus.
+- **Ергономічні controls** - mic, stop, voice, replay і expand отримали однакові hit targets, SVG-іконки, focus-visible стани, disabled states і мобільну перестановку без дрібних кнопок.
+- **Auto-pause voice turn** - голосовий запис тепер має аналіз тиші, max-duration fallback, explicit stop/cancel і queue guard, щоб швидкі послідовні turns не губилися.
+- **Guardrail** - UI-smoke перевіряє single-avatar DOM, subtitle lane contract і auto-pause/turn queue захист.
+
+---
+
 ## v0.60.1 - Tasks Truth Canonical Board
 
 ### Tasks Truth Canonical Board [codex]

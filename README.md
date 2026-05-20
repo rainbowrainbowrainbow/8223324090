@@ -164,9 +164,9 @@ CI does not run PostgreSQL-backed API/integration suites, production deploy veri
 
 ## Version And Changelog Discipline
 
-`package.json` is the single source of truth for product release metadata: `version` is the canonical release number and `eventGenix.releaseLabel` is the canonical visible release label. The version helper is `scripts/version-sync.js`; it checks `package-lock.json`, login release badge, tagline, changelog CTA, latest changelog markers, asset cache tags, service-worker cache names, known inline asset references, and the `/api/version` route contract.
+`package.json` is the single source of truth for product release metadata: `version` is the canonical release number and `eventGenix.releaseLabel` is the canonical visible release label. Use `npm run version:current` before answering "what version is current"; it refreshes upstream metadata and fails if the local branch is behind. The version sync helper is `scripts/version-sync.js`; it checks `package-lock.json`, login release badge, tagline, changelog CTA, latest changelog markers, asset cache tags, service-worker cache names, known inline asset references, and the `/api/version` route contract.
 
-The active release train is now `0.50.x`. Mini updates should increment patch only: `0.50.33`, `0.50.34`, `0.50.35`, etc. Existing `v43.*`, `v0.44.*`, `v0.45.*`, `v0.46.*`, `v0.47.*`, `v0.48.*`, and `v0.49.*` changelog entries, code comments, migration notes, and audit docs are historical records; do not use them as the active version source and do not return new release markers to those older lines without an explicit version-policy task.
+The active release train is now `0.60.x`. Mini updates should increment patch only: `0.60.2`, `0.60.3`, `0.60.4`, etc. Existing `v43.*`, `v0.44.*`, `v0.45.*`, `v0.46.*`, `v0.47.*`, `v0.48.*`, `v0.49.*`, and older `v0.50.*`-`v0.59.*` changelog entries, code comments, migration notes, and audit docs are historical records; do not use them as the active version source and do not return new release markers to those older lines without an explicit version-policy task.
 
 For user-visible or deployable product changes:
 

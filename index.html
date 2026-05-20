@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.60.1">
-    <link rel="stylesheet" href="css/auth.css?v=0.60.1">
-    <link rel="stylesheet" href="css/layout.css?v=0.60.1">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.1">
-    <link rel="stylesheet" href="css/timeline.css?v=0.60.1">
-    <link rel="stylesheet" href="css/panel.css?v=0.60.1">
-    <link rel="stylesheet" href="css/modals.css?v=0.60.1">
-    <link rel="stylesheet" href="css/controls.css?v=0.60.1">
-    <link rel="stylesheet" href="css/features.css?v=0.60.1">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.1">
-    <link rel="stylesheet" href="css/responsive.css?v=0.60.1">
-    <link rel="stylesheet" href="css/pages.css?v=0.60.1">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.60.1">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.1">
+    <link rel="stylesheet" href="css/base.css?v=0.60.2">
+    <link rel="stylesheet" href="css/auth.css?v=0.60.2">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.2">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.2">
+    <link rel="stylesheet" href="css/timeline.css?v=0.60.2">
+    <link rel="stylesheet" href="css/panel.css?v=0.60.2">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.2">
+    <link rel="stylesheet" href="css/controls.css?v=0.60.2">
+    <link rel="stylesheet" href="css/features.css?v=0.60.2">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.2">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.2">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.2">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.60.2">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.60.1 Tasks Truth Canonical Board">✨ 0.60.1 Tasks Truth Canonical Board</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.60.2 Assistant Full Rethink">✨ 0.60.2 Assistant Full Rethink</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.60.1 — Tasks Truth Canonical Board</p>
+                <p class="tagline">AI First CRM v0.60.2 — Assistant Full Rethink</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.60.1: Tasks Truth Canonical Board</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.60.2: Assistant Full Rethink</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1270,14 +1270,13 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.60.1 — Tasks Truth Canonical Board</h4>
+                    <h4>v0.60.2 — Assistant Full Rethink</h4>
                     <ul>
-                        <li><b>Правда у списку задач</b> — звичайний список більше не показує пізніші active-дублі: backend лишає один canonical рядок, а повний duplicate state доступний через сервісні дії.</li>
-                        <li><b>Duplicate policy v2</b> — підпис дубля тепер спирається на назву, день, категорію, підкатегорію, виконавця, чекліст і стабільне джерело задачі, а не на випадкові source-поля.</li>
-                        <li><b>Cleanup без видалення</b> — нова міграція архівує знайдені active-дублі як <code>auto_duplicate_v2</code> і привʼязує їх до canonical задачі без фізичного видалення історії.</li>
-                        <li><b>Виконані задачі лишаються видимими</b> — completed state зберігає <code>completed_at</code>, закреслює назву й може показуватись у поточному зрізі без магічного зникнення.</li>
-                        <li><b>Board “Виконано сьогодні”</b> — задачі, завершені сьогодні, мають окремий зріз із newest-first логікою.</li>
-                        <li><b>Меню “Життєвий цикл”</b> — керування задачами отримало dry-run duplicate report, точне підтвердження cleanup і централізовані дії для виконаних/архівних станів.</li>
+                        <li><b>Assistant UX</b> — rail асистента перебудовано навколо одного canonical avatar, без старого stacked face/glasses/dot-cloud ефекту.</li>
+                        <li><b>Читабельні субтитри</b> — відповідь винесена у широку flat-лінію під presence: короткий текст стоїть статично, довгий рухається тільки при overflow і паузиться на hover/focus.</li>
+                        <li><b>Controls</b> — mic, stop, voice, replay і expand отримали однакові SVG-іконки, hit targets, focus-visible, disabled states і мобільну ергономіку.</li>
+                        <li><b>Voice loop</b> — додано auto-pause detection, max-duration fallback, cancel/stop flow і queue guard, щоб turns не губились при швидких повторних діях.</li>
+                        <li><b>Fallback</b> — якщо запис, autoplay або озвучення недоступні, асистент лишається стабільним у text-first режимі.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -7902,25 +7901,25 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/config.js?v=0.60.1"></script>
-    <script src="js/api.js?v=0.60.1"></script>
-    <script src="js/ui.js?v=0.60.1"></script>
-    <script src="js/auth.js?v=0.60.1"></script>
-    <script src="js/timeline.js?v=0.60.1"></script>
-    <script src="js/booking.js?v=0.60.1"></script>
-    <script src="js/settings.js?v=0.60.1"></script>
-    <script src="js/booking-form.js?v=0.60.1"></script>
-    <script src="js/booking-linked.js?v=0.60.1"></script>
-    <script src="js/settings-dashboard.js?v=0.60.1"></script>
-    <script src="js/settings-history.js?v=0.60.1"></script>
-    <script src="js/settings-afisha.js?v=0.60.1"></script>
-    <script src="js/settings-certificates.js?v=0.60.1"></script>
-    <script src="js/offline.js?v=0.60.1"></script>
-    <script src="js/search.js?v=0.60.1"></script>
-    <script src="js/ws.js?v=0.60.1"></script>
-    <script src="js/app.js?v=0.60.1"></script>
-    <script src="js/kleshnya-widget.js?v=0.60.1"></script>
-    <script src="js/components/sidebar.js?v=0.60.1"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.60.1"></script>
+    <script src="js/config.js?v=0.60.2"></script>
+    <script src="js/api.js?v=0.60.2"></script>
+    <script src="js/ui.js?v=0.60.2"></script>
+    <script src="js/auth.js?v=0.60.2"></script>
+    <script src="js/timeline.js?v=0.60.2"></script>
+    <script src="js/booking.js?v=0.60.2"></script>
+    <script src="js/settings.js?v=0.60.2"></script>
+    <script src="js/booking-form.js?v=0.60.2"></script>
+    <script src="js/booking-linked.js?v=0.60.2"></script>
+    <script src="js/settings-dashboard.js?v=0.60.2"></script>
+    <script src="js/settings-history.js?v=0.60.2"></script>
+    <script src="js/settings-afisha.js?v=0.60.2"></script>
+    <script src="js/settings-certificates.js?v=0.60.2"></script>
+    <script src="js/offline.js?v=0.60.2"></script>
+    <script src="js/search.js?v=0.60.2"></script>
+    <script src="js/ws.js?v=0.60.2"></script>
+    <script src="js/app.js?v=0.60.2"></script>
+    <script src="js/kleshnya-widget.js?v=0.60.2"></script>
+    <script src="js/components/sidebar.js?v=0.60.2"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.60.2"></script>
 </body>
 </html>

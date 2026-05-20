@@ -79,4 +79,16 @@ describe('static documentation exposure guard', () => {
 
         assert.deepEqual(rootMarkdown, [...allowedRootDocs].sort());
     });
+
+    it('keeps current-version lookup guarded against stale local branches', () => {
+        const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+        const script = fs.readFileSync(path.join(ROOT, 'scripts', 'current-version.js'), 'utf8');
+        const agents = fs.readFileSync(path.join(ROOT, 'AGENTS.md'), 'utf8');
+
+        assert.equal(pkg.scripts['version:current'], 'node scripts/current-version.js');
+        assert.match(script, /HEAD\.\.\.\@\{u\}/);
+        assert.match(script, /Version guard failed/);
+        assert.match(script, /git pull --ff-only/);
+        assert.match(agents, /npm run version:current/);
+    });
 });

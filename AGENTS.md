@@ -52,6 +52,7 @@ stale handoff notes.
 - Full local baseline explicitly: `npm run verify`
 - Runtime baseline check: `npm run check:runtime`
 - Version consistency check: `npm run check:version`
+- Current version guard: `npm run version:current`
 - Access/sidebar drift check: `npm run check:access`
 - API auth-boundary ownership check: `npm run check:auth-boundary`
 - Static surface ownership check: `npm run check:static-surface`
@@ -92,7 +93,8 @@ Notes:
 ## Versioning And Changelog
 
 - `package.json` is the release source of truth: `version` is the canonical number and `eventGenix.releaseLabel` is the canonical visible release label.
-- Active release train: `0.50.x`. Mini updates increment the patch only (`0.50.33`, `0.50.34`, `0.50.35`, etc.) unless the user explicitly requests a new version-policy transition.
+- When the user asks for the current project version, run `npm run version:current` first. If it reports the branch is behind upstream, fast-forward with `git pull --ff-only` or clearly report that the local checkout is stale; do not answer from raw `package.json` alone.
+- Active release train: `0.60.x`. Mini updates increment the patch only (`0.60.2`, `0.60.3`, `0.60.4`, etc.) unless the user explicitly requests a new version-policy transition.
 - Do not return active release markers to old `43.x.x`, `0.44.x`, `0.45.x`, `0.46.x`, `0.47.x`, `0.48.x`, or `0.49.x` lines without an explicit version-policy task. Existing historical changelog entries, comments, migrations, and audit notes are historical references, not current source-of-truth markers.
 - `scripts/version-sync.js` checks/synchronizes version references from `package.json` into `package-lock.json`, HTML asset cache tags, first-screen version text, latest changelog markers, service-worker cache names, and known inline asset references.
 - For user-visible or deployable product changes:

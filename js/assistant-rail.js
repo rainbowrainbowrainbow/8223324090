@@ -187,10 +187,28 @@
     let interactionWatchersBound = false;
     let speakingIdleTimer = null;
     let playbackRunId = 0;
+    let assistantTurnQueue = Promise.resolve();
+    let assistantTurnActive = false;
+    let assistantTurnSerial = 0;
+    let cancelledTurnSerial = 0;
+    let listeningAudioContext = null;
+    let listeningAnalyser = null;
+    let listeningSource = null;
+    let listeningMonitorFrame = 0;
+    let listeningStartedAt = 0;
+    let listeningLastVoiceAt = 0;
+    let listeningSpeechStarted = false;
+    let listeningNoiseFloor = 0;
+    let listeningStopReason = '';
     let initCount = 0;
     let windowBridgeObserver = null;
     const windowBridgePulseMap = new WeakMap();
     const WINDOW_BRIDGE_EFFECTS_ENABLED = false;
+    const VOICE_MIN_RECORD_MS = 700;
+    const VOICE_START_GRACE_MS = 1700;
+    const VOICE_SILENCE_MS = 1150;
+    const VOICE_MAX_RECORD_MS = 16000;
+    const VOICE_RMS_FLOOR = 0.018;
 
     function escapeHtml(value) {
         const div = document.createElement('div');
@@ -322,46 +340,20 @@
         rail.innerHTML = `
             <div class="assistant-rail-presence">
                 <button type="button" class="assistant-rail-avatar assistant-rail-avatar-btn" id="crmAssistantRailAvatar" title="Відкрити повну AI-картку" aria-label="Відкрити повну AI-картку">
-                    <span class="assistant-rail-orb-core" aria-hidden="true">
-                        <span class="assistant-rail-dot-cloud">
-                            <span class="assistant-rail-dot assistant-rail-dot--1"></span>
-                            <span class="assistant-rail-dot assistant-rail-dot--2"></span>
-                            <span class="assistant-rail-dot assistant-rail-dot--3"></span>
-                            <span class="assistant-rail-dot assistant-rail-dot--4"></span>
-                            <span class="assistant-rail-dot assistant-rail-dot--5"></span>
-                            <span class="assistant-rail-dot assistant-rail-dot--6"></span>
-                            <span class="assistant-rail-dot assistant-rail-dot--7"></span>
-                            <span class="assistant-rail-dot assistant-rail-dot--8"></span>
-                            <span class="assistant-rail-dot assistant-rail-dot--9"></span>
+                    <span class="assistant-rail-avatar-core" aria-hidden="true">
+                        <span class="assistant-rail-avatar-screen">
+                            <span class="assistant-rail-avatar-eye assistant-rail-avatar-eye--left"></span>
+                            <span class="assistant-rail-avatar-eye assistant-rail-avatar-eye--right"></span>
+                            <span class="assistant-rail-avatar-mouth"></span>
                         </span>
-                        <span class="assistant-rail-face">
-                            <span class="assistant-rail-glasses"></span>
-                            <span class="assistant-rail-eye assistant-rail-eye--left"></span>
-                            <span class="assistant-rail-eye assistant-rail-eye--right"></span>
-                            <span class="assistant-rail-mouth"></span>
-                        </span>
-                        <span class="assistant-rail-orb-eye"></span>
                     </span>
-                    <span class="assistant-rail-particle-field" aria-hidden="true">
-                        <span class="assistant-rail-particle assistant-rail-particle--1"></span>
-                        <span class="assistant-rail-particle assistant-rail-particle--2"></span>
-                        <span class="assistant-rail-particle assistant-rail-particle--3"></span>
-                        <span class="assistant-rail-particle assistant-rail-particle--4"></span>
-                        <span class="assistant-rail-particle assistant-rail-particle--5"></span>
-                        <span class="assistant-rail-particle assistant-rail-particle--6"></span>
-                    </span>
-                    <span class="assistant-rail-orb-ripple assistant-rail-orb-ripple--one"></span>
-                    <span class="assistant-rail-orb-ripple assistant-rail-orb-ripple--two"></span>
-                    <span class="assistant-rail-avatar-meter" aria-hidden="true"><strong id="crmAssistantSignalCount">0</strong><small>сигн.</small></span>
                 </button>
-                <div class="assistant-rail-status-stack">
+                <div class="assistant-rail-presence-copy">
                     <div class="assistant-rail-topline">
                         <span class="assistant-rail-name">Помічник</span>
                         <span class="assistant-rail-state assistant-state-idle" id="crmAssistantRailState">Готовий</span>
-                        <span class="assistant-rail-engine">claude · помічник v3.2</span>
-                    </div>
-                    <div class="assistant-rail-subtitles-wrap" id="crmAssistantRailSubtitlesWrap" role="button" tabindex="0" title="Відкрити відповідь у чаті" aria-label="Відкрити відповідь Помічника у чаті">
-                        <div class="assistant-rail-subtitles" id="crmAssistantRailSubtitles">Я поруч, якщо треба допомога по сторінці.</div>
+                        <span class="assistant-rail-signal-chip" aria-hidden="true"><strong id="crmAssistantSignalCount">0</strong><small>сигн.</small></span>
+                        <span class="assistant-rail-engine">CRM guide</span>
                     </div>
                     <div class="assistant-rail-context-strip" aria-label="Контекст AI-помічника">
                         <button type="button" class="assistant-rail-context-chip" data-crm-assistant-context-prompt="Поясни, що найважливіше на поточній сторінці">
@@ -381,16 +373,31 @@
                     </div>
                 </div>
             </div>
-            <div class="assistant-rail-actions" aria-label="Керування голосовим AI-помічником">
+            <div class="assistant-rail-subtitles-wrap" id="crmAssistantRailSubtitlesWrap" role="button" tabindex="0" title="Відкрити відповідь у чаті" aria-label="Відкрити відповідь Помічника у чаті">
+                <div class="assistant-rail-subtitles" id="crmAssistantRailSubtitles">Я поруч, якщо треба допомога по сторінці.</div>
+            </div>
+            <div class="assistant-rail-actions" aria-label="Керування AI-помічником">
                 <form class="assistant-rail-inline-form" id="crmAssistantInlineForm" role="search">
                     <span class="assistant-rail-inline-search" aria-hidden="true">⌕</span>
                     <input id="crmAssistantInlineInput" type="text" maxlength="240" autocomplete="off" placeholder="Запитати або /команда">
                     <span class="assistant-rail-inline-hint" aria-hidden="true">/</span>
                 </form>
-                <button type="button" class="assistant-rail-btn" id="crmAssistantMicBtn" title="Голосовий ввід" aria-label="Голосовий ввід">🎙</button>
-                <button type="button" class="assistant-rail-btn" id="crmAssistantVoiceToggle" title="Увімкнути або вимкнути голос" aria-label="Увімкнути або вимкнути голос">🔊</button>
-                <button type="button" class="assistant-rail-btn" id="crmAssistantReplayBtn" title="Повторити останню репліку" aria-label="Повторити останню репліку">↺</button>
-                <button type="button" class="assistant-rail-btn" id="crmAssistantExpandBtn" title="Розгорнути AI-помічника" aria-label="Розгорнути AI-помічника">⋯</button>
+                <button type="button" class="assistant-rail-btn assistant-rail-btn-primary" id="crmAssistantMicBtn" title="Голосовий ввід з авто-паузою" aria-label="Голосовий ввід з авто-паузою">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z"/><path d="M19 11a7 7 0 0 1-14 0"/><path d="M12 18v3"/><path d="M8 21h8"/></svg>
+                </button>
+                <button type="button" class="assistant-rail-btn" id="crmAssistantStopBtn" title="Зупинити голос або відповідь" aria-label="Зупинити голос або відповідь" disabled>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h8v8H8z"/></svg>
+                </button>
+                <button type="button" class="assistant-rail-btn" id="crmAssistantVoiceToggle" title="Увімкнути або вимкнути озвучення" aria-label="Увімкнути або вимкнути озвучення">
+                    <svg class="assistant-rail-icon-sound" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15 9.5a4 4 0 0 1 0 5"/><path d="M18 7a8 8 0 0 1 0 10"/></svg>
+                    <svg class="assistant-rail-icon-muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="m19 9-5 5"/><path d="m14 9 5 5"/></svg>
+                </button>
+                <button type="button" class="assistant-rail-btn" id="crmAssistantReplayBtn" title="Повторити останню репліку" aria-label="Повторити останню репліку">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 1 2.34 5.66"/><path d="M4 18v-6h6"/></svg>
+                </button>
+                <button type="button" class="assistant-rail-btn" id="crmAssistantExpandBtn" title="Розгорнути AI-помічника" aria-label="Розгорнути AI-помічника">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                </button>
             </div>
         `;
 
@@ -407,6 +414,7 @@
         rail.dataset.controlsBound = 'true';
         document.getElementById('crmAssistantRailAvatar')?.addEventListener('click', expand);
         document.getElementById('crmAssistantMicBtn')?.addEventListener('click', toggleListening);
+        document.getElementById('crmAssistantStopBtn')?.addEventListener('click', stopAssistantActivity);
         document.getElementById('crmAssistantVoiceToggle')?.addEventListener('click', toggleVoice);
         document.getElementById('crmAssistantReplayBtn')?.addEventListener('click', replayLastLine);
         document.getElementById('crmAssistantExpandBtn')?.addEventListener('click', expand);
@@ -487,6 +495,58 @@
         return ['thinking', 'listening', 'speaking', 'busy', 'working', 'streaming', 'action'].includes(mode);
     }
 
+    function isAssistantTurnCancelled(turnId) {
+        return Number(turnId || 0) <= cancelledTurnSerial;
+    }
+
+    function enqueueAssistantTurn(runTurn, options = {}) {
+        const turnId = ++assistantTurnSerial;
+        const label = String(options.label || 'запит').trim();
+        if (assistantTurnActive) {
+            setState({
+                mode: 'busy',
+                subtitle: `Додав у чергу: ${label}. Завершу поточний крок і відповім.`,
+                tickerText: '',
+                playbackState: 'queued'
+            });
+        }
+        assistantTurnQueue = assistantTurnQueue
+            .catch(() => {})
+            .then(async () => {
+                if (isAssistantTurnCancelled(turnId)) return;
+                assistantTurnActive = true;
+                render();
+                try {
+                    await runTurn(turnId);
+                } finally {
+                    assistantTurnActive = false;
+                    render();
+                }
+            });
+        return assistantTurnQueue;
+    }
+
+    function cancelQueuedAssistantTurns() {
+        cancelledTurnSerial = assistantTurnSerial;
+    }
+
+    function stopAssistantActivity() {
+        cancelProactiveHelp();
+        cancelQueuedAssistantTurns();
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            requestRecorderStop('cancelled');
+        }
+        stopAudioPlayback({ setIdle: false, reason: 'stopped' });
+        cleanupListeningAnalysis();
+        stopListeningStream();
+        setState({
+            mode: state.voiceEnabled ? 'idle' : 'muted',
+            subtitle: 'Зупинено. Можна продовжити текстом або голосом.',
+            tickerText: '',
+            playbackState: 'stopped'
+        });
+    }
+
     function render() {
         const rail = document.getElementById('crmAssistantRail');
         const stateEl = document.getElementById('crmAssistantRailState');
@@ -494,6 +554,7 @@
         const subtitlesEl = document.getElementById('crmAssistantRailSubtitles');
         const voiceBtn = document.getElementById('crmAssistantVoiceToggle');
         const micBtn = document.getElementById('crmAssistantMicBtn');
+        const stopBtn = document.getElementById('crmAssistantStopBtn');
         const replayBtn = document.getElementById('crmAssistantReplayBtn');
         if (!rail || !stateEl || !subtitlesEl || !voiceBtn) return;
 
@@ -504,6 +565,8 @@
         rail.dataset.live = isLiveMode(state.mode) ? 'true' : 'false';
         rail.dataset.playbackState = state.playbackState || 'idle';
         rail.dataset.subtitleMode = state.subtitleMode || 'static';
+        rail.dataset.voice = state.voiceEnabled ? 'on' : 'off';
+        rail.dataset.turnActive = assistantTurnActive ? 'true' : 'false';
         stateEl.textContent = LABELS[state.mode] || LABELS.idle;
         stateEl.className = `assistant-rail-state assistant-state-${state.mode}`;
         const signalCount = document.getElementById('crmAssistantSignalCount');
@@ -537,16 +600,25 @@
         subtitlesEl.classList.remove('is-ticker', 'is-live-line');
         subtitlesEl.removeAttribute('data-ticker-text');
         subtitlesEl.style.removeProperty('--assistant-ticker-duration');
-        voiceBtn.textContent = state.voiceEnabled ? '🔊' : '🔇';
         voiceBtn.setAttribute('aria-pressed', state.voiceEnabled ? 'true' : 'false');
         voiceBtn.title = state.voiceBlocked
             ? 'Озвучення заблоковано браузером. Натисни після взаємодії, щоб спробувати знову.'
-            : 'Увімкнути або вимкнути голос';
+            : 'Увімкнути або вимкнути озвучення';
         if (micBtn) {
             const listening = mediaRecorder?.state === 'recording' || state.mode === 'listening';
             micBtn.classList.toggle('active', listening);
             micBtn.setAttribute('aria-pressed', listening ? 'true' : 'false');
-            micBtn.title = listening ? 'Зупинити запис голосу' : 'Голосовий ввід';
+            micBtn.title = listening ? 'Завершити запис зараз' : 'Голосовий ввід з авто-паузою';
+            micBtn.disabled = assistantTurnActive && !listening;
+        }
+        if (stopBtn) {
+            const stoppable = ['thinking', 'busy', 'working', 'listening', 'speaking', 'streaming'].includes(state.mode)
+                || Boolean(audioPlayer)
+                || Boolean(mediaRecorder && mediaRecorder.state === 'recording')
+                || assistantTurnActive;
+            stopBtn.disabled = !stoppable;
+            stopBtn.classList.toggle('active', stoppable);
+            stopBtn.title = mediaRecorder?.state === 'recording' ? 'Скасувати запис' : 'Зупинити поточну відповідь';
         }
         if (replayBtn) {
             replayBtn.disabled = !(state.lastSpokenLine || state.subtitle);
@@ -1232,14 +1304,139 @@
         return String(data.text || '').trim();
     }
 
+    function cleanupListeningAnalysis() {
+        if (listeningMonitorFrame) {
+            cancelAnimationFrame(listeningMonitorFrame);
+            listeningMonitorFrame = 0;
+        }
+        try { listeningSource?.disconnect?.(); } catch {}
+        try { listeningAnalyser?.disconnect?.(); } catch {}
+        if (listeningAudioContext && listeningAudioContext.state !== 'closed') {
+            listeningAudioContext.close().catch(() => {});
+        }
+        listeningAudioContext = null;
+        listeningAnalyser = null;
+        listeningSource = null;
+        listeningStartedAt = 0;
+        listeningLastVoiceAt = 0;
+        listeningSpeechStarted = false;
+        listeningNoiseFloor = 0;
+    }
+
+    function stopListeningStream() {
+        if (!listeningStream) return;
+        listeningStream.getTracks().forEach(track => track.stop());
+        listeningStream = null;
+    }
+
+    function requestRecorderStop(reason = 'manual') {
+        listeningStopReason = reason;
+        if (!mediaRecorder || mediaRecorder.state !== 'recording') return false;
+        try {
+            mediaRecorder.stop();
+            return true;
+        } catch (err) {
+            console.warn('[crm-assistant] unable to stop recorder:', err);
+            return false;
+        }
+    }
+
+    function readAnalyserRms(analyser, buffer) {
+        analyser.getByteTimeDomainData(buffer);
+        let sum = 0;
+        for (let i = 0; i < buffer.length; i += 1) {
+            const centered = (buffer[i] - 128) / 128;
+            sum += centered * centered;
+        }
+        return Math.sqrt(sum / buffer.length);
+    }
+
+    function startVoiceTurnDetection(stream) {
+        const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextCtor) {
+            emitTelemetry('voice_transcription_failed', {
+                module: 'rail:voice',
+                failureReason: 'audio_context_unavailable',
+                fallbackShown: true
+            });
+            setState({
+                mode: 'listening',
+                subtitle: 'Слухаю. Авто-пауза недоступна в цьому браузері, натисни мікрофон ще раз для завершення.',
+                tickerText: '',
+                playbackState: 'listening'
+            });
+            return;
+        }
+
+        cleanupListeningAnalysis();
+        listeningAudioContext = new AudioContextCtor();
+        listeningAnalyser = listeningAudioContext.createAnalyser();
+        listeningAnalyser.fftSize = 1024;
+        listeningAnalyser.smoothingTimeConstant = 0.18;
+        listeningSource = listeningAudioContext.createMediaStreamSource(stream);
+        listeningSource.connect(listeningAnalyser);
+        const buffer = new Uint8Array(listeningAnalyser.fftSize);
+        listeningStartedAt = performance.now();
+        listeningLastVoiceAt = listeningStartedAt;
+        listeningSpeechStarted = false;
+        listeningNoiseFloor = 0;
+
+        const monitor = () => {
+            if (!mediaRecorder || mediaRecorder.state !== 'recording' || !listeningAnalyser) return;
+            const now = performance.now();
+            const elapsed = now - listeningStartedAt;
+            const rms = readAnalyserRms(listeningAnalyser, buffer);
+            if (elapsed < 650) {
+                listeningNoiseFloor = listeningNoiseFloor ? (listeningNoiseFloor * 0.82) + (rms * 0.18) : rms;
+            }
+            const threshold = Math.max(VOICE_RMS_FLOOR, (listeningNoiseFloor || VOICE_RMS_FLOOR) * 3.2);
+            if (rms >= threshold) {
+                listeningSpeechStarted = true;
+                listeningLastVoiceAt = now;
+                if (elapsed > VOICE_START_GRACE_MS) {
+                    setState({
+                        mode: 'listening',
+                        subtitle: 'Чую голос. Завершу, коли буде коротка пауза.',
+                        tickerText: '',
+                        playbackState: 'voice-active'
+                    });
+                }
+            }
+
+            const quietFor = now - listeningLastVoiceAt;
+            if (listeningSpeechStarted && elapsed >= VOICE_MIN_RECORD_MS && quietFor >= VOICE_SILENCE_MS) {
+                setState({
+                    mode: 'thinking',
+                    subtitle: 'Пауза зафіксована. Завершую запис і готую відповідь...',
+                    tickerText: '',
+                    playbackState: 'auto-finalizing'
+                });
+                requestRecorderStop('auto_silence');
+                return;
+            }
+            if (elapsed >= VOICE_MAX_RECORD_MS) {
+                setState({
+                    mode: 'thinking',
+                    subtitle: 'Запис достатній. Завершую і готую відповідь...',
+                    tickerText: '',
+                    playbackState: 'max-duration'
+                });
+                requestRecorderStop('max_duration');
+                return;
+            }
+            listeningMonitorFrame = requestAnimationFrame(monitor);
+        };
+        listeningMonitorFrame = requestAnimationFrame(monitor);
+    }
+
     async function toggleListening() {
         cancelProactiveHelp();
         if (state.mode === 'speaking' || audioPlayer) {
             stopAudioPlayback({ setIdle: true, reason: 'interrupted' });
         }
         if (mediaRecorder && mediaRecorder.state === 'recording') {
-            setState({ mode: 'thinking', subtitle: 'Завершую запис і готую відповідь...', tickerText: '', playbackState: 'idle' });
-            mediaRecorder.stop();
+            setState({ mode: 'thinking', subtitle: 'Завершую запис і готую відповідь...', tickerText: '', playbackState: 'manual-finalizing' });
+            requestRecorderStop('manual');
             return;
         }
         if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
@@ -1256,6 +1453,7 @@
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             listeningStream = stream;
             audioChunks = [];
+            listeningStopReason = '';
             const mimeType = pickAudioMimeType();
             const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
             mediaRecorder = recorder;
@@ -1265,13 +1463,18 @@
             };
             recorder.onstop = async () => {
                 const chunks = audioChunks.slice();
+                const stopReason = listeningStopReason || 'manual';
                 audioChunks = [];
-                if (listeningStream) {
-                    listeningStream.getTracks().forEach(track => track.stop());
-                    listeningStream = null;
+                cleanupListeningAnalysis();
+                stopListeningStream();
+                mediaRecorder = null;
+                listeningStopReason = '';
+                if (stopReason === 'cancelled') {
+                    setState({ mode: state.voiceEnabled ? 'idle' : 'muted', subtitle: 'Запис скасовано. Готовий продовжити.', tickerText: '', playbackState: 'cancelled' });
+                    return;
                 }
                 if (!chunks.length) {
-                    setState({ mode: 'idle', subtitle: 'Не почувив голос. Спробуй ще раз.' });
+                    setState({ mode: state.voiceEnabled ? 'idle' : 'muted', subtitle: 'Не почув голос. Спробуй ще раз або напиши текстом.', tickerText: '', playbackState: 'empty' });
                     return;
                 }
                 try {
@@ -1279,10 +1482,7 @@
                     const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
                     const transcript = await transcribeAudioBlob(blob);
                     if (!transcript) throw new Error('empty_transcript');
-                    appendHistory('user', transcript);
-                    setState({ mode: 'thinking', subtitle: `Почув: ${transcript}` });
-                    const reply = await requestGuideReply({ userMessage: transcript, voiceMode: true });
-                    await playReply(reply);
+                    await submitPromptText(transcript, { source: 'voice', voiceMode: true, alreadyFinalized: true });
                 } catch (err) {
                     emitTelemetry('voice_transcription_failed', {
                         module: 'rail:voice',
@@ -1293,8 +1493,9 @@
                 }
             };
 
-            setState({ mode: 'listening', subtitle: 'Слухаю. Скажи коротко, що треба зробити.', tickerText: '', playbackState: 'listening' });
-            recorder.start();
+            setState({ mode: 'listening', subtitle: 'Слухаю. Скажи фразу, а пауза завершить запис автоматично.', tickerText: '', playbackState: 'listening' });
+            recorder.start(250);
+            startVoiceTurnDetection(stream);
         } catch (err) {
             emitTelemetry('voice_transcription_failed', {
                 module: 'rail:voice',
@@ -1920,27 +2121,42 @@
         await submitPromptText(text);
     }
 
-    async function submitPromptText(text) {
+    async function submitPromptText(text, options = {}) {
         const prompt = String(text || '').trim();
         if (!prompt) return;
         cancelProactiveHelp();
         stopAudioPlayback({ setIdle: false, reason: 'interrupted' });
         appendHistory('user', prompt);
         renderHistory();
-        setState({ mode: 'thinking', subtitle: 'Думаю над відповіддю по цій сторінці...', tickerText: '', playbackState: 'idle' });
-        try {
-            if (await tryAnswerTimelineScheduleQuery(prompt)) return;
-            if (await tryRunAssistantCommand(prompt)) return;
-            const reply = await requestGuideReply({ userMessage: prompt });
-            await playReply(reply);
-        } catch (err) {
-            emitTelemetry('reply_failed', {
-                module: 'rail:submitPrompt',
-                failureReason: err.message || String(err),
-                fallbackShown: true
+        const voiceMode = options.voiceMode === true;
+        const source = String(options.source || 'text');
+        const label = prompt.length > 42 ? `${prompt.slice(0, 39).trim()}...` : prompt;
+        return enqueueAssistantTurn(async turnId => {
+            if (isAssistantTurnCancelled(turnId)) return;
+            setState({
+                mode: 'thinking',
+                subtitle: voiceMode ? `Почув: ${prompt}` : 'Думаю над відповіддю по цій сторінці...',
+                tickerText: '',
+                playbackState: voiceMode ? 'transcript-ready' : 'idle'
             });
-            handleError(err);
-        }
+            try {
+                if (await tryAnswerTimelineScheduleQuery(prompt)) return;
+                if (isAssistantTurnCancelled(turnId)) return;
+                if (await tryRunAssistantCommand(prompt)) return;
+                if (isAssistantTurnCancelled(turnId)) return;
+                const reply = await requestGuideReply({ userMessage: prompt, voiceMode });
+                if (isAssistantTurnCancelled(turnId)) return;
+                await playReply(reply, { textOnly: source === 'voice' ? false : undefined });
+            } catch (err) {
+                if (isAssistantTurnCancelled(turnId)) return;
+                emitTelemetry('reply_failed', {
+                    module: 'rail:submitPrompt',
+                    failureReason: err.message || String(err),
+                    fallbackShown: true
+                });
+                handleError(err);
+            }
+        }, { label });
     }
 
     function announceFromPage(text) {

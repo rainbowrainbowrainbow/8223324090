@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.60.1",
+  "version": "0.60.2",
   "eventGenix": {
-    "releaseLabel": "Tasks Truth Canonical Board"
+    "releaseLabel": "Assistant Full Rethink"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -13,6 +13,7 @@
     "test": "npm run verify",
     "verify": "npm run check:runtime && npm run check:version && npm run check:access && npm run check:auth-boundary && npm run check:static-surface && npm run check:css-surface && npm run check:api-surface && npm run check:storage-surface && npm run check:service-worker-policy && npm run check:scheduler-surface && npm run check:db-startup-surface && npm run check:migrations && npm run check:syntax && npm run test:unit && npm run test:ui",
     "check:runtime": "node scripts/check-runtime.js",
+    "version:current": "node scripts/current-version.js",
     "check:version": "node scripts/version-sync.js",
     "check:access": "node scripts/check-access-matrix.js",
     "check:auth-boundary": "node scripts/check-auth-boundary.js",

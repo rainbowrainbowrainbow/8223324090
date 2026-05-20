@@ -4902,3 +4902,443 @@ body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-su
         transform: none !important;
     }
 }
+
+/* v0.60.2: assistant full rethink.
+   One canonical avatar, a larger flat subtitle lane, ergonomic controls, and
+   state motion that reads as status instead of stacked decoration. */
+.crm-assistant-rail {
+    --assistant-presence-ready: #0f766e;
+    --assistant-presence-listening: #2563eb;
+    --assistant-presence-thinking: #7c3aed;
+    --assistant-presence-speaking: #059669;
+    --assistant-presence-muted: #64748b;
+    --assistant-presence-error: #dc2626;
+    --assistant-presence-current: var(--assistant-presence-ready);
+}
+
+.crm-assistant-rail[data-ai-state="listening"] { --assistant-presence-current: var(--assistant-presence-listening); }
+.crm-assistant-rail[data-ai-state="thinking"],
+.crm-assistant-rail[data-ai-state="working"] { --assistant-presence-current: var(--assistant-presence-thinking); }
+.crm-assistant-rail[data-ai-state="streaming"],
+.crm-assistant-rail[data-mode="speaking"] { --assistant-presence-current: var(--assistant-presence-speaking); }
+.crm-assistant-rail[data-mode="muted"] { --assistant-presence-current: var(--assistant-presence-muted); }
+.crm-assistant-rail[data-ai-state="error"] { --assistant-presence-current: var(--assistant-presence-error); }
+
+.crm-assistant-rail .assistant-rail-orb-core,
+.crm-assistant-rail .assistant-rail-dot-cloud,
+.crm-assistant-rail .assistant-rail-face,
+.crm-assistant-rail .assistant-rail-orb-eye,
+.crm-assistant-rail .assistant-rail-particle-field,
+.crm-assistant-rail .assistant-rail-orb-ripple,
+.crm-assistant-rail .assistant-rail-avatar-meter {
+    display: none !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
+    max-width: min(1220px, calc(100vw - 320px)) !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail,
+.crm-assistant-rail-host .crm-assistant-rail {
+    display: grid !important;
+    grid-template-columns: minmax(250px, 0.74fr) minmax(420px, 1fr) !important;
+    grid-template-areas:
+        "presence actions"
+        "subtitle subtitle" !important;
+    align-items: center !important;
+    gap: 8px 14px !important;
+    min-height: 96px !important;
+    padding: 10px 12px 12px !important;
+    border-radius: 16px !important;
+    overflow: hidden !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-presence,
+.crm-assistant-rail .assistant-rail-presence {
+    grid-area: presence !important;
+    display: grid !important;
+    grid-template-columns: 52px minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+}
+
+.assistant-rail-presence-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-avatar,
+.crm-assistant-rail .assistant-rail-avatar,
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-avatar,
+body.dark-mode .crm-assistant-rail .assistant-rail-avatar {
+    width: 48px !important;
+    height: 48px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 14px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    transform: none !important;
+    display: grid !important;
+    place-items: center !important;
+}
+
+.assistant-rail-avatar-core {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--assistant-presence-current) 42%, transparent);
+    background:
+        linear-gradient(145deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.80)),
+        radial-gradient(circle at 28% 20%, rgba(255,255,255,0.18), transparent 32%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.14),
+        0 10px 24px color-mix(in srgb, var(--assistant-presence-current) 20%, transparent);
+    isolation: isolate;
+}
+
+.assistant-rail-avatar-core::after {
+    content: "";
+    position: absolute;
+    inset: -5px;
+    border-radius: 18px;
+    border: 1px solid color-mix(in srgb, var(--assistant-presence-current) 24%, transparent);
+    opacity: 0.42;
+    pointer-events: none;
+}
+
+.assistant-rail-avatar-screen {
+    position: relative;
+    width: 25px;
+    height: 18px;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--assistant-presence-current) 62%, white 12%);
+    background: color-mix(in srgb, var(--assistant-presence-current) 18%, rgba(2, 6, 23, 0.82));
+    box-shadow: inset 0 0 10px rgba(255,255,255,0.06);
+}
+
+.assistant-rail-avatar-eye {
+    position: absolute;
+    top: 6px;
+    width: 4px;
+    height: 4px;
+    border-radius: 999px;
+    background: #ecfeff;
+    box-shadow: 0 0 8px color-mix(in srgb, var(--assistant-presence-current) 62%, transparent);
+}
+
+.assistant-rail-avatar-eye--left { left: 7px; }
+.assistant-rail-avatar-eye--right { right: 7px; }
+
+.assistant-rail-avatar-mouth {
+    position: absolute;
+    left: 50%;
+    bottom: 4px;
+    width: 9px;
+    height: 2px;
+    border-radius: 999px;
+    background: rgba(236, 254, 255, 0.82);
+    transform: translateX(-50%);
+}
+
+.crm-assistant-rail[data-ai-state="thinking"] .assistant-rail-avatar-core,
+.crm-assistant-rail[data-ai-state="working"] .assistant-rail-avatar-core {
+    animation: assistantFullRethinkThink 1.8s ease-in-out infinite !important;
+}
+
+.crm-assistant-rail[data-ai-state="listening"] .assistant-rail-avatar-core {
+    animation: assistantFullRethinkListen 1.35s ease-in-out infinite !important;
+}
+
+.crm-assistant-rail[data-ai-state="streaming"] .assistant-rail-avatar-mouth,
+.crm-assistant-rail[data-mode="speaking"] .assistant-rail-avatar-mouth,
+.crm-assistant-rail[data-playback-state="playing"] .assistant-rail-avatar-mouth {
+    height: 5px;
+    bottom: 3px;
+    animation: assistantFullRethinkSpeak 0.64s ease-in-out infinite !important;
+}
+
+.crm-assistant-rail[data-ai-state="error"] .assistant-rail-avatar-core {
+    animation: assistantFullRethinkError 1.4s ease-in-out infinite !important;
+}
+
+.assistant-rail-signal-chip {
+    min-height: 22px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    border-radius: 8px;
+    color: #0f766e;
+    background: rgba(15, 118, 110, 0.08);
+    font-size: 10px;
+    font-weight: 900;
+}
+
+.assistant-rail-signal-chip small {
+    color: currentColor;
+    opacity: 0.72;
+    font-size: 9px;
+    font-weight: 800;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-subtitles-wrap,
+.crm-assistant-rail .assistant-rail-subtitles-wrap {
+    grid-area: subtitle !important;
+    min-height: 46px !important;
+    margin: 0 !important;
+    padding: 8px 12px 8px 14px !important;
+    display: flex !important;
+    align-items: center !important;
+    overflow: hidden !important;
+    border-radius: 8px !important;
+    border-left: 3px solid var(--assistant-presence-current) !important;
+    background: rgba(248, 250, 252, 0.76) !important;
+    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06) !important;
+    cursor: pointer;
+}
+
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-subtitles-wrap,
+body.dark-mode .crm-assistant-rail .assistant-rail-subtitles-wrap {
+    background: rgba(15, 23, 42, 0.56) !important;
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.14) !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-subtitles,
+.crm-assistant-rail .assistant-rail-subtitles,
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-subtitles,
+body.dark-mode .crm-assistant-rail .assistant-rail-subtitles {
+    width: 100% !important;
+    padding: 0 !important;
+    color: #12313b !important;
+    font-size: 16px !important;
+    line-height: 1.32 !important;
+    font-weight: 800 !important;
+    letter-spacing: 0 !important;
+    display: -webkit-box !important;
+    -webkit-box-orient: vertical !important;
+    -webkit-line-clamp: 2 !important;
+    white-space: normal !important;
+    overflow: hidden !important;
+}
+
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-subtitles,
+body.dark-mode .crm-assistant-rail .assistant-rail-subtitles {
+    color: #e2e8f0 !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-subtitles.is-ticker,
+.crm-assistant-rail .assistant-rail-subtitles.is-ticker,
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-subtitles.is-ticker,
+body.dark-mode .crm-assistant-rail .assistant-rail-subtitles.is-ticker {
+    width: auto !important;
+    display: inline-block !important;
+    min-width: max-content !important;
+    max-width: none !important;
+    white-space: nowrap !important;
+    -webkit-line-clamp: unset !important;
+    overflow: visible !important;
+    animation: assistantTicker var(--assistant-ticker-duration, 18s) linear infinite !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-subtitles-wrap:hover .assistant-rail-subtitles.is-ticker,
+.header .header-content.assistant-rail-mounted .assistant-rail-subtitles-wrap:focus-visible .assistant-rail-subtitles.is-ticker,
+.crm-assistant-rail .assistant-rail-subtitles-wrap:hover .assistant-rail-subtitles.is-ticker,
+.crm-assistant-rail .assistant-rail-subtitles-wrap:focus-visible .assistant-rail-subtitles.is-ticker {
+    animation-play-state: paused !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-actions,
+.crm-assistant-rail .assistant-rail-actions {
+    grid-area: actions !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 8px !important;
+    min-width: 0 !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-inline-form,
+.assistant-rail-inline-form {
+    flex: 1 1 420px !important;
+    min-width: 260px !important;
+    max-width: 520px !important;
+    min-height: 44px !important;
+    border-radius: 8px !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-btn,
+.crm-assistant-rail .assistant-rail-btn,
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-btn,
+body.dark-mode .crm-assistant-rail .assistant-rail-btn {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    border-radius: 8px !important;
+    color: #155e75 !important;
+    border-color: rgba(14, 116, 144, 0.20) !important;
+    background: rgba(255,255,255,0.86) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.68) !important;
+}
+
+body.dark-mode .header .header-content.assistant-rail-mounted .assistant-rail-btn,
+body.dark-mode .crm-assistant-rail .assistant-rail-btn {
+    color: #bae6fd !important;
+    border-color: rgba(125, 211, 252, 0.22) !important;
+    background: rgba(15, 23, 42, 0.72) !important;
+}
+
+.assistant-rail-btn svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+}
+
+.assistant-rail-btn:hover,
+.assistant-rail-btn:focus-visible {
+    transform: translateY(-2px) !important;
+    border-color: color-mix(in srgb, var(--assistant-presence-current) 42%, transparent) !important;
+    box-shadow:
+        0 10px 20px color-mix(in srgb, var(--assistant-presence-current) 14%, transparent),
+        inset 0 1px 0 rgba(255,255,255,0.72) !important;
+}
+
+.assistant-rail-btn:focus-visible,
+.assistant-rail-subtitles-wrap:focus-visible,
+.assistant-rail-avatar:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--assistant-presence-current) 54%, white 12%) !important;
+    outline-offset: 3px !important;
+}
+
+.assistant-rail-btn.active,
+.assistant-rail-btn-primary.active {
+    color: #ffffff !important;
+    border-color: var(--assistant-presence-current) !important;
+    background: var(--assistant-presence-current) !important;
+}
+
+.assistant-rail-btn:disabled {
+    opacity: 0.42 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.assistant-rail-icon-muted,
+.crm-assistant-rail[data-voice="off"] .assistant-rail-icon-sound {
+    display: none;
+}
+
+.crm-assistant-rail[data-voice="off"] .assistant-rail-icon-muted {
+    display: block;
+}
+
+@media (max-width: 1320px) {
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
+        max-width: min(920px, calc(100vw - 270px)) !important;
+    }
+
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail {
+        grid-template-columns: minmax(220px, 0.72fr) minmax(360px, 1fr) !important;
+    }
+
+    .header .header-content.assistant-rail-mounted .assistant-rail-inline-form {
+        min-width: 220px !important;
+    }
+}
+
+@media (max-width: 1120px) {
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail,
+    .crm-assistant-rail-host .crm-assistant-rail {
+        grid-template-columns: minmax(0, 1fr) !important;
+        grid-template-areas:
+            "presence"
+            "subtitle"
+            "actions" !important;
+        min-height: 0 !important;
+    }
+
+    .header .header-content.assistant-rail-mounted .assistant-rail-actions,
+    .crm-assistant-rail .assistant-rail-actions {
+        justify-content: stretch !important;
+    }
+
+    .header .header-content.assistant-rail-mounted .assistant-rail-inline-form,
+    .assistant-rail-inline-form {
+        max-width: none !important;
+    }
+}
+
+@media (max-width: 680px) {
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
+        max-width: calc(100vw - 24px) !important;
+    }
+
+    .header .header-content.assistant-rail-mounted .assistant-rail-presence,
+    .crm-assistant-rail .assistant-rail-presence {
+        grid-template-columns: 48px minmax(0, 1fr) !important;
+    }
+
+    .assistant-rail-context-strip,
+    .assistant-rail-prompts,
+    .assistant-rail-engine,
+    .assistant-rail-signal-chip {
+        display: none !important;
+    }
+
+    .header .header-content.assistant-rail-mounted .assistant-rail-actions,
+    .crm-assistant-rail .assistant-rail-actions {
+        flex-wrap: wrap !important;
+    }
+
+    .header .header-content.assistant-rail-mounted .assistant-rail-inline-form,
+    .assistant-rail-inline-form {
+        flex: 1 1 100% !important;
+        order: 2;
+    }
+}
+
+@keyframes assistantFullRethinkThink {
+    0%, 100% { transform: translateY(0); filter: saturate(1); }
+    50% { transform: translateY(-1px); filter: saturate(1.18); }
+}
+
+@keyframes assistantFullRethinkListen {
+    0%, 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), 0 0 0 0 color-mix(in srgb, var(--assistant-presence-current) 0%, transparent); }
+    50% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 0 0 7px color-mix(in srgb, var(--assistant-presence-current) 12%, transparent); }
+}
+
+@keyframes assistantFullRethinkSpeak {
+    0%, 100% { transform: translateX(-50%) scaleY(0.65); }
+    50% { transform: translateX(-50%) scaleY(1.25); }
+}
+
+@keyframes assistantFullRethinkError {
+    0%, 100% { transform: translateX(0); }
+    35% { transform: translateX(-1px); }
+    70% { transform: translateX(1px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .assistant-rail-avatar-core,
+    .assistant-rail-avatar-mouth,
+    .assistant-rail-subtitles.is-ticker,
+    .assistant-rail-btn {
+        animation: none !important;
+        transition: none !important;
+        transform: none !important;
+    }
+}

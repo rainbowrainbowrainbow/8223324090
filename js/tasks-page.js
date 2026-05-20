@@ -103,6 +103,7 @@ const TASK_SCHEDULE_SLOTS = [
 let currentView = 'inbox';
 let currentCategory = 'all';
 let currentSubcategory = 'all';
+let currentScopeFilter = 'all';
 let assistantTaskFilter = '';
 let allTasks = [];
 let userPermissions = null; // v20.9.16: loaded from /api/tasks/permissions
@@ -112,6 +113,7 @@ let taskAssigneeMode = 'self';
 let lastCreatedTaskId = null;
 let showCompletedInSlices = localStorage.getItem('eg_tasks_show_completed') === 'true';
 let quickScheduleSlot = 'morning';
+let taskDuePreset = 'today';
 
 // ==========================================
 // UTILITIES
@@ -175,6 +177,8 @@ function syncSubcategorySelect(categoryId, subcategoryId) {
     const show = supportsSubcategory(category);
     sub.classList.toggle('hidden', !show);
     sub.style.display = show ? '' : 'none';
+    const group = sub.closest('.task-composer-group');
+    if (group) group.hidden = !show;
     if (!show) sub.value = '';
 }
 
@@ -286,7 +290,7 @@ function schedulePayloadFor(date, slot, durationMinutes) {
 
 function renderCardScheduleActions(taskId) {
     return `<span class="task-card-slot-actions" aria-label="Швидко перенести">${TASK_SCHEDULE_SLOTS.map(slot => (
-        `<button type="button" title="${escapeHtml(slot.label)}" onclick="quickScheduleTask(event, ${taskId}, '${slot.key}')">${slot.icon}</button>`
+        `<button type="button" title="${escapeHtml(slot.label)}" data-task-action="schedule" data-task-id="${taskId}" data-schedule-slot-action="${slot.key}">${slot.icon}</button>`
     )).join('')}</span>`;
 }
 
@@ -504,7 +508,26 @@ function setBoardView(view = 'inbox') {
     document.querySelectorAll('.board-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === view));
 }
 
-function applyTaskViewShell(view = currentView) {
+function syncTaskScopeFilters() {
+    document.querySelectorAll('[data-scope]').forEach(chip => {
+        const active = chip.dataset.scope === currentScopeFilter;
+        chip.classList.toggle('active', active);
+        chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+}
+
+function setTaskScopeFilter(scope = 'all') {
+    currentScopeFilter = ['all', 'work', 'personal', 'private', 'waiting', 'idea'].includes(scope) ? scope : 'all';
+    syncTaskScopeFilters();
+    renderBoard();
+}
+
+function shouldShowOperationPackBar(view = currentView) {
+    if (view === 'templates' || userPermissions?.canCreateTasks === false) return false;
+    return currentCategory === 'orders' || currentCategory === 'checklist';
+}
+
+function syncTaskSurfaceVisibility(view = currentView) {
     const isTemplates = view === 'templates';
     const catFilters = document.getElementById('catFilters');
     const quickAdd = document.getElementById('quickAdd');
@@ -513,13 +536,23 @@ function applyTaskViewShell(view = currentView) {
     const boardContent = document.getElementById('boardContent');
     const templatesSection = document.getElementById('templatesSection');
     const subcatFilters = document.getElementById('subcatFilters');
-    if (catFilters) catFilters.style.display = isTemplates ? 'none' : '';
-    if (subcatFilters) subcatFilters.style.display = isTemplates ? 'none' : '';
-    if (quickAdd) quickAdd.style.display = (isTemplates || userPermissions?.canCreateTasks === false) ? 'none' : '';
-    if (operationPackBar) operationPackBar.style.display = (isTemplates || userPermissions?.canCreateTasks === false) ? 'none' : '';
-    if (operationsSummary) operationsSummary.style.display = isTemplates ? 'none' : '';
-    if (boardContent) boardContent.style.display = isTemplates ? 'none' : '';
-    if (templatesSection) templatesSection.style.display = isTemplates ? '' : 'none';
+    const scopeFilters = document.getElementById('taskScopeFilters');
+    const canCreate = userPermissions?.canCreateTasks !== false;
+    if (catFilters) catFilters.hidden = isTemplates;
+    if (subcatFilters) subcatFilters.hidden = isTemplates;
+    if (scopeFilters) scopeFilters.hidden = isTemplates;
+    if (quickAdd) quickAdd.hidden = isTemplates || !canCreate;
+    if (operationPackBar) operationPackBar.hidden = !shouldShowOperationPackBar(view);
+    if (operationsSummary) operationsSummary.hidden = isTemplates || !supportsSubcategory(currentCategory);
+    if (boardContent) boardContent.hidden = isTemplates;
+    if (templatesSection) {
+        templatesSection.hidden = !isTemplates;
+        templatesSection.style.display = '';
+    }
+}
+
+function applyTaskViewShell(view = currentView) {
+    syncTaskSurfaceVisibility(view);
 }
 
 function activateTaskView(view = 'inbox') {
@@ -533,6 +566,7 @@ function activateTaskView(view = 'inbox') {
 }
 
 function keepNewTaskVisible(task = {}, fallback = {}) {
+    const comparableTask = { ...fallback, ...task };
     const category = task.category || fallback.category || 'admin';
     const subcategory = task.subcategory || fallback.subcategory || null;
     const workflow = task.workflowState || task.workflow_state || fallback.workflow_state || 'inbox';
@@ -551,6 +585,10 @@ function keepNewTaskVisible(task = {}, fallback = {}) {
         filtersChanged = true;
     }
     if ((currentView === 'waiting' && !isWaiting) || (currentView === 'next' && !isNext) || ['routines', 'archive'].includes(currentView)) setBoardView('inbox');
+    if (currentScopeFilter !== 'all' && !taskMatchesScopeFilter(comparableTask, currentScopeFilter)) {
+        currentScopeFilter = 'all';
+        syncTaskScopeFilters();
+    }
     if (filtersChanged) {
         renderCategoryFilters();
         renderSubcategoryFilters();
@@ -637,6 +675,7 @@ async function initPage() {
         bootStep('owners:loaded', { count: _assigneeList.length });
         setupTaskComposer();
         setupTaskGovernanceMenu();
+        setupTaskActionDelegation();
 
         if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
@@ -646,9 +685,20 @@ async function initPage() {
                 activateTaskView(tab.dataset.view || 'inbox');
             });
         });
+        document.getElementById('tasksSummaryStrip')?.addEventListener('click', (e) => {
+            const card = e.target.closest('[data-summary-view]');
+            if (!card) return;
+            activateTaskView(card.dataset.summaryView || 'my');
+        });
 
         renderCategoryFilters();
         renderSubcategoryFilters();
+        syncTaskScopeFilters();
+        document.getElementById('taskScopeFilters')?.addEventListener('click', (e) => {
+            const chip = e.target.closest('[data-scope]');
+            if (!chip) return;
+            setTaskScopeFilter(chip.dataset.scope || 'all');
+        });
         document.getElementById('catFilters')?.addEventListener('click', (e) => {
             const chip = e.target.closest('.cat-chip');
             if (!chip) return;
@@ -656,6 +706,7 @@ async function initPage() {
             currentSubcategory = 'all';
             renderCategoryFilters();
             renderSubcategoryFilters();
+            syncTaskSurfaceVisibility();
             renderBoard();
         });
         document.getElementById('subcatFilters')?.addEventListener('click', (e) => {
@@ -674,7 +725,10 @@ async function initPage() {
 
         // Quick add task
         document.getElementById('addTaskBtn')?.addEventListener('click', addTask);
-        document.getElementById('taskCategory')?.addEventListener('change', () => syncSubcategorySelect('taskCategory', 'taskSubcategory'));
+        document.getElementById('taskCategory')?.addEventListener('change', () => {
+            syncSubcategorySelect('taskCategory', 'taskSubcategory');
+            syncTaskSurfaceVisibility();
+        });
         document.getElementById('taskTitle')?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') addTask();
         });
@@ -721,13 +775,14 @@ function applyPermissionsUI(perms) {
     // Hide quick-add form if user cannot create tasks
     if (!perms.canCreateTasks) {
         const quickAdd = document.getElementById('quickAdd');
-        if (quickAdd) quickAdd.style.display = 'none';
+        if (quickAdd) quickAdd.hidden = true;
         const operationPackBar = document.getElementById('operationPackBar');
-        if (operationPackBar) operationPackBar.style.display = 'none';
+        if (operationPackBar) operationPackBar.hidden = true;
         // Also hide templates tab (only creators can add templates)
         const templatesTab = document.querySelector('[data-view="templates"]');
         if (templatesTab) templatesTab.style.display = 'none';
     }
+    syncTaskSurfaceVisibility();
 }
 
 // ==========================================
@@ -976,11 +1031,13 @@ function renderSubcategoryFilters() {
     if (!host) return;
     if (!supportsSubcategory(currentCategory)) {
         host.classList.add('hidden');
+        host.hidden = true;
         host.innerHTML = '';
         return;
     }
     const items = getSubcategoryItems(currentCategory);
     host.classList.remove('hidden');
+    host.hidden = false;
     host.innerHTML = items.map(item => `
         <button type="button" class="subcat-chip ${currentSubcategory === item.id ? 'active' : ''}" data-subcat="${item.id}">
             ${escapeHtml(item.label)}
@@ -1041,7 +1098,7 @@ function filterByTaxonomy(tasks) {
 }
 
 function filterByCategory(tasks) {
-    return filterByTaxonomy(tasks);
+    return applyTaskScopeFilter(filterByTaxonomy(tasks));
 }
 
 function normalizeAssistantTaskFilter(value) {
@@ -1104,6 +1161,7 @@ function isPrivateTask(t) { return taskVisibility(t) === 'private' || taskMode(t
 function isTeamTask(t) { return taskVisibility(t) === 'team' && taskMode(t) === 'work'; }
 function isInboxTask(t) { return isActiveTask(t) && (taskWorkflow(t) === 'inbox' || (!t.date && !t.deadline && !taskScheduleStart(t))); }
 function isRoutineTask(t) { return taskKind(t) === 'routine' || t.type === 'recurring'; }
+function isIdeaTask(t) { return taskKind(t) === 'idea'; }
 function taskCompletedAt(t = {}) { return t.completedAt || t.completed_at || null; }
 function formatTaskCompletedTime(t = {}) {
     const raw = taskCompletedAt(t);
@@ -1205,8 +1263,9 @@ function taskEmptyState(view, unfilteredCount = 0, columnLabel = '') {
 function updateTaskExplainability() {
     const filters = [];
     const visibilityNote = getVisibilityNote();
-    const canReset = currentCategory !== 'all' || currentSubcategory !== 'all' || currentView !== 'inbox';
+    const canReset = currentCategory !== 'all' || currentSubcategory !== 'all' || currentView !== 'inbox' || currentScopeFilter !== 'all';
     if (currentView !== 'today') filters.push({ label: 'Вигляд', value: getViewLabel() });
+    if (currentScopeFilter !== 'all') filters.push({ label: 'Тип', value: getTaskScopeLabel() });
     if (currentCategory !== 'all') filters.push({ label: 'Категорія', value: getCategoryLabel() });
     if (supportsSubcategory(currentCategory) && currentSubcategory !== 'all') filters.push({ label: 'Підкатегорія', value: getSubcategoryLabel() });
 
@@ -1225,23 +1284,12 @@ function resetTaskFilters() {
     currentCategory = 'all';
     currentSubcategory = 'all';
     currentView = 'inbox';
+    currentScopeFilter = 'all';
     renderCategoryFilters();
     renderSubcategoryFilters();
+    syncTaskScopeFilters();
     document.querySelectorAll('.board-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === 'inbox'));
-    const catFilters = document.getElementById('catFilters');
-    const subcatFilters = document.getElementById('subcatFilters');
-    const quickAdd = document.getElementById('quickAdd');
-    const operationPackBar = document.getElementById('operationPackBar');
-    const operationsSummary = document.getElementById('operationsSummary');
-    const boardContent = document.getElementById('boardContent');
-    const templatesSection = document.getElementById('templatesSection');
-    if (catFilters) catFilters.style.display = '';
-    if (subcatFilters) subcatFilters.style.display = '';
-    if (quickAdd && userPermissions?.canCreateTasks !== false) quickAdd.style.display = '';
-    if (operationPackBar && userPermissions?.canCreateTasks !== false) operationPackBar.style.display = '';
-    if (operationsSummary) operationsSummary.style.display = '';
-    if (boardContent) boardContent.style.display = '';
-    if (templatesSection) templatesSection.style.display = 'none';
+    syncTaskSurfaceVisibility();
     renderBoard();
 }
 
@@ -1353,6 +1401,10 @@ function updateCounts() {
     setCount('countTeam', active.filter(isTeamTask).length);
     setCount('countMy', myTasks.length);
     setCount('countDoneToday', doneToday.length);
+    setCount('summaryMy', myTasks.length);
+    setCount('summaryToday', todayTasks.length);
+    setCount('summaryWaiting', active.filter(isWaitingTask).length);
+    setCount('summaryDoneToday', doneToday.length);
 }
 
 function getTasksAssistantViewBase(view = currentView) {
@@ -1499,6 +1551,7 @@ function renderOperationsSummary() {
         if (pack.status === 'ready' || pack.readyToday) stats.ready++;
     });
     host.classList.remove('hidden');
+    host.hidden = false;
     host.innerHTML = `
         <div class="operations-summary-item"><span>${stats.draft}</span><small>Чернетки</small></div>
         <div class="operations-summary-item"><span>${stats.inProduction}</span><small>У виробництві</small></div>
@@ -1510,6 +1563,7 @@ function renderOperationsSummary() {
 
 function renderBoard() {
     const container = document.getElementById('boardContent');
+    syncTaskSurfaceVisibility();
     updateCounts();
     updateTaskExplainability();
     renderOperationsSummary();
@@ -1732,7 +1786,7 @@ function renderArchiveView(container) {
                     ${t.archived_at ? `<span>Архів: ${new Date(t.archived_at).toLocaleDateString('uk-UA')}</span>` : ''}
                 </div>
                 <div class="task-card-actions">
-                    <button class="btn-status" onclick="restoreTask(${t.id})" style="background:var(--primary);color:#fff">🔄 Відновити</button>
+                    <button class="btn-status" data-task-action="restore" data-task-id="${t.id}" style="background:var(--primary);color:#fff">🔄 Відновити</button>
                 </div>
             </div>`;
         }).join('');
@@ -1824,9 +1878,9 @@ function renderTaskCard(t) {
         : '';
 
     return `
-    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''}" data-task-id="${t.id}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}" onclick="openTaskDetail(${t.id})" style="cursor:pointer">
-        <label class="task-checkbox-wrap" onclick="event.stopPropagation()">
-            <input type="checkbox" class="task-bulk-cb" data-id="${t.id}" onchange="updateBulkSelection()">
+    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}">
+        <label class="task-checkbox-wrap">
+            <input type="checkbox" class="task-bulk-cb" data-id="${t.id}" aria-label="Вибрати задачу">
         </label>
         <div class="task-card-title">${escHtml}${priorityIcon ? priorityIcon + ' ' : ''}${escapeHtml(t.title)}${getHealthBadge(t.health_score)}</div>
         <div class="task-card-meta">
@@ -1849,11 +1903,11 @@ function renderTaskCard(t) {
             ${t.type === 'afisha' ? '<span class="badge badge-normal">Афіша</span>' : ''}
         </div>
         <div class="task-card-actions">
-            <button class="${btnClass}" onclick="event.stopPropagation(); cycleStatus(${t.id}, '${nextStatus}')">${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
-            ${!isWaitingTask(t) ? `<button onclick="markTaskWaiting(event, ${t.id})">Чекаю</button>` : ''}
+            <button class="${btnClass}" data-task-action="status" data-task-id="${t.id}" data-next-status="${nextStatus}">${STATUS_ICONS[nextStatus]} ${nextLabel}</button>
+            ${!isWaitingTask(t) ? `<button data-task-action="waiting" data-task-id="${t.id}">Чекаю</button>` : ''}
             ${renderCardScheduleActions(t.id)}
-            <button onclick="snoozeTaskQuick(event, ${t.id}, 60)">+1 год</button>
-            ${!userPermissions || userPermissions.canDeleteTasks ? `<button class="btn-delete" onclick="deleteTask(event, ${t.id})">✕</button>` : ''}
+            <button data-task-action="snooze" data-task-id="${t.id}" data-minutes="60">+1 год</button>
+            ${!userPermissions || userPermissions.canDeleteTasks ? `<button class="btn-delete" data-task-action="delete" data-task-id="${t.id}" aria-label="Видалити задачу">✕</button>` : ''}
         </div>
     </div>`;
 }
@@ -1906,6 +1960,32 @@ function setTaskAssigneeMode(mode = 'self') {
     }
 }
 
+function dateForDuePreset(preset = taskDuePreset) {
+    if (preset === 'tomorrow') {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    if (preset === 'no_date') return '';
+    return document.getElementById('taskScheduleDate')?.value || getTodayStr();
+}
+
+function setTaskDuePreset(preset = 'today', options = {}) {
+    taskDuePreset = ['today', 'tomorrow', 'no_date', 'custom'].includes(preset) ? preset : 'today';
+    document.querySelectorAll('[data-due-preset]').forEach(btn => {
+        const active = btn.dataset.duePreset === taskDuePreset;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    const dateInput = document.getElementById('taskScheduleDate');
+    if (dateInput && taskDuePreset === 'today') dateInput.value = getTodayStr();
+    if (dateInput && taskDuePreset === 'tomorrow') dateInput.value = dateForDuePreset('tomorrow');
+    if (taskDuePreset === 'custom' && options.expand !== false) {
+        toggleTaskComposerDetails(true);
+        dateInput?.focus();
+    }
+}
+
 function toggleTaskComposerDetails(force) {
     const details = document.getElementById('taskComposerDetails');
     const toggle = document.getElementById('taskDetailsToggle');
@@ -1913,7 +1993,7 @@ function toggleTaskComposerDetails(force) {
     const open = typeof force === 'boolean' ? force : details.hidden;
     details.hidden = !open;
     toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    toggle.textContent = open ? 'Сховати' : 'Деталі';
+    toggle.textContent = open ? 'Сховати' : 'Ще';
 }
 
 function setupTaskComposer() {
@@ -1921,9 +2001,14 @@ function setupTaskComposer() {
     setTaskAssigneeMode('self');
     const dateInput = document.getElementById('taskScheduleDate');
     if (dateInput && !dateInput.value) dateInput.value = getTodayStr();
+    setTaskDuePreset('today', { expand: false });
     document.querySelectorAll('[data-task-assignee-mode]').forEach(btn => {
         btn.addEventListener('click', () => setTaskAssigneeMode(btn.dataset.taskAssigneeMode));
     });
+    document.querySelectorAll('[data-due-preset]').forEach(btn => {
+        btn.addEventListener('click', () => setTaskDuePreset(btn.dataset.duePreset));
+    });
+    dateInput?.addEventListener('change', () => setTaskDuePreset('custom', { expand: false }));
     document.querySelectorAll('[data-schedule-slot]').forEach(btn => {
         btn.addEventListener('click', () => {
             quickScheduleSlot = btn.dataset.scheduleSlot || 'morning';
@@ -1935,6 +2020,41 @@ function setupTaskComposer() {
         });
     });
     document.getElementById('taskDetailsToggle')?.addEventListener('click', () => toggleTaskComposerDetails());
+}
+
+function getTaskScopeLabel(scope = currentScopeFilter) {
+    const labels = {
+        all: 'Всі мої',
+        work: 'Робочі',
+        personal: 'Особисті',
+        private: 'Приватні',
+        waiting: 'Чекаю',
+        idea: 'Ідеї'
+    };
+    return labels[scope] || labels.all;
+}
+
+function taskMatchesScopeFilter(task = {}, scope = currentScopeFilter) {
+    switch (scope) {
+        case 'work':
+            return taskMode(task) === 'work';
+        case 'personal':
+            return taskMode(task) === 'personal' || (task.category || '') === 'personal';
+        case 'private':
+            return isPrivateTask(task);
+        case 'waiting':
+            return isWaitingTask(task);
+        case 'idea':
+            return isIdeaTask(task);
+        case 'all':
+        default:
+            return true;
+    }
+}
+
+function applyTaskScopeFilter(tasks = []) {
+    if (currentScopeFilter === 'all') return tasks;
+    return tasks.filter(task => taskMatchesScopeFilter(task));
 }
 
 function resolveQuickAddOwnerUserId() {
@@ -1967,6 +2087,7 @@ function applyCaptureChip(chip) {
         if (visibility) visibility.value = 'private';
     }
     if (chip === 'waiting' && kind) kind.value = 'waiting';
+    if (chip === 'idea' && kind) kind.value = 'idea';
     const dateInput = document.getElementById('taskScheduleDate');
     if (dateInput && (chip === 'today' || chip === 'tomorrow')) dateInput.value = dateFromCaptureIntent();
 }
@@ -2003,13 +2124,12 @@ async function addTask() {
     const mode = document.getElementById('taskMode')?.value || (captureIntent.private ? 'private' : (captureIntent.personal ? 'personal' : 'work'));
     const kind = document.getElementById('taskKind')?.value || (captureIntent.waiting ? 'waiting' : 'action');
     const visibility = defaultVisibilityForTaskMode(mode, document.getElementById('taskVisibility')?.value || 'team');
-    const today = document.getElementById('taskScheduleDate')?.value || dateFromCaptureIntent();
+    const dueDate = dateForDuePreset(taskDuePreset);
     const durationMinutes = Math.max(5, parseInt(document.getElementById('taskScheduleDuration')?.value, 10) || 30);
     const workflow = captureIntent.waiting ? 'waiting' : 'inbox';
 
     const data = {
         title,
-        date: today,
         priority,
         category,
         task_type: taskType,
@@ -2024,21 +2144,25 @@ async function addTask() {
     };
     if (ownerUserId) data.ownerUserId = ownerUserId;
 
-    data.schedule = {
-        date: today,
-        slot: quickScheduleSlot,
-        durationMinutes
-    };
-    data.effort_minutes = durationMinutes;
-
-    // Build exact manual schedule if time specified
-    if (deadlineTime) {
-        data.deadline = `${today}T${deadlineTime}:00`;
+    if (dueDate) {
+        data.date = dueDate;
         data.schedule = {
-            date: today,
-            scheduledStartAt: `${today}T${deadlineTime}`,
+            date: dueDate,
+            slot: quickScheduleSlot,
             durationMinutes
         };
+        data.effort_minutes = durationMinutes;
+    }
+
+    // Build exact manual schedule if time specified
+    if (deadlineTime && dueDate) {
+        data.deadline = `${dueDate}T${deadlineTime}:00`;
+        data.schedule = {
+            date: dueDate,
+            scheduledStartAt: `${dueDate}T${deadlineTime}`,
+            durationMinutes
+        };
+        data.effort_minutes = durationMinutes;
     }
 
     const result = await apiCreateTask(data);
@@ -2052,6 +2176,7 @@ async function addTask() {
         if (document.getElementById('taskScheduleDate')) document.getElementById('taskScheduleDate').value = getTodayStr();
         captureIntent = {};
         document.querySelectorAll('[data-capture-chip]').forEach(btn => btn.classList.remove('active'));
+        setTaskDuePreset('today', { expand: false });
         setTaskAssigneeMode('self');
         toggleTaskComposerDetails(false);
         showNotification(createdMode === 'self' ? 'Задачу додано собі' : 'Задачу додано і призначено команді', 'success');
@@ -2089,6 +2214,72 @@ async function createOperationPack() {
 }
 window.createOperationPack = createOperationPack;
 
+function setTaskActionBusy(button, busy) {
+    if (!button) return;
+    button.disabled = busy;
+    button.setAttribute('aria-busy', busy ? 'true' : 'false');
+}
+
+async function runTaskAction(button, action) {
+    if (!button || button.disabled) return;
+    setTaskActionBusy(button, true);
+    try {
+        await action();
+    } finally {
+        if (button.isConnected) setTaskActionBusy(button, false);
+    }
+}
+
+async function handleTaskActionButton(button) {
+    const taskId = Number(button.dataset.taskId || 0);
+    const action = button.dataset.taskAction || '';
+    if (!taskId || !action) return;
+    await runTaskAction(button, async () => {
+        if (action === 'status') await cycleStatus(taskId, button.dataset.nextStatus || 'done');
+        if (action === 'waiting') await markTaskWaiting(taskId);
+        if (action === 'schedule') await quickScheduleTask(taskId, button.dataset.scheduleSlotAction || quickScheduleSlot);
+        if (action === 'snooze') await snoozeTaskQuick(taskId, Number(button.dataset.minutes || 60));
+        if (action === 'delete') await deleteTask(taskId);
+        if (action === 'restore') await restoreTask(taskId);
+    });
+}
+
+function setupTaskActionDelegation() {
+    const board = document.getElementById('boardContent');
+    if (!board || board.dataset.taskActionDelegationBound === 'true') return;
+    board.dataset.taskActionDelegationBound = 'true';
+
+    board.addEventListener('click', async (event) => {
+        const actionButton = event.target.closest('[data-task-action]');
+        if (actionButton && board.contains(actionButton)) {
+            event.preventDefault();
+            event.stopPropagation();
+            await handleTaskActionButton(actionButton);
+            return;
+        }
+        if (event.target.closest('button, a, input, select, textarea, label')) return;
+        const card = event.target.closest('[data-task-open="true"]');
+        if (!card || !board.contains(card)) return;
+        const taskId = Number(card.dataset.taskId || 0);
+        if (taskId) openTaskDetail(taskId);
+    });
+
+    board.addEventListener('keydown', (event) => {
+        if (!['Enter', ' '].includes(event.key)) return;
+        if (event.target.closest('button, a, input, select, textarea')) return;
+        const card = event.target.closest('[data-task-open="true"]');
+        if (!card || !board.contains(card)) return;
+        event.preventDefault();
+        const taskId = Number(card.dataset.taskId || 0);
+        if (taskId) openTaskDetail(taskId);
+    });
+
+    board.addEventListener('change', (event) => {
+        if (!event.target.matches('.task-bulk-cb')) return;
+        updateBulkSelection();
+    });
+}
+
 async function cycleStatus(taskId, newStatus) {
     const result = newStatus === 'done'
         ? await apiCompleteTask(taskId)
@@ -2101,7 +2292,13 @@ async function cycleStatus(taskId, newStatus) {
 }
 
 async function snoozeTaskQuick(event, taskId, minutes) {
-    event.stopPropagation();
+    if (event && typeof event === 'object') {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+    } else {
+        minutes = taskId;
+        taskId = event;
+    }
     const result = await apiSnoozeTask(taskId, minutes);
     if (result?.success) {
         await loadAllTasks();
@@ -2110,7 +2307,13 @@ async function snoozeTaskQuick(event, taskId, minutes) {
 }
 
 async function quickScheduleTask(event, taskId, slot) {
-    event.stopPropagation();
+    if (event && typeof event === 'object') {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+    } else {
+        slot = taskId;
+        taskId = event;
+    }
     const task = allTasks.find(t => Number(t.id) === Number(taskId)) || {};
     const date = taskScheduleDate(task) || getTodayStr();
     const duration = task.effortMinutes || task.effort_minutes || 30;
@@ -2126,7 +2329,12 @@ async function quickScheduleTask(event, taskId, slot) {
 window.quickScheduleTask = quickScheduleTask;
 
 async function markTaskWaiting(event, taskId) {
-    event.stopPropagation();
+    if (event && typeof event === 'object') {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+    } else {
+        taskId = event;
+    }
     const task = allTasks.find(t => Number(t.id) === Number(taskId));
     if (!task) return;
     const token = localStorage.getItem('pzp_token');

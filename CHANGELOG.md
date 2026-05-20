@@ -4,6 +4,17 @@
 
 ---
 
+## v0.60.12 - Tasks Menu Actions Composer Layout Hardening
+
+### Tasks Menu Actions Composer Layout Hardening [codex]
+- **Меню і actions ожили** - у `/tasks` row actions переведено на єдиний delegated handler замість крихких inline `onclick`, тому статус, waiting, smart-slot, snooze, restore і delete не гублять handlers після перерендеру.
+- **Quick add став щоденним capture flow** - category, priority, assignee і due presets (`Сьогодні`, `Завтра`, `Без дати`, `Інша дата`) винесено у компактний composer над списком; advanced поля лишились у блоці `Ще`.
+- **Ghost surfaces прибрано** - operation pack bar більше не показується як порожній контейнер у звичайних зрізах і відкривається тільки для operational categories `Замовлення` / `Чек-листи`.
+- **Layout зміцнено** - сторінка тримає порядок summary -> filters -> composer -> list, task row actions мають більші hit areas, а 1440/1920/1024px smoke не дає горизонтального розриву composer/operation pack.
+- **Без зміни бізнес-логіки** - API, auth, routes, schema, task scheduling math, drag/drop і deployment config не змінювались; реліз продовжує ланцюг `v0.60.11 -> v0.60.12`.
+
+---
+
 ## v0.60.11 - Timeline Theme Polish
 
 ### Timeline Theme Polish [codex]

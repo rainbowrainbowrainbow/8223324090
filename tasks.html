@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.60.11">
-    <link rel="stylesheet" href="css/layout.css?v=0.60.11">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.11">
-    <link rel="stylesheet" href="css/pages.css?v=0.60.11">
-    <link rel="stylesheet" href="css/modals.css?v=0.60.11">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.11">
-    <link rel="stylesheet" href="css/responsive.css?v=0.60.11">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.11">
+    <link rel="stylesheet" href="css/base.css?v=0.60.12">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.12">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.12">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.12">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.12">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.12">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.12">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.12">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -609,8 +609,398 @@
             border-color: rgba(45,212,191,0.34);
         }
 
+        /* v0.60.12: Tasks screen hardening */
+        .tasks-page #main-content {
+            display: grid;
+            gap: 14px;
+        }
+        .tasks-page #main-content > * {
+            min-width: 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .tasks-summary-strip {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+        }
+        .tasks-summary-card {
+            display: grid;
+            gap: 4px;
+            min-height: 72px;
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid rgba(15, 23, 42, 0.1);
+            background: rgba(255, 255, 255, 0.88);
+            color: var(--gray-700);
+            text-align: left;
+            cursor: pointer;
+            font: inherit;
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+        }
+        .tasks-summary-card span {
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 900;
+        }
+        .tasks-summary-card strong {
+            color: var(--gray-900);
+            font-size: 24px;
+            font-weight: 900;
+            line-height: 1;
+        }
+        .tasks-summary-card:hover,
+        .tasks-summary-card:focus-visible {
+            border-color: rgba(20, 184, 166, 0.34);
+            box-shadow: 0 14px 32px rgba(15, 23, 42, 0.1);
+        }
+        .tasks-filter-shell {
+            display: grid;
+            gap: 10px;
+            padding: 14px;
+            border-radius: 18px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            background: rgba(255, 255, 255, 0.72);
+            box-sizing: border-box;
+            max-width: 100%;
+        }
+        .tasks-filter-shell .board-tabs,
+        .tasks-filter-shell .cat-filters,
+        .task-scope-filters {
+            margin-bottom: 0;
+        }
+        .tasks-filter-shell .board-tab,
+        .tasks-filter-shell .cat-chip,
+        .task-scope-chip {
+            min-height: 38px;
+            border-radius: 999px;
+            border: 1px solid rgba(100, 116, 139, 0.18);
+            background: rgba(248, 250, 252, 0.9);
+            color: var(--gray-600);
+        }
+        .tasks-filter-shell .board-tab:hover,
+        .tasks-filter-shell .cat-chip:hover,
+        .task-scope-chip:hover {
+            border-color: rgba(20, 184, 166, 0.32);
+            background: rgba(240, 253, 250, 0.82);
+        }
+        .tasks-filter-shell .board-tab.active,
+        .tasks-filter-shell .cat-chip.active,
+        .task-scope-chip.active {
+            background: #0f766e;
+            border-color: #0f766e;
+            color: #fff;
+            box-shadow: none;
+        }
+        .task-scope-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .task-scope-chip {
+            padding: 0 13px;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+            transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+        }
+        .quick-add.task-composer {
+            gap: 12px;
+            margin-bottom: 0;
+            padding: 14px;
+            border-color: rgba(20, 184, 166, 0.22);
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
+            box-sizing: border-box;
+            max-width: 100%;
+        }
+        .task-composer-primary {
+            grid-template-columns: minmax(260px, 1.35fr) minmax(138px, 0.58fr) minmax(128px, 0.5fr) minmax(168px, 0.72fr) minmax(250px, 1fr) auto auto;
+            align-items: stretch;
+        }
+        .task-composer-select,
+        .task-assignee-select {
+            min-width: 0;
+        }
+        .task-assignee-select[hidden] {
+            display: none !important;
+        }
+        .task-owner-toggle {
+            grid-column: auto;
+        }
+        .task-due-presets {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(68px, 1fr));
+            gap: 4px;
+            min-height: 48px;
+            padding: 4px;
+            border: 1px solid rgba(20, 184, 166, 0.2);
+            border-radius: 14px;
+            background: rgba(15, 23, 42, 0.04);
+        }
+        .task-due-chip {
+            border: 0;
+            border-radius: 10px;
+            background: transparent;
+            color: var(--gray-600);
+            cursor: pointer;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 900;
+            white-space: nowrap;
+        }
+        .task-due-chip.active {
+            background: rgba(15, 118, 110, 0.14);
+            color: #0f766e;
+            box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.24);
+        }
+        .task-due-chip:focus-visible,
+        .task-scope-chip:focus-visible,
+        .tasks-summary-card:focus-visible,
+        .task-card-actions button:focus-visible,
+        .task-card:focus-visible {
+            outline: 2px solid rgba(20,184,166,0.5);
+            outline-offset: 2px;
+        }
+        .task-add-submit {
+            min-width: 152px;
+        }
+        .task-composer-details {
+            grid-template-columns: minmax(180px, 0.75fr) minmax(260px, 1fr) minmax(300px, 1.1fr);
+        }
+        .task-card {
+            display: grid;
+            grid-template-columns: 28px minmax(0, 1fr) minmax(250px, auto);
+            gap: 8px 12px;
+            align-items: start;
+            padding: 12px;
+            border-radius: 14px;
+            border-color: rgba(148,163,184,0.2);
+            background: rgba(255,255,255,0.92);
+            transform: none;
+            box-sizing: border-box;
+            max-width: 100%;
+        }
+        .task-card:hover {
+            transform: none;
+            border-color: rgba(20,184,166,0.28);
+            box-shadow: 0 10px 28px rgba(15,23,42,0.08);
+        }
+        .task-checkbox-wrap {
+            position: static;
+            transform: none;
+            grid-column: 1;
+            grid-row: 1 / span 2;
+            width: 28px;
+            height: 28px;
+            align-self: center;
+            justify-content: center;
+        }
+        .task-bulk-cb {
+            width: 18px;
+            height: 18px;
+        }
+        .task-card-title {
+            grid-column: 2;
+            margin: 0;
+            color: var(--gray-800);
+            font-size: 14px;
+            font-weight: 900;
+            line-height: 1.28;
+        }
+        .task-card-meta {
+            grid-column: 2;
+            gap: 6px;
+            color: var(--gray-500);
+        }
+        .task-card-actions {
+            grid-column: 3;
+            grid-row: 1 / span 2;
+            align-self: center;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 0;
+        }
+        .task-card-actions button {
+            min-height: 36px;
+            min-width: 36px;
+            padding: 0 10px;
+            border: 1px solid rgba(100,116,139,0.16);
+            border-radius: 10px;
+            background: rgba(248,250,252,0.94);
+            color: var(--gray-700);
+            font-size: 12px;
+            font-weight: 900;
+        }
+        .task-card-actions button:hover {
+            border-color: rgba(20,184,166,0.32);
+            background: rgba(240,253,250,0.9);
+        }
+        .task-card-actions button[aria-busy="true"] {
+            opacity: 0.62;
+            pointer-events: none;
+        }
+        .task-card-slot-actions {
+            grid-template-columns: repeat(4, 36px);
+            gap: 5px;
+        }
+        .task-card-slot-actions button {
+            min-width: 36px;
+            min-height: 36px;
+            padding: 0;
+        }
+        .kanban .task-card {
+            grid-template-columns: 28px minmax(0, 1fr);
+        }
+        .kanban .task-card-actions {
+            grid-column: 2;
+            grid-row: auto;
+            justify-content: flex-start;
+        }
+        .tasks-page .operations-pack-bar[hidden],
+        .tasks-page .operations-summary[hidden],
+        .tasks-page #quickAdd[hidden],
+        .tasks-page #boardContent[hidden],
+        .tasks-page #templatesSection[hidden],
+        .tasks-page #taskScopeFilters[hidden],
+        .tasks-page #catFilters[hidden],
+        .tasks-page #subcatFilters[hidden] {
+            display: none !important;
+        }
+        .tasks-page .operations-pack-bar {
+            margin: 0 0 2px;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.76);
+            border-color: rgba(148, 163, 184, 0.18);
+            box-sizing: border-box;
+            max-width: 100%;
+        }
+        html[data-theme="dark"] .tasks-summary-card,
+        body.dark-mode .tasks-summary-card,
+        html[data-theme="dark"] .tasks-filter-shell,
+        body.dark-mode .tasks-filter-shell,
+        html[data-theme="dark"] .quick-add.task-composer,
+        body.dark-mode .quick-add.task-composer {
+            background: rgba(15, 23, 42, 0.82);
+            border-color: rgba(148, 163, 184, 0.16);
+            box-shadow: none;
+        }
+        html[data-theme="dark"] .tasks-summary-card span,
+        body.dark-mode .tasks-summary-card span {
+            color: #94a3b8;
+        }
+        html[data-theme="dark"] .tasks-summary-card strong,
+        body.dark-mode .tasks-summary-card strong {
+            color: #f8fafc;
+        }
+        html[data-theme="dark"] .tasks-filter-shell .board-tab,
+        body.dark-mode .tasks-filter-shell .board-tab,
+        html[data-theme="dark"] .tasks-filter-shell .cat-chip,
+        body.dark-mode .tasks-filter-shell .cat-chip,
+        html[data-theme="dark"] .task-scope-chip,
+        body.dark-mode .task-scope-chip,
+        html[data-theme="dark"] .task-due-presets,
+        body.dark-mode .task-due-presets {
+            background: rgba(15, 23, 42, 0.72);
+            border-color: rgba(148, 163, 184, 0.18);
+            color: #cbd5e1;
+        }
+        html[data-theme="dark"] .tasks-filter-shell .board-tab.active,
+        body.dark-mode .tasks-filter-shell .board-tab.active,
+        html[data-theme="dark"] .tasks-filter-shell .cat-chip.active,
+        body.dark-mode .tasks-filter-shell .cat-chip.active,
+        html[data-theme="dark"] .task-scope-chip.active,
+        body.dark-mode .task-scope-chip.active {
+            background: #14b8a6;
+            border-color: #14b8a6;
+            color: #042f2e;
+        }
+        html[data-theme="dark"] .task-due-chip,
+        body.dark-mode .task-due-chip {
+            color: #cbd5e1;
+        }
+        html[data-theme="dark"] .task-due-chip.active,
+        body.dark-mode .task-due-chip.active {
+            color: #99f6e4;
+            background: rgba(20, 184, 166, 0.16);
+            box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.26);
+        }
+        html[data-theme="dark"] .task-card,
+        body.dark-mode .task-card {
+            background: rgba(15, 23, 42, 0.86);
+            border-color: rgba(148, 163, 184, 0.16);
+        }
+        html[data-theme="dark"] .task-card:hover,
+        body.dark-mode .task-card:hover {
+            border-color: rgba(45,212,191,0.28);
+            box-shadow: 0 10px 28px rgba(0,0,0,0.18);
+        }
+        html[data-theme="dark"] .task-card-title,
+        body.dark-mode .task-card-title {
+            color: #f8fafc;
+        }
+        html[data-theme="dark"] .task-card-actions button,
+        body.dark-mode .task-card-actions button {
+            background: rgba(30,41,59,0.82);
+            border-color: rgba(148,163,184,0.16);
+            color: #e2e8f0;
+        }
+        html[data-theme="dark"] .task-card-actions button:hover,
+        body.dark-mode .task-card-actions button:hover {
+            background: rgba(20,184,166,0.12);
+            border-color: rgba(45,212,191,0.28);
+        }
+        html[data-theme="dark"] .tasks-page .operations-pack-bar,
+        body.dark-mode .tasks-page .operations-pack-bar {
+            background: rgba(15, 23, 42, 0.78);
+            border-color: rgba(148, 163, 184, 0.16);
+        }
+
         /* Responsive */
+        @media (min-width: 769px) and (max-width: 1180px) {
+            body.tasks-page .page-container {
+                width: calc(100vw - 300px);
+                max-width: calc(100vw - 300px);
+                margin-left: 300px;
+                padding: 16px;
+                box-sizing: border-box;
+            }
+            body.tasks-page .sidebar-nav.collapsed ~ .page-container {
+                width: calc(100vw - 64px);
+                max-width: calc(100vw - 64px);
+                margin-left: 64px;
+            }
+        }
+        @media (max-width: 1180px) {
+            .tasks-summary-strip {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .task-composer-primary {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .task-composer-title-wrap,
+            .task-due-presets {
+                grid-column: 1 / -1;
+            }
+            .task-card {
+                grid-template-columns: 28px minmax(0, 1fr);
+            }
+            .task-card-actions {
+                grid-column: 2;
+                grid-row: auto;
+                justify-content: flex-start;
+            }
+            .tasks-page .operations-pack-bar {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .tasks-page .operations-pack-bar button {
+                grid-column: 1 / -1;
+            }
+        }
         @media (max-width: 768px) {
+            .tasks-summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .kanban { grid-template-columns: 1fr; gap: 12px; }
             .kanban-col { padding: 10px; }
             .quick-add:not(.task-composer) { flex-wrap: wrap; }
@@ -620,10 +1010,17 @@
             .task-composer-title-wrap,
             .task-owner-toggle,
             .task-assignee-select,
+            .task-due-presets,
             .task-composer-secondary,
             .task-add-submit { grid-column: 1; }
             .task-assignee-select[hidden] { display: none !important; }
             .task-owner-toggle { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .tasks-page .operations-pack-bar {
+                grid-template-columns: 1fr;
+            }
+            .tasks-page .operations-pack-bar button {
+                grid-column: 1;
+            }
             .tasks-governance { justify-content: stretch; }
             .tasks-governance-toggle { width: 100%; }
             .tasks-governance-panel {
@@ -667,7 +1064,7 @@
         @keyframes pulse { 50% { opacity: 0.4; } }
     </style>
 </head>
-<body data-page-group="crm">
+<body class="tasks-page" data-page-group="crm">
     <script>
     // Dark mode flash prevention
     (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
@@ -721,6 +1118,26 @@
         <div class="alerts-panel-v4" id="alertsPanel"></div>
 
         <main id="main-content" class="page-container">
+            <div class="tasks-summary-strip" id="tasksSummaryStrip" aria-label="Швидкий огляд задач">
+                <button type="button" class="tasks-summary-card" data-summary-view="my">
+                    <span>Мої активні</span>
+                    <strong id="summaryMy">0</strong>
+                </button>
+                <button type="button" class="tasks-summary-card" data-summary-view="today">
+                    <span>Сьогодні</span>
+                    <strong id="summaryToday">0</strong>
+                </button>
+                <button type="button" class="tasks-summary-card" data-summary-view="waiting">
+                    <span>Чекаю</span>
+                    <strong id="summaryWaiting">0</strong>
+                </button>
+                <button type="button" class="tasks-summary-card" data-summary-view="done_today">
+                    <span>Готово сьогодні</span>
+                    <strong id="summaryDoneToday">0</strong>
+                </button>
+            </div>
+
+            <section class="tasks-filter-shell" aria-label="Фільтри задач">
             <!-- Board view tabs -->
             <div class="board-tabs" id="boardTabs">
                 <button type="button" class="board-tab active" data-view="inbox">Інбокс <span class="tab-count" id="countInbox">0</span></button>
@@ -736,6 +1153,15 @@
                 <button type="button" class="board-tab" data-view="archive">📦 Архів</button>
             </div>
 
+            <div class="task-scope-filters" id="taskScopeFilters" role="group" aria-label="Фільтр за типом задач">
+                <button type="button" class="task-scope-chip active" data-scope="all">Всі мої</button>
+                <button type="button" class="task-scope-chip" data-scope="work">Робочі</button>
+                <button type="button" class="task-scope-chip" data-scope="personal">Особисті</button>
+                <button type="button" class="task-scope-chip" data-scope="private">Приватні</button>
+                <button type="button" class="task-scope-chip" data-scope="waiting">Чекаю</button>
+                <button type="button" class="task-scope-chip" data-scope="idea">Ідеї</button>
+            </div>
+
             <!-- Category chips -->
             <div class="cat-filters" id="catFilters">
                 <button type="button" class="cat-chip active" data-cat="all">Всі</button>
@@ -749,6 +1175,7 @@
                 <button type="button" class="cat-chip" data-cat="checklist">Чек-листи</button>
             </div>
             <div class="subcat-filters hidden" id="subcatFilters"></div>
+            </section>
 
             <!-- Quick add task -->
             <div id="taskExplainability" hidden></div>
@@ -780,9 +1207,24 @@
             <div class="quick-add task-composer" id="quickAdd" data-assignee-mode="self">
                 <div class="task-composer-primary">
                     <label class="task-composer-title-wrap" for="taskTitle">
-                        <span class="task-composer-kicker">Нова задача</span>
+                        <span class="task-composer-kicker">Швидко додати задачу</span>
                         <input type="text" id="taskTitle" aria-label="Що треба зробити?" placeholder="Що треба зробити?">
                     </label>
+                    <select id="taskCategory" class="task-composer-select" aria-label="Категорія">
+                        <option value="admin">Адмін</option>
+                        <option value="event">Івент</option>
+                        <option value="purchase">Закупівлі</option>
+                        <option value="orders">Замовлення</option>
+                        <option value="trampoline">Батути</option>
+                        <option value="personal">Особисті</option>
+                        <option value="improvement">Покращення</option>
+                        <option value="checklist">Чек-листи</option>
+                    </select>
+                    <select id="taskPriority" class="task-composer-select" aria-label="Пріоритет">
+                        <option value="normal">Звичайний</option>
+                        <option value="high">Високий</option>
+                        <option value="low">Низький</option>
+                    </select>
                     <div class="task-owner-toggle" role="group" aria-label="Кому поставити задачу">
                         <button type="button" class="active" data-task-assignee-mode="self" aria-pressed="true">Собі</button>
                         <button type="button" data-task-assignee-mode="team" aria-pressed="false">Команді</button>
@@ -790,31 +1232,22 @@
                     <select id="taskAssignedTo" class="task-assignee-select" title="Відповідальний" aria-label="Відповідальний" hidden disabled aria-hidden="true" tabindex="-1">
                         <option value="">Оберіть людину</option>
                     </select>
-                    <button type="button" id="taskDetailsToggle" class="task-composer-secondary" aria-expanded="false" aria-controls="taskComposerDetails">Деталі</button>
-                    <button type="button" id="addTaskBtn" class="task-add-submit">+ Додати</button>
+                    <div class="task-due-presets" id="taskDuePresets" role="group" aria-label="Коли виконати">
+                        <button class="task-due-chip active" type="button" data-due-preset="today" aria-pressed="true">Сьогодні</button>
+                        <button class="task-due-chip" type="button" data-due-preset="tomorrow" aria-pressed="false">Завтра</button>
+                        <button class="task-due-chip" type="button" data-due-preset="no_date" aria-pressed="false">Без дати</button>
+                        <button class="task-due-chip" type="button" data-due-preset="custom" aria-pressed="false">Інша дата</button>
+                    </div>
+                    <button type="button" id="taskDetailsToggle" class="task-composer-secondary" aria-expanded="false" aria-controls="taskComposerDetails">Ще</button>
+                    <button type="button" id="addTaskBtn" class="task-add-submit">Створити задачу</button>
                 </div>
                 <div class="task-composer-details" id="taskComposerDetails" hidden>
                     <div class="task-composer-group">
-                        <span class="task-composer-label">Контекст</span>
-                        <select id="taskCategory" aria-label="Категорія">
-                            <option value="admin">Адмін</option>
-                            <option value="event">Івент</option>
-                            <option value="purchase">Закупівлі</option>
-                            <option value="orders">Замовлення</option>
-                            <option value="trampoline">Батути</option>
-                            <option value="personal">Особисті</option>
-                            <option value="improvement">Покращення</option>
-                            <option value="checklist">Чек-листи</option>
-                        </select>
+                        <span class="task-composer-label">Підкатегорія</span>
                         <select id="taskSubcategory" class="hidden" aria-label="Підкатегорія"></select>
-                        <select id="taskPriority" aria-label="Пріоритет">
-                            <option value="normal">Звичайний</option>
-                            <option value="high">Високий</option>
-                            <option value="low">Низький</option>
-                        </select>
                     </div>
                     <div class="task-composer-group">
-                        <span class="task-composer-label">План</span>
+                        <span class="task-composer-label">Планування</span>
                         <input type="date" id="taskScheduleDate" title="Дата плану" aria-label="Дата плану">
                         <input type="number" id="taskScheduleDuration" min="5" max="480" step="5" value="30" title="Тривалість, хв" aria-label="Тривалість задачі у хвилинах">
                         <div class="task-slot-picker" id="taskSlotPicker" role="group" aria-label="Швидкі слоти дня">
@@ -824,12 +1257,9 @@
                             <button class="task-slot-btn" type="button" data-schedule-slot="evening" aria-pressed="false" title="Вечір">🌙</button>
                         </div>
                         <input type="time" id="taskDeadlineTime" title="Дедлайн (час)" aria-label="Дедлайн">
-                        <button class="task-chip" type="button" data-capture-chip="today">Сьогодні</button>
-                        <button class="task-chip" type="button" data-capture-chip="tomorrow">Завтра</button>
-                        <button class="task-chip" type="button" data-capture-chip="waiting">Чекаю</button>
                     </div>
                     <div class="task-composer-group">
-                        <span class="task-composer-label">Доступ і тип</span>
+                        <span class="task-composer-label">Режим і намір</span>
                         <select id="taskType" title="Тип задачі" aria-label="Тип задачі">
                             <option value="human">Людина</option>
                             <option value="bot">Бот</option>
@@ -855,6 +1285,10 @@
                             <option value="me_only">Тільки мені</option>
                             <option value="private">Приватна</option>
                         </select>
+                        <button class="task-chip" type="button" data-capture-chip="personal">Особиста</button>
+                        <button class="task-chip" type="button" data-capture-chip="private">Приватна</button>
+                        <button class="task-chip" type="button" data-capture-chip="waiting">Чекаю</button>
+                        <button class="task-chip" type="button" data-capture-chip="idea">Ідея</button>
                     </div>
                 </div>
             </div>
@@ -940,13 +1374,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.60.11"></script>
-    <script src="js/notification.js?v=0.60.11"></script>
-    <script src="js/api.js?v=0.60.11"></script>
-    <script src="js/auth.js?v=0.60.11"></script>
-    <script src="js/components/sidebar.js?v=0.60.11"></script>
+    <script src="js/config.js?v=0.60.12"></script>
+    <script src="js/notification.js?v=0.60.12"></script>
+    <script src="js/api.js?v=0.60.12"></script>
+    <script src="js/auth.js?v=0.60.12"></script>
+    <script src="js/components/sidebar.js?v=0.60.12"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/tasks-page.js?v=0.60.11"></script>
-    <script src="js/alerts.js?v=0.60.11"></script><script src="js/ui.js?v=0.60.11"></script>
+    <script src="js/tasks-page.js?v=0.60.12"></script>
+    <script src="js/alerts.js?v=0.60.12"></script><script src="js/ui.js?v=0.60.12"></script>
 </body>
 </html>

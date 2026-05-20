@@ -1279,6 +1279,35 @@
                     </ul>
                 </div>
                 <div class="changelog-section">
+                    <h4>v0.60.3 — Assistant Timeline Context Fix</h4>
+                    <ul>
+                        <li><b>Помічник бачить відкриту дату</b> — питання про розклад у таймлайні тепер беруть дату з відкритої сторінки, а не автоматично з поточного календарного дня.</li>
+                        <li><b>Бронювання не губляться</b> — якщо API не повернуло записи, але на видимому таймлайні є картки бронювань, Помічник підмішує DOM-зріз і не каже помилково, що бронювань немає.</li>
+                        <li><b>Афіша рахується окремо</b> — події афіші з різним часом більше не схлопуються в один пункт при fallback-зчитуванні з таймлайна.</li>
+                        <li><b>Guardrail</b> — UI-smoke перевіряє selected-date контракт і DOM fallback для видимих booking blocks у shared assistant rail.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.2 — Assistant Full Rethink</h4>
+                    <ul>
+                        <li><b>Assistant UX</b> — rail асистента перебудовано навколо одного canonical avatar, без старого stacked face/glasses/dot-cloud ефекту.</li>
+                        <li><b>Читабельні субтитри</b> — відповідь винесена у широку flat-лінію під presence: короткий текст стоїть статично, довгий рухається тільки при overflow і паузиться на hover/focus.</li>
+                        <li><b>Controls</b> — mic, stop, voice, replay і expand отримали однакові SVG-іконки, hit targets, focus-visible, disabled states і мобільну ергономіку.</li>
+                        <li><b>Voice loop</b> — додано auto-pause detection, max-duration fallback, cancel/stop flow і queue guard, щоб turns не губились при швидких повторних діях.</li>
+                        <li><b>Guardrail</b> — UI-smoke перевіряє single-avatar DOM, subtitle lane contract і auto-pause/turn queue захист.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.1 — Tasks Truth Canonical Board</h4>
+                    <ul>
+                        <li><b>Правда у списку задач</b> — звичайний <code>/api/tasks</code> більше не віддає пізніші active-дублі: backend лишає один canonical active row.</li>
+                        <li><b>Duplicate policy v2</b> — duplicate signature спирається на title/day/category/subcategory/owner/checklist і stable source anchor.</li>
+                        <li><b>Cleanup без видалення</b> — міграція архівує duplicate active rows як <code>auto_duplicate_v2</code> і не ламає історію.</li>
+                        <li><b>Completed lifecycle</b> — виконані задачі лишаються в системі, мають <code>completed_at</code> і доступні у board <code>Виконано сьогодні</code>.</li>
+                        <li><b>Guardrail</b> — UI-smoke перевіряє default duplicate collapse, v2 source anchor, migration marker і dry-run cleanup.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.60.0 — Dashboard Scene Board Tools</h4>
                     <ul>
                         <li><b>Сцена і Board зведені в один UX-режим</b> — Dashboard тепер явно веде у <code>Сцена + Board</code>, а стан дошки лишається одним джерелом правди.</li>

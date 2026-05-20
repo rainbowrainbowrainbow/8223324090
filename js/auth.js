@@ -303,7 +303,12 @@ function getCurrentAssetVersion() {
 }
 
 function ensureCrmAssistantRailAssets() {
-    if (window.CrmAssistantFoundation && window.CrmAssistantRail && typeof window.CrmAssistantRail.init === 'function') {
+    if (
+        window.CrmAssistantFoundation &&
+        window.CrmAssistantOutputFormat &&
+        window.CrmAssistantRail &&
+        typeof window.CrmAssistantRail.init === 'function'
+    ) {
         return Promise.resolve(window.CrmAssistantRail);
     }
     if (_crmAssistantRailLoadPromise) return _crmAssistantRailLoadPromise;
@@ -312,6 +317,7 @@ function ensureCrmAssistantRailAssets() {
     const suffix = version ? `?v=${encodeURIComponent(version)}` : '';
     const railCssPath = 'css/assistant-rail.css';
     const foundationJsPath = 'js/assistant-foundation.js';
+    const outputFormatJsPath = 'js/assistant-output-format.js';
     const railJsPath = 'js/assistant-rail.js';
     if (!document.querySelector('link[data-crm-assistant-rail-css]')) {
         const link = document.createElement('link');
@@ -348,6 +354,11 @@ function ensureCrmAssistantRailAssets() {
         () => Boolean(window.CrmAssistantFoundation),
         'crm_assistant_foundation_load_failed'
     ).then(() => loadAssistantScript(
+        outputFormatJsPath,
+        'data-crm-assistant-output-format-js',
+        () => Boolean(window.CrmAssistantOutputFormat),
+        'crm_assistant_output_format_load_failed'
+    )).then(() => loadAssistantScript(
         railJsPath,
         'data-crm-assistant-rail-js',
         () => Boolean(window.CrmAssistantRail),

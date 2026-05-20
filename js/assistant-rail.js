@@ -218,6 +218,32 @@
         return div.innerHTML;
     }
 
+    function assistantOutputFormatter() {
+        return window.CrmAssistantOutputFormat || null;
+    }
+
+    function assistantDisplayText(value) {
+        const formatter = assistantOutputFormatter();
+        if (formatter?.toDisplayText) return formatter.toDisplayText(value);
+        return String(value ?? '').replace(/\*\*([^\n]+?)\*\*/g, '$1').trim();
+    }
+
+    function renderAssistantInlineOutput(value) {
+        const formatter = assistantOutputFormatter();
+        if (formatter?.formatInline) return formatter.formatInline(value);
+        return escapeHtml(value);
+    }
+
+    function renderAssistantHistoryBody(role, value) {
+        if (role === 'user') return `<p>${escapeHtml(value)}</p>`;
+        const formatter = assistantOutputFormatter();
+        if (formatter?.formatReadable) {
+            const html = formatter.formatReadable(value);
+            if (html) return html;
+        }
+        return `<p>${escapeHtml(value)}</p>`;
+    }
+
     function normalizeMode(value) {
         return MODES.has(value) ? value : 'idle';
     }
@@ -566,6 +592,7 @@
         if (!rail || !stateEl || !subtitlesEl || !voiceBtn) return;
 
         const text = state.tickerText || state.subtitle || '...';
+        const displayText = assistantDisplayText(text) || '...';
         const snapshot = buildAssistantSnapshot();
         rail.dataset.mode = state.mode;
         rail.dataset.aiState = UI_STATES[state.mode] || 'ready';
@@ -599,11 +626,11 @@
         if (topStatus) topStatus.dataset.aiState = UI_STATES[state.mode] || 'ready';
         if (topStatusLabel) topStatusLabel.textContent = (LABELS[state.mode] || LABELS.idle).toLowerCase();
         if (subtitlesWrap) {
-            subtitlesWrap.title = text;
-            subtitlesWrap.setAttribute('aria-label', `Відкрити відповідь Помічника у чаті: ${text}`);
+            subtitlesWrap.title = displayText;
+            subtitlesWrap.setAttribute('aria-label', `Відкрити відповідь Помічника у чаті: ${displayText}`);
         }
-        subtitlesEl.textContent = text;
-        subtitlesEl.setAttribute('aria-label', text);
+        subtitlesEl.innerHTML = renderAssistantInlineOutput(text);
+        subtitlesEl.setAttribute('aria-label', displayText);
         subtitlesEl.classList.remove('is-ticker', 'is-live-line');
         subtitlesEl.removeAttribute('data-ticker-text');
         subtitlesEl.style.removeProperty('--assistant-ticker-duration');
@@ -634,7 +661,7 @@
 
         requestAnimationFrame(() => {
             const liveLine = isLiveMode(state.mode);
-            const ticker = shouldSubtitleScroll(text, subtitlesWrap, subtitlesEl, state.mode);
+            const ticker = shouldSubtitleScroll(displayText, subtitlesWrap, subtitlesEl, state.mode);
             const subtitleMode = ticker ? 'ticker' : liveLine ? 'live' : 'static';
             subtitlesEl.classList.toggle('is-live-line', liveLine);
             subtitlesEl.classList.toggle('is-ticker', ticker);
@@ -642,8 +669,8 @@
             rail.dataset.subtitleMode = subtitleMode;
             state.subtitleMode = subtitleMode;
             if (ticker) {
-                subtitlesEl.setAttribute('data-ticker-text', text);
-                const duration = Math.min(34, Math.max(18, Math.ceil(String(text).length / 7)));
+                subtitlesEl.setAttribute('data-ticker-text', displayText);
+                const duration = Math.min(34, Math.max(18, Math.ceil(String(displayText).length / 7)));
                 subtitlesEl.style.setProperty('--assistant-ticker-duration', `${duration}s`);
             } else {
                 subtitlesEl.removeAttribute('data-ticker-text');
@@ -2124,7 +2151,7 @@
         container.innerHTML = items.map(item => `
             <div class="crm-assistant-history-item ${escapeHtml(item.role)}${isOldAssistantSession(item) ? ' old-session' : ''}">
                 <span>${item.role === 'user' ? 'Ти' : 'Помічник'}${isOldAssistantSession(item) ? '<small>стара сесія</small>' : ''}</span>
-                <p>${escapeHtml(item.text)}</p>
+                ${renderAssistantHistoryBody(item.role, item.text)}
             </div>
         `).join('');
         container.scrollTop = container.scrollHeight;

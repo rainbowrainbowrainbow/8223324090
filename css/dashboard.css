@@ -4718,3 +4718,42 @@ body.dark-mode .board-frame-label {
 /* v38.3.0: Exceptions Inbox widget */
 .exc-summary { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--gray-200, #e5e7eb); }
 .exc-cat-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: var(--gray-100, #f3f4f6); color: var(--gray-700, #374151); white-space: nowrap; }
+
+/* Legacy dashboard assistant fallback uses the shared safe output formatter. */
+.dashboard-assistant-rail .assistant-output-strong {
+    font-weight: 900;
+    color: inherit;
+}
+
+.dashboard-assistant-history-item .assistant-output-readable {
+    margin: 0;
+    display: grid;
+    gap: 8px;
+    padding: 9px 10px;
+    border-radius: 10px;
+    background: #ffffff;
+    color: var(--text-primary, #172033);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.dashboard-assistant-history-item .assistant-output-readable p,
+.dashboard-assistant-history-item .assistant-output-readable ul,
+.dashboard-assistant-history-item .assistant-output-readable ol {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    color: inherit !important;
+}
+
+.dashboard-assistant-history-item .assistant-output-readable ul,
+.dashboard-assistant-history-item .assistant-output-readable ol {
+    display: grid;
+    gap: 5px;
+    padding-left: 18px !important;
+}
+
+body.dark-mode .dashboard-assistant-history-item .assistant-output-readable {
+    background: rgba(255,255,255,0.06);
+    color: #f8fafc;
+}

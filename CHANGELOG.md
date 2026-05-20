@@ -4,6 +4,17 @@
 
 ---
 
+## v0.60.14 - CRM Assistant Safe Formatting Rail
+
+### CRM Assistant Safe Formatting Rail [codex]
+- **Помічник більше не показує сирий markdown** - canonical assistant rail рендерить `**акценти**` як контрольований bold emphasis у ticker/subtitle lane, без видимих `**` у відповіді.
+- **Readable expanded history** - expanded panel отримав безпечні абзаци, unordered/ordered списки та компактні line breaks, щоб довші відповіді не виглядали як один plain text blob.
+- **Escape-first без raw HTML** - додано shared `CrmAssistantOutputFormat`, який спочатку екранує HTML-подібний текст, а вже потім застосовує тільки дозволені transforms; raw model HTML не вставляється в DOM.
+- **Canonical rail і fallback вирівняні** - `js/assistant-rail.js` і legacy dashboard fallback у `js/dashboard-page.js` використовують один formatter contract, а `auth.js` автовантажить helper разом із rail assets.
+- **Покриття safety cases** - додано focused Node test для plain text, `**bold**`, paragraphs, bullets, ordered lists і HTML-like input, щоб форматування не відкривало XSS-like path.
+
+---
+
 ## v0.60.13 - Tasks Kanban Drag And Drop Status Flow
 
 ### Tasks Kanban Drag And Drop Status Flow [codex]

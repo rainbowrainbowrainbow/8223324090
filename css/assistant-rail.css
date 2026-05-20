@@ -5862,3 +5862,55 @@ body.timeline-dashboard-page.dark-mode .header {
             "actions" !important;
     }
 }
+
+/* Assistant output formatting: controlled helper-generated markup only. */
+.assistant-output-strong {
+    font-weight: 900;
+    color: inherit;
+}
+
+.crm-assistant-rail .assistant-rail-subtitles .assistant-output-strong {
+    font-weight: 900;
+}
+
+.crm-assistant-history-item .assistant-output-readable {
+    margin: 0;
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid rgba(148,163,184,0.10);
+    border-radius: 12px;
+    background: rgba(15, 23, 42, 0.74);
+    color: var(--ai-panel-text, #f8fafc);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.crm-assistant-history-item .assistant-output-readable p,
+.crm-assistant-history-item .assistant-output-readable ul,
+.crm-assistant-history-item .assistant-output-readable ol {
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: inherit !important;
+}
+
+.crm-assistant-history-item .assistant-output-readable ul,
+.crm-assistant-history-item .assistant-output-readable ol {
+    display: grid;
+    gap: 5px;
+    padding-left: 18px !important;
+}
+
+.crm-assistant-history-item .assistant-output-readable li {
+    padding-left: 2px;
+}
+
+body:not(.dark-mode) .crm-assistant-history-item .assistant-output-readable,
+html[data-theme="light"] .crm-assistant-history-item .assistant-output-readable {
+    background: #ffffff;
+    color: #0f172a;
+    border-color: rgba(15, 23, 42, 0.10);
+}

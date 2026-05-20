@@ -878,10 +878,12 @@ const DashboardPage = (() => {
         if (!rail || !stateEl || !subtitlesEl || !voiceBtn) return;
 
         const text = _assistantRailState.tickerText || _assistantRailState.subtitle || '...';
+        const displayText = assistantDisplayText(text) || '...';
         rail.dataset.mode = _assistantRailState.mode;
         stateEl.textContent = ASSISTANT_RAIL_LABELS[_assistantRailState.mode] || ASSISTANT_RAIL_LABELS.idle;
         stateEl.className = `assistant-rail-state assistant-state-${_assistantRailState.mode}`;
-        subtitlesEl.textContent = text;
+        subtitlesEl.innerHTML = renderAssistantInlineOutput(text);
+        subtitlesEl.setAttribute('aria-label', displayText);
         subtitlesEl.classList.remove('is-ticker');
         voiceBtn.textContent = _assistantRailState.voiceEnabled ? '🔊' : '🔇';
         voiceBtn.setAttribute('aria-pressed', _assistantRailState.voiceEnabled ? 'true' : 'false');
@@ -894,7 +896,7 @@ const DashboardPage = (() => {
         if (replayBtn) replayBtn.disabled = !(_assistantRailState.lastSpokenLine || _assistantRailState.subtitle);
 
         requestAnimationFrame(() => {
-            const shouldScroll = shouldAssistantSubtitleScroll(text, subtitlesWrap, subtitlesEl);
+            const shouldScroll = shouldAssistantSubtitleScroll(displayText, subtitlesWrap, subtitlesEl);
             subtitlesEl.classList.toggle('is-ticker', shouldScroll);
         });
     }
@@ -1247,7 +1249,7 @@ const DashboardPage = (() => {
         container.innerHTML = items.map(item => `
             <div class="dashboard-assistant-history-item ${escapeHtml(item.role)}">
                 <span>${item.role === 'user' ? 'Ти' : 'Помічник'}</span>
-                <p>${escapeHtml(item.text)}</p>
+                ${renderAssistantHistoryBody(item.role, item.text)}
             </div>
         `).join('');
         container.scrollTop = container.scrollHeight;
@@ -6431,6 +6433,32 @@ const DashboardPage = (() => {
         const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    }
+
+    function assistantOutputFormatter() {
+        return window.CrmAssistantOutputFormat || null;
+    }
+
+    function assistantDisplayText(value) {
+        const formatter = assistantOutputFormatter();
+        if (formatter?.toDisplayText) return formatter.toDisplayText(value);
+        return String(value ?? '').replace(/\*\*([^\n]+?)\*\*/g, '$1').trim();
+    }
+
+    function renderAssistantInlineOutput(value) {
+        const formatter = assistantOutputFormatter();
+        if (formatter?.formatInline) return formatter.formatInline(value);
+        return escapeHtml(value);
+    }
+
+    function renderAssistantHistoryBody(role, value) {
+        if (role === 'user') return `<p>${escapeHtml(value)}</p>`;
+        const formatter = assistantOutputFormatter();
+        if (formatter?.formatReadable) {
+            const html = formatter.formatReadable(value);
+            if (html) return html;
+        }
+        return `<p>${escapeHtml(value)}</p>`;
     }
 
     function escapeJsString(str) {

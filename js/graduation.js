@@ -1256,7 +1256,7 @@
                 <div class="grad-diploma-template-card">
                     <span>Шаблон</span>
                     <strong>${_esc(diplomaTemplate?.name || 'Класичний диплом')}</strong>
-                    <small>A4 landscape · SVG frame · print-safe</small>
+                    <small>A4 portrait · SVG frame · print-safe</small>
                 </div>
             </div>
 

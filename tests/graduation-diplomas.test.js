@@ -50,6 +50,11 @@ describe('Graduation diploma helper', () => {
         child.id = 1;
         const html = buildDiplomaDocument([child], null, { quote_number: 'GRAD-TEST' });
         assert.match(html, /<svg class="diploma-frame"/);
+        assert.match(html, /@page \{ size: A4 portrait; margin: 0; \}/);
+        assert.match(html, /width: 210mm; height: 297mm/);
+        assert.match(html, /\/images\/park-logo\.png/);
+        assert.doesNotMatch(html, /Класний керівник/);
+        assert.doesNotMatch(html, /A4 landscape/);
         assert.match(html, /&lt;Марія&gt;/);
         assert.doesNotMatch(html, /<script>alert/);
         const csv = buildRosterCsv([child]);

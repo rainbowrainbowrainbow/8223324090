@@ -10,20 +10,20 @@ const DEFAULT_DIPLOMA_TEMPLATE = {
     titleText: 'Диплом випускника',
     subtitleText: 'за яскравий випускний, сміливість мріяти та готовність до нових відкриттів',
     footerText: 'Парк Закревського періоду',
-    principalName: 'Команда Event Genix',
-    principalRole: 'організатори випускного',
+    principalName: 'Парк Закревського періоду',
+    principalRole: 'організатор випускного',
     palette: {
-        paper: '#fbf2dc',
-        ink: '#2f2415',
-        muted: '#7b6848',
-        gold: '#b8860b',
-        goldSoft: '#ecd68a',
-        accent: '#7c2d12'
+        paper: '#fbf0d2',
+        ink: '#24160f',
+        muted: '#745b39',
+        gold: '#b88a24',
+        goldSoft: '#ead6a1',
+        accent: '#6f241c'
     },
     layout: {
-        format: 'a4-landscape',
-        signatureLeft: 'Класний керівник',
-        signatureRight: 'Організатор свята'
+        format: 'a4-portrait',
+        sealLogoUrl: '/images/park-logo.png',
+        officialFooter: 'Парк Закревського періоду'
     },
     artworkImageUrl: null
 };
@@ -253,51 +253,54 @@ function buildDiplomaPage(child, template = DEFAULT_DIPLOMA_TEMPLATE, quote = {}
     const wish = child.customWish || child.finalWish || child.autoWish || pickWish(child);
     const classLine = child.classLabel ? `<div class="diploma-class">${escHtml(child.classLabel)}</div>` : '';
     const quoteLine = quote?.quote_number || quote?.quoteNumber ? `<span>${escHtml(quote.quote_number || quote.quoteNumber)}</span>` : '';
+    const nameLength = String(child.fullName || '').length;
+    const nameClass = nameLength > 44 ? ' is-very-long' : (nameLength > 30 ? ' is-long' : '');
+    const sealLogoUrl = layout.sealLogoUrl || DEFAULT_DIPLOMA_TEMPLATE.layout.sealLogoUrl;
     return `
 <section class="diploma-page" style="--paper:${palette.paper};--ink:${palette.ink};--muted:${palette.muted};--gold:${palette.gold};--gold-soft:${palette.goldSoft};--accent:${palette.accent};">
-    <svg class="diploma-frame" viewBox="0 0 1120 790" aria-hidden="true" focusable="false">
+    <svg class="diploma-frame" viewBox="0 0 790 1120" aria-hidden="true" focusable="false">
         <defs>
-            <linearGradient id="gradGold" x1="0" x2="1">
+            <linearGradient id="diplomaGold" x1="0" x2="1">
                 <stop offset="0" stop-color="${escHtml(palette.goldSoft)}"/>
                 <stop offset="0.5" stop-color="${escHtml(palette.gold)}"/>
                 <stop offset="1" stop-color="${escHtml(palette.goldSoft)}"/>
             </linearGradient>
-            <pattern id="dotPattern" width="22" height="22" patternUnits="userSpaceOnUse">
-                <circle cx="3" cy="3" r="1.4" fill="${escHtml(palette.gold)}" opacity="0.18"/>
+            <pattern id="diplomaMicroDots" width="24" height="24" patternUnits="userSpaceOnUse">
+                <circle cx="4" cy="4" r="1.25" fill="${escHtml(palette.gold)}" opacity="0.16"/>
             </pattern>
         </defs>
-        <rect x="18" y="18" width="1084" height="754" rx="22" fill="none" stroke="url(#gradGold)" stroke-width="8"/>
-        <rect x="38" y="38" width="1044" height="714" rx="16" fill="none" stroke="${escHtml(palette.gold)}" stroke-width="2" opacity="0.8"/>
-        <rect x="58" y="58" width="1004" height="674" rx="12" fill="url(#dotPattern)" opacity="0.5"/>
-        <path d="M124 145 C70 200 70 306 136 365 M996 145 C1050 200 1050 306 984 365" fill="none" stroke="${escHtml(palette.gold)}" stroke-width="5" stroke-linecap="round" opacity="0.76"/>
-        ${Array.from({ length: 9 }).map((_, i) => {
-            const y = 166 + i * 23;
-            const r = 8 + (i % 2);
-            return `<ellipse cx="${118 - i * 3}" cy="${y}" rx="${r}" ry="${r + 5}" fill="${escHtml(palette.gold)}" opacity="0.42" transform="rotate(${-30 + i * 4} ${118 - i * 3} ${y})"/>
-                    <ellipse cx="${1002 + i * 3}" cy="${y}" rx="${r}" ry="${r + 5}" fill="${escHtml(palette.gold)}" opacity="0.42" transform="rotate(${30 - i * 4} ${1002 + i * 3} ${y})"/>`;
+        <rect x="25" y="25" width="740" height="1070" rx="4" fill="none" stroke="url(#diplomaGold)" stroke-width="7"/>
+        <rect x="43" y="43" width="704" height="1034" rx="2" fill="none" stroke="${escHtml(palette.gold)}" stroke-width="2.4" opacity="0.88"/>
+        <rect x="62" y="62" width="666" height="996" rx="2" fill="url(#diplomaMicroDots)" opacity="0.42"/>
+        <path d="M124 162 C78 221 82 315 139 371 M666 162 C712 221 708 315 651 371" fill="none" stroke="${escHtml(palette.gold)}" stroke-width="4.2" stroke-linecap="round" opacity="0.52"/>
+        ${Array.from({ length: 8 }).map((_, i) => {
+            const y = 184 + i * 25;
+            const r = 6 + (i % 2);
+            return `<ellipse cx="${120 - i * 3}" cy="${y}" rx="${r}" ry="${r + 4}" fill="${escHtml(palette.gold)}" opacity="0.33" transform="rotate(${-32 + i * 4} ${120 - i * 3} ${y})"/>
+                    <ellipse cx="${670 + i * 3}" cy="${y}" rx="${r}" ry="${r + 4}" fill="${escHtml(palette.gold)}" opacity="0.33" transform="rotate(${32 - i * 4} ${670 + i * 3} ${y})"/>`;
         }).join('')}
-        <circle cx="560" cy="132" r="58" fill="none" stroke="url(#gradGold)" stroke-width="5"/>
-        <path d="M527 132 L548 153 L593 106" fill="none" stroke="${escHtml(palette.gold)}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M486 660 Q560 706 634 660" fill="none" stroke="${escHtml(palette.gold)}" stroke-width="3" opacity="0.55"/>
+        <path d="M191 100 H599" stroke="${escHtml(palette.gold)}" stroke-width="2.5" opacity="0.62"/>
+        <path d="M226 120 H564" stroke="${escHtml(palette.gold)}" stroke-width="1.2" opacity="0.45"/>
+        <circle cx="395" cy="151" r="46" fill="rgba(255,255,255,0.25)" stroke="url(#diplomaGold)" stroke-width="4"/>
+        <path d="M366 151 L385 170 L426 126" fill="none" stroke="${escHtml(palette.gold)}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M258 918 Q395 994 532 918" fill="none" stroke="${escHtml(palette.gold)}" stroke-width="3" opacity="0.45"/>
+        <path d="M305 940 Q395 988 485 940" fill="none" stroke="${escHtml(palette.gold)}" stroke-width="1.6" opacity="0.42"/>
     </svg>
     <div class="diploma-content">
         <div class="diploma-kicker">${escHtml(template.footerText || DEFAULT_DIPLOMA_TEMPLATE.footerText)}</div>
         <h1>${escHtml(title)}</h1>
         <p class="diploma-subtitle">${escHtml(template.subtitleText || DEFAULT_DIPLOMA_TEMPLATE.subtitleText)}</p>
         <div class="diploma-awarded">Нагороджується</div>
-        <div class="diploma-name">${escHtml(child.fullName)}</div>
+        <div class="diploma-name${nameClass}">${escHtml(child.fullName)}</div>
         ${classLine}
         <div class="diploma-wish">${escHtml(wish)}</div>
-        <div class="diploma-footer">
-            <div class="diploma-signature">
-                <span></span>
-                <strong>${escHtml(layout.signatureLeft || 'Класний керівник')}</strong>
+        <div class="diploma-official-zone">
+            <div class="diploma-park-seal" aria-label="Логотип Парку Закревського періоду">
+                <img src="${escHtml(sealLogoUrl)}" alt="Парк Закревського періоду">
             </div>
-            <div class="diploma-seal">EG</div>
-            <div class="diploma-signature">
-                <span></span>
+            <div class="diploma-organizer">
                 <strong>${escHtml(template.principalName || DEFAULT_DIPLOMA_TEMPLATE.principalName)}</strong>
-                <small>${escHtml(template.principalRole || DEFAULT_DIPLOMA_TEMPLATE.principalRole)}</small>
+                <span>${escHtml(template.principalRole || DEFAULT_DIPLOMA_TEMPLATE.principalRole)}</span>
             </div>
         </div>
         <div class="diploma-meta">${quoteLine}<span>${new Date().toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' })}</span></div>
@@ -320,24 +323,26 @@ html, body { margin: 0; padding: 0; background: #efe7d6; color: #2f2415; font-fa
 .diploma-toolbar { position: sticky; top: 0; z-index: 20; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 18px; background: #15120d; color: #fff; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .diploma-toolbar strong { font-size: 15px; }
 .diploma-toolbar button { border: 0; border-radius: 10px; padding: 10px 14px; background: #b8860b; color: #fff; font-weight: 800; cursor: pointer; }
-.diploma-page { width: 297mm; height: 210mm; margin: 14px auto; position: relative; overflow: hidden; background: radial-gradient(circle at 50% 24%, rgba(255,255,255,0.72), transparent 30%), linear-gradient(135deg, var(--paper), #f5e6bf); color: var(--ink); page-break-after: always; break-after: page; box-shadow: 0 20px 60px rgba(47,36,21,0.22); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.diploma-page { width: 210mm; height: 297mm; margin: 14px auto; position: relative; overflow: hidden; background: radial-gradient(circle at 50% 20%, rgba(255,255,255,0.78), transparent 32%), linear-gradient(145deg, var(--paper), #f4e4bd); color: var(--ink); page-break-after: always; break-after: page; box-shadow: 0 22px 70px rgba(47,36,21,0.24); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .diploma-frame { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.diploma-content { position: relative; z-index: 2; height: 100%; padding: 26mm 33mm 20mm; display: flex; flex-direction: column; align-items: center; text-align: center; }
-.diploma-kicker { font-size: 11pt; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-top: 2mm; }
-.diploma-content h1 { margin: 17mm 0 5mm; font-size: 41pt; line-height: 1; color: var(--accent); font-weight: 800; }
-.diploma-subtitle { max-width: 190mm; margin: 0 auto 10mm; font-size: 14pt; color: var(--muted); line-height: 1.45; }
-.diploma-awarded { font-size: 13pt; color: var(--muted); margin-bottom: 4mm; }
-.diploma-name { width: 100%; max-width: 210mm; padding: 3mm 7mm 5mm; border-top: 2px solid rgba(184,134,11,0.45); border-bottom: 2px solid rgba(184,134,11,0.45); font-size: clamp(28pt, 4.8vw, 46pt); line-height: 1.08; color: var(--ink); font-weight: 800; }
-.diploma-class { margin-top: 3mm; color: var(--muted); font-size: 12pt; font-weight: 700; }
-.diploma-wish { max-width: 205mm; min-height: 23mm; margin: 9mm auto 0; font-size: 16pt; line-height: 1.45; color: var(--ink); }
-.diploma-footer { margin-top: auto; width: 100%; display: grid; grid-template-columns: 1fr 30mm 1fr; align-items: end; gap: 12mm; }
-.diploma-signature { display: grid; gap: 2mm; font-size: 11pt; color: var(--muted); }
-.diploma-signature span { display: block; height: 1px; background: rgba(47,36,21,0.45); }
-.diploma-signature strong { color: var(--ink); font-size: 12pt; }
-.diploma-signature small { color: var(--muted); font-size: 9pt; }
-.diploma-seal { width: 27mm; height: 27mm; border-radius: 50%; display: grid; place-items: center; border: 3px double var(--gold); color: var(--gold); font-size: 18pt; font-weight: 900; margin: 0 auto; background: rgba(255,255,255,0.18); }
-.diploma-meta { display: flex; justify-content: center; gap: 10mm; margin-top: 5mm; font-family: system-ui, sans-serif; font-size: 8pt; color: rgba(47,36,21,0.58); }
-@page { size: A4 landscape; margin: 0; }
+.diploma-content { position: relative; z-index: 2; height: 100%; padding: 32mm 24mm 18mm; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.diploma-kicker { font-size: 10pt; letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-top: 5mm; }
+.diploma-content h1 { margin: 24mm 0 6mm; font-size: 42pt; line-height: 0.98; color: var(--accent); font-weight: 800; letter-spacing: 0.015em; text-transform: uppercase; }
+.diploma-subtitle { max-width: 145mm; margin: 0 auto 13mm; font-size: 13pt; color: var(--muted); line-height: 1.5; }
+.diploma-awarded { font-size: 12.5pt; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 5mm; }
+.diploma-name { width: 100%; max-width: 158mm; padding: 5mm 6mm 6mm; border-top: 2.2px solid rgba(184,138,36,0.58); border-bottom: 2.2px solid rgba(184,138,36,0.58); font-size: 42pt; line-height: 1.05; color: var(--ink); font-weight: 800; text-wrap: balance; }
+.diploma-name.is-long { font-size: 34pt; line-height: 1.08; }
+.diploma-name.is-very-long { font-size: 28pt; line-height: 1.12; }
+.diploma-class { margin-top: 4mm; color: var(--muted); font-size: 11.5pt; font-weight: 700; }
+.diploma-wish { max-width: 150mm; min-height: 44mm; margin: 13mm auto 0; font-size: 15pt; line-height: 1.55; color: var(--ink); display: flex; align-items: center; justify-content: center; }
+.diploma-official-zone { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 4mm; }
+.diploma-park-seal { width: 30mm; height: 30mm; border-radius: 50%; display: grid; place-items: center; padding: 2.2mm; border: 2.5px double var(--gold); background: rgba(255,255,255,0.42); box-shadow: 0 0 0 1.4mm rgba(184,138,36,0.09); overflow: hidden; }
+.diploma-park-seal img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; display: block; }
+.diploma-organizer { display: grid; gap: 1mm; color: rgba(36,22,15,0.72); font-size: 9.5pt; letter-spacing: 0.04em; text-transform: uppercase; }
+.diploma-organizer strong { color: var(--ink); font-size: 10pt; }
+.diploma-organizer span { color: var(--muted); font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 8.5pt; text-transform: none; letter-spacing: 0.02em; }
+.diploma-meta { display: flex; justify-content: center; gap: 8mm; margin-top: 4mm; font-family: system-ui, sans-serif; font-size: 7.5pt; color: rgba(47,36,21,0.52); }
+@page { size: A4 portrait; margin: 0; }
 @media print {
     html, body { background: #fff !important; }
     .diploma-toolbar { display: none !important; }
@@ -345,16 +350,19 @@ html, body { margin: 0; padding: 0; background: #efe7d6; color: #2f2415; font-fa
 }
 @media (max-width: 900px) {
     .diploma-toolbar { position: static; flex-direction: column; align-items: stretch; }
-    .diploma-page { width: min(100vw - 20px, 297mm); height: auto; aspect-ratio: 297 / 210; }
-    .diploma-content { padding: 8% 10% 7%; }
-    .diploma-content h1 { margin-top: 10%; font-size: clamp(26px, 8vw, 46px); }
-    .diploma-subtitle, .diploma-wish { font-size: clamp(12px, 2.9vw, 18px); }
+    .diploma-page { width: min(100vw - 20px, 210mm); height: auto; aspect-ratio: 210 / 297; }
+    .diploma-content { padding: 15% 11% 9%; }
+    .diploma-content h1 { margin-top: 18%; font-size: clamp(30px, 9vw, 46px); }
+    .diploma-name { font-size: clamp(28px, 8vw, 44px); }
+    .diploma-name.is-long { font-size: clamp(23px, 6.8vw, 36px); }
+    .diploma-name.is-very-long { font-size: clamp(20px, 5.8vw, 30px); }
+    .diploma-subtitle, .diploma-wish { font-size: clamp(12px, 3.2vw, 17px); }
 }
 </style>
 </head>
 <body>
 <div class="diploma-toolbar">
-    <div><strong>${escHtml(title)}</strong><div>${childList.length} дипломів, A4 landscape</div></div>
+    <div><strong>${escHtml(title)}</strong><div>${childList.length} дипломів, A4 portrait</div></div>
     <button type="button" onclick="window.print()">Друк / зберегти PDF</button>
 </div>
 ${pages || '<div class="diploma-toolbar"><strong>Немає дітей у списку дипломів</strong></div>'}

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.25 - Graduation Diploma A4 Portrait Refinement
+
+### Graduation Diploma A4 Portrait Refinement [codex]
+- **Дипломи зафіксовано під A4 portrait** - graduation diploma print/export template тепер використовує 210x297mm, `@page A4 portrait` і portrait preview замість старого landscape contract.
+- **Візуал наближено до державної грамоти** - оновлено SVG-рамку, офіційну композицію, золоту рамкову систему, headline/name hierarchy і теплий паперовий стиль без дитячого флаєрного вайбу.
+- **Footer очищено** - повністю прибрано блок `Класний керівник`, а нижню зону перебудовано навколо круглого логотипа Парку Закревського як seal/emblem.
+- **Live template data-fix** - додано idempotent migration для seeded template `classic-graduation-2026`, щоб production DB не залишила старий `a4-landscape` layout.
+
+---
+
 ## v0.60.24 - Assistant Feature Locator Afisha Page
 
 ### Assistant Feature Locator Afisha Page [codex]

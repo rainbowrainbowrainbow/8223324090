@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.60.24",
+  "version": "0.60.25",
   "eventGenix": {
-    "releaseLabel": "Assistant Feature Locator Afisha Page"
+    "releaseLabel": "Graduation Diploma A4 Portrait Refinement"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.60.5 - Assistant Light Mode Polish
+
+### Assistant Light Mode Polish [codex]
+- **Світлий режим Помічника** - верхній rail більше не тягне темну compact-плашку у light theme, а використовує чисту світлу CRM-поверхню.
+- **Читабельність** - avatar, subtitle lane, input і control buttons отримали окремі light-mode кольори, тіні, hover/focus та disabled states.
+- **Guardrail** - UI-smoke перевіряє фінальний light-theme override після старих dark-first compact rules, щоб дизайн знову не регреснув.
+
+---
+
 ## v0.60.4 - Assistant Voice Fallback Fix
 
 ### Assistant Voice Fallback Fix [codex]

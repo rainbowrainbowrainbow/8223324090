@@ -5342,3 +5342,236 @@ body.dark-mode .crm-assistant-rail .assistant-rail-btn {
         transform: none !important;
     }
 }
+
+/* v0.60.5: assistant light mode polish.
+   Keep the flagship rail native to the light CRM shell instead of inheriting the
+   dark top-menu surface from older compact overrides. */
+html[data-theme="light"] .crm-assistant-rail,
+body:not(.dark-mode) .crm-assistant-rail {
+    --assistant-light-rail-surface: rgba(255, 255, 255, 0.96);
+    --assistant-light-rail-surface-2: rgba(240, 253, 250, 0.90);
+    --assistant-light-rail-border: rgba(13, 148, 136, 0.22);
+    --assistant-light-rail-text: #102a43;
+    --assistant-light-rail-muted: #52677a;
+}
+
+html[data-theme="light"] .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail,
+html[data-theme="light"] .crm-assistant-rail-host .crm-assistant-rail,
+body:not(.dark-mode) .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail,
+body:not(.dark-mode) .crm-assistant-rail-host .crm-assistant-rail {
+    --assistant-rail-flow-opacity: 0.26;
+    --assistant-rail-flow-bg:
+        radial-gradient(160px 58px at 8% 45%, rgba(13, 148, 136, 0.13), transparent 72%),
+        linear-gradient(90deg, rgba(13, 148, 136, 0.00), rgba(13, 148, 136, 0.055), rgba(59, 130, 246, 0.035), rgba(13, 148, 136, 0.00));
+    background:
+        radial-gradient(220px 92px at 5% 48%, rgba(20, 184, 166, 0.15), transparent 72%),
+        linear-gradient(180deg, var(--assistant-light-rail-surface), var(--assistant-light-rail-surface-2)) !important;
+    border-color: var(--assistant-light-rail-border) !important;
+    color: var(--assistant-light-rail-text) !important;
+    box-shadow:
+        0 12px 30px rgba(15, 23, 42, 0.08),
+        0 1px 0 rgba(255, 255, 255, 0.84) inset !important;
+}
+
+html[data-theme="light"] .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail:hover,
+html[data-theme="light"] .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail:focus-within,
+body:not(.dark-mode) .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail:hover,
+body:not(.dark-mode) .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail:focus-within {
+    border-color: rgba(13, 148, 136, 0.34) !important;
+    box-shadow:
+        0 16px 36px rgba(15, 23, 42, 0.11),
+        0 1px 0 rgba(255, 255, 255, 0.92) inset !important;
+}
+
+html[data-theme="light"] .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail::before,
+body:not(.dark-mode) .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail::before {
+    mix-blend-mode: normal !important;
+    opacity: var(--assistant-rail-flow-opacity, 0.26) !important;
+}
+
+html[data-theme="light"] .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail::after,
+body:not(.dark-mode) .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail::after {
+    height: 1px !important;
+    background: linear-gradient(90deg, transparent, rgba(13, 148, 136, 0.52), rgba(59, 130, 246, 0.26), transparent) !important;
+    opacity: 0.42 !important;
+}
+
+html[data-theme="light"] .crm-assistant-rail[data-ai-state="thinking"],
+html[data-theme="light"] .crm-assistant-rail[data-ai-state="working"],
+body:not(.dark-mode) .crm-assistant-rail[data-ai-state="thinking"],
+body:not(.dark-mode) .crm-assistant-rail[data-ai-state="working"] {
+    --assistant-rail-flow-bg:
+        linear-gradient(110deg, transparent 0%, rgba(124, 58, 237, 0.08) 36%, transparent 70%),
+        radial-gradient(150px 50px at 18% 48%, rgba(124, 58, 237, 0.10), transparent 72%);
+    border-color: rgba(124, 58, 237, 0.22) !important;
+}
+
+html[data-theme="light"] .crm-assistant-rail[data-ai-state="listening"],
+body:not(.dark-mode) .crm-assistant-rail[data-ai-state="listening"] {
+    --assistant-rail-flow-bg:
+        radial-gradient(95px 38px at 16% 52%, rgba(37, 99, 235, 0.13), transparent 76%),
+        radial-gradient(190px 52px at 22% 52%, rgba(37, 99, 235, 0.08), transparent 72%);
+    border-color: rgba(37, 99, 235, 0.24) !important;
+}
+
+html[data-theme="light"] .crm-assistant-rail[data-ai-state="streaming"],
+html[data-theme="light"] .crm-assistant-rail[data-mode="speaking"],
+body:not(.dark-mode) .crm-assistant-rail[data-ai-state="streaming"],
+body:not(.dark-mode) .crm-assistant-rail[data-mode="speaking"] {
+    --assistant-rail-flow-bg:
+        linear-gradient(90deg, transparent, rgba(5, 150, 105, 0.10), transparent),
+        radial-gradient(170px 54px at 16% 50%, rgba(5, 150, 105, 0.12), transparent 74%);
+    border-color: rgba(5, 150, 105, 0.28) !important;
+    background:
+        radial-gradient(220px 92px at 5% 48%, rgba(5, 150, 105, 0.15), transparent 72%),
+        linear-gradient(180deg, #ffffff, #ecfdf5) !important;
+}
+
+html[data-theme="light"] .crm-assistant-rail[data-ai-state="error"],
+body:not(.dark-mode) .crm-assistant-rail[data-ai-state="error"] {
+    --assistant-rail-flow-bg:
+        radial-gradient(120px 42px at 16% 50%, rgba(220, 38, 38, 0.12), transparent 72%),
+        linear-gradient(90deg, transparent, rgba(220, 38, 38, 0.08), transparent);
+    border-color: rgba(220, 38, 38, 0.26) !important;
+}
+
+html[data-theme="light"] .crm-assistant-rail .assistant-rail-name,
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-name {
+    color: #0f172a !important;
+    text-shadow: none !important;
+}
+
+html[data-theme="light"] .crm-assistant-rail .assistant-rail-state,
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-state {
+    background: color-mix(in srgb, var(--assistant-presence-current) 12%, white) !important;
+    color: color-mix(in srgb, var(--assistant-presence-current) 78%, #0f172a) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--assistant-presence-current) 18%, transparent) !important;
+}
+
+html[data-theme="light"] .crm-assistant-rail .assistant-rail-signal-chip,
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-signal-chip {
+    color: #0f766e !important;
+    background: rgba(13, 148, 136, 0.10) !important;
+}
+
+html[data-theme="light"] .assistant-rail-avatar-core,
+body:not(.dark-mode) .assistant-rail-avatar-core {
+    border-color: color-mix(in srgb, var(--assistant-presence-current) 34%, rgba(15, 23, 42, 0.12)) !important;
+    background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(224, 242, 254, 0.74)),
+        radial-gradient(circle at 28% 20%, rgba(13, 148, 136, 0.16), transparent 34%) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.95),
+        0 10px 22px color-mix(in srgb, var(--assistant-presence-current) 16%, transparent) !important;
+}
+
+html[data-theme="light"] .assistant-rail-avatar-core::after,
+body:not(.dark-mode) .assistant-rail-avatar-core::after {
+    border-color: color-mix(in srgb, var(--assistant-presence-current) 20%, transparent) !important;
+    opacity: 0.34 !important;
+}
+
+html[data-theme="light"] .assistant-rail-avatar-screen,
+body:not(.dark-mode) .assistant-rail-avatar-screen {
+    border-color: color-mix(in srgb, var(--assistant-presence-current) 46%, rgba(15, 23, 42, 0.16)) !important;
+    background: color-mix(in srgb, var(--assistant-presence-current) 13%, #f8fafc) !important;
+    box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.62) !important;
+}
+
+html[data-theme="light"] .assistant-rail-avatar-eye,
+html[data-theme="light"] .assistant-rail-avatar-mouth,
+body:not(.dark-mode) .assistant-rail-avatar-eye,
+body:not(.dark-mode) .assistant-rail-avatar-mouth {
+    background: color-mix(in srgb, var(--assistant-presence-current) 82%, #0f172a) !important;
+    box-shadow: 0 0 7px color-mix(in srgb, var(--assistant-presence-current) 28%, transparent) !important;
+}
+
+html[data-theme="light"] .header .header-content.assistant-rail-mounted .assistant-rail-subtitles-wrap,
+html[data-theme="light"] .crm-assistant-rail .assistant-rail-subtitles-wrap,
+body:not(.dark-mode) .header .header-content.assistant-rail-mounted .assistant-rail-subtitles-wrap,
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-subtitles-wrap {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.86)) !important;
+    box-shadow:
+        inset 0 0 0 1px rgba(15, 23, 42, 0.075),
+        0 6px 18px rgba(15, 23, 42, 0.045) !important;
+}
+
+html[data-theme="light"] .header .header-content.assistant-rail-mounted .assistant-rail-subtitles,
+html[data-theme="light"] .crm-assistant-rail .assistant-rail-subtitles,
+body:not(.dark-mode) .header .header-content.assistant-rail-mounted .assistant-rail-subtitles,
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-subtitles {
+    color: var(--assistant-light-rail-text) !important;
+    text-shadow: none !important;
+}
+
+html[data-theme="light"] .assistant-rail-inline-form,
+body:not(.dark-mode) .assistant-rail-inline-form {
+    background: rgba(255, 255, 255, 0.90) !important;
+    border-color: rgba(15, 23, 42, 0.12) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.92),
+        0 6px 16px rgba(15, 23, 42, 0.045) !important;
+}
+
+html[data-theme="light"] .assistant-rail-inline-form:focus-within,
+body:not(.dark-mode) .assistant-rail-inline-form:focus-within {
+    border-color: rgba(13, 148, 136, 0.32) !important;
+    box-shadow:
+        0 0 0 3px rgba(13, 148, 136, 0.12),
+        0 10px 22px rgba(15, 23, 42, 0.07) !important;
+}
+
+html[data-theme="light"] .assistant-rail-inline-form input,
+body:not(.dark-mode) .assistant-rail-inline-form input {
+    color: #0f172a !important;
+}
+
+html[data-theme="light"] .assistant-rail-inline-form input::placeholder,
+body:not(.dark-mode) .assistant-rail-inline-form input::placeholder {
+    color: rgba(71, 85, 105, 0.66) !important;
+}
+
+html[data-theme="light"] .assistant-rail-inline-search,
+html[data-theme="light"] .assistant-rail-inline-hint,
+body:not(.dark-mode) .assistant-rail-inline-search,
+body:not(.dark-mode) .assistant-rail-inline-hint {
+    color: rgba(15, 118, 110, 0.72) !important;
+}
+
+html[data-theme="light"] .crm-assistant-rail .assistant-rail-btn,
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-btn {
+    color: #0e7490 !important;
+    border-color: rgba(14, 116, 144, 0.18) !important;
+    background: rgba(255, 255, 255, 0.92) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.92),
+        0 8px 18px rgba(15, 23, 42, 0.065) !important;
+}
+
+html[data-theme="light"] .crm-assistant-rail .assistant-rail-btn:hover,
+html[data-theme="light"] .crm-assistant-rail .assistant-rail-btn:focus-visible,
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-btn:hover,
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-btn:focus-visible {
+    color: color-mix(in srgb, var(--assistant-presence-current) 82%, #0f172a) !important;
+    border-color: color-mix(in srgb, var(--assistant-presence-current) 34%, transparent) !important;
+    background: #ffffff !important;
+}
+
+html[data-theme="light"] .crm-assistant-rail .assistant-rail-btn.active,
+html[data-theme="light"] .crm-assistant-rail .assistant-rail-btn-primary.active,
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-btn.active,
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-btn-primary.active {
+    color: #ffffff !important;
+    background: var(--assistant-presence-current) !important;
+    border-color: var(--assistant-presence-current) !important;
+}
+
+html[data-theme="light"] .crm-assistant-rail .assistant-rail-btn:disabled,
+body:not(.dark-mode) .crm-assistant-rail .assistant-rail-btn:disabled {
+    opacity: 0.76 !important;
+    color: #7c8ba1 !important;
+    border-color: rgba(148, 163, 184, 0.24) !important;
+    background: rgba(226, 232, 240, 0.78) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+}

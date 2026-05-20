@@ -31,7 +31,7 @@ function normalizeTaskDate(value) {
 
 function normalizeTaskDuplicatePayload(data = {}) {
     const sourceType = data.source_type ?? data.sourceType ?? 'manual';
-    return {
+    const signature = {
         title: normalizeTaskTitle(data.title),
         day: normalizeTaskDate(data.date || data.deadline || data.remind_at || data.remindAt),
         category: String(data.category || 'admin').trim().toLowerCase(),
@@ -46,6 +46,34 @@ function normalizeTaskDuplicatePayload(data = {}) {
         checklistTemplateKey: String(data.checklist_template_key ?? data.checklistTemplateKey ?? '').trim().toLowerCase(),
         afishaId: String(data.afisha_id ?? data.afishaId ?? '')
     };
+    signature.sourceAnchor = taskDuplicateSourceAnchor(signature);
+    return signature;
+}
+
+function taskDuplicateSourceAnchor(signature = {}) {
+    if (signature.templateId) return `template:${signature.templateId}`;
+    if (signature.packId) return `pack:${signature.packId}`;
+    if (signature.sourceEntityType && signature.sourceEntityId) return `entity:${signature.sourceEntityType}:${signature.sourceEntityId}`;
+    if (signature.afishaId) return `afisha:${signature.afishaId}`;
+    const sourceType = String(signature.sourceType || 'manual').trim().toLowerCase();
+    if (!['manual', 'assistant', 'assistant_command', 'command'].includes(sourceType) && signature.sourceId) {
+        return `${sourceType}:${signature.sourceId}`;
+    }
+    return '';
+}
+
+function duplicateSourceAnchorSql(alias = 't') {
+    return `CASE
+        WHEN COALESCE(${alias}.template_id::text, '') <> '' THEN 'template:' || ${alias}.template_id::text
+        WHEN COALESCE(${alias}.pack_id::text, '') <> '' THEN 'pack:' || ${alias}.pack_id::text
+        WHEN COALESCE(${alias}.source_entity_type, '') <> '' AND COALESCE(${alias}.source_entity_id::text, '') <> ''
+            THEN 'entity:' || lower(${alias}.source_entity_type) || ':' || ${alias}.source_entity_id::text
+        WHEN COALESCE(${alias}.afisha_id::text, '') <> '' THEN 'afisha:' || ${alias}.afisha_id::text
+        WHEN lower(COALESCE(${alias}.source_type, 'manual')) NOT IN ('manual','assistant','assistant_command','command')
+             AND COALESCE(${alias}.source_id::text, '') <> ''
+            THEN lower(COALESCE(${alias}.source_type, 'manual')) || ':' || ${alias}.source_id::text
+        ELSE ''
+    END`;
 }
 
 async function findActiveDuplicateTask(db, data = {}) {
@@ -61,14 +89,8 @@ async function findActiveDuplicateTask(db, data = {}) {
            AND lower(COALESCE(t.category, 'admin')) = $3
            AND lower(COALESCE(t.subcategory, '')) = $4
            AND COALESCE(t.owner_user_id::text, '') = $5
-           AND lower(COALESCE(t.source_type, 'manual')) = $6
-           AND COALESCE(t.source_id::text, '') = $7
-           AND COALESCE(t.template_id::text, '') = $8
-           AND lower(COALESCE(t.source_entity_type, '')) = $9
-           AND COALESCE(t.source_entity_id::text, '') = $10
-           AND COALESCE(t.pack_id::text, '') = $11
-           AND lower(COALESCE(t.checklist_template_key, '')) = $12
-           AND COALESCE(t.afisha_id::text, '') = $13
+           AND lower(COALESCE(t.checklist_template_key, '')) = $6
+           AND ${duplicateSourceAnchorSql('t')} = $7
          ORDER BY t.id ASC
          LIMIT 1`,
         [
@@ -77,14 +99,8 @@ async function findActiveDuplicateTask(db, data = {}) {
             signature.category,
             signature.subcategory,
             signature.ownerUserId,
-            signature.sourceType,
-            signature.sourceId,
-            signature.templateId,
-            signature.sourceEntityType,
-            signature.sourceEntityId,
-            signature.packId,
             signature.checklistTemplateKey,
-            signature.afishaId
+            signature.sourceAnchor
         ]
     );
     return result.rows[0] || null;
@@ -101,21 +117,31 @@ function duplicateSignatureSql(alias = 't') {
         lower(COALESCE(${alias}.category, 'admin')),
         lower(COALESCE(${alias}.subcategory, '')),
         COALESCE(${alias}.owner_user_id::text, ''),
-        lower(COALESCE(${alias}.source_type, 'manual')),
-        COALESCE(${alias}.source_id::text, ''),
-        COALESCE(${alias}.template_id::text, ''),
-        lower(COALESCE(${alias}.source_entity_type, '')),
-        COALESCE(${alias}.source_entity_id::text, ''),
-        COALESCE(${alias}.pack_id::text, ''),
         lower(COALESCE(${alias}.checklist_template_key, '')),
-        COALESCE(${alias}.afisha_id::text, '')
+        ${duplicateSourceAnchorSql(alias)}
+    )`;
+}
+
+function activeDuplicateCanonicalFilterSql(alias = 't') {
+    const duplicateAlias = 'task_duplicate_canonical';
+    return `(
+        COALESCE(${alias}.status, 'todo') IN ('done','archived','cancelled')
+        OR NOT EXISTS (
+            SELECT 1
+            FROM tasks ${duplicateAlias}
+            WHERE ${duplicateAlias}.id < ${alias}.id
+              AND ${ACTIVE_TASK_STATUS_SQL.replaceAll('t.', `${duplicateAlias}.`)}
+              AND ${duplicateSignatureSql(duplicateAlias)} = ${duplicateSignatureSql(alias)}
+        )
     )`;
 }
 
 module.exports = {
     ACTIVE_TASK_STATUS_SQL,
     TaskDuplicateError,
+    activeDuplicateCanonicalFilterSql,
     canForceTaskDuplicate,
+    duplicateSourceAnchorSql,
     duplicateSignatureSql,
     findActiveDuplicateTask,
     normalizeTaskDuplicatePayload,

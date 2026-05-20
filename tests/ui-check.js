@@ -525,6 +525,8 @@ const kleshnyaWidgetCode = fs.readFileSync(path.join(ROOT, 'js/kleshnya-widget.j
 const assistantRailCss = fs.readFileSync(path.join(ROOT, 'css/assistant-rail.css'), 'utf8');
 const dashboardAssistantServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'dashboardAssistant.js'), 'utf8');
 const dashboardRouteCode = fs.readFileSync(path.join(ROOT, 'routes/dashboard.js'), 'utf8');
+const tasksRouteCode = fs.readFileSync(path.join(ROOT, 'routes/tasks.js'), 'utf8');
+const taskDuplicatePolicyCode = fs.readFileSync(path.join(ROOT, 'services/taskDuplicatePolicy.js'), 'utf8');
 const chatRouteCode = fs.readFileSync(path.join(ROOT, 'routes', 'chat.js'), 'utf8');
 const chatServiceCode = fs.readFileSync(path.join(ROOT, 'services', 'chatService.js'), 'utf8');
 check('Training page script does not double-initialize sidebar', !trainingPageCode.includes('Sidebar.init('));
@@ -661,6 +663,7 @@ check('Tasks my view includes owned and delegated tasks with clear assignment ba
 check('Tasks observer policy reaches detail UI and task APIs', tasksCode.includes('loadTaskObservers(t.id)') && tasksCode.includes('observerUserIds') && htmlContains('routes/tasks.js', "router.get('/:id/observers'") && htmlContains('services/taskPolicy.js', 'buildTaskObserverMatch'));
 check('Tasks intelligence badges do not render raw object labels', tasksCode.includes('function formatTaskIntelLabel') && tasksCode.includes('formatTaskIntelLabel(intel.recommendedAction)'));
 check('Tasks delete action does not bubble into card or bulk confirm flows', tasksCode.includes('onclick="deleteTask(event, ${t.id})"') && tasksCode.includes("eventOrTaskId.stopPropagation?.()") && tasksCode.includes('clearBulkSelection();') && uiCode.includes('let _activeConfirmClose = null') && uiCode.includes("overlay.dataset.confirmKind = 'confirm'") && uiCode.includes('const _toastDedupeMs = 1400'));
+check('Tasks API hides active duplicate rows by default and keeps governance cleanup explicit', tasksRouteCode.includes('activeDuplicateCanonicalFilterSql') && tasksRouteCode.includes('include_duplicates') && taskDuplicatePolicyCode.includes('function activeDuplicateCanonicalFilterSql') && taskDuplicatePolicyCode.includes('function taskDuplicateSourceAnchor') && tasksCode.includes('apiCleanupTaskDuplicates(true)') && tasksCode.includes('Звичайний список показує canonical-рядки') && htmlContains('db/migrations/188_tasks_canonical_active_dedup_v2.sql', "archive_reason = 'auto_duplicate_v2'"));
 check('Task detail overlay uses guarded close instead of direct backdrop removal', tasksCode.includes('function isTaskDetailDirty') && tasksCode.includes('closeTaskDetailOverlay(false)') && !tasksCode.includes("taskDetailOverlay')?.remove()"));
 check('Task detail save sends stale-write version from selected task', tasksCode.includes('dataset.taskVersion') && tasksCode.includes('version: document.getElementById'));
 check('Tasks stale focus view falls back safely', tasksCode.includes("requestedView === 'focus'") && tasksCode.includes("currentView = 'today'"));

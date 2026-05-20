@@ -714,12 +714,12 @@ async function apiGetTaskDedupReport() {
     } catch (err) { console.error('API getTaskDedupReport error:', err); return null; }
 }
 
-async function apiCleanupTaskDuplicates() {
+async function apiCleanupTaskDuplicates(dryRun = false) {
     try {
         const response = await fetch(`${API_BASE}/tasks/dedup-cleanup`, {
             method: 'POST',
             headers: getAuthHeaders(),
-            body: JSON.stringify({ dryRun: false })
+            body: JSON.stringify({ dryRun })
         });
         if (handleAuthError(response)) return null;
         return await response.json();
@@ -1203,11 +1203,18 @@ function setupTaskGovernanceMenu() {
             return;
         }
         const groups = result.groups || [];
-        showNotification(groups.length ? `Знайдено груп дублів: ${groups.length}` : 'Активних дублів не знайдено', groups.length ? 'warning' : 'success');
+        const duplicateTotal = groups.reduce((sum, group) => sum + Number(group.duplicate_count || group.duplicateCount || 0), 0);
+        showNotification(groups.length ? `Знайдено ${duplicateTotal} активних дублів у ${groups.length} групах. Звичайний список показує canonical-рядки.` : 'Активних дублів не знайдено', groups.length ? 'warning' : 'success');
     });
 
     document.getElementById('taskDedupCleanupBtn')?.addEventListener('click', async () => {
-        if (!await confirmModal('Архівувати активні дублікати без видалення?', { type: 'warning', okText: 'Архівувати' })) return;
+        const dryRun = await apiCleanupTaskDuplicates(true);
+        const victims = Number(dryRun?.victims || 0);
+        if (!victims) {
+            showNotification('Cleanup не потрібен: активних дублів немає', 'success');
+            return;
+        }
+        if (!await confirmModal(`Архівувати ${victims} активних дублів без видалення історії?`, { type: 'warning', okText: 'Архівувати' })) return;
         const result = await apiCleanupTaskDuplicates();
         if (!result?.success) {
             showNotification('Cleanup дублів не виконано', 'error');
@@ -1617,7 +1624,7 @@ function renderArchiveView(container) {
     }
     container.innerHTML = `<div style="margin-bottom:12px;color:var(--gray-500);font-size:13px">📦 Архівованих задач: ${archived.length}</div>` +
         archived.slice(0, 50).map(t => {
-            const reason = t.archive_reason === 'auto_expired' ? 'Прострочена' : t.archive_reason === 'auto_duplicate' ? 'Дублікат' : t.archive_reason || 'Архів';
+            const reason = t.archive_reason === 'auto_expired' ? 'Прострочена' : ['auto_duplicate', 'auto_duplicate_v2'].includes(t.archive_reason) ? 'Дублікат' : t.archive_reason || 'Архів';
             return `<div class="task-card status-done" style="opacity:0.7" data-task-id="${t.id}">
                 <div class="task-card-title">${escapeHtml(t.title)}</div>
                 <div class="task-card-meta">

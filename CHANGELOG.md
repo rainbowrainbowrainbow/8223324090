@@ -4,6 +4,18 @@
 
 ---
 
+## v0.60.1 - Tasks Truth Canonical Board
+
+### Tasks Truth Canonical Board [codex]
+- **Правда у списку задач** - звичайний `/api/tasks` більше не віддає пізніші active-дублі: backend лишає один canonical active row, а повний duplicate state доступний через governance/dedup.
+- **Duplicate policy v2** - duplicate signature тепер спирається на title/day/category/subcategory/owner/checklist і stable source anchor, а не на випадкові source-поля, які різні writers могли заповнювати по-різному.
+- **Cleanup без видалення** - міграція `188_tasks_canonical_active_dedup_v2.sql` архівує duplicate active rows як `auto_duplicate_v2`, привʼязує їх до canonical задачі й не видаляє історію.
+- **Completed lifecycle** - виконані задачі лишаються в системі, мають `completed_at`, показуються закресленими й доступні в окремому board `Виконано сьогодні`.
+- **Меню “Життєвий цикл”** - governance menu отримало dry-run duplicate report, точний count перед cleanup і централізовані дії для виконаних та архівних задач.
+- **Guardrail** - UI-smoke перевіряє default duplicate collapse, v2 source anchor, migration marker і dry-run cleanup перед архівацією.
+
+---
+
 ## v0.60.0 - Dashboard Scene Board Tools
 
 ### Dashboard Scene Board Tools [codex]

@@ -31,6 +31,7 @@ const { listTaskActionHistory, logTaskActionEvent, TASK_ACTION_TYPES } = require
 const { deriveTaskIntelligence } = require('../services/taskIntelligence');
 const {
     TaskDuplicateError,
+    activeDuplicateCanonicalFilterSql,
     canForceTaskDuplicate,
     duplicateSignatureSql,
     findActiveDuplicateTask
@@ -509,7 +510,7 @@ router.get('/', async (req, res) => {
             date_from, date_to, page, limit: lim, mine, private: privateOnly, focus,
             related_entity_type, relatedEntityType, related_entity_id, relatedEntityId, source_module, sourceModule,
             source_entity_type, sourceEntityType, source_entity_id, sourceEntityId, pack_id, packId, pack_status, packStatus,
-            view
+            view, include_duplicates, includeDuplicates
         } = req.query;
         const conditions = [];
         const params = [];
@@ -653,6 +654,11 @@ router.get('/', async (req, res) => {
         if (normalizedPackStatus) {
             conditions.push(`t.pack_status = $${idx++}`);
             params.push(normalizedPackStatus);
+        }
+
+        const includeDuplicateRows = isTruthy(include_duplicates || includeDuplicates);
+        if (!includeDuplicateRows && view !== 'archive') {
+            conditions.push(activeDuplicateCanonicalFilterSql('t'));
         }
 
         // Role/object visibility: typed owner_user_id first, legacy string fallback for unmapped tasks.
@@ -800,7 +806,7 @@ router.get('/dedup-report', requireRole('admin', 'user'), async (req, res) => {
             success: true,
             groups: result.rows,
             meta: {
-                policy: 'active signature: title + day + category + subcategory + owner + source/template/entity/pack/afisha',
+                policy: 'active signature: title + day + category + subcategory + owner + checklist + stable source anchor',
                 cleanup: 'archives duplicates, no DELETE'
             }
         });

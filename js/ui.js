@@ -908,8 +908,11 @@ function showNotification(message, type = '') {
     }, 3000);
 }
 
-// Alias for showNotification (used by chat-page.js and others)
-const showToast = showNotification;
+// Alias for showNotification (used by chat-page.js and others).
+// Keep this as a var-backed global because legacy catalog/dashboard scripts
+// also declare a defensive var showToast fallback.
+var showToast = window.showToast || showNotification;
+window.showToast = showToast;
 
 function handleError(context, error) {
     console.error(`[${context}]`, error);

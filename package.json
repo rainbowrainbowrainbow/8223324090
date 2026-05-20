@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.60.14",
+  "version": "0.60.15",
   "eventGenix": {
-    "releaseLabel": "CRM Assistant Safe Formatting Rail"
+    "releaseLabel": "CRM Assistant Formatting Post-Release Hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

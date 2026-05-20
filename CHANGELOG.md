@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.15 - CRM Assistant Formatting Post-Release Hardening
+
+### CRM Assistant Formatting Post-Release Hardening [codex]
+- **Dashboard verification noise cleaned up** - виправлено legacy `showToast` alias collision між `js/ui.js` і `js/catalogs.js`, через який dashboard smoke міг падати з `Identifier 'showToast' has already been declared`.
+- **Formatter rollout не розширювався** - safe assistant formatter з `v0.60.14` лишився тим самим escape-first контрактом; зміна не додає нові markdown-функції, typography controls або backend formatting behavior.
+- **Canonical/fallback parity підтверджено** - canonical assistant rail і dashboard fallback продовжують використовувати один `CrmAssistantOutputFormat` helper для inline bold, readable paragraphs/lists і escaped HTML-like text.
+- **UAT boundary зафіксовано чесно** - live `v0.60.14` було підтверджено перед fix, а реальний authenticated UAT потребує дійсної live-сесії/облікових даних; локальний authenticated-shell smoke використано як substitute для formatter DOM contract.
+
+---
+
 ## v0.60.14 - CRM Assistant Safe Formatting Rail
 
 ### CRM Assistant Safe Formatting Rail [codex]

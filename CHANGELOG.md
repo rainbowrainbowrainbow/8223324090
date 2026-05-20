@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.3 - Assistant Timeline Context Fix
+
+### Assistant Timeline Context Fix [codex]
+- **Помічник бачить відкриту дату** - питання про розклад у таймлайні тепер беруть дату з `AppState.selectedDate` / `#timelineDate`, а не автоматично з поточного календарного дня.
+- **Бронювання не губляться** - якщо API не повернуло записи, але на видимому таймлайні є картки бронювань, Помічник підмішує DOM-зріз і не каже помилково, що бронювань немає.
+- **Афіша рахується окремо** - fallback-зчитування з таймлайна не схлопує різні події афіші в один пункт, якщо вони стоять у різний час.
+- **Guardrail** - UI-smoke перевіряє selected-date контракт і DOM fallback для видимих booking blocks у shared assistant rail.
+
+---
+
 ## v0.60.2 - Assistant Full Rethink
 
 ### Assistant Full Rethink [codex]

@@ -848,18 +848,66 @@
         return `${year}-${month}-${day}`;
     }
 
-    function getTimelineScheduleQueryDate(raw = '') {
+    function normalizeAssistantDate(value) {
+        if (!value) return '';
+        if (value instanceof Date && !Number.isNaN(value.getTime())) return formatAssistantLocalDate(value);
+        const raw = String(value || '').trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+        const parsed = new Date(raw);
+        return Number.isNaN(parsed.getTime()) ? '' : formatAssistantLocalDate(parsed);
+    }
+
+    function formatAssistantDisplayDate(dateStr = '') {
+        const raw = normalizeAssistantDate(dateStr);
+        if (!raw) return '';
+        const [year, month, day] = raw.split('-');
+        return `${day}.${month}.${year}`;
+    }
+
+    function getVisibleTimelineDate() {
+        const stateDate = normalizeAssistantDate(window.AppState?.selectedDate);
+        const inputDate = normalizeAssistantDate(document.getElementById('timelineDate')?.value);
+        const date = stateDate || inputDate || formatAssistantLocalDate(new Date());
+        return {
+            date,
+            source: stateDate || inputDate ? 'visible_timeline_date' : 'local_today'
+        };
+    }
+
+    function getRelativeTimelineDate(raw = '') {
         const text = String(raw || '').toLowerCase();
         const date = new Date();
         if (/післязавтра|after tomorrow/i.test(text)) {
             date.setDate(date.getDate() + 2);
-            return { date: formatAssistantLocalDate(date), label: 'післязавтра' };
+            return { date: formatAssistantLocalDate(date), label: 'післязавтра', explicit: true };
         }
         if (/завтра|tomorrow/i.test(text)) {
             date.setDate(date.getDate() + 1);
-            return { date: formatAssistantLocalDate(date), label: 'завтра' };
+            return { date: formatAssistantLocalDate(date), label: 'завтра', explicit: true };
         }
-        return { date: formatAssistantLocalDate(date), label: 'сьогодні' };
+        if (/сьогодні|today/i.test(text)) {
+            return { date: formatAssistantLocalDate(date), label: 'сьогодні', explicit: true };
+        }
+        return null;
+    }
+
+    function getTimelineScheduleQueryDate(raw = '') {
+        const text = String(raw || '').toLowerCase();
+        const explicit = getRelativeTimelineDate(text);
+        const visible = getVisibleTimelineDate();
+        const asksVisiblePage = /(видим|екран|сторін|відкрит|поточн|зараз|visible|screen|page|current|opened)/i.test(text);
+
+        if ((!explicit || asksVisiblePage) && visible.date) {
+            const today = formatAssistantLocalDate(new Date());
+            return {
+                date: visible.date,
+                label: visible.date === today ? 'сьогодні' : `видимій даті ${formatAssistantDisplayDate(visible.date)}`,
+                source: visible.source,
+                visibleDateUsed: true
+            };
+        }
+
+        return explicit || { date: visible.date || formatAssistantLocalDate(new Date()), label: 'сьогодні', source: 'local_today' };
     }
 
     function isTimelineScheduleQuery(raw = '') {
@@ -867,8 +915,9 @@
         const text = String(raw || '').toLowerCase();
         const asksSchedule = /(заход|захор|поді[яї]|брон|івент|event|booking|афіш)/i.test(text);
         const asksDate = /(сьогодні|завтра|післязавтра|today|tomorrow|after tomorrow)/i.test(text);
+        const asksVisiblePage = /(видим|екран|сторін|відкрит|поточн|зараз|visible|screen|page|current|opened|таймлайн|timeline)/i.test(text);
         const asksReadOnly = /(які|що|скажи|покажи|розкажи|список|є|скільки|what|show|tell|list)/i.test(text);
-        return asksSchedule && asksDate && asksReadOnly;
+        return asksSchedule && asksReadOnly && (asksDate || asksVisiblePage);
     }
 
     function assistantReadonlyHeaders() {
@@ -877,11 +926,70 @@
         return token ? { Authorization: `Bearer ${token}` } : {};
     }
 
-    async function fetchAssistantScheduleJson(url) {
+    function normalizeAssistantScheduleResponse(data, preferredKeys = []) {
+        if (Array.isArray(data)) return data;
+        if (!data || typeof data !== 'object') return [];
+        const keys = [...preferredKeys, 'bookings', 'afisha', 'items', 'events', 'data', 'rows', 'results'];
+        for (const key of keys) {
+            if (Array.isArray(data[key])) return data[key];
+        }
+        return [];
+    }
+
+    async function fetchAssistantScheduleJson(url, preferredKeys = []) {
         const response = await fetch(url, { headers: assistantReadonlyHeaders() });
         if (!response.ok) throw new Error(`timeline_schedule_http_${response.status}`);
         const data = await response.json().catch(() => []);
-        return Array.isArray(data) ? data : [];
+        return normalizeAssistantScheduleResponse(data, preferredKeys);
+    }
+
+    function isVisibleAssistantTimelineBlock(el) {
+        if (!el || el.classList?.contains('status-hidden')) return false;
+        const rect = el.getBoundingClientRect?.();
+        return !rect || (rect.width > 0 && rect.height > 0);
+    }
+
+    function collectVisibleTimelineBlocks(selector, type = 'booking') {
+        return Array.from(document.querySelectorAll(selector))
+            .filter(isVisibleAssistantTimelineBlock)
+            .map((el, index) => {
+                const title = compactText(el.querySelector('.title')?.textContent || el.getAttribute('aria-label') || el.textContent || '', '', 90);
+                const subtitle = compactText(el.querySelector('.subtitle')?.textContent || '', '', 36);
+                const time = (subtitle.match(/\b\d{1,2}:\d{2}\b/) || title.match(/\b\d{1,2}:\d{2}\b/) || [])[0] || '';
+                return {
+                    id: el.dataset.bookingId || el.dataset.afishaId || `${type}-dom-${index}`,
+                    label: title,
+                    title,
+                    time,
+                    status: type === 'booking' && el.classList.contains('preliminary') ? 'preliminary' : '',
+                    source: 'timeline_schedule_visible_dom'
+                };
+            })
+            .filter(item => item.title || item.time);
+    }
+
+    function collectVisibleTimelineBookings() {
+        return collectVisibleTimelineBlocks('#timelineLines .booking-block:not(.afisha-block)', 'booking');
+    }
+
+    function collectVisibleTimelineAfisha() {
+        return collectVisibleTimelineBlocks('#timelineLines .afisha-block', 'afisha');
+    }
+
+    function mergeScheduleItems(apiItems = [], domItems = [], type = 'booking') {
+        const merged = [];
+        const seen = new Set();
+        [...apiItems, ...domItems].forEach((item, index) => {
+            const id = item?.id || item?.bookingId || item?.booking_id || item?.afishaId || item?.afisha_id;
+            const title = item?.title || item?.label || item?.programName || item?.program || item?.name || '';
+            const time = item?.time || item?.startTime || item?.starts_at || '';
+            const domSyntheticTime = item?.source === 'timeline_schedule_visible_dom' && type === 'afisha' && time ? `:${time}` : '';
+            const key = id ? `${type}:id:${id}${domSyntheticTime}` : `${type}:text:${time}:${title}:${index}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            merged.push(item);
+        });
+        return merged;
     }
 
     function scheduleItemTime(item = {}) {
@@ -932,10 +1040,20 @@
         });
         try {
             const [bookings, afisha] = await Promise.all([
-                fetchAssistantScheduleJson(`/api/bookings/${encodeURIComponent(query.date)}`),
-                fetchAssistantScheduleJson(`/api/afisha/${encodeURIComponent(query.date)}`)
+                fetchAssistantScheduleJson(`/api/bookings/${encodeURIComponent(query.date)}`, ['bookings']),
+                fetchAssistantScheduleJson(`/api/afisha/${encodeURIComponent(query.date)}`, ['afisha', 'events'])
             ]);
-            const line = buildTimelineScheduleReply({ label: query.label, bookings, afisha });
+            const visibleDate = getVisibleTimelineDate();
+            const canUseVisibleDom = query.date === visibleDate.date;
+            const visibleBookings = canUseVisibleDom ? collectVisibleTimelineBookings() : [];
+            const visibleAfisha = canUseVisibleDom ? collectVisibleTimelineAfisha() : [];
+            const scheduleBookings = canUseVisibleDom
+                ? mergeScheduleItems(bookings, visibleBookings, 'booking')
+                : bookings;
+            const scheduleAfisha = canUseVisibleDom
+                ? mergeScheduleItems(afisha, visibleAfisha, 'afisha')
+                : afisha;
+            const line = buildTimelineScheduleReply({ label: query.label, bookings: scheduleBookings, afisha: scheduleAfisha });
             await playReply({
                 mode: 'guide',
                 summary: line,

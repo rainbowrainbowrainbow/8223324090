@@ -53,6 +53,10 @@ describe('Graduation diploma helper', () => {
         assert.match(html, /@page \{ size: A4 portrait; margin: 0; \}/);
         assert.match(html, /width: 210mm; height: 297mm/);
         assert.match(html, /\/images\/park-logo\.png/);
+        assert.match(html, /\/images\/mr-zak-spring\.png/);
+        assert.match(html, /\/images\/mr-zak-summer\.png/);
+        assert.match(html, /comicDots/);
+        assert.match(html, /diploma-paper-card/);
         assert.doesNotMatch(html, /Класний керівник/);
         assert.doesNotMatch(html, /ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ/);
         assert.doesNotMatch(html, /організатор випускного/);

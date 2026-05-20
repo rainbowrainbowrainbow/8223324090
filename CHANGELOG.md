@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.28 - Graduation Diploma Comic Visual
+
+### Graduation Diploma Comic Visual [codex]
+- **Комікс-стиль замість офіційної грамоти** - diploma template перебудовано під яскравий A4 portrait макет у стилі пригодницького коміксу з pop-art фоном, halftone dots, зірками та супергеройською енергією.
+- **Персонажі в шаблоні** - додано підтримку `characterTopUrl` / `characterBottomUrl` у `layout_json`; поки використані наявні `mr-zak` assets, а нові персонажі можна буде підставити без переписування engine.
+- **Footer і дата чистіші** - зверху немає тексту парку чи галочки, службова інформація типу організатора/GRAD-номера не рендериться, дата стала помітним badge всередині рамки.
+- **Production template migration** - додано idempotent migration для seeded template `classic-graduation-2026`, щоб live DB отримала той самий comic visual contract.
+
+---
+
 ## v0.60.27 - Auth Login Alias Recovery
 
 ### Auth Login Alias Recovery [codex]

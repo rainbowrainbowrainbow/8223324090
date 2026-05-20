@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.60.27">
-    <link rel="stylesheet" href="css/auth.css?v=0.60.27">
-    <link rel="stylesheet" href="css/layout.css?v=0.60.27">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.27">
-    <link rel="stylesheet" href="css/timeline.css?v=0.60.27">
-    <link rel="stylesheet" href="css/panel.css?v=0.60.27">
-    <link rel="stylesheet" href="css/modals.css?v=0.60.27">
-    <link rel="stylesheet" href="css/controls.css?v=0.60.27">
-    <link rel="stylesheet" href="css/features.css?v=0.60.27">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.27">
-    <link rel="stylesheet" href="css/responsive.css?v=0.60.27">
-    <link rel="stylesheet" href="css/pages.css?v=0.60.27">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.60.27">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.27">
+    <link rel="stylesheet" href="css/base.css?v=0.60.28">
+    <link rel="stylesheet" href="css/auth.css?v=0.60.28">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.28">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.28">
+    <link rel="stylesheet" href="css/timeline.css?v=0.60.28">
+    <link rel="stylesheet" href="css/panel.css?v=0.60.28">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.28">
+    <link rel="stylesheet" href="css/controls.css?v=0.60.28">
+    <link rel="stylesheet" href="css/features.css?v=0.60.28">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.28">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.28">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.28">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.60.28">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.28">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.60.27 Auth Login Alias Recovery">✨ 0.60.27 Auth Login Alias Recovery</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.60.28 Graduation Diploma Comic Visual">✨ 0.60.28 Graduation Diploma Comic Visual</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.60.27 — Auth Login Alias Recovery</p>
+                <p class="tagline">AI First CRM v0.60.28 — Graduation Diploma Comic Visual</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.60.27: Auth Login Alias Recovery</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.60.28: Graduation Diploma Comic Visual</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1270,11 +1270,11 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.60.27 — Auth Login Alias Recovery</h4>
+                    <h4>v0.60.28 — Graduation Diploma Comic Visual</h4>
                     <ul>
-                        <li><b>Auth</b> — login route тепер підтримує контрольовані aliases користувача без зміни password hash або створення дубль-акаунта.</li>
-                        <li><b>Zhenia</b> — alias `Zhenia` / `Женя` привʼязується до існуючого акаунта `Zhenya`, якщо він є в production DB.</li>
-                        <li><b>Стабільність</b> — додано regression coverage для normalizing login identifier і alias lookup contract.</li>
+                        <li><b>Дипломи</b> — шаблон випускних переведено в яскравий comic/pop-art стиль з A4 portrait layout, зірками, halftone фоном і персонажами.</li>
+                        <li><b>Персонажі</b> — додано `characterTopUrl` / `characterBottomUrl`, щоб нові згенеровані герої можна було підставити без переписування diploma engine.</li>
+                        <li><b>Друк</b> — дата стала помітним badge всередині рамки, а службові footer-рядки та GRAD-номер не рендеряться на дипломі.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -8081,27 +8081,27 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.60.27"></script>
-    <script src="js/config.js?v=0.60.27"></script>
-    <script src="js/api.js?v=0.60.27"></script>
-    <script src="js/ui.js?v=0.60.27"></script>
-    <script src="js/auth.js?v=0.60.27"></script>
-    <script src="js/timeline.js?v=0.60.27"></script>
-    <script src="js/booking.js?v=0.60.27"></script>
-    <script src="js/settings.js?v=0.60.27"></script>
-    <script src="js/booking-form.js?v=0.60.27"></script>
-    <script src="js/booking-linked.js?v=0.60.27"></script>
-    <script src="js/settings-dashboard.js?v=0.60.27"></script>
-    <script src="js/settings-history.js?v=0.60.27"></script>
-    <script src="js/settings-afisha.js?v=0.60.27"></script>
-    <script src="js/settings-certificates.js?v=0.60.27"></script>
-    <script src="js/offline.js?v=0.60.27"></script>
-    <script src="js/crm-feature-registry.js?v=0.60.27"></script>
-    <script src="js/search.js?v=0.60.27"></script>
-    <script src="js/ws.js?v=0.60.27"></script>
-    <script src="js/app.js?v=0.60.27"></script>
-    <script src="js/kleshnya-widget.js?v=0.60.27"></script>
-    <script src="js/components/sidebar.js?v=0.60.27"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.60.27"></script>
+    <script src="js/timeline-context.js?v=0.60.28"></script>
+    <script src="js/config.js?v=0.60.28"></script>
+    <script src="js/api.js?v=0.60.28"></script>
+    <script src="js/ui.js?v=0.60.28"></script>
+    <script src="js/auth.js?v=0.60.28"></script>
+    <script src="js/timeline.js?v=0.60.28"></script>
+    <script src="js/booking.js?v=0.60.28"></script>
+    <script src="js/settings.js?v=0.60.28"></script>
+    <script src="js/booking-form.js?v=0.60.28"></script>
+    <script src="js/booking-linked.js?v=0.60.28"></script>
+    <script src="js/settings-dashboard.js?v=0.60.28"></script>
+    <script src="js/settings-history.js?v=0.60.28"></script>
+    <script src="js/settings-afisha.js?v=0.60.28"></script>
+    <script src="js/settings-certificates.js?v=0.60.28"></script>
+    <script src="js/offline.js?v=0.60.28"></script>
+    <script src="js/crm-feature-registry.js?v=0.60.28"></script>
+    <script src="js/search.js?v=0.60.28"></script>
+    <script src="js/ws.js?v=0.60.28"></script>
+    <script src="js/app.js?v=0.60.28"></script>
+    <script src="js/kleshnya-widget.js?v=0.60.28"></script>
+    <script src="js/components/sidebar.js?v=0.60.28"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.60.28"></script>
 </body>
 </html>

@@ -36,13 +36,6 @@ const MODAL_PAGE_ACCESS_SURFACES = [
         reason: 'Hash-modal surface in index.html with a legacy root redirect bridge.'
     },
     {
-        path: '/certificates',
-        sidebarHref: '#certificates',
-        redirectTarget: '/?open=certificates',
-        owner: 'timeline-modal',
-        reason: 'Hash-modal surface in index.html with a legacy root redirect bridge.'
-    },
-    {
         path: '/settings',
         sidebarHref: '#settings',
         redirectTarget: null,

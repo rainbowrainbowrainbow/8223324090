@@ -33,6 +33,7 @@ and focused tests in the same pack.
 | `demo.html` | `/demo` | demo | canonical-page | Demo mode page. |
 | `designer.html` | `/designer` | designer | canonical-page | Designer production workspace. |
 | `designs.html` | `/designs` | designs | canonical-page | Also served at `/embed/designs` for embedded art-director views. |
+| `certificates.html` | `/certificates` | certificates | canonical-page | Also serves `/certificates/new` and `/certificates/batch` for standalone creation flows. |
 | `finance.html` | `/finance` | finance | canonical-page | Finance operations page. |
 | `game.html` | `/game` | game | canonical-page | Gamification game page. |
 | `graduation.html` | `/graduation` | graduation | canonical-page | Also served at `/embed/graduation`. |
@@ -73,7 +74,6 @@ and focused tests in the same pack.
 | `/leads` | `/sales-funnel` | leads | Old sales funnel URL. |
 | `/kleshnya` | `/chat` | chat | Assistant surface now lives in chat. |
 | `/afisha` | `/?open=afisha` | timeline-modal | Modal bridge in `index.html`. |
-| `/certificates` | `/?open=certificates` | timeline-modal | Modal bridge in `index.html`. |
 | `/manager-guide` | `/landing/manager-guide.html` | landing | Public landing legacy URL. |
 | `/manager-guide.html` | `/landing/manager-guide.html` | landing | Public landing legacy URL. |
 | `/sales-deck` | `/landing/sales-deck.html` | landing | Public landing legacy URL. |

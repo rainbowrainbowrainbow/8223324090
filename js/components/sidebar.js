@@ -18,7 +18,7 @@ const Sidebar = (() => {
         extraEditingId: ''
     };
     const GROUP_STATE_VERSION = 'ai-cockpit-v2';
-    const EXTRA_MENU_HREFS = ['/dashboard', '/', '/tasks', '/chat'];
+    const EXTRA_MENU_HREFS = ['/dashboard', '/certificates/new', '/certificates/batch', '/tasks', '/chat'];
     const EXTRA_MENU_STORAGE_KEY = 'eg_sidebar_extra_menu_items_v1';
     const EXTRA_MENU_EDIT_STORAGE_KEY = 'eg_sidebar_extra_menu_edit_v1';
     const EXTRA_MENU_COLLAPSED_STORAGE_KEY = 'eg_sidebar_extra_menu_collapsed_v1';
@@ -86,8 +86,9 @@ const Sidebar = (() => {
         { href: '/sound#announcements', icon: '📢', label: 'Оголошення', access: 'sound',      group: 'product' },
         { href: '#afisha',       icon: '🎭', label: 'Афіша',         access: 'afisha',         group: 'product',
           action: 'sidebarOpenAfisha',       isHashLink: true },
-        { href: '#certificates', icon: '🎫', label: 'Сертифікати',   access: 'certificates',   group: 'product',
-          action: 'sidebarOpenCertificates', isHashLink: true },
+        { href: '/certificates', icon: '🎫', label: 'Сертифікати',   access: 'certificates',   group: 'product' },
+        { href: '/certificates/new', icon: '🎫', label: 'Видати сертифікат', access: 'certificates', group: 'product', quickAccessOnly: true },
+        { href: '/certificates/batch', icon: '📦', label: 'Пакет сертифікатів', access: 'certificates', group: 'product', quickAccessOnly: true },
 
         { type: 'group', key: 'system', label: 'Система', icon: '⚙️', priority: 5, defaultOpen: false },
         { href: '/kleshnya',     icon: '🤖', label: 'Помічник',        access: 'chat',           group: 'system' },
@@ -732,13 +733,13 @@ const Sidebar = (() => {
 
                 // Check if group has accessible children
                 const hasChildren = NAV_ITEMS.some(c =>
-                    c.group === item.key && (!role || hasAccess(c, role))
+                    c.group === item.key && !c.quickAccessOnly && (!role || hasAccess(c, role))
                 );
                 if (!hasChildren) { currentGroupKey = '__skip__'; continue; }
 
                 // Mark group that contains the current page without forcing it open.
                 const hasActive = NAV_ITEMS.some(c => {
-                    if (c.group !== item.key || c.noActive || c.isHashLink) return false;
+                    if (c.group !== item.key || c.noActive || c.isHashLink || c.quickAccessOnly) return false;
                     const cBase = c.href.split('#')[0];
                     return currentPath === cBase || (cBase !== '/' && currentPath.startsWith(cBase));
                 });
@@ -763,6 +764,7 @@ const Sidebar = (() => {
 
             // Skip if group is blocked
             if (currentGroupKey === '__skip__' || currentGroupKey === '__skip_today__') continue;
+            if (item.quickAccessOnly) continue;
 
             // ── Skip no access ────────────────────────────────────
             if (role && !hasAccess(item, role)) continue;
@@ -2158,7 +2160,7 @@ const Sidebar = (() => {
         if (typeof openCertificatesPanel === 'function') {
             openCertificatesPanel();
         } else {
-            window.location.href = '/?open=certificates';
+            window.location.href = '/certificates';
         }
     };
     window.sidebarOpenSettings = function() {

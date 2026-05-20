@@ -67,11 +67,12 @@ sidebar entries unless they become standalone pages.
 | Path | Sidebar Href | Redirect Target | Owner | Reason |
 | --- | --- | --- | --- | --- |
 | `/afisha` | `#afisha` | `/?open=afisha` | timeline-modal | Hash-modal surface in `index.html` with a legacy root redirect bridge. |
-| `/certificates` | `#certificates` | `/?open=certificates` | timeline-modal | Hash-modal surface in `index.html` with a legacy root redirect bridge. |
 | `/settings` | `#settings` | none | settings-modal | Hash-modal surface in `index.html`; no standalone root HTML file. |
 
 These paths stay in `PAGE_ACCESS` because UI visibility checks and sidebar
-actions need a role matrix even though the UI is modal-based.
+actions need a role matrix even though the UI is modal-based. Certificates were
+promoted from this modal bridge to the standalone `certificates.html` surface
+with `/certificates`, `/certificates/new`, and `/certificates/batch` routes.
 
 ## Root-Shell Business Aliases
 

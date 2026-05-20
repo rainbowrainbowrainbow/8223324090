@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <script>
+    (function(){try{var s=localStorage.getItem('pzp_dark_mode');var d=s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Сертифікати</title>
+    <meta name="description" content="Event Genix — сертифікати">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=0.60.23">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.23">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.23">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.23">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.23">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.23">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.23">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.23">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body class="certificates-page" data-page-group="crm">
+    <script>
+    (function(){var s=localStorage.getItem('pzp_dark_mode');if(s==='true'||(s===null&&window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.body.classList.add('dark-mode')}})();
+    </script>
+
+    <div id="mainApp" class="main-app hidden">
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand">
+                    <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small">
+                    <div class="em-logo">
+                        <span class="em-logo-title">Event Genix</span>
+                        <span class="em-logo-subtitle">AI First CRM</span>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-user-card">
+                <div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div>
+                <div class="sidebar-user-info">
+                    <button type="button" class="sidebar-user-name" id="sidebarUserName" title="Відкрити профіль">Користувач</button>
+                    <div class="sidebar-user-role" id="sidebarUserRole">Роль</div>
+                </div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+            <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути/розгорнути меню">
+                <span class="collapse-icon">◀</span>
+                <span class="collapse-text">Згорнути</span>
+            </button>
+        </aside>
+
+        <header class="header">
+            <div class="header-content">
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити/закрити меню">☰</button>
+                <button type="button" class="alert-bell-btn" id="alertBell" onclick="toggleAlertsPanel(event)" title="Алерти"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="alert-badge" id="alertBadge" style="display:none">0</span></button>
+                <div class="user-panel">
+                    <span id="currentUser" class="user-name"></span>
+                    <button type="button" class="btn-logout" onclick="logout()">Вийти</button>
+                </div>
+            </div>
+        </header>
+        <div class="alerts-panel-v4" id="alertsPanel"></div>
+
+        <main id="main-content" class="page-container certificates-shell">
+            <section class="cert-page-hero">
+                <div>
+                    <div class="page-kicker">Сертифікати</div>
+                    <h1 id="certificatePageTitle">Сертифікати</h1>
+                    <p id="certificatePageSubtitle">Реєстр, видача і пакетна генерація сертифікатів без вкладених панелей.</p>
+                </div>
+                <div class="cert-page-actions" aria-label="Навігація сертифікатів">
+                    <a class="btn-page-secondary" href="/certificates">Реєстр</a>
+                    <a class="btn-page-primary" href="/certificates/new">Видати сертифікат</a>
+                    <a class="btn-page-secondary" href="/certificates/batch">Пакет сертифікатів</a>
+                </div>
+            </section>
+
+            <section id="certificatesListView" class="cert-page-view">
+                <div class="cert-page-toolbar">
+                    <div class="cert-page-filters">
+                        <label>
+                            <span>Статус</span>
+                            <select id="certPageStatus">
+                                <option value="">Всі</option>
+                                <option value="active">Активні</option>
+                                <option value="used">Використані</option>
+                                <option value="expired">Прострочені</option>
+                                <option value="revoked">Анульовані</option>
+                                <option value="blocked">Заблоковані</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>Пошук</span>
+                            <input type="search" id="certPageSearch" placeholder="Код, ПІБ, тип...">
+                        </label>
+                    </div>
+                    <div class="cert-page-toolbar-actions">
+                        <button type="button" class="btn-page-secondary" id="certPageRefreshBtn">Оновити</button>
+                    </div>
+                </div>
+                <div id="certPageStats" class="cert-page-stats" aria-live="polite"></div>
+                <div id="certPageList" class="cert-page-list">
+                    <div class="empty-state">Завантаження...</div>
+                </div>
+            </section>
+
+            <section id="certificatesNewView" class="cert-page-view hidden">
+                <div class="cert-create-layout">
+                    <form id="certificatePageForm" class="cert-form-card">
+                        <div class="form-grid">
+                            <label class="form-field">
+                                <span>Режим відображення</span>
+                                <select id="certPageDisplayMode">
+                                    <option value="fio">ПІБ (прізвище та ім'я)</option>
+                                    <option value="number">Номер або ідентифікатор</option>
+                                </select>
+                            </label>
+                            <label class="form-field">
+                                <span id="certPageDisplayValueLabel">ПІБ або ідентифікатор</span>
+                                <input type="text" id="certPageDisplayValue" maxlength="200" autocomplete="off">
+                            </label>
+                            <label class="form-field">
+                                <span>Тип сертифіката</span>
+                                <select id="certPageTypePreset">
+                                    <option value="на одноразовий вхід">На одноразовий вхід</option>
+                                    <option value="абонемент">Абонемент</option>
+                                    <option value="custom">Інше (вписати)</option>
+                                </select>
+                            </label>
+                            <label class="form-field hidden" id="certPageCustomTypeWrap">
+                                <span>Власний тип</span>
+                                <input type="text" id="certPageTypeText" value="на одноразовий вхід" maxlength="200">
+                            </label>
+                            <div class="form-field">
+                                <span>Дійсний до</span>
+                                <strong id="certPageValidUntilDisplay" class="cert-date-display"></strong>
+                                <input type="hidden" id="certPageValidUntil">
+                                <small class="form-hint">Автоматично: сьогодні + 45 днів</small>
+                            </div>
+                            <label class="form-field form-field-wide">
+                                <span>Примітка</span>
+                                <textarea id="certPageNotes" rows="3" placeholder="Опціонально..."></textarea>
+                            </label>
+                        </div>
+                        <input type="hidden" id="certPageSeason" value="winter">
+                        <div class="cert-form-actions">
+                            <a class="btn-page-secondary" href="/certificates">Назад до сертифікатів</a>
+                            <button type="submit" class="btn-page-primary" id="certPageSubmitBtn">Видати сертифікат</button>
+                        </div>
+                    </form>
+                    <aside id="certCreateResult" class="cert-result-card" aria-live="polite">
+                        <span class="cert-result-kicker">Після видачі</span>
+                        <h3>Сертифікат з'явиться в реєстрі</h3>
+                        <p>Форма працює через той самий API, що й старий panel-flow, але без вкладеної модалки.</p>
+                    </aside>
+                </div>
+            </section>
+
+            <section id="certificatesBatchView" class="cert-page-view hidden">
+                <div class="cert-create-layout">
+                    <form id="certificateBatchPageForm" class="cert-form-card">
+                        <div class="form-grid">
+                            <div class="form-field form-field-wide">
+                                <span>Кількість</span>
+                                <div class="cert-quantity-options" role="radiogroup" aria-label="Кількість сертифікатів">
+                                    <label><input type="radio" name="certPageBatchQty" value="5"> 5 шт.</label>
+                                    <label><input type="radio" name="certPageBatchQty" value="10" checked> 10 шт.</label>
+                                    <label><input type="radio" name="certPageBatchQty" value="15"> 15 шт.</label>
+                                    <label><input type="radio" name="certPageBatchQty" value="20"> 20 шт.</label>
+                                </div>
+                            </div>
+                            <label class="form-field">
+                                <span>Тип сертифіката</span>
+                                <select id="certPageBatchType">
+                                    <option value="на одноразовий вхід">На одноразовий вхід</option>
+                                    <option value="абонемент">Абонемент</option>
+                                </select>
+                            </label>
+                            <label class="form-field">
+                                <span>Назва події (опціонально)</span>
+                                <input type="text" id="certPageBatchEventName" maxlength="200" placeholder="напр. Вітання іменинників">
+                            </label>
+                            <div class="form-field">
+                                <span>Дійсний до</span>
+                                <strong id="certPageBatchValidUntilDisplay" class="cert-date-display"></strong>
+                                <input type="hidden" id="certPageBatchValidUntil">
+                                <small class="form-hint">Автоматично: сьогодні + 45 днів</small>
+                            </div>
+                        </div>
+                        <input type="hidden" id="certPageBatchSeason" value="winter">
+                        <div class="cert-form-actions">
+                            <a class="btn-page-secondary" href="/certificates">Назад до сертифікатів</a>
+                            <button type="submit" class="btn-page-primary" id="certBatchPageSubmitBtn">Згенерувати пакет</button>
+                        </div>
+                    </form>
+                    <aside id="certBatchResult" class="cert-result-card hidden" aria-live="polite">
+                        <span class="cert-result-kicker">Згенеровані коди</span>
+                        <div id="certBatchCodes" class="cert-batch-codes"></div>
+                        <button type="button" class="btn-page-secondary" id="certBatchCopyBtn">Копіювати всі коди</button>
+                    </aside>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="certificatePageDetailModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Деталі сертифіката">
+        <div class="modal-content modal-medium">
+            <button type="button" class="modal-close" id="certificatePageDetailClose" aria-label="Закрити">&times;</button>
+            <h3>Деталі сертифіката</h3>
+            <div id="certificatePageDetailContent"></div>
+            <div id="certificatePageDetailActions" class="cert-detail-actions"></div>
+        </div>
+    </div>
+
+    <div id="profileModal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Особистий кабінет">
+        <div class="modal-content modal-medium" role="dialog" aria-modal="true">
+            <span class="modal-close">&times;</span>
+            <h3>Особистий кабінет</h3>
+            <div id="profileContent" class="profile-content">
+                <div class="profile-loading">Завантаження...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification hidden">
+        <span id="notificationText"></span>
+    </div>
+
+    <script src="js/ui.js?v=0.60.23"></script>
+    <script src="js/config.js?v=0.60.23"></script>
+    <script src="js/notification.js?v=0.60.23"></script>
+    <script src="js/api.js?v=0.60.23"></script>
+    <script src="js/auth.js?v=0.60.23"></script>
+    <script src="js/components/sidebar.js?v=0.60.23"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
+    <script src="js/certificates-page.js?v=0.60.23"></script>
+    <script src="js/alerts.js?v=0.60.23"></script>
+</body>
+</html>

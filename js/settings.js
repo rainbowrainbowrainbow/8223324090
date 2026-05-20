@@ -2652,41 +2652,7 @@ function debounceCertSearch() {
 }
 
 async function openCertificatesPanel() {
-    const panel = document.getElementById('certificatesPanel');
-    if (!panel) return;
-
-    // Close booking panel if open
-    const bookingPanel = document.getElementById('bookingPanel');
-    if (bookingPanel && !bookingPanel.classList.contains('hidden')) {
-        if (typeof closeBookingPanel === 'function') {
-            const closed = await closeBookingPanel(false);
-            if (!closed) return;
-        } else {
-            bookingPanel.classList.add('hidden');
-        }
-    }
-
-    // Close dropdown menu
-    const dd = document.getElementById('dropdownContent');
-    if (dd) dd.classList.add('hidden');
-
-    panel.classList.remove('hidden');
-    document.body.classList.add('panel-open');
-
-    // Show/hide non-viewer elements (cert create/manage buttons available to admin + user roles)
-    const isViewerRole = AppState.currentUser && AppState.currentUser.role === 'viewer';
-    panel.querySelectorAll('.cert-non-viewer').forEach(el => {
-        el.classList.toggle('hidden', isViewerRole);
-    });
-
-    // Show backdrop on mobile
-    const backdrop = document.getElementById('panelBackdrop');
-    if (backdrop) {
-        backdrop.classList.remove('hidden');
-        backdrop.onclick = closeCertificatesPanel;
-    }
-
-    loadCertificates();
+    window.location.href = '/certificates';
 }
 
 function closeCertificatesPanel() {
@@ -2766,58 +2732,11 @@ function getCertStatusBadge(status) {
 }
 
 function showCreateCertificateModal() {
-    const modal = document.getElementById('certificateModal');
-    if (!modal) return;
-    bindCertificateModalCloseHandlers();
-    document.getElementById('certModalTitle').textContent = '📄 Видати сертифікат';
-    document.getElementById('certificateForm')?.reset();
-    const submitBtn = document.querySelector('#certificateForm button[type="submit"]');
-    if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Видати сертифікат';
-    }
-    // Reset display mode label
-    const modeSelect = document.getElementById('certDisplayMode');
-    if (modeSelect) modeSelect.value = 'fio';
-    onCertDisplayModeChange();
-    // Reset type preset
-    const presetSel = document.getElementById('certTypePreset');
-    if (presetSel) presetSel.value = 'на одноразовий вхід';
-    document.getElementById('certTypeText').value = 'на одноразовий вхід';
-    document.getElementById('certTypeText')?.classList.add('hidden');
-    // Auto valid_until = today + 45 days (no editing)
-    const d = new Date();
-    d.setDate(d.getDate() + 45);
-    document.getElementById('certValidUntil').value = d.toISOString().split('T')[0];
-    const display = document.getElementById('certValidUntilDisplay');
-    if (display) display.textContent = d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
-    // Auto-select season
-    initCertSeasonButtons('certSeasonRow', 'certSeason');
-    modal.classList.remove('hidden');
-    if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(modal);
+    window.location.href = '/certificates/new';
 }
 
 function showBatchCertificateModal() {
-    const modal = document.getElementById('batchCertModal');
-    if (!modal) return;
-    bindCertificateModalCloseHandlers();
-    document.getElementById('batchCertForm')?.reset();
-    document.getElementById('batchCertResult')?.classList.add('hidden');
-    document.getElementById('batchCertSubmitBtn').disabled = false;
-    document.getElementById('batchCertSubmitBtn').textContent = '📦 Згенерувати';
-    // Auto valid_until = today + 45 days (no editing)
-    const d = new Date();
-    d.setDate(d.getDate() + 45);
-    document.getElementById('batchCertValidUntil').value = d.toISOString().split('T')[0];
-    const display = document.getElementById('batchCertValidUntilDisplay');
-    if (display) display.textContent = d.toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' });
-    // Default selection
-    const radio10 = modal.querySelector('input[value="10"]');
-    if (radio10) radio10.checked = true;
-    // Auto-select season
-    initCertSeasonButtons('batchCertSeasonRow', 'batchCertSeason');
-    modal.classList.remove('hidden');
-    if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(modal);
+    window.location.href = '/certificates/batch';
 }
 
 async function handleBatchCertSubmit(event) {

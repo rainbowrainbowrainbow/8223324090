@@ -24,6 +24,14 @@ const ROOT_HTML_SURFACE = [
         purpose: 'Entertainment center operations page.'
     },
     {
+        file: 'certificates.html',
+        canonicalPath: '/certificates',
+        owner: 'certificates',
+        status: 'canonical-page',
+        aliases: ['/certificates/new', '/certificates/batch'],
+        purpose: 'Certificate registry plus standalone single and batch creation flows.'
+    },
+    {
         file: 'chat.html',
         canonicalPath: '/chat',
         owner: 'chat',
@@ -314,7 +322,6 @@ const LEGACY_STATIC_REDIRECTS = [
     { path: '/leads', target: '/sales-funnel', owner: 'leads' },
     { path: '/kleshnya', target: '/chat', owner: 'chat' },
     { path: '/afisha', target: '/?open=afisha', owner: 'timeline-modal' },
-    { path: '/certificates', target: '/?open=certificates', owner: 'timeline-modal' },
     { path: '/manager-guide', target: '/landing/manager-guide.html', owner: 'landing' },
     { path: '/manager-guide.html', target: '/landing/manager-guide.html', owner: 'landing' },
     { path: '/sales-deck', target: '/landing/sales-deck.html', owner: 'landing' },

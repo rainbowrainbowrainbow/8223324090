@@ -93,6 +93,8 @@ const PAGE_ACCESS = {
     '/sound':     [...MANAGER_UP, 'art_director'],
     '/afisha':    ALL_STAFF,
     '/certificates': ALL_STAFF,
+    '/certificates/new': ALL_STAFF,
+    '/certificates/batch': ALL_STAFF,
     '/sales-funnel': LEADS_ACCESS,
     '/leads':     LEADS_ACCESS,
     '/report-agent': ['creator', 'director', 'vice_director'],

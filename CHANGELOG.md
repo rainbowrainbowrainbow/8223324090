@@ -4,6 +4,15 @@
 
 ---
 
+## v0.60.23 - Certificates Page Creation Flow
+
+### Certificates Page Creation Flow [codex]
+- **Окремі сторінки видачі** - створення одного сертифіката перенесено з legacy panel/modal flow на `/certificates/new`, а пакетну видачу - на `/certificates/batch`.
+- **Канонічний реєстр сертифікатів** - `/certificates` тепер відкриває повноцінну сторінку списку, фільтрів, статусів, деталей і дій замість redirect у timeline shell.
+- **Швидкий доступ оновлено** - у quick access додано дії `Видати сертифікат` і `Пакет сертифікатів`, а старі launcher-и `openCertificatesPanel`, `showCreateCertificateModal` і `showBatchCertificateModal` ведуть у нові routes.
+
+---
+
 ## v0.60.22 - Sidebar Alert Card Cleanup
 
 ### Sidebar Alert Card Cleanup [codex]

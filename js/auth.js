@@ -508,6 +508,8 @@ const PAGE_ACCESS = {
     '/sound':     [..._MANAGER_UP, 'art_director'],
     '/afisha':    _ALL_STAFF,
     '/certificates': _ALL_STAFF,
+    '/certificates/new': _ALL_STAFF,
+    '/certificates/batch': _ALL_STAFF,
     '/art-director': _ART_ACCESS,
     '/designs': _ART_ACCESS,
     '/game': null, // all authenticated users

@@ -1493,9 +1493,50 @@ function getTasksAssistantCounts() {
     };
 }
 
+function taskCreatedAtValue(task = {}) {
+    return task.createdAt || task.created_at || task.updatedAt || task.updated_at || '';
+}
+
+function sortTasksNewestFirst(tasks = []) {
+    return tasks.slice().sort((a, b) => {
+        const bTime = new Date(taskCreatedAtValue(b) || 0).getTime();
+        const aTime = new Date(taskCreatedAtValue(a) || 0).getTime();
+        return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
+    });
+}
+
+function mapAssistantTaskItem(task = {}) {
+    const assignment = getTaskAssignmentView(task);
+    return {
+        id: task.id,
+        title: taskTextValue(task.title),
+        status: task.status || '',
+        workflowState: taskWorkflow(task),
+        category: task.category || 'admin',
+        subcategory: task.subcategory || '',
+        date: task.date || '',
+        deadline: task.deadline || task.remindAt || task.remind_at || '',
+        scheduledStartAt: taskScheduleStart(task) || '',
+        scheduleSlot: taskScheduleSlot(task) || '',
+        scheduleStatus: taskScheduleStatus(task),
+        ownerUserId: taskOwnerUserId(task),
+        ownerLabel: getTaskOwnerLabel(task),
+        createdBy: getTaskCreatedByLabel(task),
+        createdAt: taskCreatedAtValue(task),
+        assignmentLabel: assignment.label,
+        isMine: isTaskOwnedByCurrentUser(task),
+        isDelegatedByMe: isTaskDelegatedByCurrentUser(task),
+        isOverdue: isOverdueTask(task)
+    };
+}
+
 function getTasksAssistantSnapshot() {
     const currentViewBase = filterByCategory(getTasksAssistantViewBase(currentView));
     const currentViewTasks = sortTasksForDisplay(applyAssistantTaskFilter(currentViewBase));
+    const activeScopedTasks = filterByCategory(allTasks.filter(isActiveTask));
+    const recentTasks = sortTasksNewestFirst(activeScopedTasks).slice(0, 8);
+    const myTasks = sortTasksForDisplay(activeScopedTasks.filter(isTaskOwnedByCurrentUser)).slice(0, 8);
+    const delegatedByMeTasks = sortTasksNewestFirst(activeScopedTasks.filter(isTaskDelegatedByCurrentUser)).slice(0, 8);
     return {
         source: 'TasksPage.getAssistantSnapshot',
         loaded: Array.isArray(allTasks),
@@ -1507,26 +1548,10 @@ function getTasksAssistantSnapshot() {
         currentSubcategoryLabel: getSubcategoryLabel(currentCategory, currentSubcategory),
         assistantFilter: assistantTaskFilter || '',
         counts: getTasksAssistantCounts(),
-        topTasks: currentViewTasks.slice(0, 8).map(task => {
-            const assignment = getTaskAssignmentView(task);
-            return {
-                id: task.id,
-                title: taskTextValue(task.title),
-                status: task.status || '',
-                workflowState: taskWorkflow(task),
-                category: task.category || 'admin',
-                subcategory: task.subcategory || '',
-                date: task.date || '',
-                deadline: task.deadline || task.remindAt || task.remind_at || '',
-                scheduledStartAt: taskScheduleStart(task) || '',
-                scheduleSlot: taskScheduleSlot(task) || '',
-                scheduleStatus: taskScheduleStatus(task),
-                ownerUserId: taskOwnerUserId(task),
-                ownerLabel: getTaskOwnerLabel(task),
-                assignmentLabel: assignment.label,
-                isOverdue: isOverdueTask(task)
-            };
-        })
+        topTasks: currentViewTasks.slice(0, 8).map(mapAssistantTaskItem),
+        recentTasks: recentTasks.map(mapAssistantTaskItem),
+        myTasks: myTasks.map(mapAssistantTaskItem),
+        delegatedByMeTasks: delegatedByMeTasks.map(mapAssistantTaskItem)
     };
 }
 

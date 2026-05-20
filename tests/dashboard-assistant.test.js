@@ -250,6 +250,125 @@ describe('dashboard assistant service contract', () => {
         assert.doesNotMatch(reply.summary, /Show reply backlog/);
     });
 
+    it('answers task summary questions with recent, mine, and delegated slices', async () => {
+        process.env.OPENAI_API_KEY = 'test-openai-key';
+        clearAssistantModules();
+        installMock('../db', {
+            pool: {
+                query: async (sql, params) => {
+                    assert.match(sql, /FROM tasks t/);
+                    assert.ok(Array.isArray(params));
+                    return {
+                        rows: [
+                            {
+                                id: 21,
+                                title: 'New shared task',
+                                status: 'todo',
+                                priority: 'normal',
+                                created_at: '2026-05-20T10:30:00.000Z',
+                                created_by_user_id: 3,
+                                owner_user_id: 3,
+                                owner_name: 'Manager'
+                            },
+                            {
+                                id: 22,
+                                title: 'My urgent task',
+                                status: 'todo',
+                                priority: 'high',
+                                deadline: '2026-05-20T12:00:00.000Z',
+                                created_at: '2026-05-20T09:00:00.000Z',
+                                created_by_user_id: 3,
+                                owner_user_id: 7,
+                                owner_name: 'Serhiy'
+                            },
+                            {
+                                id: 23,
+                                title: 'Delegated follow up',
+                                status: 'todo',
+                                priority: 'normal',
+                                created_at: '2026-05-20T09:30:00.000Z',
+                                created_by_user_id: 7,
+                                created_by_name: 'Serhiy',
+                                owner_user_id: 3,
+                                owner_name: 'Manager'
+                            }
+                        ]
+                    };
+                }
+            }
+        });
+        global.fetch = async () => {
+            throw new Error('OpenAI should not be called for direct task summary answers');
+        };
+
+        const { getDashboardAssistantReply } = require('../services/dashboardAssistant');
+        const reply = await getDashboardAssistantReply({
+            role: 'creator',
+            userId: 7,
+            username: 'serhiy',
+            name: 'Serhiy',
+            page: 'tasks',
+            userMessage: 'task summary'
+        });
+
+        assert.equal(reply.model, 'local-task-context');
+        assert.match(reply.summary, /Останні додані/);
+        assert.match(reply.summary, /Мої активні/);
+        assert.match(reply.summary, /Поставлені мною/);
+        assert.match(reply.summary, /New shared task/);
+        assert.match(reply.summary, /My urgent task/);
+        assert.match(reply.summary, /Delegated follow up/);
+    });
+
+    it('enriches tasks page follow-ups without forcing the canned task summary', async () => {
+        process.env.OPENAI_API_KEY = 'test-openai-key';
+        process.env.OPENAI_API_BASE = 'https://openai.test/v1';
+        clearAssistantModules();
+        installMock('../db', {
+            pool: {
+                query: async () => ({
+                    rows: [
+                        {
+                            id: 31,
+                            title: 'Follow-up task context',
+                            status: 'todo',
+                            priority: 'high',
+                            deadline: '2026-05-20T14:00:00.000Z',
+                            created_at: '2026-05-20T11:00:00.000Z',
+                            owner_user_id: 7,
+                            owner_name: 'Serhiy'
+                        }
+                    ]
+                })
+            }
+        });
+        let requestBody = '';
+        global.fetch = async (url, options) => {
+            assert.equal(url, 'https://openai.test/v1/responses');
+            requestBody = options.body;
+            return {
+                ok: true,
+                status: 200,
+                json: async () => ({ output_text: 'Так, бачу контекст задач і можу відповісти точково.' })
+            };
+        };
+
+        const { getDashboardAssistantReply } = require('../services/dashboardAssistant');
+        const reply = await getDashboardAssistantReply({
+            role: 'creator',
+            userId: 7,
+            username: 'serhiy',
+            name: 'Serhiy',
+            page: 'tasks',
+            userMessage: 'а що з цього найважливіше?'
+        });
+
+        assert.equal(reply.model, 'gpt-4.1-mini');
+        assert.match(reply.summary, /бачу контекст задач/);
+        assert.match(requestBody, /Follow-up task context/);
+        assert.match(requestBody, /recentTaskTitles=Follow-up task context/);
+    });
+
     it('frames the same business context differently for director and manager roles', () => {
         clearAssistantModules();
         const { normalizeAssistantReply } = require('../services/dashboardAssistant');

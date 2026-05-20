@@ -165,6 +165,37 @@ function isTaskDetailQuestion(message = '') {
     ].some(pattern => pattern.test(text));
 }
 
+function isTaskSummaryQuestion(message = '') {
+    const text = String(message || '').toLowerCase();
+    if (!text) return false;
+    return [
+        /задач/,
+        /task/,
+        /tasks/,
+        /нотатку/,
+        /нотатк/,
+        /зведенн/,
+        /сводк/,
+        /summary/,
+        /brief/,
+        /останні/,
+        /останні\s+додані/,
+        /нові/,
+        /мої/,
+        /поставив/,
+        /поставлен/
+    ].some(pattern => pattern.test(text));
+}
+
+function isTaskContextQuestion(context = {}) {
+    if (isTaskDetailQuestion(context.userMessage) || isTaskSummaryQuestion(context.userMessage)) return true;
+    return String(context.page || '').toLowerCase() === 'tasks';
+}
+
+function isDirectTaskAnswerQuestion(context = {}) {
+    return isTaskDetailQuestion(context.userMessage) || isTaskSummaryQuestion(context.userMessage);
+}
+
 function getDbPool() {
     return require('../db').pool;
 }
@@ -193,6 +224,7 @@ function formatTaskDue(row = {}) {
 
 function normalizeTaskDetailRow(row = {}) {
     const owner = compactString(row.owner_name || row.owner_username || row.assigned_to || row.owner, 80);
+    const createdBy = compactString(row.created_by_name || row.created_by_username || row.created_by, 80);
     return {
         id: row.id,
         title: compactString(row.title || 'Задача', 180),
@@ -200,32 +232,123 @@ function normalizeTaskDetailRow(row = {}) {
         priority: compactString(row.priority || 'normal', 40),
         category: compactString(row.category || '', 60),
         owner,
+        ownerUserId: row.owner_user_id || null,
+        createdBy,
+        createdByUserId: row.created_by_user_id || null,
+        createdAt: row.created_at || null,
         dueLabel: formatTaskDue(row),
         sourceType: compactString(row.source_type || '', 60),
         sourceId: compactString(row.source_id || '', 80)
     };
 }
 
-async function loadVisibleTaskDetails(context = {}) {
-    if (!isTaskDetailQuestion(context.userMessage)) return null;
-    const params = [];
-    const actor = {
+function actorFromContext(context = {}) {
+    return {
         id: context.userId || context.actor?.id || context.roleSnapshot?.userId || null,
         userId: context.userId || context.actor?.userId || context.roleSnapshot?.userId || null,
         username: context.username || context.actor?.username || context.roleSnapshot?.username || '',
         name: context.name || context.displayName || context.actor?.name || context.roleSnapshot?.name || '',
         role: context.role || ''
     };
+}
+
+function actorIdSet(actor = {}) {
+    return new Set([actor.id, actor.userId].map(value => Number(value || 0)).filter(value => Number.isInteger(value) && value > 0));
+}
+
+function actorTokenSet(actor = {}) {
+    return new Set([actor.username, actor.name, actor.id, actor.userId]
+        .map(value => String(value || '').trim().toLowerCase())
+        .filter(Boolean));
+}
+
+function rowMatchesActorOwner(row = {}, actor = {}) {
+    const ids = actorIdSet(actor);
+    const ownerId = Number(row.owner_user_id || 0);
+    if (ownerId > 0) return ids.has(ownerId);
+    const tokens = actorTokenSet(actor);
+    return [row.assigned_to, row.owner, row.owner_name, row.owner_username]
+        .map(value => String(value || '').trim().toLowerCase())
+        .some(value => value && tokens.has(value));
+}
+
+function rowMatchesActorCreator(row = {}, actor = {}) {
+    const ids = actorIdSet(actor);
+    const creatorId = Number(row.created_by_user_id || 0);
+    if (creatorId > 0 && ids.has(creatorId)) return true;
+    const tokens = actorTokenSet(actor);
+    return [row.created_by, row.created_by_name, row.created_by_username]
+        .map(value => String(value || '').trim().toLowerCase())
+        .some(value => value && tokens.has(value));
+}
+
+function newestTaskTime(task = {}) {
+    const parsed = new Date(task.createdAt || task.created_at || task.updated_at || task.deadline || task.date || 0).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function operationalTaskTime(task = {}) {
+    const parsed = new Date(task.deadline || task.date || task.createdAt || task.created_at || 0).getTime();
+    return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
+}
+
+function taskPriorityRank(priority = '') {
+    const key = String(priority || '').toLowerCase();
+    if (key === 'critical') return 0;
+    if (key === 'high') return 1;
+    if (key === 'normal' || key === 'medium') return 2;
+    if (key === 'low') return 3;
+    return 4;
+}
+
+function sortNewestTasks(tasks = []) {
+    return tasks.slice().sort((a, b) => newestTaskTime(b) - newestTaskTime(a));
+}
+
+function sortOperationalTasks(tasks = []) {
+    return tasks.slice().sort((a, b) => {
+        const aOverdue = a.dueLabel && operationalTaskTime(a) < Date.now() ? 0 : 1;
+        const bOverdue = b.dueLabel && operationalTaskTime(b) < Date.now() ? 0 : 1;
+        if (aOverdue !== bOverdue) return aOverdue - bOverdue;
+        const priority = taskPriorityRank(a.priority) - taskPriorityRank(b.priority);
+        if (priority) return priority;
+        return operationalTaskTime(a) - operationalTaskTime(b);
+    });
+}
+
+function uniqueTasks(lists = [], limit = 12) {
+    const seen = new Set();
+    const out = [];
+    for (const list of lists) {
+        for (const task of list || []) {
+            const key = String(task.id || task.title || '');
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            out.push(task);
+            if (out.length >= limit) return out;
+        }
+    }
+    return out;
+}
+
+async function loadVisibleTaskDetails(context = {}) {
+    if (!isTaskContextQuestion(context)) return null;
+    const params = [];
+    const actor = actorFromContext(context);
     const visibility = getTaskVisibilityScope(actor, params, 't');
     const query = `
         SELECT t.id, t.title, t.status, t.priority, t.deadline, t.date, t.category,
+               t.created_at, t.created_by, t.created_by_user_id,
                t.assigned_to, t.owner, t.owner_user_id, t.source_type, t.source_id,
-               u.name AS owner_name, u.username AS owner_username
+               u.name AS owner_name, u.username AS owner_username,
+               creator.name AS created_by_name, creator.username AS created_by_username
         FROM tasks t
         LEFT JOIN users u ON u.id = t.owner_user_id
+        LEFT JOIN users creator ON creator.id = t.created_by_user_id
         WHERE COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')
           ${visibility}
         ORDER BY
+          t.created_at DESC NULLS LAST,
           CASE
             WHEN (t.deadline IS NOT NULL AND t.deadline < NOW())
               OR (t.deadline IS NULL AND LEFT(COALESCE(t.date, ''), 10) < TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD'))
@@ -245,27 +368,45 @@ async function loadVisibleTaskDetails(context = {}) {
             ELSE 4
           END,
           t.created_at DESC
-        LIMIT 12
+        LIMIT 80
     `;
     const result = await getDbPool().query(query, params);
+    const rows = result.rows || [];
+    const normalizedRows = rows.map(normalizeTaskDetailRow);
+    const recent = sortNewestTasks(normalizedRows).slice(0, 6);
+    const mine = sortOperationalTasks(normalizedRows.filter((task, index) => rowMatchesActorOwner(rows[index], actor))).slice(0, 6);
+    const delegatedByMe = sortNewestTasks(normalizedRows.filter((task, index) =>
+        rowMatchesActorCreator(rows[index], actor) && !rowMatchesActorOwner(rows[index], actor)
+    )).slice(0, 6);
     return {
         requested: true,
+        intent: isTaskDetailQuestion(context.userMessage) ? 'details' : 'summary',
         source: 'api:/api/tasks',
-        items: result.rows.map(normalizeTaskDetailRow)
+        items: uniqueTasks([mine, delegatedByMe, recent], 18),
+        recent,
+        mine,
+        delegatedByMe,
+        counts: {
+            visibleActive: normalizedRows.length,
+            recent: recent.length,
+            mine: mine.length,
+            delegatedByMe: delegatedByMe.length
+        }
     };
 }
 
 function mergeTaskDetailsIntoContext(context = {}, taskDetails = null) {
     if (!taskDetails) return context;
     const details = Array.isArray(context.contextSummary?.details) ? context.contextSummary.details.slice(0, 12) : [];
-    if (taskDetails.items.length) {
-        details.push(`visibleTaskTitles=${taskDetails.items.map(item => item.title).join(' | ')}`);
-    } else {
-        details.push('visibleTaskTitles=none');
-    }
+    const recentTitles = (taskDetails.recent || []).map(item => item.title).join(' | ') || 'none';
+    const mineTitles = (taskDetails.mine || []).map(item => item.title).join(' | ') || 'none';
+    const delegatedTitles = (taskDetails.delegatedByMe || []).map(item => item.title).join(' | ') || 'none';
+    details.push(`recentTaskTitles=${recentTitles}`);
+    details.push(`myTaskTitles=${mineTitles}`);
+    details.push(`delegatedByMeTaskTitles=${delegatedTitles}`);
     context.contextSummary = {
         ...(context.contextSummary || {}),
-        headline: context.contextSummary?.headline || 'Assistant requested task details',
+        headline: context.contextSummary?.headline || 'Assistant task summary scope',
         details,
         source: context.contextSummary?.source || taskDetails.source
     };
@@ -273,19 +414,19 @@ function mergeTaskDetailsIntoContext(context = {}, taskDetails = null) {
     context.signals = Array.isArray(context.signals) ? context.signals.slice(0, 16) : [];
     context.signals.push({
         signalId: 'assistant.requested_task_details',
-        label: 'User asked for exact visible tasks',
-        value: taskDetails.items.length,
+        label: 'User asked for task context',
+        value: taskDetails.counts?.visibleActive || taskDetails.items.length,
         severity: taskDetails.items.length ? 'info' : 'warning',
         evidence: taskDetails.items.length
-            ? `Користувач питає конкретні задачі; видно ${taskDetails.items.length}.`
-            : 'Користувач питає конкретні задачі, але видимий список порожній.',
+            ? `Користувач питає задачі; бачу ${taskDetails.counts?.visibleActive || taskDetails.items.length} активних, ${taskDetails.mine?.length || 0} моїх і ${taskDetails.delegatedByMe?.length || 0} поставлених ним.`
+            : 'Користувач питає задачі, але видимий список порожній.',
         source: taskDetails.source
     });
     return context;
 }
 
 async function enrichAssistantContext(context = {}) {
-    if (!isTaskDetailQuestion(context.userMessage)) return context;
+    if (!isTaskContextQuestion(context)) return context;
     try {
         return mergeTaskDetailsIntoContext(context, await loadVisibleTaskDetails(context));
     } catch (err) {
@@ -303,30 +444,42 @@ async function enrichAssistantContext(context = {}) {
 
 function buildDirectTaskDetailsReply(context = {}) {
     const taskDetails = context.taskDetails;
-    if (!taskDetails?.requested || !isTaskDetailQuestion(context.userMessage)) return null;
+    if (!taskDetails?.requested || !isDirectTaskAnswerQuestion(context)) return null;
+    const recent = Array.isArray(taskDetails.recent) ? taskDetails.recent.slice(0, 5) : [];
+    const mine = Array.isArray(taskDetails.mine) ? taskDetails.mine.slice(0, 5) : [];
+    const delegatedByMe = Array.isArray(taskDetails.delegatedByMe) ? taskDetails.delegatedByMe.slice(0, 5) : [];
     const items = Array.isArray(taskDetails.items) ? taskDetails.items.slice(0, 8) : [];
-    if (!items.length) {
+    if (!items.length && !recent.length && !mine.length && !delegatedByMe.length) {
         return {
             summary: taskDetails.unavailableReason
                 ? 'Я бачу твій запит по конкретних задачах, але зараз не можу підтягнути список задач із API. Краще відкрити вкладку «Задачі» і перевірити активний зріз напряму.'
-                : 'Зараз у видимому для тебе зрізі не бачу активних задач. Якщо очікуєш список, відкрий «Задачі» або уточни фільтр: мої, команда, сьогодні чи прострочені.',
+                : 'Зараз у видимому для тебе зрізі не бачу активних задач: немає нових активних, моїх або поставлених тобою задач.',
             evidence: context.signals || [],
-            recommendation: 'Наступний крок — відкрити сторінку «Задачі» або уточнити потрібний зріз.'
+            recommendation: 'Наступний крок — відкрити сторінку «Задачі» або уточнити потрібний зріз: нові, мої чи поставлені мною.'
         };
     }
-    const lines = items.map((task, index) => {
+    const formatLines = (list = []) => list.map((task, index) => {
         const meta = [
             task.owner ? `відповідальний: ${task.owner}` : '',
+            task.createdBy ? `поставив: ${task.createdBy}` : '',
             task.dueLabel ? `термін: ${task.dueLabel}` : '',
             task.priority && task.priority !== 'normal' ? `пріоритет: ${task.priority}` : ''
         ].filter(Boolean).join(', ');
         return `${index + 1}. ${task.title}${meta ? ` — ${meta}` : ''}`;
     });
-    const more = taskDetails.items.length > items.length ? `\nЩе ${taskDetails.items.length - items.length} задач(і) не показую, щоб не забити панель.` : '';
+    const sections = [];
+    if (recent.length) sections.push(`Останні додані:\n${formatLines(recent).join('\n')}`);
+    if (mine.length) sections.push(`Мої активні:\n${formatLines(mine).join('\n')}`);
+    if (delegatedByMe.length) sections.push(`Поставлені мною:\n${formatLines(delegatedByMe).join('\n')}`);
+    if (!sections.length && items.length) sections.push(`Активні задачі:\n${formatLines(items).join('\n')}`);
+    const more = (taskDetails.counts?.visibleActive || taskDetails.items.length) > items.length
+        ? `\nБачу ще активні задачі поза цією короткою нотаткою; можу деталізувати конкретний зріз.`
+        : '';
+    const firstFocus = mine[0] || delegatedByMe[0] || recent[0] || items[0];
     return {
-        summary: `Ось конкретні активні задачі, які зараз бачу:\n${lines.join('\n')}${more}`,
+        summary: `Коротка нотатка по задачах:\n${sections.join('\n\n')}${more}`,
         evidence: context.signals || [],
-        recommendation: `Почни з першої простроченої або найстарішої задачі: ${items[0].title}.`
+        recommendation: `Для наступного кроку почни з найближчої твоєї або поставленої тобою задачі: ${firstFocus.title}.`
     };
 }
 

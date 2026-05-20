@@ -1856,6 +1856,11 @@
         const pageSnapshot = getTaskPageSnapshot();
         if (pageSnapshot) {
             const counts = pageSnapshot.counts || {};
+            const taskTitles = list => toList(list || [], 8)
+                .map(task => task?.title || task?.label || '')
+                .filter(Boolean)
+                .slice(0, 5)
+                .join(' | ') || 'none';
             return {
                 headline: 'Tasks live board snapshot',
                 details: [
@@ -1869,6 +1874,9 @@
                     `team=${numberValue(counts.team, 0)}`,
                     `my=${numberValue(counts.my, 0)}`,
                     `overdue=${numberValue(counts.overdue, 0)}`,
+                    `recentNew=${taskTitles(pageSnapshot.recentTasks)}`,
+                    `myTasks=${taskTitles(pageSnapshot.myTasks)}`,
+                    `delegatedByMe=${taskTitles(pageSnapshot.delegatedByMeTasks)}`,
                     `assistantFilter=${pageSnapshot.assistantFilter || 'none'}`
                 ],
                 source: pageSnapshot.source || 'TasksPage.getAssistantSnapshot'

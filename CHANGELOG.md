@@ -4,6 +4,17 @@
 
 ---
 
+## v0.60.11 - Timeline Theme Polish
+
+### Timeline Theme Polish [codex]
+- **Таймлайн став головною робочою зоною** - екран бронювань отримав спільні dark/light токени для фону, панелей, grid, рядків, тексту, borders, focus states і поточного часу.
+- **Світла тема більше не вимита** - sidebar, topbar, панель керування, timeline grid, event blocks, legend і scrubber отримали чіткішу ієрархію поверхонь та контраст без pale mint haze.
+- **Темна тема спокійніша** - прибрано зайву neon/glow вагу з ordinary panels, assistant rail, sidebar widgets, controls, legend і minimap без зміни поведінки бронювань.
+- **Категорії подій нормалізовано** - `Квести`, `Анімація`, `Шоу`, `Фото`, `МК`, `Піньята`, `Інше` і `Попереднє` мають сталі кольори як dot/stripe/border, а не великі насичені заливки.
+- **Без зміни логіки** - API, auth, routes, DB, booking drag/drop/resize, filters, date controls, assistant actions і deploy config не змінювались; реліз продовжує ланцюг `v0.60.10 -> v0.60.11`.
+
+---
+
 ## v0.60.10 - Scheduling Docs QA Sync
 
 ### Scheduling Docs QA Sync [codex]

@@ -111,8 +111,8 @@ const DAYS = ['Неділя', 'Понеділок', 'Вівторок', 'Сер�
 
 // Кольори категорій для canvas/minimap
 const CATEGORY_COLORS = {
-    quest: '#9C27B0', animation: '#039BE5', show: '#F4511E',
-    photo: '#00ACC1', masterclass: '#7CB342', pinata: '#EC407A', custom: '#546E7A'
+    quest: '#7C3AED', animation: '#2563EB', show: '#EA580C',
+    photo: '#0891B2', masterclass: '#65A30D', pinata: '#DB2777', custom: '#64748B'
 };
 
 // Кольори для ліній аніматорів

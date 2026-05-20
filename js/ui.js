@@ -1430,8 +1430,11 @@ async function renderMinimapAsync(container, snapshotDate) {
     canvas.width = container.clientWidth || 300;
     canvas.height = 50;
     const ctx = canvas.getContext('2d');
+    const computed = getComputedStyle(document.body);
+    const minimapBg = computed.getPropertyValue('--eg-scrubber-track').trim() || (AppState.darkMode ? '#1B1B31' : '#F3F6FA');
+    const nowLineColor = computed.getPropertyValue('--eg-danger').trim() || '#E54868';
 
-    ctx.fillStyle = AppState.darkMode ? '#2a2a3e' : '#f0f0f0';
+    ctx.fillStyle = minimapBg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const bookings = await getBookingsForDate(date);
@@ -1465,8 +1468,8 @@ async function renderMinimapAsync(container, snapshotDate) {
         const nowMin = now.getHours() * 60 + now.getMinutes() - start * 60;
         if (nowMin >= 0 && nowMin <= totalMin) {
             const x = (nowMin / totalMin) * canvas.width;
-            ctx.strokeStyle = '#FF0000';
-            ctx.lineWidth = 2;
+            ctx.strokeStyle = nowLineColor;
+            ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(x, 0);
             ctx.lineTo(x, canvas.height);

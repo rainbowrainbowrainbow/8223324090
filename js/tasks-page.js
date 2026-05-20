@@ -91,6 +91,7 @@ const WORKFLOW_LABELS = {
 const STATUS_CYCLE = { todo: 'in_progress', in_progress: 'done', done: 'todo' };
 const STATUS_ICONS = { todo: '', in_progress: '', done: '' };
 const STATUS_LABELS = { todo: 'До виконання', in_progress: 'В роботі', done: 'Готово' };
+const KANBAN_STATUSES = ['todo', 'in_progress', 'done'];
 const PRIORITY_ICONS = { high: '', normal: '', low: '' };
 const PATTERN_LABELS = { daily: 'Щоденно', weekdays: 'Будні', weekly: 'Щотижня (пн)', custom: 'Обрані дні' };
 const TASK_SCHEDULE_SLOTS = [
@@ -114,6 +115,9 @@ let lastCreatedTaskId = null;
 let showCompletedInSlices = localStorage.getItem('eg_tasks_show_completed') === 'true';
 let quickScheduleSlot = 'morning';
 let taskDuePreset = 'today';
+let kanbanDragState = null;
+let lastKanbanDragEndedAt = 0;
+let kanbanSavingTaskIds = new Set();
 
 // ==========================================
 // UTILITIES
@@ -838,8 +842,18 @@ async function apiPatchTaskStatus(id, status) {
             method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ status })
         });
         if (handleAuthError(response)) return null;
-        return await response.json();
-    } catch (err) { console.error('API patchTaskStatus error:', err); return null; }
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            return {
+                success: false,
+                error: payload.error || payload.message || `status update failed (${response.status})`
+            };
+        }
+        return payload;
+    } catch (err) {
+        console.error('API patchTaskStatus error:', err);
+        return { success: false, error: err?.message || 'status update failed' };
+    }
 }
 
 async function apiGetTaskDedupReport() {
@@ -1734,6 +1748,21 @@ function renderDoneTodayView(container) {
 // VIEW: KANBAN
 // ==========================================
 
+function renderKanbanColumn(status, label, tasks, baseCount) {
+    const cards = tasks.length
+        ? tasks.map(t => renderTaskCard(t)).join('')
+        : taskEmptyState('board', baseCount, label);
+    return `
+            <div class="kanban-col" data-kanban-status="${escapeHtml(status)}" aria-label="${escapeHtml(label)}">
+                <div class="kanban-col-header">
+                    ${escapeHtml(label)} <span class="kanban-col-count">${tasks.length}</span>
+                </div>
+                <div class="kanban-drop-zone" data-kanban-status="${escapeHtml(status)}">
+                    ${cards}
+                </div>
+            </div>`;
+}
+
 function renderKanbanView(container) {
     const baseTasks = allTasks.filter(t => t.status !== 'archived' && t.status !== 'cancelled');
     let tasks = applyAssistantTaskFilter(filterByCategory(baseTasks));
@@ -1744,24 +1773,9 @@ function renderKanbanView(container) {
 
     container.innerHTML = `
         <div class="kanban">
-            <div class="kanban-col">
-                <div class="kanban-col-header">
-                    До виконання <span class="kanban-col-count">${todo.length}</span>
-                </div>
-                ${todo.length ? todo.map(t => renderTaskCard(t)).join('') : taskEmptyState('board', baseTasks.filter(t => t.status === 'todo').length, 'До виконання')}
-            </div>
-            <div class="kanban-col">
-                <div class="kanban-col-header">
-                    В роботі <span class="kanban-col-count">${inProgress.length}</span>
-                </div>
-                ${inProgress.length ? inProgress.map(t => renderTaskCard(t)).join('') : taskEmptyState('board', baseTasks.filter(t => t.status === 'in_progress').length, 'В роботі')}
-            </div>
-            <div class="kanban-col">
-                <div class="kanban-col-header">
-                    Готово <span class="kanban-col-count">${done.length}</span>
-                </div>
-                ${done.length ? done.map(t => renderTaskCard(t)).join('') : taskEmptyState('board', baseTasks.filter(t => t.status === 'done').length, 'Готово')}
-            </div>
+            ${renderKanbanColumn('todo', 'До виконання', todo, baseTasks.filter(t => t.status === 'todo').length)}
+            ${renderKanbanColumn('in_progress', 'В роботі', inProgress, baseTasks.filter(t => t.status === 'in_progress').length)}
+            ${renderKanbanColumn('done', 'Готово', done, baseTasks.filter(t => t.status === 'done').length)}
         </div>`;
 }
 
@@ -1876,9 +1890,14 @@ function renderTaskCard(t) {
     const completedHtml = t.status === 'done'
         ? `<span class="task-completed-badge">Виконано${completedTime ? ` · ${escapeHtml(completedTime)}` : ''}</span>`
         : '';
+    const isKanbanCard = currentView === 'board' && KANBAN_STATUSES.includes(t.status);
+    const isKanbanSaving = kanbanSavingTaskIds.has(Number(t.id));
+    const kanbanAttrs = isKanbanCard
+        ? ` draggable="true" data-kanban-card="true" data-status="${escapeHtml(t.status)}" aria-grabbed="false"`
+        : ` data-status="${escapeHtml(t.status || '')}"`;
 
     return `
-    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}">
+    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''} ${isKanbanSaving ? 'is-kanban-saving' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}"${kanbanAttrs}>
         <label class="task-checkbox-wrap">
             <input type="checkbox" class="task-bulk-cb" data-id="${t.id}" aria-label="Вибрати задачу">
         </label>
@@ -2244,12 +2263,163 @@ async function handleTaskActionButton(button) {
     });
 }
 
+function clearKanbanDropTargets(board = document.getElementById('boardContent')) {
+    if (!board) return;
+    board.querySelectorAll('.kanban-col.is-drop-target, .kanban-col.is-drop-invalid').forEach(col => {
+        col.classList.remove('is-drop-target', 'is-drop-invalid');
+    });
+}
+
+function getKanbanDropColumn(target, board) {
+    const col = target?.closest?.('.kanban-col[data-kanban-status], .kanban-drop-zone[data-kanban-status]');
+    if (!col || !board?.contains(col)) return null;
+    return col.closest('.kanban-col[data-kanban-status]') || col;
+}
+
+function setKanbanDraggingCard(card, dragging) {
+    if (!card) return;
+    card.classList.toggle('is-dragging', Boolean(dragging));
+    card.setAttribute('aria-grabbed', dragging ? 'true' : 'false');
+    document.body.classList.toggle('tasks-kanban-dragging', Boolean(dragging));
+}
+
+function workflowForKanbanStatus(status) {
+    if (status === 'done') return 'done';
+    if (status === 'in_progress') return 'in_progress';
+    return 'todo';
+}
+
+function taskSnapshotForRollback(task) {
+    return task ? { ...task } : null;
+}
+
+function applyKanbanTaskStatus(taskId, status, persistedTask = null) {
+    allTasks = allTasks.map(task => {
+        if (Number(task.id) !== Number(taskId)) return task;
+        const workflow = workflowForKanbanStatus(status);
+        const base = persistedTask ? { ...task, ...persistedTask } : { ...task };
+        return {
+            ...base,
+            status,
+            workflow_state: workflow,
+            workflowState: workflow,
+            completed_at: status === 'done' ? (base.completed_at || base.completedAt || new Date().toISOString()) : null,
+            completedAt: status === 'done' ? (base.completedAt || base.completed_at || new Date().toISOString()) : null
+        };
+    });
+}
+
+function restoreKanbanTaskSnapshot(snapshot) {
+    if (!snapshot) return;
+    allTasks = allTasks.map(task => Number(task.id) === Number(snapshot.id) ? snapshot : task);
+}
+
+async function moveTaskBetweenKanbanColumns(taskId, targetStatus) {
+    if (!KANBAN_STATUSES.includes(targetStatus)) return;
+    const task = allTasks.find(t => Number(t.id) === Number(taskId));
+    if (!task) return;
+    const sourceStatus = task.status || 'todo';
+    if (sourceStatus === targetStatus) {
+        showNotification('Задача вже в цій колонці', 'info');
+        return;
+    }
+
+    const rollbackSnapshot = taskSnapshotForRollback(task);
+    kanbanSavingTaskIds.add(Number(taskId));
+    applyKanbanTaskStatus(taskId, targetStatus);
+    renderBoard();
+
+    const result = await apiPatchTaskStatus(taskId, targetStatus);
+    kanbanSavingTaskIds.delete(Number(taskId));
+
+    if (result?.success) {
+        if (result.task) applyKanbanTaskStatus(taskId, result.task.status || targetStatus, result.task);
+        showNotification(`Задачу переміщено: ${STATUS_LABELS[targetStatus] || targetStatus}`, 'success');
+        await loadAllTasks();
+        return;
+    }
+
+    restoreKanbanTaskSnapshot(rollbackSnapshot);
+    renderBoard();
+    showNotification(result?.error || 'Не вдалося зберегти переміщення. Задачу повернуто назад.', 'error');
+}
+
+function setupTaskKanbanDragAndDrop(board) {
+    if (!board || board.dataset.taskKanbanDndBound === 'true') return;
+    board.dataset.taskKanbanDndBound = 'true';
+
+    board.addEventListener('dragstart', (event) => {
+        if (currentView !== 'board') return;
+        if (event.target.closest('button, a, input, select, textarea, label, [data-task-action]')) {
+            event.preventDefault();
+            return;
+        }
+        const card = event.target.closest('.task-card[data-kanban-card="true"]');
+        if (!card || !board.contains(card)) return;
+        const taskId = Number(card.dataset.taskId || 0);
+        const sourceStatus = card.dataset.status || '';
+        if (!taskId || !KANBAN_STATUSES.includes(sourceStatus)) {
+            event.preventDefault();
+            return;
+        }
+        kanbanDragState = { taskId, sourceStatus };
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(taskId));
+        event.dataTransfer.setData('application/x-eventgenix-task', JSON.stringify(kanbanDragState));
+        setKanbanDraggingCard(card, true);
+    });
+
+    board.addEventListener('dragover', (event) => {
+        if (currentView !== 'board' || !kanbanDragState) return;
+        const col = getKanbanDropColumn(event.target, board);
+        if (!col) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        clearKanbanDropTargets(board);
+        const targetStatus = col.dataset.kanbanStatus || '';
+        col.classList.add(KANBAN_STATUSES.includes(targetStatus) ? 'is-drop-target' : 'is-drop-invalid');
+    });
+
+    board.addEventListener('dragleave', (event) => {
+        const col = getKanbanDropColumn(event.target, board);
+        if (!col || col.contains(event.relatedTarget)) return;
+        col.classList.remove('is-drop-target', 'is-drop-invalid');
+    });
+
+    board.addEventListener('drop', async (event) => {
+        if (currentView !== 'board' || !kanbanDragState) return;
+        const col = getKanbanDropColumn(event.target, board);
+        if (!col) return;
+        event.preventDefault();
+        const targetStatus = col.dataset.kanbanStatus || '';
+        const taskId = Number(event.dataTransfer.getData('text/plain') || kanbanDragState.taskId || 0);
+        clearKanbanDropTargets(board);
+        lastKanbanDragEndedAt = Date.now();
+        kanbanDragState = null;
+        document.body.classList.remove('tasks-kanban-dragging');
+        await moveTaskBetweenKanbanColumns(taskId, targetStatus);
+    });
+
+    board.addEventListener('dragend', (event) => {
+        const card = event.target.closest('.task-card[data-kanban-card="true"]');
+        setKanbanDraggingCard(card, false);
+        clearKanbanDropTargets(board);
+        kanbanDragState = null;
+        lastKanbanDragEndedAt = Date.now();
+    });
+}
+
 function setupTaskActionDelegation() {
     const board = document.getElementById('boardContent');
     if (!board || board.dataset.taskActionDelegationBound === 'true') return;
     board.dataset.taskActionDelegationBound = 'true';
+    setupTaskKanbanDragAndDrop(board);
 
     board.addEventListener('click', async (event) => {
+        if (Date.now() - lastKanbanDragEndedAt < 300) {
+            event.preventDefault();
+            return;
+        }
         const actionButton = event.target.closest('[data-task-action]');
         if (actionButton && board.contains(actionButton)) {
             event.preventDefault();

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.60.12",
+  "version": "0.60.13",
   "eventGenix": {
-    "releaseLabel": "Tasks Menu Actions Composer Layout Hardening"
+    "releaseLabel": "Tasks Kanban Drag And Drop Status Flow"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

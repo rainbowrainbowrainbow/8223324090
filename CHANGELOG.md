@@ -4,6 +4,17 @@
 
 ---
 
+## v0.60.13 - Tasks Kanban Drag And Drop Status Flow
+
+### Tasks Kanban Drag And Drop Status Flow [codex]
+- **Kanban drag-and-drop став реальним flow** - у `/tasks?view=board` картки тепер мають native draggable contract, а колонки `До виконання`, `В роботі`, `Готово` приймають drop як валідні status targets.
+- **Статус зберігається в backend** - drop викликає canonical `PATCH /api/tasks/:id/status` з `todo` / `in_progress` / `done`, тому `status`, `workflow_state`, history/version і reload consistency лишаються в одному джерелі правди.
+- **Optimistic UI без брехні** - картка одразу переїжджає в нову колонку, показує saving state, а при reject/timeout повертається назад і показує зрозумілу помилку.
+- **DnD не ламає actions** - кнопки всередині task card не запускають drag випадково, click/open після drag не спрацьовує фантомно, delegated row actions з попереднього релізу збережені.
+- **Візуальний feedback додано** - active dragging state, drop-zone highlight і dark/light styling роблять kanban взаємодію очевидною без додавання нових залежностей.
+
+---
+
 ## v0.60.12 - Tasks Menu Actions Composer Layout Hardening
 
 ### Tasks Menu Actions Composer Layout Hardening [codex]

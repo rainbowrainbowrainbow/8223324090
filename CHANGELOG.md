@@ -4,6 +4,17 @@
 
 ---
 
+## v0.60.20 - Unified Finance Analytics Control Page
+
+### Unified Finance Analytics Control Page [codex]
+- **Фінанси стали канонічним control page** - `/finance` тепер об'єднує executive overview, операційні фінанси та управлінські insights без окремого живого модуля `/analytics`.
+- **Аналітика переїхала в unified shell** - `/analytics` редіректить у `/finance?mode=insights`, а sidebar показує один пункт `Фінанси та аналітика` замість двох дубльованих входів.
+- **KPI без дублювання** - верхній екран має один merged executive strip: виручка бронювань, доходи/витрати/прибуток, бронювання + середній чек, нові клієнти, HR і risk/margin card.
+- **Операції згруповано за рішеннями** - транзакції, каса, рахунки, борги, бюджет, P&L, зарплати, прогноз і місяці більше не йдуть одним довгим таб-рядом, а зібрані в логічні групи.
+- **Reuse analytics renderer** - існуючі chart/render helpers з `js/analytics-page.js` експоновано як shared widgets для finance shell без третьої копії графіків.
+
+---
+
 ## v0.60.19 - Products IA Documents Catalogs
 
 ### Products IA Documents Catalogs [codex]

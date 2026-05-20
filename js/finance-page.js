@@ -59,7 +59,13 @@ const FinState = {
     page: 1,
     totalPages: 1,
     editingId: null,
-    currentTab: 'dashboard'
+    currentTab: 'transactions',
+    mode: 'overview',
+    analyticsOverview: null,
+    analyticsCharts: null,
+    comparison: null,
+    dealsLifecycle: null,
+    unifiedLoaded: false
 };
 
 const PAYMENT_LABELS = {
@@ -132,6 +138,41 @@ function getFilterDates() {
     return getCurrentMonthRange();
 }
 
+function getAnalyticsParams() {
+    const { from, to } = getFilterDates();
+    return new URLSearchParams({ period: 'custom', from, to }).toString();
+}
+
+function getInitialFinanceMode() {
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode') || params.get('tab');
+    if (mode === 'operations') return 'operations';
+    if (mode === 'insights') return 'insights';
+    return 'overview';
+}
+
+function getInitialFinanceTab() {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    const map = {
+        dashboard: 'dashboard',
+        transactions: 'transactions',
+        operations: 'transactions',
+        shift: 'shift',
+        cash: 'shift',
+        forecast: 'forecast',
+        pnl: 'pnl',
+        debts: 'debts',
+        monthly: 'monthly',
+        salary: 'salary',
+        budget: 'budget',
+        advanced: 'advanced',
+        accounts: 'accounts',
+        personal: 'personal'
+    };
+    return map[tab] || 'transactions';
+}
+
 // ==========================================
 // API CALLS
 // ==========================================
@@ -157,6 +198,32 @@ async function fetchDashboard() {
     } catch (err) {
         console.error('Failed to fetch dashboard', err);
     }
+}
+
+async function fetchUnifiedOverview() {
+    const { from, to } = getFilterDates();
+    const analyticsParams = getAnalyticsParams();
+    const [financeDashboard, analyticsOverview, analyticsCharts, comparison, lifecycle] = await Promise.allSettled([
+        apiRequest('GET', `/api/finance/dashboard?from=${from}&to=${to}`),
+        apiRequest('GET', `/api/analytics/overview?${analyticsParams}`),
+        apiRequest('GET', `/api/analytics/charts?${analyticsParams}`),
+        apiRequest('GET', `/api/analytics/comparison?${analyticsParams}`),
+        apiRequest('GET', `/api/analytics/deals-lifecycle?${analyticsParams}`)
+    ]);
+
+    if (financeDashboard.status === 'fulfilled') FinState.dashboard = financeDashboard.value;
+    else console.error('[finance:unified] finance dashboard failed', financeDashboard.reason);
+    if (analyticsOverview.status === 'fulfilled') FinState.analyticsOverview = analyticsOverview.value;
+    else console.error('[finance:unified] analytics overview failed', analyticsOverview.reason);
+    if (analyticsCharts.status === 'fulfilled') FinState.analyticsCharts = analyticsCharts.value;
+    else console.error('[finance:unified] analytics charts failed', analyticsCharts.reason);
+    if (comparison.status === 'fulfilled') FinState.comparison = comparison.value;
+    else console.error('[finance:unified] comparison failed', comparison.reason);
+    if (lifecycle.status === 'fulfilled') FinState.dealsLifecycle = lifecycle.value;
+    else console.error('[finance:unified] deals lifecycle failed', lifecycle.reason);
+
+    FinState.unifiedLoaded = true;
+    renderCurrentFinanceMode();
 }
 
 async function fetchTransactions() {
@@ -359,6 +426,172 @@ function renderCatSection(elId, data, color) {
             <span class="fin-cat-amount" style="color:${d.color || color}">${formatMoney(d.total)}</span>
         </div>
     `).join('');
+}
+
+// ==========================================
+// RENDERING — UNIFIED FINANCE + ANALYTICS
+// ==========================================
+
+function financeMetricParts() {
+    const analytics = FinState.analyticsOverview || {};
+    const dashboard = FinState.dashboard || {};
+    const bookings = analytics.bookings || {};
+    const finance = analytics.finance || dashboard.totals || {};
+    const customers = analytics.customers || {};
+    const hr = analytics.hr || {};
+    const totals = dashboard.totals || {};
+    const income = Number(finance.income ?? totals.income ?? 0);
+    const expense = Number(finance.expense ?? totals.expense ?? 0);
+    const profit = Number(finance.profit ?? totals.profit ?? (income - expense));
+    const margin = income > 0 ? Math.round((profit / income) * 100) : 0;
+    return { bookings, finance, customers, hr, income, expense, profit, margin };
+}
+
+function renderExecutiveCards() {
+    const el = document.getElementById('faExecutiveZone');
+    if (!el) return;
+    const { bookings, customers, hr, income, expense, profit, margin } = financeMetricParts();
+    const bookingRevenue = Number(bookings.revenue ?? FinState.dashboard?.bookingRevenue?.revenue ?? 0);
+    const bookingCount = Number(bookings.total ?? FinState.dashboard?.bookingRevenue?.count ?? 0);
+    const avgCheck = Number(bookings.avgCheck ?? (bookingCount ? bookingRevenue / bookingCount : 0));
+    const riskTone = profit < 0 ? 'red' : margin < 15 ? 'orange' : 'green';
+    const riskCopy = profit < 0
+        ? 'Кеш gap: витрати вищі за доходи'
+        : margin < 15
+            ? 'Маржа потребує уваги'
+            : 'Маржа в робочому коридорі';
+    el.innerHTML = `
+        <article class="fa-exec-card green">
+            <div class="fa-exec-label">Виручка бронювань</div>
+            <div class="fa-exec-value">${formatMoney(bookingRevenue)}</div>
+            <div class="fa-exec-meta">${bookingCount || 0} бронювань за період</div>
+        </article>
+        <article class="fa-exec-card orange">
+            <div class="fa-exec-label">Доходи / витрати / прибуток</div>
+            <div class="fa-exec-value">${formatMoney(income)} / ${formatMoney(expense)}</div>
+            <div class="fa-exec-meta">Прибуток: ${formatMoney(profit)}</div>
+        </article>
+        <article class="fa-exec-card blue">
+            <div class="fa-exec-label">Бронювання + середній чек</div>
+            <div class="fa-exec-value">${bookingCount || 0} · ${formatMoney(avgCheck)}</div>
+            <div class="fa-exec-meta">${bookings.confirmed || 0} підтверджені / ${bookings.preliminary || 0} попередні</div>
+        </article>
+        <article class="fa-exec-card purple">
+            <div class="fa-exec-label">Нові клієнти</div>
+            <div class="fa-exec-value">${customers.newCustomers || 0}</div>
+            <div class="fa-exec-meta">Попередній період: ${customers.prevNew || 0}</div>
+        </article>
+        <article class="fa-exec-card blue">
+            <div class="fa-exec-label">HR: години / штат</div>
+            <div class="fa-exec-value">${hr.totalHours || 0} год / ${hr.activeStaff || 0}</div>
+            <div class="fa-exec-meta">Операційне навантаження команди</div>
+        </article>
+        <article class="fa-exec-card ${riskTone}">
+            <div class="fa-exec-label">Ризик / маржа</div>
+            <div class="fa-exec-value">${margin}%</div>
+            <div class="fa-exec-meta">${riskCopy}</div>
+        </article>
+    `;
+}
+
+function renderActionRail() {
+    const el = document.getElementById('faActionRail');
+    if (!el) return;
+    const actions = [
+        ['transactions', 'Відкрити транзакції', 'Операційний рух коштів за період'],
+        ['debts', 'Подивитись борги', 'Контроль несплат і касових ризиків'],
+        ['salary', 'Перевірити зарплати', 'Payroll, схеми та звіти команди'],
+        ['accounts', 'Рахунки та каса', 'Баланс рахунків і касові операції'],
+        ['insights', 'Клієнтські сегменти', 'Перейти до insight-аналітики']
+    ];
+    el.innerHTML = actions.map(([target, title, meta]) => `
+        <button type="button" class="fa-action-card" data-fa-action="${target}">
+            <span class="fa-action-title">${title}</span>
+            <span class="fa-action-meta">${meta}</span>
+        </button>
+    `).join('');
+}
+
+function renderOverviewWorkspace() {
+    const el = document.getElementById('faWorkspace');
+    if (!el) return;
+    el.innerHTML = `
+        <div class="fa-panel-grid">
+            <section class="an-chart-container">
+                <h3 class="an-chart-title">Доходи бронювань по днях</h3>
+                <div id="dailyBookingsChart" class="an-bar-chart"></div>
+                <div class="an-legend">
+                    <span class="an-legend-item"><span class="an-legend-dot an-legend-dot--success"></span>Виручка</span>
+                    <span class="an-legend-item"><span class="an-legend-dot an-legend-dot--info"></span>Бронювання</span>
+                </div>
+            </section>
+            <section class="an-chart-container">
+                <h3 class="an-chart-title">Фінансові потоки по днях</h3>
+                <div id="dailyFinanceChart" class="an-bar-chart"></div>
+                <div class="an-legend">
+                    <span class="an-legend-item"><span class="an-legend-dot an-legend-dot--success"></span>Дохід</span>
+                    <span class="an-legend-item"><span class="an-legend-dot an-legend-dot--danger"></span>Витрата</span>
+                </div>
+            </section>
+        </div>
+        <div class="fa-panel-grid">
+            <section class="an-chart-container">
+                <h3 class="an-chart-title">Топ програм за виручкою</h3>
+                <div id="topProgramsChart"></div>
+            </section>
+            <section class="an-chart-container">
+                <h3 class="an-chart-title">Фінансові категорії</h3>
+                <div id="finCatsChart"></div>
+            </section>
+        </div>
+    `;
+    const widgets = window.CrmAnalyticsWidgets || {};
+    const charts = FinState.analyticsCharts || {};
+    widgets.renderDailyBookingsChart?.(charts.dailyBookings || []);
+    widgets.renderDailyFinanceChart?.(charts.dailyFinance || []);
+    widgets.renderTopPrograms?.(charts.topPrograms || []);
+    widgets.renderFinCategories?.(charts.financeCategories || []);
+}
+
+function renderInsightsWorkspace() {
+    const el = document.getElementById('faWorkspace');
+    if (!el) return;
+    el.innerHTML = `
+        <section class="an-section">
+            <h3 class="an-section-title">Порівняння та lifecycle</h3>
+            <div class="fa-panel-grid">
+                <div id="comparisonContent"></div>
+                <div id="dealsLifecycleContent"></div>
+            </div>
+        </section>
+        <section class="an-section">
+            <h3 class="an-section-title">Операційні патерни</h3>
+            <div class="fa-panel-grid">
+                <section class="an-chart-container">
+                    <h3 class="an-chart-title">Навантаження по днях тижня</h3>
+                    <div id="weekdayChart"></div>
+                </section>
+                <section class="an-chart-container">
+                    <h3 class="an-chart-title">Сегменти клієнтів</h3>
+                    <div id="segmentsChart"></div>
+                </section>
+            </div>
+        </section>
+    `;
+    const widgets = window.CrmAnalyticsWidgets || {};
+    const charts = FinState.analyticsCharts || {};
+    widgets.renderComparison?.(FinState.comparison);
+    widgets.renderDealsLifecycle?.(FinState.dealsLifecycle);
+    widgets.renderWeekdayChart?.(charts.weekdayLoad || []);
+    widgets.renderSegments?.(charts.customerSegments || {});
+}
+
+function renderCurrentFinanceMode() {
+    if (FinState.mode === 'operations') return;
+    renderExecutiveCards();
+    renderActionRail();
+    if (FinState.mode === 'insights') renderInsightsWorkspace();
+    else renderOverviewWorkspace();
 }
 
 // ==========================================
@@ -1168,18 +1401,47 @@ function populateYearFilter() {
 }
 
 // ==========================================
-// TAB SWITCHING
+// MODE / TAB SWITCHING
 // ==========================================
 
-function switchTab(tabName) {
-    FinState.currentTab = tabName;
+function setFinanceMode(mode, options = {}) {
+    if (!['overview', 'operations', 'insights'].includes(mode)) mode = 'overview';
+    FinState.mode = mode;
 
-    // Update tab buttons
+    document.querySelectorAll('.fa-mode-btn').forEach(btn => {
+        const active = btn.dataset.mode === mode;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+
+    const executive = document.getElementById('faExecutiveZone');
+    const actions = document.getElementById('faActionRail');
+    const workspace = document.getElementById('faWorkspace');
+    const operationsNav = document.getElementById('financeOperationsNav');
+    const operationsWorkspace = document.getElementById('financeOperationalWorkspace');
+    const isOperations = mode === 'operations';
+    if (executive) executive.style.display = isOperations ? 'none' : '';
+    if (actions) actions.style.display = isOperations ? 'none' : '';
+    if (workspace) workspace.style.display = isOperations ? 'none' : '';
+    if (operationsNav) operationsNav.style.display = isOperations ? '' : 'none';
+    if (operationsWorkspace) operationsWorkspace.style.display = isOperations ? '' : 'none';
+
+    if (isOperations) {
+        if (options.switchTab !== false) switchTab(options.tab || FinState.currentTab || 'transactions', { preserveMode: true });
+        return;
+    }
+    if (FinState.unifiedLoaded) renderCurrentFinanceMode();
+}
+
+function switchTab(tabName, options = {}) {
+    if (!tabName) tabName = 'transactions';
+    FinState.currentTab = tabName;
+    if (!options.preserveMode) setFinanceMode('operations', { switchTab: false });
+
     document.querySelectorAll('.fin-tab').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.tab === tabName);
     });
 
-    // Show/hide tab panels
     const tabs = ['tabDashboard','tabTransactions','tabMonthly','tabSalary','tabBudget',
                   'tabShift','tabForecast','tabPnl','tabDebts','tabAdvanced','tabAccounts','tabPersonal'];
     tabs.forEach(id => {
@@ -1195,7 +1457,6 @@ function switchTab(tabName) {
     }[tabName]);
     if (activePanel) activePanel.style.display = '';
 
-    // Load data for tab
     if (tabName === 'dashboard') fetchDashboard();
     if (tabName === 'transactions') fetchTransactions();
     if (tabName === 'monthly') fetchMonthlyReport();
@@ -1393,7 +1654,8 @@ function escapeHtml(str) {
 // ==========================================
 
 function refreshData() {
-    fetchDashboard();
+    fetchUnifiedOverview();
+    if (FinState.currentTab === 'dashboard') fetchDashboard();
     if (FinState.currentTab === 'transactions') fetchTransactions();
     if (FinState.currentTab === 'monthly') fetchMonthlyReport();
     if (FinState.currentTab === 'salary') fetchSalaryReport();
@@ -1491,11 +1753,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Fetch initial data
     await fetchCategories();
-    fetchDashboard();
+    FinState.mode = getInitialFinanceMode();
+    FinState.currentTab = getInitialFinanceTab();
+    await fetchUnifiedOverview();
+    setFinanceMode(FinState.mode, { tab: FinState.currentTab });
 
     // Tab clicks
     document.querySelectorAll('.fin-tab').forEach(btn => {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    document.querySelectorAll('.fa-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => setFinanceMode(btn.dataset.mode, { tab: FinState.currentTab }));
+    });
+
+    document.getElementById('faActionRail')?.addEventListener('click', (event) => {
+        const card = event.target.closest('[data-fa-action]');
+        if (!card) return;
+        const action = card.dataset.faAction;
+        if (action === 'insights') setFinanceMode('insights');
+        else switchTab(action);
     });
 
     // Add transaction button (income by default)

@@ -8,18 +8,18 @@
 
     <script type="text/javascript">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","w841e2emn0");</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Event Genix | Фінанси</title>
+    <title>Event Genix | Фінанси та аналітика</title>
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.60.19">
-    <link rel="stylesheet" href="css/layout.css?v=0.60.19">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.19">
-    <link rel="stylesheet" href="css/pages.css?v=0.60.19">
-    <link rel="stylesheet" href="css/modals.css?v=0.60.19">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.19">
-    <link rel="stylesheet" href="css/responsive.css?v=0.60.19">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.19">
+    <link rel="stylesheet" href="css/base.css?v=0.60.20">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.20">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.20">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.20">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.20">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.20">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.20">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.20">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1033,6 +1033,161 @@
         .embed-mode .skip-link,
         .embed-mode .page-login-overlay { display: none !important; }
         .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
+
+        .fa-shell { display: grid; gap: 18px; margin-bottom: 18px; }
+        .fa-hero {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 18px;
+            padding: 20px 22px;
+            border-radius: 22px;
+            border: 1px solid rgba(16,185,129,0.18);
+            background: radial-gradient(circle at top left, rgba(16,185,129,0.14), transparent 34%), linear-gradient(135deg, rgba(15,23,42,0.96), rgba(17,24,39,0.92));
+            box-shadow: 0 18px 42px rgba(15,23,42,0.16);
+            color: #F8FAFC;
+        }
+        .fa-kicker { font-size: 11px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; color: #6EE7B7; margin-bottom: 4px; }
+        .fa-hero h1 { margin: 0; font-size: 28px; line-height: 1.1; font-weight: 900; }
+        .fa-hero p { margin: 8px 0 0; max-width: 680px; color: rgba(226,232,240,.84); font-weight: 700; }
+        .fa-mode-switch { display: inline-flex; gap: 6px; padding: 4px; border-radius: 16px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); }
+        .fa-mode-btn { min-height: 42px; padding: 0 14px; border: 0; border-radius: 12px; background: transparent; color: rgba(226,232,240,.78); font-weight: 900; cursor: pointer; }
+        .fa-mode-btn:hover, .fa-mode-btn:focus-visible { color: #fff; background: rgba(255,255,255,0.09); outline: none; }
+        .fa-mode-btn.active { background: rgba(16,185,129,0.20); color: #ECFDF5; box-shadow: 0 10px 24px rgba(16,185,129,0.18); }
+        .fa-executive-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+        .fa-exec-card {
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-radius: 18px;
+            padding: 16px;
+            box-shadow: var(--shadow-sm);
+            min-height: 118px;
+        }
+        .fa-exec-label { color: var(--gray-500); font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; }
+        .fa-exec-value { margin-top: 6px; color: var(--gray-900); font-size: 25px; font-weight: 900; line-height: 1.15; }
+        .fa-exec-meta { margin-top: 7px; color: var(--gray-500); font-size: 12px; font-weight: 700; }
+        .fa-exec-card.green { border-left: 4px solid #10B981; }
+        .fa-exec-card.blue { border-left: 4px solid #3B82F6; }
+        .fa-exec-card.purple { border-left: 4px solid #8B5CF6; }
+        .fa-exec-card.orange { border-left: 4px solid #F59E0B; }
+        .fa-exec-card.red { border-left: 4px solid #EF4444; }
+        .fa-action-rail { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+        .fa-action-card {
+            min-height: 92px;
+            padding: 14px;
+            border: 1px solid var(--gray-200);
+            border-radius: 16px;
+            background: var(--white);
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+            text-align: left;
+            cursor: pointer;
+            color: var(--gray-900);
+            box-shadow: var(--shadow-sm);
+        }
+        .fa-action-card:hover, .fa-action-card:focus-visible { border-color: #10B981; transform: translateY(-1px); outline: none; }
+        .fa-action-title { font-size: 14px; font-weight: 900; }
+        .fa-action-meta { color: var(--gray-500); font-size: 12px; font-weight: 700; }
+        .fa-workspace { display: grid; gap: 16px; }
+        .fa-panel-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+        .fa-operations-nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
+        .fa-operation-group { background: var(--white); border: 1px solid var(--gray-200); border-radius: 18px; padding: 12px; box-shadow: var(--shadow-sm); }
+        .fa-operation-group-title { margin: 0 0 8px; font-size: 12px; font-weight: 900; color: var(--gray-500); text-transform: uppercase; letter-spacing: .04em; }
+        .fa-operation-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+        .fa-operation-btn { min-height: 40px; border-radius: 12px; }
+        .fa-operational-workspace { display: block; }
+        .an-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px; }
+        .an-chart-container, .an-kpi-card {
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-radius: 18px;
+            padding: 18px;
+            margin-bottom: 16px;
+            box-shadow: var(--shadow-sm);
+            color: var(--gray-900);
+        }
+        .an-section { margin-bottom: 20px; }
+        .an-section-title { font-size: 15px; font-weight: 900; color: var(--gray-900); margin: 0 0 12px; }
+        .an-chart-title { font-size: 13px; font-weight: 900; color: var(--gray-600); margin: 0 0 12px; }
+        .an-charts-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+        .an-bar-chart { display: flex; align-items: flex-end; gap: 3px; height: 160px; }
+        .an-bar-chart--short { height: 120px; }
+        .an-bar-chart--deals { height: 140px; }
+        .an-bar-group { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 16px; }
+        .an-bar-pair { display: flex; gap: 2px; align-items: flex-end; width: 100%; height: 140px; }
+        .an-bar { flex: 1; border-radius: 3px 3px 0 0; min-height: 2px; }
+        .an-bar.green, .an-legend-dot--success, .an-hbar-fill { background: #10B981; }
+        .an-bar.red, .an-legend-dot--danger { background: #EF4444; }
+        .an-bar.blue, .an-legend-dot--info { background: #3B82F6; }
+        .an-bar.purple { background: #8B5CF6; }
+        .an-bar.orange { background: #F59E0B; }
+        .an-bar-label, .an-kpi-prev, .an-helper-text, .an-segment-total { color: var(--gray-500); font-size: 11px; font-weight: 700; }
+        .an-mini-table, .an-comp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .an-mini-table td, .an-comp-table td, .an-comp-table th { padding: 9px 10px; border-bottom: 1px solid var(--gray-200); }
+        .an-comp-table th { background: var(--gray-50); color: var(--gray-600); text-align: right; font-size: 11px; text-transform: uppercase; }
+        .an-comp-table th:first-child, .an-comp-table td:first-child { text-align: left; }
+        .an-program-name, .an-comp-table td:first-child { color: var(--gray-900); font-weight: 800; }
+        .an-table-count, .an-hbar-label, .an-hbar-value, .an-legend-item, .an-segment-label { color: var(--gray-500); font-size: 12px; font-weight: 800; }
+        .an-hbar-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--gray-200); }
+        .an-hbar-track { flex: 1; height: 8px; background: var(--gray-100); border-radius: 8px; overflow: hidden; }
+        .an-hbar-fill { height: 100%; border-radius: 8px; }
+        .an-segments { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .an-segment { text-align: center; padding: 12px 8px; background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 12px; }
+        .an-segment-count { font-size: 22px; font-weight: 900; line-height: 1.2; }
+        .an-segment-count--champions, .an-success-text, .an-money-positive { color: #059669; }
+        .an-segment-count--loyal { color: #2563EB; }
+        .an-segment-count--potential, .an-warning-text { color: #D97706; }
+        .an-segment-count--inactive, .an-danger-text { color: #DC2626; }
+        .an-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+        .an-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+        .an-legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+        .an-empty-state { width: 100%; padding: 28px 12px; color: var(--gray-400); font-size: 13px; font-weight: 800; text-align: center; }
+        .rank { width: 24px; height: 24px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; }
+        .rank-1 { background: #FCD34D; color: #111827; }
+        .rank-2 { background: #CBD5E1; color: #0F172A; }
+        .rank-3 { background: #FDBA74; color: #111827; }
+        .rank-n { background: var(--gray-100); color: var(--gray-600); }
+        body.dark-mode .fa-exec-card,
+        body.dark-mode .fa-action-card,
+        body.dark-mode .fa-operation-group,
+        body.dark-mode .an-chart-container,
+        body.dark-mode .an-kpi-card {
+            background: #121A2A;
+            border-color: rgba(255,255,255,0.10);
+            color: #F8FAFC;
+            box-shadow: 0 18px 42px rgba(0,0,0,0.28);
+        }
+        body.dark-mode .fa-exec-value,
+        body.dark-mode .fa-action-card,
+        body.dark-mode .an-section-title,
+        body.dark-mode .an-chart-title,
+        body.dark-mode .an-program-name,
+        body.dark-mode .an-comp-table td:first-child { color: #F8FAFC; }
+        body.dark-mode .fa-exec-label,
+        body.dark-mode .fa-exec-meta,
+        body.dark-mode .fa-action-meta,
+        body.dark-mode .fa-operation-group-title,
+        body.dark-mode .an-table-count,
+        body.dark-mode .an-hbar-label,
+        body.dark-mode .an-hbar-value,
+        body.dark-mode .an-legend-item,
+        body.dark-mode .an-segment-label,
+        body.dark-mode .an-bar-label { color: #94A3B8; }
+        body.dark-mode .an-comp-table th,
+        body.dark-mode .an-segment { background: rgba(15,23,42,.72); border-color: rgba(255,255,255,.10); }
+        body.dark-mode .an-mini-table td,
+        body.dark-mode .an-comp-table td,
+        body.dark-mode .an-comp-table th,
+        body.dark-mode .an-hbar-row { border-color: rgba(255,255,255,.10); }
+        body.dark-mode .an-hbar-track { background: rgba(71,85,105,.45); }
+        @media (max-width: 860px) {
+            .fa-hero { flex-direction: column; align-items: stretch; }
+            .fa-mode-switch { width: 100%; overflow-x: auto; }
+            .fa-panel-grid, .an-charts-row { grid-template-columns: 1fr; }
+            .an-segments { grid-template-columns: repeat(2, 1fr); }
+        }
     </style>
 </head>
 <body data-page-group="mgmt">
@@ -1088,7 +1243,7 @@
 
         <main id="main-content" class="page-container">
             <div class="page-header">
-                <h2>Фінанси</h2>
+                <h2>Фінанси та аналітика</h2>
                 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
                     <a href="/reports" class="btn-page-secondary" style="text-decoration:none">📋 Звіти</a>
                     <a href="/center" class="btn-page-secondary" style="text-decoration:none">💲 Центр цін</a>
@@ -1100,24 +1255,63 @@
                 </div>
             </div>
 
-            <!-- Stats overview -->
-            <div id="finStats" class="fin-stats"></div>
+            <section class="fa-shell" aria-label="Фінанси та аналітика">
+                <header class="fa-hero">
+                    <div>
+                        <div class="fa-kicker">Control Tower</div>
+                        <h1>Фінанси та аналітика</h1>
+                        <p>Один екран для грошей, бронювань, маржі, ризиків і операційних дій.</p>
+                    </div>
+                    <div class="fa-mode-switch" role="tablist" aria-label="Режими фінансового модуля">
+                        <button type="button" class="fa-mode-btn active" data-mode="overview" role="tab" aria-selected="true">Огляд</button>
+                        <button type="button" class="fa-mode-btn" data-mode="operations" role="tab" aria-selected="false">Операції</button>
+                        <button type="button" class="fa-mode-btn" data-mode="insights" role="tab" aria-selected="false">Інсайти</button>
+                    </div>
+                </header>
+                <div id="faExecutiveZone" class="fa-executive-grid" aria-live="polite"></div>
+                <div id="faActionRail" class="fa-action-rail" aria-label="Швидкі фінансові дії"></div>
+                <div id="faWorkspace" class="fa-workspace" aria-live="polite"></div>
+            </section>
 
-            <!-- Tabs -->
-            <div class="fin-tabs">
-                <button type="button" class="fin-tab active" data-tab="dashboard">Дашборд</button>
-                <button type="button" class="fin-tab" data-tab="transactions">Транзакції</button>
-                <button type="button" class="fin-tab" data-tab="shift">Каса</button>
-                <button type="button" class="fin-tab" data-tab="forecast">Прогноз</button>
-                <button type="button" class="fin-tab" data-tab="pnl">P&L</button>
-                <button type="button" class="fin-tab" data-tab="debts">Борги</button>
-                <button type="button" class="fin-tab" data-tab="monthly">Місяці</button>
-                <button type="button" class="fin-tab" data-tab="salary">Зарплати</button>
-                <button type="button" class="fin-tab" data-tab="budget">Бюджет</button>
-                <button type="button" class="fin-tab" data-tab="advanced">Аналітика</button>
-                <button type="button" class="fin-tab" data-tab="accounts">Рахунки</button>
-                <button type="button" class="fin-tab" data-tab="personal">👤 Особисті</button>
-            </div>
+            <!-- Legacy KPI host kept for backwards-compatible render helpers; unified overview owns visible KPI cards. -->
+            <div id="finStats" class="fin-stats" style="display:none"></div>
+
+            <section id="financeOperationsNav" class="fa-operations-nav" aria-label="Операційні розділи фінансів" style="display:none">
+                <div class="fa-operation-group">
+                    <h3 class="fa-operation-group-title">Рух коштів</h3>
+                    <div class="fa-operation-buttons">
+                        <button type="button" class="fin-tab fa-operation-btn active" data-tab="transactions">Транзакції</button>
+                        <button type="button" class="fin-tab fa-operation-btn" data-tab="shift">Каса</button>
+                        <button type="button" class="fin-tab fa-operation-btn" data-tab="accounts">Рахунки</button>
+                        <button type="button" class="fin-tab fa-operation-btn" data-tab="personal">Особисті</button>
+                    </div>
+                </div>
+                <div class="fa-operation-group">
+                    <h3 class="fa-operation-group-title">Контроль</h3>
+                    <div class="fa-operation-buttons">
+                        <button type="button" class="fin-tab fa-operation-btn" data-tab="debts">Борги</button>
+                        <button type="button" class="fin-tab fa-operation-btn" data-tab="budget">Бюджет</button>
+                        <button type="button" class="fin-tab fa-operation-btn" data-tab="pnl">P&L</button>
+                        <button type="button" class="fin-tab fa-operation-btn" data-tab="advanced">Фін. панель</button>
+                    </div>
+                </div>
+                <div class="fa-operation-group">
+                    <h3 class="fa-operation-group-title">Команда</h3>
+                    <div class="fa-operation-buttons">
+                        <button type="button" class="fin-tab fa-operation-btn" data-tab="salary">Зарплати</button>
+                    </div>
+                </div>
+                <div class="fa-operation-group">
+                    <h3 class="fa-operation-group-title">Планування</h3>
+                    <div class="fa-operation-buttons">
+                        <button type="button" class="fin-tab fa-operation-btn" data-tab="forecast">Прогноз</button>
+                        <button type="button" class="fin-tab fa-operation-btn" data-tab="monthly">Місяці</button>
+                        <button type="button" class="fin-tab fa-operation-btn" data-tab="dashboard">Фін. дашборд</button>
+                    </div>
+                </div>
+            </section>
+
+            <section id="financeOperationalWorkspace" class="fa-operational-workspace" style="display:none">
 
             <!-- Dashboard tab -->
             <div id="tabDashboard">
@@ -1371,6 +1565,7 @@
                     </div>
                 </div>
             </div>
+            </section>
         </main>
     </div>
 
@@ -1507,13 +1702,14 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/ui.js?v=0.60.19"></script>
-    <script src="js/config.js?v=0.60.19"></script>
-    <script src="js/notification.js?v=0.60.19"></script>
-    <script src="js/api.js?v=0.60.19"></script>
-    <script src="js/auth.js?v=0.60.19"></script>
-    <script src="js/components/sidebar.js?v=0.60.19"></script>
+    <script src="js/ui.js?v=0.60.20"></script>
+    <script src="js/config.js?v=0.60.20"></script>
+    <script src="js/notification.js?v=0.60.20"></script>
+    <script src="js/api.js?v=0.60.20"></script>
+    <script src="js/auth.js?v=0.60.20"></script>
+    <script src="js/components/sidebar.js?v=0.60.20"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/finance-page.js?v=0.60.19"></script><script src="js/alerts.js?v=0.60.19"></script>
+    <script src="js/analytics-page.js?v=0.60.20"></script>
+    <script src="js/finance-page.js?v=0.60.20"></script><script src="js/alerts.js?v=0.60.20"></script>
 </body>
 </html>

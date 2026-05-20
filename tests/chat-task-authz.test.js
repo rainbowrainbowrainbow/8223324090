@@ -268,11 +268,13 @@ describe('operations flow static contracts', () => {
         const analyticsRoute = fs.readFileSync(path.join(repoRoot, 'routes/analytics.js'), 'utf8');
         const analyticsPage = fs.readFileSync(path.join(repoRoot, 'js/analytics-page.js'), 'utf8');
         const analyticsHtml = fs.readFileSync(path.join(repoRoot, 'analytics.html'), 'utf8');
+        const financeHtml = fs.readFileSync(path.join(repoRoot, 'finance.html'), 'utf8');
 
         assert.match(analyticsRoute, /\/deals-lifecycle/);
         assert.match(analyticsRoute, /stageTimestampTruth: 'missing'/);
         assert.match(analyticsPage, /fetchDealsLifecycle/);
         assert.match(analyticsPage, /Прийняті vs закриті угоди/);
-        assert.match(analyticsHtml, /dealsLifecycleContent/);
+        assert.match(analyticsHtml, /\/finance\?mode=insights/);
+        assert.match(financeHtml, /faWorkspace/);
     });
 });

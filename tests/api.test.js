@@ -3671,12 +3671,11 @@ describe('Analytics — Comparison (v16.1)', () => {
 });
 
 describe('Analytics — Static Page (v16.1)', () => {
-    it('GET /analytics — returns HTML', async () => {
+    it('GET /analytics — redirects to unified finance insights', async () => {
         const BASE_URL = process.env.TEST_URL || 'http://localhost:3000';
-        const res = await fetch(`${BASE_URL}/analytics`);
-        assert.equal(res.status, 200);
-        const body = await res.text();
-        assert.ok(body.includes('Аналітика'), 'Should contain Аналітика');
+        const res = await fetch(`${BASE_URL}/analytics`, { redirect: 'manual' });
+        assert.equal(res.status, 301);
+        assert.match(res.headers.get('location') || '', /\/finance\?mode=insights/);
     });
 });
 

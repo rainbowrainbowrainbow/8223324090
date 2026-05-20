@@ -492,11 +492,29 @@ function refreshAll() {
     fetchComparison();
 }
 
+window.CrmAnalyticsWidgets = {
+    renderKPIs,
+    renderCharts,
+    renderDailyBookingsChart,
+    renderDailyFinanceChart,
+    renderTopPrograms,
+    renderWeekdayChart,
+    renderFinCategories,
+    renderSegments,
+    renderDealsLifecycle,
+    renderComparison,
+    growthBadge,
+    fmtMoney,
+    fmtDate,
+    fmtNum,
+    safeCssAccent
+};
+
 // ==========================================
 // INIT
 // ==========================================
 
-document.addEventListener('DOMContentLoaded', async () => {
+async function initStandaloneAnalyticsPage() {
     if (typeof initDarkMode === 'function') initDarkMode();
 
     const token = localStorage.getItem('pzp_token');
@@ -558,4 +576,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initial load
     refreshAll();
-});
+}
+
+if (document.getElementById('kpiGrid') && document.getElementById('chartsContent')) {
+    document.addEventListener('DOMContentLoaded', initStandaloneAnalyticsPage);
+}

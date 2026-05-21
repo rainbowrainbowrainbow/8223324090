@@ -99,12 +99,14 @@ async function initPage() {
     renderProductIaTabs();
     renderCategoryTabs();
     renderKitchenSubtabs();
+    renderMenuSectionFilter();
     await loadProducts();
     if (activeProductTab === 'catalogs') await loadCatalogEntries();
     updateProductTabPanels();
 
     document.getElementById('addProductBtn')?.addEventListener('click', () => openProductForm());
-    document.getElementById('saveProductBtn')?.addEventListener('click', saveProduct);
+    document.getElementById('saveProductBtn')?.addEventListener('click', () => saveProduct());
+    document.getElementById('saveProductNextBtn')?.addEventListener('click', () => saveProduct({ addNext: true }));
     document.getElementById('cancelProductBtn')?.addEventListener('click', closeProductForm);
     document.getElementById('pf-category')?.addEventListener('change', syncKitchenSubtypeFromForm);
     document.getElementById('productDocSaveBtn')?.addEventListener('click', saveProductDocument);
@@ -132,11 +134,35 @@ function readInitialKitchenTab() {
 
 let activeProductTab = readInitialProductTab();
 let activeKitchenTab = readInitialKitchenTab();
+let activeMenuSection = 'all';
 let currentCategory = 'all';
 let allProducts = [];
 let productCatalogs = [];
 let catalogEntriesLoaded = false;
 let editingDocumentProductId = null;
+
+const MENU_SECTION_ORDER = [
+    'Холодні закуски',
+    'Салати',
+    'Гарячі закуски',
+    'Бургери',
+    'Піца',
+    'Додатки до піци',
+    'Мангальне меню',
+    'Основні страви',
+    'Перші страви',
+    'Гарніри',
+    'Гарячі напої',
+    'Коктейлі та холодні напої'
+];
+
+const MENU_AVAILABILITY_LABELS = {
+    active: 'Активна',
+    draft: 'Чернетка',
+    seasonal: 'Сезонна',
+    sold_out: 'Стоп',
+    hidden: 'Прихована'
+};
 
 function renderProductIaTabs() {
     const container = document.getElementById('productIaTabs');
@@ -168,6 +194,7 @@ async function setProductTab(tab) {
     closeProductForm();
     renderProductIaTabs();
     renderKitchenSubtabs();
+    renderMenuSectionFilter();
     updateProductTabPanels();
     renderProducts();
     if (activeProductTab === 'catalogs' && !catalogEntriesLoaded) {
@@ -224,8 +251,54 @@ function setKitchenTab(tab) {
     }
     closeProductForm();
     renderKitchenSubtabs();
+    renderMenuSectionFilter();
     updateProductTabPanels();
     renderProducts();
+}
+
+function normalizeMenuSection(section) {
+    return String(section || '').trim();
+}
+
+function getKnownMenuSections() {
+    const fromProducts = allProducts
+        .filter(p => getProductDomain(p) === 'kitchen' && getKitchenType(p) === 'menu')
+        .map(p => normalizeMenuSection(p.menuSection))
+        .filter(Boolean);
+    return [...new Set([...MENU_SECTION_ORDER, ...fromProducts])];
+}
+
+function renderMenuSectionFilter() {
+    const container = document.getElementById('menuSectionFilter');
+    if (!container) return;
+    const visible = activeProductTab === 'kitchen' && activeKitchenTab === 'menu';
+    container.classList.toggle('hidden', !visible);
+    if (!visible) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const sections = getKnownMenuSections();
+    if (activeMenuSection !== 'all' && !sections.includes(activeMenuSection)) {
+        activeMenuSection = 'all';
+    }
+
+    container.innerHTML = [
+        `<button type="button" class="menu-section-chip${activeMenuSection === 'all' ? ' active' : ''}" data-menu-section="all">Усі розділи</button>`,
+        ...sections.map(section => `
+            <button type="button" class="menu-section-chip${activeMenuSection === section ? ' active' : ''}" data-menu-section="${escapeHtml(section)}">
+                ${escapeHtml(section)}
+            </button>
+        `)
+    ].join('');
+
+    container.querySelectorAll('[data-menu-section]').forEach(button => {
+        button.addEventListener('click', () => {
+            activeMenuSection = button.dataset.menuSection || 'all';
+            renderMenuSectionFilter();
+            renderProducts();
+        });
+    });
 }
 
 // ==========================================
@@ -270,6 +343,7 @@ async function loadProducts() {
     if (kitchenGrid) kitchenGrid.innerHTML = '<div class="loading-spinner">Завантаження кухні…</div>';
     try {
         allProducts = await apiGetProducts(false) || [];
+        renderMenuSectionFilter();
         renderProducts();
     } catch (err) {
         console.error('loadProducts error:', err);
@@ -345,11 +419,51 @@ function renderProgramProducts(grid, canManage) {
     }).join('');
 }
 
+function getMenuCompleteness(product = {}) {
+    const section = normalizeMenuSection(product.menuSection);
+    const isMenu = getKitchenType(product) === 'menu';
+    const isDrinkOrAddon = /напої|напiї|коктейл|чай|кава|додатки|соус|топінг|топiнг/i.test(section);
+    const missing = [];
+    if (!product.name) missing.push('назва');
+    if (isMenu && !section) missing.push('розділ');
+    if (!(Number(product.price || 0) > 0) && !product.priceVariantNote) missing.push('ціна');
+    if (!product.shortDescription && !product.description) missing.push('короткий опис');
+    if (!product.weightValue && !product.servingUnit) missing.push('вага/обʼєм');
+    if (!product.ingredients && !isDrinkOrAddon) missing.push('склад');
+    return {
+        status: missing.length === 0 ? 'complete' : 'partial',
+        missing
+    };
+}
+
+function renderMenuCompletenessBadge(product) {
+    if (getKitchenType(product) !== 'menu') return '';
+    const completeness = getMenuCompleteness(product);
+    const label = completeness.status === 'complete'
+        ? 'Заповнено'
+        : `Бракує ${completeness.missing.length}`;
+    const title = completeness.missing.length ? `Бракує: ${completeness.missing.join(', ')}` : 'Критичні поля заповнені';
+    return `<span class="menu-completeness-badge ${completeness.status}" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
+}
+
+function renderKitchenPrice(product) {
+    if (Number(product.price || 0) > 0) {
+        return `${formatPrice(product.price)}${product.servingUnit ? `/${escapeHtml(product.servingUnit)}` : (product.isPerChild ? '/дит' : '')}`;
+    }
+    if (product.priceVariantNote) return 'Варіанти';
+    return formatPrice(product.price);
+}
+
 function renderKitchenProducts(grid, canManage) {
-    const filtered = allProducts.filter(p => getProductDomain(p) === 'kitchen' && getKitchenType(p) === activeKitchenTab);
+    let filtered = allProducts.filter(p => getProductDomain(p) === 'kitchen' && getKitchenType(p) === activeKitchenTab);
+    if (activeKitchenTab === 'menu' && activeMenuSection !== 'all') {
+        filtered = filtered.filter(p => normalizeMenuSection(p.menuSection) === activeMenuSection);
+    }
     const emptyText = activeKitchenTab === 'cake'
         ? 'Тортів ще немає. Додайте першу позицію з оформленням і техкартою.'
-        : 'Меню-позицій ще немає. Додайте першу кухонну позицію з інгредієнтами і техкартою.';
+        : (activeMenuSection === 'all'
+            ? 'Меню-позицій ще немає. Додайте першу кухонну позицію з розділом, вагою/обʼємом, складом і ціною.'
+            : `У розділі "${activeMenuSection}" ще немає позицій. Додайте першу позицію без втрати поточного контексту.`);
 
     if (filtered.length === 0) {
         grid.innerHTML = `<div class="empty-state"><img src="images/branding/slide5-dashboard.png" alt="" class="empty-state-img"><div class="empty-state-text">${emptyText}</div></div>`;
@@ -367,18 +481,22 @@ function renderKitchenProducts(grid, canManage) {
                         <span class="program-icon">${escapeHtml(p.icon || (subtype === 'cake' ? '🎂' : '🍽️'))}</span>
                         <span class="card-title">${escapeHtml(p.name)}</span>
                         ${p.isActive === false ? '<span class="badge badge-normal">неактивна</span>' : ''}
+                        ${renderMenuCompletenessBadge(p)}
                     </div>
-                    <span class="program-price">${formatPrice(p.price)}${p.isPerChild ? '/дит' : ''}</span>
+                    <span class="program-price">${renderKitchenPrice(p)}</span>
                 </div>
                 <div class="card-meta">
                     <span>${escapeHtml(p.code || '')}</span>
-                    <span>${subtype === 'cake' ? 'Торт' : 'Меню'}</span>
+                    <span>${subtype === 'cake' ? 'Торт' : (p.menuSection ? escapeHtml(p.menuSection) : 'Меню')}</span>
+                    ${p.weightValue ? `<span>${escapeHtml(p.weightValue)}</span>` : ''}
                     ${p.priceUnit ? `<span>${escapeHtml(p.priceUnit)}</span>` : ''}
+                    ${p.availabilityStatus ? `<span>${escapeHtml(MENU_AVAILABILITY_LABELS[p.availabilityStatus] || p.availabilityStatus)}</span>` : ''}
                 </div>
                 ${shortText ? `<p class="program-desc">${escapeHtml(shortText).substring(0, 150)}${shortText.length > 150 ? '...' : ''}</p>` : ''}
                 <div class="kitchen-card-badges">
                     ${p.ingredients ? '<span class="kitchen-badge">Інгредієнти</span>' : ''}
                     ${p.techCard ? '<span class="kitchen-badge">Техкарта</span>' : ''}
+                    ${p.priceVariantNote ? '<span class="kitchen-badge">Варіанти ціни</span>' : ''}
                     ${subtype === 'cake' && p.cakeDecoration ? '<span class="kitchen-badge">Оформлення</span>' : ''}
                 </div>
                 ${renderKitchenDetailPanel(p)}
@@ -395,6 +513,11 @@ function renderKitchenProducts(grid, canManage) {
 
 function renderKitchenDetailPanel(product) {
     const items = [
+        ['Розділ', product.menuSection],
+        ['Вага / обʼєм / вихід', product.weightValue],
+        ['Одиниця', product.servingUnit],
+        ['Варіанти / ціна', product.priceVariantNote],
+        ['Статус', product.availabilityStatus ? (MENU_AVAILABILITY_LABELS[product.availabilityStatus] || product.availabilityStatus) : null],
         ['Promo', product.promoDescription],
         ['Інгредієнти', product.ingredients],
         ['Техкарта', product.techCard]
@@ -624,9 +747,14 @@ function setKitchenFormVisibility(domain, kitchenType) {
     document.querySelectorAll('.product-kitchen-fields').forEach(field => {
         field.classList.toggle('hidden', !isKitchen);
     });
+    document.querySelectorAll('.product-menu-fields').forEach(field => {
+        field.classList.toggle('hidden', !(isKitchen && kitchenType === 'menu'));
+    });
     document.querySelectorAll('.cake-decoration-field').forEach(field => {
         field.classList.toggle('hidden', !(isKitchen && kitchenType === 'cake'));
     });
+    const saveNextBtn = document.getElementById('saveProductNextBtn');
+    if (saveNextBtn) saveNextBtn.style.display = isKitchen ? '' : 'none';
 }
 
 function syncKitchenSubtypeFromForm() {
@@ -664,6 +792,11 @@ function openProductForm(productId = null) {
         document.getElementById('pf-sort').value = p.sortOrder || 0;
         document.getElementById('pf-short-description').value = p.shortDescription || '';
         document.getElementById('pf-promo-description').value = p.promoDescription || '';
+        document.getElementById('pf-menu-section').value = p.menuSection || '';
+        document.getElementById('pf-weight-value').value = p.weightValue || '';
+        document.getElementById('pf-serving-unit').value = p.servingUnit || '';
+        document.getElementById('pf-price-variant-note').value = p.priceVariantNote || '';
+        document.getElementById('pf-availability-status').value = p.availabilityStatus || (p.isActive === false ? 'hidden' : 'active');
         document.getElementById('pf-ingredients').value = p.ingredients || '';
         document.getElementById('pf-tech-card').value = p.techCard || '';
         document.getElementById('pf-cake-decoration').value = p.cakeDecoration || '';
@@ -689,6 +822,13 @@ function openProductForm(productId = null) {
         document.getElementById('pf-sort').value = 0;
         document.getElementById('pf-short-description').value = '';
         document.getElementById('pf-promo-description').value = '';
+        document.getElementById('pf-menu-section').value = isKitchen && kitchenType === 'menu' && activeMenuSection !== 'all'
+            ? activeMenuSection
+            : '';
+        document.getElementById('pf-weight-value').value = '';
+        document.getElementById('pf-serving-unit').value = isKitchen ? (kitchenType === 'cake' ? 'шт' : 'порція') : '';
+        document.getElementById('pf-price-variant-note').value = '';
+        document.getElementById('pf-availability-status').value = 'active';
         document.getElementById('pf-ingredients').value = '';
         document.getElementById('pf-tech-card').value = '';
         document.getElementById('pf-cake-decoration').value = '';
@@ -702,7 +842,7 @@ function closeProductForm() {
     document.getElementById('productForm').style.display = 'none';
 }
 
-async function saveProduct() {
+async function saveProduct(options = {}) {
     const id = document.getElementById('pf-id')?.value;
     const domain = document.getElementById('pf-domain')?.value === 'kitchen' ? 'kitchen' : 'program';
     const kitchenType = document.getElementById('pf-kitchen-type')?.value === 'menu' ? 'menu' : (domain === 'kitchen' ? 'cake' : null);
@@ -723,6 +863,15 @@ async function saveProduct() {
         description: document.getElementById('pf-description')?.value.trim(),
         shortDescription: document.getElementById('pf-short-description')?.value.trim(),
         promoDescription: document.getElementById('pf-promo-description')?.value.trim(),
+        menuSection: domain === 'kitchen' && kitchenType === 'menu'
+            ? document.getElementById('pf-menu-section')?.value.trim()
+            : '',
+        weightValue: domain === 'kitchen' ? document.getElementById('pf-weight-value')?.value.trim() : '',
+        servingUnit: domain === 'kitchen' ? document.getElementById('pf-serving-unit')?.value.trim() : '',
+        priceVariantNote: domain === 'kitchen' ? document.getElementById('pf-price-variant-note')?.value.trim() : '',
+        availabilityStatus: domain === 'kitchen'
+            ? (document.getElementById('pf-availability-status')?.value || 'active')
+            : 'active',
         ingredients: document.getElementById('pf-ingredients')?.value.trim(),
         techCard: document.getElementById('pf-tech-card')?.value.trim(),
         cakeDecoration: domain === 'kitchen' && kitchenType === 'cake'
@@ -733,6 +882,10 @@ async function saveProduct() {
         isActive: document.getElementById('pf-active')?.checked,
         sortOrder: parseInt(document.getElementById('pf-sort')?.value) || 0
     };
+    if (domain === 'kitchen') {
+        if (!product.isActive) product.availabilityStatus = 'hidden';
+        if (product.availabilityStatus === 'hidden') product.isActive = false;
+    }
 
     if (!product.code || !product.name) {
         showNotification('Код та назва обовʼязкові', 'error');
@@ -756,6 +909,9 @@ async function saveProduct() {
         showNotification(id ? `${noun} оновлено` : `${noun} додано`, 'success');
         closeProductForm();
         await loadProducts();
+        if (options.addNext === true && domain === 'kitchen') {
+            openProductForm();
+        }
     } else {
         showNotification(result?.error || 'Помилка збереження', 'error');
     }

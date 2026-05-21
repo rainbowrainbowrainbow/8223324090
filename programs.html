@@ -22,14 +22,14 @@
         try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
     })();
     </script>
-    <link rel="stylesheet" href="css/base.css?v=0.60.45">
-    <link rel="stylesheet" href="css/layout.css?v=0.60.45">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.45">
-    <link rel="stylesheet" href="css/pages.css?v=0.60.45">
-    <link rel="stylesheet" href="css/modals.css?v=0.60.45">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.45">
-    <link rel="stylesheet" href="css/responsive.css?v=0.60.45">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.45">
+    <link rel="stylesheet" href="css/base.css?v=0.60.46">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.46">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.46">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.46">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.46">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.46">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.46">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.46">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -266,15 +266,49 @@
         }
 
         .product-kitchen-fields.hidden,
+        .product-menu-fields.hidden,
         .cake-decoration-field.hidden {
             display: none !important;
         }
 
         .product-kitchen-fields textarea,
+        .product-kitchen-fields input,
+        .product-kitchen-fields select,
         .cake-decoration-field textarea {
             width: min(420px, 100%);
+        }
+
+        .product-kitchen-fields textarea,
+        .cake-decoration-field textarea {
             min-height: 74px;
             resize: vertical;
+        }
+
+        .menu-section-filter {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 7px;
+            margin: 0 0 14px;
+        }
+
+        .menu-section-filter.hidden { display: none !important; }
+
+        .menu-section-chip {
+            min-height: 32px;
+            padding: 0 11px;
+            border: 1px solid var(--border-color, rgba(148, 163, 184, 0.24));
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--gray-600, #64748b);
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .menu-section-chip.active {
+            border-color: rgba(20, 184, 166, 0.38);
+            background: rgba(20, 184, 166, 0.16);
+            color: var(--primary-dark, #0f766e);
         }
 
         .kitchen-card-badges,
@@ -299,6 +333,27 @@
             color: var(--primary-dark, #0f766e);
             font-size: 12px;
             font-weight: 900;
+        }
+
+        .menu-completeness-badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 22px;
+            margin-left: 6px;
+            padding: 0 8px;
+            border-radius: 999px;
+            border: 1px solid rgba(245, 158, 11, 0.32);
+            background: rgba(245, 158, 11, 0.12);
+            color: #b45309;
+            font-size: 11px;
+            font-weight: 900;
+            vertical-align: middle;
+        }
+
+        .menu-completeness-badge.complete {
+            border-color: rgba(20, 184, 166, 0.30);
+            background: rgba(20, 184, 166, 0.13);
+            color: var(--primary-dark, #0f766e);
         }
 
         .kitchen-detail-panel {
@@ -376,6 +431,7 @@
         }
 
         body.dark-mode .product-doc-panel,
+        body.dark-mode .menu-section-chip,
         body.dark-mode .kitchen-detail-panel,
         [data-theme="dark"] .product-doc-panel {
             background: rgba(255, 255, 255, 0.04);
@@ -546,6 +602,32 @@
                         <label for="pf-promo-description">Promo опис</label>
                         <textarea id="pf-promo-description" placeholder="Продажний опис для клієнта"></textarea>
                     </div>
+                    <div class="form-field product-kitchen-fields product-menu-fields hidden">
+                        <label for="pf-menu-section">Розділ меню</label>
+                        <input type="text" id="pf-menu-section" list="menu-section-options" placeholder="Салати / Піца / Гарячі напої">
+                    </div>
+                    <div class="form-field product-kitchen-fields hidden">
+                        <label for="pf-weight-value">Вага / обʼєм / вихід</label>
+                        <input type="text" id="pf-weight-value" placeholder="150 г / 250 мл / 1 шт">
+                    </div>
+                    <div class="form-field product-kitchen-fields hidden">
+                        <label for="pf-serving-unit">Одиниця</label>
+                        <input type="text" id="pf-serving-unit" placeholder="порція / шт / 100 г / склянка">
+                    </div>
+                    <div class="form-field product-kitchen-fields hidden">
+                        <label for="pf-price-variant-note">Варіанти / ціна</label>
+                        <textarea id="pf-price-variant-note" placeholder="Наприклад: 250/500 мл — 80/140 грн або 30 см / 40 см"></textarea>
+                    </div>
+                    <div class="form-field product-kitchen-fields hidden">
+                        <label for="pf-availability-status">Статус меню</label>
+                        <select id="pf-availability-status">
+                            <option value="active">Активна</option>
+                            <option value="draft">Чернетка</option>
+                            <option value="seasonal">Сезонна</option>
+                            <option value="sold_out">Стоп</option>
+                            <option value="hidden">Прихована</option>
+                        </select>
+                    </div>
                     <div class="form-field product-kitchen-fields hidden">
                         <label for="pf-ingredients">Інгредієнти</label>
                         <textarea id="pf-ingredients" placeholder="Склад, алергени, ключові інгредієнти"></textarea>
@@ -567,8 +649,23 @@
                     <input type="hidden" id="pf-domain" value="program">
                     <input type="hidden" id="pf-kitchen-type" value="">
                     <input type="hidden" id="pf-sort" value="0">
+                    <datalist id="menu-section-options">
+                        <option value="Холодні закуски"></option>
+                        <option value="Салати"></option>
+                        <option value="Гарячі закуски"></option>
+                        <option value="Бургери"></option>
+                        <option value="Піца"></option>
+                        <option value="Додатки до піци"></option>
+                        <option value="Мангальне меню"></option>
+                        <option value="Основні страви"></option>
+                        <option value="Перші страви"></option>
+                        <option value="Гарніри"></option>
+                        <option value="Гарячі напої"></option>
+                        <option value="Коктейлі та холодні напої"></option>
+                    </datalist>
                     <div style="display:flex; gap:8px; margin-top:20px;">
                         <button type="button" id="saveProductBtn" class="btn-page-primary">Зберегти</button>
+                        <button type="button" id="saveProductNextBtn" class="btn-page-secondary">Зберегти і додати ще</button>
                         <button type="button" id="cancelProductBtn" class="btn-page-secondary">Скасувати</button>
                     </div>
                 </div>
@@ -579,6 +676,7 @@
 
             <section id="kitchenPanel" class="product-tab-panel hidden">
                 <div id="kitchenSubtabs" class="kitchen-subtabs" aria-label="Kitchen tabs"></div>
+                <div id="menuSectionFilter" class="menu-section-filter hidden" aria-label="Menu section filters"></div>
                 <div id="kitchenGrid" class="cards-grid"></div>
             </section>
 
@@ -636,13 +734,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.60.45"></script>
-    <script src="js/config.js?v=0.60.45"></script>
-    <script src="js/notification.js?v=0.60.45"></script>
-    <script src="js/api.js?v=0.60.45"></script>
-    <script src="js/auth.js?v=0.60.45"></script>
-    <script src="js/components/sidebar.js?v=0.60.45"></script>
+    <script src="js/ui.js?v=0.60.46"></script>
+    <script src="js/config.js?v=0.60.46"></script>
+    <script src="js/notification.js?v=0.60.46"></script>
+    <script src="js/api.js?v=0.60.46"></script>
+    <script src="js/auth.js?v=0.60.46"></script>
+    <script src="js/components/sidebar.js?v=0.60.46"></script>
     <script>if (typeof Sidebar !== "undefined" && !document.documentElement.classList.contains('embed-mode')) Sidebar.init("#sidebarLinks");</script>
-    <script src="js/programs-page.js?v=0.60.45"></script><script src="js/alerts.js?v=0.60.45"></script>
+    <script src="js/programs-page.js?v=0.60.46"></script><script src="js/alerts.js?v=0.60.46"></script>
 </body>
 </html>

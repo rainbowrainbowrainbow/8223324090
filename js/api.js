@@ -482,6 +482,8 @@ async function apiGetProducts(activeOnly = true, filters = {}) {
         if (activeOnly) params.set('active', 'true');
         if (filters.domain) params.set('domain', filters.domain);
         if (filters.kitchenType) params.set('kitchenType', filters.kitchenType);
+        if (filters.menuSection) params.set('menuSection', filters.menuSection);
+        if (filters.availabilityStatus) params.set('availabilityStatus', filters.availabilityStatus);
         const qs = params.toString() ? `?${params.toString()}` : '';
         const response = await fetch(`${API_BASE}/products${qs}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;

@@ -36,12 +36,16 @@ function buildProductPriceRuleCode(productId) {
 }
 
 function getProductPriceUnit(product) {
+    if (product.domain === 'kitchen' && product.serving_unit) {
+        return `грн/${product.serving_unit}`;
+    }
     return product.is_per_child ? 'грн/дитина' : 'грн';
 }
 
 const SOURCE_DOCUMENT_KINDS = new Set(['google_doc', 'pdf', 'link']);
 const PRODUCT_DOMAINS = new Set(['program', 'kitchen']);
 const KITCHEN_TYPES = new Set(['cake', 'menu']);
+const PRODUCT_AVAILABILITY_STATUSES = new Set(['active', 'draft', 'seasonal', 'sold_out', 'hidden']);
 
 function pickField(body, camelName, snakeName, fallback = undefined) {
     if (body && Object.prototype.hasOwnProperty.call(body, camelName)) return body[camelName];
@@ -64,6 +68,10 @@ function normalizeProductPayload(body = {}) {
     const kitchenType = domain === 'kitchen'
         ? (KITCHEN_TYPES.has(kitchenTypeRaw) ? kitchenTypeRaw : (categoryRaw === 'menu' ? 'menu' : 'cake'))
         : null;
+    const availabilityRaw = (cleanNullableString(pickField(body, 'availabilityStatus', 'availability_status', 'active'), 30) || 'active').toLowerCase();
+    const availabilityStatus = PRODUCT_AVAILABILITY_STATUSES.has(availabilityRaw)
+        ? availabilityRaw
+        : (body.isActive === false || body.is_active === false ? 'hidden' : 'active');
 
     return {
         ...body,
@@ -74,6 +82,19 @@ function normalizeProductPayload(body = {}) {
         promoDescription: cleanNullableString(pickField(body, 'promoDescription', 'promo_description', null), 3000),
         ingredients: cleanNullableString(pickField(body, 'ingredients', 'ingredients', null), 4000),
         techCard: cleanNullableString(pickField(body, 'techCard', 'tech_card', null), 5000),
+        menuSection: domain === 'kitchen' && kitchenType === 'menu'
+            ? cleanNullableString(pickField(body, 'menuSection', 'menu_section', null), 120)
+            : null,
+        servingUnit: domain === 'kitchen'
+            ? cleanNullableString(pickField(body, 'servingUnit', 'serving_unit', null), 60)
+            : null,
+        weightValue: domain === 'kitchen'
+            ? cleanNullableString(pickField(body, 'weightValue', 'weight_value', null), 120)
+            : null,
+        priceVariantNote: domain === 'kitchen'
+            ? cleanNullableString(pickField(body, 'priceVariantNote', 'price_variant_note', null), 2000)
+            : null,
+        availabilityStatus: domain === 'kitchen' ? availabilityStatus : 'active',
         cakeDecoration: domain === 'kitchen' && kitchenType === 'cake'
             ? cleanNullableString(pickField(body, 'cakeDecoration', 'cake_decoration', null), 3000)
             : null
@@ -213,6 +234,11 @@ function mapProductRow(row) {
         promoDescription: row.promo_description || null,
         ingredients: row.ingredients || null,
         techCard: row.tech_card || null,
+        menuSection: row.menu_section || null,
+        servingUnit: row.serving_unit || null,
+        weightValue: row.weight_value || null,
+        priceVariantNote: row.price_variant_note || null,
+        availabilityStatus: row.availability_status || (row.is_active === false ? 'hidden' : 'active'),
         cakeDecoration: row.cake_decoration || null,
         isPerChild: row.is_per_child,
         hasFiller: row.has_filler,
@@ -252,6 +278,9 @@ function validateProduct(body) {
     if (body.domain === 'kitchen' && !KITCHEN_TYPES.has(body.kitchenType)) {
         errors.push('kitchenType must be cake or menu for kitchen products');
     }
+    if (body.availabilityStatus && !PRODUCT_AVAILABILITY_STATUSES.has(body.availabilityStatus)) {
+        errors.push('availabilityStatus must be active, draft, seasonal, sold_out, or hidden');
+    }
     if (body.duration === undefined || body.duration === null || typeof body.duration !== 'number' || body.duration < 0) {
         errors.push('duration is required (non-negative number)');
     }
@@ -273,6 +302,10 @@ router.get('/', async (req, res) => {
         const domain = PRODUCT_DOMAINS.has(req.query.domain) ? req.query.domain : null;
         const kitchenTypeQuery = req.query.kitchenType || req.query.kitchen_type;
         const kitchenType = KITCHEN_TYPES.has(kitchenTypeQuery) ? kitchenTypeQuery : null;
+        const menuSection = cleanNullableString(req.query.menuSection || req.query.menu_section, 120);
+        const availabilityStatus = PRODUCT_AVAILABILITY_STATUSES.has(req.query.availabilityStatus || req.query.availability_status)
+            ? (req.query.availabilityStatus || req.query.availability_status)
+            : null;
         const where = [];
         const params = [];
         if (activeOnly) where.push('p.is_active = true');
@@ -284,7 +317,15 @@ router.get('/', async (req, res) => {
             params.push(kitchenType);
             where.push(`p.kitchen_type = $${params.length}`);
         }
-        const query = `${PRODUCT_PRICE_JOIN} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY COALESCE(p.domain, 'program'), p.category, p.sort_order LIMIT 1000`;
+        if (menuSection) {
+            params.push(menuSection);
+            where.push(`p.menu_section = $${params.length}`);
+        }
+        if (availabilityStatus) {
+            params.push(availabilityStatus);
+            where.push(`COALESCE(p.availability_status, 'active') = $${params.length}`);
+        }
+        const query = `${PRODUCT_PRICE_JOIN} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY COALESCE(p.domain, 'program'), p.category, p.menu_section NULLS LAST, p.sort_order LIMIT 1000`;
         const result = await pool.query(query, params);
         res.json(result.rows.map(mapProductRow));
     } catch (err) {
@@ -462,7 +503,9 @@ router.post('/', requireRole('admin', 'manager'), async (req, res) => {
             price = 0, hosts = 1, ageRange, kidsCapacity,
             description, isPerChild = false, hasFiller = false,
             isCustom = false, sortOrder = 0, domain, kitchenType,
-            shortDescription, promoDescription, ingredients, techCard, cakeDecoration
+            shortDescription, promoDescription, ingredients, techCard,
+            menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus,
+            cakeDecoration
         } = payload;
 
         // Generate ID from code + timestamp
@@ -470,10 +513,10 @@ router.post('/', requireRole('admin', 'manager'), async (req, res) => {
 
         await client.query('BEGIN');
         const result = await client.query(
-            `INSERT INTO products (id, code, label, name, icon, category, duration, price, hosts, age_range, kids_capacity, description, domain, kitchen_type, short_description, promo_description, ingredients, tech_card, cake_decoration, is_per_child, has_filler, is_custom, sort_order, updated_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+            `INSERT INTO products (id, code, label, name, icon, category, duration, price, hosts, age_range, kids_capacity, description, domain, kitchen_type, short_description, promo_description, ingredients, tech_card, menu_section, serving_unit, weight_value, price_variant_note, availability_status, cake_decoration, is_per_child, has_filler, is_custom, sort_order, updated_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
              RETURNING *`,
-            [id, code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, cakeDecoration, isPerChild, hasFiller, isCustom, sortOrder, req.user.username]
+            [id, code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, sortOrder, req.user.username]
         );
         await upsertProductPriceRule(client, result.rows[0], req.user.username);
         const product = await getProductWithPriceRule(client, id);
@@ -519,7 +562,9 @@ router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
             price = 0, hosts = 1, ageRange, kidsCapacity,
             description, isPerChild = false, hasFiller = false,
             isCustom = false, isActive = true, sortOrder = 0, domain, kitchenType,
-            shortDescription, promoDescription, ingredients, techCard, cakeDecoration
+            shortDescription, promoDescription, ingredients, techCard,
+            menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus,
+            cakeDecoration
         } = payload;
 
         const result = await client.query(
@@ -527,11 +572,12 @@ router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
                 code=$1, label=$2, name=$3, icon=$4, category=$5, duration=$6,
                 price=$7, hosts=$8, age_range=$9, kids_capacity=$10, description=$11,
                 domain=$12, kitchen_type=$13, short_description=$14, promo_description=$15,
-                ingredients=$16, tech_card=$17, cake_decoration=$18,
-                is_per_child=$19, has_filler=$20, is_custom=$21, is_active=$22,
-                sort_order=$23, updated_at=NOW(), updated_by=$24
-             WHERE id=$25 RETURNING *`,
-            [code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, cakeDecoration, isPerChild, hasFiller, isCustom, isActive, sortOrder, req.user.username, id]
+                ingredients=$16, tech_card=$17, menu_section=$18, serving_unit=$19,
+                weight_value=$20, price_variant_note=$21, availability_status=$22,
+                cake_decoration=$23, is_per_child=$24, has_filler=$25, is_custom=$26,
+                is_active=$27, sort_order=$28, updated_at=NOW(), updated_by=$29
+             WHERE id=$30 RETURNING *`,
+            [code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, isActive, sortOrder, req.user.username, id]
         );
         await upsertProductPriceRule(client, result.rows[0], req.user.username);
         const product = await getProductWithPriceRule(client, id);

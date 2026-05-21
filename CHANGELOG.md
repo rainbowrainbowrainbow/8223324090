@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.40 - Dashboard Photoshop Tool Dock
+
+### Dashboard Photoshop Tool Dock [codex]
+- **Dashboard tools** - широкий верхній toolbar перезібрано у компактний вертикальний dock біля сцени, ближче до Photoshop/FigJam-патерну.
+- **Менше шуму** - зверху лишилась компактна options bar для активного інструмента, snap/grid/guides/кольору, а не багато великих груп-меню.
+- **Tool UX** - інструменти стали icon-first з `title`/`aria-label`, збережено групи вибору, навігації, додавання, малювання, фігур, зв’язків, AI-шаблонів і дій.
+- **Responsive** - на вузьких екранах dock переходить у горизонтальний скрол-ряд без розвалу сцени.
+
+---
+
 ## v0.60.39 - UI Polish And Modal Fixes
 
 ### UI Polish And Modal Fixes [codex]

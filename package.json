@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.60.39",
+  "version": "0.60.40",
   "eventGenix": {
-    "releaseLabel": "UI Polish And Modal Fixes"
+    "releaseLabel": "Dashboard Photoshop Tool Dock"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

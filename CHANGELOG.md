@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.2 - Каталог тортів
+
+### Products Kitchen/Cakes: заповнення каталогу [codex]
+- **Каталог тортів** - у Products -> Кухня -> Торти додано 18 узгоджених позицій із curated назвами, описами, цінами та порядком 1..18.
+- **Ціна за 100 г** - тортам задано numeric `price`, `serving_unit='100г'` і linked `price_rules.unit='грн/100г'`, щоб UI не показував ціну як за штуку.
+- **Canonical storage** - дані заведено в existing `products` model і linked price rules, без окремого mock-каталогу або паралельної таблиці.
+- **Idempotent seed** - міграція оновлює існуючі cake records за stable id або назвою, не створює дублі на повторному прогоні й зберігає operator-added decoration/promo/ingredients/tech-card поля.
+
+---
+
 ## v0.61.1 - Ергономіка board
 
 ### Dashboard board: direct manipulation [codex]

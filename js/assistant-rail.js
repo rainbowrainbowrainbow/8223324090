@@ -65,14 +65,27 @@
     const ASSISTANT_CHAT_HISTORY_KEY = 'eg_crm_assistant_history_v2';
     const ASSISTANT_CHAT_CONVERSATION_KEY = 'eg_crm_assistant_conversation_id_v2';
     const ASSISTANT_CHAT_HISTORY_LIMIT = 80;
+    const ASSISTANT_VOICE_PREF_KEY = 'eg_crm_assistant_voice';
+    const ASSISTANT_LEGACY_VOICE_PREF_KEY = 'eg_dashboard_assistant_voice';
+    const ASSISTANT_VOICE_OPT_IN_KEY = 'eg_crm_assistant_voice_opt_in_at';
+    const CLICK_GUIDE_DEFAULT_DURATION_MS = 4200;
+    const CLICK_GUIDE_SCROLL_DELAY_MS = 220;
+
+    function isAssistantVoiceExplicitlyEnabled() {
+        try {
+            return localStorage.getItem(ASSISTANT_VOICE_PREF_KEY) === 'on';
+        } catch {
+            return false;
+        }
+    }
 
     let state = {
-        mode: localStorage.getItem('eg_crm_assistant_voice') === 'off' ? 'muted' : 'idle',
+        mode: isAssistantVoiceExplicitlyEnabled() ? 'idle' : 'muted',
         subtitle: 'Я поруч, якщо треба допомога по сторінці.',
         tickerText: '',
         lastSpokenLine: '',
-        voiceEnabled: localStorage.getItem('eg_crm_assistant_voice') !== 'off',
-        playbackState: 'idle',
+        voiceEnabled: isAssistantVoiceExplicitlyEnabled(),
+        playbackState: isAssistantVoiceExplicitlyEnabled() ? 'idle' : 'muted',
         voiceBlocked: false,
         subtitleMode: 'static',
         updatedAt: new Date().toISOString()
@@ -187,6 +200,9 @@
     let pageInteractionDetected = false;
     let interactionWatchersBound = false;
     let speakingIdleTimer = null;
+    let clickGuideCleanup = null;
+    let clickGuideTimer = 0;
+    let clickGuideDrawTimer = 0;
     let playbackRunId = 0;
     let assistantTurnQueue = Promise.resolve();
     let assistantTurnActive = false;
@@ -216,6 +232,178 @@
         const div = document.createElement('div');
         div.textContent = String(value ?? '');
         return div.innerHTML;
+    }
+
+    function prefersReducedAssistantMotion() {
+        return Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+
+    function safeGuideRect(element) {
+        if (!element || typeof element.getBoundingClientRect !== 'function') return null;
+        const rect = element.getBoundingClientRect();
+        if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+        if (rect.bottom < 0 || rect.right < 0 || rect.top > window.innerHeight || rect.left > window.innerWidth) return null;
+        return rect;
+    }
+
+    function clampGuideValue(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+    }
+
+    function resolveGuideElement(target = {}, elementArg = null) {
+        if (elementArg && typeof Element !== 'undefined' && elementArg instanceof Element) return elementArg;
+        const selector = typeof target.selectorOrRef === 'string' ? target.selectorOrRef : (typeof target.selector === 'string' ? target.selector : '');
+        if (!selector) return null;
+        try {
+            return document.querySelector(selector);
+        } catch {
+            return null;
+        }
+    }
+
+    function guideAnchorPoint() {
+        const anchor = document.getElementById('crmAssistantRail') || document.getElementById('crmAssistantRailHost');
+        const rect = safeGuideRect(anchor);
+        if (rect) {
+            return {
+                x: clampGuideValue(rect.left + rect.width / 2, 18, window.innerWidth - 18),
+                y: clampGuideValue(rect.bottom + 8, 18, window.innerHeight - 18)
+            };
+        }
+        return { x: Math.round(window.innerWidth / 2), y: 28 };
+    }
+
+    function cleanupClickGuide() {
+        if (clickGuideTimer) {
+            window.clearTimeout(clickGuideTimer);
+            clickGuideTimer = 0;
+        }
+        if (clickGuideDrawTimer) {
+            window.clearTimeout(clickGuideDrawTimer);
+            clickGuideDrawTimer = 0;
+        }
+        if (clickGuideCleanup) {
+            clickGuideCleanup();
+            clickGuideCleanup = null;
+        }
+    }
+
+    function showClickGuide(target = {}, elementArg = null, options = {}) {
+        cleanupClickGuide();
+        const element = resolveGuideElement(target, elementArg);
+        if (!element) return { success: false, fallbackText: target.fallbackText || 'Точну ціль зараз не видно на екрані.' };
+        const label = String(options.label || target.label || 'Клік тут').trim();
+        const durationMs = Number(options.durationMs || CLICK_GUIDE_DEFAULT_DURATION_MS);
+        const reducedMotion = prefersReducedAssistantMotion();
+
+        clickGuideDrawTimer = window.setTimeout(() => {
+            const rect = safeGuideRect(element);
+            if (!rect) return;
+
+            const from = guideAnchorPoint();
+            const targetCenter = {
+                x: clampGuideValue(rect.left + rect.width / 2, 14, window.innerWidth - 14),
+                y: clampGuideValue(rect.top + rect.height / 2, 14, window.innerHeight - 14)
+            };
+            const bend = Math.max(80, Math.min(260, Math.abs(targetCenter.x - from.x) * 0.35));
+            const controlA = {
+                x: from.x + (targetCenter.x >= from.x ? bend : -bend),
+                y: from.y + Math.min(120, Math.abs(targetCenter.y - from.y) * 0.28)
+            };
+            const controlB = {
+                x: targetCenter.x - (targetCenter.x >= from.x ? bend * 0.52 : -bend * 0.52),
+                y: targetCenter.y - Math.min(120, Math.abs(targetCenter.y - from.y) * 0.18)
+            };
+            const path = `M ${from.x} ${from.y} C ${controlA.x} ${controlA.y}, ${controlB.x} ${controlB.y}, ${targetCenter.x} ${targetCenter.y}`;
+            const pad = 10;
+            const calloutLeft = clampGuideValue(rect.left + rect.width / 2 - 116, 12, window.innerWidth - 244);
+            const calloutTop = clampGuideValue(rect.top - 54, 12, window.innerHeight - 70);
+
+            const overlay = document.createElement('div');
+            overlay.className = `crm-assistant-click-guide-overlay${reducedMotion ? ' is-reduced-motion' : ''}`;
+            overlay.setAttribute('aria-hidden', 'true');
+            overlay.innerHTML = `
+                <svg class="crm-assistant-click-guide-svg" viewBox="0 0 ${window.innerWidth} ${window.innerHeight}" preserveAspectRatio="none" focusable="false">
+                    <path class="crm-assistant-click-guide-path-glow" d="${path}"></path>
+                    <path class="crm-assistant-click-guide-path" d="${path}"></path>
+                </svg>
+                <span class="crm-assistant-click-guide-start" style="left:${from.x}px;top:${from.y}px"></span>
+                <span class="crm-assistant-click-guide-target-ring" style="left:${rect.left - pad}px;top:${rect.top - pad}px;width:${rect.width + pad * 2}px;height:${rect.height + pad * 2}px"></span>
+                <span class="crm-assistant-click-guide-callout" style="left:${calloutLeft}px;top:${calloutTop}px">
+                    <small>Натисни тут</small>
+                    <strong>${escapeHtml(label)}</strong>
+                </span>
+            `;
+            document.body.appendChild(overlay);
+            element.classList.add('crm-assistant-click-guide-targeted');
+
+            const remove = () => {
+                element.classList.remove('crm-assistant-click-guide-targeted');
+                overlay.remove();
+                window.removeEventListener('resize', remove);
+                window.removeEventListener('scroll', remove, true);
+                if (clickGuideCleanup === remove) clickGuideCleanup = null;
+            };
+            clickGuideCleanup = remove;
+            window.addEventListener('resize', remove, { once: true });
+            window.addEventListener('scroll', remove, { once: true, capture: true });
+            clickGuideTimer = window.setTimeout(remove, durationMs);
+        }, Number(options.delayMs || CLICK_GUIDE_SCROLL_DELAY_MS));
+
+        return { success: true };
+    }
+
+    function normalizeHrefForGuide(href = '') {
+        const raw = String(href || '').trim();
+        if (!raw) return '';
+        try {
+            const url = new URL(raw, window.location.origin);
+            return `${url.pathname}${url.search || ''}${url.hash || ''}`;
+        } catch {
+            return raw;
+        }
+    }
+
+    function findVisibleHrefTarget(href = '') {
+        const normalized = normalizeHrefForGuide(href);
+        if (!normalized) return null;
+        const candidates = Array.from(new Set([
+            normalized,
+            normalized.replace(/^\//, ''),
+            href,
+            String(href || '').replace(/^\//, '')
+        ])).filter(Boolean);
+        for (const candidate of candidates) {
+            const escaped = window.CSS?.escape ? CSS.escape(candidate) : candidate.replace(/"/g, '\\"');
+            const selectors = [
+                `a[href="${escaped}"]`,
+                `[data-page-access="${escaped}"]`,
+                `[data-href="${escaped}"]`,
+                `[data-nav-href="${escaped}"]`
+            ];
+            for (const selector of selectors) {
+                try {
+                    const element = document.querySelector(selector);
+                    if (safeGuideRect(element)) return element;
+                } catch {}
+            }
+        }
+        return null;
+    }
+
+    function guideReplyTarget(reply = {}) {
+        const target = reply?.teachingTarget;
+        if (target?.available !== false && (target?.targetId || target?.selectorOrRef || target?.selector)) {
+            return highlightTeachingTarget(target.targetId ? target.targetId : target, { durationMs: CLICK_GUIDE_DEFAULT_DURATION_MS });
+        }
+        const href = reply?.actionProposal?.payload?.href || reply?.actionProposal?.href || '';
+        const element = findVisibleHrefTarget(href);
+        if (!element) return { success: false, fallbackText: 'visible_action_target_not_found' };
+        const label = reply?.actionProposal?.label || element.textContent || href;
+        return showClickGuide({ targetId: `href:${href}`, label, selectorOrRef: '' }, element, {
+            label,
+            durationMs: CLICK_GUIDE_DEFAULT_DURATION_MS
+        });
     }
 
     function assistantOutputFormatter() {
@@ -381,7 +569,7 @@
                         <span class="assistant-rail-name">Помічник</span>
                         <span class="assistant-rail-state assistant-state-idle" id="crmAssistantRailState">Готовий</span>
                         <span class="assistant-rail-signal-chip" aria-hidden="true"><strong id="crmAssistantSignalCount">0</strong><small>сигн.</small></span>
-                        <span class="assistant-rail-engine">CRM guide</span>
+                        <span class="assistant-rail-engine" id="crmAssistantVoiceStateLabel">Текстовий режим</span>
                     </div>
                     <div class="assistant-rail-context-strip" aria-label="Контекст AI-помічника">
                         <button type="button" class="assistant-rail-context-chip" data-crm-assistant-context-prompt="Поясни, що найважливіше на поточній сторінці">
@@ -566,6 +754,7 @@
     function stopAssistantActivity() {
         cancelProactiveHelp();
         cancelQueuedAssistantTurns();
+        cleanupClickGuide();
         if (mediaRecorder && mediaRecorder.state === 'recording') {
             requestRecorderStop('cancelled');
         }
@@ -589,6 +778,7 @@
         const micBtn = document.getElementById('crmAssistantMicBtn');
         const stopBtn = document.getElementById('crmAssistantStopBtn');
         const replayBtn = document.getElementById('crmAssistantReplayBtn');
+        const voiceStateLabel = document.getElementById('crmAssistantVoiceStateLabel');
         if (!rail || !stateEl || !subtitlesEl || !voiceBtn) return;
 
         const text = state.tickerText || state.subtitle || '...';
@@ -657,6 +847,19 @@
         if (replayBtn) {
             replayBtn.disabled = !(state.lastSpokenLine || state.subtitle);
             replayBtn.title = state.voiceEnabled ? 'Повторити останню репліку голосом' : 'Показати останню репліку ще раз';
+        }
+        if (voiceStateLabel) {
+            const voiceLabel = state.mode === 'listening'
+                ? 'Слухаю'
+                : state.mode === 'speaking'
+                    ? 'Говорю'
+                    : state.voiceEnabled
+                        ? 'Голос увімкнено'
+                        : 'Текстовий режим';
+            voiceStateLabel.textContent = voiceLabel;
+            voiceStateLabel.title = state.voiceEnabled
+                ? 'Озвучення увімкнене після явного натискання. Його можна вимкнути цією ж кнопкою.'
+                : 'Безпечний режим: відповіді не озвучуються автоматично.';
         }
 
         requestAnimationFrame(() => {
@@ -1343,8 +1546,8 @@
                 failureReason: error?.message || error?.name || 'playback_blocked',
                 fallbackShown: true
             });
-            localStorage.setItem('eg_crm_assistant_voice', 'off');
-            localStorage.setItem('eg_dashboard_assistant_voice', 'off');
+            localStorage.setItem(ASSISTANT_VOICE_PREF_KEY, 'off');
+            localStorage.setItem(ASSISTANT_LEGACY_VOICE_PREF_KEY, 'off');
             setState({
                 voiceEnabled: false,
                 voiceBlocked: true,
@@ -1620,6 +1823,7 @@
             playbackState: shouldPlayAudio ? 'voice-loading' : state.voiceEnabled ? 'text' : 'muted'
         });
         renderHistory();
+        if (options.showGuide !== false) guideReplyTarget(reply);
         if (!shouldPlayAudio) {
             return;
         }
@@ -1866,8 +2070,9 @@
     function toggleVoice() {
         const next = !state.voiceEnabled;
         if (!next) stopAudioPlayback({ setIdle: false, reason: 'muted' });
-        localStorage.setItem('eg_crm_assistant_voice', next ? 'on' : 'off');
-        localStorage.setItem('eg_dashboard_assistant_voice', next ? 'on' : 'off');
+        localStorage.setItem(ASSISTANT_VOICE_PREF_KEY, next ? 'on' : 'off');
+        localStorage.setItem(ASSISTANT_LEGACY_VOICE_PREF_KEY, next ? 'on' : 'off');
+        if (next) localStorage.setItem(ASSISTANT_VOICE_OPT_IN_KEY, new Date().toISOString());
         setState({
             voiceEnabled: next,
             voiceBlocked: false,
@@ -1882,7 +2087,7 @@
 
     async function replayLastLine() {
         const line = state.lastSpokenLine || state.subtitle || 'Немає останньої репліки для повтору.';
-        await playReply({ text: line, subtitle: line }, { textOnly: !state.voiceEnabled, addToHistory: false });
+        await playReply({ text: line, subtitle: line }, { textOnly: !state.voiceEnabled, addToHistory: false, showGuide: false });
     }
 
     function getAssistantConversationId() {
@@ -2578,6 +2783,8 @@
         runRegisteredAction,
         tryRunAssistantCommand,
         highlightTeachingTarget,
+        showClickGuide,
+        cleanupClickGuide,
         pulseAssistantWindowBridge,
         buildPageGuideContext,
         getAssetVersion

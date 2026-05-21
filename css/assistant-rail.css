@@ -253,6 +253,134 @@
     transition: outline-color 0.18s ease, box-shadow 0.18s ease;
 }
 
+.crm-assistant-click-guide-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 29920;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.crm-assistant-click-guide-svg {
+    position: absolute;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+}
+
+.crm-assistant-click-guide-path,
+.crm-assistant-click-guide-path-glow {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.crm-assistant-click-guide-path-glow {
+    stroke: rgba(20, 184, 166, 0.22);
+    stroke-width: 15;
+    filter: blur(5px);
+}
+
+.crm-assistant-click-guide-path {
+    stroke: #2dd4bf;
+    stroke-width: 4;
+    stroke-dasharray: 12 14;
+    filter: drop-shadow(0 0 10px rgba(45, 212, 191, 0.34));
+    animation: assistantClickGuideTrace 1.05s ease-out both, assistantClickGuideDash 1.35s linear infinite;
+}
+
+.crm-assistant-click-guide-start,
+.crm-assistant-click-guide-target-ring,
+.crm-assistant-click-guide-callout {
+    position: fixed;
+    transform: translate(-50%, -50%);
+}
+
+.crm-assistant-click-guide-start {
+    width: 13px;
+    height: 13px;
+    border-radius: 999px;
+    background: #2dd4bf;
+    box-shadow: 0 0 0 9px rgba(45, 212, 191, 0.15), 0 0 22px rgba(45, 212, 191, 0.42);
+}
+
+.crm-assistant-click-guide-target-ring {
+    transform: none;
+    border: 2px solid rgba(45, 212, 191, 0.96);
+    border-radius: 16px;
+    box-shadow:
+        0 0 0 8px rgba(45, 212, 191, 0.15),
+        0 0 34px rgba(45, 212, 191, 0.28);
+    animation: assistantClickGuideRing 1.4s ease-in-out infinite;
+}
+
+.crm-assistant-click-guide-targeted {
+    position: relative;
+    z-index: 29921 !important;
+}
+
+.crm-assistant-click-guide-callout {
+    transform: none;
+    min-width: 180px;
+    max-width: 232px;
+    display: grid;
+    gap: 2px;
+    padding: 9px 12px;
+    border: 1px solid rgba(45, 212, 191, 0.36);
+    border-radius: 13px;
+    background: rgba(8, 24, 31, 0.88);
+    color: #ecfeff;
+    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(12px);
+}
+
+.crm-assistant-click-guide-callout small {
+    color: #5eead4;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.crm-assistant-click-guide-callout strong {
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+body:not(.dark-mode) .crm-assistant-click-guide-callout,
+html[data-theme="light"] .crm-assistant-click-guide-callout {
+    background: rgba(255, 255, 255, 0.94);
+    color: #0f172a;
+    border-color: rgba(13, 148, 136, 0.34);
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.18);
+}
+
+body:not(.dark-mode) .crm-assistant-click-guide-callout strong,
+html[data-theme="light"] .crm-assistant-click-guide-callout strong {
+    color: #0f172a;
+}
+
+body:not(.dark-mode) .crm-assistant-click-guide-callout small,
+html[data-theme="light"] .crm-assistant-click-guide-callout small {
+    color: #0f766e;
+}
+
+@keyframes assistantClickGuideTrace {
+    from { stroke-dashoffset: 260; opacity: 0; }
+    to { stroke-dashoffset: 0; opacity: 1; }
+}
+
+@keyframes assistantClickGuideDash {
+    to { stroke-dashoffset: -52; }
+}
+
+@keyframes assistantClickGuideRing {
+    0%, 100% { box-shadow: 0 0 0 7px rgba(45, 212, 191, 0.14), 0 0 28px rgba(45, 212, 191, 0.24); }
+    50% { box-shadow: 0 0 0 13px rgba(45, 212, 191, 0.08), 0 0 42px rgba(45, 212, 191, 0.32); }
+}
+
 .crm-assistant-rail[data-mode="speaking"] .assistant-rail-avatar,
 .crm-assistant-rail[data-mode="listening"] .assistant-rail-avatar {
     animation: assistantPulse 1.4s ease-in-out infinite;
@@ -588,8 +716,18 @@ body.dark-mode .crm-assistant-history-item.user p {
 @media (prefers-reduced-motion: reduce) {
     .crm-assistant-rail,
     .crm-assistant-rail .assistant-rail-avatar,
-    .crm-assistant-rail .assistant-rail-subtitles.is-ticker {
+    .crm-assistant-rail .assistant-rail-subtitles.is-ticker,
+    .crm-assistant-click-guide-path,
+    .crm-assistant-click-guide-target-ring {
         animation: none !important;
+    }
+
+    .crm-assistant-click-guide-path {
+        stroke-dasharray: none !important;
+    }
+
+    .crm-assistant-click-guide-overlay.is-reduced-motion .crm-assistant-click-guide-path-glow {
+        filter: none !important;
     }
 }
 

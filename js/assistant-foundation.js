@@ -407,13 +407,17 @@
         return MODES.has(mode) ? mode : 'idle';
     }
 
+    function isVoiceExplicitlyEnabled() {
+        return readStorage('eg_crm_assistant_voice', 'off') === 'on';
+    }
+
     const state = {
-        mode: readStorage('eg_crm_assistant_voice', 'on') === 'off' ? 'muted' : 'idle',
+        mode: isVoiceExplicitlyEnabled() ? 'idle' : 'muted',
         pageId: getPageId(),
         roleSnapshot: getRoleSnapshot(),
         lastAssistantSummaryLine: '',
-        voiceEnabled: readStorage('eg_crm_assistant_voice', 'on') !== 'off',
-        muted: readStorage('eg_crm_assistant_voice', 'on') === 'off',
+        voiceEnabled: isVoiceExplicitlyEnabled(),
+        muted: !isVoiceExplicitlyEnabled(),
         speaking: false,
         playbackState: 'idle',
         adapterId: '',
@@ -635,6 +639,10 @@
         }
         element.scrollIntoView?.({ behavior: options.behavior || 'smooth', block: options.block || 'center' });
         element.classList.add('crm-assistant-target-highlight');
+        window.CrmAssistantRail?.showClickGuide?.(serializeTarget(target), element, {
+            label: target.label,
+            durationMs: options.durationMs || 3600
+        });
         const key = target.targetId;
         if (highlightTimers.has(key)) window.clearTimeout(highlightTimers.get(key));
         highlightTimers.set(key, window.setTimeout(() => {
@@ -1278,7 +1286,7 @@
                 payload: { flowId: defaultTeachingFlowForPage(getPageId()) }
             });
         }
-        if (/покажи де|де натиснути|підсвіт|highlight/i.test(text)) {
+        if (/покажи де|де натиснути|де натискати|куди натиснути|куди клікати|де клікнути|де клікати|підсвіт|highlight/i.test(text)) {
             const context = buildContext({ silent: true });
             const target = context.teachingTarget || toList(context.teachingTargets || [], 10).find(item => item.available);
             if (!target) {
@@ -1440,10 +1448,10 @@
                 window.CrmAssistantRail?.closePanel?.();
                 return { success: true, handled: true, summary: route.summary };
             case 'assistant.voice-on':
-                if (window.CrmAssistantRail?.toggleVoice && readStorage('eg_crm_assistant_voice', 'on') === 'off') window.CrmAssistantRail.toggleVoice();
+                if (window.CrmAssistantRail?.toggleVoice && readStorage('eg_crm_assistant_voice', 'off') !== 'on') window.CrmAssistantRail.toggleVoice();
                 return { success: true, handled: true, summary: route.summary };
             case 'assistant.voice-off':
-                if (window.CrmAssistantRail?.toggleVoice && readStorage('eg_crm_assistant_voice', 'on') !== 'off') window.CrmAssistantRail.toggleVoice();
+                if (window.CrmAssistantRail?.toggleVoice && readStorage('eg_crm_assistant_voice', 'off') === 'on') window.CrmAssistantRail.toggleVoice();
                 return { success: true, handled: true, summary: route.summary };
             case 'assistant.voice-replay':
                 await window.CrmAssistantRail?.replayLastLine?.();
@@ -2078,8 +2086,8 @@
         store.setState({
             pageId,
             roleSnapshot: getRoleSnapshot(),
-            voiceEnabled: readStorage('eg_crm_assistant_voice', 'on') !== 'off',
-            muted: readStorage('eg_crm_assistant_voice', 'on') === 'off'
+            voiceEnabled: isVoiceExplicitlyEnabled(),
+            muted: !isVoiceExplicitlyEnabled()
         }, { source: 'init' });
         return buildContext({ pageId });
     }

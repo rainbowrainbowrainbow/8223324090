@@ -11,6 +11,7 @@ const {
     DEFAULT_DIPLOMA_TEMPLATE,
     toCamelTemplate,
     normalizeChildInput,
+    normalizeDiplomaWordingMode,
     mapChildRow,
     pickWish,
     parseRosterImport,
@@ -58,7 +59,202 @@ function mapServiceRow(row) {
     };
 }
 
-function mapQuoteRow(row) {
+function mapChildPackRow(row, childrenCountOverride = null) {
+    if (!row) return null;
+    return {
+        id: row.id,
+        name: row.name,
+        institutionLabel: row.institution_label,
+        schoolName: row.school_name,
+        classLabel: row.class_label,
+        groupLabel: row.group_label,
+        diplomaContextText: row.diploma_context_text,
+        wordingMode: row.wording_mode || 'standard',
+        note: row.note,
+        graduationQuoteId: row.graduation_quote_id,
+        bookingId: row.booking_id,
+        isArchived: row.is_archived,
+        childrenCount: childrenCountOverride ?? Number(row.children_count || 0),
+        createdBy: row.created_by,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+    };
+}
+
+function childPackContextText(pack) {
+    if (!pack) return '';
+    const candidates = [
+        pack.diplomaContextText,
+        pack.diploma_context_text,
+        pack.institutionLabel,
+        pack.institution_label,
+        [pack.schoolName || pack.school_name, pack.classLabel || pack.class_label, pack.groupLabel || pack.group_label].filter(Boolean).join(' '),
+        pack.name
+    ];
+    return String(candidates.find(value => String(value || '').trim()) || '').trim();
+}
+
+function normalizeChildPackInput(body = {}, fallback = {}) {
+    const src = body.childPack || body.pack || body;
+    const schoolName = String(src.schoolName ?? src.school_name ?? '').trim();
+    const classLabel = String(src.classLabel ?? src.class_label ?? '').trim();
+    const groupLabel = String(src.groupLabel ?? src.group_label ?? '').trim();
+    const labelFromParts = [schoolName, classLabel, groupLabel].filter(Boolean).join(' ').trim();
+    const name = String(src.name ?? src.title ?? src.institutionLabel ?? src.institution_label ?? fallback.name ?? labelFromParts ?? '').trim();
+    const institutionLabel = String(src.institutionLabel ?? src.institution_label ?? labelFromParts ?? name ?? '').trim();
+    const diplomaContextText = String(src.diplomaContextText ?? src.diploma_context_text ?? institutionLabel ?? name ?? '').trim();
+    return {
+        name: name || diplomaContextText || fallback.name || 'Graduation list',
+        institutionLabel: institutionLabel || diplomaContextText || name || null,
+        schoolName: schoolName || null,
+        classLabel: classLabel || null,
+        groupLabel: groupLabel || null,
+        diplomaContextText: diplomaContextText || institutionLabel || name || null,
+        wordingMode: normalizeDiplomaWordingMode(src.wordingMode || src.wording_mode),
+        note: String(src.note ?? '').trim() || null
+    };
+}
+
+function packPayloadToDb(input) {
+    return [
+        input.name,
+        input.institutionLabel,
+        input.schoolName,
+        input.classLabel,
+        input.groupLabel,
+        input.diplomaContextText,
+        input.wordingMode,
+        input.note
+    ];
+}
+
+async function getQuoteRow(db, id) {
+    const result = await db.query('SELECT * FROM graduation_quotes WHERE id = $1', [id]);
+    return result.rows[0] || null;
+}
+
+async function getChildPackById(db, id) {
+    if (!id) return null;
+    const result = await db.query(
+        `SELECT p.*, COUNT(c.id)::int AS children_count
+         FROM graduation_child_packs p
+         LEFT JOIN graduation_children c ON c.child_pack_id = p.id
+         WHERE p.id = $1
+         GROUP BY p.id`,
+        [id]
+    );
+    return result.rows[0] || null;
+}
+
+async function createChildPack(db, input, { quoteId = null, bookingId = null, username = null } = {}) {
+    const result = await db.query(
+        `INSERT INTO graduation_child_packs
+            (name, institution_label, school_name, class_label, group_label, diploma_context_text,
+             wording_mode, note, graduation_quote_id, booking_id, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         RETURNING *`,
+        [...packPayloadToDb(input), quoteId, bookingId, username || null]
+    );
+    return result.rows[0];
+}
+
+async function updateChildPack(db, id, input) {
+    const result = await db.query(
+        `UPDATE graduation_child_packs SET
+            name = $1,
+            institution_label = $2,
+            school_name = $3,
+            class_label = $4,
+            group_label = $5,
+            diploma_context_text = $6,
+            wording_mode = $7,
+            note = $8,
+            updated_at = NOW()
+         WHERE id = $9
+         RETURNING *`,
+        [...packPayloadToDb(input), id]
+    );
+    return result.rows[0] || null;
+}
+
+async function linkPackToQuote(db, packId, quoteId, { bookingId = null } = {}) {
+    const pack = await getChildPackById(db, packId);
+    if (!pack) return null;
+    await db.query(
+        `UPDATE graduation_quotes
+         SET child_pack_id = $1, diploma_context_locked = true, updated_at = NOW()
+         WHERE id = $2`,
+        [packId, quoteId]
+    );
+    await db.query(
+        `UPDATE graduation_child_packs
+         SET graduation_quote_id = COALESCE(graduation_quote_id, $1),
+             booking_id = COALESCE($2, booking_id),
+             updated_at = NOW()
+         WHERE id = $3`,
+        [quoteId, bookingId, packId]
+    );
+    await db.query(
+        `UPDATE graduation_children
+         SET child_pack_id = $1,
+             booking_id = COALESCE($2, booking_id),
+             source_mode = CASE WHEN child_pack_id IS NULL THEN 'pack_load' ELSE source_mode END,
+             updated_at = NOW()
+         WHERE graduation_quote_id = $3
+           AND child_pack_id IS NULL`,
+        [packId, bookingId, quoteId]
+    );
+    await db.query(
+        `UPDATE graduation_children
+         SET graduation_quote_id = COALESCE(graduation_quote_id, $1),
+             booking_id = COALESCE($2, booking_id),
+             updated_at = NOW()
+         WHERE child_pack_id = $3`,
+        [quoteId, bookingId, packId]
+    );
+    return getChildPackById(db, packId);
+}
+
+async function ensureQuoteChildPack(db, quote, body = {}, username = null) {
+    if (!quote) return null;
+    const explicitPackId = body.childPackId || body.child_pack_id || quote.child_pack_id;
+    if (explicitPackId) {
+        const linked = await linkPackToQuote(db, explicitPackId, quote.id, { bookingId: quote.booking_id || null });
+        if (linked) return linked;
+    }
+    const input = normalizeChildPackInput(body, { name: quote.quote_number || `Graduation ${quote.id}` });
+    const created = await createChildPack(db, input, {
+        quoteId: quote.id,
+        bookingId: quote.booking_id || null,
+        username
+    });
+    await db.query(
+        `UPDATE graduation_quotes
+         SET child_pack_id = $1, diploma_context_locked = true, updated_at = NOW()
+         WHERE id = $2`,
+        [created.id, quote.id]
+    );
+    return getChildPackById(db, created.id);
+}
+
+async function loadQuoteChildPack(db, quote) {
+    if (!quote) return null;
+    if (quote.child_pack_id) return getChildPackById(db, quote.child_pack_id);
+    const existing = await db.query(
+        `SELECT p.*, COUNT(c.id)::int AS children_count
+         FROM graduation_child_packs p
+         LEFT JOIN graduation_children c ON c.child_pack_id = p.id
+         WHERE p.graduation_quote_id = $1
+         GROUP BY p.id
+         ORDER BY p.updated_at DESC, p.id DESC
+         LIMIT 1`,
+        [quote.id]
+    );
+    return existing.rows[0] || null;
+}
+
+function mapQuoteRow(row, childPack = null) {
+    const pack = childPack ? mapChildPackRow(childPack) : null;
     return {
         id: row.id,
         quoteNumber: row.quote_number,
@@ -79,6 +275,11 @@ function mapQuoteRow(row) {
         eventEndTime: row.event_end_time,
         eventTimeMode: row.event_time_mode,
         serviceTiming: row.service_timing || [],
+        childPackId: row.child_pack_id,
+        diplomaContextLocked: row.diploma_context_locked,
+        childPack: pack,
+        diplomaContextText: childPackContextText(pack || childPack),
+        diplomaWordingMode: pack?.wordingMode || childPack?.wording_mode || 'standard',
         notes: row.notes,
         createdBy: row.created_by,
         createdAt: row.created_at,
@@ -361,8 +562,11 @@ router.post('/quotes', requireRole('creator', 'director', 'senior_manager', 'man
              JSON.stringify(Array.isArray(serviceTiming) ? serviceTiming : [])]
         );
 
+        const pack = await ensureQuoteChildPack(pool, result.rows[0], req.body || {}, req.user.username);
+        const quoteWithPack = await getQuoteRow(pool, result.rows[0].id);
+
         log.info(`Quote ${quoteNumber} created by ${req.user.username}`);
-        res.status(201).json(mapQuoteRow(result.rows[0]));
+        res.status(201).json(mapQuoteRow(quoteWithPack || result.rows[0], pack));
     } catch (err) {
         log.error('Create quote error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -381,7 +585,20 @@ router.get('/quotes', requireRole('creator', 'director', 'senior_manager', 'mana
         }
         query += ' ORDER BY created_at DESC';
         const result = await pool.query(query, params);
-        res.json(result.rows.map(mapQuoteRow));
+        const packIds = result.rows.map(row => row.child_pack_id).filter(Boolean);
+        let packsById = new Map();
+        if (packIds.length) {
+            const packs = await pool.query(
+                `SELECT p.*, COUNT(c.id)::int AS children_count
+                 FROM graduation_child_packs p
+                 LEFT JOIN graduation_children c ON c.child_pack_id = p.id
+                 WHERE p.id = ANY($1::int[])
+                 GROUP BY p.id`,
+                [packIds]
+            );
+            packsById = new Map(packs.rows.map(row => [String(row.id), row]));
+        }
+        res.json(result.rows.map(row => mapQuoteRow(row, packsById.get(String(row.child_pack_id)))));
     } catch (err) {
         log.error('List quotes error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -396,7 +613,8 @@ router.get('/quotes/:id', requireRole('creator', 'director', 'senior_manager', '
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Quote not found' });
         }
-        res.json(mapQuoteRow(result.rows[0]));
+        const pack = await loadQuoteChildPack(pool, result.rows[0]);
+        res.json(mapQuoteRow(result.rows[0], pack));
     } catch (err) {
         log.error('Get quote error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -445,8 +663,15 @@ router.put('/quotes/:id', requireRole('creator', 'director', 'senior_manager', '
             ]
         );
 
+        let pack = null;
+        if (b.childPack || b.childPackId || b.child_pack_id || b.diplomaContextText || b.wordingMode) {
+            pack = await ensureQuoteChildPack(pool, result.rows[0], b, req.user.username);
+        } else {
+            pack = await loadQuoteChildPack(pool, result.rows[0]);
+        }
+
         log.info(`Quote ${id} updated by ${req.user.username}`);
-        res.json(mapQuoteRow(result.rows[0]));
+        res.json(mapQuoteRow(result.rows[0], pack));
     } catch (err) {
         log.error('Update quote error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -506,6 +731,8 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
         );
         const bkSeq = parseInt(bkCount.rows[0].count) + 1;
         const bookingId = `BK-${year}-${String(bkSeq).padStart(4, '0')}`;
+        const pack = await ensureQuoteChildPack(pool, q, {}, req.user.username);
+        const diplomaContextText = childPackContextText(pack);
 
         // Get package name if available
         let programName = 'Індивідуальний випускний';
@@ -533,7 +760,11 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
                      eventEndTime: endTime || q.event_end_time || null,
                      eventTimeMode: endTime || q.event_end_time ? 'manual' : (q.event_time_mode || 'floating'),
                      kidsCount: q.kids_count,
-                     packageId: q.package_id
+                     packageId: q.package_id,
+                     childPackId: pack?.id || null,
+                     childPackName: pack?.name || null,
+                     diplomaContextText,
+                     diplomaWordingMode: pack?.wording_mode || 'standard'
                  }), req.user.username]
             );
 
@@ -541,6 +772,17 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
                 'UPDATE graduation_quotes SET status = $1, booking_id = $2, updated_at = NOW() WHERE id = $3',
                 ['booked', bookingId, id]
             );
+
+            if (pack?.id) {
+                await client.query(
+                    'UPDATE graduation_child_packs SET booking_id = $1, graduation_quote_id = COALESCE(graduation_quote_id, $2), updated_at = NOW() WHERE id = $3',
+                    [bookingId, q.id, pack.id]
+                );
+                await client.query(
+                    'UPDATE graduation_children SET booking_id = $1, graduation_quote_id = COALESCE(graduation_quote_id, $2), updated_at = NOW() WHERE child_pack_id = $3',
+                    [bookingId, q.id, pack.id]
+                );
+            }
 
             await client.query('COMMIT');
 
@@ -589,13 +831,20 @@ async function getGraduationQuoteOr404(id, res) {
     return result.rows[0];
 }
 
-async function loadDiplomaChildren(quoteId) {
-    const result = await pool.query(
-        `SELECT * FROM graduation_children
-         WHERE graduation_quote_id = $1
-         ORDER BY sort_order ASC, id ASC`,
-        [quoteId]
-    );
+async function loadDiplomaChildren(quoteId, childPackId = null) {
+    const result = childPackId
+        ? await pool.query(
+            `SELECT * FROM graduation_children
+             WHERE graduation_quote_id = $1 OR child_pack_id = $2
+             ORDER BY sort_order ASC, id ASC`,
+            [quoteId, childPackId]
+        )
+        : await pool.query(
+            `SELECT * FROM graduation_children
+             WHERE graduation_quote_id = $1
+             ORDER BY sort_order ASC, id ASC`,
+            [quoteId]
+        );
     return result.rows.map(mapChildRow);
 }
 
@@ -617,6 +866,107 @@ function safeExportFilename(value, fallback = 'graduation_diplomas') {
 }
 
 // GET /api/graduation/diploma/template — default diploma template
+// GET /api/graduation/child-packs - reusable graduation child lists
+router.get('/child-packs', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const { quoteId, includeArchived } = req.query;
+        const where = [];
+        const params = [];
+        if (!['1', 'true', 'yes'].includes(String(includeArchived || '').toLowerCase())) {
+            where.push('p.is_archived = false');
+        }
+        if (quoteId) {
+            params.push(quoteId);
+            where.push(`(p.graduation_quote_id = $${params.length} OR p.id = (SELECT child_pack_id FROM graduation_quotes WHERE id = $${params.length}))`);
+        }
+        const result = await pool.query(
+            `SELECT p.*, COUNT(c.id)::int AS children_count
+             FROM graduation_child_packs p
+             LEFT JOIN graduation_children c ON c.child_pack_id = p.id
+             ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+             GROUP BY p.id
+             ORDER BY p.updated_at DESC, p.id DESC`,
+            params
+        );
+        res.json(result.rows.map(row => mapChildPackRow(row)));
+    } catch (err) {
+        log.error('List graduation child packs error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/child-packs', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const input = normalizeChildPackInput(req.body || {});
+        const quoteId = req.body?.quoteId || req.body?.graduationQuoteId || req.body?.graduation_quote_id || null;
+        const bookingId = req.body?.bookingId || req.body?.booking_id || null;
+        let quote = null;
+        if (quoteId) {
+            quote = await getQuoteRow(pool, quoteId);
+            if (!quote) return res.status(404).json({ error: 'Quote not found' });
+        }
+        const pack = await createChildPack(pool, input, {
+            quoteId: quote?.id || null,
+            bookingId: bookingId || quote?.booking_id || null,
+            username: req.user.username
+        });
+        if (quote) await linkPackToQuote(pool, pack.id, quote.id, { bookingId: quote.booking_id || null });
+        const fresh = await getChildPackById(pool, pack.id);
+        res.status(201).json(mapChildPackRow(fresh || pack));
+    } catch (err) {
+        log.error('Create graduation child pack error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/child-packs/:packId', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const pack = await getChildPackById(pool, req.params.packId);
+        if (!pack) return res.status(404).json({ error: 'Child pack not found' });
+        const rows = await pool.query(
+            `SELECT * FROM graduation_children
+             WHERE child_pack_id = $1
+             ORDER BY sort_order ASC, id ASC`,
+            [req.params.packId]
+        );
+        res.json({ pack: mapChildPackRow(pack), children: rows.rows.map(mapChildRow) });
+    } catch (err) {
+        log.error('Get graduation child pack error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.put('/child-packs/:packId', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const current = await getChildPackById(pool, req.params.packId);
+        if (!current) return res.status(404).json({ error: 'Child pack not found' });
+        const input = normalizeChildPackInput(req.body || {}, { name: current.name });
+        const updated = await updateChildPack(pool, req.params.packId, input);
+        res.json(mapChildPackRow(updated));
+    } catch (err) {
+        log.error('Update graduation child pack error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/child-packs/:packId/link-quote', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+    try {
+        const quoteId = req.body?.quoteId || req.body?.graduationQuoteId || req.body?.graduation_quote_id;
+        if (!quoteId) return res.status(400).json({ error: 'quoteId is required' });
+        const quote = await getQuoteRow(pool, quoteId);
+        if (!quote) return res.status(404).json({ error: 'Quote not found' });
+        const pack = await linkPackToQuote(pool, req.params.packId, quote.id, { bookingId: quote.booking_id || null });
+        if (!pack) return res.status(404).json({ error: 'Child pack not found' });
+        res.json({
+            pack: mapChildPackRow(pack),
+            quote: mapQuoteRow(await getQuoteRow(pool, quote.id), pack)
+        });
+    } catch (err) {
+        log.error('Link graduation child pack error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 router.get('/diploma/template', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
         const row = await ensureDefaultDiplomaTemplate();
@@ -670,14 +1020,18 @@ router.get('/quotes/:id/children', requireRole('creator', 'director', 'senior_ma
     try {
         const quote = await getGraduationQuoteOr404(req.params.id, res);
         if (!quote) return;
-        const children = await loadDiplomaChildren(req.params.id);
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
+        const children = await loadDiplomaChildren(req.params.id, pack?.id || null);
         const summary = {
             total: children.length,
             needsGenderReview: children.filter(c => c.genderSource !== 'manual' && c.genderSource !== 'imported').length,
             customWishes: children.filter(c => !!c.customWish).length,
-            generated: children.filter(c => ['generated', 'printed', 'exported'].includes(c.diplomaStatus)).length
+            generated: children.filter(c => ['generated', 'printed', 'exported'].includes(c.diplomaStatus)).length,
+            childPackId: pack?.id || null,
+            diplomaContextText: childPackContextText(pack),
+            wordingMode: pack?.wording_mode || 'standard'
         };
-        res.json({ quote: mapQuoteRow(quote), children, summary });
+        res.json({ quote: mapQuoteRow(quote, pack), pack: mapChildPackRow(pack), children, summary });
     } catch (err) {
         log.error('List graduation children error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -689,24 +1043,27 @@ router.post('/quotes/:id/children', requireRole('creator', 'director', 'senior_m
     try {
         const quote = await getGraduationQuoteOr404(req.params.id, res);
         if (!quote) return;
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
         const child = normalizeChildInput(req.body || {});
         const maxSort = await pool.query(
-            'SELECT COALESCE(MAX(sort_order), 0) AS max_sort FROM graduation_children WHERE graduation_quote_id = $1',
-            [req.params.id]
+            `SELECT COALESCE(MAX(sort_order), 0) AS max_sort
+             FROM graduation_children
+             WHERE graduation_quote_id = $1 OR child_pack_id = $2`,
+            [req.params.id, pack?.id || null]
         );
         const sortOrder = Number(maxSort.rows[0]?.max_sort || 0) + 1;
         const result = await pool.query(
             `INSERT INTO graduation_children
                 (graduation_quote_id, booking_id, full_name, first_name, last_name, gender, gender_source,
                  gender_confidence, class_label, custom_wish, auto_wish, final_wish,
-                 diploma_title_override, diploma_status, sort_order)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                 diploma_title_override, diploma_status, sort_order, child_pack_id, source_mode)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
              RETURNING *`,
             [
                 req.params.id, quote.booking_id || null, child.fullName, child.firstName, child.lastName,
-                child.gender, child.genderSource, child.genderConfidence, child.classLabel || null,
+                child.gender, child.genderSource, child.genderConfidence, child.classLabel || childPackContextText(pack) || null,
                 child.customWish || null, child.autoWish || null, child.finalWish || null,
-                child.diplomaTitleOverride || null, child.diplomaStatus, sortOrder
+                child.diplomaTitleOverride || null, child.diplomaStatus, sortOrder, pack?.id || null, 'manual'
             ]
         );
         res.status(201).json(mapChildRow(result.rows[0]));
@@ -722,12 +1079,15 @@ router.post('/quotes/:id/children/import', requireRole('creator', 'director', 's
     try {
         const quote = await getGraduationQuoteOr404(req.params.id, res);
         if (!quote) return;
+        const pack = await ensureQuoteChildPack(client, quote, {}, req.user.username);
         const parsed = parseRosterImport(req.body?.text || req.body?.roster || '');
         if (parsed.length === 0) return res.status(400).json({ error: 'No roster rows found' });
         await client.query('BEGIN');
         const maxSort = await client.query(
-            'SELECT COALESCE(MAX(sort_order), 0) AS max_sort FROM graduation_children WHERE graduation_quote_id = $1',
-            [req.params.id]
+            `SELECT COALESCE(MAX(sort_order), 0) AS max_sort
+             FROM graduation_children
+             WHERE graduation_quote_id = $1 OR child_pack_id = $2`,
+            [req.params.id, pack?.id || null]
         );
         let sortOrder = Number(maxSort.rows[0]?.max_sort || 0);
         const inserted = [];
@@ -737,14 +1097,14 @@ router.post('/quotes/:id/children/import', requireRole('creator', 'director', 's
                 `INSERT INTO graduation_children
                     (graduation_quote_id, booking_id, full_name, first_name, last_name, gender, gender_source,
                      gender_confidence, class_label, custom_wish, auto_wish, final_wish,
-                     diploma_title_override, diploma_status, sort_order)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                     diploma_title_override, diploma_status, sort_order, child_pack_id, source_mode)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
                  RETURNING *`,
                 [
                     req.params.id, quote.booking_id || null, child.fullName, child.firstName, child.lastName,
-                    child.gender, child.genderSource, child.genderConfidence, child.classLabel || null,
+                    child.gender, child.genderSource, child.genderConfidence, child.classLabel || childPackContextText(pack) || null,
                     child.customWish || null, child.autoWish || null, child.finalWish || null,
-                    child.diplomaTitleOverride || null, child.diplomaStatus, sortOrder
+                    child.diplomaTitleOverride || null, child.diplomaStatus, sortOrder, pack?.id || null, 'import'
                 ]
             );
             inserted.push(mapChildRow(result.rows[0]));
@@ -765,10 +1125,12 @@ router.put('/quotes/:id/children/:childId', requireRole('creator', 'director', '
     try {
         const quote = await getGraduationQuoteOr404(req.params.id, res);
         if (!quote) return;
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
         const child = normalizeChildInput(req.body || {});
         const result = await pool.query(
             `UPDATE graduation_children SET
                 booking_id = COALESCE($1, booking_id),
+                child_pack_id = COALESCE($16, child_pack_id),
                 full_name = $2,
                 first_name = $3,
                 last_name = $4,
@@ -782,14 +1144,14 @@ router.put('/quotes/:id/children/:childId', requireRole('creator', 'director', '
                 diploma_title_override = $12,
                 diploma_status = $13,
                 updated_at = NOW()
-             WHERE id = $14 AND graduation_quote_id = $15 RETURNING *`,
+             WHERE id = $14 AND (graduation_quote_id = $15 OR child_pack_id = $16) RETURNING *`,
             [
                 quote.booking_id || null, child.fullName, child.firstName, child.lastName,
-                child.gender, child.genderSource, child.genderConfidence, child.classLabel || null,
+                child.gender, child.genderSource, child.genderConfidence, child.classLabel || childPackContextText(pack) || null,
                 child.customWish || null, child.autoWish || null,
                 (child.customWish || child.finalWish || child.autoWish || null),
                 child.diplomaTitleOverride || null, child.diplomaStatus,
-                req.params.childId, req.params.id
+                req.params.childId, req.params.id, pack?.id || null
             ]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Child not found' });
@@ -803,9 +1165,11 @@ router.put('/quotes/:id/children/:childId', requireRole('creator', 'director', '
 // DELETE /api/graduation/quotes/:id/children/:childId — remove roster child
 router.delete('/quotes/:id/children/:childId', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
+        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        if (!quote) return;
         const result = await pool.query(
-            'DELETE FROM graduation_children WHERE id = $1 AND graduation_quote_id = $2 RETURNING id',
-            [req.params.childId, req.params.id]
+            'DELETE FROM graduation_children WHERE id = $1 AND (graduation_quote_id = $2 OR child_pack_id = $3) RETURNING id',
+            [req.params.childId, req.params.id, quote.child_pack_id || null]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Child not found' });
         res.json({ success: true });
@@ -821,11 +1185,12 @@ router.post('/quotes/:id/children/wishes', requireRole('creator', 'director', 's
     try {
         const quote = await getGraduationQuoteOr404(req.params.id, res);
         if (!quote) return;
+        const pack = await ensureQuoteChildPack(client, quote, {}, req.user.username);
         const rows = await client.query(
             `SELECT * FROM graduation_children
-             WHERE graduation_quote_id = $1
+             WHERE graduation_quote_id = $1 OR child_pack_id = $2
              ORDER BY sort_order ASC, id ASC`,
-            [req.params.id]
+            [req.params.id, pack?.id || null]
         );
         const used = new Set();
         const updated = [];
@@ -861,11 +1226,13 @@ router.get('/quotes/:id/diplomas/preview', requireRole('creator', 'director', 's
     try {
         const quote = await getGraduationQuoteOr404(req.params.id, res);
         if (!quote) return;
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
+        const quoteContext = mapQuoteRow(quote, pack);
         const template = toCamelTemplate(await ensureDefaultDiplomaTemplate());
         const childId = req.query.childId;
-        let children = await loadDiplomaChildren(req.params.id);
+        let children = await loadDiplomaChildren(req.params.id, pack?.id || null);
         if (childId) children = children.filter(child => String(child.id) === String(childId));
-        const html = buildDiplomaDocument(children.slice(0, 1), template, quote, { title: 'Preview диплома' });
+        const html = buildDiplomaDocument(children.slice(0, 1), template, quoteContext, { title: 'Preview диплома' });
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(html);
     } catch (err) {
@@ -879,9 +1246,11 @@ router.get('/quotes/:id/diplomas/export/pdf', requireRole('creator', 'director',
     try {
         const quote = await getGraduationQuoteOr404(req.params.id, res);
         if (!quote) return;
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
+        const quoteContext = mapQuoteRow(quote, pack);
         const templateRow = await ensureDefaultDiplomaTemplate();
         const template = toCamelTemplate(templateRow);
-        const children = await loadDiplomaChildren(req.params.id);
+        const children = await loadDiplomaChildren(req.params.id, pack?.id || null);
         const wantsHtml = ['1', 'true', 'yes'].includes(String(req.query.html || '').toLowerCase())
             || ['html', 'print'].includes(String(req.query.format || '').toLowerCase());
         const autoPrint = ['1', 'true', 'yes'].includes(String(req.query.print || '').toLowerCase());
@@ -892,10 +1261,10 @@ router.get('/quotes/:id/diplomas/export/pdf', requireRole('creator', 'director',
                 `UPDATE graduation_children
                  SET diploma_status = CASE WHEN diploma_status IN ('draft', 'generated') THEN 'exported' ELSE diploma_status END,
                      updated_at = NOW()
-                 WHERE graduation_quote_id = $1`,
-                [req.params.id]
+                 WHERE graduation_quote_id = $1 OR child_pack_id = $2`,
+                [req.params.id, pack?.id || null]
             );
-            const html = buildDiplomaDocument(children, template, quote, {
+            const html = buildDiplomaDocument(children, template, quoteContext, {
                 autoPrint,
                 title: `Дипломи ${quote.quote_number || req.params.id}`
             });
@@ -903,14 +1272,14 @@ router.get('/quotes/:id/diplomas/export/pdf', requireRole('creator', 'director',
             return res.send(html);
         }
 
-        const pdf = await buildDiplomaPdfBuffer(children, template, quote);
+        const pdf = await buildDiplomaPdfBuffer(children, template, quoteContext);
         await markDiplomaExport(req.params.id, templateRow.id, 'pdf_batch', children.length, req.user.username);
         await pool.query(
             `UPDATE graduation_children
              SET diploma_status = CASE WHEN diploma_status IN ('draft', 'generated') THEN 'exported' ELSE diploma_status END,
                  updated_at = NOW()
-             WHERE graduation_quote_id = $1`,
-            [req.params.id]
+             WHERE graduation_quote_id = $1 OR child_pack_id = $2`,
+            [req.params.id, pack?.id || null]
         );
         const filename = `${safeExportFilename(quote.quote_number || req.params.id)}_diplomas.pdf`;
         res.setHeader('Content-Type', 'application/pdf');
@@ -928,8 +1297,9 @@ router.get('/quotes/:id/diplomas/export/csv', requireRole('creator', 'director',
     try {
         const quote = await getGraduationQuoteOr404(req.params.id, res);
         if (!quote) return;
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
         const templateRow = await ensureDefaultDiplomaTemplate();
-        const children = await loadDiplomaChildren(req.params.id);
+        const children = await loadDiplomaChildren(req.params.id, pack?.id || null);
         await markDiplomaExport(req.params.id, templateRow.id, 'csv', children.length, req.user.username);
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="graduation_children_${quote.quote_number || req.params.id}.csv"`);
@@ -945,8 +1315,9 @@ router.get('/quotes/:id/diplomas/export/xlsx', requireRole('creator', 'director'
     try {
         const quote = await getGraduationQuoteOr404(req.params.id, res);
         if (!quote) return;
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
         const templateRow = await ensureDefaultDiplomaTemplate();
-        const children = await loadDiplomaChildren(req.params.id);
+        const children = await loadDiplomaChildren(req.params.id, pack?.id || null);
         await markDiplomaExport(req.params.id, templateRow.id, 'xlsx', children.length, req.user.username);
 
         const workbook = new ExcelJS.Workbook();
@@ -986,12 +1357,14 @@ router.get('/quotes/:id/diplomas/print-sheet', requireRole('creator', 'director'
     try {
         const quote = await getGraduationQuoteOr404(req.params.id, res);
         if (!quote) return;
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
+        const quoteContext = mapQuoteRow(quote, pack);
         const templateRow = await ensureDefaultDiplomaTemplate();
-        const children = await loadDiplomaChildren(req.params.id);
+        const children = await loadDiplomaChildren(req.params.id, pack?.id || null);
         await markDiplomaExport(req.params.id, templateRow.id, 'print_sheet', children.length, req.user.username);
         const autoPrint = ['1', 'true', 'yes'].includes(String(req.query.print || '').toLowerCase());
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.send(buildRosterPrintSheet(children, quote, { autoPrint }));
+        res.send(buildRosterPrintSheet(children, quoteContext, { autoPrint }));
     } catch (err) {
         log.error('Diploma print sheet error', err);
         res.status(500).send('Internal server error');

@@ -1699,6 +1699,74 @@ body.dark-mode .catalog-page-counter { color: #aaa; }
     background: rgba(201,168,76,0.07);
     color: var(--gray-700);
 }
+.grad-diploma-pack-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 14px;
+    align-items: center;
+    padding: 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(47,100,184,0.18);
+    background:
+        linear-gradient(135deg, rgba(255,255,255,0.88), rgba(243,247,255,0.78)),
+        radial-gradient(circle at top left, rgba(47,100,184,0.10), transparent 38%);
+    box-shadow: 0 14px 34px rgba(36,89,168,0.08);
+}
+.grad-diploma-pack-main {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+.grad-diploma-pack-kicker {
+    color: #2f64b8;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.grad-diploma-pack-main strong {
+    color: var(--gray-900);
+    font-size: 18px;
+    line-height: 1.2;
+}
+.grad-diploma-pack-main small {
+    color: var(--gray-600);
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+.grad-diploma-pack-meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+.grad-diploma-pack-meta span {
+    padding: 7px 10px;
+    border-radius: 999px;
+    background: rgba(47,100,184,0.10);
+    color: #2459a8;
+    font-size: 12px;
+    font-weight: 900;
+}
+.grad-diploma-mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(231,90,28,0.20);
+    background: rgba(231,90,28,0.08);
+    color: #b94719;
+    font-size: 13px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+.grad-diploma-mode-toggle input {
+    width: 18px;
+    height: 18px;
+    accent-color: #e75a1c;
+}
 .grad-diploma-table {
     display: grid;
     gap: 8px;
@@ -1808,9 +1876,16 @@ body.dark-mode .grad-diploma-wish-cell {
 body.dark-mode .grad-diploma-template-card,
 body.dark-mode .grad-diploma-toolbar,
 body.dark-mode .grad-diploma-summary > div,
+body.dark-mode .grad-diploma-pack-card,
 body.dark-mode .grad-diploma-row {
     background: rgba(255,255,255,0.055);
     border-color: rgba(255,255,255,0.10);
+}
+body.dark-mode .grad-diploma-pack-main strong {
+    color: #f7ecd2;
+}
+body.dark-mode .grad-diploma-pack-main small {
+    color: #c9c0ad;
 }
 body.dark-mode .grad-diploma-quote-select select {
     background: rgba(15,23,42,0.92);
@@ -1827,6 +1902,16 @@ body.dark-mode .grad-diploma-head {
     }
     .grad-diploma-template-card {
         min-width: 0;
+    }
+    .grad-diploma-pack-card {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+    .grad-diploma-pack-meta {
+        justify-content: flex-start;
+    }
+    .grad-diploma-mode-toggle {
+        justify-content: center;
     }
     .grad-diploma-row {
         grid-template-columns: 1fr;

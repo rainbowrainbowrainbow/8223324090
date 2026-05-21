@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.36 - Graduation List Packs Booking Linkage
+
+### Graduation List Packs Booking Linkage [codex]
+- **Списки дітей** - у випускних додано first-class списки/набори дітей із назвою, контекстом закладу/класу та режимом wording для дипломів.
+- **Прив'язка до flow** - graduation quote/booking тепер зберігає `child_pack_id`, а при створенні бронювання контекст списку потрапляє в `extra_data`.
+- **Дипломи по списку** - preview, PDF, CSV, XLSX і print sheet використовують linked list як джерело дітей та рядка закладу без повторного ручного вибору.
+- **Wording toggle** - у вкладці «Дипломи» додано перемикач «Випускник закладу», який змінює текст диплома для batch generation.
+
+---
+
 ## v0.60.35 - Graduation Diploma Formal PDF Typography
 
 ### Graduation Diploma Formal PDF Typography [codex]

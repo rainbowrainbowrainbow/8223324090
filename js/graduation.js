@@ -28,6 +28,8 @@
     let diplomaRoster = [];
     let diplomaSummary = null;
     let diplomaTemplate = null;
+    let diplomaPack = null;
+    let childPacks = [];
     let graduationEventDate = '';
     let graduationStartTime = '10:00';
     let graduationEndTime = '';
@@ -1200,11 +1202,36 @@
         return { manual: 'вручну', suggested: 'підказка', imported: 'імпорт', unknown: 'потрібно перевірити' }[source] || source || 'потрібно перевірити';
     }
 
+    function packContextText(pack = diplomaPack) {
+        if (!pack) return '';
+        return pack.diplomaContextText || pack.institutionLabel || [pack.schoolName, pack.classLabel, pack.groupLabel].filter(Boolean).join(' ') || pack.name || '';
+    }
+
+    function packWordingLabel(mode) {
+        return mode === 'institution_graduate' ? 'Випускник закладу' : 'Звичайний випускний';
+    }
+
+    function packFormFields(pack = {}) {
+        return [
+            { key: 'name', label: 'Назва списку', defaultValue: pack.name || packContextText(pack) || '', required: true, placeholder: 'НВК 146 · 4-Б клас' },
+            { key: 'diplomaContextText', label: 'Рядок на дипломі', defaultValue: pack.diplomaContextText || packContextText(pack) || '', required: true, placeholder: '4-Б клас НВК 146' },
+            { key: 'schoolName', label: 'Заклад', defaultValue: pack.schoolName || '', placeholder: 'НВК 146' },
+            { key: 'classLabel', label: 'Клас / група', defaultValue: pack.classLabel || '', placeholder: '4-Б клас' },
+            { key: 'groupLabel', label: 'Додаткова група', defaultValue: pack.groupLabel || '', placeholder: 'за потреби' },
+            { key: 'wordingMode', label: 'Текст диплома', type: 'select', defaultValue: pack.wordingMode || 'standard', options: [
+                { value: 'standard', label: 'Звичайний випускний' },
+                { value: 'institution_graduate', label: 'Випускник закладу' }
+            ] },
+            { key: 'note', label: 'Нотатка', type: 'textarea', defaultValue: pack.note || '' }
+        ];
+    }
+
     async function loadDiplomaRoster(quoteId) {
         if (!quoteId) return { children: [], summary: null };
         const data = await gradApi('GET', `/graduation/quotes/${quoteId}/children`);
         diplomaRoster = Array.isArray(data.children) ? data.children : [];
         diplomaSummary = data.summary || null;
+        diplomaPack = data.pack || data.quote?.childPack || null;
         return data;
     }
 
@@ -1233,6 +1260,8 @@
                 loadDiplomaRoster(diplomaQuoteId)
             ]);
             diplomaTemplate = template;
+            const packs = await gradApi('GET', '/graduation/child-packs');
+            childPacks = Array.isArray(packs) ? packs : [];
         } catch (err) {
             container.innerHTML = '<div class="grad-empty">Помилка завантаження дипломного контуру</div>';
             return;
@@ -1240,6 +1269,9 @@
 
         const selectedQuote = quotes.find(q => String(q.id) === String(diplomaQuoteId)) || quotes[0];
         const summary = diplomaSummary || { total: 0, needsGenderReview: 0, customWishes: 0, generated: 0 };
+        const pack = diplomaPack || selectedQuote?.childPack || null;
+        const contextText = packContextText(pack) || 'Контекст списку ще не задано';
+        const wordingMode = pack?.wordingMode || summary.wordingMode || 'standard';
         const quoteOptions = quotes.map(q => `
             <option value="${q.id}" ${String(q.id) === String(diplomaQuoteId) ? 'selected' : ''}>
                 ${_esc(q.quoteNumber || `Quote ${q.id}`)} · ${q.kidsCount || 0} дітей · ${formatPrice(q.totalAll || 0)}
@@ -1266,6 +1298,9 @@
                     <select onchange="GradPage.selectDiplomaQuote(this.value)">${quoteOptions}</select>
                 </label>
                 <button class="grad-btn grad-btn-sm grad-btn-primary" onclick="GradPage.addDiplomaChild()">Додати дитину</button>
+                <button class="grad-btn grad-btn-sm" onclick="GradPage.createDiplomaPack()">Створити список</button>
+                <button class="grad-btn grad-btn-sm" onclick="GradPage.selectDiplomaPack()">Вибрати список</button>
+                <button class="grad-btn grad-btn-sm" onclick="GradPage.editDiplomaPack()" ${pack ? '' : 'disabled'}>Редагувати список</button>
                 <button class="grad-btn grad-btn-sm" onclick="GradPage.importDiplomaChildren()">Вставити списком</button>
                 <button class="grad-btn grad-btn-sm" onclick="GradPage.generateDiplomaWishes()" ${summary.total ? '' : 'disabled'}>Автопобажання</button>
                 <button class="grad-btn grad-btn-sm" onclick="GradPage.previewDiploma()" ${summary.total ? '' : 'disabled'}>Preview диплом</button>
@@ -1273,6 +1308,23 @@
                 <button class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomaRoster('csv')" ${summary.total ? '' : 'disabled'}>CSV</button>
                 <button class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomaRoster('xlsx')" ${summary.total ? '' : 'disabled'}>XLSX</button>
                 <button class="grad-btn grad-btn-sm" onclick="GradPage.printDiplomaSheet()" ${summary.total ? '' : 'disabled'}>Print sheet</button>
+            </div>
+
+            <div class="grad-diploma-pack-card">
+                <div class="grad-diploma-pack-main">
+                    <span class="grad-diploma-pack-kicker">Список дітей / контекст дипломів</span>
+                    <strong>${_esc(pack?.name || 'Список не названо')}</strong>
+                    <small>${_esc(contextText)}</small>
+                </div>
+                <div class="grad-diploma-pack-meta">
+                    <span>${summary.total || pack?.childrenCount || 0} дітей</span>
+                    <span>${_esc(packWordingLabel(wordingMode))}</span>
+                    ${selectedQuote?.bookingId ? `<span>Бронювання ${_esc(selectedQuote.bookingId)}</span>` : ''}
+                </div>
+                <label class="grad-diploma-mode-toggle">
+                    <input type="checkbox" ${wordingMode === 'institution_graduate' ? 'checked' : ''} onchange="GradPage.toggleDiplomaWordingMode(this.checked)" ${pack ? '' : 'disabled'}>
+                    <span>Випускник закладу</span>
+                </label>
             </div>
 
             <div class="grad-diploma-summary">
@@ -1342,6 +1394,69 @@
             { key: 'classLabel', label: 'Клас / група', defaultValue: child.classLabel || '', placeholder: '4-А, група Сонечко' },
             { key: 'customWish', label: 'Власне побажання', type: 'textarea', defaultValue: child.customWish || '', placeholder: 'Якщо заповнено - перемагає автопобажання' }
         ];
+    }
+
+    async function createDiplomaPack() {
+        if (!diplomaQuoteId) return;
+        const values = await formModal('Створити список дітей', packFormFields({ name: packContextText() || '' }), { icon: '📋', okText: 'Створити' });
+        if (!values) return;
+        try {
+            await gradApi('POST', '/graduation/child-packs', { ...values, quoteId: diplomaQuoteId });
+            showNotification('Список дітей створено і привʼязано до випускного', 'success');
+            renderCurrentTab();
+        } catch (err) {
+            showNotification(err.message || 'Помилка створення списку', 'error');
+        }
+    }
+
+    async function editDiplomaPack() {
+        if (!diplomaPack) return;
+        const values = await formModal('Редагувати список дітей', packFormFields(diplomaPack), { icon: '✏️', okText: 'Зберегти' });
+        if (!values) return;
+        try {
+            await gradApi('PUT', `/graduation/child-packs/${diplomaPack.id}`, values);
+            showNotification('Контекст списку оновлено', 'success');
+            renderCurrentTab();
+        } catch (err) {
+            showNotification(err.message || 'Помилка оновлення списку', 'error');
+        }
+    }
+
+    async function selectDiplomaPack() {
+        if (!diplomaQuoteId) return;
+        if (!childPacks.length) {
+            showNotification('Спочатку створіть хоча б один список дітей', 'warning');
+            return;
+        }
+        const values = await formModal('Вибрати список дітей', [
+            { key: 'packId', label: 'Список', type: 'select', required: true, options: childPacks.map(pack => ({
+                value: pack.id,
+                label: `${pack.name || packContextText(pack)} · ${pack.childrenCount || 0} дітей`
+            })) }
+        ], { icon: '📚', okText: 'Привʼязати' });
+        if (!values?.packId) return;
+        try {
+            await gradApi('POST', `/graduation/child-packs/${values.packId}/link-quote`, { quoteId: diplomaQuoteId, mode: 'merge' });
+            showNotification('Список привʼязано до випускного', 'success');
+            renderCurrentTab();
+        } catch (err) {
+            showNotification(err.message || 'Помилка привʼязки списку', 'error');
+        }
+    }
+
+    async function toggleDiplomaWordingMode(checked) {
+        if (!diplomaPack) return;
+        try {
+            await gradApi('PUT', `/graduation/child-packs/${diplomaPack.id}`, {
+                ...diplomaPack,
+                wordingMode: checked ? 'institution_graduate' : 'standard'
+            });
+            showNotification(checked ? 'Увімкнено wording «Випускник закладу»' : 'Повернено звичайний wording диплома', 'success');
+            renderCurrentTab();
+        } catch (err) {
+            showNotification(err.message || 'Помилка перемикання wording', 'error');
+            renderCurrentTab();
+        }
     }
 
     async function addDiplomaChild() {
@@ -2132,6 +2247,10 @@
         printPackagePage,
         shareCatalogPage,
         selectDiplomaQuote,
+        createDiplomaPack,
+        editDiplomaPack,
+        selectDiplomaPack,
+        toggleDiplomaWordingMode,
         addDiplomaChild,
         editDiplomaChild,
         deleteDiplomaChild,

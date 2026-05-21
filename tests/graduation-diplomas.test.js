@@ -6,6 +6,8 @@ const {
     suggestGenderFromName,
     pickWish,
     parseRosterImport,
+    resolveDiplomaContextText,
+    resolveDiplomaDescription,
     buildDiplomaDocument,
     buildDiplomaPdfBuffer,
     buildRosterCsv
@@ -84,6 +86,25 @@ describe('Graduation diploma helper', () => {
         assert.match(html, /class="diploma-page is-copy-dense"/);
         assert.match(html, /class="diploma-text diploma-description is-very-long"/);
         assert.match(html, /class="diploma-text diploma-wish is-very-long"/);
+    });
+
+    it('uses child-pack diploma context and institution wording mode', () => {
+        const child = normalizeChildInput({
+            fullName: 'Тестова Дитина',
+            gender: 'neutral'
+        });
+        const quote = {
+            childPack: {
+                name: 'НВК 146 4-Б',
+                diplomaContextText: '4-Б клас НВК 146',
+                wordingMode: 'institution_graduate'
+            }
+        };
+        assert.equal(resolveDiplomaContextText(quote, child), '4-Б клас НВК 146');
+        assert.match(resolveDiplomaDescription(null, quote), /випускника закладу/);
+        const html = buildDiplomaDocument([child], null, quote);
+        assert.match(html, /4-Б клас НВК 146/);
+        assert.match(html, /випускника закладу/);
     });
 
     it('builds one multi-page PDF buffer for a diploma batch', async () => {

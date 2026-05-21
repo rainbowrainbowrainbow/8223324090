@@ -6,6 +6,7 @@ const PDFDocument = require('pdfkit');
 const VALID_GENDERS = new Set(['boy', 'girl', 'neutral', 'unspecified']);
 const VALID_GENDER_SOURCES = new Set(['manual', 'suggested', 'imported', 'unknown']);
 const VALID_DIPLOMA_STATUSES = new Set(['draft', 'generated', 'printed', 'exported']);
+const VALID_DIPLOMA_WORDING_MODES = new Set(['standard', 'institution_graduate']);
 const ROOT_DIR = path.resolve(__dirname, '..');
 const PDF_FONT_PATH = path.join(ROOT_DIR, 'assets', 'fonts', 'Nunito.ttf');
 const PDF_FONT_BOLD_PATH = path.join(ROOT_DIR, 'assets', 'fonts', 'Nunito-Bold.ttf');
@@ -219,6 +220,8 @@ function mapChildRow(row) {
         finalWish: row.final_wish,
         diplomaTitleOverride: row.diploma_title_override,
         diplomaStatus: row.diploma_status,
+        childPackId: row.child_pack_id,
+        sourceMode: row.source_mode || 'manual',
         sortOrder: row.sort_order,
         createdAt: row.created_at,
         updatedAt: row.updated_at
@@ -258,14 +261,63 @@ function parseRosterImport(text) {
     });
 }
 
+function normalizeDiplomaWordingMode(value) {
+    return VALID_DIPLOMA_WORDING_MODES.has(value) ? value : 'standard';
+}
+
+function resolveQuotePack(quote = {}) {
+    return quote.childPack || quote.child_pack || {};
+}
+
+function resolveDiplomaContextText(quote = {}, child = {}) {
+    const pack = resolveQuotePack(quote);
+    const candidates = [
+        child.classLabel,
+        child.class_label,
+        quote.diplomaContextText,
+        quote.diploma_context_text,
+        pack.diplomaContextText,
+        pack.diploma_context_text,
+        pack.institutionLabel,
+        pack.institution_label,
+        pack.classLabel,
+        pack.class_label,
+        pack.groupLabel,
+        pack.group_label,
+        pack.name
+    ];
+    return String(candidates.find(value => String(value || '').trim()) || '').trim();
+}
+
+function resolveDiplomaWordingMode(quote = {}) {
+    const pack = resolveQuotePack(quote);
+    return normalizeDiplomaWordingMode(
+        quote.diplomaWordingMode
+        || quote.diploma_wording_mode
+        || quote.wordingMode
+        || quote.wording_mode
+        || pack.wordingMode
+        || pack.wording_mode
+    );
+}
+
+function resolveDiplomaDescription(template = DEFAULT_DIPLOMA_TEMPLATE, quote = {}) {
+    template = template || DEFAULT_DIPLOMA_TEMPLATE;
+    if (resolveDiplomaWordingMode(quote) === 'institution_graduate') {
+        return 'за успішне завершення навчання\nта горде звання випускника закладу';
+    }
+    return template.subtitleText || DEFAULT_DIPLOMA_TEMPLATE.subtitleText;
+}
+
 function buildDiplomaPage(child, template = DEFAULT_DIPLOMA_TEMPLATE, quote = {}) {
     template = template || DEFAULT_DIPLOMA_TEMPLATE;
     const palette = { ...DEFAULT_DIPLOMA_TEMPLATE.palette, ...(template.palette || {}) };
     const layout = { ...DEFAULT_DIPLOMA_TEMPLATE.layout, ...(template.layout || {}) };
     const title = child.diplomaTitleOverride || template.titleText || DEFAULT_DIPLOMA_TEMPLATE.titleText;
     const wish = child.customWish || child.finalWish || child.autoWish || pickWish(child);
-    const description = template.subtitleText || DEFAULT_DIPLOMA_TEMPLATE.subtitleText;
-    const classLine = child.classLabel ? `<div class="diploma-text diploma-school">${escHtml(child.classLabel)}</div>` : '';
+    const description = resolveDiplomaDescription(template, quote);
+    const diplomaContextText = resolveDiplomaContextText(quote, child);
+    const classLine = diplomaContextText ? `<div class="diploma-text diploma-school">${escHtml(diplomaContextText)}</div>` : '';
     const displayName = escHtml(child.fullName).replace(/-/g, '&#8209;');
     const nameLength = String(child.fullName || '').length;
     const nameClass = nameLength > 44 ? ' is-very-long' : (nameLength > 30 ? ' is-long' : '');
@@ -467,7 +519,8 @@ function drawDiplomaPdfPage(doc, child, template = DEFAULT_DIPLOMA_TEMPLATE, quo
     const layout = { ...DEFAULT_DIPLOMA_TEMPLATE.layout, ...(template.layout || {}) };
     const title = child.diplomaTitleOverride || template.titleText || DEFAULT_DIPLOMA_TEMPLATE.titleText;
     const wish = child.customWish || child.finalWish || child.autoWish || pickWish(child);
-    const description = template.subtitleText || DEFAULT_DIPLOMA_TEMPLATE.subtitleText;
+    const description = resolveDiplomaDescription(template, quote);
+    const diplomaContextText = resolveDiplomaContextText(quote, child);
     const issueYear = new Intl.DateTimeFormat('en', { year: 'numeric', timeZone: 'Europe/Kyiv' }).format(new Date());
     const backgroundPath = localPublicAssetPath(layout.backgroundImageUrl || DEFAULT_DIPLOMA_TEMPLATE.layout.backgroundImageUrl);
     const logoPath = localPublicAssetPath(layout.sealLogoUrl || DEFAULT_DIPLOMA_TEMPLATE.layout.sealLogoUrl);
@@ -551,8 +604,8 @@ function drawDiplomaPdfPage(doc, child, template = DEFAULT_DIPLOMA_TEMPLATE, quo
         weight: 'semibold'
     });
 
-    if (child.classLabel) {
-        drawPdfText(doc, child.classLabel, {
+    if (diplomaContextText) {
+        drawPdfText(doc, diplomaContextText, {
             y: 0.767,
             width: 0.606,
             size: 21,
@@ -616,6 +669,7 @@ function buildDiplomaPdfBuffer(children, template, quote = {}) {
 }
 
 function buildRosterPrintSheet(children, quote = {}, { autoPrint = false } = {}) {
+    const contextText = resolveDiplomaContextText(quote, {});
     const rows = (children || []).map((child, idx) => `
         <tr>
             <td>${idx + 1}</td>
@@ -690,6 +744,7 @@ module.exports = {
     VALID_GENDERS,
     VALID_GENDER_SOURCES,
     VALID_DIPLOMA_STATUSES,
+    VALID_DIPLOMA_WORDING_MODES,
     escHtml,
     toCamelTemplate,
     splitName,
@@ -699,6 +754,9 @@ module.exports = {
     mapChildRow,
     pickWish,
     parseRosterImport,
+    normalizeDiplomaWordingMode,
+    resolveDiplomaContextText,
+    resolveDiplomaDescription,
     buildDiplomaPage,
     buildDiplomaDocument,
     buildDiplomaPdfBuffer,

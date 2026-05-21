@@ -4,6 +4,17 @@
 
 ---
 
+## v0.61.15 - Dashboard workshop redesign
+
+### Dashboard workshop redesign + guided layout planning [codex]
+- **Dashboard UX** - робочу сцену перебудовано в спокійніший workshop/control-room workspace з чистішою ієрархією, меншою кількістю постійного builder-шуму і сильнішим dark-mode характером.
+- **Configure Mode** - normal mode лишається чистим для щоденної роботи, а planning mode показує слоти, інструменти розкладки, підказки та дії для композиції.
+- **Layout Planning** - додано планувальні зони для розміщення віджетів і explicit `Порожня зона`, яку можна зберегти як reserved/breathing space.
+- **Persistence** - `space` items і `showPlanner` проходять frontend/backend board-state sanitizer, тому навмисно пусті місця переживають save/reload.
+- **Inspector Cleanup** - у режимі перегляду прибрано зайвий інспектор, а в плануванні контролі згруповано навколо композиції, віджетів і пустих зон.
+
+---
+
 ## v0.61.14 - Profile account security
 
 ### Profile account security [codex]

@@ -155,9 +155,9 @@ function countFrom(result) {
 const BOARD_SCHEMA_VERSION = 1;
 const BOARD_MAX_ITEMS = 120;
 const BOARD_MAX_DRAWINGS = 500;
-const BOARD_ALLOWED_TYPES = new Set(['widget', 'note', 'text', 'shape', 'frame']);
+const BOARD_ALLOWED_TYPES = new Set(['widget', 'note', 'text', 'shape', 'frame', 'space']);
 const BOARD_ALLOWED_WIDGET_DEPTHS = new Set(['live-compact', 'headline-only', 'live-expanded', 'snapshot-card']);
-const BOARD_ALLOWED_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser', 'connector', 'note', 'text', 'frame', 'widget', 'line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
+const BOARD_ALLOWED_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser', 'connector', 'note', 'text', 'frame', 'space', 'widget', 'line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
 const BOARD_DRAW_TOOLS = new Set(['brush', 'highlighter']);
 const BOARD_ALLOWED_SHAPES = new Set(['line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
 const BOARD_ALLOWED_CONNECTOR_STYLES = new Set(['line', 'arrow', 'curve']);
@@ -283,6 +283,7 @@ function defaultBoardState(overrides = {}) {
             snapMode: 'soft',
             showGrid: true,
             showGuides: true,
+            showPlanner: true,
             showMiniMap: false,
             maxLiveWidgets: 18,
             strokeColor: '#10b981',
@@ -327,6 +328,10 @@ function sanitizeBoardItem(item, role) {
         safe.title = String(item.title || item.label || '').slice(0, 120);
         safe.color = String(item.color || '').slice(0, 40);
         safe.shape = normalizeBoardShape(item.shape || 'rect');
+        if (type === 'space') {
+            safe.zoneId = String(item.zoneId || '').slice(0, 80);
+            safe.zoneKind = String(item.zoneKind || 'reserved').slice(0, 40);
+        }
     }
 
     return safe;
@@ -361,6 +366,7 @@ function sanitizeBoardState(input, role) {
             snapMode: normalizeBoardSnapMode(preferencesSource.snapMode || (preferencesSource.snapToGrid === false ? 'freeform' : 'soft')),
             showGrid: preferencesSource.showGrid !== false,
             showGuides: preferencesSource.showGuides !== false,
+            showPlanner: preferencesSource.showPlanner !== false,
             showMiniMap: preferencesSource.showMiniMap === true,
             maxLiveWidgets: safeNumber(preferencesSource.maxLiveWidgets, 18, 1, 24),
             strokeColor: String(preferencesSource.strokeColor || '#10b981').slice(0, 32),

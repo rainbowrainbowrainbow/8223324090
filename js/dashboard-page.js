@@ -8,10 +8,10 @@ const DashboardPage = (() => {
     const BOARD_LIVE_WIDGET_CAP = 18;
     const BOARD_UNDO_LIMIT = 40;
     const BOARD_SAVE_DEBOUNCE_MS = 900;
-    const BOARD_ALLOWED_TYPES = new Set(['widget', 'note', 'text', 'shape', 'frame']);
+    const BOARD_ALLOWED_TYPES = new Set(['widget', 'note', 'text', 'shape', 'frame', 'space']);
     const BOARD_ALLOWED_DEPTHS = new Set(['live-compact', 'headline-only', 'snapshot-static']);
-    const BOARD_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser', 'connector', 'note', 'text', 'frame', 'widget', 'line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
-    const BOARD_CREATE_TOOLS = new Set(['note', 'text', 'frame', 'widget']);
+    const BOARD_TOOLS = new Set(['select', 'hand', 'brush', 'highlighter', 'eraser', 'connector', 'note', 'text', 'frame', 'space', 'widget', 'line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
+    const BOARD_CREATE_TOOLS = new Set(['note', 'text', 'frame', 'space', 'widget']);
     const BOARD_SHAPE_TOOLS = new Set(['line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
     const BOARD_DRAW_TOOLS = new Set(['brush', 'highlighter']);
     const BOARD_TOOL_LABELS = {
@@ -24,6 +24,7 @@ const DashboardPage = (() => {
         note: 'Нотатка',
         text: 'Текст',
         frame: 'Фрейм',
+        space: 'Порожня зона',
         widget: 'Віджет',
         line: 'Лінія',
         arrow: 'Стрілка',
@@ -42,6 +43,7 @@ const DashboardPage = (() => {
         note: 'Натисніть на дошці, щоб додати нотатку.',
         text: 'Натисніть на дошці, щоб додати текст.',
         frame: 'Натисніть на дошці, щоб додати рамку для групи.',
+        space: 'Позначте місце, яке має лишитися вільним або зарезервованим.',
         widget: 'Натисніть на дошці, щоб додати віджет.',
         line: 'Натисніть на дошці, щоб поставити лінію.',
         arrow: 'Натисніть на дошці, щоб поставити стрілку.',
@@ -65,7 +67,8 @@ const DashboardPage = (() => {
         note: 'Нотатка',
         text: 'Текст',
         shape: 'Фігура',
-        frame: 'Рамка'
+        frame: 'Рамка',
+        space: 'Порожня зона'
     };
     const BOARD_DEPTH_LABELS = {
         'live-compact': 'Живий компакт',
@@ -114,6 +117,49 @@ const DashboardPage = (() => {
     const BOARD_AI_PRESETS = new Set(['expand', 'mood-pack', 'cluster', 'summarize', 'tasks', 'remix', 'name-frame', 'prompt-to-board']);
     const DASHBOARD_RETIRED_WIDGETS = new Set();
     const DASHBOARD_PRESENTATION_MODES = new Set(['mixed-scene', 'flat-grid']);
+    const BOARD_PLANNING_ZONES = [
+        {
+            id: 'focus',
+            title: 'Фокус роботи',
+            hint: 'Сюди ставте головний tasker, чергу або найбільш важливий live-віджет.',
+            x: 44,
+            y: 46,
+            w: 360,
+            h: 250,
+            widget: 'personal_tasker'
+        },
+        {
+            id: 'signals',
+            title: 'Операційні сигнали',
+            hint: 'Компактні алерти, бронювання, ризики або команда онлайн.',
+            x: 436,
+            y: 46,
+            w: 315,
+            h: 218,
+            widget: 'alerts'
+        },
+        {
+            id: 'breathing',
+            title: 'Дихаюча зона',
+            hint: 'Навмисно пусте місце, щоб сцена не перетворювалась на шум.',
+            x: 790,
+            y: 54,
+            w: 330,
+            h: 270,
+            kind: 'breathing'
+        },
+        {
+            id: 'planning',
+            title: 'Майбутній модуль',
+            hint: 'Зарезервуйте слот під віджет, який додасте пізніше.',
+            x: 84,
+            y: 360,
+            w: 390,
+            h: 230,
+            kind: 'future',
+            widget: 'tasks'
+        }
+    ];
 
     // Widget definitions — all available widgets
     const WIDGET_DEFS = {
@@ -357,6 +403,7 @@ const DashboardPage = (() => {
                     snapMode: 'soft',
                     showGrid: true,
                     showGuides: true,
+                    showPlanner: true,
                     showMiniMap: false,
                     maxLiveWidgets: BOARD_LIVE_WIDGET_CAP,
                     strokeColor: '#10b981',
@@ -531,10 +578,15 @@ const DashboardPage = (() => {
             safe.title = String(item.title || WIDGET_DEFS[widgetType]?.title || widgetType).slice(0, 120);
         } else {
             const legacyText = item.text ?? item.content ?? item.body ?? item.noteText ?? item.label ?? '';
-            safe.text = String(legacyText || (type === 'note' ? 'Нова нотатка' : '')).slice(0, 5000);
+            safe.text = String(legacyText || (type === 'note' ? 'Нова нотатка' : type === 'space' ? 'Зарезервовано як вільний простір.' : '')).slice(0, 5000);
             safe.title = String(item.title || item.label || '').slice(0, 120);
             safe.color = String(item.color || '').slice(0, 40);
             safe.shape = normalizeBoardShape(item.shape || 'rect');
+            if (type === 'space') {
+                safe.title = String(item.title || 'Порожня зона').slice(0, 120);
+                safe.zoneId = String(item.zoneId || '').slice(0, 80);
+                safe.zoneKind = String(item.zoneKind || 'reserved').slice(0, 40);
+            }
         }
         return safe;
     }
@@ -565,6 +617,7 @@ const DashboardPage = (() => {
                 snapMode: normalizeBoardSnapMode(preferences.snapMode || (preferences.snapToGrid === false ? 'freeform' : 'soft')),
                 showGrid: preferences.showGrid !== false,
                 showGuides: preferences.showGuides !== false,
+                showPlanner: preferences.showPlanner !== false,
                 showMiniMap: preferences.showMiniMap === true,
                 maxLiveWidgets: safeNumber(preferences.maxLiveWidgets, BOARD_LIVE_WIDGET_CAP, 1, 24),
                 strokeColor: String(preferences.strokeColor || '#10b981').slice(0, 32),
@@ -763,10 +816,28 @@ const DashboardPage = (() => {
         const undoBtn = document.getElementById('boardUndoBtn');
         const redoBtn = document.getElementById('boardRedoBtn');
         syncBoardWorkspaceMode();
+        const toolbar = document.getElementById('dashboardBoardToolbar');
+        const stage = document.querySelector('.dashboard-workspace-stage');
 
         gridBtn?.classList.toggle('active', false);
         boardBtn?.classList.toggle('active', isWorkspace);
         controls?.classList.remove('hidden');
+        if (toolbar) {
+            toolbar.dataset.interactionMode = _boardInteractionMode;
+            toolbar.dataset.workspaceMode = _boardWorkspaceMode;
+        }
+        if (controls) {
+            controls.dataset.interactionMode = _boardInteractionMode;
+            controls.dataset.workspaceMode = _boardWorkspaceMode;
+        }
+        if (toolOptions) {
+            toolOptions.dataset.interactionMode = _boardInteractionMode;
+            toolOptions.dataset.workspaceMode = _boardWorkspaceMode;
+        }
+        if (stage) {
+            stage.dataset.interactionMode = _boardInteractionMode;
+            stage.dataset.workspaceMode = _boardWorkspaceMode;
+        }
         viewBtn?.classList.toggle('active', _boardWorkspaceMode === 'board:view');
         editBtn?.classList.toggle('active', _boardWorkspaceMode !== 'board:view');
         document.querySelectorAll('[data-board-tool]').forEach(btn => {
@@ -793,6 +864,23 @@ const DashboardPage = (() => {
     function renderBoardToolOptions() {
         const tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
         const prefs = safeObject(_config?.boardState?.preferences, {});
+        const mode = getBoardWorkspaceMode();
+        if (_boardInteractionMode === 'view' || mode === 'board:view') {
+            const itemCount = getBoardItems().filter(item => !item.hidden).length;
+            const spaceCount = getBoardItems().filter(item => item.type === 'space' && !item.hidden).length;
+            return `
+                <div class="board-tool-current board-operate-summary">
+                    <span>Режим роботи</span>
+                    <strong>Спокійний dashboard</strong>
+                    <em>${itemCount} блоків на сцені${spaceCount ? ` · ${spaceCount} порожніх зон` : ''}. Для композиції відкрийте планування.</em>
+                </div>
+                <div class="board-builder-quick-add board-operate-actions" aria-label="Швидкі дії dashboard">
+                    <button type="button" class="board-tool-snap active" onclick="DashboardPage.setBoardInteractionMode('edit')">Планувати layout</button>
+                    <button type="button" class="board-tool-snap" onclick="DashboardPage.openWidgetManager()">Віджети</button>
+                    <button type="button" class="board-tool-snap" onclick="DashboardPage.saveBoardNow()">Зберегти</button>
+                </div>
+            `;
+        }
         const label = BOARD_TOOL_LABELS[tool] || tool;
         const modeHint = BOARD_TOOL_HINTS[tool] || 'Перемикайте інструменти як у редакторі.';
         const widgetOptions = renderBoardWidgetPickerOptions();
@@ -808,6 +896,7 @@ const DashboardPage = (() => {
                 </select>
                 <button type="button" class="board-tool-snap" onclick="DashboardPage.addSelectedBoardWidget()">+ Віджет</button>
                 <button type="button" class="board-tool-snap" onclick="DashboardPage.addBoardNote()">+ Нотатка</button>
+                <button type="button" class="board-tool-snap" onclick="DashboardPage.addBoardSpace()">+ Порожня зона</button>
                 <button type="button" class="board-tool-snap" onclick="DashboardPage.saveBoardNow()">Зберегти</button>
             </div>
             <label class="board-tool-check">
@@ -824,6 +913,10 @@ const DashboardPage = (() => {
             <label class="board-tool-check">
                 <input type="checkbox" ${prefs.showGuides !== false ? 'checked' : ''} onchange="DashboardPage.setBoardPreference('showGuides', this.checked)">
                 <span>Напрямні</span>
+            </label>
+            <label class="board-tool-check">
+                <input type="checkbox" ${prefs.showPlanner !== false ? 'checked' : ''} onchange="DashboardPage.setBoardPreference('showPlanner', this.checked)">
+                <span>План</span>
             </label>
             <label class="board-tool-color" title="Колір малювання">
                 <span>Колір</span>
@@ -3049,7 +3142,7 @@ const DashboardPage = (() => {
             return;
         }
 
-        canvas.innerHTML = renderBoardDrawingLayer(drawings) + renderBoardConnectorLayer(connectors) + items
+        canvas.innerHTML = renderBoardDrawingLayer(drawings) + renderBoardConnectorLayer(connectors) + renderBoardPlanningLayer(items) + items
             .slice()
             .sort((a, b) => Number(a.z || 0) - Number(b.z || 0))
             .map(renderBoardItem)
@@ -3136,6 +3229,55 @@ const DashboardPage = (() => {
         `;
     }
 
+    function boardRectIntersectsZone(item, zone) {
+        if (!item || !zone || item.hidden) return false;
+        const left = Number(item.x || 0);
+        const top = Number(item.y || 0);
+        const right = left + Number(item.w || 0);
+        const bottom = top + Number(item.h || 0);
+        const zoneRight = Number(zone.x || 0) + Number(zone.w || 0);
+        const zoneBottom = Number(zone.y || 0) + Number(zone.h || 0);
+        return left < zoneRight && right > zone.x && top < zoneBottom && bottom > zone.y;
+    }
+
+    function renderBoardPlanningLayer(items = []) {
+        const prefs = safeObject(_config?.boardState?.preferences, {});
+        if (_boardInteractionMode !== 'edit' || prefs.showPlanner === false) return '';
+        const zones = BOARD_PLANNING_ZONES.map(zone => {
+            const occupants = items.filter(item => item.type !== 'space' && boardRectIntersectsZone(item, zone)).length;
+            const reserved = items.some(item => item.type === 'space' && (item.zoneId === zone.id || boardRectIntersectsZone(item, zone)));
+            const state = occupants ? 'occupied' : reserved ? 'reserved' : 'open';
+            const stateLabel = occupants ? `${occupants} блок(и)` : reserved ? 'простір лишено' : 'готово до планування';
+            const primaryAction = zone.widget
+                ? `<button type="button" class="planner-zone-action" onclick="DashboardPage.addBoardWidgetToZone('${escapeJsString(zone.id)}')">+ Віджет тут</button>`
+                : '';
+            const reserveAction = `<button type="button" class="planner-zone-action secondary" onclick="DashboardPage.reserveBoardZone('${escapeJsString(zone.id)}')">Лишити пустим</button>`;
+            return `
+                <div class="dashboard-planner-zone is-${state}" data-planner-zone="${escapeHtml(zone.id)}" style="left:${Number(zone.x)}px;top:${Number(zone.y)}px;width:${Number(zone.w)}px;height:${Number(zone.h)}px">
+                    <div class="planner-zone-head">
+                        <strong>${escapeHtml(zone.title)}</strong>
+                        <span>${escapeHtml(stateLabel)}</span>
+                    </div>
+                    <p>${escapeHtml(zone.hint)}</p>
+                    <div class="planner-zone-actions">
+                        ${state === 'occupied' ? '' : primaryAction}
+                        ${state === 'reserved' ? '' : reserveAction}
+                    </div>
+                </div>
+            `;
+        }).join('');
+        return `
+            <div class="dashboard-planner-layer" aria-label="Планувальник layout dashboard">
+                <div class="dashboard-planner-guide">
+                    <span>Plan mode</span>
+                    <strong>Сплануйте композицію: віджет, слот або навмисна тиша.</strong>
+                    <em>Підказки видно тільки в режимі планування і не засмічують щоденний dashboard.</em>
+                </div>
+                ${zones}
+            </div>
+        `;
+    }
+
     function isBoardThinGeometryItem(item) {
         return item?.type === 'shape' && ['line', 'arrow'].includes(item.shape);
     }
@@ -3153,14 +3295,14 @@ const DashboardPage = (() => {
         const style = `left:${Number(item.x || 0)}px;top:${Number(item.y || 0)}px;width:${Number(item.w || 280)}px;height:${Number(item.h || 160)}px;z-index:${Number(item.z || 1)}`;
         const title = item.type === 'widget'
             ? (item.title || def?.title || item.widgetType)
-            : (item.title || (item.type === 'shape' ? 'Shape' : 'Нотатка'));
+            : (item.title || (item.type === 'shape' ? 'Shape' : item.type === 'space' ? 'Порожня зона' : 'Нотатка'));
         const idAttr = escapeHtml(item.id);
         const idJs = escapeJsString(item.id);
         return `
             <section class="dashboard-board-item workspace-module type-${escapeHtml(item.type)}${selected}${editing}${inspecting}${locked}${hidden}${geometry}" data-workspace-module="true" data-module-role="${escapeHtml(item.type)}" data-widget-runtime="${escapeHtml(runtimeState)}" data-widget-type="${item.type === 'widget' ? escapeHtml(item.widgetType) : ''}" data-board-item-id="${idAttr}" data-board-shape-kind="${escapeHtml(item.shape || '')}" style="${style}">
                 <div class="dashboard-board-item-frame" data-board-drag-handle>
                     <div class="dashboard-board-item-title">
-                        <span>${item.type === 'widget' ? escapeHtml(def?.icon || '◼') : item.type === 'shape' ? '□' : '•'}</span>
+                        <span>${item.type === 'widget' ? escapeHtml(def?.icon || '◼') : item.type === 'shape' ? '□' : item.type === 'space' ? '◌' : '•'}</span>
                         <strong>${escapeHtml(title)}</strong>
                     </div>
                     <div class="dashboard-board-item-actions">
@@ -3237,6 +3379,16 @@ const DashboardPage = (() => {
         if (item.type === 'frame') {
             return `<div class="board-frame-label">${escapeHtml(item.text || 'Frame')}</div>`;
         }
+        if (item.type === 'space') {
+            return `
+                <div class="board-empty-zone-content">
+                    <span>${item.zoneKind === 'breathing' ? 'breathing room' : 'reserved space'}</span>
+                    <strong>${escapeHtml(item.title || 'Порожня зона')}</strong>
+                    <p>${escapeHtml(item.text || 'Це місце навмисно лишене вільним для композиції або майбутнього віджета.')}</p>
+                    ${_boardInteractionMode === 'edit' ? '<em>Можна пересунути, змінити розмір або перетворити на віджет пізніше.</em>' : ''}
+                </div>
+            `;
+        }
         const readonly = item.locked ? ' readonly aria-readonly="true"' : '';
         return `<textarea class="board-note-text board-note-editor" data-board-text="${escapeHtml(item.id)}" data-board-item-id="${escapeHtml(item.id)}" placeholder="Нотатка" spellcheck="true"${readonly}>${escapeHtml(item.text || '')}</textarea>`;
     }
@@ -3253,6 +3405,7 @@ const DashboardPage = (() => {
     }
 
     function renderBoardMiniInspector() {
+        if (_boardInteractionMode === 'view') return '';
         const item = _boardSelectedId ? findBoardItem(_boardSelectedId) : null;
         const connector = _boardSelectedConnectorId ? getBoardConnectors().find(conn => conn.id === _boardSelectedConnectorId) : null;
         const prefs = safeObject(_config?.boardState?.preferences, {});
@@ -3301,8 +3454,12 @@ const DashboardPage = (() => {
                 </div>
                 ${objectControls || connectorControls || `
                     <div class="board-inspector-section">
-                        <strong>AI-помічник дошки</strong>
-                        <span>Оберіть нотатку або створіть блоки з промпта.</span>
+                        <strong>Планування композиції</strong>
+                        <span>Оберіть слот на полотні, додайте віджет або лишіть місце вільним для дихання сцени.</span>
+                        <div class="board-inspector-row">
+                            <button type="button" class="board-inspector-chip" onclick="DashboardPage.addBoardSpace()">Порожня зона</button>
+                            <button type="button" class="board-inspector-chip" onclick="DashboardPage.addSelectedBoardWidget()">Віджет</button>
+                        </div>
                     </div>
                 `}
                 <div class="board-inspector-section">
@@ -3449,7 +3606,7 @@ const DashboardPage = (() => {
         if (isBoardDragBlockedTarget(target)) return false;
         if (item.type === 'widget' || item.type === 'note' || item.type === 'text') return false;
         if (isBoardThinGeometryItem(item)) return !!target?.closest?.('[data-board-shape]');
-        return item.type === 'shape' || item.type === 'frame';
+        return item.type === 'shape' || item.type === 'frame' || item.type === 'space';
     }
 
     function boardPointFromEvent(event) {
@@ -3478,7 +3635,7 @@ const DashboardPage = (() => {
         if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
         if (event.target?.closest?.('.dashboard-board-item') || isBoardInteractiveTarget(event.target)) return;
         const tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
-        const blockedSurface = event.target?.closest?.('.dashboard-board-empty, .dashboard-board-warning');
+        const blockedSurface = event.target?.closest?.('.dashboard-board-empty, .dashboard-board-warning, .dashboard-planner-zone, .dashboard-planner-guide');
         if (blockedSurface && !(BOARD_CREATE_TOOLS.has(tool) || BOARD_SHAPE_TOOLS.has(tool))) return;
         if (tool === 'connector') {
             _boardConnectorDraft = null;
@@ -4077,6 +4234,17 @@ const DashboardPage = (() => {
             const size = { w: 420, h: 260 };
             return addBoardItem({ type: 'frame', ...boardPointForNewItem(point, size.w, size.h), ...size, text: 'Нова зона', title: 'Frame' });
         }
+        if (action === 'space') {
+            const size = { w: 360, h: 220 };
+            return addBoardItem({
+                type: 'space',
+                ...boardPointForNewItem(point, size.w, size.h),
+                ...size,
+                title: 'Порожня зона',
+                text: 'Навмисно лишене місце для дихання сцени або майбутнього віджета.',
+                zoneKind: 'reserved'
+            });
+        }
         if (action === 'widget') return addBoardWidget(point);
         if (BOARD_SHAPE_TOOLS.has(action)) return addBoardShape(action, point);
         return null;
@@ -4110,6 +4278,35 @@ const DashboardPage = (() => {
         createBoardItemFromTool('frame');
     }
 
+    function addBoardSpace() {
+        createBoardItemFromTool('space');
+    }
+
+    function findPlanningZone(zoneId) {
+        return BOARD_PLANNING_ZONES.find(zone => zone.id === zoneId) || null;
+    }
+
+    function reserveBoardZone(zoneId) {
+        const zone = findPlanningZone(zoneId);
+        if (!zone) return null;
+        const existing = getBoardItems().find(item => item.type === 'space' && item.zoneId === zone.id && !item.hidden);
+        if (existing) {
+            selectBoardItem(existing.id);
+            return existing;
+        }
+        return addBoardItem({
+            type: 'space',
+            x: Number(zone.x || 60),
+            y: Number(zone.y || 60),
+            w: Number(zone.w || 340),
+            h: Number(zone.h || 210),
+            title: zone.title || 'Порожня зона',
+            text: zone.hint || 'Зарезервовано як вільний простір.',
+            zoneId: zone.id,
+            zoneKind: zone.kind || 'reserved'
+        });
+    }
+
     function addBoardShape(shape = 'rect', point = null) {
         const safeShape = normalizeBoardShape(shape);
         const shapeTitles = {
@@ -4130,6 +4327,33 @@ const DashboardPage = (() => {
             ...size,
             shape: safeShape,
             title: shapeTitles[safeShape] || 'Shape'
+        });
+    }
+
+    function preferredWidgetForZone(zone) {
+        const preferred = String(zone?.widget || '').trim();
+        if (preferred && canUseWidget(preferred)) return preferred;
+        return normalizeDashboardWidgets(_config.widgets || []).find(canUseWidget) || 'tasks';
+    }
+
+    function addBoardWidgetToZone(zoneId) {
+        const zone = findPlanningZone(zoneId);
+        if (!zone) return addBoardWidget();
+        const widgetType = preferredWidgetForZone(zone);
+        if (!widgetType || !canUseWidget(widgetType)) return null;
+        const width = Math.max(260, Math.min(420, Number(zone.w || 360) - 24));
+        const height = Math.max(180, Math.min(280, Number(zone.h || 240) - 48));
+        return addBoardItem({
+            type: 'widget',
+            widgetType,
+            title: WIDGET_DEFS[widgetType]?.title || widgetType,
+            x: Number(zone.x || 60) + 12,
+            y: Number(zone.y || 60) + 38,
+            w: width,
+            h: height,
+            depth: getBoardItems().filter(item => item.type === 'widget' && item.depth === 'live-compact').length >= getBoardLiveWidgetCap()
+                ? 'headline-only'
+                : 'live-compact'
         });
     }
 
@@ -4667,7 +4891,7 @@ const DashboardPage = (() => {
     function setBoardPreference(key, value) {
         if (!_config?.boardState) return;
         const prefs = safeObject(_config.boardState.preferences, {});
-        if (['snapToGrid', 'showGrid', 'showGuides', 'showMiniMap'].includes(key)) {
+        if (['snapToGrid', 'showGrid', 'showGuides', 'showPlanner', 'showMiniMap'].includes(key)) {
             prefs[key] = value === true || value === 'true';
             if (key === 'snapToGrid') prefs.snapMode = prefs[key] ? (normalizeBoardSnapMode(prefs.snapMode) === 'freeform' ? 'soft' : normalizeBoardSnapMode(prefs.snapMode)) : 'freeform';
         } else if (key === 'strokeColor') {
@@ -5890,6 +6114,7 @@ const DashboardPage = (() => {
         const snapToGrid = document.getElementById('settingsBoardSnapToGrid');
         const showGrid = document.getElementById('settingsBoardShowGrid');
         const showGuides = document.getElementById('settingsBoardShowGuides');
+        const showPlanner = document.getElementById('settingsBoardShowPlanner');
         const strokeColor = document.getElementById('settingsBoardStrokeColor');
         const strokeWidth = document.getElementById('settingsBoardStrokeWidth');
         return [
@@ -5899,6 +6124,7 @@ const DashboardPage = (() => {
             `snap:${snapToGrid ? snapToGrid.checked : _config?.boardState?.preferences?.snapToGrid !== false}`,
             `grid:${showGrid ? showGrid.checked : _config?.boardState?.preferences?.showGrid !== false}`,
             `guides:${showGuides ? showGuides.checked : _config?.boardState?.preferences?.showGuides !== false}`,
+            `planner:${showPlanner ? showPlanner.checked : _config?.boardState?.preferences?.showPlanner !== false}`,
             `stroke:${strokeColor ? strokeColor.value : _config?.boardState?.preferences?.strokeColor || '#10b981'}`,
             `width:${strokeWidth ? strokeWidth.value : _config?.boardState?.preferences?.strokeWidth || 2}`
         ].join('|');
@@ -6051,6 +6277,13 @@ const DashboardPage = (() => {
                             <span class="settings-toggle-slider"></span>
                         </span>
                     </label>
+                    <label class="dashboard-settings-scene-row">
+                        <span>Показувати планувальні зони</span>
+                        <span class="settings-toggle">
+                            <input type="checkbox" id="settingsBoardShowPlanner" ${boardPrefs.showPlanner !== false ? 'checked' : ''}>
+                            <span class="settings-toggle-slider"></span>
+                        </span>
+                    </label>
                     <label class="dashboard-settings-scene-row dashboard-settings-inline-control">
                         <span>Колір інструменту</span>
                         <input type="color" id="settingsBoardStrokeColor" value="${escapeHtml(boardPrefs.strokeColor || '#10b981')}">
@@ -6158,6 +6391,7 @@ const DashboardPage = (() => {
             snapToGrid: document.getElementById('settingsBoardSnapToGrid')?.checked !== false,
             showGrid: document.getElementById('settingsBoardShowGrid')?.checked !== false,
             showGuides: document.getElementById('settingsBoardShowGuides')?.checked !== false,
+            showPlanner: document.getElementById('settingsBoardShowPlanner')?.checked !== false,
             strokeColor: String(document.getElementById('settingsBoardStrokeColor')?.value || currentBoardState.preferences?.strokeColor || '#10b981').slice(0, 32),
             strokeWidth: safeNumber(document.getElementById('settingsBoardStrokeWidth')?.value, currentBoardState.preferences?.strokeWidth || 2, 1, 12)
         };
@@ -7291,8 +7525,11 @@ const DashboardPage = (() => {
         saveWritingZone,
         addBoardText,
         addBoardFrame,
+        addBoardSpace,
+        reserveBoardZone,
         addSelectedBoardWidget,
         addBoardWidget,
+        addBoardWidgetToZone,
         addBoardWidgetByType,
         addBoardShape,
         seedBoardWidgets,

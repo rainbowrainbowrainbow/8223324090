@@ -970,6 +970,12 @@ body.dark-mode .dashboard-assistant-history-item.user p {
     cursor: grab;
 }
 
+.dashboard-board-shell.is-panning,
+.dashboard-board-shell.is-panning .dashboard-board-canvas {
+    cursor: grabbing;
+    user-select: none;
+}
+
 .dashboard-board-shell[data-grid-visible="false"] {
     background-image: none;
 }
@@ -1019,9 +1025,22 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 
 .board-connector.selected .board-connector-path {
     stroke: #10b981;
-    stroke-width: 3;
+    stroke-width: 2.75;
     opacity: 1;
-    filter: drop-shadow(0 8px 16px rgba(16, 185, 129, 0.24));
+    filter: drop-shadow(0 8px 16px rgba(16, 185, 129, 0.20));
+}
+
+.board-connector-endpoint {
+    fill: #ecfdf5;
+    stroke: #10b981;
+    stroke-width: 2.5px;
+    cursor: crosshair;
+    filter: drop-shadow(0 5px 10px rgba(15, 23, 42, 0.20));
+}
+
+.board-connector-endpoint:hover {
+    fill: #ffffff;
+    stroke-width: 3px;
 }
 
 .board-connector-label {
@@ -1103,7 +1122,7 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 .dashboard-board-item.selected {
     z-index: 10000 !important;
     border-color: transparent;
-    box-shadow: 0 0 0 2px var(--workspace-selection-ring, rgba(16, 185, 129, 0.36)), 0 18px 42px rgba(15, 23, 42, 0.14);
+    box-shadow: 0 0 0 1px var(--workspace-selection-ring, rgba(16, 185, 129, 0.36)), 0 18px 42px rgba(15, 23, 42, 0.14);
 }
 
 .dashboard-board-item.editing,
@@ -1132,6 +1151,11 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 }
 
 .dashboard-board-canvas[data-interaction-mode="edit"] .dashboard-board-item-frame {
+    cursor: grab;
+}
+
+.dashboard-board-canvas[data-interaction-mode="edit"] .dashboard-board-item.type-shape:not(.thin-geometry) .dashboard-board-item-content,
+.dashboard-board-canvas[data-interaction-mode="edit"] .dashboard-board-item.type-frame .dashboard-board-item-content {
     cursor: grab;
 }
 
@@ -1181,6 +1205,61 @@ body.dark-mode .dashboard-assistant-history-item.user p {
     min-height: 0;
     overflow: auto;
     padding: 10px;
+}
+
+.dashboard-board-item.thin-geometry {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+}
+
+.dashboard-board-item.thin-geometry:hover,
+.dashboard-board-item.thin-geometry.selected {
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.dashboard-board-item.thin-geometry .dashboard-board-item-frame {
+    position: absolute;
+    left: 0;
+    top: -34px;
+    min-height: 28px;
+    width: max-content;
+    max-width: 280px;
+    padding: 4px 6px 4px 8px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+    opacity: 0;
+    transform: translateY(4px);
+    pointer-events: none;
+    transition: opacity 0.14s ease, transform 0.14s ease;
+}
+
+.dashboard-board-item.thin-geometry:hover .dashboard-board-item-frame,
+.dashboard-board-item.thin-geometry.selected .dashboard-board-item-frame {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.dashboard-board-item.thin-geometry .dashboard-board-item-title strong {
+    max-width: 92px;
+}
+
+.dashboard-board-item.thin-geometry .dashboard-board-item-actions button {
+    width: 22px;
+    height: 22px;
+}
+
+.dashboard-board-item.thin-geometry .dashboard-board-item-content {
+    overflow: visible;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    cursor: grab;
 }
 
 .dashboard-board-item.type-note .dashboard-board-item-content,
@@ -1324,24 +1403,80 @@ body.dark-mode .dashboard-assistant-history-item.user p {
 .board-shape-line,
 .board-shape-arrow {
     position: relative;
-    height: 2px;
-    min-height: 2px;
-    margin-top: 32px;
+    height: 100%;
+    min-height: 34px;
+    margin-top: 0;
     border: none;
     border-radius: 999px;
-    background: rgba(16, 185, 129, 0.72);
+    background: transparent;
+    cursor: grab;
+}
+
+.board-shape-line::before,
+.board-shape-arrow::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    top: 50%;
+    height: 3px;
+    border-radius: 999px;
+    background: rgba(16, 185, 129, 0.76);
+    transform: translateY(-50%);
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.18);
+}
+
+.dashboard-board-item.thin-geometry.selected .board-shape-line::before,
+.dashboard-board-item.thin-geometry.selected .board-shape-arrow::before {
+    height: 4px;
+    background: rgba(16, 185, 129, 0.92);
+    box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.08), 0 8px 18px rgba(16, 185, 129, 0.22);
 }
 
 .board-shape-arrow::after {
     content: '';
     position: absolute;
-    right: -2px;
-    top: -5px;
+    right: 2px;
+    top: calc(50% - 6px);
     width: 0;
     height: 0;
     border-top: 6px solid transparent;
     border-bottom: 6px solid transparent;
     border-left: 12px solid rgba(16, 185, 129, 0.82);
+}
+
+.board-line-endpoint {
+    position: absolute;
+    top: 50%;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 2px solid #10b981;
+    border-radius: 999px;
+    background: #ecfdf5;
+    box-shadow: 0 7px 16px rgba(15, 23, 42, 0.18);
+    cursor: ew-resize;
+    opacity: 0;
+    transform: translateY(-50%) scale(0.88);
+    transition: opacity 0.14s ease, transform 0.14s ease, background 0.14s ease;
+}
+
+.board-line-endpoint.endpoint-start {
+    left: 0;
+}
+
+.board-line-endpoint.endpoint-end {
+    right: 0;
+}
+
+.dashboard-board-item.thin-geometry:hover .board-line-endpoint,
+.dashboard-board-item.thin-geometry.selected .board-line-endpoint {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+}
+
+.board-line-endpoint:hover {
+    background: #ffffff;
 }
 
 .dashboard-board-item.type-frame {
@@ -1471,6 +1606,18 @@ body.dark-mode .board-mini-inspector {
     color: #e5e7eb;
 }
 
+body.dark-mode .dashboard-board-item.thin-geometry {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+body.dark-mode .dashboard-board-item.thin-geometry .dashboard-board-item-frame {
+    background: rgba(31, 36, 54, 0.92);
+    border-color: rgba(255, 255, 255, 0.10);
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
+}
+
 body.dark-mode .dashboard-workspace-toolbar {
     --workspace-module-bg: rgba(24, 28, 43, 0.94);
     --workspace-module-border: rgba(255, 255, 255, 0.08);
@@ -1548,6 +1695,14 @@ body.dark-mode .board-connector-label {
     color: #e5e7eb;
     fill: #e5e7eb;
     stroke: rgba(15, 23, 42, 0.86);
+}
+
+body.dark-mode .board-connector-endpoint,
+body.dark-mode .board-line-endpoint {
+    fill: #0f2f2b;
+    background: #0f2f2b;
+    border-color: #34d399;
+    stroke: #34d399;
 }
 
 body.dark-mode .board-inspector-section span,

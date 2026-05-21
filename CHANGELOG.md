@@ -4,6 +4,17 @@
 
 ---
 
+## v0.61.1 - Ергономіка board
+
+### Dashboard board: direct manipulation [codex]
+- **Direct move** - у dashboard workspace shapes і frames можна рухати напряму в edit/select flow без окремого ритуалу з інструментами; widgets лишаються захищеними від випадкового drag через live content.
+- **Лінії та стрілки** - standalone `line` / `arrow` більше не виглядають як важкі картки: chrome став легким, а endpoints отримали окремі drag handles для зміни довжини.
+- **Connectors** - SVG-звʼязки отримали видимі endpoint handles і retarget до найближчого anchor, тож стрілки/лінії редагуються як графічні обʼєкти.
+- **Pan contract** - `hand` tool, middle mouse і `Space + drag` тепер реально панорамують board shell, а не лише міняють курсор.
+- **Widget safety** - click/scroll/buttons усередині live widgets не перехоплюються новим drag/pan contract.
+
+---
+
 ## v0.61.0 - Кухня
 
 ### Кухонний контур Products [codex]

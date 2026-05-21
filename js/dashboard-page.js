@@ -275,6 +275,10 @@ const DashboardPage = (() => {
     let _boardDrag = null;
     let _boardResize = null;
     let _boardDrawing = null;
+    let _boardPan = null;
+    let _boardLineEndpointDrag = null;
+    let _boardConnectorEndpointDrag = null;
+    let _boardSuppressCanvasClickUntil = 0;
     let _boardConfigCorrupt = false;
     let _boardLegacyUpgradePending = false;
     let _boardKeyboardBound = false;
@@ -3103,11 +3107,16 @@ const DashboardPage = (() => {
             const marker = connector.style === 'arrow' ? ' marker-end="url(#boardConnectorArrow)"' : '';
             const midX = (fromPoint[0] + toPoint[0]) / 2;
             const midY = (fromPoint[1] + toPoint[1]) / 2;
+            const endpointHandles = selected ? `
+                    <circle class="board-connector-endpoint endpoint-from" data-board-connector-endpoint="from" cx="${fromPoint[0]}" cy="${fromPoint[1]}" r="7"></circle>
+                    <circle class="board-connector-endpoint endpoint-to" data-board-connector-endpoint="to" cx="${toPoint[0]}" cy="${toPoint[1]}" r="7"></circle>
+                ` : '';
             return `
                 <g class="board-connector${selected} relation-${escapeHtml(connector.relationType)}" data-board-connector-id="${escapeHtml(connector.id)}">
                     <path class="board-connector-hit" d="${escapeHtml(path)}"></path>
                     <path class="board-connector-path" d="${escapeHtml(path)}" stroke="${escapeHtml(connector.color)}" stroke-width="${Number(connector.width || 2)}"${marker}></path>
                     ${connector.label ? `<text class="board-connector-label" x="${midX}" y="${midY - 8}">${escapeHtml(connector.label)}</text>` : ''}
+                    ${endpointHandles}
                 </g>
             `;
         }).join('');
@@ -3123,6 +3132,10 @@ const DashboardPage = (() => {
         `;
     }
 
+    function isBoardThinGeometryItem(item) {
+        return item?.type === 'shape' && ['line', 'arrow'].includes(item.shape);
+    }
+
     function renderBoardItem(item) {
         if (item.hidden && _boardInteractionMode !== 'edit') return '';
         const def = item.type === 'widget' ? WIDGET_DEFS[item.widgetType] : null;
@@ -3131,6 +3144,7 @@ const DashboardPage = (() => {
         const inspecting = _boardWidgetInspectId === item.id ? ' widget-inspecting' : '';
         const locked = item.locked ? ' locked' : '';
         const hidden = item.hidden ? ' hidden-object' : '';
+        const geometry = isBoardThinGeometryItem(item) ? ' thin-geometry' : '';
         const runtimeState = getBoardWidgetRuntimeState(item);
         const style = `left:${Number(item.x || 0)}px;top:${Number(item.y || 0)}px;width:${Number(item.w || 280)}px;height:${Number(item.h || 160)}px;z-index:${Number(item.z || 1)}`;
         const title = item.type === 'widget'
@@ -3139,7 +3153,7 @@ const DashboardPage = (() => {
         const idAttr = escapeHtml(item.id);
         const idJs = escapeJsString(item.id);
         return `
-            <section class="dashboard-board-item workspace-module type-${escapeHtml(item.type)}${selected}${editing}${inspecting}${locked}${hidden}" data-workspace-module="true" data-module-role="${escapeHtml(item.type)}" data-widget-runtime="${escapeHtml(runtimeState)}" data-board-item-id="${idAttr}" style="${style}">
+            <section class="dashboard-board-item workspace-module type-${escapeHtml(item.type)}${selected}${editing}${inspecting}${locked}${hidden}${geometry}" data-workspace-module="true" data-module-role="${escapeHtml(item.type)}" data-widget-runtime="${escapeHtml(runtimeState)}" data-board-item-id="${idAttr}" data-board-shape-kind="${escapeHtml(item.shape || '')}" style="${style}">
                 <div class="dashboard-board-item-frame" data-board-drag-handle>
                     <div class="dashboard-board-item-title">
                         <span>${item.type === 'widget' ? escapeHtml(def?.icon || '◼') : item.type === 'shape' ? '□' : '•'}</span>
@@ -3172,6 +3186,7 @@ const DashboardPage = (() => {
 
     function renderBoardResizeHandles(item) {
         if (!item || item.locked || item.hidden || _boardInteractionMode !== 'edit' || _boardSelectedId !== item.id) return '';
+        if (isBoardThinGeometryItem(item)) return '';
         return `
             <div class="board-resize-handles" aria-hidden="true">
                 ${['n', 'e', 's', 'w', 'ne', 'se', 'sw', 'nw'].map(dir => `<button type="button" class="board-resize-handle board-resize-${dir}" data-board-resize-handle="${dir}" title="Resize ${dir}"></button>`).join('')}
@@ -3181,6 +3196,7 @@ const DashboardPage = (() => {
 
     function renderBoardAnchors(item) {
         if (item.locked || item.hidden) return '';
+        if (isBoardThinGeometryItem(item)) return '';
         const idJs = escapeJsString(item.id);
         return `
             <div class="board-anchor-set" aria-hidden="${_boardWorkspaceMode === 'board:connect' ? 'false' : 'true'}">
@@ -3204,6 +3220,14 @@ const DashboardPage = (() => {
             return `<div class="board-widget-live" id="board-widget-${escapeHtml(item.id)}"><div class="widget-loading">Завантаження...</div></div>`;
         }
         if (item.type === 'shape') {
+            if (isBoardThinGeometryItem(item)) {
+                return `
+                    <div class="board-shape board-shape-${escapeHtml(item.shape || 'line')}" data-board-shape>
+                        <button type="button" class="board-line-endpoint endpoint-start" data-board-line-endpoint="start" aria-label="Move line start"></button>
+                        <button type="button" class="board-line-endpoint endpoint-end" data-board-line-endpoint="end" aria-label="Move line end"></button>
+                    </div>
+                `;
+            }
             return `<div class="board-shape board-shape-${escapeHtml(item.shape || 'rect')}" data-board-shape></div>`;
         }
         if (item.type === 'frame') {
@@ -3320,6 +3344,16 @@ const DashboardPage = (() => {
             if (!handle || handle.dataset.dragBound === 'true') return;
             handle.dataset.dragBound = 'true';
             handle.addEventListener('pointerdown', event => beginBoardDrag(event, el));
+            el.addEventListener('pointerdown', event => {
+                if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
+                if (!canStartDirectBoardDrag(findBoardItem(el.dataset.boardItemId), event.target)) return;
+                beginBoardDrag(event, el);
+            });
+        });
+        canvas.querySelectorAll('[data-board-line-endpoint]').forEach(handle => {
+            if (handle.dataset.endpointBound === 'true') return;
+            handle.dataset.endpointBound = 'true';
+            handle.addEventListener('pointerdown', event => beginBoardLineEndpointDrag(event, handle));
         });
         canvas.querySelectorAll('.board-widget-live').forEach(widgetEl => {
             widgetEl.addEventListener('pointerdown', event => {
@@ -3378,18 +3412,40 @@ const DashboardPage = (() => {
                 renderBoard();
             });
         });
+        canvas.querySelectorAll('[data-board-connector-endpoint]').forEach(handle => {
+            if (handle.dataset.endpointBound === 'true') return;
+            handle.dataset.endpointBound = 'true';
+            handle.addEventListener('pointerdown', event => beginBoardConnectorEndpointDrag(event, handle));
+        });
     }
 
     function bindBoardCanvasHandlers(canvas) {
         if (!canvas) return;
         canvas.onpointerdown = beginBoardCanvasPointer;
         canvas.onclick = event => {
+            if (Date.now() < _boardSuppressCanvasClickUntil) {
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
             if (_boardInteractionMode === 'edit' && event.target === canvas) selectBoardItem(null);
         };
     }
 
     function isBoardInteractiveTarget(target) {
         return !!(target && target.closest && target.closest('button, a, input, textarea, select, [contenteditable="true"], [data-board-text]'));
+    }
+
+    function isBoardDragBlockedTarget(target) {
+        return !!(target && target.closest && target.closest('button, a, input, textarea, select, [contenteditable="true"], [data-board-text], [data-board-resize-handle], [data-board-line-endpoint], [data-board-connector-endpoint], .dashboard-board-item-actions, .board-widget-live'));
+    }
+
+    function canStartDirectBoardDrag(item, target) {
+        if (!item || item.locked || _boardObjectEditing?.id === item.id || _boardWidgetInspectId === item.id) return false;
+        if (isBoardDragBlockedTarget(target)) return false;
+        if (item.type === 'widget' || item.type === 'note' || item.type === 'text') return false;
+        if (isBoardThinGeometryItem(item)) return !!target?.closest?.('[data-board-shape]');
+        return item.type === 'shape' || item.type === 'frame';
     }
 
     function boardPointFromEvent(event) {
@@ -3411,6 +3467,10 @@ const DashboardPage = (() => {
     }
 
     function beginBoardCanvasPointer(event) {
+        if (shouldStartBoardPan(event)) {
+            beginBoardPan(event);
+            return;
+        }
         if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
         if (event.target?.closest?.('.dashboard-board-item') || isBoardInteractiveTarget(event.target)) return;
         const tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
@@ -3434,6 +3494,52 @@ const DashboardPage = (() => {
         if (tool === 'eraser') {
             eraseBoardStrokeAt(event);
         }
+    }
+
+    function shouldStartBoardPan(event) {
+        if (!event) return false;
+        const tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
+        if (event.button === 1) return !isBoardInteractiveTarget(event.target);
+        if (event.button !== 0) return false;
+        if (tool !== 'hand' && !_boardSpaceHandActive) return false;
+        return !isBoardInteractiveTarget(event.target);
+    }
+
+    function beginBoardPan(event) {
+        const shell = document.getElementById('dashboardBoardShell') || event.currentTarget?.closest?.('.dashboard-board-shell');
+        if (!shell) return;
+        event.preventDefault();
+        event.stopPropagation();
+        _boardPan = {
+            shell,
+            startX: event.clientX,
+            startY: event.clientY,
+            scrollLeft: shell.scrollLeft,
+            scrollTop: shell.scrollTop,
+            moved: false
+        };
+        shell.classList.add('is-panning');
+        event.currentTarget?.setPointerCapture?.(event.pointerId);
+        document.addEventListener('pointermove', handleBoardPanMove);
+        document.addEventListener('pointerup', endBoardPan, { once: true });
+    }
+
+    function handleBoardPanMove(event) {
+        if (!_boardPan?.shell) return;
+        const dx = event.clientX - _boardPan.startX;
+        const dy = event.clientY - _boardPan.startY;
+        _boardPan.shell.scrollLeft = _boardPan.scrollLeft - dx;
+        _boardPan.shell.scrollTop = _boardPan.scrollTop - dy;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) _boardPan.moved = true;
+    }
+
+    function endBoardPan() {
+        document.removeEventListener('pointermove', handleBoardPanMove);
+        if (!_boardPan) return;
+        const pan = _boardPan;
+        _boardPan = null;
+        pan.shell?.classList.remove('is-panning');
+        if (pan.moved) _boardSuppressCanvasClickUntil = Date.now() + 160;
     }
 
     function beginBoardStroke(event, tool) {
@@ -3643,6 +3749,7 @@ const DashboardPage = (() => {
     function minBoardItemSize(item) {
         if (item?.type === 'widget') return { w: 210, h: 150 };
         if (item?.type === 'frame') return { w: 180, h: 120 };
+        if (isBoardThinGeometryItem(item)) return { w: 64, h: 42 };
         return { w: 120, h: 82 };
     }
 
@@ -3712,6 +3819,172 @@ const DashboardPage = (() => {
         item.h = safeNumber(resize.nextH, item.h, 60, 900);
         markBoardDirty('resize');
         renderBoard();
+    }
+
+    function beginBoardLineEndpointDrag(event, handle) {
+        if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
+        const element = handle.closest('.dashboard-board-item');
+        const id = element?.dataset.boardItemId;
+        const item = findBoardItem(id);
+        if (!element || !item || item.locked || !isBoardThinGeometryItem(item)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        selectBoardItem(id, { render: false });
+        _boardLineEndpointDrag = {
+            id,
+            endpoint: handle.dataset.boardLineEndpoint || 'end',
+            startX: event.clientX,
+            itemX: Number(item.x || 0),
+            itemW: Number(item.w || 260),
+            element,
+            moved: false
+        };
+        handle.setPointerCapture?.(event.pointerId);
+        document.addEventListener('pointermove', handleBoardLineEndpointMove);
+        document.addEventListener('pointerup', endBoardLineEndpointDrag, { once: true });
+    }
+
+    function handleBoardLineEndpointMove(event) {
+        const drag = _boardLineEndpointDrag;
+        if (!drag?.element) return;
+        const item = findBoardItem(drag.id);
+        if (!item) return;
+        const snap = getBoardSnapUnit();
+        const minSize = minBoardItemSize(item);
+        const dx = event.clientX - drag.startX;
+        let nextX = drag.itemX;
+        let nextW = drag.itemW;
+        if (drag.endpoint === 'start') {
+            nextX = Math.round((drag.itemX + dx) / snap) * snap;
+            nextW = drag.itemW - (nextX - drag.itemX);
+            if (nextW < minSize.w) {
+                nextW = minSize.w;
+                nextX = drag.itemX + drag.itemW - minSize.w;
+            }
+        } else {
+            nextW = Math.round((drag.itemW + dx) / snap) * snap;
+            nextW = Math.max(minSize.w, nextW);
+        }
+        drag.element.style.left = `${nextX}px`;
+        drag.element.style.width = `${nextW}px`;
+        drag.nextX = nextX;
+        drag.nextW = nextW;
+        drag.moved = true;
+    }
+
+    function endBoardLineEndpointDrag() {
+        document.removeEventListener('pointermove', handleBoardLineEndpointMove);
+        if (!_boardLineEndpointDrag) return;
+        const drag = _boardLineEndpointDrag;
+        _boardLineEndpointDrag = null;
+        if (!drag.moved) return;
+        const item = findBoardItem(drag.id);
+        if (!item) return;
+        pushBoardUndo('line-endpoint');
+        item.x = safeNumber(drag.nextX, item.x, -10000, 10000);
+        item.w = safeNumber(drag.nextW, item.w, 64, 1200);
+        markBoardDirty('line-endpoint');
+        renderBoard();
+    }
+
+    function beginBoardConnectorEndpointDrag(event, handle) {
+        if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
+        const group = handle.closest('[data-board-connector-id]');
+        const connectorId = group?.dataset.boardConnectorId;
+        const connector = getBoardConnectors().find(conn => conn.id === connectorId);
+        if (!group || !connector) return;
+        const itemsById = new Map(getBoardItems().map(item => [item.id, item]));
+        const fromItem = itemsById.get(connector.from?.itemId);
+        const toItem = itemsById.get(connector.to?.itemId);
+        if (!fromItem || !toItem) return;
+        event.preventDefault();
+        event.stopPropagation();
+        _boardSelectedId = null;
+        _boardSelectedConnectorId = connectorId;
+        const fromPoint = boardItemAnchorPoint(fromItem, connector.from.anchor);
+        const toPoint = boardItemAnchorPoint(toItem, connector.to.anchor);
+        _boardConnectorEndpointDrag = {
+            connectorId,
+            endpoint: handle.dataset.boardConnectorEndpoint || 'to',
+            group,
+            startPoint: fromPoint,
+            endPoint: toPoint,
+            moved: false
+        };
+        handle.setPointerCapture?.(event.pointerId);
+        document.addEventListener('pointermove', handleBoardConnectorEndpointMove);
+        document.addEventListener('pointerup', endBoardConnectorEndpointDrag, { once: true });
+    }
+
+    function handleBoardConnectorEndpointMove(event) {
+        const drag = _boardConnectorEndpointDrag;
+        if (!drag?.group) return;
+        const connector = getBoardConnectors().find(conn => conn.id === drag.connectorId);
+        if (!connector) return;
+        const point = boardPointFromEvent(event);
+        const fromPoint = drag.endpoint === 'from' ? point : drag.startPoint;
+        const toPoint = drag.endpoint === 'to' ? point : drag.endPoint;
+        const path = boardConnectorPath(fromPoint, toPoint, connector.style);
+        drag.group.querySelector('.board-connector-hit')?.setAttribute('d', path);
+        drag.group.querySelector('.board-connector-path')?.setAttribute('d', path);
+        const fromHandle = drag.group.querySelector('[data-board-connector-endpoint="from"]');
+        const toHandle = drag.group.querySelector('[data-board-connector-endpoint="to"]');
+        if (fromHandle) {
+            fromHandle.setAttribute('cx', fromPoint[0]);
+            fromHandle.setAttribute('cy', fromPoint[1]);
+        }
+        if (toHandle) {
+            toHandle.setAttribute('cx', toPoint[0]);
+            toHandle.setAttribute('cy', toPoint[1]);
+        }
+        drag.lastPoint = point;
+        drag.moved = true;
+    }
+
+    function endBoardConnectorEndpointDrag() {
+        document.removeEventListener('pointermove', handleBoardConnectorEndpointMove);
+        if (!_boardConnectorEndpointDrag) return;
+        const drag = _boardConnectorEndpointDrag;
+        _boardConnectorEndpointDrag = null;
+        if (!drag.moved) {
+            renderBoard();
+            return;
+        }
+        const connector = getBoardConnectors().find(conn => conn.id === drag.connectorId);
+        const target = findNearestBoardAnchor(drag.lastPoint, { threshold: 42 });
+        if (!connector || !target) {
+            renderBoard();
+            return;
+        }
+        const key = drag.endpoint === 'from' ? 'from' : 'to';
+        const current = connector[key] || {};
+        if (current.itemId === target.itemId && current.anchor === target.anchor) {
+            renderBoard();
+            return;
+        }
+        pushBoardUndo('connector-endpoint');
+        connector[key] = { itemId: target.itemId, anchor: target.anchor };
+        markBoardDirty('connector-endpoint');
+        renderBoard();
+    }
+
+    function findNearestBoardAnchor(point, options = {}) {
+        if (!Array.isArray(point)) return null;
+        const threshold = safeNumber(options.threshold, 36, 8, 160);
+        let best = null;
+        getBoardItems().forEach(item => {
+            if (!item || item.hidden) return;
+            ['top', 'right', 'bottom', 'left'].forEach(anchor => {
+                const anchorPoint = boardItemAnchorPoint(item, anchor);
+                const dx = anchorPoint[0] - point[0];
+                const dy = anchorPoint[1] - point[1];
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance <= threshold && (!best || distance < best.distance)) {
+                    best = { itemId: item.id, anchor, distance };
+                }
+            });
+        });
+        return best;
     }
 
     function boardTextValue(textEl) {

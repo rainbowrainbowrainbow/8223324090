@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.61.11">
-    <link rel="stylesheet" href="css/layout.css?v=0.61.11">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.11">
-    <link rel="stylesheet" href="css/pages.css?v=0.61.11">
-    <link rel="stylesheet" href="css/modals.css?v=0.61.11">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.11">
-    <link rel="stylesheet" href="css/responsive.css?v=0.61.11">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.11">
+    <link rel="stylesheet" href="css/base.css?v=0.61.12">
+    <link rel="stylesheet" href="css/layout.css?v=0.61.12">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.12">
+    <link rel="stylesheet" href="css/pages.css?v=0.61.12">
+    <link rel="stylesheet" href="css/modals.css?v=0.61.12">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.12">
+    <link rel="stylesheet" href="css/responsive.css?v=0.61.12">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.12">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -757,6 +757,7 @@
             font-size: var(--font-sm);
         }
         .hr-account-danger,
+        .hr-account-primary,
         .hr-account-toggle,
         .hr-account-link {
             border: 1px solid rgba(148,163,184,0.28);
@@ -769,10 +770,26 @@
             text-decoration: none;
             cursor: pointer;
         }
+        .hr-account-primary {
+            border-color: rgba(16,185,129,0.30);
+            background: linear-gradient(135deg, rgba(16,185,129,0.16), rgba(20,184,166,0.10));
+            color: #047857;
+        }
+        .hr-account-primary:hover,
+        .hr-account-toggle:hover,
+        .hr-account-link:hover {
+            border-color: rgba(16,185,129,0.38);
+            background: rgba(16,185,129,0.12);
+            color: #047857;
+        }
         .hr-account-danger {
             border-color: rgba(239,68,68,0.32);
             background: rgba(239,68,68,0.10);
             color: #B91C1C;
+        }
+        .hr-account-danger:hover {
+            border-color: rgba(239,68,68,0.42);
+            background: rgba(239,68,68,0.16);
         }
         .hr-account-list {
             display: grid;
@@ -868,6 +885,17 @@
             color: var(--gray-500);
             text-align: center;
             font-weight: 800;
+        }
+        .hr-account-note {
+            padding: 12px 14px;
+            border: 1px solid rgba(245,158,11,0.22);
+            border-radius: 14px;
+            background: rgba(245,158,11,0.08);
+            color: #92400E;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.45;
+            margin-bottom: 16px;
         }
 
         /* ==========================================
@@ -1130,10 +1158,20 @@
             border-color: rgba(148,163,184,0.22);
             color: #E2E8F0;
         }
+        body.dark-mode .hr-account-primary {
+            background: rgba(16,185,129,0.14);
+            border-color: rgba(16,185,129,0.26);
+            color: #A7F3D0;
+        }
         body.dark-mode .hr-account-danger {
             background: rgba(239,68,68,0.16);
             border-color: rgba(248,113,113,0.36);
             color: #FCA5A5;
+        }
+        body.dark-mode .hr-account-note {
+            background: rgba(245,158,11,0.10);
+            border-color: rgba(245,158,11,0.22);
+            color: #FCD34D;
         }
         body.dark-mode .hr-account-empty {
             border-color: rgba(148,163,184,0.20);
@@ -1577,10 +1615,14 @@
                 <div class="hr-account-head">
                     <div>
                         <h3>Центр керування акаунтами</h3>
-                        <p>Активність, привʼязка до HR-профілю і безпечне вимкнення зайвих акаунтів.</p>
+                        <p>Створення акаунтів, зміна пароля, ролі, активність і привʼязка до HR-профілю.</p>
                     </div>
-                    <button type="button" class="hr-account-danger" onclick="deactivateKarinaAccounts(this)">Вимкнути акаунти Каріни</button>
+                    <div class="hr-account-actions">
+                        <button type="button" id="accountCreateBtn" class="hr-account-primary" onclick="openAccountCreateModal(this)">+ Створити акаунт</button>
+                        <button type="button" class="hr-account-danger" onclick="deactivateKarinaAccounts(this)">Вимкнути акаунти Каріни</button>
+                    </div>
                 </div>
+                <div id="accountCenterAdminNote" class="hr-account-note hidden">Створення акаунтів і зміна паролів доступні тільки creator/director. HR може переглядати акаунти й безпечно вимикати дозволені записи.</div>
                 <div class="hr-account-toolbar">
                     <input type="text" id="accountCenterSearch" class="hr-team-search" placeholder="Знайти акаунт, імʼя, роль або staff...">
                     <span id="accountCenterStats" class="hr-account-stats">0 акаунтів</span>
@@ -2013,15 +2055,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.61.11"></script>
-    <script src="js/config.js?v=0.61.11"></script>
-    <script src="js/notification.js?v=0.61.11"></script>
-    <script src="js/api.js?v=0.61.11"></script>
-    <script src="js/auth.js?v=0.61.11"></script>
-    <script src="js/components/sidebar.js?v=0.61.11"></script>
+    <script src="js/ui.js?v=0.61.12"></script>
+    <script src="js/config.js?v=0.61.12"></script>
+    <script src="js/notification.js?v=0.61.12"></script>
+    <script src="js/api.js?v=0.61.12"></script>
+    <script src="js/auth.js?v=0.61.12"></script>
+    <script src="js/components/sidebar.js?v=0.61.12"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.61.11"></script>
-    <script src="js/alerts.js?v=0.61.11"></script><script>
+    <script src="js/hr-page.js?v=0.61.12"></script>
+    <script src="js/alerts.js?v=0.61.12"></script><script>
     // ─── Shifts Summary (v33.5) ──────────
     async function loadShiftsSummary() {
         const month = document.getElementById('shiftsMonthPicker')?.value || new Date().toISOString().slice(0,7);

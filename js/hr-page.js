@@ -771,6 +771,36 @@ async function copyWeek() {
 
 let teamStaff = [];
 let accountUsers = [];
+let accountRoleHierarchy = [];
+
+function canManageAccountSecurity() {
+    return ['creator', 'director'].includes(AppState.currentUser?.role);
+}
+
+function normalizeAccountListInput(value) {
+    return String(value || '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+}
+
+function getAccountRoleOptions(defaultRole = 'animator') {
+    const roles = accountRoleHierarchy.length ? accountRoleHierarchy : Object.keys(ROLE_LABELS);
+    const currentRole = AppState.currentUser?.role;
+    return roles
+        .filter(role => currentRole === 'creator' || role !== 'creator')
+        .map(role => ({ value: role, label: ROLE_LABELS[role] || role }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'uk'))
+        .map(option => ({ ...option, selected: option.value === defaultRole }));
+}
+
+async function loadAccountRoleDefinitions() {
+    if (accountRoleHierarchy.length) return;
+    const data = await crmApiFetch('/api/users/roles');
+    if (Array.isArray(data?.hierarchy)) {
+        accountRoleHierarchy = data.hierarchy.filter(role => ROLE_LABELS[role] || role);
+    }
+}
 
 async function loadTeam() {
     const activeOnly = document.getElementById('teamActiveOnly')?.checked ?? true;
@@ -918,6 +948,7 @@ function formatAccountAccess(u) {
 async function loadAccountCenter() {
     const root = document.getElementById('accountCenterList');
     if (root) root.innerHTML = '<div class="hr-account-empty">Завантаження акаунтів...</div>';
+    await loadAccountRoleDefinitions();
     const data = await crmApiFetch('/api/users');
     if (!Array.isArray(data)) {
         if (root) root.innerHTML = `<div class="hr-account-empty">Центр акаунтів недоступний: ${escapeHtml(data?.error || 'немає доступу')}</div>`;
@@ -928,6 +959,11 @@ async function loadAccountCenter() {
     const search = document.getElementById('accountCenterSearch');
     const activeOnly = document.getElementById('accountCenterActiveOnly');
     const showSystem = document.getElementById('accountCenterShowSystem');
+    const createBtn = document.getElementById('accountCreateBtn');
+    const adminNote = document.getElementById('accountCenterAdminNote');
+    const canManageSecurity = canManageAccountSecurity();
+    if (createBtn) createBtn.classList.toggle('hidden', !canManageSecurity);
+    if (adminNote) adminNote.classList.toggle('hidden', canManageSecurity);
     if (search) search.oninput = renderAccountCenter;
     if (activeOnly) activeOnly.onchange = renderAccountCenter;
     if (showSystem) showSystem.onchange = renderAccountCenter;
@@ -936,6 +972,7 @@ async function loadAccountCenter() {
 function renderAccountCenter() {
     const root = document.getElementById('accountCenterList');
     if (!root) return;
+    const canManageSecurity = canManageAccountSecurity();
     const query = String(document.getElementById('accountCenterSearch')?.value || '').trim().toLowerCase();
     const activeOnly = document.getElementById('accountCenterActiveOnly')?.checked !== false;
     const showSystem = document.getElementById('accountCenterShowSystem')?.checked === true;
@@ -972,32 +1009,135 @@ function renderAccountCenter() {
             <div class="hr-account-actions">
                 <span class="hr-account-state ${active ? 'ok' : 'off'}">${active ? 'активний' : 'вимкнений'}</span>
                 ${u.staff_id ? `<a class="hr-account-link" href="/hr?employee=${encodeURIComponent(u.staff_id)}">HR профіль</a>` : ''}
-                <button type="button" class="hr-account-toggle" onclick="openAccountAccessEditor(${Number(u.id)}, this)">Доступ</button>
+                ${canManageSecurity ? `<button type="button" class="hr-account-toggle" onclick="openAccountPasswordModal(${Number(u.id)}, this)">Пароль</button>` : ''}
+                ${canManageSecurity ? `<button type="button" class="hr-account-toggle" onclick="openAccountAccessEditor(${Number(u.id)}, this)">Доступ</button>` : ''}
                 <button type="button" class="hr-account-toggle" onclick="toggleAccountActive(${Number(u.id)}, ${active ? 'false' : 'true'}, this)">${active ? 'Вимкнути' : 'Активувати'}</button>
             </div>
         </article>`;
     }).join('');
 }
 
+window.openAccountCreateModal = async function(button) {
+    if (!canManageAccountSecurity()) {
+        showNotification('Створення акаунтів доступне тільки creator/director', 'error');
+        return;
+    }
+    await loadAccountRoleDefinitions();
+    const result = await formModal('Створити CRM акаунт', [
+        { key: 'name', label: 'Імʼя в CRM', required: true, placeholder: 'Женя Аніматор' },
+        { key: 'username', label: 'Логін', required: true, placeholder: 'zhenya.animator' },
+        { key: 'password', label: 'Тимчасовий пароль', type: 'password', required: true, placeholder: 'Мінімум 6 символів' },
+        { key: 'confirmPassword', label: 'Повторити пароль', type: 'password', required: true },
+        { key: 'role', label: 'Основна роль', type: 'select', defaultValue: 'animator', options: getAccountRoleOptions('animator') },
+        { key: 'extraRoles', label: 'Додаткові ролі через кому', placeholder: 'manager, accountant' },
+        { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', placeholder: '/maysternya-doli' }
+    ], {
+        icon: '👤',
+        type: 'info',
+        okText: 'Створити',
+        className: 'account-create-modal'
+    });
+    if (!result) return;
+    const password = String(result.password || '');
+    if (password.length < 6) {
+        showNotification('Пароль має бути не менше 6 символів', 'error');
+        return;
+    }
+    if (password !== String(result.confirmPassword || '')) {
+        showNotification('Паролі не збігаються', 'error');
+        return;
+    }
+    if (button) button.disabled = true;
+    const response = await crmApiFetch('/api/users', {
+        method: 'POST',
+        body: {
+            username: String(result.username || '').trim(),
+            password,
+            name: String(result.name || '').trim(),
+            role: result.role || 'animator',
+            extraRoles: normalizeAccountListInput(result.extraRoles),
+            pageAllowlist: normalizeAccountListInput(result.pageAllowlist)
+        }
+    });
+    if (button) button.disabled = false;
+    if (!response?.success) {
+        showNotification(response?.error || 'Не вдалося створити акаунт', 'error');
+        return;
+    }
+    showNotification(`Акаунт ${response.user?.username || result.username} створено. Передайте тимчасовий пароль користувачу напряму.`, 'success');
+    await loadAccountCenter();
+};
+
+async function openAccountPasswordModal(userId, button) {
+    if (!canManageAccountSecurity()) {
+        showNotification('Зміна пароля доступна тільки creator/director', 'error');
+        return;
+    }
+    const user = accountUsers.find(item => Number(item.id) === Number(userId));
+    if (!user) return;
+    const result = await formModal(`Змінити пароль · ${user.username}`, [
+        { key: 'newPassword', label: 'Новий пароль', type: 'password', required: true, placeholder: 'Мінімум 6 символів' },
+        { key: 'confirmPassword', label: 'Повторити пароль', type: 'password', required: true }
+    ], {
+        icon: '🔐',
+        type: 'warning',
+        okText: 'Змінити пароль',
+        className: 'account-password-modal'
+    });
+    if (!result) return;
+    const password = String(result.newPassword || '');
+    if (password.length < 6) {
+        showNotification('Пароль має бути не менше 6 символів', 'error');
+        return;
+    }
+    if (password !== String(result.confirmPassword || '')) {
+        showNotification('Паролі не збігаються', 'error');
+        return;
+    }
+    if (button) button.disabled = true;
+    const response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/reset-password`, {
+        method: 'POST',
+        body: { newPassword: password }
+    });
+    if (button) button.disabled = false;
+    if (!response?.success) {
+        showNotification(response?.error || 'Не вдалося змінити пароль', 'error');
+        return;
+    }
+    showNotification(`Пароль для ${response.username || user.username} змінено`, 'success');
+}
+
 async function openAccountAccessEditor(userId, button) {
+    if (!canManageAccountSecurity()) {
+        showNotification('Зміна доступу доступна тільки creator/director', 'error');
+        return;
+    }
     const user = accountUsers.find(item => Number(item.id) === Number(userId));
     if (!user) return;
     const currentExtra = normalizeAccountArray(user.extra_roles || user.extraRoles).join(', ');
     const currentPages = normalizeAccountArray(user.page_allowlist || user.pageAllowlist).join(', ');
-    const extraInput = window.prompt('Додаткові ролі через кому (наприклад: manager, accountant). Primary role не дублюй.', currentExtra);
-    if (extraInput === null) return;
-    const pagesInput = window.prompt('Доступ до сторінок через кому. Для Майстерні долі: /maysternya-doli', currentPages || '/maysternya-doli');
-    if (pagesInput === null) return;
-    const extraRoles = extraInput.split(',').map(item => item.trim()).filter(Boolean);
-    const pageAllowlist = pagesInput.split(',').map(item => item.trim()).filter(Boolean);
+    await loadAccountRoleDefinitions();
+    const formResult = await formModal(`Доступ акаунта · ${user.username}`, [
+        { key: 'role', label: 'Основна роль', type: 'select', defaultValue: user.role || 'animator', options: getAccountRoleOptions(user.role || 'animator') },
+        { key: 'extraRoles', label: 'Додаткові ролі через кому', defaultValue: currentExtra, placeholder: 'manager, accountant' },
+        { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', defaultValue: currentPages, placeholder: '/maysternya-doli' }
+    ], {
+        icon: '🛂',
+        type: 'info',
+        okText: 'Оновити доступ',
+        className: 'account-access-modal'
+    });
+    if (!formResult) return;
+    const extraRoles = normalizeAccountListInput(formResult.extraRoles);
+    const pageAllowlist = normalizeAccountListInput(formResult.pageAllowlist);
     if (button) button.disabled = true;
-    const result = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/role`, {
+    const response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/role`, {
         method: 'PATCH',
-        body: { role: user.role, extraRoles, pageAllowlist }
+        body: { role: formResult.role || user.role, extraRoles, pageAllowlist }
     });
     if (button) button.disabled = false;
-    if (!result?.success) {
-        showNotification(result?.error || 'Не вдалося оновити доступ акаунта', 'error');
+    if (!response?.success) {
+        showNotification(response?.error || 'Не вдалося оновити доступ акаунта', 'error');
         return;
     }
     showNotification('Доступ акаунта оновлено. Після нового логіну права перерахуються автоматично.', 'success');

@@ -49,14 +49,13 @@ describe('Graduation diploma helper', () => {
         const child = normalizeChildInput({ fullName: '<Марія> Іваненко', gender: 'girl', customWish: '<script>alert(1)</script>' });
         child.id = 1;
         const html = buildDiplomaDocument([child], null, { quote_number: 'GRAD-TEST' });
-        assert.match(html, /<svg class="diploma-frame"/);
+        assert.match(html, /diploma-template-bg/);
+        assert.match(html, /\/images\/graduation\/diploma-comic-template\.png/);
         assert.match(html, /@page \{ size: A4 portrait; margin: 0; \}/);
         assert.match(html, /width: 210mm; height: 297mm/);
         assert.match(html, /\/images\/park-logo\.png/);
-        assert.match(html, /\/images\/mr-zak-spring\.png/);
-        assert.match(html, /\/images\/mr-zak-summer\.png/);
-        assert.match(html, /comicDots/);
-        assert.match(html, /diploma-paper-card/);
+        assert.match(html, /diploma-title/);
+        assert.match(html, /diploma-park-logo/);
         assert.doesNotMatch(html, /Класний керівник/);
         assert.doesNotMatch(html, /ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ/);
         assert.doesNotMatch(html, /організатор випускного/);

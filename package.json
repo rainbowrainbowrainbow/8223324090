@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.60.28",
+  "version": "0.60.29",
   "eventGenix": {
-    "releaseLabel": "Graduation Diploma Comic Visual"
+    "releaseLabel": "Graduation Diploma Template Overlay"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

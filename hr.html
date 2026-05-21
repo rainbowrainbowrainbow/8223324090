@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.61.15">
-    <link rel="stylesheet" href="css/layout.css?v=0.61.15">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.15">
-    <link rel="stylesheet" href="css/pages.css?v=0.61.15">
-    <link rel="stylesheet" href="css/modals.css?v=0.61.15">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.15">
-    <link rel="stylesheet" href="css/responsive.css?v=0.61.15">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.15">
+    <link rel="stylesheet" href="css/base.css?v=0.61.16">
+    <link rel="stylesheet" href="css/layout.css?v=0.61.16">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.16">
+    <link rel="stylesheet" href="css/pages.css?v=0.61.16">
+    <link rel="stylesheet" href="css/modals.css?v=0.61.16">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.16">
+    <link rel="stylesheet" href="css/responsive.css?v=0.61.16">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.16">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -809,9 +809,9 @@
         .hr-account-row.is-disabled {
             opacity: 0.58;
         }
-        .hr-account-row.is-targeted {
-            border-color: rgba(239,68,68,0.32);
-            background: rgba(254,242,242,0.78);
+        .hr-account-row.is-recently-updated {
+            border-color: rgba(16,185,129,0.42);
+            box-shadow: 0 0 0 3px rgba(16,185,129,0.10), var(--shadow-xs);
         }
         .hr-account-avatar {
             width: 42px;
@@ -879,12 +879,56 @@
             color: #64748B;
         }
         .hr-account-empty {
+            display: grid;
+            gap: 8px;
+            justify-items: center;
             padding: 28px;
             border: 1px dashed rgba(148,163,184,0.3);
             border-radius: 16px;
             color: var(--gray-500);
             text-align: center;
             font-weight: 800;
+        }
+        .hr-account-empty strong {
+            color: var(--gray-700);
+            font-size: 14px;
+        }
+        .hr-account-empty span {
+            max-width: 520px;
+            font-size: 12px;
+            line-height: 1.45;
+        }
+        .hr-account-filter-note {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin: -4px 0 14px;
+            padding: 10px 12px;
+            border: 1px solid rgba(59,130,246,0.18);
+            border-radius: 14px;
+            background: rgba(239,246,255,0.80);
+            color: #1D4ED8;
+            font-size: 12px;
+            font-weight: 800;
+        }
+        .hr-account-inline-action,
+        .hr-account-empty-action {
+            border: 1px solid rgba(59,130,246,0.22);
+            border-radius: 999px;
+            background: rgba(255,255,255,0.82);
+            color: #1D4ED8;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+        .hr-account-inline-action {
+            padding: 5px 10px;
+        }
+        .hr-account-empty-action {
+            margin-top: 4px;
+            padding: 8px 12px;
         }
         .hr-account-note {
             padding: 12px 14px;
@@ -1148,9 +1192,9 @@
             color: #F8FAFC;
             color-scheme: dark;
         }
-        body.dark-mode .hr-account-row.is-targeted {
-            background: rgba(127,29,29,0.22);
-            border-color: rgba(248,113,113,0.34);
+        body.dark-mode .hr-account-row.is-recently-updated {
+            border-color: rgba(52,211,153,0.48);
+            box-shadow: 0 0 0 3px rgba(52,211,153,0.11), 0 18px 42px rgba(0,0,0,0.20);
         }
         body.dark-mode .hr-account-toggle,
         body.dark-mode .hr-account-link {
@@ -1176,6 +1220,20 @@
         body.dark-mode .hr-account-empty {
             border-color: rgba(148,163,184,0.20);
             color: #94A3B8;
+        }
+        body.dark-mode .hr-account-empty strong {
+            color: #E2E8F0;
+        }
+        body.dark-mode .hr-account-filter-note {
+            background: rgba(37,99,235,0.13);
+            border-color: rgba(96,165,250,0.22);
+            color: #BFDBFE;
+        }
+        body.dark-mode .hr-account-inline-action,
+        body.dark-mode .hr-account-empty-action {
+            background: rgba(15,23,42,0.48);
+            border-color: rgba(96,165,250,0.28);
+            color: #BFDBFE;
         }
         body.dark-mode .hr-schedule-wrap {
             border-color: rgba(148,163,184,0.16);
@@ -1619,7 +1677,7 @@
                     </div>
                     <div class="hr-account-actions">
                         <button type="button" id="accountCreateBtn" class="hr-account-primary" onclick="openAccountCreateModal(this)">+ Створити акаунт</button>
-                        <button type="button" class="hr-account-danger" onclick="deactivateKarinaAccounts(this)">Вимкнути акаунти Каріни</button>
+                        <button type="button" class="hr-account-toggle" onclick="refreshAccountCenter(this)">Оновити список</button>
                     </div>
                 </div>
                 <div id="accountCenterAdminNote" class="hr-account-note hidden">Створення акаунтів і зміна паролів доступні тільки creator/director. HR може переглядати акаунти й безпечно вимикати дозволені записи.</div>
@@ -1628,7 +1686,9 @@
                     <span id="accountCenterStats" class="hr-account-stats">0 акаунтів</span>
                     <label class="hr-account-check"><input type="checkbox" id="accountCenterActiveOnly" checked> тільки активні</label>
                     <label class="hr-account-check"><input type="checkbox" id="accountCenterShowSystem"> system</label>
+                    <button type="button" id="accountCenterResetFiltersBtn" class="hr-account-toggle hidden" onclick="resetAccountCenterFilters()">Скинути фільтри</button>
                 </div>
+                <div id="accountCenterFilterNotice" class="hr-account-filter-note hidden"></div>
                 <div id="accountCenterList" class="hr-account-list"></div>
             </div>
 
@@ -2055,15 +2115,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.61.15"></script>
-    <script src="js/config.js?v=0.61.15"></script>
-    <script src="js/notification.js?v=0.61.15"></script>
-    <script src="js/api.js?v=0.61.15"></script>
-    <script src="js/auth.js?v=0.61.15"></script>
-    <script src="js/components/sidebar.js?v=0.61.15"></script>
+    <script src="js/ui.js?v=0.61.16"></script>
+    <script src="js/config.js?v=0.61.16"></script>
+    <script src="js/notification.js?v=0.61.16"></script>
+    <script src="js/api.js?v=0.61.16"></script>
+    <script src="js/auth.js?v=0.61.16"></script>
+    <script src="js/components/sidebar.js?v=0.61.16"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/hr-page.js?v=0.61.15"></script>
-    <script src="js/alerts.js?v=0.61.15"></script><script>
+    <script src="js/hr-page.js?v=0.61.16"></script>
+    <script src="js/alerts.js?v=0.61.16"></script><script>
     // ─── Shifts Summary (v33.5) ──────────
     async function loadShiftsSummary() {
         const month = document.getElementById('shiftsMonthPicker')?.value || new Date().toISOString().slice(0,7);

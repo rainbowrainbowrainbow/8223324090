@@ -773,6 +773,7 @@ let teamStaff = [];
 let accountUsers = [];
 let accountRoleHierarchy = [];
 let accountStaffOptions = [];
+let accountCenterLastUpdatedId = null;
 
 function canManageAccountSecurity() {
     return ['creator', 'director'].includes(AppState.currentUser?.role);
@@ -941,16 +942,6 @@ function isSystemAccount(u) {
         || name.startsWith('open claw');
 }
 
-function isKarinaAccount(u) {
-    const haystack = `${u.username || ''} ${u.name || ''} ${u.profile_name || ''} ${u.staff_name || ''}`.toLowerCase();
-    const hasCyrillicName = (haystack.includes('карина') || haystack.includes('каріна')) && haystack.includes('крамаренко');
-    const hasLatinName = haystack.includes('karina kramarenko')
-        || haystack.includes('karina.kramarenko')
-        || haystack.includes('karyna kramarenko')
-        || haystack.includes('karyna.kramarenko');
-    return hasCyrillicName || hasLatinName;
-}
-
 function formatAccountLastSeen(value) {
     if (!value) return 'активність невідома';
     const d = new Date(value);
@@ -970,7 +961,50 @@ function formatAccountAccess(u) {
     return `${roles.join(' + ') || 'user'}${pages.length ? ' · pages: ' + pages.join(', ') : ''}`;
 }
 
-async function loadAccountCenter() {
+function getAccountCenterFilterState() {
+    return {
+        query: String(document.getElementById('accountCenterSearch')?.value || '').trim(),
+        activeOnly: document.getElementById('accountCenterActiveOnly')?.checked !== false,
+        showSystem: document.getElementById('accountCenterShowSystem')?.checked === true
+    };
+}
+
+function hasAccountCenterFilters(filters = getAccountCenterFilterState()) {
+    return !!filters.query || filters.activeOnly === false || filters.showSystem === true;
+}
+
+function setAccountCenterFilters({ query = '', activeOnly = true, showSystem = false } = {}, { render = false } = {}) {
+    const search = document.getElementById('accountCenterSearch');
+    const activeOnlyInput = document.getElementById('accountCenterActiveOnly');
+    const showSystemInput = document.getElementById('accountCenterShowSystem');
+    if (search) search.value = query;
+    if (activeOnlyInput) activeOnlyInput.checked = activeOnly !== false;
+    if (showSystemInput) showSystemInput.checked = showSystem === true;
+    if (render) renderAccountCenter();
+}
+
+function resetAccountCenterFilters(options = {}) {
+    setAccountCenterFilters({ query: '', activeOnly: true, showSystem: false }, { render: options.render !== false });
+}
+
+window.resetAccountCenterFilters = resetAccountCenterFilters;
+
+function accountMatchesSearch(user, query) {
+    if (!query) return true;
+    const haystack = [
+        user.username,
+        user.name,
+        user.role,
+        ...(normalizeAccountArray(user.extra_roles || user.extraRoles)),
+        user.profile_name,
+        user.staff_name,
+        user.staff_department,
+        user.staff_position
+    ].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(query.toLowerCase());
+}
+
+async function loadAccountCenter(options = {}) {
     const root = document.getElementById('accountCenterList');
     if (root) root.innerHTML = '<div class="hr-account-empty">Завантаження акаунтів...</div>';
     await loadAccountRoleDefinitions();
@@ -980,6 +1014,9 @@ async function loadAccountCenter() {
         return;
     }
     accountUsers = data;
+    if (options.resetFilters) {
+        resetAccountCenterFilters({ render: false });
+    }
     renderAccountCenter();
     const search = document.getElementById('accountCenterSearch');
     const activeOnly = document.getElementById('accountCenterActiveOnly');
@@ -994,40 +1031,71 @@ async function loadAccountCenter() {
     if (showSystem) showSystem.onchange = renderAccountCenter;
 }
 
+window.refreshAccountCenter = async function(button) {
+    if (button) button.disabled = true;
+    try {
+        await loadAccountCenter();
+    } finally {
+        if (button) button.disabled = false;
+    }
+};
+
 function renderAccountCenter() {
     const root = document.getElementById('accountCenterList');
     if (!root) return;
     const canManageSecurity = canManageAccountSecurity();
-    const query = String(document.getElementById('accountCenterSearch')?.value || '').trim().toLowerCase();
-    const activeOnly = document.getElementById('accountCenterActiveOnly')?.checked !== false;
-    const showSystem = document.getElementById('accountCenterShowSystem')?.checked === true;
+    const filters = getAccountCenterFilterState();
+    const query = filters.query.toLowerCase();
+    const activeOnly = filters.activeOnly;
+    const showSystem = filters.showSystem;
     let rows = accountUsers;
     if (!showSystem) rows = rows.filter(u => !isSystemAccount(u));
     if (activeOnly) rows = rows.filter(u => u.is_active !== false);
     if (query) {
-        rows = rows.filter(u => `${u.username || ''} ${u.name || ''} ${u.role || ''} ${u.staff_name || ''}`.toLowerCase().includes(query));
+        rows = rows.filter(u => accountMatchesSearch(u, query));
     }
-    const karinaCount = accountUsers.filter(u => u.is_active !== false && isKarinaAccount(u)).length;
+    const activeHumanCount = accountUsers.filter(u => u.is_active !== false && !isSystemAccount(u)).length;
+    const filterNotice = document.getElementById('accountCenterFilterNotice');
+    const resetBtn = document.getElementById('accountCenterResetFiltersBtn');
+    const hasFilters = hasAccountCenterFilters(filters);
     const stats = document.getElementById('accountCenterStats');
     if (stats) {
-        stats.textContent = `${rows.length} показано · ${accountUsers.filter(u => u.is_active !== false && !isSystemAccount(u)).length} активних · ${karinaCount} збігів Каріни`;
+        stats.textContent = `${rows.length} показано · ${activeHumanCount} активних · ${accountUsers.length} всього`;
+    }
+    if (resetBtn) resetBtn.classList.toggle('hidden', !hasFilters);
+    if (filterNotice) {
+        filterNotice.classList.toggle('hidden', !hasFilters);
+        if (hasFilters) {
+            const parts = [];
+            if (filters.query) parts.push(`пошук “${escapeHtml(filters.query)}”`);
+            if (filters.activeOnly === false) parts.push('показ вимкнених');
+            if (filters.showSystem) parts.push('system-акаунти');
+            filterNotice.innerHTML = `
+                <strong>Увімкнено фільтр:</strong>
+                <span>${parts.join(' · ') || 'нестандартний режим перегляду'}</span>
+                <button type="button" class="hr-account-inline-action" onclick="resetAccountCenterFilters()">Показати всі активні</button>
+            `;
+        }
     }
     if (!rows.length) {
-        root.innerHTML = '<div class="hr-account-empty">Акаунтів за цим фільтром немає.</div>';
+        root.innerHTML = `<div class="hr-account-empty">
+            <strong>${hasFilters ? 'Акаунтів за цим фільтром немає.' : 'Активних акаунтів немає.'}</strong>
+            <span>${hasFilters ? 'Список не порожній: зараз його обмежують пошук або чекбокси.' : 'Увімкніть показ вимкнених або створіть новий акаунт.'}</span>
+            ${hasFilters ? '<button type="button" class="hr-account-empty-action" onclick="resetAccountCenterFilters()">Скинути фільтри</button>' : ''}
+        </div>`;
         return;
     }
     root.innerHTML = rows.map(u => {
         const active = u.is_active !== false;
         const staff = u.staff_name ? `${escapeHtml(u.staff_name)}${u.staff_department ? ' · ' + escapeHtml(u.staff_department) : ''}` : 'не привʼязано до staff';
         const role = formatAccountAccess(u);
-        const karina = isKarinaAccount(u);
-        return `<article class="hr-account-row ${active ? '' : 'is-disabled'} ${karina ? 'is-targeted' : ''}">
+        const recentlyUpdated = Number(accountCenterLastUpdatedId) === Number(u.id);
+        return `<article class="hr-account-row ${active ? '' : 'is-disabled'} ${recentlyUpdated ? 'is-recently-updated' : ''}">
             <div class="hr-account-avatar">${escapeHtml((u.name || u.username || '?').slice(0, 1).toUpperCase())}</div>
             <div class="hr-account-main">
                 <div class="hr-account-title">
                     <strong>${escapeHtml(u.name || u.username || 'Без імені')}</strong>
                     <span>${escapeHtml(u.username || '')}</span>
-                    ${karina ? '<em>Каріна Крамаренко</em>' : ''}
                 </div>
                 <div class="hr-account-meta">${escapeHtml(role)} · ${staff} · ${formatAccountLastSeen(u.last_seen_at)}</div>
             </div>
@@ -1094,8 +1162,9 @@ window.openAccountCreateModal = async function(button) {
         return;
     }
     showNotification(`Акаунт ${response.user?.username || result.username} створено. Передайте тимчасовий пароль користувачу напряму.`, 'success');
+    accountCenterLastUpdatedId = response.user?.id || null;
     await loadAccountStaffOptions(true);
-    await loadAccountCenter();
+    await loadAccountCenter({ resetFilters: true });
 };
 
 async function openAccountProfileModal(userId, button) {
@@ -1137,8 +1206,9 @@ async function openAccountProfileModal(userId, button) {
         return;
     }
     showNotification('Профіль акаунта оновлено', 'success');
+    accountCenterLastUpdatedId = userId;
     await loadAccountStaffOptions(true);
-    await loadAccountCenter();
+    await loadAccountCenter({ resetFilters: true });
 }
 
 async function openAccountPasswordModal(userId, button) {
@@ -1214,7 +1284,8 @@ async function openAccountAccessEditor(userId, button) {
         return;
     }
     showNotification('Доступ акаунта оновлено. Після нового логіну права перерахуються автоматично.', 'success');
-    await loadAccountCenter();
+    accountCenterLastUpdatedId = userId;
+    await loadAccountCenter({ resetFilters: true });
 }
 
 async function toggleAccountActive(userId, isActive, button) {
@@ -1235,30 +1306,6 @@ async function toggleAccountActive(userId, isActive, button) {
         return;
     }
     showNotification(isActive ? 'Акаунт активовано' : 'Акаунт вимкнено', 'success');
-    await loadAccountCenter();
-}
-
-async function deactivateKarinaAccounts(button) {
-    const targets = accountUsers.filter(u => u.is_active !== false && isKarinaAccount(u));
-    if (!targets.length) {
-        showNotification('Активних акаунтів Каріни Крамаренко не знайдено', 'info');
-        return;
-    }
-    const ok = typeof confirmModal === 'function'
-        ? await confirmModal(`Вимкнути ${targets.length} акаунт(ів) Каріни Крамаренко?`, { type: 'warning', okText: 'Вимкнути' })
-        : window.confirm(`Вимкнути ${targets.length} акаунт(ів) Каріни Крамаренко?`);
-    if (!ok) return;
-    if (button) button.disabled = true;
-    let changed = 0;
-    for (const u of targets) {
-        const result = await crmApiFetch(`/api/users/${encodeURIComponent(u.id)}/active`, {
-            method: 'PATCH',
-            body: { isActive: false }
-        });
-        if (result?.success) changed += 1;
-    }
-    if (button) button.disabled = false;
-    showNotification(`Вимкнено акаунтів: ${changed}`, changed ? 'success' : 'error');
     await loadAccountCenter();
 }
 

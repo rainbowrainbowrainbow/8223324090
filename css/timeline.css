@@ -958,6 +958,99 @@ body.dragging-active {
     }
 }
 
+/* v0.60.33: premium light-mode timeline scene hierarchy. */
+body:not(.dark-mode) .timeline-container {
+    background: linear-gradient(180deg, rgba(255, 253, 248, 0.94), rgba(250, 247, 240, 0.96));
+    border-color: var(--eg-light-line-soft, rgba(113, 89, 50, 0.14));
+    box-shadow: var(--eg-light-shadow-card, 0 16px 34px rgba(54, 43, 24, 0.09));
+}
+
+body:not(.dark-mode) .timeline-scroll {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(244, 239, 229, 0.36)),
+        var(--eg-light-bg-shell, #fbfaf6);
+}
+
+body:not(.dark-mode) .time-scale {
+    background: rgba(255, 253, 248, 0.92);
+    border: 1px solid var(--eg-light-line-soft, rgba(113, 89, 50, 0.14));
+    border-radius: 12px;
+    box-shadow: 0 8px 18px rgba(54, 43, 24, 0.055);
+    backdrop-filter: blur(10px);
+}
+
+body:not(.dark-mode) .time-mark {
+    color: var(--eg-light-text-soft, #8a7b66);
+}
+
+body:not(.dark-mode) .time-mark.hour {
+    color: var(--eg-light-text-main, #1f2933);
+}
+
+body:not(.dark-mode) .timeline-line:nth-child(even) {
+    background: rgba(239, 230, 216, 0.36);
+}
+
+body:not(.dark-mode) .line-header {
+    background: linear-gradient(135deg, rgba(18, 161, 127, 0.12) 0%, rgba(255, 253, 248, 0.72) 100%);
+    border-left-color: var(--eg-light-accent-main, #12a17f);
+    color: var(--eg-light-text-main, #1f2933);
+}
+
+body:not(.dark-mode) .timeline-line:nth-child(even) .line-header {
+    background: linear-gradient(135deg, rgba(212, 163, 59, 0.11) 0%, rgba(255, 253, 248, 0.72) 100%);
+}
+
+body:not(.dark-mode) .line-header:hover {
+    background: linear-gradient(135deg, rgba(18, 161, 127, 0.18) 0%, rgba(255, 253, 248, 0.88) 100%);
+    border-left-color: var(--eg-light-accent-strong, #0d8b70);
+}
+
+body:not(.dark-mode) .line-name {
+    color: var(--eg-light-text-main, #1f2933);
+}
+
+body:not(.dark-mode) .line-sub {
+    color: var(--eg-light-text-soft, #8a7b66);
+}
+
+body:not(.dark-mode) .line-grid {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(246, 241, 232, 0.78));
+    border-color: var(--eg-light-line-soft, rgba(113, 89, 50, 0.14));
+}
+
+body:not(.dark-mode) .grid-cell {
+    border-right-color: rgba(113, 89, 50, 0.105);
+}
+
+body:not(.dark-mode) .grid-cell.hour {
+    border-right-color: rgba(113, 89, 50, 0.2);
+}
+
+body:not(.dark-mode) .grid-cell.half {
+    border-right-color: rgba(113, 89, 50, 0.16);
+}
+
+body:not(.dark-mode) .grid-cell:hover {
+    background: rgba(18, 161, 127, 0.09);
+}
+
+body:not(.dark-mode) .grid-cell.selected {
+    background: rgba(18, 161, 127, 0.17);
+}
+
+body:not(.dark-mode) .booking-block,
+body:not(.dark-mode) .mini-booking-block {
+    box-shadow: 0 9px 18px rgba(34, 45, 67, 0.13);
+    outline: 1px solid rgba(255, 255, 255, 0.48);
+}
+
+body:not(.dark-mode) .booking-block:hover,
+body:not(.dark-mode) .mini-booking-block:hover {
+    box-shadow: 0 14px 24px rgba(34, 45, 67, 0.17);
+}
+
 /* ==========================================
    v30.3: PRINT STYLES FOR PDF EXPORT
    ========================================== */

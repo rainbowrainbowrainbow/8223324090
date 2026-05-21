@@ -13,6 +13,10 @@
     transition: margin-left var(--speed-normal) var(--ease-smooth);
 }
 
+body:not(.dark-mode) .page-container {
+    color: var(--eg-light-text-main, #1f2933);
+}
+
 /* ==========================================
    HEADER NAV LINKS (shared across pages)
    ========================================== */
@@ -77,10 +81,22 @@
     animation: fadeInUp 0.35s var(--ease-out-expo) both;
 }
 
+body:not(.dark-mode) .card {
+    background: var(--eg-light-bg-elev-1, rgba(255, 253, 248, 0.9));
+    border-color: var(--eg-light-line-soft, rgba(113, 89, 50, 0.14));
+    box-shadow: var(--eg-light-shadow-soft, 0 12px 28px rgba(54, 43, 24, 0.07));
+    backdrop-filter: blur(10px);
+}
+
 .card:hover {
     box-shadow: var(--shadow-md);
     transform: translateY(-3px);
     border-color: rgba(16,185,129,0.15);
+}
+
+body:not(.dark-mode) .card:hover {
+    box-shadow: var(--eg-light-shadow-card, 0 16px 34px rgba(54, 43, 24, 0.09));
+    border-color: rgba(18, 161, 127, 0.22);
 }
 
 .card-header {

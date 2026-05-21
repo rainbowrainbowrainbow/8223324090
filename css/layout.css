@@ -2449,6 +2449,37 @@ body.dark-mode .search-warning {
     width: calc(100% - 220px - 340px);
 }
 
+body:not(.dark-mode) .header {
+    background: rgba(255, 253, 248, 0.88);
+    border-bottom-color: var(--eg-light-line-soft, rgba(113, 89, 50, 0.14));
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.72), 0 10px 24px rgba(54, 43, 24, 0.045);
+    backdrop-filter: blur(14px);
+}
+
+body:not(.dark-mode) .main-content {
+    color: var(--eg-light-text-main, #1f2933);
+}
+
+body:not(.dark-mode) .control-panel {
+    background: var(--eg-light-bg-elev-1, rgba(255, 253, 248, 0.9));
+    border-color: var(--eg-light-line-soft, rgba(113, 89, 50, 0.14));
+    box-shadow: var(--eg-light-shadow-soft, 0 12px 28px rgba(54, 43, 24, 0.07));
+    backdrop-filter: blur(10px);
+}
+
+body:not(.dark-mode) .btn-nav {
+    background: linear-gradient(180deg, #ffffff 0%, #f5efe3 100%);
+    border-color: var(--eg-light-line-soft, rgba(113, 89, 50, 0.14));
+    color: var(--eg-light-text-main, #1f2933);
+    box-shadow: 0 6px 16px rgba(54, 43, 24, 0.06);
+}
+
+body:not(.dark-mode) .btn-nav:hover {
+    background: linear-gradient(135deg, var(--eg-light-accent-main, #12a17f) 0%, var(--eg-light-accent-strong, #0d8b70) 100%);
+    border-color: rgba(18, 161, 127, 0.4);
+    color: #ffffff;
+}
+
 /* ==========================================
    CONTROL PANEL
    ========================================== */

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.33 - Light Theme Sidebar Density
+
+### Light Theme Sidebar Density [codex]
+- **Light Theme** - світлий режим зібрано в тепліший, чистіший і візуально дорожчий design system замість блідого admin-look.
+- **Sidebar Density** - лівий CRM shell зменшено приблизно на третину через shared width contract і ущільнено без втрати читабельності.
+- **Timeline Scene** - таймлайн у light mode отримав кращу surface hierarchy, контраст сітки, читабельніші рядки і сильніший фокус на робочій області.
+- **Dark mode guardrail** - зміни світлої теми scoped через `body:not(.dark-mode)`, тому темний режим не отримує випадкових token-regression.
+
+---
+
 ## v0.60.32 - Graduation Diplomas Batch PDF
 
 ### Graduation Diplomas Batch PDF [codex]

@@ -67,6 +67,23 @@
     --glass-border: rgba(255,255,255,0.3);
     --glass-blur: 12px;
 
+    /* Light theme shell contract */
+    --eg-light-bg-app: #f4efe6;
+    --eg-light-bg-shell: #fbfaf6;
+    --eg-light-bg-elev-1: rgba(255, 253, 248, 0.9);
+    --eg-light-bg-elev-2: #ffffff;
+    --eg-light-bg-soft: #eee6d8;
+    --eg-light-line-soft: rgba(113, 89, 50, 0.14);
+    --eg-light-line-strong: rgba(113, 89, 50, 0.24);
+    --eg-light-text-main: #1f2933;
+    --eg-light-text-muted: #667085;
+    --eg-light-text-soft: #8a7b66;
+    --eg-light-accent-main: #12a17f;
+    --eg-light-accent-strong: #0d8b70;
+    --eg-light-accent-warm: #d4a33b;
+    --eg-light-shadow-soft: 0 12px 28px rgba(54, 43, 24, 0.07);
+    --eg-light-shadow-card: 0 16px 34px rgba(54, 43, 24, 0.09);
+
     /* Spacing scale */
     --space-xs: 4px;
     --space-sm: 8px;
@@ -164,7 +181,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html {
-    background: #F8FAFC;
+    background: var(--eg-light-bg-app);
 }
 
 html[data-theme="dark"] {
@@ -179,7 +196,7 @@ html[data-theme="dark"] body {
 
 body {
     font-family: var(--font-family);
-    background: #F8FAFC;
+    background: var(--eg-light-bg-app);
     color: var(--dark);
     min-height: 100vh;
     font-size: var(--font-base);
@@ -188,6 +205,14 @@ body {
     -moz-osx-font-smoothing: grayscale;
     transition: background-color var(--speed-theme) var(--ease-smooth),
                 color var(--speed-theme) var(--ease-smooth);
+}
+
+body:not(.dark-mode) {
+    background:
+        linear-gradient(115deg, rgba(18, 161, 127, 0.07) 0%, transparent 34%),
+        linear-gradient(245deg, rgba(212, 163, 59, 0.08) 0%, transparent 32%),
+        linear-gradient(180deg, var(--eg-light-bg-shell) 0%, var(--eg-light-bg-app) 100%);
+    color: var(--eg-light-text-main);
 }
 
 .hidden { display: none !important; }

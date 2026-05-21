@@ -62,7 +62,7 @@ const ROLE_DEPARTMENTS = {
 // v24.3.0: Default dashboard widgets per role (all 24 roles)
 const DEFAULT_WIDGETS = {
     // Executive — full overview
-    creator:        ['quick_stats', 'my_focus', 'funnel', 'director_pnl', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'catalogs', 'weather', 'currency', 'announcements'],
+    creator:        ['personal_tasker', 'quick_stats', 'my_focus', 'funnel', 'director_pnl', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'catalogs', 'weather', 'currency', 'announcements'],
     director:       ['director_pnl', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'weather', 'currency', 'announcements'],
     vice_director:  ['operations', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'weather', 'announcements'],
     // Management
@@ -103,6 +103,7 @@ const DEFAULT_WIDGETS = {
 const DASHBOARD_WIDGET_MIN_ROLES = {
     tasks: null,
     my_focus: null,
+    personal_tasker: 'creator',
     bookings_today: 'admin',
     my_schedule: null,
     team_online: 'manager',

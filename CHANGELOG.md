@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.3 - Dashboard віджети + tasker
+
+### Dashboard widgets recovery + Creator tasker [codex]
+- **Dashboard widgets** - повернуто повний registry у керування віджетами, відновлено приховані блоки на кшталт `my_focus`, `finance_today`, `reports_today`, `account_stats`, `week_bookings` і `task_health`.
+- **Flexible builder** - live widget guardrail піднято зі старого 6/8 до 18/24, щоб creator міг зібрати насичену персональну dashboard-панель без silent drops.
+- **Creator tasker** - додано creator-only `personal_tasker` через canonical `/api/dashboard/widgets/:type` із режимами `assigned_to_me`, `created_by_me` і `all_tasks`.
+- **Tasker fullscreen** - compact widget і fullscreen work mode використовують один data contract, показують лічильники, progress/achievement chips і не дублюють tasks app.
+
+---
+
 ## v0.61.2 - Каталог тортів
 
 ### Products Kitchen/Cakes: заповнення каталогу [codex]

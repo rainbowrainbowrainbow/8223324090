@@ -5,7 +5,7 @@
 
 const DashboardPage = (() => {
     const BOARD_SCHEMA_VERSION = 1;
-    const BOARD_LIVE_WIDGET_CAP = 6;
+    const BOARD_LIVE_WIDGET_CAP = 18;
     const BOARD_UNDO_LIMIT = 40;
     const BOARD_SAVE_DEBOUNCE_MS = 900;
     const BOARD_ALLOWED_TYPES = new Set(['widget', 'note', 'text', 'shape', 'frame']);
@@ -112,13 +112,15 @@ const DashboardPage = (() => {
     const DASHBOARD_WORKSPACE_MODE = 'workspace';
     const BOARD_SNAP_MODES = new Set(['strict', 'soft', 'freeform']);
     const BOARD_AI_PRESETS = new Set(['expand', 'mood-pack', 'cluster', 'summarize', 'tasks', 'remix', 'name-frame', 'prompt-to-board']);
-    const DASHBOARD_RETIRED_WIDGETS = new Set(['finance_today', 'reports_today', 'account_stats', 'week_bookings', 'my_focus']);
+    const DASHBOARD_RETIRED_WIDGETS = new Set();
     const DASHBOARD_PRESENTATION_MODES = new Set(['mixed-scene', 'flat-grid']);
 
     // Widget definitions — all available widgets
     const WIDGET_DEFS = {
         quick_stats:    { icon: '📊', title: 'Швидка статистика', minRole: 'admin' },
         tasks:          { icon: '📋', title: 'Мої задачі', minRole: null },
+        my_focus:       { icon: '🎯', title: 'Мій фокус', minRole: null },
+        personal_tasker:{ icon: '✅', title: 'Особистий tasker', minRole: 'creator' },
         bookings_today: { icon: '📅', title: 'Бронювання сьогодні', minRole: 'admin' },
         my_schedule:    { icon: '🕐', title: 'Мій графік', minRole: null },
         team_online:    { icon: '👥', title: 'Команда онлайн', minRole: 'manager' },
@@ -137,6 +139,7 @@ const DashboardPage = (() => {
         staff_today:    { icon: '👷', title: 'Хто на зміні', minRole: 'manager' },
         week_bookings:  { icon: '📆', title: 'Бронювання на тиждень', minRole: 'admin' },
         team_tasks:     { icon: '📝', title: 'Задачі команди', minRole: 'manager' },
+        task_health:    { icon: '🧭', title: 'Здоровʼя задач', minRole: 'manager' },
         hr_overview:    { icon: '🏥', title: 'HR дайджест', minRole: 'hr' },
         director_pnl:   { icon: '💹', title: 'P&L', minRole: 'director' },
         content_pipeline: { icon: '🎨', title: 'Контент-пайплайн', minRole: 'art_director' },
@@ -144,11 +147,11 @@ const DashboardPage = (() => {
     };
 
     const ROLE_DASHBOARD_BASE_WIDGETS = {
-        creator: ['quick_stats', 'funnel', 'director_pnl', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'catalogs', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts', 'hr_overview', 'content_pipeline', 'operations'],
-        director: ['director_pnl', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts'],
-        vice_director: ['operations', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'team_online', 'bookings_today', 'weather', 'announcements', 'tasks', 'my_schedule', 'alerts'],
-        senior_manager: ['quick_stats', 'funnel', 'staff_today', 'event_risk_summary', 'team_tasks', 'exceptions', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements', 'tasks', 'my_schedule', 'alerts'],
-        manager: ['staff_today', 'event_risk_summary', 'exceptions', 'funnel', 'tasks', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements', 'team_tasks', 'team_online', 'alerts', 'quick_stats'],
+        creator: ['personal_tasker', 'quick_stats', 'my_focus', 'funnel', 'director_pnl', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'catalogs', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts', 'hr_overview', 'content_pipeline', 'operations'],
+        director: ['director_pnl', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts'],
+        vice_director: ['operations', 'my_focus', 'funnel', 'quick_stats', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'team_online', 'bookings_today', 'weather', 'announcements', 'tasks', 'my_schedule', 'alerts'],
+        senior_manager: ['quick_stats', 'my_focus', 'funnel', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'bookings_today', 'team_online', 'leads_new', 'weather', 'announcements', 'tasks', 'my_schedule', 'alerts'],
+        manager: ['staff_today', 'event_risk_summary', 'exceptions', 'my_focus', 'funnel', 'tasks', 'bookings_today', 'my_schedule', 'leads_new', 'weather', 'announcements', 'team_tasks', 'task_health', 'team_online', 'alerts', 'quick_stats'],
         admin: ['event_risk_summary', 'exceptions', 'tasks', 'bookings_today', 'my_schedule', 'weather', 'announcements', 'alerts', 'quick_stats', 'catalogs'],
         hr: ['hr_overview', 'staff_today', 'tasks', 'team_online', 'my_schedule', 'announcements', 'weather', 'alerts'],
         art_director: ['content_pipeline', 'tasks', 'my_schedule', 'bookings_today', 'weather', 'announcements', 'alerts', 'catalogs', 'quick_stats'],
@@ -259,6 +262,7 @@ const DashboardPage = (() => {
 
     let _config = createDefaultDashboardConfig();
     let _widgetData = {};
+    let _personalTaskerView = 'assigned_to_me';
     let _boardInteractionMode = 'view';
     let _boardSelectedId = null;
     let _boardSelectedConnectorId = null;
@@ -562,7 +566,7 @@ const DashboardPage = (() => {
                 showGrid: preferences.showGrid !== false,
                 showGuides: preferences.showGuides !== false,
                 showMiniMap: preferences.showMiniMap === true,
-                maxLiveWidgets: safeNumber(preferences.maxLiveWidgets, BOARD_LIVE_WIDGET_CAP, 1, 8),
+                maxLiveWidgets: safeNumber(preferences.maxLiveWidgets, BOARD_LIVE_WIDGET_CAP, 1, 24),
                 strokeColor: String(preferences.strokeColor || '#10b981').slice(0, 32),
                 fillColor: String(preferences.fillColor || 'rgba(16, 185, 129, 0.10)').slice(0, 64),
                 strokeWidth: safeNumber(preferences.strokeWidth, 2, 1, 12),
@@ -2981,7 +2985,7 @@ const DashboardPage = (() => {
 
     function getBoardLiveWidgetCap() {
         const prefs = safeObject(_config?.boardState?.preferences, {});
-        return safeNumber(prefs.maxLiveWidgets, BOARD_LIVE_WIDGET_CAP, 1, 8);
+        return safeNumber(prefs.maxLiveWidgets, BOARD_LIVE_WIDGET_CAP, 1, 24);
     }
 
     function getBoardWorkspaceMode() {
@@ -3153,7 +3157,7 @@ const DashboardPage = (() => {
         const idAttr = escapeHtml(item.id);
         const idJs = escapeJsString(item.id);
         return `
-            <section class="dashboard-board-item workspace-module type-${escapeHtml(item.type)}${selected}${editing}${inspecting}${locked}${hidden}${geometry}" data-workspace-module="true" data-module-role="${escapeHtml(item.type)}" data-widget-runtime="${escapeHtml(runtimeState)}" data-board-item-id="${idAttr}" data-board-shape-kind="${escapeHtml(item.shape || '')}" style="${style}">
+            <section class="dashboard-board-item workspace-module type-${escapeHtml(item.type)}${selected}${editing}${inspecting}${locked}${hidden}${geometry}" data-workspace-module="true" data-module-role="${escapeHtml(item.type)}" data-widget-runtime="${escapeHtml(runtimeState)}" data-widget-type="${item.type === 'widget' ? escapeHtml(item.widgetType) : ''}" data-board-item-id="${idAttr}" data-board-shape-kind="${escapeHtml(item.shape || '')}" style="${style}">
                 <div class="dashboard-board-item-frame" data-board-drag-handle>
                     <div class="dashboard-board-item-title">
                         <span>${item.type === 'widget' ? escapeHtml(def?.icon || '◼') : item.type === 'shape' ? '□' : '•'}</span>
@@ -4950,6 +4954,12 @@ const DashboardPage = (() => {
             case 'tasks':
                 renderTasks(data, container);
                 break;
+            case 'my_focus':
+                renderMyFocus(data, container);
+                break;
+            case 'personal_tasker':
+                renderPersonalTasker(data, container);
+                break;
             case 'bookings_today':
                 renderBookings(data, container);
                 break;
@@ -5000,6 +5010,9 @@ const DashboardPage = (() => {
                 break;
             case 'team_tasks':
                 renderTeamTasks(data, container);
+                break;
+            case 'task_health':
+                renderTaskHealth(data, container);
                 break;
             case 'hr_overview':
                 renderHrOverview(data, container);
@@ -5088,6 +5101,170 @@ const DashboardPage = (() => {
 
         const footer = `<div class="widget-footer"><a href="/tasks" class="widget-footer-link">Всі задачі →</a></div>`;
         container.innerHTML = `<div class="widget-task-list">${items}</div>${footer}`;
+    }
+
+    function renderMyFocus(data, container) {
+        const tasks = Array.isArray(data.tasks) ? data.tasks : [];
+        const overdue = Number(data.overdueCount || 0);
+        const waiting = Number(data.waitingCount || 0);
+        const items = tasks.slice(0, 5).map(t => {
+            const deadline = t.deadline ? formatDeadline(t.deadline) : '';
+            const priorityCls = t.priority || 'medium';
+            return `<div class="widget-task-item" onclick="DashboardPage.openTask(${Number(t.id) || 0})" title="Відкрити задачу">
+                <div class="widget-task-icon ${priorityCls}"></div>
+                <div class="widget-task-info">
+                    <div class="widget-task-title">${escapeHtml(t.title || 'Задача без назви')}</div>
+                    <div class="widget-task-meta">${deadline || 'Без дедлайну'}${t.ownerLabel ? ' · ' + escapeHtml(t.ownerLabel) : ''}</div>
+                </div>
+                <div class="widget-task-arrow">›</div>
+            </div>`;
+        }).join('');
+        container.innerHTML = `
+            <div class="personal-tasker-metrics compact">
+                <div class="personal-tasker-metric danger"><strong>${overdue}</strong><span>прострочено</span></div>
+                <div class="personal-tasker-metric warning"><strong>${waiting}</strong><span>чекає</span></div>
+                <div class="personal-tasker-metric"><strong>${tasks.length}</strong><span>у фокусі</span></div>
+            </div>
+            ${items ? `<div class="widget-task-list">${items}</div>` : '<div class="widget-empty">Особистий фокус чистий</div>'}
+            <div class="widget-footer"><a href="/tasks" class="widget-footer-link">Відкрити задачі →</a></div>
+        `;
+    }
+
+    function taskerStatusLabel(status) {
+        const labels = { todo: 'Todo', in_progress: 'В роботі', done: 'Готово', cancelled: 'Скасовано', archived: 'Архів' };
+        return labels[status] || status || 'Todo';
+    }
+
+    function personalTaskerViewData(data) {
+        const views = data?.views || {};
+        const allowed = ['assigned_to_me', 'created_by_me', 'all_tasks'];
+        if (!allowed.includes(_personalTaskerView)) _personalTaskerView = 'assigned_to_me';
+        return views[_personalTaskerView] || views.assigned_to_me || views.all_tasks || { tasks: [], stats: {}, label: 'Мені' };
+    }
+
+    function renderPersonalTasker(data, container, options = {}) {
+        const fullscreen = options.fullscreen === true;
+        const views = data?.views || {};
+        const stats = data?.stats || {};
+        const achievements = Array.isArray(data?.achievements) ? data.achievements : [];
+        const current = personalTaskerViewData(data);
+        const tasks = Array.isArray(current.tasks) ? current.tasks : [];
+        const viewDefs = [
+            ['assigned_to_me', 'Мені'],
+            ['created_by_me', 'Поставив'],
+            ['all_tasks', 'Всі']
+        ];
+        const tabs = viewDefs.map(([key, label]) => {
+            const viewStats = views[key]?.stats || {};
+            const count = Number(viewStats.active || viewStats.total || 0);
+            return `<button type="button" class="personal-tasker-tab ${_personalTaskerView === key ? 'active' : ''}" onclick="DashboardPage.setPersonalTaskerView('${key}')">
+                <span>${label}</span><strong>${count}</strong>
+            </button>`;
+        }).join('');
+        const metricCards = [
+            ['todo', 'Todo', stats.todo || 0, ''],
+            ['in_progress', 'В роботі', stats.inProgress || 0, 'warning'],
+            ['done_today', 'Готово сьогодні', stats.doneToday || 0, 'success'],
+            ['overdue', 'Прострочено', stats.overdue || 0, stats.overdue ? 'danger' : 'success']
+        ].map(([, label, value, tone]) => `<div class="personal-tasker-metric ${tone}">
+            <strong>${value}</strong><span>${label}</span>
+        </div>`).join('');
+        const achievementHtml = achievements.slice(0, fullscreen ? 6 : 3).map(item => `
+            <span class="personal-tasker-achievement ${escapeHtml(item.tone || 'quiet')}">
+                ${escapeHtml(item.label || 'Сигнал')} <strong>${escapeHtml(item.value ?? '')}</strong>
+            </span>
+        `).join('');
+        const visibleTasks = tasks.slice(0, fullscreen ? 18 : 6);
+        const taskRows = visibleTasks.map(t => {
+            const deadline = t.deadline ? formatDeadline(t.deadline) : 'без дедлайну';
+            const priority = t.priority || 'medium';
+            const overdueClass = t.isOverdue ? ' is-overdue' : '';
+            const owner = t.ownerLabel || t.assigned_to || t.owner || '';
+            const creator = t.creatorLabel || t.created_by || '';
+            return `<button type="button" class="personal-tasker-row${overdueClass}" onclick="DashboardPage.openTask(${Number(t.id) || 0})">
+                <span class="personal-tasker-priority ${escapeHtml(priority)}"></span>
+                <span class="personal-tasker-row-main">
+                    <strong>${escapeHtml(t.title || 'Задача без назви')}</strong>
+                    <em>${escapeHtml(taskerStatusLabel(t.status))} · ${escapeHtml(deadline)}${owner ? ' · ' + escapeHtml(owner) : ''}${creator && fullscreen ? ' · поставив ' + escapeHtml(creator) : ''}</em>
+                </span>
+                <span class="personal-tasker-open">›</span>
+            </button>`;
+        }).join('');
+        container.innerHTML = `
+            <div class="personal-tasker ${fullscreen ? 'is-fullscreen' : 'is-compact'}">
+                <div class="personal-tasker-head">
+                    <div>
+                        <span>Creator-only</span>
+                        <strong>Особистий tasker</strong>
+                    </div>
+                    ${fullscreen ? '<button type="button" class="dashboard-btn" onclick="DashboardPage.closePersonalTaskerFullscreen()">Закрити</button>' : '<button type="button" class="dashboard-btn primary" onclick="DashboardPage.openPersonalTaskerFullscreen()">Fullscreen</button>'}
+                </div>
+                <div class="personal-tasker-tabs">${tabs}</div>
+                <div class="personal-tasker-metrics">${metricCards}</div>
+                ${achievementHtml ? `<div class="personal-tasker-achievements">${achievementHtml}</div>` : ''}
+                <div class="personal-tasker-list">
+                    ${taskRows || '<div class="widget-empty">У цьому режимі задач немає</div>'}
+                </div>
+                <div class="widget-footer"><a href="/tasks" class="widget-footer-link">Відкрити повну сторінку задач →</a></div>
+            </div>
+        `;
+    }
+
+    function setPersonalTaskerView(view) {
+        const allowed = ['assigned_to_me', 'created_by_me', 'all_tasks'];
+        _personalTaskerView = allowed.includes(view) ? view : 'assigned_to_me';
+        document.querySelectorAll('[id^="widget-personal_tasker"], [id^="board-widget-"]').forEach(container => {
+            if (container.id.startsWith('widget-personal_tasker')) {
+                renderPersonalTasker(_widgetData.personal_tasker || {}, container);
+                return;
+            }
+            const boardItem = container.closest?.('.dashboard-board-item');
+            if (boardItem?.dataset?.widgetType === 'personal_tasker') renderPersonalTasker(_widgetData.personal_tasker || {}, container);
+        });
+        const fullscreenBody = document.getElementById('personalTaskerFullscreenBody');
+        if (fullscreenBody) renderPersonalTasker(_widgetData.personal_tasker || {}, fullscreenBody, { fullscreen: true });
+    }
+
+    function openPersonalTaskerFullscreen() {
+        const previous = document.getElementById('personalTaskerFullscreen');
+        if (previous) previous.remove();
+        const overlay = document.createElement('div');
+        overlay.id = 'personalTaskerFullscreen';
+        overlay.className = 'personal-tasker-fullscreen-overlay';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.innerHTML = `
+            <div class="personal-tasker-fullscreen">
+                <div id="personalTaskerFullscreenBody"></div>
+            </div>
+        `;
+        overlay.addEventListener('click', event => {
+            if (event.target === overlay) closePersonalTaskerFullscreen();
+        });
+        document.body.appendChild(overlay);
+        renderPersonalTasker(_widgetData.personal_tasker || {}, document.getElementById('personalTaskerFullscreenBody'), { fullscreen: true });
+    }
+
+    function closePersonalTaskerFullscreen() {
+        document.getElementById('personalTaskerFullscreen')?.remove();
+    }
+
+    function renderTaskHealth(data, container) {
+        const healthy = Number(data.healthy || 0);
+        const warning = Number(data.warning || 0);
+        const critical = Number(data.critical || 0);
+        const avg = Number(data.avg_score || 0);
+        container.innerHTML = `
+            <div class="personal-tasker-metrics compact">
+                <div class="personal-tasker-metric success"><strong>${healthy}</strong><span>здорові</span></div>
+                <div class="personal-tasker-metric warning"><strong>${warning}</strong><span>ризик</span></div>
+                <div class="personal-tasker-metric danger"><strong>${critical}</strong><span>критичні</span></div>
+            </div>
+            <div class="task-health-bar" aria-label="Середній health score ${avg}">
+                <span style="width:${Math.max(0, Math.min(100, avg))}%"></span>
+            </div>
+            <div class="widget-footer"><a href="/tasks" class="widget-footer-link">Перевірити задачі →</a></div>
+        `;
     }
 
     function renderBookings(data, container) {
@@ -5763,6 +5940,10 @@ const DashboardPage = (() => {
         return true;
     }
 
+    function openWidgetManager() {
+        return openSettings();
+    }
+
     // Settings modal with drag & drop reordering
     function openSettings() {
         const effectiveRole = getEffectiveDashboardRole();
@@ -5819,7 +6000,7 @@ const DashboardPage = (() => {
             <div class="settings-modal">
                 <div class="settings-modal-header">
                     <h2>Налаштування дашборду</h2>
-                    <p>Налаштовуйте рольову сцену, нотатки справа і fallback-список віджетів.</p>
+                    <p>Керуйте доступними віджетами, порядком, board-сценою і персональним набором dashboard.</p>
                 </div>
                 <div class="dashboard-settings-scene-card">
                     <div class="dashboard-settings-scene-summary">
@@ -7135,9 +7316,13 @@ const DashboardPage = (() => {
         clearBoardContent,
         resetBoardView,
         resetBoardState,
+        setPersonalTaskerView,
+        openPersonalTaskerFullscreen,
+        closePersonalTaskerFullscreen,
         openTask,
         toggleOnboardingWidget,
         saveOnboarding,
+        openWidgetManager,
         openSettings,
         closeSettingsOverlay,
         toggleSettingsWidget,

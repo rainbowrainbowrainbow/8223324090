@@ -45,6 +45,103 @@ function taskWidgetPayload(rows = []) {
     });
 }
 
+const TASKER_DONE_STATUSES = new Set(['done', 'completed', 'complete']);
+const TASKER_CLOSED_STATUSES = new Set(['done', 'completed', 'complete', 'cancelled', 'archived']);
+
+function normalizeTaskStatus(value) {
+    return String(value || 'todo').trim().toLowerCase();
+}
+
+function isTaskerClosed(row = {}) {
+    return TASKER_CLOSED_STATUSES.has(normalizeTaskStatus(row.status));
+}
+
+function isTaskerOverdue(row = {}) {
+    if (!row.deadline || isTaskerClosed(row)) return false;
+    const deadline = new Date(row.deadline);
+    return !Number.isNaN(deadline.getTime()) && deadline.getTime() < Date.now();
+}
+
+function isTaskerDoneToday(row = {}) {
+    if (!TASKER_DONE_STATUSES.has(normalizeTaskStatus(row.status))) return false;
+    const completedAt = row.completed_at || row.updated_at;
+    if (!completedAt) return false;
+    const completed = new Date(completedAt);
+    if (Number.isNaN(completed.getTime())) return false;
+    return completed.toISOString().slice(0, 10) === getKyivDateStr();
+}
+
+function matchesTaskerUserIdentity(row = {}, user, fields = []) {
+    const userId = normalizeUserId(user);
+    if (userId && fields.some(field => Number(row[field] || 0) === userId)) return true;
+    const tokens = new Set(userNameTokens(user).map(token => String(token || '').trim().toLowerCase()).filter(Boolean));
+    if (!tokens.size) return false;
+    return fields.some(field => {
+        const value = String(row[field] || '').trim().toLowerCase();
+        return value && tokens.has(value);
+    });
+}
+
+function taskerStats(tasks = []) {
+    const total = tasks.length;
+    const done = tasks.filter(task => TASKER_DONE_STATUSES.has(normalizeTaskStatus(task.status))).length;
+    const active = tasks.filter(task => !isTaskerClosed(task)).length;
+    const todo = tasks.filter(task => normalizeTaskStatus(task.status) === 'todo').length;
+    const inProgress = tasks.filter(task => normalizeTaskStatus(task.status) === 'in_progress').length;
+    const doneToday = tasks.filter(isTaskerDoneToday).length;
+    const overdue = tasks.filter(isTaskerOverdue).length;
+    return {
+        total,
+        active,
+        todo,
+        inProgress,
+        done,
+        doneToday,
+        overdue,
+        completionRate: total ? Math.round((done / total) * 100) : 0
+    };
+}
+
+function buildPersonalTaskerPayload(rows = [], user) {
+    const payloadTasks = taskWidgetPayload(rows).map((task, index) => ({
+        ...task,
+        creatorLabel: rows[index]?.creator_name || rows[index]?.creator_username || rows[index]?.created_by || null,
+        createdByUserId: rows[index]?.created_by_user_id || null,
+        isOverdue: isTaskerOverdue(rows[index] || task),
+        completedAt: rows[index]?.completed_at || null
+    }));
+    const byId = new Map(payloadTasks.map(task => [String(task.id), task]));
+    const assignedRows = rows.filter(row => matchesTaskerUserIdentity(row, user, ['owner_user_id', 'assigned_to', 'owner']));
+    const createdRows = rows.filter(row => matchesTaskerUserIdentity(row, user, ['created_by_user_id', 'created_by', 'creator_username', 'creator_name']));
+    const assigned = assignedRows.map(row => byId.get(String(row.id))).filter(Boolean);
+    const created = createdRows.map(row => byId.get(String(row.id))).filter(Boolean);
+    const allStats = taskerStats(rows);
+    return {
+        scope: 'creator',
+        currentUser: {
+            id: normalizeUserId(user),
+            username: user?.username || null,
+            name: user?.name || user?.username || null
+        },
+        views: {
+            assigned_to_me: { label: 'Мені', tasks: assigned, stats: taskerStats(assignedRows) },
+            created_by_me: { label: 'Поставив', tasks: created, stats: taskerStats(createdRows) },
+            all_tasks: { label: 'Всі', tasks: payloadTasks, stats: allStats }
+        },
+        stats: allStats,
+        achievements: [
+            { key: 'done_today', label: 'Готово сьогодні', value: allStats.doneToday, tone: allStats.doneToday > 0 ? 'success' : 'quiet' },
+            { key: 'overdue_guard', label: allStats.overdue === 0 ? 'Без прострочки' : 'Прострочено', value: allStats.overdue, tone: allStats.overdue === 0 ? 'success' : 'warning' },
+            { key: 'completion_rate', label: 'Закриття', value: `${allStats.completionRate}%`, tone: allStats.completionRate >= 70 ? 'success' : 'info' }
+        ],
+        meta: {
+            creatorOnly: true,
+            views: ['assigned_to_me', 'created_by_me', 'all_tasks'],
+            dataSource: 'tasks + task visibility policy'
+        }
+    };
+}
+
 function addDays(dateStr, days) {
     const [year, month, day] = String(dateStr).split('-').map(Number);
     const date = new Date(Date.UTC(year, month - 1, day + days));
@@ -187,7 +284,7 @@ function defaultBoardState(overrides = {}) {
             showGrid: true,
             showGuides: true,
             showMiniMap: false,
-            maxLiveWidgets: 6,
+            maxLiveWidgets: 18,
             strokeColor: '#10b981',
             fillColor: 'rgba(16, 185, 129, 0.10)',
             strokeWidth: 2,
@@ -265,7 +362,7 @@ function sanitizeBoardState(input, role) {
             showGrid: preferencesSource.showGrid !== false,
             showGuides: preferencesSource.showGuides !== false,
             showMiniMap: preferencesSource.showMiniMap === true,
-            maxLiveWidgets: safeNumber(preferencesSource.maxLiveWidgets, 6, 1, 8),
+            maxLiveWidgets: safeNumber(preferencesSource.maxLiveWidgets, 18, 1, 24),
             strokeColor: String(preferencesSource.strokeColor || '#10b981').slice(0, 32),
             fillColor: String(preferencesSource.fillColor || 'rgba(16, 185, 129, 0.10)').slice(0, 64),
             strokeWidth: safeNumber(preferencesSource.strokeWidth, 2, 1, 12),
@@ -525,6 +622,36 @@ router.get('/widgets/:type', async (req, res) => {
                 `, params);
                 const tasks = taskWidgetPayload(result.rows);
                 data = { tasks, intelligence: buildTaskOperationsSummary(tasks) };
+                break;
+            }
+
+            case 'personal_tasker': {
+                if (req.user.role !== 'creator') {
+                    return res.status(403).json({ error: 'Creator tasker is available only for creator role' });
+                }
+                const params = [];
+                const visibility = buildTaskVisibilityScope(req.user, params, 't');
+                const result = await pool.query(`
+                    SELECT t.id, t.title, t.status, t.priority, t.deadline, t.category,
+                           t.owner_user_id, t.assigned_to, t.owner, t.updated_at, t.created_at,
+                           t.created_by, t.created_by_user_id, t.completed_at,
+                           t.task_mode, t.task_kind, t.visibility, t.workflow_state, t.focus_rank,
+                           u.name AS owner_name, u.username AS owner_username,
+                           cu.name AS creator_name, cu.username AS creator_username
+                    FROM tasks t
+                    LEFT JOIN users u ON u.id = t.owner_user_id
+                    LEFT JOIN users cu ON cu.id = t.created_by_user_id
+                    WHERE COALESCE(t.status, 'todo') != 'archived'
+                    ${visibility}
+                    ORDER BY
+                        CASE WHEN t.deadline IS NOT NULL AND t.deadline < NOW() AND COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived') THEN 0 ELSE 1 END,
+                        CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+                        CASE WHEN COALESCE(t.status, 'todo') IN ('done','cancelled') THEN 1 ELSE 0 END,
+                        t.deadline ASC NULLS LAST,
+                        t.updated_at DESC
+                    LIMIT 180
+                `, params);
+                data = buildPersonalTaskerPayload(result.rows, req.user);
                 break;
             }
 

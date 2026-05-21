@@ -3834,6 +3834,269 @@ body.dark-mode .board-tool-rail .dashboard-btn.danger {
     white-space: nowrap;
 }
 
+.personal-tasker {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.personal-tasker-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.personal-tasker-head span,
+.personal-tasker-row em,
+.personal-tasker-metric span {
+    color: var(--gray-500, #64748B);
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.personal-tasker-head strong {
+    display: block;
+    color: var(--gray-900, #111827);
+    font-size: 16px;
+    font-weight: 900;
+}
+
+.personal-tasker-tabs,
+.personal-tasker-metrics,
+.personal-tasker-achievements {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.personal-tasker-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    border: 1px solid rgba(148,163,184,0.22);
+    border-radius: 10px;
+    background: rgba(248,250,252,0.88);
+    color: var(--gray-700, #334155);
+    cursor: pointer;
+    font-weight: 900;
+    padding: 0 10px;
+}
+
+.personal-tasker-tab strong {
+    color: var(--primary, #10B981);
+    font-size: 13px;
+}
+
+.personal-tasker-tab.active {
+    border-color: rgba(16,185,129,0.38);
+    background: rgba(16,185,129,0.12);
+    color: var(--primary, #10B981);
+}
+
+.personal-tasker-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.personal-tasker-metrics.compact {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.personal-tasker-metric {
+    min-width: 0;
+    border: 1px solid rgba(20,184,166,0.16);
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(20,184,166,0.08), rgba(255,255,255,0.9));
+    padding: 10px;
+}
+
+.personal-tasker-metric strong {
+    display: block;
+    color: var(--gray-900, #111827);
+    font-size: 20px;
+    font-weight: 950;
+    line-height: 1;
+}
+
+.personal-tasker-metric.warning {
+    border-color: rgba(245,158,11,0.22);
+    background: rgba(245,158,11,0.10);
+}
+
+.personal-tasker-metric.danger {
+    border-color: rgba(239,68,68,0.24);
+    background: rgba(239,68,68,0.10);
+}
+
+.personal-tasker-metric.success {
+    border-color: rgba(34,197,94,0.24);
+    background: rgba(34,197,94,0.10);
+}
+
+.personal-tasker-achievement {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(148,163,184,0.22);
+    background: rgba(15,23,42,0.04);
+    color: var(--gray-600, #475569);
+    font-size: 11px;
+    font-weight: 900;
+    padding: 6px 9px;
+}
+
+.personal-tasker-achievement.success {
+    border-color: rgba(34,197,94,0.26);
+    background: rgba(34,197,94,0.12);
+    color: #15803d;
+}
+
+.personal-tasker-achievement.warning {
+    border-color: rgba(245,158,11,0.28);
+    background: rgba(245,158,11,0.12);
+    color: #b45309;
+}
+
+.personal-tasker-list {
+    display: grid;
+    gap: 7px;
+    max-height: 300px;
+    overflow: auto;
+}
+
+.personal-tasker-row {
+    display: grid;
+    grid-template-columns: 9px minmax(0, 1fr) 14px;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    border: 1px solid rgba(148,163,184,0.16);
+    border-radius: 12px;
+    background: rgba(248,250,252,0.84);
+    color: inherit;
+    cursor: pointer;
+    padding: 10px;
+    text-align: left;
+}
+
+.personal-tasker-row:hover {
+    border-color: rgba(16,185,129,0.28);
+    background: rgba(16,185,129,0.08);
+}
+
+.personal-tasker-row.is-overdue {
+    border-color: rgba(239,68,68,0.26);
+}
+
+.personal-tasker-row-main {
+    min-width: 0;
+}
+
+.personal-tasker-row-main strong,
+.personal-tasker-row-main em {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.personal-tasker-row-main strong {
+    color: var(--gray-900, #111827);
+    font-size: 13px;
+    font-weight: 850;
+}
+
+.personal-tasker-priority {
+    width: 9px;
+    height: 32px;
+    border-radius: 999px;
+    background: #94a3b8;
+}
+
+.personal-tasker-priority.critical,
+.personal-tasker-priority.high {
+    background: #ef4444;
+}
+
+.personal-tasker-priority.medium {
+    background: #f59e0b;
+}
+
+.personal-tasker-priority.low {
+    background: #22c55e;
+}
+
+.personal-tasker-open {
+    color: var(--gray-400, #94A3B8);
+    font-size: 18px;
+    font-weight: 900;
+}
+
+.personal-tasker-fullscreen-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 4000;
+    display: grid;
+    place-items: center;
+    background: rgba(2,6,23,0.68);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    padding: 28px;
+}
+
+.personal-tasker-fullscreen {
+    width: min(1120px, 96vw);
+    max-height: 92vh;
+    overflow: auto;
+    border-radius: 22px;
+    border: 1px solid rgba(148,163,184,0.22);
+    background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(241,245,249,0.96));
+    box-shadow: 0 30px 90px rgba(2,6,23,0.38);
+    padding: 22px;
+}
+
+.personal-tasker.is-fullscreen .personal-tasker-list {
+    max-height: 54vh;
+}
+
+.task-health-bar {
+    height: 9px;
+    border-radius: 999px;
+    background: rgba(148,163,184,0.18);
+    overflow: hidden;
+    margin-top: 12px;
+}
+
+.task-health-bar span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #ef4444, #f59e0b, #22c55e);
+}
+
+@media (max-width: 720px) {
+    .personal-tasker-metrics,
+    .personal-tasker-metrics.compact {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .personal-tasker-fullscreen-overlay {
+        padding: 10px;
+        place-items: stretch;
+    }
+
+    .personal-tasker-fullscreen {
+        width: 100%;
+        max-height: calc(100vh - 20px);
+        border-radius: 16px;
+        padding: 14px;
+    }
+}
+
 /* Booking widget */
 .widget-booking-item {
     display: flex;
@@ -4460,6 +4723,30 @@ body.dark-mode .board-tool-rail .dashboard-btn.danger {
 
 .dark-mode .widget-task-arrow {
     color: #4A5568;
+}
+
+.dark-mode .personal-tasker-head strong,
+.dark-mode .personal-tasker-row-main strong,
+.dark-mode .personal-tasker-metric strong {
+    color: #E2E8F0;
+}
+
+.dark-mode .personal-tasker-tab,
+.dark-mode .personal-tasker-row,
+.dark-mode .personal-tasker-metric,
+.dark-mode .personal-tasker-achievement {
+    background: rgba(15,23,42,0.72);
+    border-color: rgba(148,163,184,0.18);
+}
+
+.dark-mode .personal-tasker-tab.active {
+    background: rgba(20,184,166,0.18);
+    border-color: rgba(45,212,191,0.38);
+}
+
+.dark-mode .personal-tasker-fullscreen {
+    background: linear-gradient(135deg, rgba(15,23,42,0.98), rgba(30,41,59,0.96));
+    border-color: rgba(148,163,184,0.22);
 }
 
 .dark-mode .widget-footer-link {

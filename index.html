@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.61.2">
-    <link rel="stylesheet" href="css/auth.css?v=0.61.2">
-    <link rel="stylesheet" href="css/layout.css?v=0.61.2">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.2">
-    <link rel="stylesheet" href="css/timeline.css?v=0.61.2">
-    <link rel="stylesheet" href="css/panel.css?v=0.61.2">
-    <link rel="stylesheet" href="css/modals.css?v=0.61.2">
-    <link rel="stylesheet" href="css/controls.css?v=0.61.2">
-    <link rel="stylesheet" href="css/features.css?v=0.61.2">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.2">
-    <link rel="stylesheet" href="css/responsive.css?v=0.61.2">
-    <link rel="stylesheet" href="css/pages.css?v=0.61.2">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.61.2">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.2">
+    <link rel="stylesheet" href="css/base.css?v=0.61.3">
+    <link rel="stylesheet" href="css/auth.css?v=0.61.3">
+    <link rel="stylesheet" href="css/layout.css?v=0.61.3">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.3">
+    <link rel="stylesheet" href="css/timeline.css?v=0.61.3">
+    <link rel="stylesheet" href="css/panel.css?v=0.61.3">
+    <link rel="stylesheet" href="css/modals.css?v=0.61.3">
+    <link rel="stylesheet" href="css/controls.css?v=0.61.3">
+    <link rel="stylesheet" href="css/features.css?v=0.61.3">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.3">
+    <link rel="stylesheet" href="css/responsive.css?v=0.61.3">
+    <link rel="stylesheet" href="css/pages.css?v=0.61.3">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.61.3">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.3">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.61.2 Каталог тортів">✨ 0.61.2 Каталог тортів</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.61.3 Dashboard віджети + tasker">✨ 0.61.3 Dashboard віджети + tasker</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.61.2 — Каталог тортів</p>
+                <p class="tagline">AI First CRM v0.61.3 — Dashboard віджети + tasker</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.61.2: Каталог тортів</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.61.3: Dashboard віджети + tasker</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1270,12 +1270,12 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
-                    <h4>v0.61.2 — Каталог тортів</h4>
+                    <h4>v0.61.3 — Dashboard віджети + tasker</h4>
                     <ul>
-                        <li><b>Каталог тортів</b> — у Products / Кухня / Торти додано 18 узгоджених позицій у правильному порядку.</li>
-                        <li><b>Ціна за вагу</b> — торти зберігаються з numeric price і одиницею <code>100г</code>, а картки читаються як <code>грн/100г</code>, не як ціна за штуку.</li>
-                        <li><b>Canonical products</b> — заливка працює через products + linked price rules, без frontend-mock каталогу або окремої паралельної системи.</li>
-                        <li><b>Повторний запуск без дублів</b> — seed оновлює існуючі cake-записи за стабільним id або назвою і не плодить повтори.</li>
+                        <li><b>Dashboard widgets</b> — повернуто повний registry у меню віджетів і додано явну кнопку «Додати віджет» у dashboard shell.</li>
+                        <li><b>Flexible builder</b> — creator більше не впирається в старий ліміт 6 live widgets: workspace підтримує насичену персональну панель з розумним guardrail.</li>
+                        <li><b>Creator tasker</b> — додано creator-only віджет «Особистий tasker» з режимами «Мені», «Поставив» і «Всі», метриками та achievement-сигналами.</li>
+                        <li><b>Fullscreen mode</b> — tasker можна розгорнути у великий work mode без окремої паралельної tasks-системи.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -8111,27 +8111,27 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.61.2"></script>
-    <script src="js/config.js?v=0.61.2"></script>
-    <script src="js/api.js?v=0.61.2"></script>
-    <script src="js/ui.js?v=0.61.2"></script>
-    <script src="js/auth.js?v=0.61.2"></script>
-    <script src="js/timeline.js?v=0.61.2"></script>
-    <script src="js/booking.js?v=0.61.2"></script>
-    <script src="js/settings.js?v=0.61.2"></script>
-    <script src="js/booking-form.js?v=0.61.2"></script>
-    <script src="js/booking-linked.js?v=0.61.2"></script>
-    <script src="js/settings-dashboard.js?v=0.61.2"></script>
-    <script src="js/settings-history.js?v=0.61.2"></script>
-    <script src="js/settings-afisha.js?v=0.61.2"></script>
-    <script src="js/settings-certificates.js?v=0.61.2"></script>
-    <script src="js/offline.js?v=0.61.2"></script>
-    <script src="js/crm-feature-registry.js?v=0.61.2"></script>
-    <script src="js/search.js?v=0.61.2"></script>
-    <script src="js/ws.js?v=0.61.2"></script>
-    <script src="js/app.js?v=0.61.2"></script>
-    <script src="js/kleshnya-widget.js?v=0.61.2"></script>
-    <script src="js/components/sidebar.js?v=0.61.2"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.61.2"></script>
+    <script src="js/timeline-context.js?v=0.61.3"></script>
+    <script src="js/config.js?v=0.61.3"></script>
+    <script src="js/api.js?v=0.61.3"></script>
+    <script src="js/ui.js?v=0.61.3"></script>
+    <script src="js/auth.js?v=0.61.3"></script>
+    <script src="js/timeline.js?v=0.61.3"></script>
+    <script src="js/booking.js?v=0.61.3"></script>
+    <script src="js/settings.js?v=0.61.3"></script>
+    <script src="js/booking-form.js?v=0.61.3"></script>
+    <script src="js/booking-linked.js?v=0.61.3"></script>
+    <script src="js/settings-dashboard.js?v=0.61.3"></script>
+    <script src="js/settings-history.js?v=0.61.3"></script>
+    <script src="js/settings-afisha.js?v=0.61.3"></script>
+    <script src="js/settings-certificates.js?v=0.61.3"></script>
+    <script src="js/offline.js?v=0.61.3"></script>
+    <script src="js/crm-feature-registry.js?v=0.61.3"></script>
+    <script src="js/search.js?v=0.61.3"></script>
+    <script src="js/ws.js?v=0.61.3"></script>
+    <script src="js/app.js?v=0.61.3"></script>
+    <script src="js/kleshnya-widget.js?v=0.61.3"></script>
+    <script src="js/components/sidebar.js?v=0.61.3"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.61.3"></script>
 </body>
 </html>

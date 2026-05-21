@@ -348,6 +348,91 @@ describe('Communication Send Truth v1', () => {
         }
     });
 
+    it('separates Telegram inbox readiness from the report bot binding', () => {
+        const previous = {
+            TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+            TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME,
+            REPORT_BOT_TOKEN: process.env.REPORT_BOT_TOKEN,
+            REPORT_BOT_USERNAME: process.env.REPORT_BOT_USERNAME,
+        };
+        delete process.env.TELEGRAM_BOT_TOKEN;
+        delete process.env.TELEGRAM_BOT_USERNAME;
+        process.env.REPORT_BOT_TOKEN = '123456:abcdefghijklmnopqrstuvwxyz';
+        process.env.REPORT_BOT_USERNAME = '@eventgenix_report_bot';
+        clearModules();
+        const accounts = require('../services/omni-accounts');
+
+        try {
+            const statuses = accounts.getOmniAccountStatuses({ now: new Date('2099-05-15T10:00:00Z') });
+            const telegram = statuses.find(acc => acc.channel === 'telegram');
+            const reportBot = statuses.find(acc => acc.channel === 'report_bot');
+            assert.equal(telegram.provider, 'telegram');
+            assert.equal(telegram.purpose, 'inbox');
+            assert.equal(telegram.connected, false);
+            assert.equal(telegram.sendCapable, false);
+            assert.equal(reportBot.provider, 'telegram');
+            assert.equal(reportBot.purpose, 'reports');
+            assert.equal(reportBot.connected, true);
+            assert.equal(reportBot.sendCapable, true);
+        } finally {
+            Object.entries(previous).forEach(([key, value]) => {
+                if (value === undefined) delete process.env[key];
+                else process.env[key] = value;
+            });
+            clearModules();
+        }
+    });
+
+    it('treats needs_rebind Telegram inbox rows as disconnected and non-send-capable', async () => {
+        clearModules();
+        installMock('../db', {
+            pool: {
+                query: async (sql, params = []) => {
+                    const text = String(sql).replace(/\s+/g, ' ').trim();
+                    if (/FROM omni_provider_connections WHERE channel = \$1/i.test(text)) {
+                        assert.equal(params[0], 'telegram');
+                        return {
+                            rows: [{
+                                channel: 'telegram',
+                                provider: 'telegram',
+                                purpose: 'inbox',
+                                provider_kind: 'bot',
+                                status: 'needs_rebind',
+                                credentials: {
+                                    values: { botUsername: '@old_report_bot' },
+                                    secrets: { apiKey: 'masked' },
+                                    masks: {},
+                                },
+                                account_display_name: 'Old report bot',
+                                masked_identifier: '@old_report_bot',
+                                send_enabled: false,
+                                receive_enabled: false,
+                                warning: 'Legacy Telegram row looked like a report/alerts bot.',
+                                last_checked_at: '2099-05-15T09:00:00Z',
+                                last_changed_at: '2099-05-15T09:00:00Z',
+                                changed_by: 'legacy repair',
+                                last_test_at: null,
+                                last_test_status: null,
+                                last_test_message: null,
+                            }],
+                        };
+                    }
+                    throw new Error(`Unexpected query: ${text}`);
+                },
+            },
+        });
+        const accounts = require('../services/omni-accounts');
+        const telegram = await accounts.getOmniAccountStatusAsync('telegram', { now: new Date('2099-05-15T10:00:00Z') });
+
+        assert.equal(telegram.status, 'needs_rebind');
+        assert.equal(telegram.connected, false);
+        assert.equal(telegram.sendCapable, false);
+        assert.equal(telegram.receiveCapable, false);
+        assert.ok(telegram.supportedActions.includes('connect'));
+        assert.ok(telegram.supportedActions.includes('disconnect'));
+        clearModules();
+    });
+
     it('maintains durable last inbound timestamp when inbound messages are saved', async () => {
         const pool = createInboundPool();
         const hub = loadHub(pool);
@@ -626,6 +711,10 @@ describe('Communication Send Truth v1', () => {
             path.join(repoRoot, 'db/migrations/181_omni_provider_connections.sql'),
             'utf8'
         );
+        const telegramPurposeMigration = fs.readFileSync(
+            path.join(repoRoot, 'db/migrations/202_omni_telegram_binding_purpose.sql'),
+            'utf8'
+        );
         const accountsService = fs.readFileSync(path.join(repoRoot, 'services/omni-accounts.js'), 'utf8');
         const omniRoute = fs.readFileSync(path.join(repoRoot, 'routes/omnichannel.js'), 'utf8');
 
@@ -634,14 +723,22 @@ describe('Communication Send Truth v1', () => {
         assert.match(migration, /credentials JSONB NOT NULL DEFAULT '\{\}'::jsonb/);
         assert.match(migration, /changed_by_user_id INTEGER REFERENCES users\(id\)/);
         assert.match(migration, /last_test_status/);
+        assert.match(telegramPurposeMigration, /ADD COLUMN IF NOT EXISTS provider/);
+        assert.match(telegramPurposeMigration, /ADD COLUMN IF NOT EXISTS purpose/);
+        assert.match(telegramPurposeMigration, /needs_rebind/);
+        assert.match(telegramPurposeMigration, /report_bot/);
         assert.match(accountsService, /encryptSecret/);
         assert.match(accountsService, /SECRET_PREFIX/);
         assert.match(accountsService, /setupFieldsForClient/);
         assert.match(accountsService, /resolveOmniRuntimeConfig/);
         assert.match(accountsService, /report_bot/);
+        assert.match(accountsService, /repairTelegramLegacyBindings/);
+        assert.match(accountsService, /purposeLabel/);
         assert.match(omniRoute, /requireMinRole\('manager'\)/);
         assert.match(omniRoute, /\/accounts\/:channel\/test/);
         assert.match(omniRoute, /\/accounts\/:channel\/disconnect/);
+        assert.match(omniRoute, /\/accounts\/telegram\/inbox\/test/);
+        assert.match(omniRoute, /\/accounts\/telegram\/inbox\/disconnect/);
         assert.match(omniRoute, /auditConnectionAction\(req, 'disconnect'/);
     });
 
@@ -658,6 +755,9 @@ describe('Communication Send Truth v1', () => {
         assert.match(omniHtml, /data-provider-selector="sms"/);
         assert.match(omniHtml, /providerOptionsForAccount/);
         assert.match(omniHtml, /providerLabel/);
+        assert.match(omniHtml, /Telegram inbox/);
+        assert.match(omniHtml, /Бот звітів/);
+        assert.match(omniHtml, /accountPurposeNote/);
         assert.match(omniHtml, /data-account-action="test"/);
         assert.match(omniHtml, /data-account-action="disconnect"/);
         assert.match(omniHtml, /Відправка заблокована/);

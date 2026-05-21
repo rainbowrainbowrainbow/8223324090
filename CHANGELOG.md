@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.4 - OmniClaw Telegram inbox recovery
+
+### OmniClaw / Telegram binding recovery [codex]
+- **OmniClaw** - Telegram inbox binding відокремлено від report bot контуру, щоб бот звітів більше не створював фальшивий стан "inbox already connected".
+- **Channels** - додано явний disconnect / rebind / test flow для Telegram inbox з окремими API alias endpoints і зрозумілими CTA у вкладці каналів.
+- **Recovery** - legacy Telegram rows із report-bot семантикою нормалізуються у `report_bot`, а inbox переводиться у `needs_rebind` без втрати окремого контуру звітів.
+- **Test flow** - Telegram inbox test перевіряє Bot API, webhook route `/api/omni/webhook/telegram` і за наявності test chat ID виконує silent test send.
+
+---
+
 ## v0.61.3 - Dashboard віджети + tasker
 
 ### Dashboard widgets recovery + Creator tasker [codex]

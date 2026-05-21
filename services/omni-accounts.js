@@ -40,12 +40,16 @@ const STATUS_COPY = {
   webhook_missing: 'Webhook не налаштовано',
   history_only: 'Тільки історія',
   provider_unreachable: 'Провайдер не відповів',
+  needs_rebind: 'Потрібна перепривʼязка',
 };
 
 const CHANNELS = [
   {
     channel: 'telegram',
-    label: 'Telegram',
+    label: 'Telegram inbox',
+    provider: 'telegram',
+    purpose: 'inbox',
+    purposeLabel: 'Inbox Telegram',
     providerKind: 'bot',
     envKeys: ['TELEGRAM_BOT_TOKEN'],
     accountEnvKeys: ['TELEGRAM_BOT_USERNAME', 'TELEGRAM_DEFAULT_CHAT_ID'],
@@ -57,19 +61,23 @@ const CHANNELS = [
       defaultChatId: 'TELEGRAM_DEFAULT_CHAT_ID',
     },
     fields: [
-      { name: 'botToken', label: 'Bot token', type: 'secret', required: true, placeholder: '123456:ABC-DEF...', hint: 'Токен з BotFather. Після збереження CRM покаже тільки маску.' },
-      { name: 'botUsername', label: 'Username бота', type: 'text', required: false, placeholder: '@eventgenix_bot', hint: 'Не обовʼязково: CRM спробує отримати username через безпечну перевірку getMe.' },
-      { name: 'defaultChatId', label: 'Чат за замовчуванням', type: 'text', required: false, placeholder: '-1001234567890', hint: 'Потрібно лише для службових сповіщень, не для Omni-діалогів.' },
+      { name: 'botToken', label: 'Inbox bot token', type: 'secret', required: true, placeholder: '123456:ABC-DEF...', hint: 'Токен саме Telegram inbox-бота з BotFather. Не вставляйте сюди report/alerts bot token.' },
+      { name: 'botUsername', label: 'Username inbox-бота', type: 'text', required: false, placeholder: '@eventgenix_inbox_bot', hint: 'Не обовʼязково: CRM спробує отримати username через безпечну перевірку getMe.' },
+      { name: 'defaultChatId', label: 'Тестовий chat ID', type: 'text', required: false, placeholder: '-1001234567890', hint: 'Опційно для тестової відправки inbox-ботом. Це не report bot і не замінює webhook.' },
     ],
     webhookPath: '/api/omni/webhook/telegram',
-    businessImpact: 'Без Telegram CRM не зможе відповідати клієнтам у Telegram і надсилати повідомлення ботом.',
+    webhookNote: 'Для OmniClaw inbox webhook має вести саме на /api/omni/webhook/telegram. /api/report-bot/webhook — це окремий бот звітів і не робить inbox готовим.',
+    businessImpact: 'Telegram inbox приймає і відправляє робочі діалоги OmniClaw. Бот звітів підключається окремо і не замінює цей канал.',
     localValidation: validateTelegram,
     verifier: verifyTelegram,
-    envWarning: 'Telegram bot token is not configured',
+    envWarning: 'Telegram inbox bot token is not configured',
   },
   {
     channel: 'viber',
     label: 'Viber',
+    provider: 'viber',
+    purpose: 'inbox',
+    purposeLabel: 'Viber inbox',
     providerKind: 'messenger',
     envKeys: ['VIBER_TOKEN'],
     accountEnvKeys: ['VIBER_SENDER_NAME'],
@@ -93,6 +101,9 @@ const CHANNELS = [
   {
     channel: 'sms',
     label: 'SMS',
+    provider: 'sms',
+    purpose: 'inbox',
+    purposeLabel: 'SMS inbox',
     providerKind: 'sms',
     envKeys: ['FLYSMS_API_KEY', 'SMS_FLY_API_KEY', 'SMSFLY_API_KEY', 'TURBOSMS_TOKEN'],
     accountEnvKeys: ['FLYSMS_SENDER', 'SMS_FLY_SENDER', 'SMSFLY_SENDER', 'TURBOSMS_SENDER'],
@@ -110,6 +121,9 @@ const CHANNELS = [
   {
     channel: 'facebook',
     label: 'Facebook',
+    provider: 'facebook',
+    purpose: 'inbox',
+    purposeLabel: 'Facebook inbox',
     providerKind: 'meta',
     envKeys: ['FB_PAGE_TOKEN'],
     accountEnvKeys: ['FB_PAGE_NAME', 'FB_PAGE_ID'],
@@ -138,6 +152,9 @@ const CHANNELS = [
   {
     channel: 'instagram',
     label: 'Instagram',
+    provider: 'instagram',
+    purpose: 'inbox',
+    purposeLabel: 'Instagram inbox',
     providerKind: 'meta',
     envKeys: ['IG_PAGE_TOKEN'],
     accountEnvKeys: ['IG_ACCOUNT_NAME', 'IG_PAGE_ID'],
@@ -166,6 +183,9 @@ const CHANNELS = [
   {
     channel: 'binotel',
     label: 'Binotel',
+    provider: 'binotel',
+    purpose: 'history',
+    purposeLabel: 'Binotel history',
     providerKind: 'telephony',
     envKeys: ['BINOTEL_WEBHOOK_SECRET', 'BINOTEL_API_KEY', 'BINOTEL_KEY'],
     accountEnvKeys: ['BINOTEL_ACCOUNT_NAME'],
@@ -193,7 +213,10 @@ const CHANNELS = [
   },
   {
     channel: 'report_bot',
-    label: 'Report Bot',
+    label: 'Бот звітів',
+    provider: 'telegram',
+    purpose: 'reports',
+    purposeLabel: 'Telegram reports',
     providerKind: 'bot',
     envKeys: ['REPORT_BOT_TOKEN'],
     accountEnvKeys: ['REPORT_BOT_USERNAME', 'REPORT_BOT_API_KEY'],
@@ -212,7 +235,8 @@ const CHANNELS = [
       { name: 'apiKey', label: 'Bot API key', type: 'secret', required: true, placeholder: 'довгий API key', hint: 'Ключ для bot-to-CRM endpoints: submit, summary, accounts.' },
     ],
     webhookPath: '/api/report-bot/webhook',
-    businessImpact: 'Без Report Bot співробітники не зможуть подавати фінансові звіти через Telegram-бота.',
+    webhookNote: 'Це окремий Telegram report/alerts bot. Його webhook не приймає клієнтські inbox-діалоги OmniClaw.',
+    businessImpact: 'Бот звітів приймає фінансові й службові звіти. Він не означає, що Telegram inbox підключений.',
     localValidation: validateReportBot,
     verifier: verifyReportBot,
     envWarning: 'Report Bot token is not configured',
@@ -373,7 +397,7 @@ function runtimeValuesFromConnection(def, row) {
 }
 
 function mergeRuntimeConfig(def, row) {
-  if (row && row.status === 'disconnected') return {};
+  if (row && (row.status === 'disconnected' || row.status === 'needs_rebind')) return {};
   return {
     ...envConfig(def),
     ...(row ? runtimeValuesFromConnection(def, row) : {}),
@@ -399,7 +423,7 @@ function setupFieldsForClient(def, row) {
 }
 
 function publicConnectionSummary(def, row, runtime = {}) {
-  const connected = hasEnv(def.envKeys) || Boolean(row && row.status !== 'disconnected');
+  const connected = hasEnv(def.envKeys) || Boolean(row && row.status !== 'disconnected' && row.status !== 'needs_rebind');
   const accountName =
     row?.account_display_name
     || runtime.botUsername
@@ -445,6 +469,7 @@ function statusFromRowOrEnv(def, row, now = new Date()) {
   const connected = status !== 'disconnected'
     && status !== 'token_expired'
     && status !== 'misconfigured'
+    && status !== 'needs_rebind'
     && Boolean(summary.connected);
   const sendCapable = Boolean(connected && def.sendSupported && status !== 'history_only' && status !== 'webhook_missing');
   const receiveCapable = Boolean(connected && def.receiveSupported && status !== 'token_expired');
@@ -459,8 +484,10 @@ function statusFromRowOrEnv(def, row, now = new Date()) {
     key: def.channel,
     label: def.label,
     providerKind: def.providerKind,
-    provider: def.provider || def.channel,
+    provider: row?.provider || def.provider || def.channel,
     providerLabel: def.providerLabel || def.label,
+    purpose: row?.purpose || def.purpose || 'primary',
+    purposeLabel: def.purposeLabel || row?.purpose || 'Primary',
     status,
     statusLabel: STATUS_COPY[status] || status,
     connected,
@@ -472,6 +499,7 @@ function statusFromRowOrEnv(def, row, now = new Date()) {
     warning,
     nextActionHint,
     businessImpact: def.businessImpact,
+    webhookNote: def.webhookNote || null,
     lastCheckedAt: row?.last_checked_at ? new Date(row.last_checked_at).toISOString() : now.toISOString(),
     lastChangedAt: row?.last_changed_at ? new Date(row.last_changed_at).toISOString() : null,
     changedBy: row?.changed_by || null,
@@ -489,6 +517,7 @@ function statusFromRowOrEnv(def, row, now = new Date()) {
 }
 
 function warningForStatus(def, status, connected, sendCapable, receiveCapable) {
+  if (status === 'needs_rebind') return `${def.label}: legacy/помилкова привʼязка не може вважатися робочим inbox. Відвʼяжіть її або підключіть правильний канал заново.`;
   if (!connected) return def.envWarning || `${def.label} не налаштований`;
   if (status === 'token_expired') return `${def.label}: токен не приймається провайдером. Оновіть токен і перевірте знову.`;
   if (status === 'misconfigured') return `${def.label}: бракує обовʼязкових полів або налаштування неповне.`;
@@ -501,6 +530,7 @@ function warningForStatus(def, status, connected, sendCapable, receiveCapable) {
 }
 
 function nextActionForStatus(def, status, connected, sendCapable, receiveCapable) {
+  if (status === 'needs_rebind') return `Натисніть «Підключити» для чистої перепривʼязки ${def.label}. Якщо це був бот звітів, він показується окремою карткою і не блокує inbox.`;
   if (!connected || status === 'misconfigured') return `Натисніть «Підключити» і заповніть обовʼязкові поля для ${def.label}.`;
   if (status === 'token_expired') return 'Відкрийте налаштування, вставте новий токен і запустіть перевірку.';
   if (status === 'webhook_missing') return 'Скопіюйте webhook URL у кабінет провайдера і натисніть «Перевірити».';
@@ -532,6 +562,9 @@ function setupSteps(def) {
   ];
   if (def.webhookPath) {
     steps.push(`Якщо провайдер приймає webhook, вкажіть URL: ${publicWebhookUrl(def)}.`);
+  }
+  if (def.webhookNote) {
+    steps.push(def.webhookNote);
   }
   if (def.inboundOnly) {
     steps.push('Цей канал не підтримує відправку з CRM, тому статус відправки буде history-only.');
@@ -599,11 +632,97 @@ function accountToAlert(acc) {
   };
 }
 
+function isReportBotShapedConnection(row) {
+  if (!row || normalizeChannel(row.channel) !== 'telegram') return false;
+  const config = normalizeCredentialsFromRow(row);
+  const values = config.values || {};
+  const secrets = config.secrets || {};
+  const text = [
+    row.account_display_name,
+    row.masked_identifier,
+    row.warning,
+    values.botUsername,
+  ].filter(Boolean).join(' ').toLowerCase();
+  return Boolean(
+    values.apiKey
+    || secrets.apiKey
+    || values.webhookSecret
+    || secrets.webhookSecret
+    || /report|звіт|zvit|alerts?/.test(text)
+  );
+}
+
+async function repairTelegramLegacyBindings(rows) {
+  const telegramRow = rows.get('telegram');
+  if (!isReportBotShapedConnection(telegramRow)) return false;
+  try {
+    await pool.query(
+      `INSERT INTO ${CONNECTION_TABLE}
+         (channel, provider, purpose, provider_kind, status, credentials, account_display_name, masked_identifier,
+          send_enabled, receive_enabled, warning, last_checked_at, last_changed_at, changed_by_user_id,
+          changed_by, last_test_at, last_test_status, last_test_message, disconnected_at, created_at, updated_at)
+       SELECT
+          'report_bot',
+          'telegram',
+          'reports',
+          provider_kind,
+          status,
+          credentials,
+          COALESCE(account_display_name, 'Бот звітів'),
+          masked_identifier,
+          send_enabled,
+          receive_enabled,
+          COALESCE(warning, 'Legacy Telegram binding reclassified as report bot.'),
+          last_checked_at,
+          NOW(),
+          changed_by_user_id,
+          COALESCE(changed_by, 'legacy repair'),
+          last_test_at,
+          last_test_status,
+          last_test_message,
+          disconnected_at,
+          NOW(),
+          NOW()
+         FROM ${CONNECTION_TABLE}
+        WHERE channel = 'telegram'
+          AND NOT EXISTS (SELECT 1 FROM ${CONNECTION_TABLE} WHERE channel = 'report_bot')
+       ON CONFLICT (channel) DO NOTHING`
+    );
+    await pool.query(
+      `UPDATE ${CONNECTION_TABLE}
+          SET provider = 'telegram',
+              purpose = 'inbox',
+              status = 'needs_rebind',
+              credentials = '{}'::jsonb,
+              account_display_name = NULL,
+              masked_identifier = NULL,
+              send_enabled = false,
+              receive_enabled = false,
+              warning = 'Legacy Telegram row looked like a report/alerts bot. It was separated from Telegram inbox; reconnect the real inbox bot.',
+              last_changed_at = NOW(),
+              disconnected_at = NOW(),
+              updated_at = NOW()
+        WHERE channel = 'telegram'`
+    );
+    log.warn('Reclassified legacy Telegram report-bot binding away from inbox');
+    return true;
+  } catch (err) {
+    log.warn('Unable to repair legacy Telegram binding', { error: err.message });
+    return false;
+  }
+}
+
 async function loadConnectionRows() {
   try {
     const result = await pool.query(`SELECT * FROM ${CONNECTION_TABLE}`);
     const rows = new Map();
     result.rows.forEach(row => rows.set(normalizeChannel(row.channel), row));
+    if (await repairTelegramLegacyBindings(rows)) {
+      const refreshed = await pool.query(`SELECT * FROM ${CONNECTION_TABLE}`);
+      const refreshedRows = new Map();
+      refreshed.rows.forEach(row => refreshedRows.set(normalizeChannel(row.channel), row));
+      return refreshedRows;
+    }
     return rows;
   } catch (err) {
     if (!/omni_provider_connections|does not exist|relation/i.test(err.message || '')) {
@@ -767,11 +886,13 @@ async function upsertOmniConnection(channel, payload = {}, user = {}) {
 
   const result = await pool.query(
     `INSERT INTO ${CONNECTION_TABLE}
-       (channel, provider_kind, status, credentials, account_display_name, masked_identifier,
+       (channel, provider, purpose, provider_kind, status, credentials, account_display_name, masked_identifier,
         send_enabled, receive_enabled, warning, last_checked_at, last_changed_at, changed_by_user_id,
         changed_by, last_test_at, last_test_status, last_test_message, disconnected_at, updated_at)
-     VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,NOW(),NOW(),$10,$11,NOW(),$12,$13,NULL,NOW())
+     VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,NOW(),NOW(),$12,$13,NOW(),$14,$15,NULL,NOW())
      ON CONFLICT (channel) DO UPDATE SET
+        provider = EXCLUDED.provider,
+        purpose = EXCLUDED.purpose,
         provider_kind = EXCLUDED.provider_kind,
         status = EXCLUDED.status,
         credentials = EXCLUDED.credentials,
@@ -792,6 +913,8 @@ async function upsertOmniConnection(channel, payload = {}, user = {}) {
      RETURNING *`,
     [
       def.channel,
+      def.provider || def.channel,
+      def.purpose || 'primary',
       def.providerKind,
       status,
       JSON.stringify(normalized.credentials),
@@ -885,26 +1008,37 @@ async function disconnectOmniConnection(channel, user = {}) {
   const changedBy = userLabel(user);
   const result = await pool.query(
     `INSERT INTO ${CONNECTION_TABLE}
-       (channel, provider_kind, status, credentials, account_display_name, masked_identifier,
+       (channel, provider, purpose, provider_kind, status, credentials, account_display_name, masked_identifier,
         send_enabled, receive_enabled, warning, last_checked_at, last_changed_at, changed_by_user_id,
         changed_by, disconnected_at, updated_at)
-     VALUES ($1,$2,'disconnected','{}'::jsonb,NULL,NULL,false,false,$3,NOW(),NOW(),$4,$5,NOW(),NOW())
+     VALUES ($1,$2,$3,$4,'disconnected','{}'::jsonb,NULL,NULL,false,false,$5,NOW(),NOW(),$6,$7,NOW(),NOW())
      ON CONFLICT (channel) DO UPDATE SET
+        provider = EXCLUDED.provider,
+        purpose = EXCLUDED.purpose,
+        provider_kind = EXCLUDED.provider_kind,
         status = 'disconnected',
         credentials = '{}'::jsonb,
         account_display_name = NULL,
         masked_identifier = NULL,
         send_enabled = false,
         receive_enabled = false,
-        warning = $3,
+        warning = $5,
         last_checked_at = NOW(),
         last_changed_at = NOW(),
-        changed_by_user_id = $4,
-        changed_by = $5,
+        changed_by_user_id = $6,
+        changed_by = $7,
         disconnected_at = NOW(),
         updated_at = NOW()
      RETURNING *`,
-    [def.channel, def.providerKind, def.envWarning || `${def.label} відключено`, user.id || null, changedBy]
+    [
+      def.channel,
+      def.provider || def.channel,
+      def.purpose || 'primary',
+      def.providerKind,
+      def.envWarning || `${def.label} відключено`,
+      user.id || null,
+      changedBy,
+    ]
   );
   return {
     account: statusFromRowOrEnv(def, result.rows[0], new Date()),
@@ -1051,7 +1185,7 @@ async function httpsJson(options, body = null) {
   });
 }
 
-async function verifyTelegram(runtime) {
+async function verifyTelegram(runtime, context = {}) {
   try {
     const result = await httpsJson({
       hostname: 'api.telegram.org',
@@ -1060,7 +1194,75 @@ async function verifyTelegram(runtime) {
     });
     if (result.ok && result.result) {
       const username = result.result.username ? `@${result.result.username}` : runtime.botUsername || 'Telegram bot';
-      return { status: 'success', message: `Токен дійсний. Бот: ${username}.`, displayName: username };
+      const needsReadinessCheck = context.mode === 'test' || context.mode === 'recheck';
+      if (!needsReadinessCheck) {
+        return { status: 'success', message: `Токен дійсний. Бот: ${username}.`, displayName: username };
+      }
+
+      const webhook = await httpsJson({
+        hostname: 'api.telegram.org',
+        path: `/bot${runtime.botToken}/getWebhookInfo`,
+        method: 'GET',
+      });
+      const webhookUrl = String(webhook?.result?.url || '').trim();
+      const expectedPath = '/api/omni/webhook/telegram';
+      if (!webhookUrl) {
+        return {
+          status: 'webhook_missing',
+          message: `Токен дійсний. Бот: ${username}. Але Telegram webhook для inbox ще не встановлений.`,
+          warning: 'Telegram inbox webhook missing',
+          displayName: username,
+          details: { webhookUrl: null, expectedPath },
+        };
+      }
+      if (!webhookUrl.includes(expectedPath)) {
+        return {
+          status: 'webhook_missing',
+          message: `Токен дійсний. Бот: ${username}. Але webhook веде не в Omni inbox (${webhookUrl}). Report Bot webhook не замінює /api/omni/webhook/telegram.`,
+          warning: 'Telegram webhook points outside Omni inbox',
+          displayName: username,
+          details: { webhookUrl, expectedPath },
+        };
+      }
+
+      let outboundNote = 'Тестову відправку пропущено: тестовий chat ID не вказаний.';
+      let outboundOk = null;
+      if (context.mode === 'test' && runtime.defaultChatId) {
+        try {
+          const sendResult = await httpsJson({
+            hostname: 'api.telegram.org',
+            path: `/bot${runtime.botToken}/sendMessage`,
+            method: 'POST',
+          }, {
+            chat_id: runtime.defaultChatId,
+            text: 'OmniClaw inbox test: Telegram binding готовий.',
+            disable_notification: true,
+          });
+          outboundOk = sendResult?.ok === true;
+          outboundNote = outboundOk
+            ? `Тестове повідомлення надіслано в ${maskIdentifier(runtime.defaultChatId)}.`
+            : `Telegram не підтвердив тестову відправку: ${sendResult?.description || 'unknown error'}.`;
+        } catch (sendErr) {
+          outboundOk = false;
+          outboundNote = `Тестова відправка не пройшла: ${sendErr.message}.`;
+        }
+      }
+
+      if (outboundOk === false) {
+        return {
+          status: 'partial',
+          message: `Webhook inbox готовий. ${outboundNote}`,
+          warning: 'Telegram inbox outbound test failed',
+          displayName: username,
+          details: { webhookUrl, expectedPath, outboundOk },
+        };
+      }
+      return {
+        status: 'success',
+        message: `Токен дійсний. Бот: ${username}. Webhook inbox готовий. ${outboundNote}`,
+        displayName: username,
+        details: { webhookUrl, expectedPath, outboundOk },
+      };
     }
     return { status: 'failed_auth', message: result.description || 'Telegram не підтвердив токен.', warning: result.description || 'Telegram token invalid' };
   } catch (err) {
@@ -1069,7 +1271,7 @@ async function verifyTelegram(runtime) {
 }
 
 async function verifyReportBot(runtime) {
-  const base = await verifyTelegram({ botToken: runtime.botToken, botUsername: runtime.botUsername });
+  const base = await verifyTelegram({ botToken: runtime.botToken, botUsername: runtime.botUsername }, { mode: 'connect' });
   if (base.status !== 'success') return base;
   return {
     ...base,

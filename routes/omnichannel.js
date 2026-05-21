@@ -312,6 +312,40 @@ router.post('/accounts/:channel/disconnect', auth, manageConnections, async (req
     }
 });
 
+// Explicit Telegram inbox aliases keep report/alerts bot operations separate in API semantics.
+router.post('/accounts/telegram/inbox/connect', auth, manageConnections, async (req, res) => {
+    try {
+        const result = await upsertOmniConnection('telegram', req.body || {}, req.user);
+        await auditConnectionAction(req, 'connect_inbox', 'telegram_inbox', result);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        log.error('Connect Telegram inbox error:', err.message);
+        res.status(err.statusCode || 500).json({ success: false, error: err.message || 'Не вдалося підключити Telegram inbox', details: err.details || null });
+    }
+});
+
+router.post('/accounts/telegram/inbox/test', auth, manageConnections, async (req, res) => {
+    try {
+        const result = await testOmniConnection('telegram', req.user);
+        await auditConnectionAction(req, 'test_inbox', 'telegram_inbox', result);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        log.error('Test Telegram inbox error:', err.message);
+        res.status(err.statusCode || 500).json({ success: false, error: err.message || 'Не вдалося протестувати Telegram inbox', details: err.details || null });
+    }
+});
+
+router.post('/accounts/telegram/inbox/disconnect', auth, manageConnections, async (req, res) => {
+    try {
+        const result = await disconnectOmniConnection('telegram', req.user);
+        await auditConnectionAction(req, 'disconnect_inbox', 'telegram_inbox', result);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        log.error('Disconnect Telegram inbox error:', err.message);
+        res.status(err.statusCode || 500).json({ success: false, error: err.message || 'Не вдалося відвʼязати Telegram inbox', details: err.details || null });
+    }
+});
+
 // List conversations
 router.get('/conversations', auth, async (req, res) => {
     try {

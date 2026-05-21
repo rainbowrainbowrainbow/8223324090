@@ -11,14 +11,14 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.61.3">
-    <link rel="stylesheet" href="css/layout.css?v=0.61.3">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.3">
-    <link rel="stylesheet" href="css/pages.css?v=0.61.3">
-    <link rel="stylesheet" href="css/modals.css?v=0.61.3">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.3">
-    <link rel="stylesheet" href="css/responsive.css?v=0.61.3">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.3">
+    <link rel="stylesheet" href="css/base.css?v=0.61.4">
+    <link rel="stylesheet" href="css/layout.css?v=0.61.4">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.4">
+    <link rel="stylesheet" href="css/pages.css?v=0.61.4">
+    <link rel="stylesheet" href="css/modals.css?v=0.61.4">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.4">
+    <link rel="stylesheet" href="css/responsive.css?v=0.61.4">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -339,6 +339,24 @@
             color: var(--text-primary, #1a202c);
             font-size: 12px;
             line-height: 1.35;
+        }
+
+        .omni-account-purpose {
+            margin-top: 8px;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid rgba(14,165,233,0.18);
+            background: rgba(14,165,233,0.08);
+            color: var(--text-primary, #1a202c);
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.35;
+        }
+
+        .omni-account-purpose.warning {
+            border-color: rgba(245,158,11,0.28);
+            background: rgba(245,158,11,0.12);
+            color: #92400E;
         }
 
         .omni-account-hint {
@@ -1595,12 +1613,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.61.3"></script>
-    <script src="js/api.js?v=0.61.3"></script>
-    <script src="js/auth.js?v=0.61.3"></script>
-    <script src="js/components/sidebar.js?v=0.61.3"></script>
+    <script src="js/config.js?v=0.61.4"></script>
+    <script src="js/api.js?v=0.61.4"></script>
+    <script src="js/auth.js?v=0.61.4"></script>
+    <script src="js/components/sidebar.js?v=0.61.4"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.61.3"></script>
+    <script src="js/ws.js?v=0.61.4"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -1691,7 +1709,8 @@
 
         const CHANNEL_NAMES = {
             telegram: 'Telegram', viber: 'Viber', sms: 'SMS',
-            facebook: 'Facebook', instagram: 'Instagram', binotel: 'Binotel'
+            facebook: 'Facebook', instagram: 'Instagram', binotel: 'Binotel',
+            report_bot: 'Бот звітів'
         };
         const SEND_DISABLED_CHANNELS = new Set(['binotel']);
 
@@ -1820,8 +1839,24 @@
 
         function accountDisplayLabel(acc) {
             const label = acc?.label || acc?.channel || 'Канал';
+            if (acc?.channel === 'telegram') return 'Telegram inbox';
+            if (acc?.channel === 'report_bot') return 'Бот звітів';
             if (acc?.channel === 'sms' && acc.providerLabel) return label + ' • ' + acc.providerLabel;
             return label;
+        }
+
+        function accountPurposeNote(acc) {
+            if (!acc) return '';
+            if (acc.channel === 'telegram') {
+                if (acc.status === 'needs_rebind') {
+                    return 'Legacy-привʼязку Telegram відокремлено від inbox. Підключіть правильний Telegram inbox-бот; бот звітів лишається окремим контуром.';
+                }
+                return 'Inbox Telegram відповідає за робочі діалоги OmniClaw. Підключений бот звітів не означає, що inbox готовий.';
+            }
+            if (acc.channel === 'report_bot') {
+                return 'Бот звітів — окремий Telegram-контур для фінансових/службових звітів. Відвʼязка Telegram inbox не чіпає цей бот.';
+            }
+            return acc.purposeLabel ? ('Контур: ' + acc.purposeLabel) : '';
         }
 
         function accountCapabilityHtml(acc) {
@@ -1850,11 +1885,14 @@
 
             accountsGrid.innerHTML = omniAccounts.map(acc => {
                 const tone = omniAccountTone(acc);
-                const actionLabel = acc.connected ? 'Керувати' : 'Підключити';
+                const actionLabel = acc.channel === 'telegram'
+                    ? (acc.connected ? 'Перепривʼязати inbox' : 'Підключити inbox')
+                    : (acc.connected ? 'Керувати' : 'Підключити');
                 const highlighted = accountPanelChannel && accountPanelChannel === acc.channel ? ' is-highlighted' : '';
                 const changed = formatAccountTime(acc.lastChangedAt);
                 const checked = formatAccountTime(acc.lastCheckedAt);
                 const tested = formatAccountTime(acc.lastTestAt);
+                const purposeNote = accountPurposeNote(acc);
                 const audit = [
                     checked ? 'перевірено ' + checked : null,
                     changed ? 'змінено ' + changed : null,
@@ -1868,6 +1906,7 @@
                     '</div>' +
                     '<div class="omni-account-meta">' + esc(acc.accountName || acc.maskedIdentifier || 'Акаунт не підключений') + (acc.maskedIdentifier ? ' · ' + esc(acc.maskedIdentifier) : '') + '</div>' +
                     accountCapabilityHtml(acc) +
+                    (purposeNote ? '<div class="omni-account-purpose' + (acc.channel === 'telegram' && !acc.connected ? ' warning' : '') + '">' + esc(purposeNote) + '</div>' : '') +
                     '<div class="omni-account-impact">' + esc(accountImpactText(acc)) + '</div>' +
                     '<div class="omni-account-hint">' + esc(accountNextActionText(acc)) + '</div>' +
                     (audit ? '<div class="omni-account-hint">' + esc(audit) + '</div>' : '') +
@@ -2023,7 +2062,7 @@
                 ? selectedOption.fields
                 : (Array.isArray(acc.setupFields) ? acc.setupFields : []);
             const webhookUrl = selectedOption?.webhookUrl || acc.webhookUrl;
-            const webhookNote = selectedOption?.webhookNote || '';
+            const webhookNote = selectedOption?.webhookNote || acc.webhookNote || '';
             if (connectionModalState && acc.channel === 'sms') connectionModalState.provider = effectiveProvider;
             connectionBody.innerHTML =
                 '<div class="omni-connection-steps"><strong>Порядок підключення</strong>' +
@@ -2041,8 +2080,12 @@
             if (!acc || !connectionModal) return;
             const provider = defaultProviderForAccount(acc);
             connectionModalState = { mode: 'connect', channel: acc.channel, provider };
-            connectionTitle.textContent = (acc.connected ? 'Керувати ' : 'Підключити ') + (acc.label || acc.channel);
-            connectionSubtitle.textContent = acc.businessImpact || 'Заповніть дані провайдера і запустіть перевірку.';
+            connectionTitle.textContent = acc.channel === 'telegram'
+                ? (acc.connected ? 'Перепривʼязати Telegram inbox' : 'Підключити Telegram inbox')
+                : ((acc.connected ? 'Керувати ' : 'Підключити ') + (acc.label || acc.channel));
+            connectionSubtitle.textContent = acc.channel === 'telegram'
+                ? 'Це окремий inbox binding для робочих діалогів OmniClaw. Бот звітів тут не використовується і не блокує повторне підключення.'
+                : (acc.businessImpact || 'Заповніть дані провайдера і запустіть перевірку.');
             connectionSubmit.textContent = 'Зберегти і перевірити';
             connectionSubmit.className = 'primary';
             renderConnectModalBody(acc, provider);
@@ -2055,13 +2098,20 @@
             const acc = omniAccountForChannel(channel);
             if (!acc || !connectionModal) return;
             connectionModalState = { mode: 'disconnect', channel: acc.channel };
-            connectionTitle.textContent = 'Відключити ' + (acc.label || acc.channel);
-            connectionSubtitle.textContent = 'Потрібне підтвердження, бо це впливає на роботу менеджерів.';
+            connectionTitle.textContent = acc.channel === 'telegram'
+                ? 'Відвʼязати Telegram inbox'
+                : 'Відключити ' + (acc.label || acc.channel);
+            connectionSubtitle.textContent = acc.channel === 'telegram'
+                ? 'Відвʼязка скине тільки inbox Telegram. Бот звітів / alerts залишиться окремо підключеним, якщо він налаштований.'
+                : 'Потрібне підтвердження, бо це впливає на роботу менеджерів.';
             connectionSubmit.textContent = 'Відключити канал';
             connectionSubmit.className = 'danger';
+            const disconnectCopy = acc.channel === 'telegram'
+                ? 'Telegram inbox: відправка і прийом робочих діалогів у OmniClaw буде зупинена. Report Bot не видаляється і не скидається. Після відвʼязки кнопка «Підключити inbox» буде доступна одразу.'
+                : (acc.label || acc.channel) + ': відправка з CRM буде зупинена. Якщо канал приймає webhook, нові події можуть перестати коректно оброблятись. Після відключення кнопка «Підключити» залишиться доступною на цій картці.';
             connectionBody.innerHTML =
                 '<div class="omni-connection-warning"><strong>Наслідки відключення</strong><br>' +
-                esc((acc.label || acc.channel) + ': відправка з CRM буде зупинена. Якщо канал приймає webhook, нові події можуть перестати коректно оброблятись. Після відключення кнопка «Підключити» залишиться доступною на цій картці.') +
+                esc(disconnectCopy) +
                 '</div>' +
                 '<div class="omni-connection-result" id="omniConnectionResult" hidden></div>';
             connectionModal.hidden = false;
@@ -2093,9 +2143,11 @@
             connectionSubmit.disabled = true;
             connectionCancel.disabled = true;
             setConnectionResult('Виконуємо дію...', false);
-            const path = mode === 'disconnect'
-                ? '/accounts/' + encodeURIComponent(channel) + '/disconnect'
-                : '/accounts/' + encodeURIComponent(channel) + '/connect';
+            const path = channel === 'telegram'
+                ? (mode === 'disconnect' ? '/accounts/telegram/inbox/disconnect' : '/accounts/telegram/inbox/connect')
+                : (mode === 'disconnect'
+                    ? '/accounts/' + encodeURIComponent(channel) + '/disconnect'
+                    : '/accounts/' + encodeURIComponent(channel) + '/connect');
             const payload = mode === 'disconnect' ? {} : { fields: collectConnectionFields() };
             const res = await api(path, {
                 method: 'POST',
@@ -2122,7 +2174,10 @@
             if (action === 'disconnect') return openDisconnectModal(channel);
             if (!['recheck', 'test'].includes(action)) return;
             button.disabled = true;
-            const res = await api('/accounts/' + encodeURIComponent(channel) + '/' + action, { method: 'POST' });
+            const path = channel === 'telegram' && action === 'test'
+                ? '/accounts/telegram/inbox/test'
+                : '/accounts/' + encodeURIComponent(channel) + '/' + action;
+            const res = await api(path, { method: 'POST' });
             button.disabled = false;
             if (!res.success) {
                 setSendFeedback({ status: 'provider_failed_immediate', channel, message: res.error || 'Не вдалося оновити статус каналу.' });
@@ -2817,7 +2872,7 @@
             init();
         });
     })();
-    </script><script src="js/ui.js?v=0.61.3"></script>
-    <script src="js/alerts.js?v=0.61.3"></script>
+    </script><script src="js/ui.js?v=0.61.4"></script>
+    <script src="js/alerts.js?v=0.61.4"></script>
 </body>
 </html>

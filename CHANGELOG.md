@@ -4,6 +4,15 @@
 
 ---
 
+## v0.61.7 - Майстерня долі booking cleanup
+
+### Maysternya Doli booking panel cleanup [codex]
+- **Майстерня долі** - booking panel більше не підтягує стандартні event/program пакети в консультаційному timeline.
+- **Консультації** - у режимі `/maysternya-doli` доступні тільки `Демо консультація` на 15 хв і `Повна консультація` на 40 хв.
+- **Booking UX** - presets, category chips і panel labels синхронізовано під консультаційний сценарій без впливу на основний Event Genix timeline.
+
+---
+
 ## v0.61.6 - Відновлення нумерації версій
 
 ### Changelog continuity [codex]

@@ -70,12 +70,8 @@ const EVENT_GENIX_PROGRAMS = [
 ];
 
 const MAYSTERNYA_DOLI_PROGRAMS = [
-    { id: 'md_consult_60', code: 'КОНС', label: 'Консультація(60)', name: 'Індивідуальна консультація', icon: '🧭', category: 'custom', duration: 60, price: 1800, hosts: 1, description: 'Базовий слот для індивідуальної психологічної консультації.' },
-    { id: 'md_consult_90', code: 'КОНС90', label: 'Консультація(90)', name: 'Розширена консультація', icon: '🧠', category: 'custom', duration: 90, price: 2400, hosts: 1, description: 'Подовжений слот для глибшої роботи з клієнтом.' },
-    { id: 'md_family_90', code: 'СІМ', label: 'Сімейна(90)', name: 'Сімейна консультація', icon: '🤝', category: 'custom', duration: 90, price: 2600, hosts: 1, description: 'Запис для парної або сімейної консультації.' },
-    { id: 'md_diagnostic_60', code: 'ДІАГ', label: 'Діагностика(60)', name: 'Діагностична зустріч', icon: '📋', category: 'custom', duration: 60, price: 1800, hosts: 1, description: 'Первинна діагностична зустріч або оцінка запиту.' },
-    { id: 'md_followup_45', code: 'ФОЛОУ', label: 'Follow-up(45)', name: 'Короткий follow-up', icon: '✨', category: 'custom', duration: 45, price: 1400, hosts: 1, description: 'Короткий контрольний або підтримувальний запис.' },
-    { id: 'md_custom', code: 'ІНШЕ', label: 'Інше', name: 'Інший запис', icon: '✏️', category: 'custom', duration: 60, price: 0, hosts: 1, isCustom: true }
+    { id: 'md_demo_consult_15', code: 'Демо', label: 'Демо консультація(15)', name: 'Демо консультація', icon: '◇', category: 'custom', duration: 15, price: 0, hosts: 1, description: 'Коротка демо консультація на 15 хвилин.' },
+    { id: 'md_full_consult_40', code: 'Повна', label: 'Повна консультація(40)', name: 'Повна консультація', icon: '◆', category: 'custom', duration: 40, price: 0, hosts: 1, description: 'Повна консультація на 40 хвилин.' }
 ];
 
 const IS_MAYSTERNYA_DOLI_TIMELINE = typeof window !== 'undefined'
@@ -143,18 +139,26 @@ const CATEGORY_COLORS = IS_MAYSTERNYA_DOLI_TIMELINE
 const LINE_COLORS = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#E91E63', '#00BCD4'];
 
 // Порядок і назви категорій (єдине джерело правди)
-const CATEGORY_ORDER = ['quest', 'animation', 'show', 'photo', 'masterclass', 'pinata', 'custom'];
-const CATEGORY_NAMES = {
-    quest: 'Квести', animation: 'Анімація', show: 'Шоу',
-    photo: 'Фото', masterclass: 'Майстер-класи', pinata: 'Піньяти', custom: 'Інше'
-};
+const CATEGORY_ORDER = IS_MAYSTERNYA_DOLI_TIMELINE
+    ? ['custom']
+    : ['quest', 'animation', 'show', 'photo', 'masterclass', 'pinata', 'custom'];
+const CATEGORY_NAMES = IS_MAYSTERNYA_DOLI_TIMELINE
+    ? { custom: 'Консультації' }
+    : {
+        quest: 'Квести', animation: 'Анімація', show: 'Шоу',
+        photo: 'Фото', masterclass: 'Майстер-класи', pinata: 'Піньяти', custom: 'Інше'
+    };
 
 // Панель бронювання: інший порядок, деякі розширені назви
-const CATEGORY_ORDER_BOOKING = ['animation', 'show', 'quest', 'photo', 'masterclass', 'pinata', 'custom'];
-const CATEGORY_NAMES_BOOKING = {
-    animation: 'Анімація', show: 'Wow-Шоу', quest: 'Квести',
-    photo: 'Фото послуги', masterclass: 'Майстер-класи', pinata: 'Піньяти', custom: 'Інше'
-};
+const CATEGORY_ORDER_BOOKING = IS_MAYSTERNYA_DOLI_TIMELINE
+    ? ['custom']
+    : ['animation', 'show', 'quest', 'photo', 'masterclass', 'pinata', 'custom'];
+const CATEGORY_NAMES_BOOKING = IS_MAYSTERNYA_DOLI_TIMELINE
+    ? { custom: 'Консультації' }
+    : {
+        animation: 'Анімація', show: 'Wow-Шоу', quest: 'Квести',
+        photo: 'Фото послуги', masterclass: 'Майстер-класи', pinata: 'Піньяти', custom: 'Інше'
+    };
 
 // Каталог програм: повні назви, без 'custom'
 const CATEGORY_ORDER_CATALOG = ['animation', 'show', 'quest', 'photo', 'masterclass', 'pinata'];

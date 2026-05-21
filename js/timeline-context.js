@@ -129,6 +129,15 @@
             if (roomBtn) roomBtn.textContent = 'Кабінети';
             const addLineBtn = document.getElementById('addLineBtn');
             if (addLineBtn) addLineBtn.textContent = 'Додати спеціаліста';
+            const selectedLineLabel = document.querySelector('#selectedLineDisplay')?.previousElementSibling;
+            if (selectedLineLabel) selectedLineLabel.textContent = 'Спеціаліст:';
+            const programLabel = document.querySelector('#programsIcons')?.closest('.form-section')?.querySelector('label');
+            if (programLabel) programLabel.textContent = 'Консультація';
+            const programSearch = document.getElementById('programSearch');
+            if (programSearch) programSearch.placeholder = 'Пошук консультації...';
+            const costumeSection = document.getElementById('costumeSelect')?.closest('.form-section');
+            if (costumeSection) costumeSection.classList.add('hidden');
+            document.getElementById('extraHostSection')?.classList.add('hidden');
             const legend = document.querySelector('.legend');
             if (legend) {
                 legend.innerHTML = `

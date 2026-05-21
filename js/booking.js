@@ -489,13 +489,14 @@ async function renderProgramIcons() {
             icon.className = `program-icon ${p.category}`;
             icon.dataset.programId = p.id;
             icon.dataset.search = `${p.code} ${p.name} ${p.label}`.toLowerCase();
+            const cardName = IS_MAYSTERNYA_DOLI_TIMELINE ? p.name : p.code;
             const durationBadge = p.duration > 0
                 ? `<span class="program-duration ${p.duration <= 60 ? 'short' : 'long'}">${p.duration}'</span>`
                 : '';
             icon.innerHTML = `
                 ${durationBadge}
                 <span class="icon-circle"><span class="icon">${_escB(p.icon)}</span></span>
-                <span class="name">${_escB(p.code)}</span>
+                <span class="name">${_escB(cardName)}</span>
             `;
             icon.addEventListener('click', () => selectProgram(p.id));
             grid.appendChild(icon);

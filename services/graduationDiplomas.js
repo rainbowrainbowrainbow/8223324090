@@ -259,7 +259,7 @@ function buildDiplomaPage(child, template = DEFAULT_DIPLOMA_TEMPLATE, quote = {}
     const nameClass = nameLength > 44 ? ' is-very-long' : (nameLength > 30 ? ' is-long' : '');
     const sealLogoUrl = layout.sealLogoUrl || DEFAULT_DIPLOMA_TEMPLATE.layout.sealLogoUrl;
     const backgroundImageUrl = layout.backgroundImageUrl || DEFAULT_DIPLOMA_TEMPLATE.layout.backgroundImageUrl;
-    const issueDate = new Date().toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Kyiv' });
+    const issueDate = new Intl.DateTimeFormat('en', { year: 'numeric', timeZone: 'Europe/Kyiv' }).format(new Date());
     const signature = String(template.principalRole || '').trim();
     return `
 <section class="diploma-page" style="--paper:${palette.paper};--ink:${palette.ink};--muted:${palette.muted};--gold:${palette.gold};--gold-soft:${palette.goldSoft};--accent:${palette.accent};">
@@ -309,11 +309,13 @@ html, body { margin: 0; padding: 0; background: #b7f000; color: #123b8f; font-fa
 .diploma-signature { left: 70.31%; top: 70.31%; width: 29.3%; color: #2f64b8; font-family: "Comfortaa", "Trebuchet MS", sans-serif; font-size: 25px; line-height: 1.15; font-weight: 700; max-height: 62px; }
 .diploma-school { left: 50%; top: 75.52%; width: 60.55%; color: #2f64b8; font-family: "Montserrat Alternates", "Nunito", "Trebuchet MS", sans-serif; font-size: 28px; line-height: 1.18; font-weight: 800; max-height: 78px; text-shadow: 0 1px 0 rgba(255,255,255,0.7); }
 .diploma-park-logo { position: absolute; z-index: 3; left: 50%; top: 82.1%; transform: translateX(-50%); width: 11.8%; height: auto; max-height: 10%; object-fit: contain; border-radius: 50%; filter: drop-shadow(0 4px 0 rgba(47,100,184,0.14)); }
-@page { size: A4 portrait; margin: 0; }
+@page { size: 210mm 297mm; margin: 0mm; }
 @media print {
-    html, body { background: #fff !important; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    html, body { width: 210mm !important; min-width: 210mm !important; height: 297mm !important; min-height: 297mm !important; margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; }
     .diploma-toolbar { display: none !important; }
-    .diploma-page { margin: 0 !important; box-shadow: none !important; page-break-after: always; break-after: page; }
+    .diploma-page { width: 210mm !important; height: 297mm !important; margin: 0 !important; border: 0 !important; box-shadow: none !important; page-break-after: always; break-after: page; }
+    .diploma-page:last-of-type { page-break-after: auto; break-after: auto; }
 }
 @media (max-width: 900px) {
     .diploma-toolbar { position: static; flex-direction: column; align-items: stretch; }

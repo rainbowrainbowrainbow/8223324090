@@ -51,7 +51,7 @@ describe('Graduation diploma helper', () => {
         const html = buildDiplomaDocument([child], null, { quote_number: 'GRAD-TEST' });
         assert.match(html, /diploma-template-bg/);
         assert.match(html, /\/images\/graduation\/diploma-comic-template\.png/);
-        assert.match(html, /@page \{ size: A4 portrait; margin: 0; \}/);
+        assert.match(html, /@page \{ size: 210mm 297mm; margin: 0mm; \}/);
         assert.match(html, /width: 210mm; height: 297mm/);
         assert.match(html, /\/images\/park-logo\.png/);
         assert.match(html, /diploma-title/);
@@ -61,6 +61,7 @@ describe('Graduation diploma helper', () => {
         assert.doesNotMatch(html, /організатор випускного/);
         assert.doesNotMatch(html, /GRAD-TEST/);
         assert.match(html, /diploma-date/);
+        assert.match(html, />\d{4}<\/div>/);
         assert.doesNotMatch(html, /A4 landscape/);
         assert.match(html, /&lt;Марія&gt;/);
         assert.doesNotMatch(html, /<script>alert/);

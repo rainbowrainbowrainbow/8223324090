@@ -4,6 +4,15 @@
 
 ---
 
+## v0.60.30 - Graduation Diploma Print Margins
+
+### Graduation Diploma Print Margins [codex]
+- **Друк диплома без зайвих полів** - print contract для diploma export тепер жорстко задає A4 210x297mm, нульові `@page` margins та нульові `html/body` поля в print mode.
+- **Дата скорочена до року** - замість повної дати на дипломі рендериться тільки рік, щоб блок не вилазив і не створював зайвий шум.
+- **Regression coverage** - оновлено diploma helper та static UI checks, які фіксують новий A4/print contract і формат року.
+
+---
+
 ## v0.60.29 - Graduation Diploma Template Overlay
 
 ### Graduation Diploma Template Overlay [codex]

@@ -2159,6 +2159,26 @@ async function checkCleaningTasks() {
     }
 }
 
+// Graduation ops: reconcile missing-roster controls and T-1 diploma print reminders.
+async function checkGraduationOpsAutomation() {
+    try {
+        const { syncGraduationOpsForUpcoming } = require('./graduationOpsAutomation');
+        const result = await syncGraduationOpsForUpcoming({
+            limit: 200,
+            dispatchDuePrintReminders: true
+        });
+        const reminderSent = Number(result?.reminders?.sent || 0);
+        const reminderBlocked = Number(result?.reminders?.blocked || 0);
+        if (reminderSent || reminderBlocked) {
+            log.info(`Graduation ops automation: scanned ${result.scanned}, reminders sent=${reminderSent}, blocked=${reminderBlocked}`);
+        }
+    } catch (err) {
+        if (!err.message?.includes('does not exist')) {
+            log.error('checkGraduationOpsAutomation error', err);
+        }
+    }
+}
+
 module.exports = {
     buildAndSendDigest, sendTomorrowReminder,
     checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks,
@@ -2182,7 +2202,8 @@ module.exports = {
     checkRecurringAnnouncements,
     checkEventPipeline,
     checkNpsFollowUp,
-    checkCleaningTasks
+    checkCleaningTasks,
+    checkGraduationOpsAutomation
 };
 
 // v33.15.0: Recurring announcements — play based on repeat_cron

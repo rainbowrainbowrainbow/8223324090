@@ -344,6 +344,7 @@
 .booking-block.pinata { background: linear-gradient(135deg, var(--pinata) 0%, #DB2777 100%); }
 .booking-block.photo { background: linear-gradient(135deg, var(--photo) 0%, #0891B2 100%); }
 .booking-block.custom { background: linear-gradient(135deg, var(--custom) 0%, #475569 100%); }
+.booking-block.graduation { background: linear-gradient(135deg, #7C3AED 0%, #0F766E 100%); }
 /* v20.9.14: Banquet block style */
 .booking-block.banquet-block { border-left: 4px solid #F59E0B; background: rgba(245, 158, 11, 0.15); }
 .booking-block.banquet { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }
@@ -360,6 +361,48 @@
     font-size: 10px;
     opacity: 0.85;
     margin-top: 2px;
+}
+
+.graduation-timeline-items {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.graduation-timeline-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    max-width: 110px;
+    min-height: 16px;
+    padding: 2px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.94);
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.graduation-timeline-item.diploma {
+    background: rgba(253, 224, 71, 0.2);
+    border-color: rgba(253, 224, 71, 0.42);
+}
+
+.graduation-timeline-item.capsule_time {
+    background: rgba(45, 212, 191, 0.18);
+    border-color: rgba(94, 234, 212, 0.34);
+}
+
+.graduation-timeline-time {
+    opacity: 0.82;
+    font-size: 8px;
+    flex-shrink: 0;
 }
 
 /* v5.19: Linked booking ghost/locked style */

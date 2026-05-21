@@ -1891,6 +1891,11 @@ function renderTaskCard(t) {
     const blockedBadge = blockedCount ? `<span class="task-os-badge blocked" title="Чекає завершення: ${escapeHtml(blockedTitles)}">Блокерів: ${blockedCount}</span>` : '';
     const ownerRole = t.ownerRole || t.owner_role || '';
     const ownerRoleBadge = ownerRole ? `<span class="task-os-badge owner-role">${escapeHtml(ownerRole)}</span>` : '';
+    const controlMode = t.controlMode || t.control_mode || 'normal';
+    const criticalReason = t.criticalReason || t.critical_reason || '';
+    const controlBadge = controlMode === 'special_control'
+        ? `<span class="task-os-badge special-control" title="${escapeHtml(criticalReason || 'Особливий контроль')}">Особливий контроль</span>`
+        : '';
 
     // v10.0: Deadline display
     let deadlineHtml = '';
@@ -1938,6 +1943,7 @@ function renderTaskCard(t) {
             ${packBadge}
             ${blockedBadge}
             ${ownerRoleBadge}
+            ${controlBadge}
             <span>${catInfo.icon} ${escapeHtml(taxoLabel)}</span>
             ${t.date ? `<span>${formatDateShort(t.date)}</span>` : ''}
             ${renderScheduleBadge(t)}

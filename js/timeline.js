@@ -527,6 +527,36 @@ function renderGridCells(lineId, date) {
     return html;
 }
 
+function parseBookingExtraData(booking) {
+    const raw = booking?.extraData || booking?.extra_data || null;
+    if (!raw) return {};
+    if (typeof raw === 'object') return raw;
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return {};
+    }
+}
+
+function getGraduationTimelineItems(booking) {
+    if (booking?.category !== 'graduation') return [];
+    const extra = parseBookingExtraData(booking);
+    const items = Array.isArray(extra.graduationTimelineItems) && extra.graduationTimelineItems.length
+        ? extra.graduationTimelineItems
+        : (Array.isArray(extra.services) ? extra.services : []);
+    return items
+        .filter(item => item && item.timelineVisible !== false && (item.name || item.label))
+        .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+}
+
+function graduationTimelineItemHtml(item) {
+    const kind = item.operationKind || item.operation_kind || 'service';
+    const time = item.startTime
+        ? `<span class="graduation-timeline-time">${escapeHtml(item.startTime)}${item.endTime ? '-' + escapeHtml(item.endTime) : ''}</span>`
+        : '';
+    return `<span class="graduation-timeline-item ${escapeHtml(kind)}">${time}${escapeHtml(item.name || item.label || 'Позиція')}</span>`;
+}
+
 async function selectCell(cell) {
     if (isViewer()) return;
     const opened = await openBookingPanel(cell.dataset.time, cell.dataset.line);
@@ -557,6 +587,10 @@ function createBookingBlock(booking, startHour) {
 
     const userLetter = booking.createdBy ? booking.createdBy.charAt(0).toUpperCase() : '';
     const noteText = booking.notes ? `<div class="note-text">${escapeHtml(booking.notes)}</div>` : '';
+    const graduationItems = getGraduationTimelineItems(booking);
+    const graduationItemsHtml = graduationItems.length
+        ? `<div class="graduation-timeline-items" aria-label="Позиції випускного">${graduationItems.map(graduationTimelineItemHtml).join('')}</div>`
+        : '';
 
     // v5.18: Duration badge to distinguish 60/120 min
     const durationClass = booking.duration > 60 ? 'long' : 'short';
@@ -569,6 +603,7 @@ function createBookingBlock(booking, startHour) {
         <div class="user-letter">${badge}</div>
         <div class="title">${escapeHtml(booking.label || booking.programCode)}: ${escapeHtml(booking.room)}${durationBadge}</div>
         <div class="subtitle">${escapeHtml(booking.time)}${booking.kidsCount ? ' (' + escapeHtml(String(booking.kidsCount)) + ' діт)' : ''}</div>
+        ${graduationItemsHtml}
         ${noteText}
     `;
 

@@ -4,6 +4,18 @@
 
 ---
 
+## v0.61.5 - Graduation ops automation
+
+### Graduation timeline positions + special control [codex]
+- **Timeline** - усі релевантні позиції випускного тепер зберігаються у booking `extra_data.graduationTimelineItems` і відображаються всередині timeline-блока як операційні chips.
+- **Roster control** - якщо у випускному є дипломи, але список дітей ще порожній, CRM idempotently створює менеджеру задачу `grad_roster_missing` з режимом `special_control`.
+- **Special control** - задачі особливого контролю отримали явні поля `control_mode`, `critical_reason`, `control_meta` і leadership observers через існуючу task visibility policy.
+- **Print reminder** - за день до події створюється/оновлюється задача арт-директору з посиланням на PDF дипломів або явним blocker-state, якщо roster ще не готовий.
+- **Capsule flow** - сервіс "Капсула часу" автоматично створює внутрішню prep/order задачу і зберігає future adapter event `graduation_capsule_requested` для майбутнього contractor bot.
+- **Lifecycle** - automation state централізовано в `graduation_automation_state`: задачі не дублюються на save, закриваються при готовому roster, reschedule-яться при зміні дати і cancelled при знятті сервісу.
+
+---
+
 ## v0.61.4 - OmniClaw Telegram inbox recovery
 
 ### OmniClaw / Telegram binding recovery [codex]

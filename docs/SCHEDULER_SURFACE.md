@@ -62,6 +62,7 @@ These jobs are wrapped with `guardScheduler` and are tracked in
 | `checkEventPipeline` | `services/scheduler.js` | events | `60000` | `5min` |
 | `checkNpsFollowUp` | `services/scheduler.js` | customers | `60000` | `hourly` |
 | `checkCleaningTasks` | `services/scheduler.js` | tasks | `60000` | `5min` |
+| `checkGraduationOpsAutomation` | `services/scheduler.js` | graduation | `60000` | `hourly` |
 | `checkTrainingPrompts` | `server.js:inline` | training | `60000` | `daily` |
 | `checkTrainingSummary` | `server.js:inline` | training | `60000` | `daily` |
 | `checkGuardianReports` | `server.js:inline` | guardian | `60000` | `daily` |
@@ -103,6 +104,7 @@ The manifest records test files where direct coverage exists:
 - `tests/reply-escalation.test.js`
 - `tests/scheduled-chat-dispatch.test.js`
 - `tests/telegram-callbacks.test.js`
+- `tests/graduation-ops-automation.test.js`
 - `tests/training.test.js`
 - `tests/guardian-ops.test.js`
 - `tests/guardian-convergence.test.js`

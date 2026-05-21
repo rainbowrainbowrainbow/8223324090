@@ -1173,6 +1173,12 @@ body.dark-mode .cat-chip[data-cat="checklist"] {
     color: #15803d;
 }
 
+.task-os-badge.special-control {
+    background: rgba(217, 119, 6, 0.12);
+    border-color: rgba(217, 119, 6, 0.28);
+    color: #b45309;
+}
+
 .operations-summary {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
@@ -1306,6 +1312,12 @@ body.dark-mode .task-os-badge.owner-role {
     background: rgba(34, 197, 94, 0.16);
     border-color: rgba(134, 239, 172, 0.28);
     color: #86EFAC;
+}
+
+body.dark-mode .task-os-badge.special-control {
+    background: rgba(245, 158, 11, 0.18);
+    border-color: rgba(251, 191, 36, 0.32);
+    color: #FCD34D;
 }
 
 body.dark-mode .operations-pack-bar input,

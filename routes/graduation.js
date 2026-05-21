@@ -20,10 +20,23 @@ const {
     buildRosterPrintSheet,
     buildRosterCsv
 } = require('../services/graduationDiplomas');
+const {
+    buildGraduationTimelineItemsForQuote,
+    syncGraduationOpsForQuote
+} = require('../services/graduationOpsAutomation');
 
 const log = createLogger('Graduation');
 function getKleshnya() { return require('../services/kleshnya'); }
 function _escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+async function syncGraduationOpsSafe(quoteId, actor, reason = 'route') {
+    try {
+        return await syncGraduationOpsForQuote(quoteId, { actor: actor || {}, reason });
+    } catch (err) {
+        log.error(`Graduation ops sync failed for quote ${quoteId} (${reason}): ${err.message}`);
+        return { success: false, reason: 'sync_failed', error: err.message };
+    }
+}
 
 function mapServiceRow(row) {
     return {
@@ -55,7 +68,10 @@ function mapServiceRow(row) {
         maxKids: row.max_kids,
         entryRule: row.entry_rule,
         isActive: row.is_active,
-        catalogDescription: row.catalog_description || null
+        catalogDescription: row.catalog_description || null,
+        timelineVisible: row.timeline_visible !== false,
+        operationKind: row.operation_kind || null,
+        automationFlags: row.automation_flags || {}
     };
 }
 
@@ -564,9 +580,13 @@ router.post('/quotes', requireRole('creator', 'director', 'senior_manager', 'man
 
         const pack = await ensureQuoteChildPack(pool, result.rows[0], req.body || {}, req.user.username);
         const quoteWithPack = await getQuoteRow(pool, result.rows[0].id);
+        const opsAutomation = await syncGraduationOpsSafe(result.rows[0].id, req.user, 'quote_create');
 
         log.info(`Quote ${quoteNumber} created by ${req.user.username}`);
-        res.status(201).json(mapQuoteRow(quoteWithPack || result.rows[0], pack));
+        res.status(201).json({
+            ...mapQuoteRow(quoteWithPack || result.rows[0], pack),
+            opsAutomation
+        });
     } catch (err) {
         log.error('Create quote error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -670,8 +690,12 @@ router.put('/quotes/:id', requireRole('creator', 'director', 'senior_manager', '
             pack = await loadQuoteChildPack(pool, result.rows[0]);
         }
 
+        const opsAutomation = await syncGraduationOpsSafe(id, req.user, 'quote_update');
         log.info(`Quote ${id} updated by ${req.user.username}`);
-        res.json(mapQuoteRow(result.rows[0], pack));
+        res.json({
+            ...mapQuoteRow(result.rows[0], pack),
+            opsAutomation
+        });
     } catch (err) {
         log.error('Update quote error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -697,7 +721,11 @@ router.patch('/quotes/:id/status', requireRole('creator', 'director', 'senior_ma
         }
 
         log.info(`Quote ${id} status → ${status} by ${req.user.username}`);
-        res.json(mapQuoteRow(result.rows[0]));
+        const opsAutomation = await syncGraduationOpsSafe(id, req.user, 'quote_status');
+        res.json({
+            ...mapQuoteRow(result.rows[0]),
+            opsAutomation
+        });
     } catch (err) {
         log.error('Update quote status error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -733,6 +761,8 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
         const bookingId = `BK-${year}-${String(bkSeq).padStart(4, '0')}`;
         const pack = await ensureQuoteChildPack(pool, q, {}, req.user.username);
         const diplomaContextText = childPackContextText(pack);
+        const normalizedServiceTiming = Array.isArray(serviceTiming) ? serviceTiming : (q.service_timing || []);
+        const graduationTimelineItems = await buildGraduationTimelineItemsForQuote(pool, q, normalizedServiceTiming);
 
         // Get package name if available
         let programName = 'Індивідуальний випускний';
@@ -755,7 +785,8 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
                      quoteId: q.id,
                      quoteNumber: q.quote_number,
                      services: q.selected_services,
-                     serviceTiming: Array.isArray(serviceTiming) ? serviceTiming : (q.service_timing || []),
+                     serviceTiming: normalizedServiceTiming,
+                     graduationTimelineItems,
                      eventStartTime: time,
                      eventEndTime: endTime || q.event_end_time || null,
                      eventTimeMode: endTime || q.event_end_time ? 'manual' : (q.event_time_mode || 'floating'),
@@ -787,7 +818,8 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
             await client.query('COMMIT');
 
             log.info(`Booking ${bookingId} created from quote ${q.quote_number} by ${req.user.username}`);
-            res.status(201).json({ bookingId, quoteNumber: q.quote_number });
+            const opsAutomation = await syncGraduationOpsSafe(q.id, req.user, 'quote_booking');
+            res.status(201).json({ bookingId, quoteNumber: q.quote_number, opsAutomation });
         } catch (e) {
             await client.query('ROLLBACK');
             throw e;
@@ -912,7 +944,8 @@ router.post('/child-packs', requireRole('creator', 'director', 'senior_manager',
         });
         if (quote) await linkPackToQuote(pool, pack.id, quote.id, { bookingId: quote.booking_id || null });
         const fresh = await getChildPackById(pool, pack.id);
-        res.status(201).json(mapChildPackRow(fresh || pack));
+        const opsAutomation = quote ? await syncGraduationOpsSafe(quote.id, req.user, 'child_pack_create') : null;
+        res.status(201).json({ ...mapChildPackRow(fresh || pack), opsAutomation });
     } catch (err) {
         log.error('Create graduation child pack error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -942,7 +975,9 @@ router.put('/child-packs/:packId', requireRole('creator', 'director', 'senior_ma
         if (!current) return res.status(404).json({ error: 'Child pack not found' });
         const input = normalizeChildPackInput(req.body || {}, { name: current.name });
         const updated = await updateChildPack(pool, req.params.packId, input);
-        res.json(mapChildPackRow(updated));
+        const quoteId = updated.graduation_quote_id || current.graduation_quote_id || null;
+        const opsAutomation = quoteId ? await syncGraduationOpsSafe(quoteId, req.user, 'child_pack_update') : null;
+        res.json({ ...mapChildPackRow(updated), opsAutomation });
     } catch (err) {
         log.error('Update graduation child pack error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -957,9 +992,11 @@ router.post('/child-packs/:packId/link-quote', requireRole('creator', 'director'
         if (!quote) return res.status(404).json({ error: 'Quote not found' });
         const pack = await linkPackToQuote(pool, req.params.packId, quote.id, { bookingId: quote.booking_id || null });
         if (!pack) return res.status(404).json({ error: 'Child pack not found' });
+        const opsAutomation = await syncGraduationOpsSafe(quote.id, req.user, 'child_pack_link');
         res.json({
             pack: mapChildPackRow(pack),
-            quote: mapQuoteRow(await getQuoteRow(pool, quote.id), pack)
+            quote: mapQuoteRow(await getQuoteRow(pool, quote.id), pack),
+            opsAutomation
         });
     } catch (err) {
         log.error('Link graduation child pack error', err);
@@ -1066,7 +1103,8 @@ router.post('/quotes/:id/children', requireRole('creator', 'director', 'senior_m
                 child.diplomaTitleOverride || null, child.diplomaStatus, sortOrder, pack?.id || null, 'manual'
             ]
         );
-        res.status(201).json(mapChildRow(result.rows[0]));
+        const opsAutomation = await syncGraduationOpsSafe(req.params.id, req.user, 'child_create');
+        res.status(201).json({ ...mapChildRow(result.rows[0]), opsAutomation });
     } catch (err) {
         log.error('Create graduation child error', err);
         res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
@@ -1110,7 +1148,8 @@ router.post('/quotes/:id/children/import', requireRole('creator', 'director', 's
             inserted.push(mapChildRow(result.rows[0]));
         }
         await client.query('COMMIT');
-        res.status(201).json({ imported: inserted.length, children: inserted });
+        const opsAutomation = await syncGraduationOpsSafe(req.params.id, req.user, 'children_import');
+        res.status(201).json({ imported: inserted.length, children: inserted, opsAutomation });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('Import graduation children error', err);
@@ -1155,7 +1194,8 @@ router.put('/quotes/:id/children/:childId', requireRole('creator', 'director', '
             ]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Child not found' });
-        res.json(mapChildRow(result.rows[0]));
+        const opsAutomation = await syncGraduationOpsSafe(req.params.id, req.user, 'child_update');
+        res.json({ ...mapChildRow(result.rows[0]), opsAutomation });
     } catch (err) {
         log.error('Update graduation child error', err);
         res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
@@ -1172,7 +1212,8 @@ router.delete('/quotes/:id/children/:childId', requireRole('creator', 'director'
             [req.params.childId, req.params.id, quote.child_pack_id || null]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Child not found' });
-        res.json({ success: true });
+        const opsAutomation = await syncGraduationOpsSafe(req.params.id, req.user, 'child_delete');
+        res.json({ success: true, opsAutomation });
     } catch (err) {
         log.error('Delete graduation child error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1211,7 +1252,8 @@ router.post('/quotes/:id/children/wishes', requireRole('creator', 'director', 's
             updated.push(mapChildRow(result.rows[0]));
         }
         await client.query('COMMIT');
-        res.json({ updated: updated.length, children: updated });
+        const opsAutomation = await syncGraduationOpsSafe(req.params.id, req.user, 'children_wishes');
+        res.json({ updated: updated.length, children: updated, opsAutomation });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         log.error('Generate diploma wishes error', err);

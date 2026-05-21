@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.61.5">
-    <link rel="stylesheet" href="css/auth.css?v=0.61.5">
-    <link rel="stylesheet" href="css/layout.css?v=0.61.5">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.5">
-    <link rel="stylesheet" href="css/timeline.css?v=0.61.5">
-    <link rel="stylesheet" href="css/panel.css?v=0.61.5">
-    <link rel="stylesheet" href="css/modals.css?v=0.61.5">
-    <link rel="stylesheet" href="css/controls.css?v=0.61.5">
-    <link rel="stylesheet" href="css/features.css?v=0.61.5">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.5">
-    <link rel="stylesheet" href="css/responsive.css?v=0.61.5">
-    <link rel="stylesheet" href="css/pages.css?v=0.61.5">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.61.5">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.5">
+    <link rel="stylesheet" href="css/base.css?v=0.61.6">
+    <link rel="stylesheet" href="css/auth.css?v=0.61.6">
+    <link rel="stylesheet" href="css/layout.css?v=0.61.6">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.6">
+    <link rel="stylesheet" href="css/timeline.css?v=0.61.6">
+    <link rel="stylesheet" href="css/panel.css?v=0.61.6">
+    <link rel="stylesheet" href="css/modals.css?v=0.61.6">
+    <link rel="stylesheet" href="css/controls.css?v=0.61.6">
+    <link rel="stylesheet" href="css/features.css?v=0.61.6">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.6">
+    <link rel="stylesheet" href="css/responsive.css?v=0.61.6">
+    <link rel="stylesheet" href="css/pages.css?v=0.61.6">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.61.6">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.6">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.61.5 Graduation ops automation">✨ 0.61.5 Graduation ops automation</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.61.6 Відновлення нумерації версій">✨ 0.61.6 Відновлення нумерації версій</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.61.5 — Graduation ops automation</p>
+                <p class="tagline">AI First CRM v0.61.6 — Відновлення нумерації версій</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.61.5: Graduation ops automation</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.61.6: Відновлення нумерації версій</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1270,169 +1270,442 @@
             <h3>Що нового</h3>
             <div class="changelog-list">
                 <div class="changelog-section">
+                    <h4>v0.61.6 — Відновлення нумерації версій</h4>
+                    <ul>
+                        <li><b>Видимий changelog</b> — у login modal відновлено пропущені release-блоки між <code>v0.61.5</code> і <code>v0.60.0</code>, щоб версії більше не стрибали з <code>v0.61.5</code> на <code>v0.61.0</code> або з <code>v0.60.39</code> на <code>v0.60.23</code>.</li>
+                        <li><b>Джерело правди</b> — <code>CHANGELOG.md</code> і <code>index.html</code> тепер мають однаковий верхній release chain для активної гілки <code>0.61.x</code> / <code>0.60.x</code>.</li>
+                        <li><b>Version guard</b> — додано статичну перевірку безперервності видимого changelog, щоб такі загублені версії не повертались.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
                     <h4>v0.61.5 — Graduation ops automation</h4>
                     <ul>
-                        <li><b>Timeline</b> — усі релевантні позиції випускного піднято в timeline як операційні chips всередині booking-блока.</li>
-                        <li><b>Roster Control</b> — якщо для дипломів не заповнено список дітей, система автоматично створює менеджеру задачу з особливим контролем.</li>
-                        <li><b>Special Control</b> — критичні graduation-задачі отримали reusable control-mode, причину ризику і видимість для керівництва через task observers.</li>
-                        <li><b>Print Reminder</b> — за день до свята арт-директор отримує автоматичну задачу/нагадування на друк дипломів із PDF-посиланням або явним blocker-state.</li>
-                        <li><b>Capsule Flow</b> — для капсули часу додано внутрішній preparation/order path з future adapter event для майбутнього бота підрядників.</li>
+                        <li><b>Timeline</b> — усі релевантні позиції випускного тепер зберігаються у booking <code>extra_data.graduationTimelineItems</code> і відображаються всередині timeline-блока як операційні chips.</li>
+                        <li><b>Roster control</b> — якщо у випускному є дипломи, але список дітей ще порожній, CRM idempotently створює менеджеру задачу <code>grad_roster_missing</code> з режимом <code>special_control</code>.</li>
+                        <li><b>Special control</b> — задачі особливого контролю отримали явні поля <code>control_mode</code>, <code>critical_reason</code>, <code>control_meta</code> і leadership observers через існуючу task visibility policy.</li>
+                        <li><b>Print reminder</b> — за день до події створюється/оновлюється задача арт-директору з посиланням на PDF дипломів або явним blocker-state, якщо roster ще не готовий.</li>
+                        <li><b>Capsule flow</b> — сервіс &quot;Капсула часу&quot; автоматично створює внутрішню prep/order задачу і зберігає future adapter event <code>graduation_capsule_requested</code> для майбутнього contractor bot.</li>
+                        <li><b>Lifecycle</b> — automation state централізовано в <code>graduation_automation_state</code>: задачі не дублюються на save, закриваються при готовому roster, reschedule-яться при зміні дати і cancelled при знятті сервісу.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.61.4 — OmniClaw Telegram inbox recovery</h4>
+                    <ul>
+                        <li><b>OmniClaw</b> — Telegram inbox binding відокремлено від report bot контуру, щоб бот звітів більше не створював фальшивий стан &quot;inbox already connected&quot;.</li>
+                        <li><b>Channels</b> — додано явний disconnect / rebind / test flow для Telegram inbox з окремими API alias endpoints і зрозумілими CTA у вкладці каналів.</li>
+                        <li><b>Recovery</b> — legacy Telegram rows із report-bot семантикою нормалізуються у <code>report_bot</code>, а inbox переводиться у <code>needs_rebind</code> без втрати окремого контуру звітів.</li>
+                        <li><b>Test flow</b> — Telegram inbox test перевіряє Bot API, webhook route <code>/api/omni/webhook/telegram</code> і за наявності test chat ID виконує silent test send.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.61.3 — Dashboard віджети + tasker</h4>
+                    <ul>
+                        <li><b>Dashboard widgets</b> — повернуто повний registry у керування віджетами, відновлено приховані блоки на кшталт <code>my_focus</code>, <code>finance_today</code>, <code>reports_today</code>, <code>account_stats</code>, <code>week_bookings</code> і <code>task_health</code>.</li>
+                        <li><b>Flexible builder</b> — live widget guardrail піднято зі старого 6/8 до 18/24, щоб creator міг зібрати насичену персональну dashboard-панель без silent drops.</li>
+                        <li><b>Creator tasker</b> — додано creator-only <code>personal_tasker</code> через canonical <code>/api/dashboard/widgets/:type</code> із режимами <code>assigned_to_me</code>, <code>created_by_me</code> і <code>all_tasks</code>.</li>
+                        <li><b>Tasker fullscreen</b> — compact widget і fullscreen work mode використовують один data contract, показують лічильники, progress/achievement chips і не дублюють tasks app.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.61.2 — Каталог тортів</h4>
+                    <ul>
+                        <li><b>Каталог тортів</b> — у Products -&gt; Кухня -&gt; Торти додано 18 узгоджених позицій із curated назвами, описами, цінами та порядком 1..18.</li>
+                        <li><b>Ціна за 100 г</b> — тортам задано numeric <code>price</code>, <code>serving_unit='100г'</code> і linked <code>price_rules.unit='грн/100г'</code>, щоб UI не показував ціну як за штуку.</li>
+                        <li><b>Canonical storage</b> — дані заведено в existing <code>products</code> model і linked price rules, без окремого mock-каталогу або паралельної таблиці.</li>
+                        <li><b>Idempotent seed</b> — міграція оновлює існуючі cake records за stable id або назвою, не створює дублі на повторному прогоні й зберігає operator-added decoration/promo/ingredients/tech-card поля.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.61.1 — Ергономіка board</h4>
+                    <ul>
+                        <li><b>Direct move</b> — у dashboard workspace shapes і frames можна рухати напряму в edit/select flow без окремого ритуалу з інструментами; widgets лишаються захищеними від випадкового drag через live content.</li>
+                        <li><b>Лінії та стрілки</b> — standalone <code>line</code> / <code>arrow</code> більше не виглядають як важкі картки: chrome став легким, а endpoints отримали окремі drag handles для зміни довжини.</li>
+                        <li><b>Connectors</b> — SVG-звʼязки отримали видимі endpoint handles і retarget до найближчого anchor, тож стрілки/лінії редагуються як графічні обʼєкти.</li>
+                        <li><b>Pan contract</b> — <code>hand</code> tool, middle mouse і <code>Space + drag</code> тепер реально панорамують board shell, а не лише міняють курсор.</li>
+                        <li><b>Widget safety</b> — click/scroll/buttons усередині live widgets не перехоплюються новим drag/pan contract.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.61.0 — Кухня</h4>
                     <ul>
-                        <li><b>Кухня в Products</b> — у продуктовому контурі є окрема вкладка «Кухня» поруч із розважальними програмами, без другого паралельного CRUD.</li>
-                        <li><b>Торти</b> — доступна підвкладка «Торти» зі структурованими полями опису, promo, складу, техкарти та окремим полем оформлення.</li>
-                        <li><b>Меню</b> — доступна підвкладка «Меню» для повного внесення позицій із секціями, ціною, вагою або обʼємом, одиницею подачі та складом.</li>
-                        <li><b>Розділи меню</b> — підтримуються холодні закуски, салати, гарячі закуски, бургери, піца, додатки до піци, мангал, основні/перші страви, гарніри, гарячі напої, коктейлі та холодні напої.</li>
-                        <li><b>Menu metadata</b> — додано варіанти ціни, статус доступності, фільтр по секціях, стабільне сортування і кнопку «Зберегти і додати ще» для масового внесення.</li>
-                        <li><b>Completeness</b> — картки меню показують, чи позиція заповнена повністю, чи бракує критичних даних; напої й додатки не змушують вводити зайвий склад.</li>
-                        <li><b>API/schema</b> — кухня працює на canonical products model: пере використано наявні поля й додано лише відсутні menu-колонки.</li>
+                        <li><b>Кухня в Products</b> — у продуктовому контурі є окрема вкладка <code>Кухня</code> поруч із розважальними програмами, без другого паралельного CRUD.</li>
+                        <li><b>Торти</b> — доступна підвкладка <code>Торти</code> зі структурованими полями <code>short_description</code>, <code>promo_description</code>, <code>ingredients</code>, <code>tech_card</code> і окремим <code>cake_decoration</code> для оформлення.</li>
+                        <li><b>Меню</b> — доступна підвкладка <code>Меню</code> для повного внесення позицій із секціями, ціною, вагою або обʼємом, одиницею подачі, варіантами ціни, статусом доступності та складом.</li>
+                        <li><b>Розділи меню</b> — підтримуються реальні кухонні групи: холодні закуски, салати, гарячі закуски, бургери, піца, додатки до піци, мангальне меню, основні страви, перші страви, гарніри, гарячі напої, коктейлі та холодні напої.</li>
+                        <li><b>Операторський UX</b> — у Menu є фільтр по секціях, кнопка <code>Зберегти і додати ще</code>, картки з ключовими полями та completeness-станом для швидкого масового внесення.</li>
+                        <li><b>Completeness logic</b> — CRM показує, чи позиція заповнена повністю, чи бракує критичних даних; напої й додатки не змушують вводити зайвий склад.</li>
+                        <li><b>Products API/schema</b> — кухня працює на canonical products model: пере використано наявні product-поля й додано тільки відсутні menu-колонки через керовану міграцію.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.46 — Структуроване меню Products</h4>
+                    <ul>
+                        <li><b>Menu workflow</b> — у Products -&gt; Кухня -&gt; Меню доведено робочий сценарій повного структурованого внесення меню-позицій без окремого паралельного модуля.</li>
+                        <li><b>Schema reuse</b> — пере використано наявні product-поля <code>short_description</code>, <code>promo_description</code>, <code>ingredients</code>, <code>tech_card</code>, <code>price</code>, <code>sort_order</code> і додано лише відсутні menu-поля.</li>
+                        <li><b>Menu sections</b> — меню отримало секції для реальних груп на кшталт холодних закусок, салатів, піци, гарячих напоїв і коктейлів.</li>
+                        <li><b>Structured menu data</b> — позиції меню підтримують вагу або обʼєм, одиницю подачі, варіанти ціни, статус доступності та склад.</li>
+                        <li><b>Operator UX</b> — картки й detail/edit flow показують completeness-стан, щоб менеджер бачив повністю та частково заповнені позиції.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.45 — Живий dashboard builder</h4>
+                    <ul>
+                        <li><b>Widget runtime</b> — dashboard-віджети більше не отримують dead overlay після перемикання tools і автоматично лишаються в live-стані.</li>
+                        <li><b>Workspace lifecycle</b> — уточнено use/edit contract: widget content лишається всередині board, а переміщення й resize мають власний frame та handles.</li>
+                        <li><b>Free layout builder</b> — додано picker віджетів, швидке створення нотаток, resize handles і явну кнопку збереження для персонального dashboard layout.</li>
+                        <li><b>Persistence guard</b> — freeform x/y/w/h/z layout стабільно проходить через наявний boardState / dashboard config flow без нового runtime.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.44 — Рольовий preview shell</h4>
+                    <ul>
+                        <li><b>Profile role switcher</b> — роль у profile summary card стала керованим entrypoint: creator/director можуть відкрити меню й переглянути CRM як іншу роль.</li>
+                        <li><b>RoleShell runtime</b> — додано спільний контракт <code>RolePreview</code> / <code>RoleShell</code> для реальної ролі, preview-ролі, effective UI role, стартових сторінок і quick access.</li>
+                        <li><b>Role-aware surfaces</b> — sidebar, quick access і dashboard-сцена читають effective role з одного runtime, тому preview змінює shell-композицію, а не тільки текст бейджа.</li>
+                        <li><b>Security boundary</b> — preview впливає лише на frontend shell; backend/API лишаються на реальному JWT і реальній авторизації користувача.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.43 — Жива сцена Помічника</h4>
+                    <ul>
+                        <li><b>Motion system</b> — Помічник отримав різні motion-стани для idle, hover, thinking, listening, speaking, guiding, success, warning і muted замість одного повторюваного pulse.</li>
+                        <li><b>Expanded stage</b> — повне вікно Помічника тепер має окрему сцену зі статусом, орбітою, meter-ритмом і state-aware анімаціями.</li>
+                        <li><b>State truth</b> — до runtime додано реальні <code>guide</code> та <code>warning</code> стани, а CSS читає їх через <code>data-ai-state</code>, <code>data-mode</code>, <code>data-playback-state</code>.</li>
+                        <li><b>Reduced motion</b> — для користувачів із reduced-motion рухи вимикаються, але стан лишається видимим через спокійний фокус і кольоровий акцент.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.42 — Products Kitchen: торти, меню та кухонні поля</h4>
+                    <ul>
+                        <li><b>Kitchen surface</b> — у Products додано окремий контур Кухня з підвкладками Торти та Меню поруч із розважальними програмами.</li>
+                        <li><b>Kitchen schema</b> — canonical products model/API розширено полями <code>short_description</code>, <code>promo_description</code>, <code>ingredients</code>, <code>tech_card</code>, <code>domain</code> і <code>kitchen_type</code>.</li>
+                        <li><b>Cake decoration</b> — для тортів додано явне поле <code>cake_decoration</code>, яке показується тільки для kitchen subtype <code>cake</code>.</li>
+                        <li><b>Products UX</b> — create/edit форма, картки, empty states і фільтрація тепер працюють для кухонних позицій без другого kitchen CRUD.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.41 — Assistant Guided Click Safety</h4>
+                    <ul>
+                        <li><b>Підказка кліку</b> — помічник тепер показує реальну guide-line до видимого UI-елемента і підсвічує ціль, коли користувач питає, де натискати.</li>
+                        <li><b>Безпечний голос</b> — озвучення більше не стартує зненацька: нові й невідомі сесії починаються у текстовому режимі, голос вмикається явно.</li>
+                        <li><b>Target safety</b> — якщо точну кнопку або посилання неможливо підтвердити у DOM, CRM не малює фейкову лінію й лишає чесну текстову відповідь.</li>
+                        <li><b>Reduced motion</b> — для користувачів із reduced-motion guide-line переходить у спокійний фокус без агресивної анімації.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.40 — Dashboard Photoshop Tool Dock</h4>
+                    <ul>
+                        <li><b>Dashboard tools</b> — широкий верхній toolbar перезібрано у компактний вертикальний dock біля сцени, ближче до Photoshop/FigJam-патерну.</li>
+                        <li><b>Менше шуму</b> — зверху лишилась компактна options bar для активного інструмента, snap/grid/guides/кольору, а не багато великих груп-меню.</li>
+                        <li><b>Tool UX</b> — інструменти стали icon-first з <code>title</code>/<code>aria-label</code>, збережено групи вибору, навігації, додавання, малювання, фігур, зв’язків, AI-шаблонів і дій.</li>
+                        <li><b>Responsive</b> — на вузьких екранах dock переходить у горизонтальний скрол-ряд без розвалу сцени.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.39 — UI Polish And Modal Fixes</h4>
                     <ul>
-                        <li><b>Sidebar</b> — прибрано малий овальний артефакт під іменем у profile summary card.</li>
-                        <li><b>Dashboard</b> — workspace-палітру й підказки інструментів переведено в зрозумілу українську та зібрано чистіше.</li>
-                        <li><b>Випускні</b> — модалка «Створити список дітей» стала компактнішою, а кнопка створення більше не вилітає за екран.</li>
-                        <li><b>Модалки</b> — shared form modal тепер скролить поля всередині вікна й тримає дії збереження доступними.</li>
+                        <li><b>Sidebar</b> — остаточно прибрано малий овальний артефакт під іменем у profile summary card, без втрати metrics strip і role indicator.</li>
+                        <li><b>Dashboard</b> — workspace-палітру зроблено зрозумілішою українською: групи інструментів, підказки, inspector і AI-board тексти більше не виглядають як англомовний debug toolbar.</li>
+                        <li><b>Graduation lists</b> — модалка «Створити список дітей» стала компактнішою, без зайвих optional-полів у create-flow.</li>
+                        <li><b>Modal safety</b> — shared <code>formModal()</code> отримав scroll-safe layout: поля скроляться всередині вікна, а кнопки «Створити/Зберегти» більше не вилітають за низ екрана.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.38 — Omni SMS Provider Selector</h4>
                     <ul>
-                        <li><b>OmniClaw</b> — SMS-підключення більше не зашите під одного провайдера: додано вибір між TurboSMS та FlySMS.</li>
-                        <li><b>FlySMS</b> — модалка показує правильні поля, підказки і webhook-note для FlySMS без TurboSMS-лейблів.</li>
-                        <li><b>Provider truth</b> — save/test/recheck/send flow тепер використовує обраний SMS-шлюз, а картка каналу показує активного провайдера.</li>
+                        <li><b>OmniClaw</b> — SMS-підключення більше не зашите під одного провайдера: у модалці додано вибір між <code>TurboSMS</code> і <code>FlySMS</code>.</li>
+                        <li><b>FlySMS</b> — додано provider-aware поля <code>FlySMS API key</code>, <code>sender/source</code>, webhook secret і endpoint, щоб менеджер не бачив TurboSMS-копірайт у FlySMS-сценарії.</li>
+                        <li><b>Backend truth</b> — SMS send/test/recheck тепер проходять через provider registry: legacy TurboSMS конфіг читається як <code>turbosms</code>, а нові FlySMS налаштування зберігаються як <code>flysms</code>.</li>
+                        <li><b>Webhook lifecycle</b> — SMS delivery callbacks класифікуються як generic provider webhooks із source для FlySMS або TurboSMS, без хардкоду одного шлюзу.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.37 — Dashboard Unified Workspace</h4>
+                    <ul>
+                        <li><b>Єдиний workspace</b> — режим <code>Сцена</code> і <code>Сцена + Board</code> зведено в один canonical <code>workspace</code>: старі <code>grid</code>/<code>board</code> конфіги нормалізуються без втрати widgets, notes, drawings і connectors.</li>
+                        <li><b>Модульна сцена</b> — dashboard тепер стартує з board-native modules для widgets, notes, text, shapes і frames, а старі scene-only віджети автоматично піднімаються в workspace як керовані модулі.</li>
+                        <li><b>Професійна палітра</b> — flat toolbar замінено на grouped tool families: interaction, navigate, insert, draw, shape, connect, templates і actions, із snap preset-ами <code>strict / soft / freeform</code>.</li>
+                        <li><b>Чисті overlap states</b> — selection, hover, active edit і widget-inspect отримали shared workspace tokens замість грубих рамок, щоб перетини об'єктів не виглядали як debug boxes.</li>
+                        <li><b>Масове створення задач</b> — canonical quick composer у Tasks отримав кнопку <code>+ Ще задача</code>, яка додає окремі task-рядки без перетворення їх на subtasks або checklist.</li>
+                        <li><b>Наслідування дефолтів</b> — новий рядок копіює відповідального, категорію, режим, дату, слот і службові прапорці з попередньої задачі, але назва лишається порожньою, щоб не створювати випадкові дублікати.</li>
+                        <li><b>Per-task overrides</b> — кожен доданий рядок має власну назву, пріоритет, дату, час і тривалість, а submit послідовно створює незалежні записи через існуючий <code>POST /api/tasks</code>.</li>
+                        <li><b>Regression guardrail</b> — UI-smoke перевіряє наявність batch panel, plus-button flow, remove-row contract і пер-task priority/date controls.</li>
+                        <li><b>Профільна картка чистіша</b> — прибрано випадковий овальний glow під іменем у sidebar summary card, щоб блок не виглядав як артефакт.</li>
+                        <li><b>Metrics strip</b> — USD, час і день зібрані в один рівний desktop-ряд із консистентними розмірами, spacing і hierarchy.</li>
+                        <li><b>Role indicator</b> — <code>Creator</code> та інші ролі більше не сидять у важкому pill-чипі: роль стала тонким typographic indicator із акцентною лінією.</li>
+                        <li><b>Guardrail</b> — UI-smoke фіксує новий контракт: без oval-псевдоелемента, без pill-radius для ролі і з 3-up metrics layout.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.36 — Graduation List Packs Booking Linkage</h4>
+                    <ul>
+                        <li><b>Списки дітей</b> — у випускних додано first-class списки/набори дітей із назвою, контекстом закладу/класу та режимом wording для дипломів.</li>
+                        <li><b>Прив'язка до flow</b> — graduation quote/booking тепер зберігає <code>child_pack_id</code>, а при створенні бронювання контекст списку потрапляє в <code>extra_data</code>.</li>
+                        <li><b>Дипломи по списку</b> — preview, PDF, CSV, XLSX і print sheet використовують linked list як джерело дітей та рядка закладу без повторного ручного вибору.</li>
+                        <li><b>Wording toggle</b> — у вкладці «Дипломи» додано перемикач «Випускник закладу», який змінює текст диплома для batch generation.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.35 — Graduation Diploma Formal PDF Typography</h4>
+                    <ul>
+                        <li><b>PDF title contrast</b> — заголовок <code>ДИПЛОМ ВИПУСКНИКА</code> у PDF export більше не друкується жовтим на жовто-зеленому шаблоні: він став темно-синім, із тонкою світлою обводкою та стриманою тінню.</li>
+                        <li><b>Строгіші PDF-шрифти</b> — дипломний PDF перейшов на embedded Noto Serif Regular/Bold/Black для кирилиці, щоб заголовок, ПІБ, опис, побажання, рік і клас виглядали більш урочисто, а не як декоративний rounded-font.</li>
+                        <li><b>Visual PDF smoke</b> — згенеровано локальний PDF диплома, відрендерено першу сторінку в PNG через <code>pypdfium2</code> і перевірено реальний output після експорту.</li>
+                        <li><b>Regression coverage</b> — тест дипломів перевіряє, що batch PDF лишається multi-page і embed-ить <code>NotoSerif-Black</code> та <code>NotoSerif-Bold</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.34 — Graduation Diploma PDF Typography</h4>
+                    <ul>
+                        <li><b>PDF title contrast</b> — заголовок <code>ДИПЛОМ ВИПУСКНИКА</code> у серверному PDF export тепер друкується товстим шаром із реальним Nunito Black, жовтим fill і помаранчевою обводкою, тому не губиться на жовто-зеленому шаблоні.</li>
+                        <li><b>PDF font weights</b> — для імені, опису, побажання, року і класу додано Nunito Bold/Black assets та реєстрацію у PDFKit замість одного тонкого regular-font fallback.</li>
+                        <li><b>Visual PDF smoke</b> — згенеровано і відрендерено локальний PDF диплома у PNG через <code>pypdfium2</code>, щоб перевірити саме output після експорту, а не лише HTML preview.</li>
+                        <li><b>Regression coverage</b> — тест дипломів перевіряє, що batch PDF лишається multi-page і справді embed-ить <code>Nunito-Black</code> та <code>Nunito-Bold</code>.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.33 — Light Theme Sidebar Density</h4>
+                    <ul>
+                        <li><b>Light Theme</b> — світлий режим зібрано в тепліший, чистіший і візуально дорожчий design system замість блідого admin-look.</li>
+                        <li><b>Sidebar Density</b> — лівий CRM shell зменшено приблизно на третину через shared width contract і ущільнено без втрати читабельності.</li>
+                        <li><b>Timeline Scene</b> — таймлайн у light mode отримав кращу surface hierarchy, контраст сітки, читабельніші рядки і сильніший фокус на робочій області.</li>
+                        <li><b>Dark mode guardrail</b> — зміни світлої теми scoped через <code>body:not(.dark-mode)</code>, тому темний режим не отримує випадкових token-regression.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.32 — Graduation Diplomas Batch PDF</h4>
+                    <ul>
+                        <li><b>Один файл для всіх дипломів</b> — кнопка дипломів тепер завантажує справжній багатосторінковий PDF, де кожна дитина має окрему A4-сторінку.</li>
+                        <li><b>Серверний PDF export</b> — <code>/api/graduation/quotes/:id/diplomas/export/pdf</code> повертає <code>application/pdf</code>, а не HTML-сторінку для ручного друку через браузер.</li>
+                        <li><b>Кирилиця у PDF</b> — додано bundled Nunito font із підтримкою українських літер, щоб імена, класи та побажання коректно друкувались у файлі.</li>
+                        <li><b>Regression coverage</b> — додано тест, який перевіряє, що batch export створює один PDF із потрібною кількістю сторінок.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.31 — Graduation Diploma Copy Spacing</h4>
+                    <ul>
+                        <li><b>Між описом і побажанням додано повітря</b> — червоний wish-блок у дипломі зміщено нижче, щоб він не торкався синього опису навіть на 4 рядках тексту.</li>
+                        <li><b>Довгі тексти стискаються контрольовано</b> — diploma renderer додає density-класи для довгого опису, довгого побажання і сумарно великої кількості тексту, з меншим шрифтом та line-height.</li>
+                        <li><b>Regression coverage</b> — додано тест, який перевіряє compact layout для long description + long wish, щоб синій і червоний блоки не повертались до накладання.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.30 — Graduation Diploma Print Margins</h4>
+                    <ul>
+                        <li><b>Друк диплома без зайвих полів</b> — print contract для diploma export тепер жорстко задає A4 210x297mm, нульові <code>@page</code> margins та нульові <code>html/body</code> поля в print mode.</li>
+                        <li><b>Дата скорочена до року</b> — замість повної дати на дипломі рендериться тільки рік, щоб блок не вилазив і не створював зайвий шум.</li>
+                        <li><b>Regression coverage</b> — оновлено diploma helper та static UI checks, які фіксують новий A4/print contract і формат року.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.29 — Graduation Diploma Template Overlay</h4>
+                    <ul>
+                        <li><b>Готовий PNG-шаблон став основою диплома</b> — diploma export тепер використовує наданий comic-шаблон як повноформатний фон, а engine накладає лише контрольовані текстові шари.</li>
+                        <li><b>Текст розкладено по безпечній зоні</b> — заголовок, &quot;Нагороджується&quot;, ПІБ, опис, побажання, дата і клас позиціонуються поверх центрального світлого аркуша без перекриття персонажів та декоративних зірок.</li>
+                        <li><b>Шрифти і переноси посилено</b> — додано friendly font stack для кирилиці, нерозривні дефіси в ПІБ, компактні long-name розміри та помітніший стиль дати.</li>
+                        <li><b>Лого парку внизу по центру</b> — круглий логотип Парку Закревського періоду рендериться в нижній центральній зоні шаблону як окремий шар поверх готового макета.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.28 — Graduation Diploma Comic Visual</h4>
+                    <ul>
+                        <li><b>Комікс-стиль замість офіційної грамоти</b> — diploma template перебудовано під яскравий A4 portrait макет у стилі пригодницького коміксу з pop-art фоном, halftone dots, зірками та супергеройською енергією.</li>
+                        <li><b>Персонажі в шаблоні</b> — додано підтримку <code>characterTopUrl</code> / <code>characterBottomUrl</code> у <code>layout_json</code>; поки використані наявні <code>mr-zak</code> assets, а нові персонажі можна буде підставити без переписування engine.</li>
+                        <li><b>Footer і дата чистіші</b> — зверху немає тексту парку чи галочки, службова інформація типу організатора/GRAD-номера не рендериться, дата стала помітним badge всередині рамки.</li>
+                        <li><b>Production template migration</b> — додано idempotent migration для seeded template <code>classic-graduation-2026</code>, щоб live DB отримала той самий comic visual contract.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.27 — Auth Login Alias Recovery</h4>
+                    <ul>
+                        <li><b>Auth lookup став гнучкішим без зміни паролів</b> — login route тепер шукає користувача не тільки за <code>users.username</code>, а й за контрольованими <code>users.login_aliases</code>, залишаючи password hash і єдиний user record джерелом правди.</li>
+                        <li><b>Zhenia відновлено через alias до Zhenya</b> — додано idempotent migration, яка додає <code>Zhenia</code> / <code>Женя</code> як aliases для існуючого акаунта <code>Zhenya</code>, якщо він є в production DB.</li>
+                        <li><b>Без duplicate user і blind reset</b> — пароль, hash, ролі, refresh tokens і активність користувача не перезаписуються; fix працює на canonical auth layer.</li>
+                        <li><b>Regression coverage</b> — додано unit-перевірки для нормалізації login identifier і SQL-contract alias lookup.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.26 — Graduation Diploma Brand Visual Polish</h4>
+                    <ul>
+                        <li><b>Кольори наближено до стилю парку</b> — дипломний шаблон отримав palette на основі логотипа Парку Закревського: бірюза, синій, зелений, рожевий та теплий жовто-помаранчевий акцент замість попередньої коричнево-золотої схеми.</li>
+                        <li><b>Верх диплома очищено</b> — прибрано напис <code>ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ</code> зверху та декоративну галочку/медальйон, щоб перший екран диплома був чистішим і не дублював бренд.</li>
+                        <li><b>Footer став акуратнішим</b> — прибрано <code>організатор випускного</code>, номер замовлення на кшталт <code>GRAD-2026-006</code> і службовий meta-row; унизу лишився круглий логотип парку та помітна дата в межах рамки.</li>
+                        <li><b>A4/PDF перевірено повторно</b> — preview і PDF лишаються A4 portrait, а дата, рамка, логотип і довгі ПІБ не виходять за межі диплома.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.25 — Graduation Diploma A4 Portrait Refinement</h4>
+                    <ul>
+                        <li><b>Дипломи зафіксовано під A4 portrait</b> — graduation diploma print/export template тепер використовує 210x297mm, <code>@page A4 portrait</code> і portrait preview замість старого landscape contract.</li>
+                        <li><b>Візуал наближено до державної грамоти</b> — оновлено SVG-рамку, офіційну композицію, золоту рамкову систему, headline/name hierarchy і теплий паперовий стиль без дитячого флаєрного вайбу.</li>
+                        <li><b>Footer очищено</b> — повністю прибрано блок <code>Класний керівник</code>, а нижню зону перебудовано навколо круглого логотипа Парку Закревського як seal/emblem.</li>
+                        <li><b>Live template data-fix</b> — додано idempotent migration для seeded template <code>classic-graduation-2026</code>, щоб production DB не залишила старий <code>a4-landscape</code> layout.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.24 — Assistant Feature Locator Afisha Page</h4>
+                    <ul>
+                        <li><b>AI-провідник навчився знаходити функції</b> — додано shared <code>js/crm-feature-registry.js</code>, який відповідає на запити типу <code>де видати грамоту</code> через точний шлях <code>/certificates/new</code> і підтримується одним registry для майбутніх функцій.</li>
+                        <li><b>Глобальний пошук використовує той самий registry</b> — пошук CRM підтягує aliases із feature registry, тож <code>грамота</code>, <code>видати сертифікат</code>, <code>створити афішу</code> і схожі запити ведуть у правильні сторінки.</li>
+                        <li><b>Афіша стала окремою сторінкою</b> — <code>/afisha</code> більше не redirect у timeline modal, а відкриває standalone workspace для подій, імпорту/експорту, recurring шаблонів, розподілу і генерації задач.</li>
+                        <li><b>Art не змішує макети з operational афішею</b> — в Art категорія уточнена як <code>Макети афіш</code>, а кнопка <code>Афіша подій</code> веде на <code>/afisha</code>.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.23 — Certificates Page Creation Flow</h4>
                     <ul>
-                        <li><b>Сертифікати</b> — створення одного сертифіката винесено на окрему сторінку <code>/certificates/new</code>, а пакетну видачу — на <code>/certificates/batch</code>.</li>
-                        <li><b>Реєстр</b> — <code>/certificates</code> став канонічною сторінкою списку, фільтрів, статусів і деталей без legacy timeline panel як primary flow.</li>
-                        <li><b>Швидкий доступ</b> — у quick access додано дії «Видати сертифікат» і «Пакет сертифікатів», а старі launcher-и ведуть у нові routes.</li>
+                        <li><b>Окремі сторінки видачі</b> — створення одного сертифіката перенесено з legacy panel/modal flow на <code>/certificates/new</code>, а пакетну видачу - на <code>/certificates/batch</code>.</li>
+                        <li><b>Канонічний реєстр сертифікатів</b> — <code>/certificates</code> тепер відкриває повноцінну сторінку списку, фільтрів, статусів, деталей і дій замість redirect у timeline shell.</li>
+                        <li><b>Швидкий доступ оновлено</b> — у quick access додано дії <code>Видати сертифікат</code> і <code>Пакет сертифікатів</code>, а старі launcher-и <code>openCertificatesPanel</code>, <code>showCreateCertificateModal</code> і <code>showBatchCertificateModal</code> ведуть у нові routes.</li>
+                    </ul>
+                </div>
+                <div class="changelog-section">
+                    <h4>v0.60.22 — Sidebar Alert Card Cleanup</h4>
+                    <ul>
+                        <li><b>Панель стала чистішою</b> — з shared sidebar command deck прибрано великий overdue/critical alert-card з <code>КРИТИЧНО</code>, pager <code>1 / N</code> і CTA <code>Відкрити</code>.</li>
+                        <li><b>Alerts data layer збережено</b> — focus chip <code>Алерти</code>, badge/count стан і повний alerts center продовжують працювати через існуючий <code>js/alerts.js</code>.</li>
+                        <li><b>Мертвий carousel state прибрано</b> — з sidebar renderer видалено current-alert/pager/hero navigation JS, щоб після cleanup не лишався недосяжний widget-code.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.21 — Graduation Diplomas Child Roster</h4>
                     <ul>
-                        <li><b>Diplomas</b> — у Graduation додано вкладку «Дипломи» зі списком дітей, gender-aware побажаннями, ручними override та preview.</li>
-                        <li><b>Print / PDF</b> — дипломи генеруються як A4 landscape HTML/SVG із класичною рамкою, batch print/PDF export, CSV/XLSX і print sheet.</li>
-                        <li><b>Graduation timing</b> — quote/booking flow підтримує довільний час початку/завершення та service timing для нестандартних позицій випускного.</li>
+                        <li><b>Дипломи всередині Graduation</b> — у модулі випускних додано вкладку <code>Дипломи</code> з прив'язкою до конкретного quote/booking, щоб список дітей, побажання і export не жили окремо від graduation flow.</li>
+                        <li><b>Children roster</b> — додано таблиці та API для списку дітей: ПІБ, gender, джерело gender, клас/група, власне побажання, автопобажання, фінальне побажання і статус диплома.</li>
+                        <li><b>Wish engine</b> — додано gender-aware пул побажань для girl/boy/neutral, manual override, import parser і генерацію без повторів у межах batch, де це можливо.</li>
+                        <li><b>HTML/SVG дипломи та print/PDF export</b> — додано класичний A4 landscape диплом з SVG-рамкою, урочистою композицією, preview одного диплома, batch print/PDF HTML, CSV/XLSX і print sheet.</li>
+                        <li><b>Гнучкий таймінг випускного</b> — graduation quote отримав event date/start/end/manual timing contract, а конвертація в booking переносить довільний час і service timing в <code>extra_data</code>.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.20 — Unified Finance Analytics Control Page</h4>
                     <ul>
-                        <li><b>IA</b> — окремі сторінки «Фінанси» та «Аналітика» зібрано в один канонічний control page у `/finance`.</li>
-                        <li><b>UI</b> — додано executive overview, grouped operations workspace та insight mode без дублювання однакових KPI і графіків.</li>
-                        <li><b>Routing</b> — `/analytics` тепер редіректить у `/finance?mode=insights`, а sidebar показує один пункт «Фінанси та аналітика».</li>
+                        <li><b>Фінанси стали канонічним control page</b> — <code>/finance</code> тепер об'єднує executive overview, операційні фінанси та управлінські insights без окремого живого модуля <code>/analytics</code>.</li>
+                        <li><b>Аналітика переїхала в unified shell</b> — <code>/analytics</code> редіректить у <code>/finance?mode=insights</code>, а sidebar показує один пункт <code>Фінанси та аналітика</code> замість двох дубльованих входів.</li>
+                        <li><b>KPI без дублювання</b> — верхній екран має один merged executive strip: виручка бронювань, доходи/витрати/прибуток, бронювання + середній чек, нові клієнти, HR і risk/margin card.</li>
+                        <li><b>Операції згруповано за рішеннями</b> — транзакції, каса, рахунки, борги, бюджет, P&amp;L, зарплати, прогноз і місяці більше не йдуть одним довгим таб-рядом, а зібрані в логічні групи.</li>
+                        <li><b>Reuse analytics renderer</b> — існуючі chart/render helpers з <code>js/analytics-page.js</code> експоновано як shared widgets для finance shell без третьої копії графіків.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.19 — Products IA Documents Catalogs</h4>
                     <ul>
-                        <li><b>Products IA</b> — вкладку програм перебудовано як «Розважальні програми», а каталоги винесено в окрему вкладку всередині Products.</li>
-                        <li><b>Document linkage</b> — на картках програм додано ручну прив'язку Google Doc/PDF/URL документа з назвою, типом і статусами перевірки.</li>
-                        <li><b>Catalog access</b> — випускні, піньяти, меню, костюми та інші готові каталоги зібрані в Products → Каталоги без дублювання існуючого viewer/API.</li>
+                        <li><b>Products IA зібрано логічніше</b> — у продуктовому модулі вкладку програм винесено як <code>Розважальні програми</code>, а каталоги отримали окрему вкладку <code>Каталоги</code> всередині <code>/programs</code>.</li>
+                        <li><b>Ручна прив'язка документів до програм</b> — на картках розважальних програм з'явився блок <code>Документ</code> з URL, назвою, типом <code>google_doc</code> / <code>pdf</code> / <code>link</code>, діями <code>Прив'язати</code>, <code>Відкрити</code>, <code>Змінити / відв'язати</code> та двома ручними прапорцями перевірки.</li>
+                        <li><b>Мінімальний backend contract без зайвого engine</b> — додано nullable document-linkage поля в <code>products</code>, PATCH <code>/api/products/:id/source-document</code> з валідацією URL/type і аудитом користувача.</li>
+                        <li><b>Каталоги переекспоновано без дублювання</b> — Products -&gt; Каталоги використовує існуючі <code>catalog_definitions</code> / <code>catalog_pages</code>, а старий Designs viewer лишається робочим deep-link target для піньят, меню, костюмів та інших готових каталогів.</li>
+                        <li><b>Sidebar веде через Products</b> — product-група тепер має <code>Розважальні програми</code> і <code>Каталоги</code>, де каталоги відкриваються з <code>/programs#catalogs</code>, а backward-compatible Designs catalog viewer не дублюється.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.18 — Telegram Animator Webhook Guard</h4>
                     <ul>
-                        <li><b>Telegram аніматори</b> — запит «додати аніматора» більше не відправляє кнопки «Так/Ні», якщо webhook для Telegram callback не підтверджено.</li>
-                        <li><b>Без silent fail</b> — коли webhook недоступний, CRM повертає явний fallback `manual_line`, щоб не чекати натискання кнопок, які live CRM не отримає.</li>
-                        <li><b>Діагностика flow</b> — додано точкові логи для chat/thread target, відправки повідомлення, approve/reject callback і фактичного додавання або відхилення лінії аніматора.</li>
+                        <li><b>Запит на додавання аніматора більше не створює мертві кнопки</b> — <code>/api/telegram/ask-animator</code> тепер перевіряє, що Telegram webhook для callback реально готовий, перш ніж створювати pending-запит і відправляти inline-кнопки <code>Так</code> / <code>Ні</code>.</li>
+                        <li><b>Зрозумілий fallback замість silent fail</b> — якщо webhook не встановився або Telegram повернув помилку, CRM повертає <code>webhook_unavailable</code> і <code>manual_line</code>, щоб інтерфейс не чекав відповідь з кнопок, які live CRM не зможе отримати.</li>
+                        <li><b>Target і callback path стали видимими в логах</b> — додано точкові логи для вибору chat/thread, результату відправки повідомлення, отримання approve/reject callback і фактичного додавання/відхилення лінії аніматора.</li>
+                        <li><b>Guardrail для ask-animator flow</b> — тест покриває дві критичні гілки: кнопки не відправляються без готового webhook, а при готовому webhook ідуть у правильний chat/topic з callback payload <code>add_anim</code> / <code>no_anim</code>.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.17 — Task Assistant Summary Scope</h4>
                     <ul>
-                        <li><b>Tasks Assistant</b> — Помічник тепер дає коротке зведення по задачах із розділами «Останні додані», «Мої активні» і «Поставлені мною».</li>
-                        <li><b>Мої / поставлені мною</b> — відповіді враховують поточного користувача, assignee/owner і автора задачі, щоб не змішувати загальний список з персональним контекстом.</li>
-                        <li><b>Контекст для уточнень</b> — `/tasks` передає в assistant snapshot останні, мої та делеговані задачі з назвами, дедлайнами, пріоритетами й відповідальними.</li>
+                        <li><b>Нотатка по задачах стала конкретною</b> — питання про задачі тепер отримують коротку сводку з розділами <code>Останні додані</code>, <code>Мої активні</code> і <code>Поставлені мною</code>, а не загальну відповідь без прив'язки до реального списку.</li>
+                        <li><b>Помічник бачить мої та делеговані задачі</b> — backend-контекст задач враховує поточного користувача, власника/assignee і автора задачі, щоб відповідати окремо по моїх задачах і по тих, які я поставив іншим.</li>
+                        <li><b>Останні додані задачі у фокусі</b> — active tasks сортуються за <code>created_at</code>, дедуплікуються між зрізами і передаються в assistant context з назвами, дедлайнами, пріоритетами, власниками та авторами.</li>
+                        <li><b>Tasks page snapshot розширено</b> — <code>/tasks</code> тепер віддає у shared assistant snapshot <code>recentTasks</code>, <code>myTasks</code> і <code>delegatedByMeTasks</code>, щоб уточнення після короткої сводки мали конкретний контекст.</li>
+                        <li><b>Guardrail для відповідей</b> — додано focused тест, який перевіряє, що task-summary питання відповідає локально з реальних видимих задач і не йде в generic OpenAI path без потрібних деталей.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.16 — Maysternya Doli Timeline Surface</h4>
                     <ul>
-                        <li><b>Майстерня долі</b> — додано окремий приватний timeline `/maysternya-doli` для психологічних записів на базі сильного існуючого timeline UX.</li>
-                        <li><b>Доступ і ролі</b> — новий surface приховано від усіх без allowlist, підтримано додаткові ролі користувача та role-aware видимість дій всередині timeline.</li>
-                        <li><b>Ізоляція даних</b> — bookings, lines, drafts, фільтри й localStorage отримали окремий business context, щоб записи Майстерні не змішувались з Event Genix timeline.</li>
+                        <li><b>Окремий timeline для Майстерні долі</b> — додано приватний route <code>/maysternya-doli</code>, який повторно використовує основний timeline UX, але має власні психологічні labels, програми консультацій і стартову лінію/кабінет.</li>
+                        <li><b>Доступ через whitelist і додаткові ролі</b> — користувачі отримали <code>page_allowlist</code> та <code>extra_roles</code>; видимість сторінок і sidebar тепер перераховується з урахуванням основної ролі, додаткових ролей і конкретного allowlist.</li>
+                        <li><b>Role-aware кнопки всередині нового timeline</b> — створення, редагування, експорт, налаштування та destructive actions для Майстерні контролюються окремою action matrix, а не показуються всім дозволеним користувачам однаково.</li>
+                        <li><b>Ізоляція storage/API/data</b> — bookings, linked updates, lines, filters, compact/zoom state, drafts і localStorage ключі отримали business context <code>maysternya_doli</code>, щоб записи Майстерні не читались і не перезаписувались у Event Genix timeline.</li>
+                        <li><b>Основний timeline збережено</b> — Event Genix залишається default context <code>event_genix</code>, а side effects на кшталт Telegram, finance, leads, products і warehouse не запускаються з нового психологічного surface.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.15 — CRM Assistant Formatting Post-Release Hardening</h4>
                     <ul>
-                        <li><b>Dashboard QA</b> — прибрано runtime-шум `Identifier 'showToast' has already been declared`, який заважав чистій перевірці assistant rail на dashboard.</li>
-                        <li><b>Post-release hardening</b> — підтверджено parity canonical rail і dashboard fallback для safe formatting без розширення markdown-функцій чи редизайну.</li>
+                        <li><b>Dashboard verification noise cleaned up</b> — виправлено legacy <code>showToast</code> alias collision між <code>js/ui.js</code> і <code>js/catalogs.js</code>, через який dashboard smoke міг падати з <code>Identifier 'showToast' has already been declared</code>.</li>
+                        <li><b>Formatter rollout не розширювався</b> — safe assistant formatter з <code>v0.60.14</code> лишився тим самим escape-first контрактом; зміна не додає нові markdown-функції, typography controls або backend formatting behavior.</li>
+                        <li><b>Canonical/fallback parity підтверджено</b> — canonical assistant rail і dashboard fallback продовжують використовувати один <code>CrmAssistantOutputFormat</code> helper для inline bold, readable paragraphs/lists і escaped HTML-like text.</li>
+                        <li><b>UAT boundary зафіксовано чесно</b> — live <code>v0.60.14</code> було підтверджено перед fix, а реальний authenticated UAT потребує дійсної live-сесії/облікових даних; локальний authenticated-shell smoke використано як substitute для formatter DOM contract.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.14 — CRM Assistant Safe Formatting Rail</h4>
                     <ul>
-                        <li><b>Помічник</b> — rail і expanded history тепер безпечно рендерять `**акценти**`, абзаци та списки без сирих markdown-маркерів у відповіді.</li>
-                        <li><b>Безпечний renderer</b> — додано escape-first formatter для assistant output: HTML-подібний текст лишається текстом, а контрольоване форматування застосовується тільки після escaping.</li>
-                        <li><b>Shared UI</b> — canonical assistant rail і legacy dashboard fallback використовують один контракт, щоб dashboard, tasks, leads, finance і chat не розʼїжджались у форматуванні.</li>
+                        <li><b>Помічник більше не показує сирий markdown</b> — canonical assistant rail рендерить <code>**акценти**</code> як контрольований bold emphasis у ticker/subtitle lane, без видимих <code>**</code> у відповіді.</li>
+                        <li><b>Readable expanded history</b> — expanded panel отримав безпечні абзаци, unordered/ordered списки та компактні line breaks, щоб довші відповіді не виглядали як один plain text blob.</li>
+                        <li><b>Escape-first без raw HTML</b> — додано shared <code>CrmAssistantOutputFormat</code>, який спочатку екранує HTML-подібний текст, а вже потім застосовує тільки дозволені transforms; raw model HTML не вставляється в DOM.</li>
+                        <li><b>Canonical rail і fallback вирівняні</b> — <code>js/assistant-rail.js</code> і legacy dashboard fallback у <code>js/dashboard-page.js</code> використовують один formatter contract, а <code>auth.js</code> автовантажить helper разом із rail assets.</li>
+                        <li><b>Покриття safety cases</b> — додано focused Node test для plain text, <code>**bold**</code>, paragraphs, bullets, ordered lists і HTML-like input, щоб форматування не відкривало XSS-like path.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.13 — Tasks Kanban Drag And Drop Status Flow</h4>
                     <ul>
-                        <li><b>Tasks Kanban</b> — реалізовано робочий drag-and-drop між колонками зі збереженням нового статусу, visual feedback і rollback при помилці збереження.</li>
+                        <li><b>Kanban drag-and-drop став реальним flow</b> — у <code>/tasks?view=board</code> картки тепер мають native draggable contract, а колонки <code>До виконання</code>, <code>В роботі</code>, <code>Готово</code> приймають drop як валідні status targets.</li>
+                        <li><b>Статус зберігається в backend</b> — drop викликає canonical <code>PATCH /api/tasks/:id/status</code> з <code>todo</code> / <code>in_progress</code> / <code>done</code>, тому <code>status</code>, <code>workflow_state</code>, history/version і reload consistency лишаються в одному джерелі правди.</li>
+                        <li><b>Optimistic UI без брехні</b> — картка одразу переїжджає в нову колонку, показує saving state, а при reject/timeout повертається назад і показує зрозумілу помилку.</li>
+                        <li><b>DnD не ламає actions</b> — кнопки всередині task card не запускають drag випадково, click/open після drag не спрацьовує фантомно, delegated row actions з попереднього релізу збережені.</li>
+                        <li><b>Візуальний feedback додано</b> — active dragging state, drop-zone highlight і dark/light styling роблять kanban взаємодію очевидною без додавання нових залежностей.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.12 — Tasks Menu Actions Composer Layout Hardening</h4>
                     <ul>
-                        <li><b>Tasks UX</b> — полагоджено dead buttons у tasks screen через єдиний delegated action contract для рядків, статусів, smart-slot кнопок, snooze, restore і delete.</li>
-                        <li><b>Quick add composer</b> — створення задачі тепер доступне прямо у верхній частині сторінки: title, category, priority, assignee і due chips видно без важкої модалки.</li>
-                        <li><b>Ghost surfaces прибрано</b> — operation pack panel більше не займає місце у звичайному списку задач і зʼявляється тільки для operational categories `Замовлення` / `Чек-листи`.</li>
-                        <li><b>Layout hardening</b> — summary → filters → composer → list стали єдиним контрактом, row actions отримали більші hit areas, а laptop/tablet ширини більше не ріжуть composer та operation pack.</li>
+                        <li><b>Меню і actions ожили</b> — у <code>/tasks</code> row actions переведено на єдиний delegated handler замість крихких inline <code>onclick</code>, тому статус, waiting, smart-slot, snooze, restore і delete не гублять handlers після перерендеру.</li>
+                        <li><b>Quick add став щоденним capture flow</b> — category, priority, assignee і due presets (<code>Сьогодні</code>, <code>Завтра</code>, <code>Без дати</code>, <code>Інша дата</code>) винесено у компактний composer над списком; advanced поля лишились у блоці <code>Ще</code>.</li>
+                        <li><b>Ghost surfaces прибрано</b> — operation pack bar більше не показується як порожній контейнер у звичайних зрізах і відкривається тільки для operational categories <code>Замовлення</code> / <code>Чек-листи</code>.</li>
+                        <li><b>Layout зміцнено</b> — сторінка тримає порядок summary -&gt; filters -&gt; composer -&gt; list, task row actions мають більші hit areas, а 1440/1920/1024px smoke не дає горизонтального розриву composer/operation pack.</li>
+                        <li><b>Без зміни бізнес-логіки</b> — API, auth, routes, schema, task scheduling math, drag/drop і deployment config не змінювались; реліз продовжує ланцюг <code>v0.60.11 -&gt; v0.60.12</code>.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.11 — Timeline Theme Polish</h4>
                     <ul>
-                        <li><b>Таймлайн у фокусі</b> — робоча зона бронювань отримала спільні dark/light токени для поверхонь, borders, grid, focus states і поточного часу.</li>
-                        <li><b>Світла тема стала чіткішою</b> — sidebar, topbar, панель керування, рядки таймлайна, event blocks, legend і scrubber більше не виглядають вимитими або випадково mint/cyan.</li>
-                        <li><b>Темна тема спокійніша</b> — ordinary panels, assistant rail, widgets, controls і legend втратили зайвий glow, але selected/active states залишились помітними.</li>
-                        <li><b>Категорії подій вирівняні</b> — Квести, Анімація, Шоу, Фото, МК, Піньята, Інше і Попереднє мають сталі dot/stripe/border кольори без великої насиченої заливки.</li>
+                        <li><b>Таймлайн став головною робочою зоною</b> — екран бронювань отримав спільні dark/light токени для фону, панелей, grid, рядків, тексту, borders, focus states і поточного часу.</li>
+                        <li><b>Світла тема більше не вимита</b> — sidebar, topbar, панель керування, timeline grid, event blocks, legend і scrubber отримали чіткішу ієрархію поверхонь та контраст без pale mint haze.</li>
+                        <li><b>Темна тема спокійніша</b> — прибрано зайву neon/glow вагу з ordinary panels, assistant rail, sidebar widgets, controls, legend і minimap без зміни поведінки бронювань.</li>
+                        <li><b>Категорії подій нормалізовано</b> — <code>Квести</code>, <code>Анімація</code>, <code>Шоу</code>, <code>Фото</code>, <code>МК</code>, <code>Піньята</code>, <code>Інше</code> і <code>Попереднє</code> мають сталі кольори як dot/stripe/border, а не великі насичені заливки.</li>
+                        <li><b>Без зміни логіки</b> — API, auth, routes, DB, booking drag/drop/resize, filters, date controls, assistant actions і deploy config не змінювались; реліз продовжує ланцюг <code>v0.60.10 -&gt; v0.60.11</code>.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.10 — Scheduling Docs QA Sync</h4>
                     <ul>
-                        <li><b>Документи scheduling-апгрейду</b> — додано системний аналіз smart task scheduling і окремий Codex implementation task для наступних перевірок та handoff.</li>
-                        <li><b>Approved defaults guardrail</b> — task-файл прямо фіксує approved first-pass defaults і не повертає їх у hard-stop product gate.</li>
-                        <li><b>Версійна послідовність</b> — реліз продовжив ланцюг <code>v0.60.9 → v0.60.10</code> без втрати попереднього Smart Task Scheduling запису.</li>
+                        <li><b>Документи smart scheduling</b> — додано системний аналіз і окремий implementation task для наступного handoff без змішування з продакшн-кодом.</li>
+                        <li><b>Approved defaults guardrail</b> — task-файл фіксує approved first-pass defaults як робочі дефолти і не повертає їх у hard-stop product gate.</li>
+                        <li><b>Без втрати релізів</b> — visible changelog зберігає послідовність <code>v0.60.9 -&gt; v0.60.10</code> і попередній Smart Task Scheduling запис.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.9 — Smart Task Scheduling</h4>
                     <ul>
-                        <li><b>Smart slots</b> — задачі отримали 4 швидкі денні слоти, дефолтну тривалість 30 хв і backend-пошук найближчого вільного вікна.</li>
-                        <li><b>Єдиний scheduling contract</b> — створення, перенесення, профіль, alerts і work queue використовують спільну логіку розкладу, історії та сортування.</li>
-                        <li><b>Accountability</b> — прострочений слот фіксується через durable history і idempotent discipline event без подвійних штрафів при повторному запуску scheduler.</li>
+                        <li><b>4 швидкі слоти дня</b> — задачі можна планувати через компактні слоти з дефолтною тривалістю 30 хв і backend-пошуком найближчого вільного вікна.</li>
+                        <li><b>Єдиний scheduling contract</b> — створення, перенесення, profile/my-cabinet, alerts і work queue отримали спільну логіку розкладу, історії та сортування.</li>
+                        <li><b>Історія та accountability</b> — перенесення, manual override, proposal state і missed-slot події пишуться в durable history; discipline event і штраф обробляються idempotent, без подвійного нарахування.</li>
+                        <li><b>Версійна послідовність</b> — реліз продовжує ланцюг <code>v0.60.8 -&gt; v0.60.9</code> без пропущеного visible changelog.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.8 — Assistant Fix Rollup</h4>
                     <ul>
-                        <li><b>Повний rollup Помічника</b> — реліз фіксує всі останні зміни без пропусків у версіях: full rethink, timeline context, voice fallback, light mode, українська озвучка та scroll у міні-вікні.</li>
-                        <li><b>Версії без дірок</b> — changelog тримає послідовний ланцюг <code>v0.60.8 → v0.60.7 → v0.60.6 → v0.60.5 → v0.60.4 → v0.60.3 → v0.60.2 → v0.60.1 → v0.60.0</code>.</li>
+                        <li><b>Повний rollup Помічника</b> — зафіксовано всі останні зміни без пропусків у версіях: full rethink, timeline context, voice fallback, light mode, українська озвучка та scroll у міні-вікні.</li>
+                        <li><b>Версії без дірок</b> — changelog тримає послідовний ланцюг <code>v0.60.8 -&gt; v0.60.7 -&gt; v0.60.6 -&gt; v0.60.5 -&gt; v0.60.4 -&gt; v0.60.3 -&gt; v0.60.2 -&gt; v0.60.1 -&gt; v0.60.0</code>.</li>
                         <li><b>Guardrail</b> — UI-smoke перевіряє весь актуальний <code>v0.60.x</code> порядок, щоб жодне оновлення Помічника знову не випало з modal changelog.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.7 — Assistant Chat Scroll Fix</h4>
                     <ul>
-                        <li><b>Чат у міні-вікні</b> — історія діалогу Помічника тепер має власну вертикальну прокрутку й більше не обрізає старі повідомлення всередині expanded panel.</li>
-                        <li><b>Стабільний scroll</b> — прибрано притискання grid-контенту вниз, додано нормальний scroll container, touch-scroll і захист від перехоплення прокрутки зовнішньою панеллю.</li>
-                        <li><b>Guardrail</b> — UI-smoke перевіряє scroll-контракт expanded assistant chat, щоб міні-вікно знову не стало непрокручуваним.</li>
+                        <li><b>Чат у міні-вікні</b> — історія діалогу Помічника отримала власну вертикальну прокрутку в expanded panel і більше не обрізає старі повідомлення.</li>
+                        <li><b>Стабільний scroll</b> — прибрано <code>align-content: end</code> для scrollable history, додано <code>overscroll-behavior</code>, <code>scrollbar-gutter</code> і touch-scroll, щоб прокрутка не перехоплювалась зовнішньою панеллю.</li>
+                        <li><b>Guardrail</b> — UI-smoke перевіряє scroll-контракт expanded assistant chat.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
@@ -1457,47 +1730,48 @@
                     <ul>
                         <li><b>Голос Помічника стабілізовано</b> — відповідь більше не зависає у speaking-анімації без реального старту аудіо.</li>
                         <li><b>TTS fallback</b> — backend пробує резервну speech-модель, якщо основна модель озвучення недоступна або відхилена OpenAI.</li>
-                        <li><b>Browser voice fallback</b> — якщо mp3-відтворення заблоковане або не стартує, Помічник пробує озвучити відповідь через браузерний голосовий синтез.</li>
-                        <li><b>Guardrail</b> — тести покривають timeout, fallback-стани голосу і безпечний TTS fallback без зайвих unsupported-параметрів.</li>
+                        <li><b>Browser voice fallback</b> — якщо mp3-відтворення заблоковане, зависло або не стартує, Помічник пробує озвучити відповідь через браузерний <code>speechSynthesis</code>.</li>
+                        <li><b>Guardrail</b> — тести покривають timeout, fallback-стани голосу і безпечний TTS fallback без unsupported-параметрів для legacy speech model.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.3 — Assistant Timeline Context Fix</h4>
                     <ul>
-                        <li><b>Помічник бачить відкриту дату</b> — питання про розклад у таймлайні тепер беруть дату з відкритої сторінки, а не автоматично з поточного календарного дня.</li>
+                        <li><b>Помічник бачить відкриту дату</b> — питання про розклад у таймлайні тепер беруть дату з <code>AppState.selectedDate</code> / <code>#timelineDate</code>, а не автоматично з поточного календарного дня.</li>
                         <li><b>Бронювання не губляться</b> — якщо API не повернуло записи, але на видимому таймлайні є картки бронювань, Помічник підмішує DOM-зріз і не каже помилково, що бронювань немає.</li>
-                        <li><b>Афіша рахується окремо</b> — події афіші з різним часом більше не схлопуються в один пункт при fallback-зчитуванні з таймлайна.</li>
+                        <li><b>Афіша рахується окремо</b> — fallback-зчитування з таймлайна не схлопує різні події афіші в один пункт, якщо вони стоять у різний час.</li>
                         <li><b>Guardrail</b> — UI-smoke перевіряє selected-date контракт і DOM fallback для видимих booking blocks у shared assistant rail.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.2 — Assistant Full Rethink</h4>
                     <ul>
-                        <li><b>Assistant UX</b> — rail асистента перебудовано навколо одного canonical avatar, без старого stacked face/glasses/dot-cloud ефекту.</li>
-                        <li><b>Читабельні субтитри</b> — відповідь винесена у широку flat-лінію під presence: короткий текст стоїть статично, довгий рухається тільки при overflow і паузиться на hover/focus.</li>
-                        <li><b>Controls</b> — mic, stop, voice, replay і expand отримали однакові SVG-іконки, hit targets, focus-visible, disabled states і мобільну ергономіку.</li>
-                        <li><b>Voice loop</b> — додано auto-pause detection, max-duration fallback, cancel/stop flow і queue guard, щоб turns не губились при швидких повторних діях.</li>
+                        <li><b>Один canonical avatar</b> — shared assistant rail більше не рендерить face/glasses/dot-cloud stack; видимий presence зібраний в один компактний avatar path зі спокійними state-кільцями.</li>
+                        <li><b>Читабельний subtitle lane</b> — відповідь асистента винесена у широку flat-лінію під presence, короткий текст стоїть статично, довгий scroll-иться тільки при overflow і паузиться на hover/focus.</li>
+                        <li><b>Ергономічні controls</b> — mic, stop, voice, replay і expand отримали однакові hit targets, SVG-іконки, focus-visible стани, disabled states і мобільну перестановку без дрібних кнопок.</li>
+                        <li><b>Auto-pause voice turn</b> — голосовий запис тепер має аналіз тиші, max-duration fallback, explicit stop/cancel і queue guard, щоб швидкі послідовні turns не губилися.</li>
                         <li><b>Guardrail</b> — UI-smoke перевіряє single-avatar DOM, subtitle lane contract і auto-pause/turn queue захист.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.1 — Tasks Truth Canonical Board</h4>
                     <ul>
-                        <li><b>Правда у списку задач</b> — звичайний <code>/api/tasks</code> більше не віддає пізніші active-дублі: backend лишає один canonical active row.</li>
-                        <li><b>Duplicate policy v2</b> — duplicate signature спирається на title/day/category/subcategory/owner/checklist і stable source anchor.</li>
-                        <li><b>Cleanup без видалення</b> — міграція архівує duplicate active rows як <code>auto_duplicate_v2</code> і не ламає історію.</li>
-                        <li><b>Completed lifecycle</b> — виконані задачі лишаються в системі, мають <code>completed_at</code> і доступні у board <code>Виконано сьогодні</code>.</li>
-                        <li><b>Guardrail</b> — UI-smoke перевіряє default duplicate collapse, v2 source anchor, migration marker і dry-run cleanup.</li>
+                        <li><b>Правда у списку задач</b> — звичайний <code>/api/tasks</code> більше не віддає пізніші active-дублі: backend лишає один canonical active row, а повний duplicate state доступний через governance/dedup.</li>
+                        <li><b>Duplicate policy v2</b> — duplicate signature тепер спирається на title/day/category/subcategory/owner/checklist і stable source anchor, а не на випадкові source-поля, які різні writers могли заповнювати по-різному.</li>
+                        <li><b>Cleanup без видалення</b> — міграція <code>188_tasks_canonical_active_dedup_v2.sql</code> архівує duplicate active rows як <code>auto_duplicate_v2</code>, привʼязує їх до canonical задачі й не видаляє історію.</li>
+                        <li><b>Completed lifecycle</b> — виконані задачі лишаються в системі, мають <code>completed_at</code>, показуються закресленими й доступні в окремому board <code>Виконано сьогодні</code>.</li>
+                        <li><b>Меню “Життєвий цикл”</b> — governance menu отримало dry-run duplicate report, точний count перед cleanup і централізовані дії для виконаних та архівних задач.</li>
+                        <li><b>Guardrail</b> — UI-smoke перевіряє default duplicate collapse, v2 source anchor, migration marker і dry-run cleanup перед архівацією.</li>
                     </ul>
                 </div>
                 <div class="changelog-section">
                     <h4>v0.60.0 — Dashboard Scene Board Tools</h4>
                     <ul>
-                        <li><b>Сцена і Board зведені в один UX-режим</b> — Dashboard тепер явно веде у <code>Сцена + Board</code>, а стан дошки лишається одним джерелом правди.</li>
-                        <li><b>Toolbar працює через active tool</b> — Note, Text, Frame, Widget, Line, Arrow, Rect, Ellipse, Brush, Eraser і Connector активуються одним шляхом вибору інструмента.</li>
+                        <li><b>Сцена і Board зведені в один UX-режим</b> — кнопка Dashboard тепер явно веде у <code>Сцена + Board</code>, а стан дошки лишається одним джерелом правди.</li>
+                        <li><b>Toolbar працює через active tool</b> — Note, Text, Frame, Widget, Line, Arrow, Rect, Ellipse, Brush, Eraser і Connector активуються одним шляхом <code>setBoardTool()</code>.</li>
                         <li><b>Створення по точці canvas</b> — create/shape інструменти додають обʼєкти у місце кліку на дошці замість старого одноразового додавання у випадкову позицію.</li>
                         <li><b>Board settings у налаштуваннях</b> — додано snap, сітку, напрямні, колір і товщину лінії в settings modal та live tool panel.</li>
-                        <li><b>Backend не губить Board state</b> — dashboard config приймає активні tools, <code>connector</code>, <code>connectors</code>, <code>connectorStyle</code> і <code>relationType</code>.</li>
+                        <li><b>Backend не губить Board state</b> — dashboard config тепер приймає всі активні tools, <code>connector</code>, <code>connectors</code>, <code>connectorStyle</code> і <code>relationType</code>.</li>
                         <li><b>Guardrail</b> — UI-smoke перевіряє active-tool контракт, settings persistence і backend connector preservation.</li>
                     </ul>
                 </div>
@@ -8112,27 +8386,27 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.61.5"></script>
-    <script src="js/config.js?v=0.61.5"></script>
-    <script src="js/api.js?v=0.61.5"></script>
-    <script src="js/ui.js?v=0.61.5"></script>
-    <script src="js/auth.js?v=0.61.5"></script>
-    <script src="js/timeline.js?v=0.61.5"></script>
-    <script src="js/booking.js?v=0.61.5"></script>
-    <script src="js/settings.js?v=0.61.5"></script>
-    <script src="js/booking-form.js?v=0.61.5"></script>
-    <script src="js/booking-linked.js?v=0.61.5"></script>
-    <script src="js/settings-dashboard.js?v=0.61.5"></script>
-    <script src="js/settings-history.js?v=0.61.5"></script>
-    <script src="js/settings-afisha.js?v=0.61.5"></script>
-    <script src="js/settings-certificates.js?v=0.61.5"></script>
-    <script src="js/offline.js?v=0.61.5"></script>
-    <script src="js/crm-feature-registry.js?v=0.61.5"></script>
-    <script src="js/search.js?v=0.61.5"></script>
-    <script src="js/ws.js?v=0.61.5"></script>
-    <script src="js/app.js?v=0.61.5"></script>
-    <script src="js/kleshnya-widget.js?v=0.61.5"></script>
-    <script src="js/components/sidebar.js?v=0.61.5"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.61.5"></script>
+    <script src="js/timeline-context.js?v=0.61.6"></script>
+    <script src="js/config.js?v=0.61.6"></script>
+    <script src="js/api.js?v=0.61.6"></script>
+    <script src="js/ui.js?v=0.61.6"></script>
+    <script src="js/auth.js?v=0.61.6"></script>
+    <script src="js/timeline.js?v=0.61.6"></script>
+    <script src="js/booking.js?v=0.61.6"></script>
+    <script src="js/settings.js?v=0.61.6"></script>
+    <script src="js/booking-form.js?v=0.61.6"></script>
+    <script src="js/booking-linked.js?v=0.61.6"></script>
+    <script src="js/settings-dashboard.js?v=0.61.6"></script>
+    <script src="js/settings-history.js?v=0.61.6"></script>
+    <script src="js/settings-afisha.js?v=0.61.6"></script>
+    <script src="js/settings-certificates.js?v=0.61.6"></script>
+    <script src="js/offline.js?v=0.61.6"></script>
+    <script src="js/crm-feature-registry.js?v=0.61.6"></script>
+    <script src="js/search.js?v=0.61.6"></script>
+    <script src="js/ws.js?v=0.61.6"></script>
+    <script src="js/app.js?v=0.61.6"></script>
+    <script src="js/kleshnya-widget.js?v=0.61.6"></script>
+    <script src="js/components/sidebar.js?v=0.61.6"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.61.6"></script>
 </body>
 </html>

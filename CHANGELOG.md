@@ -4,6 +4,15 @@
 
 ---
 
+## v0.61.6 - Відновлення нумерації версій
+
+### Changelog continuity [codex]
+- **Видимий changelog** - у login modal відновлено пропущені release-блоки між `v0.61.5` і `v0.60.0`, щоб версії більше не стрибали з `v0.61.5` на `v0.61.0` або з `v0.60.39` на `v0.60.23`.
+- **Джерело правди** - `CHANGELOG.md` і `index.html` тепер мають однаковий верхній release chain для активної гілки `0.61.x` / `0.60.x`.
+- **Version guard** - додано статичну перевірку безперервності видимого changelog, щоб такі загублені версії не повертались.
+
+---
+
 ## v0.61.5 - Graduation ops automation
 
 ### Graduation timeline positions + special control [codex]

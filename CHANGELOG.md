@@ -4,6 +4,15 @@
 
 ---
 
+## v0.60.31 - Graduation Diploma Copy Spacing
+
+### Graduation Diploma Copy Spacing [codex]
+- **Між описом і побажанням додано повітря** - червоний wish-блок у дипломі зміщено нижче, щоб він не торкався синього опису навіть на 4 рядках тексту.
+- **Довгі тексти стискаються контрольовано** - diploma renderer додає density-класи для довгого опису, довгого побажання і сумарно великої кількості тексту, з меншим шрифтом та line-height.
+- **Regression coverage** - додано тест, який перевіряє compact layout для long description + long wish, щоб синій і червоний блоки не повертались до накладання.
+
+---
+
 ## v0.60.30 - Graduation Diploma Print Margins
 
 ### Graduation Diploma Print Margins [codex]

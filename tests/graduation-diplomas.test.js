@@ -69,4 +69,19 @@ describe('Graduation diploma helper', () => {
         assert.match(csv, /Фінальне побажання/);
         assert.match(csv, /Марія/);
     });
+
+    it('uses compact diploma copy classes for long description and wish text', () => {
+        const child = normalizeChildInput({
+            fullName: 'Long Child Name',
+            gender: 'neutral',
+            customWish: 'Long warm wish '.repeat(14)
+        });
+        child.id = 2;
+        const html = buildDiplomaDocument([child], {
+            subtitleText: 'Long achievement description '.repeat(9)
+        });
+        assert.match(html, /class="diploma-page is-copy-dense"/);
+        assert.match(html, /class="diploma-text diploma-description is-very-long"/);
+        assert.match(html, /class="diploma-text diploma-wish is-very-long"/);
+    });
 });

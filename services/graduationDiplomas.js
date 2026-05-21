@@ -253,23 +253,29 @@ function buildDiplomaPage(child, template = DEFAULT_DIPLOMA_TEMPLATE, quote = {}
     const layout = { ...DEFAULT_DIPLOMA_TEMPLATE.layout, ...(template.layout || {}) };
     const title = child.diplomaTitleOverride || template.titleText || DEFAULT_DIPLOMA_TEMPLATE.titleText;
     const wish = child.customWish || child.finalWish || child.autoWish || pickWish(child);
+    const description = template.subtitleText || DEFAULT_DIPLOMA_TEMPLATE.subtitleText;
     const classLine = child.classLabel ? `<div class="diploma-text diploma-school">${escHtml(child.classLabel)}</div>` : '';
     const displayName = escHtml(child.fullName).replace(/-/g, '&#8209;');
     const nameLength = String(child.fullName || '').length;
     const nameClass = nameLength > 44 ? ' is-very-long' : (nameLength > 30 ? ' is-long' : '');
+    const descriptionLength = String(description || '').replace(/\s+/g, ' ').trim().length;
+    const wishLength = String(wish || '').replace(/\s+/g, ' ').trim().length;
+    const descriptionClass = descriptionLength > 170 ? ' is-very-long' : (descriptionLength > 115 ? ' is-long' : '');
+    const wishClass = wishLength > 155 ? ' is-very-long' : (wishLength > 105 ? ' is-long' : '');
+    const densityClass = descriptionLength + wishLength > 280 ? ' is-copy-dense' : '';
     const sealLogoUrl = layout.sealLogoUrl || DEFAULT_DIPLOMA_TEMPLATE.layout.sealLogoUrl;
     const backgroundImageUrl = layout.backgroundImageUrl || DEFAULT_DIPLOMA_TEMPLATE.layout.backgroundImageUrl;
     const issueDate = new Intl.DateTimeFormat('en', { year: 'numeric', timeZone: 'Europe/Kyiv' }).format(new Date());
     const signature = String(template.principalRole || '').trim();
     return `
-<section class="diploma-page" style="--paper:${palette.paper};--ink:${palette.ink};--muted:${palette.muted};--gold:${palette.gold};--gold-soft:${palette.goldSoft};--accent:${palette.accent};">
+<section class="diploma-page${densityClass}" style="--paper:${palette.paper};--ink:${palette.ink};--muted:${palette.muted};--gold:${palette.gold};--gold-soft:${palette.goldSoft};--accent:${palette.accent};">
     <img class="diploma-template-bg" src="${escHtml(backgroundImageUrl)}" alt="" aria-hidden="true">
     <div class="diploma-content">
         <h1 class="diploma-text diploma-title">${escHtml(title)}</h1>
         <div class="diploma-text diploma-awarded">Нагороджується</div>
         <div class="diploma-text diploma-name${nameClass}">${displayName}</div>
-        <div class="diploma-text diploma-description">${escHtml(template.subtitleText || DEFAULT_DIPLOMA_TEMPLATE.subtitleText)}</div>
-        <div class="diploma-text diploma-wish">${escHtml(wish)}</div>
+        <div class="diploma-text diploma-description${descriptionClass}">${escHtml(description)}</div>
+        <div class="diploma-text diploma-wish${wishClass}">${escHtml(wish)}</div>
         <div class="diploma-text diploma-date">${escHtml(issueDate)}</div>
         ${signature ? `<div class="diploma-text diploma-signature">${escHtml(signature)}</div>` : ''}
         ${classLine}
@@ -303,12 +309,18 @@ html, body { margin: 0; padding: 0; background: #b7f000; color: #123b8f; font-fa
 .diploma-name { left: 50%; top: 30.6%; width: 68.36%; color: #2459a8; font-family: "Montserrat Alternates", "Comfortaa", "Arial Rounded MT Bold", "Trebuchet MS", sans-serif; font-size: 48px; line-height: 1.12; font-weight: 800; max-height: 118px; text-shadow: 0 2px 0 rgba(255,255,255,0.95), 0 5px 12px rgba(47,100,184,0.14); }
 .diploma-name.is-long { font-size: 40px; line-height: 1.08; }
 .diploma-name.is-very-long { font-size: 34px; line-height: 1.06; }
-.diploma-description { left: 50%; top: 42%; width: 66.4%; color: #3c67b1; font-family: "Nunito", "Montserrat Alternates", "Trebuchet MS", sans-serif; font-size: 30px; line-height: 1.22; font-weight: 700; max-height: 148px; text-shadow: 0 1px 0 rgba(255,255,255,0.74); }
-.diploma-wish { left: 50%; top: 54.69%; width: 67.38%; color: #e75a1c; font-family: "Comfortaa", "Montserrat Alternates", "Trebuchet MS", sans-serif; font-size: 31px; line-height: 1.24; font-weight: 700; max-height: 118px; text-shadow: 0 2px 0 rgba(255,255,255,0.68); }
-.diploma-date { left: 29.3%; top: 70.31%; width: 27.34%; color: #2f64b8; font-family: "Montserrat Alternates", "Nunito", "Trebuchet MS", sans-serif; font-size: 26px; line-height: 1.12; font-weight: 800; max-height: 48px; text-shadow: 0 1px 0 rgba(255,255,255,0.76); }
+.diploma-description { left: 50%; top: 42%; width: 66.4%; color: #3c67b1; font-family: "Nunito", "Montserrat Alternates", "Trebuchet MS", sans-serif; font-size: 30px; line-height: 1.18; font-weight: 700; max-height: 142px; text-shadow: 0 1px 0 rgba(255,255,255,0.74); }
+.diploma-description.is-long { font-size: 27px; line-height: 1.14; max-height: 148px; }
+.diploma-description.is-very-long { font-size: 24px; line-height: 1.1; max-height: 152px; }
+.diploma-wish { left: 50%; top: 58.4%; width: 67.38%; color: #e75a1c; font-family: "Comfortaa", "Montserrat Alternates", "Trebuchet MS", sans-serif; font-size: 31px; line-height: 1.2; font-weight: 700; max-height: 112px; text-shadow: 0 2px 0 rgba(255,255,255,0.68); }
+.diploma-wish.is-long { font-size: 27px; line-height: 1.15; max-height: 128px; }
+.diploma-wish.is-very-long { font-size: 23px; line-height: 1.12; max-height: 138px; }
+.diploma-page.is-copy-dense .diploma-description { font-size: 24px; line-height: 1.1; max-height: 150px; }
+.diploma-page.is-copy-dense .diploma-wish { top: 58.7%; font-size: 23px; line-height: 1.1; max-height: 136px; }
+.diploma-date { left: 29.3%; top: 71.5%; width: 27.34%; color: #2f64b8; font-family: "Montserrat Alternates", "Nunito", "Trebuchet MS", sans-serif; font-size: 26px; line-height: 1.12; font-weight: 800; max-height: 48px; text-shadow: 0 1px 0 rgba(255,255,255,0.76); }
 .diploma-signature { left: 70.31%; top: 70.31%; width: 29.3%; color: #2f64b8; font-family: "Comfortaa", "Trebuchet MS", sans-serif; font-size: 25px; line-height: 1.15; font-weight: 700; max-height: 62px; }
-.diploma-school { left: 50%; top: 75.52%; width: 60.55%; color: #2f64b8; font-family: "Montserrat Alternates", "Nunito", "Trebuchet MS", sans-serif; font-size: 28px; line-height: 1.18; font-weight: 800; max-height: 78px; text-shadow: 0 1px 0 rgba(255,255,255,0.7); }
-.diploma-park-logo { position: absolute; z-index: 3; left: 50%; top: 82.1%; transform: translateX(-50%); width: 11.8%; height: auto; max-height: 10%; object-fit: contain; border-radius: 50%; filter: drop-shadow(0 4px 0 rgba(47,100,184,0.14)); }
+.diploma-school { left: 50%; top: 76.7%; width: 60.55%; color: #2f64b8; font-family: "Montserrat Alternates", "Nunito", "Trebuchet MS", sans-serif; font-size: 28px; line-height: 1.18; font-weight: 800; max-height: 78px; text-shadow: 0 1px 0 rgba(255,255,255,0.7); }
+.diploma-park-logo { position: absolute; z-index: 3; left: 50%; top: 83.1%; transform: translateX(-50%); width: 11.8%; height: auto; max-height: 10%; object-fit: contain; border-radius: 50%; filter: drop-shadow(0 4px 0 rgba(47,100,184,0.14)); }
 @page { size: 210mm 297mm; margin: 0mm; }
 @media print {
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -326,6 +338,10 @@ html, body { margin: 0; padding: 0; background: #b7f000; color: #123b8f; font-fa
     .diploma-name.is-long { font-size: clamp(21px, 5vw, 40px); }
     .diploma-name.is-very-long { font-size: clamp(18px, 4.4vw, 34px); }
     .diploma-description, .diploma-wish { font-size: clamp(17px, 3.9vw, 31px); }
+    .diploma-description.is-long { font-size: clamp(16px, 3.4vw, 27px); }
+    .diploma-description.is-very-long, .diploma-page.is-copy-dense .diploma-description { font-size: clamp(15px, 3vw, 24px); }
+    .diploma-wish.is-long { font-size: clamp(16px, 3.4vw, 27px); }
+    .diploma-wish.is-very-long, .diploma-page.is-copy-dense .diploma-wish { font-size: clamp(15px, 3vw, 23px); }
     .diploma-date, .diploma-school, .diploma-signature { font-size: clamp(15px, 3.4vw, 28px); }
 }
 </style>

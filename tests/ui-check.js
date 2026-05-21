@@ -209,8 +209,10 @@ checkPage('certificates.html', (doc, html) => {
     check('Certificates page exposes standalone single-create route surface', !!doc.getElementById('certificatesNewView') && !!doc.getElementById('certificatePageForm') && !!doc.getElementById('certPageSubmitBtn'));
     check('Certificates page exposes standalone batch-create route surface', !!doc.getElementById('certificatesBatchView') && !!doc.getElementById('certificateBatchPageForm') && !!doc.getElementById('certBatchPageSubmitBtn'));
     check('Certificates page routes primary actions to canonical routes', html.includes('href="/certificates/new"') && html.includes('href="/certificates/batch"') && html.includes('href="/certificates"'));
+    check('Certificates routes are explicit before SPA fallback', htmlContains('server.js', "app.get(['/certificates', '/certificates/new', '/certificates/batch']") && htmlContains('server.js', "res.sendFile(path.join(__dirname, 'certificates.html'));"));
     check('Certificates page JS uses existing certificate API helpers', certificatePageCode.includes('apiGetCertificates') && certificatePageCode.includes('apiCreateCertificate') && certificatePageCode.includes('apiBatchCreateCertificates') && certificatePageCode.includes('apiUpdateCertificateStatus') && certificatePageCode.includes('apiDeleteCertificate'));
     check('Certificates page has route-driven modes instead of creation modals', certificatePageCode.includes("path.endsWith('/new')") && certificatePageCode.includes("path.endsWith('/batch')") && !html.includes('id="certificateModal"') && !html.includes('id="batchCertModal"'));
+    check('Certificates standalone page verifies auth before showing shell', certificatePageCode.includes('bootstrapAuthenticatedShell') && certificatePageCode.includes('apiVerifyToken()') && certificatePageCode.includes('showAuthenticatedPageShell()') && certificatePageCode.includes("window.location.href = '/'") && certificatePageCode.indexOf('bootstrapAuthenticatedShell') < certificatePageCode.indexOf('setMode(detectMode())'));
 });
 
 checkPage('staff.html', (doc, html) => {

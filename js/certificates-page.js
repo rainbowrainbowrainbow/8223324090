@@ -468,7 +468,66 @@
         });
     }
 
-    function init() {
+    function redirectToLogin() {
+        if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
+        window.location.href = '/';
+    }
+
+    async function bootstrapAuthenticatedShell() {
+        const token = localStorage.getItem('pzp_token');
+        if (!token) {
+            redirectToLogin();
+            return null;
+        }
+
+        const user = await apiVerifyToken();
+        if (!user) {
+            if (typeof clearAuthStorage === 'function') clearAuthStorage();
+            redirectToLogin();
+            return null;
+        }
+
+        if (typeof AppState !== 'undefined') AppState.currentUser = user;
+        const userEl = $('currentUser');
+        if (userEl) userEl.textContent = user.name || user.username || '';
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
+        if (typeof bindLogoutButton === 'function') bindLogoutButton();
+        return user;
+    }
+
+    function renderCertificatePageFatalError(error) {
+        if (typeof renderStandaloneFatalError === 'function') {
+            renderStandaloneFatalError({
+                containerId: 'main-content',
+                title: 'Не вдалося відкрити сертифікати',
+                message: 'Standalone сторінка сертифікатів пройшла auth, але впала під час ініціалізації.',
+                moduleName: 'certificates',
+                error
+            });
+            return;
+        }
+        const main = $('main-content') || $('mainApp');
+        if (main) {
+            main.innerHTML = `<div class="page-fatal-error" role="alert"><h3>Не вдалося відкрити сертифікати</h3><pre>${esc(error?.message || error || 'Unknown error')}</pre></div>`;
+        }
+    }
+
+    async function init() {
+        if (typeof initDarkMode === 'function') initDarkMode();
+        try {
+            const user = await bootstrapAuthenticatedShell();
+            if (!user) return;
+        } catch (error) {
+            if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+            if (typeof handleStandaloneInitError === 'function') {
+                handleStandaloneInitError('certificates', error, renderCertificatePageFatalError);
+            } else {
+                renderCertificatePageFatalError(error);
+            }
+            return;
+        }
+
         bindEvents();
         setMode(detectMode());
         if (window.Sidebar && typeof window.Sidebar.markShellReady === 'function') {

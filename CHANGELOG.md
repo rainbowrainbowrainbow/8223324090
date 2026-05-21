@@ -4,6 +4,15 @@
 
 ---
 
+## v0.61.8 - Certificates page recovery
+
+### Certificates standalone page recovery [codex]
+- **Certificates** - відновлено standalone auth/bootstrap для сторінки сертифікатів без повернення до legacy panel flow.
+- **Routing** - підтверджено й закріплено явні маршрути `/certificates`, `/certificates/new`, `/certificates/batch` на `certificates.html`.
+- **Deploy safety** - перед release перевірено live/frontend sync, щоб не деплоїти старіший frontend snapshot поверх live.
+
+---
+
 ## v0.61.7 - Майстерня долі booking cleanup
 
 ### Maysternya Doli booking panel cleanup [codex]

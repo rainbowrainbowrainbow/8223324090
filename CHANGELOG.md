@@ -4,6 +4,15 @@
 
 ---
 
+## v0.61.10 - Graduation products shell layout hardening
+
+### Graduation products shell/layout hardening [codex]
+- **Sidebar** - прибрано небажане auto-collapse / fullscreen chrome loss у graduation products/catalog flow.
+- **Shell** - graduation catalog viewer у Designs тепер відкривається всередині CRM workspace і не ховає sidebar/header.
+- **Layout** - `/graduation` і graduation package viewer вирівняно ближче до робочого content lane замість надмірно центрованої вітрини.
+
+---
+
 ## v0.61.9 - Chat Guardian moderation hardening
 
 ### Chat + Guardian moderation hardening [codex]

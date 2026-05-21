@@ -1329,9 +1329,13 @@ function setCatalogUiMode(mode) {
     if (!tab || !viewer) return;
 
     const tabChildren = Array.from(tab.children).filter(el => el.id !== 'inlineCatalogView' && el.id !== 'catalogViewer');
-    document.body.classList.toggle('catalog-viewer-open', mode === CATALOG_UI_MODES.VIEWER);
+    const isViewerMode = mode === CATALOG_UI_MODES.VIEWER;
+    const isGraduationViewer = isViewerMode && _viewerCatalogType === 'graduation';
+    viewer.dataset.catalogViewerType = isViewerMode ? _viewerCatalogType : '';
+    document.body.classList.toggle('catalog-viewer-open', isViewerMode);
+    document.body.classList.toggle('catalog-graduation-viewer-open', isGraduationViewer);
     document.body.classList.toggle('catalog-inline-open', mode === CATALOG_UI_MODES.INLINE);
-    document.body.style.overflow = mode === CATALOG_UI_MODES.VIEWER ? 'hidden' : '';
+    document.body.style.overflow = (isViewerMode && !isGraduationViewer) ? 'hidden' : '';
 
     if (mode === CATALOG_UI_MODES.LIST) {
         tabChildren.forEach(el => { el.style.display = ''; });
@@ -1560,7 +1564,7 @@ function buildCatalogPageHtml(pkg) {
             </div>
             <!-- FOOTER -->
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.61.9" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.61.10" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>
@@ -1654,7 +1658,7 @@ function buildAutoPageHtml(page) {
                 ${page.description && itemsHtml ? `<div class="cat-desc" style="margin-top:12px">${esc(page.description)}</div>` : ''}
             </div>
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.61.9" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.61.10" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>

@@ -2,9 +2,11 @@
 /* Features: collapse, color-code, timeline, FAB, analytics, comparison, recommendations */
 
 .grad-page {
-    padding: 16px;
-    max-width: 1200px;
-    margin: 0 auto;
+    width: min(100%, 1320px);
+    padding: clamp(16px, 2vw, 28px) clamp(16px, 2.5vw, 36px);
+    max-width: 1320px;
+    margin: 0;
+    box-sizing: border-box;
 }
 
 .grad-page h1 {
@@ -1210,14 +1212,17 @@ body.dark-mode .grad-pop-bar-container { background: var(--gray-200); }
    ============================================ */
 
 .catalog-viewer {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
+    position: relative;
+    z-index: 1;
     background: #f0ebe4;
     overflow-y: auto;
     display: none;
     -webkit-overflow-scrolling: touch;
     animation: catalogFadeIn 0.25s ease;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 24px;
+    margin: 20px 0 0;
+    box-shadow: 0 16px 48px rgba(15, 23, 42, 0.14);
 }
 @keyframes catalogFadeIn {
     from { opacity: 0; transform: scale(0.98); }
@@ -1302,9 +1307,9 @@ body.dark-mode .grad-pop-bar-container { background: var(--gray-200); }
 
 /* --- Page wrapper --- */
 .catalog-page-wrapper {
-    max-width: 520px;
-    margin: 20px auto;
-    padding: 0 16px 80px;
+    max-width: 980px;
+    margin: 20px 0;
+    padding: 0 24px 88px;
 }
 
 /* --- Page BG — geometric mosaic --- */

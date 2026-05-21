@@ -206,6 +206,23 @@ body.catalog-viewer-open .sidebar-overlay {
     pointer-events: none !important;
 }
 
+body.catalog-graduation-viewer-open {
+    overflow: auto;
+}
+
+body.catalog-graduation-viewer-open .header,
+body.catalog-graduation-viewer-open .sidebar-nav {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+body.catalog-graduation-viewer-open .sidebar-overlay {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
 .catalog-viewer {
     position: fixed;
     inset: 0;
@@ -216,6 +233,20 @@ body.catalog-viewer-open .sidebar-overlay {
     isolation: isolate;
     overflow: hidden;
     box-sizing: border-box;
+}
+
+body.catalog-graduation-viewer-open .catalog-viewer {
+    position: relative;
+    inset: auto;
+    z-index: auto;
+    width: 100%;
+    min-height: auto;
+    margin: 0;
+    background: transparent;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 24px;
+    overflow: visible;
+    box-shadow: none;
 }
 
 /* v0.59.1: desktop catalog viewer is a readable preview, not a trapped mini-card */
@@ -249,6 +280,19 @@ body.catalog-viewer-open .sidebar-overlay {
     justify-content: center;
     box-sizing: border-box;
     overscroll-behavior: contain;
+}
+
+body.catalog-graduation-viewer-open .catalog-pages-container {
+    justify-content: flex-start;
+    align-items: flex-start;
+    overflow: visible;
+    padding: clamp(16px, 2vw, 28px) 0 clamp(24px, 3vw, 40px);
+}
+
+body.catalog-graduation-viewer-open .catalog-viewer-nav {
+    justify-content: flex-start;
+    border-radius: 22px 22px 0 0;
+    background: rgba(15, 23, 42, 0.86);
 }
 
 /* ==========================================
@@ -767,6 +811,12 @@ body.catalog-viewer-open .cat-page {
     max-height: none;
     border-radius: 26px;
 }
+
+body.catalog-graduation-viewer-open .cat-page {
+    margin: 0;
+    width: min(100%, 1040px);
+    max-width: 1040px;
+}
 body.catalog-viewer-open .cat-hero {
     aspect-ratio: auto;
     height: clamp(280px, 34dvh, 430px);
@@ -844,6 +894,14 @@ body.catalog-viewer-open .cat-actions {
     }
     body.catalog-viewer-open .cat-actions {
         padding: 8px 12px;
+    }
+
+    body.catalog-graduation-viewer-open .catalog-viewer {
+        border-radius: 18px;
+    }
+
+    body.catalog-graduation-viewer-open .catalog-viewer-nav {
+        border-radius: 18px 18px 0 0;
     }
 }
 

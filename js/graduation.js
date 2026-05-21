@@ -947,8 +947,9 @@
             viewer = document.createElement('div');
             viewer.id = 'catalogViewer';
             viewer.className = 'catalog-viewer';
-            document.body.appendChild(viewer);
         }
+        const viewerHost = document.getElementById('gradContent') || document.querySelector('.grad-page') || document.body;
+        if (viewer.parentElement !== viewerHost) viewerHost.appendChild(viewer);
 
         viewer.innerHTML = `
             <div class="catalog-viewer-topbar">
@@ -1014,8 +1015,8 @@
             </div>`;
 
         viewer.style.display = 'block';
-        document.body.classList.add('catalog-viewer-open');
-        document.body.style.overflow = 'hidden';
+        document.body.classList.add('graduation-catalog-viewer-open');
+        requestAnimationFrame(() => viewer.scrollIntoView({ block: 'start', behavior: 'smooth' }));
 
         // Touch swipe
         const page = document.getElementById('catalogPage');
@@ -1058,7 +1059,7 @@
             }
             viewer.remove();
         }
-        document.body.classList.remove('catalog-viewer-open');
+        document.body.classList.remove('graduation-catalog-viewer-open');
         document.body.style.overflow = '';
     }
 

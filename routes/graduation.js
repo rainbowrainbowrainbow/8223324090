@@ -15,6 +15,7 @@ const {
     pickWish,
     parseRosterImport,
     buildDiplomaDocument,
+    buildDiplomaPdfBuffer,
     buildRosterPrintSheet,
     buildRosterCsv
 } = require('../services/graduationDiplomas');
@@ -607,6 +608,14 @@ async function markDiplomaExport(quoteId, templateId, exportKind, childrenCount,
     );
 }
 
+function safeExportFilename(value, fallback = 'graduation_diplomas') {
+    const clean = String(value || fallback)
+        .replace(/[^\w.-]+/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    return clean || fallback;
+}
+
 // GET /api/graduation/diploma/template — default diploma template
 router.get('/diploma/template', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
@@ -865,7 +874,7 @@ router.get('/quotes/:id/diplomas/preview', requireRole('creator', 'director', 's
     }
 });
 
-// GET /api/graduation/quotes/:id/diplomas/export/pdf — print-ready batch HTML for Save as PDF
+// GET /api/graduation/quotes/:id/diplomas/export/pdf — ready multi-page PDF with all diplomas
 router.get('/quotes/:id/diplomas/export/pdf', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
         const quote = await getGraduationQuoteOr404(req.params.id, res);
@@ -873,6 +882,28 @@ router.get('/quotes/:id/diplomas/export/pdf', requireRole('creator', 'director',
         const templateRow = await ensureDefaultDiplomaTemplate();
         const template = toCamelTemplate(templateRow);
         const children = await loadDiplomaChildren(req.params.id);
+        const wantsHtml = ['1', 'true', 'yes'].includes(String(req.query.html || '').toLowerCase())
+            || ['html', 'print'].includes(String(req.query.format || '').toLowerCase());
+        const autoPrint = ['1', 'true', 'yes'].includes(String(req.query.print || '').toLowerCase());
+
+        if (wantsHtml) {
+            await markDiplomaExport(req.params.id, templateRow.id, 'pdf_batch', children.length, req.user.username);
+            await pool.query(
+                `UPDATE graduation_children
+                 SET diploma_status = CASE WHEN diploma_status IN ('draft', 'generated') THEN 'exported' ELSE diploma_status END,
+                     updated_at = NOW()
+                 WHERE graduation_quote_id = $1`,
+                [req.params.id]
+            );
+            const html = buildDiplomaDocument(children, template, quote, {
+                autoPrint,
+                title: `Дипломи ${quote.quote_number || req.params.id}`
+            });
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            return res.send(html);
+        }
+
+        const pdf = await buildDiplomaPdfBuffer(children, template, quote);
         await markDiplomaExport(req.params.id, templateRow.id, 'pdf_batch', children.length, req.user.username);
         await pool.query(
             `UPDATE graduation_children
@@ -881,16 +912,14 @@ router.get('/quotes/:id/diplomas/export/pdf', requireRole('creator', 'director',
              WHERE graduation_quote_id = $1`,
             [req.params.id]
         );
-        const autoPrint = ['1', 'true', 'yes'].includes(String(req.query.print || '').toLowerCase());
-        const html = buildDiplomaDocument(children, template, quote, {
-            autoPrint,
-            title: `Дипломи ${quote.quote_number || req.params.id}`
-        });
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.send(html);
+        const filename = `${safeExportFilename(quote.quote_number || req.params.id)}_diplomas.pdf`;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Length', pdf.length);
+        res.send(pdf);
     } catch (err) {
         log.error('Diploma PDF export error', err);
-        res.status(500).send('Internal server error');
+        res.status(err.statusCode || 500).send(err.statusCode ? err.message : 'Internal server error');
     }
 });
 

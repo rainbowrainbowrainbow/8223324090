@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.60.31",
+  "version": "0.60.32",
   "eventGenix": {
-    "releaseLabel": "Graduation Diploma Copy Spacing"
+    "releaseLabel": "Graduation Diplomas Batch PDF"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

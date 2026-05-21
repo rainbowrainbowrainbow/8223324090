@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.32 - Graduation Diplomas Batch PDF
+
+### Graduation Diplomas Batch PDF [codex]
+- **Один файл для всіх дипломів** - кнопка дипломів тепер завантажує справжній багатосторінковий PDF, де кожна дитина має окрему A4-сторінку.
+- **Серверний PDF export** - `/api/graduation/quotes/:id/diplomas/export/pdf` повертає `application/pdf`, а не HTML-сторінку для ручного друку через браузер.
+- **Кирилиця у PDF** - додано bundled Nunito font із підтримкою українських літер, щоб імена, класи та побажання коректно друкувались у файлі.
+- **Regression coverage** - додано тест, який перевіряє, що batch export створює один PDF із потрібною кількістю сторінок.
+
+---
+
 ## v0.60.31 - Graduation Diploma Copy Spacing
 
 ### Graduation Diploma Copy Spacing [codex]

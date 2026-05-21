@@ -1,8 +1,14 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const PDFDocument = require('pdfkit');
 
 const VALID_GENDERS = new Set(['boy', 'girl', 'neutral', 'unspecified']);
 const VALID_GENDER_SOURCES = new Set(['manual', 'suggested', 'imported', 'unknown']);
 const VALID_DIPLOMA_STATUSES = new Set(['draft', 'generated', 'printed', 'exported']);
+const ROOT_DIR = path.resolve(__dirname, '..');
+const PDF_FONT_PATH = path.join(ROOT_DIR, 'assets', 'fonts', 'Nunito.ttf');
+const A4_PORTRAIT = { width: 595.28, height: 841.89 };
 
 const DEFAULT_DIPLOMA_TEMPLATE = {
     code: 'classic-graduation-2026',
@@ -357,6 +363,196 @@ ${autoPrint ? '<script>setTimeout(function(){ window.print(); }, 450);</script>'
 </html>`;
 }
 
+function localPublicAssetPath(assetUrl) {
+    const clean = String(assetUrl || '').split('?')[0].trim();
+    if (!clean || /^https?:\/\//i.test(clean) || !clean.startsWith('/')) return null;
+    return path.join(ROOT_DIR, clean.replace(/^\/+/, ''));
+}
+
+function pdfText(value) {
+    return String(value ?? '').replace(/\s+\n/g, '\n').replace(/\n\s+/g, '\n').trim();
+}
+
+function pdfFontSize(doc, text, width, maxHeight, startSize, minSize, lineGap = 0) {
+    let size = startSize;
+    while (size > minSize) {
+        doc.fontSize(size);
+        const height = doc.heightOfString(text, { width, align: 'center', lineGap });
+        if (height <= maxHeight) break;
+        size -= 1;
+    }
+    return Math.max(size, minSize);
+}
+
+function drawPdfText(doc, text, {
+    x = 0.5,
+    y,
+    width = 0.65,
+    size,
+    minSize,
+    maxHeight,
+    color,
+    font = 'Nunito',
+    lineGap = 0,
+    shadowColor = null,
+    shadowOffset = 0
+}) {
+    const content = pdfText(text);
+    if (!content) return;
+
+    const blockWidth = A4_PORTRAIT.width * width;
+    const blockX = (A4_PORTRAIT.width * x) - (blockWidth / 2);
+    const blockY = A4_PORTRAIT.height * y;
+    const maxBlockHeight = A4_PORTRAIT.height * maxHeight;
+    doc.font(font);
+    const finalSize = pdfFontSize(doc, content, blockWidth, maxBlockHeight, size, minSize, lineGap);
+    doc.fontSize(finalSize);
+
+    if (shadowColor && shadowOffset) {
+        doc.fillColor(shadowColor).text(content, blockX, blockY + shadowOffset, {
+            width: blockWidth,
+            align: 'center',
+            lineGap
+        });
+    }
+
+    doc.fillColor(color).text(content, blockX, blockY, {
+        width: blockWidth,
+        align: 'center',
+        lineGap
+    });
+}
+
+function drawDiplomaPdfPage(doc, child, template = DEFAULT_DIPLOMA_TEMPLATE, quote = {}) {
+    template = template || DEFAULT_DIPLOMA_TEMPLATE;
+    const palette = { ...DEFAULT_DIPLOMA_TEMPLATE.palette, ...(template.palette || {}) };
+    const layout = { ...DEFAULT_DIPLOMA_TEMPLATE.layout, ...(template.layout || {}) };
+    const title = child.diplomaTitleOverride || template.titleText || DEFAULT_DIPLOMA_TEMPLATE.titleText;
+    const wish = child.customWish || child.finalWish || child.autoWish || pickWish(child);
+    const description = template.subtitleText || DEFAULT_DIPLOMA_TEMPLATE.subtitleText;
+    const issueYear = new Intl.DateTimeFormat('en', { year: 'numeric', timeZone: 'Europe/Kyiv' }).format(new Date());
+    const backgroundPath = localPublicAssetPath(layout.backgroundImageUrl || DEFAULT_DIPLOMA_TEMPLATE.layout.backgroundImageUrl);
+    const logoPath = localPublicAssetPath(layout.sealLogoUrl || DEFAULT_DIPLOMA_TEMPLATE.layout.sealLogoUrl);
+    const descriptionLength = pdfText(description).replace(/\s+/g, ' ').length;
+    const wishLength = pdfText(wish).replace(/\s+/g, ' ').length;
+    const denseCopy = descriptionLength + wishLength > 280;
+
+    if (backgroundPath && fs.existsSync(backgroundPath)) {
+        doc.image(backgroundPath, 0, 0, { width: A4_PORTRAIT.width, height: A4_PORTRAIT.height });
+    } else {
+        doc.rect(0, 0, A4_PORTRAIT.width, A4_PORTRAIT.height).fill(palette.paper || '#dfff1f');
+    }
+
+    drawPdfText(doc, title, {
+        y: 0.169,
+        width: 0.74,
+        size: 31,
+        minSize: 22,
+        maxHeight: 0.07,
+        color: '#ffe600',
+        shadowColor: '#f05a24',
+        shadowOffset: 2.2
+    });
+    drawPdfText(doc, 'Нагороджується', {
+        y: 0.251,
+        width: 0.63,
+        size: 24,
+        minSize: 18,
+        maxHeight: 0.06,
+        color: '#d85a1b'
+    });
+    drawPdfText(doc, child.fullName, {
+        y: 0.306,
+        width: 0.684,
+        size: 36,
+        minSize: 22,
+        maxHeight: 0.14,
+        color: '#2459a8',
+        lineGap: -1
+    });
+    drawPdfText(doc, description, {
+        y: 0.42,
+        width: 0.664,
+        size: descriptionLength > 170 || denseCopy ? 18 : (descriptionLength > 115 ? 20 : 22),
+        minSize: 14,
+        maxHeight: 0.18,
+        color: '#3c67b1',
+        lineGap: -0.4
+    });
+    drawPdfText(doc, wish, {
+        y: denseCopy ? 0.587 : 0.584,
+        width: 0.674,
+        size: wishLength > 155 || denseCopy ? 17 : (wishLength > 105 ? 20 : 23),
+        minSize: 13,
+        maxHeight: 0.16,
+        color: '#e75a1c',
+        lineGap: -0.2
+    });
+    drawPdfText(doc, issueYear, {
+        x: 0.293,
+        y: 0.715,
+        width: 0.273,
+        size: 19,
+        minSize: 15,
+        maxHeight: 0.06,
+        color: '#2f64b8'
+    });
+
+    if (child.classLabel) {
+        drawPdfText(doc, child.classLabel, {
+            y: 0.767,
+            width: 0.606,
+            size: 21,
+            minSize: 15,
+            maxHeight: 0.09,
+            color: '#2f64b8'
+        });
+    }
+
+    if (logoPath && fs.existsSync(logoPath)) {
+        const logoWidth = A4_PORTRAIT.width * 0.118;
+        doc.image(logoPath, (A4_PORTRAIT.width - logoWidth) / 2, A4_PORTRAIT.height * 0.831, {
+            width: logoWidth,
+            height: logoWidth
+        });
+    }
+}
+
+function buildDiplomaPdfBuffer(children, template, quote = {}) {
+    const childList = Array.isArray(children) ? children : [];
+    if (!childList.length) {
+        const err = new Error('No diploma children found');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({
+            autoFirstPage: false,
+            size: 'A4',
+            margin: 0,
+            info: {
+                Title: `Graduation diplomas ${quote.quote_number || quote.quoteNumber || ''}`.trim(),
+                Creator: 'Event Genix CRM'
+            }
+        });
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+
+        if (fs.existsSync(PDF_FONT_PATH)) {
+            doc.registerFont('Nunito', PDF_FONT_PATH);
+        }
+
+        for (const child of childList) {
+            doc.addPage({ size: 'A4', margin: 0 });
+            drawDiplomaPdfPage(doc, child, template, quote);
+        }
+        doc.end();
+    });
+}
+
 function buildRosterPrintSheet(children, quote = {}, { autoPrint = false } = {}) {
     const rows = (children || []).map((child, idx) => `
         <tr>
@@ -443,6 +639,7 @@ module.exports = {
     parseRosterImport,
     buildDiplomaPage,
     buildDiplomaDocument,
+    buildDiplomaPdfBuffer,
     buildRosterPrintSheet,
     buildRosterCsv
 };

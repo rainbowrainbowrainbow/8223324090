@@ -1269,7 +1269,7 @@
                 <button class="grad-btn grad-btn-sm" onclick="GradPage.importDiplomaChildren()">Вставити списком</button>
                 <button class="grad-btn grad-btn-sm" onclick="GradPage.generateDiplomaWishes()" ${summary.total ? '' : 'disabled'}>Автопобажання</button>
                 <button class="grad-btn grad-btn-sm" onclick="GradPage.previewDiploma()" ${summary.total ? '' : 'disabled'}>Preview диплом</button>
-                <button class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomasPdf()" ${summary.total ? '' : 'disabled'}>Експорт PDF</button>
+                <button class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomasPdf()" ${summary.total ? '' : 'disabled'}>Зберегти всі в PDF</button>
                 <button class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomaRoster('csv')" ${summary.total ? '' : 'disabled'}>CSV</button>
                 <button class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomaRoster('xlsx')" ${summary.total ? '' : 'disabled'}>XLSX</button>
                 <button class="grad-btn grad-btn-sm" onclick="GradPage.printDiplomaSheet()" ${summary.total ? '' : 'disabled'}>Print sheet</button>
@@ -1439,7 +1439,22 @@
     async function exportDiplomasPdf() {
         if (!diplomaQuoteId) return;
         try {
-            await openHtmlExport(`/graduation/quotes/${diplomaQuoteId}/diplomas/export/pdf?print=1`, 'Готуємо дипломи для друку/PDF...');
+            const response = await fetch(`${API_BASE}/graduation/quotes/${diplomaQuoteId}/diplomas/export/pdf`, { headers: getAuthHeaders(false) });
+            if (handleAuthError(response)) return;
+            if (!response.ok) throw new Error('Export failed');
+            const blob = await response.blob();
+            const filename = (response.headers.get('content-disposition') || '').match(/filename="?([^";]+)"?/i)?.[1]
+                || `graduation_diplomas_${diplomaQuoteId}.pdf`;
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            showNotification('PDF з усіма дипломами збережено одним файлом', 'success');
+            renderCurrentTab();
         } catch (err) {
             showNotification('Помилка PDF export', 'error');
         }

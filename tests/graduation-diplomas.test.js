@@ -7,6 +7,7 @@ const {
     pickWish,
     parseRosterImport,
     buildDiplomaDocument,
+    buildDiplomaPdfBuffer,
     buildRosterCsv
 } = require('../services/graduationDiplomas');
 
@@ -83,5 +84,22 @@ describe('Graduation diploma helper', () => {
         assert.match(html, /class="diploma-page is-copy-dense"/);
         assert.match(html, /class="diploma-text diploma-description is-very-long"/);
         assert.match(html, /class="diploma-text diploma-wish is-very-long"/);
+    });
+
+    it('builds one multi-page PDF buffer for a diploma batch', async () => {
+        const children = ['Марія Іваненко', 'Артем Петренко'].map((fullName, idx) => {
+            const child = normalizeChildInput({
+                fullName,
+                gender: idx ? 'boy' : 'girl',
+                classLabel: '4-А'
+            });
+            child.id = idx + 10;
+            child.finalWish = `Побажання ${idx + 1}`;
+            return child;
+        });
+        const pdf = await buildDiplomaPdfBuffer(children, null, { quote_number: 'GRAD-TEST' });
+        assert.ok(Buffer.isBuffer(pdf));
+        assert.equal(pdf.subarray(0, 5).toString('latin1'), '%PDF-');
+        assert.match(pdf.toString('latin1'), /\/Count 2/);
     });
 });

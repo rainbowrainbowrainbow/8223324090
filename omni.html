@@ -11,14 +11,14 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.60.36">
-    <link rel="stylesheet" href="css/layout.css?v=0.60.36">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.36">
-    <link rel="stylesheet" href="css/pages.css?v=0.60.36">
-    <link rel="stylesheet" href="css/modals.css?v=0.60.36">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.36">
-    <link rel="stylesheet" href="css/responsive.css?v=0.60.36">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.36">
+    <link rel="stylesheet" href="css/base.css?v=0.60.38">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.38">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.38">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.38">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.38">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.38">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.38">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.38">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -507,6 +507,14 @@
             gap: 12px;
         }
 
+        .omni-provider-selector {
+            margin-bottom: 12px;
+            padding: 12px;
+            border: 1px solid rgba(16,185,129,0.22);
+            border-radius: 14px;
+            background: rgba(16,185,129,0.08);
+        }
+
         .omni-connection-field label {
             display: flex;
             justify-content: space-between;
@@ -522,7 +530,8 @@
             font-weight: 900;
         }
 
-        .omni-connection-field input {
+        .omni-connection-field input,
+        .omni-connection-field select {
             width: 100%;
             border: 1px solid var(--border-color, #d1d5db);
             border-radius: 10px;
@@ -533,7 +542,8 @@
             outline: none;
         }
 
-        .omni-connection-field input:focus {
+        .omni-connection-field input:focus,
+        .omni-connection-field select:focus {
             border-color: rgba(16,185,129,0.72);
             box-shadow: 0 0 0 3px rgba(16,185,129,0.14);
         }
@@ -1585,12 +1595,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.60.36"></script>
-    <script src="js/api.js?v=0.60.36"></script>
-    <script src="js/auth.js?v=0.60.36"></script>
-    <script src="js/components/sidebar.js?v=0.60.36"></script>
+    <script src="js/config.js?v=0.60.38"></script>
+    <script src="js/api.js?v=0.60.38"></script>
+    <script src="js/auth.js?v=0.60.38"></script>
+    <script src="js/components/sidebar.js?v=0.60.38"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.60.36"></script>
+    <script src="js/ws.js?v=0.60.38"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -1808,11 +1818,17 @@
                 '<div class="omni-account-summary-item"><strong>' + broken + '</strong><span>зламані</span></div>';
         }
 
+        function accountDisplayLabel(acc) {
+            const label = acc?.label || acc?.channel || 'Канал';
+            if (acc?.channel === 'sms' && acc.providerLabel) return label + ' • ' + acc.providerLabel;
+            return label;
+        }
+
         function accountCapabilityHtml(acc) {
             return '<div class="omni-account-caps">' +
                 '<span class="omni-account-cap ' + (acc.sendCapable ? 'on' : 'off') + '">' + (acc.sendCapable ? 'Відправка увімкнена' : 'Відправка заблокована') + '</span>' +
                 '<span class="omni-account-cap ' + (acc.receiveCapable ? 'on' : 'off') + '">' + (acc.receiveCapable ? 'Прийом/історія є' : 'Прийом не підтверджено') + '</span>' +
-                '<span class="omni-account-cap">' + esc(acc.providerKind || 'provider') + '</span>' +
+                '<span class="omni-account-cap">' + esc(acc.providerLabel || acc.providerKind || 'provider') + '</span>' +
             '</div>';
         }
 
@@ -1847,7 +1863,7 @@
                 ].filter(Boolean).join(' · ');
                 return '<div class="omni-account-card ' + tone + highlighted + '" data-account-channel="' + esc(acc.channel) + '">' +
                     '<div class="omni-account-card-top">' +
-                        '<strong>' + esc(acc.label || acc.channel) + '</strong>' +
+                        '<strong>' + esc(accountDisplayLabel(acc)) + '</strong>' +
                         '<span class="omni-account-status ' + tone + '">' + esc(omniAccountStatusLabel(acc)) + '</span>' +
                     '</div>' +
                     '<div class="omni-account-meta">' + esc(acc.accountName || acc.maskedIdentifier || 'Акаунт не підключений') + (acc.maskedIdentifier ? ' · ' + esc(acc.maskedIdentifier) : '') + '</div>' +
@@ -1898,7 +1914,7 @@
                 const label = omniAccountStatusLabel(acc);
                 const message = accountNextActionText(acc) || accountImpactText(acc);
                 return '<div class="omni-health-row">' +
-                    '<div class="omni-health-channel">' + esc(acc.label || acc.channel) + '</div>' +
+                    '<div class="omni-health-channel">' + esc(accountDisplayLabel(acc)) + '</div>' +
                     '<span class="omni-account-status ' + tone + '">' + esc(label) + '</span>' +
                     '<div class="omni-health-message">' + esc(message) + '</div>' +
                     '<button type="button" class="omni-account-btn secondary" data-account-action="' + (acc.connected ? 'recheck' : 'connect') + '" data-channel="' + esc(acc.channel) + '">' + (acc.connected ? 'Перевірити' : 'Підключити') + '</button>' +
@@ -1950,22 +1966,36 @@
             return 'text';
         }
 
-        function openConnectModal(channel) {
-            const acc = omniAccountForChannel(channel);
-            if (!acc || !connectionModal) return;
-            connectionModalState = { mode: 'connect', channel: acc.channel };
-            connectionTitle.textContent = (acc.connected ? 'Керувати ' : 'Підключити ') + (acc.label || acc.channel);
-            connectionSubtitle.textContent = acc.businessImpact || 'Заповніть дані провайдера і запустіть перевірку.';
-            const steps = Array.isArray(acc.setupSteps) ? acc.setupSteps : [];
-            const fields = Array.isArray(acc.setupFields) ? acc.setupFields : [];
-            connectionSubmit.textContent = 'Зберегти і перевірити';
-            connectionSubmit.className = 'primary';
-            connectionBody.innerHTML =
-                '<div class="omni-connection-steps"><strong>Порядок підключення</strong>' +
-                    (steps.length ? '<ol>' + steps.map(step => '<li>' + esc(step) + '</li>').join('') + '</ol>' : '') +
-                    (acc.webhookUrl ? '<div class="omni-connection-webhook">' + esc(acc.webhookUrl) + '</div>' : '') +
-                '</div>' +
-                '<div class="omni-connection-fields">' +
+        function providerOptionsForAccount(acc) {
+            return Array.isArray(acc?.providerOptions) ? acc.providerOptions : [];
+        }
+
+        function providerOptionForAccount(acc, provider) {
+            const options = providerOptionsForAccount(acc);
+            return options.find(option => option.value === provider) || options[0] || null;
+        }
+
+        function defaultProviderForAccount(acc) {
+            const options = providerOptionsForAccount(acc);
+            if (!options.length) return null;
+            if (options.some(option => option.value === acc.provider)) return acc.provider;
+            return options[0].value;
+        }
+
+        function renderProviderSelector(acc, selectedProvider) {
+            const options = providerOptionsForAccount(acc);
+            if (acc?.channel !== 'sms' || !options.length) return '';
+            return '<div class="omni-provider-selector omni-connection-field">' +
+                '<label for="conn_sms_provider">SMS provider<span>обовʼязково</span></label>' +
+                '<select id="conn_sms_provider" name="provider" data-provider-selector="sms">' +
+                    options.map(option => '<option value="' + esc(option.value) + '"' + (option.value === selectedProvider ? ' selected' : '') + '>' + esc(option.label) + '</option>').join('') +
+                '</select>' +
+                '<small>Оберіть SMS-шлюз. Поля, підказки і перевірка нижче змінюються під обраного провайдера.</small>' +
+            '</div>';
+        }
+
+        function renderConnectionFields(fields) {
+            return '<div class="omni-connection-fields">' +
                 fields.map(field => {
                     const required = field.required ? 'обовʼязково' : 'опційно';
                     const placeholder = field.hasSavedValue && field.maskedValue
@@ -1980,8 +2010,42 @@
                         (field.hint ? '<small>' + esc(field.hint) + '</small>' : '') +
                     '</div>';
                 }).join('') +
+            '</div>';
+        }
+
+        function renderConnectModalBody(acc, provider) {
+            const selectedOption = providerOptionForAccount(acc, provider);
+            const effectiveProvider = selectedOption?.value || null;
+            const steps = Array.isArray(selectedOption?.setupSteps)
+                ? selectedOption.setupSteps
+                : (Array.isArray(acc.setupSteps) ? acc.setupSteps : []);
+            const fields = Array.isArray(selectedOption?.fields)
+                ? selectedOption.fields
+                : (Array.isArray(acc.setupFields) ? acc.setupFields : []);
+            const webhookUrl = selectedOption?.webhookUrl || acc.webhookUrl;
+            const webhookNote = selectedOption?.webhookNote || '';
+            if (connectionModalState && acc.channel === 'sms') connectionModalState.provider = effectiveProvider;
+            connectionBody.innerHTML =
+                '<div class="omni-connection-steps"><strong>Порядок підключення</strong>' +
+                    (steps.length ? '<ol>' + steps.map(step => '<li>' + esc(step) + '</li>').join('') + '</ol>' : '') +
+                    (webhookUrl ? '<div class="omni-connection-webhook">' + esc(webhookUrl) + '</div>' : '') +
+                    (webhookNote ? '<small>' + esc(webhookNote) + '</small>' : '') +
                 '</div>' +
+                renderProviderSelector(acc, effectiveProvider) +
+                renderConnectionFields(fields) +
                 '<div class="omni-connection-result" id="omniConnectionResult" hidden></div>';
+        }
+
+        function openConnectModal(channel) {
+            const acc = omniAccountForChannel(channel);
+            if (!acc || !connectionModal) return;
+            const provider = defaultProviderForAccount(acc);
+            connectionModalState = { mode: 'connect', channel: acc.channel, provider };
+            connectionTitle.textContent = (acc.connected ? 'Керувати ' : 'Підключити ') + (acc.label || acc.channel);
+            connectionSubtitle.textContent = acc.businessImpact || 'Заповніть дані провайдера і запустіть перевірку.';
+            connectionSubmit.textContent = 'Зберегти і перевірити';
+            connectionSubmit.className = 'primary';
+            renderConnectModalBody(acc, provider);
             connectionModal.hidden = false;
             const firstInput = connectionBody.querySelector('input');
             if (firstInput) firstInput.focus();
@@ -2015,9 +2079,9 @@
         function collectConnectionFields() {
             const fields = {};
             if (!connectionBody) return fields;
-            connectionBody.querySelectorAll('input[name]').forEach(inputEl => {
+            connectionBody.querySelectorAll('input[name], select[name]').forEach(inputEl => {
                 const value = inputEl.value.trim();
-                if (value) fields[inputEl.name] = value;
+                if (value || inputEl.tagName === 'SELECT') fields[inputEl.name] = value;
             });
             return fields;
         }
@@ -2599,6 +2663,17 @@
         }
         bindAccountActions(accountsGrid);
         bindAccountActions(healthContent);
+        if (connectionBody) {
+            connectionBody.addEventListener('change', e => {
+                const providerSelect = e.target.closest('[data-provider-selector="sms"]');
+                if (!providerSelect || !connectionModalState || connectionModalState.mode !== 'connect') return;
+                const acc = omniAccountForChannel(connectionModalState.channel);
+                if (!acc) return;
+                renderConnectModalBody(acc, providerSelect.value);
+                const nextSelect = connectionBody.querySelector('[data-provider-selector="sms"]');
+                if (nextSelect) nextSelect.focus();
+            });
+        }
         if (connectionForm) connectionForm.addEventListener('submit', submitConnectionModal);
         if (connectionCancel) connectionCancel.addEventListener('click', closeConnectionModal);
         if (connectionClose) connectionClose.addEventListener('click', closeConnectionModal);
@@ -2742,7 +2817,7 @@
             init();
         });
     })();
-    </script><script src="js/ui.js?v=0.60.36"></script>
-    <script src="js/alerts.js?v=0.60.36"></script>
+    </script><script src="js/ui.js?v=0.60.38"></script>
+    <script src="js/alerts.js?v=0.60.38"></script>
 </body>
 </html>

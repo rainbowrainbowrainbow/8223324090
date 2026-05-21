@@ -12,6 +12,16 @@ const crypto = require('crypto');
 const https = require('https');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const {
+  listSmsProviderDefinitions,
+  getSmsProviderDefinition,
+  normalizeSmsProvider,
+  defaultSmsProvider,
+  inferSmsProviderFromValues,
+  smsEnvConfig,
+  validateSmsRuntime,
+  verifySmsRuntime,
+} = require('./omni-sms-providers');
 
 const log = createLogger('OmniAccounts');
 
@@ -84,20 +94,13 @@ const CHANNELS = [
     channel: 'sms',
     label: 'SMS',
     providerKind: 'sms',
-    envKeys: ['TURBOSMS_TOKEN'],
-    accountEnvKeys: ['TURBOSMS_SENDER'],
+    envKeys: ['FLYSMS_API_KEY', 'SMS_FLY_API_KEY', 'SMSFLY_API_KEY', 'TURBOSMS_TOKEN'],
+    accountEnvKeys: ['FLYSMS_SENDER', 'SMS_FLY_SENDER', 'SMSFLY_SENDER', 'TURBOSMS_SENDER'],
     sendSupported: true,
     receiveSupported: true,
-    credentialMap: {
-      token: 'TURBOSMS_TOKEN',
-      sender: 'TURBOSMS_SENDER',
-      webhookSecret: 'SMS_WEBHOOK_SECRET',
-    },
-    fields: [
-      { name: 'token', label: 'TurboSMS token', type: 'secret', required: true, placeholder: 'API token', hint: 'Токен API. Автоматична перевірка не робить платних відправок.' },
-      { name: 'sender', label: 'Підпис відправника', type: 'text', required: true, placeholder: 'EventGenix', hint: 'Альфа-імʼя, погоджене у TurboSMS.' },
-      { name: 'webhookSecret', label: 'Webhook secret', type: 'secret', required: false, placeholder: 'довільний секрет', hint: 'Опційно для захисту delivery/inbound webhook.' },
-    ],
+    credentialMap: {},
+    fields: [],
+    providerOptions: listSmsProviderDefinitions(),
     webhookPath: '/api/omni/webhook/sms',
     businessImpact: 'Без SMS CRM не зможе надсилати SMS-нагадування або відповіді через SMS-шлюз.',
     localValidation: validateSms,
@@ -240,6 +243,7 @@ function firstEnv(keys = []) {
 }
 
 function envConfig(def) {
+  if (isSmsDefinition(def)) return smsEnvConfig(def.provider || defaultSmsProvider());
   const values = {};
   Object.entries(def.credentialMap || {}).forEach(([field, envKey]) => {
     const value = String(process.env[envKey] || '').trim();
@@ -319,6 +323,45 @@ function normalizeCredentialsFromRow(row) {
   };
 }
 
+function isSmsDefinition(def) {
+  return def && def.channel === 'sms';
+}
+
+function smsProviderFromRow(row) {
+  const config = normalizeCredentialsFromRow(row);
+  return inferSmsProviderFromValues(config.values, config.secrets);
+}
+
+function smsProviderFromPayload(payload = {}, existingRow = null) {
+  const incoming = payload.fields && typeof payload.fields === 'object' ? payload.fields : payload;
+  const selected = normalizeSmsProvider(incoming.provider || payload.provider || incoming.smsProvider);
+  return selected || smsProviderFromRow(existingRow);
+}
+
+function withSmsProviderDefinition(def, provider) {
+  if (!isSmsDefinition(def)) return def;
+  const providerDef = getSmsProviderDefinition(provider) || getSmsProviderDefinition(defaultSmsProvider());
+  return {
+    ...def,
+    provider: providerDef.provider,
+    providerLabel: providerDef.label,
+    providerKind: 'sms',
+    envKeys: providerDef.envKeys,
+    accountEnvKeys: providerDef.accountEnvKeys,
+    credentialMap: providerDef.credentialMap,
+    fields: providerDef.fields,
+    webhookNote: providerDef.webhookNote,
+  };
+}
+
+function activeDefinitionForRow(def, row) {
+  return isSmsDefinition(def) ? withSmsProviderDefinition(def, smsProviderFromRow(row)) : def;
+}
+
+function activeDefinitionForPayload(def, payload = {}, existingRow = null) {
+  return isSmsDefinition(def) ? withSmsProviderDefinition(def, smsProviderFromPayload(payload, existingRow)) : def;
+}
+
 function runtimeValuesFromConnection(def, row) {
   const config = normalizeCredentialsFromRow(row);
   const values = { ...config.values };
@@ -375,7 +418,25 @@ function publicConnectionSummary(def, row, runtime = {}) {
   };
 }
 
+function providerOptionsForClient(def, row) {
+  if (!isSmsDefinition(def)) return [];
+  const base = CHANNEL_MAP.get('sms') || def;
+  return listSmsProviderDefinitions().map(option => {
+    const optionDef = withSmsProviderDefinition(base, option.provider);
+    return {
+      value: option.provider,
+      label: option.label,
+      fields: setupFieldsForClient(optionDef, row),
+      setupSteps: setupSteps(optionDef),
+      webhookUrl: publicWebhookUrl(optionDef),
+      webhookNote: option.webhookNote || null,
+      businessImpact: optionDef.businessImpact,
+    };
+  });
+}
+
 function statusFromRowOrEnv(def, row, now = new Date()) {
+  def = activeDefinitionForRow(def, row);
   const runtime = mergeRuntimeConfig(def, row);
   const summary = publicConnectionSummary(def, row, runtime);
   let status = row?.status || (summary.connected ? (def.inboundOnly ? 'history_only' : 'connected') : 'disconnected');
@@ -398,6 +459,8 @@ function statusFromRowOrEnv(def, row, now = new Date()) {
     key: def.channel,
     label: def.label,
     providerKind: def.providerKind,
+    provider: def.provider || def.channel,
+    providerLabel: def.providerLabel || def.label,
     status,
     statusLabel: STATUS_COPY[status] || status,
     connected,
@@ -417,6 +480,7 @@ function statusFromRowOrEnv(def, row, now = new Date()) {
     lastTestMessage: row?.last_test_message || null,
     supportedActions: supportedActionsForStatus(status, def),
     setupFields: setupFieldsForClient(def, row),
+    providerOptions: providerOptionsForClient(def, row),
     setupSteps: setupSteps(def),
     webhookUrl: publicWebhookUrl(def),
     connectAvailable: true,
@@ -596,7 +660,7 @@ async function resolveOmniRuntimeConfig(channel) {
   const def = providerDefinition(channel);
   if (!def) return {};
   const row = await loadConnectionRow(def.channel);
-  return mergeRuntimeConfig(def, row);
+  return mergeRuntimeConfig(activeDefinitionForRow(def, row), row);
 }
 
 function userLabel(user = {}) {
@@ -606,11 +670,14 @@ function userLabel(user = {}) {
 function normalizePayloadFields(def, payload = {}, existingRow = null) {
   const incoming = payload.fields && typeof payload.fields === 'object' ? payload.fields : payload;
   const current = normalizeCredentialsFromRow(existingRow);
-  const values = { ...current.values };
-  const secrets = { ...current.secrets };
-  const masks = { ...current.masks };
+  const previousProvider = isSmsDefinition(def) ? smsProviderFromRow(existingRow) : null;
+  const providerChanged = isSmsDefinition(def) && previousProvider !== def.provider;
+  const values = providerChanged ? {} : { ...current.values };
+  const secrets = providerChanged ? {} : { ...current.secrets };
+  const masks = providerChanged ? {} : { ...current.masks };
   const runtime = mergeRuntimeConfig(def, existingRow);
   const errors = [];
+  if (isSmsDefinition(def)) values.provider = def.provider;
 
   for (const field of def.fields || []) {
     const raw = incoming[field.name];
@@ -671,14 +738,15 @@ function validateField(field, value) {
 }
 
 async function upsertOmniConnection(channel, payload = {}, user = {}) {
-  const def = providerDefinition(channel);
-  if (!def) {
+  const baseDef = providerDefinition(channel);
+  if (!baseDef) {
     const err = new Error('Канал Omni не знайдено');
     err.statusCode = 404;
     throw err;
   }
 
-  const existingRow = await loadConnectionRow(def.channel);
+  const existingRow = await loadConnectionRow(baseDef.channel);
+  const def = activeDefinitionForPayload(baseDef, payload, existingRow);
   const normalized = normalizePayloadFields(def, payload, existingRow);
   const providerErrors = [
     ...normalized.errors,
@@ -748,13 +816,14 @@ async function upsertOmniConnection(channel, payload = {}, user = {}) {
 }
 
 async function recheckOmniConnection(channel, user = {}, options = {}) {
-  const def = providerDefinition(channel);
-  if (!def) {
+  const baseDef = providerDefinition(channel);
+  if (!baseDef) {
     const err = new Error('Канал Omni не знайдено');
     err.statusCode = 404;
     throw err;
   }
-  const row = await loadConnectionRow(def.channel);
+  const row = await loadConnectionRow(baseDef.channel);
+  const def = activeDefinitionForRow(baseDef, row);
   const runtime = mergeRuntimeConfig(def, row);
   const check = await verifyProvider(def, runtime, { mode: options.mode || 'recheck' });
   const status = statusFromVerification(def, check);
@@ -873,7 +942,8 @@ function safeVerificationResult(check) {
 }
 
 function messageForVerification(def, check, prefix) {
-  return `${prefix} ${def.label}: ${check.message}`;
+  const label = def.providerLabel ? `${def.label} / ${def.providerLabel}` : def.label;
+  return `${prefix} ${label}: ${check.message}`;
 }
 
 async function verifyProvider(def, runtime, context = {}) {
@@ -936,10 +1006,7 @@ function validateViber(runtime) {
 }
 
 function validateSms(runtime) {
-  const errors = [];
-  if (!runtime.token || String(runtime.token).length < 12) errors.push('TurboSMS token обовʼязковий.');
-  if (!runtime.sender || String(runtime.sender).length < 2) errors.push('Підпис відправника SMS обовʼязковий.');
-  return errors;
+  return validateSmsRuntime(runtime);
 }
 
 function validateMeta(runtime) {
@@ -1028,12 +1095,7 @@ async function verifyViber(runtime) {
 }
 
 async function verifySms(runtime) {
-  return {
-    status: 'partial',
-    message: 'CRM перевірила token і підпис локально. Платний тест SMS не запускався автоматично.',
-    warning: 'SMS підключено без live-відправки. Для бойової перевірки зробіть контрольну SMS вручну.',
-    displayName: runtime.sender || 'TurboSMS',
-  };
+  return verifySmsRuntime(runtime);
 }
 
 function verifyMeta(kind) {

@@ -171,7 +171,7 @@ async function postJson(router, routePath, payload, headers = {}) {
     }
 }
 
-describe('Provider Lifecycle v1 for Viber and TurboSMS', () => {
+describe('Provider Lifecycle v1 for Viber and SMS providers', () => {
     afterEach(clearModules);
 
     it('classifies Viber lifecycle callbacks separately from inbound messages', () => {
@@ -213,16 +213,27 @@ describe('Provider Lifecycle v1 for Viber and TurboSMS', () => {
         assert.equal(inbound.normalized.channel, 'viber');
     });
 
-    it('maps TurboSMS DLR terminal statuses without treating them as inbound SMS', () => {
+    it('maps SMS provider terminal statuses without treating them as inbound SMS', () => {
         const normalizer = require('../services/omni-normalizer');
 
         const delivered = normalizer.classifySmsWebhook({
             message_id: 'sms-44',
             status: 'DELIVRD',
+            provider: 'turbosms',
         });
         assert.equal(delivered.type, 'delivery_receipt');
         assert.equal(delivered.receipt.deliveryStatus, 'delivered');
         assert.equal(delivered.receipt.providerLifecycleEvent, 'DELIVRD');
+        assert.equal(delivered.receipt.providerLifecycleSource, 'turbosms_webhook');
+
+        const flyDelivered = normalizer.classifySmsWebhook({
+            messageId: 'fly-44',
+            status: 'DELIVERED',
+            provider: 'flysms',
+        });
+        assert.equal(flyDelivered.type, 'delivery_receipt');
+        assert.equal(flyDelivered.receipt.deliveryStatus, 'delivered');
+        assert.equal(flyDelivered.receipt.providerLifecycleSource, 'flysms_webhook');
 
         for (const status of ['UNDELIV', 'REJECTD', 'EXPIRED']) {
             const failed = normalizer.classifySmsWebhook({

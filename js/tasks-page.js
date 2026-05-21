@@ -112,6 +112,8 @@ let pageCurrentUser = null;
 let captureIntent = {};
 let taskAssigneeMode = 'self';
 let lastCreatedTaskId = null;
+let quickTaskBatchItems = [];
+let quickTaskBatchNextId = 1;
 let showCompletedInSlices = localStorage.getItem('eg_tasks_show_completed') === 'true';
 let quickScheduleSlot = 'morning';
 let taskDuePreset = 'today';
@@ -2005,13 +2007,261 @@ function setTaskAssigneeMode(mode = 'self') {
 }
 
 function dateForDuePreset(preset = taskDuePreset) {
+    return dateForDuePresetValue(preset, document.getElementById('taskScheduleDate')?.value || '');
+}
+
+function dateForDuePresetValue(preset = 'today', manualDate = '') {
     if (preset === 'tomorrow') {
         const d = new Date();
         d.setDate(d.getDate() + 1);
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
     if (preset === 'no_date') return '';
-    return document.getElementById('taskScheduleDate')?.value || getTodayStr();
+    return manualDate || getTodayStr();
+}
+
+function taskBatchDueOptions(selected = 'today') {
+    const options = [
+        ['today', 'Сьогодні'],
+        ['tomorrow', 'Завтра'],
+        ['no_date', 'Без дати'],
+        ['custom', 'Інша дата']
+    ];
+    return options.map(([value, label]) => `<option value="${value}" ${selected === value ? 'selected' : ''}>${label}</option>`).join('');
+}
+
+function taskPriorityOptions(selected = 'normal') {
+    const options = [
+        ['normal', 'Звичайний'],
+        ['high', 'Високий'],
+        ['low', 'Низький']
+    ];
+    return options.map(([value, label]) => `<option value="${value}" ${selected === value ? 'selected' : ''}>${label}</option>`).join('');
+}
+
+function readTaskComposerDraft() {
+    const category = document.getElementById('taskCategory')?.value || 'admin';
+    const scheduleDate = document.getElementById('taskScheduleDate')?.value || getTodayStr();
+    const mode = document.getElementById('taskMode')?.value || (captureIntent.private ? 'private' : (captureIntent.personal ? 'personal' : 'work'));
+    return {
+        title: document.getElementById('taskTitle')?.value.trim() || '',
+        category,
+        subcategory: selectedSubcategoryFor(category, 'taskSubcategory'),
+        priority: document.getElementById('taskPriority')?.value || 'normal',
+        taskType: document.getElementById('taskType')?.value || 'human',
+        deadlineTime: document.getElementById('taskDeadlineTime')?.value || '',
+        ownerUserId: resolveQuickAddOwnerUserId(),
+        assigneeMode: taskAssigneeMode,
+        mode,
+        kind: document.getElementById('taskKind')?.value || (captureIntent.waiting ? 'waiting' : 'action'),
+        visibility: defaultVisibilityForTaskMode(mode, document.getElementById('taskVisibility')?.value || 'team'),
+        duePreset: taskDuePreset,
+        scheduleDate,
+        dueDate: dateForDuePresetValue(taskDuePreset, scheduleDate),
+        durationMinutes: Math.max(5, parseInt(document.getElementById('taskScheduleDuration')?.value, 10) || 30),
+        scheduleSlot: quickScheduleSlot,
+        captureIntent: { ...captureIntent }
+    };
+}
+
+function cloneTaskBatchSettings(source = {}) {
+    return {
+        category: source.category || 'admin',
+        subcategory: source.subcategory || null,
+        taskType: source.taskType || 'human',
+        ownerUserId: source.ownerUserId || null,
+        assigneeMode: source.assigneeMode || taskAssigneeMode || 'self',
+        mode: source.mode || 'work',
+        kind: source.kind || 'action',
+        visibility: source.visibility || 'team',
+        scheduleSlot: source.scheduleSlot || quickScheduleSlot || 'morning',
+        captureIntent: { ...(source.captureIntent || {}) }
+    };
+}
+
+function createQuickTaskBatchItem(source = readTaskComposerDraft()) {
+    const settings = cloneTaskBatchSettings(source);
+    return {
+        id: quickTaskBatchNextId++,
+        title: '',
+        priority: source.priority || 'normal',
+        duePreset: source.duePreset || taskDuePreset || 'today',
+        scheduleDate: source.scheduleDate || source.dueDate || getTodayStr(),
+        deadlineTime: source.deadlineTime || '',
+        durationMinutes: Math.max(5, parseInt(source.durationMinutes, 10) || 30),
+        ...settings
+    };
+}
+
+function taskBatchSourceDraft() {
+    return quickTaskBatchItems.length ? quickTaskBatchItems[quickTaskBatchItems.length - 1] : readTaskComposerDraft();
+}
+
+function taskBatchOwnerLabel(item = {}) {
+    if (item.assigneeMode === 'self' || String(item.ownerUserId || '') === String(currentUserId() || '')) return 'Собі';
+    const owner = _assigneeList.find(user => String(user.id) === String(item.ownerUserId || ''));
+    return owner?.label || owner?.name || owner?.username || (item.ownerUserId ? `User #${item.ownerUserId}` : 'Команді');
+}
+
+function taskBatchSummary(item = {}) {
+    const dueDate = dateForDuePresetValue(item.duePreset, item.scheduleDate);
+    const dateLabel = item.duePreset === 'no_date' ? 'без дати' : (dueDate || 'дата не задана');
+    return `${taskBatchOwnerLabel(item)} · ${getTaxonomyLabel(item.category, item.subcategory)} · ${dateLabel}`;
+}
+
+function renderQuickTaskBatchItems() {
+    const panel = document.getElementById('taskBatchPanel');
+    const list = document.getElementById('taskBatchList');
+    if (!panel || !list) return;
+    panel.hidden = quickTaskBatchItems.length === 0;
+    list.innerHTML = quickTaskBatchItems.map((item, index) => `
+        <section class="task-batch-card" data-task-batch-card="${item.id}">
+            <div class="task-batch-card-head">
+                <div class="task-batch-card-title">
+                    <strong>Задача ${index + 2}</strong>
+                    <span title="${escapeHtml(taskBatchSummary(item))}">${escapeHtml(taskBatchSummary(item))}</span>
+                </div>
+                <button type="button" class="task-batch-remove" data-task-batch-remove="${item.id}">Прибрати</button>
+            </div>
+            <div class="task-batch-fields">
+                <label for="taskBatchTitle-${item.id}">Назва
+                    <input type="text" id="taskBatchTitle-${item.id}" data-task-batch-id="${item.id}" data-task-batch-field="title" value="${escapeHtml(item.title)}" placeholder="Що треба зробити?">
+                </label>
+                <label for="taskBatchPriority-${item.id}">Пріоритет
+                    <select id="taskBatchPriority-${item.id}" data-task-batch-id="${item.id}" data-task-batch-field="priority">${taskPriorityOptions(item.priority)}</select>
+                </label>
+                <label for="taskBatchDuePreset-${item.id}">Коли
+                    <select id="taskBatchDuePreset-${item.id}" data-task-batch-id="${item.id}" data-task-batch-field="duePreset">${taskBatchDueOptions(item.duePreset)}</select>
+                </label>
+                <label for="taskBatchDate-${item.id}">Дата
+                    <input type="date" id="taskBatchDate-${item.id}" data-task-batch-id="${item.id}" data-task-batch-field="scheduleDate" value="${escapeHtml(item.scheduleDate || '')}">
+                </label>
+                <label for="taskBatchTime-${item.id}">Час
+                    <input type="time" id="taskBatchTime-${item.id}" data-task-batch-id="${item.id}" data-task-batch-field="deadlineTime" value="${escapeHtml(item.deadlineTime || '')}">
+                </label>
+                <label for="taskBatchDuration-${item.id}">Хв
+                    <input type="number" id="taskBatchDuration-${item.id}" data-task-batch-id="${item.id}" data-task-batch-field="durationMinutes" min="5" max="480" step="5" value="${escapeHtml(String(item.durationMinutes || 30))}">
+                </label>
+            </div>
+        </section>
+    `).join('');
+}
+
+function updateQuickTaskBatchItem(id, field, value) {
+    const item = quickTaskBatchItems.find(row => String(row.id) === String(id));
+    if (!item) return;
+    if (field === 'durationMinutes') item[field] = Math.max(5, parseInt(value, 10) || 30);
+    else item[field] = value;
+    if (field === 'duePreset' && (value === 'today' || value === 'tomorrow')) {
+        item.scheduleDate = dateForDuePresetValue(value, item.scheduleDate);
+    }
+}
+
+function bindTaskBatchListEvents() {
+    const list = document.getElementById('taskBatchList');
+    if (!list) return;
+    list.addEventListener('input', (event) => {
+        const control = event.target.closest('[data-task-batch-field]');
+        if (!control) return;
+        updateQuickTaskBatchItem(control.dataset.taskBatchId, control.dataset.taskBatchField, control.value);
+    });
+    list.addEventListener('change', (event) => {
+        const control = event.target.closest('[data-task-batch-field]');
+        if (!control) return;
+        updateQuickTaskBatchItem(control.dataset.taskBatchId, control.dataset.taskBatchField, control.value);
+        if (control.dataset.taskBatchField === 'duePreset') renderQuickTaskBatchItems();
+    });
+    list.addEventListener('click', (event) => {
+        const remove = event.target.closest('[data-task-batch-remove]');
+        if (!remove) return;
+        quickTaskBatchItems = quickTaskBatchItems.filter(item => String(item.id) !== String(remove.dataset.taskBatchRemove));
+        renderQuickTaskBatchItems();
+    });
+}
+
+function addQuickTaskBatchItem() {
+    const item = createQuickTaskBatchItem(taskBatchSourceDraft());
+    quickTaskBatchItems.push(item);
+    renderQuickTaskBatchItems();
+    toggleTaskComposerDetails(true);
+    setTimeout(() => document.getElementById(`taskBatchTitle-${item.id}`)?.focus(), 0);
+}
+
+function taskDraftFromBatchItem(item = {}) {
+    return {
+        ...cloneTaskBatchSettings(item),
+        title: String(item.title || '').trim(),
+        priority: item.priority || 'normal',
+        duePreset: item.duePreset || 'today',
+        scheduleDate: item.scheduleDate || getTodayStr(),
+        dueDate: dateForDuePresetValue(item.duePreset || 'today', item.scheduleDate || ''),
+        deadlineTime: item.deadlineTime || '',
+        durationMinutes: Math.max(5, parseInt(item.durationMinutes, 10) || 30)
+    };
+}
+
+function buildTaskCreatePayload(draft = {}) {
+    const category = draft.category || 'admin';
+    const subcategory = draft.subcategory || null;
+    const dueDate = dateForDuePresetValue(draft.duePreset || 'today', draft.scheduleDate || draft.dueDate || '');
+    const durationMinutes = Math.max(5, parseInt(draft.durationMinutes, 10) || 30);
+    const data = {
+        title: String(draft.title || '').trim(),
+        priority: draft.priority || 'normal',
+        category,
+        task_type: draft.taskType || 'human',
+        task_mode: draft.mode || 'work',
+        task_kind: draft.kind || 'action',
+        visibility: defaultVisibilityForTaskMode(draft.mode || 'work', draft.visibility || 'team'),
+        workflow_state: draft.captureIntent?.waiting ? 'waiting' : 'inbox',
+        subcategory,
+        checklist_template_key: normalizeChecklistTemplateKey(category, subcategory),
+        source_type: 'manual',
+        source_module: 'tasks'
+    };
+    if (draft.ownerUserId) data.ownerUserId = draft.ownerUserId;
+    if (dueDate) {
+        data.date = dueDate;
+        data.schedule = {
+            date: dueDate,
+            slot: draft.scheduleSlot || quickScheduleSlot,
+            durationMinutes
+        };
+        data.effort_minutes = durationMinutes;
+    }
+    if (draft.deadlineTime && dueDate) {
+        data.deadline = `${dueDate}T${draft.deadlineTime}:00`;
+        data.schedule = {
+            date: dueDate,
+            scheduledStartAt: `${dueDate}T${draft.deadlineTime}`,
+            durationMinutes
+        };
+        data.effort_minutes = durationMinutes;
+    }
+    return data;
+}
+
+function focusInvalidTaskDraft(index, itemId) {
+    if (index === 0) {
+        document.getElementById('taskTitle')?.focus();
+        return;
+    }
+    document.getElementById(`taskBatchTitle-${itemId}`)?.focus();
+}
+
+function resetTaskComposerAfterCreate() {
+    const title = document.getElementById('taskTitle');
+    if (title) title.value = '';
+    if (document.getElementById('taskDeadlineTime')) document.getElementById('taskDeadlineTime').value = '';
+    if (document.getElementById('taskScheduleDuration')) document.getElementById('taskScheduleDuration').value = '30';
+    if (document.getElementById('taskScheduleDate')) document.getElementById('taskScheduleDate').value = getTodayStr();
+    quickTaskBatchItems = [];
+    renderQuickTaskBatchItems();
+    captureIntent = {};
+    document.querySelectorAll('[data-capture-chip]').forEach(btn => btn.classList.remove('active'));
+    setTaskDuePreset('today', { expand: false });
+    setTaskAssigneeMode('self');
+    toggleTaskComposerDetails(false);
 }
 
 function setTaskDuePreset(preset = 'today', options = {}) {
@@ -2063,6 +2313,9 @@ function setupTaskComposer() {
             });
         });
     });
+    document.getElementById('addTaskRowBtn')?.addEventListener('click', addQuickTaskBatchItem);
+    bindTaskBatchListEvents();
+    renderQuickTaskBatchItems();
     document.getElementById('taskDetailsToggle')?.addEventListener('click', () => toggleTaskComposerDetails());
 }
 
@@ -2153,81 +2406,43 @@ function dateFromCaptureIntent() {
 }
 
 async function addTask() {
-    const title = document.getElementById('taskTitle')?.value.trim();
-    if (!title) {
-        showNotification('Введіть назву задачі', 'error');
+    const mainDraft = readTaskComposerDraft();
+    const batchDrafts = quickTaskBatchItems.map(taskDraftFromBatchItem);
+    const drafts = [mainDraft, ...batchDrafts];
+    const invalidIndex = drafts.findIndex(draft => !String(draft.title || '').trim());
+    if (invalidIndex >= 0) {
+        const invalidItem = invalidIndex > 0 ? quickTaskBatchItems[invalidIndex - 1] : null;
+        showNotification(`Заповніть назву задачі #${invalidIndex + 1}`, 'error');
+        focusInvalidTaskDraft(invalidIndex, invalidItem?.id);
         return;
     }
 
-    const category = document.getElementById('taskCategory')?.value || 'admin';
-    const subcategory = selectedSubcategoryFor(category, 'taskSubcategory');
-    const priority = document.getElementById('taskPriority')?.value;
-    const taskType = document.getElementById('taskType')?.value || 'human';
-    const deadlineTime = document.getElementById('taskDeadlineTime')?.value || '';
-    const ownerUserId = resolveQuickAddOwnerUserId();
-    const mode = document.getElementById('taskMode')?.value || (captureIntent.private ? 'private' : (captureIntent.personal ? 'personal' : 'work'));
-    const kind = document.getElementById('taskKind')?.value || (captureIntent.waiting ? 'waiting' : 'action');
-    const visibility = defaultVisibilityForTaskMode(mode, document.getElementById('taskVisibility')?.value || 'team');
-    const dueDate = dateForDuePreset(taskDuePreset);
-    const durationMinutes = Math.max(5, parseInt(document.getElementById('taskScheduleDuration')?.value, 10) || 30);
-    const workflow = captureIntent.waiting ? 'waiting' : 'inbox';
-
-    const data = {
-        title,
-        priority,
-        category,
-        task_type: taskType,
-        task_mode: mode,
-        task_kind: kind,
-        visibility,
-        workflow_state: workflow,
-        subcategory,
-        checklist_template_key: normalizeChecklistTemplateKey(category, subcategory),
-        source_type: 'manual',
-        source_module: 'tasks'
-    };
-    if (ownerUserId) data.ownerUserId = ownerUserId;
-
-    if (dueDate) {
-        data.date = dueDate;
-        data.schedule = {
-            date: dueDate,
-            slot: quickScheduleSlot,
-            durationMinutes
-        };
-        data.effort_minutes = durationMinutes;
-    }
-
-    // Build exact manual schedule if time specified
-    if (deadlineTime && dueDate) {
-        data.deadline = `${dueDate}T${deadlineTime}:00`;
-        data.schedule = {
-            date: dueDate,
-            scheduledStartAt: `${dueDate}T${deadlineTime}`,
-            durationMinutes
-        };
-        data.effort_minutes = durationMinutes;
-    }
-
-    const result = await apiCreateTask(data);
-    if (result && result.success) {
-        const createdMode = taskAssigneeMode;
-        lastCreatedTaskId = result.task?.id || null;
+    const createdTasks = [];
+    for (let i = 0; i < drafts.length; i += 1) {
+        const data = buildTaskCreatePayload(drafts[i]);
+        const result = await apiCreateTask(data);
+        if (!result || !result.success) {
+            if (createdTasks.length) {
+                showNotification(`Створено ${createdTasks.length} з ${drafts.length} задач. Задача #${i + 1} не збережена.`, 'warning');
+                await loadAllTasks();
+            } else {
+                showNotification('Помилка додавання задачі', 'error');
+            }
+            return;
+        }
+        createdTasks.push(result.task);
+        lastCreatedTaskId = result.task?.id || lastCreatedTaskId;
         keepNewTaskVisible(result.task, data);
-        document.getElementById('taskTitle').value = '';
-        if (document.getElementById('taskDeadlineTime')) document.getElementById('taskDeadlineTime').value = '';
-        if (document.getElementById('taskScheduleDuration')) document.getElementById('taskScheduleDuration').value = '30';
-        if (document.getElementById('taskScheduleDate')) document.getElementById('taskScheduleDate').value = getTodayStr();
-        captureIntent = {};
-        document.querySelectorAll('[data-capture-chip]').forEach(btn => btn.classList.remove('active'));
-        setTaskDuePreset('today', { expand: false });
-        setTaskAssigneeMode('self');
-        toggleTaskComposerDetails(false);
-        showNotification(createdMode === 'self' ? 'Задачу додано собі' : 'Задачу додано і призначено команді', 'success');
-        await loadAllTasks();
-    } else {
-        showNotification('Помилка додавання', 'error');
     }
+
+    const createdMode = mainDraft.assigneeMode;
+    resetTaskComposerAfterCreate();
+    if (createdTasks.length > 1) {
+        showNotification(`Створено ${createdTasks.length} окремі задачі`, 'success');
+    } else {
+        showNotification(createdMode === 'self' ? 'Задачу додано собі' : 'Задачу додано і призначено команді', 'success');
+    }
+    await loadAllTasks();
 }
 
 async function createOperationPack() {

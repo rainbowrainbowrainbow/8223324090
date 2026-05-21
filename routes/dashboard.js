@@ -65,6 +65,8 @@ const BOARD_DRAW_TOOLS = new Set(['brush', 'highlighter']);
 const BOARD_ALLOWED_SHAPES = new Set(['line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
 const BOARD_ALLOWED_CONNECTOR_STYLES = new Set(['line', 'arrow', 'curve']);
 const BOARD_ALLOWED_RELATION_TYPES = new Set(['idea', 'depends', 'blocks', 'feeds', 'inspires']);
+const DASHBOARD_WORKSPACE_MODE = 'workspace';
+const BOARD_SNAP_MODES = new Set(['strict', 'soft', 'freeform']);
 
 function parseJsonObject(value, fallback = {}) {
     if (!value) return { ...fallback };
@@ -100,6 +102,10 @@ function normalizeBoardConnectorStyle(value) {
 
 function normalizeBoardRelationType(value) {
     return BOARD_ALLOWED_RELATION_TYPES.has(value) ? value : 'idea';
+}
+
+function normalizeBoardSnapMode(value) {
+    return BOARD_SNAP_MODES.has(value) ? value : 'soft';
 }
 
 function sanitizeBoardStroke(stroke, index = 0) {
@@ -177,6 +183,7 @@ function defaultBoardState(overrides = {}) {
         activeTool: 'select',
         preferences: {
             snapToGrid: true,
+            snapMode: 'soft',
             showGrid: true,
             showGuides: true,
             showMiniMap: false,
@@ -254,6 +261,7 @@ function sanitizeBoardState(input, role) {
         activeTool: normalizeBoardTool(source.activeTool),
         preferences: {
             snapToGrid: preferencesSource.snapToGrid !== false,
+            snapMode: normalizeBoardSnapMode(preferencesSource.snapMode || (preferencesSource.snapToGrid === false ? 'freeform' : 'soft')),
             showGrid: preferencesSource.showGrid !== false,
             showGuides: preferencesSource.showGuides !== false,
             showMiniMap: preferencesSource.showMiniMap === true,
@@ -267,8 +275,8 @@ function sanitizeBoardState(input, role) {
     });
 }
 
-function normalizeDashboardMode(value) {
-    return value === 'board' ? 'board' : 'grid';
+function normalizeDashboardMode() {
+    return DASHBOARD_WORKSPACE_MODE;
 }
 
 function normalizeDashboardConfig(raw, role) {
@@ -444,7 +452,7 @@ router.get('/config', async (req, res) => {
             layout: {},
             widgets: defaultWidgets,
             theme: 'default',
-            mode: 'grid'
+            mode: DASHBOARD_WORKSPACE_MODE
         }, req.user.role);
         res.json({
             success: true,

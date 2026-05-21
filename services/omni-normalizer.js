@@ -262,7 +262,7 @@ function classifyViberWebhook(payload = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// SMS (generic provider format — TurboSMS / eSputnik / similar)
+// SMS (generic provider format — FlySMS, TurboSMS, eSputnik, or similar)
 // ---------------------------------------------------------------------------
 
 function normalizeSms(payload) {
@@ -313,21 +313,28 @@ function pickSmsProviderStatus(payload = {}) {
     || null;
 }
 
-function mapTurboSmsDeliveryStatus(status) {
+function mapSmsDeliveryStatus(status) {
   const normalized = String(status || '').trim().toUpperCase();
   if (!normalized) return null;
-  if (['DELIVRD', 'DELIVERED'].includes(normalized)) return 'delivered';
-  if (['UNDELIV', 'UNDELIVERED', 'REJECTD', 'REJECTED', 'EXPIRED'].includes(normalized)) {
+  if (['DELIVRD', 'DELIVERED', 'SUCCESS', 'SENT', 'ACCEPTD', 'ACCEPTED'].includes(normalized)) return 'delivered';
+  if (['UNDELIV', 'UNDELIVERED', 'REJECTD', 'REJECTED', 'EXPIRED', 'FAILED', 'ERROR', 'CANCELLED'].includes(normalized)) {
     return 'later_failed';
   }
   return null;
+}
+
+function smsLifecycleSource(payload = {}) {
+  const provider = String(payload.provider || payload.provider_name || payload.gateway || payload.source || '').trim().toLowerCase();
+  if (provider.includes('fly') || provider.includes('sms-fly')) return 'flysms_webhook';
+  if (provider.includes('turbo')) return 'turbosms_webhook';
+  return 'sms_provider_webhook';
 }
 
 function classifySmsWebhook(payload = {}) {
   payload = payload || {};
   const providerMessageId = pickSmsProviderMessageId(payload);
   const providerStatus = pickSmsProviderStatus(payload);
-  const deliveryStatus = mapTurboSmsDeliveryStatus(providerStatus);
+  const deliveryStatus = mapSmsDeliveryStatus(providerStatus);
 
   if (providerMessageId && deliveryStatus) {
     const providerLifecycleEvent = String(providerStatus).trim().toUpperCase();
@@ -342,7 +349,7 @@ function classifySmsWebhook(payload = {}) {
           payload.timestamp || payload.date || payload.done_at || payload.doneAt || payload.done_date || payload.doneDate
         ),
         providerLifecycleEvent,
-        providerLifecycleSource: 'turbosms_webhook',
+        providerLifecycleSource: smsLifecycleSource(payload),
       },
     };
   }
@@ -565,7 +572,8 @@ module.exports = {
   normalizeSms,
   classifyViberWebhook,
   classifySmsWebhook,
-  mapTurboSmsDeliveryStatus,
+  mapSmsDeliveryStatus,
+  mapTurboSmsDeliveryStatus: mapSmsDeliveryStatus,
   normalizeFacebook,
   normalizeInstagram,
   normalizeBinotel,

@@ -144,7 +144,7 @@ router.post('/webhook/viber', async (req, res) => {
     }
 });
 
-// SMS webhook (TurboSMS delivery reports or inbound)
+// SMS webhook (provider delivery reports or inbound)
 router.post('/webhook/sms', async (req, res) => {
     try {
         if (!await verifyWebhookSecret(req, 'SMS_WEBHOOK_SECRET', 'sms')) {

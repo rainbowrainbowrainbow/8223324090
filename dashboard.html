@@ -12,17 +12,17 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.60.36">
-    <link rel="stylesheet" href="css/auth.css?v=0.60.36">
-    <link rel="stylesheet" href="css/layout.css?v=0.60.36">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.36">
-    <link rel="stylesheet" href="css/pages.css?v=0.60.36">
-    <link rel="stylesheet" href="css/modals.css?v=0.60.36">
-    <link rel="stylesheet" href="css/dashboard.css?v=0.60.36">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.36">
-    <link rel="stylesheet" href="css/responsive.css?v=0.60.36">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.36">
-    <link rel="stylesheet" href="css/decision-screen.css?v=0.60.36">
+    <link rel="stylesheet" href="css/base.css?v=0.60.38">
+    <link rel="stylesheet" href="css/auth.css?v=0.60.38">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.38">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.38">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.38">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.38">
+    <link rel="stylesheet" href="css/dashboard.css?v=0.60.38">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.38">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.38">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.38">
+    <link rel="stylesheet" href="css/decision-screen.css?v=0.60.38">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -38,9 +38,9 @@
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.60.36</p>
+                <p class="tagline">AI First CRM v0.60.38</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.60.36</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.60.38</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -125,52 +125,58 @@
                     </div>
                 </div>
 
-                <div class="dashboard-board-toolbar" id="dashboardBoardToolbar" aria-label="Dashboard board controls">
-                    <div class="dashboard-mode-toggle" role="group" aria-label="Dashboard mode">
-                        <button type="button" id="dashboardGridModeBtn" class="dashboard-mode-btn active" onclick="DashboardPage.setDashboardMode('grid')">Сцена</button>
-                        <button type="button" id="dashboardBoardModeBtn" class="dashboard-mode-btn" onclick="DashboardPage.setDashboardMode('board')">Сцена + Board</button>
+                <div class="dashboard-board-toolbar dashboard-workspace-toolbar" id="dashboardBoardToolbar" aria-label="Dashboard unified workspace controls" data-dashboard-workspace="unified">
+                    <div class="dashboard-mode-toggle dashboard-workspace-status" role="group" aria-label="Unified dashboard workspace">
+                        <button type="button" id="dashboardBoardModeBtn" class="dashboard-mode-btn active" onclick="DashboardPage.setDashboardMode('workspace')">Workspace</button>
+                        <div class="dashboard-workspace-title">
+                            <span>Unified modular workspace</span>
+                            <strong>Widgets + board in one scene</strong>
+                            <em>Modules stay interactive: use widgets in view mode, move/draw/edit in edit mode.</em>
+                        </div>
                     </div>
-                    <div class="board-edit-controls hidden" id="boardEditControls">
-                        <div class="dashboard-mode-toggle compact board-palette-group" role="group" aria-label="Board interaction mode">
+                    <div class="board-edit-controls board-pro-palette" id="boardEditControls" role="toolbar" aria-label="Workspace tools">
+                        <div class="dashboard-mode-toggle compact board-palette-group board-tool-family" data-board-tool-family="interaction" role="group" aria-label="Board interaction mode">
                             <button type="button" id="boardViewModeBtn" class="dashboard-mode-btn active" onclick="DashboardPage.setBoardInteractionMode('view')">View</button>
                             <button type="button" id="boardEditModeBtn" class="dashboard-mode-btn" onclick="DashboardPage.setBoardInteractionMode('edit')">Edit</button>
                         </div>
-                        <div class="board-tools-group board-palette-group" role="group" aria-label="Navigation tools">
+                        <div class="board-tools-group board-palette-group board-tool-family" data-board-tool-family="navigate" role="group" aria-label="Navigation tools">
                             <button type="button" class="dashboard-btn" data-board-tool="select" onclick="DashboardPage.setBoardTool('select')">Select</button>
                             <button type="button" class="dashboard-btn" data-board-tool="hand" onclick="DashboardPage.setBoardTool('hand')">Hand</button>
                         </div>
-                        <div class="board-tools-group board-palette-group" role="group" aria-label="Insert tools">
+                        <div class="board-tools-group board-palette-group board-tool-family" data-board-tool-family="insert" role="group" aria-label="Insert tools">
                             <button type="button" class="dashboard-btn" data-board-tool="note" onclick="DashboardPage.setBoardTool('note')">Note</button>
                             <button type="button" class="dashboard-btn" data-board-tool="text" onclick="DashboardPage.setBoardTool('text')">Text</button>
                             <button type="button" class="dashboard-btn" data-board-tool="frame" onclick="DashboardPage.setBoardTool('frame')">Frame</button>
                             <button type="button" class="dashboard-btn" data-board-tool="widget" onclick="DashboardPage.setBoardTool('widget')">Widget</button>
                         </div>
-                        <div class="board-tools-group board-palette-group" role="group" aria-label="Draw tools">
+                        <div class="board-tools-group board-palette-group board-tool-family" data-board-tool-family="draw" role="group" aria-label="Draw tools">
                             <button type="button" class="dashboard-btn" data-board-tool="brush" onclick="DashboardPage.setBoardTool('brush')">Brush</button>
                             <button type="button" class="dashboard-btn" data-board-tool="highlighter" onclick="DashboardPage.setBoardTool('highlighter')">Highlighter</button>
                             <button type="button" class="dashboard-btn" data-board-tool="eraser" onclick="DashboardPage.setBoardTool('eraser')">Eraser</button>
+                        </div>
+                        <div class="board-tools-group board-palette-group board-tool-family" data-board-tool-family="shape" role="group" aria-label="Shape tools">
                             <button type="button" class="dashboard-btn" data-board-tool="line" onclick="DashboardPage.setBoardTool('line')">Line</button>
                             <button type="button" class="dashboard-btn" data-board-tool="arrow" onclick="DashboardPage.setBoardTool('arrow')">Arrow</button>
                             <button type="button" class="dashboard-btn" data-board-tool="rect" onclick="DashboardPage.setBoardTool('rect')">Rect</button>
                             <button type="button" class="dashboard-btn" data-board-tool="ellipse" onclick="DashboardPage.setBoardTool('ellipse')">Ellipse</button>
                         </div>
-                        <div class="board-tools-group board-palette-group" role="group" aria-label="Connector tools">
+                        <div class="board-tools-group board-palette-group board-tool-family" data-board-tool-family="connect" role="group" aria-label="Connector tools">
                             <button type="button" class="dashboard-btn" data-board-tool="connector" onclick="DashboardPage.setBoardTool('connector')">Connect</button>
                         </div>
-                        <div class="board-tools-group board-palette-group board-ai-tools" role="group" aria-label="AI board tools">
+                        <div class="board-tools-group board-palette-group board-tool-family board-ai-tools" data-board-tool-family="templates" role="group" aria-label="AI board tools">
                             <button type="button" class="dashboard-btn" onclick="DashboardPage.runBoardAiAction('expand')">Expand</button>
                             <button type="button" class="dashboard-btn" onclick="DashboardPage.runBoardAiAction('mood-pack')">Mood</button>
                             <button type="button" class="dashboard-btn" onclick="DashboardPage.runBoardAiAction('cluster')">Cluster</button>
                             <button type="button" class="dashboard-btn" onclick="DashboardPage.runBoardAiAction('prompt-to-board')">Prompt</button>
                         </div>
-                        <div class="board-actions-group board-palette-group" role="group" aria-label="Board actions">
+                        <div class="board-actions-group board-palette-group board-tool-family" data-board-tool-family="actions" role="group" aria-label="Board actions">
                             <button type="button" id="boardUndoBtn" class="dashboard-btn" onclick="DashboardPage.undoBoard()" disabled>Undo</button>
                             <button type="button" id="boardRedoBtn" class="dashboard-btn" onclick="DashboardPage.redoBoard()" disabled>Redo</button>
                             <button type="button" class="dashboard-btn danger" onclick="DashboardPage.clearBoardContent()">Очистити все</button>
                             <button type="button" class="dashboard-btn" onclick="DashboardPage.resetBoardView()">Reset view</button>
                             <span class="board-save-status" id="boardSaveStatus" data-state="saved">Збережено</span>
                         </div>
-                        <div class="board-tool-options board-palette-group hidden" id="boardToolOptions" aria-live="polite"></div>
+                        <div class="board-tool-options board-palette-group" id="boardToolOptions" aria-live="polite"></div>
                     </div>
                 </div>
 
@@ -264,17 +270,17 @@
     </div>
 
     <!-- Scripts -->
-    <script src="js/config.js?v=0.60.36"></script>
-    <script src="js/notification.js?v=0.60.36"></script>
-    <script src="js/api.js?v=0.60.36"></script>
-    <script src="js/assistant-output-format.js?v=0.60.36"></script>
-    <script src="js/auth.js?v=0.60.36"></script>
-    <script src="js/components/sidebar.js?v=0.60.36"></script>
+    <script src="js/config.js?v=0.60.38"></script>
+    <script src="js/notification.js?v=0.60.38"></script>
+    <script src="js/api.js?v=0.60.38"></script>
+    <script src="js/assistant-output-format.js?v=0.60.38"></script>
+    <script src="js/auth.js?v=0.60.38"></script>
+    <script src="js/components/sidebar.js?v=0.60.38"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/decision-screen.js?v=0.60.36"></script>
-    <script src="js/dashboard-page.js?v=0.60.36"></script>
-    <script src="js/ui.js?v=0.60.36"></script>
-    <script src="js/catalogs.js?v=0.60.36"></script>
+    <script src="js/decision-screen.js?v=0.60.38"></script>
+    <script src="js/dashboard-page.js?v=0.60.38"></script>
+    <script src="js/ui.js?v=0.60.38"></script>
+    <script src="js/catalogs.js?v=0.60.38"></script>
     <script>
     // Login handler
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -314,7 +320,7 @@
         window.location.href = '/';
     })();
     </script>
-    <script src="js/alerts.js?v=0.60.36"></script><!-- Decision Screen overlay -->
+    <script src="js/alerts.js?v=0.60.38"></script><!-- Decision Screen overlay -->
     <div id="decisionScreen" class="hidden"
          role="dialog" aria-modal="true"
          aria-label="Центр прийняття рішень" aria-hidden="true">

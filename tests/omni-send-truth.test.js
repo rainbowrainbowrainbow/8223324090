@@ -13,6 +13,7 @@ function clearModules() {
         '../db',
         '../services/omni-hub',
         '../services/omni-accounts',
+        '../services/omni-sms-providers',
         '../services/kleshnya-chat',
         '../services/websocket',
         '../services/telegram',
@@ -262,12 +263,18 @@ describe('Communication Send Truth v1', () => {
             TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
             VIBER_TOKEN: process.env.VIBER_TOKEN,
             TURBOSMS_TOKEN: process.env.TURBOSMS_TOKEN,
+            FLYSMS_API_KEY: process.env.FLYSMS_API_KEY,
+            SMS_FLY_API_KEY: process.env.SMS_FLY_API_KEY,
+            SMSFLY_API_KEY: process.env.SMSFLY_API_KEY,
             FB_PAGE_TOKEN: process.env.FB_PAGE_TOKEN,
             IG_PAGE_TOKEN: process.env.IG_PAGE_TOKEN,
             BINOTEL_WEBHOOK_SECRET: process.env.BINOTEL_WEBHOOK_SECRET,
         };
         delete process.env.TELEGRAM_BOT_TOKEN;
         delete process.env.VIBER_TOKEN;
+        delete process.env.FLYSMS_API_KEY;
+        delete process.env.SMS_FLY_API_KEY;
+        delete process.env.SMSFLY_API_KEY;
         process.env.TURBOSMS_TOKEN = 'sms-token';
         delete process.env.FB_PAGE_TOKEN;
         delete process.env.IG_PAGE_TOKEN;
@@ -291,6 +298,47 @@ describe('Communication Send Truth v1', () => {
             assert.ok(alerts.some(alert => alert.id === 'omni_telegram_disconnected'));
             assert.ok(alerts.some(alert => alert.id === 'omni_binotel_history_only'));
             assert.ok(alerts.every(alert => alert.source === 'omni_accounts'));
+        } finally {
+            Object.entries(previous).forEach(([key, value]) => {
+                if (value === undefined) delete process.env[key];
+                else process.env[key] = value;
+            });
+            clearModules();
+        }
+    });
+
+    it('exposes SMS as a provider-selectable channel with FlySMS default and TurboSMS compatibility', () => {
+        const previous = {
+            TURBOSMS_TOKEN: process.env.TURBOSMS_TOKEN,
+            TURBOSMS_SENDER: process.env.TURBOSMS_SENDER,
+            FLYSMS_API_KEY: process.env.FLYSMS_API_KEY,
+            SMS_FLY_API_KEY: process.env.SMS_FLY_API_KEY,
+            SMSFLY_API_KEY: process.env.SMSFLY_API_KEY,
+            FLYSMS_SENDER: process.env.FLYSMS_SENDER,
+            SMS_FLY_SENDER: process.env.SMS_FLY_SENDER,
+            SMSFLY_SENDER: process.env.SMSFLY_SENDER,
+        };
+        Object.keys(previous).forEach(key => delete process.env[key]);
+
+        try {
+            clearModules();
+            let accounts = require('../services/omni-accounts');
+            let sms = accounts.getOmniAccountStatuses({ now: new Date('2099-05-15T10:00:00Z') })
+                .find(acc => acc.channel === 'sms');
+            assert.equal(sms.provider, 'flysms');
+            assert.equal(sms.providerLabel, 'FlySMS');
+            assert.deepEqual(sms.providerOptions.map(option => option.value), ['turbosms', 'flysms']);
+            assert.ok(sms.setupFields.some(field => field.name === 'apiKey' && /FlySMS/.test(field.label)));
+            assert.ok(!sms.setupFields.some(field => field.label === 'TurboSMS token'));
+
+            clearModules();
+            process.env.TURBOSMS_TOKEN = 'legacy-turbosms-token';
+            accounts = require('../services/omni-accounts');
+            sms = accounts.getOmniAccountStatuses({ now: new Date('2099-05-15T10:00:00Z') })
+                .find(acc => acc.channel === 'sms');
+            assert.equal(sms.provider, 'turbosms');
+            assert.equal(sms.providerLabel, 'TurboSMS');
+            assert.ok(sms.setupFields.some(field => field.name === 'token' && field.label === 'TurboSMS token'));
         } finally {
             Object.entries(previous).forEach(([key, value]) => {
                 if (value === undefined) delete process.env[key];
@@ -606,6 +654,10 @@ describe('Communication Send Truth v1', () => {
         assert.match(omniHtml, /openConnectModal/);
         assert.match(omniHtml, /openDisconnectModal/);
         assert.match(omniHtml, /collectConnectionFields/);
+        assert.match(omniHtml, /id="conn_sms_provider"/);
+        assert.match(omniHtml, /data-provider-selector="sms"/);
+        assert.match(omniHtml, /providerOptionsForAccount/);
+        assert.match(omniHtml, /providerLabel/);
         assert.match(omniHtml, /data-account-action="test"/);
         assert.match(omniHtml, /data-account-action="disconnect"/);
         assert.match(omniHtml, /Відправка заблокована/);

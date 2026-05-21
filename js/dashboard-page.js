@@ -36,6 +36,8 @@ const DashboardPage = (() => {
     const BOARD_CONNECTOR_STYLES = new Set(['line', 'arrow', 'curve']);
     const BOARD_RELATION_TYPES = new Set(['idea', 'depends', 'blocks', 'feeds', 'inspires']);
     const BOARD_WORKSPACE_MODES = new Set(['board:view', 'board:edit', 'board:draw', 'board:connect', 'board:create', 'board:shape', 'object:text-edit', 'object:widget-inspect']);
+    const DASHBOARD_WORKSPACE_MODE = 'workspace';
+    const BOARD_SNAP_MODES = new Set(['strict', 'soft', 'freeform']);
     const BOARD_AI_PRESETS = new Set(['expand', 'mood-pack', 'cluster', 'summarize', 'tasks', 'remix', 'name-frame', 'prompt-to-board']);
     const DASHBOARD_RETIRED_WIDGETS = new Set(['finance_today', 'reports_today', 'account_stats', 'week_bookings', 'my_focus']);
     const DASHBOARD_PRESENTATION_MODES = new Set(['mixed-scene', 'flat-grid']);
@@ -247,7 +249,7 @@ const DashboardPage = (() => {
             widgets: ['tasks', 'my_schedule', 'weather'],
             layout: {},
             theme: 'default',
-            mode: 'grid',
+            mode: DASHBOARD_WORKSPACE_MODE,
             presentationMode: 'mixed-scene',
             roleScenePreset: null,
             sceneOptions: {
@@ -270,6 +272,7 @@ const DashboardPage = (() => {
                 activeTool: 'select',
                 preferences: {
                     snapToGrid: true,
+                    snapMode: 'soft',
                     showGrid: true,
                     showGuides: true,
                     showMiniMap: false,
@@ -299,8 +302,8 @@ const DashboardPage = (() => {
         return Math.min(max, Math.max(min, number));
     }
 
-    function normalizeDashboardMode(value) {
-        return value === 'board' ? 'board' : 'grid';
+    function normalizeDashboardMode() {
+        return DASHBOARD_WORKSPACE_MODE;
     }
 
     function normalizeDashboardPresentationMode(value) {
@@ -329,6 +332,10 @@ const DashboardPage = (() => {
 
     function normalizeBoardRelationType(value) {
         return BOARD_RELATION_TYPES.has(value) ? value : 'idea';
+    }
+
+    function normalizeBoardSnapMode(value) {
+        return BOARD_SNAP_MODES.has(value) ? value : 'soft';
     }
 
     function normalizeBoardWorkspaceMode(mode) {
@@ -473,6 +480,7 @@ const DashboardPage = (() => {
             activeTool: normalizeBoardTool(source.activeTool),
             preferences: {
                 snapToGrid: preferences.snapToGrid !== false,
+                snapMode: normalizeBoardSnapMode(preferences.snapMode || (preferences.snapToGrid === false ? 'freeform' : 'soft')),
                 showGrid: preferences.showGrid !== false,
                 showGuides: preferences.showGuides !== false,
                 showMiniMap: preferences.showMiniMap === true,
@@ -546,6 +554,7 @@ const DashboardPage = (() => {
         if (!_config) return;
         _boardDirty = true;
         _boardSaveStatus = 'dirty';
+        _config.mode = DASHBOARD_WORKSPACE_MODE;
         _config.boardMeta = normalizeBoardMeta({ ..._config.boardMeta, dirty: true });
         _config.boardMeta.dirty = true;
         _config.layout = { ...safeObject(_config.layout, {}), mode: _config.mode, boardMeta: _config.boardMeta, boardState: _config.boardState };
@@ -596,11 +605,12 @@ const DashboardPage = (() => {
 
     async function saveDashboardConfig(patch = {}) {
         if (!_config) _config = createDefaultDashboardConfig();
+        const nextMode = normalizeDashboardMode(patch.mode || _config.mode);
         const payload = {
             widgets: patch.widgets || _config.widgets || [],
             layout: {
                 ...safeObject(_config.layout, {}),
-                mode: patch.mode || _config.mode || 'grid',
+                mode: nextMode,
                 presentationMode: patch.presentationMode || _config.presentationMode || 'mixed-scene',
                 roleScenePreset: Object.prototype.hasOwnProperty.call(patch, 'roleScenePreset') ? patch.roleScenePreset : _config.roleScenePreset,
                 sceneOptions: patch.sceneOptions || _config.sceneOptions || createDefaultDashboardConfig().sceneOptions,
@@ -608,7 +618,7 @@ const DashboardPage = (() => {
                 boardState: patch.boardState || _config.boardState
             },
             theme: patch.theme || _config.theme || 'default',
-            mode: patch.mode || _config.mode || 'grid',
+            mode: nextMode,
             presentationMode: patch.presentationMode || _config.presentationMode || 'mixed-scene',
             roleScenePreset: Object.prototype.hasOwnProperty.call(patch, 'roleScenePreset') ? patch.roleScenePreset : _config.roleScenePreset,
             sceneOptions: patch.sceneOptions || _config.sceneOptions || createDefaultDashboardConfig().sceneOptions,
@@ -660,7 +670,7 @@ const DashboardPage = (() => {
     }
 
     function syncBoardToolbar() {
-        const isBoard = _config?.mode === 'board';
+        const isWorkspace = true;
         const gridBtn = document.getElementById('dashboardGridModeBtn');
         const boardBtn = document.getElementById('dashboardBoardModeBtn');
         const controls = document.getElementById('boardEditControls');
@@ -672,9 +682,9 @@ const DashboardPage = (() => {
         const redoBtn = document.getElementById('boardRedoBtn');
         syncBoardWorkspaceMode();
 
-        gridBtn?.classList.toggle('active', !isBoard);
-        boardBtn?.classList.toggle('active', isBoard);
-        controls?.classList.toggle('hidden', !isBoard);
+        gridBtn?.classList.toggle('active', false);
+        boardBtn?.classList.toggle('active', isWorkspace);
+        controls?.classList.remove('hidden');
         viewBtn?.classList.toggle('active', _boardWorkspaceMode === 'board:view');
         editBtn?.classList.toggle('active', _boardWorkspaceMode !== 'board:view');
         document.querySelectorAll('[data-board-tool]').forEach(btn => {
@@ -683,8 +693,8 @@ const DashboardPage = (() => {
             btn.setAttribute('aria-pressed', active ? 'true' : 'false');
         });
         if (toolOptions) {
-            toolOptions.classList.toggle('hidden', !isBoard);
-            toolOptions.innerHTML = isBoard ? renderBoardToolOptions() : '';
+            toolOptions.classList.remove('hidden');
+            toolOptions.innerHTML = renderBoardToolOptions();
         }
         if (undoBtn) undoBtn.disabled = _boardUndoStack.length === 0;
         if (redoBtn) redoBtn.disabled = _boardRedoStack.length === 0;
@@ -719,6 +729,9 @@ const DashboardPage = (() => {
                 <input type="checkbox" ${prefs.snapToGrid !== false ? 'checked' : ''} onchange="DashboardPage.setBoardPreference('snapToGrid', this.checked)">
                 <span>Snap</span>
             </label>
+            <div class="board-tool-snap-presets" role="group" aria-label="Snap presets">
+                ${['strict', 'soft', 'freeform'].map(mode => `<button type="button" class="board-tool-snap${normalizeBoardSnapMode(prefs.snapMode) === mode ? ' active' : ''}" onclick="DashboardPage.setBoardSnapMode('${mode}')">${mode}</button>`).join('')}
+            </div>
             <label class="board-tool-check">
                 <input type="checkbox" ${prefs.showGrid !== false ? 'checked' : ''} onchange="DashboardPage.setBoardPreference('showGrid', this.checked)">
                 <span>Сітка</span>
@@ -2835,22 +2848,20 @@ const DashboardPage = (() => {
         syncBoardToolbar();
         updateDashboardRolePreviewControl();
 
-        if (_config.mode === 'board') {
-            grid.classList.add('hidden');
-            renderBoard();
-            return;
-        }
-
-        const boardShell = document.getElementById('dashboardBoardShell');
-        if (boardShell) boardShell.classList.add('hidden');
-        grid.classList.remove('hidden');
-
-        if (getDashboardPresentationMode() === 'mixed-scene') {
-            renderMixedSceneDashboard(grid);
-            return;
-        }
-
+        _config.mode = DASHBOARD_WORKSPACE_MODE;
+        _config.layout.mode = DASHBOARD_WORKSPACE_MODE;
         renderFlatWidgetGrid(grid);
+        grid.setAttribute('aria-hidden', 'true');
+        grid.classList.add('dashboard-compat-widget-cache');
+        grid.classList.add('hidden');
+        ensureUnifiedWorkspaceSeed();
+        renderBoard();
+    }
+
+    function ensureUnifiedWorkspaceSeed() {
+        if (!_config?.boardState) _config.boardState = createDefaultDashboardConfig().boardState;
+        if (getBoardItems().length || getBoardDrawings().length || getBoardConnectors().length) return;
+        seedBoardWidgets({ persist: false });
     }
 
     function getBoardItems() {
@@ -3028,7 +3039,7 @@ const DashboardPage = (() => {
         const idAttr = escapeHtml(item.id);
         const idJs = escapeJsString(item.id);
         return `
-            <section class="dashboard-board-item type-${escapeHtml(item.type)}${selected}${editing}${inspecting}${locked}${hidden}" data-board-item-id="${idAttr}" style="${style}">
+            <section class="dashboard-board-item workspace-module type-${escapeHtml(item.type)}${selected}${editing}${inspecting}${locked}${hidden}" data-workspace-module="true" data-module-role="${escapeHtml(item.type)}" data-board-item-id="${idAttr}" style="${style}">
                 <div class="dashboard-board-item-frame" data-board-drag-handle>
                     <div class="dashboard-board-item-title">
                         <span>${item.type === 'widget' ? escapeHtml(def?.icon || '◼') : item.type === 'shape' ? '□' : '•'}</span>
@@ -3116,6 +3127,10 @@ const DashboardPage = (() => {
                     ${_boardWidgetInspectId === item.id ? `<button type="button" class="board-inspector-chip active" onclick="DashboardPage.exitBoardObjectEditing()">Exit widget</button>` : `<button type="button" class="board-inspector-chip" onclick="DashboardPage.enterBoardWidgetInspect('${escapeJsString(item.id)}')">Inspect widget</button>`}
                 ` : ''}
                 ${item.type === 'note' || item.type === 'text' ? `<button type="button" class="board-inspector-chip" onclick="DashboardPage.runBoardAiAction('tasks')">Extract tasks</button>` : ''}
+                <div class="board-inspector-row" aria-label="Layer controls">
+                    <button type="button" class="board-inspector-chip" onclick="DashboardPage.changeBoardItemZ('${escapeJsString(item.id)}', 10)">Layer +</button>
+                    <button type="button" class="board-inspector-chip" onclick="DashboardPage.changeBoardItemZ('${escapeJsString(item.id)}', -10)">Layer -</button>
+                </div>
                 <button type="button" class="board-inspector-chip danger" onclick="DashboardPage.deleteBoardItem('${escapeJsString(item.id)}')">Delete</button>
             </div>
         ` : '';
@@ -3158,6 +3173,12 @@ const DashboardPage = (() => {
                     </div>
                     <div class="board-inspector-row">
                         ${['line', 'arrow', 'curve'].map(style => `<button type="button" class="board-inspector-chip${prefs.connectorStyle === style ? ' active' : ''}" onclick="DashboardPage.setBoardConnectorPreference('connectorStyle', '${style}')">${style}</button>`).join('')}
+                    </div>
+                </div>
+                <div class="board-inspector-section">
+                    <strong>Snap</strong>
+                    <div class="board-inspector-row">
+                        ${['strict', 'soft', 'freeform'].map(mode => `<button type="button" class="board-inspector-chip${normalizeBoardSnapMode(prefs.snapMode) === mode ? ' active' : ''}" onclick="DashboardPage.setBoardSnapMode('${mode}')">${mode}</button>`).join('')}
                     </div>
                 </div>
             </aside>
@@ -3245,6 +3266,14 @@ const DashboardPage = (() => {
             Math.round(event.clientX - rect.left),
             Math.round(event.clientY - rect.top)
         ];
+    }
+
+    function getBoardSnapUnit() {
+        const prefs = safeObject(_config?.boardState?.preferences, {});
+        const snapMode = normalizeBoardSnapMode(prefs.snapMode || (prefs.snapToGrid === false ? 'freeform' : 'soft'));
+        if (snapMode === 'freeform' || prefs.snapToGrid === false) return 1;
+        if (snapMode === 'strict') return 24;
+        return 10;
     }
 
     function beginBoardCanvasPointer(event) {
@@ -3410,7 +3439,7 @@ const DashboardPage = (() => {
         if (!item || !element) return;
         const dx = event.clientX - _boardDrag.startX;
         const dy = event.clientY - _boardDrag.startY;
-        const snap = _config.boardState?.preferences?.snapToGrid !== false ? 10 : 1;
+        const snap = getBoardSnapUnit();
         const x = Math.round((_boardDrag.itemX + dx) / snap) * snap;
         const y = Math.round((_boardDrag.itemY + dy) / snap) * snap;
         element.style.left = `${x}px`;
@@ -3497,7 +3526,7 @@ const DashboardPage = (() => {
 
     function boardPointForNewItem(point, width = 260, height = 150) {
         const prefs = safeObject(_config?.boardState?.preferences, {});
-        const snap = prefs.snapToGrid !== false ? 10 : 1;
+        const snap = getBoardSnapUnit();
         const fallback = 48 + (getBoardItems().length % 4) * 32;
         const rawX = Array.isArray(point) ? Number(point[0] || 0) - Math.round(width / 2) : fallback;
         const rawY = Array.isArray(point) ? Number(point[1] || 0) - Math.round(height / 2) : fallback;
@@ -3533,9 +3562,9 @@ const DashboardPage = (() => {
     function addBoardNoteToZone(zoneId) {
         const def = WRITING_ZONE_DEFS[zoneId] || WRITING_ZONE_DEFS['notes-zone-primary'];
         const text = getWritingZoneValue(zoneId).trim() || def.hint || 'Нова нотатка';
-        if (_config.mode !== 'board') {
-            _config.mode = 'board';
-            _config.layout.mode = 'board';
+        if (_config.mode !== DASHBOARD_WORKSPACE_MODE) {
+            _config.mode = DASHBOARD_WORKSPACE_MODE;
+            _config.layout.mode = DASHBOARD_WORKSPACE_MODE;
         }
         addBoardItem({
             type: 'note',
@@ -3595,9 +3624,10 @@ const DashboardPage = (() => {
         });
     }
 
-    function seedBoardWidgets() {
+    function seedBoardWidgets(options = {}) {
         if (getBoardItems().length) return;
-        pushBoardUndo('seed-widgets');
+        const shouldPersist = options.persist !== false;
+        if (shouldPersist) pushBoardUndo('seed-widgets');
         normalizeDashboardWidgets(_config.widgets || [])
             .filter(canUseWidget)
             .slice(0, 4)
@@ -3616,7 +3646,7 @@ const DashboardPage = (() => {
                 }, index);
                 if (item) getBoardItems().push(item);
             });
-        markBoardDirty('seed-widgets');
+        if (shouldPersist) markBoardDirty('seed-widgets');
         renderBoard();
     }
 
@@ -3982,10 +4012,9 @@ const DashboardPage = (() => {
 
     function setDashboardMode(mode) {
         const nextMode = normalizeDashboardMode(mode);
-        if (_config.mode === nextMode) return;
         _config.mode = nextMode;
         _config.layout.mode = nextMode;
-        if (nextMode === 'board' && !getBoardItems().length) {
+        if (!getBoardItems().length) {
             seedBoardWidgets();
         }
         saveDashboardConfig({ mode: nextMode }).catch(err => console.error('[dashboard] mode save failed:', err));
@@ -4090,6 +4119,7 @@ const DashboardPage = (() => {
         const prefs = safeObject(_config.boardState.preferences, {});
         if (['snapToGrid', 'showGrid', 'showGuides', 'showMiniMap'].includes(key)) {
             prefs[key] = value === true || value === 'true';
+            if (key === 'snapToGrid') prefs.snapMode = prefs[key] ? (normalizeBoardSnapMode(prefs.snapMode) === 'freeform' ? 'soft' : normalizeBoardSnapMode(prefs.snapMode)) : 'freeform';
         } else if (key === 'strokeColor') {
             prefs.strokeColor = String(value || '#10b981').slice(0, 32);
         } else if (key === 'fillColor') {
@@ -4101,6 +4131,20 @@ const DashboardPage = (() => {
         }
         _config.boardState.preferences = { ...prefs };
         markBoardDirty('board-preference');
+        syncBoardToolbar();
+        renderBoard();
+    }
+
+    function setBoardSnapMode(mode) {
+        if (!_config?.boardState) return;
+        const prefs = safeObject(_config.boardState.preferences, {});
+        const snapMode = normalizeBoardSnapMode(mode);
+        _config.boardState.preferences = {
+            ...prefs,
+            snapMode,
+            snapToGrid: snapMode !== 'freeform'
+        };
+        markBoardDirty('snap-mode');
         syncBoardToolbar();
         renderBoard();
     }
@@ -4129,7 +4173,7 @@ const DashboardPage = (() => {
         if (_boardKeyboardBound) return;
         _boardKeyboardBound = true;
         document.addEventListener('keydown', event => {
-            if (!_config || _config.mode !== 'board') return;
+            if (!_config || normalizeDashboardMode(_config.mode) !== DASHBOARD_WORKSPACE_MODE) return;
             const editable = event.target && event.target.closest && event.target.closest('input, textarea, [contenteditable="true"]');
             const mod = event.ctrlKey || event.metaKey;
             if (event.code === 'Space' && !editable && !_boardSpaceHandActive) {
@@ -5393,7 +5437,7 @@ const DashboardPage = (() => {
         _config.boardState = normalizeBoardState(currentBoardState);
         _config.layout = {
             ...safeObject(_config.layout, {}),
-            mode: _config.mode || 'grid',
+            mode: DASHBOARD_WORKSPACE_MODE,
             presentationMode: _config.presentationMode,
             roleScenePreset: _config.roleScenePreset || null,
             sceneOptions: _config.sceneOptions,
@@ -6506,6 +6550,7 @@ const DashboardPage = (() => {
         setBoardInteractionMode,
         setBoardTool,
         setBoardPreference,
+        setBoardSnapMode,
         runBoardCreateAction,
         addBoardNote,
         addBoardNoteToZone,

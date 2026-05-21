@@ -1,216 +1,56 @@
+'use strict';
+
 /**
- * services/omni-sms.js — TurboSMS API channel adapter
+ * services/omni-sms.js - provider-aware SMS channel adapter.
  *
- * Sends SMS messages via TurboSMS (Ukrainian provider).
- * Uses native https module (no axios / no npm deps).
- * API docs: https://turbosms.ua/api.html
+ * The channel runtime is resolved from Omni account configuration. TurboSMS
+ * remains supported for legacy setups, while FlySMS/SMS-fly is available as a
+ * first-class provider.
  */
-const https = require('https');
+
 const { createLogger } = require('../utils/logger');
 const { resolveOmniRuntimeConfig } = require('./omni-accounts');
+const {
+    sendSmsViaProvider,
+    sendBulkSmsViaProvider,
+    normalizeSmsProvider,
+} = require('./omni-sms-providers');
 
 const log = createLogger('OmniSMS');
 
-const TURBOSMS_TOKEN = process.env.TURBOSMS_TOKEN || '';
-const TURBOSMS_SENDER = process.env.TURBOSMS_SENDER || 'EventGenix';
-
-const SOCKET_TIMEOUT = 15000;
-const RESPONSE_TIMEOUT = 15000;
-
-if (!TURBOSMS_TOKEN) {
-    log.warn('TURBOSMS_TOKEN not set. SMS channel disabled.');
-}
-
-/**
- * Low-level POST request to TurboSMS API.
- * @param {string} path - API path (e.g. '/message/send.json')
- * @param {object} body - JSON payload
- * @returns {Promise<object>} parsed response
- */
-function turboSmsRequest(path, body, token = TURBOSMS_TOKEN) {
-    return new Promise((resolve, reject) => {
-        const payload = JSON.stringify(body);
-
-        const options = {
-            hostname: 'api.turbosms.ua',
-            port: 443,
-            path,
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
-                'Content-Length': Buffer.byteLength(payload)
-            }
-        };
-
-        const req = https.request(options, (httpRes) => {
-            let data = '';
-            httpRes.on('data', (chunk) => { data += chunk; });
-            httpRes.on('end', () => {
-                if (httpRes.statusCode >= 400) {
-                    reject(new Error(`TurboSMS API HTTP ${httpRes.statusCode}: ${data.slice(0, 200)}`));
-                    return;
-                }
-                try {
-                    const parsed = JSON.parse(data);
-                    resolve(parsed);
-                } catch (err) {
-                    reject(new Error(`TurboSMS API returned non-JSON (HTTP ${httpRes.statusCode}): ${data.slice(0, 200)}`));
-                }
-            });
-        });
-
-        req.setTimeout(SOCKET_TIMEOUT, () => {
-            req.destroy(new Error('TurboSMS API socket timeout'));
-        });
-
-        const responseTimer = setTimeout(() => {
-            req.destroy(new Error('TurboSMS API response timeout'));
-        }, RESPONSE_TIMEOUT);
-
-        req.on('close', () => clearTimeout(responseTimer));
-
-        req.on('error', (err) => {
-            clearTimeout(responseTimer);
-            reject(err);
-        });
-
-        req.write(payload);
-        req.end();
-    });
-}
-
-/**
- * Normalize a Ukrainian phone number to international format.
- * @param {string} phone - Phone number in any format
- * @returns {string} Phone in +380XXXXXXXXX format
- */
-function normalizePhone(phone) {
-    const digits = phone.replace(/\D/g, '').slice(0, 15); // E.164 max 15 digits
-    if (!digits || digits.length < 7) {
-        throw new Error(`Invalid phone number: too short (${digits.length} digits)`);
-    }
-    if (digits.startsWith('380') && digits.length === 12) {
-        return '+' + digits;
-    }
-    if (digits.startsWith('0') && digits.length === 10) {
-        return '+38' + digits;
-    }
-    if (digits.startsWith('80') && digits.length === 11) {
-        return '+3' + digits;
-    }
-    // Return with + prefix for international format
-    return '+' + digits;
-}
-
-/**
- * Send a single SMS message.
- * @param {string} phone - Recipient phone number
- * @param {string} text - Message text
- * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
- */
-async function sendSMS(phone, text) {
+async function smsRuntime() {
     const runtime = await resolveOmniRuntimeConfig('sms');
-    const token = runtime.token || TURBOSMS_TOKEN;
-    const sender = runtime.sender || TURBOSMS_SENDER;
-    if (!token) {
-        log.warn('sendSMS called but TURBOSMS_TOKEN not configured');
-        return { success: false, error: 'TURBOSMS_TOKEN not configured' };
-    }
+    const provider = normalizeSmsProvider(runtime.provider) || normalizeSmsProvider(process.env.SMS_PROVIDER) || 'flysms';
+    return { ...runtime, provider };
+}
 
+async function sendSMS(phone, text) {
     if (!phone || !text) {
         return { success: false, error: 'phone and text are required' };
     }
 
     try {
-        const normalizedPhone = normalizePhone(phone);
-        const body = {
-            recipients: [normalizedPhone],
-            sms: {
-                sender,
-                text
-            }
-        };
-
-        log.debug('Sending SMS', { phone: normalizedPhone });
-
-        const response = await turboSmsRequest('/message/send.json', body, token);
-
-        if (response.response_code === 0 && response.response_result) {
-            const result = response.response_result[0];
-            if (result && result.response_code === 0) {
-                log.info('SMS sent', { phone: normalizedPhone, messageId: result.message_id });
-                return { success: true, messageId: result.message_id };
-            }
-
-            const errorMsg = result ? result.response_status : 'Unknown send error';
-            log.warn('SMS send failed for recipient', { phone: normalizedPhone, error: errorMsg });
-            return { success: false, error: errorMsg };
-        }
-
-        const errorMsg = response.response_status || `TurboSMS code ${response.response_code}`;
-        log.warn('TurboSMS API error', { responseCode: response.response_code, status: errorMsg });
-        return { success: false, error: errorMsg };
+        const runtime = await smsRuntime();
+        log.debug('Sending SMS', { provider: runtime.provider });
+        return await sendSmsViaProvider(runtime, phone, text);
     } catch (err) {
         log.error('sendSMS failed', err);
         return { success: false, error: err.message };
     }
 }
 
-/**
- * Send SMS to multiple recipients in a single API call.
- * @param {string[]} phones - Array of phone numbers
- * @param {string} text - Message text
- * @returns {Promise<{success: boolean, results?: Array<{phone: string, messageId?: string, error?: string}>, error?: string}>}
- */
 async function sendBulkSMS(phones, text) {
-    const runtime = await resolveOmniRuntimeConfig('sms');
-    const token = runtime.token || TURBOSMS_TOKEN;
-    const sender = runtime.sender || TURBOSMS_SENDER;
-    if (!token) {
-        log.warn('sendBulkSMS called but TURBOSMS_TOKEN not configured');
-        return { success: false, error: 'TURBOSMS_TOKEN not configured' };
-    }
-
     if (!phones || !Array.isArray(phones) || phones.length === 0) {
         return { success: false, error: 'phones array is required and must not be empty' };
     }
-
     if (!text) {
         return { success: false, error: 'text is required' };
     }
 
     try {
-        const normalizedPhones = phones.map(normalizePhone);
-        const body = {
-            recipients: normalizedPhones,
-            sms: {
-                sender,
-                text
-            }
-        };
-
-        log.debug('Sending bulk SMS', { count: normalizedPhones.length });
-
-        const response = await turboSmsRequest('/message/send.json', body, token);
-
-        if (response.response_code === 0 && response.response_result) {
-            const results = response.response_result.map((result, index) => {
-                if (result.response_code === 0) {
-                    return { phone: normalizedPhones[index], messageId: result.message_id };
-                }
-                return { phone: normalizedPhones[index], error: result.response_status };
-            });
-
-            const successCount = results.filter(r => r.messageId).length;
-            log.info('Bulk SMS completed', { total: results.length, success: successCount, failed: results.length - successCount });
-
-            return { success: true, results };
-        }
-
-        const errorMsg = response.response_status || `TurboSMS code ${response.response_code}`;
-        log.warn('TurboSMS bulk API error', { responseCode: response.response_code, status: errorMsg });
-        return { success: false, error: errorMsg };
+        const runtime = await smsRuntime();
+        log.debug('Sending bulk SMS', { provider: runtime.provider, count: phones.length });
+        return await sendBulkSmsViaProvider(runtime, phones, text);
     } catch (err) {
         log.error('sendBulkSMS failed', err);
         return { success: false, error: err.message };

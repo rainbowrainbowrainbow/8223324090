@@ -7834,3 +7834,110 @@ body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
     display: none !important;
   }
 }
+
+/* v0.60.37: profile summary card cleanup.
+   Removes the accidental oval/glow under the name, turns the role into a
+   refined typographic indicator, and keeps USD / time / day in one strip. */
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-card,
+.sidebar-nav:not(.collapsed) .sidebar-identity-card {
+  padding: 11px 10px !important;
+  border-color: color-mix(in srgb, var(--role-accent, var(--sb-enterprise-accent)) 32%, var(--sb-enterprise-border)) !important;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--role-accent, var(--sb-enterprise-accent)) 8%, transparent), transparent 36%),
+    var(--sb-enterprise-surface) !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-main {
+  gap: 7px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-title-row {
+  grid-template-columns: minmax(0, 1fr) max-content !important;
+  align-items: start !important;
+  gap: 9px !important;
+}
+
+body.shell-ready .sidebar-nav:not(.collapsed) .sidebar-identity-role,
+body[data-page-group] .sidebar-nav:not(.collapsed) .sidebar-identity-role,
+.sidebar-nav:not(.collapsed) .sidebar-identity-role {
+  max-width: 82px !important;
+  min-height: 0 !important;
+  padding: 2px 0 2px 8px !important;
+  border: 0 !important;
+  border-left: 1px solid color-mix(in srgb, var(--role-accent, var(--sb-enterprise-accent)) 48%, transparent) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: color-mix(in srgb, var(--role-accent, var(--sb-enterprise-accent)) 76%, var(--sb-enterprise-text)) !important;
+  font-family: "Space Grotesk", Inter, system-ui, sans-serif !important;
+  font-size: 8.5px !important;
+  font-weight: 900 !important;
+  line-height: 1.18 !important;
+  letter-spacing: 0.14em !important;
+  text-transform: uppercase !important;
+}
+
+body:not(.dark-mode) .sidebar-nav:not(.collapsed) .sidebar-identity-role {
+  color: color-mix(in srgb, var(--role-accent, var(--sb-enterprise-accent)) 58%, #1f2933) !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-summary {
+  padding-left: 0 !important;
+  color: color-mix(in srgb, var(--sb-enterprise-muted) 90%, var(--sb-enterprise-text)) !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-summary::before {
+  display: none !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 5px !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="date"] {
+  grid-column: auto !important;
+  min-height: 34px !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  justify-items: start !important;
+  gap: 2px !important;
+}
+
+.sidebar-nav:not(.collapsed) button.sidebar-identity-meta-item,
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item {
+  min-height: 34px !important;
+  padding: 6px 6px !important;
+  border-radius: 11px !important;
+  text-align: left !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="currency"] {
+  border-color: color-mix(in srgb, var(--role-accent, var(--sb-enterprise-accent)) 36%, var(--sb-enterprise-border)) !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-item[data-sidebar-meta="date"] .sidebar-identity-meta-v {
+  justify-self: start !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-k {
+  font-size: 7.5px !important;
+  letter-spacing: 0.08em !important;
+}
+
+.sidebar-nav:not(.collapsed) .sidebar-identity-meta-v {
+  font-size: 10.5px !important;
+  line-height: 1.05 !important;
+}
+
+@media (max-width: 1080px) and (min-width: 769px) {
+  .sidebar-nav:not(.collapsed) .sidebar-identity-meta {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 4px !important;
+  }
+
+  .sidebar-nav:not(.collapsed) button.sidebar-identity-meta-item,
+  .sidebar-nav:not(.collapsed) .sidebar-identity-meta-item {
+    padding-inline: 5px !important;
+  }
+}

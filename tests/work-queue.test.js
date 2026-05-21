@@ -1526,7 +1526,7 @@ describe('work queue endpoint', () => {
         await DashboardPage.init();
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));
-        assert.ok(dom.window.document.querySelector('#widget-funnel .dashboard-funnel-compact'), 'dashboard init should render the compact funnel widget instead of the giant work queue panel');
+        assert.ok(dom.window.document.querySelector('#widget-funnel .dashboard-funnel-compact, [id^="board-widget-"] .dashboard-funnel-compact'), 'dashboard init should render the compact funnel widget inside the unified workspace instead of the giant work queue panel');
 
         DashboardPage.setWorkQueueReplyScope('all');
         await new Promise(resolve => dom.window.setTimeout(resolve, 0));

@@ -1085,7 +1085,9 @@ const Sidebar = (() => {
     }
 
     function _sidebarRoleBadgeText(user) {
-        return _sidebarRoleBadgeKey(user).replace(/_/g, ' ');
+        const raw = _getSidebarActiveRole(user) || _getSidebarPrimaryRole(user) || 'crm';
+        const label = _sidebarRoleLabel(raw);
+        return label || _sidebarRoleBadgeKey(user).replace(/_/g, ' ');
     }
 
     function _ensureCommandDeck() {

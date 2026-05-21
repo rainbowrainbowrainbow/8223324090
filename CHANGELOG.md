@@ -4,6 +4,38 @@
 
 ---
 
+## v0.60.38 - Omni SMS Provider Selector
+
+### Omni SMS Provider Selector [codex]
+- **OmniClaw** - SMS-підключення більше не зашите під одного провайдера: у модалці додано вибір між `TurboSMS` і `FlySMS`.
+- **FlySMS** - додано provider-aware поля `FlySMS API key`, `sender/source`, webhook secret і endpoint, щоб менеджер не бачив TurboSMS-копірайт у FlySMS-сценарії.
+- **Backend truth** - SMS send/test/recheck тепер проходять через provider registry: legacy TurboSMS конфіг читається як `turbosms`, а нові FlySMS налаштування зберігаються як `flysms`.
+- **Webhook lifecycle** - SMS delivery callbacks класифікуються як generic provider webhooks із source для FlySMS або TurboSMS, без хардкоду одного шлюзу.
+
+---
+
+## v0.60.37 - Dashboard Unified Workspace
+
+### Dashboard Unified Workspace [codex]
+- **Єдиний workspace** - режим `Сцена` і `Сцена + Board` зведено в один canonical `workspace`: старі `grid`/`board` конфіги нормалізуються без втрати widgets, notes, drawings і connectors.
+- **Модульна сцена** - dashboard тепер стартує з board-native modules для widgets, notes, text, shapes і frames, а старі scene-only віджети автоматично піднімаються в workspace як керовані модулі.
+- **Професійна палітра** - flat toolbar замінено на grouped tool families: interaction, navigate, insert, draw, shape, connect, templates і actions, із snap preset-ами `strict / soft / freeform`.
+- **Чисті overlap states** - selection, hover, active edit і widget-inspect отримали shared workspace tokens замість грубих рамок, щоб перетини об'єктів не виглядали як debug boxes.
+
+### Tasks Multi-Create Plus Flow [codex]
+- **Масове створення задач** - canonical quick composer у Tasks отримав кнопку `+ Ще задача`, яка додає окремі task-рядки без перетворення їх на subtasks або checklist.
+- **Наслідування дефолтів** - новий рядок копіює відповідального, категорію, режим, дату, слот і службові прапорці з попередньої задачі, але назва лишається порожньою, щоб не створювати випадкові дублікати.
+- **Per-task overrides** - кожен доданий рядок має власну назву, пріоритет, дату, час і тривалість, а submit послідовно створює незалежні записи через існуючий `POST /api/tasks`.
+- **Regression guardrail** - UI-smoke перевіряє наявність batch panel, plus-button flow, remove-row contract і пер-task priority/date controls.
+
+### Sidebar Profile Summary Polish [codex]
+- **Профільна картка чистіша** - прибрано випадковий овальний glow під іменем у sidebar summary card, щоб блок не виглядав як артефакт.
+- **Metrics strip** - USD, час і день зібрані в один рівний desktop-ряд із консистентними розмірами, spacing і hierarchy.
+- **Role indicator** - `Creator` та інші ролі більше не сидять у важкому pill-чипі: роль стала тонким typographic indicator із акцентною лінією.
+- **Guardrail** - UI-smoke фіксує новий контракт: без oval-псевдоелемента, без pill-radius для ролі і з 3-up metrics layout.
+
+---
+
 ## v0.60.36 - Graduation List Packs Booking Linkage
 
 ### Graduation List Packs Booking Linkage [codex]

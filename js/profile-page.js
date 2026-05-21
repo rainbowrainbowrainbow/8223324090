@@ -24,6 +24,7 @@ let activeTab = 'profile';
 let myCabinetData = null;
 let myTasksSegment = 'all';
 let cabinetPulseCounts = { alerts: 0, funnel: 0 };
+let profileSecurityData = null;
 
 // v30.8.0 — Gamification v3 state
 let allStreaks = null;
@@ -127,6 +128,18 @@ function formatDate(d) {
     if (!d) return '';
     const dt = new Date(d);
     return dt.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function profileFormatTime(value) {
+    if (!value) return '';
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return '';
+    return dt.toLocaleString('uk-UA', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 }
 
 function formatCoins(n) { return (n || 0).toLocaleString('uk-UA'); }
@@ -295,7 +308,8 @@ async function loadProfileData(userId) {
         isOwnProfile ? apiGet('/streaks') : null,
         isOwnProfile ? apiGet('/tasks/my-cabinet') : null,
         isOwnProfile ? apiGet('/dashboard/alerts') : null,
-        isOwnProfile ? apiGet('/leads/new-count') : null
+        isOwnProfile ? apiGet('/leads/new-count') : null,
+        isOwnProfile ? apiGet('/auth/security') : null
     ]);
 
     profileData = results[0];
@@ -309,6 +323,7 @@ async function loadProfileData(userId) {
     allStreaks = results[8];
     myCabinetData = results[9];
     syncCabinetPulseCounts(results[10], results[11]);
+    profileSecurityData = results[12];
 }
 
 // ==========================================
@@ -607,7 +622,185 @@ function renderProfileSettingsTab() {
                     </div>
                 </div>
             </section>
+            ${renderProfileSecurityPanel()}
         </div>`;
+}
+
+function renderProfileSecurityPanel() {
+    const security = profileSecurityData || {};
+    const user = security.user || profileUser(profileData);
+    const sessions = Array.isArray(security.sessions) ? security.sessions : [];
+    const events = Array.isArray(security.events) ? security.events : [];
+    const passwordChanged = user.password_changed_at || user.passwordChangedAt;
+    const sessionRevokedAt = user.session_revoked_at || user.sessionRevokedAt;
+    const lastSeenAt = user.last_seen_at || user.lastSeenAt;
+    return `
+        <section class="profile-work-panel profile-settings-panel profile-security-panel">
+            <div class="profile-panel-head">
+                <div>
+                    <span class="profile-kicker">Безпека акаунта</span>
+                    <h2>Пароль, сесії, журнал</h2>
+                </div>
+                <span>${sessions.length} активн${sessions.length === 1 ? 'а' : 'их'} сес${sessions.length === 1 ? 'ія' : 'ій'}</span>
+            </div>
+            <div class="profile-security-grid">
+                ${profileSecurityMetric('Пароль', passwordChanged ? profileFormatTime(passwordChanged) : 'потрібно оновити', passwordChanged ? 'остання зміна' : 'немає зафіксованої зміни', passwordChanged ? 'ok' : 'danger')}
+                ${profileSecurityMetric('Остання активність', lastSeenAt ? profileFormatTime(lastSeenAt) : 'немає даних', 'за даними CRM')}
+                ${profileSecurityMetric('Скидання сесій', sessionRevokedAt ? profileFormatTime(sessionRevokedAt) : 'не виконувалось', 'остання примусова відвʼязка')}
+            </div>
+            <div class="profile-security-actions">
+                <button type="button" class="profile-settings-primary" onclick="openProfilePasswordModal()">Змінити пароль</button>
+                <button type="button" class="profile-security-danger" onclick="revokeProfileSessions()">Вийти з усіх пристроїв</button>
+            </div>
+            <div class="profile-security-columns">
+                <div class="profile-security-card">
+                    <div class="profile-security-card-head">
+                        <b>Активні сесії</b>
+                        <span>refresh-token контур</span>
+                    </div>
+                    ${sessions.length
+                        ? sessions.map(renderProfileSessionRow).join('')
+                        : '<div class="profile-security-empty">Активні refresh-сесії не знайдено. Поточний legacy-вхід завершиться після logout або завершення JWT.</div>'}
+                </div>
+                <div class="profile-security-card">
+                    <div class="profile-security-card-head">
+                        <b>Журнал акаунта</b>
+                        <span>паролі, ролі, сесії</span>
+                    </div>
+                    ${events.length
+                        ? events.map(renderProfileSecurityEventRow).join('')
+                        : '<div class="profile-security-empty">Подій безпеки акаунта ще немає.</div>'}
+                </div>
+            </div>
+        </section>`;
+}
+
+function profileSecurityMetric(label, value, hint, tone = '') {
+    return `
+        <div class="profile-security-metric ${tone}">
+            <span>${escapeHtml(label)}</span>
+            <b>${escapeHtml(value)}</b>
+            <small>${escapeHtml(hint || '')}</small>
+        </div>`;
+}
+
+function sessionDeviceLabel(session) {
+    const device = String(session.device_info || session.deviceInfo || '').trim();
+    if (!device) return 'Невідомий пристрій';
+    if (/iPhone|iPad|Android/i.test(device)) return 'Мобільний браузер';
+    if (/Windows/i.test(device)) return 'Windows браузер';
+    if (/Mac OS|Macintosh/i.test(device)) return 'Mac браузер';
+    return device.slice(0, 80);
+}
+
+function renderProfileSessionRow(session) {
+    const ip = session.ip_address || session.ipAddress || 'IP не зафіксовано';
+    return `
+        <div class="profile-security-row">
+            <div>
+                <b>${escapeHtml(sessionDeviceLabel(session))}</b>
+                <span>${escapeHtml(ip)}</span>
+            </div>
+            <small>${profileFormatTime(session.created_at || session.createdAt)} → ${profileFormatTime(session.expires_at || session.expiresAt)}</small>
+        </div>`;
+}
+
+function accountSecurityEventLabel(type) {
+    const labels = {
+        password_changed: 'Пароль змінено',
+        password_reset_by_admin: 'Пароль скинуто адміністратором',
+        sessions_revoked: 'Сесії відкликано',
+        account_created: 'Акаунт створено',
+        account_profile_updated: 'Профіль акаунта змінено',
+        account_roles_updated: 'Ролі змінено',
+        account_activated: 'Акаунт активовано',
+        account_deactivated: 'Акаунт деактивовано'
+    };
+    return labels[type] || type || 'Подія акаунта';
+}
+
+function renderProfileSecurityEventRow(event) {
+    const actor = event.actor_username || event.actorUsername || 'CRM';
+    const reason = event.reason || '';
+    return `
+        <div class="profile-security-row">
+            <div>
+                <b>${escapeHtml(accountSecurityEventLabel(event.event_type || event.eventType))}</b>
+                <span>${escapeHtml(actor)}${reason ? ' · ' + escapeHtml(reason) : ''}</span>
+            </div>
+            <small>${profileFormatTime(event.created_at || event.createdAt)}</small>
+        </div>`;
+}
+
+async function refreshProfileSecurityPanel() {
+    profileSecurityData = await apiGet('/auth/security');
+    if (activeTab === 'settings') {
+        const tabContent = document.getElementById('tabContent');
+        if (tabContent) tabContent.innerHTML = renderTabContent();
+    }
+}
+
+async function profileSecurityFetch(path, options = {}) {
+    const response = await fetch(`/api${path}`, {
+        ...options,
+        headers: { ...getAuthHeaders(), ...(options.headers || {}) }
+    });
+    if (handleAuthError(response)) return { success: false, error: 'Потрібна повторна авторизація' };
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { success: false, error: data.error || 'Помилка запиту' };
+    return { success: true, ...data };
+}
+
+async function openProfilePasswordModal() {
+    if (typeof formModal !== 'function') {
+        if (typeof showNotification === 'function') showNotification('Форма зміни пароля недоступна', 'error');
+        return;
+    }
+    const values = await formModal('Змінити пароль', [
+        { key: 'currentPassword', label: 'Поточний пароль', type: 'password', required: true },
+        { key: 'newPassword', label: 'Новий пароль', type: 'password', required: true },
+        { key: 'repeatPassword', label: 'Повторіть новий пароль', type: 'password', required: true }
+    ], { okText: 'Оновити пароль', type: 'warning', icon: '🔐' });
+    if (!values) return;
+    if (String(values.newPassword || '').length < 8) {
+        if (typeof showNotification === 'function') showNotification('Новий пароль має бути не менше 8 символів', 'error');
+        return;
+    }
+    if (values.newPassword !== values.repeatPassword) {
+        if (typeof showNotification === 'function') showNotification('Нові паролі не збігаються', 'error');
+        return;
+    }
+    const result = await profileSecurityFetch('/auth/password', {
+        method: 'PUT',
+        body: JSON.stringify({
+            currentPassword: values.currentPassword,
+            newPassword: values.newPassword
+        })
+    });
+    if (!result.success) {
+        if (typeof showNotification === 'function') showNotification(result.error || 'Не вдалося змінити пароль', 'error');
+        return;
+    }
+    if (typeof showNotification === 'function') showNotification('Пароль оновлено', 'success');
+    await refreshProfileSecurityPanel();
+}
+
+async function revokeProfileSessions() {
+    const confirmed = typeof confirmModal === 'function'
+        ? await confirmModal('Завершити всі активні сесії? Поточний пристрій теж вийде з CRM.', {
+            type: 'danger',
+            okText: 'Завершити сесії',
+            cancelText: 'Скасувати'
+        })
+        : window.confirm?.('Завершити всі активні сесії?');
+    if (!confirmed) return;
+    const result = await profileSecurityFetch('/auth/security/revoke-sessions', { method: 'POST', body: '{}' });
+    if (!result.success) {
+        if (typeof showNotification === 'function') showNotification(result.error || 'Не вдалося завершити сесії', 'error');
+        return;
+    }
+    if (typeof showNotification === 'function') showNotification('Сесії завершено. Потрібен повторний вхід.', 'success');
+    setTimeout(() => logout(), 700);
 }
 
 function profileOverviewMetric(label, value, hint, tone = '') {

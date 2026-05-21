@@ -5,8 +5,9 @@
 const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
-const { requireRole, authenticateToken, ROLE_HIERARCHY, PAGE_ACCESS, ACTION_PERMISSIONS } = require('../middleware/auth'); 
+const { requireRole, authenticateToken, ROLE_HIERARCHY, PAGE_ACCESS, ACTION_PERMISSIONS, revokeAllUserTokens } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
+const { recordAccountSecurityEvent } = require('../services/accountSecurity');
 
 const log = createLogger('Users');
 
@@ -211,6 +212,18 @@ router.patch('/:id/profile', requireRole('creator', 'director'), async (req, res
         );
 
         const staff = await syncUserStaffProfile(client, parseInt(id, 10), staffId);
+        await recordAccountSecurityEvent({
+            actor: req.user,
+            target: target.rows[0],
+            eventType: 'account_profile_updated',
+            reason: 'account_management',
+            details: {
+                changedUsername: username.toLowerCase() !== target.rows[0].username.toLowerCase(),
+                staffLinked: !!staffId
+            },
+            req,
+            client
+        });
         await client.query('COMMIT');
 
         log.info(`User ${req.user.username} updated account profile for ${target.rows[0].username}`);
@@ -264,6 +277,15 @@ router.patch('/:id/role', requireRole('creator', 'director'), async (req, res) =
             [role, normalizedExtraRoles, normalizedPageAllowlist, parseInt(id)]
         );
 
+        await recordAccountSecurityEvent({
+            actor: req.user,
+            target: target.rows[0],
+            eventType: 'account_roles_updated',
+            reason: 'account_management',
+            details: { oldRole, newRole: role, extraRoles: normalizedExtraRoles, pageAllowlistChanged: normalizedPageAllowlist !== null },
+            req
+        });
+
         log.info(`User ${req.user.username} changed role of ${target.rows[0].username}: ${oldRole} → ${role}`);
         res.json({ success: true, username: target.rows[0].username, oldRole, newRole: role, extraRoles: normalizedExtraRoles, pageAllowlist: normalizedPageAllowlist });
     } catch (err) {
@@ -289,7 +311,23 @@ router.post('/:id/reset-password', requireRole('creator', 'director'), async (re
         }
 
         const hash = await bcrypt.hash(newPassword, 10);
-        await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, parseInt(id)]);
+        await pool.query(
+            `UPDATE users
+             SET password_hash = $1,
+                 password_changed_at = NOW(),
+                 session_revoked_at = NOW()
+             WHERE id = $2`,
+            [hash, parseInt(id)]
+        );
+        await revokeAllUserTokens(parseInt(id));
+        await recordAccountSecurityEvent({
+            actor: req.user,
+            target: target.rows[0],
+            eventType: 'password_reset_by_admin',
+            reason: 'account_management',
+            details: { sessionsRevoked: true },
+            req
+        });
 
         log.info(`User ${req.user.username} reset password for ${target.rows[0].username}`);
         res.json({ success: true, username: target.rows[0].username });
@@ -312,12 +350,28 @@ router.patch('/:id/active', requireRole(...ACCOUNT_MANAGER_ROLES), async (req, r
             return res.status(400).json({ error: 'Цей акаунт не можна змінити з поточного рівня доступу' });
         }
 
-        await pool.query('UPDATE users SET is_active = $1 WHERE id = $2', [!!isActive, parseInt(id)]);
+        await pool.query(
+            `UPDATE users
+             SET is_active = $1,
+                 session_revoked_at = CASE WHEN $1 = false THEN NOW() ELSE session_revoked_at END
+             WHERE id = $2`,
+            [!!isActive, parseInt(id)]
+        );
         if (!isActive) {
             await pool.query('UPDATE employee_profiles SET is_active = false WHERE user_id = $1', [parseInt(id)]);
+            await revokeAllUserTokens(parseInt(id));
         } else {
             await pool.query('UPDATE employee_profiles SET is_active = true WHERE user_id = $1 AND staff_id IS NOT NULL', [parseInt(id)]);
         }
+
+        await recordAccountSecurityEvent({
+            actor: req.user,
+            target: target.rows[0],
+            eventType: isActive ? 'account_activated' : 'account_deactivated',
+            reason: 'account_management',
+            details: { sessionsRevoked: !isActive },
+            req
+        });
 
         log.info(`User ${req.user.username} ${isActive ? 'activated' : 'deactivated'} ${target.rows[0].username}`);
         res.json({ success: true, username: target.rows[0].username, isActive: !!isActive });
@@ -372,13 +426,22 @@ router.post('/', requireRole('creator', 'director'), async (req, res) => {
         await client.query('BEGIN');
         const hash = await bcrypt.hash(password, 10);
         const result = await client.query(
-            'INSERT INTO users (username, password_hash, name, role, extra_roles, page_allowlist) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, username, name, role, extra_roles, page_allowlist',
+            'INSERT INTO users (username, password_hash, name, role, extra_roles, page_allowlist, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id, username, name, role, extra_roles, page_allowlist',
             [username, hash, name.trim(), primaryRole, normalizedExtraRoles, normalizedPageAllowlist]
         );
 
         if (staffId) {
             await syncUserStaffProfile(client, result.rows[0].id, staffId);
         }
+        await recordAccountSecurityEvent({
+            actor: req.user,
+            target: result.rows[0],
+            eventType: 'account_created',
+            reason: 'account_management',
+            details: { role: primaryRole, extraRoles: normalizedExtraRoles, staffLinked: !!staffId },
+            req,
+            client
+        });
         await client.query('COMMIT');
 
         log.info(`User ${req.user.username} created user ${username} (role: ${primaryRole})`);

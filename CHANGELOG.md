@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.14 - Profile account security
+
+### Profile account security [codex]
+- **Особистий кабінет** - у налаштування профілю додано account security панель із паролем, сесіями та журналом акаунта.
+- **Пароль** - власна зміна пароля тепер оновлює security metadata і пишеться в окремий audit stream без збереження паролів у логах.
+- **Сесії** - додано відкликання всіх активних сесій із `session_revoked_at`, щоб legacy JWT теж мав централізований invalidate-контракт.
+- **Account audit** - create/reset/role/profile/activate/deactivate дії з HR account center пишуться в `account_security_events` і доступні користувачу в профілі.
+
+---
+
 ## v0.61.13 - Account lifecycle completion
 
 ### Account lifecycle completion [codex]

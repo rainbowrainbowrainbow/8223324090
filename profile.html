@@ -11,14 +11,14 @@
     <title>Event Genix | Робочий профіль</title>
     <meta name="description" content="Event Genix — робочий профіль працівника, задачі, графік і операційні показники">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.61.13">
-    <link rel="stylesheet" href="css/layout.css?v=0.61.13">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.13">
-    <link rel="stylesheet" href="css/pages.css?v=0.61.13">
-    <link rel="stylesheet" href="css/modals.css?v=0.61.13">
-    <link rel="stylesheet" href="css/controls.css?v=0.61.13">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.13">
-    <link rel="stylesheet" href="css/responsive.css?v=0.61.13">
+    <link rel="stylesheet" href="css/base.css?v=0.61.14">
+    <link rel="stylesheet" href="css/layout.css?v=0.61.14">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.14">
+    <link rel="stylesheet" href="css/pages.css?v=0.61.14">
+    <link rel="stylesheet" href="css/modals.css?v=0.61.14">
+    <link rel="stylesheet" href="css/controls.css?v=0.61.14">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.14">
+    <link rel="stylesheet" href="css/responsive.css?v=0.61.14">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -1465,6 +1465,145 @@
             box-shadow: 0 0 0 3px rgba(16,185,129,0.12);
         }
 
+        .profile-security-panel {
+            margin-top: 18px;
+        }
+
+        .profile-security-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .profile-security-metric,
+        .profile-security-card {
+            border: 1px solid rgba(148,163,184,0.18);
+            background: rgba(255,255,255,0.74);
+            border-radius: 14px;
+            box-shadow: 0 10px 24px rgba(15,23,42,0.06);
+        }
+
+        .profile-security-metric {
+            padding: 14px;
+            display: grid;
+            gap: 5px;
+            min-width: 0;
+        }
+
+        .profile-security-metric span,
+        .profile-security-metric small,
+        .profile-security-card-head span,
+        .profile-security-row span,
+        .profile-security-row small,
+        .profile-security-empty {
+            color: var(--gray-500);
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.35;
+        }
+
+        .profile-security-metric b {
+            color: var(--gray-900);
+            font-size: 15px;
+            font-weight: 900;
+            overflow-wrap: anywhere;
+        }
+
+        .profile-security-metric.ok {
+            border-color: rgba(16,185,129,0.26);
+            background: rgba(16,185,129,0.07);
+        }
+
+        .profile-security-metric.danger {
+            border-color: rgba(239,68,68,0.22);
+            background: rgba(254,242,242,0.84);
+        }
+
+        .profile-security-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .profile-security-actions button {
+            min-height: 40px;
+            border-radius: 12px;
+            border: 1px solid var(--gray-200);
+            background: var(--white);
+            color: var(--gray-700);
+            padding: 0 14px;
+            font: inherit;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .profile-security-actions .profile-settings-primary {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #fff;
+        }
+
+        .profile-security-actions .profile-security-danger {
+            background: rgba(239,68,68,0.08);
+            border-color: rgba(239,68,68,0.25);
+            color: #b91c1c;
+        }
+
+        .profile-security-columns {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 14px;
+        }
+
+        .profile-security-card {
+            padding: 14px;
+            min-width: 0;
+        }
+
+        .profile-security-card-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: baseline;
+            margin-bottom: 10px;
+        }
+
+        .profile-security-card-head b,
+        .profile-security-row b {
+            color: var(--gray-900);
+            font-weight: 900;
+        }
+
+        .profile-security-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 12px;
+            align-items: center;
+            padding: 10px 0;
+            border-top: 1px solid rgba(148,163,184,0.14);
+        }
+
+        .profile-security-row div {
+            min-width: 0;
+            display: grid;
+            gap: 2px;
+        }
+
+        .profile-security-row b,
+        .profile-security-row span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .profile-security-empty {
+            padding: 12px;
+            border-radius: 12px;
+            background: rgba(148,163,184,0.10);
+        }
+
         /* --- Dark mode overrides --- */
         body.dark-mode .profile-page.profile-work-mode {
             --profile-dark-text: #F8FAFC;
@@ -1527,6 +1666,12 @@
         body.dark-mode .profile-task-row small,
         body.dark-mode .profile-activity-row span,
         body.dark-mode .profile-activity-row small,
+        body.dark-mode .profile-security-metric span,
+        body.dark-mode .profile-security-metric small,
+        body.dark-mode .profile-security-card-head span,
+        body.dark-mode .profile-security-row span,
+        body.dark-mode .profile-security-row small,
+        body.dark-mode .profile-security-empty,
         body.dark-mode .profile-panel-head a,
         body.dark-mode .profile-panel-head > span,
         body.dark-mode .profile-avatar-preview-hint,
@@ -1554,6 +1699,8 @@
         body.dark-mode .profile-overview-metric,
         body.dark-mode .profile-task-row,
         body.dark-mode .profile-activity-row,
+        body.dark-mode .profile-security-metric,
+        body.dark-mode .profile-security-card,
         body.dark-mode .profile-empty-professional,
         body.dark-mode .profile-role-line span,
         body.dark-mode .profile-title-row .title-badge,
@@ -1569,12 +1716,14 @@
 
         body.dark-mode .profile-work-stat.danger,
         body.dark-mode .profile-overview-metric.danger,
-        body.dark-mode .profile-task-row.is-overdue {
+        body.dark-mode .profile-task-row.is-overdue,
+        body.dark-mode .profile-security-metric.danger {
             background: rgba(127, 29, 29, 0.34);
             border-color: rgba(248, 113, 113, 0.34);
         }
 
-        body.dark-mode .profile-overview-metric.ok {
+        body.dark-mode .profile-overview-metric.ok,
+        body.dark-mode .profile-security-metric.ok {
             background: rgba(6, 78, 59, 0.30);
             border-color: rgba(52, 211, 153, 0.28);
         }
@@ -2374,6 +2523,11 @@
             .profile-work-summary {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
+
+            .profile-security-grid,
+            .profile-security-columns {
+                grid-template-columns: 1fr;
+            }
         }
 
         @media (max-width: 600px) {
@@ -2447,6 +2601,17 @@
                 height: 112px;
                 border-radius: 20px;
                 font-size: 44px;
+            }
+
+            .profile-security-row {
+                grid-template-columns: 1fr;
+                gap: 4px;
+            }
+
+            .profile-security-card-head,
+            .profile-security-actions {
+                align-items: stretch;
+                flex-direction: column;
             }
 
             .profile-header-content {
@@ -2569,15 +2734,15 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.61.13"></script>
-    <script src="js/notification.js?v=0.61.13"></script>
-    <script src="js/api.js?v=0.61.13"></script>
-    <script src="js/auth.js?v=0.61.13"></script>
-    <script src="js/components/sidebar.js?v=0.61.13"></script>
+    <script src="js/config.js?v=0.61.14"></script>
+    <script src="js/notification.js?v=0.61.14"></script>
+    <script src="js/api.js?v=0.61.14"></script>
+    <script src="js/auth.js?v=0.61.14"></script>
+    <script src="js/components/sidebar.js?v=0.61.14"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ui.js?v=0.61.13"></script>
-    <script src="js/achievement-popup.js?v=0.61.13"></script>
-    <script src="js/profile-page.js?v=0.61.13"></script>
-    <script src="js/alerts.js?v=0.61.13"></script>
+    <script src="js/ui.js?v=0.61.14"></script>
+    <script src="js/achievement-popup.js?v=0.61.14"></script>
+    <script src="js/profile-page.js?v=0.61.14"></script>
+    <script src="js/alerts.js?v=0.61.14"></script>
 </body>
 </html>

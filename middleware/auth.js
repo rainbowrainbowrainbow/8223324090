@@ -162,13 +162,37 @@ function buildAuthUserPayload(user) {
     };
 }
 
-function authenticateToken(req, res, next) {
+async function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'Authentication required' });
 
     try {
         const user = jwt.verify(token, JWT_SECRET);
+        if (user?.id) {
+            try {
+                const sessionState = await pool.query(
+                    'SELECT is_active, session_revoked_at FROM users WHERE id = $1',
+                    [user.id]
+                );
+                const row = sessionState.rows[0];
+                if (row?.is_active === false) {
+                    return res.status(403).json({ error: 'User not found or deactivated' });
+                }
+                const revokedUnix = row?.session_revoked_at
+                    ? Math.floor(new Date(row.session_revoked_at).getTime() / 1000)
+                    : 0;
+                if (revokedUnix && Number(user.iat || 0) < revokedUnix) {
+                    return res.status(403).json({ error: 'Session revoked. Please login again.' });
+                }
+            } catch (sessionErr) {
+                const message = String(sessionErr?.message || '');
+                const isCompatibilityMiss = /Unexpected .*query/i.test(message)
+                    || /column .*session_revoked_at.*does not exist/i.test(message)
+                    || /relation .*users.*does not exist/i.test(message);
+                if (!isCompatibilityMiss) throw sessionErr;
+            }
+        }
         req.user = user;
 
         // v19.1: Update employee activity (fire-and-forget, throttled to 1/min per user)

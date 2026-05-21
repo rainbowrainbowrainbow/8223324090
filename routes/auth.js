@@ -25,6 +25,10 @@ const {
     validateProfileAvatarFile,
     MAX_AVATAR_BYTES
 } = require('../services/profileAvatarStorage');
+const {
+    recordAccountSecurityEvent,
+    listAccountSecurityEvents
+} = require('../services/accountSecurity');
 
 const log = createLogger('Auth');
 
@@ -201,7 +205,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
 
         // User info (including telegram status)
         const userResult = await pool.query(
-            `SELECT u.id, u.username, u.name, u.role, u.created_at, u.telegram_chat_id,
+            `SELECT u.id, u.username, u.name, u.role, u.created_at, u.last_seen_at, u.password_changed_at, u.session_revoked_at, u.telegram_chat_id,
                     u.avatar_emoji, u.avatar_color, upe.display_name, upe.bio, upe.avatar_url
              FROM users u
              LEFT JOIN user_profiles_ext upe ON upe.username = u.username
@@ -913,12 +917,80 @@ router.put('/password', authenticateToken, async (req, res) => {
         }
 
         const hash = await bcrypt.hash(newPassword, 10);
-        await pool.query('UPDATE users SET password_hash = $1 WHERE username = $2', [hash, req.user.username]);
+        const updated = await pool.query(
+            `UPDATE users
+             SET password_hash = $1,
+                 password_changed_at = NOW()
+             WHERE username = $2
+             RETURNING id, username`,
+            [hash, req.user.username]
+        );
+
+        await recordAccountSecurityEvent({
+            actor: req.user,
+            target: updated.rows[0] || req.user,
+            eventType: 'password_changed',
+            reason: 'self_service',
+            req
+        });
 
         log.info(`User "${req.user.username}" changed password`);
         res.json({ success: true });
     } catch (err) {
         log.error('Password change error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Personal cabinet: account security summary, active sessions and recent account audit
+router.get('/security', authenticateToken, async (req, res) => {
+    try {
+        const userResult = await pool.query(
+            `SELECT id, username, name, role, created_at, last_seen_at, password_changed_at, session_revoked_at
+             FROM users
+             WHERE id = $1 AND is_active = true`,
+            [req.user.id]
+        );
+        if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+
+        const sessionsResult = await pool.query(
+            `SELECT id, device_info, ip_address, created_at, expires_at
+             FROM refresh_tokens
+             WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > NOW()
+             ORDER BY created_at DESC
+             LIMIT 20`,
+            [req.user.id]
+        );
+        const events = await listAccountSecurityEvents(req.user.id, 16);
+
+        res.json({
+            user: userResult.rows[0],
+            sessions: sessionsResult.rows,
+            events
+        });
+    } catch (err) {
+        log.error('Security summary error', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Personal cabinet: revoke all sessions and force current device to log in again
+router.post('/security/revoke-sessions', authenticateToken, async (req, res) => {
+    try {
+        await pool.query('UPDATE users SET session_revoked_at = NOW() WHERE id = $1', [req.user.id]);
+        await revokeAllUserTokens(req.user.id);
+        await recordAccountSecurityEvent({
+            actor: req.user,
+            target: req.user,
+            eventType: 'sessions_revoked',
+            reason: 'self_service',
+            details: { scope: 'all_devices' },
+            req
+        });
+        log.info(`All sessions revoked from personal cabinet for user "${req.user.username}"`);
+        res.json({ success: true, reloginRequired: true });
+    } catch (err) {
+        log.error('Revoke own sessions error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -1057,7 +1129,16 @@ router.post('/logout', async (req, res) => {
             if (!token) return res.status(401).json({ error: 'Auth required for logout-all' });
             try {
                 const user = jwt.verify(token, JWT_SECRET);
+                await pool.query('UPDATE users SET session_revoked_at = NOW() WHERE id = $1', [user.id]);
                 await revokeAllUserTokens(user.id);
+                await recordAccountSecurityEvent({
+                    actor: user,
+                    target: user,
+                    eventType: 'sessions_revoked',
+                    reason: 'logout_all_devices',
+                    details: { scope: 'all_devices' },
+                    req
+                });
                 log.info(`All tokens revoked for user "${user.username}"`);
             } catch {
                 return res.status(401).json({ error: 'Invalid token' });

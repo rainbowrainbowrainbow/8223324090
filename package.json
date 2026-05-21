@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.61.13",
+  "version": "0.61.14",
   "eventGenix": {
-    "releaseLabel": "Account lifecycle completion"
+    "releaseLabel": "Profile account security"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.45 - Живий dashboard builder
+
+### Живий dashboard builder [codex]
+- **Widget runtime** - dashboard-віджети більше не отримують dead overlay після перемикання tools і автоматично лишаються в live-стані.
+- **Workspace lifecycle** - уточнено use/edit contract: widget content лишається всередині board, а переміщення й resize мають власний frame та handles.
+- **Free layout builder** - додано picker віджетів, швидке створення нотаток, resize handles і явну кнопку збереження для персонального dashboard layout.
+- **Persistence guard** - freeform x/y/w/h/z layout стабільно проходить через наявний boardState / dashboard config flow без нового runtime.
+
+---
+
 ## v0.60.44 - Рольовий preview shell
 
 ### Рольовий preview shell [codex]

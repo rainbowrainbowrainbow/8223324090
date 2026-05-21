@@ -273,6 +273,7 @@ const DashboardPage = (() => {
     let _boardUndoStack = [];
     let _boardRedoStack = [];
     let _boardDrag = null;
+    let _boardResize = null;
     let _boardDrawing = null;
     let _boardConfigCorrupt = false;
     let _boardLegacyUpgradePending = false;
@@ -786,11 +787,20 @@ const DashboardPage = (() => {
         const prefs = safeObject(_config?.boardState?.preferences, {});
         const label = BOARD_TOOL_LABELS[tool] || tool;
         const modeHint = BOARD_TOOL_HINTS[tool] || 'Перемикайте інструменти як у редакторі.';
+        const widgetOptions = renderBoardWidgetPickerOptions();
         return `
             <div class="board-tool-current">
                 <span>Інструмент</span>
                 <strong>${escapeHtml(label)}</strong>
                 <em>${escapeHtml(modeHint)}</em>
+            </div>
+            <div class="board-builder-quick-add" aria-label="Конструктор dashboard">
+                <select class="board-builder-widget-select" id="boardBuilderWidgetSelect" aria-label="Вибрати віджет для dashboard">
+                    ${widgetOptions}
+                </select>
+                <button type="button" class="board-tool-snap" onclick="DashboardPage.addSelectedBoardWidget()">+ Віджет</button>
+                <button type="button" class="board-tool-snap" onclick="DashboardPage.addBoardNote()">+ Нотатка</button>
+                <button type="button" class="board-tool-snap" onclick="DashboardPage.saveBoardNow()">Зберегти</button>
             </div>
             <label class="board-tool-check">
                 <input type="checkbox" ${prefs.snapToGrid !== false ? 'checked' : ''} onchange="DashboardPage.setBoardPreference('snapToGrid', this.checked)">
@@ -816,6 +826,19 @@ const DashboardPage = (() => {
                 <input type="range" min="1" max="12" value="${Number(prefs.strokeWidth || 2)}" oninput="DashboardPage.setBoardPreference('strokeWidth', this.value)">
             </label>
         `;
+    }
+
+    function renderBoardWidgetPickerOptions() {
+        const added = new Set(getBoardItems().filter(item => item.type === 'widget').map(item => item.widgetType));
+        const options = Object.keys(WIDGET_DEFS)
+            .filter(widgetKey => !DASHBOARD_RETIRED_WIDGETS.has(widgetKey))
+            .filter(canUseWidget)
+            .map(widgetKey => {
+                const def = WIDGET_DEFS[widgetKey] || {};
+                const suffix = added.has(widgetKey) ? ' · вже є' : '';
+                return `<option value="${escapeHtml(widgetKey)}">${escapeHtml(def.title || widgetKey)}${suffix}</option>`;
+            });
+        return options.length ? options.join('') : '<option value="tasks">Мої задачі</option>';
     }
 
     async function init() {
@@ -2952,6 +2975,11 @@ const DashboardPage = (() => {
         return _config.boardState.connectors;
     }
 
+    function getBoardLiveWidgetCap() {
+        const prefs = safeObject(_config?.boardState?.preferences, {});
+        return safeNumber(prefs.maxLiveWidgets, BOARD_LIVE_WIDGET_CAP, 1, 8);
+    }
+
     function getBoardWorkspaceMode() {
         if (_boardObjectEditing?.kind === 'text') return 'object:text-edit';
         if (_boardWidgetInspectId) return 'object:widget-inspect';
@@ -3023,8 +3051,9 @@ const DashboardPage = (() => {
         bindBoardConnectorHandlers();
         bindBoardCanvasHandlers(canvas);
         items.filter(item => item.type === 'widget' && item.depth === 'live-compact' && !item.hidden)
-            .slice(0, BOARD_LIVE_WIDGET_CAP)
+            .slice(0, getBoardLiveWidgetCap())
             .forEach(item => loadWidgetData(item.widgetType, document.getElementById(`board-widget-${item.id}`)));
+        syncBoardWidgetRuntime();
     }
 
     function boardStrokePath(points = []) {
@@ -3102,6 +3131,7 @@ const DashboardPage = (() => {
         const inspecting = _boardWidgetInspectId === item.id ? ' widget-inspecting' : '';
         const locked = item.locked ? ' locked' : '';
         const hidden = item.hidden ? ' hidden-object' : '';
+        const runtimeState = getBoardWidgetRuntimeState(item);
         const style = `left:${Number(item.x || 0)}px;top:${Number(item.y || 0)}px;width:${Number(item.w || 280)}px;height:${Number(item.h || 160)}px;z-index:${Number(item.z || 1)}`;
         const title = item.type === 'widget'
             ? (item.title || def?.title || item.widgetType)
@@ -3109,7 +3139,7 @@ const DashboardPage = (() => {
         const idAttr = escapeHtml(item.id);
         const idJs = escapeJsString(item.id);
         return `
-            <section class="dashboard-board-item workspace-module type-${escapeHtml(item.type)}${selected}${editing}${inspecting}${locked}${hidden}" data-workspace-module="true" data-module-role="${escapeHtml(item.type)}" data-board-item-id="${idAttr}" style="${style}">
+            <section class="dashboard-board-item workspace-module type-${escapeHtml(item.type)}${selected}${editing}${inspecting}${locked}${hidden}" data-workspace-module="true" data-module-role="${escapeHtml(item.type)}" data-widget-runtime="${escapeHtml(runtimeState)}" data-board-item-id="${idAttr}" style="${style}">
                 <div class="dashboard-board-item-frame" data-board-drag-handle>
                     <div class="dashboard-board-item-title">
                         <span>${item.type === 'widget' ? escapeHtml(def?.icon || '◼') : item.type === 'shape' ? '□' : '•'}</span>
@@ -3127,9 +3157,25 @@ const DashboardPage = (() => {
                 <div class="dashboard-board-item-content">
                     ${renderBoardItemContent(item)}
                 </div>
-                ${item.type === 'widget' && _boardInteractionMode === 'edit' && _boardWidgetInspectId !== item.id ? `<button type="button" class="board-widget-mute" onclick="DashboardPage.enterBoardWidgetInspect('${idJs}')">Працювати з віджетом</button>` : ''}
+                ${renderBoardResizeHandles(item)}
                 ${renderBoardAnchors(item)}
             </section>
+        `;
+    }
+
+    function getBoardWidgetRuntimeState(item) {
+        if (!item || item.type !== 'widget') return 'not-widget';
+        if (item.hidden || item.depth !== 'live-compact') return 'static';
+        if (_boardDrag?.id === item.id || _boardResize?.id === item.id) return 'suspended';
+        return 'live';
+    }
+
+    function renderBoardResizeHandles(item) {
+        if (!item || item.locked || item.hidden || _boardInteractionMode !== 'edit' || _boardSelectedId !== item.id) return '';
+        return `
+            <div class="board-resize-handles" aria-hidden="true">
+                ${['n', 'e', 's', 'w', 'ne', 'se', 'sw', 'nw'].map(dir => `<button type="button" class="board-resize-handle board-resize-${dir}" data-board-resize-handle="${dir}" title="Resize ${dir}"></button>`).join('')}
+            </div>
         `;
     }
 
@@ -3195,7 +3241,7 @@ const DashboardPage = (() => {
                     <div class="board-inspector-row">
                         ${['live-compact', 'headline-only', 'snapshot-static'].map(depth => `<button type="button" class="board-inspector-chip${item.depth === depth ? ' active' : ''}" onclick="DashboardPage.setBoardWidgetDepth('${escapeJsString(item.id)}', '${depth}')">${BOARD_DEPTH_LABELS[depth] || depth}</button>`).join('')}
                     </div>
-                    ${_boardWidgetInspectId === item.id ? `<button type="button" class="board-inspector-chip active" onclick="DashboardPage.exitBoardObjectEditing()">Вийти з віджета</button>` : `<button type="button" class="board-inspector-chip" onclick="DashboardPage.enterBoardWidgetInspect('${escapeJsString(item.id)}')">Працювати з віджетом</button>`}
+                    ${_boardWidgetInspectId === item.id ? `<button type="button" class="board-inspector-chip active" onclick="DashboardPage.exitBoardObjectEditing()">Вийти з фокусу</button>` : `<button type="button" class="board-inspector-chip" onclick="DashboardPage.enterBoardWidgetInspect('${escapeJsString(item.id)}')">Фокус віджета</button>`}
                 ` : ''}
                 ${item.type === 'note' || item.type === 'text' ? `<button type="button" class="board-inspector-chip" onclick="DashboardPage.runBoardAiAction('tasks')">Зробити задачі</button>` : ''}
                 <div class="board-inspector-row" aria-label="Керування шарами">
@@ -3274,6 +3320,23 @@ const DashboardPage = (() => {
             if (!handle || handle.dataset.dragBound === 'true') return;
             handle.dataset.dragBound = 'true';
             handle.addEventListener('pointerdown', event => beginBoardDrag(event, el));
+        });
+        canvas.querySelectorAll('.board-widget-live').forEach(widgetEl => {
+            widgetEl.addEventListener('pointerdown', event => {
+                event.stopPropagation();
+                const itemEl = widgetEl.closest('.dashboard-board-item');
+                if (itemEl && _boardInteractionMode === 'edit') selectBoardItem(itemEl.dataset.boardItemId, { render: false });
+            });
+            widgetEl.addEventListener('click', event => {
+                event.stopPropagation();
+                const itemEl = widgetEl.closest('.dashboard-board-item');
+                if (itemEl && _boardInteractionMode === 'edit') selectBoardItem(itemEl.dataset.boardItemId, { render: false });
+            });
+        });
+        canvas.querySelectorAll('[data-board-resize-handle]').forEach(handle => {
+            if (handle.dataset.resizeBound === 'true') return;
+            handle.dataset.resizeBound = 'true';
+            handle.addEventListener('pointerdown', event => beginBoardResize(event, handle));
         });
         canvas.querySelectorAll('[data-board-text]').forEach(textEl => {
             textEl.addEventListener('pointerdown', event => {
@@ -3477,6 +3540,21 @@ const DashboardPage = (() => {
         });
     }
 
+    function syncBoardWidgetRuntime() {
+        const canvas = document.getElementById('dashboardBoardCanvas');
+        if (!canvas) return;
+        canvas.querySelectorAll('.dashboard-board-item.type-widget').forEach(el => {
+            const item = findBoardItem(el.dataset.boardItemId);
+            const state = getBoardWidgetRuntimeState(item);
+            el.dataset.widgetRuntime = state;
+            const live = el.querySelector('.board-widget-live');
+            if (live) {
+                live.dataset.widgetRuntime = state;
+                live.setAttribute('aria-busy', state === 'suspended' ? 'true' : 'false');
+            }
+        });
+    }
+
     function beginBoardDrag(event, element) {
         if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
         if (isBoardInteractiveTarget(event.target)) return;
@@ -3532,6 +3610,107 @@ const DashboardPage = (() => {
         item.x = safeNumber(drag.nextX, item.x, -10000, 10000);
         item.y = safeNumber(drag.nextY, item.y, -10000, 10000);
         markBoardDirty('move');
+        renderBoard();
+    }
+
+    function beginBoardResize(event, handle) {
+        if (_boardInteractionMode !== 'edit' || event.button !== 0) return;
+        const element = handle.closest('.dashboard-board-item');
+        const id = element?.dataset.boardItemId;
+        const item = findBoardItem(id);
+        if (!element || !item || item.locked) return;
+        event.preventDefault();
+        event.stopPropagation();
+        selectBoardItem(id, { render: false });
+        _boardResize = {
+            id,
+            dir: handle.dataset.boardResizeHandle || 'se',
+            startX: event.clientX,
+            startY: event.clientY,
+            itemX: Number(item.x || 0),
+            itemY: Number(item.y || 0),
+            itemW: Number(item.w || 280),
+            itemH: Number(item.h || 160),
+            element,
+            moved: false
+        };
+        element.setPointerCapture?.(event.pointerId);
+        document.addEventListener('pointermove', handleBoardResizeMove);
+        document.addEventListener('pointerup', endBoardResize, { once: true });
+        syncBoardWidgetRuntime();
+    }
+
+    function minBoardItemSize(item) {
+        if (item?.type === 'widget') return { w: 210, h: 150 };
+        if (item?.type === 'frame') return { w: 180, h: 120 };
+        return { w: 120, h: 82 };
+    }
+
+    function computeBoardResizeState(event) {
+        const resize = _boardResize;
+        const item = resize ? findBoardItem(resize.id) : null;
+        if (!resize || !item) return null;
+        const snap = getBoardSnapUnit();
+        const minSize = minBoardItemSize(item);
+        let nextX = resize.itemX;
+        let nextY = resize.itemY;
+        let nextW = resize.itemW;
+        let nextH = resize.itemH;
+        const dx = event.clientX - resize.startX;
+        const dy = event.clientY - resize.startY;
+        const dir = resize.dir || 'se';
+        if (dir.includes('e')) nextW = resize.itemW + dx;
+        if (dir.includes('s')) nextH = resize.itemH + dy;
+        if (dir.includes('w')) {
+            nextX = resize.itemX + dx;
+            nextW = resize.itemW - dx;
+        }
+        if (dir.includes('n')) {
+            nextY = resize.itemY + dy;
+            nextH = resize.itemH - dy;
+        }
+        nextW = Math.max(minSize.w, Math.min(1200, Math.round(nextW / snap) * snap));
+        nextH = Math.max(minSize.h, Math.min(900, Math.round(nextH / snap) * snap));
+        if (dir.includes('w')) nextX = resize.itemX + resize.itemW - nextW;
+        if (dir.includes('n')) nextY = resize.itemY + resize.itemH - nextH;
+        nextX = Math.round(nextX / snap) * snap;
+        nextY = Math.round(nextY / snap) * snap;
+        return { item, x: nextX, y: nextY, w: nextW, h: nextH };
+    }
+
+    function handleBoardResizeMove(event) {
+        if (!_boardResize) return;
+        const next = computeBoardResizeState(event);
+        if (!next || !_boardResize.element) return;
+        const { element } = _boardResize;
+        element.style.left = `${next.x}px`;
+        element.style.top = `${next.y}px`;
+        element.style.width = `${next.w}px`;
+        element.style.height = `${next.h}px`;
+        _boardResize.nextX = next.x;
+        _boardResize.nextY = next.y;
+        _boardResize.nextW = next.w;
+        _boardResize.nextH = next.h;
+        _boardResize.moved = true;
+    }
+
+    function endBoardResize() {
+        document.removeEventListener('pointermove', handleBoardResizeMove);
+        if (!_boardResize) return;
+        const resize = _boardResize;
+        _boardResize = null;
+        if (!resize.moved) {
+            syncBoardWidgetRuntime();
+            return;
+        }
+        const item = findBoardItem(resize.id);
+        if (!item) return;
+        pushBoardUndo('resize');
+        item.x = safeNumber(resize.nextX, item.x, -10000, 10000);
+        item.y = safeNumber(resize.nextY, item.y, -10000, 10000);
+        item.w = safeNumber(resize.nextW, item.w, 80, 1200);
+        item.h = safeNumber(resize.nextH, item.h, 60, 900);
+        markBoardDirty('resize');
         renderBoard();
     }
 
@@ -3677,22 +3856,33 @@ const DashboardPage = (() => {
         });
     }
 
+    function addBoardWidgetByType(widgetType, point = null) {
+        const type = String(widgetType || '').trim();
+        if (!type || !canUseWidget(type)) return null;
+        const size = { w: 340, h: 235 };
+        return addBoardItem({
+            type: 'widget',
+            widgetType: type,
+            title: WIDGET_DEFS[type]?.title || type,
+            ...boardPointForNewItem(point, size.w, size.h),
+            ...size,
+            depth: getBoardItems().filter(item => item.type === 'widget' && item.depth === 'live-compact').length >= getBoardLiveWidgetCap()
+                ? 'headline-only'
+                : 'live-compact'
+        });
+    }
+
+    function addSelectedBoardWidget() {
+        const select = document.getElementById('boardBuilderWidgetSelect');
+        const selected = select?.value || normalizeDashboardWidgets(_config.widgets || []).find(canUseWidget) || 'tasks';
+        addBoardWidgetByType(selected);
+    }
+
     function addBoardWidget(point = null) {
         const available = normalizeDashboardWidgets(_config.widgets || []).filter(canUseWidget);
         const existing = new Set(getBoardItems().filter(item => item.type === 'widget').map(item => item.widgetType));
         const widgetType = available.find(key => !existing.has(key)) || available[0] || 'tasks';
-        if (!canUseWidget(widgetType)) return;
-        const size = { w: 340, h: 235 };
-        addBoardItem({
-            type: 'widget',
-            widgetType,
-            title: WIDGET_DEFS[widgetType]?.title || widgetType,
-            ...boardPointForNewItem(point, size.w, size.h),
-            ...size,
-            depth: getBoardItems().filter(item => item.type === 'widget' && item.depth === 'live-compact').length >= BOARD_LIVE_WIDGET_CAP
-                ? 'headline-only'
-                : 'live-compact'
-        });
+        return addBoardWidgetByType(widgetType, point);
     }
 
     function seedBoardWidgets(options = {}) {
@@ -3708,7 +3898,7 @@ const DashboardPage = (() => {
                     type: 'widget',
                     widgetType,
                     title: WIDGET_DEFS[widgetType]?.title || widgetType,
-                    depth: index < BOARD_LIVE_WIDGET_CAP ? 'live-compact' : 'headline-only',
+                    depth: index < getBoardLiveWidgetCap() ? 'live-compact' : 'headline-only',
                     x: 40 + (index % 2) * 370,
                     y: 40 + Math.floor(index / 2) * 270,
                     w: 340,
@@ -4140,7 +4330,17 @@ const DashboardPage = (() => {
             _boardWidgetInspectId = null;
             _boardObjectEditing = null;
         } else if (nextTool === 'select') {
+            _boardInteractionMode = 'edit';
             _boardConnectorDraft = null;
+            _boardWidgetInspectId = null;
+            _boardObjectEditing = null;
+        } else if (nextTool === 'hand') {
+            _boardInteractionMode = 'view';
+            _boardSelectedId = null;
+            _boardSelectedConnectorId = null;
+            _boardConnectorDraft = null;
+            _boardWidgetInspectId = null;
+            _boardObjectEditing = null;
         }
         markBoardDirty('tool');
         syncBoardToolbar();
@@ -4157,12 +4357,14 @@ const DashboardPage = (() => {
             _boardConnectorDraft = null;
             _boardObjectEditing = null;
             _boardWidgetInspectId = null;
+            _boardResize = null;
             if (_config?.boardState) _config.boardState.activeTool = 'hand';
         } else if (nextMode === 'board:edit') {
             _boardInteractionMode = 'edit';
             _boardConnectorDraft = null;
             _boardObjectEditing = null;
             _boardWidgetInspectId = null;
+            _boardResize = null;
             if (_config?.boardState) _config.boardState.activeTool = 'select';
         } else if (nextMode === 'board:connect') {
             _boardInteractionMode = 'edit';
@@ -6635,9 +6837,12 @@ const DashboardPage = (() => {
         saveWritingZone,
         addBoardText,
         addBoardFrame,
+        addSelectedBoardWidget,
         addBoardWidget,
+        addBoardWidgetByType,
         addBoardShape,
         seedBoardWidgets,
+        saveBoardNow,
         duplicateBoardItem,
         deleteBoardItem,
         changeBoardItemZ,

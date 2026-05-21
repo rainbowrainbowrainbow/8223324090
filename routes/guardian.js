@@ -381,6 +381,8 @@ router.get('/stats', requireGuardianAdmin, async (req, res) => {
 
         const totalStats = {};
         totalActions.rows.forEach(r => { totalStats[r.action_type] = parseInt(r.cnt); });
+        todayStats.blocked = Math.max(todayStats.block_precheck || 0, todayStats.mute || 0);
+        totalStats.blocked = Math.max(totalStats.block_precheck || 0, totalStats.mute || 0);
 
         res.json({
             today: todayStats,

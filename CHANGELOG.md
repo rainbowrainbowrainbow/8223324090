@@ -4,6 +4,17 @@
 
 ---
 
+## v0.61.9 - Chat Guardian moderation hardening
+
+### Chat + Guardian moderation hardening [codex]
+- **Chat** - виправлено позиціонування context menu біля повідомлень: меню clamp/flip тримається в межах viewport і не втікає за правий край.
+- **Security log** - журнал безпеки отримав окремий читабельний operational event-row layout з actor, action, status, time і detail.
+- **Pinned messages** - додано pin/unpin через message actions, видимий pinned bar у shell і синхронізацію з existing backend pin API.
+- **Guardian Analytics** - лічильник блокувань тепер рахує реальні `block_precheck` події й оновлюється після moderation events.
+- **Privacy** - public moderation reply більше не показує конкретний мат; точні слова лишаються у внутрішніх Guardian logs/actions.
+
+---
+
 ## v0.61.8 - Certificates page recovery
 
 ### Certificates standalone page recovery [codex]

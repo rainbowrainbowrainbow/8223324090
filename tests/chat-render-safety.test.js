@@ -71,13 +71,16 @@ function assertNoExecutableNodes(root) {
 }
 
 describe('chat render safety helpers', () => {
-    it('keeps Guardian blocked-word details private to owner role', () => {
+    it('keeps Guardian blocked-word details out of public chat responses', () => {
         assert.match(guardianSource, /function buildGuardianBlockedResponse/);
         assert.match(guardianSource, /function canSeeBlockedWordDetails/);
         assert.match(guardianSource, /GUARDIAN_PROFANITY_PUBLIC_REASON/);
         assert.doesNotMatch(guardianSource, /Нецензурна лексика:\s*\$\{toxicWords/);
-        assert.match(chatRouteSource, /canSeeBlockedWordDetails\(req\.user\)/);
-        assert.match(chatRouteSource, /preCheck\.ownerMessage/);
+        assert.doesNotMatch(chatRouteSource, /canSeeBlockedWordDetails\(req\.user\)/);
+        assert.doesNotMatch(chatRouteSource, /preCheck\.ownerMessage/);
+        assert.match(chatRouteSource, /preCheck\.publicMessage \|\| preCheck\.message/);
+        assert.match(guardianSource, /privateDetails: \{ source, words: terms \}/);
+        assert.match(guardianSource, /words: toxicWords/);
         assert.match(chatSource, /guardianErrMsg/);
         assert.match(chatSource, /replace\(\^?\//);
     });

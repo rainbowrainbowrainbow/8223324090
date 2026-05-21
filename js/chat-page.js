@@ -20,6 +20,10 @@
     var _replyTo = null;
     var _editingMsg = null;
     var _contextMsg = null;
+    var _pinnedMessageIds = new Set();
+    var _pinnedMessagesCache = [];
+    var _guardianStatsRefreshTimer = null;
+    var _activeGuardianAnalyticsTab = 'overview';
     var _oldestSeq = null;
     var _loadingMore = false;
     var _typingUsers = {};
@@ -198,6 +202,144 @@
             throw new Error(err.error || 'API error');
         }
         return resp.json();
+    }
+
+    function _clampNumber(value, min, max) {
+        return Math.max(min, Math.min(value, max));
+    }
+
+    function _positionChatContextMenu(event, anchorEl) {
+        if (!_contextMenu) return;
+        var padding = 10;
+        var viewportW = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+        var viewportH = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+        var anchorRect = anchorEl && typeof anchorEl.getBoundingClientRect === 'function'
+            ? anchorEl.getBoundingClientRect()
+            : null;
+
+        _contextMenu.style.position = 'fixed';
+        _contextMenu.style.maxWidth = 'calc(100vw - ' + (padding * 2) + 'px)';
+        _contextMenu.style.left = '0px';
+        _contextMenu.style.top = '0px';
+        _contextMenu.style.display = 'block';
+        _contextMenu.style.visibility = 'hidden';
+
+        var menuRect = _contextMenu.getBoundingClientRect();
+        var menuW = Math.min(menuRect.width || _contextMenu.offsetWidth || 180, Math.max(140, viewportW - padding * 2));
+        var menuH = Math.min(menuRect.height || _contextMenu.offsetHeight || 220, Math.max(80, viewportH - padding * 2));
+        var preferredX = Number(event.clientX || 0);
+        var preferredY = Number(event.clientY || 0);
+        var placementX = 'right';
+        var placementY = 'bottom';
+
+        if (anchorRect && preferredX + menuW > viewportW - padding && anchorRect.left - menuW >= padding) {
+            preferredX = anchorRect.right - menuW;
+            placementX = 'left';
+        } else if (preferredX + menuW > viewportW - padding) {
+            preferredX = viewportW - menuW - padding;
+            placementX = 'clamped';
+        }
+
+        if (anchorRect && preferredY + menuH > viewportH - padding && anchorRect.top - menuH >= padding) {
+            preferredY = anchorRect.top - menuH;
+            placementY = 'top';
+        } else if (preferredY + menuH > viewportH - padding) {
+            preferredY = viewportH - menuH - padding;
+            placementY = 'clamped';
+        }
+
+        var maxX = Math.max(padding, viewportW - menuW - padding);
+        var maxY = Math.max(padding, viewportH - menuH - padding);
+        _contextMenu.style.left = _clampNumber(preferredX, padding, maxX) + 'px';
+        _contextMenu.style.top = _clampNumber(preferredY, padding, maxY) + 'px';
+        _contextMenu.dataset.placementX = placementX;
+        _contextMenu.dataset.placementY = placementY;
+        _contextMenu.style.visibility = '';
+    }
+
+    function _isMessagePinned(messageId) {
+        return _pinnedMessageIds.has(String(messageId));
+    }
+
+    function _syncPinnedMessageState(pinned) {
+        _pinnedMessagesCache = Array.isArray(pinned) ? pinned : [];
+        _pinnedMessageIds = new Set(_pinnedMessagesCache.map(function (msg) { return String(msg.id); }));
+        document.querySelectorAll('.chat-message[data-message-id]').forEach(function (el) {
+            el.classList.toggle('is-pinned', _isMessagePinned(el.dataset.messageId));
+        });
+    }
+
+    function _setContextPinActionState(messageId) {
+        if (!_contextMenu) return;
+        var pinItem = _contextMenu.querySelector('[data-action="pin"]');
+        if (!pinItem) return;
+        var isPinned = _isMessagePinned(messageId);
+        pinItem.classList.toggle('is-active', isPinned);
+        pinItem.setAttribute('aria-pressed', isPinned ? 'true' : 'false');
+        pinItem.title = isPinned ? 'Відкріпити повідомлення' : 'Закріпити повідомлення';
+        Array.prototype.some.call(pinItem.childNodes, function (node) {
+            if (node.nodeType === Node.TEXT_NODE && node.nodeValue.trim()) {
+                node.nodeValue = isPinned ? ' Відкріпити' : ' Закріпити';
+                return true;
+            }
+            return false;
+        });
+    }
+
+    async function _refreshPinnedMessages() {
+        if (!_currentChannel) {
+            _syncPinnedMessageState([]);
+            _renderPinnedSummary([]);
+            return [];
+        }
+        var pinned = await _api('GET', '/channels/' + _currentChannel.id + '/pinned');
+        _syncPinnedMessageState(pinned || []);
+        _renderPinnedSummary(_pinnedMessagesCache);
+        return _pinnedMessagesCache;
+    }
+
+    function _renderPinnedSummary(pinned) {
+        var bar = document.getElementById('chatPinnedBar');
+        if (!bar) {
+            var header = document.querySelector('.chat-header');
+            if (!header) return;
+            bar = document.createElement('div');
+            bar.className = 'chat-pinned-bar';
+            bar.id = 'chatPinnedBar';
+            bar.innerHTML =
+                '<span class="chat-pinned-bar-icon" aria-hidden="true">📌</span>' +
+                '<span class="chat-pinned-bar-content">' +
+                    '<strong>Закріплено</strong>' +
+                    '<span class="chat-pinned-bar-text" id="chatPinnedText"></span>' +
+                '</span>' +
+                '<button type="button" class="chat-pinned-bar-close" id="chatPinnedClose" aria-label="Сховати закріплене">×</button>';
+            header.after(bar);
+            bar.addEventListener('click', async function (e) {
+                if (e.target.closest('.chat-pinned-bar-close')) return;
+                if (!_currentChannel) return;
+                await _toggleChatPanelAsync('pins', async function () {
+                    _setInfoPanelTitle('Закріплені');
+                    await _renderPinnedPanel();
+                });
+            });
+            var close = bar.querySelector('.chat-pinned-bar-close');
+            if (close) {
+                close.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    bar.classList.remove('visible');
+                });
+            }
+        }
+
+        var latest = Array.isArray(pinned) && pinned.length ? pinned[0] : null;
+        var textEl = document.getElementById('chatPinnedText');
+        if (latest && textEl) {
+            var author = latest.displayName || latest.username || 'користувач';
+            textEl.textContent = '@' + author + ': ' + _truncate(latest.content || '', 120);
+            bar.classList.add('visible');
+        } else {
+            bar.classList.remove('visible');
+        }
     }
 
     // ==========================================
@@ -2077,7 +2219,7 @@
         if (!body || !_currentChannel) return;
         body.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray-400);font-size:13px">Завантаження...</div>';
         try {
-            var pinned = await _api('GET', '/channels/' + _currentChannel.id + '/pinned');
+            var pinned = await _refreshPinnedMessages();
             if (!pinned || pinned.length === 0) {
                 body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--gray-400);font-size:13px">Немає закріплених повідомлень</div>';
                 return;
@@ -2101,6 +2243,7 @@
         if (!_currentChannel) return;
         try {
             await _api('DELETE', '/channels/' + _currentChannel.id + '/pinned/' + e.detail.messageId);
+            await _refreshPinnedMessages();
             _renderPinnedPanel();
         } catch (err) {
             console.error('[Chat] Unpin error:', err);
@@ -2245,7 +2388,7 @@
     var _contextMenu = document.getElementById('chatContextMenu');
     document.addEventListener('contextmenu', function (e) {
         var msgEl = e.target.closest('.chat-message');
-        if (!msgEl || !_currentChannel) return;
+        if (!msgEl || !_currentChannel || !_contextMenu) return;
         e.preventDefault();
 
         var msgId = msgEl.dataset.messageId;
@@ -2274,16 +2417,8 @@
             impItem.style.display = (userRole === 'admin' || userRole === 'director') ? 'flex' : 'none';
         }
 
-        // Position context menu
-        var x = e.clientX;
-        var y = e.clientY;
-        _contextMenu.style.display = 'block';
-        var menuW = _contextMenu.offsetWidth;
-        var menuH = _contextMenu.offsetHeight;
-        if (x + menuW > window.innerWidth) x = window.innerWidth - menuW - 8;
-        if (y + menuH > window.innerHeight) y = window.innerHeight - menuH - 8;
-        _contextMenu.style.left = x + 'px';
-        _contextMenu.style.top = y + 'px';
+        _setContextPinActionState(msgId);
+        _positionChatContextMenu(e, msgEl);
     });
 
     document.addEventListener('click', function () {
@@ -2831,8 +2966,16 @@
 
     async function _pinFromContext() {
         if (!_contextMsg || !_currentChannel) return;
+        var messageId = parseInt(_contextMsg.id, 10);
+        if (!Number.isFinite(messageId)) return;
         try {
-            await _api('POST', '/channels/' + _currentChannel.id + '/pinned', { messageId: parseInt(_contextMsg.id, 10) });
+            if (_isMessagePinned(messageId)) {
+                await _api('DELETE', '/channels/' + _currentChannel.id + '/pinned/' + messageId);
+            } else {
+                await _api('POST', '/channels/' + _currentChannel.id + '/pinned', { messageId: messageId });
+            }
+            await _refreshPinnedMessages();
+            if (_chatPanelState.active === 'pins') await _renderPinnedPanel();
         } catch (err) {
             console.error('[Chat] Pin error:', err);
         }
@@ -3629,7 +3772,7 @@
         var container = document.getElementById('chatPinnedList');
         if (!container || !_currentChannel) return;
         try {
-            var pinned = await _api('GET', '/channels/' + _currentChannel.id + '/pinned');
+            var pinned = await _refreshPinnedMessages();
             if (!pinned?.length) { container.innerHTML = '<p style="color:var(--gray-400);font-size:12px">Немає закріплених</p>'; return; }
             container.innerHTML = pinned.map(function(m) {
                 return '<div style="padding:6px;border-bottom:1px solid var(--border-color)">' +
@@ -3904,6 +4047,13 @@
         try {
             var messages = await _api('GET', '/channels/' + channel.id + '/messages');
             _renderMessages(messages || []);
+            try {
+                await _refreshPinnedMessages();
+            } catch (pinErr) {
+                console.warn('[Chat] Pinned messages refresh failed:', pinErr);
+                _syncPinnedMessageState([]);
+                _renderPinnedSummary([]);
+            }
             _hideDialogTransientStates();
             _rememberPendingDialogOpen(null);
             _setChatComposerEnabled(true);
@@ -4024,6 +4174,7 @@
         el.dataset.messageId = msg.id;
         el.dataset.seq = msg.seq;
         el.dataset.userId = msg.userId;
+        if (_isMessagePinned(msg.id)) el.classList.add('is-pinned');
 
         // Feature 17: Emoji avatars (park mascots)
         var EMOJI_AVATARS = ['🦕', '🦖', '🦎', '🐊', '🦴', '🌴', '🌋', '🥚'];
@@ -5788,6 +5939,15 @@
             case 'chat:message-edited':
                 _onMessageEdited(payload);
                 break;
+            case 'chat:pin':
+                if (_currentChannel && String(payload.channelId) === String(_currentChannel.id)) {
+                    _refreshPinnedMessages().then(function () {
+                        if (_chatPanelState.active === 'pins') _renderPinnedPanel();
+                    }).catch(function (err) {
+                        console.warn('[Chat] Pin refresh failed:', err);
+                    });
+                }
+                break;
             case 'chat:user-muted':
                 _onUserMuted(payload);
                 break;
@@ -7102,11 +7262,54 @@
             if (emptyEl) emptyEl.remove();
             _guardianLogEntries.insertBefore(_buildLogEntry(payload), _guardianLogEntries.firstChild);
         }
+
+        if (payload.type === 'mute' || payload.type === 'mask' || payload.type === 'warn') {
+            _queueGuardianModerationRefresh();
+        }
+    }
+
+    function _queueGuardianModerationRefresh() {
+        if (_guardianStatsRefreshTimer) clearTimeout(_guardianStatsRefreshTimer);
+        _guardianStatsRefreshTimer = setTimeout(function () {
+            _guardianStatsRefreshTimer = null;
+            if (_guardianLogOpen) _loadGuardianEvents();
+            if (_analyticsOpen && _activeGuardianAnalyticsTab === 'overview') _loadAnalyticsOverview();
+        }, 350);
+    }
+
+    function _guardianActionLabel(type) {
+        var labels = {
+            mute: 'Блок',
+            mask: 'Маскування',
+            warn: 'Попередження',
+            scan: 'Перевірка',
+            block_precheck: 'Блок',
+            delete: 'Видалення',
+            censor: 'Цензура'
+        };
+        return labels[type] || String(type || 'Подія').slice(0, 32);
+    }
+
+    function _guardianStatusLabel(ev) {
+        if (ev.severity === 'danger') return 'критично';
+        if (ev.severity === 'warning') return 'увага';
+        return 'інфо';
+    }
+
+    function _guardianEventDetail(ev) {
+        if (!ev) return '';
+        if (typeof ev.details === 'string') return ev.details;
+        if (ev.details && typeof ev.details === 'object') {
+            if (ev.details.publicReason) return ev.details.publicReason;
+            if (ev.details.reason) return ev.details.reason;
+            if (Array.isArray(ev.details.types) && ev.details.types.length) return 'Замасковано: ' + ev.details.types.join(', ');
+        }
+        return ev.reason || ev.type || '';
     }
 
     function _buildLogEntry(ev) {
         var el = document.createElement('div');
-        el.className = 'guardian-log-entry severity-' + (ev.severity || 'info');
+        el.className = 'guardian-log-entry guardian-log-event-row severity-' + (ev.severity || 'info');
 
         var icon = '\u{1F50D}';
         if (ev.type === 'mask') icon = '\u{1F6E1}\uFE0F';
@@ -7119,14 +7322,16 @@
             time = new Date(ev.timestamp).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         } catch (e) { time = ''; }
 
-        var actionLabel = String(ev.type || 'event').slice(0, 32);
-        var details = _esc(ev.details || ev.type || '');
+        var actionLabel = _guardianActionLabel(ev.type);
+        var details = _esc(_guardianEventDetail(ev));
+        var status = _guardianStatusLabel(ev);
         el.innerHTML =
-            '<div class="guardian-log-entry-icon">' + icon + '</div>' +
+            '<div class="guardian-log-entry-icon" aria-hidden="true">' + icon + '</div>' +
             '<div class="guardian-log-entry-body">' +
                 '<div class="guardian-log-entry-top">' +
-                    '<b>@' + _esc(ev.username || '?') + '</b>' +
+                    '<span class="guardian-log-actor">@' + _esc(ev.username || '?') + '</span>' +
                     '<span class="guardian-log-entry-type">' + _esc(actionLabel) + '</span>' +
+                    '<span class="guardian-log-entry-status">' + _esc(status) + '</span>' +
                     '<time class="guardian-log-entry-time">' + time + '</time>' +
                 '</div>' +
                 '<div class="guardian-log-entry-text">' + details + '</div>' +
@@ -7150,7 +7355,7 @@
             if (stats) {
                 var statsEl = document.createElement('div');
                 statsEl.className = 'guardian-stats-summary';
-                var todayMutes = (stats.today && stats.today.mute) || 0;
+                var todayMutes = (stats.today && (stats.today.blocked || stats.today.block_precheck || stats.today.mute)) || 0;
                 var todayMasks = (stats.today && stats.today.mask) || 0;
                 var todayDeletes = (stats.today && stats.today.delete) || 0;
                 var muteCount = (activeMutes && activeMutes.length) || stats.activeMutes || 0;
@@ -7185,6 +7390,8 @@
                         severity: a.actionType === 'mute' ? 'danger' : a.actionType === 'mask' ? 'warning' : 'info',
                         timestamp: a.createdAt
                     };
+                    if (a.details && a.details.publicReason) ev.details = a.details.publicReason;
+                    if (a.actionType === 'block_precheck') ev.severity = 'danger';
                     _guardianLogEntries.appendChild(_buildLogEntry(ev));
                 });
             }
@@ -7265,6 +7472,7 @@
                     document.querySelectorAll('.guardian-analytics-tab-content').forEach(function (tc) { tc.classList.remove('active'); });
                     var target = document.getElementById('guardianTab' + tabName.charAt(0)?.toUpperCase() + tabName.slice(1));
                     if (target) target.classList.add('active');
+                    _activeGuardianAnalyticsTab = tabName || 'overview';
                     _loadAnalyticsTab(tabName);
                 });
             });
@@ -7373,6 +7581,7 @@
 
     // Load analytics tab data
     async function _loadAnalyticsTab(tab) {
+        _activeGuardianAnalyticsTab = tab || 'overview';
         switch (tab) {
             case 'overview': return _loadAnalyticsOverview();
             case 'health': return _loadAnalyticsHealth();
@@ -7393,6 +7602,8 @@
             var data = overview || {};
             var today = (stats && stats.today) || {};
             var total = (stats && stats.total) || {};
+            today.mute = today.blocked || today.block_precheck || today.mute || 0;
+            total.mute = total.blocked || total.block_precheck || total.mute || 0;
             grid.innerHTML =
                 _overviewCard('🛡️', today.mute || 0, 'Блокувань сьогодні', total.mute) +
                 _overviewCard('🔒', today.mask || 0, 'Замасковано сьогодні', total.mask) +

@@ -502,11 +502,7 @@ router.post('/channels/:id/messages', async (req, res) => {
             content: content.trim()
         });
         if (preCheck.blocked) {
-            const canSeeGuardianDetails = typeof guardian.canSeeBlockedWordDetails === 'function' &&
-                guardian.canSeeBlockedWordDetails(req.user);
-            const guardianMessage = canSeeGuardianDetails && preCheck.ownerMessage
-                ? preCheck.ownerMessage
-                : preCheck.message;
+            const guardianMessage = preCheck.publicMessage || preCheck.message;
             return res.status(403).json({ error: guardianMessage || '🛡️ Повідомлення заблоковано.' });
         }
 

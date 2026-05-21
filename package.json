@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.61.8",
+  "version": "0.61.9",
   "eventGenix": {
-    "releaseLabel": "Certificates page recovery"
+    "releaseLabel": "Chat Guardian moderation hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -1812,15 +1812,17 @@ async function preCheckMessage({ channelId, userId, username, content }) {
         const source = isRussian ? 'language' : (isSensitive ? 'sensitive' : 'keyword');
         const blockedResponse = buildGuardianBlockedResponse({ publicReason, words: toxicWords, source });
         const muteClaim = await muteUser(channelId, userId, username, publicReason);
+        await logAction('block_precheck', channelId, userId, null, {
+            reason: publicReason,
+            publicReason,
+            words: toxicWords,
+            username,
+            source,
+            muteDuplicate: Boolean(muteClaim?.duplicate),
+            muteId: muteClaim?.muteId || null
+        });
         if (!muteClaim?.duplicate) {
             _trackLLMFinding(channelId, username, source, publicReason, toxicWords);
-            await logAction('block_precheck', channelId, userId, null, {
-                reason: publicReason,
-                publicReason,
-                words: toxicWords,
-                username,
-                source
-            });
         }
         return blockedResponse;
     }
@@ -1838,17 +1840,19 @@ async function preCheckMessage({ channelId, userId, username, content }) {
                 source: 'llm'
             });
             const muteClaim = await muteUser(channelId, userId, username, publicReason);
+            await logAction('block_precheck', channelId, userId, null, {
+                reason: publicReason,
+                publicReason,
+                ownerReason,
+                words: llmResult.words || [],
+                username,
+                source: 'llm',
+                muteDuplicate: Boolean(muteClaim?.duplicate),
+                muteId: muteClaim?.muteId || null
+            });
             if (!muteClaim?.duplicate) {
                 _learnWordsFromLLM(llmResult.words);
                 _trackLLMFinding(channelId, username, 'llm-realtime', publicReason, llmResult.words || []);
-                await logAction('block_precheck', channelId, userId, null, {
-                    reason: publicReason,
-                    publicReason,
-                    ownerReason,
-                    words: llmResult.words || [],
-                    username,
-                    source: 'llm'
-                });
             }
             return blockedResponse;
         }

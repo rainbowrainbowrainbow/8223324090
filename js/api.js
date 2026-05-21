@@ -476,9 +476,13 @@ async function apiSaveSetting(key, value) {
 }
 
 // v7.0: Products catalog API
-async function apiGetProducts(activeOnly = true) {
+async function apiGetProducts(activeOnly = true, filters = {}) {
     try {
-        const qs = activeOnly ? '?active=true' : '';
+        const params = new URLSearchParams();
+        if (activeOnly) params.set('active', 'true');
+        if (filters.domain) params.set('domain', filters.domain);
+        if (filters.kitchenType) params.set('kitchenType', filters.kitchenType);
+        const qs = params.toString() ? `?${params.toString()}` : '';
         const response = await fetch(`${API_BASE}/products${qs}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');

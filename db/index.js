@@ -318,6 +318,13 @@ async function initDatabase() {
                 age_range VARCHAR(30),
                 kids_capacity VARCHAR(30),
                 description TEXT,
+                domain VARCHAR(30) DEFAULT 'program',
+                kitchen_type VARCHAR(30),
+                short_description TEXT,
+                promo_description TEXT,
+                ingredients TEXT,
+                tech_card TEXT,
+                cake_decoration TEXT,
                 is_per_child BOOLEAN DEFAULT FALSE,
                 has_filler BOOLEAN DEFAULT FALSE,
                 is_custom BOOLEAN DEFAULT FALSE,
@@ -338,6 +345,8 @@ async function initDatabase() {
 
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)');
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active)');
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_domain ON products(domain)');
+        await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_kitchen_type ON products(kitchen_type)');
 
         // v7.5: Tasks table
         await safeQuery(`

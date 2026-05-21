@@ -134,6 +134,8 @@ const STARTUP_SCHEMA_INDEXES = [
     'idx_procurement_lists_status',
     'idx_products_active',
     'idx_products_category',
+    'idx_products_domain',
+    'idx_products_kitchen_type',
     'idx_scheduled_deletions_delete_at',
     'idx_staff_active',
     'idx_staff_department',

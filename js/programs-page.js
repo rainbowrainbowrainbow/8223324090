@@ -98,6 +98,7 @@ async function initPage() {
 
     renderProductIaTabs();
     renderCategoryTabs();
+    renderKitchenSubtabs();
     await loadProducts();
     if (activeProductTab === 'catalogs') await loadCatalogEntries();
     updateProductTabPanels();
@@ -105,6 +106,7 @@ async function initPage() {
     document.getElementById('addProductBtn')?.addEventListener('click', () => openProductForm());
     document.getElementById('saveProductBtn')?.addEventListener('click', saveProduct);
     document.getElementById('cancelProductBtn')?.addEventListener('click', closeProductForm);
+    document.getElementById('pf-category')?.addEventListener('change', syncKitchenSubtypeFromForm);
     document.getElementById('productDocSaveBtn')?.addEventListener('click', saveProductDocument);
     document.getElementById('productDocCancelBtn')?.addEventListener('click', closeProductDocumentModal);
     document.getElementById('productDocUnlinkBtn')?.addEventListener('click', unlinkProductDocument);
@@ -117,7 +119,19 @@ async function initPage() {
 // PRODUCT IA TABS
 // ==========================================
 
-let activeProductTab = window.location.hash === '#catalogs' ? 'catalogs' : 'programs';
+function readInitialProductTab() {
+    const hash = window.location.hash || '';
+    if (hash === '#catalogs') return 'catalogs';
+    if (hash === '#kitchen' || hash === '#kitchen-cakes' || hash === '#kitchen-menu') return 'kitchen';
+    return 'programs';
+}
+
+function readInitialKitchenTab() {
+    return window.location.hash === '#kitchen-menu' ? 'menu' : 'cake';
+}
+
+let activeProductTab = readInitialProductTab();
+let activeKitchenTab = readInitialKitchenTab();
 let currentCategory = 'all';
 let allProducts = [];
 let productCatalogs = [];
@@ -129,6 +143,7 @@ function renderProductIaTabs() {
     if (!container) return;
     const tabs = [
         { id: 'programs', name: 'Розважальні програми' },
+        { id: 'kitchen', name: 'Кухня' },
         { id: 'catalogs', name: 'Каталоги' }
     ];
     container.innerHTML = tabs.map(tab => `
@@ -145,10 +160,16 @@ function renderProductIaTabs() {
 }
 
 async function setProductTab(tab) {
-    activeProductTab = tab === 'catalogs' ? 'catalogs' : 'programs';
-    window.history.replaceState(null, '', activeProductTab === 'catalogs' ? '#catalogs' : window.location.pathname);
+    activeProductTab = ['programs', 'kitchen', 'catalogs'].includes(tab) ? tab : 'programs';
+    const nextHash = activeProductTab === 'catalogs'
+        ? '#catalogs'
+        : (activeProductTab === 'kitchen' ? `#kitchen-${activeKitchenTab === 'menu' ? 'menu' : 'cakes'}` : '');
+    window.history.replaceState(null, '', nextHash || window.location.pathname);
+    closeProductForm();
     renderProductIaTabs();
+    renderKitchenSubtabs();
     updateProductTabPanels();
+    renderProducts();
     if (activeProductTab === 'catalogs' && !catalogEntriesLoaded) {
         await loadCatalogEntries();
     }
@@ -156,13 +177,55 @@ async function setProductTab(tab) {
 
 function updateProductTabPanels() {
     const programsPanel = document.getElementById('programsPanel');
+    const kitchenPanel = document.getElementById('kitchenPanel');
     const catalogsPanel = document.getElementById('catalogsPanel');
     const addBtn = document.getElementById('addProductBtn');
     const pageTitle = document.getElementById('productsPageTitle');
     if (programsPanel) programsPanel.classList.toggle('hidden', activeProductTab !== 'programs');
+    if (kitchenPanel) kitchenPanel.classList.toggle('hidden', activeProductTab !== 'kitchen');
     if (catalogsPanel) catalogsPanel.classList.toggle('hidden', activeProductTab !== 'catalogs');
-    if (addBtn) addBtn.style.display = activeProductTab === 'programs' && canManageProducts() ? '' : 'none';
-    if (pageTitle) pageTitle.textContent = activeProductTab === 'catalogs' ? 'Products · Каталоги' : 'Products · Розважальні програми';
+    if (addBtn) {
+        addBtn.style.display = ['programs', 'kitchen'].includes(activeProductTab) && canManageProducts() ? '' : 'none';
+        addBtn.textContent = activeProductTab === 'kitchen'
+            ? (activeKitchenTab === 'cake' ? '+ Додати торт' : '+ Додати меню')
+            : '+ Додати програму';
+    }
+    if (pageTitle) {
+        if (activeProductTab === 'catalogs') pageTitle.textContent = 'Products · Каталоги';
+        else if (activeProductTab === 'kitchen') pageTitle.textContent = `Products · Кухня · ${activeKitchenTab === 'cake' ? 'Торти' : 'Меню'}`;
+        else pageTitle.textContent = 'Products · Розважальні програми';
+    }
+}
+
+function renderKitchenSubtabs() {
+    const container = document.getElementById('kitchenSubtabs');
+    if (!container) return;
+    const tabs = [
+        { id: 'cake', name: 'Торти' },
+        { id: 'menu', name: 'Меню' }
+    ];
+    container.innerHTML = tabs.map(tab => `
+        <button
+            type="button"
+            class="kitchen-subtab${tab.id === activeKitchenTab ? ' active' : ''}"
+            data-kitchen-tab="${tab.id}">
+            ${tab.name}
+        </button>
+    `).join('');
+    container.querySelectorAll('[data-kitchen-tab]').forEach(button => {
+        button.addEventListener('click', () => setKitchenTab(button.dataset.kitchenTab));
+    });
+}
+
+function setKitchenTab(tab) {
+    activeKitchenTab = tab === 'menu' ? 'menu' : 'cake';
+    if (activeProductTab === 'kitchen') {
+        window.history.replaceState(null, '', `#kitchen-${activeKitchenTab === 'menu' ? 'menu' : 'cakes'}`);
+    }
+    closeProductForm();
+    renderKitchenSubtabs();
+    updateProductTabPanels();
+    renderProducts();
 }
 
 // ==========================================
@@ -202,23 +265,47 @@ function renderCategoryTabs() {
 
 async function loadProducts() {
     const grid = document.getElementById('productsGrid');
+    const kitchenGrid = document.getElementById('kitchenGrid');
     if (grid) grid.innerHTML = '<div class="loading-spinner">Завантаження програм…</div>';
+    if (kitchenGrid) kitchenGrid.innerHTML = '<div class="loading-spinner">Завантаження кухні…</div>';
     try {
         allProducts = await apiGetProducts(false) || [];
         renderProducts();
     } catch (err) {
         console.error('loadProducts error:', err);
-        showNotification('Помилка завантаження програм', 'error');
+        showNotification('Помилка завантаження продуктів', 'error');
         if (grid) grid.innerHTML = '';
+        if (kitchenGrid) kitchenGrid.innerHTML = '';
     }
 }
 
 function renderProducts() {
     const grid = document.getElementById('productsGrid');
-    if (!grid) return;
-    let filtered = allProducts;
+    const kitchenGrid = document.getElementById('kitchenGrid');
+    const canManage = canManageProducts();
+
+    if (grid) renderProgramProducts(grid, canManage);
+    if (kitchenGrid) renderKitchenProducts(kitchenGrid, canManage);
+}
+
+function getProductDomain(product = {}) {
+    if (product.domain) return product.domain;
+    if (['cake', 'menu'].includes(product.kitchenType || product.category)) return 'kitchen';
+    return 'program';
+}
+
+function getKitchenType(product = {}) {
+    if (product.kitchenType === 'menu' || product.kitchen_type === 'menu') return 'menu';
+    if (product.kitchenType === 'cake' || product.kitchen_type === 'cake') return 'cake';
+    if (product.category === 'menu') return 'menu';
+    if (product.category === 'cake') return 'cake';
+    return null;
+}
+
+function renderProgramProducts(grid, canManage) {
+    let filtered = allProducts.filter(p => getProductDomain(p) === 'program');
     if (currentCategory !== 'all') {
-        filtered = allProducts.filter(p => p.category === currentCategory);
+        filtered = filtered.filter(p => p.category === currentCategory);
     }
 
     if (filtered.length === 0) {
@@ -226,7 +313,6 @@ function renderProducts() {
         return;
     }
 
-    const canManage = canManageProducts();
     grid.innerHTML = filtered.map(p => {
         const productId = escapeJsString(p.id);
         return `
@@ -257,6 +343,73 @@ function renderProducts() {
             </div>
         `;
     }).join('');
+}
+
+function renderKitchenProducts(grid, canManage) {
+    const filtered = allProducts.filter(p => getProductDomain(p) === 'kitchen' && getKitchenType(p) === activeKitchenTab);
+    const emptyText = activeKitchenTab === 'cake'
+        ? 'Тортів ще немає. Додайте першу позицію з оформленням і техкартою.'
+        : 'Меню-позицій ще немає. Додайте першу кухонну позицію з інгредієнтами і техкартою.';
+
+    if (filtered.length === 0) {
+        grid.innerHTML = `<div class="empty-state"><img src="images/branding/slide5-dashboard.png" alt="" class="empty-state-img"><div class="empty-state-text">${emptyText}</div></div>`;
+        return;
+    }
+
+    grid.innerHTML = filtered.map(p => {
+        const productId = escapeJsString(p.id);
+        const subtype = getKitchenType(p);
+        const shortText = p.shortDescription || p.description || '';
+        return `
+            <div class="card program-card kitchen-card${p.isActive === false ? ' inactive' : ''}" data-id="${escapeHtml(p.id)}">
+                <div class="card-header">
+                    <div>
+                        <span class="program-icon">${escapeHtml(p.icon || (subtype === 'cake' ? '🎂' : '🍽️'))}</span>
+                        <span class="card-title">${escapeHtml(p.name)}</span>
+                        ${p.isActive === false ? '<span class="badge badge-normal">неактивна</span>' : ''}
+                    </div>
+                    <span class="program-price">${formatPrice(p.price)}${p.isPerChild ? '/дит' : ''}</span>
+                </div>
+                <div class="card-meta">
+                    <span>${escapeHtml(p.code || '')}</span>
+                    <span>${subtype === 'cake' ? 'Торт' : 'Меню'}</span>
+                    ${p.priceUnit ? `<span>${escapeHtml(p.priceUnit)}</span>` : ''}
+                </div>
+                ${shortText ? `<p class="program-desc">${escapeHtml(shortText).substring(0, 150)}${shortText.length > 150 ? '...' : ''}</p>` : ''}
+                <div class="kitchen-card-badges">
+                    ${p.ingredients ? '<span class="kitchen-badge">Інгредієнти</span>' : ''}
+                    ${p.techCard ? '<span class="kitchen-badge">Техкарта</span>' : ''}
+                    ${subtype === 'cake' && p.cakeDecoration ? '<span class="kitchen-badge">Оформлення</span>' : ''}
+                </div>
+                ${renderKitchenDetailPanel(p)}
+                ${canManage ? `
+                    <div class="card-actions">
+                        <button type="button" class="btn-page-secondary" onclick="openProductForm('${productId}')">✏️ Редагувати</button>
+                        <button type="button" class="btn-page-danger" onclick="deleteProduct('${productId}')">Деактивувати</button>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+function renderKitchenDetailPanel(product) {
+    const items = [
+        ['Promo', product.promoDescription],
+        ['Інгредієнти', product.ingredients],
+        ['Техкарта', product.techCard]
+    ];
+    if (getKitchenType(product) === 'cake') items.push(['Оформлення', product.cakeDecoration]);
+    const html = items
+        .filter(([, value]) => Boolean(value))
+        .map(([label, value]) => `
+            <div class="kitchen-detail-item">
+                <strong>${escapeHtml(label)}</strong>
+                <span>${escapeHtml(String(value)).substring(0, 180)}${String(value).length > 180 ? '...' : ''}</span>
+            </div>
+        `)
+        .join('');
+    return html ? `<div class="kitchen-detail-panel">${html}</div>` : '';
 }
 
 function renderDocumentPanel(product, canManage) {
@@ -445,13 +598,54 @@ function renderCatalogEntries() {
 // PRODUCT FORM
 // ==========================================
 
-function openProductForm(productId = null) {
+function placeProductForm() {
     const form = document.getElementById('productForm');
+    if (!form) return null;
+    if (activeProductTab === 'kitchen') {
+        const kitchenPanel = document.getElementById('kitchenPanel');
+        const kitchenGrid = document.getElementById('kitchenGrid');
+        if (kitchenPanel && kitchenGrid && form.parentElement !== kitchenPanel) {
+            kitchenPanel.insertBefore(form, kitchenGrid);
+        }
+        return form;
+    }
+    const programsPanel = document.getElementById('programsPanel');
+    const productsGrid = document.getElementById('productsGrid');
+    if (programsPanel && productsGrid && form.parentElement !== programsPanel) {
+        programsPanel.insertBefore(form, productsGrid);
+    }
+    return form;
+}
+
+function setKitchenFormVisibility(domain, kitchenType) {
+    const isKitchen = domain === 'kitchen';
+    document.getElementById('pf-domain').value = isKitchen ? 'kitchen' : 'program';
+    document.getElementById('pf-kitchen-type').value = isKitchen ? (kitchenType === 'menu' ? 'menu' : 'cake') : '';
+    document.querySelectorAll('.product-kitchen-fields').forEach(field => {
+        field.classList.toggle('hidden', !isKitchen);
+    });
+    document.querySelectorAll('.cake-decoration-field').forEach(field => {
+        field.classList.toggle('hidden', !(isKitchen && kitchenType === 'cake'));
+    });
+}
+
+function syncKitchenSubtypeFromForm() {
+    const domain = document.getElementById('pf-domain')?.value === 'kitchen' ? 'kitchen' : 'program';
+    if (domain !== 'kitchen') return;
+    const kitchenType = document.getElementById('pf-category')?.value === 'menu' ? 'menu' : 'cake';
+    setKitchenFormVisibility('kitchen', kitchenType);
+}
+
+function openProductForm(productId = null) {
+    const form = placeProductForm();
+    if (!form) return;
     form.style.display = '';
 
     if (productId) {
         const p = allProducts.find(x => x.id === productId);
         if (!p) return;
+        const domain = getProductDomain(p);
+        const kitchenType = getKitchenType(p);
         document.getElementById('pf-id').value = p.id;
         document.getElementById('pf-code').value = p.code || '';
         document.getElementById('pf-name').value = p.name || '';
@@ -468,16 +662,24 @@ function openProductForm(productId = null) {
         document.getElementById('pf-filler').checked = !!p.hasFiller;
         document.getElementById('pf-active').checked = p.isActive !== false;
         document.getElementById('pf-sort').value = p.sortOrder || 0;
+        document.getElementById('pf-short-description').value = p.shortDescription || '';
+        document.getElementById('pf-promo-description').value = p.promoDescription || '';
+        document.getElementById('pf-ingredients').value = p.ingredients || '';
+        document.getElementById('pf-tech-card').value = p.techCard || '';
+        document.getElementById('pf-cake-decoration').value = p.cakeDecoration || '';
+        setKitchenFormVisibility(domain, kitchenType);
     } else {
+        const isKitchen = activeProductTab === 'kitchen';
+        const kitchenType = isKitchen ? activeKitchenTab : '';
         document.getElementById('pf-id').value = '';
         document.getElementById('pf-code').value = '';
         document.getElementById('pf-name').value = '';
         document.getElementById('pf-label').value = '';
-        document.getElementById('pf-icon').value = '';
-        document.getElementById('pf-category').value = currentCategory !== 'all' ? currentCategory : 'quest';
-        document.getElementById('pf-duration').value = 60;
+        document.getElementById('pf-icon').value = isKitchen ? (kitchenType === 'cake' ? '🎂' : '🍽️') : '';
+        document.getElementById('pf-category').value = isKitchen ? kitchenType : (currentCategory !== 'all' ? currentCategory : 'quest');
+        document.getElementById('pf-duration').value = isKitchen ? 0 : 60;
         document.getElementById('pf-price').value = 0;
-        document.getElementById('pf-hosts').value = 1;
+        document.getElementById('pf-hosts').value = isKitchen ? 0 : 1;
         document.getElementById('pf-age').value = '';
         document.getElementById('pf-kids').value = '';
         document.getElementById('pf-description').value = '';
@@ -485,6 +687,12 @@ function openProductForm(productId = null) {
         document.getElementById('pf-filler').checked = false;
         document.getElementById('pf-active').checked = true;
         document.getElementById('pf-sort').value = 0;
+        document.getElementById('pf-short-description').value = '';
+        document.getElementById('pf-promo-description').value = '';
+        document.getElementById('pf-ingredients').value = '';
+        document.getElementById('pf-tech-card').value = '';
+        document.getElementById('pf-cake-decoration').value = '';
+        setKitchenFormVisibility(isKitchen ? 'kitchen' : 'program', kitchenType);
     }
 
     form.scrollIntoView({ behavior: 'smooth' });
@@ -496,18 +704,30 @@ function closeProductForm() {
 
 async function saveProduct() {
     const id = document.getElementById('pf-id')?.value;
+    const domain = document.getElementById('pf-domain')?.value === 'kitchen' ? 'kitchen' : 'program';
+    const kitchenType = document.getElementById('pf-kitchen-type')?.value === 'menu' ? 'menu' : (domain === 'kitchen' ? 'cake' : null);
+    const hostsValue = parseInt(document.getElementById('pf-hosts')?.value);
     const product = {
         code: document.getElementById('pf-code')?.value.trim(),
         name: document.getElementById('pf-name')?.value.trim(),
         label: document.getElementById('pf-label')?.value.trim(),
         icon: document.getElementById('pf-icon')?.value.trim(),
-        category: document.getElementById('pf-category')?.value,
+        category: domain === 'kitchen' ? kitchenType : document.getElementById('pf-category')?.value,
+        domain,
+        kitchenType,
         duration: parseInt(document.getElementById('pf-duration')?.value) || 0,
         price: parseInt(document.getElementById('pf-price')?.value) || 0,
-        hosts: parseInt(document.getElementById('pf-hosts')?.value) || 1,
+        hosts: Number.isFinite(hostsValue) ? hostsValue : (domain === 'kitchen' ? 0 : 1),
         ageRange: document.getElementById('pf-age')?.value.trim(),
         kidsCapacity: document.getElementById('pf-kids')?.value.trim(),
         description: document.getElementById('pf-description')?.value.trim(),
+        shortDescription: document.getElementById('pf-short-description')?.value.trim(),
+        promoDescription: document.getElementById('pf-promo-description')?.value.trim(),
+        ingredients: document.getElementById('pf-ingredients')?.value.trim(),
+        techCard: document.getElementById('pf-tech-card')?.value.trim(),
+        cakeDecoration: domain === 'kitchen' && kitchenType === 'cake'
+            ? document.getElementById('pf-cake-decoration')?.value.trim()
+            : '',
         isPerChild: document.getElementById('pf-perchild')?.checked,
         hasFiller: document.getElementById('pf-filler')?.checked,
         isActive: document.getElementById('pf-active')?.checked,
@@ -520,7 +740,7 @@ async function saveProduct() {
     }
 
     if (!product.label) {
-        product.label = `${product.code}(${product.duration})`;
+        product.label = domain === 'kitchen' ? product.name : `${product.code}(${product.duration})`;
     }
 
     let result;
@@ -532,7 +752,8 @@ async function saveProduct() {
     }
 
     if (result && result.success) {
-        showNotification(id ? 'Програму оновлено' : 'Програму додано', 'success');
+        const noun = domain === 'kitchen' ? (kitchenType === 'cake' ? 'Торт' : 'Меню-позицію') : 'Програму';
+        showNotification(id ? `${noun} оновлено` : `${noun} додано`, 'success');
         closeProductForm();
         await loadProducts();
     } else {
@@ -541,10 +762,13 @@ async function saveProduct() {
 }
 
 async function deleteProduct(productId) {
-    if (!await confirmModal('Деактивувати цю програму?', { type: 'warning', okText: 'Деактивувати' })) return;
+    const product = allProducts.find(item => item.id === productId);
+    const isKitchen = getProductDomain(product) === 'kitchen';
+    const noun = isKitchen ? 'цю кухонну позицію' : 'цю програму';
+    if (!await confirmModal(`Деактивувати ${noun}?`, { type: 'warning', okText: 'Деактивувати' })) return;
     const result = await apiDeleteProduct(productId);
     if (result && result.success) {
-        showNotification('Програму деактивовано', 'success');
+        showNotification(isKitchen ? 'Кухонну позицію деактивовано' : 'Програму деактивовано', 'success');
         await loadProducts();
     } else {
         showNotification('Помилка', 'error');

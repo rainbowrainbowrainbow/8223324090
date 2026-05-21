@@ -17,6 +17,9 @@ test('products page exposes entertainment programs and catalogs IA', () => {
     assert.match(html, /id="productIaTabs"/);
     assert.match(html, /id="catalogsPanel"/);
     assert.match(html, /id="catalogsGrid"/);
+    assert.match(html, /id="kitchenPanel"/);
+    assert.match(html, /id="kitchenSubtabs"/);
+    assert.match(html, /id="kitchenGrid"/);
     assert.match(html, /id="productDocumentModal"/);
     assert.match(html, /Картку перевірено вручну/);
     assert.match(html, /Картка відповідає документу/);
@@ -30,6 +33,11 @@ test('products frontend wires document linkage and catalog entry points', () => 
 
     assert.match(pageJs, /apiUpdateProductDocument/);
     assert.match(pageJs, /apiGetProductCatalogs/);
+    assert.match(pageJs, /renderKitchenSubtabs/);
+    assert.match(pageJs, /renderKitchenProducts/);
+    assert.match(pageJs, /cakeDecoration/);
+    assert.match(pageJs, /techCard/);
+    assert.match(pageJs, /ingredients/);
     assert.match(pageJs, /sourceDocumentVerifiedManual/);
     assert.match(pageJs, /sourceCardMatchesDocument/);
     assert.match(pageJs, /openProductDocumentModal/);
@@ -42,6 +50,7 @@ test('products frontend wires document linkage and catalog entry points', () => 
 test('products API reuses existing catalog engine and validates source documents', () => {
     const productsRoute = read('routes/products.js');
     const migration = read('db/migrations/191_products_source_document_linkage.sql');
+    const kitchenMigration = read('db/migrations/199_products_kitchen_fields.sql');
 
     assert.match(productsRoute, /router\.get\('\/catalogs'/);
     assert.match(productsRoute, /FROM catalog_definitions cd/);
@@ -54,6 +63,13 @@ test('products API reuses existing catalog engine and validates source documents
     assert.match(migration, /google_doc/);
     assert.match(migration, /pdf/);
     assert.match(migration, /link/);
+    assert.match(productsRoute, /normalizeProductPayload/);
+    assert.match(productsRoute, /kitchenType/);
+    assert.match(productsRoute, /shortDescription/);
+    assert.match(productsRoute, /techCard/);
+    assert.match(kitchenMigration, /domain VARCHAR\(30\)/);
+    assert.match(kitchenMigration, /kitchen_type VARCHAR\(30\)/);
+    assert.match(kitchenMigration, /cake_decoration TEXT/);
 });
 
 test('design catalog deep links remain backed by the existing designs viewer', () => {

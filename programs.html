@@ -22,14 +22,14 @@
         try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
     })();
     </script>
-    <link rel="stylesheet" href="css/base.css?v=0.60.41">
-    <link rel="stylesheet" href="css/layout.css?v=0.60.41">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.41">
-    <link rel="stylesheet" href="css/pages.css?v=0.60.41">
-    <link rel="stylesheet" href="css/modals.css?v=0.60.41">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.41">
-    <link rel="stylesheet" href="css/responsive.css?v=0.60.41">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.41">
+    <link rel="stylesheet" href="css/base.css?v=0.60.42">
+    <link rel="stylesheet" href="css/layout.css?v=0.60.42">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.60.42">
+    <link rel="stylesheet" href="css/pages.css?v=0.60.42">
+    <link rel="stylesheet" href="css/modals.css?v=0.60.42">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.60.42">
+    <link rel="stylesheet" href="css/responsive.css?v=0.60.42">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.60.42">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -229,6 +229,109 @@
             gap: 8px;
         }
 
+        .kitchen-subtabs {
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: 0 0 14px;
+            padding: 5px;
+            border: 1px solid var(--border-color, rgba(148, 163, 184, 0.22));
+            border-radius: 14px;
+            background: rgba(20, 184, 166, 0.06);
+        }
+
+        .kitchen-subtab {
+            min-height: 36px;
+            padding: 0 14px;
+            border: 1px solid transparent;
+            border-radius: 10px;
+            background: transparent;
+            color: var(--gray-600, #64748b);
+            font-size: 13px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .kitchen-subtab:hover,
+        .kitchen-subtab:focus-visible {
+            border-color: rgba(20, 184, 166, 0.36);
+            color: var(--text-primary, #0f172a);
+            outline: none;
+        }
+
+        .kitchen-subtab.active {
+            background: rgba(20, 184, 166, 0.18);
+            color: var(--primary-dark, #0f766e);
+            border-color: rgba(20, 184, 166, 0.28);
+        }
+
+        .product-kitchen-fields.hidden,
+        .cake-decoration-field.hidden {
+            display: none !important;
+        }
+
+        .product-kitchen-fields textarea,
+        .cake-decoration-field textarea {
+            width: min(420px, 100%);
+            min-height: 74px;
+            resize: vertical;
+        }
+
+        .kitchen-card-badges,
+        .kitchen-detail-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .kitchen-card-badges {
+            margin-top: 10px;
+        }
+
+        .kitchen-badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            padding: 0 9px;
+            border: 1px solid rgba(20, 184, 166, 0.24);
+            border-radius: 999px;
+            background: rgba(20, 184, 166, 0.10);
+            color: var(--primary-dark, #0f766e);
+            font-size: 12px;
+            font-weight: 900;
+        }
+
+        .kitchen-detail-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px;
+            margin-top: 12px;
+            padding: 12px;
+            border: 1px solid var(--border-color, rgba(148, 163, 184, 0.24));
+            border-radius: 14px;
+            background: rgba(15, 23, 42, 0.035);
+        }
+
+        .kitchen-detail-item {
+            display: grid;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .kitchen-detail-item strong {
+            color: var(--gray-500, #64748b);
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .kitchen-detail-item span {
+            color: var(--text-primary, #0f172a);
+            font-size: 13px;
+            line-height: 1.42;
+        }
+
         .product-doc-modal .modal-content {
             max-width: 560px;
         }
@@ -273,6 +376,7 @@
         }
 
         body.dark-mode .product-doc-panel,
+        body.dark-mode .kitchen-detail-panel,
         [data-theme="dark"] .product-doc-panel {
             background: rgba(255, 255, 255, 0.04);
             border-color: rgba(255, 255, 255, 0.10);
@@ -285,6 +389,7 @@
 
         body.dark-mode .product-doc-title,
         body.dark-mode .product-catalog-title,
+        body.dark-mode .kitchen-detail-item span,
         [data-theme="dark"] .product-doc-title,
         [data-theme="dark"] .product-catalog-title {
             color: #f8fafc;
@@ -292,6 +397,7 @@
 
         @media (max-width: 720px) {
             .product-ia-tabs,
+            .kitchen-subtabs,
             .product-catalog-actions,
             .product-doc-actions {
                 align-items: stretch;
@@ -299,6 +405,7 @@
             }
 
             .product-ia-tab,
+            .kitchen-subtab,
             .product-catalog-actions a,
             .product-doc-actions a,
             .product-doc-actions button {
@@ -403,6 +510,8 @@
                             <option value="masterclass">Майстер-класи</option>
                             <option value="pinata">Піньяти</option>
                             <option value="custom">Кастом</option>
+                            <option value="cake">Торти</option>
+                            <option value="menu">Меню</option>
                         </select>
                     </div>
                     <div class="form-field">
@@ -429,12 +538,34 @@
                         <label>Опис</label>
                         <input type="text" id="pf-description" aria-label="Короткий опис" placeholder="Короткий опис" style="min-width:200px">
                     </div>
+                    <div class="form-field product-kitchen-fields hidden">
+                        <label for="pf-short-description">Короткий опис</label>
+                        <textarea id="pf-short-description" placeholder="Коротко для картки продукту"></textarea>
+                    </div>
+                    <div class="form-field product-kitchen-fields hidden">
+                        <label for="pf-promo-description">Promo опис</label>
+                        <textarea id="pf-promo-description" placeholder="Продажний опис для клієнта"></textarea>
+                    </div>
+                    <div class="form-field product-kitchen-fields hidden">
+                        <label for="pf-ingredients">Інгредієнти</label>
+                        <textarea id="pf-ingredients" placeholder="Склад, алергени, ключові інгредієнти"></textarea>
+                    </div>
+                    <div class="form-field product-kitchen-fields hidden">
+                        <label for="pf-tech-card">Техкарта</label>
+                        <textarea id="pf-tech-card" placeholder="Вага, вихід, зберігання, production notes"></textarea>
+                    </div>
+                    <div class="form-field cake-decoration-field hidden">
+                        <label for="pf-cake-decoration">Оформлення торта</label>
+                        <textarea id="pf-cake-decoration" placeholder="Декор, topper, кольори, свічки, тематичні елементи"></textarea>
+                    </div>
                     <div class="form-field" style="flex-direction:row; align-items:center; gap:8px; margin-top:20px;">
                         <label style="display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="pf-perchild"> За дитину</label>
                         <label style="display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="pf-filler"> Наповнювач</label>
                         <label style="display:flex;align-items:center;gap:4px;white-space:nowrap"><input type="checkbox" id="pf-active" checked> Активна</label>
                     </div>
                     <input type="hidden" id="pf-id" value="">
+                    <input type="hidden" id="pf-domain" value="program">
+                    <input type="hidden" id="pf-kitchen-type" value="">
                     <input type="hidden" id="pf-sort" value="0">
                     <div style="display:flex; gap:8px; margin-top:20px;">
                         <button type="button" id="saveProductBtn" class="btn-page-primary">Зберегти</button>
@@ -444,6 +575,11 @@
 
                 <!-- Products grid -->
                 <div id="productsGrid" class="cards-grid"></div>
+            </section>
+
+            <section id="kitchenPanel" class="product-tab-panel hidden">
+                <div id="kitchenSubtabs" class="kitchen-subtabs" aria-label="Kitchen tabs"></div>
+                <div id="kitchenGrid" class="cards-grid"></div>
             </section>
 
             <section id="catalogsPanel" class="product-tab-panel hidden">
@@ -500,13 +636,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.60.41"></script>
-    <script src="js/config.js?v=0.60.41"></script>
-    <script src="js/notification.js?v=0.60.41"></script>
-    <script src="js/api.js?v=0.60.41"></script>
-    <script src="js/auth.js?v=0.60.41"></script>
-    <script src="js/components/sidebar.js?v=0.60.41"></script>
+    <script src="js/ui.js?v=0.60.42"></script>
+    <script src="js/config.js?v=0.60.42"></script>
+    <script src="js/notification.js?v=0.60.42"></script>
+    <script src="js/api.js?v=0.60.42"></script>
+    <script src="js/auth.js?v=0.60.42"></script>
+    <script src="js/components/sidebar.js?v=0.60.42"></script>
     <script>if (typeof Sidebar !== "undefined" && !document.documentElement.classList.contains('embed-mode')) Sidebar.init("#sidebarLinks");</script>
-    <script src="js/programs-page.js?v=0.60.41"></script><script src="js/alerts.js?v=0.60.41"></script>
+    <script src="js/programs-page.js?v=0.60.42"></script><script src="js/alerts.js?v=0.60.42"></script>
 </body>
 </html>

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.42 - Products Kitchen: торти, меню та кухонні поля
+
+### Products Kitchen: торти, меню та кухонні поля [codex]
+- **Kitchen surface** - у Products додано окремий контур Кухня з підвкладками Торти та Меню поруч із розважальними програмами.
+- **Kitchen schema** - canonical products model/API розширено полями `short_description`, `promo_description`, `ingredients`, `tech_card`, `domain` і `kitchen_type`.
+- **Cake decoration** - для тортів додано явне поле `cake_decoration`, яке показується тільки для kitchen subtype `cake`.
+- **Products UX** - create/edit форма, картки, empty states і фільтрація тепер працюють для кухонних позицій без другого kitchen CRUD.
+
+---
+
 ## v0.60.41 - Assistant Guided Click Safety
 
 ### Assistant Guided Click Safety [codex]

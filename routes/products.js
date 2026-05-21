@@ -40,6 +40,8 @@ function getProductPriceUnit(product) {
 }
 
 const SOURCE_DOCUMENT_KINDS = new Set(['google_doc', 'pdf', 'link']);
+const PRODUCT_DOMAINS = new Set(['program', 'kitchen']);
+const KITCHEN_TYPES = new Set(['cake', 'menu']);
 
 function pickField(body, camelName, snakeName, fallback = undefined) {
     if (body && Object.prototype.hasOwnProperty.call(body, camelName)) return body[camelName];
@@ -52,6 +54,30 @@ function cleanNullableString(value, maxLength) {
     const text = String(value).trim();
     if (!text) return null;
     return text.slice(0, maxLength);
+}
+
+function normalizeProductPayload(body = {}) {
+    const domainRaw = (cleanNullableString(pickField(body, 'domain', 'domain', 'program'), 30) || 'program').toLowerCase();
+    const domain = PRODUCT_DOMAINS.has(domainRaw) ? domainRaw : 'program';
+    const kitchenTypeRaw = (cleanNullableString(pickField(body, 'kitchenType', 'kitchen_type', null), 30) || '').toLowerCase();
+    const categoryRaw = (cleanNullableString(body.category, 30) || '').toLowerCase();
+    const kitchenType = domain === 'kitchen'
+        ? (KITCHEN_TYPES.has(kitchenTypeRaw) ? kitchenTypeRaw : (categoryRaw === 'menu' ? 'menu' : 'cake'))
+        : null;
+
+    return {
+        ...body,
+        domain,
+        kitchenType,
+        category: domain === 'kitchen' ? kitchenType : body.category,
+        shortDescription: cleanNullableString(pickField(body, 'shortDescription', 'short_description', null), 1200),
+        promoDescription: cleanNullableString(pickField(body, 'promoDescription', 'promo_description', null), 3000),
+        ingredients: cleanNullableString(pickField(body, 'ingredients', 'ingredients', null), 4000),
+        techCard: cleanNullableString(pickField(body, 'techCard', 'tech_card', null), 5000),
+        cakeDecoration: domain === 'kitchen' && kitchenType === 'cake'
+            ? cleanNullableString(pickField(body, 'cakeDecoration', 'cake_decoration', null), 3000)
+            : null
+    };
 }
 
 function normalizeSourceDocumentPayload(body, existing = {}) {
@@ -181,6 +207,13 @@ function mapProductRow(row) {
         ageRange: row.age_range,
         kidsCapacity: row.kids_capacity,
         description: row.description,
+        domain: row.domain || 'program',
+        kitchenType: row.kitchen_type || null,
+        shortDescription: row.short_description || null,
+        promoDescription: row.promo_description || null,
+        ingredients: row.ingredients || null,
+        techCard: row.tech_card || null,
+        cakeDecoration: row.cake_decoration || null,
         isPerChild: row.is_per_child,
         hasFiller: row.has_filler,
         isCustom: row.is_custom,
@@ -213,6 +246,12 @@ function validateProduct(body) {
     if (!body.category || typeof body.category !== 'string') {
         errors.push('category is required');
     }
+    if (body.domain && !PRODUCT_DOMAINS.has(body.domain)) {
+        errors.push('domain must be program or kitchen');
+    }
+    if (body.domain === 'kitchen' && !KITCHEN_TYPES.has(body.kitchenType)) {
+        errors.push('kitchenType must be cake or menu for kitchen products');
+    }
     if (body.duration === undefined || body.duration === null || typeof body.duration !== 'number' || body.duration < 0) {
         errors.push('duration is required (non-negative number)');
     }
@@ -231,10 +270,22 @@ router.use(authenticateToken);
 router.get('/', async (req, res) => {
     try {
         const activeOnly = req.query.active === 'true';
-        const query = activeOnly
-            ? `${PRODUCT_PRICE_JOIN} WHERE p.is_active = true ORDER BY p.category, p.sort_order LIMIT 1000`
-            : `${PRODUCT_PRICE_JOIN} ORDER BY p.category, p.sort_order LIMIT 1000`;
-        const result = await pool.query(query);
+        const domain = PRODUCT_DOMAINS.has(req.query.domain) ? req.query.domain : null;
+        const kitchenTypeQuery = req.query.kitchenType || req.query.kitchen_type;
+        const kitchenType = KITCHEN_TYPES.has(kitchenTypeQuery) ? kitchenTypeQuery : null;
+        const where = [];
+        const params = [];
+        if (activeOnly) where.push('p.is_active = true');
+        if (domain) {
+            params.push(domain);
+            where.push(`COALESCE(p.domain, 'program') = $${params.length}`);
+        }
+        if (kitchenType) {
+            params.push(kitchenType);
+            where.push(`p.kitchen_type = $${params.length}`);
+        }
+        const query = `${PRODUCT_PRICE_JOIN} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY COALESCE(p.domain, 'program'), p.category, p.sort_order LIMIT 1000`;
+        const result = await pool.query(query, params);
         res.json(result.rows.map(mapProductRow));
     } catch (err) {
         log.error('List products error', err);
@@ -400,7 +451,8 @@ router.patch('/:id/source-document', requireRole('admin', 'manager'), async (req
 router.post('/', requireRole('admin', 'manager'), async (req, res) => {
     const client = await pool.connect();
     try {
-        const errors = validateProduct(req.body);
+        const payload = normalizeProductPayload(req.body);
+        const errors = validateProduct(payload);
         if (errors.length > 0) {
             return res.status(400).json({ error: errors.join('; ') });
         }
@@ -409,18 +461,19 @@ router.post('/', requireRole('admin', 'manager'), async (req, res) => {
             code, label, name, icon, category, duration,
             price = 0, hosts = 1, ageRange, kidsCapacity,
             description, isPerChild = false, hasFiller = false,
-            isCustom = false, sortOrder = 0
-        } = req.body;
+            isCustom = false, sortOrder = 0, domain, kitchenType,
+            shortDescription, promoDescription, ingredients, techCard, cakeDecoration
+        } = payload;
 
         // Generate ID from code + timestamp
         const id = code.toLowerCase().replace(/[^a-zа-яіїєґ0-9]/gi, '') + '_' + Date.now();
 
         await client.query('BEGIN');
         const result = await client.query(
-            `INSERT INTO products (id, code, label, name, icon, category, duration, price, hosts, age_range, kids_capacity, description, is_per_child, has_filler, is_custom, sort_order, updated_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+            `INSERT INTO products (id, code, label, name, icon, category, duration, price, hosts, age_range, kids_capacity, description, domain, kitchen_type, short_description, promo_description, ingredients, tech_card, cake_decoration, is_per_child, has_filler, is_custom, sort_order, updated_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
              RETURNING *`,
-            [id, code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, isPerChild, hasFiller, isCustom, sortOrder, req.user.username]
+            [id, code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, cakeDecoration, isPerChild, hasFiller, isCustom, sortOrder, req.user.username]
         );
         await upsertProductPriceRule(client, result.rows[0], req.user.username);
         const product = await getProductWithPriceRule(client, id);
@@ -454,7 +507,8 @@ router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
             return res.status(404).json({ error: 'Product not found' });
         }
 
-        const errors = validateProduct(req.body);
+        const payload = normalizeProductPayload(req.body);
+        const errors = validateProduct(payload);
         if (errors.length > 0) {
             await client.query('ROLLBACK');
             return res.status(400).json({ error: errors.join('; ') });
@@ -464,17 +518,20 @@ router.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
             code, label, name, icon, category, duration,
             price = 0, hosts = 1, ageRange, kidsCapacity,
             description, isPerChild = false, hasFiller = false,
-            isCustom = false, isActive = true, sortOrder = 0
-        } = req.body;
+            isCustom = false, isActive = true, sortOrder = 0, domain, kitchenType,
+            shortDescription, promoDescription, ingredients, techCard, cakeDecoration
+        } = payload;
 
         const result = await client.query(
             `UPDATE products SET
                 code=$1, label=$2, name=$3, icon=$4, category=$5, duration=$6,
                 price=$7, hosts=$8, age_range=$9, kids_capacity=$10, description=$11,
-                is_per_child=$12, has_filler=$13, is_custom=$14, is_active=$15,
-                sort_order=$16, updated_at=NOW(), updated_by=$17
-             WHERE id=$18 RETURNING *`,
-            [code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, isPerChild, hasFiller, isCustom, isActive, sortOrder, req.user.username, id]
+                domain=$12, kitchen_type=$13, short_description=$14, promo_description=$15,
+                ingredients=$16, tech_card=$17, cake_decoration=$18,
+                is_per_child=$19, has_filler=$20, is_custom=$21, is_active=$22,
+                sort_order=$23, updated_at=NOW(), updated_by=$24
+             WHERE id=$25 RETURNING *`,
+            [code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, cakeDecoration, isPerChild, hasFiller, isCustom, isActive, sortOrder, req.user.username, id]
         );
         await upsertProductPriceRule(client, result.rows[0], req.user.username);
         const product = await getProductWithPriceRule(client, id);

@@ -5,7 +5,7 @@
  * consistent rail without copying HTML into each page.
  */
 (function () {
-    const MODES = new Set(['idle', 'thinking', 'busy', 'listening', 'speaking', 'muted', 'error', 'working', 'streaming', 'action', 'success']);
+    const MODES = new Set(['idle', 'thinking', 'busy', 'listening', 'speaking', 'muted', 'error', 'working', 'streaming', 'action', 'success', 'guide', 'warning']);
     const LABELS = {
         idle: 'ГОТОВА',
         thinking: 'ОБДУМУЮ',
@@ -13,7 +13,9 @@
         working: 'ПРАЦЮЮ',
         streaming: 'ВІДПОВІДАЮ',
         action: 'ПРОПОЗИЦІЯ',
+        guide: 'ВЕДУ',
         success: 'ГОТОВО',
+        warning: 'УВАГА',
         listening: 'СЛУХАЮ',
         speaking: 'ВІДПОВІДАЮ',
         muted: 'Тиша',
@@ -28,7 +30,9 @@
         speaking: 'streaming',
         streaming: 'streaming',
         action: 'action',
+        guide: 'guiding',
         success: 'success',
+        warning: 'warning',
         muted: 'ready',
         error: 'error'
     };
@@ -713,7 +717,7 @@
     }
 
     function isLiveMode(mode) {
-        return ['thinking', 'listening', 'speaking', 'busy', 'working', 'streaming', 'action'].includes(mode);
+        return ['thinking', 'listening', 'speaking', 'busy', 'working', 'streaming', 'action', 'guide', 'warning'].includes(mode);
     }
 
     function isAssistantTurnCancelled(turnId) {
@@ -784,13 +788,15 @@
         const text = state.tickerText || state.subtitle || '...';
         const displayText = assistantDisplayText(text) || '...';
         const snapshot = buildAssistantSnapshot();
+        const aiState = UI_STATES[state.mode] || 'ready';
         rail.dataset.mode = state.mode;
-        rail.dataset.aiState = UI_STATES[state.mode] || 'ready';
+        rail.dataset.aiState = aiState;
         rail.dataset.live = isLiveMode(state.mode) ? 'true' : 'false';
         rail.dataset.playbackState = state.playbackState || 'idle';
         rail.dataset.subtitleMode = state.subtitleMode || 'static';
         rail.dataset.voice = state.voiceEnabled ? 'on' : 'off';
         rail.dataset.turnActive = assistantTurnActive ? 'true' : 'false';
+        rail.dataset.motionState = `${state.mode}:${state.playbackState || 'idle'}`;
         stateEl.textContent = LABELS[state.mode] || LABELS.idle;
         stateEl.className = `assistant-rail-state assistant-state-${state.mode}`;
         const signalCount = document.getElementById('crmAssistantSignalCount');
@@ -813,8 +819,19 @@
         renderPanelSnapshot();
         const topStatus = document.getElementById('crmAssistantTopStatus');
         const topStatusLabel = document.getElementById('crmAssistantTopStatusLabel');
-        if (topStatus) topStatus.dataset.aiState = UI_STATES[state.mode] || 'ready';
+        if (topStatus) topStatus.dataset.aiState = aiState;
         if (topStatusLabel) topStatusLabel.textContent = (LABELS[state.mode] || LABELS.idle).toLowerCase();
+        const panelOverlay = document.getElementById('crmAssistantPanelOverlay');
+        const stageStatus = document.getElementById('crmAssistantStageStatus');
+        const stageSubtitle = document.getElementById('crmAssistantStageSubtitle');
+        if (panelOverlay) {
+            panelOverlay.dataset.mode = state.mode;
+            panelOverlay.dataset.aiState = aiState;
+            panelOverlay.dataset.voice = state.voiceEnabled ? 'on' : 'off';
+            panelOverlay.dataset.playbackState = state.playbackState || 'idle';
+        }
+        if (stageStatus) stageStatus.textContent = LABELS[state.mode] || LABELS.idle;
+        if (stageSubtitle) stageSubtitle.textContent = displayText;
         if (subtitlesWrap) {
             subtitlesWrap.title = displayText;
             subtitlesWrap.setAttribute('aria-label', `Відкрити відповідь Помічника у чаті: ${displayText}`);
@@ -836,7 +853,7 @@
             micBtn.disabled = assistantTurnActive && !listening;
         }
         if (stopBtn) {
-            const stoppable = ['thinking', 'busy', 'working', 'listening', 'speaking', 'streaming'].includes(state.mode)
+            const stoppable = ['thinking', 'busy', 'working', 'listening', 'speaking', 'streaming', 'guide'].includes(state.mode)
                 || Boolean(audioPlayer)
                 || Boolean(mediaRecorder && mediaRecorder.state === 'recording')
                 || assistantTurnActive;
@@ -2266,12 +2283,19 @@
     function expand() {
         const prev = document.getElementById('crmAssistantPanelOverlay');
         if (prev) {
+            document.getElementById('crmAssistantRail')?.setAttribute('data-expanded', 'true');
             renderHistory();
             return;
         }
         const overlay = document.createElement('div');
         overlay.id = 'crmAssistantPanelOverlay';
         overlay.className = 'crm-assistant-panel-overlay';
+        overlay.dataset.mode = state.mode;
+        overlay.dataset.aiState = UI_STATES[state.mode] || 'ready';
+        overlay.dataset.voice = state.voiceEnabled ? 'on' : 'off';
+        overlay.dataset.playbackState = state.playbackState || 'idle';
+        const stageStatusLabel = escapeHtml(LABELS[state.mode] || LABELS.idle);
+        const stageSubtitleText = escapeHtml(assistantDisplayText(state.subtitle || state.tickerText || 'Я готовий допомогти по цій сторінці.') || 'Я готовий допомогти по цій сторінці.');
         overlay.innerHTML = `
             <div class="crm-assistant-panel" role="dialog" aria-modal="true" aria-label="AI-провідник CRM">
                 <div class="crm-assistant-panel-header">
@@ -2284,6 +2308,21 @@
                         <button type="button" class="crm-assistant-panel-close" aria-label="Закрити" id="crmAssistantPanelClose">×</button>
                     </div>
                 </div>
+                <section class="crm-assistant-stage" aria-label="Стан Помічника">
+                    <div class="crm-assistant-stage-orb" aria-hidden="true">
+                        <span class="crm-assistant-stage-ring crm-assistant-stage-ring--outer"></span>
+                        <span class="crm-assistant-stage-ring crm-assistant-stage-ring--inner"></span>
+                        <span class="crm-assistant-stage-core"></span>
+                    </div>
+                    <div class="crm-assistant-stage-copy">
+                        <span id="crmAssistantStageStatus">${stageStatusLabel}</span>
+                        <strong>Живий центр керування</strong>
+                        <p id="crmAssistantStageSubtitle">${stageSubtitleText}</p>
+                    </div>
+                    <div class="crm-assistant-stage-meter" aria-hidden="true">
+                        <span></span><span></span><span></span><span></span>
+                    </div>
+                </section>
                 <div class="crm-assistant-panel-content" id="crmAssistantPanelContent">
                 <div class="crm-assistant-panel-snapshot" id="crmAssistantPanelSnapshot"></div>
                 <div class="crm-assistant-action-proposal" id="crmAssistantActionProposal"></div>
@@ -2327,6 +2366,7 @@
             if (event.target === overlay) closePanel();
         });
         document.body.appendChild(overlay);
+        document.getElementById('crmAssistantRail')?.setAttribute('data-expanded', 'true');
         pulseAssistantWindowBridge(overlay, { holdMs: 1400 });
         document.getElementById('crmAssistantPanelClose')?.addEventListener('click', closePanel);
         document.getElementById('crmAssistantOpenChatBtn')?.addEventListener('click', openCrmChatFromAssistant);
@@ -2347,6 +2387,7 @@
 
     function closePanel() {
         document.getElementById('crmAssistantPanelOverlay')?.remove();
+        document.getElementById('crmAssistantRail')?.setAttribute('data-expanded', 'false');
     }
 
     function renderHistory() {

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.43 - Жива сцена Помічника
+
+### Жива сцена Помічника [codex]
+- **Motion system** - Помічник отримав різні motion-стани для idle, hover, thinking, listening, speaking, guiding, success, warning і muted замість одного повторюваного pulse.
+- **Expanded stage** - повне вікно Помічника тепер має окрему сцену зі статусом, орбітою, meter-ритмом і state-aware анімаціями.
+- **State truth** - до runtime додано реальні `guide` та `warning` стани, а CSS читає їх через `data-ai-state`, `data-mode`, `data-playback-state`.
+- **Reduced motion** - для користувачів із reduced-motion рухи вимикаються, але стан лишається видимим через спокійний фокус і кольоровий акцент.
+
+---
+
 ## v0.60.42 - Products Kitchen: торти, меню та кухонні поля
 
 ### Products Kitchen: торти, меню та кухонні поля [codex]

@@ -102,7 +102,7 @@ describe('Graduation diploma helper', () => {
         assert.equal(pdf.subarray(0, 5).toString('latin1'), '%PDF-');
         const pdfSource = pdf.toString('latin1');
         assert.match(pdfSource, /\/Count 2/);
-        assert.match(pdfSource, /Nunito-Black/);
-        assert.match(pdfSource, /Nunito-Bold/);
+        assert.match(pdfSource, /NotoSerif-Black/);
+        assert.match(pdfSource, /NotoSerif-Bold/);
     });
 });

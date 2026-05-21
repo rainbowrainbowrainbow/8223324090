@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.35 - Graduation Diploma Formal PDF Typography
+
+### Graduation Diploma Formal PDF Typography [codex]
+- **PDF title contrast** - заголовок `ДИПЛОМ ВИПУСКНИКА` у PDF export більше не друкується жовтим на жовто-зеленому шаблоні: він став темно-синім, із тонкою світлою обводкою та стриманою тінню.
+- **Строгіші PDF-шрифти** - дипломний PDF перейшов на embedded Noto Serif Regular/Bold/Black для кирилиці, щоб заголовок, ПІБ, опис, побажання, рік і клас виглядали більш урочисто, а не як декоративний rounded-font.
+- **Visual PDF smoke** - згенеровано локальний PDF диплома, відрендерено першу сторінку в PNG через `pypdfium2` і перевірено реальний output після експорту.
+- **Regression coverage** - тест дипломів перевіряє, що batch PDF лишається multi-page і embed-ить `NotoSerif-Black` та `NotoSerif-Bold`.
+
+---
+
 ## v0.60.34 - Graduation Diploma PDF Typography
 
 ### Graduation Diploma PDF Typography [codex]

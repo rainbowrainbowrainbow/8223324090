@@ -1071,7 +1071,7 @@ const DashboardPage = (() => {
             recentState: {
                 mode: _assistantRailState.mode,
                 voiceEnabled: _assistantRailState.voiceEnabled,
-                previewRole: localStorage.getItem('pzp_test_role') || ''
+                previewRole: window.RolePreview?.getPreviewRole?.() || ''
             }
         };
     }
@@ -1087,7 +1087,7 @@ const DashboardPage = (() => {
             widgets: getDashboardAssistantWidgetsContext(),
             scenePreset: effectiveRole,
             sceneTitle: scene?.title || '',
-            previewRole: localStorage.getItem('pzp_test_role') || '',
+            previewRole: window.RolePreview?.getPreviewRole?.() || '',
             intent: 'Поясни dashboard, bottlenecks і наступну найкориснішу дію.'
         };
     }
@@ -2688,9 +2688,8 @@ const DashboardPage = (() => {
     }
 
     function getEffectiveDashboardRole() {
-        const ownRole = AppState.currentUser?.role || 'manager';
-        const testRole = localStorage.getItem('pzp_test_role');
-        if (ownRole === 'creator' && testRole && ROLE_DASHBOARD_SCENES[testRole]) return testRole;
+        const shellRole = window.RolePreview?.getEffectiveRole?.() || (typeof getUserRole === 'function' ? getUserRole() : '');
+        const ownRole = shellRole || AppState.currentUser?.role || 'manager';
         return ownRole;
     }
 
@@ -2897,10 +2896,14 @@ const DashboardPage = (() => {
         const wrapper = document.getElementById('dashboardRolePreview');
         const select = document.getElementById('dashboardRolePreviewSelect');
         if (!wrapper || !select) return;
-        const canPreview = AppState.currentUser?.role === 'creator';
+        const canPreview = window.RolePreview?.canPreview?.() || false;
         wrapper.hidden = !canPreview;
         if (!canPreview) return;
-        select.value = localStorage.getItem('pzp_test_role') || '';
+        const options = (window.RolePreview?.getAvailableRoles?.() || [])
+            .map(role => `<option value="${escapeHtml(role)}">${escapeHtml(roleDisplayName(role))}</option>`)
+            .join('');
+        select.innerHTML = `<option value="">Моя роль</option>${options}`;
+        select.value = window.RolePreview?.getPreviewRole?.() || '';
         const label = document.getElementById('dashboardRolePreviewCurrent');
         if (label) {
             const role = getEffectiveDashboardRole();
@@ -4090,12 +4093,12 @@ const DashboardPage = (() => {
     }
 
     function setDashboardRolePreview(role) {
-        if (AppState.currentUser?.role !== 'creator') return;
+        if (!window.RolePreview?.canPreview?.()) return;
         const nextRole = String(role || '').trim();
         if (!nextRole) {
-            localStorage.removeItem('pzp_test_role');
-        } else if (ROLE_DASHBOARD_SCENES[nextRole]) {
-            localStorage.setItem('pzp_test_role', nextRole);
+            window.RolePreview.clearPreviewRole();
+        } else {
+            window.RolePreview.setPreviewRole(nextRole);
         }
         renderWidgets();
         announceDashboardContextToAssistant();
@@ -5314,10 +5317,10 @@ const DashboardPage = (() => {
                 </label>
             </div>`;
         }).join('');
-        const rolePreviewOptions = ['manager', 'senior_manager', 'director', 'vice_director', 'hr', 'art_director', 'admin']
+        const rolePreviewOptions = (window.RolePreview?.getAvailableRoles?.() || ['manager', 'senior_manager', 'director', 'vice_director', 'hr', 'art_director', 'admin'])
             .map(role => `<option value="${role}">${escapeHtml(roleDisplayName(role))} (${escapeHtml(role)})</option>`)
             .join('');
-        const rolePreviewMarkup = AppState.currentUser?.role === 'creator' ? `
+        const rolePreviewMarkup = window.RolePreview?.canPreview?.() ? `
             <div class="dashboard-settings-scene-row dashboard-settings-role-preview">
                 <label for="settingsRolePreviewSelect">Перегляд як роль</label>
                 <select id="settingsRolePreviewSelect" class="dashboard-role-preview-select" onchange="DashboardPage.setDashboardRolePreview(this.value)">
@@ -5412,7 +5415,7 @@ const DashboardPage = (() => {
         document.body.appendChild(overlay);
         _settingsOverlayInitialState = getSettingsOverlayState();
         const settingsRolePreviewSelect = document.getElementById('settingsRolePreviewSelect');
-        if (settingsRolePreviewSelect) settingsRolePreviewSelect.value = localStorage.getItem('pzp_test_role') || '';
+        if (settingsRolePreviewSelect) settingsRolePreviewSelect.value = window.RolePreview?.getPreviewRole?.() || '';
         if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay, {
             isDirty: isSettingsOverlayDirty
         });
@@ -6576,6 +6579,13 @@ const DashboardPage = (() => {
     function escapeJsString(str) {
         return String(str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '');
     }
+
+    window.addEventListener('rolePreviewChanged', () => {
+        if (!_config) return;
+        renderWidgets();
+        updateDashboardRolePreviewControl();
+        announceDashboardContextToAssistant();
+    });
 
     return {
         init,

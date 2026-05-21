@@ -184,10 +184,12 @@ async function login(username, password) {
         localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
         // v33.14.0: Init sidebar user card
         if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
-        // v24.3.0: Dashboard is the landing page for all roles
+        // v0.60.44: role-aware shell start page. This is UI routing only;
+        // backend/API authorization still uses the real authenticated role.
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
-        if (currentPath !== '/dashboard') {
-            window.location.href = '/dashboard';
+        const startPage = getRoleStartPage(data.user?.role || AppState.currentUser?.role || 'manager');
+        if (currentPath !== startPage) {
+            window.location.href = startPage;
             return { success: true };
         }
         showMainApp();
@@ -534,16 +536,292 @@ const ACTION_PERMISSIONS = {
     export_data:     _MANAGER_UP,
 };
 
-function getUserRole() {
-    // v22.0.0: Test panel support — creator can simulate other roles
-    const testRole = localStorage.getItem('pzp_test_role');
-    if (testRole && AppState.currentUser && AppState.currentUser.role === 'creator') {
-        return testRole;
+const ROLE_PREVIEW_STORAGE_KEY = 'pzp_test_role';
+const ROLE_PREVIEW_SESSION_KEY = 'testRole';
+
+const ROLE_SHELL_DEFAULT = {
+    startPage: '/dashboard',
+    dashboardPreset: '_default',
+    quickAccess: ['/dashboard', '/tasks', '/chat', '/certificates/new']
+};
+
+const ROLE_SHELL_CONFIG = {
+    creator: {
+        startPage: '/dashboard',
+        dashboardPreset: 'creator',
+        quickAccess: ['/dashboard', '/maysternya-doli', '/center', '/tasks', '/chat']
+    },
+    director: {
+        startPage: '/dashboard',
+        dashboardPreset: 'director',
+        quickAccess: ['/dashboard', '/center', '/reports', '/tasks', '/chat']
+    },
+    vice_director: {
+        startPage: '/dashboard',
+        dashboardPreset: 'vice_director',
+        quickAccess: ['/dashboard', '/', '/center', '/tasks', '/chat']
+    },
+    senior_manager: {
+        startPage: '/dashboard',
+        dashboardPreset: 'senior_manager',
+        quickAccess: ['/dashboard', '/', '/sales-funnel', '/tasks', '/chat']
+    },
+    manager: {
+        startPage: '/dashboard',
+        dashboardPreset: 'manager',
+        quickAccess: ['/dashboard', '/', '/sales-funnel', '/tasks', '/chat']
+    },
+    admin: {
+        startPage: '/',
+        dashboardPreset: 'admin',
+        quickAccess: ['/', '/tasks', '/staff', '/warehouse', '/chat']
+    },
+    reception: {
+        startPage: '/',
+        dashboardPreset: 'reception',
+        quickAccess: ['/', '/tasks', '/customers', '/certificates/new', '/chat']
+    },
+    animator: {
+        startPage: '/tasks',
+        dashboardPreset: 'animator',
+        quickAccess: ['/tasks', '/', '/programs', '/chat', '/training']
+    },
+    instructor: {
+        startPage: '/tasks',
+        dashboardPreset: 'instructor',
+        quickAccess: ['/tasks', '/', '/training', '/chat']
+    },
+    senior_instructor: {
+        startPage: '/tasks',
+        dashboardPreset: 'senior_instructor',
+        quickAccess: ['/tasks', '/', '/training', '/staff', '/chat']
+    },
+    art_director: {
+        startPage: '/programs',
+        dashboardPreset: 'art_director',
+        quickAccess: ['/dashboard', '/programs', '/art', '/designs', '/chat']
+    },
+    marketer: {
+        startPage: '/sales-funnel',
+        dashboardPreset: 'marketer',
+        quickAccess: ['/dashboard', '/sales-funnel', '/content', '/afisha', '/chat']
+    },
+    accountant: {
+        startPage: '/finance',
+        dashboardPreset: 'accountant',
+        quickAccess: ['/dashboard', '/finance', '/analytics', '/reports', '/tasks']
+    },
+    hr: {
+        startPage: '/hr',
+        dashboardPreset: 'hr',
+        quickAccess: ['/dashboard', '/hr', '/staff', '/training', '/tasks']
+    },
+    security: {
+        startPage: '/guardian-ops',
+        dashboardPreset: 'security',
+        quickAccess: ['/guardian-ops', '/staff', '/tasks', '/chat']
+    },
+    head_chef: {
+        startPage: '/tasks',
+        dashboardPreset: 'head_chef',
+        quickAccess: ['/tasks', '/programs', '/warehouse', '/chat']
+    },
+    cook: {
+        startPage: '/tasks',
+        dashboardPreset: 'cook',
+        quickAccess: ['/tasks', '/programs', '/warehouse', '/chat']
+    },
+    head_pastry: {
+        startPage: '/tasks',
+        dashboardPreset: 'head_pastry',
+        quickAccess: ['/tasks', '/programs', '/warehouse', '/chat']
+    },
+    pastry_chef: {
+        startPage: '/tasks',
+        dashboardPreset: 'pastry_chef',
+        quickAccess: ['/tasks', '/programs', '/warehouse', '/chat']
+    },
+    barista: {
+        startPage: '/tasks',
+        dashboardPreset: 'barista',
+        quickAccess: ['/tasks', '/', '/chat']
+    },
+    cleaning: {
+        startPage: '/tasks',
+        dashboardPreset: 'cleaning',
+        quickAccess: ['/tasks', '/chat']
+    },
+    maintenance: {
+        startPage: '/tasks',
+        dashboardPreset: 'maintenance',
+        quickAccess: ['/tasks', '/warehouse', '/chat']
     }
-    return AppState.currentUser ? AppState.currentUser.role : null;
+};
+
+function _normalizeRoleKey(role) {
+    const key = String(role || '').trim();
+    return ROLE_LEVEL[key] !== undefined ? key : '';
+}
+
+function _getRoleConfig(role) {
+    const key = _normalizeRoleKey(role);
+    return {
+        ...ROLE_SHELL_DEFAULT,
+        ...(key && ROLE_SHELL_CONFIG[key] ? ROLE_SHELL_CONFIG[key] : {})
+    };
+}
+
+function getRoleStartPage(role) {
+    return _getRoleConfig(role).startPage || ROLE_SHELL_DEFAULT.startPage;
+}
+
+function getRealUserRole(user = AppState.currentUser) {
+    return _normalizeRoleKey(user?.role || user?.account_role || user?.accountRole) || null;
+}
+
+function canPreviewRoles(user = AppState.currentUser) {
+    return ['creator', 'director'].includes(getRealUserRole(user));
+}
+
+function getPreviewableRoles(user = AppState.currentUser) {
+    const realRole = getRealUserRole(user);
+    if (!canPreviewRoles(user)) return realRole ? [realRole] : [];
+    if (realRole === 'creator') return ROLE_HIERARCHY.slice();
+    const max = ROLE_LEVEL[realRole] ?? -1;
+    return ROLE_HIERARCHY.filter(role => role !== 'creator' && (ROLE_LEVEL[role] ?? -1) <= max);
+}
+
+function getStoredPreviewRole(user = AppState.currentUser) {
+    const raw = sessionStorage.getItem(ROLE_PREVIEW_SESSION_KEY) || localStorage.getItem(ROLE_PREVIEW_STORAGE_KEY) || '';
+    const role = _normalizeRoleKey(raw);
+    if (!role || !canPreviewRoles(user) || !getPreviewableRoles(user).includes(role)) {
+        if (raw) {
+            sessionStorage.removeItem(ROLE_PREVIEW_SESSION_KEY);
+            localStorage.removeItem(ROLE_PREVIEW_STORAGE_KEY);
+        }
+        return null;
+    }
+    const realRole = getRealUserRole(user);
+    return role === realRole ? null : role;
+}
+
+function getEffectiveUserRole(user = AppState.currentUser) {
+    return getStoredPreviewRole(user) || getRealUserRole(user);
+}
+
+const RoleShell = {
+    getConfig(role = getEffectiveUserRole()) {
+        return _getRoleConfig(role);
+    },
+    getStartPage(role = getEffectiveUserRole()) {
+        return getRoleStartPage(role);
+    },
+    getQuickAccessHrefs(role = getEffectiveUserRole()) {
+        const config = _getRoleConfig(role);
+        return Array.isArray(config.quickAccess) ? config.quickAccess.slice() : ROLE_SHELL_DEFAULT.quickAccess.slice();
+    },
+    getDashboardPreset(role = getEffectiveUserRole()) {
+        return _getRoleConfig(role).dashboardPreset || role || ROLE_SHELL_DEFAULT.dashboardPreset;
+    },
+    getRoleLabel(role) {
+        return ROLE_NAMES[role] || role || 'CRM';
+    }
+};
+window.RoleShell = RoleShell;
+
+const RolePreview = {
+    canPreview(user = AppState.currentUser) {
+        return canPreviewRoles(user);
+    },
+    getRealRole(user = AppState.currentUser) {
+        return getRealUserRole(user);
+    },
+    getPreviewRole(user = AppState.currentUser) {
+        return getStoredPreviewRole(user);
+    },
+    getEffectiveRole(user = AppState.currentUser) {
+        return getEffectiveUserRole(user);
+    },
+    getAvailableRoles(user = AppState.currentUser) {
+        return getPreviewableRoles(user);
+    },
+    setPreviewRole(role) {
+        const nextRole = _normalizeRoleKey(role);
+        if (!canPreviewRoles() || !nextRole || !getPreviewableRoles().includes(nextRole)) return false;
+        if (nextRole === getRealUserRole()) return this.clearPreviewRole();
+        sessionStorage.setItem(ROLE_PREVIEW_SESSION_KEY, nextRole);
+        localStorage.setItem(ROLE_PREVIEW_STORAGE_KEY, nextRole);
+        this.refreshShell({ mode: 'preview', role: nextRole });
+        if (typeof showNotification === 'function') {
+            showNotification(`Перегляд як: ${RoleShell.getRoleLabel(nextRole)}`, 'success');
+        }
+        return true;
+    },
+    clearPreviewRole() {
+        sessionStorage.removeItem(ROLE_PREVIEW_SESSION_KEY);
+        localStorage.removeItem(ROLE_PREVIEW_STORAGE_KEY);
+        const role = getRealUserRole();
+        this.refreshShell({ mode: 'reset', role });
+        if (typeof showNotification === 'function') {
+            showNotification('Перегляд ролі скинуто', 'success');
+        }
+        return true;
+    },
+    getState(user = AppState.currentUser) {
+        const realRole = getRealUserRole(user);
+        const previewRole = getStoredPreviewRole(user);
+        const effectiveRole = previewRole || realRole;
+        return {
+            realRole,
+            previewRole,
+            effectiveRole,
+            canPreview: canPreviewRoles(user),
+            roles: getPreviewableRoles(user),
+            realLabel: RoleShell.getRoleLabel(realRole),
+            previewLabel: previewRole ? RoleShell.getRoleLabel(previewRole) : '',
+            effectiveLabel: RoleShell.getRoleLabel(effectiveRole),
+            startPage: getRoleStartPage(effectiveRole),
+            dashboardPreset: RoleShell.getDashboardPreset(effectiveRole),
+            quickAccess: RoleShell.getQuickAccessHrefs(effectiveRole)
+        };
+    },
+    refreshShell(detail = {}) {
+        const state = this.getState();
+        document.body?.classList.toggle('role-preview-active', Boolean(state.previewRole));
+        if (state.previewRole) {
+            document.body?.setAttribute('data-preview-role', state.previewRole);
+        } else {
+            document.body?.removeAttribute('data-preview-role');
+        }
+        if (typeof Sidebar !== 'undefined') {
+            Sidebar.render?.();
+            Sidebar.initUserCard?.();
+        }
+        document.querySelectorAll('[data-page-access]').forEach(el => {
+            const page = _normalizePagePath(el.dataset.pageAccess);
+            if (!page) return;
+            el.classList.toggle('hidden', _isPageAllowedForRole(page, state.effectiveRole) !== true);
+        });
+        document.querySelectorAll('.sidebar-admin-only').forEach(el => {
+            el.classList.toggle('hidden', !['creator', 'director'].includes(state.effectiveRole));
+        });
+        document.querySelectorAll('.sidebar-no-viewer').forEach(el => {
+            const viewerRoles = ['waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista', 'reception', 'animator', 'pastry_chef', 'cook', 'instructor'];
+            el.classList.toggle('hidden', viewerRoles.includes(state.effectiveRole));
+        });
+        window.dispatchEvent(new CustomEvent('rolePreviewChanged', { detail: { ...state, ...detail } }));
+        window.dispatchEvent(new CustomEvent('roleSwitched', { detail: { role: state.effectiveRole, ...detail } }));
+    }
+};
+window.RolePreview = RolePreview;
+
+function getUserRole() {
+    return getEffectiveUserRole();
 }
 
 function getUserRoles() {
+    const previewRole = getStoredPreviewRole();
+    if (previewRole) return [previewRole];
     const roles = [];
     const primary = getUserRole();
     if (primary) roles.push(primary);
@@ -602,7 +880,7 @@ function _isPageAllowedForRole(page, role) {
 
 function canAccessPage(page) {
     const normalized = _normalizePagePath(page);
-    if (normalized && getUserPageAllowlist().includes(normalized)) return true;
+    if (!getStoredPreviewRole() && normalized && getUserPageAllowlist().includes(normalized)) return true;
     return getUserRoles().some(role => _isPageAllowedForRole(page, role) === true);
 }
 
@@ -1967,11 +2245,11 @@ const RoleSwitcher = (() => {
     let _rendered = false;
 
     function isCreator() {
-        return AppState.currentUser && AppState.currentUser.role === 'creator';
+        return RolePreview.getRealRole() === 'creator';
     }
 
     function getTestRole() {
-        return sessionStorage.getItem('testRole') || localStorage.getItem('pzp_test_role') || null;
+        return RolePreview.getPreviewRole();
     }
 
     function getImpersonating() {
@@ -2042,12 +2320,8 @@ const RoleSwitcher = (() => {
         if (!container) return;
 
         const currentTestRole = getTestRole();
-        const realRole = AppState.currentUser.role;
-        const roles = [
-            'creator', 'director', 'vice_director', 'senior_manager', 'manager',
-            'admin', 'animator', 'reception', 'accountant', 'art_director',
-            'hr', 'instructor', 'head_chef', 'barista', 'cleaning'
-        ];
+        const realRole = RolePreview.getRealRole();
+        const roles = RolePreview.getAvailableRoles();
 
         container.innerHTML = roles.map(r => {
             const name = ROLE_NAMES[r] || r;

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.44 - Рольовий preview shell
+
+### Рольовий preview shell [codex]
+- **Profile role switcher** - роль у profile summary card стала керованим entrypoint: creator/director можуть відкрити меню й переглянути CRM як іншу роль.
+- **RoleShell runtime** - додано спільний контракт `RolePreview` / `RoleShell` для реальної ролі, preview-ролі, effective UI role, стартових сторінок і quick access.
+- **Role-aware surfaces** - sidebar, quick access і dashboard-сцена читають effective role з одного runtime, тому preview змінює shell-композицію, а не тільки текст бейджа.
+- **Security boundary** - preview впливає лише на frontend shell; backend/API лишаються на реальному JWT і реальній авторизації користувача.
+
+---
+
 ## v0.60.43 - Жива сцена Помічника
 
 ### Жива сцена Помічника [codex]

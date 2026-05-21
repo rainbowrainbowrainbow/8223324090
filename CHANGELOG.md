@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.34 - Graduation Diploma PDF Typography
+
+### Graduation Diploma PDF Typography [codex]
+- **PDF title contrast** - заголовок `ДИПЛОМ ВИПУСКНИКА` у серверному PDF export тепер друкується товстим шаром із реальним Nunito Black, жовтим fill і помаранчевою обводкою, тому не губиться на жовто-зеленому шаблоні.
+- **PDF font weights** - для імені, опису, побажання, року і класу додано Nunito Bold/Black assets та реєстрацію у PDFKit замість одного тонкого regular-font fallback.
+- **Visual PDF smoke** - згенеровано і відрендерено локальний PDF диплома у PNG через `pypdfium2`, щоб перевірити саме output після експорту, а не лише HTML preview.
+- **Regression coverage** - тест дипломів перевіряє, що batch PDF лишається multi-page і справді embed-ить `Nunito-Black` та `Nunito-Bold`.
+
+---
+
 ## v0.60.33 - Light Theme Sidebar Density
 
 ### Light Theme Sidebar Density [codex]

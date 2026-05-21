@@ -8,6 +8,8 @@ const VALID_GENDER_SOURCES = new Set(['manual', 'suggested', 'imported', 'unknow
 const VALID_DIPLOMA_STATUSES = new Set(['draft', 'generated', 'printed', 'exported']);
 const ROOT_DIR = path.resolve(__dirname, '..');
 const PDF_FONT_PATH = path.join(ROOT_DIR, 'assets', 'fonts', 'Nunito.ttf');
+const PDF_FONT_BOLD_PATH = path.join(ROOT_DIR, 'assets', 'fonts', 'Nunito-Bold.ttf');
+const PDF_FONT_BLACK_PATH = path.join(ROOT_DIR, 'assets', 'fonts', 'Nunito-Black.ttf');
 const A4_PORTRAIT = { width: 595.28, height: 841.89 };
 
 const DEFAULT_DIPLOMA_TEMPLATE = {
@@ -384,6 +386,22 @@ function pdfFontSize(doc, text, width, maxHeight, startSize, minSize, lineGap = 
     return Math.max(size, minSize);
 }
 
+function pdfTextWeightOffsets(weight) {
+    if (weight === 'black') {
+        return [
+            [0, 0], [0.36, 0], [-0.36, 0], [0, 0.36], [0, -0.36],
+            [0.24, 0.24], [-0.24, 0.24], [0.24, -0.24], [-0.24, -0.24]
+        ];
+    }
+    if (weight === 'bold') {
+        return [[0, 0], [0.24, 0], [-0.24, 0], [0, 0.24], [0, -0.24]];
+    }
+    if (weight === 'semibold') {
+        return [[0, 0], [0.16, 0], [-0.16, 0], [0, 0.16]];
+    }
+    return [[0, 0]];
+}
+
 function drawPdfText(doc, text, {
     x = 0.5,
     y,
@@ -395,7 +413,11 @@ function drawPdfText(doc, text, {
     font = 'Nunito',
     lineGap = 0,
     shadowColor = null,
-    shadowOffset = 0
+    shadowOffset = 0,
+    strokeColor = null,
+    strokeWidth = 0,
+    weight = 'regular',
+    characterSpacing = 0
 }) {
     const content = pdfText(text);
     if (!content) return;
@@ -407,20 +429,33 @@ function drawPdfText(doc, text, {
     doc.font(font);
     const finalSize = pdfFontSize(doc, content, blockWidth, maxBlockHeight, size, minSize, lineGap);
     doc.fontSize(finalSize);
-
-    if (shadowColor && shadowOffset) {
-        doc.fillColor(shadowColor).text(content, blockX, blockY + shadowOffset, {
-            width: blockWidth,
-            align: 'center',
-            lineGap
-        });
-    }
-
-    doc.fillColor(color).text(content, blockX, blockY, {
+    const textOptions = {
         width: blockWidth,
         align: 'center',
-        lineGap
-    });
+        lineGap,
+        characterSpacing
+    };
+
+    doc.save();
+    if (shadowColor && shadowOffset) {
+        doc.fillColor(shadowColor).text(content, blockX, blockY + shadowOffset, textOptions);
+    }
+
+    if (strokeColor && strokeWidth) {
+        doc.lineWidth(strokeWidth)
+            .strokeColor(strokeColor)
+            .fillColor(color)
+            .text(content, blockX, blockY, {
+                ...textOptions,
+                fill: true,
+                stroke: true
+            });
+    }
+
+    for (const [offsetX, offsetY] of pdfTextWeightOffsets(weight)) {
+        doc.fillColor(color).text(content, blockX + offsetX, blockY + offsetY, textOptions);
+    }
+    doc.restore();
 }
 
 function drawDiplomaPdfPage(doc, child, template = DEFAULT_DIPLOMA_TEMPLATE, quote = {}) {
@@ -446,12 +481,17 @@ function drawDiplomaPdfPage(doc, child, template = DEFAULT_DIPLOMA_TEMPLATE, quo
     drawPdfText(doc, title, {
         y: 0.169,
         width: 0.74,
-        size: 31,
-        minSize: 22,
+        size: 33,
+        minSize: 23,
         maxHeight: 0.07,
-        color: '#ffe600',
-        shadowColor: '#f05a24',
-        shadowOffset: 2.2
+        font: 'NunitoBlack',
+        color: '#fff04a',
+        shadowColor: '#9b5f00',
+        shadowOffset: 2.4,
+        strokeColor: '#f05a24',
+        strokeWidth: 1.55,
+        weight: 'black',
+        characterSpacing: 0.45
     });
     drawPdfText(doc, 'Нагороджується', {
         y: 0.251,
@@ -459,7 +499,9 @@ function drawDiplomaPdfPage(doc, child, template = DEFAULT_DIPLOMA_TEMPLATE, quo
         size: 24,
         minSize: 18,
         maxHeight: 0.06,
-        color: '#d85a1b'
+        font: 'NunitoBold',
+        color: '#d85a1b',
+        weight: 'semibold'
     });
     drawPdfText(doc, child.fullName, {
         y: 0.306,
@@ -467,8 +509,10 @@ function drawDiplomaPdfPage(doc, child, template = DEFAULT_DIPLOMA_TEMPLATE, quo
         size: 36,
         minSize: 22,
         maxHeight: 0.14,
+        font: 'NunitoBlack',
         color: '#2459a8',
-        lineGap: -1
+        lineGap: -1,
+        weight: 'black'
     });
     drawPdfText(doc, description, {
         y: 0.42,
@@ -476,8 +520,10 @@ function drawDiplomaPdfPage(doc, child, template = DEFAULT_DIPLOMA_TEMPLATE, quo
         size: descriptionLength > 170 || denseCopy ? 18 : (descriptionLength > 115 ? 20 : 22),
         minSize: 14,
         maxHeight: 0.18,
+        font: 'NunitoBold',
         color: '#3c67b1',
-        lineGap: -0.4
+        lineGap: -0.4,
+        weight: 'bold'
     });
     drawPdfText(doc, wish, {
         y: denseCopy ? 0.587 : 0.584,
@@ -485,8 +531,10 @@ function drawDiplomaPdfPage(doc, child, template = DEFAULT_DIPLOMA_TEMPLATE, quo
         size: wishLength > 155 || denseCopy ? 17 : (wishLength > 105 ? 20 : 23),
         minSize: 13,
         maxHeight: 0.16,
+        font: 'NunitoBold',
         color: '#e75a1c',
-        lineGap: -0.2
+        lineGap: -0.2,
+        weight: 'semibold'
     });
     drawPdfText(doc, issueYear, {
         x: 0.293,
@@ -495,7 +543,9 @@ function drawDiplomaPdfPage(doc, child, template = DEFAULT_DIPLOMA_TEMPLATE, quo
         size: 19,
         minSize: 15,
         maxHeight: 0.06,
-        color: '#2f64b8'
+        font: 'NunitoBold',
+        color: '#2f64b8',
+        weight: 'bold'
     });
 
     if (child.classLabel) {
@@ -505,7 +555,9 @@ function drawDiplomaPdfPage(doc, child, template = DEFAULT_DIPLOMA_TEMPLATE, quo
             size: 21,
             minSize: 15,
             maxHeight: 0.09,
-            color: '#2f64b8'
+            font: 'NunitoBold',
+            color: '#2f64b8',
+            weight: 'bold'
         });
     }
 
@@ -543,6 +595,8 @@ function buildDiplomaPdfBuffer(children, template, quote = {}) {
 
         if (fs.existsSync(PDF_FONT_PATH)) {
             doc.registerFont('Nunito', PDF_FONT_PATH);
+            doc.registerFont('NunitoBold', fs.existsSync(PDF_FONT_BOLD_PATH) ? PDF_FONT_BOLD_PATH : PDF_FONT_PATH);
+            doc.registerFont('NunitoBlack', fs.existsSync(PDF_FONT_BLACK_PATH) ? PDF_FONT_BLACK_PATH : PDF_FONT_PATH);
         }
 
         for (const child of childList) {

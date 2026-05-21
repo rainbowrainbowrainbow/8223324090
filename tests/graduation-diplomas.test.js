@@ -100,6 +100,9 @@ describe('Graduation diploma helper', () => {
         const pdf = await buildDiplomaPdfBuffer(children, null, { quote_number: 'GRAD-TEST' });
         assert.ok(Buffer.isBuffer(pdf));
         assert.equal(pdf.subarray(0, 5).toString('latin1'), '%PDF-');
-        assert.match(pdf.toString('latin1'), /\/Count 2/);
+        const pdfSource = pdf.toString('latin1');
+        assert.match(pdfSource, /\/Count 2/);
+        assert.match(pdfSource, /Nunito-Black/);
+        assert.match(pdfSource, /Nunito-Bold/);
     });
 });

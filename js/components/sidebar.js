@@ -1113,10 +1113,6 @@ const Sidebar = (() => {
                         <span class="sidebar-identity-title-row">
                             <span class="sidebar-identity-title-line">
                                 <span class="sidebar-identity-name" id="sidebarIdentityName">Event Genix</span>
-                                <span class="sidebar-identity-health" id="sidebarIdentityHealth">
-                                    <span class="sidebar-identity-health-dot" aria-hidden="true"></span>
-                                    <span id="sidebarIdentityHealthLabel">Готово</span>
-                                </span>
                             </span>
                             <span class="sidebar-identity-role" id="sidebarIdentityRole">CRM</span>
                         </span>

@@ -112,6 +112,87 @@
     display: flex;
     gap: 12px;
 }
+
+/* v0.60.37: shared formModal must keep submit actions on-screen on tall forms. */
+.confirm-overlay.form-modal-overlay {
+    align-items: center;
+    padding: 16px;
+}
+
+.confirm-dialog.form-modal-dialog {
+    display: flex;
+    flex-direction: column;
+    max-width: min(520px, calc(100vw - 32px)) !important;
+    max-height: calc(100dvh - 32px);
+    padding: 24px 24px 18px;
+    overflow: hidden;
+}
+
+.form-modal-dialog .confirm-icon {
+    width: 46px;
+    height: 46px;
+    margin-bottom: 12px;
+    font-size: 23px;
+    flex: 0 0 auto;
+}
+
+.form-modal-dialog .confirm-message {
+    margin-bottom: 12px;
+    flex: 0 0 auto;
+}
+
+.form-modal-dialog .form-modal-fields {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    padding: 0 4px 2px;
+    margin: 4px -4px 14px !important;
+}
+
+.form-modal-dialog .confirm-actions {
+    flex: 0 0 auto;
+    padding-top: 12px;
+    border-top: 1px solid rgba(148, 163, 184, 0.18);
+    background: var(--white);
+}
+
+.form-modal-dialog-compact {
+    padding-top: 22px;
+}
+
+.form-modal-dialog-compact .confirm-icon {
+    width: 42px;
+    height: 42px;
+    margin-bottom: 10px;
+    font-size: 21px;
+}
+
+body.dark-mode .form-modal-dialog .confirm-actions {
+    background: #1e1e32;
+    border-top-color: rgba(255,255,255,0.08);
+}
+
+@media (max-height: 760px) {
+    .confirm-overlay.form-modal-overlay {
+        align-items: stretch;
+    }
+
+    .confirm-dialog.form-modal-dialog {
+        max-height: calc(100dvh - 24px);
+        padding: 18px 20px 16px;
+        align-self: center;
+    }
+
+    .form-modal-dialog .confirm-icon {
+        display: none;
+    }
+
+    .form-modal-dialog .confirm-message {
+        margin-bottom: 10px;
+    }
+}
+
 .confirm-btn {
     flex: 1;
     padding: 13px 20px;

@@ -7887,6 +7887,11 @@ body:not(.dark-mode) .sidebar-nav:not(.collapsed) .sidebar-identity-role {
   color: color-mix(in srgb, var(--sb-enterprise-muted) 90%, var(--sb-enterprise-text)) !important;
 }
 
+.sidebar-nav:not(.collapsed) .sidebar-identity-health,
+.sidebar-nav:not(.collapsed) .sidebar-identity-health-dot {
+  display: none !important;
+}
+
 .sidebar-nav:not(.collapsed) .sidebar-identity-summary::before {
   display: none !important;
 }

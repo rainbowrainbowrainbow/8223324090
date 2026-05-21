@@ -741,10 +741,18 @@ function promptModal(message, options = {}) {
  */
 function formModal(title, fields, options = {}) {
     return new Promise((resolve) => {
-        const { okText = 'Зберегти', cancelText = 'Скасувати', type = 'success', icon: customIcon } = options;
+        const {
+            okText = 'Зберегти',
+            cancelText = 'Скасувати',
+            type = 'success',
+            icon: customIcon,
+            compact = false,
+            className = ''
+        } = options;
         const icons = { danger: '🗑️', success: '✅', warning: '⚠️', info: 'ℹ️' };
         const icon = customIcon || icons[type] || '📝';
         const safeTitle = String(title).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const safeClassName = String(className || '').replace(/[^\w\s-]/g, '').trim();
         const escAttr = (value) => String(value ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         const renderSelectOptions = (field, optionList) => {
             const optionsToRender = Array.isArray(optionList) ? optionList : [];
@@ -771,9 +779,12 @@ function formModal(title, fields, options = {}) {
         }).join('');
 
         const overlay = document.createElement('div');
-        overlay.className = 'confirm-overlay';
+        overlay.className = 'confirm-overlay form-modal-overlay';
+        const dialogClasses = ['confirm-dialog', type, 'form-modal-dialog', compact ? 'form-modal-dialog-compact' : '', safeClassName]
+            .filter(Boolean)
+            .join(' ');
         overlay.innerHTML = `
-            <div class="confirm-dialog ${type}" style="max-width:420px;">
+            <div class="${dialogClasses}" style="max-width:420px;">
                 <div class="confirm-icon">${icon}</div>
                 <div class="confirm-message" style="font-size:17px;font-weight:700;">${safeTitle}</div>
                 <div class="form-modal-fields" style="text-align:left;margin:8px 0;">${fieldsHtml}</div>

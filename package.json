@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.60.38",
+  "version": "0.60.39",
   "eventGenix": {
-    "releaseLabel": "Omni SMS Provider Selector"
+    "releaseLabel": "UI Polish And Modal Fixes"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

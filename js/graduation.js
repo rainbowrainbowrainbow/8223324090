@@ -1211,17 +1211,22 @@
         return mode === 'institution_graduate' ? 'Випускник закладу' : 'Звичайний випускний';
     }
 
-    function packFormFields(pack = {}) {
-        return [
+    function packFormFields(pack = {}, options = {}) {
+        const compact = options.compact === true;
+        const coreFields = [
             { key: 'name', label: 'Назва списку', defaultValue: pack.name || packContextText(pack) || '', required: true, placeholder: 'НВК 146 · 4-Б клас' },
             { key: 'diplomaContextText', label: 'Рядок на дипломі', defaultValue: pack.diplomaContextText || packContextText(pack) || '', required: true, placeholder: '4-Б клас НВК 146' },
             { key: 'schoolName', label: 'Заклад', defaultValue: pack.schoolName || '', placeholder: 'НВК 146' },
             { key: 'classLabel', label: 'Клас / група', defaultValue: pack.classLabel || '', placeholder: '4-Б клас' },
-            { key: 'groupLabel', label: 'Додаткова група', defaultValue: pack.groupLabel || '', placeholder: 'за потреби' },
             { key: 'wordingMode', label: 'Текст диплома', type: 'select', defaultValue: pack.wordingMode || 'standard', options: [
                 { value: 'standard', label: 'Звичайний випускний' },
                 { value: 'institution_graduate', label: 'Випускник закладу' }
-            ] },
+            ] }
+        ];
+        if (compact) return coreFields;
+        return [
+            ...coreFields,
+            { key: 'groupLabel', label: 'Додаткова група', defaultValue: pack.groupLabel || '', placeholder: 'за потреби' },
             { key: 'note', label: 'Нотатка', type: 'textarea', defaultValue: pack.note || '' }
         ];
     }
@@ -1398,7 +1403,12 @@
 
     async function createDiplomaPack() {
         if (!diplomaQuoteId) return;
-        const values = await formModal('Створити список дітей', packFormFields({ name: packContextText() || '' }), { icon: '📋', okText: 'Створити' });
+        const values = await formModal('Створити список дітей', packFormFields({ name: packContextText() || '' }, { compact: true }), {
+            icon: '📋',
+            okText: 'Створити',
+            compact: true,
+            className: 'graduation-pack-form-modal'
+        });
         if (!values) return;
         try {
             await gradApi('POST', '/graduation/child-packs', { ...values, quoteId: diplomaQuoteId });

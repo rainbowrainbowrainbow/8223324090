@@ -4,6 +4,16 @@
 
 ---
 
+## v0.60.39 - UI Polish And Modal Fixes
+
+### UI Polish And Modal Fixes [codex]
+- **Sidebar** - остаточно прибрано малий овальний артефакт під іменем у profile summary card, без втрати metrics strip і role indicator.
+- **Dashboard** - workspace-палітру зроблено зрозумілішою українською: групи інструментів, підказки, inspector і AI-board тексти більше не виглядають як англомовний debug toolbar.
+- **Graduation lists** - модалка «Створити список дітей» стала компактнішою, без зайвих optional-полів у create-flow.
+- **Modal safety** - shared `formModal()` отримав scroll-safe layout: поля скроляться всередині вікна, а кнопки «Створити/Зберегти» більше не вилітають за низ екрана.
+
+---
+
 ## v0.60.38 - Omni SMS Provider Selector
 
 ### Omni SMS Provider Selector [codex]

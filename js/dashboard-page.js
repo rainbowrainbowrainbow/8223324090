@@ -32,6 +32,79 @@ const DashboardPage = (() => {
         ellipse: 'Еліпс',
         diamond: 'Ромб'
     };
+    const BOARD_TOOL_HINTS = {
+        select: 'Обирайте модулі, відкривайте віджети або міняйте блоки.',
+        hand: 'Перетягуйте поле дошки, не змінюючи модулі.',
+        brush: 'Малюйте поверх сцени вільною лінією.',
+        highlighter: 'Підсвічуйте важливі зони напівпрозорим маркером.',
+        eraser: 'Натискайте по штрихах, щоб прибрати зайве.',
+        connector: 'Обирайте точки на двох модулях, щоб зробити зв’язок.',
+        note: 'Натисніть на дошці, щоб додати нотатку.',
+        text: 'Натисніть на дошці, щоб додати текст.',
+        frame: 'Натисніть на дошці, щоб додати рамку для групи.',
+        widget: 'Натисніть на дошці, щоб додати віджет.',
+        line: 'Натисніть на дошці, щоб поставити лінію.',
+        arrow: 'Натисніть на дошці, щоб поставити стрілку.',
+        rect: 'Натисніть на дошці, щоб поставити блок.',
+        'round-rect': 'Натисніть на дошці, щоб поставити м’який блок.',
+        ellipse: 'Натисніть на дошці, щоб поставити еліпс.',
+        diamond: 'Натисніть на дошці, щоб поставити ромб.'
+    };
+    const BOARD_MODE_LABELS = {
+        'board:view': 'Перегляд',
+        'board:edit': 'Редагування',
+        'board:draw': 'Малювання',
+        'board:connect': 'Зв’язки',
+        'board:create': 'Додавання',
+        'board:shape': 'Фігури',
+        'object:text-edit': 'Редагування тексту',
+        'object:widget-inspect': 'Робота з віджетом'
+    };
+    const BOARD_TYPE_LABELS = {
+        widget: 'Віджет',
+        note: 'Нотатка',
+        text: 'Текст',
+        shape: 'Фігура',
+        frame: 'Рамка'
+    };
+    const BOARD_DEPTH_LABELS = {
+        'live-compact': 'Живий компакт',
+        'headline-only': 'Тільки заголовок',
+        'snapshot-static': 'Знімок'
+    };
+    const BOARD_SNAP_LABELS = {
+        strict: 'Жорстко',
+        soft: 'М’яко',
+        freeform: 'Вільно'
+    };
+    const BOARD_CONNECTOR_STYLE_LABELS = {
+        line: 'Лінія',
+        arrow: 'Стрілка',
+        curve: 'Крива'
+    };
+    const BOARD_RELATION_LABELS = {
+        idea: 'Ідея',
+        depends: 'Залежить',
+        blocks: 'Блокує',
+        feeds: 'Передає',
+        inspires: 'Надихає'
+    };
+    const BOARD_AI_ACTION_LABELS = {
+        expand: 'Розширити',
+        'mood-pack': 'Настрій',
+        cluster: 'Кластер',
+        summarize: 'Стисло',
+        tasks: 'Задачі',
+        remix: 'Ремікс',
+        'name-frame': 'Назвати рамку',
+        'prompt-to-board': 'З промпта'
+    };
+    const BOARD_ANCHOR_LABELS = {
+        top: 'верх',
+        right: 'праворуч',
+        bottom: 'низ',
+        left: 'ліворуч'
+    };
     const BOARD_ALLOWED_SHAPES = new Set(['line', 'arrow', 'rect', 'round-rect', 'ellipse', 'diamond']);
     const BOARD_CONNECTOR_STYLES = new Set(['line', 'arrow', 'curve']);
     const BOARD_RELATION_TYPES = new Set(['idea', 'depends', 'blocks', 'feeds', 'inspires']);
@@ -712,13 +785,7 @@ const DashboardPage = (() => {
         const tool = normalizeBoardTool(_config?.boardState?.activeTool || 'select');
         const prefs = safeObject(_config?.boardState?.preferences, {});
         const label = BOARD_TOOL_LABELS[tool] || tool;
-        const modeHint = BOARD_CREATE_TOOLS.has(tool) || BOARD_SHAPE_TOOLS.has(tool)
-            ? 'Натисніть на дошці, щоб поставити об’єкт.'
-            : BOARD_DRAW_TOOLS.has(tool)
-                ? 'Малювання працює прямо по canvas.'
-                : tool === 'connector'
-                    ? 'Виберіть anchors на двох об’єктах.'
-                    : 'Перемикайте інструменти як у редакторі.';
+        const modeHint = BOARD_TOOL_HINTS[tool] || 'Перемикайте інструменти як у редакторі.';
         return `
             <div class="board-tool-current">
                 <span>Інструмент</span>
@@ -727,10 +794,10 @@ const DashboardPage = (() => {
             </div>
             <label class="board-tool-check">
                 <input type="checkbox" ${prefs.snapToGrid !== false ? 'checked' : ''} onchange="DashboardPage.setBoardPreference('snapToGrid', this.checked)">
-                <span>Snap</span>
+                <span>Прив’язка</span>
             </label>
-            <div class="board-tool-snap-presets" role="group" aria-label="Snap presets">
-                ${['strict', 'soft', 'freeform'].map(mode => `<button type="button" class="board-tool-snap${normalizeBoardSnapMode(prefs.snapMode) === mode ? ' active' : ''}" onclick="DashboardPage.setBoardSnapMode('${mode}')">${mode}</button>`).join('')}
+            <div class="board-tool-snap-presets" role="group" aria-label="Режими прив’язки">
+                ${['strict', 'soft', 'freeform'].map(mode => `<button type="button" class="board-tool-snap${normalizeBoardSnapMode(prefs.snapMode) === mode ? ' active' : ''}" onclick="DashboardPage.setBoardSnapMode('${mode}')">${BOARD_SNAP_LABELS[mode] || mode}</button>`).join('')}
             </div>
             <label class="board-tool-check">
                 <input type="checkbox" ${prefs.showGrid !== false ? 'checked' : ''} onchange="DashboardPage.setBoardPreference('showGrid', this.checked)">
@@ -3057,7 +3124,7 @@ const DashboardPage = (() => {
                 <div class="dashboard-board-item-content">
                     ${renderBoardItemContent(item)}
                 </div>
-                ${item.type === 'widget' && _boardInteractionMode === 'edit' && _boardWidgetInspectId !== item.id ? `<button type="button" class="board-widget-mute" onclick="DashboardPage.enterBoardWidgetInspect('${idJs}')">Enter widget</button>` : ''}
+                ${item.type === 'widget' && _boardInteractionMode === 'edit' && _boardWidgetInspectId !== item.id ? `<button type="button" class="board-widget-mute" onclick="DashboardPage.enterBoardWidgetInspect('${idJs}')">Працювати з віджетом</button>` : ''}
                 ${renderBoardAnchors(item)}
             </section>
         `;
@@ -3068,7 +3135,7 @@ const DashboardPage = (() => {
         const idJs = escapeJsString(item.id);
         return `
             <div class="board-anchor-set" aria-hidden="${_boardWorkspaceMode === 'board:connect' ? 'false' : 'true'}">
-                ${['top', 'right', 'bottom', 'left'].map(anchor => `<button type="button" class="board-anchor anchor-${anchor}" data-board-anchor="${anchor}" onclick="DashboardPage.handleBoardAnchor('${idJs}', '${anchor}', event)" title="Connect ${anchor}"></button>`).join('')}
+                ${['top', 'right', 'bottom', 'left'].map(anchor => `<button type="button" class="board-anchor anchor-${anchor}" data-board-anchor="${anchor}" onclick="DashboardPage.handleBoardAnchor('${idJs}', '${anchor}', event)" title="Зв’язати: ${BOARD_ANCHOR_LABELS[anchor] || anchor}"></button>`).join('')}
             </div>
         `;
     }
@@ -3112,73 +3179,74 @@ const DashboardPage = (() => {
         const item = _boardSelectedId ? findBoardItem(_boardSelectedId) : null;
         const connector = _boardSelectedConnectorId ? getBoardConnectors().find(conn => conn.id === _boardSelectedConnectorId) : null;
         const prefs = safeObject(_config?.boardState?.preferences, {});
-        const modeLabel = getBoardWorkspaceMode().replace('board:', '').replace('object:', '');
+        const mode = getBoardWorkspaceMode();
+        const modeLabel = BOARD_MODE_LABELS[mode] || mode.replace('board:', '').replace('object:', '');
         const connectorDraft = _boardConnectorDraft
-            ? `<span class="board-inspector-hint">Connect from ${escapeHtml(_boardConnectorDraft.anchor)} anchor</span>`
+            ? `<span class="board-inspector-hint">Початок зв’язку: ${escapeHtml(BOARD_ANCHOR_LABELS[_boardConnectorDraft.anchor] || _boardConnectorDraft.anchor)}</span>`
             : '';
         const objectControls = item ? `
             <div class="board-inspector-section">
-                <strong>${escapeHtml(item.title || item.type)}</strong>
-                <span>${escapeHtml(item.type)} · ${Math.round(Number(item.w || 0))}x${Math.round(Number(item.h || 0))}</span>
+                <strong>${escapeHtml(item.title || BOARD_TYPE_LABELS[item.type] || item.type)}</strong>
+                <span>${escapeHtml(BOARD_TYPE_LABELS[item.type] || item.type)} · ${Math.round(Number(item.w || 0))}x${Math.round(Number(item.h || 0))}</span>
                 ${item.type === 'widget' ? `
                     <div class="board-inspector-row">
-                        ${['live-compact', 'headline-only', 'snapshot-static'].map(depth => `<button type="button" class="board-inspector-chip${item.depth === depth ? ' active' : ''}" onclick="DashboardPage.setBoardWidgetDepth('${escapeJsString(item.id)}', '${depth}')">${depth.replace('-', ' ')}</button>`).join('')}
+                        ${['live-compact', 'headline-only', 'snapshot-static'].map(depth => `<button type="button" class="board-inspector-chip${item.depth === depth ? ' active' : ''}" onclick="DashboardPage.setBoardWidgetDepth('${escapeJsString(item.id)}', '${depth}')">${BOARD_DEPTH_LABELS[depth] || depth}</button>`).join('')}
                     </div>
-                    ${_boardWidgetInspectId === item.id ? `<button type="button" class="board-inspector-chip active" onclick="DashboardPage.exitBoardObjectEditing()">Exit widget</button>` : `<button type="button" class="board-inspector-chip" onclick="DashboardPage.enterBoardWidgetInspect('${escapeJsString(item.id)}')">Inspect widget</button>`}
+                    ${_boardWidgetInspectId === item.id ? `<button type="button" class="board-inspector-chip active" onclick="DashboardPage.exitBoardObjectEditing()">Вийти з віджета</button>` : `<button type="button" class="board-inspector-chip" onclick="DashboardPage.enterBoardWidgetInspect('${escapeJsString(item.id)}')">Працювати з віджетом</button>`}
                 ` : ''}
-                ${item.type === 'note' || item.type === 'text' ? `<button type="button" class="board-inspector-chip" onclick="DashboardPage.runBoardAiAction('tasks')">Extract tasks</button>` : ''}
-                <div class="board-inspector-row" aria-label="Layer controls">
-                    <button type="button" class="board-inspector-chip" onclick="DashboardPage.changeBoardItemZ('${escapeJsString(item.id)}', 10)">Layer +</button>
-                    <button type="button" class="board-inspector-chip" onclick="DashboardPage.changeBoardItemZ('${escapeJsString(item.id)}', -10)">Layer -</button>
+                ${item.type === 'note' || item.type === 'text' ? `<button type="button" class="board-inspector-chip" onclick="DashboardPage.runBoardAiAction('tasks')">Зробити задачі</button>` : ''}
+                <div class="board-inspector-row" aria-label="Керування шарами">
+                    <button type="button" class="board-inspector-chip" onclick="DashboardPage.changeBoardItemZ('${escapeJsString(item.id)}', 10)">Вище</button>
+                    <button type="button" class="board-inspector-chip" onclick="DashboardPage.changeBoardItemZ('${escapeJsString(item.id)}', -10)">Нижче</button>
                 </div>
-                <button type="button" class="board-inspector-chip danger" onclick="DashboardPage.deleteBoardItem('${escapeJsString(item.id)}')">Delete</button>
+                <button type="button" class="board-inspector-chip danger" onclick="DashboardPage.deleteBoardItem('${escapeJsString(item.id)}')">Видалити</button>
             </div>
         ` : '';
         const connectorControls = connector ? `
             <div class="board-inspector-section">
-                <strong>Connector</strong>
-                <span>${escapeHtml(connector.relationType)} · ${escapeHtml(connector.style)}</span>
+                <strong>Зв’язок</strong>
+                <span>${escapeHtml(BOARD_RELATION_LABELS[connector.relationType] || connector.relationType)} · ${escapeHtml(BOARD_CONNECTOR_STYLE_LABELS[connector.style] || connector.style)}</span>
                 <div class="board-inspector-row">
-                    ${['idea', 'depends', 'blocks', 'feeds', 'inspires'].map(type => `<button type="button" class="board-inspector-chip${connector.relationType === type ? ' active' : ''}" onclick="DashboardPage.updateBoardConnector('${escapeJsString(connector.id)}', 'relationType', '${type}')">${type}</button>`).join('')}
+                    ${['idea', 'depends', 'blocks', 'feeds', 'inspires'].map(type => `<button type="button" class="board-inspector-chip${connector.relationType === type ? ' active' : ''}" onclick="DashboardPage.updateBoardConnector('${escapeJsString(connector.id)}', 'relationType', '${type}')">${BOARD_RELATION_LABELS[type] || type}</button>`).join('')}
                 </div>
                 <div class="board-inspector-row">
-                    ${['line', 'arrow', 'curve'].map(style => `<button type="button" class="board-inspector-chip${connector.style === style ? ' active' : ''}" onclick="DashboardPage.updateBoardConnector('${escapeJsString(connector.id)}', 'style', '${style}')">${style}</button>`).join('')}
+                    ${['line', 'arrow', 'curve'].map(style => `<button type="button" class="board-inspector-chip${connector.style === style ? ' active' : ''}" onclick="DashboardPage.updateBoardConnector('${escapeJsString(connector.id)}', 'style', '${style}')">${BOARD_CONNECTOR_STYLE_LABELS[style] || style}</button>`).join('')}
                 </div>
-                <button type="button" class="board-inspector-chip danger" onclick="DashboardPage.deleteBoardConnector('${escapeJsString(connector.id)}')">Delete connector</button>
+                <button type="button" class="board-inspector-chip danger" onclick="DashboardPage.deleteBoardConnector('${escapeJsString(connector.id)}')">Видалити зв’язок</button>
             </div>
         ` : '';
         return `
             <aside class="board-mini-inspector" aria-label="Board inspector">
                 <div class="board-inspector-section">
-                    <strong>Mode: ${escapeHtml(modeLabel)}</strong>
-                    <span>Tool: ${escapeHtml(_config?.boardState?.activeTool || 'select')}</span>
+                    <strong>Режим: ${escapeHtml(modeLabel)}</strong>
+                    <span>Інструмент: ${escapeHtml(BOARD_TOOL_LABELS[normalizeBoardTool(_config?.boardState?.activeTool || 'select')] || 'Вибір')}</span>
                     ${connectorDraft}
                 </div>
                 ${objectControls || connectorControls || `
                     <div class="board-inspector-section">
-                        <strong>Creative AI</strong>
-                        <span>Select notes or use a prompt to create board-native objects.</span>
+                        <strong>AI-помічник дошки</strong>
+                        <span>Оберіть нотатку або створіть блоки з промпта.</span>
                     </div>
                 `}
                 <div class="board-inspector-section">
-                    <strong>AI board</strong>
+                    <strong>AI-шаблони</strong>
                     <div class="board-inspector-row">
-                        ${['expand', 'mood-pack', 'cluster', 'summarize', 'tasks', 'remix', 'name-frame', 'prompt-to-board'].map(action => `<button type="button" class="board-inspector-chip" onclick="DashboardPage.runBoardAiAction('${action}')">${action.replace('-', ' ')}</button>`).join('')}
+                        ${['expand', 'mood-pack', 'cluster', 'summarize', 'tasks', 'remix', 'name-frame', 'prompt-to-board'].map(action => `<button type="button" class="board-inspector-chip" onclick="DashboardPage.runBoardAiAction('${action}')">${BOARD_AI_ACTION_LABELS[action] || action}</button>`).join('')}
                     </div>
                 </div>
                 <div class="board-inspector-section">
-                    <strong>Connect</strong>
+                    <strong>Зв’язки</strong>
                     <div class="board-inspector-row">
-                        ${['idea', 'depends', 'blocks', 'feeds', 'inspires'].map(type => `<button type="button" class="board-inspector-chip${prefs.relationType === type ? ' active' : ''}" onclick="DashboardPage.setBoardConnectorPreference('relationType', '${type}')">${type}</button>`).join('')}
+                        ${['idea', 'depends', 'blocks', 'feeds', 'inspires'].map(type => `<button type="button" class="board-inspector-chip${prefs.relationType === type ? ' active' : ''}" onclick="DashboardPage.setBoardConnectorPreference('relationType', '${type}')">${BOARD_RELATION_LABELS[type] || type}</button>`).join('')}
                     </div>
                     <div class="board-inspector-row">
-                        ${['line', 'arrow', 'curve'].map(style => `<button type="button" class="board-inspector-chip${prefs.connectorStyle === style ? ' active' : ''}" onclick="DashboardPage.setBoardConnectorPreference('connectorStyle', '${style}')">${style}</button>`).join('')}
+                        ${['line', 'arrow', 'curve'].map(style => `<button type="button" class="board-inspector-chip${prefs.connectorStyle === style ? ' active' : ''}" onclick="DashboardPage.setBoardConnectorPreference('connectorStyle', '${style}')">${BOARD_CONNECTOR_STYLE_LABELS[style] || style}</button>`).join('')}
                     </div>
                 </div>
                 <div class="board-inspector-section">
-                    <strong>Snap</strong>
+                    <strong>Прив’язка</strong>
                     <div class="board-inspector-row">
-                        ${['strict', 'soft', 'freeform'].map(mode => `<button type="button" class="board-inspector-chip${normalizeBoardSnapMode(prefs.snapMode) === mode ? ' active' : ''}" onclick="DashboardPage.setBoardSnapMode('${mode}')">${mode}</button>`).join('')}
+                        ${['strict', 'soft', 'freeform'].map(mode => `<button type="button" class="board-inspector-chip${normalizeBoardSnapMode(prefs.snapMode) === mode ? ' active' : ''}" onclick="DashboardPage.setBoardSnapMode('${mode}')">${BOARD_SNAP_LABELS[mode] || mode}</button>`).join('')}
                     </div>
                 </div>
             </aside>
@@ -3723,65 +3791,65 @@ const DashboardPage = (() => {
         const preset = BOARD_AI_PRESETS.has(action) ? action : 'expand';
         const seed = selectedBoardTextSeed();
         if (preset === 'prompt-to-board') {
-            const promptText = seed || 'New board scene';
-            addBoardCreativeCluster('Prompt-to-board', [
+            const promptText = seed || 'Нова сцена дошки';
+            addBoardCreativeCluster('З промпта', [
                 promptText,
-                `Concept: ${promptText}`,
-                `Audience angle: who needs this and why`,
-                `Offer angle: what makes it easy to say yes`,
-                `Production note: what must be prepared first`
+                `Концепт: ${promptText}`,
+                'Для кого: хто це використовує і навіщо',
+                'Пропозиція: чому з цим легко погодитись',
+                'Підготовка: що треба зробити першим'
             ], { relationType: 'feeds' });
             return;
         }
         if (preset === 'expand') {
-            addBoardCreativeCluster('Idea expansion', [
+            addBoardCreativeCluster('Розширення ідеї', [
                 seed,
-                `More emotional direction for: ${seed}`,
-                `More operational direction for: ${seed}`,
-                `Premium version of: ${seed}`,
-                `Fast experiment based on: ${seed}`,
-                `Risk to check before shipping: ${seed}`
+                `Емоційніший напрям: ${seed}`,
+                `Операційний напрям: ${seed}`,
+                `Преміальна версія: ${seed}`,
+                `Швидкий експеримент: ${seed}`,
+                `Ризик перед запуском: ${seed}`
             ], { relationType: 'inspires' });
             return;
         }
         if (preset === 'mood-pack') {
-            addBoardCreativeCluster('Mood pack', [
-                `Mood: ${seed}`,
-                'Visual rhythm: strong first signal, quiet support details',
-                'Copy tone: short, confident, useful',
-                'Scene idea: one hero moment plus three proof points',
-                'Assets: photo, title card, action cue, follow-up note'
+            addBoardCreativeCluster('Настрій', [
+                `Настрій: ${seed}`,
+                'Візуальний ритм: сильний перший сигнал, тихі деталі підтримки',
+                'Тон тексту: коротко, впевнено, корисно',
+                'Сцена: один головний момент і три докази',
+                'Матеріали: фото, титр, дія, follow-up нотатка'
             ], { relationType: 'idea' });
             return;
         }
         if (preset === 'cluster') {
-            addBoardCreativeCluster('Auto cluster', [
-                'Cluster A: urgent operational signals',
-                'Cluster B: ideas worth exploring',
-                'Cluster C: decisions that need an owner',
-                'Cluster D: follow-up tasks'
+            addBoardCreativeCluster('Автокластер', [
+                'Кластер A: термінові операційні сигнали',
+                'Кластер B: ідеї, які варто перевірити',
+                'Кластер C: рішення, яким потрібен відповідальний',
+                'Кластер D: наступні задачі'
             ], { relationType: 'feeds' });
             return;
         }
         if (preset === 'summarize') {
-            addBoardItem({ type: 'note', title: 'AI summary', text: `Summary:\n${seed.slice(0, 900)}`, w: 300, h: 160 });
+            addBoardItem({ type: 'note', title: 'AI-підсумок', text: `Підсумок:\n${seed.slice(0, 900)}`, w: 300, h: 160 });
             return;
         }
         if (preset === 'tasks') {
-            addBoardCreativeCluster('Task candidates', [
-                `Define owner for: ${seed}`,
-                `Check blocker for: ${seed}`,
-                `Prepare first draft for: ${seed}`,
-                `Set deadline and next review`
+            addBoardCreativeCluster('Кандидати в задачі', [
+                `Визначити відповідального: ${seed}`,
+                `Перевірити блокер: ${seed}`,
+                `Підготувати перший драфт: ${seed}`,
+                'Поставити дедлайн і наступний перегляд'
             ], { relationType: 'depends' });
             return;
         }
         if (preset === 'remix') {
-            addBoardCreativeCluster('Scene remix', [
-                `Calm executive version: ${seed}`,
-                `Chaotic brainstorm version: ${seed}`,
-                `Client-facing version: ${seed}`,
-                `Internal production version: ${seed}`
+            addBoardCreativeCluster('Ремікс сцени', [
+                `Спокійна управлінська версія: ${seed}`,
+                `Хаотичний брейншторм: ${seed}`,
+                `Версія для клієнта: ${seed}`,
+                `Внутрішня production-версія: ${seed}`
             ], { relationType: 'inspires' });
             return;
         }
@@ -3789,8 +3857,8 @@ const DashboardPage = (() => {
             const item = _boardSelectedId ? findBoardItem(_boardSelectedId) : null;
             if (item) {
                 pushBoardUndo('name-frame');
-                item.title = 'AI named frame';
-                item.text = `Direction: ${seed.slice(0, 120)}`;
+                item.title = 'AI назвав рамку';
+                item.text = `Напрям: ${seed.slice(0, 120)}`;
                 markBoardDirty('name-frame');
                 renderBoard();
             }
@@ -5304,7 +5372,7 @@ const DashboardPage = (() => {
                         <em>Єдиний простір редагування: інструмент, сітка, snap і стиль ліній.</em>
                     </div>
                     <label class="dashboard-settings-scene-row">
-                        <span>Snap до сітки</span>
+                        <span>Прив’язка до сітки</span>
                         <span class="settings-toggle">
                             <input type="checkbox" id="settingsBoardSnapToGrid" ${boardPrefs.snapToGrid !== false ? 'checked' : ''}>
                             <span class="settings-toggle-slider"></span>

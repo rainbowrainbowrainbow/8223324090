@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.11 - Products page business selector
+
+### Products page business selector + brand-aware naming [codex]
+- **Products** - на сторінку продуктів додано selector бізнесу з варіантами `Парк Закревського` і `Майстерня долі`.
+- **Preferences** - останній обраний бізнес зберігається в `pzp_products_business_context` і відкривається за замовчуванням.
+- **Naming** - park surface перейменовано з вузької назви `Розважальні програми` на чесний продуктовий контекст Парку Закревського.
+- **UX** - header, tabs, sidebar label і first-pass `Майстерня долі` state узгоджені в одному products hub без дублювання сторінки.
+
+---
+
 ## v0.61.10 - Graduation products shell layout hardening
 
 ### Graduation products shell/layout hardening [codex]

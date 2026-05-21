@@ -1,5 +1,5 @@
 /**
- * programs-page.js — Products IA: entertainment programs, catalogs, and source documents
+ * programs-page.js — Products IA: business-aware products hub, catalogs, and source documents
  */
 
 // ==========================================
@@ -96,6 +96,7 @@ async function initPage() {
 
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
+    renderProductBusinessSelector();
     renderProductIaTabs();
     renderCategoryTabs();
     renderKitchenSubtabs();
@@ -121,17 +122,72 @@ async function initPage() {
 // PRODUCT IA TABS
 // ==========================================
 
+const PRODUCT_BUSINESS_STORAGE_KEY = 'pzp_products_business_context';
+const PRODUCT_TAB_STORAGE_KEY = 'pzp_products_active_tab_park_zakrevsky';
+
+const PRODUCT_BUSINESS_CONTEXTS = {
+    park_zakrevsky: {
+        id: 'park_zakrevsky',
+        label: 'Парк Закревського',
+        title: 'Products · Продукти Парку Закревського',
+        subtitle: 'Операційний продуктовий блок: послуги, кухня та каталоги парку.',
+        tabs: [
+            { id: 'programs', name: 'Продукти Парку' },
+            { id: 'kitchen', name: 'Кухня' },
+            { id: 'catalogs', name: 'Каталоги' }
+        ]
+    },
+    maysternya_doli: {
+        id: 'maysternya_doli',
+        label: 'Майстерня долі',
+        title: 'Products · Майстерня долі',
+        subtitle: 'Окремий продуктовий контекст для консультаційного напрямку.',
+        tabs: [
+            { id: 'consultations', name: 'Консультації' }
+        ]
+    }
+};
+
+function normalizeProductBusinessContext(value) {
+    return PRODUCT_BUSINESS_CONTEXTS[value] ? value : 'park_zakrevsky';
+}
+
+function safeReadProductPreference(key, fallback = '') {
+    try {
+        return localStorage.getItem(key) || fallback;
+    } catch (err) {
+        return fallback;
+    }
+}
+
+function safeWriteProductPreference(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch (err) {
+        // Ignore storage failures; the selector still works for the current page session.
+    }
+}
+
+function readInitialBusinessContext() {
+    const hash = window.location.hash || '';
+    if (hash === '#maysternya' || hash === '#business-maysternya') return 'maysternya_doli';
+    if (hash === '#catalogs' || hash === '#kitchen' || hash === '#kitchen-cakes' || hash === '#kitchen-menu') return 'park_zakrevsky';
+    return normalizeProductBusinessContext(safeReadProductPreference(PRODUCT_BUSINESS_STORAGE_KEY, 'park_zakrevsky'));
+}
+
 function readInitialProductTab() {
     const hash = window.location.hash || '';
     if (hash === '#catalogs') return 'catalogs';
     if (hash === '#kitchen' || hash === '#kitchen-cakes' || hash === '#kitchen-menu') return 'kitchen';
-    return 'programs';
+    const stored = safeReadProductPreference(PRODUCT_TAB_STORAGE_KEY, 'programs');
+    return ['programs', 'kitchen', 'catalogs'].includes(stored) ? stored : 'programs';
 }
 
 function readInitialKitchenTab() {
     return window.location.hash === '#kitchen-menu' ? 'menu' : 'cake';
 }
 
+let activeBusinessContext = readInitialBusinessContext();
 let activeProductTab = readInitialProductTab();
 let activeKitchenTab = readInitialKitchenTab();
 let activeMenuSection = 'all';
@@ -164,33 +220,78 @@ const MENU_AVAILABILITY_LABELS = {
     hidden: 'Прихована'
 };
 
+function getActiveBusinessContext() {
+    return PRODUCT_BUSINESS_CONTEXTS[activeBusinessContext] || PRODUCT_BUSINESS_CONTEXTS.park_zakrevsky;
+}
+
+function isParkProductsContext() {
+    return activeBusinessContext === 'park_zakrevsky';
+}
+
+function getBusinessHash() {
+    if (!isParkProductsContext()) return '#maysternya';
+    if (activeProductTab === 'catalogs') return '#catalogs';
+    if (activeProductTab === 'kitchen') return `#kitchen-${activeKitchenTab === 'menu' ? 'menu' : 'cakes'}`;
+    return '';
+}
+
+function syncProductsRouteState() {
+    const hash = getBusinessHash();
+    window.history.replaceState(null, '', hash || window.location.pathname);
+}
+
+function renderProductBusinessSelector() {
+    const selector = document.getElementById('productsBusinessSelect');
+    if (selector) {
+        selector.value = activeBusinessContext;
+        selector.onchange = () => setProductBusinessContext(selector.value);
+    }
+    if (document.body) {
+        document.body.dataset.productsBusiness = activeBusinessContext;
+    }
+}
+
+async function setProductBusinessContext(context) {
+    const nextContext = normalizeProductBusinessContext(context);
+    if (nextContext === activeBusinessContext) return;
+    activeBusinessContext = nextContext;
+    safeWriteProductPreference(PRODUCT_BUSINESS_STORAGE_KEY, activeBusinessContext);
+    closeProductForm();
+    syncProductsRouteState();
+    renderProductBusinessSelector();
+    renderProductIaTabs();
+    renderKitchenSubtabs();
+    renderMenuSectionFilter();
+    updateProductTabPanels();
+    renderProducts();
+    if (isParkProductsContext() && activeProductTab === 'catalogs' && !catalogEntriesLoaded) {
+        await loadCatalogEntries();
+    }
+}
+
 function renderProductIaTabs() {
     const container = document.getElementById('productIaTabs');
     if (!container) return;
-    const tabs = [
-        { id: 'programs', name: 'Розважальні програми' },
-        { id: 'kitchen', name: 'Кухня' },
-        { id: 'catalogs', name: 'Каталоги' }
-    ];
+    const tabs = getActiveBusinessContext().tabs;
     container.innerHTML = tabs.map(tab => `
         <button
             type="button"
-            class="product-ia-tab${tab.id === activeProductTab ? ' active' : ''}"
+            class="product-ia-tab${(isParkProductsContext() ? tab.id === activeProductTab : true) ? ' active' : ''}"
             data-product-tab="${tab.id}">
             ${tab.name}
         </button>
     `).join('');
     container.querySelectorAll('[data-product-tab]').forEach(button => {
-        button.addEventListener('click', () => setProductTab(button.dataset.productTab));
+        if (isParkProductsContext()) {
+            button.addEventListener('click', () => setProductTab(button.dataset.productTab));
+        }
     });
 }
 
 async function setProductTab(tab) {
     activeProductTab = ['programs', 'kitchen', 'catalogs'].includes(tab) ? tab : 'programs';
-    const nextHash = activeProductTab === 'catalogs'
-        ? '#catalogs'
-        : (activeProductTab === 'kitchen' ? `#kitchen-${activeKitchenTab === 'menu' ? 'menu' : 'cakes'}` : '');
-    window.history.replaceState(null, '', nextHash || window.location.pathname);
+    safeWriteProductPreference(PRODUCT_TAB_STORAGE_KEY, activeProductTab);
+    syncProductsRouteState();
     closeProductForm();
     renderProductIaTabs();
     renderKitchenSubtabs();
@@ -206,21 +307,30 @@ function updateProductTabPanels() {
     const programsPanel = document.getElementById('programsPanel');
     const kitchenPanel = document.getElementById('kitchenPanel');
     const catalogsPanel = document.getElementById('catalogsPanel');
+    const maysternyaPanel = document.getElementById('maysternyaPanel');
     const addBtn = document.getElementById('addProductBtn');
     const pageTitle = document.getElementById('productsPageTitle');
-    if (programsPanel) programsPanel.classList.toggle('hidden', activeProductTab !== 'programs');
-    if (kitchenPanel) kitchenPanel.classList.toggle('hidden', activeProductTab !== 'kitchen');
-    if (catalogsPanel) catalogsPanel.classList.toggle('hidden', activeProductTab !== 'catalogs');
+    const pageSubtitle = document.getElementById('productsPageSubtitle');
+    const parkContext = isParkProductsContext();
+    if (programsPanel) programsPanel.classList.toggle('hidden', !parkContext || activeProductTab !== 'programs');
+    if (kitchenPanel) kitchenPanel.classList.toggle('hidden', !parkContext || activeProductTab !== 'kitchen');
+    if (catalogsPanel) catalogsPanel.classList.toggle('hidden', !parkContext || activeProductTab !== 'catalogs');
+    if (maysternyaPanel) maysternyaPanel.classList.toggle('hidden', parkContext);
     if (addBtn) {
-        addBtn.style.display = ['programs', 'kitchen'].includes(activeProductTab) && canManageProducts() ? '' : 'none';
+        addBtn.style.display = parkContext && ['programs', 'kitchen'].includes(activeProductTab) && canManageProducts() ? '' : 'none';
         addBtn.textContent = activeProductTab === 'kitchen'
             ? (activeKitchenTab === 'cake' ? '+ Додати торт' : '+ Додати меню')
-            : '+ Додати програму';
+            : '+ Додати продукт';
     }
     if (pageTitle) {
-        if (activeProductTab === 'catalogs') pageTitle.textContent = 'Products · Каталоги';
-        else if (activeProductTab === 'kitchen') pageTitle.textContent = `Products · Кухня · ${activeKitchenTab === 'cake' ? 'Торти' : 'Меню'}`;
-        else pageTitle.textContent = 'Products · Розважальні програми';
+        if (!parkContext) pageTitle.textContent = PRODUCT_BUSINESS_CONTEXTS.maysternya_doli.title;
+        else if (activeProductTab === 'catalogs') pageTitle.textContent = 'Products · Парк Закревського · Каталоги';
+        else if (activeProductTab === 'kitchen') pageTitle.textContent = `Products · Парк Закревського · Кухня · ${activeKitchenTab === 'cake' ? 'Торти' : 'Меню'}`;
+        else pageTitle.textContent = PRODUCT_BUSINESS_CONTEXTS.park_zakrevsky.title;
+    }
+    if (pageSubtitle) {
+        const context = getActiveBusinessContext();
+        pageSubtitle.textContent = context.subtitle;
     }
 }
 
@@ -247,7 +357,7 @@ function renderKitchenSubtabs() {
 function setKitchenTab(tab) {
     activeKitchenTab = tab === 'menu' ? 'menu' : 'cake';
     if (activeProductTab === 'kitchen') {
-        window.history.replaceState(null, '', `#kitchen-${activeKitchenTab === 'menu' ? 'menu' : 'cakes'}`);
+        syncProductsRouteState();
     }
     closeProductForm();
     renderKitchenSubtabs();
@@ -271,7 +381,7 @@ function getKnownMenuSections() {
 function renderMenuSectionFilter() {
     const container = document.getElementById('menuSectionFilter');
     if (!container) return;
-    const visible = activeProductTab === 'kitchen' && activeKitchenTab === 'menu';
+    const visible = isParkProductsContext() && activeProductTab === 'kitchen' && activeKitchenTab === 'menu';
     container.classList.toggle('hidden', !visible);
     if (!visible) {
         container.innerHTML = '';
@@ -339,7 +449,7 @@ function renderCategoryTabs() {
 async function loadProducts() {
     const grid = document.getElementById('productsGrid');
     const kitchenGrid = document.getElementById('kitchenGrid');
-    if (grid) grid.innerHTML = '<div class="loading-spinner">Завантаження програм…</div>';
+    if (grid) grid.innerHTML = '<div class="loading-spinner">Завантаження продуктів…</div>';
     if (kitchenGrid) kitchenGrid.innerHTML = '<div class="loading-spinner">Завантаження кухні…</div>';
     try {
         allProducts = await apiGetProducts(false) || [];
@@ -354,6 +464,7 @@ async function loadProducts() {
 }
 
 function renderProducts() {
+    if (!isParkProductsContext()) return;
     const grid = document.getElementById('productsGrid');
     const kitchenGrid = document.getElementById('kitchenGrid');
     const canManage = canManageProducts();
@@ -383,7 +494,7 @@ function renderProgramProducts(grid, canManage) {
     }
 
     if (filtered.length === 0) {
-        grid.innerHTML = '<div class="empty-state"><img src="images/branding/slide5-dashboard.png" alt="" class="empty-state-img"><div class="empty-state-text">Немає програм у цій категорії</div></div>';
+        grid.innerHTML = '<div class="empty-state"><img src="images/branding/slide5-dashboard.png" alt="" class="empty-state-img"><div class="empty-state-text">Немає продуктів у цій категорії</div></div>';
         return;
     }
 

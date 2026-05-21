@@ -9,11 +9,17 @@ function read(relPath) {
     return fs.readFileSync(path.join(ROOT, relPath), 'utf8');
 }
 
-test('products page exposes entertainment programs and catalogs IA', () => {
+test('products page exposes business-aware products IA', () => {
     const html = read('programs.html');
     const sidebar = read('js/components/sidebar.js');
 
-    assert.match(html, /Products · Розважальні програми/);
+    assert.match(html, /Products · Продукти Парку Закревського/);
+    assert.match(html, /id="productsBusinessSelect"/);
+    assert.match(html, /Парк Закревського/);
+    assert.match(html, /Майстерня долі/);
+    assert.match(html, /id="maysternyaPanel"/);
+    assert.match(html, /Демо консультація/);
+    assert.match(html, /Повна консультація/);
     assert.match(html, /id="productIaTabs"/);
     assert.match(html, /id="catalogsPanel"/);
     assert.match(html, /id="catalogsGrid"/);
@@ -31,7 +37,7 @@ test('products page exposes entertainment programs and catalogs IA', () => {
     assert.match(html, /id="productDocumentModal"/);
     assert.match(html, /Картку перевірено вручну/);
     assert.match(html, /Картка відповідає документу/);
-    assert.match(sidebar, /label: 'Розважальні програми'/);
+    assert.match(sidebar, /label: 'Продукти'/);
     assert.match(sidebar, /href: '\/programs#catalogs'/);
 });
 
@@ -42,6 +48,9 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(pageJs, /apiUpdateProductDocument/);
     assert.match(pageJs, /apiGetProductCatalogs/);
     assert.match(pageJs, /renderKitchenSubtabs/);
+    assert.match(pageJs, /PRODUCT_BUSINESS_STORAGE_KEY/);
+    assert.match(pageJs, /setProductBusinessContext/);
+    assert.match(pageJs, /pzp_products_business_context/);
     assert.match(pageJs, /renderKitchenProducts/);
     assert.match(pageJs, /renderMenuSectionFilter/);
     assert.match(pageJs, /MENU_SECTION_ORDER/);

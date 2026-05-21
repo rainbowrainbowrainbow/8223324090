@@ -22,14 +22,14 @@
         try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
     })();
     </script>
-    <link rel="stylesheet" href="css/base.css?v=0.61.10">
-    <link rel="stylesheet" href="css/layout.css?v=0.61.10">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.10">
-    <link rel="stylesheet" href="css/pages.css?v=0.61.10">
-    <link rel="stylesheet" href="css/modals.css?v=0.61.10">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.10">
-    <link rel="stylesheet" href="css/responsive.css?v=0.61.10">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.10">
+    <link rel="stylesheet" href="css/base.css?v=0.61.11">
+    <link rel="stylesheet" href="css/layout.css?v=0.61.11">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.11">
+    <link rel="stylesheet" href="css/pages.css?v=0.61.11">
+    <link rel="stylesheet" href="css/modals.css?v=0.61.11">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.11">
+    <link rel="stylesheet" href="css/responsive.css?v=0.61.11">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.11">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -39,6 +39,63 @@
         .embed-mode .skip-link,
         .embed-mode .page-login-overlay { display: none !important; }
         .embed-mode .page-container { margin-left: 0 !important; padding: 16px !important; }
+
+        .products-page-header {
+            align-items: flex-start;
+            gap: 16px;
+        }
+
+        .products-header-copy {
+            min-width: 240px;
+        }
+
+        .products-header-copy h2 {
+            margin-bottom: 4px;
+        }
+
+        .products-page-subtitle {
+            margin: 0;
+            color: var(--gray-500, #64748b);
+            font-size: 14px;
+            line-height: 1.45;
+        }
+
+        .products-header-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            align-items: flex-end;
+            gap: 10px;
+            margin-left: auto;
+        }
+
+        .business-context-selector {
+            display: grid;
+            gap: 4px;
+            min-width: 220px;
+            color: var(--gray-500, #64748b);
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0;
+        }
+
+        .business-context-select {
+            min-height: 42px;
+            padding: 0 36px 0 12px;
+            border: 1px solid var(--border-color, rgba(148, 163, 184, 0.28));
+            border-radius: 12px;
+            background: var(--card-bg, #fff);
+            color: var(--text-primary, #0f172a);
+            font: inherit;
+            font-weight: 800;
+            text-transform: none;
+        }
+
+        .business-context-select:focus-visible {
+            border-color: var(--primary-color, #14b8a6);
+            outline: 3px solid rgba(20, 184, 166, 0.18);
+        }
 
         .product-ia-tabs {
             display: flex;
@@ -76,6 +133,92 @@
         }
 
         .product-tab-panel.hidden { display: none !important; }
+
+        .business-variant-shell {
+            display: grid;
+            gap: 16px;
+            max-width: 980px;
+        }
+
+        .business-variant-head {
+            padding: 18px;
+            border: 1px solid var(--border-color, rgba(148, 163, 184, 0.24));
+            border-radius: 18px;
+            background: var(--card-bg, #fff);
+            box-shadow: var(--shadow-sm, 0 8px 24px rgba(15, 23, 42, 0.06));
+        }
+
+        .business-variant-eyebrow {
+            margin: 0 0 6px;
+            color: var(--primary-dark, #0f766e);
+            font-size: 12px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0;
+        }
+
+        .business-variant-head h3 {
+            margin: 0 0 8px;
+            color: var(--text-primary, #0f172a);
+            font-size: 22px;
+            line-height: 1.2;
+        }
+
+        .business-variant-head p:last-child {
+            margin: 0;
+            color: var(--gray-500, #64748b);
+            line-height: 1.55;
+        }
+
+        .maysternya-product-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 14px;
+        }
+
+        .maysternya-product-card {
+            display: grid;
+            gap: 10px;
+            padding: 16px;
+            border: 1px solid var(--border-color, rgba(148, 163, 184, 0.24));
+            border-radius: 16px;
+            background: var(--card-bg, #fff);
+            box-shadow: var(--shadow-sm, 0 8px 24px rgba(15, 23, 42, 0.06));
+        }
+
+        .maysternya-product-card h4 {
+            margin: 0;
+            color: var(--text-primary, #0f172a);
+            font-size: 16px;
+            font-weight: 900;
+        }
+
+        .maysternya-product-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            color: var(--gray-500, #64748b);
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        .maysternya-product-meta span {
+            display: inline-flex;
+            align-items: center;
+            min-height: 26px;
+            padding: 0 10px;
+            border: 1px solid rgba(20, 184, 166, 0.24);
+            border-radius: 999px;
+            background: rgba(20, 184, 166, 0.10);
+            color: var(--primary-dark, #0f766e);
+        }
+
+        .business-variant-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
         .program-desc {
             font-size: 13px;
             color: var(--gray-500);
@@ -425,7 +568,13 @@
         body.dark-mode .product-ia-tabs,
         [data-theme="dark"] .product-ia-tabs,
         body.dark-mode .product-catalog-card,
-        [data-theme="dark"] .product-catalog-card {
+        [data-theme="dark"] .product-catalog-card,
+        body.dark-mode .business-context-select,
+        [data-theme="dark"] .business-context-select,
+        body.dark-mode .business-variant-head,
+        [data-theme="dark"] .business-variant-head,
+        body.dark-mode .maysternya-product-card,
+        [data-theme="dark"] .maysternya-product-card {
             background: rgba(17, 24, 39, 0.92);
             border-color: rgba(255, 255, 255, 0.10);
         }
@@ -445,19 +594,37 @@
 
         body.dark-mode .product-doc-title,
         body.dark-mode .product-catalog-title,
+        body.dark-mode .business-context-select,
+        body.dark-mode .business-variant-head h3,
+        body.dark-mode .maysternya-product-card h4,
         body.dark-mode .kitchen-detail-item span,
         [data-theme="dark"] .product-doc-title,
-        [data-theme="dark"] .product-catalog-title {
+        [data-theme="dark"] .product-catalog-title,
+        [data-theme="dark"] .business-context-select,
+        [data-theme="dark"] .business-variant-head h3,
+        [data-theme="dark"] .maysternya-product-card h4 {
             color: #f8fafc;
         }
 
         @media (max-width: 720px) {
+            .products-page-header,
+            .products-header-actions,
             .product-ia-tabs,
             .kitchen-subtabs,
             .product-catalog-actions,
             .product-doc-actions {
                 align-items: stretch;
                 flex-direction: column;
+            }
+
+            .products-header-actions {
+                width: 100%;
+                margin-left: 0;
+            }
+
+            .business-context-selector {
+                min-width: 0;
+                width: 100%;
             }
 
             .product-ia-tab,
@@ -527,9 +694,21 @@
         </header>
 
         <main id="main-content" class="page-container">
-            <div class="page-header">
-                <h2 id="productsPageTitle">Products · Розважальні програми</h2>
-                <button type="button" id="addProductBtn" class="btn-page-primary">+ Додати програму</button>
+            <div class="page-header products-page-header">
+                <div class="products-header-copy">
+                    <h2 id="productsPageTitle">Products · Продукти Парку Закревського</h2>
+                    <p id="productsPageSubtitle" class="products-page-subtitle">Операційний продуктовий блок: послуги, кухня та каталоги парку.</p>
+                </div>
+                <div class="products-header-actions">
+                    <label class="business-context-selector" for="productsBusinessSelect">
+                        Бізнес
+                        <select id="productsBusinessSelect" class="business-context-select" aria-label="Вибір бізнесу для продуктів">
+                            <option value="park_zakrevsky">Парк Закревського</option>
+                            <option value="maysternya_doli">Майстерня долі</option>
+                        </select>
+                    </label>
+                    <button type="button" id="addProductBtn" class="btn-page-primary">+ Додати продукт</button>
+                </div>
             </div>
 
             <div id="productIaTabs" class="product-ia-tabs" aria-label="Products tabs"></div>
@@ -684,6 +863,37 @@
                 <p class="product-catalog-intro">Єдина точка входу до готових каталогів продуктового блоку: випускні, піньяти, меню, костюми та інші каталоги, що вже живуть у CRM.</p>
                 <div id="catalogsGrid" class="product-catalog-grid"></div>
             </section>
+
+            <section id="maysternyaPanel" class="product-tab-panel hidden" aria-label="Продукти Майстерні долі">
+                <div class="business-variant-shell">
+                    <div class="business-variant-head">
+                        <p class="business-variant-eyebrow">Майстерня долі</p>
+                        <h3>Консультаційні продукти</h3>
+                        <p>Перший робочий набір для консультаційного напрямку. Повний каталог буде розширюватися окремо від продуктів парку.</p>
+                    </div>
+                    <div class="maysternya-product-grid">
+                        <article class="maysternya-product-card">
+                            <h4>Демо консультація</h4>
+                            <div class="maysternya-product-meta">
+                                <span>15 хв</span>
+                                <span>short-entry</span>
+                            </div>
+                            <p class="program-desc">Короткий первинний формат для знайомства з консультаційним сценарієм.</p>
+                        </article>
+                        <article class="maysternya-product-card">
+                            <h4>Повна консультація</h4>
+                            <div class="maysternya-product-meta">
+                                <span>40 хв</span>
+                                <span>основний слот</span>
+                            </div>
+                            <p class="program-desc">Основна консультаційна позиція для повного робочого сеансу.</p>
+                        </article>
+                    </div>
+                    <div class="business-variant-actions">
+                        <a class="btn-page-primary" href="/maysternya-doli">Відкрити timeline Майстерні</a>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
 
@@ -734,13 +944,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/ui.js?v=0.61.10"></script>
-    <script src="js/config.js?v=0.61.10"></script>
-    <script src="js/notification.js?v=0.61.10"></script>
-    <script src="js/api.js?v=0.61.10"></script>
-    <script src="js/auth.js?v=0.61.10"></script>
-    <script src="js/components/sidebar.js?v=0.61.10"></script>
+    <script src="js/ui.js?v=0.61.11"></script>
+    <script src="js/config.js?v=0.61.11"></script>
+    <script src="js/notification.js?v=0.61.11"></script>
+    <script src="js/api.js?v=0.61.11"></script>
+    <script src="js/auth.js?v=0.61.11"></script>
+    <script src="js/components/sidebar.js?v=0.61.11"></script>
     <script>if (typeof Sidebar !== "undefined" && !document.documentElement.classList.contains('embed-mode')) Sidebar.init("#sidebarLinks");</script>
-    <script src="js/programs-page.js?v=0.61.10"></script><script src="js/alerts.js?v=0.61.10"></script>
+    <script src="js/programs-page.js?v=0.61.11"></script><script src="js/alerts.js?v=0.61.11"></script>
 </body>
 </html>

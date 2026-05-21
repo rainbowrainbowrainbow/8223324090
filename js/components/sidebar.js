@@ -74,7 +74,7 @@ const Sidebar = (() => {
         { href: '/checkin',      icon: '📸', label: 'Check-in',      access: 'hr_page',        group: 'team' },
 
         { type: 'group', key: 'product', label: 'Продукт', icon: '🎨', priority: 4, defaultOpen: false },
-        { href: '/programs',     icon: '🎪', label: 'Розважальні програми', access: 'programs', group: 'product' },
+        { href: '/programs',     icon: '🎪', label: 'Продукти', access: 'programs', group: 'product' },
         { href: '/content',      icon: '📱', label: 'Контент',       access: 'content',        group: 'product' },
         { href: '/art',          icon: '🎨', label: 'Арт директор',  access: 'art',            group: 'product' },
         { href: '/graduation',   icon: '🎓', label: 'Випускний',     access: 'graduation',     group: 'product' },

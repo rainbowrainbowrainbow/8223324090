@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.13 - Account lifecycle completion
+
+### Account lifecycle completion [codex]
+- **Профіль акаунта** - додано редагування імені, логіна і HR staff-привʼязки прямо з центру акаунтів.
+- **Staff binding** - створення акаунта тепер може одразу привʼязати користувача до реального staff-профілю без ручного обходу.
+- **Backend contract** - додано `/api/users/staff-options` і `/api/users/:id/profile` для повного account lifecycle.
+- **Security** - посилено guard-и: director/HR не можуть змінювати creator-акаунти через profile, password reset або activate/deactivate.
+
+---
+
 ## v0.61.12 - Account management menu
 
 ### Account management menu [codex]

@@ -772,6 +772,7 @@ async function copyWeek() {
 let teamStaff = [];
 let accountUsers = [];
 let accountRoleHierarchy = [];
+let accountStaffOptions = [];
 
 function canManageAccountSecurity() {
     return ['creator', 'director'].includes(AppState.currentUser?.role);
@@ -800,6 +801,30 @@ async function loadAccountRoleDefinitions() {
     if (Array.isArray(data?.hierarchy)) {
         accountRoleHierarchy = data.hierarchy.filter(role => ROLE_LABELS[role] || role);
     }
+}
+
+async function loadAccountStaffOptions(force = false) {
+    if (accountStaffOptions.length && !force) return;
+    const data = await crmApiFetch('/api/users/staff-options');
+    if (data?.success && Array.isArray(data.staff)) {
+        accountStaffOptions = data.staff;
+    }
+}
+
+function getAccountStaffSelectOptions(currentUserId = null) {
+    const options = [{ value: '', label: 'Без HR staff-профілю' }];
+    accountStaffOptions.forEach(staff => {
+        const linkedUserId = staff.linked_user_id || staff.linkedUserId;
+        const linkedUsername = staff.linked_username || staff.linkedUsername;
+        const locked = linkedUserId && Number(linkedUserId) !== Number(currentUserId)
+            ? ` · зайнято: ${linkedUsername || 'інший акаунт'}`
+            : '';
+        options.push({
+            value: String(staff.id),
+            label: `${staff.name}${staff.department ? ' · ' + staff.department : ''}${staff.position ? ' · ' + staff.position : ''}${locked}`
+        });
+    });
+    return options;
 }
 
 async function loadTeam() {
@@ -1009,6 +1034,7 @@ function renderAccountCenter() {
             <div class="hr-account-actions">
                 <span class="hr-account-state ${active ? 'ok' : 'off'}">${active ? 'активний' : 'вимкнений'}</span>
                 ${u.staff_id ? `<a class="hr-account-link" href="/hr?employee=${encodeURIComponent(u.staff_id)}">HR профіль</a>` : ''}
+                ${canManageSecurity ? `<button type="button" class="hr-account-toggle" onclick="openAccountProfileModal(${Number(u.id)}, this)">Профіль</button>` : ''}
                 ${canManageSecurity ? `<button type="button" class="hr-account-toggle" onclick="openAccountPasswordModal(${Number(u.id)}, this)">Пароль</button>` : ''}
                 ${canManageSecurity ? `<button type="button" class="hr-account-toggle" onclick="openAccountAccessEditor(${Number(u.id)}, this)">Доступ</button>` : ''}
                 <button type="button" class="hr-account-toggle" onclick="toggleAccountActive(${Number(u.id)}, ${active ? 'false' : 'true'}, this)">${active ? 'Вимкнути' : 'Активувати'}</button>
@@ -1023,12 +1049,14 @@ window.openAccountCreateModal = async function(button) {
         return;
     }
     await loadAccountRoleDefinitions();
+    await loadAccountStaffOptions();
     const result = await formModal('Створити CRM акаунт', [
         { key: 'name', label: 'Імʼя в CRM', required: true, placeholder: 'Женя Аніматор' },
         { key: 'username', label: 'Логін', required: true, placeholder: 'zhenya.animator' },
         { key: 'password', label: 'Тимчасовий пароль', type: 'password', required: true, placeholder: 'Мінімум 6 символів' },
         { key: 'confirmPassword', label: 'Повторити пароль', type: 'password', required: true },
         { key: 'role', label: 'Основна роль', type: 'select', defaultValue: 'animator', options: getAccountRoleOptions('animator') },
+        { key: 'staffId', label: 'HR staff-профіль', type: 'select', defaultValue: '', options: getAccountStaffSelectOptions() },
         { key: 'extraRoles', label: 'Додаткові ролі через кому', placeholder: 'manager, accountant' },
         { key: 'pageAllowlist', label: 'Додаткові сторінки через кому', placeholder: '/maysternya-doli' }
     ], {
@@ -1055,6 +1083,7 @@ window.openAccountCreateModal = async function(button) {
             password,
             name: String(result.name || '').trim(),
             role: result.role || 'animator',
+            staffId: result.staffId || null,
             extraRoles: normalizeAccountListInput(result.extraRoles),
             pageAllowlist: normalizeAccountListInput(result.pageAllowlist)
         }
@@ -1065,8 +1094,52 @@ window.openAccountCreateModal = async function(button) {
         return;
     }
     showNotification(`Акаунт ${response.user?.username || result.username} створено. Передайте тимчасовий пароль користувачу напряму.`, 'success');
+    await loadAccountStaffOptions(true);
     await loadAccountCenter();
 };
+
+async function openAccountProfileModal(userId, button) {
+    if (!canManageAccountSecurity()) {
+        showNotification('Редагування профілю доступне тільки creator/director', 'error');
+        return;
+    }
+    const user = accountUsers.find(item => Number(item.id) === Number(userId));
+    if (!user) return;
+    await loadAccountStaffOptions();
+    const result = await formModal(`Профіль акаунта · ${user.username}`, [
+        { key: 'name', label: 'Імʼя в CRM', required: true, defaultValue: user.name || user.username || '' },
+        { key: 'username', label: 'Логін', required: true, defaultValue: user.username || '', placeholder: 'latin.login' },
+        { key: 'staffId', label: 'HR staff-профіль', type: 'select', defaultValue: user.staff_id ? String(user.staff_id) : '', options: getAccountStaffSelectOptions(user.id) }
+    ], {
+        icon: '👥',
+        type: 'info',
+        okText: 'Зберегти профіль',
+        className: 'account-profile-modal'
+    });
+    if (!result) return;
+    const username = String(result.username || '').trim();
+    if (!/^[a-zA-Z0-9._-]{3,50}$/.test(username)) {
+        showNotification('Логін: 3-50 символів, латиниця/цифри/крапка/дефіс/підкреслення', 'error');
+        return;
+    }
+    if (button) button.disabled = true;
+    const response = await crmApiFetch(`/api/users/${encodeURIComponent(userId)}/profile`, {
+        method: 'PATCH',
+        body: {
+            name: String(result.name || '').trim(),
+            username,
+            staffId: result.staffId || null
+        }
+    });
+    if (button) button.disabled = false;
+    if (!response?.success) {
+        showNotification(response?.error || 'Не вдалося оновити профіль акаунта', 'error');
+        return;
+    }
+    showNotification('Профіль акаунта оновлено', 'success');
+    await loadAccountStaffOptions(true);
+    await loadAccountCenter();
+}
 
 async function openAccountPasswordModal(userId, button) {
     if (!canManageAccountSecurity()) {

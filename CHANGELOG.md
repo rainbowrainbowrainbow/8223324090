@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.36 - Profile Task Tooltip Fix
+
+### Profile Task Tooltip Fix [codex]
+- **Профіль** - кнопки задач у вкладці `Мої задачі` отримали зрозумілі українські hover/focus підказки.
+- **Виконання задач** - кнопка `✓` тепер явно підписана як `Виконати задачу` і лишається привʼязаною до канонічного `/api/tasks/:id/complete`.
+- **Будильник** - кнопка `⏰` пояснює дію як `Відкласти задачу на 60 хвилин`, без англійського `Snooze`.
+- **Regression guard** - UI smoke check фіксує українські tooltip labels, зелений done-action styling і відсутність старого `title="Snooze"`.
+
+---
+
 ## v0.61.35 - Profile Task Action Fix
 
 ### Profile Task Action Fix [codex]

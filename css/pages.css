@@ -985,12 +985,71 @@ body.dark-mode .cabinet-quick-segment.is-active .cabinet-quick-plate {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    position: relative;
 }
 
 .cabinet-task-actions button:disabled,
 .cabinet-task-actions button.is-busy {
     cursor: progress;
     opacity: 0.62;
+}
+
+.cabinet-task-actions .cabinet-task-action-done {
+    border-color: rgba(16, 185, 129, 0.44);
+    background: rgba(16, 185, 129, 0.12);
+    color: #047857;
+}
+
+.cabinet-task-actions button[data-tooltip]::after,
+.cabinet-task-actions button[data-tooltip]::before {
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+    z-index: var(--z-tooltip, 51000);
+}
+
+.cabinet-task-actions button[data-tooltip]::after {
+    content: attr(data-tooltip);
+    right: 0;
+    bottom: calc(100% + 10px);
+    width: max-content;
+    max-width: 230px;
+    padding: 7px 9px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.96);
+    box-shadow: 0 14px 32px rgba(2, 6, 23, 0.28);
+    color: #f8fafc;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.22;
+    text-align: left;
+    white-space: normal;
+    transform: translateY(4px);
+}
+
+.cabinet-task-actions button[data-tooltip]::before {
+    content: '';
+    right: 12px;
+    bottom: calc(100% + 5px);
+    border: 5px solid transparent;
+    border-top-color: rgba(15, 23, 42, 0.96);
+    transform: translateY(4px);
+}
+
+.cabinet-task-actions button[data-tooltip]:hover::after,
+.cabinet-task-actions button[data-tooltip]:hover::before,
+.cabinet-task-actions button[data-tooltip]:focus-visible::after,
+.cabinet-task-actions button[data-tooltip]:focus-visible::before {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+body.dark-mode .cabinet-task-actions .cabinet-task-action-done {
+    border-color: rgba(52, 211, 153, 0.5);
+    background: rgba(16, 185, 129, 0.18);
+    color: #86efac;
 }
 
 .cabinet-empty,

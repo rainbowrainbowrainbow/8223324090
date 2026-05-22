@@ -1146,6 +1146,9 @@ function renderCabinetTaskCard(task, compact = false) {
     const scheduleStatus = task.scheduleStatus || task.schedule_status || task.schedule?.status || '';
     const subDone = Number(task.subtask_done_count || task.subtaskDoneCount || 0);
     const subTotal = Number(task.subtask_count || task.subtaskCount || 0);
+    const doneActionLabel = 'Виконати задачу';
+    const snoozeActionLabel = 'Відкласти задачу на 60 хвилин';
+    const openActionLabel = 'Відкрити задачу у повному списку';
     return `
         <div class="cabinet-task-card">
             <div class="cabinet-task-main">
@@ -1160,9 +1163,9 @@ function renderCabinetTaskCard(task, compact = false) {
                 </div>
             </div>
             <div class="cabinet-task-actions">
-                <button type="button" title="Готово" aria-label="Позначити задачу виконаною" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>✓</button>
-                ${compact ? '' : `<button type="button" title="Snooze" aria-label="Відкласти задачу на 60 хвилин" data-cabinet-task-action="snooze" data-task-id="${taskIdAttr}" data-minutes="60" ${taskIdAttr ? '' : 'disabled'}>⏰</button>`}
-                <button type="button" title="Відкрити" aria-label="Відкрити задачу у Tasks" data-cabinet-task-action="open" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>↗</button>
+                <button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneActionLabel)}" aria-label="${escapeHtml(doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>✓</button>
+                ${compact ? '' : `<button type="button" class="cabinet-task-action-btn" title="${escapeHtml(snoozeActionLabel)}" aria-label="${escapeHtml(snoozeActionLabel)}" data-tooltip="${escapeHtml(snoozeActionLabel)}" data-cabinet-task-action="snooze" data-task-id="${taskIdAttr}" data-minutes="60" ${taskIdAttr ? '' : 'disabled'}>⏰</button>`}
+                <button type="button" class="cabinet-task-action-btn" title="${escapeHtml(openActionLabel)}" aria-label="${escapeHtml(openActionLabel)}" data-tooltip="${escapeHtml(openActionLabel)}" data-cabinet-task-action="open" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>↗</button>
             </div>
         </div>`;
 }

@@ -1818,7 +1818,14 @@ const CopilotPage = (() => {
     }
 
     async function newCase() {
-        const title = prompt('Назва кейсу:');
+        const titleValue = typeof promptModal === 'function'
+            ? await promptModal('Назва кейсу:', {
+                placeholder: 'Наприклад: аналіз продажів',
+                okText: 'Створити',
+                type: 'info'
+            })
+            : (typeof window.prompt === 'function' ? window.prompt('Назва кейсу:') : null);
+        const title = String(titleValue || '').trim();
         if (!title) return;
         try {
             const data = await apiPost('/cases', { title, case_type: _wfState.mode || 'research' });

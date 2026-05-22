@@ -411,12 +411,20 @@ async function addNewLine() {
     const dateStr = formatDate(AppState.selectedDate);
 
     if (window.TimelineBusinessContext?.current().key === 'maysternya_doli') {
-        const name = window.prompt('Назва спеціаліста або кабінету', 'Майстерня долі');
-        if (!name || !name.trim()) return;
+        const nameValue = typeof promptModal === 'function'
+            ? await promptModal('Назва спеціаліста або кабінету', {
+                defaultValue: 'Майстерня долі',
+                placeholder: 'Наприклад: Кабінет 1',
+                okText: 'Додати',
+                type: 'info'
+            })
+            : (typeof window.prompt === 'function' ? window.prompt('Назва спеціаліста або кабінету', 'Майстерня долі') : null);
+        const name = String(nameValue || '').trim();
+        if (!name) return;
         const lines = (AppState.linesByDate[dateStr] || AppState.lines || []).slice();
         const line = {
             id: `md_${Date.now()}`,
-            name: name.trim().slice(0, 80),
+            name: name.slice(0, 80),
             color: '#0EA586',
             fromSheet: false
         };

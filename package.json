@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.61.25",
+  "version": "0.61.26",
   "eventGenix": {
-    "releaseLabel": "Interaction Contract Fixes"
+    "releaseLabel": "Modal Interaction Cleanup"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.61.26 - Modal Interaction Cleanup
+
+### Modal Interaction Cleanup [codex]
+- **CRM-модалки** - Afisha, Certificates, Copilot, Settings і Dashboard work queue більше не відкривають грубі native `confirm/prompt/alert` у нормальному UI-потоці.
+- **Dashboard queue** - підтвердження бронювання, виконання задач і очищення reply expectations перейшли на shared `confirmModal`, а помилки показуються через CRM notification замість blocking `alert`.
+- **Afisha / Certificates** - destructive delete actions використовують shared confirm helper з fallback-ом лише для аварійного режиму без `ui.js`.
+- **Copilot / Settings** - створення кейсу та додавання лінії `Майстерні долі` використовують `promptModal` перед native fallback-ом.
+- **Regression guard** - додано UI smoke checks на повернення старих blocking dialogs у цих сценаріях.
+
+---
+
 ## v0.61.25 - Interaction Contract Fixes
 
 ### Interaction Contract Fixes [codex]

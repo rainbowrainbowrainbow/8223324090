@@ -85,6 +85,30 @@ const DashboardPage = (() => {
         arrow: 'Стрілка',
         curve: 'Крива'
     };
+    function notifyDashboardIssue(message) {
+        const text = String(message || 'Не вдалося виконати дію');
+        if (typeof showNotification === 'function') {
+            showNotification(text, 'error');
+            return;
+        }
+        console.warn('[dashboard]', text);
+    }
+
+    async function confirmDashboardAction(message, options = {}) {
+        const {
+            type = 'warning',
+            okText = 'Підтвердити',
+            cancelText = 'Скасувати'
+        } = options;
+        if (typeof confirmModal === 'function') {
+            return confirmModal(message, { type, okText, cancelText });
+        }
+        if (typeof customConfirm === 'function') {
+            return customConfirm(message, 'Підтвердження');
+        }
+        return typeof window.confirm === 'function' ? window.confirm(message) : false;
+    }
+
     const BOARD_RELATION_LABELS = {
         idea: 'Ідея',
         depends: 'Залежить',
@@ -6900,7 +6924,7 @@ const DashboardPage = (() => {
         } catch (err) {
             console.error('Reply backlog bulk action error:', err);
             setReplyOpsFeedback(err.message || 'Не вдалося виконати масову дію', 'error');
-            alert(err.message || 'Не вдалося виконати масову дію');
+            notifyDashboardIssue(err.message || 'Не вдалося виконати масову дію');
             throw err;
         } finally {
             if (button) {
@@ -6936,10 +6960,13 @@ const DashboardPage = (() => {
         });
     }
 
-    function bulkClearReplyExpectations(button) {
+    async function bulkClearReplyExpectations(button) {
         const ids = getSelectedReplyConversationIds();
         if (!ids.length) return;
-        if (!window.confirm(`Очистити очікування відповіді для ${ids.length} видимих item без позначки, що клієнти відповіли?`)) return;
+        if (!(await confirmDashboardAction(`Очистити очікування відповіді для ${ids.length} видимих item без позначки, що клієнти відповіли?`, {
+            okText: 'Очистити',
+            type: 'warning'
+        }))) return;
         return runReplyBulkAction(button, '/api/work-queue/replies/bulk/clear', {
             conversationIds: ids,
             sourceSurface: 'reply_operations_console_v2'
@@ -6977,7 +7004,7 @@ const DashboardPage = (() => {
             console.error('Reply backlog action error:', err);
             setExecutionFeedback(err.message || 'Не вдалося виконати дію з відповіддю; фокус черги не змінено.', 'error');
             renderTriageWorkspaceOnly(true);
-            alert(err.message || 'Не вдалося оновити беклог відповідей');
+            notifyDashboardIssue(err.message || 'Не вдалося оновити беклог відповідей');
             throw err;
         } finally {
             if (button) {
@@ -7018,7 +7045,7 @@ const DashboardPage = (() => {
             console.error('Task queue action error:', err);
             setExecutionFeedback(err.message || 'Не вдалося виконати дію по задачі; фокус черги не змінено.', 'error');
             renderTriageWorkspaceOnly(true);
-            alert(err.message || 'Не вдалося оновити задачу');
+            notifyDashboardIssue(err.message || 'Не вдалося оновити задачу');
             throw err;
         } finally {
             if (button) {
@@ -7059,7 +7086,7 @@ const DashboardPage = (() => {
             console.error('Booking queue action error:', err);
             setExecutionFeedback(err.message || 'Не вдалося підтвердити бронювання; фокус черги не змінено.', 'error');
             renderTriageWorkspaceOnly(true);
-            alert(err.message || 'Не вдалося підтвердити бронювання');
+            notifyDashboardIssue(err.message || 'Не вдалося підтвердити бронювання');
             throw err;
         } finally {
             if (button) {
@@ -7069,10 +7096,13 @@ const DashboardPage = (() => {
         }
     }
 
-    function confirmQueueBooking(bookingId, button) {
+    async function confirmQueueBooking(bookingId, button) {
         const id = String(bookingId || '').trim();
         if (!id) return;
-        if (!window.confirm('Підтвердити попереднє бронювання?')) return;
+        if (!(await confirmDashboardAction('Підтвердити попереднє бронювання?', {
+            okText: 'Підтвердити',
+            type: 'success'
+        }))) return;
         return runBookingQueueAction(
             button,
             `/api/bookings/${encodeURIComponent(id)}/confirm`,
@@ -7084,8 +7114,11 @@ const DashboardPage = (() => {
         );
     }
 
-    function completeQueueTask(taskId, button) {
-        if (!window.confirm('Позначити задачу виконаною?')) return;
+    async function completeQueueTask(taskId, button) {
+        if (!(await confirmDashboardAction('Позначити задачу виконаною?', {
+            okText: 'Позначити',
+            type: 'success'
+        }))) return;
         return runTaskQueueAction(
             button,
             `/api/work-queue/tasks/${encodeURIComponent(taskId)}/done`,
@@ -7493,8 +7526,11 @@ const DashboardPage = (() => {
         );
     }
 
-    function clearReplyExpectation(conversationId, button) {
-        if (!window.confirm('Очистити очікування відповіді без позначки, що клієнт відповів?')) return;
+    async function clearReplyExpectation(conversationId, button) {
+        if (!(await confirmDashboardAction('Очистити очікування відповіді без позначки, що клієнт відповів?', {
+            okText: 'Очистити',
+            type: 'warning'
+        }))) return;
         return runReplyBacklogAction(
             button,
             `/api/work-queue/replies/${encodeURIComponent(conversationId)}/clear`,

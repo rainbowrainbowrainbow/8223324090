@@ -37,6 +37,16 @@
         }
     }
 
+    async function confirmCertificateAction(message, okText = 'Видалити') {
+        if (typeof confirmModal === 'function') {
+            return confirmModal(message, { type: 'danger', okText, cancelText: 'Скасувати' });
+        }
+        if (typeof customConfirm === 'function') {
+            return customConfirm(message, 'Підтвердження');
+        }
+        return typeof window.confirm === 'function' ? window.confirm(message) : false;
+    }
+
     function formatDate(value, fallback = '—') {
         if (!value) return fallback;
         const date = new Date(value);
@@ -392,7 +402,7 @@
     }
 
     async function deleteCertificateFromPage(id) {
-        if (!window.confirm('Видалити сертифікат?')) return;
+        if (!(await confirmCertificateAction('Видалити сертифікат?'))) return;
         const result = await apiDeleteCertificate(id);
         if (!result.success) {
             notify(result.error || 'Не вдалося видалити сертифікат', 'error');

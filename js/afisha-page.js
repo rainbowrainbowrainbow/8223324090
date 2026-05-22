@@ -34,6 +34,16 @@
         if (typeof showNotification === 'function') showNotification(message, type);
     }
 
+    async function confirmAfishaAction(message, okText = 'Видалити') {
+        if (typeof confirmModal === 'function') {
+            return confirmModal(message, { type: 'danger', okText, cancelText: 'Скасувати' });
+        }
+        if (typeof customConfirm === 'function') {
+            return customConfirm(message, 'Підтвердження');
+        }
+        return typeof window.confirm === 'function' ? window.confirm(message) : false;
+    }
+
     function todayIso() {
         return new Date().toISOString().slice(0, 10);
     }
@@ -263,7 +273,7 @@
     }
 
     async function deleteEvent(id) {
-        if (!confirm('Видалити цю подію з афіші?')) return;
+        if (!(await confirmAfishaAction('Видалити цю подію з афіші?'))) return;
         try {
             await api('DELETE', `/afisha/${encodeURIComponent(id)}`);
             notify('Подію видалено', 'success');
@@ -383,7 +393,7 @@
         const button = event.target.closest('[data-template-action]');
         if (!button) return;
         if (button.dataset.templateAction !== 'delete') return;
-        if (!confirm('Видалити шаблон афіші?')) return;
+        if (!(await confirmAfishaAction('Видалити шаблон афіші?'))) return;
         try {
             await api('DELETE', `/afisha/templates/${encodeURIComponent(button.dataset.id)}`);
             notify('Шаблон видалено', 'success');

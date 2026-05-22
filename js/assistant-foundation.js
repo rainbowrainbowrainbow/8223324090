@@ -34,6 +34,21 @@
         }
     }
 
+    async function confirmAssistantAction(message, options = {}) {
+        const {
+            okText = 'Підтвердити',
+            cancelText = 'Скасувати',
+            type = 'warning'
+        } = options;
+        if (typeof confirmModal === 'function') {
+            return confirmModal(message, { okText, cancelText, type });
+        }
+        if (typeof customConfirm === 'function') {
+            return customConfirm(message, 'Підтвердження');
+        }
+        return typeof window.confirm === 'function' ? window.confirm(message) : false;
+    }
+
     function compactText(value, limit = 180) {
         const text = String(value || '').replace(/\s+/g, ' ').trim();
         if (text.length <= limit) return text;
@@ -586,8 +601,8 @@
                 });
                 throw new Error(action?.failureMessage || 'assistant_action_unavailable');
             }
-            if (action.confirmationNeeded && typeof window.confirm === 'function') {
-                const ok = window.confirm(action.label);
+            if (action.confirmationNeeded) {
+                const ok = await confirmAssistantAction(action.label, { okText: 'Виконати' });
                 if (!ok) return { success: false, cancelled: true };
             }
             try {
@@ -1398,9 +1413,7 @@
         }
         if (route.confirmationNeeded) {
             const title = route.payload?.title ? `\n\n${route.payload.title}` : '';
-            const ok = typeof window.confirm === 'function'
-                ? window.confirm(`${route.label || 'Підтвердити дію'}?${title}`)
-                : false;
+            const ok = await confirmAssistantAction(`${route.label || 'Підтвердити дію'}?${title}`, { okText: 'Підтвердити' });
             if (!ok) return { success: false, handled: true, cancelled: true, summary: 'Дію скасовано. Без підтвердження я не створюю або не змінюю дані.' };
         }
         if (route.payload?.directActionId) {

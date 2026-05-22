@@ -9,6 +9,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { requireRole } = require('../middleware/auth');
+const ExcelJS = require('exceljs');
 
 const log = createLogger('Reports');
 
@@ -43,6 +44,190 @@ function parseRawData(val) {
     } catch {
         return {};
     }
+}
+
+function currentUsername(req) {
+    return req.user?.username || req.user?.displayName || 'system';
+}
+
+function optionalInteger(value) {
+    const id = Number(value);
+    return Number.isInteger(id) ? id : null;
+}
+
+function currentUserId(req) {
+    return optionalInteger(req.user?.id);
+}
+
+function canManageReportTemplates(req) {
+    const roles = new Set([req.user?.role, ...(Array.isArray(req.user?.roles) ? req.user.roles : [])].filter(Boolean));
+    return ['creator', 'director', 'vice_director', 'senior_manager'].some(role => roles.has(role));
+}
+
+function sanitizeSubmittedVia(value, fallback = 'web') {
+    return ['bot', 'web', 'manual', 'web-template', 'template'].includes(value) ? value : fallback;
+}
+
+function sanitizeTemplateBody(body, req, existing = {}) {
+    const schema = parseRawData(body.schema || body.schemaJson || body.schema_json || {});
+    const columns = Array.isArray(schema.columns) ? schema.columns : (Array.isArray(body.columns) ? body.columns : []);
+    const rows = Array.isArray(schema.rows) ? schema.rows : (Array.isArray(body.rows) ? body.rows : []);
+    if (!columns.length) {
+        const err = new Error('columns required');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const title = String(body.title || existing.title || '').trim();
+    if (!title) {
+        const err = new Error('title required');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const requestedScope = body.scope || existing.scope || 'personal';
+    const scope = requestedScope === 'global' && canManageReportTemplates(req) ? 'global' : 'personal';
+    const source = existing.source === 'system' ? 'system' : (body.source === 'uploaded' ? 'uploaded' : 'custom');
+    const codeBase = String(body.code || existing.code || title).trim().toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 90) || `template-${Date.now()}`;
+
+    return {
+        code: existing.code || `${codeBase}${scope === 'personal' ? `-${currentUsername(req)}` : ''}`.slice(0, 100),
+        title,
+        category: String(body.category || existing.category || 'Custom').slice(0, 120),
+        layout: String(body.layout || existing.layout || 'custom').slice(0, 80),
+        description: body.description || existing.description || null,
+        purpose: body.purpose || existing.purpose || null,
+        schemaJson: { columns, rows },
+        defaultReportJson: parseRawData(body.defaultReport || body.defaultReportJson || body.default_report_json || existing.default_report_json || {}),
+        source,
+        scope
+    };
+}
+
+function mapTemplateRow(r) {
+    const schema = parseRawData(r.schema_json);
+    return {
+        id: r.id,
+        code: r.code,
+        title: r.title,
+        category: r.category,
+        layout: r.layout,
+        description: r.description,
+        purpose: r.purpose,
+        source: r.source,
+        scope: r.scope,
+        isActive: r.is_active,
+        createdByUsername: r.created_by_username,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        schema,
+        columns: Array.isArray(schema.columns) ? schema.columns : [],
+        rows: Array.isArray(schema.rows) ? schema.rows : [],
+        defaultReport: parseRawData(r.default_report_json)
+    };
+}
+
+function normalizeTablePayload(raw) {
+    const payload = parseRawData(raw);
+    const table = payload.reportTableTemplate || payload.table || payload;
+    const columns = Array.isArray(table.columns) ? table.columns : [];
+    const rows = Array.isArray(table.rows) ? table.rows : [];
+    if (!columns.length) {
+        const err = new Error('table columns required');
+        err.statusCode = 400;
+        throw err;
+    }
+    return {
+        payload,
+        table: {
+            ...table,
+            title: table.title || payload.title || 'Табличний звіт',
+            columns,
+            rows
+        }
+    };
+}
+
+function numericValue(value) {
+    if (value === null || value === undefined || value === '') return 0;
+    const n = Number(String(value).replace(/\s/g, '').replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+}
+
+function calculateTableAmount(table, defaultReport = {}) {
+    const amountColumn = defaultReport.amountColumn || table.defaultReport?.amountColumn;
+    if (!amountColumn) return 0;
+    return Math.max(0, Math.round((table.rows || []).reduce((sum, row) => sum + numericValue(row?.[amountColumn]), 0)));
+}
+
+function mapDraftRow(r) {
+    return {
+        id: r.id,
+        templateId: r.template_id,
+        title: r.title,
+        status: r.status,
+        tableJson: parseRawData(r.table_json),
+        reportId: r.report_id,
+        createdByUsername: r.created_by_username,
+        submittedAt: r.submitted_at,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        templateTitle: r.template_title || null
+    };
+}
+
+async function assignOnDutyAccountant(report) {
+    const dutyAccountant = await pool.query(
+        'SELECT id, name, chat_id FROM accountants WHERE is_on_duty = true LIMIT 1'
+    );
+    if (dutyAccountant.rows.length > 0) {
+        await pool.query(
+            'UPDATE reports SET assigned_to = $1, assigned_at = NOW() WHERE id = $2',
+            [dutyAccountant.rows[0].id, report.id]
+        );
+        report.assignedTo = dutyAccountant.rows[0].id;
+        report.accountantName = dutyAccountant.rows[0].name;
+    }
+    return report;
+}
+
+async function createReportFromTablePayload(req, tablePayload, overrides = {}) {
+    const normalized = normalizeTablePayload(tablePayload);
+    const defaultReport = normalized.table.defaultReport || parseRawData(overrides.defaultReport || {});
+    const type = defaultReport.type === 'income' ? 'income' : 'expense';
+    const category = overrides.category || defaultReport.category || normalized.table.category || 'Інше';
+    const amount = overrides.amount !== undefined
+        ? numericValue(overrides.amount)
+        : calculateTableAmount(normalized.table, defaultReport);
+    const hashtags = sanitizeHashtags(overrides.hashtags || [defaultReport.hashtag || 'table-report']);
+    const rawData = normalized.payload.reportTableTemplate
+        ? normalized.payload
+        : { reportTableTemplate: normalized.table };
+
+    const result = await pool.query(`
+        INSERT INTO reports (type, amount, description, category, submitted_by, submitted_by_id,
+            submitted_via, raw_data, hashtags)
+        VALUES ($1, $2, $3, $4, $5, $6, 'web-template', $7, $8)
+        RETURNING *
+    `, [
+        type,
+        amount,
+        overrides.description || `Табличний звіт: ${normalized.table.title}`,
+        category,
+        req.user?.displayName || req.user?.name || currentUsername(req),
+        currentUserId(req),
+        JSON.stringify(rawData),
+        JSON.stringify(hashtags)
+    ]);
+
+    return assignOnDutyAccountant(mapReportRow(result.rows[0]));
+}
+
+function csvCell(value) {
+    return `"${String(value ?? '').replace(/"/g, '""')}"`;
 }
 
 function mapReportRow(r) {
@@ -354,6 +539,292 @@ router.patch('/hashtags/toggle', async (req, res) => {
 });
 
 // ==========================================
+// TEMPLATE REGISTRY — durable report table schemas
+// ==========================================
+router.get('/templates', async (req, res) => {
+    try {
+        const username = currentUsername(req);
+        const result = await pool.query(`
+            SELECT *
+            FROM report_templates
+            WHERE is_active = true
+              AND (scope = 'global' OR created_by_username = $1)
+            ORDER BY CASE WHEN source = 'system' THEN 0 ELSE 1 END, category, title
+        `, [username]);
+        res.json({ success: true, templates: result.rows.map(mapTemplateRow), canManage: canManageReportTemplates(req) });
+    } catch (err) {
+        log.error('GET /reports/templates error', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+router.post('/templates', async (req, res) => {
+    try {
+        const body = sanitizeTemplateBody(req.body || {}, req);
+        const result = await pool.query(`
+            INSERT INTO report_templates (
+                code, title, category, layout, description, purpose, schema_json,
+                default_report_json, source, scope, created_by_user_id, created_by_username
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+            ON CONFLICT (code) DO UPDATE SET
+                title = EXCLUDED.title,
+                category = EXCLUDED.category,
+                layout = EXCLUDED.layout,
+                description = EXCLUDED.description,
+                purpose = EXCLUDED.purpose,
+                schema_json = EXCLUDED.schema_json,
+                default_report_json = EXCLUDED.default_report_json,
+                source = EXCLUDED.source,
+                scope = EXCLUDED.scope,
+                is_active = true,
+                updated_at = NOW()
+            RETURNING *
+        `, [
+            body.code,
+            body.title,
+            body.category,
+            body.layout,
+            body.description,
+            body.purpose,
+            JSON.stringify(body.schemaJson),
+            JSON.stringify(body.defaultReportJson),
+            body.source,
+            body.scope,
+            currentUserId(req),
+            currentUsername(req)
+        ]);
+        res.status(201).json({ success: true, template: mapTemplateRow(result.rows[0]) });
+    } catch (err) {
+        log.error('POST /reports/templates error', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+    }
+});
+
+router.put('/templates/:id', async (req, res) => {
+    try {
+        const existing = await pool.query('SELECT * FROM report_templates WHERE id = $1', [req.params.id]);
+        if (!existing.rows.length) return res.status(404).json({ error: 'Template not found' });
+        const row = existing.rows[0];
+        const ownsTemplate = row.created_by_username === currentUsername(req);
+        if (row.source === 'system' || (!ownsTemplate && !canManageReportTemplates(req))) {
+            return res.status(403).json({ error: 'Not allowed to edit this template' });
+        }
+        const body = sanitizeTemplateBody(req.body || {}, req, row);
+        const result = await pool.query(`
+            UPDATE report_templates SET
+                title = $1,
+                category = $2,
+                layout = $3,
+                description = $4,
+                purpose = $5,
+                schema_json = $6,
+                default_report_json = $7,
+                scope = $8,
+                updated_at = NOW()
+            WHERE id = $9
+            RETURNING *
+        `, [
+            body.title,
+            body.category,
+            body.layout,
+            body.description,
+            body.purpose,
+            JSON.stringify(body.schemaJson),
+            JSON.stringify(body.defaultReportJson),
+            body.scope,
+            req.params.id
+        ]);
+        res.json({ success: true, template: mapTemplateRow(result.rows[0]) });
+    } catch (err) {
+        log.error('PUT /reports/templates/:id error', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+    }
+});
+
+router.delete('/templates/:id', async (req, res) => {
+    try {
+        const existing = await pool.query('SELECT * FROM report_templates WHERE id = $1', [req.params.id]);
+        if (!existing.rows.length) return res.status(404).json({ error: 'Template not found' });
+        const row = existing.rows[0];
+        const ownsTemplate = row.created_by_username === currentUsername(req);
+        if (row.source === 'system' || (!ownsTemplate && !canManageReportTemplates(req))) {
+            return res.status(403).json({ error: 'Not allowed to delete this template' });
+        }
+        await pool.query('UPDATE report_templates SET is_active = false, updated_at = NOW() WHERE id = $1', [req.params.id]);
+        res.json({ success: true, id: parseInt(req.params.id, 10) });
+    } catch (err) {
+        log.error('DELETE /reports/templates/:id error', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+// ==========================================
+// TABLE DRAFTS — save/reopen template report work
+// ==========================================
+router.get('/drafts', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT d.*, t.title AS template_title
+            FROM report_table_drafts d
+            LEFT JOIN report_templates t ON t.id = d.template_id
+            WHERE d.created_by_username = $1
+            ORDER BY d.updated_at DESC
+            LIMIT 100
+        `, [currentUsername(req)]);
+        res.json({ success: true, drafts: result.rows.map(mapDraftRow) });
+    } catch (err) {
+        log.error('GET /reports/drafts error', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+router.post('/drafts', async (req, res) => {
+    try {
+        const normalized = normalizeTablePayload(req.body.tableJson || req.body.rawData || req.body);
+        const title = String(req.body.title || normalized.table.title || 'Чернетка звіту').trim();
+        const result = await pool.query(`
+            INSERT INTO report_table_drafts (
+                template_id, title, table_json, created_by_user_id, created_by_username
+            )
+            VALUES ($1,$2,$3,$4,$5)
+            RETURNING *
+        `, [
+            optionalInteger(req.body.templateId || normalized.table.templateId),
+            title,
+            JSON.stringify(normalized.payload.reportTableTemplate ? normalized.payload : { reportTableTemplate: normalized.table }),
+            currentUserId(req),
+            currentUsername(req)
+        ]);
+        res.status(201).json({ success: true, draft: mapDraftRow(result.rows[0]) });
+    } catch (err) {
+        log.error('POST /reports/drafts error', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+    }
+});
+
+router.put('/drafts/:id', async (req, res) => {
+    try {
+        const normalized = normalizeTablePayload(req.body.tableJson || req.body.rawData || req.body);
+        const title = String(req.body.title || normalized.table.title || 'Чернетка звіту').trim();
+        const result = await pool.query(`
+            UPDATE report_table_drafts SET
+                template_id = $1,
+                title = $2,
+                table_json = $3,
+                updated_at = NOW()
+            WHERE id = $4 AND created_by_username = $5 AND status = 'draft'
+            RETURNING *
+        `, [
+            optionalInteger(req.body.templateId || normalized.table.templateId),
+            title,
+            JSON.stringify(normalized.payload.reportTableTemplate ? normalized.payload : { reportTableTemplate: normalized.table }),
+            req.params.id,
+            currentUsername(req)
+        ]);
+        if (!result.rows.length) return res.status(404).json({ error: 'Draft not found' });
+        res.json({ success: true, draft: mapDraftRow(result.rows[0]) });
+    } catch (err) {
+        log.error('PUT /reports/drafts/:id error', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+    }
+});
+
+router.delete('/drafts/:id', async (req, res) => {
+    try {
+        const result = await pool.query(
+            "DELETE FROM report_table_drafts WHERE id = $1 AND created_by_username = $2 AND status = 'draft' RETURNING id",
+            [req.params.id, currentUsername(req)]
+        );
+        if (!result.rows.length) return res.status(404).json({ error: 'Draft not found' });
+        res.json({ success: true, id: parseInt(req.params.id, 10) });
+    } catch (err) {
+        log.error('DELETE /reports/drafts/:id error', err);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
+router.post('/drafts/:id/submit', async (req, res) => {
+    try {
+        const draftResult = await pool.query(
+            "SELECT * FROM report_table_drafts WHERE id = $1 AND created_by_username = $2 AND status = 'draft'",
+            [req.params.id, currentUsername(req)]
+        );
+        if (!draftResult.rows.length) return res.status(404).json({ error: 'Draft not found' });
+        const report = await createReportFromTablePayload(req, draftResult.rows[0].table_json, req.body || {});
+        const updated = await pool.query(`
+            UPDATE report_table_drafts
+            SET status = 'submitted', report_id = $1, submitted_at = NOW(), updated_at = NOW()
+            WHERE id = $2
+            RETURNING *
+        `, [report.id, req.params.id]);
+        res.status(201).json({ success: true, draft: mapDraftRow(updated.rows[0]), report });
+    } catch (err) {
+        log.error('POST /reports/drafts/:id/submit error', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+    }
+});
+
+// ==========================================
+// TABLE EXPORTS — current editable table payload
+// ==========================================
+router.post('/table/export-csv', async (req, res) => {
+    try {
+        const { table } = normalizeTablePayload(req.body);
+        const header = table.columns.map(col => csvCell(col.label || col.key)).join(';');
+        const rows = table.rows.map(row => table.columns.map(col => csvCell(row?.[col.key])).join(';'));
+        const csv = '\uFEFF' + [header, ...rows].join('\n');
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${String(table.title || 'report').replace(/[^\w-]+/g, '_')}.csv"`);
+        res.send(csv);
+    } catch (err) {
+        log.error('POST /reports/table/export-csv error', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+    }
+});
+
+router.post('/table/export-xlsx', async (req, res) => {
+    try {
+        const { table } = normalizeTablePayload(req.body);
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'Event Genix';
+        const sheet = workbook.addWorksheet('Звіт');
+        sheet.columns = table.columns.map(col => ({
+            header: col.label || col.key,
+            key: col.key,
+            width: Math.max(12, Math.min(32, String(col.label || col.key).length + 8))
+        }));
+        sheet.getRow(1).font = { bold: true };
+        sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+        for (const row of table.rows) {
+            const output = {};
+            table.columns.forEach(col => {
+                output[col.key] = col.type === 'number' ? numericValue(row?.[col.key]) : (row?.[col.key] || '');
+            });
+            sheet.addRow(output);
+        }
+        const totalColumns = table.columns.filter(col => col.total === 'sum');
+        if (totalColumns.length) {
+            const totalRow = {};
+            table.columns.forEach((col, index) => {
+                if (index === 0) totalRow[col.key] = 'Разом';
+                else if (col.total === 'sum') totalRow[col.key] = table.rows.reduce((sum, row) => sum + numericValue(row?.[col.key]), 0);
+                else totalRow[col.key] = '';
+            });
+            const row = sheet.addRow(totalRow);
+            row.font = { bold: true };
+        }
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${String(table.title || 'report').replace(/[^\w-]+/g, '_')}.xlsx"`);
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (err) {
+        log.error('POST /reports/table/export-xlsx error', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Database error' });
+    }
+});
+
+// ==========================================
 // GET /api/reports/:id — single report
 // ==========================================
 router.get('/:id', async (req, res) => {
@@ -385,6 +856,7 @@ router.post('/', async (req, res) => {
             submittedBy, submittedById, submittedVia = 'web',
             photoUrl, ocrText, voiceTranscript, rawData
         } = req.body;
+        const safeSubmittedVia = sanitizeSubmittedVia(submittedVia);
 
         if (!type || !['income', 'expense'].includes(type)) {
             return res.status(400).json({ error: 'Invalid type (income/expense)' });
@@ -402,7 +874,7 @@ router.post('/', async (req, res) => {
             category || null,
             submittedBy || req.user?.displayName || 'Unknown',
             submittedById || req.user?.id || null,
-            submittedVia,
+            safeSubmittedVia,
             photoUrl || null,
             ocrText || null,
             voiceTranscript || null,
@@ -412,18 +884,7 @@ router.post('/', async (req, res) => {
 
         const report = mapReportRow(result.rows[0]);
 
-        // Auto-assign to on-duty accountant
-        const dutyAccountant = await pool.query(
-            'SELECT id, name, chat_id FROM accountants WHERE is_on_duty = true LIMIT 1'
-        );
-        if (dutyAccountant.rows.length > 0) {
-            await pool.query(
-                'UPDATE reports SET assigned_to = $1, assigned_at = NOW() WHERE id = $2',
-                [dutyAccountant.rows[0].id, report.id]
-            );
-            report.assignedTo = dutyAccountant.rows[0].id;
-            report.accountantName = dutyAccountant.rows[0].name;
-        }
+        await assignOnDutyAccountant(report);
 
         log.info(`Report #${report.id} created: ${type} ${amount} by ${report.submittedBy}`);
         res.status(201).json(report);

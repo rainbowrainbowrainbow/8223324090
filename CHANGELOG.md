@@ -4,6 +4,17 @@
 
 ---
 
+## v0.61.40 - Reports Template Backend Workflow
+
+### Reports Template Backend Workflow [codex]
+- **Звіти** - Excel-like workspace отримав backend registry шаблонів, персональні чернетки та повторне відкриття табличного звіту в редакторі.
+- **Шаблони** - додано durable таблиці `report_templates` і `report_table_drafts` зі стандартними форматами для фінансів, операцій, payroll та кастомних звітів.
+- **Експорт** - додано серверний XLSX export для поточної таблиці, CSV import у workspace і стабільний CSV path без нового dependency.
+- **Контракт** - `submitted_via` розширено для `web-template`, щоб табличні звіти не падали на реальному DB constraint.
+- **Пошук / Асистент** - `/reports` тепер знаходиться за “шаблони звітів”, “excel звіт”, “табличний звіт”, а асистент пояснює новий template/draft/export workflow.
+
+---
+
 ## v0.61.39 - Reports Template Workflow
 
 ### Reports Template Workflow [codex]

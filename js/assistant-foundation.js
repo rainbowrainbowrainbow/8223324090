@@ -953,7 +953,7 @@
         { pageId: 'leads', href: 'leads.html', aliases: ['leads', 'ліди', 'лід', 'воронка'] },
         { pageId: 'chat', href: 'chat.html', aliases: ['chat', 'чат', 'діалоги', 'комунікації'] },
         { pageId: 'finance', href: 'finance.html', aliases: ['finance', 'фінанси', 'борги', 'p&l', 'pnl'] },
-        { pageId: 'reports', href: 'reports.html', aliases: ['reports', 'звіти', 'звіт'] },
+        { pageId: 'reports', href: 'reports.html', aliases: ['reports', 'звіти', 'звіт', 'шаблони звітів', 'excel звіт', 'табличний звіт'] },
         { pageId: 'profile', href: 'profile.html', aliases: ['profile', 'профіль', 'кабінет'] }
     ];
 

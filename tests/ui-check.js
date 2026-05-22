@@ -342,7 +342,8 @@ checkPage('reports.html', (doc, html) => {
     check('Reports manual modal uses page-scoped polished controls', !!doc.querySelector('#reportModal .rpt-report-modal') && html.includes('#reportForm select.form-control') && html.includes('appearance: none') && html.includes('rpt-hashtag-controls') && !html.includes('id="reportHashtagSelect" class="form-control" style='));
     check('Reports page exposes template-driven table workspace', !!doc.getElementById('report-template-workspace') && !!doc.getElementById('reportTemplateCards') && !!doc.getElementById('reportSheetTable') && !!doc.getElementById('reportTemplateUpload'));
     check('Reports template workflow supports standard/uploaded schemas and CSV export', reportsCode.includes('const REPORT_TABLE_TEMPLATES') && reportsCode.includes('function loadReportTemplate') && reportsCode.includes('function importReportTemplateFile') && reportsCode.includes('function exportReportTemplateCsv') && reportsCode.includes('reportTableTemplate'));
-    check('Reports template save uses existing rawData report contract', reportsCode.includes("rawData: payload") && reportsCode.includes("submittedVia: 'web-template'"));
+    check('Reports template workspace has draft/import/XLSX controls', !!doc.getElementById('reportTemplateDraftBtn') && !!doc.getElementById('reportTemplateImportCsvBtn') && !!doc.getElementById('reportTemplateExportXlsxBtn') && !!doc.getElementById('reportDraftList'));
+    check('Reports template save uses durable backend workspace contract', reportsCode.includes('/api/reports/templates') && reportsCode.includes('/api/reports/drafts') && reportsCode.includes('function saveReportTemplateDraft') && reportsCode.includes('function exportReportTemplateXlsx') && reportsCode.includes("submittedVia: 'web-template'"));
 });
 
 // ═══════════════════════════════════════════════════

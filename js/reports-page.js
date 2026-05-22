@@ -22,6 +22,10 @@ const ReportsPage = (() => {
     let _reportTemplates = [];
     let _activeTemplateId = 'finance-day-summary';
     let _reportTableState = null;
+    let _reportDrafts = [];
+    let _editingDraftId = null;
+    let _editingTableReportId = null;
+    let _canManageReportTemplates = false;
 
     const EXPENSE_CATEGORIES = ['Афіша', 'ЗП', 'Майстер-класи', 'ДАР', 'Костюми', 'Квести', 'Реквізит', 'Аквагрим', 'Декорації', 'Офіс', 'Інше'];
     const DEFAULT_HASHTAGS = ['СШ-Парк', 'СШ-Особистий', 'ДАР'];
@@ -228,12 +232,15 @@ const ReportsPage = (() => {
 
         return {
             id: String(template.id || `${source}-${Date.now()}`),
+            templateId: template.templateId || template.backendId || template.id || null,
+            code: template.code || null,
             title: String(template.title || 'Новий шаблон'),
             category: String(template.category || 'Custom'),
             layout: String(template.layout || 'custom'),
             description: String(template.description || 'Завантажений шаблон таблиці.'),
             purpose: String(template.purpose || ''),
             source,
+            scope: template.scope || (source === 'standard' ? 'global' : 'personal'),
             defaultReport: {
                 type: template.defaultReport?.type === 'income' ? 'income' : 'expense',
                 category: String(template.defaultReport?.category || 'Інше'),
@@ -318,7 +325,7 @@ const ReportsPage = (() => {
         } catch { return; }
         if (typeof initDarkMode === 'function') initDarkMode();
 
-        setupReportTemplateWorkspace();
+        await setupReportTemplateWorkspace();
 
         const periodFilter = document.getElementById('periodFilter');
         if (periodFilter) {
@@ -504,19 +511,23 @@ const ReportsPage = (() => {
     // RENDER: Template-driven report workspace
     // ==========================================
 
-    function setupReportTemplateWorkspace() {
-        _reportTemplates = [
-            ...REPORT_TABLE_TEMPLATES.map(template => normalizeTemplate(clone(template), 'standard')),
-            ...loadCustomReportTemplates()
-        ];
+    async function setupReportTemplateWorkspace() {
+        await loadReportTemplates();
 
         document.getElementById('reportTemplateUploadBtn')?.addEventListener('click', () => {
             document.getElementById('reportTemplateUpload')?.click();
         });
         document.getElementById('reportTemplateUpload')?.addEventListener('change', importReportTemplateFile);
+        document.getElementById('reportTemplateImportCsvBtn')?.addEventListener('click', () => {
+            document.getElementById('reportTableImportCsv')?.click();
+        });
+        document.getElementById('reportTableImportCsv')?.addEventListener('change', importReportTableCsv);
         document.getElementById('reportTemplateResetBtn')?.addEventListener('click', resetReportTemplateTable);
+        document.getElementById('reportTemplateDraftBtn')?.addEventListener('click', saveReportTemplateDraft);
         document.getElementById('reportTemplateAddRowBtn')?.addEventListener('click', addReportTemplateRow);
+        document.getElementById('reportTemplateAddColumnBtn')?.addEventListener('click', addReportTemplateColumn);
         document.getElementById('reportTemplateExportCsvBtn')?.addEventListener('click', exportReportTemplateCsv);
+        document.getElementById('reportTemplateExportXlsxBtn')?.addEventListener('click', exportReportTemplateXlsx);
         document.getElementById('reportTemplateSaveBtn')?.addEventListener('click', createReportFromTemplate);
 
         document.getElementById('reportTemplateCards')?.addEventListener('click', event => {
@@ -532,9 +543,46 @@ const ReportsPage = (() => {
             if (!deleteBtn) return;
             deleteReportTemplateRow(Number(deleteBtn.dataset.reportRowDelete));
         });
+        table?.addEventListener('keydown', handleReportSheetKeyboard);
+        table?.addEventListener('paste', handleReportSheetPaste);
 
         renderReportTemplateCards();
+        await loadReportDrafts();
         loadReportTemplate(_activeTemplateId, { silent: true });
+    }
+
+    async function loadReportTemplates() {
+        try {
+            const data = await apiRequest('GET', '/api/reports/templates');
+            _canManageReportTemplates = !!data.canManage;
+            _reportTemplates = (data.templates || []).map(template => normalizeTemplate({
+                id: String(template.code || template.id),
+                backendId: template.id,
+                code: template.code,
+                title: template.title,
+                category: template.category,
+                layout: template.layout,
+                description: template.description,
+                purpose: template.purpose,
+                columns: template.columns,
+                rows: template.rows,
+                defaultReport: template.defaultReport,
+                source: template.source || 'backend',
+                scope: template.scope
+            }, template.source || 'backend'));
+        } catch (err) {
+            console.warn('Backend report templates unavailable, using local fallback', err);
+            _reportTemplates = [
+                ...REPORT_TABLE_TEMPLATES.map(template => normalizeTemplate(clone(template), 'standard')),
+                ...loadCustomReportTemplates()
+            ];
+        }
+        if (!_reportTemplates.length) {
+            _reportTemplates = REPORT_TABLE_TEMPLATES.map(template => normalizeTemplate(clone(template), 'standard'));
+        }
+        if (!_reportTemplates.some(t => t.id === _activeTemplateId)) {
+            _activeTemplateId = _reportTemplates[0]?.id;
+        }
     }
 
     function renderReportTemplateCards() {
@@ -558,6 +606,38 @@ const ReportsPage = (() => {
         `).join('');
     }
 
+    async function loadReportDrafts() {
+        try {
+            const data = await apiRequest('GET', '/api/reports/drafts');
+            _reportDrafts = data.drafts || [];
+            renderReportDrafts();
+        } catch (err) {
+            console.warn('Report drafts unavailable', err);
+            _reportDrafts = [];
+            renderReportDrafts();
+        }
+    }
+
+    function renderReportDrafts() {
+        const container = document.getElementById('reportDraftList');
+        if (!container) return;
+        if (!_reportDrafts.length) {
+            container.innerHTML = '';
+            return;
+        }
+        container.innerHTML = [
+            '<span class="rpt-template-chip">Чернетки</span>',
+            ..._reportDrafts.slice(0, 8).map(draft => `
+                <button type="button" class="rpt-draft-chip" data-report-draft-id="${draft.id}" title="Відкрити чернетку">
+                    ${esc(draft.title)} · ${formatDateTime(draft.updatedAt)}
+                </button>
+            `)
+        ].join('');
+        container.querySelectorAll('[data-report-draft-id]').forEach(btn => {
+            btn.addEventListener('click', () => openReportDraft(Number(btn.dataset.reportDraftId)));
+        });
+    }
+
     function setTemplateStatus(message = '') {
         const status = document.getElementById('reportTemplateStatus');
         if (status) status.textContent = message;
@@ -568,6 +648,8 @@ const ReportsPage = (() => {
         if (!template) return;
 
         _activeTemplateId = template.id;
+        _editingDraftId = null;
+        _editingTableReportId = null;
         _reportTableState = {
             ...clone(template),
             rows: template.rows.map(row => ({ ...row }))
@@ -654,6 +736,61 @@ const ReportsPage = (() => {
         setTemplateStatus('Є незбережені зміни в таблиці');
     }
 
+    function focusSheetCell(rowIndex, columnIndex) {
+        const key = _reportTableState?.columns[columnIndex]?.key;
+        if (!key) return;
+        const target = Array.from(document.querySelectorAll('.rpt-sheet-input')).find(input =>
+            Number(input.dataset.rowIndex) === rowIndex && input.dataset.columnKey === key
+        );
+        target?.focus();
+    }
+
+    function handleReportSheetKeyboard(event) {
+        const input = event.target.closest('.rpt-sheet-input');
+        if (!input || !_reportTableState) return;
+        const rowIndex = Number(input.dataset.rowIndex);
+        const columnIndex = _reportTableState.columns.findIndex(col => col.key === input.dataset.columnKey);
+        if (columnIndex < 0) return;
+
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            if (rowIndex === _reportTableState.rows.length - 1) addReportTemplateRow();
+            focusSheetCell(Math.min(rowIndex + 1, _reportTableState.rows.length - 1), columnIndex);
+        } else if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            focusSheetCell(Math.min(rowIndex + 1, _reportTableState.rows.length - 1), columnIndex);
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            focusSheetCell(Math.max(rowIndex - 1, 0), columnIndex);
+        } else if (event.key === 'Tab' && !event.shiftKey && columnIndex === _reportTableState.columns.length - 1 && rowIndex === _reportTableState.rows.length - 1) {
+            addReportTemplateRow();
+        }
+    }
+
+    function handleReportSheetPaste(event) {
+        const input = event.target.closest('.rpt-sheet-input');
+        if (!input || !_reportTableState) return;
+        const text = event.clipboardData?.getData('text/plain') || '';
+        if (!text.includes('\t') && !text.includes('\n')) return;
+        event.preventDefault();
+        const startRow = Number(input.dataset.rowIndex);
+        const startCol = _reportTableState.columns.findIndex(col => col.key === input.dataset.columnKey);
+        const matrix = text.trimEnd().split(/\r?\n/).map(line => line.split('\t'));
+        while (_reportTableState.rows.length < startRow + matrix.length) {
+            _reportTableState.rows.push(Object.fromEntries(_reportTableState.columns.map(col => [col.key, ''])));
+        }
+        matrix.forEach((line, rowOffset) => {
+            line.forEach((cell, colOffset) => {
+                const col = _reportTableState.columns[startCol + colOffset];
+                if (!col) return;
+                _reportTableState.rows[startRow + rowOffset][col.key] = cell;
+            });
+        });
+        renderReportTableWorkspace();
+        focusSheetCell(startRow, startCol);
+        setTemplateStatus('Дані вставлено з буфера');
+    }
+
     function addReportTemplateRow() {
         if (!_reportTableState) return;
         const row = Object.fromEntries(_reportTableState.columns.map(col => [col.key, '']));
@@ -672,8 +809,80 @@ const ReportsPage = (() => {
         setTemplateStatus('Рядок видалено');
     }
 
+    async function addReportTemplateColumn() {
+        if (!_reportTableState) return;
+        if (typeof promptModal !== 'function') {
+            showNotification('Модальне поле для назви колонки недоступне', 'error');
+            return;
+        }
+        const label = await promptModal('Назва колонки:', { defaultValue: '' });
+        if (!label || !label.trim()) return;
+        const key = slugifyKey(label, `col-${_reportTableState.columns.length + 1}`);
+        _reportTableState.columns.push({
+            key,
+            label: label.trim(),
+            type: 'text',
+            placeholder: ''
+        });
+        _reportTableState.rows.forEach(row => { row[key] = ''; });
+        renderReportTableWorkspace();
+        setTemplateStatus('Додано колонку');
+    }
+
     function resetReportTemplateTable() {
         loadReportTemplate(_activeTemplateId);
+    }
+
+    function openReportDraft(draftId) {
+        const draft = _reportDrafts.find(item => item.id === draftId);
+        const table = draft?.tableJson?.reportTableTemplate;
+        if (!draft || !table) return;
+        _editingDraftId = draft.id;
+        _editingTableReportId = null;
+        _activeTemplateId = String(table.id || draft.templateId || _activeTemplateId);
+        _reportTableState = {
+            id: String(table.id || draft.templateId || `draft-${draft.id}`),
+            templateId: draft.templateId || table.templateId || null,
+            title: table.title || draft.title,
+            category: table.category || 'Custom',
+            layout: table.layout || 'custom',
+            source: table.source || 'draft',
+            scope: 'personal',
+            purpose: table.purpose || '',
+            description: table.description || 'Чернетка табличного звіту',
+            defaultReport: table.defaultReport || {},
+            columns: Array.isArray(table.columns) ? table.columns : [],
+            rows: Array.isArray(table.rows) ? table.rows : []
+        };
+        renderReportTemplateCards();
+        renderReportTableWorkspace();
+        setTemplateStatus(`Відкрито чернетку #${draft.id}`);
+    }
+
+    function openReportTableForEditing(report) {
+        const table = normalizeReportRawData(report?.rawData).reportTableTemplate;
+        if (!table) return;
+        _editingDraftId = null;
+        _editingTableReportId = report.id;
+        _activeTemplateId = String(table.id || _activeTemplateId);
+        _reportTableState = {
+            id: String(table.id || `report-${report.id}`),
+            templateId: table.templateId || null,
+            title: table.title || report.description || `Звіт #${report.id}`,
+            category: table.category || report.category || 'Custom',
+            layout: table.layout || 'custom',
+            source: table.source || 'report',
+            scope: 'report',
+            purpose: table.purpose || '',
+            description: table.description || 'Збережений табличний звіт',
+            defaultReport: table.defaultReport || {},
+            columns: Array.isArray(table.columns) ? table.columns : [],
+            rows: Array.isArray(table.rows) ? table.rows : []
+        };
+        renderReportTemplateCards();
+        renderReportTableWorkspace();
+        setTemplateStatus(`Редагування збереженого звіту #${report.id}`);
+        document.getElementById('report-template-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     async function importReportTemplateFile(event) {
@@ -687,14 +896,101 @@ const ReportsPage = (() => {
                 id: parsed.id || `uploaded-${Date.now()}`
             }, 'uploaded');
 
-            _reportTemplates = _reportTemplates.filter(t => t.id !== template.id);
-            _reportTemplates.push(template);
-            saveCustomReportTemplates();
-            renderReportTemplateCards();
-            loadReportTemplate(template.id);
+            try {
+                const saved = await apiRequest('POST', '/api/reports/templates', {
+                    title: template.title,
+                    category: template.category,
+                    layout: template.layout,
+                    description: template.description,
+                    purpose: template.purpose,
+                    scope: _canManageReportTemplates ? 'global' : 'personal',
+                    source: 'uploaded',
+                    columns: template.columns,
+                    rows: template.rows,
+                    defaultReport: template.defaultReport
+                });
+                const backendTemplate = saved.template;
+                const normalized = normalizeTemplate({
+                    id: String(backendTemplate.code || backendTemplate.id),
+                    backendId: backendTemplate.id,
+                    code: backendTemplate.code,
+                    title: backendTemplate.title,
+                    category: backendTemplate.category,
+                    layout: backendTemplate.layout,
+                    description: backendTemplate.description,
+                    purpose: backendTemplate.purpose,
+                    columns: backendTemplate.columns,
+                    rows: backendTemplate.rows,
+                    defaultReport: backendTemplate.defaultReport,
+                    source: backendTemplate.source || 'uploaded',
+                    scope: backendTemplate.scope
+                }, backendTemplate.source || 'uploaded');
+                _reportTemplates = _reportTemplates.filter(t => t.id !== normalized.id);
+                _reportTemplates.push(normalized);
+                renderReportTemplateCards();
+                loadReportTemplate(normalized.id);
+            } catch (apiErr) {
+                _reportTemplates = _reportTemplates.filter(t => t.id !== template.id);
+                _reportTemplates.push(template);
+                saveCustomReportTemplates();
+                renderReportTemplateCards();
+                loadReportTemplate(template.id);
+                console.warn('Template saved locally because backend save failed', apiErr);
+            }
             showNotification('Шаблон таблиці завантажено');
         } catch (err) {
             showNotification('Не вдалося завантажити шаблон: ' + err.message, 'error');
+        } finally {
+            event.target.value = '';
+        }
+    }
+
+    function parseCsvLine(line) {
+        const result = [];
+        let current = '';
+        let quoted = false;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"' && line[i + 1] === '"') {
+                current += '"';
+                i++;
+            } else if (ch === '"') {
+                quoted = !quoted;
+            } else if ((ch === ';' || ch === ',') && !quoted) {
+                result.push(current);
+                current = '';
+            } else {
+                current += ch;
+            }
+        }
+        result.push(current);
+        return result;
+    }
+
+    async function importReportTableCsv(event) {
+        const file = event.target.files?.[0];
+        if (!file || !_reportTableState) return;
+        try {
+            const text = await file.text();
+            const lines = text.replace(/^\ufeff/, '').split(/\r?\n/).filter(line => line.trim());
+            if (lines.length < 2) throw new Error('CSV має містити заголовок і хоча б один рядок');
+            const headers = parseCsvLine(lines[0]).map(h => h.trim());
+            const columns = headers.map((label, index) => ({
+                key: slugifyKey(label || `Колонка ${index + 1}`, `csv-${index + 1}`),
+                label: label || `Колонка ${index + 1}`,
+                type: 'text',
+                placeholder: ''
+            }));
+            const rows = lines.slice(1).map(line => {
+                const cells = parseCsvLine(line);
+                return Object.fromEntries(columns.map((col, index) => [col.key, cells[index] || '']));
+            });
+            _reportTableState.columns = columns;
+            _reportTableState.rows = rows.length ? rows : [Object.fromEntries(columns.map(col => [col.key, '']))];
+            renderReportTableWorkspace();
+            setTemplateStatus('CSV імпортовано в поточну таблицю');
+        } catch (err) {
+            showNotification('Не вдалося імпортувати CSV: ' + err.message, 'error');
         } finally {
             event.target.value = '';
         }
@@ -705,10 +1001,15 @@ const ReportsPage = (() => {
         return {
             reportTableTemplate: {
                 id: _reportTableState.id,
+                templateId: _reportTableState.templateId || null,
+                schemaVersion: 1,
                 title: _reportTableState.title,
                 category: _reportTableState.category,
                 layout: _reportTableState.layout,
                 source: _reportTableState.source,
+                purpose: _reportTableState.purpose,
+                description: _reportTableState.description,
+                defaultReport: _reportTableState.defaultReport || {},
                 columns: _reportTableState.columns,
                 rows: _reportTableState.rows,
                 generatedAt: new Date().toISOString()
@@ -722,6 +1023,62 @@ const ReportsPage = (() => {
         const amountColumn = state.defaultReport?.amountColumn;
         if (!amountColumn) return 0;
         return Math.max(0, Math.round(state.rows.reduce((sum, row) => sum + parseNumber(row[amountColumn]), 0)));
+    }
+
+    async function saveReportTemplateDraft() {
+        if (!_reportTableState) return;
+        const payload = buildReportTablePayload();
+        const templateId = Number(_reportTableState.templateId);
+        const body = {
+            title: _reportTableState.title,
+            templateId: Number.isInteger(templateId) ? templateId : null,
+            tableJson: payload
+        };
+
+        try {
+            const data = _editingDraftId
+                ? await apiRequest('PUT', `/api/reports/drafts/${_editingDraftId}`, body)
+                : await apiRequest('POST', '/api/reports/drafts', body);
+            _editingDraftId = data.draft?.id || _editingDraftId;
+            _editingTableReportId = null;
+            await loadReportDrafts();
+            showNotification('Чернетку табличного звіту збережено');
+            setTemplateStatus(`Чернетка #${_editingDraftId} збережена. Можна повернутися до неї пізніше.`);
+        } catch (err) {
+            showNotification('Помилка збереження чернетки: ' + err.message, 'error');
+        }
+    }
+
+    async function downloadReportTableExport(format) {
+        if (!_reportTableState) return;
+        const payload = buildReportTablePayload();
+        const token = localStorage.getItem('pzp_token');
+        try {
+            const res = await fetch(`/api/reports/table/export-${format}`, {
+                method: 'POST',
+                headers: {
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || 'Export failed');
+            }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${slugifyKey(_reportTableState.title, 'report')}.${format}`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            setTemplateStatus(`${format.toUpperCase()} експортовано`);
+        } catch (err) {
+            showNotification(`Помилка ${format.toUpperCase()} експорту: ${err.message}`, 'error');
+        }
     }
 
     function exportReportTemplateCsv() {
@@ -742,32 +1099,72 @@ const ReportsPage = (() => {
         setTemplateStatus('CSV експортовано');
     }
 
+    async function exportReportTemplateXlsx() {
+        await downloadReportTableExport('xlsx');
+    }
+
     async function createReportFromTemplate() {
         if (!_reportTableState) return;
         const reportDefaults = _reportTableState.defaultReport || {};
         const amount = getTemplateReportAmount();
         const payload = buildReportTablePayload();
+        const description = `Табличний звіт: ${_reportTableState.title}`;
+        const category = reportDefaults.category || _reportTableState.category || 'Інше';
+        const hashtags = [reportDefaults.hashtag || 'table-report'].filter(Boolean);
 
         try {
-            await apiRequest('POST', '/api/reports', {
-                type: reportDefaults.type || 'expense',
-                amount,
-                description: `Табличний звіт: ${_reportTableState.title}`,
-                category: reportDefaults.category || _reportTableState.category || 'Інше',
-                hashtags: [reportDefaults.hashtag || 'table-report'].filter(Boolean),
-                submittedVia: 'web-template',
-                rawData: payload
-            });
-            showNotification('Табличний звіт створено');
-            setTemplateStatus('Звіт створено і збережено в реєстрі');
-            await Promise.all([loadReports(), loadSummary(), loadHashtags()]);
+            if (_editingDraftId) {
+                const templateId = Number(_reportTableState.templateId);
+                await apiRequest('PUT', `/api/reports/drafts/${_editingDraftId}`, {
+                    title: _reportTableState.title,
+                    templateId: Number.isInteger(templateId) ? templateId : null,
+                    tableJson: payload
+                });
+                await apiRequest('POST', `/api/reports/drafts/${_editingDraftId}/submit`, {
+                    amount,
+                    description,
+                    category,
+                    hashtags
+                });
+                _editingDraftId = null;
+            } else if (_editingTableReportId) {
+                await apiRequest('PUT', `/api/reports/${_editingTableReportId}`, {
+                    type: reportDefaults.type || 'expense',
+                    amount,
+                    description,
+                    category,
+                    hashtags,
+                    rawData: payload
+                });
+            } else {
+                await apiRequest('POST', '/api/reports', {
+                    type: reportDefaults.type || 'expense',
+                    amount,
+                    description,
+                    category,
+                    hashtags,
+                    submittedVia: 'web-template',
+                    rawData: payload
+                });
+            }
+            const actionLabel = _editingTableReportId ? 'оновлено' : 'створено';
+            showNotification(`Табличний звіт ${actionLabel}`);
+            setTemplateStatus(`Звіт ${actionLabel} і збережено в реєстрі`);
+            _editingTableReportId = null;
+            await Promise.all([loadReports(), loadSummary(), loadHashtags(), loadReportDrafts()]);
         } catch (err) {
             showNotification('Помилка: ' + err.message, 'error');
         }
     }
 
-    function renderReportRawTemplatePreview(rawData) {
-        const data = normalizeReportRawData(rawData);
+    function editTableReport(id) {
+        const report = _reports.find(item => item.id === id);
+        if (!report) return;
+        openReportTableForEditing(report);
+    }
+
+    function renderReportRawTemplatePreview(report) {
+        const data = normalizeReportRawData(report?.rawData);
         const table = data.reportTableTemplate;
         if (!table || !Array.isArray(table.columns) || !Array.isArray(table.rows)) return '';
 
@@ -775,6 +1172,10 @@ const ReportsPage = (() => {
         const rows = table.rows.slice(0, 4);
         return `
             <div class="rpt-raw-table-preview">
+                <div class="rpt-raw-table-preview-head">
+                    <strong>${esc(table.title || 'Табличний звіт')}</strong>
+                    <button type="button" class="rpt-template-action" onclick="event.stopPropagation();ReportsPage.editTableReport(${report.id})">Відкрити в редакторі</button>
+                </div>
                 <table>
                     <thead>
                         <tr>${columns.map(col => `<th>${esc(col.label || col.key)}</th>`).join('')}</tr>
@@ -935,7 +1336,7 @@ const ReportsPage = (() => {
                     ${report.ocrText ? `<p><strong>OCR текст:</strong> ${esc(report.ocrText)}</p>` : ''}
                     ${report.voiceTranscript ? `<p><strong>Голосовий:</strong> ${esc(report.voiceTranscript)}</p>` : ''}
                     <p><strong>Канал:</strong> ${esc(report.submittedVia) || 'web'}</p>
-                    ${renderReportRawTemplatePreview(report.rawData)}
+                    ${renderReportRawTemplatePreview(report)}
                     ${report.accountantName ? `<p><strong>Бухгалтер:</strong> ${esc(report.accountantName)}</p>` : ''}
                     ${report.processedAt ? `<p><strong>Опрацьовано:</strong> ${formatDateTime(report.processedAt)}</p>` : ''}
                     <p><strong>Створено:</strong> ${formatDateTime(report.createdAt)}</p>
@@ -1184,7 +1585,10 @@ const ReportsPage = (() => {
         addHashtagCustom,
         removeModalHashtag,
         loadReportTemplate,
+        saveReportTemplateDraft,
         importReportTemplateFile,
-        exportReportTemplateCsv
+        exportReportTemplateCsv,
+        exportReportTemplateXlsx,
+        editTableReport
     };
 })();

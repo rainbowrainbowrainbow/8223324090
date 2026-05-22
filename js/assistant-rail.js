@@ -72,12 +72,23 @@
     const ASSISTANT_VOICE_PREF_KEY = 'eg_crm_assistant_voice';
     const ASSISTANT_LEGACY_VOICE_PREF_KEY = 'eg_dashboard_assistant_voice';
     const ASSISTANT_VOICE_OPT_IN_KEY = 'eg_crm_assistant_voice_opt_in_at';
+    const ASSISTANT_PROACTIVE_HELP_PREF_KEY = 'eg_crm_assistant_proactive_help';
+    const ASSISTANT_BROWSER_SPEECH_FALLBACK_ENABLED = false;
     const CLICK_GUIDE_DEFAULT_DURATION_MS = 4200;
     const CLICK_GUIDE_SCROLL_DELAY_MS = 220;
 
     function isAssistantVoiceExplicitlyEnabled() {
         try {
             return localStorage.getItem(ASSISTANT_VOICE_PREF_KEY) === 'on';
+        } catch {
+            return false;
+        }
+    }
+
+    function isProactiveHelpEnabled() {
+        if (window.CRM_ASSISTANT_PROACTIVE_HELP === true) return true;
+        try {
+            return localStorage.getItem(ASSISTANT_PROACTIVE_HELP_PREF_KEY) === 'on';
         } catch {
             return false;
         }
@@ -1033,6 +1044,7 @@
 
     function scheduleProactiveHelp(context = {}) {
         cancelProactiveHelp();
+        if (!isProactiveHelpEnabled()) return;
         const pageKey = getCurrentPageKey();
         if (proactiveShownForPage === pageKey) return;
         if (['thinking', 'busy', 'listening', 'speaking'].includes(state.mode)) return;
@@ -1044,7 +1056,7 @@
             if (pageInteractionDetected || document.hidden) return;
             if (['thinking', 'busy', 'listening', 'speaking'].includes(state.mode)) return;
             proactiveShownForPage = pageKey;
-            await announcePageContext({ ...context, proactive: true, textOnly: !state.voiceEnabled });
+            await announcePageContext({ ...context, proactive: true, textOnly: true, voiceMode: false });
         }, 5000);
     }
 
@@ -1498,6 +1510,7 @@
     }
 
     async function announcePageContext(options = {}) {
+        if (options.proactive === true && !isProactiveHelpEnabled()) return;
         const context = buildPageGuideContext(options);
         const thinking = options.proactive
             ? 'Я на сторінці вже кілька секунд. Готую коротку підказку...'
@@ -1509,7 +1522,7 @@
             reply = await requestGuideReply({
                 ...context,
                 proactive: options.proactive === true,
-                voiceMode: state.voiceEnabled && !options.textOnly
+                voiceMode: options.voiceMode === true
             });
         } catch (err) {
             if (String(err?.message || '').includes('openai_not_configured')) {
@@ -1525,7 +1538,10 @@
             }
         }
 
-        await playReply(normalizeReply(reply, context), { textOnly: options.textOnly === true });
+        await playReply(normalizeReply(reply, context), {
+            textOnly: true,
+            speak: false
+        });
     }
 
     function releaseAudioPlayer() {
@@ -1810,7 +1826,7 @@
             audioElementErrorHandled = true;
             releaseAudioPlayer();
             clearSpeakingIdleTimer();
-            speakWithBrowserVoice(line, runId).catch(error => handlePlaybackFailure(error, line));
+            handlePlaybackFailure(new Error('speech_audio_element_failed'), line);
         };
         try {
             await audioPlayer.play();
@@ -1825,9 +1841,18 @@
         return { success: true };
     }
 
-    async function speakText(text) {
+    async function speakText(text, options = {}) {
         const line = String(text || '').trim();
         if (!line) return;
+        if (options.userInitiated !== true) {
+            emitTelemetry('speech_suppressed', {
+                module: 'rail:speakText',
+                playbackState: 'suppressed',
+                failureReason: 'user_action_required',
+                fallbackShown: true
+            });
+            return { skipped: true, reason: 'user_action_required' };
+        }
         playbackRunId += 1;
         const runId = playbackRunId;
         releaseAudioPlayer();
@@ -1841,10 +1866,11 @@
             if (runId !== playbackRunId) return;
             emitTelemetry('playback_failed', {
                 module: 'rail:playback',
-                playbackState: 'browser-fallback',
+                playbackState: ASSISTANT_BROWSER_SPEECH_FALLBACK_ENABLED ? 'browser-fallback' : 'failed',
                 failureReason: primaryError?.message || primaryError?.name || 'tts_playback_failed',
                 fallbackShown: true
             });
+            if (!ASSISTANT_BROWSER_SPEECH_FALLBACK_ENABLED) throw primaryError;
             return speakWithBrowserVoice(line, runId);
         }
     }
@@ -1853,7 +1879,7 @@
         const text = String(reply?.subtitle || reply?.summary || reply?.text || '').trim();
         if (!text) return;
         if (options.addToHistory !== false) appendHistory('assistant', text);
-        const shouldPlayAudio = state.voiceEnabled && !options.textOnly;
+        const shouldPlayAudio = state.voiceEnabled && options.speak === true && options.textOnly !== true;
         clearSpeakingIdleTimer();
         stopAudioPlayback();
         setState({
@@ -1869,7 +1895,7 @@
             return;
         }
         try {
-            await speakText(text);
+            await speakText(text, { userInitiated: true });
         } catch (err) {
             console.warn('[crm-assistant] speech playback failed:', err);
             handlePlaybackFailure(err, text);
@@ -2120,7 +2146,7 @@
             mode: next ? 'idle' : 'muted',
             playbackState: next ? 'idle' : 'muted',
             subtitle: next
-                ? 'Голос увімкнено. Наступні підказки можна озвучувати.'
+                ? 'Голос увімкнено. Озвучую тільки після кнопки повтору або голосового запиту.'
                 : 'Голос вимкнено. Відповіді залишаються в тексті та субтитрах.',
             tickerText: ''
         });
@@ -2128,7 +2154,12 @@
 
     async function replayLastLine() {
         const line = state.lastSpokenLine || state.subtitle || 'Немає останньої репліки для повтору.';
-        await playReply({ text: line, subtitle: line }, { textOnly: !state.voiceEnabled, addToHistory: false, showGuide: false });
+        await playReply({ text: line, subtitle: line }, {
+            textOnly: !state.voiceEnabled,
+            speak: state.voiceEnabled,
+            addToHistory: false,
+            showGuide: false
+        });
     }
 
     function getAssistantConversationId() {
@@ -2694,7 +2725,8 @@
             }
             await playReply({ summary: line, subtitle: line, text: line }, {
                 addToHistory: true,
-                textOnly: !state.voiceEnabled || route.blocked || route.requiresInput
+                textOnly: true,
+                speak: false
             });
             await refreshFoundationContext({ force: true });
             renderPanelSnapshot();
@@ -2773,7 +2805,10 @@
                 if (isAssistantTurnCancelled(turnId)) return;
                 const reply = await requestGuideReply({ userMessage: prompt, voiceMode });
                 if (isAssistantTurnCancelled(turnId)) return;
-                await playReply(reply, { textOnly: source === 'voice' ? false : undefined });
+                await playReply(reply, {
+                    textOnly: source !== 'voice' || !state.voiceEnabled,
+                    speak: source === 'voice' && state.voiceEnabled
+                });
             } catch (err) {
                 if (isAssistantTurnCancelled(turnId)) return;
                 emitTelemetry('reply_failed', {
@@ -2822,7 +2857,9 @@
         if (options.subtitle) announceFromPage(options.subtitle);
         runPendingAssistantCommandFromNavigation();
         resumeAssistantPanelFromChatReturn();
-        window.setTimeout(() => scheduleProactiveHelp(options), initCount === 1 ? 500 : 100);
+        if (isProactiveHelpEnabled()) {
+            window.setTimeout(() => scheduleProactiveHelp(options), initCount === 1 ? 500 : 100);
+        }
         return true;
     }
 

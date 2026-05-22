@@ -25,8 +25,12 @@
         });
     }
 
-    function openCanonicalAssistant(prompt) {
+    function openCanonicalAssistant(prompt, options = {}) {
         hideLegacyWidgetDom();
+        if (options.userInitiated !== true) {
+            console.info('[assistant-widget-bridge] ignored non-user assistant open request');
+            return false;
+        }
 
         if (window.CrmAssistantRail?.expand) {
             window.CrmAssistantRail.expand();
@@ -40,10 +44,10 @@
 
         if (window.CrmAssistantRail?.init) {
             try {
-                window.CrmAssistantRail.init({
+                const mounted = window.CrmAssistantRail.init({
                     page: document.body?.dataset?.page || document.title || window.location.pathname
                 });
-                window.setTimeout(() => window.CrmAssistantRail?.expand?.(), 80);
+                if (mounted && window.CrmAssistantRail?.expand) window.CrmAssistantRail.expand();
                 return true;
             } catch (err) {
                 console.warn('[assistant-widget-bridge] canonical rail init failed', err);
@@ -58,7 +62,7 @@
             const trigger = event.target?.closest?.('#kleshnyaFab, [data-open-kleshnya], [data-open-assistant-widget]');
             if (!trigger) return;
 
-            if (openCanonicalAssistant(trigger.dataset?.assistantPrompt || '')) {
+            if (event.isTrusted !== false && openCanonicalAssistant(trigger.dataset?.assistantPrompt || '', { userInitiated: true })) {
                 event.preventDefault();
                 event.stopPropagation();
             }
@@ -71,6 +75,7 @@
 
         window.KleshnyaWidget = {
             open: openCanonicalAssistant,
+            openFromUser: (prompt = '') => openCanonicalAssistant(prompt, { userInitiated: true }),
             close: hideLegacyWidgetDom,
             isLegacyBridge: true
         };

@@ -902,6 +902,15 @@ function isManagement() {
     return hasMinRole('senior_manager');
 }
 
+function shouldEnableAssistantIdleHints() {
+    if (window.CRM_ASSISTANT_IDLE_HINTS === true) return true;
+    try {
+        return localStorage.getItem('eg_crm_assistant_idle_hints') === 'on';
+    } catch {
+        return false;
+    }
+}
+
 function showMainApp() {
     document.getElementById('loginScreen')?.classList.add('hidden');
     const _userEl = document.getElementById('currentUser');
@@ -1015,8 +1024,8 @@ function showMainApp() {
     // v20.2.0: Initialize floating command panel
     if (typeof CommandPanel !== 'undefined') CommandPanel.init();
 
-    // Idle hint bubbles near cmd-fab
-    if (typeof IdleHints !== 'undefined') IdleHints.init();
+    // Assistant idle nudges are opt-in only. Default CRM shell must stay silent.
+    if (shouldEnableAssistantIdleHints() && typeof IdleHints !== 'undefined') IdleHints.init();
 
     // v10.3: Personal cabinet — click on username
     const userNameEl = document.getElementById('currentUser');

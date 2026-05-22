@@ -1125,7 +1125,7 @@ const DashboardPage = (() => {
             voiceEnabled: next,
             mode: next ? 'idle' : 'muted',
             subtitle: next
-                ? 'Голос увімкнено. Субтитри лишаються активними, щоб було видно останню репліку.'
+                ? 'Голос увімкнено. Озвучення запускається тільки з кнопки повтору або голосового запиту.'
                 : 'Голос вимкнено. Асистент відповідатиме текстом і субтитрами без озвучення.'
         });
     }
@@ -1136,7 +1136,10 @@ const DashboardPage = (() => {
             return;
         }
         const line = _assistantRailState.lastSpokenLine || _assistantRailState.subtitle || 'Немає останньої репліки для повтору.';
-        await playAssistantReply({ text: line, subtitle: line }, { addToHistory: false });
+        await playAssistantReply({ text: line, subtitle: line }, {
+            addToHistory: false,
+            speak: _assistantRailState.voiceEnabled
+        });
     }
 
     function expandAssistantRail() {
@@ -1155,7 +1158,7 @@ const DashboardPage = (() => {
             return;
         }
         setAssistantRailState({
-            mode: _assistantRailState.voiceEnabled ? 'speaking' : 'idle',
+            mode: _assistantRailState.voiceEnabled ? 'idle' : 'muted',
             subtitle: line,
             lastSpokenLine: line
         });
@@ -1269,21 +1272,25 @@ const DashboardPage = (() => {
 
     async function playAssistantReply(reply, options = {}) {
         if (hasCanonicalAssistantRail() && window.CrmAssistantRail?.playReply) {
-            await window.CrmAssistantRail.playReply(reply, { textOnly: getCanonicalAssistantVoiceEnabled() === false });
+            await window.CrmAssistantRail.playReply(reply, {
+                textOnly: options.speak !== true || getCanonicalAssistantVoiceEnabled() === false,
+                speak: options.speak === true
+            });
             return;
         }
         const text = String(reply?.subtitle || reply?.text || '').trim();
         if (!text) return;
         if (options.addToHistory !== false) appendAssistantHistory('assistant', text);
+        const shouldPlayAudio = _assistantRailState.voiceEnabled && options.speak === true;
         setAssistantRailState({
-            mode: _assistantRailState.voiceEnabled ? 'speaking' : 'idle',
+            mode: shouldPlayAudio ? 'speaking' : (_assistantRailState.voiceEnabled ? 'idle' : 'muted'),
             subtitle: text,
             tickerText: text,
             lastSpokenLine: text
         });
         renderAssistantHistory();
 
-        if (!_assistantRailState.voiceEnabled) return;
+        if (!shouldPlayAudio) return;
         try {
             stopAssistantAudioPlayback();
             const resp = await fetch('/api/crm-assistant/speak', {
@@ -1377,7 +1384,7 @@ const DashboardPage = (() => {
                     appendAssistantHistory('user', transcript);
                     setAssistantRailState({ mode: 'thinking', subtitle: `Почув: ${transcript}` });
                     const reply = await requestDashboardAssistantReply(transcript, { voiceMode: true });
-                    await playAssistantReply(reply);
+                    await playAssistantReply(reply, { speak: _assistantRailState.voiceEnabled });
                 } catch (err) {
                     handleDashboardAssistantError(err, 'Не вдалося розпізнати голос або підготувати відповідь.');
                 }
@@ -1469,7 +1476,7 @@ const DashboardPage = (() => {
                 ...getAssistantContext(),
                 userMessage: String(prompt || '').trim()
             });
-            await window.CrmAssistantRail.playReply(reply);
+            await window.CrmAssistantRail.playReply(reply, { textOnly: true, speak: false });
             return;
         }
         await submitAssistantPromptText(prompt);
@@ -1491,7 +1498,7 @@ const DashboardPage = (() => {
         setAssistantRailState({ mode: 'thinking', subtitle: 'Думаю над відповіддю по dashboard...' });
         try {
             const reply = await requestDashboardAssistantReply(prompt);
-            await playAssistantReply(reply);
+            await playAssistantReply(reply, { speak: false });
         } catch (err) {
             handleDashboardAssistantError(err);
         }

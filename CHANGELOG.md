@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.19 - Assistant silent fix
+
+### Assistant silent fix [codex]
+- **Без auto-open** - legacy `kleshnya-widget` більше не відкриває canonical assistant rail з programmatic/init path; `expand()` дозволений тільки після trusted user click/tap.
+- **Без random voice** - proactive page help у `assistant-rail` вимкнений за замовчуванням, а speech playback запускається тільки через явний mic/replay flow.
+- **Idle hints opt-in** - shell більше не стартує `IdleHints.init()` автоматично; idle nudges доступні лише через explicit feature flag/localStorage opt-in.
+- **Менше flaky fallback** - browser `speechSynthesis` fallback вимкнений за замовчуванням, щоб не було обрізаних або часткових фраз після TTS failure.
+
+---
+
 ## v0.61.18 - Assistant page knowledge
 
 ### Assistant page knowledge [codex]

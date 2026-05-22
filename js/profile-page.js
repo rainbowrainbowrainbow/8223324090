@@ -24,6 +24,8 @@ let activeTab = 'profile';
 let myCabinetData = null;
 let myTasksSegment = 'all';
 let cabinetPulseCounts = { alerts: 0, funnel: 0 };
+let cabinetSnoozeOutsideBound = false;
+let cabinetUndoToastTimer = null;
 let profileSecurityData = null;
 
 // v30.8.0 — Gamification v3 state
@@ -1065,6 +1067,7 @@ function renderCabinetPulseCluster() {
         {
             id: 'tasks',
             label: '\u0417\u0430\u0434\u0430\u0447\u0456',
+            helper: 'Відкрити список задач',
             count: formatCabinetPulseCount(tasksCount),
             tone: tasksCount > 0 ? 'live' : 'zero',
             action: "switchTab('mytasks')"
@@ -1072,6 +1075,7 @@ function renderCabinetPulseCluster() {
         {
             id: 'alerts',
             label: '\u0410\u043b\u0435\u0440\u0442\u0438',
+            helper: 'Показати критичні алерти',
             count: formatCabinetPulseCount(alertsCount),
             tone: alertsCount >= 10 ? 'critical' : alertsCount > 0 ? 'hot' : 'zero',
             action: 'openCabinetAlerts(event)'
@@ -1079,6 +1083,7 @@ function renderCabinetPulseCluster() {
         {
             id: 'funnel',
             label: '\u0412\u043e\u0440\u043e\u043d\u043a\u0430',
+            helper: 'Перейти до лідів',
             count: formatCabinetPulseCount(funnelCount),
             tone: funnelCount > 0 ? 'live' : 'zero',
             action: 'openCabinetFunnel()'
@@ -1092,11 +1097,13 @@ function renderCabinetPulseCluster() {
             ' data-mode="' + item.id + '"',
             ' role="tab"',
             ' aria-selected="' + (isActive ? 'true' : 'false') + '"',
-            ' title="' + escapeHtml(item.label) + ': ' + item.count + '"',
+            ' aria-label="' + escapeHtml(item.helper) + '. Поточне значення: ' + item.count + '"',
+            ' title="' + escapeHtml(item.helper) + ': ' + item.count + '"',
             ' onclick="syncCabinetQuickMode(\'' + item.id + '\'); ' + item.action + '">',
             '<span class="cabinet-quick-plate"></span>',
             '<span class="cabinet-quick-body">',
             '<span class="cabinet-quick-label">' + escapeHtml(item.label) + '</span>',
+            '<span class="cabinet-quick-hint">' + escapeHtml(item.helper) + '</span>',
             '<span class="cabinet-quick-count">' + item.count + '</span>',
             '</span>',
             '</button>'
@@ -1139,6 +1146,83 @@ function taskKindLabel(task) {
     }[kind] || kind;
 }
 
+function normalizeCabinetTaskDate(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function sameCalendarDay(a, b) {
+    return a && b
+        && a.getFullYear() === b.getFullYear()
+        && a.getMonth() === b.getMonth()
+        && a.getDate() === b.getDate();
+}
+
+function getCabinetTaskDueState(task, dueValue) {
+    const now = new Date();
+    const workflow = task?.workflowState || task?.workflow_state || '';
+    const kind = task?.taskKind || task?.task_kind || '';
+    const snoozedUntil = normalizeCabinetTaskDate(task?.snoozedUntil || task?.snoozed_until);
+    if (snoozedUntil && snoozedUntil > now) {
+        return {
+            key: 'snoozed',
+            label: 'Відкладено',
+            detail: `до ${snoozedUntil.toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`
+        };
+    }
+    if (workflow === 'waiting' || kind === 'waiting') {
+        return { key: 'waiting', label: 'Чекаю', detail: 'потрібен наступний сигнал' };
+    }
+    const dueDate = normalizeCabinetTaskDate(dueValue);
+    if (!dueDate) return { key: 'none', label: 'Без дати', detail: 'можна спланувати пізніше' };
+
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startDue = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+    const tomorrow = new Date(startToday);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    if (startDue < startToday) return { key: 'overdue', label: 'Прострочено', detail: formatDate(dueDate) };
+    if (sameCalendarDay(startDue, startToday)) return { key: 'today', label: 'Сьогодні', detail: formatDate(dueDate) };
+    if (sameCalendarDay(startDue, tomorrow)) return { key: 'tomorrow', label: 'Завтра', detail: formatDate(dueDate) };
+    return { key: 'planned', label: 'Заплановано', detail: formatDate(dueDate) };
+}
+
+function getCabinetTaskRelationLabel(task) {
+    const current = (typeof AppState !== 'undefined' && AppState.currentUser) ? AppState.currentUser : {};
+    const currentId = Number(current.id || current.user_id || 0);
+    const ownerId = Number(task?.ownerUserId || task?.owner_user_id || task?.assignedUserId || task?.assigned_user_id || 0);
+    const creatorId = Number(task?.createdByUserId || task?.created_by_user_id || task?.creatorUserId || task?.creator_user_id || 0);
+    const mode = task?.taskMode || task?.task_mode || 'work';
+    if (currentId && ownerId === currentId && creatorId === currentId && (mode === 'personal' || mode === 'private')) return 'Собі';
+    if (currentId && ownerId === currentId && creatorId && creatorId !== currentId) return 'Мені';
+    if (currentId && creatorId === currentId && ownerId && ownerId !== currentId) return 'Я поставив';
+    return '';
+}
+
+function renderCabinetTaskActionLegend() {
+    return `
+        <div class="cabinet-action-legend" aria-label="Підказки дій із задачами">
+            <span><b>✓</b> Виконати</span>
+            <span><b>⏰</b> Відкласти</span>
+            <span><b>↗</b> Відкрити</span>
+        </div>`;
+}
+
+function renderCabinetSnoozeMenu(taskIdAttr) {
+    const options = [
+        ['15', '15 хв'],
+        ['60', '1 год'],
+        ['240', '4 год'],
+        ['1440', 'Завтра'],
+        ['custom', 'Інше...']
+    ];
+    return `
+        <div class="cabinet-snooze-menu" role="menu" hidden>
+            ${options.map(([minutes, label]) => `<button type="button" role="menuitem" data-cabinet-task-action="snooze" data-task-id="${taskIdAttr}" data-minutes="${minutes}" ${taskIdAttr ? '' : 'disabled'}>${escapeHtml(label)}</button>`).join('')}
+        </div>`;
+}
+
 function renderCabinetTaskCard(task, compact = false) {
     const taskId = Number(task.id || task.taskId || task.task_id || 0);
     const taskIdAttr = Number.isInteger(taskId) && taskId > 0 ? String(taskId) : '';
@@ -1146,17 +1230,21 @@ function renderCabinetTaskCard(task, compact = false) {
     const scheduleStatus = task.scheduleStatus || task.schedule_status || task.schedule?.status || '';
     const subDone = Number(task.subtask_done_count || task.subtaskDoneCount || 0);
     const subTotal = Number(task.subtask_count || task.subtaskCount || 0);
+    const taskStatus = task.status || 'todo';
+    const dueState = getCabinetTaskDueState(task, due);
+    const relationLabel = getCabinetTaskRelationLabel(task);
     const doneActionLabel = 'Виконати задачу';
-    const snoozeActionLabel = 'Відкласти задачу на 60 хвилин';
+    const snoozeActionLabel = 'Відкласти задачу';
     const openActionLabel = 'Відкрити задачу у повному списку';
     return `
-        <div class="cabinet-task-card">
+        <div class="cabinet-task-card" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-due-state="${escapeHtml(dueState.key)}">
             <div class="cabinet-task-main">
                 <div class="cabinet-task-title">${escapeHtml(task.title || 'Без назви')}</div>
                 <div class="cabinet-task-meta">
+                    <span class="cabinet-task-due-badge cabinet-task-due-badge--${escapeHtml(dueState.key)}">${escapeHtml(dueState.label)}${dueState.detail ? ` · ${escapeHtml(dueState.detail)}` : ''}</span>
+                    ${relationLabel ? `<span class="cabinet-task-relation-badge">${escapeHtml(relationLabel)}</span>` : ''}
                     <span>${taskModeLabel(task)}</span>
                     <span>${taskKindLabel(task)}</span>
-                    ${due ? `<span>${formatDate(due)}</span>` : ''}
                     ${scheduleStatus === 'proposal' ? '<span>потрібне підтвердження часу</span>' : ''}
                     ${scheduleStatus === 'missed' ? '<span>слот пропущено</span>' : ''}
                     ${subTotal ? `<span>${subDone}/${subTotal}</span>` : ''}
@@ -1164,7 +1252,7 @@ function renderCabinetTaskCard(task, compact = false) {
             </div>
             <div class="cabinet-task-actions">
                 <button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneActionLabel)}" aria-label="${escapeHtml(doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>✓</button>
-                ${compact ? '' : `<button type="button" class="cabinet-task-action-btn" title="${escapeHtml(snoozeActionLabel)}" aria-label="${escapeHtml(snoozeActionLabel)}" data-tooltip="${escapeHtml(snoozeActionLabel)}" data-cabinet-task-action="snooze" data-task-id="${taskIdAttr}" data-minutes="60" ${taskIdAttr ? '' : 'disabled'}>⏰</button>`}
+                ${compact ? '' : `<span class="cabinet-snooze-wrap"><button type="button" class="cabinet-task-action-btn" title="${escapeHtml(snoozeActionLabel)}" aria-label="${escapeHtml(snoozeActionLabel)}" data-tooltip="${escapeHtml(snoozeActionLabel)}" data-cabinet-task-action="snooze-menu" data-task-id="${taskIdAttr}" aria-haspopup="menu" aria-expanded="false" ${taskIdAttr ? '' : 'disabled'}>⏰</button>${renderCabinetSnoozeMenu(taskIdAttr)}</span>`}
                 <button type="button" class="cabinet-task-action-btn" title="${escapeHtml(openActionLabel)}" aria-label="${escapeHtml(openActionLabel)}" data-tooltip="${escapeHtml(openActionLabel)}" data-cabinet-task-action="open" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>↗</button>
             </div>
         </div>`;
@@ -1198,6 +1286,7 @@ function renderMyDayTab() {
                 </div>
             </div>
             ${renderCabinetPulseCluster()}
+            ${renderCabinetTaskActionLegend()}
             <form class="cabinet-capture" onsubmit="createCabinetTask(event, 'personal')">
                 <input id="cabinetTaskTitle" placeholder="Швидко зафіксувати задачу собі">
                 <select id="cabinetTaskKind">
@@ -1257,6 +1346,7 @@ function renderMyTasksTab() {
             <div class="cabinet-segments">
                 ${segments.map(([id, label]) => `<button class="${myTasksSegment === id ? 'active' : ''}" onclick="setMyTasksSegment('${id}')">${label}</button>`).join('')}
             </div>
+            ${renderCabinetTaskActionLegend()}
             <div class="cabinet-list">
                 ${filtered.length ? filtered.map(task => renderCabinetTaskCard(task)).join('') : '<div class="cabinet-empty">У цьому сегменті поки немає задач.</div>'}
             </div>
@@ -1277,7 +1367,69 @@ function normalizeCabinetTaskId(value) {
     return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+function normalizeCabinetRestoreStatus(value) {
+    return ['todo', 'in_progress'].includes(value) ? value : 'todo';
+}
+
+function closeCabinetSnoozeMenus(exceptWrap = null) {
+    document.querySelectorAll('.cabinet-task-actions.is-snooze-open').forEach(actions => {
+        if (exceptWrap && actions.contains(exceptWrap)) return;
+        actions.classList.remove('is-snooze-open');
+        actions.querySelectorAll('[data-cabinet-task-action="snooze-menu"]').forEach(btn => {
+            btn.setAttribute('aria-expanded', 'false');
+        });
+        actions.querySelectorAll('.cabinet-snooze-menu').forEach(menu => {
+            menu.hidden = true;
+        });
+    });
+}
+
+function toggleCabinetSnoozeMenu(button) {
+    const actions = button.closest('.cabinet-task-actions');
+    const wrap = button.closest('.cabinet-snooze-wrap');
+    const menu = wrap?.querySelector('.cabinet-snooze-menu');
+    if (!actions || !menu) return;
+    const willOpen = menu.hidden;
+    closeCabinetSnoozeMenus(wrap);
+    actions.classList.toggle('is-snooze-open', willOpen);
+    menu.hidden = !willOpen;
+    button.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+}
+
+function showCabinetTaskUndoToast(taskId, restoreStatus = 'todo') {
+    const existing = document.querySelector('.cabinet-task-undo-toast');
+    if (existing) existing.remove();
+    if (cabinetUndoToastTimer) clearTimeout(cabinetUndoToastTimer);
+
+    const toast = document.createElement('div');
+    toast.className = 'cabinet-task-undo-toast';
+    toast.setAttribute('role', 'status');
+    toast.innerHTML = `
+        <span>Задачу виконано</span>
+        <button type="button" data-cabinet-undo-task="${taskId}">Скасувати</button>`;
+    const undoBtn = toast.querySelector('[data-cabinet-undo-task]');
+    undoBtn?.addEventListener('click', async () => {
+        undoBtn.disabled = true;
+        try {
+            await setCabinetTaskStatus(taskId, normalizeCabinetRestoreStatus(restoreStatus), { silent: true, allowUndo: false });
+            if (typeof showNotification === 'function') showNotification('Задачу повернуто', 'success');
+            toast.remove();
+        } catch (error) {
+            undoBtn.disabled = false;
+            if (typeof showNotification === 'function') showNotification(error?.message || 'Не вдалося скасувати виконання', 'error');
+        }
+    });
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('is-visible'));
+    cabinetUndoToastTimer = setTimeout(() => {
+        toast.classList.remove('is-visible');
+        setTimeout(() => toast.remove(), 240);
+    }, 6000);
+}
+
 async function handleCabinetTaskActionClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
     const button = event.currentTarget;
     const action = button?.dataset?.cabinetTaskAction || '';
     const taskId = normalizeCabinetTaskId(button?.dataset?.taskId);
@@ -1286,18 +1438,33 @@ async function handleCabinetTaskActionClick(event) {
         return;
     }
 
+    if (action === 'snooze-menu') {
+        toggleCabinetSnoozeMenu(button);
+        return;
+    }
+
     if (action === 'open') {
         window.location.href = `/tasks?view=my&open=${encodeURIComponent(taskId)}`;
         return;
     }
 
+    const card = button.closest('.cabinet-task-card');
+    const previousStatus = normalizeCabinetRestoreStatus(card?.dataset?.taskStatus || 'todo');
     button.disabled = true;
     button.classList.add('is-busy');
+    card?.classList.add('is-updating');
     try {
         if (action === 'done') {
-            await setCabinetTaskStatus(taskId, 'done');
+            await setCabinetTaskStatus(taskId, 'done', { previousStatus });
         } else if (action === 'snooze') {
-            await snoozeCabinetTask(taskId, button.dataset.minutes || 60);
+            closeCabinetSnoozeMenus();
+            let minutes = button.dataset.minutes || 60;
+            if (minutes === 'custom') {
+                const raw = window.prompt('На скільки хвилин відкласти задачу?', '60');
+                if (raw === null) return;
+                minutes = raw;
+            }
+            await snoozeCabinetTask(taskId, minutes);
         }
     } catch (error) {
         console.error('Profile cabinet task action failed', error);
@@ -1309,6 +1476,7 @@ async function handleCabinetTaskActionClick(event) {
             button.disabled = false;
             button.classList.remove('is-busy');
         }
+        if (card?.isConnected) card.classList.remove('is-updating');
     }
 }
 
@@ -1322,7 +1490,7 @@ async function refreshMyCabinetTab() {
     }
 }
 
-async function setCabinetTaskStatus(taskId, status) {
+async function setCabinetTaskStatus(taskId, status, options = {}) {
     const id = normalizeCabinetTaskId(taskId);
     if (!id) throw new Error('Invalid task id');
     let result;
@@ -1334,7 +1502,9 @@ async function setCabinetTaskStatus(taskId, status) {
         result = await apiPatch(`/auth/tasks/${id}/quick-status`, { status });
     }
     if (!result?.success) throw new Error(result?.error || 'Task status update failed');
-    if (typeof showNotification === 'function') {
+    if (!options.silent && status === 'done' && options.allowUndo !== false) {
+        showCabinetTaskUndoToast(id, options.previousStatus || 'todo');
+    } else if (!options.silent && typeof showNotification === 'function') {
         showNotification(status === 'done' ? 'Задачу виконано' : 'Статус задачі оновлено', 'success');
     }
     await refreshMyCabinetTab();
@@ -1824,6 +1994,13 @@ function renderMiniAvatar(equipped, name) {
 // ACTIONS
 // ==========================================
 function attachProfileListeners() {
+    if (!cabinetSnoozeOutsideBound) {
+        cabinetSnoozeOutsideBound = true;
+        document.addEventListener('click', event => {
+            if (!event.target.closest('.cabinet-task-actions')) closeCabinetSnoozeMenus();
+        });
+    }
+
     document.querySelectorAll('[data-cabinet-task-action]').forEach(button => {
         if (button.dataset.cabinetActionBound === 'true') return;
         button.dataset.cabinetActionBound = 'true';

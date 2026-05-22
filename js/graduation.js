@@ -1278,6 +1278,9 @@
         const pack = diplomaPack || selectedQuote?.childPack || null;
         const contextText = packContextText(pack) || 'Контекст списку ще не задано';
         const wordingMode = pack?.wordingMode || summary.wordingMode || 'standard';
+        const hasRoster = Number(summary.total || 0) > 0;
+        const packDisabled = pack ? '' : 'disabled';
+        const rosterDisabled = hasRoster ? '' : 'disabled';
         const quoteOptions = quotes.map(q => `
             <option value="${q.id}" ${String(q.id) === String(diplomaQuoteId) ? 'selected' : ''}>
                 ${_esc(q.quoteNumber || `Quote ${q.id}`)} · ${q.kidsCount || 0} дітей · ${formatPrice(q.totalAll || 0)}
@@ -1298,22 +1301,59 @@
                 </div>
             </div>
 
-            <div class="grad-diploma-toolbar">
-                <label class="grad-diploma-quote-select">
-                    <span>Кошик / випускний</span>
-                    <select onchange="GradPage.selectDiplomaQuote(this.value)">${quoteOptions}</select>
-                </label>
-                <button class="grad-btn grad-btn-sm grad-btn-primary" onclick="GradPage.addDiplomaChild()">Додати дитину</button>
-                <button class="grad-btn grad-btn-sm" onclick="GradPage.createDiplomaPack()">Створити список</button>
-                <button class="grad-btn grad-btn-sm" onclick="GradPage.selectDiplomaPack()">Вибрати список</button>
-                <button class="grad-btn grad-btn-sm" onclick="GradPage.editDiplomaPack()" ${pack ? '' : 'disabled'}>Редагувати список</button>
-                <button class="grad-btn grad-btn-sm" onclick="GradPage.importDiplomaChildren()">Вставити списком</button>
-                <button class="grad-btn grad-btn-sm" onclick="GradPage.generateDiplomaWishes()" ${summary.total ? '' : 'disabled'}>Автопобажання</button>
-                <button class="grad-btn grad-btn-sm" onclick="GradPage.previewDiploma()" ${summary.total ? '' : 'disabled'}>Preview диплом</button>
-                <button class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomasPdf()" ${summary.total ? '' : 'disabled'}>Зберегти всі в PDF</button>
-                <button class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomaRoster('csv')" ${summary.total ? '' : 'disabled'}>CSV</button>
-                <button class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomaRoster('xlsx')" ${summary.total ? '' : 'disabled'}>XLSX</button>
-                <button class="grad-btn grad-btn-sm" onclick="GradPage.printDiplomaSheet()" ${summary.total ? '' : 'disabled'}>Print sheet</button>
+            <div class="grad-diploma-workflow" aria-label="Робочий процес дипломів">
+                <section class="grad-diploma-step grad-diploma-step-quote">
+                    <div class="grad-diploma-step-head">
+                        <span class="grad-diploma-step-index">1</span>
+                        <div>
+                            <strong>Обери випускний</strong>
+                            <small>Дипломи привʼязані до конкретного кошика та бронювання.</small>
+                        </div>
+                    </div>
+                    <label class="grad-diploma-quote-select">
+                        <span>Кошик / випускний</span>
+                        <select onchange="GradPage.selectDiplomaQuote(this.value)">${quoteOptions}</select>
+                    </label>
+                </section>
+
+                <section class="grad-diploma-step grad-diploma-step-roster">
+                    <div class="grad-diploma-step-head">
+                        <span class="grad-diploma-step-index">2</span>
+                        <div>
+                            <strong>Список дітей</strong>
+                            <small>Створи групу, додай дітей вручну або встав списком.</small>
+                        </div>
+                    </div>
+                    <div class="grad-diploma-step-actions">
+                        <button type="button" class="grad-btn grad-btn-sm grad-btn-primary" onclick="GradPage.addDiplomaChild()">Додати дитину</button>
+                        <button type="button" class="grad-btn grad-btn-sm grad-btn-primary-soft" onclick="GradPage.importDiplomaChildren()">Вставити списком</button>
+                    </div>
+                    <div class="grad-diploma-utility-actions" aria-label="Керування списком дітей">
+                        <button type="button" class="grad-btn grad-btn-sm" onclick="GradPage.createDiplomaPack()">Створити список</button>
+                        <button type="button" class="grad-btn grad-btn-sm" onclick="GradPage.selectDiplomaPack()">Вибрати список</button>
+                        <button type="button" class="grad-btn grad-btn-sm" onclick="GradPage.editDiplomaPack()" ${packDisabled}>Редагувати список</button>
+                    </div>
+                </section>
+
+                <section class="grad-diploma-step grad-diploma-step-output">
+                    <div class="grad-diploma-step-head">
+                        <span class="grad-diploma-step-index">3</span>
+                        <div>
+                            <strong>Preview / export</strong>
+                            <small>${hasRoster ? 'Перевір побажання, preview і фінальний експорт.' : 'Додай дітей, щоб відкрити preview та export.'}</small>
+                        </div>
+                    </div>
+                    <div class="grad-diploma-step-actions grad-diploma-output-actions">
+                        <button type="button" class="grad-btn grad-btn-sm" onclick="GradPage.generateDiplomaWishes()" ${rosterDisabled}>Автопобажання</button>
+                        <button type="button" class="grad-btn grad-btn-sm grad-btn-primary" onclick="GradPage.previewDiploma()" ${rosterDisabled}>Preview диплом</button>
+                        <button type="button" class="grad-btn grad-btn-sm grad-btn-primary-soft" onclick="GradPage.exportDiplomasPdf()" ${rosterDisabled}>Зберегти всі в PDF</button>
+                    </div>
+                    <div class="grad-diploma-utility-actions" aria-label="Табличний експорт">
+                        <button type="button" class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomaRoster('csv')" ${rosterDisabled}>CSV</button>
+                        <button type="button" class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomaRoster('xlsx')" ${rosterDisabled}>XLSX</button>
+                        <button type="button" class="grad-btn grad-btn-sm" onclick="GradPage.printDiplomaSheet()" ${rosterDisabled}>Print sheet</button>
+                    </div>
+                </section>
             </div>
 
             <div class="grad-diploma-pack-card">
@@ -1355,6 +1395,10 @@
             <div class="grad-diploma-empty">
                 <h3>Список дітей порожній</h3>
                 <p>Додайте дітей вручну або вставте список: один рядок = одна дитина, формат за потреби: ПІБ;стать;клас;побажання.</p>
+                <div class="grad-diploma-empty-actions">
+                    <button type="button" class="grad-btn grad-btn-primary" onclick="GradPage.addDiplomaChild()">Додати дитину</button>
+                    <button type="button" class="grad-btn" onclick="GradPage.importDiplomaChildren()">Вставити списком</button>
+                </div>
             </div>`;
         }
 

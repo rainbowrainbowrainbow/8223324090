@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.29 - Graduation Diplomas Menu Clarity
+
+### Graduation Diplomas Menu Clarity [codex]
+- **Дипломи** - хаотичний ряд однакових action-кнопок замінено на стабільний workflow із трьох зон: випускний, список дітей, preview/export.
+- **Список дітей** - основні дії `Додати дитину` та `Вставити списком` тепер видимі одразу, а керування списком винесено в службовий action-row.
+- **Preview/export** - preview, PDF і табличні експорти згруповано окремо; disabled-стан лишається явним, поки список дітей порожній.
+- **Regression guard** - додано UI smoke check, який не дає повернути старий `grad-diploma-toolbar` як одну хаотичну панель кнопок.
+
+---
+
 ## v0.61.28 - Deployment Version Marker
 
 ### Deployment Version Marker [codex]

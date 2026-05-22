@@ -411,14 +411,17 @@ async function addNewLine() {
     const dateStr = formatDate(AppState.selectedDate);
 
     if (window.TimelineBusinessContext?.current().key === 'maysternya_doli') {
-        const nameValue = typeof promptModal === 'function'
-            ? await promptModal('Назва спеціаліста або кабінету', {
+        let nameValue = null;
+        if (typeof promptModal === 'function') {
+            nameValue = await promptModal('Назва спеціаліста або кабінету', {
                 defaultValue: 'Майстерня долі',
                 placeholder: 'Наприклад: Кабінет 1',
                 okText: 'Додати',
                 type: 'info'
-            })
-            : (typeof window.prompt === 'function' ? window.prompt('Назва спеціаліста або кабінету', 'Майстерня долі') : null);
+            });
+        } else if (typeof showNotification === 'function') {
+            showNotification('Вікно введення недоступне. Оновіть сторінку і повторіть дію.', 'error');
+        }
         const name = String(nameValue || '').trim();
         if (!name) return;
         const lines = (AppState.linesByDate[dateStr] || AppState.lines || []).slice();

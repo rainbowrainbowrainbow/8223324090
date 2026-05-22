@@ -1818,13 +1818,16 @@ const CopilotPage = (() => {
     }
 
     async function newCase() {
-        const titleValue = typeof promptModal === 'function'
-            ? await promptModal('Назва кейсу:', {
+        let titleValue = null;
+        if (typeof promptModal === 'function') {
+            titleValue = await promptModal('Назва кейсу:', {
                 placeholder: 'Наприклад: аналіз продажів',
                 okText: 'Створити',
                 type: 'info'
-            })
-            : (typeof window.prompt === 'function' ? window.prompt('Назва кейсу:') : null);
+            });
+        } else if (typeof showNotification === 'function') {
+            showNotification('Вікно введення недоступне. Оновіть сторінку і повторіть дію.', 'error');
+        }
         const title = String(titleValue || '').trim();
         if (!title) return;
         try {

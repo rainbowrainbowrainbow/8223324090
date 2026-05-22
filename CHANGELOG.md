@@ -4,6 +4,15 @@
 
 ---
 
+## v0.61.32 - Native Prompt Audit Cleanup
+
+### Native Prompt Audit Cleanup [codex]
+- **Copilot** - створення нового кейсу більше не падає у native browser `window.prompt`, якщо CRM prompt modal helper недоступний.
+- **Settings / Майстерня долі** - додавання спеціаліста або кабінету використовує тільки CRM `promptModal`; без helper-а дія fail-closed із toast-повідомленням.
+- **Regression guard** - UI smoke check фіксує, що Copilot і Settings prompt flows не повертають native prompt fallback.
+
+---
+
 ## v0.61.31 - Native Dialog Audit Cleanup
 
 ### Native Dialog Audit Cleanup [codex]

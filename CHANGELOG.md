@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.24 - UI Cleanup Audit Fixes
+
+### UI Cleanup Audit Fixes [codex]
+- **Биті asset-посилання** - виправлено root CRM сторінки, які посилалися на неіснуючий `images/favicon.ico`; тепер використовують наявний `images/favicon-32.png`.
+- **Піньята / бронювання** - прибрано биті encoding-рядки з деталей бронювання і Telegram-шаблонів; labels знову читаються як `Піньята`, `Піньята парку`, `Нотатка`, `Наповнювач`.
+- **Omni / клієнти** - виправлено зіпсовані error messages у CRM-context endpoint та порожній маркер соц-ідентичностей клієнта.
+- **Regression guard** - додано UI smoke-перевірки, які ловлять повернення missing favicon і битих pinata/template labels.
+
+---
+
 ## v0.61.23 - Sidebar USD Widget Settings Fix
 
 ### Sidebar USD Widget Settings Fix [codex]

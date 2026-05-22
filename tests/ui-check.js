@@ -405,6 +405,7 @@ check('CopilotPage has loadTrackerAlerts', copilotCode.includes('loadTrackerAler
 console.log('\nshared logout binding');
 const authCode = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
 const htmlFiles = fs.readdirSync(ROOT).filter(file => file.endsWith('.html'));
+const brokenRootFavicons = htmlFiles.filter(file => /<link[^>]+href=["']images\/favicon\.ico["']/i.test(fs.readFileSync(path.join(ROOT, file), 'utf8')));
 const pagesWithLogoutButton = htmlFiles
     .map(file => ({ file, html: fs.readFileSync(path.join(ROOT, file), 'utf8') }))
     .filter(page => /id=["']logoutBtn["']/.test(page.html));
@@ -418,6 +419,7 @@ check('Auth exposes shared bindLogoutButton', authCode.includes('function bindLo
 check('Shared logout binding calls canonical logout', authCode.includes('event.preventDefault();') && authCode.includes('logout();'));
 check('Shared logout binding auto-initializes', authCode.includes('initSharedLogoutBinding();') && authCode.includes("document.addEventListener('DOMContentLoaded', bindLogoutButton"));
 check('Assistant idle hints are opt-in instead of boot-time default', authCode.includes('function shouldEnableAssistantIdleHints') && authCode.includes('eg_crm_assistant_idle_hints') && authCode.includes('shouldEnableAssistantIdleHints() && typeof IdleHints') && !authCode.includes("if (typeof IdleHints !== 'undefined') IdleHints.init();"));
+check('Root CRM pages do not reference missing favicon.ico asset', brokenRootFavicons.length === 0);
 check('All logout button pages load auth.js', pagesWithLogoutButton.every(page => getHtmlScripts(page.html).includes('js/auth.js')));
 check('No page JS owns logoutBtn directly outside auth.js', nonAuthJsLogoutOwners.length === 0);
 check('No inline logoutBtn click handlers remain', inlineLogoutOwners.length === 0);
@@ -789,6 +791,7 @@ check('Dashboard renders compact funnel widget from work queue insights', dashbo
 // Check unsafe dismiss guardrails for critical editable surfaces
 console.log('\nunsafe dismiss guardrails');
 const bookingCode = fs.readFileSync(path.join(ROOT, 'js/booking.js'), 'utf8');
+const telegramTemplatesCode = fs.readFileSync(path.join(ROOT, 'services/templates.js'), 'utf8');
 const timelineCode = fs.readFileSync(path.join(ROOT, 'js/timeline.js'), 'utf8');
 const timelineCss = fs.readFileSync(path.join(ROOT, 'css/timeline.css'), 'utf8');
 const appCodeForDismiss = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
@@ -800,6 +803,7 @@ const hrCode = fs.readFileSync(path.join(ROOT, 'js/hr-page.js'), 'utf8');
 const contentCode = fs.readFileSync(path.join(ROOT, 'js/content-page.js'), 'utf8');
 check('Maysternya Doli booking panel is consultation-only', configCode.includes("const MAYSTERNYA_DOLI_PROGRAMS = [") && configCode.includes("id: 'md_demo_consult_15'") && configCode.includes("name: 'Демо консультація'") && configCode.includes('duration: 15') && configCode.includes("id: 'md_full_consult_40'") && configCode.includes("name: 'Повна консультація'") && configCode.includes('duration: 40') && !configCode.includes("id: 'md_consult_60'") && !configCode.includes("id: 'md_custom'") && configCode.includes("? ['custom']") && configCode.includes("custom: 'Консультації'") && bookingCode.includes('const cardName = IS_MAYSTERNYA_DOLI_TIMELINE ? p.name : p.code'));
 check('Booking UI separates park and client pinata modes', bookingCode.includes('syncPinataModeFields') && bookingCode.includes('clientPinataServicePrice') && bookingCode.includes('renderPinataDetailRows'));
+check('Pinata booking and Telegram templates use readable Ukrainian labels', bookingCode.includes('Клієнтська піньята (послуга)') && bookingCode.includes('Піньята парку') && telegramTemplatesCode.includes('Піньята: №') && telegramTemplatesCode.includes('Наповнювач:') && (telegramTemplatesCode.match(/function appendPinataOperationalLines/g) || []).length === 1 && !telegramTemplatesCode.includes('\u0420\u045f\u0421') && !bookingCode.includes('\u0420\u045f\u0421\u2013\u0420\u0405\u0421\u040a\u0421\u040f\u0421\u201a\u0420\u00b0'));
 check('Booking UI captures pinata and filler numbers separately', bookingCode.includes('pinataNumber') && bookingCode.includes('pinataFillerNumber') && htmlContains('index.html', 'pinataSharedFields'));
 check('Booking route normalizes client pinata server-side', htmlContains('routes/bookings.js', 'normalizePinataFields') && htmlContains('routes/bookings.js', 'client_pinata_service_price'));
 check('Booking route stores pinata operation numbers server-side', htmlContains('routes/bookings.js', 'pinata_number') && htmlContains('routes/bookings.js', 'pinata_filler_number'));

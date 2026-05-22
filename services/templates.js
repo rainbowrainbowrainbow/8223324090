@@ -1,5 +1,5 @@
 /**
- * services/templates.js — Telegram notification templates
+ * services/templates.js - Telegram notification templates.
  */
 const { timeToMinutes, minutesToTime } = require('./booking');
 
@@ -17,24 +17,12 @@ function truncate(text, max = 4000) {
 
 function appendPinataOperationalLines(text, booking) {
     if (booking.pinata_number || booking.pinataNumber) {
-        text += `рџЄ… РџС–РЅСЊСЏС‚Р°: в„–${esc(booking.pinata_number || booking.pinataNumber)}\n`;
-    }
-    if (booking.pinata_filler_number || booking.pinataFillerNumber) {
-        text += `рџЄ… РќР°РїРѕРІРЅСЋРІР°С‡: в„–${esc(booking.pinata_filler_number || booking.pinataFillerNumber)}\n`;
-    } else if (booking.pinata_filler || booking.pinataFiller) {
-        text += `рџЄ… РќР°РїРѕРІРЅСЋРІР°С‡: в„–${esc(booking.pinata_filler || booking.pinataFiller)}\n`;
-    }
-    return text;
-}
-
-function appendPinataOperationalLines(text, booking) {
-    if (booking.pinata_number || booking.pinataNumber) {
         text += `🪅 Піньята: №${esc(booking.pinata_number || booking.pinataNumber)}\n`;
     }
     if (booking.pinata_filler_number || booking.pinataFillerNumber) {
         text += `🪅 Наповнювач: №${esc(booking.pinata_filler_number || booking.pinataFillerNumber)}\n`;
     } else if (booking.pinata_filler || booking.pinataFiller) {
-        text += `🪅 Наповнювач: №${esc(booking.pinata_filler || booking.pinataFiller)}\n`;
+        text += `🪅 Наповнювач: ${esc(booking.pinata_filler || booking.pinataFiller)}\n`;
     }
     return text;
 }
@@ -107,8 +95,8 @@ function formatBookingNotification(type, booking, extra = {}) {
 // v8.4: Certificate notification templates
 const certificateTemplates = {
     certificate_issued(cert, extra) {
-        const issuedDate = cert.issued_at ? new Date(cert.issued_at).toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' }) : '—';
-        const validUntil = cert.valid_until ? new Date(cert.valid_until).toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' }) : '—';
+        const issuedDate = cert.issued_at ? new Date(cert.issued_at).toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' }) : '-';
+        const validUntil = cert.valid_until ? new Date(cert.valid_until).toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' }) : '-';
         const mode = cert.display_mode === 'fio' ? 'ПІБ' : 'Номер';
         return `📄 <b>Видано сертифікат</b>\n\n` +
             `🏷 Тип: ${esc(cert.type_text || 'на одноразовий вхід')}\n` +
@@ -152,7 +140,7 @@ const certificateTemplates = {
  * @returns {string} formatted HTML text
  */
 function formatBatchCertificateNotification(codes, extra = {}) {
-    const validDate = extra.validUntil ? new Date(extra.validUntil).toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' }) : '—';
+    const validDate = extra.validUntil ? new Date(extra.validUntil).toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' }) : '-';
     let text = `📦 <b>Пакетна видача сертифікатів</b>\n\n`;
     text += `📊 Кількість: ${extra.quantity || codes.length} шт.\n`;
     text += `🏷 Тип: ${extra.typeText || 'на одноразовий вхід'}\n`;
@@ -173,8 +161,8 @@ function formatCertificateNotification(type, cert, extra = {}) {
 }
 
 /**
- * Format afisha events block for digest/reminder messages
- * Splits events by type: regular events + birthday block
+ * Format afisha events block for digest/reminder messages.
+ * Splits events by type: regular events + birthday block.
  * @param {Array} events - afisha rows [{date, time, title, duration, type}, ...]
  * @returns {string} formatted HTML text block (empty string if no events)
  */
@@ -194,9 +182,9 @@ function formatAfishaBlock(events) {
             const endTime = minutesToTime(endMinutes);
             const icon = ev.type === 'regular' ? '🔄' : '🎭';
             const prefix = i === regular.length - 1 && birthdays.length === 0 ? '└' : '├';
-            text += `${prefix} ${icon} <code>${ev.time}–${endTime}</code> ${ev.title}`;
+            text += `${prefix} ${icon} <code>${ev.time}-${endTime}</code> ${esc(ev.title)}`;
             if (ev.duration && ev.duration !== 60) text += ` (${ev.duration}хв)`;
-            if (ev.description) text += `\n│   <i>${ev.description}</i>`;
+            if (ev.description) text += `\n│   <i>${esc(ev.description)}</i>`;
             text += '\n';
         }
     }
@@ -206,8 +194,8 @@ function formatAfishaBlock(events) {
         for (let i = 0; i < birthdays.length; i++) {
             const ev = birthdays[i];
             const prefix = i === birthdays.length - 1 ? '└' : '├';
-            text += `${prefix} 🎉 <b>${ev.title}</b> — 14:00 + 18:00`;
-            if (ev.description) text += `\n│   <i>${ev.description}</i>`;
+            text += `${prefix} 🎉 <b>${esc(ev.title)}</b> - 14:00 + 18:00`;
+            if (ev.description) text += `\n│   <i>${esc(ev.description)}</i>`;
             text += '\n';
         }
     }
@@ -254,4 +242,14 @@ function formatTaskNotification(type, task, extra = {}) {
     return template(task, extra);
 }
 
-module.exports = { notificationTemplates, formatBookingNotification, formatAfishaBlock, certificateTemplates, formatCertificateNotification, formatBatchCertificateNotification, taskTemplates, formatTaskNotification, truncate };
+module.exports = {
+    notificationTemplates,
+    formatBookingNotification,
+    formatAfishaBlock,
+    certificateTemplates,
+    formatCertificateNotification,
+    formatBatchCertificateNotification,
+    taskTemplates,
+    formatTaskNotification,
+    truncate
+};

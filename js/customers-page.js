@@ -189,7 +189,7 @@ function bindCustomerIdentityTools() {
 function renderSocialIdentities(identities = [], instagram = '') {
     const normalized = parseJsonArray(identities);
     const items = normalized.length ? normalized : (instagram ? [{ channel: 'instagram', handle: instagram, source: 'legacy_primary' }] : []);
-    if (!items.length) return 'вЂ”';
+    if (!items.length) return '-';
     return items.map(item => {
         const channel = item.channel || item.type || 'other';
         const value = item.channel === 'instagram' && item.handle ? '@' + item.handle : (item.handle || item.username || item.value || item.externalId || item.url || '');

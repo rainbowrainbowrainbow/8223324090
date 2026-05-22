@@ -366,15 +366,15 @@ router.get('/conversations', auth, async (req, res) => {
 router.get('/conversations/:id/context', auth, async (req, res) => {
     try {
         const id = parseId(req.params.id);
-        if (!id) return res.status(400).json({ success: false, error: 'РќРµРІР°Р»С–РґРЅРёР№ ID СЂРѕР·РјРѕРІРё' });
+        if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
         const context = await getHub().resolveConversationContext(id);
         if (!context) {
-            return res.status(404).json({ success: false, error: 'Р РѕР·РјРѕРІСѓ РЅРµ Р·РЅР°Р№РґРµРЅРѕ' });
+            return res.status(404).json({ success: false, error: 'Розмову не знайдено' });
         }
         res.json({ success: true, data: context });
     } catch (err) {
         log.error('Resolve conversation context error:', err.message);
-        res.status(500).json({ success: false, error: 'РџРѕРјРёР»РєР° Р·РІ\'СЏР·СѓРІР°РЅРЅСЏ CRM-РєРѕРЅС‚РµРєСЃС‚Сѓ' });
+        res.status(500).json({ success: false, error: 'Помилка звʼязування CRM-контексту' });
     }
 });
 

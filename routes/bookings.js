@@ -218,8 +218,15 @@ function validateAtomicLinkedCandidate(candidate) {
     return null;
 }
 
+const NON_OPERATIONAL_ROOM_LABELS = new Set([
+    'Інше',
+    'Other',
+    '\u0420\u2020\u0420\u0405\u0421\u20ac\u0420\u00b5' // Legacy mojibake for "Інше".
+]);
+
 function isRealRoom(room) {
-    return Boolean(room && room !== 'Інше' && room !== 'Р†РЅС€Рµ' && room !== 'Other');
+    const normalizedRoom = String(room || '').trim();
+    return Boolean(normalizedRoom && !NON_OPERATIONAL_ROOM_LABELS.has(normalizedRoom));
 }
 
 async function findAtomicLineConflict(client, candidate, excludeIds) {

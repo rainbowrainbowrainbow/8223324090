@@ -95,12 +95,12 @@ function renderPinataDetailRows(booking) {
 
     if (booking?.pinataMode === 'client') {
         const note = booking.clientPinataServiceNote
-            ? `<div class="booking-detail-row"><span class="label">РќРѕС‚Р°С‚РєР°:</span><span class="value">${escapeHtml(booking.clientPinataServiceNote)}</span></div>`
+            ? `<div class="booking-detail-row"><span class="label">Нотатка:</span><span class="value">${escapeHtml(booking.clientPinataServiceNote)}</span></div>`
             : '';
-        return `<div class="booking-detail-row"><span class="label">РџС–РЅСЊСЏС‚Р°:</span><span class="value">РљР»С–С”РЅС‚СЃСЊРєР° РїС–РЅСЊСЏС‚Р° (РїРѕСЃР»СѓРіР°)${booking.clientPinataServicePrice ? ` - ${escapeHtml(formatPrice(booking.clientPinataServicePrice))}` : ''}</span></div>${numberRows}${note}`;
+        return `<div class="booking-detail-row"><span class="label">Піньята:</span><span class="value">Клієнтська піньята (послуга)${booking.clientPinataServicePrice ? ` - ${escapeHtml(formatPrice(booking.clientPinataServicePrice))}` : ''}</span></div>${numberRows}${note}`;
     }
     if ((booking?.pinataMode === 'park' || !booking?.pinataMode) && booking?.pinataFiller) {
-        return `<div class="booking-detail-row"><span class="label">РџС–РЅСЊСЏС‚Р° РїР°СЂРєСѓ:</span><span class="value">${escapeHtml(booking.pinataFiller)}</span></div>${numberRows}`;
+        return `<div class="booking-detail-row"><span class="label">Піньята парку:</span><span class="value">${escapeHtml(booking.pinataFiller)}</span></div>${numberRows}`;
     }
     if (numberRows) return numberRows;
 

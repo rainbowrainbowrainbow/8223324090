@@ -79,6 +79,8 @@ test('products API reuses existing catalog engine and validates source documents
 
     assert.match(productsRoute, /router\.get\('\/catalogs'/);
     assert.match(productsRoute, /FROM catalog_definitions cd/);
+    assert.match(productsRoute, /href: row\.id === 'graduation' \? '\/designs#catalog-graduation'/);
+    assert.match(productsRoute, /secondaryHref: row\.id === 'graduation' \? null : '\/designs#catalogs'/);
     assert.match(productsRoute, /router\.patch\('\/:id\/source-document'/);
     assert.match(productsRoute, /SOURCE_DOCUMENT_KINDS/);
     assert.match(productsRoute, /source_document_kind must be google_doc, pdf, or link/);
@@ -114,5 +116,7 @@ test('design catalog deep links remain backed by the existing designs viewer', (
 
     assert.match(designsJs, /openCatalogHash/);
     assert.match(designsJs, /catalog-/);
+    assert.match(designsJs, /catalogId === 'graduation'/);
+    assert.match(designsJs, /openCatalog\('graduation'\)/);
     assert.match(designsJs, /openCatalogPages\(catalogId\)/);
 });

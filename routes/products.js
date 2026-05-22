@@ -378,9 +378,9 @@ router.get('/catalogs', async (req, res) => {
             pageCount: Number(row.page_count || 0),
             itemCount: Number(row.item_count || 0),
             source: row.id === 'graduation' ? 'graduation_catalog' : 'catalog_pages',
-            href: row.id === 'graduation' ? '/graduation' : `/designs#catalog-${encodeURIComponent(row.id)}`,
-            secondaryHref: row.id === 'graduation' ? '/designs#catalog-graduation' : '/designs#catalogs',
-            actionLabel: row.id === 'graduation' ? 'Відкрити випускні' : 'Відкрити каталог'
+            href: row.id === 'graduation' ? '/designs#catalog-graduation' : `/designs#catalog-${encodeURIComponent(row.id)}`,
+            secondaryHref: row.id === 'graduation' ? null : '/designs#catalogs',
+            actionLabel: 'Відкрити каталог'
         }));
 
         if (!catalogs.some(catalog => catalog.id === 'graduation')) {
@@ -399,9 +399,9 @@ router.get('/catalogs', async (req, res) => {
                 pageCount: Number(graduationCount.rows[0]?.count || 0),
                 itemCount: Number(graduationCount.rows[0]?.count || 0),
                 source: 'graduation_catalog',
-                href: '/graduation',
-                secondaryHref: '/designs#catalog-graduation',
-                actionLabel: 'Відкрити випускні'
+                href: '/designs#catalog-graduation',
+                secondaryHref: null,
+                actionLabel: 'Відкрити каталог'
             });
         }
 

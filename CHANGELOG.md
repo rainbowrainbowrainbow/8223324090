@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.42 - Graduation Catalog Link Fix
+
+### Graduation Catalog Link Fix [codex]
+- **Products -> Випускний** - кнопка каталогу тепер відкриває канонічний красивий graduation catalog у `Designs`, а не окрему стару поверхню.
+- **Designs deep-link** - `/designs#catalog-graduation` одразу відкриває viewer з пакетами випускного, як на дизайн-борді.
+- **Менше плутанини** - з картки випускного прибрано другий дублюючий шлях “У Designs”, бо основна дія вже веде в правильний каталог.
+- **Regression guard** - тест фіксує, що graduation catalog у Products веде в Designs viewer, а не в `/graduation`.
+
+---
+
 ## v0.61.41 - Assistant Topbar Consistency
 
 ### Assistant Topbar Consistency [codex]

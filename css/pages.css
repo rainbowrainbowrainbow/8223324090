@@ -979,6 +979,20 @@ body.dark-mode .cabinet-quick-segment.is-active .cabinet-quick-plate {
     flex-shrink: 0;
 }
 
+.cabinet-task-actions button {
+    min-width: 34px;
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cabinet-task-actions button:disabled,
+.cabinet-task-actions button.is-busy {
+    cursor: progress;
+    opacity: 0.62;
+}
+
 .cabinet-empty,
 .cabinet-review {
     color: var(--gray-500, #6b7280);

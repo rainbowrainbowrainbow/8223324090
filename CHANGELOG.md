@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.35 - Profile Task Action Fix
+
+### Profile Task Action Fix [codex]
+- **Профіль** - робочий профіль на широких екранах закріплено ближче до лівого краю CRM-контенту, а не по центру всього полотна.
+- **Мої задачі** - кнопки `готово`, `snooze` і `відкрити` у профілі переведено на delegated action contract з валідними `type="button"` і busy/error станом.
+- **Tasks deep-link** - відкриття задачі з профілю тепер веде на канонічний `/tasks?view=my&open=...`, який реально читає Tasks page.
+- **Regression guard** - UI smoke check фіксує left-anchored profile shell і новий data-action контракт кнопок задач.
+
+---
+
 ## v0.61.34 - Design Catalog Add Item Cleanup
 
 ### Design Catalog Add Item Cleanup [codex]

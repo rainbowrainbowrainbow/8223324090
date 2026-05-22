@@ -1140,6 +1140,8 @@ function taskKindLabel(task) {
 }
 
 function renderCabinetTaskCard(task, compact = false) {
+    const taskId = Number(task.id || task.taskId || task.task_id || 0);
+    const taskIdAttr = Number.isInteger(taskId) && taskId > 0 ? String(taskId) : '';
     const due = task.scheduledStartAt || task.scheduled_start_at || task.schedule?.startAt || task.deadline || task.remindAt || task.remind_at || task.date;
     const scheduleStatus = task.scheduleStatus || task.schedule_status || task.schedule?.status || '';
     const subDone = Number(task.subtask_done_count || task.subtaskDoneCount || 0);
@@ -1158,9 +1160,9 @@ function renderCabinetTaskCard(task, compact = false) {
                 </div>
             </div>
             <div class="cabinet-task-actions">
-                <button title="Готово" onclick="setCabinetTaskStatus(${task.id}, 'done')">✓</button>
-                ${compact ? '' : `<button title="Snooze" onclick="snoozeCabinetTask(${task.id}, 60)">⏰</button>`}
-                <button title="Відкрити" onclick="window.location.href='/tasks?task=${task.id}'">↗</button>
+                <button type="button" title="Готово" aria-label="Позначити задачу виконаною" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>✓</button>
+                ${compact ? '' : `<button type="button" title="Snooze" aria-label="Відкласти задачу на 60 хвилин" data-cabinet-task-action="snooze" data-task-id="${taskIdAttr}" data-minutes="60" ${taskIdAttr ? '' : 'disabled'}>⏰</button>`}
+                <button type="button" title="Відкрити" aria-label="Відкрити задачу у Tasks" data-cabinet-task-action="open" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>↗</button>
             </div>
         </div>`;
 }
@@ -1261,7 +1263,50 @@ function renderMyTasksTab() {
 function setMyTasksSegment(segment) {
     myTasksSegment = segment;
     const tabContent = document.getElementById('tabContent');
-    if (tabContent) tabContent.innerHTML = renderTabContent();
+    if (tabContent) {
+        tabContent.innerHTML = renderTabContent();
+        attachProfileListeners();
+    }
+}
+
+function normalizeCabinetTaskId(value) {
+    const id = Number.parseInt(value, 10);
+    return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+async function handleCabinetTaskActionClick(event) {
+    const button = event.currentTarget;
+    const action = button?.dataset?.cabinetTaskAction || '';
+    const taskId = normalizeCabinetTaskId(button?.dataset?.taskId);
+    if (!taskId) {
+        if (typeof showNotification === 'function') showNotification('Не вдалося визначити задачу', 'error');
+        return;
+    }
+
+    if (action === 'open') {
+        window.location.href = `/tasks?view=my&open=${encodeURIComponent(taskId)}`;
+        return;
+    }
+
+    button.disabled = true;
+    button.classList.add('is-busy');
+    try {
+        if (action === 'done') {
+            await setCabinetTaskStatus(taskId, 'done');
+        } else if (action === 'snooze') {
+            await snoozeCabinetTask(taskId, button.dataset.minutes || 60);
+        }
+    } catch (error) {
+        console.error('Profile cabinet task action failed', error);
+        if (typeof showNotification === 'function') {
+            showNotification(error?.message || 'Не вдалося виконати дію із задачею', 'error');
+        }
+    } finally {
+        if (button.isConnected) {
+            button.disabled = false;
+            button.classList.remove('is-busy');
+        }
+    }
 }
 
 async function refreshMyCabinetTab() {
@@ -1270,20 +1315,38 @@ async function refreshMyCabinetTab() {
     const tabContent = document.getElementById('tabContent');
     if (tabContent && (activeTab === 'myday' || activeTab === 'mytasks')) {
         tabContent.innerHTML = renderTabContent();
+        attachProfileListeners();
     }
 }
 
 async function setCabinetTaskStatus(taskId, status) {
-    await apiPatch(`/auth/tasks/${taskId}/quick-status`, { status });
+    const id = normalizeCabinetTaskId(taskId);
+    if (!id) throw new Error('Invalid task id');
+    let result;
+    if (status === 'done') {
+        result = await apiPost(`/tasks/${id}/complete`, { sourceSurface: 'profile_my_cabinet' });
+    } else if (typeof apiQuickTaskStatus === 'function') {
+        result = await apiQuickTaskStatus(id, status);
+    } else {
+        result = await apiPatch(`/auth/tasks/${id}/quick-status`, { status });
+    }
+    if (!result?.success) throw new Error(result?.error || 'Task status update failed');
+    if (typeof showNotification === 'function') {
+        showNotification(status === 'done' ? 'Задачу виконано' : 'Статус задачі оновлено', 'success');
+    }
     await refreshMyCabinetTab();
 }
 
 async function snoozeCabinetTask(taskId, minutes) {
-    const today = new Date().toISOString().slice(0, 10);
-    await apiPost(`/tasks/${taskId}/reschedule`, {
-        schedule: { date: today, slot: 'afternoon', durationMinutes: 30 },
+    const id = normalizeCabinetTaskId(taskId);
+    if (!id) throw new Error('Invalid task id');
+    const delay = Math.max(5, parseInt(minutes, 10) || 60);
+    const result = await apiPost(`/tasks/${id}/snooze`, {
+        minutes: delay,
         sourceSurface: 'profile_my_cabinet'
     });
+    if (!result?.success) throw new Error(result?.error || 'Task snooze failed');
+    if (typeof showNotification === 'function') showNotification(`Задачу відкладено на ${delay} хв`, 'success');
     await refreshMyCabinetTab();
 }
 
@@ -1758,6 +1821,12 @@ function renderMiniAvatar(equipped, name) {
 // ACTIONS
 // ==========================================
 function attachProfileListeners() {
+    document.querySelectorAll('[data-cabinet-task-action]').forEach(button => {
+        if (button.dataset.cabinetActionBound === 'true') return;
+        button.dataset.cabinetActionBound = 'true';
+        button.addEventListener('click', handleCabinetTaskActionClick);
+    });
+
     // Inventory slot click — equip/unequip
     document.querySelectorAll('.inventory-slot[data-item-id]').forEach(slot => {
         slot.addEventListener('click', async () => {

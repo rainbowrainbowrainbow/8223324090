@@ -4,6 +4,15 @@
 
 ---
 
+## v0.61.34 - Design Catalog Add Item Cleanup
+
+### Design Catalog Add Item Cleanup [codex]
+- **Design catalog editor** - кнопка `+ Додати елемент` у full edit modal більше не генерує рядок через крихкий inline `insertAdjacentHTML`.
+- **Catalog item rows** - нові елементи створюються через DOM API з валідними полями `icon/name/detail`, нормальними стилями і стабільним remove button.
+- **Regression guard** - UI smoke check блокує повернення старого inline generator з `border:1px+solid` та сирим `_feItems.insertAdjacentHTML`.
+
+---
+
 ## v0.61.33 - Safe New Tab Cleanup
 
 ### Safe New Tab Cleanup [codex]

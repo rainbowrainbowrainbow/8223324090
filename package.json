@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.61.33",
+  "version": "0.61.34",
   "eventGenix": {
-    "releaseLabel": "Safe New Tab Cleanup"
+    "releaseLabel": "Design Catalog Add Item Cleanup"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

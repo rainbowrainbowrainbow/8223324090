@@ -12,16 +12,16 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.61.33">
-    <link rel="stylesheet" href="css/layout.css?v=0.61.33">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.33">
-    <link rel="stylesheet" href="css/pages.css?v=0.61.33">
-    <link rel="stylesheet" href="css/modals.css?v=0.61.33">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.33">
-    <link rel="stylesheet" href="css/responsive.css?v=0.61.33">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.33">
-    <link rel="stylesheet" href="css/designs.css?v=0.61.33">
-    <link rel="stylesheet" href="css/catalog.css?v=0.61.33">
+    <link rel="stylesheet" href="css/base.css?v=0.61.34">
+    <link rel="stylesheet" href="css/layout.css?v=0.61.34">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.34">
+    <link rel="stylesheet" href="css/pages.css?v=0.61.34">
+    <link rel="stylesheet" href="css/modals.css?v=0.61.34">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.34">
+    <link rel="stylesheet" href="css/responsive.css?v=0.61.34">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.34">
+    <link rel="stylesheet" href="css/designs.css?v=0.61.34">
+    <link rel="stylesheet" href="css/catalog.css?v=0.61.34">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -1611,15 +1611,15 @@
         document.body.classList.add('embed-mode');
     }
     </script>
-    <script src="js/ui.js?v=0.61.33"></script>
-    <script src="js/config.js?v=0.61.33"></script>
-    <script src="js/notification.js?v=0.61.33"></script>
-    <script src="js/api.js?v=0.61.33"></script>
-    <script src="js/auth.js?v=0.61.33"></script>
-    <script src="js/components/sidebar.js?v=0.61.33"></script>
+    <script src="js/ui.js?v=0.61.34"></script>
+    <script src="js/config.js?v=0.61.34"></script>
+    <script src="js/notification.js?v=0.61.34"></script>
+    <script src="js/api.js?v=0.61.34"></script>
+    <script src="js/auth.js?v=0.61.34"></script>
+    <script src="js/components/sidebar.js?v=0.61.34"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/catalogs.js?v=0.61.33"></script>
-    <script src="js/designs-page.js?v=0.61.33"></script><script>
+    <script src="js/catalogs.js?v=0.61.34"></script>
+    <script src="js/designs-page.js?v=0.61.34"></script><script>
     // v38.9.0: Create catalog modal functions
     function rememberEditableOverlay(overlay) {
         if (window.UnsafeDismissGuard && overlay) window.UnsafeDismissGuard.remember(overlay);
@@ -2082,6 +2082,41 @@
     }
     window.duplicateCatalogPage = duplicateCatalogPage;
 
+    function addFullEditItemRow(container) {
+        if (!container) return;
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:4px;margin-bottom:4px;align-items:center';
+
+        var iconInput = document.createElement('input');
+        iconInput.value = '🎯';
+        iconInput.setAttribute('data-item-icon', 'new');
+        iconInput.style.cssText = 'width:40px;padding:6px;border:1px solid var(--gray-200);border-radius:6px;font-size:16px;text-align:center';
+
+        var nameInput = document.createElement('input');
+        nameInput.placeholder = 'Назва';
+        nameInput.setAttribute('data-item-name', 'new');
+        nameInput.style.cssText = 'flex:2;padding:6px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit';
+
+        var detailInput = document.createElement('input');
+        detailInput.placeholder = 'Деталь';
+        detailInput.setAttribute('data-item-detail', 'new');
+        detailInput.style.cssText = 'flex:1;padding:6px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit';
+
+        var removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.textContent = '🗑';
+        removeButton.title = 'Видалити елемент';
+        removeButton.style.cssText = 'padding:4px 8px;border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:14px';
+        removeButton.addEventListener('click', function() { row.remove(); });
+
+        row.appendChild(iconInput);
+        row.appendChild(nameInput);
+        row.appendChild(detailInput);
+        row.appendChild(removeButton);
+        container.appendChild(row);
+        nameInput.focus();
+    }
+
     // Full edit modal
     function openFullEditModal(catalogId, pageNumber) {
         var page = _pagesData.find(function(p) { return p.page_number === pageNumber; });
@@ -2110,9 +2145,9 @@
             // Items editor
             '<div style="margin-bottom:12px"><label style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px">Елементи (grid карток)</label>' +
             '<div id="_feItems">' + items.map(function(item, i) {
-                return '<div style="display:flex;gap:4px;margin-bottom:4px;align-items:center"><input value="' + (item.icon || '🎯') + '" style="width:40px;padding:6px;border:1px solid var(--gray-200);border-radius:6px;font-size:16px;text-align:center" data-item-icon="' + i + '"><input value="' + (item.name || '').replace(/"/g, '&quot;') + '" placeholder="Назва" style="flex:2;padding:6px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit" data-item-name="' + i + '"><input value="' + (item.detail || '').replace(/"/g, '&quot;') + '" placeholder="Деталь" style="flex:1;padding:6px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit" data-item-detail="' + i + '"><button type="button" onclick="this.parentElement.remove()" style="padding:4px 8px;border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:14px">🗑</button></div>';
+                return '<div style="display:flex;gap:4px;margin-bottom:4px;align-items:center"><input value="' + (item.icon || '🎯') + '" style="width:40px;padding:6px;border:1px solid var(--gray-200);border-radius:6px;font-size:16px;text-align:center" data-item-icon="' + i + '"><input value="' + (item.name || '').replace(/"/g, '&quot;') + '" placeholder="Назва" style="flex:2;padding:6px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit" data-item-name="' + i + '"><input value="' + (item.detail || '').replace(/"/g, '&quot;') + '" placeholder="Деталь" style="flex:1;padding:6px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit" data-item-detail="' + i + '"><button type="button" data-fe-remove-item style="padding:4px 8px;border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:14px">🗑</button></div>';
             }).join('') + '</div>' +
-            '<button type="button" onclick="document.getElementById(\'_feItems\').insertAdjacentHTML(\'beforeend\',\'<div style=display:flex;gap:4px;margin-bottom:4px;align-items:center><input value=🎯 style=width:40px;padding:6px;border:1px+solid+var(--gray-200);border-radius:6px;font-size:16px;text-align:center data-item-icon=new><input placeholder=Назва style=flex:2;padding:6px+8px;border:1px+solid+var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit data-item-name=new><input placeholder=Деталь style=flex:1;padding:6px+8px;border:1px+solid+var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit data-item-detail=new><button type=button onclick=this.parentElement.remove() style=padding:4px+8px;border:none;background:none;cursor:pointer;color:var(--gray-400);font-size:14px>🗑</button></div>\')" style="padding:6px 12px;border:1px dashed var(--gray-200);border-radius:6px;background:none;cursor:pointer;font-size:12px;font-family:inherit;color:var(--gray-500);width:100%">+ Додати елемент</button></div>' +
+            '<button type="button" data-fe-add-item style="padding:6px 12px;border:1px dashed var(--gray-200);border-radius:6px;background:none;cursor:pointer;font-size:12px;font-family:inherit;color:var(--gray-500);width:100%">+ Додати елемент</button></div>' +
             // Save/Cancel
             '<div style="display:flex;gap:8px;margin-top:16px"><button type="button" onclick="_saveFullEdit(\'' + catalogId + '\',' + pageNumber + ')" style="flex:1;padding:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#C9A84C,#D4AF37);color:#0D0D0D;font-weight:800;cursor:pointer;font-family:inherit;font-size:14px">💾 Зберегти</button><button type="button" onclick="this.closest(\'.img-picker-overlay\').remove()" style="flex:1;padding:12px;border:1px solid var(--gray-200);border-radius:10px;background:none;cursor:pointer;font-family:inherit;font-size:14px">Скасувати</button></div>' +
             '</div></div>';
@@ -2128,6 +2163,15 @@
         if (fullEditCancelBtn) fullEditCancelBtn.onclick = null;
         fullEditCloseBtn?.addEventListener('click', function(e) { e.preventDefault(); closeFullEditModal(false); });
         fullEditCancelBtn?.addEventListener('click', function(e) { e.preventDefault(); closeFullEditModal(false); });
+        modal.querySelectorAll('[data-fe-remove-item]').forEach(function(btn) {
+            btn.addEventListener('click', function() { btn.parentElement?.remove(); });
+        });
+        var addItemBtn = modal.querySelector('[data-fe-add-item]');
+        var itemsContainer = modal.querySelector('#_feItems');
+        addItemBtn?.addEventListener('click', function(e) {
+            e.preventDefault();
+            addFullEditItemRow(itemsContainer);
+        });
         modal.addEventListener('click', function(e) { if (e.target === modal) closeFullEditModal(false); });
         // Theme picker clicks
         modal.querySelectorAll('#_feThemePicker .theme-dot').forEach(function(dot) {
@@ -2734,6 +2778,6 @@
         }
     });
     </script>
-    <script src="js/alerts.js?v=0.61.33"></script>
+    <script src="js/alerts.js?v=0.61.34"></script>
 </body>
 </html>

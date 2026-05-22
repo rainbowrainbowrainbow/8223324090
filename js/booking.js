@@ -414,7 +414,9 @@ async function openBookingChat(bookingId) {
         });
         var data = await r.json();
         if (data.success && data.channel) {
-            window.open('/chat.html?channelId=' + data.channel.id, '_blank');
+            const chatUrl = '/chat.html?channelId=' + encodeURIComponent(data.channel.id);
+            if (typeof openSafeNewTab === 'function') openSafeNewTab(chatUrl);
+            else window.open(chatUrl, '_blank', 'noopener,noreferrer');
         } else {
             if (typeof showToast === 'function') showToast('Не вдалось відкрити чат', 'error');
         }

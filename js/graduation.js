@@ -1079,7 +1079,8 @@
     function exportCatalog() {
         const token = localStorage.getItem('pzp_token');
         const url = (window.API_BASE || '') + '/api/graduation/catalog/export?token=' + encodeURIComponent(token);
-        window.open(url, '_blank');
+        if (typeof openSafeNewTab === 'function') openSafeNewTab(url);
+        else window.open(url, '_blank', 'noopener,noreferrer');
     }
 
     function printPackagePage(index) {
@@ -1087,7 +1088,8 @@
         const pkg = packages[index];
         if (!pkg) return;
         const url = (window.API_BASE || '') + '/api/graduation/catalog/export?token=' + encodeURIComponent(token) + '#pkg-' + pkg.slug;
-        window.open(url, '_blank');
+        if (typeof openSafeNewTab === 'function') openSafeNewTab(url);
+        else window.open(url, '_blank', 'noopener,noreferrer');
     }
 
     // #8: Package comparison modal
@@ -2074,7 +2076,9 @@
 
     function viewProposal(id) {
         const token = localStorage.getItem('pzp_token');
-        window.open(`${API_BASE}/graduation/quotes/${id}/proposal?token=${token}`, '_blank');
+        const url = `${API_BASE}/graduation/quotes/${encodeURIComponent(id)}/proposal?token=${encodeURIComponent(token || '')}`;
+        if (typeof openSafeNewTab === 'function') openSafeNewTab(url);
+        else window.open(url, '_blank', 'noopener,noreferrer');
     }
 
     // #22: Convert quote to booking

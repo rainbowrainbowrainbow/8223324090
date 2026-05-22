@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.33 - Safe New Tab Cleanup
+
+### Safe New Tab Cleanup [codex]
+- **New-tab navigation** - додано shared `openSafeNewTab()` для простих переходів у нову вкладку з `noopener,noreferrer`.
+- **Demo player** - кнопка відкриття target page більше не вставляє raw `target_url` у inline `onclick`, тому лапки/URL не ламають кнопку.
+- **Graduation/Booking/Chat/Finance** - прості new-tab переходи переведено на safe opener contract, а print/export popup-и з `document.write` лишились сумісними.
+- **Regression guard** - UI smoke check фіксує safe opener helper і відсутність raw demo target URL у inline handler.
+
+---
+
 ## v0.61.32 - Native Prompt Audit Cleanup
 
 ### Native Prompt Audit Cleanup [codex]

@@ -197,10 +197,19 @@ function staffAccountBadge(staffId, opts = {}) {
     return compact ? '' : '<span class="staff-crm-badge no-account" title="Немає кабінету">—</span>';
 }
 
+function openSafeNewTab(url) {
+    if (!url) return null;
+    const win = window.open(String(url), '_blank', 'noopener,noreferrer');
+    if (win) win.opener = null;
+    return win;
+}
+
 function openStaffProfile(username) {
     if (!username) return;
-    window.open('/profile?user=' + encodeURIComponent(username), '_blank');
+    openSafeNewTab('/profile?user=' + encodeURIComponent(username));
 }
+
+window.openSafeNewTab = openSafeNewTab;
 
 // ==========================================
 // ДОПОМІЖНІ УТИЛІТИ

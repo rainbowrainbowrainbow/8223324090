@@ -2121,7 +2121,9 @@
             var tasksBtn = body.querySelector('[data-tasks-user]');
             if (tasksBtn) {
                 tasksBtn.addEventListener('click', function () {
-                    window.open('/tasks?assignee=' + encodeURIComponent(tasksBtn.dataset.tasksUser), '_blank');
+                    var tasksUrl = '/tasks?assignee=' + encodeURIComponent(tasksBtn.dataset.tasksUser);
+                    if (typeof openSafeNewTab === 'function') openSafeNewTab(tasksUrl);
+                    else window.open(tasksUrl, '_blank', 'noopener,noreferrer');
                 });
             }
 

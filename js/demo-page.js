@@ -67,7 +67,14 @@ async function apiPut(path, body) {
 
 function escapeHtml(str) {
     if (!str) return '';
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function openDemoTarget(stepIndex = currentStep) {
+    const url = currentSession?.steps?.[stepIndex]?.target_url;
+    if (!url) return;
+    if (typeof openSafeNewTab === 'function') openSafeNewTab(url);
+    else window.open(String(url), '_blank', 'noopener,noreferrer');
 }
 
 // ==========================================
@@ -219,7 +226,7 @@ function renderPlayer(steps) {
         </div>
         <div class="player-controls">
             ${currentStep > 0 ? '<button class="btn-player-back" onclick="playerPrev()">← Назад</button>' : ''}
-            ${steps[currentStep]?.target_url ? `<button class="btn-player-open" onclick="window.open('${steps[currentStep].target_url}','_blank')">Відкрити сторінку ↗</button>` : ''}
+            ${steps[currentStep]?.target_url ? '<button class="btn-player-open" onclick="openDemoTarget()">Відкрити сторінку ↗</button>' : ''}
             ${currentStep < steps.length - 1
                 ? '<button class="btn-player-next" onclick="playerNext()">Далі →</button>'
                 : '<button class="btn-player-next" onclick="playerComplete()" style="background:#2E7D32">✓ Завершити</button>'}

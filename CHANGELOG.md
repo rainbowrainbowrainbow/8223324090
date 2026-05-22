@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.41 - Assistant Topbar Consistency
+
+### Assistant Topbar Consistency [codex]
+- **Помічник у шапці** - вирівняно shared topbar, щоб dashboard, timeline та інші CRM-сторінки показували одну компактну гарну версію Помічника.
+- **Command row** - поле `Запитати або /команда` отримало стабільну центральну ширину й більше не стискається біля службових кнопок.
+- **Header controls** - alert/search/theme/logout зафіксовані як єдиний utility cluster без зсуву Помічника на сторінках з різним набором кнопок.
+- **Regression guard** - UI smoke check фіксує cross-page geometry contract для mounted assistant rail.
+
+---
+
 ## v0.61.40 - Reports Template Backend Workflow
 
 ### Reports Template Backend Workflow [codex]

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.61.40",
+  "version": "0.61.41",
   "eventGenix": {
-    "releaseLabel": "Reports Template Backend Workflow"
+    "releaseLabel": "Assistant Topbar Consistency"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

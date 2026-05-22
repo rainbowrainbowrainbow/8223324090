@@ -7317,3 +7317,98 @@ body.dark-mode .header .btn-logout:hover {
         transform: none !important;
     }
 }
+
+/* v0.61.41: cross-page topbar geometry guard.
+   Dashboard, timeline and secondary CRM pages mount slightly different header
+   controls. Keep the assistant rail on the same centered command row everywhere. */
+.header .header-content.assistant-rail-mounted {
+    display: grid !important;
+    grid-template-columns: auto auto minmax(520px, 1fr) auto auto !important;
+    grid-auto-flow: column !important;
+    grid-auto-columns: max-content !important;
+}
+
+.header .header-content.assistant-rail-mounted > .sidebar-toggle {
+    grid-column: 1 !important;
+    justify-self: start !important;
+}
+
+.header .header-content.assistant-rail-mounted > .alert-bell-btn {
+    grid-column: 2 !important;
+    width: var(--topbar-control-h) !important;
+    height: var(--topbar-control-h) !important;
+    min-width: var(--topbar-control-h) !important;
+    min-height: var(--topbar-control-h) !important;
+    padding: 0 !important;
+    border-radius: var(--topbar-control-r) !important;
+    border: 1px solid rgba(148, 163, 184, 0.20) !important;
+    background: rgba(255,255,255,0.78) !important;
+    color: #475569 !important;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.72) inset !important;
+    justify-self: start !important;
+}
+
+body.dark-mode .header .header-content.assistant-rail-mounted > .alert-bell-btn {
+    background: rgba(15, 23, 42, 0.58) !important;
+    border-color: rgba(148, 163, 184, 0.16) !important;
+    color: #cbd5e1 !important;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.045) inset !important;
+}
+
+.header .header-content.assistant-rail-mounted > .alert-bell-btn:hover,
+.header .header-content.assistant-rail-mounted > .alert-bell-btn:focus-visible {
+    transform: translateY(-1px) !important;
+    background: rgba(255,255,255,0.94) !important;
+    border-color: rgba(20, 184, 166, 0.28) !important;
+    color: #0f172a !important;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.10) !important;
+}
+
+body.dark-mode .header .header-content.assistant-rail-mounted > .alert-bell-btn:hover,
+body.dark-mode .header .header-content.assistant-rail-mounted > .alert-bell-btn:focus-visible {
+    background: rgba(30, 41, 59, 0.88) !important;
+    color: #e5edf7 !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host {
+    grid-column: 3 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    justify-self: stretch !important;
+}
+
+.header .header-content.assistant-rail-mounted > :where(.btn-search, .header-search-btn) {
+    grid-column: 4 !important;
+    justify-self: end !important;
+}
+
+.header .header-content.assistant-rail-mounted > .user-panel {
+    grid-column: 5 !important;
+    min-width: max-content !important;
+    margin-left: 0 !important;
+    justify-self: end !important;
+}
+
+.header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail {
+    grid-template-columns: minmax(178px, 260px) minmax(0, 1fr) !important;
+}
+
+.header .header-content.assistant-rail-mounted .assistant-rail-inline-form {
+    min-width: 0 !important;
+}
+
+@media (max-width: 1320px) {
+    .header .header-content.assistant-rail-mounted {
+        grid-template-columns: auto auto minmax(360px, 1fr) auto auto !important;
+    }
+
+    .header .header-content.assistant-rail-mounted > .crm-assistant-rail-host .crm-assistant-rail {
+        grid-template-columns: minmax(150px, 220px) minmax(0, 1fr) !important;
+    }
+}
+
+@media (max-width: 1180px) {
+    .header .header-content.assistant-rail-mounted {
+        display: flex !important;
+    }
+}

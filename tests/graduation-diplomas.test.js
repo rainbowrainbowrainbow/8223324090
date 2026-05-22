@@ -59,6 +59,13 @@ describe('Graduation diploma helper', () => {
         assert.match(html, /\/images\/park-logo\.png/);
         assert.match(html, /diploma-title/);
         assert.match(html, /diploma-park-logo/);
+        assert.match(html, /font-family: "DiplomaSerif"/);
+        assert.match(html, /\/assets\/fonts\/NotoSerif-Black\.ttf/);
+        assert.match(html, /\/assets\/fonts\/Nunito-Black\.ttf/);
+        assert.doesNotMatch(html, /fonts\.googleapis\.com/);
+        assert.doesNotMatch(html, /\.diploma-text \{[^}]*transform:/);
+        assert.doesNotMatch(html, /text-shadow:/);
+        assert.doesNotMatch(html, /-webkit-text-stroke/);
         assert.doesNotMatch(html, /Класний керівник/);
         assert.doesNotMatch(html, /ПАРК ЗАКРЕВСЬКОГО ПЕРІОДУ/);
         assert.doesNotMatch(html, /організатор випускного/);
@@ -125,5 +132,6 @@ describe('Graduation diploma helper', () => {
         assert.match(pdfSource, /\/Count 2/);
         assert.match(pdfSource, /NotoSerif-Black/);
         assert.match(pdfSource, /NotoSerif-Bold/);
+        assert.match(pdfSource, /Nunito-Bold/);
     });
 });

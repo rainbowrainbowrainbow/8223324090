@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.20 - Graduation Diplomas Typography Refinement
+
+### Graduation Diplomas Typography Refinement [codex]
+- **Дипломи** - покращено типографіку, ієрархію тексту та читабельність preview/print для випускних дипломів.
+- **Локальні шрифти** - HTML preview/print використовує bundled Noto Serif і Nunito з `assets/fonts`, без крихкої залежності від Google Fonts.
+- **Чіткість тексту** - прибрано blur-prone `transform`, `text-shadow`, stroke і повторне PDF-малювання псевдо-bold, які робили літери змазаними.
+- **Print/PDF parity** - PDFKit export отримав той самий чіткіший serif/sans hierarchy для заголовка, імені, опису, побажання, року і класу.
+
+---
+
 ## v0.61.19 - Assistant silent fix
 
 ### Assistant silent fix [codex]

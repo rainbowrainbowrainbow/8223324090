@@ -357,33 +357,38 @@ function buildDiplomaDocument(children, template, quote = {}, { autoPrint = fals
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${escHtml(title)}</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@500;700&family=Montserrat+Alternates:wght@600;700;800&family=Nunito:wght@500;700;900&display=swap');
+@font-face { font-family: "DiplomaSerif"; src: url("/assets/fonts/NotoSerif-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "DiplomaSerif"; src: url("/assets/fonts/NotoSerif-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "DiplomaSerif"; src: url("/assets/fonts/NotoSerif-Black.ttf") format("truetype"); font-weight: 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "DiplomaSans"; src: url("/assets/fonts/Nunito.ttf") format("truetype"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "DiplomaSans"; src: url("/assets/fonts/Nunito-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "DiplomaSans"; src: url("/assets/fonts/Nunito-Black.ttf") format("truetype"); font-weight: 900; font-style: normal; font-display: swap; }
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; background: #b7f000; color: #123b8f; font-family: "Nunito", "Montserrat Alternates", "Trebuchet MS", system-ui, sans-serif; }
+html, body { margin: 0; padding: 0; background: #b7f000; color: #123b8f; font-family: "DiplomaSans", "Nunito", system-ui, sans-serif; }
 .diploma-toolbar { position: sticky; top: 0; z-index: 20; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 18px; background: #15120d; color: #fff; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .diploma-toolbar strong { font-size: 15px; }
 .diploma-toolbar button { border: 0; border-radius: 10px; padding: 10px 14px; background: #b8860b; color: #fff; font-weight: 800; cursor: pointer; }
 .diploma-page { width: 210mm; height: 297mm; margin: 14px auto; position: relative; overflow: hidden; background: var(--paper); color: var(--ink); page-break-after: always; break-after: page; box-shadow: 0 22px 70px rgba(21,84,255,0.24); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .diploma-template-bg { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: fill; pointer-events: none; user-select: none; }
 .diploma-content { position: relative; z-index: 2; width: 100%; height: 100%; }
-.diploma-text { position: absolute; transform: translateX(-50%); text-align: center; overflow: hidden; white-space: pre-line; overflow-wrap: break-word; text-wrap: balance; }
-.diploma-title { left: 50%; top: 16.9%; width: 74%; color: #ffe600; font-family: "Montserrat Alternates", "Comfortaa", "Arial Rounded MT Bold", "Arial Black", sans-serif; font-size: 42px; line-height: 1.04; font-weight: 800; letter-spacing: 0; text-transform: uppercase; white-space: nowrap; -webkit-text-stroke: 1.6px #f05a24; text-shadow: 0 3px 0 #f05a24, 0 7px 12px rgba(91,120,0,0.18); max-height: 58px; }
-.diploma-awarded { left: 50%; top: 25.1%; width: 63.48%; color: #d85a1b; font-family: "Comfortaa", "Montserrat Alternates", "Trebuchet MS", sans-serif; font-size: 32px; line-height: 1.18; font-weight: 700; max-height: 54px; text-shadow: 0 2px 0 rgba(255,255,255,0.72); }
-.diploma-name { left: 50%; top: 30.6%; width: 68.36%; color: #2459a8; font-family: "Montserrat Alternates", "Comfortaa", "Arial Rounded MT Bold", "Trebuchet MS", sans-serif; font-size: 48px; line-height: 1.12; font-weight: 800; max-height: 118px; text-shadow: 0 2px 0 rgba(255,255,255,0.95), 0 5px 12px rgba(47,100,184,0.14); }
-.diploma-name.is-long { font-size: 40px; line-height: 1.08; }
-.diploma-name.is-very-long { font-size: 34px; line-height: 1.06; }
-.diploma-description { left: 50%; top: 42%; width: 66.4%; color: #3c67b1; font-family: "Nunito", "Montserrat Alternates", "Trebuchet MS", sans-serif; font-size: 30px; line-height: 1.18; font-weight: 700; max-height: 142px; text-shadow: 0 1px 0 rgba(255,255,255,0.74); }
-.diploma-description.is-long { font-size: 27px; line-height: 1.14; max-height: 148px; }
-.diploma-description.is-very-long { font-size: 24px; line-height: 1.1; max-height: 152px; }
-.diploma-wish { left: 50%; top: 58.4%; width: 67.38%; color: #e75a1c; font-family: "Comfortaa", "Montserrat Alternates", "Trebuchet MS", sans-serif; font-size: 31px; line-height: 1.2; font-weight: 700; max-height: 112px; text-shadow: 0 2px 0 rgba(255,255,255,0.68); }
-.diploma-wish.is-long { font-size: 27px; line-height: 1.15; max-height: 128px; }
-.diploma-wish.is-very-long { font-size: 23px; line-height: 1.12; max-height: 138px; }
-.diploma-page.is-copy-dense .diploma-description { font-size: 24px; line-height: 1.1; max-height: 150px; }
-.diploma-page.is-copy-dense .diploma-wish { top: 58.7%; font-size: 23px; line-height: 1.1; max-height: 136px; }
-.diploma-date { left: 29.3%; top: 71.5%; width: 27.34%; color: #2f64b8; font-family: "Montserrat Alternates", "Nunito", "Trebuchet MS", sans-serif; font-size: 26px; line-height: 1.12; font-weight: 800; max-height: 48px; text-shadow: 0 1px 0 rgba(255,255,255,0.76); }
-.diploma-signature { left: 70.31%; top: 70.31%; width: 29.3%; color: #2f64b8; font-family: "Comfortaa", "Trebuchet MS", sans-serif; font-size: 25px; line-height: 1.15; font-weight: 700; max-height: 62px; }
-.diploma-school { left: 50%; top: 76.7%; width: 60.55%; color: #2f64b8; font-family: "Montserrat Alternates", "Nunito", "Trebuchet MS", sans-serif; font-size: 28px; line-height: 1.18; font-weight: 800; max-height: 78px; text-shadow: 0 1px 0 rgba(255,255,255,0.7); }
-.diploma-park-logo { position: absolute; z-index: 3; left: 50%; top: 83.1%; transform: translateX(-50%); width: 11.8%; height: auto; max-height: 10%; object-fit: contain; border-radius: 50%; filter: drop-shadow(0 4px 0 rgba(47,100,184,0.14)); }
+.diploma-text { position: absolute; text-align: center; overflow: hidden; white-space: pre-line; overflow-wrap: break-word; text-wrap: balance; text-rendering: geometricPrecision; -webkit-font-smoothing: antialiased; font-synthesis: none; }
+.diploma-title { left: 13%; top: 16.8%; width: 74%; color: #174a97; font-family: "DiplomaSerif", Georgia, serif; font-size: 43px; line-height: 1.02; font-weight: 900; letter-spacing: .018em; text-transform: uppercase; white-space: nowrap; max-height: 62px; }
+.diploma-awarded { left: 18.26%; top: 25.2%; width: 63.48%; color: #b94618; font-family: "DiplomaSerif", Georgia, serif; font-size: 28px; line-height: 1.14; font-weight: 700; letter-spacing: .01em; max-height: 50px; }
+.diploma-name { left: 15.82%; top: 30.4%; width: 68.36%; color: #143f84; font-family: "DiplomaSerif", Georgia, serif; font-size: 52px; line-height: 1.04; font-weight: 900; letter-spacing: .005em; max-height: 126px; }
+.diploma-name.is-long { font-size: 43px; line-height: 1.03; }
+.diploma-name.is-very-long { font-size: 36px; line-height: 1.02; }
+.diploma-description { left: 16.8%; top: 42.2%; width: 66.4%; color: #285da9; font-family: "DiplomaSerif", Georgia, serif; font-size: 27px; line-height: 1.18; font-weight: 700; max-height: 142px; }
+.diploma-description.is-long { font-size: 24px; line-height: 1.15; max-height: 148px; }
+.diploma-description.is-very-long { font-size: 21px; line-height: 1.12; max-height: 154px; }
+.diploma-wish { left: 16.31%; top: 58.2%; width: 67.38%; color: #c64818; font-family: "DiplomaSans", "Nunito", system-ui, sans-serif; font-size: 27px; line-height: 1.22; font-weight: 900; max-height: 118px; }
+.diploma-wish.is-long { font-size: 24px; line-height: 1.17; max-height: 128px; }
+.diploma-wish.is-very-long { font-size: 21px; line-height: 1.14; max-height: 140px; }
+.diploma-page.is-copy-dense .diploma-description { font-size: 21px; line-height: 1.12; max-height: 154px; }
+.diploma-page.is-copy-dense .diploma-wish { top: 58.6%; font-size: 20px; line-height: 1.13; max-height: 140px; }
+.diploma-date { left: 15.63%; top: 71.6%; width: 27.34%; color: #214f9a; font-family: "DiplomaSerif", Georgia, serif; font-size: 24px; line-height: 1.08; font-weight: 900; max-height: 44px; }
+.diploma-signature { left: 55.66%; top: 70.31%; width: 29.3%; color: #214f9a; font-family: "DiplomaSerif", Georgia, serif; font-size: 22px; line-height: 1.12; font-weight: 700; max-height: 62px; }
+.diploma-school { left: 19.72%; top: 76.65%; width: 60.55%; color: #214f9a; font-family: "DiplomaSans", "Nunito", system-ui, sans-serif; font-size: 25px; line-height: 1.16; font-weight: 900; max-height: 74px; }
+.diploma-park-logo { position: absolute; z-index: 3; left: 44.1%; top: 83.1%; width: 11.8%; height: auto; max-height: 10%; object-fit: contain; border-radius: 50%; }
 @page { size: 210mm 297mm; margin: 0mm; }
 @media print {
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -395,17 +400,17 @@ html, body { margin: 0; padding: 0; background: #b7f000; color: #123b8f; font-fa
 @media (max-width: 900px) {
     .diploma-toolbar { position: static; flex-direction: column; align-items: stretch; }
     .diploma-page { width: min(100vw - 20px, 210mm); height: auto; aspect-ratio: 210 / 297; }
-    .diploma-title { font-size: clamp(28px, 5.5vw, 42px); -webkit-text-stroke: 1.2px #f05a24; }
-    .diploma-awarded { font-size: clamp(19px, 4.4vw, 34px); }
-    .diploma-name { font-size: clamp(26px, 6.2vw, 48px); }
-    .diploma-name.is-long { font-size: clamp(21px, 5vw, 40px); }
-    .diploma-name.is-very-long { font-size: clamp(18px, 4.4vw, 34px); }
-    .diploma-description, .diploma-wish { font-size: clamp(17px, 3.9vw, 31px); }
-    .diploma-description.is-long { font-size: clamp(16px, 3.4vw, 27px); }
-    .diploma-description.is-very-long, .diploma-page.is-copy-dense .diploma-description { font-size: clamp(15px, 3vw, 24px); }
-    .diploma-wish.is-long { font-size: clamp(16px, 3.4vw, 27px); }
-    .diploma-wish.is-very-long, .diploma-page.is-copy-dense .diploma-wish { font-size: clamp(15px, 3vw, 23px); }
-    .diploma-date, .diploma-school, .diploma-signature { font-size: clamp(15px, 3.4vw, 28px); }
+    .diploma-title { font-size: clamp(27px, 5.4vw, 43px); }
+    .diploma-awarded { font-size: clamp(18px, 3.8vw, 28px); }
+    .diploma-name { font-size: clamp(27px, 6.4vw, 52px); }
+    .diploma-name.is-long { font-size: clamp(22px, 5.1vw, 43px); }
+    .diploma-name.is-very-long { font-size: clamp(18px, 4.3vw, 36px); }
+    .diploma-description, .diploma-wish { font-size: clamp(16px, 3.6vw, 27px); }
+    .diploma-description.is-long { font-size: clamp(15px, 3.2vw, 24px); }
+    .diploma-description.is-very-long, .diploma-page.is-copy-dense .diploma-description { font-size: clamp(14px, 2.8vw, 21px); }
+    .diploma-wish.is-long { font-size: clamp(15px, 3.2vw, 24px); }
+    .diploma-wish.is-very-long, .diploma-page.is-copy-dense .diploma-wish { font-size: clamp(14px, 2.8vw, 21px); }
+    .diploma-date, .diploma-school, .diploma-signature { font-size: clamp(14px, 3.1vw, 25px); }
 }
 </style>
 </head>
@@ -441,19 +446,19 @@ function pdfFontSize(doc, text, width, maxHeight, startSize, minSize, lineGap = 
     return Math.max(size, minSize);
 }
 
+function pdfSingleLineFontSize(doc, text, width, startSize, minSize, characterSpacing = 0) {
+    let size = startSize;
+    while (size > minSize) {
+        doc.fontSize(size);
+        const measuredWidth = doc.widthOfString(text, { characterSpacing });
+        if (measuredWidth <= width) break;
+        size -= 1;
+    }
+    return Math.max(size, minSize);
+}
+
 function pdfTextWeightOffsets(weight) {
-    if (weight === 'black') {
-        return [
-            [0, 0], [0.36, 0], [-0.36, 0], [0, 0.36], [0, -0.36],
-            [0.24, 0.24], [-0.24, 0.24], [0.24, -0.24], [-0.24, -0.24]
-        ];
-    }
-    if (weight === 'bold') {
-        return [[0, 0], [0.24, 0], [-0.24, 0], [0, 0.24], [0, -0.24]];
-    }
-    if (weight === 'semibold') {
-        return [[0, 0], [0.16, 0], [-0.16, 0], [0, 0.16]];
-    }
+    void weight;
     return [[0, 0]];
 }
 
@@ -472,7 +477,8 @@ function drawPdfText(doc, text, {
     strokeColor = null,
     strokeWidth = 0,
     weight = 'regular',
-    characterSpacing = 0
+    characterSpacing = 0,
+    singleLine = false
 }) {
     const content = pdfText(text);
     if (!content) return;
@@ -482,13 +488,16 @@ function drawPdfText(doc, text, {
     const blockY = A4_PORTRAIT.height * y;
     const maxBlockHeight = A4_PORTRAIT.height * maxHeight;
     doc.font(font);
-    const finalSize = pdfFontSize(doc, content, blockWidth, maxBlockHeight, size, minSize, lineGap);
+    const finalSize = singleLine
+        ? pdfSingleLineFontSize(doc, content, blockWidth, size, minSize, characterSpacing)
+        : pdfFontSize(doc, content, blockWidth, maxBlockHeight, size, minSize, lineGap);
     doc.fontSize(finalSize);
     const textOptions = {
         width: blockWidth,
         align: 'center',
         lineGap,
-        characterSpacing
+        characterSpacing,
+        lineBreak: !singleLine
     };
 
     doc.save();
@@ -535,85 +544,79 @@ function drawDiplomaPdfPage(doc, child, template = DEFAULT_DIPLOMA_TEMPLATE, quo
     }
 
     drawPdfText(doc, title, {
-        y: 0.169,
-        width: 0.74,
-        size: 33,
-        minSize: 23,
+        y: 0.168,
+        width: 0.8,
+        size: 32,
+        minSize: 22,
         maxHeight: 0.07,
         font: 'DiplomaSerifBlack',
-        color: '#1f4f9a',
-        shadowColor: '#f9c43b',
-        shadowOffset: 1.15,
-        strokeColor: '#fff4cf',
-        strokeWidth: 0.85,
-        weight: 'bold',
-        characterSpacing: 0.35
+        color: '#174a97',
+        characterSpacing: 0.25,
+        singleLine: true
     });
     drawPdfText(doc, 'Нагороджується', {
-        y: 0.251,
+        y: 0.252,
         width: 0.63,
-        size: 24,
+        size: 22,
         minSize: 18,
         maxHeight: 0.06,
         font: 'DiplomaSerifBold',
-        color: '#b94719',
-        weight: 'semibold'
+        color: '#b94618',
+        characterSpacing: 0.15
     });
     drawPdfText(doc, child.fullName, {
-        y: 0.306,
+        y: 0.304,
         width: 0.684,
-        size: 36,
-        minSize: 22,
+        size: 39,
+        minSize: 24,
         maxHeight: 0.14,
         font: 'DiplomaSerifBlack',
-        color: '#2459a8',
-        lineGap: -1,
-        weight: 'bold'
+        color: '#143f84',
+        lineGap: 0,
+        characterSpacing: 0.05
     });
     drawPdfText(doc, description, {
-        y: 0.42,
+        y: 0.422,
         width: 0.664,
-        size: descriptionLength > 170 || denseCopy ? 18 : (descriptionLength > 115 ? 20 : 22),
+        size: descriptionLength > 170 || denseCopy ? 17 : (descriptionLength > 115 ? 19 : 21),
         minSize: 14,
         maxHeight: 0.18,
         font: 'DiplomaSerifBold',
-        color: '#3c67b1',
-        lineGap: -0.4,
-        weight: 'semibold'
+        color: '#285da9',
+        lineGap: 0.6
     });
     drawPdfText(doc, wish, {
-        y: denseCopy ? 0.587 : 0.584,
+        y: denseCopy ? 0.586 : 0.582,
         width: 0.674,
-        size: wishLength > 155 || denseCopy ? 17 : (wishLength > 105 ? 20 : 23),
+        size: wishLength > 155 || denseCopy ? 16 : (wishLength > 105 ? 18 : 21),
         minSize: 13,
         maxHeight: 0.16,
-        font: 'DiplomaSerifBold',
-        color: '#c84a1a',
-        lineGap: -0.2,
-        weight: 'semibold'
+        font: 'NunitoBold',
+        color: '#c64818',
+        lineGap: 0.8
     });
     drawPdfText(doc, issueYear, {
         x: 0.293,
-        y: 0.715,
+        y: 0.716,
         width: 0.273,
-        size: 19,
+        size: 18,
         minSize: 15,
         maxHeight: 0.06,
-        font: 'DiplomaSerifBold',
-        color: '#2f64b8',
-        weight: 'semibold'
+        font: 'DiplomaSerifBlack',
+        color: '#214f9a',
+        characterSpacing: 0.2
     });
 
     if (diplomaContextText) {
         drawPdfText(doc, diplomaContextText, {
-            y: 0.767,
+            y: 0.7665,
             width: 0.606,
-            size: 21,
+            size: 19,
             minSize: 15,
             maxHeight: 0.09,
-            font: 'DiplomaSerifBold',
-            color: '#2f64b8',
-            weight: 'semibold'
+            font: 'NunitoBlack',
+            color: '#214f9a',
+            lineGap: 0.4
         });
     }
 

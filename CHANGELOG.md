@@ -4,6 +4,17 @@
 
 ---
 
+## v0.61.43 - Reports Workspace Stabilization
+
+### Reports Workspace Stabilization [codex]
+- **Звіти** - стабілізовано create-flow: `Створити звіт з таблиці` тепер створює або оновлює реальний запис звіту і переводить workspace у режим редагування цього звіту.
+- **Табличний builder** - додано назву звіту, режим `Новий звіт / Чернетка / Редагування`, dirty-state, блокування кнопок під час submit та підтвердження перед втратою незбережених змін.
+- **Керування таблицею** - додано дублювання рядка, видалення колонок, live-перерахунок total-рядка і стабільні row/column handlers без повторних listener-regression.
+- **Менше хаосу** - технічні `table-*` hashtags більше не створюють видимі toggle-картки/фільтри після створення табличного звіту.
+- **Regression guard** - додано jsdom-тест reports workspace для dirty guard, row/column controls, create request і приховання технічних hashtags.
+
+---
+
 ## v0.61.42 - Graduation Catalog Link Fix
 
 ### Graduation Catalog Link Fix [codex]

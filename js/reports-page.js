@@ -26,6 +26,9 @@ const ReportsPage = (() => {
     let _editingDraftId = null;
     let _editingTableReportId = null;
     let _canManageReportTemplates = false;
+    let _reportTableDirty = false;
+    let _reportTableBusy = false;
+    let _reportTemplateWorkspaceReady = false;
 
     const EXPENSE_CATEGORIES = ['Афіша', 'ЗП', 'Майстер-класи', 'ДАР', 'Костюми', 'Квести', 'Реквізит', 'Аквагрим', 'Декорації', 'Офіс', 'Інше'];
     const DEFAULT_HASHTAGS = ['СШ-Парк', 'СШ-Особистий', 'ДАР'];
@@ -203,6 +206,36 @@ const ReportsPage = (() => {
     function csvCell(value) {
         const text = String(value ?? '');
         return `"${text.replace(/"/g, '""')}"`;
+    }
+
+    function isTechnicalReportHashtag(tag) {
+        return /^table(?:-|$)/i.test(String(tag || '').trim());
+    }
+
+    function visibleReportHashtags(tags) {
+        return (Array.isArray(tags) ? tags : []).filter(tag => !isTechnicalReportHashtag(tag));
+    }
+
+    function templateReportHashtags(defaultReport = {}) {
+        return [defaultReport.hashtag].filter(tag => tag && !isTechnicalReportHashtag(tag));
+    }
+
+    function hasMeaningfulTableData() {
+        const state = _reportTableState;
+        if (!state) return false;
+        return state.rows.some(row => state.columns.some(col => String(row?.[col.key] ?? '').trim() !== ''));
+    }
+
+    function setReportTableDirty(isDirty = true, message = '') {
+        _reportTableDirty = !!isDirty;
+        refreshReportWorkspaceControls();
+        if (message) setTemplateStatus(message);
+    }
+
+    function setReportTableBusy(isBusy, message = '') {
+        _reportTableBusy = !!isBusy;
+        refreshReportWorkspaceControls();
+        if (message) setTemplateStatus(message);
     }
 
     function normalizeTemplate(template, source = 'standard') {
@@ -512,6 +545,8 @@ const ReportsPage = (() => {
     // ==========================================
 
     async function setupReportTemplateWorkspace() {
+        if (_reportTemplateWorkspaceReady) return;
+        _reportTemplateWorkspaceReady = true;
         await loadReportTemplates();
 
         document.getElementById('reportTemplateUploadBtn')?.addEventListener('click', () => {
@@ -529,16 +564,31 @@ const ReportsPage = (() => {
         document.getElementById('reportTemplateExportCsvBtn')?.addEventListener('click', exportReportTemplateCsv);
         document.getElementById('reportTemplateExportXlsxBtn')?.addEventListener('click', exportReportTemplateXlsx);
         document.getElementById('reportTemplateSaveBtn')?.addEventListener('click', createReportFromTemplate);
+        document.getElementById('reportSheetTitleInput')?.addEventListener('input', event => {
+            if (!_reportTableState) return;
+            _reportTableState.title = event.target.value;
+            setReportTableDirty(true, 'Є незбережені зміни в назві звіту');
+        });
 
-        document.getElementById('reportTemplateCards')?.addEventListener('click', event => {
+        document.getElementById('reportTemplateCards')?.addEventListener('click', async event => {
             const card = event.target.closest('[data-report-template-id]');
             if (!card) return;
-            loadReportTemplate(card.dataset.reportTemplateId);
+            await selectReportTemplate(card.dataset.reportTemplateId);
         });
 
         const table = document.getElementById('reportSheetTable');
         table?.addEventListener('input', handleReportSheetInput);
         table?.addEventListener('click', event => {
+            const columnDeleteBtn = event.target.closest('[data-report-column-delete]');
+            if (columnDeleteBtn) {
+                deleteReportTemplateColumn(columnDeleteBtn.dataset.reportColumnDelete);
+                return;
+            }
+            const duplicateBtn = event.target.closest('[data-report-row-duplicate]');
+            if (duplicateBtn) {
+                duplicateReportTemplateRow(Number(duplicateBtn.dataset.reportRowDuplicate));
+                return;
+            }
             const deleteBtn = event.target.closest('[data-report-row-delete]');
             if (!deleteBtn) return;
             deleteReportTemplateRow(Number(deleteBtn.dataset.reportRowDelete));
@@ -634,13 +684,71 @@ const ReportsPage = (() => {
             `)
         ].join('');
         container.querySelectorAll('[data-report-draft-id]').forEach(btn => {
-            btn.addEventListener('click', () => openReportDraft(Number(btn.dataset.reportDraftId)));
+            btn.addEventListener('click', async () => {
+                if (!(await confirmDiscardReportTableChanges())) return;
+                openReportDraft(Number(btn.dataset.reportDraftId));
+            });
         });
     }
 
     function setTemplateStatus(message = '') {
         const status = document.getElementById('reportTemplateStatus');
         if (status) status.textContent = message;
+    }
+
+    function refreshReportWorkspaceControls() {
+        const state = _reportTableState;
+        const dirty = document.getElementById('reportTemplateDirty');
+        if (dirty) dirty.classList.toggle('hidden', !_reportTableDirty);
+
+        const mode = document.getElementById('reportSheetModeChip');
+        if (mode) {
+            mode.textContent = _editingTableReportId
+                ? `Редагування звіту #${_editingTableReportId}`
+                : _editingDraftId
+                    ? `Чернетка #${_editingDraftId}`
+                    : 'Новий звіт';
+        }
+
+        const draftBtn = document.getElementById('reportTemplateDraftBtn');
+        if (draftBtn) draftBtn.textContent = _editingDraftId ? 'Оновити чернетку' : 'Зберегти чернетку';
+
+        const saveBtn = document.getElementById('reportTemplateSaveBtn');
+        if (saveBtn) saveBtn.textContent = _editingTableReportId ? 'Оновити звіт з таблиці' : 'Створити звіт з таблиці';
+
+        [
+            'reportTemplateUploadBtn',
+            'reportTemplateImportCsvBtn',
+            'reportTemplateResetBtn',
+            'reportTemplateDraftBtn',
+            'reportTemplateAddRowBtn',
+            'reportTemplateAddColumnBtn',
+            'reportTemplateExportCsvBtn',
+            'reportTemplateExportXlsxBtn',
+            'reportTemplateSaveBtn',
+            'reportSheetTitleInput'
+        ].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.disabled = _reportTableBusy || !state;
+        });
+    }
+
+    async function confirmDiscardReportTableChanges() {
+        if (!_reportTableDirty || _reportTableBusy) return true;
+        const message = 'У таблиці є незбережені зміни. Замінити її іншим шаблоном і втратити ці правки?';
+        if (typeof confirmModal === 'function') {
+            return !!(await confirmModal(message, {
+                title: 'Незбережені зміни',
+                confirmText: 'Замінити таблицю',
+                cancelText: 'Лишитись тут'
+            }));
+        }
+        return window.confirm(message);
+    }
+
+    async function selectReportTemplate(templateId) {
+        if (!(await confirmDiscardReportTableChanges())) return;
+        loadReportTemplate(templateId);
     }
 
     function loadReportTemplate(templateId, options = {}) {
@@ -654,6 +762,7 @@ const ReportsPage = (() => {
             ...clone(template),
             rows: template.rows.map(row => ({ ...row }))
         };
+        _reportTableDirty = false;
 
         renderReportTemplateCards();
         renderReportTableWorkspace();
@@ -667,7 +776,9 @@ const ReportsPage = (() => {
 
         const title = document.getElementById('reportSheetTitle');
         const meta = document.getElementById('reportSheetMeta');
+        const titleInput = document.getElementById('reportSheetTitleInput');
         if (title) title.textContent = state.title;
+        if (titleInput && titleInput.value !== state.title) titleInput.value = state.title;
         if (meta) {
             meta.textContent = `${state.purpose || state.description} · ${state.rows.length} рядків · ${state.columns.length} колонок`;
         }
@@ -676,7 +787,14 @@ const ReportsPage = (() => {
             <thead>
                 <tr>
                     <th class="rpt-sheet-row-index">#</th>
-                    ${state.columns.map(col => `<th>${esc(col.label)}</th>`).join('')}
+                    ${state.columns.map(col => `
+                        <th>
+                            <span class="rpt-sheet-th-content">
+                                <span>${esc(col.label)}</span>
+                                <button type="button" class="rpt-sheet-column-delete" data-report-column-delete="${esc(col.key)}" title="Видалити колонку ${esc(col.label)}">×</button>
+                            </span>
+                        </th>
+                    `).join('')}
                     <th aria-label="Дії">Дії</th>
                 </tr>
             </thead>
@@ -698,13 +816,19 @@ const ReportsPage = (() => {
                                     aria-label="${esc(col.label)} рядок ${rowIndex + 1}">
                             </td>
                         `).join('')}
-                        <td><button type="button" class="rpt-sheet-delete" data-report-row-delete="${rowIndex}" title="Видалити рядок">×</button></td>
+                        <td>
+                            <div class="rpt-sheet-row-actions">
+                                <button type="button" class="rpt-sheet-row-action" data-report-row-duplicate="${rowIndex}" title="Дублювати рядок">⧉</button>
+                                <button type="button" class="rpt-sheet-delete" data-report-row-delete="${rowIndex}" title="Видалити рядок">×</button>
+                            </div>
+                        </td>
                     </tr>
                 `).join('')}
             </tbody>
         `;
         const totals = renderReportSheetTotals();
         table.innerHTML = head + body + totals;
+        refreshReportWorkspaceControls();
     }
 
     function renderReportSheetTotals() {
@@ -719,11 +843,24 @@ const ReportsPage = (() => {
             <tfoot>
                 <tr class="rpt-sheet-total-row">
                     <td>Разом</td>
-                    ${_reportTableState.columns.map(col => `<td>${totalsByKey.has(col.key) ? formatAmount(totalsByKey.get(col.key)) : ''}</td>`).join('')}
+                    ${_reportTableState.columns.map(col => `<td data-report-total-key="${esc(col.key)}">${totalsByKey.has(col.key) ? formatAmount(totalsByKey.get(col.key)) : ''}</td>`).join('')}
                     <td></td>
                 </tr>
             </tfoot>
         `;
+    }
+
+    function refreshReportSheetTotals() {
+        if (!_reportTableState) return;
+        const totalColumns = _reportTableState.columns.filter(col => col.total === 'sum');
+        const totalsByKey = new Map(totalColumns.map(col => [
+            col.key,
+            _reportTableState.rows.reduce((sum, row) => sum + parseNumber(row[col.key]), 0)
+        ]));
+        document.querySelectorAll('[data-report-total-key]').forEach(cell => {
+            const key = cell.dataset.reportTotalKey;
+            cell.textContent = totalsByKey.has(key) ? formatAmount(totalsByKey.get(key)) : '';
+        });
     }
 
     function handleReportSheetInput(event) {
@@ -733,7 +870,8 @@ const ReportsPage = (() => {
         const key = input.dataset.columnKey;
         if (!_reportTableState.rows[rowIndex] || !key) return;
         _reportTableState.rows[rowIndex][key] = input.value;
-        setTemplateStatus('Є незбережені зміни в таблиці');
+        refreshReportSheetTotals();
+        setReportTableDirty(true, 'Є незбережені зміни в таблиці');
     }
 
     function focusSheetCell(rowIndex, columnIndex) {
@@ -788,7 +926,7 @@ const ReportsPage = (() => {
         });
         renderReportTableWorkspace();
         focusSheetCell(startRow, startCol);
-        setTemplateStatus('Дані вставлено з буфера');
+        setReportTableDirty(true, 'Дані вставлено з буфера');
     }
 
     function addReportTemplateRow() {
@@ -796,7 +934,14 @@ const ReportsPage = (() => {
         const row = Object.fromEntries(_reportTableState.columns.map(col => [col.key, '']));
         _reportTableState.rows.push(row);
         renderReportTableWorkspace();
-        setTemplateStatus('Додано рядок');
+        setReportTableDirty(true, 'Додано рядок');
+    }
+
+    function duplicateReportTemplateRow(rowIndex) {
+        if (!_reportTableState || !_reportTableState.rows[rowIndex]) return;
+        _reportTableState.rows.splice(rowIndex + 1, 0, { ..._reportTableState.rows[rowIndex] });
+        renderReportTableWorkspace();
+        setReportTableDirty(true, 'Рядок продубльовано');
     }
 
     function deleteReportTemplateRow(rowIndex) {
@@ -806,7 +951,16 @@ const ReportsPage = (() => {
         }
         _reportTableState.rows.splice(rowIndex, 1);
         renderReportTableWorkspace();
-        setTemplateStatus('Рядок видалено');
+        setReportTableDirty(true, 'Рядок видалено');
+    }
+
+    function uniqueReportColumnKey(label) {
+        const base = slugifyKey(label, `col-${_reportTableState.columns.length + 1}`);
+        const taken = new Set(_reportTableState.columns.map(col => col.key));
+        if (!taken.has(base)) return base;
+        let index = 2;
+        while (taken.has(`${base}-${index}`)) index += 1;
+        return `${base}-${index}`;
     }
 
     async function addReportTemplateColumn() {
@@ -817,7 +971,7 @@ const ReportsPage = (() => {
         }
         const label = await promptModal('Назва колонки:', { defaultValue: '' });
         if (!label || !label.trim()) return;
-        const key = slugifyKey(label, `col-${_reportTableState.columns.length + 1}`);
+        const key = uniqueReportColumnKey(label);
         _reportTableState.columns.push({
             key,
             label: label.trim(),
@@ -826,10 +980,24 @@ const ReportsPage = (() => {
         });
         _reportTableState.rows.forEach(row => { row[key] = ''; });
         renderReportTableWorkspace();
-        setTemplateStatus('Додано колонку');
+        setReportTableDirty(true, 'Додано колонку');
     }
 
-    function resetReportTemplateTable() {
+    function deleteReportTemplateColumn(key) {
+        if (!_reportTableState || !key) return;
+        if (_reportTableState.columns.length <= 1) {
+            setTemplateStatus('У таблиці має лишитися хоча б одна колонка');
+            return;
+        }
+        const column = _reportTableState.columns.find(col => col.key === key);
+        _reportTableState.columns = _reportTableState.columns.filter(col => col.key !== key);
+        _reportTableState.rows.forEach(row => { delete row[key]; });
+        renderReportTableWorkspace();
+        setReportTableDirty(true, `Колонку "${column?.label || key}" видалено`);
+    }
+
+    async function resetReportTemplateTable() {
+        if (!(await confirmDiscardReportTableChanges())) return;
         loadReportTemplate(_activeTemplateId);
     }
 
@@ -854,6 +1022,7 @@ const ReportsPage = (() => {
             columns: Array.isArray(table.columns) ? table.columns : [],
             rows: Array.isArray(table.rows) ? table.rows : []
         };
+        _reportTableDirty = false;
         renderReportTemplateCards();
         renderReportTableWorkspace();
         setTemplateStatus(`Відкрито чернетку #${draft.id}`);
@@ -879,6 +1048,7 @@ const ReportsPage = (() => {
             columns: Array.isArray(table.columns) ? table.columns : [],
             rows: Array.isArray(table.rows) ? table.rows : []
         };
+        _reportTableDirty = false;
         renderReportTemplateCards();
         renderReportTableWorkspace();
         setTemplateStatus(`Редагування збереженого звіту #${report.id}`);
@@ -988,7 +1158,7 @@ const ReportsPage = (() => {
             _reportTableState.columns = columns;
             _reportTableState.rows = rows.length ? rows : [Object.fromEntries(columns.map(col => [col.key, '']))];
             renderReportTableWorkspace();
-            setTemplateStatus('CSV імпортовано в поточну таблицю');
+            setReportTableDirty(true, 'CSV імпортовано в поточну таблицю');
         } catch (err) {
             showNotification('Не вдалося імпортувати CSV: ' + err.message, 'error');
         } finally {
@@ -1027,6 +1197,11 @@ const ReportsPage = (() => {
 
     async function saveReportTemplateDraft() {
         if (!_reportTableState) return;
+        if (!String(_reportTableState.title || '').trim()) {
+            showNotification('Вкажіть назву чернетки', 'error');
+            document.getElementById('reportSheetTitleInput')?.focus();
+            return;
+        }
         const payload = buildReportTablePayload();
         const templateId = Number(_reportTableState.templateId);
         const body = {
@@ -1041,7 +1216,9 @@ const ReportsPage = (() => {
                 : await apiRequest('POST', '/api/reports/drafts', body);
             _editingDraftId = data.draft?.id || _editingDraftId;
             _editingTableReportId = null;
+            _reportTableDirty = false;
             await loadReportDrafts();
+            refreshReportWorkspaceControls();
             showNotification('Чернетку табличного звіту збережено');
             setTemplateStatus(`Чернетка #${_editingDraftId} збережена. Можна повернутися до неї пізніше.`);
         } catch (err) {
@@ -1103,16 +1280,37 @@ const ReportsPage = (() => {
         await downloadReportTableExport('xlsx');
     }
 
+    function validateReportTableForCreate() {
+        if (!_reportTableState) return false;
+        if (!String(_reportTableState.title || '').trim()) {
+            showNotification('Вкажіть назву звіту перед створенням', 'error');
+            document.getElementById('reportSheetTitleInput')?.focus();
+            return false;
+        }
+        if (!_reportTableState.columns.length || !_reportTableState.rows.length) {
+            showNotification('Таблиця має містити хоча б одну колонку і один рядок', 'error');
+            return false;
+        }
+        if (!hasMeaningfulTableData()) {
+            showNotification('Заповніть хоча б одну клітинку таблиці перед створенням звіту', 'error');
+            return false;
+        }
+        return true;
+    }
+
     async function createReportFromTemplate() {
         if (!_reportTableState) return;
+        if (_reportTableBusy || !validateReportTableForCreate()) return;
         const reportDefaults = _reportTableState.defaultReport || {};
         const amount = getTemplateReportAmount();
         const payload = buildReportTablePayload();
         const description = `Табличний звіт: ${_reportTableState.title}`;
         const category = reportDefaults.category || _reportTableState.category || 'Інше';
-        const hashtags = [reportDefaults.hashtag || 'table-report'].filter(Boolean);
+        const hashtags = templateReportHashtags(reportDefaults);
 
         try {
+            setReportTableBusy(true, _editingTableReportId ? 'Оновлюю звіт...' : 'Створюю звіт з таблиці...');
+            let savedReportId = _editingTableReportId;
             if (_editingDraftId) {
                 const templateId = Number(_reportTableState.templateId);
                 await apiRequest('PUT', `/api/reports/drafts/${_editingDraftId}`, {
@@ -1120,15 +1318,16 @@ const ReportsPage = (() => {
                     templateId: Number.isInteger(templateId) ? templateId : null,
                     tableJson: payload
                 });
-                await apiRequest('POST', `/api/reports/drafts/${_editingDraftId}/submit`, {
+                const data = await apiRequest('POST', `/api/reports/drafts/${_editingDraftId}/submit`, {
                     amount,
                     description,
                     category,
                     hashtags
                 });
+                savedReportId = data.report?.id || savedReportId;
                 _editingDraftId = null;
             } else if (_editingTableReportId) {
-                await apiRequest('PUT', `/api/reports/${_editingTableReportId}`, {
+                const data = await apiRequest('PUT', `/api/reports/${_editingTableReportId}`, {
                     type: reportDefaults.type || 'expense',
                     amount,
                     description,
@@ -1136,8 +1335,9 @@ const ReportsPage = (() => {
                     hashtags,
                     rawData: payload
                 });
+                savedReportId = data.id || savedReportId;
             } else {
-                await apiRequest('POST', '/api/reports', {
+                const data = await apiRequest('POST', '/api/reports', {
                     type: reportDefaults.type || 'expense',
                     amount,
                     description,
@@ -1146,14 +1346,25 @@ const ReportsPage = (() => {
                     submittedVia: 'web-template',
                     rawData: payload
                 });
+                savedReportId = data.id || savedReportId;
             }
             const actionLabel = _editingTableReportId ? 'оновлено' : 'створено';
+            _editingTableReportId = savedReportId || null;
+            _reportTableDirty = false;
             showNotification(`Табличний звіт ${actionLabel}`);
             setTemplateStatus(`Звіт ${actionLabel} і збережено в реєстрі`);
-            _editingTableReportId = null;
             await Promise.all([loadReports(), loadSummary(), loadHashtags(), loadReportDrafts()]);
+            refreshReportWorkspaceControls();
+            if (_editingTableReportId) {
+                setTimeout(() => {
+                    const row = document.querySelector(`tr[data-id="${_editingTableReportId}"]`);
+                    if (row && _expandedRow !== _editingTableReportId) toggleDetail(_editingTableReportId);
+                }, 0);
+            }
         } catch (err) {
             showNotification('Помилка: ' + err.message, 'error');
+        } finally {
+            setReportTableBusy(false);
         }
     }
 
@@ -1196,12 +1407,13 @@ const ReportsPage = (() => {
         const container = document.getElementById('hashtagDashboard');
         if (!container) return;
 
-        if (_hashtagStats.length === 0) {
+        const visibleStats = _hashtagStats.filter(h => !isTechnicalReportHashtag(h.hashtag));
+        if (visibleStats.length === 0) {
             container.innerHTML = '';
             return;
         }
 
-        container.innerHTML = _hashtagStats.map(h => {
+        container.innerHTML = visibleStats.map(h => {
             const isActive = h.inactiveCount === 0;
             return `
                 <div class="rpt-hashtag-card" onclick="ReportsPage.filterByHashtag('${esc(h.hashtag)}')">
@@ -1228,7 +1440,7 @@ const ReportsPage = (() => {
         while (select.options.length > 1) select.remove(1);
 
         // Add from stats
-        const tags = _hashtagStats.map(h => h.hashtag);
+        const tags = _hashtagStats.map(h => h.hashtag).filter(tag => !isTechnicalReportHashtag(tag));
         // Also add default tags if not present
         DEFAULT_HASHTAGS.forEach(t => { if (!tags.includes(t)) tags.push(t); });
 
@@ -1280,7 +1492,7 @@ const ReportsPage = (() => {
             const photoBtn = r.photoUrl
                 ? `<button class="rpt-photo-btn" onclick="event.stopPropagation();ReportsPage.showPhoto('${esc(r.photoUrl)}')" title="Переглянути фото">📸</button>`
                 : '—';
-            const tags = (r.hashtags || []).map(t => `<span class="rpt-hashtag">#${esc(t)}</span>`).join('');
+            const tags = visibleReportHashtags(r.hashtags).map(t => `<span class="rpt-hashtag">#${esc(t)}</span>`).join('');
             const inactiveClass = r.hashtagActive === false ? ' style="opacity:0.5"' : '';
 
             return `
@@ -1324,7 +1536,7 @@ const ReportsPage = (() => {
         const row = document.querySelector(`tr[data-id="${id}"]`);
         if (!row) return;
 
-        const tags = (report.hashtags || []).map(t => `<span class="rpt-hashtag">#${esc(t)}</span>`).join(' ');
+        const tags = visibleReportHashtags(report.hashtags).map(t => `<span class="rpt-hashtag">#${esc(t)}</span>`).join(' ');
 
         const detailRow = document.createElement('tr');
         detailRow.className = 'rpt-detail-row';

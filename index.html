@@ -20,20 +20,20 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.61.21">
-    <link rel="stylesheet" href="css/auth.css?v=0.61.21">
-    <link rel="stylesheet" href="css/layout.css?v=0.61.21">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.21">
-    <link rel="stylesheet" href="css/timeline.css?v=0.61.21">
-    <link rel="stylesheet" href="css/panel.css?v=0.61.21">
-    <link rel="stylesheet" href="css/modals.css?v=0.61.21">
-    <link rel="stylesheet" href="css/controls.css?v=0.61.21">
-    <link rel="stylesheet" href="css/features.css?v=0.61.21">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.21">
-    <link rel="stylesheet" href="css/responsive.css?v=0.61.21">
-    <link rel="stylesheet" href="css/pages.css?v=0.61.21">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.61.21">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.21">
+    <link rel="stylesheet" href="css/base.css?v=0.61.22">
+    <link rel="stylesheet" href="css/auth.css?v=0.61.22">
+    <link rel="stylesheet" href="css/layout.css?v=0.61.22">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.22">
+    <link rel="stylesheet" href="css/timeline.css?v=0.61.22">
+    <link rel="stylesheet" href="css/panel.css?v=0.61.22">
+    <link rel="stylesheet" href="css/modals.css?v=0.61.22">
+    <link rel="stylesheet" href="css/controls.css?v=0.61.22">
+    <link rel="stylesheet" href="css/features.css?v=0.61.22">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.22">
+    <link rel="stylesheet" href="css/responsive.css?v=0.61.22">
+    <link rel="stylesheet" href="css/pages.css?v=0.61.22">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.61.22">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.22">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -49,11 +49,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.61.21 Graduation Timeline Nested Blocks">✨ 0.61.21 Graduation Timeline Nested Blocks</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.61.22 Sidebar Theme Refresh + Legacy Menu Cleanup">✨ 0.61.22 Sidebar Theme Refresh + Legacy Menu Cleanup</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.61.21 — Graduation Timeline Nested Blocks</p>
+                <p class="tagline">AI First CRM v0.61.22 — Sidebar Theme Refresh + Legacy Menu Cleanup</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.61.21: Graduation Timeline Nested Blocks</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.61.22: Sidebar Theme Refresh + Legacy Menu Cleanup</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -163,17 +163,11 @@
                 <div class="action-buttons">
                     <button id="productSalesBtn" class="btn-product-sales hidden" title="Відкрити звіт продажів програм">📊 Продажі</button>
                     <button id="exportTimelineBtn" class="btn-export" title="Експортувати таймлайн як картинку">Експорт</button>
-                    <div class="admin-dropdown" id="adminDropdown">
-                        <button type="button" id="menuToggleBtn" class="btn-menu-toggle" title="Меню дій">☰ Меню</button>
-                        <div class="dropdown-content hidden" id="dropdownContent" role="menu">
-                            <button type="button" id="historyBtn" class="dropdown-item hidden" role="menuitem" title="Історія змін бронювань">📋 Історія</button>
-                            <button type="button" id="digestBtn" class="dropdown-item hidden" role="menuitem" title="Надіслати дайджест в Telegram">📲 Дайджест</button>
-                            <button type="button" id="afishaBtn" class="dropdown-item" role="menuitem" title="Управління подіями афіші">🎭 Афіша</button>
-                            <a href="/programs" class="dropdown-item" role="menuitem" title="Каталог розважальних програм">📚 Програми</a>
-                            <a href="/tasks" class="dropdown-item" role="menuitem" title="Задачник — завдання на день/тиждень">📝 Задачі</a>
-                            <button type="button" id="dashboardBtn" class="dropdown-item hidden" role="menuitem" title="Фінансова статистика та аналітика">📊 Статистика</button>
-                            <button type="button" id="settingsBtn" class="dropdown-item hidden" role="menuitem" title="Налаштування системи та Telegram">⚙️ Налаштування</button>
-                            <button type="button" id="certificatesBtn" class="dropdown-item hidden" role="menuitem" title="Реєстр сертифікатів на вхід">📄 Сертифікати</button>
+                    <div class="admin-dropdown" id="adminDropdown" data-menu-scope="timeline-actions">
+                        <button type="button" id="menuToggleBtn" class="btn-menu-toggle" title="Контекстні дії таймлайну" aria-haspopup="menu" aria-expanded="false">⋯ Дії</button>
+                        <div class="dropdown-content hidden" id="dropdownContent" role="menu" aria-label="Контекстні дії таймлайну">
+                            <button type="button" id="historyBtn" class="dropdown-item hidden" role="menuitem" title="Історія змін бронювань">📋 Історія змін</button>
+                            <button type="button" id="digestBtn" class="dropdown-item hidden" role="menuitem" title="Надіслати дайджест в Telegram">📲 Дайджест дня</button>
                         </div>
                     </div>
                 </div>
@@ -1269,6 +1263,14 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
+                <div class="changelog-section">
+                    <h4>v0.61.22 — Sidebar Theme Refresh + Legacy Menu Cleanup</h4>
+                    <ul>
+                        <li><b>Клешня, 22.05.2026</b> — покращено global sidebar navigation для dark/light theme з окремим polish-pass для світлої теми.</li>
+                        <li><b>Sidebar</b> — підсилено поверхні, active/hover стани, іконки, group headers, identity card і collapsed rail без зміни shared navigation logic.</li>
+                        <li><b>Timeline</b> — legacy small-menu звужено до контекстних дій таймлайну; дублікати переходів у Programs, Tasks, Afisha, Settings, Certificates і Statistics прибрано.</li>
+                    </ul>
+                </div>
                 <div class="changelog-section">
                     <h4>v0.61.21 — Graduation Timeline Nested Blocks</h4>
                     <ul>
@@ -8516,27 +8518,27 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.61.21"></script>
-    <script src="js/config.js?v=0.61.21"></script>
-    <script src="js/api.js?v=0.61.21"></script>
-    <script src="js/ui.js?v=0.61.21"></script>
-    <script src="js/auth.js?v=0.61.21"></script>
-    <script src="js/timeline.js?v=0.61.21"></script>
-    <script src="js/booking.js?v=0.61.21"></script>
-    <script src="js/settings.js?v=0.61.21"></script>
-    <script src="js/booking-form.js?v=0.61.21"></script>
-    <script src="js/booking-linked.js?v=0.61.21"></script>
-    <script src="js/settings-dashboard.js?v=0.61.21"></script>
-    <script src="js/settings-history.js?v=0.61.21"></script>
-    <script src="js/settings-afisha.js?v=0.61.21"></script>
-    <script src="js/settings-certificates.js?v=0.61.21"></script>
-    <script src="js/offline.js?v=0.61.21"></script>
-    <script src="js/crm-feature-registry.js?v=0.61.21"></script>
-    <script src="js/search.js?v=0.61.21"></script>
-    <script src="js/ws.js?v=0.61.21"></script>
-    <script src="js/app.js?v=0.61.21"></script>
-    <script src="js/kleshnya-widget.js?v=0.61.21"></script>
-    <script src="js/components/sidebar.js?v=0.61.21"></script>
-    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.61.21"></script>
+    <script src="js/timeline-context.js?v=0.61.22"></script>
+    <script src="js/config.js?v=0.61.22"></script>
+    <script src="js/api.js?v=0.61.22"></script>
+    <script src="js/ui.js?v=0.61.22"></script>
+    <script src="js/auth.js?v=0.61.22"></script>
+    <script src="js/timeline.js?v=0.61.22"></script>
+    <script src="js/booking.js?v=0.61.22"></script>
+    <script src="js/settings.js?v=0.61.22"></script>
+    <script src="js/booking-form.js?v=0.61.22"></script>
+    <script src="js/booking-linked.js?v=0.61.22"></script>
+    <script src="js/settings-dashboard.js?v=0.61.22"></script>
+    <script src="js/settings-history.js?v=0.61.22"></script>
+    <script src="js/settings-afisha.js?v=0.61.22"></script>
+    <script src="js/settings-certificates.js?v=0.61.22"></script>
+    <script src="js/offline.js?v=0.61.22"></script>
+    <script src="js/crm-feature-registry.js?v=0.61.22"></script>
+    <script src="js/search.js?v=0.61.22"></script>
+    <script src="js/ws.js?v=0.61.22"></script>
+    <script src="js/app.js?v=0.61.22"></script>
+    <script src="js/kleshnya-widget.js?v=0.61.22"></script>
+    <script src="js/components/sidebar.js?v=0.61.22"></script>
+    <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/alerts.js?v=0.61.22"></script>
 </body>
 </html>

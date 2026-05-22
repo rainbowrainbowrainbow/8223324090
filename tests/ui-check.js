@@ -94,6 +94,18 @@ checkPage('index.html', (doc, html) => {
     check('Timeline product sales category and program filters exist', !!doc.getElementById('productSalesCategory') && !!doc.getElementById('productSalesProgram'));
     check('Timeline product sales export buttons exist', !!doc.getElementById('productSalesXlsxBtn') && !!doc.getElementById('productSalesCsvBtn'));
     check('Timeline product sales button is a modal trigger', doc.getElementById('productSalesBtn')?.textContent.includes('📊'));
+    const timelineActionMenu = doc.getElementById('dropdownContent');
+    check('Timeline action menu is contextual and does not duplicate sidebar navigation',
+        doc.getElementById('adminDropdown')?.dataset.menuScope === 'timeline-actions'
+        && doc.getElementById('menuToggleBtn')?.textContent.includes('Дії')
+        && !!doc.getElementById('historyBtn')
+        && !!doc.getElementById('digestBtn')
+        && !doc.getElementById('afishaBtn')
+        && !doc.getElementById('dashboardBtn')
+        && !doc.getElementById('settingsBtn')
+        && !doc.getElementById('certificatesBtn')
+        && !timelineActionMenu?.querySelector('a[href="/programs"]')
+        && !timelineActionMenu?.querySelector('a[href="/tasks"]'));
     check('Timeline product sales modal omits payment/debt fields', !doc.getElementById('productSalesModal')?.textContent.includes('Оплачено') && !doc.getElementById('productSalesModal')?.textContent.includes('Борг'));
     check('Timeline product sales export buttons are styled as buttons', doc.getElementById('productSalesXlsxBtn')?.classList.contains('product-sales-export-btn') && doc.getElementById('productSalesCsvBtn')?.classList.contains('product-sales-export-btn'));
     check('Timeline product sales button has readable light text color', productSalesBtnRule.includes('color: var(--gray-800'));
@@ -509,6 +521,8 @@ check('Shared modal close controls close nearest modal on click and touch', uiCo
 check('Shared formModal keeps actions on-screen on tall forms', uiCode.includes('form-modal-overlay') && uiCode.includes('form-modal-dialog') && globalModalsCss.includes('v0.60.37: shared formModal must keep submit actions on-screen') && globalModalsCss.includes('max-height: calc(100dvh - 32px)') && globalModalsCss.includes('.form-modal-dialog .form-modal-fields') && globalModalsCss.includes('overflow-y: auto') && globalModalsCss.includes('.form-modal-dialog .confirm-actions'));
 check('Timeline canvas exports have mobile Safari fallback instead of raw toDataURL downloads', uiCode.includes('openTouchImageExportWindow') && uiCode.includes('finishCanvasImageExport') && uiCode.includes('timeline_canvas_context_unavailable') && !uiCode.includes("link.href = canvas.toDataURL('image/png')"));
 check('Sidebar visual contract defines command deck, focus chips, and quiet nav states', sidebarAuroraCss.includes('.sidebar-command-deck') && sidebarAuroraCss.includes('.focus-chip') && sidebarAuroraCss.includes('.nav-status') && sidebarAuroraCss.includes('.sidebar-group-signal') && sidebarAuroraCss.includes('display: none !important'));
+check('Sidebar v0.61.22 refresh covers light, dark, active, and collapsed rail states', sidebarAuroraCss.includes('v0.61.22: global sidebar theme refresh') && sidebarAuroraCss.includes('--sb-polish-active') && sidebarAuroraCss.includes('body:not(.dark-mode) .sidebar-nav') && sidebarAuroraCss.includes('body.dark-mode .sidebar-nav') && sidebarAuroraCss.includes('.sidebar-nav.collapsed .sidebar-mini-link.active') && sidebarAuroraCss.includes('box-shadow: inset 3px 0 0 var(--sb-enterprise-accent)'));
+check('Timeline legacy menu cleanup self-hides empty contextual action menu', layoutCss.includes('v0.61.22: timeline action menu cleanup') && layoutCss.includes('.admin-dropdown.is-empty') && appCode.includes('function refreshTimelineActionMenuVisibility') && appCode.includes('sidebar owns navigation') && !appCode.includes("document.getElementById('afishaBtn')"));
 check('Sidebar brand shows Event Genix gear instead of CSS shield mark', sidebarAuroraCss.includes('restore the real Event Genix gear logo') && sidebarAuroraCss.includes('.sidebar-brand .logo-img-small') && sidebarAuroraCss.includes('display: block !important') && sidebarAuroraCss.includes('animation: none !important') && sidebarAuroraCss.includes('.sidebar-brand::before') && sidebarAuroraCss.includes('.sidebar-brand::after') && sidebarAuroraCss.includes('content: none !important'));
 check('Sidebar shell width applies to page-container pages', sidebarAuroraCss.includes('stable on page-container pages') && sidebarAuroraCss.includes('body.shell-ready .page-container') && sidebarAuroraCss.includes('width: calc(100% - var(--eg-claude-sidebar-w))') && sidebarAuroraCss.includes('body.shell-ready .sidebar-nav.collapsed ~ .header ~ .page-container'));
 check('Sidebar brand and identity text cannot wrap into broken columns', sidebarAuroraCss.includes('.sidebar-brand .em-logo-title') && sidebarAuroraCss.includes('white-space: nowrap !important') && sidebarAuroraCss.includes('text-overflow: ellipsis !important') && sidebarAuroraCss.includes('.sidebar-identity-title-line'));

@@ -2724,6 +2724,91 @@ input[type="date"] {
     display: none;
 }
 
+/* v0.61.22: timeline action menu cleanup.
+   The global sidebar owns navigation; this small menu is contextual only. */
+.admin-dropdown.is-empty {
+    display: none;
+}
+
+.timeline-dashboard-page .admin-dropdown .btn-menu-toggle,
+.admin-dropdown[data-menu-scope="timeline-actions"] .btn-menu-toggle {
+    min-height: 38px;
+    padding: 0 12px;
+    background: rgba(255, 255, 255, 0.78) !important;
+    color: #334155 !important;
+    border: 1px solid rgba(148, 163, 184, 0.32) !important;
+    border-radius: 999px;
+    font-weight: 800;
+    font-size: 12.5px;
+    letter-spacing: 0.01em;
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06) !important;
+}
+
+.timeline-dashboard-page .admin-dropdown .btn-menu-toggle:hover,
+.admin-dropdown[data-menu-scope="timeline-actions"] .btn-menu-toggle:hover {
+    background: #ffffff !important;
+    border-color: rgba(20, 184, 166, 0.42) !important;
+    color: #0f766e !important;
+    box-shadow: 0 14px 28px rgba(20, 184, 166, 0.12) !important;
+}
+
+.admin-dropdown[data-menu-scope="timeline-actions"] .dropdown-content {
+    min-width: 184px;
+    padding: 7px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    box-shadow: 0 20px 42px rgba(15, 23, 42, 0.14);
+    backdrop-filter: blur(16px) saturate(1.08);
+    animation-duration: 0.16s;
+}
+
+.admin-dropdown[data-menu-scope="timeline-actions"] .dropdown-item {
+    min-height: 38px;
+    gap: 7px;
+    padding: 9px 11px;
+    border: 1px solid transparent;
+    border-radius: 11px;
+    color: #334155;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+.admin-dropdown[data-menu-scope="timeline-actions"] .dropdown-item:hover {
+    background: rgba(20, 184, 166, 0.09);
+    border-color: rgba(20, 184, 166, 0.2);
+    color: #0f766e;
+}
+
+body.dark-mode .admin-dropdown[data-menu-scope="timeline-actions"] .btn-menu-toggle {
+    background: rgba(15, 23, 42, 0.72) !important;
+    border-color: rgba(148, 163, 184, 0.2) !important;
+    color: rgba(226, 232, 240, 0.88) !important;
+    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.22) !important;
+}
+
+body.dark-mode .admin-dropdown[data-menu-scope="timeline-actions"] .btn-menu-toggle:hover {
+    background: rgba(20, 184, 166, 0.12) !important;
+    border-color: rgba(45, 212, 191, 0.34) !important;
+    color: #99f6e4 !important;
+}
+
+body.dark-mode .admin-dropdown[data-menu-scope="timeline-actions"] .dropdown-content {
+    background: rgba(7, 12, 18, 0.94) !important;
+    border-color: rgba(148, 163, 184, 0.2) !important;
+    box-shadow: 0 22px 48px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+body.dark-mode .admin-dropdown[data-menu-scope="timeline-actions"] .dropdown-item {
+    color: rgba(226, 232, 240, 0.88) !important;
+}
+
+body.dark-mode .admin-dropdown[data-menu-scope="timeline-actions"] .dropdown-item:hover {
+    background: rgba(45, 212, 191, 0.12) !important;
+    border-color: rgba(45, 212, 191, 0.26) !important;
+    color: #ccfbf1 !important;
+}
+
 /* ==========================================
    QUICK STATS BAR — removed in v20.9.1 (redundant with dashboard)
    ========================================== */

@@ -935,22 +935,7 @@ function showMainApp() {
         return;
     }
 
-    // Settings (gear) — тільки для creator/director
-    const settingsBtn = document.getElementById('settingsBtn');
-    if (settingsBtn) {
-        settingsBtn.classList.toggle('hidden', !canAccess('manage_settings'));
-    }
-
-    // Certificates — доступно всім ролям
-    const certificatesBtn = document.getElementById('certificatesBtn');
-    if (certificatesBtn) {
-        certificatesBtn.classList.remove('hidden');
-    }
-
-    // v36.2: Dashboard/Statistics removed from dropdown — always hidden
-    const dashboardBtn = document.getElementById('dashboardBtn');
-    if (dashboardBtn) dashboardBtn.classList.add('hidden');
-
+    // v0.61.22: Timeline dropdown no longer owns sidebar navigation entries.
     // Показати кнопку "Розважальні програми"
     const programsTabBtn = document.getElementById('programsTabBtn');
     if (programsTabBtn) {
@@ -988,7 +973,6 @@ function showMainApp() {
         document.getElementById('addLineBtn')?.classList.toggle('hidden', !canUse('settings'));
         document.getElementById('exportTimelineBtn')?.classList.toggle('hidden', !canUse('export'));
         document.getElementById('productSalesBtn')?.classList.add('hidden');
-        document.getElementById('settingsBtn')?.classList.toggle('hidden', !canUse('settings'));
     }
 
     // Dark mode toggle

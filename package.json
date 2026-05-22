@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.61.21",
+  "version": "0.61.22",
   "eventGenix": {
-    "releaseLabel": "Graduation Timeline Nested Blocks"
+    "releaseLabel": "Sidebar Theme Refresh + Legacy Menu Cleanup"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

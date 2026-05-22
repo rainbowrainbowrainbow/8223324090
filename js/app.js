@@ -653,19 +653,10 @@ function initSettingsListeners() {
     const animatorsTabBtn = document.getElementById('animatorsTabBtn');
     if (animatorsTabBtn) animatorsTabBtn.addEventListener('click', showAnimatorsModal);
 
-    const settingsBtn = document.getElementById('settingsBtn');
-    if (settingsBtn) settingsBtn.addEventListener('click', showSettings);
-
-    const certificatesBtn = document.getElementById('certificatesBtn');
-    if (certificatesBtn) certificatesBtn.addEventListener('click', openCertificatesPanel);
-
     // v7.8: Programs page is now a standalone page (/programs)
 
     const telegramSetupBtn = document.getElementById('telegramSetupBtn');
     if (telegramSetupBtn) telegramSetupBtn.addEventListener('click', showTelegramSetup);
-
-    const dashboardBtn = document.getElementById('dashboardBtn');
-    if (dashboardBtn) dashboardBtn.addEventListener('click', showDashboard);
 
     const saveTelegramBtn = document.getElementById('saveTelegramBtn');
     if (saveTelegramBtn) saveTelegramBtn.addEventListener('click', saveTelegramChatId);
@@ -697,17 +688,7 @@ function initSettingsListeners() {
     const sendTestReminderBtn = document.getElementById('sendTestReminderBtn');
     if (sendTestReminderBtn) sendTestReminderBtn.addEventListener('click', sendTestReminder);
 
-    // F: Afisha button — [FIX] robust handler з fallback та error logging
-    const afishaBtn = document.getElementById('afishaBtn');
-    if (afishaBtn) {
-        afishaBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const content = document.getElementById('dropdownContent');
-            if (content) content.classList.add('hidden');
-            window.location.href = '/afisha';
-        });
-    }
-
+    // Afisha modal controls still belong to the dedicated Afisha workspace.
     const addAfishaBtn = document.getElementById('addAfishaBtn');
     if (addAfishaBtn) addAfishaBtn.addEventListener('click', addAfishaItem);
 
@@ -764,6 +745,21 @@ function initSettingsListeners() {
 
 }
 
+function refreshTimelineActionMenuVisibility() {
+    const dropdown = document.getElementById('adminDropdown');
+    const toggle = document.getElementById('menuToggleBtn');
+    const content = document.getElementById('dropdownContent');
+    if (!dropdown || !toggle || !content) return;
+
+    const hasVisibleItems = Array.from(content.querySelectorAll('.dropdown-item'))
+        .some(item => !item.classList.contains('hidden') && !item.hidden);
+
+    dropdown.classList.toggle('is-empty', !hasVisibleItems);
+    toggle.hidden = !hasVisibleItems;
+    if (!hasVisibleItems) content.classList.add('hidden');
+    toggle.setAttribute('aria-expanded', content.classList.contains('hidden') ? 'false' : 'true');
+}
+
 function initUIControlListeners() {
     document.querySelectorAll('.zoom-btn').forEach(btn => {
         btn.addEventListener('click', () => changeZoom(parseInt(btn.dataset.zoom)));
@@ -781,38 +777,52 @@ function initUIControlListeners() {
     const undoBtn = document.getElementById('undoBtn');
     if (undoBtn) undoBtn.addEventListener('click', handleUndo);
 
-    // v5.8: Admin dropdown toggle
+    // v0.61.22: Timeline action menu is contextual only; sidebar owns navigation.
     const menuToggle = document.getElementById('menuToggleBtn');
     if (menuToggle) {
         let touchFired = false;
+        const toggleTimelineActionMenu = () => {
+            refreshTimelineActionMenuVisibility();
+            if (menuToggle.hidden) return;
+            const content = document.getElementById('dropdownContent');
+            if (content) {
+                content.classList.toggle('hidden');
+                menuToggle.setAttribute('aria-expanded', content.classList.contains('hidden') ? 'false' : 'true');
+            }
+        };
         menuToggle.addEventListener('touchend', (e) => {
             e.preventDefault();
             e.stopPropagation();
             touchFired = true;
-            const content = document.getElementById('dropdownContent');
-            if (content) content.classList.toggle('hidden');
+            toggleTimelineActionMenu();
         });
         menuToggle.addEventListener('click', (e) => {
             if (touchFired) { touchFired = false; return; }
             e.preventDefault();
             e.stopPropagation();
-            const content = document.getElementById('dropdownContent');
-            if (content) content.classList.toggle('hidden');
+            toggleTimelineActionMenu();
         });
+        refreshTimelineActionMenuVisibility();
     }
     // Close dropdown on outside click
     document.addEventListener('click', (e) => {
         const dropdown = document.getElementById('adminDropdown');
         if (dropdown && !dropdown.contains(e.target)) {
             const content = document.getElementById('dropdownContent');
-            if (content) content.classList.add('hidden');
+            if (content) {
+                content.classList.add('hidden');
+                menuToggle?.setAttribute('aria-expanded', 'false');
+            }
         }
     });
     // Close dropdown when item clicked
     document.querySelectorAll('.dropdown-item').forEach(item => {
         item.addEventListener('click', () => {
             const content = document.getElementById('dropdownContent');
-            if (content) content.classList.add('hidden');
+            if (content) {
+                content.classList.add('hidden');
+                menuToggle?.setAttribute('aria-expanded', 'false');
+            }
         });
     });
 

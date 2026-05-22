@@ -335,6 +335,9 @@ async function renderTimeline() {
     if (digestBtn) {
         digestBtn.classList.toggle('hidden', isViewer());
     }
+    if (typeof refreshTimelineActionMenuVisibility === 'function') {
+        refreshTimelineActionMenuVisibility();
+    }
 
     const dayOfWeek = selectedDate.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
@@ -877,7 +880,7 @@ function renderAfishaLine(container, events, startHour, date, hasAssigned) {
     }
 
     // v20.9.11: Click on afisha header/cells no longer opens modal (moved to Settings → Afisha)
-    // openAfishaModalAt is still accessible via afishaBtn in the menu
+    // Afisha management is owned by the sidebar route, not the timeline action menu.
 }
 
 function createAfishaBlock(event, startHour) {

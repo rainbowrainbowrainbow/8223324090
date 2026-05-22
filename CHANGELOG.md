@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.22 - Sidebar Theme Refresh + Legacy Menu Cleanup
+
+### Sidebar Theme Refresh + Legacy Menu Cleanup [codex]
+- **Sidebar** - покращено візуальну систему global navigation для dark/light theme: поверхні, active/hover стани, іконки, group headers, identity card і collapsed rail стали спокійнішими та контрастнішими.
+- **Світла тема** - sidebar більше не спирається на бежевий washed-out вигляд; додано чистіші нейтральні поверхні, сильніший текстовий контраст і чіткі teal/blue акценти.
+- **Темна тема** - зменшено декоративний шум і glow, підсилено читабельність та контрольовані стани hover/focus/active.
+- **Timeline menu** - legacy small-menu більше не дублює sidebar navigation; залишено тільки контекстні дії таймлайну `Історія змін` і `Дайджест дня`, з self-hide якщо дій немає.
+
+---
+
 ## v0.61.21 - Graduation Timeline Nested Blocks
 
 ### Graduation Timeline Nested Blocks [codex]

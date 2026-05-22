@@ -110,6 +110,36 @@ function normalizeServiceTiming(value) {
     }));
 }
 
+function timeTextToMinutes(value) {
+    const match = String(value || '').match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const h = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10);
+    if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+    return h * 60 + m;
+}
+
+function graduationSegmentKey(name, id, index) {
+    const base = String(name || id || `segment-${index + 1}`)
+        .toLowerCase()
+        .replace(/[^a-z0-9а-яіїєґ]+/gi, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 48);
+    return base || `segment-${index + 1}`;
+}
+
+function graduationSegmentColorToken(item = {}) {
+    const name = String(item.name || item.title || '').toLowerCase();
+    const kind = String(item.operationKind || item.operation_kind || '').toLowerCase();
+    if (/welcome|вхід|зустр|велкам|welcome-zone/i.test(name) || kind === 'welcome') return 'welcome';
+    if (/диплом|diploma/i.test(name) || kind === 'diploma') return 'diploma';
+    if (/анім|animation|анімац/i.test(name) || kind === 'animation') return 'animation';
+    if (/капсул|capsule/i.test(name) || kind === 'capsule_time') return 'capsule';
+    if (/фото|photo/i.test(name)) return 'photo';
+    if (/майстер|мк|workshop|master/i.test(name)) return 'workshop';
+    return 'service';
+}
+
 function buildGraduationTimelineItems(services = [], serviceTiming = []) {
     const timingById = new Map(normalizeServiceTiming(serviceTiming)
         .filter(item => item.serviceId)
@@ -134,6 +164,53 @@ function buildGraduationTimelineItems(services = [], serviceTiming = []) {
         })
         .filter(item => item.timelineVisible !== false)
         .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+}
+
+function buildGraduationSegments(services = [], serviceTiming = [], eventStartTime = null) {
+    const baseMin = timeTextToMinutes(eventStartTime);
+    let cursor = 0;
+    return buildGraduationTimelineItems(services, serviceTiming)
+        .map((item, index) => {
+            const startMin = timeTextToMinutes(item.startTime);
+            const endMin = timeTextToMinutes(item.endTime);
+            let durationMin = Number(item.durationMin || 0) || 0;
+            if (!durationMin && startMin !== null && endMin !== null) {
+                durationMin = Math.max(0, endMin >= startMin ? endMin - startMin : (24 * 60 - startMin + endMin));
+            }
+            if (!durationMin) durationMin = 15;
+
+            let startOffsetMin = cursor;
+            if (baseMin !== null && startMin !== null) {
+                const rawOffset = startMin >= baseMin ? startMin - baseMin : (24 * 60 - baseMin + startMin);
+                startOffsetMin = Math.max(0, rawOffset);
+            }
+            cursor = Math.max(cursor, startOffsetMin + durationMin);
+
+            const key = graduationSegmentKey(item.name, item.id, index);
+            return {
+                id: `seg_${item.id || index + 1}_${key}`.slice(0, 80),
+                source: item.id ? 'package' : 'manual',
+                key,
+                serviceId: item.id || null,
+                title: item.name || 'Складова випускного',
+                startOffsetMin,
+                durationMin,
+                colorToken: graduationSegmentColorToken(item),
+                lockedToPackage: false,
+                notes: '',
+                sortOrder: Number(item.sortOrder || index + 1) || index + 1,
+                operationKind: item.operationKind || 'service',
+                timelineVisible: item.timelineVisible !== false
+            };
+        })
+        .filter(segment => segment.timelineVisible !== false)
+        .sort((a, b) => Number(a.startOffsetMin || 0) - Number(b.startOffsetMin || 0));
+}
+
+async function buildGraduationSegmentsForQuote(query, quoteRow, serviceTimingOverride = null, eventStartTime = null) {
+    const services = await hydrateSelectedServices(query, quoteRow.selected_services || [], quoteRow.package_id || null);
+    const timing = serviceTimingOverride || quoteRow.service_timing || [];
+    return buildGraduationSegments(services, timing, eventStartTime || quoteRow.event_start_time || null);
 }
 
 async function hydrateSelectedServices(query, selectedServices, packageId = null) {
@@ -862,6 +939,8 @@ module.exports = {
     SOURCE_PRINT_REMINDER,
     SOURCE_ROSTER_MISSING,
     buildGraduationTimelineItems,
+    buildGraduationSegments,
+    buildGraduationSegmentsForQuote,
     buildGraduationTimelineItemsForQuote,
     computeReminderDate,
     dispatchDuePrintReminders,

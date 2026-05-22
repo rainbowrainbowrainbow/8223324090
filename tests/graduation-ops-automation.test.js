@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
+    buildGraduationSegments,
     buildGraduationTimelineItems,
     computeReminderDate,
     hasCapsuleService,
@@ -34,6 +35,22 @@ describe('Graduation ops automation contract', () => {
         assert.equal(items[1].operationKind, 'capsule_time');
     });
 
+    it('builds package-derived nested graduation segments with offsets and color tokens', () => {
+        const segments = buildGraduationSegments([
+            { serviceId: 10, name: 'Welcome zone', sortOrder: 10, durationMin: 30, operationKind: 'welcome' },
+            { serviceId: 11, name: 'Animation', sortOrder: 20, durationMin: 60, operationKind: 'animation' },
+            { serviceId: 12, name: 'Diploma ceremony', sortOrder: 30, durationMin: 30, operationKind: 'diploma' }
+        ], [
+            { serviceId: 11, startTime: '12:30', endTime: '13:30' }
+        ], '12:00');
+
+        assert.deepEqual(segments.map(segment => segment.title), ['Welcome zone', 'Animation', 'Diploma ceremony']);
+        assert.deepEqual(segments.map(segment => segment.startOffsetMin), [0, 30, 90]);
+        assert.deepEqual(segments.map(segment => segment.durationMin), [30, 60, 30]);
+        assert.deepEqual(segments.map(segment => segment.colorToken), ['welcome', 'animation', 'diploma']);
+        assert.equal(segments[0].source, 'package');
+    });
+
     it('detects readiness and service types from canonical helpers', () => {
         const normalized = normalizeSelectedServices([{ id: 7, service_name: 'Diploma set' }, { id: 8, name: 'Capsule service' }]);
         assert.equal(normalized.length, 2);
@@ -63,10 +80,16 @@ describe('Graduation ops automation contract', () => {
 
         assert.match(graduationRoute, /syncGraduationOpsSafe/);
         assert.match(graduationRoute, /graduationTimelineItems/);
+        assert.match(graduationRoute, /graduationSegments/);
+        assert.match(graduationRoute, /graduationPackageSegments/);
+        assert.match(graduationRoute, /duration, status, extra_data/);
         assert.match(scheduler, /checkGraduationOpsAutomation/);
         assert.match(server, /checkGraduationOpsAutomation/);
         assert.match(timeline, /getGraduationTimelineItems/);
-        assert.match(timeline, /graduation-timeline-items/);
+        assert.match(timeline, /normalizeGraduationSegments/);
+        assert.match(timeline, /initGraduationSegmentInteractions/);
+        assert.match(timeline, /graduation-segment-track/);
+        assert.match(timeline, /apiUpdateBooking/);
         assert.match(tasksRoute, /controlMode/);
         assert.match(tasksPage, /special-control/);
     });

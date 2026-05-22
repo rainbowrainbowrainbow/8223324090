@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.21 - Graduation Timeline Nested Blocks
+
+### Graduation Timeline Nested Blocks [codex]
+- **Випускний таймлайн** - graduation booking тепер рендериться як parent-block зі вкладеним track для складових програми.
+- **Package composition** - дефолтні child-сегменти будуються з `graduation_package_items` / `graduation_services` і зберігають snapshot пакета для відновлення.
+- **Інтерактивні складові** - сегменти можна drag/resize, додавати вручну, перейменовувати, видаляти та регенерувати з package source.
+- **Duration sync** - parent duration автоматично розширюється до останньої складової, а ручне shrink нижче child extent заблоковано min-duration логікою.
+
+---
+
 ## v0.61.20 - Graduation Diplomas Typography Refinement
 
 ### Graduation Diplomas Typography Refinement [codex]

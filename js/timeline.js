@@ -538,6 +538,101 @@ function parseBookingExtraData(booking) {
     }
 }
 
+function safeNumber(value, fallback = 0) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+function graduationSegmentKey(title, id, index) {
+    const base = String(title || id || `segment-${index + 1}`)
+        .toLowerCase()
+        .replace(/[^a-z0-9а-яіїєґ]+/gi, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 48);
+    return base || `segment-${index + 1}`;
+}
+
+function graduationSegmentColorToken(item = {}) {
+    const title = String(item.title || item.name || item.label || '').toLowerCase();
+    const kind = String(item.operationKind || item.operation_kind || item.colorToken || '').toLowerCase();
+    if (/welcome|вхід|зустр|велкам/i.test(title) || kind === 'welcome') return 'welcome';
+    if (/диплом|diploma/i.test(title) || kind === 'diploma') return 'diploma';
+    if (/анім|animation|анімац/i.test(title) || kind === 'animation') return 'animation';
+    if (/капсул|capsule/i.test(title) || kind === 'capsule_time') return 'capsule';
+    if (/фото|photo/i.test(title)) return 'photo';
+    if (/майстер|мк|workshop|master/i.test(title)) return 'workshop';
+    return 'service';
+}
+
+function graduationCssEscape(value) {
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(String(value));
+    return String(value).replace(/["\\]/g, '\\$&');
+}
+
+function normalizeGraduationSegments(booking) {
+    if (booking?.category !== 'graduation') return [];
+    const extra = parseBookingExtraData(booking);
+    const rawSegments = Array.isArray(extra.graduationSegments) && extra.graduationSegments.length
+        ? extra.graduationSegments
+        : [];
+
+    let cursor = 0;
+    const source = rawSegments.length
+        ? rawSegments
+        : getGraduationTimelineItems(booking).map(item => ({
+            id: item.id ? `seg_${item.id}` : null,
+            source: item.id ? 'package' : 'legacy',
+            serviceId: item.id || item.serviceId || null,
+            title: item.name || item.label,
+            startOffsetMin: null,
+            durationMin: item.durationMin || item.duration || 15,
+            colorToken: graduationSegmentColorToken(item),
+            operationKind: item.operationKind || item.operation_kind || 'service',
+            sortOrder: item.sortOrder || item.sort_order || 0,
+            timelineVisible: item.timelineVisible !== false
+        }));
+
+    return source
+        .filter(segment => segment && segment.timelineVisible !== false)
+        .map((segment, index) => {
+            const title = String(segment.title || segment.name || segment.label || 'Складова').trim() || 'Складова';
+            const durationMin = Math.max(5, Math.round(safeNumber(segment.durationMin ?? segment.duration_min ?? segment.duration, 15) / 5) * 5);
+            const hasOffset = segment.startOffsetMin !== undefined && segment.startOffsetMin !== null;
+            const startOffsetMin = hasOffset
+                ? Math.max(0, Math.round(safeNumber(segment.startOffsetMin, 0) / 5) * 5)
+                : cursor;
+            cursor = Math.max(cursor, startOffsetMin + durationMin);
+            const key = segment.key || graduationSegmentKey(title, segment.serviceId || segment.id, index);
+            return {
+                id: segment.id || `seg_${key}_${index + 1}`,
+                source: segment.source || (segment.serviceId ? 'package' : 'manual'),
+                key,
+                serviceId: segment.serviceId || segment.service_id || null,
+                title,
+                startOffsetMin,
+                durationMin,
+                colorToken: segment.colorToken || graduationSegmentColorToken(segment),
+                lockedToPackage: segment.lockedToPackage === true,
+                notes: String(segment.notes || ''),
+                sortOrder: safeNumber(segment.sortOrder ?? segment.sort_order, index + 1),
+                operationKind: segment.operationKind || segment.operation_kind || 'service',
+                timelineVisible: true
+            };
+        })
+        .sort((a, b) => a.startOffsetMin - b.startOffsetMin || a.sortOrder - b.sortOrder);
+}
+
+function graduationSegmentsExtent(segments = []) {
+    return segments.reduce((max, segment) => Math.max(max,
+        safeNumber(segment.startOffsetMin, 0) + Math.max(5, safeNumber(segment.durationMin, 5))
+    ), 0);
+}
+
+function effectiveGraduationDuration(booking, segments = normalizeGraduationSegments(booking)) {
+    if (booking?.category !== 'graduation') return safeNumber(booking?.duration, 0);
+    return Math.max(safeNumber(booking.duration, 0), graduationSegmentsExtent(segments), 15);
+}
+
 function getGraduationTimelineItems(booking) {
     if (booking?.category !== 'graduation') return [];
     const extra = parseBookingExtraData(booking);
@@ -549,12 +644,35 @@ function getGraduationTimelineItems(booking) {
         .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
 }
 
-function graduationTimelineItemHtml(item) {
-    const kind = item.operationKind || item.operation_kind || 'service';
-    const time = item.startTime
-        ? `<span class="graduation-timeline-time">${escapeHtml(item.startTime)}${item.endTime ? '-' + escapeHtml(item.endTime) : ''}</span>`
-        : '';
-    return `<span class="graduation-timeline-item ${escapeHtml(kind)}">${time}${escapeHtml(item.name || item.label || 'Позиція')}</span>`;
+function graduationSegmentHtml(segment, parentDuration) {
+    const left = Math.max(0, Math.min(100, (segment.startOffsetMin / parentDuration) * 100));
+    const width = Math.max(6, Math.min(100 - left, (segment.durationMin / parentDuration) * 100));
+    const token = segment.colorToken || 'service';
+    return `
+        <div class="graduation-segment ${escapeHtml(token)}"
+             data-graduation-segment-id="${escapeHtml(segment.id)}"
+             style="left:${left}%;width:${width}%"
+             title="${escapeHtml(segment.title)} · ${segment.durationMin} хв">
+            <span class="graduation-segment-title">${escapeHtml(segment.title)}</span>
+            <span class="graduation-segment-duration">${segment.durationMin} хв</span>
+            <button type="button" class="graduation-segment-delete" title="Видалити складову" aria-label="Видалити складову">×</button>
+            <span class="graduation-segment-resize" aria-hidden="true"></span>
+        </div>`;
+}
+
+function graduationNestedHtml(booking, segments) {
+    const parentDuration = effectiveGraduationDuration(booking, segments);
+    const segmentHtml = segments.length
+        ? segments.map(segment => graduationSegmentHtml(segment, parentDuration)).join('')
+        : '<div class="graduation-segment-empty">Додайте складові випускного</div>';
+    return `
+        <div class="graduation-segment-actions" aria-label="Дії складових випускного">
+            <button type="button" data-graduation-action="add" title="Додати складову">+</button>
+            <button type="button" data-graduation-action="regenerate" title="Відновити з пакета">↻</button>
+        </div>
+        <div class="graduation-segment-track" data-parent-duration="${parentDuration}" aria-label="Складові випускного">
+            ${segmentHtml}
+        </div>`;
 }
 
 async function selectCell(cell) {
@@ -569,40 +687,44 @@ async function selectCell(cell) {
 
 function createBookingBlock(booking, startHour) {
     const block = document.createElement('div');
+    const graduationSegments = normalizeGraduationSegments(booking);
+    const effectiveDuration = effectiveGraduationDuration(booking, graduationSegments);
+    const renderBooking = booking.category === 'graduation' && effectiveDuration !== safeNumber(booking.duration, 0)
+        ? { ...booking, duration: effectiveDuration }
+        : booking;
     const startMin = timeToMinutes(booking.time) - timeToMinutes(`${startHour}:00`);
     const left = (startMin / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH;
-    const width = (booking.duration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
+    const width = (effectiveDuration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
 
-    const isPreliminary = booking.status === 'preliminary';
-    const isLinked = !!booking.linkedTo;
+    const isPreliminary = renderBooking.status === 'preliminary';
+    const isLinked = !!renderBooking.linkedTo;
     // v7.0.1: Apply status filter immediately to prevent flash of hidden bookings
     const filter = AppState.statusFilter || 'all';
     const isHidden = (filter === 'confirmed' && isPreliminary) || (filter === 'preliminary' && !isPreliminary);
-    block.className = `booking-block ${booking.category}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}${isHidden ? ' status-hidden' : ''}${booking.category === 'banquet' ? ' banquet-block' : ''}`;
+    block.className = `booking-block ${renderBooking.category}${renderBooking.category === 'graduation' ? ' graduation-parent' : ''}${isPreliminary ? ' preliminary' : ''}${isLinked ? ' linked-ghost' : ''}${isHidden ? ' status-hidden' : ''}${renderBooking.category === 'banquet' ? ' banquet-block' : ''}`;
     block.setAttribute('tabindex', '0');
     block.setAttribute('role', 'button');
-    block.setAttribute('aria-label', `${booking.label || booking.category} ${booking.time} ${booking.room || ''}`);
+    block.setAttribute('aria-label', `${renderBooking.label || renderBooking.category} ${renderBooking.time} ${renderBooking.room || ''}`);
     block.style.left = `${left}px`;
     block.style.width = `${width}px`;
 
-    const userLetter = booking.createdBy ? booking.createdBy.charAt(0).toUpperCase() : '';
-    const noteText = booking.notes ? `<div class="note-text">${escapeHtml(booking.notes)}</div>` : '';
-    const graduationItems = getGraduationTimelineItems(booking);
-    const graduationItemsHtml = graduationItems.length
-        ? `<div class="graduation-timeline-items" aria-label="Позиції випускного">${graduationItems.map(graduationTimelineItemHtml).join('')}</div>`
+    const userLetter = renderBooking.createdBy ? renderBooking.createdBy.charAt(0).toUpperCase() : '';
+    const noteText = renderBooking.notes ? `<div class="note-text">${escapeHtml(renderBooking.notes)}</div>` : '';
+    const graduationItemsHtml = !isLinked && renderBooking.category === 'graduation'
+        ? graduationNestedHtml(renderBooking, graduationSegments)
         : '';
 
     // v5.18: Duration badge to distinguish 60/120 min
-    const durationClass = booking.duration > 60 ? 'long' : 'short';
-    const durationBadge = booking.duration > 0 ? `<span class="duration-badge ${durationClass}">${booking.duration}хв</span>` : '';
+    const durationClass = effectiveDuration > 60 ? 'long' : 'short';
+    const durationBadge = effectiveDuration > 0 ? `<span class="duration-badge ${durationClass}">${effectiveDuration}хв</span>` : '';
 
     // v5.19: Linked bookings show 🔗 badge instead of user letter
     const badge = isLinked ? '🔗' : escapeHtml(userLetter);
 
     block.innerHTML = `
         <div class="user-letter">${badge}</div>
-        <div class="title">${escapeHtml(booking.label || booking.programCode)}: ${escapeHtml(booking.room)}${durationBadge}</div>
-        <div class="subtitle">${escapeHtml(booking.time)}${booking.kidsCount ? ' (' + escapeHtml(String(booking.kidsCount)) + ' діт)' : ''}</div>
+        <div class="title">${escapeHtml(renderBooking.label || renderBooking.programCode)}: ${escapeHtml(renderBooking.room)}${durationBadge}</div>
+        <div class="subtitle">${escapeHtml(renderBooking.time)}${renderBooking.kidsCount ? ' (' + escapeHtml(String(renderBooking.kidsCount)) + ' діт)' : ''}</div>
         ${graduationItemsHtml}
         ${noteText}
     `;
@@ -620,46 +742,50 @@ function createBookingBlock(booking, startHour) {
                 BulkOps.toggle(booking.linkedTo || booking.id);
                 return;
             }
-            showBookingDetails(booking.linkedTo);
+            showBookingDetails(renderBooking.linkedTo);
         });
     } else {
         block.addEventListener('click', (e) => {
             if (block._dragJustEnded) { block._dragJustEnded = false; return; }
+            if (e.target.closest('.graduation-segment, .graduation-segment-actions')) return;
             // v30.3: Shift+Click for bulk select
             if (e.shiftKey && typeof BulkOps !== 'undefined') {
                 e.preventDefault();
-                BulkOps.toggle(booking.id);
+                BulkOps.toggle(renderBooking.id);
                 return;
             }
-            showBookingDetails(booking.id);
+            showBookingDetails(renderBooking.id);
         });
     }
     block.addEventListener('mouseenter', (e) => {
         // Feature #14: Suppress tooltip during drag
-        if (_bookingDragState || _resizeState) return;
-        showTooltip(e, booking);
+        if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState) return;
+        showTooltip(e, renderBooking);
     });
     block.addEventListener('mousemove', (e) => {
-        if (_bookingDragState || _resizeState) return;
+        if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState) return;
         moveTooltip(e);
     });
     block.addEventListener('mouseleave', hideTooltip);
     // v3.9: Touch events for mobile tooltip
     block.addEventListener('touchstart', (e) => {
-        if (_bookingDragState || _resizeState) return;
-        showTooltip(e.touches[0], booking);
+        if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState) return;
+        showTooltip(e.touches[0], renderBooking);
     }, { passive: true });
     block.addEventListener('touchend', hideTooltip, { passive: true });
 
     // Feature #14: Initialize drag-and-drop + resize handle
     if (!isViewer()) {
-        initBookingDrag(block, booking, startHour);
+        initBookingDrag(block, renderBooking, startHour);
+        if (!isLinked && renderBooking.category === 'graduation') {
+            initGraduationSegmentInteractions(block, renderBooking, graduationSegments, startHour);
+        }
 
         if (!isLinked) {
             const resizeHandle = document.createElement('div');
             resizeHandle.className = 'resize-handle';
             block.appendChild(resizeHandle);
-            initBookingResize(resizeHandle, block, booking, startHour);
+            initBookingResize(resizeHandle, block, renderBooking, startHour);
         }
     }
 
@@ -862,6 +988,8 @@ const SNAP_MINUTES = 5;
 
 let _bookingDragState = null;
 let _resizeState = null;
+let _graduationSegmentDragState = null;
+let _graduationSegmentResizeState = null;
 
 // --- Haptic feedback ---
 function _triggerHaptic(type) {
@@ -883,12 +1011,15 @@ function initBookingDrag(block, booking, startHour) {
         if (_afishaDragState) return;
         // Guard: resize in progress
         if (_resizeState) return;
+        if (_graduationSegmentDragState || _graduationSegmentResizeState) return;
         // Guard: another drag in progress
         if (_bookingDragState) return;
         // Guard: multi-day mode
         if (AppState.multiDayMode) return;
         // Guard: don't start drag from resize handle
         if (e.target.closest('.resize-handle')) return;
+        // Guard: nested graduation components own their drag/resize contract.
+        if (e.target.closest('.graduation-segment, .graduation-segment-actions')) return;
 
         if (e.pointerType === 'touch') {
             // Mobile: start long-press timer
@@ -1610,16 +1741,345 @@ function _showDragUndoToast(booking, timeDelta, lineChanged) {
     }, 5000);
 }
 
+function cloneGraduationSegments(segments) {
+    return (segments || []).map(segment => ({ ...segment }));
+}
+
+function graduationSegmentsHaveOverlap(segments) {
+    const ordered = cloneGraduationSegments(segments)
+        .sort((a, b) => safeNumber(a.startOffsetMin, 0) - safeNumber(b.startOffsetMin, 0));
+    for (let i = 1; i < ordered.length; i += 1) {
+        const prevEnd = safeNumber(ordered[i - 1].startOffsetMin, 0) + safeNumber(ordered[i - 1].durationMin, 0);
+        if (safeNumber(ordered[i].startOffsetMin, 0) < prevEnd) return true;
+    }
+    return false;
+}
+
+function graduationSegmentsToTimelineItems(booking, segments) {
+    const parsedBaseMin = timeToMinutes(booking.time || '00:00');
+    const baseMin = Number.isFinite(parsedBaseMin) ? parsedBaseMin : 0;
+    return cloneGraduationSegments(segments)
+        .sort((a, b) => safeNumber(a.startOffsetMin, 0) - safeNumber(b.startOffsetMin, 0))
+        .map((segment, index) => {
+            const start = baseMin + safeNumber(segment.startOffsetMin, 0);
+            const end = start + safeNumber(segment.durationMin, 0);
+            return {
+                id: segment.serviceId || segment.id,
+                name: segment.title,
+                sortOrder: index + 1,
+                durationMin: safeNumber(segment.durationMin, 0),
+                startTime: minutesToTime(start),
+                endTime: minutesToTime(end),
+                timelineVisible: true,
+                operationKind: segment.operationKind || segment.colorToken || 'service'
+            };
+        });
+}
+
+function graduationSegmentsToServiceTiming(booking, segments) {
+    const parsedBaseMin = timeToMinutes(booking.time || '00:00');
+    const baseMin = Number.isFinite(parsedBaseMin) ? parsedBaseMin : 0;
+    return cloneGraduationSegments(segments)
+        .filter(segment => segment.serviceId)
+        .sort((a, b) => safeNumber(a.startOffsetMin, 0) - safeNumber(b.startOffsetMin, 0))
+        .map(segment => {
+            const start = baseMin + safeNumber(segment.startOffsetMin, 0);
+            const end = start + safeNumber(segment.durationMin, 0);
+            return {
+                serviceId: segment.serviceId,
+                name: segment.title,
+                startTime: minutesToTime(start),
+                endTime: minutesToTime(end),
+                durationMin: safeNumber(segment.durationMin, 0),
+                timeMode: 'manual'
+            };
+        });
+}
+
+function withGraduationSegmentExtraData(booking, segments) {
+    const ordered = cloneGraduationSegments(segments)
+        .sort((a, b) => safeNumber(a.startOffsetMin, 0) - safeNumber(b.startOffsetMin, 0))
+        .map((segment, index) => ({
+            ...segment,
+            startOffsetMin: safeNumber(segment.startOffsetMin, 0),
+            durationMin: Math.max(5, safeNumber(segment.durationMin, 5)),
+            sortOrder: index + 1
+        }));
+    const extra = parseBookingExtraData(booking);
+    return {
+        ...extra,
+        graduationSegments: ordered,
+        graduationTimelineItems: graduationSegmentsToTimelineItems(booking, ordered),
+        serviceTiming: graduationSegmentsToServiceTiming(booking, ordered)
+    };
+}
+
+function layoutGraduationSegmentTrack(block, segments, parentDuration) {
+    const duration = Math.max(15, parentDuration || graduationSegmentsExtent(segments));
+    const track = block.querySelector('.graduation-segment-track');
+    if (track) track.dataset.parentDuration = String(duration);
+    segments.forEach(segment => {
+        const el = block.querySelector(`.graduation-segment[data-graduation-segment-id="${graduationCssEscape(segment.id)}"]`);
+        if (!el) return;
+        const left = Math.max(0, Math.min(100, (safeNumber(segment.startOffsetMin, 0) / duration) * 100));
+        const width = Math.max(6, Math.min(100 - left, (safeNumber(segment.durationMin, 0) / duration) * 100));
+        el.style.left = `${left}%`;
+        el.style.width = `${width}%`;
+        const durEl = el.querySelector('.graduation-segment-duration');
+        if (durEl) durEl.textContent = `${safeNumber(segment.durationMin, 0)} хв`;
+    });
+    const widthPx = (duration / CONFIG.TIMELINE.CELL_MINUTES) * CONFIG.TIMELINE.CELL_WIDTH - 4;
+    block.style.width = `${widthPx}px`;
+    const badge = block.querySelector('.duration-badge');
+    if (badge) badge.textContent = `${duration}хв`;
+}
+
+async function persistGraduationSegments(booking, segments, { successMessage = 'Складові випускного збережено' } = {}) {
+    const ordered = cloneGraduationSegments(segments)
+        .sort((a, b) => safeNumber(a.startOffsetMin, 0) - safeNumber(b.startOffsetMin, 0));
+    if (graduationSegmentsHaveOverlap(ordered)) {
+        showNotification('Складові випускного накладаються. Залиште між ними окремі часові вікна.', 'error');
+        return false;
+    }
+    const parentDuration = Math.max(effectiveGraduationDuration(booking, ordered), graduationSegmentsExtent(ordered), 15);
+    const payload = {
+        ...booking,
+        duration: parentDuration,
+        extraData: withGraduationSegmentExtraData(booking, ordered)
+    };
+    const result = await apiUpdateBooking(booking.id, payload);
+    if (!result || result.success === false) {
+        showNotification(result?.error || 'Не вдалося зберегти складові випускного', 'error');
+        if (result?.conflictBookingId && typeof revealHiddenBooking === 'function') {
+            revealHiddenBooking(result.conflictBookingId);
+        }
+        return false;
+    }
+    delete AppState.cachedBookings[formatDate(AppState.selectedDate)];
+    await renderTimeline();
+    showNotification(successMessage, 'success');
+    return true;
+}
+
+function initGraduationSegmentInteractions(block, booking, segments) {
+    block.querySelectorAll('.graduation-segment').forEach(segmentEl => {
+        segmentEl.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0) return;
+            if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState) return;
+            if (e.target.closest('.graduation-segment-delete, .graduation-segment-resize')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const segmentId = segmentEl.dataset.graduationSegmentId;
+            const current = cloneGraduationSegments(segments);
+            const segment = current.find(item => String(item.id) === String(segmentId));
+            if (!segment) return;
+            _graduationSegmentDragState = {
+                booking,
+                block,
+                segmentEl,
+                segmentId,
+                segments: current,
+                startX: e.clientX,
+                startOffsetMin: safeNumber(segment.startOffsetMin, 0),
+                pointerId: e.pointerId,
+                moved: false
+            };
+            try { segmentEl.setPointerCapture(e.pointerId); } catch {}
+            segmentEl.classList.add('is-moving');
+            hideTooltip();
+        });
+
+        segmentEl.addEventListener('dblclick', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const segmentId = segmentEl.dataset.graduationSegmentId;
+            const current = cloneGraduationSegments(segments);
+            const segment = current.find(item => String(item.id) === String(segmentId));
+            if (!segment) return;
+            const title = await promptModal('Назва складової випускного:', {
+                defaultValue: segment.title,
+                placeholder: 'Наприклад: Дипломна церемонія'
+            });
+            if (!title || !String(title).trim()) return;
+            segment.title = String(title).trim().slice(0, 80);
+            await persistGraduationSegments(booking, current, { successMessage: 'Складову перейменовано' });
+        });
+    });
+
+    block.querySelectorAll('.graduation-segment-resize').forEach(handle => {
+        handle.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0) return;
+            if (_bookingDragState || _resizeState || _graduationSegmentDragState || _graduationSegmentResizeState) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const segmentEl = handle.closest('.graduation-segment');
+            const segmentId = segmentEl?.dataset.graduationSegmentId;
+            const current = cloneGraduationSegments(segments);
+            const segment = current.find(item => String(item.id) === String(segmentId));
+            if (!segment) return;
+            _graduationSegmentResizeState = {
+                booking,
+                block,
+                segmentEl,
+                segmentId,
+                segments: current,
+                startX: e.clientX,
+                startDurationMin: safeNumber(segment.durationMin, 15),
+                pointerId: e.pointerId,
+                moved: false
+            };
+            try { handle.setPointerCapture(e.pointerId); } catch {}
+            segmentEl.classList.add('is-resizing');
+            hideTooltip();
+        });
+    });
+
+    block.querySelectorAll('.graduation-segment-delete').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const segmentEl = btn.closest('.graduation-segment');
+            const segmentId = segmentEl?.dataset.graduationSegmentId;
+            const current = cloneGraduationSegments(segments);
+            const segment = current.find(item => String(item.id) === String(segmentId));
+            if (!segment) return;
+            if (!await confirmModal(`Видалити складову "${segment.title}"?`, { type: 'danger', okText: 'Видалити' })) return;
+            await persistGraduationSegments(booking, current.filter(item => String(item.id) !== String(segmentId)), {
+                successMessage: 'Складову видалено'
+            });
+        });
+    });
+
+    block.querySelectorAll('[data-graduation-action]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const action = btn.dataset.graduationAction;
+            if (action === 'add') {
+                const title = await promptModal('Назва нової складової:', { placeholder: 'Наприклад: Велкам-зона' });
+                if (!title || !String(title).trim()) return;
+                const durationRaw = await promptModal('Тривалість, хв:', { defaultValue: '30', inputType: 'number' });
+                const durationMin = Math.max(5, Math.round(safeNumber(durationRaw, 30) / 5) * 5);
+                const current = cloneGraduationSegments(segments);
+                current.push({
+                    id: `seg_manual_${Date.now()}`,
+                    source: 'manual',
+                    key: graduationSegmentKey(title, null, current.length),
+                    title: String(title).trim().slice(0, 80),
+                    startOffsetMin: graduationSegmentsExtent(current),
+                    durationMin,
+                    colorToken: graduationSegmentColorToken({ title }),
+                    lockedToPackage: false,
+                    notes: '',
+                    sortOrder: current.length + 1,
+                    operationKind: 'manual',
+                    timelineVisible: true
+                });
+                await persistGraduationSegments(booking, current, { successMessage: 'Складову додано' });
+            }
+            if (action === 'regenerate') {
+                if (!await confirmModal('Відновити складові з пакета? Поточні ручні зміни буде замінено.', { type: 'warning', okText: 'Відновити' })) return;
+                const extra = parseBookingExtraData(booking);
+                const packageSegments = Array.isArray(extra.graduationPackageSegments) && extra.graduationPackageSegments.length
+                    ? extra.graduationPackageSegments
+                    : null;
+                const regenerated = packageSegments
+                    ? normalizeGraduationSegments({ ...booking, extraData: { ...extra, graduationSegments: packageSegments } })
+                    : normalizeGraduationSegments({ ...booking, extraData: { ...extra, graduationSegments: [] } });
+                if (!regenerated.length) {
+                    showNotification('У пакеті немає складових з тривалістю для таймлайну', 'error');
+                    return;
+                }
+                await persistGraduationSegments(booking, regenerated, { successMessage: 'Складові відновлено з пакета' });
+            }
+        });
+    });
+}
+
+function _handleGraduationSegmentDragMove(e) {
+    const s = _graduationSegmentDragState;
+    if (!s) return;
+    e.preventDefault();
+    const deltaX = e.clientX - s.startX;
+    const deltaMin = Math.round((deltaX / CONFIG.TIMELINE.CELL_WIDTH) * CONFIG.TIMELINE.CELL_MINUTES / SNAP_MINUTES) * SNAP_MINUTES;
+    const segment = s.segments.find(item => String(item.id) === String(s.segmentId));
+    if (!segment) return;
+    segment.startOffsetMin = Math.max(0, s.startOffsetMin + deltaMin);
+    s.moved = s.moved || Math.abs(deltaX) > DRAG_THRESHOLD_PX;
+    const duration = Math.max(effectiveGraduationDuration(s.booking, s.segments), graduationSegmentsExtent(s.segments), 15);
+    layoutGraduationSegmentTrack(s.block, s.segments, duration);
+}
+
+async function _handleGraduationSegmentDragEnd(e) {
+    const s = _graduationSegmentDragState;
+    if (!s) return;
+    try { s.segmentEl.releasePointerCapture(s.pointerId); } catch {}
+    s.segmentEl.classList.remove('is-moving');
+    _graduationSegmentDragState = null;
+    if (!s.moved) {
+        layoutGraduationSegmentTrack(s.block, normalizeGraduationSegments(s.booking), effectiveGraduationDuration(s.booking));
+        return;
+    }
+    await persistGraduationSegments(s.booking, s.segments, { successMessage: 'Складову перенесено' });
+}
+
+function _handleGraduationSegmentResizeMove(e) {
+    const s = _graduationSegmentResizeState;
+    if (!s) return;
+    e.preventDefault();
+    const deltaX = e.clientX - s.startX;
+    const deltaMin = Math.round((deltaX / CONFIG.TIMELINE.CELL_WIDTH) * CONFIG.TIMELINE.CELL_MINUTES / SNAP_MINUTES) * SNAP_MINUTES;
+    const segment = s.segments.find(item => String(item.id) === String(s.segmentId));
+    if (!segment) return;
+    segment.durationMin = Math.max(5, Math.min(240, s.startDurationMin + deltaMin));
+    s.moved = s.moved || Math.abs(deltaX) > DRAG_THRESHOLD_PX;
+    const duration = Math.max(effectiveGraduationDuration(s.booking, s.segments), graduationSegmentsExtent(s.segments), 15);
+    layoutGraduationSegmentTrack(s.block, s.segments, duration);
+}
+
+async function _handleGraduationSegmentResizeEnd(e) {
+    const s = _graduationSegmentResizeState;
+    if (!s) return;
+    try { s.segmentEl.querySelector('.graduation-segment-resize')?.releasePointerCapture(s.pointerId); } catch {}
+    s.segmentEl.classList.remove('is-resizing');
+    _graduationSegmentResizeState = null;
+    if (!s.moved) {
+        layoutGraduationSegmentTrack(s.block, normalizeGraduationSegments(s.booking), effectiveGraduationDuration(s.booking));
+        return;
+    }
+    await persistGraduationSegments(s.booking, s.segments, { successMessage: 'Тривалість складової змінено' });
+}
+
+function _handleGraduationSegmentCancel() {
+    if (_graduationSegmentDragState) {
+        const s = _graduationSegmentDragState;
+        s.segmentEl.classList.remove('is-moving');
+        layoutGraduationSegmentTrack(s.block, normalizeGraduationSegments(s.booking), effectiveGraduationDuration(s.booking));
+        _graduationSegmentDragState = null;
+    }
+    if (_graduationSegmentResizeState) {
+        const s = _graduationSegmentResizeState;
+        s.segmentEl.classList.remove('is-resizing');
+        layoutGraduationSegmentTrack(s.block, normalizeGraduationSegments(s.booking), effectiveGraduationDuration(s.booking));
+        _graduationSegmentResizeState = null;
+    }
+}
+
 // --- Global pointer event listeners for booking drag ---
 document.addEventListener('pointermove', (e) => {
+    _handleGraduationSegmentDragMove(e);
+    _handleGraduationSegmentResizeMove(e);
     _handleBookingDragMove(e);
     _handleResizeMove(e);
 });
 document.addEventListener('pointerup', (e) => {
+    _handleGraduationSegmentDragEnd(e);
+    _handleGraduationSegmentResizeEnd(e);
     _handleBookingDragEnd(e);
     _handleResizeEnd(e);
 });
 document.addEventListener('pointercancel', (e) => {
+    _handleGraduationSegmentCancel(e);
     _handleBookingDragCancel(e);
     _handleResizeCancel(e);
 });
@@ -1634,6 +2094,7 @@ function initBookingResize(handle, block, booking, startHour) {
         if (e.button !== 0) return;
         // Guard: drag in progress
         if (_bookingDragState) return;
+        if (_graduationSegmentDragState || _graduationSegmentResizeState) return;
         if (_afishaDragState) return;
         // Guard: multi-day mode
         if (AppState.multiDayMode) return;
@@ -1642,7 +2103,10 @@ function initBookingResize(handle, block, booking, startHour) {
         e.preventDefault();
 
         const program = getProductsSync().find(p => p.id === booking.programId);
-        const minDuration = (program && program.isCustom) ? 15 : ((program && program.duration) || 15);
+        let minDuration = (program && program.isCustom) ? 15 : ((program && program.duration) || 15);
+        if (booking.category === 'graduation') {
+            minDuration = Math.max(minDuration, graduationSegmentsExtent(normalizeGraduationSegments(booking)) || 15);
+        }
 
         _resizeState = {
             block: block,
@@ -1652,7 +2116,7 @@ function initBookingResize(handle, block, booking, startHour) {
             startWidth: parseFloat(block.style.width),
             originalDuration: booking.duration,
             minDuration: minDuration,
-            maxDuration: 240,
+            maxDuration: booking.category === 'graduation' ? 480 : 240,
             pointerId: e.pointerId,
             newDuration: booking.duration
         };
@@ -1886,6 +2350,7 @@ handleUndo = async function() {
 // Extend changeZoom() to cancel drag/resize on zoom change
 const _originalChangeZoom = changeZoom;
 changeZoom = function(level) {
+    _handleGraduationSegmentCancel();
     if (_bookingDragState) {
         _rollbackDragVisuals(_bookingDragState);
         _bookingDragState = null;
@@ -1899,6 +2364,7 @@ changeZoom = function(level) {
 // Extend changeDate() to cancel drag/resize on date change
 const _originalChangeDate = changeDate;
 changeDate = function(days) {
+    _handleGraduationSegmentCancel();
     if (_bookingDragState) {
         _rollbackDragVisuals(_bookingDragState);
         _bookingDragState = null;

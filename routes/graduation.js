@@ -22,6 +22,7 @@ const {
 } = require('../services/graduationDiplomas');
 const {
     buildGraduationTimelineItemsForQuote,
+    buildGraduationSegmentsForQuote,
     syncGraduationOpsForQuote
 } = require('../services/graduationOpsAutomation');
 
@@ -108,6 +109,30 @@ function childPackContextText(pack) {
         pack.name
     ];
     return String(candidates.find(value => String(value || '').trim()) || '').trim();
+}
+
+function routeTimeToMinutes(value) {
+    const match = String(value || '').match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const h = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10);
+    if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+    return h * 60 + m;
+}
+
+function durationBetweenTimes(startTime, endTime) {
+    const start = routeTimeToMinutes(startTime);
+    const end = routeTimeToMinutes(endTime);
+    if (start === null || end === null) return 0;
+    return end >= start ? end - start : (24 * 60 - start + end);
+}
+
+function graduationSegmentExtent(segments = []) {
+    return (Array.isArray(segments) ? segments : []).reduce((max, segment) => {
+        const start = Number(segment.startOffsetMin || 0) || 0;
+        const duration = Number(segment.durationMin || 0) || 0;
+        return Math.max(max, start + duration);
+    }, 0);
 }
 
 function normalizeChildPackInput(body = {}, fallback = {}) {
@@ -460,7 +485,8 @@ router.get('/packages', async (req, res) => {
         const items = await pool.query(
             `SELECT pi.package_id, pi.service_id, pi.override_price,
                     s.name as service_name, s.price_per_child, s.duration_min,
-                    s.description as service_description, s.category, s.price_type
+                    s.description as service_description, s.category, s.price_type,
+                    s.sort_order, s.timeline_visible, s.operation_kind
              FROM graduation_package_items pi
              JOIN graduation_services s ON s.id = pi.service_id
              ORDER BY s.sort_order`
@@ -477,7 +503,10 @@ router.get('/packages', async (req, res) => {
                 durationMin: item.duration_min,
                 description: item.service_description,
                 category: item.category,
-                priceType: item.price_type
+                priceType: item.price_type,
+                sortOrder: item.sort_order,
+                timelineVisible: item.timeline_visible !== false,
+                operationKind: item.operation_kind || null
             });
         }
 
@@ -763,6 +792,10 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
         const diplomaContextText = childPackContextText(pack);
         const normalizedServiceTiming = Array.isArray(serviceTiming) ? serviceTiming : (q.service_timing || []);
         const graduationTimelineItems = await buildGraduationTimelineItemsForQuote(pool, q, normalizedServiceTiming);
+        const graduationSegments = await buildGraduationSegmentsForQuote(pool, q, normalizedServiceTiming, time);
+        const explicitDuration = durationBetweenTimes(time, endTime || q.event_end_time || null);
+        const componentDuration = graduationSegmentExtent(graduationSegments) || graduationTimelineItems.reduce((sum, item) => sum + (Number(item.durationMin || 0) || 0), 0);
+        const parentDuration = Math.max(15, explicitDuration, componentDuration);
 
         // Get package name if available
         let programName = 'Індивідуальний випускний';
@@ -777,16 +810,18 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
 
             await client.query(
                 `INSERT INTO bookings (id, date, time, line_id, room, program_name, kids_count,
-                    price, category, status, extra_data, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'graduation', 'confirmed',
-                    $9, $10)`,
+                    price, category, duration, status, extra_data, created_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'graduation', $9, 'confirmed',
+                    $10, $11)`,
                 [bookingId, date, time, lineId || 'graduation', room || null, programName, q.kids_count,
-                 Math.round(q.total_all), JSON.stringify({
+                 Math.round(q.total_all), parentDuration, JSON.stringify({
                      quoteId: q.id,
                      quoteNumber: q.quote_number,
                      services: q.selected_services,
                      serviceTiming: normalizedServiceTiming,
                      graduationTimelineItems,
+                     graduationSegments,
+                     graduationPackageSegments: graduationSegments,
                      eventStartTime: time,
                      eventEndTime: endTime || q.event_end_time || null,
                      eventTimeMode: endTime || q.event_end_time ? 'manual' : (q.event_time_mode || 'floating'),

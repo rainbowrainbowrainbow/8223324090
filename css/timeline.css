@@ -363,47 +363,177 @@
     margin-top: 2px;
 }
 
-.graduation-timeline-items {
-    display: flex;
-    gap: 4px;
-    margin-top: 4px;
-    overflow: hidden;
-    white-space: nowrap;
+.booking-block.graduation-parent {
+    justify-content: flex-start;
+    gap: 2px;
+    padding: 5px 8px 6px;
+    min-width: 126px;
 }
 
-.graduation-timeline-item {
+.booking-block.graduation-parent .title {
+    padding-right: 22px;
+    line-height: 1.15;
+}
+
+.booking-block.graduation-parent .subtitle {
+    line-height: 1.05;
+    margin-top: 0;
+}
+
+.graduation-segment-actions {
+    position: absolute;
+    left: 6px;
+    top: 4px;
     display: inline-flex;
-    align-items: center;
     gap: 3px;
-    max-width: 110px;
-    min-height: 16px;
-    padding: 2px 6px;
+    z-index: 14;
+    opacity: 0.16;
+    transition: opacity var(--speed-fast) var(--ease-smooth);
+}
+
+.booking-block.graduation-parent:hover .graduation-segment-actions,
+.booking-block.graduation-parent:focus-within .graduation-segment-actions {
+    opacity: 1;
+}
+
+.graduation-segment-actions button {
+    width: 17px;
+    height: 17px;
+    border: 1px solid rgba(255, 255, 255, 0.42);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.2);
+    color: #FFFFFF;
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+}
+
+.graduation-segment-actions button:hover {
+    background: rgba(255, 255, 255, 0.32);
+    transform: translateY(-1px);
+}
+
+.graduation-segment-track {
+    position: relative;
+    width: 100%;
+    height: 22px;
+    flex: 0 0 22px;
+    margin-top: 2px;
     border: 1px solid rgba(255, 255, 255, 0.24);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.14);
-    color: rgba(255, 255, 255, 0.94);
+    border-radius: 7px;
+    background:
+        linear-gradient(90deg, rgba(255,255,255,0.14) 0 1px, transparent 1px 100%),
+        rgba(15, 23, 42, 0.16);
+    background-size: 25px 100%, auto;
+    overflow: hidden;
+}
+
+.graduation-segment-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+    color: rgba(255, 255, 255, 0.72);
     font-size: 9px;
     font-weight: 800;
-    line-height: 1.2;
-    text-overflow: ellipsis;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.graduation-segment {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    min-width: 18px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 15px 0 6px;
+    border: 1px solid rgba(255, 255, 255, 0.36);
+    border-radius: 5px;
+    color: #FFFFFF;
+    cursor: grab;
+    touch-action: none;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
+    user-select: none;
     overflow: hidden;
 }
 
-.graduation-timeline-item.diploma {
-    background: rgba(253, 224, 71, 0.2);
-    border-color: rgba(253, 224, 71, 0.42);
+.graduation-segment:hover {
+    z-index: 3;
+    border-color: rgba(255, 255, 255, 0.68);
 }
 
-.graduation-timeline-item.capsule_time {
-    background: rgba(45, 212, 191, 0.18);
-    border-color: rgba(94, 234, 212, 0.34);
+.graduation-segment:active,
+.graduation-segment.is-moving,
+.graduation-segment.is-resizing {
+    cursor: grabbing;
+    z-index: 5;
+    outline: 2px solid rgba(255, 255, 255, 0.5);
+    outline-offset: -1px;
 }
 
-.graduation-timeline-time {
-    opacity: 0.82;
-    font-size: 8px;
+.graduation-segment-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.graduation-segment-duration {
     flex-shrink: 0;
+    font-size: 8px;
+    font-weight: 800;
+    line-height: 1;
+    opacity: 0.84;
 }
+
+.graduation-segment-delete {
+    position: absolute;
+    top: 3px;
+    right: 6px;
+    width: 10px;
+    height: 10px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(15, 23, 42, 0.38);
+    color: #FFFFFF;
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 9px;
+    padding: 0;
+    cursor: pointer;
+    opacity: 0;
+}
+
+.graduation-segment:hover .graduation-segment-delete,
+.graduation-segment:focus-within .graduation-segment-delete {
+    opacity: 1;
+}
+
+.graduation-segment-resize {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: ew-resize;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.28));
+}
+
+.graduation-segment.welcome { background: linear-gradient(135deg, #0F766E 0%, #14B8A6 100%); }
+.graduation-segment.animation { background: linear-gradient(135deg, #2563EB 0%, #7C3AED 100%); }
+.graduation-segment.diploma { background: linear-gradient(135deg, #B45309 0%, #D97706 100%); }
+.graduation-segment.capsule { background: linear-gradient(135deg, #0891B2 0%, #0E7490 100%); }
+.graduation-segment.photo { background: linear-gradient(135deg, #DB2777 0%, #9333EA 100%); }
+.graduation-segment.workshop { background: linear-gradient(135deg, #65A30D 0%, #15803D 100%); }
+.graduation-segment.service { background: linear-gradient(135deg, #475569 0%, #334155 100%); }
 
 /* v5.19: Linked booking ghost/locked style */
 .booking-block.linked-ghost {
@@ -991,6 +1121,56 @@ body.dragging-active {
     font-size: 8px;
 }
 
+.timeline-container.compact .booking-block.graduation-parent {
+    padding: 3px 5px 4px;
+    gap: 1px;
+}
+
+.timeline-container.compact .graduation-segment-actions {
+    left: 4px;
+    top: 3px;
+}
+
+.timeline-container.compact .graduation-segment-actions button {
+    width: 14px;
+    height: 14px;
+    font-size: 9px;
+    border-radius: 4px;
+}
+
+.timeline-container.compact .graduation-segment-track {
+    height: 16px;
+    flex-basis: 16px;
+    margin-top: 1px;
+    border-radius: 5px;
+}
+
+.timeline-container.compact .graduation-segment {
+    top: 1px;
+    bottom: 1px;
+    min-width: 12px;
+    padding: 0 7px 0 4px;
+    border-radius: 4px;
+}
+
+.timeline-container.compact .graduation-segment-title {
+    font-size: 8px;
+}
+
+.timeline-container.compact .graduation-segment-empty {
+    font-size: 8px;
+    padding-left: 5px;
+}
+
+.timeline-container.compact .graduation-segment-duration,
+.timeline-container.compact .graduation-segment-delete {
+    display: none;
+}
+
+.timeline-container.compact .graduation-segment-resize {
+    width: 5px;
+}
+
 @media (max-height: 760px) and (min-width: 769px) {
     .timeline-container {
         max-height: calc(100vh - 210px);
@@ -1145,6 +1325,12 @@ body:not(.dark-mode) .mini-booking-block:hover {
     }
 
     .booking-block .resize-handle {
+        display: none !important;
+    }
+
+    .graduation-segment-actions,
+    .graduation-segment-delete,
+    .graduation-segment-resize {
         display: none !important;
     }
 

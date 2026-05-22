@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.30 - Personal Task Pinning
+
+### Personal Task Pinning [codex]
+- **Мої задачі** - особисті задачі, які користувач створив сам для себе, тепер мають явний top-priority у змішаних списках.
+- **Сортування** - додано deterministic relationship-rank: self-created personal -> вхідні мені -> делеговані мною -> інші задачі, при цьому `done/archived/cancelled` не піднімаються над активними.
+- **Візуальна ясність** - такі задачі отримують badge `Моя особиста`, окремий summary chip і тихий pinned-тон картки у light/dark темах.
+- **Regression guard** - UI smoke check перевіряє наявність self-created personal predicate, rank у comparator і видимий pin-treatment.
+
+---
+
 ## v0.61.29 - Graduation Diplomas Menu Clarity
 
 ### Graduation Diplomas Menu Clarity [codex]

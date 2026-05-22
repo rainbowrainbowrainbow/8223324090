@@ -368,7 +368,14 @@ function getTaskCreatedByLabel(task = {}) {
     return taskTextValue(task.createdBy || task.created_by || task.createdByName || task.created_by_name);
 }
 
+function taskCreatedByUserId(task = {}) {
+    const parsed = Number(task.createdByUserId || task.created_by_user_id || 0);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 function isTaskCreatedByCurrentUser(task = {}) {
+    const creatorId = taskCreatedByUserId(task);
+    if (creatorId) return creatorId === currentUserId();
     const createdBy = taskIdentityValue(getTaskCreatedByLabel(task));
     return !!createdBy && currentUserIdentityValues().has(createdBy);
 }
@@ -379,6 +386,20 @@ function isTaskDelegatedByCurrentUser(task = {}) {
 
 function isTaskInMyWorkspace(task = {}) {
     return isTaskOwnedByCurrentUser(task) || isTaskCreatedByCurrentUser(task);
+}
+
+function isSelfCreatedPersonalTask(task = {}) {
+    return isTaskOwnedByCurrentUser(task)
+        && isTaskCreatedByCurrentUser(task)
+        && taskMode(task) === 'personal';
+}
+
+function taskWorkspaceDisplayRank(task = {}) {
+    if (isSelfCreatedPersonalTask(task)) return 0;
+    if (isTaskOwnedByCurrentUser(task) && !isTaskCreatedByCurrentUser(task)) return 1;
+    if (isTaskDelegatedByCurrentUser(task)) return 2;
+    if (isTaskOwnedByCurrentUser(task) && isTaskCreatedByCurrentUser(task)) return 3;
+    return 4;
 }
 
 function getTaskOwnerLabel(task = {}) {
@@ -402,6 +423,13 @@ function getTaskAssignmentView(task = {}) {
     const ownedByMe = isTaskOwnedByCurrentUser(task);
     const createdByMe = isTaskCreatedByCurrentUser(task);
     const hasTypedOwner = !!taskOwnerUserId(task);
+    if (isSelfCreatedPersonalTask(task)) {
+        return {
+            tone: 'self-personal',
+            label: 'Моя особиста',
+            title: 'Особиста задача, створена вами для себе; показується зверху в змішаних списках'
+        };
+    }
     if (ownedByMe && createdByMe) {
         return {
             tone: 'self',
@@ -487,6 +515,8 @@ function compareTasksForDisplay(a = {}, b = {}) {
         const completedDiff = new Date(taskCompletedAt(b) || b.updated_at || b.created_at || 0) - new Date(taskCompletedAt(a) || a.updated_at || a.created_at || 0);
         if (completedDiff) return completedDiff;
     }
+    const rankDiff = taskWorkspaceDisplayRank(a) - taskWorkspaceDisplayRank(b);
+    if (rankDiff) return rankDiff;
     const aIsNew = lastCreatedTaskId && String(a.id) === String(lastCreatedTaskId);
     const bIsNew = lastCreatedTaskId && String(b.id) === String(lastCreatedTaskId);
     if (aIsNew !== bIsNew) return aIsNew ? -1 : 1;
@@ -1527,6 +1557,7 @@ function mapAssistantTaskItem(task = {}) {
         createdAt: taskCreatedAtValue(task),
         assignmentLabel: assignment.label,
         isMine: isTaskOwnedByCurrentUser(task),
+        isSelfCreatedPersonal: isSelfCreatedPersonalTask(task),
         isDelegatedByMe: isTaskDelegatedByCurrentUser(task),
         isOverdue: isOverdueTask(task)
     };
@@ -1744,11 +1775,11 @@ function renderMyView(container) {
 
     const owned = tasks.filter(isTaskOwnedByCurrentUser).length;
     const delegated = tasks.filter(isTaskDelegatedByCurrentUser).length;
-    const self = tasks.filter(t => isTaskOwnedByCurrentUser(t) && isTaskCreatedByCurrentUser(t)).length;
+    const selfPersonal = tasks.filter(isSelfCreatedPersonalTask).length;
     const summary = `
         <div class="task-my-scope-summary" aria-label="Моя зона задач">
+            <span class="task-my-scope-pin"><b>${selfPersonal}</b> особисті зверху</span>
             <span><b>${owned}</b> мені</span>
-            <span><b>${self}</b> собі</span>
             <span><b>${delegated}</b> я поставив команді</span>
         </div>`;
     container.innerHTML = summary + sortTasksForDisplay(tasks).map(t => renderTaskCard(t)).join('');
@@ -1917,6 +1948,8 @@ function renderTaskCard(t) {
 
     const assignment = getTaskAssignmentView(t);
     const ownerHtml = `<span class="task-assignment-badge task-assignment-${escapeHtml(assignment.tone)}" title="${escapeHtml(assignment.title)}"><span class="task-assignment-dot" aria-hidden="true"></span>${escapeHtml(assignment.label)}</span>`;
+    const selfPersonal = isSelfCreatedPersonalTask(t);
+    const selfPersonalAttrs = selfPersonal ? ' data-self-personal="true"' : '';
     const intelHtml = renderTaskIntelligence(t);
     const completedTime = formatTaskCompletedTime(t);
     const completedHtml = t.status === 'done'
@@ -1929,7 +1962,7 @@ function renderTaskCard(t) {
         : ` data-status="${escapeHtml(t.status || '')}"`;
 
     return `
-    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''} ${isKanbanSaving ? 'is-kanban-saving' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}"${kanbanAttrs}>
+    <div class="task-card cat-${cat} ${t.priority !== 'normal' ? 'priority-' + t.priority : ''} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''} ${selfPersonal ? 'is-self-personal' : ''} ${isKanbanSaving ? 'is-kanban-saving' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}"${selfPersonalAttrs}${kanbanAttrs}>
         <label class="task-checkbox-wrap">
             <input type="checkbox" class="task-bulk-cb" data-id="${t.id}" aria-label="Вибрати задачу">
         </label>

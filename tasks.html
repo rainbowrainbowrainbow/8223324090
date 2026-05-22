@@ -12,14 +12,14 @@
     <meta name="description" content="Event Genix — AI First CRM для дитячих розважальних центрів">
     <meta property="og:title" content="Event Genix">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.61.29">
-    <link rel="stylesheet" href="css/layout.css?v=0.61.29">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.29">
-    <link rel="stylesheet" href="css/pages.css?v=0.61.29">
-    <link rel="stylesheet" href="css/modals.css?v=0.61.29">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.29">
-    <link rel="stylesheet" href="css/responsive.css?v=0.61.29">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.29">
+    <link rel="stylesheet" href="css/base.css?v=0.61.30">
+    <link rel="stylesheet" href="css/layout.css?v=0.61.30">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.30">
+    <link rel="stylesheet" href="css/pages.css?v=0.61.30">
+    <link rel="stylesheet" href="css/modals.css?v=0.61.30">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.30">
+    <link rel="stylesheet" href="css/responsive.css?v=0.61.30">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.30">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -235,6 +235,11 @@
             max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .task-assignment-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; flex: 0 0 auto; }
+        .task-assignment-self-personal {
+            background: rgba(20,184,166,0.18);
+            color: #0f766e;
+            border-color: rgba(20,184,166,0.38);
+        }
         .task-assignment-self { background: rgba(20,184,166,0.14); color: #0f766e; border-color: rgba(20,184,166,0.32); }
         .task-assignment-delegated { background: rgba(59,130,246,0.12); color: #2563eb; border-color: rgba(59,130,246,0.28); }
         .task-assignment-incoming { background: rgba(168,85,247,0.12); color: #7c3aed; border-color: rgba(168,85,247,0.26); }
@@ -254,15 +259,22 @@
             padding: 4px 8px; border-radius: 999px;
             background: rgba(255,255,255,0.62); border: 1px solid rgba(148,163,184,0.14);
         }
+        .task-my-scope-summary .task-my-scope-pin {
+            background: rgba(20,184,166,0.16);
+            border-color: rgba(20,184,166,0.28);
+            color: #0f766e;
+        }
         .task-my-scope-summary b { color: #0f766e; }
         body.dark-mode .task-assignee-badge,
         body.dark-mode .task-assignment-badge { background: rgba(15,23,42,0.72); border-color: rgba(148,163,184,0.16); }
+        body.dark-mode .task-assignment-self-personal { background: rgba(20,184,166,0.2); color: #99f6e4; border-color: rgba(45,212,191,0.34); }
         body.dark-mode .task-assignment-self { background: rgba(20,184,166,0.16); color: #5eead4; border-color: rgba(45,212,191,0.28); }
         body.dark-mode .task-assignment-delegated { background: rgba(59,130,246,0.16); color: #93c5fd; border-color: rgba(96,165,250,0.28); }
         body.dark-mode .task-assignment-incoming { background: rgba(168,85,247,0.16); color: #c4b5fd; border-color: rgba(196,181,253,0.24); }
         body.dark-mode .task-assignment-assigned { background: rgba(34,197,94,0.15); color: #4ade80; border-color: rgba(74,222,128,0.22); }
         body.dark-mode .task-my-scope-summary { background: linear-gradient(135deg, rgba(20,184,166,0.12), rgba(59,130,246,0.08)); color: #cbd5e1; }
         body.dark-mode .task-my-scope-summary span { background: rgba(15,23,42,0.62); border-color: rgba(148,163,184,0.12); }
+        body.dark-mode .task-my-scope-summary .task-my-scope-pin { background: rgba(20,184,166,0.18); border-color: rgba(45,212,191,0.28); color: #99f6e4; }
         body.dark-mode .task-my-scope-summary b { color: #5eead4; }
         body.dark-mode .task-no-assignee { color: var(--gray-500); }
         body.dark-mode .task-card.status-done {
@@ -937,6 +949,16 @@
             border-color: rgba(20,184,166,0.28);
             box-shadow: 0 10px 28px rgba(15,23,42,0.08);
         }
+        .task-card.is-self-personal {
+            border-color: rgba(20,184,166,0.32);
+            border-left-color: #14b8a6;
+            background: linear-gradient(135deg, rgba(236,253,245,0.96), rgba(255,255,255,0.92));
+            box-shadow: inset 3px 0 0 rgba(20,184,166,0.35);
+        }
+        .task-card.is-self-personal:hover {
+            border-color: rgba(20,184,166,0.44);
+            box-shadow: inset 3px 0 0 rgba(20,184,166,0.42), 0 10px 28px rgba(15,23,42,0.08);
+        }
         .task-card[draggable="true"] {
             cursor: grab;
             user-select: none;
@@ -1112,10 +1134,22 @@
             background: rgba(15, 23, 42, 0.86);
             border-color: rgba(148, 163, 184, 0.16);
         }
+        html[data-theme="dark"] .task-card.is-self-personal,
+        body.dark-mode .task-card.is-self-personal {
+            border-color: rgba(45,212,191,0.32);
+            border-left-color: #5eead4;
+            background: linear-gradient(135deg, rgba(20,184,166,0.16), rgba(15,23,42,0.88));
+            box-shadow: inset 3px 0 0 rgba(45,212,191,0.32);
+        }
         html[data-theme="dark"] .task-card:hover,
         body.dark-mode .task-card:hover {
             border-color: rgba(45,212,191,0.28);
             box-shadow: 0 10px 28px rgba(0,0,0,0.18);
+        }
+        html[data-theme="dark"] .task-card.is-self-personal:hover,
+        body.dark-mode .task-card.is-self-personal:hover {
+            border-color: rgba(45,212,191,0.44);
+            box-shadow: inset 3px 0 0 rgba(45,212,191,0.4), 0 10px 28px rgba(0,0,0,0.18);
         }
         html[data-theme="dark"] .kanban-col.is-drop-target,
         body.dark-mode .kanban-col.is-drop-target {
@@ -1596,13 +1630,13 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.61.29"></script>
-    <script src="js/notification.js?v=0.61.29"></script>
-    <script src="js/api.js?v=0.61.29"></script>
-    <script src="js/auth.js?v=0.61.29"></script>
-    <script src="js/components/sidebar.js?v=0.61.29"></script>
+    <script src="js/config.js?v=0.61.30"></script>
+    <script src="js/notification.js?v=0.61.30"></script>
+    <script src="js/api.js?v=0.61.30"></script>
+    <script src="js/auth.js?v=0.61.30"></script>
+    <script src="js/components/sidebar.js?v=0.61.30"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/tasks-page.js?v=0.61.29"></script>
-    <script src="js/alerts.js?v=0.61.29"></script><script src="js/ui.js?v=0.61.29"></script>
+    <script src="js/tasks-page.js?v=0.61.30"></script>
+    <script src="js/alerts.js?v=0.61.30"></script><script src="js/ui.js?v=0.61.30"></script>
 </body>
 </html>

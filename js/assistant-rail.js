@@ -1078,6 +1078,29 @@
         };
     }
 
+    function buildStructuredPageContext(context = {}) {
+        const base = typeof window.buildCrmAssistantPageContext === 'function'
+            ? window.buildCrmAssistantPageContext(context)
+            : {
+                pageKey: context.page || getCurrentPageKey(),
+                pathname: window.location.pathname || '/',
+                pageTitle: context.title || document.title || context.page || getCurrentPageKey(),
+                activeTab: context.activeTab || '',
+                selectedEntity: null,
+                selectedEntityId: '',
+                activeFilters: {},
+                relatedPageHints: []
+            };
+        return {
+            ...base,
+            pageKey: context.page || base.pageKey || getCurrentPageKey(),
+            pageTitle: context.title || base.pageTitle || '',
+            activeTab: context.activeTab || base.activeTab || '',
+            activeFilters: base.activeFilters || {},
+            relatedPageHints: Array.from(new Set([...(base.relatedPageHints || []), ...(context.relatedPageHints || [])])).slice(0, 8)
+        };
+    }
+
     function compactText(value, fallback = '', limit = 36) {
         const text = String(value || fallback || '').replace(/\s+/g, ' ').trim();
         if (text.length <= limit) return text;
@@ -1401,6 +1424,7 @@
             role: context.role,
             displayRole: context.displayRole,
             page: context.page,
+            pageContext: buildStructuredPageContext(context),
             title: context.title,
             view: context.view,
             widgets: context.widgets || [],

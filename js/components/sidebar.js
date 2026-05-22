@@ -1096,13 +1096,13 @@ const Sidebar = (() => {
     }
 
     function _sidebarRoleBadgeKey(user) {
-        const raw = _getSidebarActiveRole(user) || _getSidebarPrimaryRole(user) || 'crm';
+        const raw = _getSidebarPrimaryRole(user) || 'crm';
         const key = String(raw || 'crm').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
         return key || 'crm';
     }
 
     function _sidebarRoleBadgeText(user) {
-        const raw = _getSidebarActiveRole(user) || _getSidebarPrimaryRole(user) || 'crm';
+        const raw = _getSidebarPrimaryRole(user) || 'crm';
         const label = _sidebarRoleLabel(raw);
         return label || _sidebarRoleBadgeKey(user).replace(/_/g, ' ');
     }
@@ -1131,7 +1131,7 @@ const Sidebar = (() => {
                             <span class="sidebar-identity-title-line">
                                 <span class="sidebar-identity-name" id="sidebarIdentityName">Event Genix</span>
                             </span>
-                            <button type="button" class="sidebar-identity-role sidebar-role-preview-trigger" id="sidebarIdentityRole" aria-haspopup="menu" aria-expanded="false">CRM</button>
+                            <span class="sidebar-identity-role" id="sidebarIdentityRole">CRM</span>
                         </span>
                         <span class="sidebar-identity-summary" id="sidebarIdentitySummary">Операційний стан завантажується...</span>
                         <span class="sidebar-identity-meta" id="sidebarIdentityMeta" aria-label="Швидкий статус">
@@ -1242,7 +1242,7 @@ const Sidebar = (() => {
             roleEl.textContent = _sidebarRoleBadgeText(user);
             roleEl.dataset.role = roleKey;
             roleEl.setAttribute('aria-label', _sidebarRoleLine(user));
-            _hydrateRolePreviewEntry(roleEl, user);
+            roleEl.title = _sidebarRoleLine(user);
         }
         if (cardEl) cardEl.dataset.role = roleKey;
         _bindProfileEntry(cardEl);
@@ -1288,181 +1288,6 @@ const Sidebar = (() => {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
-    }
-
-    function _roleShellLabel(role) {
-        return window.RoleShell?.getRoleLabel?.(role) || _sidebarRoleLabel(role);
-    }
-
-    function _rolePreviewState() {
-        if (window.RolePreview?.getState) return window.RolePreview.getState();
-        const user = _getCurrentSidebarUser();
-        const role = _getSidebarPrimaryRole(user);
-        return {
-            realRole: role,
-            previewRole: '',
-            effectiveRole: role,
-            canPreview: false,
-            roles: role ? [role] : [],
-            realLabel: _roleShellLabel(role),
-            effectiveLabel: _roleShellLabel(role),
-            startPage: '/dashboard',
-            quickAccess: []
-        };
-    }
-
-    function _hydrateRolePreviewEntry(roleEl, user) {
-        const state = _rolePreviewState();
-        const canPreview = Boolean(state.canPreview);
-        roleEl.type = 'button';
-        roleEl.classList.toggle('can-preview', canPreview);
-        roleEl.classList.toggle('is-preview-active', Boolean(state.previewRole));
-        roleEl.dataset.role = _sidebarRoleBadgeKey(user);
-        roleEl.title = canPreview
-            ? 'Переглянути CRM як іншу роль'
-            : _sidebarRoleLine(user);
-        roleEl.setAttribute('aria-label', canPreview
-            ? `Роль: ${state.effectiveLabel}. Відкрити перемикач ролей`
-            : _sidebarRoleLine(user));
-        roleEl.setAttribute('aria-expanded', 'false');
-        if (canPreview) {
-            roleEl.setAttribute('data-sidebar-stop-profile', 'true');
-            roleEl.removeAttribute('aria-disabled');
-            roleEl.tabIndex = 0;
-            _bindRolePreviewEntry(roleEl);
-        } else {
-            roleEl.removeAttribute('data-sidebar-stop-profile');
-            roleEl.setAttribute('aria-disabled', 'true');
-            roleEl.tabIndex = -1;
-        }
-    }
-
-    function _ensureRolePreviewMenu() {
-        let menu = document.getElementById('sidebarRolePreviewMenu');
-        if (menu) return menu;
-        menu = document.createElement('div');
-        menu.id = 'sidebarRolePreviewMenu';
-        menu.className = 'sidebar-role-preview-menu hidden';
-        menu.setAttribute('role', 'menu');
-        menu.setAttribute('data-sidebar-stop-profile', 'true');
-        document.body.appendChild(menu);
-        menu.addEventListener('click', (event) => {
-            const roleBtn = event.target.closest('[data-role-preview-role]');
-            const homeBtn = event.target.closest('[data-role-preview-home]');
-            const clearBtn = event.target.closest('[data-role-preview-clear]');
-            if (roleBtn) {
-                event.preventDefault();
-                const role = roleBtn.dataset.rolePreviewRole;
-                if (role) window.RolePreview?.setPreviewRole?.(role);
-                _closeRolePreviewMenu();
-                return;
-            }
-            if (clearBtn) {
-                event.preventDefault();
-                window.RolePreview?.clearPreviewRole?.();
-                _closeRolePreviewMenu();
-                return;
-            }
-            if (homeBtn) {
-                event.preventDefault();
-                const state = _rolePreviewState();
-                window.location.href = state.startPage || '/dashboard';
-            }
-        });
-        return menu;
-    }
-
-    function _renderRolePreviewMenu(menu) {
-        const state = _rolePreviewState();
-        const roles = Array.isArray(state.roles) ? state.roles : [];
-        const roleButtons = roles.map(role => {
-            const isReal = role === state.realRole;
-            const isActive = role === state.effectiveRole;
-            const label = _roleShellLabel(role);
-            return `<button type="button" class="sidebar-role-preview-option${isActive ? ' active' : ''}" data-role-preview-role="${_escAttr(role)}" role="menuitem">
-                <span class="sidebar-role-preview-option-label">${_escHtml(label)}</span>
-                <span class="sidebar-role-preview-option-meta">${isReal ? 'реальна роль' : 'preview'}</span>
-            </button>`;
-        }).join('');
-        menu.innerHTML = `
-            <div class="sidebar-role-preview-head">
-                <span class="sidebar-role-preview-kicker">Перегляд ролі</span>
-                <strong>${_escHtml(state.effectiveLabel)}</strong>
-            </div>
-            <div class="sidebar-role-preview-note">
-                Реальна роль: <b>${_escHtml(state.realLabel)}</b>. Preview змінює тільки shell, меню, dashboard і quick access. API-доступ лишається реальним.
-            </div>
-            <div class="sidebar-role-preview-options">${roleButtons}</div>
-            <div class="sidebar-role-preview-actions">
-                <button type="button" data-role-preview-home>Старт цієї ролі</button>
-                ${state.previewRole ? '<button type="button" data-role-preview-clear>Вийти з preview</button>' : ''}
-            </div>
-        `;
-    }
-
-    function _positionRolePreviewMenu(menu, anchor) {
-        const rect = anchor.getBoundingClientRect();
-        menu.classList.remove('hidden');
-        const width = menu.offsetWidth || 280;
-        const left = Math.max(12, Math.min(window.innerWidth - width - 12, rect.right - width));
-        const top = Math.max(12, Math.min(window.innerHeight - 12, rect.bottom + 8));
-        menu.style.left = `${left}px`;
-        menu.style.top = `${top}px`;
-    }
-
-    function _openRolePreviewMenu(anchor) {
-        if (!window.RolePreview?.canPreview?.()) return;
-        const menu = _ensureRolePreviewMenu();
-        _renderRolePreviewMenu(menu);
-        _positionRolePreviewMenu(menu, anchor);
-        anchor.setAttribute('aria-expanded', 'true');
-        document.addEventListener('click', _handleRolePreviewOutsideClick, true);
-        window.addEventListener('resize', _closeRolePreviewMenu, { once: true });
-        window.addEventListener('scroll', _closeRolePreviewMenu, { once: true, capture: true });
-    }
-
-    function _closeRolePreviewMenu() {
-        const menu = document.getElementById('sidebarRolePreviewMenu');
-        if (menu) menu.classList.add('hidden');
-        document.getElementById('sidebarIdentityRole')?.setAttribute('aria-expanded', 'false');
-        document.removeEventListener('click', _handleRolePreviewOutsideClick, true);
-    }
-
-    function _toggleRolePreviewMenu(anchor) {
-        const menu = _ensureRolePreviewMenu();
-        if (!menu.classList.contains('hidden')) {
-            _closeRolePreviewMenu();
-        } else {
-            _openRolePreviewMenu(anchor);
-        }
-    }
-
-    function _handleRolePreviewOutsideClick(event) {
-        const menu = document.getElementById('sidebarRolePreviewMenu');
-        const trigger = document.getElementById('sidebarIdentityRole');
-        if (!menu || menu.classList.contains('hidden')) return;
-        if (menu.contains(event.target) || trigger?.contains(event.target)) return;
-        _closeRolePreviewMenu();
-    }
-
-    function _bindRolePreviewEntry(roleEl) {
-        if (!roleEl || roleEl.dataset.sidebarRolePreviewBound === 'true') return;
-        roleEl.dataset.sidebarRolePreviewBound = 'true';
-        roleEl.addEventListener('click', (event) => {
-            if (!window.RolePreview?.canPreview?.()) return;
-            event.preventDefault();
-            event.stopPropagation();
-            _toggleRolePreviewMenu(roleEl);
-        });
-        roleEl.addEventListener('keydown', (event) => {
-            if (!window.RolePreview?.canPreview?.()) return;
-            if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                event.stopPropagation();
-                _toggleRolePreviewMenu(roleEl);
-            }
-            if (event.key === 'Escape') _closeRolePreviewMenu();
-        });
     }
 
     function _updateSidebarIdentityTime() {
@@ -2335,7 +2160,6 @@ const Sidebar = (() => {
         if (c) render('#' + c.id);
     });
     window.addEventListener('rolePreviewChanged', () => {
-        _closeRolePreviewMenu();
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
         if (c) render('#' + c.id);
         initUserCard();

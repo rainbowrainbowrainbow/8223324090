@@ -7,6 +7,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const dashboardAssistant = require('../services/dashboardAssistant');
 const { transcribeDashboardAudio, synthesizeDashboardSpeech } = require('../services/dashboardAssistantAudio');
+const { normalizePageContext, buildPageKnowledgeDebug } = require('../config/assistant-page-knowledge');
 
 const router = express.Router();
 const log = createLogger('CrmAssistantRoutes');
@@ -72,6 +73,17 @@ router.post('/reply', async (req, res) => {
         const userRole = req.user?.role || body.role || '';
         const previewRole = userRole === 'creator' ? body.scenePreset || body.previewRole || body.recentState?.previewRole || '' : '';
         const scenePreset = previewRole || userRole || '';
+        const pageContext = normalizePageContext({
+            ...(body.pageContext && typeof body.pageContext === 'object' ? body.pageContext : {}),
+            pageKey: body.pageContext?.pageKey || body.page || body.pageKey,
+            pathname: body.pageContext?.pathname || body.pathname || body.path,
+            pageTitle: body.pageContext?.pageTitle || body.title,
+            activeTab: body.pageContext?.activeTab || body.activeTab || body.view,
+            selectedEntity: body.pageContext?.selectedEntity || body.selectedEntity,
+            selectedEntityId: body.pageContext?.selectedEntityId || body.selectedEntityId,
+            activeFilters: body.pageContext?.activeFilters || body.activeFilters || body.filters,
+            relatedPageHints: body.pageContext?.relatedPageHints || body.relatedPageHints
+        });
         const assistantInput = {
             ...body,
             userId: req.user?.id || req.user?.userId || null,
@@ -79,6 +91,8 @@ router.post('/reply', async (req, res) => {
             name: req.user?.name || req.user?.displayName || '',
             role: userRole,
             displayRole: body.displayRole || '',
+            page: pageContext.pageKey,
+            pageContext,
             scenePreset,
             recentState: {
                 ...(body.recentState || {}),
@@ -86,7 +100,11 @@ router.post('/reply', async (req, res) => {
             }
         };
         const reply = await getDashboardAssistantReply(assistantInput);
-        res.json({ success: true, reply: normalizeAssistantReply(reply, assistantInput) });
+        const response = { success: true, reply: normalizeAssistantReply(reply, assistantInput) };
+        if (process.env.NODE_ENV !== 'production' && (body.debugPageContext === true || req.query.debugPageContext === '1')) {
+            response.debug = buildPageKnowledgeDebug(pageContext);
+        }
+        res.json(response);
     } catch (error) {
         sendAssistantError(res, error, 'assistant_reply_failed');
     }

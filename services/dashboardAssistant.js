@@ -7,6 +7,12 @@ const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('../utils/logger');
 const featureRegistry = require('../js/crm-feature-registry');
+const {
+    normalizePageContext,
+    buildPageKnowledgePrompt,
+    buildPageKnowledgeDebug,
+    buildPageKnowledgeAnswer
+} = require('../config/assistant-page-knowledge');
 
 const log = createLogger('DashboardAssistant');
 const OPENAI_API_BASE = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
@@ -571,11 +577,26 @@ function buildStrategicFrame(context = {}) {
 
 function buildAssistantContext(input = {}) {
     const recentState = input.recentState && typeof input.recentState === 'object' ? input.recentState : {};
+    const pageContext = normalizePageContext({
+        ...(input.pageContext && typeof input.pageContext === 'object' ? input.pageContext : {}),
+        pageKey: input.pageContext?.pageKey || input.page || input.pageKey,
+        pathname: input.pageContext?.pathname || input.pathname || input.path,
+        pageTitle: input.pageContext?.pageTitle || input.title,
+        activeTab: input.pageContext?.activeTab || input.activeTab || input.view,
+        selectedEntity: input.pageContext?.selectedEntity || input.selectedEntity,
+        selectedEntityId: input.pageContext?.selectedEntityId || input.selectedEntityId,
+        activeFilters: input.pageContext?.activeFilters || input.activeFilters || input.filters,
+        relatedPageHints: input.pageContext?.relatedPageHints || input.relatedPageHints
+    });
+    const pageKnowledgeDebug = buildPageKnowledgeDebug(pageContext);
     const context = {
         role: compactString(input.role, 80) || 'unknown',
         displayRole: compactString(input.displayRole, 120),
-        page: compactString(input.page, 80) || 'dashboard',
-        title: compactString(input.title, 160),
+        page: pageContext.pageKey,
+        pageContext,
+        pageKnowledge: pageKnowledgeDebug.knowledge,
+        pageKnowledgePrompt: buildPageKnowledgePrompt(pageContext),
+        title: compactString(input.title || pageContext.pageTitle, 160),
         view: compactString(input.view, 120),
         intent: compactString(input.intent, 700),
         proactive: input.proactive === true,
@@ -661,7 +682,7 @@ function buildStrategicRecommendation(context = {}, summary = '') {
 
 function normalizeAssistantReply(reply, context = {}, extra = {}) {
     const source = reply && typeof reply === 'object' ? reply : { text: reply };
-    const summary = compactString(localizeAssistantText(source.summary || source.subtitle || source.text || source.recommendation), 900)
+    const summary = compactString(localizeAssistantText(source.summary || source.subtitle || source.text || source.message || source.recommendation), 900)
         || 'Поки що не можу сформулювати підказку. Спробуй переформулювати запит.';
     const evidence = compactRecordList(source.evidence?.length ? source.evidence : (context.evidence?.length ? context.evidence : context.signals), 8);
     const actionProposal = source.actionProposal || context.actionProposal || (Array.isArray(context.actions) ? context.actions[0] : null) || null;
@@ -700,6 +721,9 @@ function normalizeAssistantReply(reply, context = {}, extra = {}) {
 async function getDashboardAssistantReply(input = {}) {
     const instructions = loadDashboardAssistantInstructions();
     const context = await enrichAssistantContext(buildAssistantContext(input));
+    if (process.env.NODE_ENV !== 'production') {
+        log.debug('assistant_page_context', buildPageKnowledgeDebug(context.pageContext));
+    }
     const directReply = buildDirectTaskDetailsReply(context);
     if (directReply) {
         return normalizeAssistantReply(directReply, context, { model: 'local-task-context', mode: 'speaking' });
@@ -707,6 +731,10 @@ async function getDashboardAssistantReply(input = {}) {
     const featureReply = buildDirectFeatureLocatorReply(context);
     if (featureReply) {
         return normalizeAssistantReply(featureReply, context, { model: 'local-feature-locator', mode: 'speaking' });
+    }
+    const pageKnowledgeReply = buildPageKnowledgeAnswer(context.userMessage, context.pageContext);
+    if (pageKnowledgeReply) {
+        return normalizeAssistantReply(pageKnowledgeReply, context, { model: 'local-page-knowledge', mode: 'speaking' });
     }
     const apiKey = requireOpenAIKey();
     const model = process.env.OPENAI_ASSISTANT_MODEL || 'gpt-4.1-mini';
@@ -728,6 +756,7 @@ async function getDashboardAssistantReply(input = {}) {
                         'Формат думки: що бачу → чому це важливо → одна найкраща наступна дія. Не розширюй відповідь, якщо даних мало.',
                         'Мова відповіді: відповідай українською або мовою користувача. Не показуй технічні id, enum, actionId чи widget keys на кшталт team_online, staff_today, dashboard.focus-work-queue, FILTER. Перекладай їх у людські назви: «Команда онлайн», «Хто на зміні», «робоча черга», «фільтр».',
                         `Поточне повідомлення користувача: ${context.userMessage}`,
+                        context.pageKnowledgePrompt,
                         'Відповідай саме на це повідомлення. Якщо користувач просить конкретику або список, не повторюй загальний briefing: використовуй taskDetails, chatHistory, contextSummary та evidence з JSON нижче.',
                         JSON.stringify(context, null, 2)
                     ].join('\n\n')
@@ -755,6 +784,8 @@ module.exports = {
     getDashboardAssistantReply,
     loadDashboardAssistantInstructions,
     buildAssistantContext,
+    buildPageKnowledgePrompt,
+    buildPageKnowledgeDebug,
     buildDirectFeatureLocatorReply,
     normalizeAssistantReply,
     getAssistantProviderBoundary,

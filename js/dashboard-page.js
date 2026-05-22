@@ -1191,6 +1191,9 @@ const DashboardPage = (() => {
         return {
             ...context,
             userMessage: String(userMessage || '').trim(),
+            pageContext: typeof window.buildCrmAssistantPageContext === 'function'
+                ? window.buildCrmAssistantPageContext({ ...context, pageKey: 'dashboard' })
+                : { pageKey: 'dashboard', pathname: '/dashboard', pageTitle: context.sceneTitle || 'Дашборд' },
             voiceMode,
             recentState: {
                 mode: _assistantRailState.mode,
@@ -3016,22 +3019,131 @@ const DashboardPage = (() => {
         }
     }
 
+    function getDashboardRolePreviewState() {
+        if (window.RolePreview?.getState) return window.RolePreview.getState();
+        const role = typeof getUserRole === 'function' ? getUserRole() : AppState.currentUser?.role || '';
+        const label = roleDisplayName(role);
+        return {
+            realRole: role,
+            previewRole: '',
+            effectiveRole: role,
+            canPreview: false,
+            roles: role ? [role] : [],
+            realLabel: label,
+            effectiveLabel: label,
+            startPage: '/dashboard'
+        };
+    }
+
+    function renderDashboardRolePreviewMenu() {
+        const menu = document.getElementById('dashboardRolePreviewMenu');
+        if (!menu) return;
+        const state = getDashboardRolePreviewState();
+        const roles = Array.isArray(state.roles) ? state.roles : [];
+        const roleButtons = roles.map(role => {
+            const isReal = role === state.realRole;
+            const isActive = role === state.effectiveRole;
+            const label = window.RoleShell?.getRoleLabel?.(role) || roleDisplayName(role);
+            return `<button type="button" class="dashboard-role-preview-option${isActive ? ' active' : ''}" data-dashboard-role-preview-role="${escapeHtml(role)}" role="menuitem">
+                <span>${escapeHtml(label)}</span>
+                <em>${isReal ? 'реальна роль' : 'preview'}</em>
+            </button>`;
+        }).join('');
+        menu.innerHTML = `
+            <div class="dashboard-role-preview-head">
+                <span>Preview shell</span>
+                <strong>${escapeHtml(state.effectiveLabel || roleDisplayName(state.effectiveRole))}</strong>
+            </div>
+            <div class="dashboard-role-preview-note">
+                Реальна роль акаунта: <b>${escapeHtml(state.realLabel || roleDisplayName(state.realRole))}</b>. Preview змінює тільки shell, меню, dashboard і quick access; API-доступ лишається реальним.
+            </div>
+            <div class="dashboard-role-preview-options">${roleButtons}</div>
+            <div class="dashboard-role-preview-actions">
+                <button type="button" data-dashboard-role-preview-home>Старт ролі</button>
+                ${state.previewRole ? '<button type="button" data-dashboard-role-preview-clear>Вийти з preview</button>' : ''}
+            </div>
+        `;
+    }
+
+    function closeDashboardRolePreviewMenu() {
+        const menu = document.getElementById('dashboardRolePreviewMenu');
+        const button = document.getElementById('dashboardRolePreviewButton');
+        if (menu) menu.classList.add('hidden');
+        if (button) button.setAttribute('aria-expanded', 'false');
+        document.removeEventListener('click', handleDashboardRolePreviewOutsideClick, true);
+        window.removeEventListener('resize', closeDashboardRolePreviewMenu);
+        window.removeEventListener('scroll', closeDashboardRolePreviewMenu, true);
+    }
+
+    function openDashboardRolePreviewMenu() {
+        const wrapper = document.getElementById('dashboardRolePreview');
+        const menu = document.getElementById('dashboardRolePreviewMenu');
+        const button = document.getElementById('dashboardRolePreviewButton');
+        const state = getDashboardRolePreviewState();
+        if (!wrapper || !menu || !button || !state.canPreview) return;
+        renderDashboardRolePreviewMenu();
+        menu.classList.remove('hidden');
+        button.setAttribute('aria-expanded', 'true');
+        document.addEventListener('click', handleDashboardRolePreviewOutsideClick, true);
+        window.addEventListener('resize', closeDashboardRolePreviewMenu, { once: true });
+        window.addEventListener('scroll', closeDashboardRolePreviewMenu, { once: true, capture: true });
+    }
+
+    function toggleRolePreviewMenu(event) {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        const menu = document.getElementById('dashboardRolePreviewMenu');
+        if (menu && !menu.classList.contains('hidden')) {
+            closeDashboardRolePreviewMenu();
+        } else {
+            openDashboardRolePreviewMenu();
+        }
+    }
+
+    function handleDashboardRolePreviewOutsideClick(event) {
+        const wrapper = document.getElementById('dashboardRolePreview');
+        if (!wrapper || wrapper.contains(event.target)) return;
+        closeDashboardRolePreviewMenu();
+    }
+
+    function handleRolePreviewMenuClick(event) {
+        const roleBtn = event.target.closest('[data-dashboard-role-preview-role]');
+        const clearBtn = event.target.closest('[data-dashboard-role-preview-clear]');
+        const homeBtn = event.target.closest('[data-dashboard-role-preview-home]');
+        if (roleBtn) {
+            event.preventDefault();
+            setDashboardRolePreview(roleBtn.dataset.dashboardRolePreviewRole || '');
+            return;
+        }
+        if (clearBtn) {
+            event.preventDefault();
+            setDashboardRolePreview('');
+            return;
+        }
+        if (homeBtn) {
+            event.preventDefault();
+            const state = getDashboardRolePreviewState();
+            window.location.href = state.startPage || '/dashboard';
+        }
+    }
+
     function updateDashboardRolePreviewControl() {
         const wrapper = document.getElementById('dashboardRolePreview');
-        const select = document.getElementById('dashboardRolePreviewSelect');
-        if (!wrapper || !select) return;
-        const canPreview = window.RolePreview?.canPreview?.() || false;
-        wrapper.hidden = !canPreview;
-        if (!canPreview) return;
-        const options = (window.RolePreview?.getAvailableRoles?.() || [])
-            .map(role => `<option value="${escapeHtml(role)}">${escapeHtml(roleDisplayName(role))}</option>`)
-            .join('');
-        select.innerHTML = `<option value="">Моя роль</option>${options}`;
-        select.value = window.RolePreview?.getPreviewRole?.() || '';
+        const button = document.getElementById('dashboardRolePreviewButton');
         const label = document.getElementById('dashboardRolePreviewCurrent');
-        if (label) {
-            const role = getEffectiveDashboardRole();
-            label.textContent = `Сцена: ${roleDisplayName(role)}`;
+        if (!wrapper || !button || !label) return;
+        const state = getDashboardRolePreviewState();
+        wrapper.hidden = !state.canPreview;
+        wrapper.classList.toggle('is-preview-active', Boolean(state.previewRole));
+        if (!state.canPreview) {
+            closeDashboardRolePreviewMenu();
+            return;
+        }
+        const effectiveLabel = state.effectiveLabel || roleDisplayName(state.effectiveRole);
+        label.textContent = effectiveLabel;
+        button.setAttribute('aria-label', `Перегляд як: ${effectiveLabel}. Відкрити перемикач preview ролі.`);
+        if (!document.getElementById('dashboardRolePreviewMenu')?.classList.contains('hidden')) {
+            renderDashboardRolePreviewMenu();
         }
     }
 
@@ -4786,11 +4898,16 @@ const DashboardPage = (() => {
     function setDashboardRolePreview(role) {
         if (!window.RolePreview?.canPreview?.()) return;
         const nextRole = String(role || '').trim();
+        const state = getDashboardRolePreviewState();
         if (!nextRole) {
+            window.RolePreview.clearPreviewRole();
+        } else if (nextRole === state.realRole) {
             window.RolePreview.clearPreviewRole();
         } else {
             window.RolePreview.setPreviewRole(nextRole);
         }
+        closeDashboardRolePreviewMenu();
+        updateDashboardRolePreviewControl();
         renderWidgets();
         announceDashboardContextToAssistant();
     }
@@ -6199,19 +6316,6 @@ const DashboardPage = (() => {
                 </label>
             </div>`;
         }).join('');
-        const rolePreviewOptions = (window.RolePreview?.getAvailableRoles?.() || ['manager', 'senior_manager', 'director', 'vice_director', 'hr', 'art_director', 'admin'])
-            .map(role => `<option value="${role}">${escapeHtml(roleDisplayName(role))} (${escapeHtml(role)})</option>`)
-            .join('');
-        const rolePreviewMarkup = window.RolePreview?.canPreview?.() ? `
-            <div class="dashboard-settings-scene-row dashboard-settings-role-preview">
-                <label for="settingsRolePreviewSelect">Перегляд як роль</label>
-                <select id="settingsRolePreviewSelect" class="dashboard-role-preview-select" onchange="DashboardPage.setDashboardRolePreview(this.value)">
-                    <option value="">Моя роль</option>
-                    ${rolePreviewOptions}
-                </select>
-            </div>
-        ` : '';
-
         // Remove previous settings modal if open
         const prev = document.getElementById('settingsOverlay');
         if (prev) {
@@ -6234,7 +6338,6 @@ const DashboardPage = (() => {
                         <strong>${escapeHtml(roleDisplayName(effectiveRole))}</strong>
                         <em>${escapeHtml(effectiveScene.title || 'Mixed scene')}</em>
                     </div>
-                    ${rolePreviewMarkup}
                     <label class="dashboard-settings-scene-row">
                         <span>Writing lane справа</span>
                         <span class="settings-toggle">
@@ -6303,8 +6406,6 @@ const DashboardPage = (() => {
 
         document.body.appendChild(overlay);
         _settingsOverlayInitialState = getSettingsOverlayState();
-        const settingsRolePreviewSelect = document.getElementById('settingsRolePreviewSelect');
-        if (settingsRolePreviewSelect) settingsRolePreviewSelect.value = window.RolePreview?.getPreviewRole?.() || '';
         if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay, {
             isDirty: isSettingsOverlayDirty
         });
@@ -7513,6 +7614,8 @@ const DashboardPage = (() => {
         setTeamOnlineHistory,
         setDashboardMode,
         setDashboardRolePreview,
+        toggleRolePreviewMenu,
+        handleRolePreviewMenuClick,
         setDashboardSceneOption,
         setBoardWorkspaceMode,
         setBoardInteractionMode,

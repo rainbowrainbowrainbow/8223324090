@@ -37,6 +37,7 @@ const { getPendingMessages, handleWebhookResponse, getTelegramFileUrl,
 const { sendToUsername } = require('../services/websocket');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken } = require('../middleware/auth');
+const { normalizePageContext, buildPageKnowledgeDebug } = require('../config/assistant-page-knowledge');
 
 const log = createLogger('KleshnyaRoute');
 
@@ -288,6 +289,16 @@ router.post('/chat', authenticateToken, async (req, res) => {
         }
 
         const text = message.trim();
+        const pageContext = normalizePageContext(req.body.pageContext || {
+            pageKey: req.body.pageKey || req.body.page,
+            pathname: req.body.pathname,
+            pageTitle: req.body.pageTitle || req.body.title,
+            activeTab: req.body.activeTab,
+            selectedEntity: req.body.selectedEntity,
+            selectedEntityId: req.body.selectedEntityId,
+            activeFilters: req.body.activeFilters,
+            relatedPageHints: req.body.relatedPageHints
+        });
         let activeSessionId = session_id || null;
 
         // If session_id provided, verify it belongs to user
@@ -345,7 +356,7 @@ router.post('/chat', authenticateToken, async (req, res) => {
         const chatHistory = AI_ENABLED
             ? await getChatHistory(username, 20, activeSessionId)
             : [];
-        const result = await generateChatResponse(text, username, chatHistory, req.user);
+        const result = await generateChatResponse(text, username, chatHistory, req.user, { pageContext });
 
         // Save assistant response
         const saved = await addChatMessage(
@@ -361,7 +372,7 @@ router.post('/chat', authenticateToken, async (req, res) => {
             );
         }
 
-        res.json({
+        const payload = {
             role: 'assistant',
             message: result.message,
             session_id: activeSessionId,
@@ -369,7 +380,11 @@ router.post('/chat', authenticateToken, async (req, res) => {
             id: saved.id,
             created_at: saved.created_at,
             source: result.source || 'skills'
-        });
+        };
+        if (process.env.NODE_ENV !== 'production' && req.body.debugPageContext === true) {
+            payload.debug = buildPageKnowledgeDebug(pageContext);
+        }
+        res.json(payload);
     } catch (err) {
         log.error('Error in chat', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -416,6 +431,16 @@ router.post('/sync-chat', async (req, res) => {
         }
 
         const text = message.trim();
+        const pageContext = normalizePageContext(req.body.pageContext || {
+            pageKey: req.body.pageKey || req.body.page,
+            pathname: req.body.pathname,
+            pageTitle: req.body.pageTitle || req.body.title,
+            activeTab: req.body.activeTab,
+            selectedEntity: req.body.selectedEntity,
+            selectedEntityId: req.body.selectedEntityId,
+            activeFilters: req.body.activeFilters,
+            relatedPageHints: req.body.relatedPageHints
+        });
         let activeSessionId = session_id || null;
 
         // Verify session exists (or auto-create)
@@ -449,7 +474,7 @@ router.post('/sync-chat', async (req, res) => {
         const chatHistory = AI_ENABLED
             ? await getChatHistory(username, 20, activeSessionId)
             : [];
-        const result = await generateChatResponse(text, username, chatHistory);
+        const result = await generateChatResponse(text, username, chatHistory, null, { pageContext });
 
         // Save assistant response
         const saved = await addChatMessage(
@@ -476,7 +501,7 @@ router.post('/sync-chat', async (req, res) => {
 
         log.info(`sync-chat: replied to "${text.substring(0, 40)}" for ${username}`);
 
-        res.json({
+        const payload = {
             role: 'assistant',
             message: result.message,
             session_id: activeSessionId,
@@ -484,7 +509,11 @@ router.post('/sync-chat', async (req, res) => {
             id: saved.id,
             created_at: saved.created_at,
             source: result.source || 'skills'
-        });
+        };
+        if (process.env.NODE_ENV !== 'production' && req.body.debugPageContext === true) {
+            payload.debug = buildPageKnowledgeDebug(pageContext);
+        }
+        res.json(payload);
     } catch (err) {
         log.error('Error in sync-chat', err);
         res.status(500).json({ error: 'Internal server error' });

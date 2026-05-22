@@ -950,6 +950,83 @@ async function apiDeleteCertificate(id) {
 }
 
 // v11.0: Kleshnya API
+function normalizeAssistantPageKey(pathname) {
+    var raw = String(pathname || window.location.pathname || '/')
+        .replace(/^\/+/, '')
+        .replace(/\.html$/, '')
+        .replace(/\/$/, '');
+    if (!raw || raw === 'index') return 'timeline';
+    if (raw === 'leads') return 'sales-funnel';
+    if (raw === 'analytics') return 'finance';
+    return raw;
+}
+
+function collectAssistantActiveFilters() {
+    var filters = {};
+    var nodes = Array.from(document.querySelectorAll([
+        'input[type="search"]',
+        'input[id*="Search"]',
+        'input[id*="search"]',
+        'input[id*="Date"]',
+        'input[id*="date"]',
+        'select[id*="Filter"]',
+        'select[id*="filter"]',
+        '[data-assistant-filter]'
+    ].join(','))).slice(0, 12);
+    nodes.forEach(function (node, index) {
+        var value = (node.value || node.getAttribute('data-value') || '').toString().trim();
+        if (!value) return;
+        var key = node.getAttribute('data-assistant-filter') || node.name || node.id || ('filter' + index);
+        filters[String(key).replace(/\s+/g, '_').slice(0, 50)] = value.slice(0, 120);
+    });
+    return filters;
+}
+
+function buildCrmAssistantPageContext(overrides = {}) {
+    var pageKey = normalizeAssistantPageKey(overrides.pageKey || overrides.page || window.location.pathname);
+    var activeTab = overrides.activeTab;
+    if (!activeTab) {
+        var active = document.querySelector('[aria-selected="true"], .tab-btn.active, .nav-tab.active, .period-btn.active, .filter-btn.active, .view-btn.active, .fin-tab.active');
+        activeTab = active && active.textContent ? active.textContent.trim() : '';
+    }
+
+    var url = new URL(window.location.href);
+    var selectedEntityId = overrides.selectedEntityId
+        || url.searchParams.get('open')
+        || url.searchParams.get('highlight')
+        || url.searchParams.get('customer')
+        || url.searchParams.get('lead')
+        || url.searchParams.get('task')
+        || url.searchParams.get('conversation')
+        || '';
+    var entityType = overrides.selectedEntityType || '';
+    if (!entityType && selectedEntityId) {
+        if (pageKey === 'customers') entityType = 'customer';
+        else if (pageKey === 'sales-funnel') entityType = 'lead';
+        else if (pageKey === 'tasks') entityType = 'task';
+        else if (pageKey === 'omni' || pageKey === 'chat') entityType = 'conversation';
+        else entityType = 'record';
+    }
+
+    var relatedHints = [];
+    if (pageKey === 'customers') relatedHints = ['sales-funnel', 'timeline', 'omni'];
+    else if (pageKey === 'sales-funnel') relatedHints = ['customers', 'tasks', 'timeline', 'omni'];
+    else if (pageKey === 'finance') relatedHints = ['timeline', 'customers', 'sales-funnel'];
+    else if (pageKey === 'tasks') relatedHints = ['dashboard', 'sales-funnel', 'timeline'];
+    else if (pageKey === 'staff' || pageKey === 'hr') relatedHints = ['tasks', 'finance', 'training'];
+
+    return {
+        pageKey: pageKey,
+        pathname: window.location.pathname || '/',
+        pageTitle: overrides.pageTitle || overrides.title || document.querySelector('main h1, main h2, h1, h2')?.textContent?.trim() || document.title || pageKey,
+        activeTab: activeTab || '',
+        selectedEntity: overrides.selectedEntity || (selectedEntityId ? { type: entityType, id: selectedEntityId } : null),
+        selectedEntityId: selectedEntityId || '',
+        activeFilters: overrides.activeFilters || collectAssistantActiveFilters(),
+        relatedPageHints: overrides.relatedPageHints || relatedHints
+    };
+}
+
 async function apiGetKleshnyaGreeting(date) {
     try {
         const response = await fetch(`${API_BASE}/kleshnya/greeting?date=${date}`, { headers: getAuthHeaders(false) });
@@ -976,7 +1053,7 @@ async function apiGetKleshnyaChat() {
 
 async function apiSendKleshnyaMessage(message, sessionId) {
     try {
-        const body = { message };
+        const body = { message, pageContext: buildCrmAssistantPageContext() };
         if (sessionId) body.session_id = sessionId;
         const response = await fetch(`${API_BASE}/kleshnya/chat`, {
             method: 'POST',

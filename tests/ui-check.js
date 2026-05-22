@@ -125,6 +125,7 @@ checkPage('dashboard.html', (doc, html) => {
     check('mainApp exists', !!doc.getElementById('mainApp'));
     check('dashboardGrid exists', !!doc.getElementById('dashboardGrid'));
     check('dashboard omits giant work queue panel from main flow', !doc.getElementById('workQueuePanel') && !doc.getElementById('workQueueBody'));
+    check('dashboard owns the only compact role preview trigger', !!doc.getElementById('dashboardRolePreviewButton') && !!doc.getElementById('dashboardRolePreviewMenu') && !doc.getElementById('dashboardRolePreviewSelect'));
     check('dashboard login tagline matches package version', html.includes(`AI First CRM v${pkg.version}`));
     check('dashboard changelog button matches package version', html.includes(`Що нового у v${pkg.version}`));
 });
@@ -466,6 +467,8 @@ const uiCode = fs.readFileSync(path.join(ROOT, 'js/ui.js'), 'utf8');
 const graduationCode = fs.readFileSync(path.join(ROOT, 'js/graduation.js'), 'utf8');
 const designsPageCode = fs.readFileSync(path.join(ROOT, 'js/designs-page.js'), 'utf8');
 const globalModalsCss = fs.readFileSync(path.join(ROOT, 'css/modals.css'), 'utf8');
+check('Legacy header RoleSwitcher does not render DOM controls', authCode.includes('Compatibility tombstone: legacy RoleSwitcher UI is retired') && !authCode.includes("switcher.id = 'roleSwitcher'") && !authCode.includes('roleSwitcherDropdown'));
+check('Sidebar role identity is passive and has no preview menu owner', sidebarCode.includes('<span class="sidebar-identity-role" id="sidebarIdentityRole">CRM</span>') && !sidebarCode.includes('sidebarRolePreviewMenu') && !sidebarCode.includes('_hydrateRolePreviewEntry'));
 check('Sidebar has /designs', sidebarCode.includes("href: '/designs'"));
 check('Sidebar has Products catalogs entry', sidebarCode.includes("href: '/programs#catalogs'"));
 check('Sidebar has /designer', sidebarCode.includes("href: '/designer'"));
@@ -688,7 +691,7 @@ const pagesWithObsoleteRightPanel = htmlFiles.filter(file => {
 const roleSwitcherCss = fs.readFileSync(path.join(ROOT, 'css', 'role-switcher.css'), 'utf8');
 const rolePanelTombstone = fs.readFileSync(path.join(ROOT, 'js', 'role-panel.js'), 'utf8');
 check('Obsolete right-side role panel is not mounted by any page', pagesWithObsoleteRightPanel.length === 0 && rolePanelTombstone.includes('Compatibility tombstone') && !rolePanelTombstone.includes('createElement'));
-check('Role switcher CSS keeps creator preview without right-panel chrome', roleSwitcherCss.includes('.role-switcher-dropdown') && !roleSwitcherCss.includes('.role-panel-fab') && !roleSwitcherCss.includes('.role-panel {'));
+check('Legacy role switcher CSS is a tombstone for dashboard-owned preview', roleSwitcherCss.includes('Compatibility tombstone') && roleSwitcherCss.includes('dashboard shell control') && !roleSwitcherCss.includes('.role-switcher-dropdown') && !roleSwitcherCss.includes('.role-panel-fab') && !roleSwitcherCss.includes('.role-panel {'));
 
 // Check lead modal action binding
 const leadsCode = fs.readFileSync(path.join(ROOT, 'js/leads-page.js'), 'utf8');

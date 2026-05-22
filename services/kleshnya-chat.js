@@ -10,6 +10,12 @@
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { getVisibleBookingScope } = require('./bookingVisibility');
+const {
+    normalizePageContext,
+    buildPageKnowledgePrompt,
+    buildPageKnowledgeDebug,
+    buildPageKnowledgeAnswer
+} = require('../config/assistant-page-knowledge');
 const Anthropic = require('@anthropic-ai/sdk');
 
 const log = createLogger('KleshnyaChat');
@@ -38,8 +44,13 @@ function scopedBookingVisibility(username, actor, params, alias = 'b') {
 /**
  * Gather extended context for AI system prompt
  */
-async function gatherAIContext(username, dateStr, actor = null) {
-    const ctx = {};
+async function gatherAIContext(username, dateStr, actor = null, pageContext = null) {
+    const normalizedPageContext = normalizePageContext(pageContext || {});
+    const ctx = {
+        pageContext: normalizedPageContext,
+        pageKnowledge: buildPageKnowledgeDebug(normalizedPageContext).knowledge,
+        pageKnowledgePrompt: buildPageKnowledgePrompt(normalizedPageContext)
+    };
     try {
         // Today's bookings
         const todayParams = [dateStr];
@@ -163,6 +174,8 @@ ${ctx.teamToday?.length > 0 ? ctx.teamToday.map(t =>
 🎭 Програм в каталозі: ${ctx.programCategories?.map(c => c.category + ': ' + c.cnt).join(', ') || 'немає'}
 🎫 Активних сертифікатів: ${ctx.activeCertificates || 0}
 
+${ctx.pageKnowledgePrompt || ''}
+
 === ПРАВИЛА ===
 1. Відповідай ТІЛЬКИ на основі наданого контексту. Не вигадуй дані.
 2. Якщо даних недостатньо — скажи чесно.
@@ -197,12 +210,12 @@ function extractSuggestions(responseText) {
 /**
  * Generate AI response via Claude Haiku
  */
-async function generateAIResponse(userMessage, username, chatHistory, actor = null) {
+async function generateAIResponse(userMessage, username, chatHistory, actor = null, options = {}) {
     if (!AI_ENABLED || !anthropic) return null;
 
     try {
         const dateStr = getKyivDate(0);
-        const ctx = await gatherAIContext(username, dateStr, actor);
+        const ctx = await gatherAIContext(username, dateStr, actor, options.pageContext);
         const systemPrompt = buildSystemPrompt(ctx, username, dateStr);
 
         // Build messages array from chat history (last 10 messages)
@@ -565,8 +578,9 @@ const HELLO_KEYWORDS = ['привіт', 'здоров', 'hi', 'hello', 'йо', '
 
 // --- Main Chat Engine ---
 
-async function generateChatResponse(userMessage, username, chatHistory, actor = null) {
+async function generateChatResponse(userMessage, username, chatHistory, actor = null, options = {}) {
     const lower = userMessage.toLowerCase().trim();
+    const pageContext = normalizePageContext(options.pageContext || {});
 
     try {
         // 1. Check for greetings (fast path, no AI needed)
@@ -585,13 +599,16 @@ async function generateChatResponse(userMessage, username, chatHistory, actor = 
             };
         }
 
+        const pageKnowledgeResult = buildPageKnowledgeAnswer(userMessage, pageContext);
+        if (pageKnowledgeResult) return pageKnowledgeResult;
+
         // 2.5. Check for category stats query (e.g., "скільки піньят за тиждень?")
         const categoryResult = await tryHandleCategoryStats(lower, username, actor);
         if (categoryResult) return categoryResult;
 
         // 3. Try AI first (if enabled)
         if (AI_ENABLED) {
-            const aiResult = await generateAIResponse(userMessage, username, chatHistory, actor);
+            const aiResult = await generateAIResponse(userMessage, username, chatHistory, actor, { pageContext });
             if (aiResult) return aiResult;
         }
 

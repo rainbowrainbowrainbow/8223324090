@@ -4,6 +4,26 @@
 
 ---
 
+## v0.61.18 - Assistant page knowledge
+
+### Assistant page knowledge [codex]
+- **Page-aware payload** - assistant rail і Kleshnya chat передають компактний `pageContext`: сторінку, path, заголовок, активний tab, selected entity, фільтри і related hints без DOM dump.
+- **Канонічний registry сторінок** - додано структуроване знання для `timeline`, `dashboard`, `customers`, `sales-funnel`, `tasks`, `finance`, `staff/hr`, `programs`, `certificates`, `chat/omni`, `center` та інших основних поверхонь.
+- **Cross-page відповіді** - `/customers` тепер розуміє питання про воронку як модуль `Ліди / Воронка`, пояснює звʼязок client base ↔ lead pipeline і не вигадує live-цифри без даних.
+- **Prompt і fallback** - `crm-assistant` і старий `kleshnya` engine використовують один page knowledge source, мають dev debug контекст і локальну відповідь для концептуальних питань без зміни backend auth.
+
+---
+
+## v0.61.17 - Dashboard single role switcher
+
+### Dashboard single role switcher [codex]
+- **Один перемикач ролі** - preview ролей перенесено в компактну кнопку на dashboard shell, без окремого header/debug switcher і без кліку по ролі в sidebar.
+- **Реальна роль окремо від preview** - sidebar показує реальну роль акаунта, а dashboard-кнопка показує effective preview роль і дає скинути режим.
+- **Shell без zombie UI** - старий `RoleSwitcher` переведено в compatibility tombstone без DOM, а CSS-хак для прихованого `#roleSwitcher` прибрано.
+- **Без зміни backend auth** - preview і далі керується `RolePreview` та змінює тільки shell, меню, dashboard, quick access і стартову сторінку.
+
+---
+
 ## v0.61.16 - Account center list recovery
 
 ### Account center list recovery [codex]

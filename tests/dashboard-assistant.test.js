@@ -78,6 +78,33 @@ async function postJson(baseUrl, path, body, role = 'manager') {
 afterEach(restoreEnv);
 
 describe('dashboard assistant service contract', () => {
+    it('normalizes canonical page knowledge for customers and sales funnel', () => {
+        const {
+            normalizePageContext,
+            buildPageKnowledgePrompt,
+            buildPageKnowledgeAnswer
+        } = require('../config/assistant-page-knowledge');
+
+        const customers = normalizePageContext({
+            pathname: '/customers',
+            pageTitle: 'Клієнти',
+            activeTab: 'RFM',
+            activeFilters: { search: 'Марія', hidden: { raw: true } }
+        });
+        const funnel = normalizePageContext({ pathname: '/sales-funnel' });
+        const answer = buildPageKnowledgeAnswer('що таке воронка і як клієнти повʼязані з лідами?', customers);
+
+        assert.equal(customers.pageKey, 'customers');
+        assert.equal(customers.activeFilters.search, 'Марія');
+        assert.equal(Object.prototype.hasOwnProperty.call(customers.activeFilters, 'hidden'), false);
+        assert.equal(funnel.pageKey, 'sales-funnel');
+        assert.match(buildPageKnowledgePrompt(customers), /Клієнти/);
+        assert.match(buildPageKnowledgePrompt(customers), /Ліди \/ Воронка|sales-funnel/);
+        assert.match(answer.message, /Воронка/);
+        assert.match(answer.message, /Ліди/);
+        assert.match(answer.message, /live-цифри|не буду вигадувати/);
+    });
+
     it('builds compact role/page context for the rail prompt', () => {
         clearAssistantModules();
         const { buildAssistantContext } = require('../services/dashboardAssistant');
@@ -100,6 +127,9 @@ describe('dashboard assistant service contract', () => {
 
         assert.equal(context.role, 'creator');
         assert.equal(context.page, 'dashboard');
+        assert.equal(context.pageContext.pageKey, 'dashboard');
+        assert.equal(context.pageKnowledge.pageKey, 'dashboard');
+        assert.match(context.pageKnowledgePrompt, /КОНТЕКСТ ПОТОЧНОЇ СТОРІНКИ/);
         assert.equal(context.title, 'Дашборд');
         assert.equal(context.intent, 'Поясни сторінку');
         assert.equal(context.proactive, true);
@@ -112,6 +142,24 @@ describe('dashboard assistant service contract', () => {
         assert.equal(context.recentState.previewRole, 'director');
         assert.match(context.strategicFrame, /creator|цілісності|dashboard|bottlenecks/);
         assert.match(context.pagePriority, /bottlenecks|пріоритети/);
+    });
+
+    it('answers page-knowledge concept questions without OpenAI when live data is not available', async () => {
+        delete process.env.OPENAI_API_KEY;
+        clearAssistantModules();
+
+        const { getDashboardAssistantReply } = require('../services/dashboardAssistant');
+        const reply = await getDashboardAssistantReply({
+            role: 'manager',
+            page: 'customers',
+            pageContext: { pathname: '/customers', pageTitle: 'Клієнти' },
+            userMessage: 'що таке воронка?'
+        });
+
+        assert.equal(reply.model, 'local-page-knowledge');
+        assert.match(reply.summary, /Воронка/);
+        assert.match(reply.summary, /Ліди|sales-funnel/);
+        assert.match(reply.summary, /не буду вигадувати/);
     });
 
     it('normalizes assistant replies into the foundation schema', () => {
@@ -180,6 +228,7 @@ describe('dashboard assistant service contract', () => {
         assert.doesNotMatch(request.options.body, /test-openai-key/);
         assert.match(request.options.body, /funnel/);
         assert.match(request.options.body, /Що головне\?/);
+        assert.match(request.options.body, /КОНТЕКСТ ПОТОЧНОЇ СТОРІНКИ/);
     });
 
     it('builds sharper strategic recommendations from signals and actions', () => {
@@ -456,6 +505,58 @@ describe('dashboard assistant service contract', () => {
 });
 
 describe('dashboard assistant route context', () => {
+    it('passes sanitized page context into the assistant service and exposes debug only on request', async () => {
+        process.env.JWT_SECRET = TEST_JWT_SECRET;
+        clearAssistantModules();
+
+        const calls = [];
+        installMock('../db', {
+            pool: { query: async () => ({ rows: [] }) },
+            query: async () => ({ rows: [] })
+        });
+        installMock('../services/dashboardAssistant', {
+            getDashboardAssistantReply: async input => {
+                calls.push(input);
+                return { text: 'ok', subtitle: 'ok', mode: 'speaking' };
+            },
+            normalizeAssistantReply: reply => reply
+        });
+        installMock('../services/dashboardAssistantAudio', {
+            transcribeDashboardAudio: async () => 'voice text',
+            synthesizeDashboardSpeech: async () => Buffer.from('mp3')
+        });
+
+        const app = express();
+        app.use(express.json());
+        app.use('/api/crm-assistant', require('../routes/crm-assistant'));
+        const { server, baseUrl } = await listen(app);
+
+        try {
+            const res = await postJson(baseUrl, '/api/crm-assistant/reply?debugPageContext=1', {
+                pageContext: {
+                    pathname: '/customers',
+                    pageTitle: 'Клієнти',
+                    activeTab: 'RFM',
+                    activeFilters: { search: 'Марія', raw: { ignore: true } },
+                    selectedEntity: { type: 'customer', id: '42', label: 'Марія' }
+                },
+                userMessage: 'що таке воронка?'
+            }, 'manager');
+
+            assert.equal(res.status, 200);
+            assert.equal(calls[0].page, 'customers');
+            assert.equal(calls[0].pageContext.pageKey, 'customers');
+            assert.equal(calls[0].pageContext.activeTab, 'RFM');
+            assert.equal(calls[0].pageContext.activeFilters.search, 'Марія');
+            assert.equal(Object.prototype.hasOwnProperty.call(calls[0].pageContext.activeFilters, 'raw'), false);
+            assert.equal(calls[0].pageContext.selectedEntity.id, '42');
+            assert.equal(res.data.debug.pageContext.pageKey, 'customers');
+            assert.equal(res.data.debug.knowledge.pageKey, 'customers');
+        } finally {
+            await close(server);
+        }
+    });
+
     it('uses JWT role as the source of truth and limits role preview to creator', async () => {
         process.env.JWT_SECRET = TEST_JWT_SECRET;
         clearAssistantModules();

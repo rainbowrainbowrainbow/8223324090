@@ -70,10 +70,23 @@
     border-color: rgba(245,158,11,0.3); color: #d97706; background: rgba(245,158,11,0.05);
 }
 .sound-create-btn.music:hover { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.5); transform: translateY(-1px); }
+.sound-create-btn.upload {
+    border-color: rgba(8,145,178,0.34); color: #0891b2; background: rgba(8,145,178,0.06);
+}
+.sound-create-btn.upload:hover { background: rgba(8,145,178,0.13); border-color: rgba(8,145,178,0.55); transform: translateY(-1px); }
+.sound-create-btn.is-disabled,
+.sound-create-btn:disabled {
+    cursor: not-allowed; opacity: 0.62; filter: grayscale(0.15);
+}
+.sound-create-btn.is-disabled:hover,
+.sound-create-btn:disabled:hover {
+    transform: none; box-shadow: none;
+}
 
 /* Dark mode */
 body.dark-mode .sound-create-btn.tts { background: rgba(139,92,246,0.1); color: #a78bfa; border-color: rgba(139,92,246,0.25); }
 body.dark-mode .sound-create-btn.music { background: rgba(245,158,11,0.1); color: #fbbf24; border-color: rgba(245,158,11,0.25); }
+body.dark-mode .sound-create-btn.upload { background: rgba(8,145,178,0.12); color: #67e8f9; border-color: rgba(8,145,178,0.32); }
 
 /* ═══ Announcements ═══ */
 .sound-ann-list { display: flex; flex-direction: column; gap: 6px; }

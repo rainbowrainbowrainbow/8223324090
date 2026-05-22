@@ -4,6 +4,16 @@
 
 ---
 
+## v0.61.27 - Sound Upload Fallback
+
+### Sound Upload Fallback [codex]
+- **Sound** - активну заглушку `Створити музику (скоро)` замінено на реальний upload-flow для аудіофайлів у бібліотеку звуків.
+- **Бібліотека звуків** - оператор може вибрати MP3/WAV/OGG/M4A/AAC, задати назву й категорію, завантажити файл через `/api/music/library/upload` і одразу оновити список.
+- **AI-музика** - поки Suno/Kie.ai недоступний, кнопка показується як disabled-стан і більше не відкриває dead-click повідомлення.
+- **Regression guard** - додано UI smoke checks, які ловлять повернення активної `скоро`-кнопки без реальної дії.
+
+---
+
 ## v0.61.26 - Modal Interaction Cleanup
 
 ### Modal Interaction Cleanup [codex]

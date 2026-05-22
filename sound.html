@@ -11,16 +11,16 @@
     <title>Event Genix | Звук</title>
     <meta name="description" content="Event Genix — Звуковий модуль">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.61.26">
-    <link rel="stylesheet" href="css/auth.css?v=0.61.26">
-    <link rel="stylesheet" href="css/layout.css?v=0.61.26">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.26">
-    <link rel="stylesheet" href="css/pages.css?v=0.61.26">
-    <link rel="stylesheet" href="css/modals.css?v=0.61.26">
-    <link rel="stylesheet" href="css/sound.css?v=0.61.26">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.26">
-    <link rel="stylesheet" href="css/responsive.css?v=0.61.26">
-    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.26">
+    <link rel="stylesheet" href="css/base.css?v=0.61.27">
+    <link rel="stylesheet" href="css/auth.css?v=0.61.27">
+    <link rel="stylesheet" href="css/layout.css?v=0.61.27">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.61.27">
+    <link rel="stylesheet" href="css/pages.css?v=0.61.27">
+    <link rel="stylesheet" href="css/modals.css?v=0.61.27">
+    <link rel="stylesheet" href="css/sound.css?v=0.61.27">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.61.27">
+    <link rel="stylesheet" href="css/responsive.css?v=0.61.27">
+    <link rel="stylesheet" href="css/role-switcher.css?v=0.61.27">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -99,7 +99,8 @@
                     </div>
                     <div class="sound-create-bar">
                         <button type="button" class="sound-create-btn tts" onclick="_openTTSModal()">🎙️ Створити голос (TTS)</button>
-                        <button type="button" class="sound-create-btn music" onclick="_openMusicModal()" title="Тимчасово недоступно через Kie.ai">🎶 Створити музику (скоро)</button>
+                        <button type="button" class="sound-create-btn upload" onclick="_openUploadModal()">📤 Завантажити аудіо</button>
+                        <button type="button" class="sound-create-btn music is-disabled" disabled aria-disabled="true" title="AI-музика тимчасово недоступна через Kie.ai">🎶 AI-музика недоступна</button>
                     </div>
                     <div class="sound-stats-row" id="libraryStats"></div>
                     <div id="libraryContainer" class="sound-grid">
@@ -249,11 +250,11 @@
         </div>
     </div>
 
-    <script src="js/config.js?v=0.61.26"></script>
-    <script src="js/notification.js?v=0.61.26"></script>
-    <script src="js/api.js?v=0.61.26"></script>
-    <script src="js/auth.js?v=0.61.26"></script>
-    <script src="js/components/sidebar.js?v=0.61.26"></script>
+    <script src="js/config.js?v=0.61.27"></script>
+    <script src="js/notification.js?v=0.61.27"></script>
+    <script src="js/api.js?v=0.61.27"></script>
+    <script src="js/auth.js?v=0.61.27"></script>
+    <script src="js/components/sidebar.js?v=0.61.27"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script>
     (async function() {
@@ -274,7 +275,7 @@
         document.getElementById('loginOverlay')?.classList.remove('hidden');
     })();
     </script>
-    <script src="js/ui.js?v=0.61.26"></script>
-    <script src="js/alerts.js?v=0.61.26"></script>
-    <script src="js/sound-page.js?v=0.61.26"></script></body>
+    <script src="js/ui.js?v=0.61.27"></script>
+    <script src="js/alerts.js?v=0.61.27"></script>
+    <script src="js/sound-page.js?v=0.61.27"></script></body>
 </html>

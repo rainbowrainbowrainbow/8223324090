@@ -629,6 +629,73 @@
     // ==========================================
     // TTS + MUSIC GENERATION (v39.8)
     // ==========================================
+    function pickAudioFile() {
+        return new Promise(resolve => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.mp3,.wav,.ogg,.m4a,.aac,audio/*';
+            input.style.position = 'fixed';
+            input.style.left = '-9999px';
+            input.addEventListener('change', () => {
+                const file = input.files?.[0] || null;
+                input.remove();
+                resolve(file);
+            }, { once: true });
+            input.addEventListener('cancel', () => {
+                input.remove();
+                resolve(null);
+            }, { once: true });
+            document.body.appendChild(input);
+            input.click();
+        });
+    }
+
+    function soundNameFromFile(file) {
+        return String(file?.name || 'Аудіо').replace(/\.[^.]+$/, '').trim() || 'Аудіо';
+    }
+
+    window._openUploadModal = async function() {
+        const file = await pickAudioFile();
+        if (!file) return;
+        const defaultName = soundNameFromFile(file);
+        const details = typeof formModal === 'function'
+            ? await formModal('📤 Завантажити аудіо', [
+                { key: 'name', label: 'Назва', defaultValue: defaultName, placeholder: 'Назва звуку' },
+                { key: 'category', label: 'Категорія', type: 'select', defaultValue: 'music', options: [
+                    { value: 'music', label: '🎶 Музика' },
+                    { value: 'effects', label: '💥 Ефекти' },
+                    { value: 'atmosphere', label: '🌿 Атмосфера' },
+                    { value: 'quest', label: '🧩 Квести' },
+                    { value: 'announcement', label: '📢 Оголошення' }
+                ]}
+            ], { icon: '📤', okText: 'Завантажити' })
+            : { name: defaultName, category: 'music' };
+        if (!details) return;
+
+        const body = new FormData();
+        body.append('file', file);
+        body.append('name', String(details.name || defaultName).trim() || defaultName);
+        body.append('category', details.category || 'music');
+
+        if (typeof showNotification === 'function') showNotification('⏳ Завантажуємо аудіо...', 'info');
+        try {
+            const response = await fetch(`${API_BASE}/music/library/upload`, {
+                method: 'POST',
+                headers: getAuthHeaders(false),
+                body
+            });
+            if (typeof handleAuthError === 'function' && handleAuthError(response)) return;
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data?.success) throw new Error(data.error || `HTTP ${response.status}`);
+            if (typeof showNotification === 'function') showNotification('✅ Аудіо додано до бібліотеки', 'success');
+            _loadedTabs.library = false;
+            loadLibrary();
+            loadLog();
+        } catch (err) {
+            if (typeof showNotification === 'function') showNotification(err.message || 'Не вдалося завантажити аудіо', 'error');
+        }
+    };
+
     window._openTTSModal = async function() {
         if (typeof formModal !== 'function') return;
         const result = await formModal('🎙️ Створити голосовий звук (ElevenLabs)', [
@@ -673,31 +740,6 @@
         }
         return;
     };
-    /* Future: коли Suno API стане доступний
-        if (typeof formModal !== 'function') return;
-        const result = await formModal('🎶 Створити музику (Suno AI)', [
-            { key: 'prompt', label: 'Опис музики', type: 'textarea', required: true, placeholder: 'Весела дитяча мелодія для парку розваг, динозаври, пригоди' },
-            { key: 'name', label: 'Назва', placeholder: 'Тема парку' },
-            { key: 'duration', label: 'Тривалість (сек)', type: 'number', defaultValue: '30', placeholder: '30' },
-            { key: 'category', label: 'Категорія', type: 'select', defaultValue: 'music', options: [
-                { value: 'music', label: '🎶 Музика' },
-                { value: 'atmosphere', label: '🌿 Атмосфера' },
-                { value: 'quest', label: '🧩 Квести' }
-            ]}
-        ], { icon: '🎶', okText: 'Згенерувати' });
-        if (!result) return;
-
-        if (typeof showNotification === 'function') showNotification('⏳ Генерація музики (~1-2 хв)...', 'info');
-        try {
-            const data = await apiCall('POST', '/music/library/generate-music', result);
-            if (data?.taskId) {
-                _pollGeneration(data.taskId, result.name || data.name, result.category, 'suno');
-            } else {
-                if (typeof showNotification === 'function') showNotification(data?.error || 'Помилка генерації', 'error');
-            }
-        } catch (err) { if (typeof showNotification === 'function') showNotification(err.message, 'error'); }
-    };
-    */
 
     function _pollGeneration(taskId, name, category, provider) {
         let attempts = 0;

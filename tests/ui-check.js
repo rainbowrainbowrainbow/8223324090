@@ -304,6 +304,14 @@ checkPage('chat-settings.html', (doc) => {
     check('Chat settings page exposes Guardian controls', !!doc.getElementById('guardianEnabled') && !!doc.getElementById('guardianProvider') && !!doc.getElementById('guardianModel'));
 });
 
+checkPage('sound.html', (doc, html) => {
+    const soundCode = fs.readFileSync(path.join(ROOT, 'js', 'sound-page.js'), 'utf8');
+    const soundCss = fs.readFileSync(path.join(ROOT, 'css', 'sound.css'), 'utf8');
+    check('Sound library exposes upload as the real music fallback action', html.includes('onclick="_openUploadModal()"') && html.includes('Завантажити аудіо') && soundCode.includes('window._openUploadModal') && soundCode.includes('/music/library/upload') && soundCode.includes('new FormData()'));
+    check('Sound page does not expose active soon-only Suno generation button', html.includes('AI-музика недоступна') && html.includes('disabled aria-disabled="true"') && !html.includes('Створити музику (скоро)'));
+    check('Sound upload and disabled music states have explicit styling', soundCss.includes('.sound-create-btn.upload') && soundCss.includes('.sound-create-btn.is-disabled') && soundCss.includes('body.dark-mode .sound-create-btn.upload'));
+});
+
 checkPage('tasks.html', (doc, html) => {
     const tasksCode = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
     check('Tasks explainability region exists', !!doc.getElementById('taskExplainability'));

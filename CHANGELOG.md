@@ -4,6 +4,15 @@
 
 ---
 
+## v0.61.28 - Deployment Version Marker
+
+### Deployment Version Marker [codex]
+- **Релізний маркер** - піднято видиму версію CRM з `v0.61.27` до `v0.61.28` за запитом оператора.
+- **Cache/version sync** - оновлено HTML asset tags, service-worker cache names, `package.json`, `package-lock.json` і release badge, щоб live CRM явно показував найсвіжіший deployment marker.
+- **Без функціональної зміни** - реліз не змінює бізнес-логіку після Sound upload fallback; це окремий deploy/version marker.
+
+---
+
 ## v0.61.27 - Sound Upload Fallback
 
 ### Sound Upload Fallback [codex]

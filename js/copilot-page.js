@@ -95,13 +95,24 @@ const CopilotPage = (() => {
         return token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
     }
 
+    function copilotApiUrl(url) {
+        const raw = String(url || '');
+        if (raw.startsWith('/api/')) return raw;
+        return '/api/copilot' + (raw.startsWith('/') ? raw : '/' + raw);
+    }
+
     async function apiPost(url, body) {
-        const r = await fetch(url, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+        const r = await fetch(copilotApiUrl(url), { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
         return r.json();
     }
 
     async function apiGet(url) {
-        const r = await fetch(url, { headers: authHeaders() });
+        const r = await fetch(copilotApiUrl(url), { headers: authHeaders() });
+        return r.json();
+    }
+
+    async function apiPut(url, body) {
+        const r = await fetch(copilotApiUrl(url), { method: 'PUT', headers: authHeaders(), body: JSON.stringify(body) });
         return r.json();
     }
 
@@ -1713,7 +1724,7 @@ const CopilotPage = (() => {
                         const msgs = caseData.data.messages || [];
                         msgs.push({ role: 'user', content: prompt, ts: Date.now() });
                         msgs.push({ role: 'assistant', content: data.response, ts: Date.now() });
-                        await apiPost('/cases/' + caseId, { messages: msgs, last_summary: data.response.substring(0, 500) });
+                        await apiPut('/cases/' + caseId, { messages: msgs, last_summary: data.response.substring(0, 500) });
                     }
                 }
             } else {

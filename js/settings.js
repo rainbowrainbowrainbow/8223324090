@@ -2279,7 +2279,7 @@ async function renderAutomationRules() {
     const container = document.getElementById('automationRulesList');
     if (!container) return;
     try {
-        const response = await fetch(`${API_BASE}/settings/automation-rules`, { headers: getAuthHeaders(false) });
+        const response = await fetch(`${API_BASE}/automation-rules`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return;
         const rules = await response.json();
         if (!rules || rules.length === 0) {
@@ -2328,11 +2328,11 @@ async function renderAutomationRules() {
 
 async function toggleAutomationRule(id, isActive) {
     try {
-        const response = await fetch(`${API_BASE}/settings/automation-rules`, { headers: getAuthHeaders(false) });
+        const response = await fetch(`${API_BASE}/automation-rules`, { headers: getAuthHeaders(false) });
         const rules = await response.json();
         const rule = rules.find(r => r.id === id);
         if (!rule) return;
-        await fetch(`${API_BASE}/settings/automation-rules/${id}`, {
+        await fetch(`${API_BASE}/automation-rules/${id}`, {
             method: 'PUT',
             headers: getAuthHeaders(),
             body: JSON.stringify({ ...rule, is_active: isActive })
@@ -2347,7 +2347,7 @@ async function deleteAutomationRule(id) {
     const confirmed = await customConfirm('Видалити це правило автоматизації?', 'Видалення');
     if (!confirmed) return;
     try {
-        await fetch(`${API_BASE}/settings/automation-rules/${id}`, {
+        await fetch(`${API_BASE}/automation-rules/${id}`, {
             method: 'DELETE',
             headers: getAuthHeaders()
         });
@@ -2415,7 +2415,7 @@ async function handleAutomationRuleSubmit(e) {
     }
 
     try {
-        const response = await fetch(`${API_BASE}/settings/automation-rules`, {
+        const response = await fetch(`${API_BASE}/automation-rules`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({
@@ -2608,7 +2608,7 @@ async function copyContractorInvite(id) {
     // Try to fetch bot username for full link
     let botUsername = null;
     try {
-        const res = await fetch(`${API_BASE}/settings/settings/bot_username`, { headers: getAuthHeaders(false) });
+        const res = await fetch(`${API_BASE}/settings/bot_username`, { headers: getAuthHeaders(false) });
         const data = await res.json();
         botUsername = data.value;
     } catch (e) { /* fallback */ }

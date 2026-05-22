@@ -7113,7 +7113,7 @@
             if (!resp.ok) {
                 console.error('[Guardian] Digest fetch failed:', resp.status, resp.statusText);
                 _digestContent.innerHTML = '<div class="guardian-digest-empty">❌ Помилка завантаження (HTTP ' + resp.status + ')<br>' +
-                    '<button class="guardian-digest-generate-btn" onclick="void(0)">🔄 Згенерувати зараз</button></div>';
+                    '<button type="button" class="guardian-digest-generate-btn">🔄 Згенерувати зараз</button></div>';
                 _digestContent.querySelector('.guardian-digest-generate-btn')?.addEventListener('click', function () { _generateDigest(date); });
                 return;
             }
@@ -7121,7 +7121,7 @@
             // console.log('[Guardian] Reports received:', reports ? reports.length : 'null');
             if (!reports || reports.length === 0) {
                 _digestContent.innerHTML = '<div class="guardian-digest-empty">📭 Дайджест ще не згенеровано.<br><small>Guardian створює звіт щовечора о 23:00</small><br>' +
-                    '<button class="guardian-digest-generate-btn" onclick="void(0)">🔄 Згенерувати зараз</button></div>';
+                    '<button type="button" class="guardian-digest-generate-btn">🔄 Згенерувати зараз</button></div>';
                 _digestContent.querySelector('.guardian-digest-generate-btn')?.addEventListener('click', function () { _generateDigest(date); });
                 return;
             }
@@ -7143,7 +7143,7 @@
 
             if (!report) {
                 _digestContent.innerHTML = '<div class="guardian-digest-empty">📭 Немає звіту за цей день<br>' +
-                    '<button class="guardian-digest-generate-btn" onclick="void(0)">🔄 Згенерувати зараз</button></div>';
+                    '<button type="button" class="guardian-digest-generate-btn">🔄 Згенерувати зараз</button></div>';
                 _digestContent.querySelector('.guardian-digest-generate-btn')?.addEventListener('click', function () { _generateDigest(date); });
                 return;
             }
@@ -7163,7 +7163,7 @@
         } catch (e) {
             console.error('[Guardian] Digest load error:', e);
             _digestContent.innerHTML = '<div class="guardian-digest-empty">❌ Помилка завантаження дайджесту<br>' +
-                '<button class="guardian-digest-generate-btn" onclick="void(0)">🔄 Згенерувати зараз</button></div>';
+                '<button type="button" class="guardian-digest-generate-btn">🔄 Згенерувати зараз</button></div>';
             _digestContent.querySelector('.guardian-digest-generate-btn')?.addEventListener('click', function () { _generateDigest(date); });
         }
     }

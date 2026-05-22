@@ -4,6 +4,17 @@
 
 ---
 
+## v0.61.25 - Interaction Contract Fixes
+
+### Interaction Contract Fixes [codex]
+- **Copilot workflow** - виправлено відносні workflow/cases запити, які оминали mounted backend і йшли у неіснуючі `/workflow/...` та `/cases...`; тепер вони нормалізуються в `/api/copilot/...`.
+- **Copilot case history** - збереження історії кейсу після AI-відповіді використовує серверний `PUT /api/copilot/cases/:id` контракт замість помилкового `POST /cases/:id`.
+- **Налаштування** - automation rules та Telegram bot username знову ходять на реальні mounted routes: `/api/automation-rules` і `/api/settings/bot_username`.
+- **Chat / Guardian** - кнопка `Згенерувати зараз` у digest більше не рендериться як `onclick="void(0)"`; робота лишилась на існуючому delegated listener.
+- **Regression guard** - додано UI checks на Copilot route normalization, settings API routes і відсутність legacy void-stub кнопки.
+
+---
+
 ## v0.61.24 - UI Cleanup Audit Fixes
 
 ### UI Cleanup Audit Fixes [codex]
